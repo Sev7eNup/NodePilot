@@ -149,7 +149,6 @@ public sealed class WorkflowAssistantService
                 Conversation: conversation, Tools: roundTools, ToolChoice: roundTools is not null ? "auto" : null);
 
             var assistantText = new StringBuilder(); // prose from THIS round (for the conversation turn)
-            string? finishReason = null;
             IReadOnlyList<LlmToolCall>? toolCalls = null;
 
             await foreach (var evt in _llm.StreamAsync(llmRequest, ct))
@@ -161,7 +160,6 @@ public sealed class WorkflowAssistantService
                     // footer would only count the last LLM round. Stays null if usage is never reported.
                     if (evt.PromptTokens is int pt) promptTokens = (promptTokens ?? 0) + pt;
                     if (evt.CompletionTokens is int cpt) completionTokens = (completionTokens ?? 0) + cpt;
-                    finishReason = evt.FinishReason;
                     toolCalls = evt.ToolCalls;
                     break;
                 }
@@ -209,8 +207,11 @@ public sealed class WorkflowAssistantService
             // as long as we're not already inside the definition and the depth cap hasn't been hit.
             // Precedence: if the model emits BOTH a definition (inDefinition) and tool_calls in the
             // same round, the definition wins — the tool_calls are deliberately dropped (no further round trip).
+            // Execute on the PRESENCE of tool_calls, not the finish_reason string: local endpoints
+            // (LM Studio, llama.cpp) often report "stop"/null even on a tool-call round, which the old
+            // exact-string gate silently dropped — capping such models at a single tool call.
             var canCallTools = !inDefinition && toolContext is not null && toolCalls is { Count: > 0 } && iteration < maxDepth - 1;
-            if (string.Equals(finishReason, "tool_calls", StringComparison.Ordinal) && canCallTools)
+            if (canCallTools)
             {
                 conversation.Add(new LlmMessage("assistant", assistantText.ToString(), ToolCalls: toolCalls));
                 foreach (var call in toolCalls!)

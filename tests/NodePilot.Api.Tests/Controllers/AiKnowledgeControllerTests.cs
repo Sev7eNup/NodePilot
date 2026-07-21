@@ -139,6 +139,23 @@ public class AiKnowledgeControllerTests
     }
 
     [Fact]
+    public async Task Ask_ToolCall_WithNonCanonicalFinishReason_StillExecutes()
+    {
+        var (controller, _, llm, body) = Build(enableToolCalling: true);
+        // Local endpoint reports finish_reason "stop" while still emitting a tool call — must still run.
+        llm.EnqueueToolCallStreamWithFinish(new[] { new LlmToolCall("c1", "list_workflows", "{}") }, "stop");
+        llm.EnqueueStream("Hier sind die Workflows.");
+
+        var result = await controller.Ask(new KnowledgeAskRequest("Liste Workflows", null), CancellationToken.None);
+
+        result.Should().BeOfType<EmptyResult>();
+        var events = ParseSse(body);
+        events.Should().Contain(e => e.ev == "tool_call");
+        events.Should().Contain(e => e.ev == "tool_result");
+        events.Should().Contain(e => e.ev == "done");
+    }
+
+    [Fact]
     public async Task Ask_ForwardsTimeZone_IntoSystemPromptTimeContext()
     {
         var (controller, _, llm, _) = Build(role: "Viewer");

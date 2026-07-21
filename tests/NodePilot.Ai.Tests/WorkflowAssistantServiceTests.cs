@@ -363,6 +363,32 @@ public class WorkflowAssistantServiceTests
     }
 
     [Fact]
+    public async Task StreamChat_ToolCall_WithNonCanonicalFinishReason_StillExecutes()
+    {
+        // A local endpoint (LM Studio, llama.cpp) reports finish_reason "stop" even though it emitted a
+        // tool call. The loop must execute it on the PRESENCE of tool_calls, not the finish_reason string —
+        // otherwise such models get capped at a single (or zero) tool call.
+        var toolCall = new LlmToolCall("call-1", "analyze_workflow", "{}");
+        var fake = new FakeLlmClient()
+            .EnqueueToolCallStreamWithFinish(new[] { toolCall }, "stop", "Ich prüfe. ")
+            .EnqueueStream("Fertig.");
+
+        using var doc = JsonDocument.Parse(SampleWorkflow);
+        var toolCalls = new List<string>();
+        var toolResults = new List<string>();
+        await foreach (var e in NewService(fake, enableToolCalling: true)
+            .StreamChatAsync(Req("Prüfe."), doc.RootElement, true, false, CancellationToken.None))
+        {
+            if (e is ChatStreamEvent.ToolCallEvent tc) toolCalls.Add(tc.ToolName);
+            if (e is ChatStreamEvent.ToolResultEvent tr) toolResults.Add(tr.ResultJson);
+        }
+
+        toolCalls.Should().ContainSingle().Which.Should().Be("analyze_workflow");
+        toolResults.Should().ContainSingle();
+        fake.Calls.Should().HaveCount(2); // it DID a second round after executing the tool
+    }
+
+    [Fact]
     public async Task StreamChat_ToolCall_StopsAtDepthCap()
     {
         var toolCall = new LlmToolCall("c", "analyze_workflow", "{}");
