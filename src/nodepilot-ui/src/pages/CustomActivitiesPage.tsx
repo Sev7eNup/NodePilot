@@ -225,7 +225,7 @@ export function CustomActivitiesPage() {
   }, [list, search, sortBy, sortDir]);
 
   return (
-    <div className="max-w-6xl mx-auto np-fade-up">
+    <div className="max-w-4xl mx-auto np-fade-up">
       <div className="flex items-center justify-between mb-6">
         <div>
           <p className="text-sm text-on-surface-variant mt-1">{t('customActivities:subtitle')}</p>

@@ -81,7 +81,12 @@ export function GlobalVariablesPage() {
   // Drag-resizable folder sidebar (same primitives as WorkflowsPage). Width is pixel-sized;
   // height defaults to auto (fits the tree) until the corner grip is dragged.
   const folderPanel = useResizable({ initialSize: 256, minSize: 180, maxSize: 600, direction: 'horizontal' });
-  const folderPanelHeight = useResizable({ initialSize: 360, minSize: 160, maxSize: 800, direction: 'vertical' });
+  // Height floor kept below the compact tree's natural content height (header + a couple of
+  // rows ≈ 90px). A larger floor than the content means grabbing the grip clamps the box UP
+  // to the floor on the first move — a visible downward "jump" — and blocks shrinking flush
+  // to the entries. The globals tree is denser than the workflow one, so it needs a lower
+  // floor than that page's 160 to shrink all the way up. Double-click still resets to auto.
+  const folderPanelHeight = useResizable({ initialSize: 360, minSize: 72, maxSize: 800, direction: 'vertical' });
   const [folderHeightDirty, setFolderHeightDirty] = useState(false);
   const folderBoxRef = useRef<HTMLDivElement>(null);
 

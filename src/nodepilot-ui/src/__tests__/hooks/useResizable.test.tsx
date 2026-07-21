@@ -122,6 +122,32 @@ describe('useResizable', () => {
     expect(result.current.size).toBe(270);
   });
 
+  it('startSizeOverride_updatesSizeStateOnMouseDown_beforeAnyMove', () => {
+    // Regression: a click on the corner handle (mousedown → mouseup, no drag) must NOT
+    // jump the panel to initialSize. When seeded from the measured height, the state is
+    // synced on mousedown so a consumer switching to `size`-driven height renders at the
+    // measured height immediately instead of flashing to initialSize.
+    const { result } = renderHook(() =>
+      useResizable({ initialSize: 360, minSize: 100, maxSize: 800, direction: 'vertical' }),
+    );
+
+    act(() => {
+      result.current.handleProps.onMouseDown(
+        { preventDefault: () => {}, clientX: 0, clientY: 100 } as React.MouseEvent,
+        120, // measured content height
+      );
+    });
+
+    // No mousemove yet — size must already reflect the override, not the 360 initialSize.
+    expect(result.current.size).toBe(120);
+
+    act(() => {
+      document.dispatchEvent(new MouseEvent('mouseup'));
+    });
+    // A pure click leaves the panel at the seeded height.
+    expect(result.current.size).toBe(120);
+  });
+
   it('mouseUp_endsDrag_subsequentMoveDoesNotResize', () => {
     const { result } = renderHook(() =>
       useResizable({ initialSize: 200, minSize: 100, maxSize: 500, direction: 'horizontal' }),

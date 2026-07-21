@@ -252,7 +252,7 @@ export function UsersPage() {
   const totalCount = users?.length ?? 0;
 
   return (
-    <div className="max-w-5xl mx-auto np-fade-up">
+    <div className="max-w-7xl mx-auto np-fade-up">
       <div className="flex items-center justify-between mb-6">
         <div>
           {/* Trans rendert die <strong>-Tags aus dem i18n-String als echte React-Elemente,
