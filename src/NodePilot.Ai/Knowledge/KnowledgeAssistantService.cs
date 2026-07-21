@@ -33,7 +33,8 @@ public sealed class KnowledgeAssistantService(
     IKnowledgeToolRegistry tools,
     IOptionsMonitor<LlmOptions> llmOptions,
     IOptionsMonitor<AiKnowledgeOptions> knowledgeOptions,
-    IOperationalKnowledgeReader operational)
+    IOperationalKnowledgeReader operational,
+    ISettingsKnowledgeReader settings)
 {
     private static readonly string[] AllowedRoles = { "user", "assistant" };
 
@@ -62,10 +63,12 @@ public sealed class KnowledgeAssistantService(
         if (llmOpts.EnableToolCalling)
         {
             // The operational reader only goes into the context when operational data is enabled —
-            // otherwise its tools are neither offered nor executable.
+            // otherwise its tools are neither offered nor executable. The settings reader is present
+            // only for privileged callers (Admin/Operator) — read_settings is gated to them.
             var operationalReader = kOpts.OperationalEnabled ? operational : null;
+            var settingsReader = isPrivileged ? settings : null;
             toolContext = new KnowledgeToolContext(
-                accessible, isPrivileged, kOpts.DocsEnabled, kOpts.OperationalEnabled, kOpts.SourceCodeEnabled, operationalReader);
+                accessible, isPrivileged, kOpts.DocsEnabled, kOpts.OperationalEnabled, kOpts.SourceCodeEnabled, operationalReader, settingsReader);
             toolDefs = tools.GetTools(toolContext);
             if (toolDefs.Count == 0)
             {

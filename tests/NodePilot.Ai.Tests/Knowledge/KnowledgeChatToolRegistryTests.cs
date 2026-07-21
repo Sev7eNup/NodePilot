@@ -25,6 +25,18 @@ public class KnowledgeChatToolRegistryTests
         public KnowledgeFileResult Read(string relPath) => KnowledgeFileResult.Success(relPath, "class Program {}");
     }
 
+    private sealed class FakeSettings : ISettingsKnowledgeReader
+    {
+        public List<SettingsSectionKnowledge> Sections { get; } = new()
+        {
+            new("Engine", "Engine Concurrency", false,
+                JsonDocument.Parse("""{"runspace":{"minRunspaces":256,"maxRunspaces":768}}""").RootElement.Clone()),
+            new("Smtp", "SMTP", true,
+                JsonDocument.Parse("""{"host":"localhost","password":"********"}""").RootElement.Clone()),
+        };
+        public IReadOnlyList<SettingsSectionKnowledge> GetRedactedSnapshot() => Sections;
+    }
+
     private static KnowledgeChatToolRegistry Registry(out FakeDocs docs, out FakeSource src)
     {
         docs = new FakeDocs();
@@ -34,8 +46,10 @@ public class KnowledgeChatToolRegistryTests
 
     private static KnowledgeToolContext Ctx(
         bool docs = true, bool op = true, bool src = true, bool priv = true,
-        FakeOperationalKnowledgeReader? opReader = null)
-        => new(AccessibleFolderSet.Unrestricted, priv, docs, op, src, op ? (opReader ?? new FakeOperationalKnowledgeReader()) : null);
+        FakeOperationalKnowledgeReader? opReader = null, ISettingsKnowledgeReader? settings = null)
+        => new(AccessibleFolderSet.Unrestricted, priv, docs, op, src,
+               op ? (opReader ?? new FakeOperationalKnowledgeReader()) : null,
+               priv ? (settings ?? new FakeSettings()) : null);
 
     private static HashSet<string> ToolNames(KnowledgeChatToolRegistry reg, KnowledgeToolContext ctx)
         => reg.GetTools(ctx).Select(t => t.Name).ToHashSet();
@@ -54,6 +68,7 @@ public class KnowledgeChatToolRegistryTests
             "list_recent_executions", "list_workflow_executions", "list_machines",
             "get_next_scheduled_fires",
             "search_source", "read_source",
+            "read_settings",
         });
     }
 
@@ -94,6 +109,16 @@ public class KnowledgeChatToolRegistryTests
         ToolNames(reg, Ctx(src: true, priv: false)).Should().NotContain("search_source");
     }
 
+    [Fact]
+    public void GetTools_ReadSettings_RequiresPrivilege()
+    {
+        var reg = Registry(out _, out _);
+        // Available to Admin/Operator regardless of the docs/operational/source toggles …
+        ToolNames(reg, Ctx(docs: false, op: false, src: false, priv: true)).Should().Contain("read_settings");
+        // … and never to a non-privileged (Viewer) session.
+        ToolNames(reg, Ctx(priv: false, src: false)).Should().NotContain("read_settings");
+    }
+
     // ---- ExecuteAsync gating (defense in depth) ------------------------------------------------
 
     [Fact]
@@ -119,6 +144,39 @@ public class KnowledgeChatToolRegistryTests
         var reg = Registry(out _, out _);
         var r = await reg.ExecuteAsync("get_workflow_definition", """{"idOrName":"wf"}""", Ctx(priv: false, src: false), CancellationToken.None);
         JsonDocument.Parse(r).RootElement.GetProperty("error").GetString().Should().Contain("nicht verfügbar");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReadSettings_NotPrivileged_IsDenied()
+    {
+        var reg = Registry(out _, out _);
+        var r = await reg.ExecuteAsync("read_settings", "{}", Ctx(priv: false, src: false), CancellationToken.None);
+        JsonDocument.Parse(r).RootElement.GetProperty("error").GetString().Should().Contain("nicht verfügbar");
+    }
+
+    // ---- ExecuteAsync read_settings ------------------------------------------------------------
+
+    [Fact]
+    public async Task ExecuteAsync_ReadSettings_ReturnsRedactedSections()
+    {
+        var reg = Registry(out _, out _);
+        var r = await reg.ExecuteAsync("read_settings", "{}", Ctx(), CancellationToken.None);
+        using var doc = JsonDocument.Parse(r);
+        doc.RootElement.GetProperty("count").GetInt32().Should().Be(2);
+        // Values are embedded as nested JSON (not string-escaped) and keep the masked secret.
+        r.Should().Contain("minRunspaces").And.Contain("********");
+        doc.RootElement.GetProperty("sections")[0].GetProperty("values").GetProperty("runspace")
+            .GetProperty("minRunspaces").GetInt32().Should().Be(256);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_ReadSettings_SectionFilter_NarrowsResult()
+    {
+        var reg = Registry(out _, out _);
+        var r = await reg.ExecuteAsync("read_settings", """{"section":"Engine"}""", Ctx(), CancellationToken.None);
+        using var doc = JsonDocument.Parse(r);
+        doc.RootElement.GetProperty("count").GetInt32().Should().Be(1);
+        doc.RootElement.GetProperty("sections")[0].GetProperty("section").GetString().Should().Be("Engine");
     }
 
     // ---- ExecuteAsync happy paths --------------------------------------------------------------
