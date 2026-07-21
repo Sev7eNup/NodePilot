@@ -461,6 +461,71 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
         done.ToolCalls[0].ArgumentsJson.Should().Be("{\"work\":1}");
     }
 
+    [Fact]
+    public async Task StreamAsync_TwoParallelToolCalls_WithIndices_BothSurface()
+    {
+        // Canonical OpenAI parallel tool calling: two calls distinguished by `index` 0 and 1.
+        var sse = Sse(
+            """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"search_docs","arguments":"{\"q\":\"a\"}"}}]}}]}""",
+            """{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_b","type":"function","function":{"name":"search_source","arguments":"{\"q\":\"b\"}"}}]}}]}""",
+            """{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}""",
+            "[DONE]");
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(200)
+                   .WithHeader("Content-Type", "text/event-stream").WithBody(sse));
+
+        var (_, done) = await Collect(BuildClient(), new LlmRequest("sys", "user"));
+
+        done!.ToolCalls.Should().HaveCount(2);
+        done.ToolCalls![0].Name.Should().Be("search_docs");
+        done.ToolCalls[0].ArgumentsJson.Should().Be("{\"q\":\"a\"}");
+        done.ToolCalls[1].Name.Should().Be("search_source");
+        done.ToolCalls[1].ArgumentsJson.Should().Be("{\"q\":\"b\"}");
+    }
+
+    [Fact]
+    public async Task StreamAsync_TwoToolCalls_WithoutIndex_DoNotCollapse()
+    {
+        // LM Studio / llama.cpp style: parallel calls streamed WITHOUT the OpenAI `index` field.
+        // The old accumulator defaulted the missing index to 0 → both collapsed into one corrupt call.
+        var sse = Sse(
+            """{"choices":[{"delta":{"tool_calls":[{"id":"call_a","type":"function","function":{"name":"search_docs","arguments":"{\"q\":\"a\"}"}}]}}]}""",
+            """{"choices":[{"delta":{"tool_calls":[{"id":"call_b","type":"function","function":{"name":"search_source","arguments":"{\"q\":\"b\"}"}}]}}]}""",
+            """{"choices":[{"delta":{},"finish_reason":"stop"}]}""",
+            "[DONE]");
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(200)
+                   .WithHeader("Content-Type", "text/event-stream").WithBody(sse));
+
+        var (_, done) = await Collect(BuildClient(), new LlmRequest("sys", "user"));
+
+        done!.ToolCalls.Should().HaveCount(2);
+        done.ToolCalls!.Select(t => t.Name).Should().BeEquivalentTo(new[] { "search_docs", "search_source" });
+        done.ToolCalls.Single(t => t.Name == "search_docs").ArgumentsJson.Should().Be("{\"q\":\"a\"}");
+        done.ToolCalls.Single(t => t.Name == "search_source").ArgumentsJson.Should().Be("{\"q\":\"b\"}");
+    }
+
+    [Fact]
+    public async Task StreamAsync_IndexlessToolCall_SplitArguments_AppendToSameSlot()
+    {
+        // One index-less call whose arguments arrive across two chunks; the continuation fragment
+        // carries neither id nor name → must append to the current slot, not open a new one.
+        var sse = Sse(
+            """{"choices":[{"delta":{"tool_calls":[{"id":"call_a","type":"function","function":{"name":"search_docs","arguments":"{\"q\":"}}]}}]}""",
+            """{"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"\"abc\"}"}}]}}]}""",
+            """{"choices":[{"delta":{},"finish_reason":"stop"}]}""",
+            "[DONE]");
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(200)
+                   .WithHeader("Content-Type", "text/event-stream").WithBody(sse));
+
+        var (_, done) = await Collect(BuildClient(), new LlmRequest("sys", "user"));
+
+        done!.ToolCalls.Should().ContainSingle();
+        done.ToolCalls![0].Name.Should().Be("search_docs");
+        done.ToolCalls[0].ArgumentsJson.Should().Be("{\"q\":\"abc\"}");
+    }
+
     /// <summary>
     /// Minimal IHttpClientFactory that always returns a fresh HttpClient with no handler
     /// pipeline. The real DI path would configure the named client "Llm" — the test doesn't

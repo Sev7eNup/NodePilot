@@ -91,7 +91,6 @@ public sealed class KnowledgeAssistantService(
                 Conversation: conversation, Tools: roundTools, ToolChoice: roundTools is not null ? "auto" : null);
 
             var assistantText = new StringBuilder();
-            string? finishReason = null;
             IReadOnlyList<LlmToolCall>? toolCalls = null;
 
             await foreach (var evt in llm.StreamAsync(llmRequest, ct))
@@ -101,7 +100,6 @@ public sealed class KnowledgeAssistantService(
                     model = evt.Model;
                     if (evt.PromptTokens is int pt) promptTokens = (promptTokens ?? 0) + pt;
                     if (evt.CompletionTokens is int cpt) completionTokens = (completionTokens ?? 0) + cpt;
-                    finishReason = evt.FinishReason;
                     toolCalls = evt.ToolCalls;
                     break;
                 }
@@ -112,8 +110,12 @@ public sealed class KnowledgeAssistantService(
                 }
             }
 
+            // Execute whenever the model emitted tool calls — their presence is authoritative, not the
+            // finish_reason string. OpenAI sets finish_reason "tool_calls", but local endpoints (LM Studio,
+            // llama.cpp) frequently report "stop"/null on a round that still carries tool_calls; gating on
+            // the exact string would silently drop those calls and cap local models at a single tool call.
             var canCallTools = toolContext is not null && toolCalls is { Count: > 0 } && iteration < maxDepth - 1;
-            if (string.Equals(finishReason, "tool_calls", StringComparison.Ordinal) && canCallTools)
+            if (canCallTools)
             {
                 conversation.Add(new LlmMessage("assistant", assistantText.ToString(), ToolCalls: toolCalls));
                 foreach (var call in toolCalls!)

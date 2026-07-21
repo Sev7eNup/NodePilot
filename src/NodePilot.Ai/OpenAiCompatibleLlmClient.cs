@@ -283,6 +283,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             string? finishReason = null;
             int? promptTokens = null, completionTokens = null;
             var toolAcc = new Dictionary<int, ToolCallAccumulator>();
+            var toolAutoIndex = 0; // slot counter for the index-less streaming path (see AccumulateToolCallDeltas)
 
             while (true)
             {
@@ -328,7 +329,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                             if (d.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String)
                                 delta = c.GetString();
                             if (d.TryGetProperty("tool_calls", out var tcs) && tcs.ValueKind == JsonValueKind.Array)
-                                AccumulateToolCallDeltas(tcs, toolAcc);
+                                AccumulateToolCallDeltas(tcs, toolAcc, ref toolAutoIndex);
                         }
                     }
                     if (root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
@@ -496,19 +497,40 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         return list.Count > 0 ? list : null;
     }
 
-    /// <summary>Akkumuliert die inkrementellen `delta.tool_calls` eines Streaming-Chunks per index (id/name einmal, arguments konkateniert).</summary>
-    private static void AccumulateToolCallDeltas(JsonElement toolCallsArray, Dictionary<int, ToolCallAccumulator> acc)
+    /// <summary>
+    /// Akkumuliert die inkrementellen <c>delta.tool_calls</c> eines Streaming-Chunks (id/name einmal,
+    /// arguments konkateniert). Schlüssel ist bevorzugt das OpenAI-<c>index</c>-Feld. Fehlt es (manche
+    /// lokale Runtimes wie LM Studio senden keins), wird ein <b>neuer</b> Slot angelegt, sobald ein
+    /// Fragment eine nicht-leere <c>id</c> ODER <c>function.name</c> trägt (= Beginn eines neuen Calls);
+    /// reine Argument-Fortsetzungen hängen an den zuletzt geöffneten Slot. Damit kollabieren mehrere
+    /// index-lose parallele Tool-Calls nicht mehr in einen einzigen (überschriebene id/name, konkatenierte
+    /// Argumente). <paramref name="autoIndex"/> ist der Zähler für den index-losen Pfad und muss über die
+    /// Chunks eines Streams hinweg gehalten werden.
+    /// </summary>
+    private static void AccumulateToolCallDeltas(JsonElement toolCallsArray, Dictionary<int, ToolCallAccumulator> acc, ref int autoIndex)
     {
         foreach (var tc in toolCallsArray.EnumerateArray())
         {
-            var index = tc.TryGetProperty("index", out var ix) && ix.ValueKind == JsonValueKind.Number ? ix.GetInt32() : 0;
+            var hasId = tc.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(idEl.GetString());
+            var hasFn = tc.TryGetProperty("function", out var fn) && fn.ValueKind == JsonValueKind.Object;
+            var startsNewCall = hasId
+                || (hasFn && fn.TryGetProperty("name", out var nm) && nm.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(nm.GetString()));
+
+            int index;
+            if (tc.TryGetProperty("index", out var ix) && ix.ValueKind == JsonValueKind.Number)
+                index = ix.GetInt32();               // canonical OpenAI incremental stream
+            else if (startsNewCall || acc.Count == 0)
+                index = autoIndex++;                 // index-less runtime: a new call opens a fresh slot
+            else
+                index = Math.Max(0, autoIndex - 1);  // index-less arguments continuation → current slot
+
             if (!acc.TryGetValue(index, out var slot)) { slot = new ToolCallAccumulator(); acc[index] = slot; }
-            if (tc.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(idEl.GetString()))
+            if (hasId)
                 slot.Id = idEl.GetString()!;
-            if (tc.TryGetProperty("function", out var fn) && fn.ValueKind == JsonValueKind.Object)
+            if (hasFn)
             {
-                if (fn.TryGetProperty("name", out var nm) && nm.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(nm.GetString()))
-                    slot.Name = nm.GetString()!;
+                if (fn.TryGetProperty("name", out var nm2) && nm2.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(nm2.GetString()))
+                    slot.Name = nm2.GetString()!;
                 if (fn.TryGetProperty("arguments", out var ar) && ar.ValueKind == JsonValueKind.String)
                     slot.Arguments.Append(ar.GetString());
             }

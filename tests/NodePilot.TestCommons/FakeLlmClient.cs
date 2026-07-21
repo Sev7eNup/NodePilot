@@ -47,7 +47,18 @@ public sealed class FakeLlmClient : ILlmClient
     /// <summary>Enqueues a streaming response that ends with <c>finish_reason=tool_calls</c> (for exercising the tool-calling loop).</summary>
     public FakeLlmClient EnqueueToolCallStream(IReadOnlyList<LlmToolCall> toolCalls, params string[] chunks)
     {
-        _streams.Enqueue(_ => ToolCallStream(chunks, toolCalls));
+        _streams.Enqueue(_ => ToolCallStream(chunks, toolCalls, "tool_calls"));
+        return this;
+    }
+
+    /// <summary>
+    /// Like <see cref="EnqueueToolCallStream"/> but with a caller-chosen <paramref name="finishReason"/>.
+    /// Pass <c>"stop"</c>/<c>null</c> to simulate a local endpoint (LM Studio, llama.cpp) that reports a
+    /// non-canonical finish_reason while still emitting tool calls — the loop must execute them regardless.
+    /// </summary>
+    public FakeLlmClient EnqueueToolCallStreamWithFinish(IReadOnlyList<LlmToolCall> toolCalls, string? finishReason, params string[] chunks)
+    {
+        _streams.Enqueue(_ => ToolCallStream(chunks, toolCalls, finishReason));
         return this;
     }
 
@@ -81,13 +92,13 @@ public sealed class FakeLlmClient : ILlmClient
         yield return new LlmStreamEvent(null, Done: true, Model: "fake-model", PromptTokens: 1, CompletionTokens: 1);
     }
 
-    private static async IAsyncEnumerable<LlmStreamEvent> ToolCallStream(string[] chunks, IReadOnlyList<LlmToolCall> toolCalls)
+    private static async IAsyncEnumerable<LlmStreamEvent> ToolCallStream(string[] chunks, IReadOnlyList<LlmToolCall> toolCalls, string? finishReason)
     {
         await Task.Yield();
         foreach (var c in chunks)
             yield return new LlmStreamEvent(c, Model: "fake-model");
         yield return new LlmStreamEvent(null, Done: true, Model: "fake-model", PromptTokens: 1, CompletionTokens: 1,
-            ToolCalls: toolCalls, FinishReason: "tool_calls");
+            ToolCalls: toolCalls, FinishReason: finishReason);
     }
 
     private static async IAsyncEnumerable<LlmStreamEvent> ThrowingStream(LlmException ex)
