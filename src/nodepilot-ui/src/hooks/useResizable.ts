@@ -25,6 +25,12 @@ export function useResizable({ initialSize, minSize, maxSize, direction, reverse
       isDragging.current = true;
       startPos.current = direction === 'horizontal' ? e.clientX : e.clientY;
       startSize.current = startSizeOverride ?? size;
+      // When seeded from a measured DOM size, also sync the state so a consumer that
+      // switches from auto/content sizing to `size`-driven sizing on mousedown renders
+      // at the measured height immediately — instead of flashing to `initialSize` until
+      // the first mousemove corrects it (a plain click with no drag would otherwise stick
+      // the panel at `initialSize`).
+      if (startSizeOverride !== undefined) setSize(startSizeOverride);
       document.body.style.cursor = direction === 'horizontal' ? 'col-resize' : 'row-resize';
       document.body.style.userSelect = 'none';
     },
