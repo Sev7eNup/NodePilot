@@ -1,0 +1,28 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] emailNotification - Schema Validation (SMTP DISABLED)",
+      "description": "Schema-Validation fuer emailNotification. Alle 3 Knoten (text/html/invalid-recipient) sind 'disabled: true' weil ohne konfiguriertes SMTP der Activity-Call fehlschlaegt und die Workflow-Status auf Failed setzen wuerde. Engine ueberspringt disabled Knoten, der Workflow validiert das Schema beim Save und laeuft sauber durch. Echte Email-Tests in xUnit gegen Mock-SMTP.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "init: gather summary", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$hostname = $env:COMPUTERNAME\n$now = (Get-Date).ToString('s')\nWrite-Output 'init-ok'" } } },
+          { "id": "em_text", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "email: plain text (DISABLED, needs SMTP)", "activityType": "emailNotification", "disabled": true, "outputVariable": "em_text", "config": { "to": "test@example.com", "subject": "[NP-TestSuite] Plain text on {{init.param.hostname}}", "body": "Run at {{init.param.now}}\nHostname: {{init.param.hostname}}\nThis is a plain text test message.", "isHtml": false } } },
+          { "id": "em_html", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "email: HTML (DISABLED, needs SMTP)", "activityType": "emailNotification", "disabled": true, "outputVariable": "em_html", "config": { "to": "test@example.com", "subject": "[NP-TestSuite] HTML test", "body": "<html><body><h2>NodePilot Test</h2><p>Host: <b>{{init.param.hostname}}</b></p><p>Time: <i>{{init.param.now}}</i></p></body></html>", "isHtml": true } } },
+          { "id": "log_skip", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "log: SMTP-required notice", "activityType": "log", "config": { "level": "info", "message": "[email] Test schema validated; runtime skipped (no SMTP). Init: host={{init.param.hostname}} time={{init.param.now}}" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "hostname": "{{init.param.hostname}}", "note": "emailNotification activity schema validated; SMTP disabled in dev." } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init", "target": "em_text", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "init", "target": "em_html", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "init", "target": "log_skip", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "log_skip", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

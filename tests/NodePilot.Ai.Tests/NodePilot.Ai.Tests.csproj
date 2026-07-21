@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Moq" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="WireMock.Net" />
+    <!-- Force patched floor over WireMock.Net's transitive Scriban.Signed 5.5.0
+         (GHSA-24c8-4792-22hx, HIGH, array.insert_at OOM DoS). Test-only. -->
+    <PackageReference Include="Scriban.Signed" />
+    <!-- Force patched floor over WireMock.Net.OpenApiParser's transitive Microsoft.OpenApi 2.x
+         (GHSA-v5pm-xwqc-g5wc, HIGH). Version central in Directory.Packages.props. -->
+    <PackageReference Include="Microsoft.OpenApi" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NodePilot.Ai\NodePilot.Ai.csproj" />
+    <ProjectReference Include="..\..\src\NodePilot.Core\NodePilot.Core.csproj" />
+    <!-- WorkflowAssistantCustomActivityTests exercises the assistant against CustomActivityDefinitionStore. -->
+    <ProjectReference Include="..\..\src\NodePilot.Data\NodePilot.Data.csproj" />
+    <ProjectReference Include="..\NodePilot.TestCommons\NodePilot.TestCommons.csproj" />
+  </ItemGroup>
+
+</Project>

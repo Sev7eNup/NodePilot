@@ -1,0 +1,86 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] Child: Extended Echo + Compute",
+      "description": "Supporting child workflow for the startWorkflow-all-variants runbook. Declared input contract via manualTrigger.parameters (item, multiplier, mode) so parents can use the ContractMappingTable. Steps: 1) log received params for traceability. 2) runScript computes a derived value (multiplier * 10) plus uppercase echoedItem. 3) returnData exposes: echoedItem, echoedMode, multiplier, derivedValue, status, computedAt. Self-contained, 4 nodes total, deterministic — every call returns predictable values that the parent can assert on. Used by 19b-startWorkflow-all-variants.json for waitForCompletion=true, fire-and-forget, contract-derivation and nested-call test cases.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trig_manual",
+            "type": "activity",
+            "position": { "x": 0, "y": 200 },
+            "data": {
+              "label": "Manual: child contract",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Extended Child Contract",
+                "parameters": [
+                  { "name": "item", "type": "string", "required": true, "default": "default-item" },
+                  { "name": "multiplier", "type": "string", "required": false, "default": "3" },
+                  { "name": "mode", "type": "string", "required": false, "default": "echo" }
+                ]
+              }
+            }
+          },
+          {
+            "id": "log_in",
+            "type": "activity",
+            "position": { "x": 300, "y": 200 },
+            "data": {
+              "label": "log: received params",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "[Child-Extended] item={{trig_manual.param.item}} multiplier={{trig_manual.param.multiplier}} mode={{trig_manual.param.mode}}"
+              }
+            }
+          },
+          {
+            "id": "rs_compute",
+            "type": "activity",
+            "position": { "x": 600, "y": 200 },
+            "data": {
+              "label": "runScript: compute derived",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "rs_compute",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 10,
+                "script": "$rawItem = '{{trig_manual.param.item}}'\n$rawMult = '{{trig_manual.param.multiplier}}'\n$rawMode = '{{trig_manual.param.mode}}'\n$multInt = 0\n[void][int]::TryParse($rawMult, [ref]$multInt)\nif ($multInt -le 0) { $multInt = 1 }\n$derivedValue = ($multInt * 10).ToString()\n$upperItem = $rawItem.ToUpperInvariant()\n$computedAt = [DateTime]::UtcNow.ToString('o')\nWrite-Output \"computed item=$upperItem derived=$derivedValue at=$computedAt\""
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": { "x": 900, "y": 200 },
+            "data": {
+              "label": "returnData: echo + computed",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "echoedItem": "{{trig_manual.param.item}}",
+                  "echoedMode": "{{trig_manual.param.mode}}",
+                  "multiplier": "{{trig_manual.param.multiplier}}",
+                  "derivedValue": "{{rs_compute.param.derivedValue}}",
+                  "upperItem": "{{rs_compute.param.upperItem}}",
+                  "computedAt": "{{rs_compute.param.computedAt}}",
+                  "status": "child-extended-ok"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          { "id": "ce1", "source": "trig_manual", "target": "log_in", "type": "labeled", "data": { "label": "Manual" } },
+          { "id": "ce2", "source": "log_in", "target": "rs_compute", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "ce3", "source": "rs_compute", "target": "ret", "type": "labeled", "data": { "label": "On Success", "condition": "rs_compute.success" } }
+        ]
+      }
+    }
+  ]
+}

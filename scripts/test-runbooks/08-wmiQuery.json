@@ -1,0 +1,39 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] wmiQuery - Various Classes & Filters",
+      "description": "Testet wmiQuery gegen unterschiedliche WMI-/CIM-Klassen + Namespaces + Filter. Alle Queries gegen Localhost.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "wmi_os", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "wmi: Win32_OperatingSystem", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "wmi_os", "config": { "className": "Win32_OperatingSystem", "namespace": "root\\cimv2", "captureProperties": ["Caption", "BuildNumber"] } } },
+          { "id": "wmi_cs", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "wmi: Win32_ComputerSystem", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "wmi_cs", "config": { "className": "Win32_ComputerSystem", "namespace": "root\\cimv2", "captureProperties": ["Name", "Manufacturer"] } } },
+          { "id": "wmi_proc", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "wmi: Win32_Processor", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "wmi_proc", "config": { "className": "Win32_Processor", "namespace": "root\\cimv2" } } },
+          { "id": "wmi_disk", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "wmi: Win32_LogicalDisk filter DriveType=3", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "wmi_disk", "config": { "className": "Win32_LogicalDisk", "namespace": "root\\cimv2", "filter": "DriveType=3" } } },
+          { "id": "wmi_svc_running", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "wmi: Win32_Service filter State=Running", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "wmi_svc", "config": { "className": "Win32_Service", "namespace": "root\\cimv2", "filter": "State='Running'" } } },
+          { "id": "wmi_bios", "type": "activity", "position": { "x": 320, "y": 1200 }, "data": { "label": "wmi: Win32_BIOS", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "wmi_bios", "config": { "className": "Win32_BIOS", "namespace": "root\\cimv2", "captureProperties": ["SMBIOSBIOSVersion"] } } },
+          { "id": "junc", "type": "activity", "position": { "x": 640, "y": 700 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 960, "y": 700 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "osCaption": "{{wmi_os.param.Caption}}", "csName": "{{wmi_cs.param.Name}}", "biosVersion": "{{wmi_bios.param.SMBIOSBIOSVersion}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "wmi_os", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "wmi_cs", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "wmi_proc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "wmi_disk", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "wmi_svc_running", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "trig", "target": "wmi_bios", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "wmi_os", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "wmi_cs", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "wmi_proc", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "wmi_disk", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "wmi_svc_running", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "wmi_bios", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

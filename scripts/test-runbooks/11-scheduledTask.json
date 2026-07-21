@@ -1,0 +1,42 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] scheduledTask - Schema Validation",
+      "description": "Testet scheduledTask-Schemas. 'get' auf einen universal vorhandenen Built-in-Task (ScheduledDefrag in \\Microsoft\\Windows\\Defrag\\). start/stop/enable/disable/register/unregister sind 'disabled: true' weil sie das System mutieren wuerden - sie dienen nur der Config-/UI-Validierung. 'register' deckt alle 5 triggerType-Varianten ab. Engine ueberspringt disabled Knoten korrekt.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 800 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "st_get_defrag", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "schedTask: get ScheduledDefrag (built-in)", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "st_defrag", "config": { "action": "get", "taskName": "ScheduledDefrag", "taskPath": "\\Microsoft\\Windows\\Defrag\\" } } },
+          { "id": "st_start", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "schedTask: start (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "start", "taskName": "DummyTask" } } },
+          { "id": "st_stop", "type": "activity", "position": { "x": 320, "y": 700 }, "data": { "label": "schedTask: stop (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "stop", "taskName": "DummyTask" } } },
+          { "id": "st_enable", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "schedTask: enable (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "enable", "taskName": "DummyTask" } } },
+          { "id": "st_disable", "type": "activity", "position": { "x": 320, "y": 900 }, "data": { "label": "schedTask: disable (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "disable", "taskName": "DummyTask" } } },
+          { "id": "st_unregister", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "schedTask: unregister (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "unregister", "taskName": "DummyTask" } } },
+          { "id": "st_reg_once", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "schedTask: register once (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "register", "taskName": "NP-Test-Once", "program": "C:\\Windows\\System32\\notepad.exe", "triggerType": "once", "startTime": "2099-01-01T03:00:00", "runAsUser": "SYSTEM" } } },
+          { "id": "st_reg_daily", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "schedTask: register daily (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "register", "taskName": "NP-Test-Daily", "program": "C:\\Windows\\System32\\notepad.exe", "triggerType": "daily", "startTime": "03:00", "daysInterval": 1, "runAsUser": "SYSTEM" } } },
+          { "id": "st_reg_weekly", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "schedTask: register weekly (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "register", "taskName": "NP-Test-Weekly", "program": "C:\\Windows\\System32\\notepad.exe", "triggerType": "weekly", "startTime": "03:00", "daysOfWeek": ["Monday", "Wednesday", "Friday"], "weeksInterval": 1, "runAsUser": "SYSTEM" } } },
+          { "id": "st_reg_logon", "type": "activity", "position": { "x": 640, "y": 800 }, "data": { "label": "schedTask: register atLogon (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "register", "taskName": "NP-Test-Logon", "program": "C:\\Windows\\System32\\notepad.exe", "triggerType": "atLogon", "runAsUser": "SYSTEM" } } },
+          { "id": "st_reg_startup", "type": "activity", "position": { "x": 640, "y": 1000 }, "data": { "label": "schedTask: register atStartup (DISABLED)", "activityType": "scheduledTask", "targetMachineId": "localhost", "disabled": true, "config": { "action": "register", "taskName": "NP-Test-Startup", "program": "C:\\Windows\\System32\\notepad.exe", "triggerType": "atStartup", "runAsUser": "SYSTEM", "runLevel": "highest" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1280, "y": 700 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "defragState": "{{st_defrag.param.State}}", "defragLastResult": "{{st_defrag.param.LastTaskResult}}", "defragNextRun": "{{st_defrag.param.NextRunTime}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "st_get_defrag", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "st_start", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "st_start", "target": "st_stop", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "st_stop", "target": "st_enable", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "st_enable", "target": "st_disable", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "st_disable", "target": "st_unregister", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "trig", "target": "st_reg_once", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "trig", "target": "st_reg_daily", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "trig", "target": "st_reg_weekly", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "trig", "target": "st_reg_logon", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "trig", "target": "st_reg_startup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "st_get_defrag", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

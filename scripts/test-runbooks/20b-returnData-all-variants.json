@@ -1,0 +1,34 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] returnData - All Variants Live",
+      "description": "Live test of returnData activity. Variants: empty data, simple key-value, templated from upstream runScript output/param/success, multi-key map. System outputs (__executionId, __status, __workflowId, __workflowName) are auto-injected by the engine — visible via the parent execution's returnData but NOT directly settable. Each variant is its own returnData node; engine merges last-write-wins. Final log_summary aggregates upstream successes for visibility.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "runScript: seed vars", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$envName = 'prod'\n$cpuCount = '8'\nWrite-Output 'seed-OK'" } } },
+          { "id": "rd_simple", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "returnData: simple kv", "activityType": "returnData", "outputVariable": "rd_simple", "config": { "data": { "status": "ok", "version": "1.0" } } } },
+          { "id": "rd_templated", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "returnData: templated", "activityType": "returnData", "outputVariable": "rd_tpl", "config": { "data": { "env": "{{init.param.envName}}", "cpus": "{{init.param.cpuCount}}", "initSuccess": "{{init.success}}", "initOutput": "{{init.output}}" } } } },
+          { "id": "rd_multi", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "returnData: multi-key", "activityType": "returnData", "outputVariable": "rd_multi", "config": { "data": { "a": "1", "b": "2", "c": "3", "d": "4", "e": "5" } } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/returnData] simple={{rd_simple.success}} templated={{rd_tpl.success}} multi={{rd_multi.success}}" } } },
+          { "id": "ret_final", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "returnData: final aggregate", "activityType": "returnData", "config": { "data": { "simple_success": "{{rd_simple.success}}", "templated_success": "{{rd_tpl.success}}", "multi_success": "{{rd_multi.success}}", "init_env": "{{init.param.envName}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init", "target": "rd_simple", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "init", "target": "rd_templated", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "init", "target": "rd_multi", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "rd_simple", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "rd_templated", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "rd_multi", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "log_summary", "target": "ret_final", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

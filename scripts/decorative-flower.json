@@ -1,0 +1,225 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-11T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Decorative — Blume",
+      "description": "Dekorativer Workflow in Form einer Blume: Stengel mit zwei Blättern links, Blütenherz mit 7 radial angeordneten Petals rechts. Rein visuelles Layout, alle Nodes sind log-Activities. Petals NW/SW haben backward-edges (U-Curve) — by design für die radiale Anordnung.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trigger_spring",
+            "type": "activity",
+            "position": { "x": 100, "y": 700 },
+            "data": {
+              "label": "manualTrigger: Frühling",
+              "activityType": "manualTrigger",
+              "config": {
+                "parameters": []
+              }
+            }
+          },
+          {
+            "id": "stem1",
+            "type": "activity",
+            "position": { "x": 300, "y": 700 },
+            "data": {
+              "label": "log: Keimling",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Keimling bricht durch den Boden"
+              }
+            }
+          },
+          {
+            "id": "leaf_top",
+            "type": "activity",
+            "position": { "x": 450, "y": 480 },
+            "data": {
+              "label": "log: Blatt oben",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Oberes Blatt entfaltet sich"
+              }
+            }
+          },
+          {
+            "id": "stem2",
+            "type": "activity",
+            "position": { "x": 550, "y": 700 },
+            "data": {
+              "label": "log: Stengel",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Stengel wächst weiter"
+              }
+            }
+          },
+          {
+            "id": "leaf_bot",
+            "type": "activity",
+            "position": { "x": 700, "y": 920 },
+            "data": {
+              "label": "log: Blatt unten",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Unteres Blatt entfaltet sich"
+              }
+            }
+          },
+          {
+            "id": "stem3",
+            "type": "activity",
+            "position": { "x": 800, "y": 700 },
+            "data": {
+              "label": "log: Stengel höher",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Stengel reckt sich der Sonne entgegen"
+              }
+            }
+          },
+          {
+            "id": "stem4_bud",
+            "type": "activity",
+            "position": { "x": 1050, "y": 700 },
+            "data": {
+              "label": "log: Knospe",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Knospe bildet sich"
+              }
+            }
+          },
+          {
+            "id": "bloom_center",
+            "type": "activity",
+            "position": { "x": 1500, "y": 700 },
+            "data": {
+              "label": "log: Blütenherz",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Blütenherz öffnet sich"
+              }
+            }
+          },
+          {
+            "id": "petal_n",
+            "type": "activity",
+            "position": { "x": 1500, "y": 380 },
+            "data": {
+              "label": "log: Petal Sonnengelb",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Sonnengelb blüht"
+              }
+            }
+          },
+          {
+            "id": "petal_ne",
+            "type": "activity",
+            "position": { "x": 1726, "y": 474 },
+            "data": {
+              "label": "log: Petal Mandarine",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Mandarine blüht"
+              }
+            }
+          },
+          {
+            "id": "petal_e",
+            "type": "activity",
+            "position": { "x": 1820, "y": 700 },
+            "data": {
+              "label": "log: Petal Korallenrot",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Korallenrot blüht"
+              }
+            }
+          },
+          {
+            "id": "petal_se",
+            "type": "activity",
+            "position": { "x": 1726, "y": 926 },
+            "data": {
+              "label": "log: Petal Karmin",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Karmin blüht"
+              }
+            }
+          },
+          {
+            "id": "petal_s",
+            "type": "activity",
+            "position": { "x": 1500, "y": 1020 },
+            "data": {
+              "label": "log: Petal Purpur",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Purpur blüht"
+              }
+            }
+          },
+          {
+            "id": "petal_sw",
+            "type": "activity",
+            "position": { "x": 1274, "y": 926 },
+            "data": {
+              "label": "log: Petal Veilchen",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Veilchen blüht"
+              }
+            }
+          },
+          {
+            "id": "petal_nw",
+            "type": "activity",
+            "position": { "x": 1274, "y": 474 },
+            "data": {
+              "label": "log: Petal Goldgelb",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Goldgelb blüht"
+              }
+            }
+          }
+        ],
+        "edges": [
+          { "id": "e_trig_stem1",     "source": "trigger_spring", "target": "stem1",        "type": "labeled", "data": { "label": "Frühling" } },
+          { "id": "e_stem1_leaf_top", "source": "stem1",          "target": "leaf_top",     "type": "labeled", "data": { "label": "treibt aus" } },
+          { "id": "e_stem1_stem2",    "source": "stem1",          "target": "stem2",        "type": "labeled", "data": { "label": "wächst" } },
+          { "id": "e_stem2_leaf_bot", "source": "stem2",          "target": "leaf_bot",     "type": "labeled", "data": { "label": "treibt aus" } },
+          { "id": "e_stem2_stem3",    "source": "stem2",          "target": "stem3",        "type": "labeled", "data": { "label": "wächst" } },
+          { "id": "e_stem3_stem4",    "source": "stem3",          "target": "stem4_bud",    "type": "labeled", "data": { "label": "wächst" } },
+          { "id": "e_stem4_center",   "source": "stem4_bud",      "target": "bloom_center", "type": "labeled", "data": { "label": "öffnet sich" } },
+          { "id": "e_center_n",       "source": "bloom_center",   "target": "petal_n",      "type": "labeled", "data": { "label": "blüht" } },
+          { "id": "e_center_ne",      "source": "bloom_center",   "target": "petal_ne",     "type": "labeled", "data": { "label": "blüht" } },
+          { "id": "e_center_e",       "source": "bloom_center",   "target": "petal_e",      "type": "labeled", "data": { "label": "blüht" } },
+          { "id": "e_center_se",      "source": "bloom_center",   "target": "petal_se",     "type": "labeled", "data": { "label": "blüht" } },
+          { "id": "e_center_s",       "source": "bloom_center",   "target": "petal_s",      "type": "labeled", "data": { "label": "blüht" } },
+          { "id": "e_center_sw",      "source": "bloom_center",   "target": "petal_sw",     "type": "labeled", "data": { "label": "blüht" } },
+          { "id": "e_center_nw",      "source": "bloom_center",   "target": "petal_nw",     "type": "labeled", "data": { "label": "blüht" } }
+        ]
+      }
+    }
+  ]
+}

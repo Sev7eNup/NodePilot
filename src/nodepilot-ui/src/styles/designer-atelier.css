@@ -1,0 +1,639 @@
+/* ════════════════════════════════════════════════════════════════════════════
+   ATELIER — the workflow designer's own design language.
+
+   Activated by `designStore.designerTheme === 'atelier'`, which puts
+   `.wd-atelier` on the `.np-designer` root and `.wd-atelier-on` on <html>
+   (the latter so body-portaled designer UI — activity tooltips — can be
+   re-tokenised, since portals escape the scope).
+
+   Design: the designer as a bright, modern workbench. A paper (light) /
+   graphite (dark) ground keeps the familiar crosshatch grid; all chrome floats above it
+   as soft-shadowed cards; ONE accent voices selection and primary actions.
+   Everything data-ish reads in mono with tabular figures. No glow, no glass,
+   no hairline noise — depth comes from layered shadows and spacing.
+
+   SKIN ADAPTATION: the app's colour skins carry into Atelier exactly like
+   they do into the classic look — via the `--wd-*` palette layer below. The
+   Atelier geometry (radii, shadows, spacing, canvas grid) is universal; each
+   skin only re-points the accent family and tints the ground/chrome. Status
+   colours stay skin-stable on purpose (same rule as classic).
+
+   Mechanism: `--wd-*` palette variables are declared per skin, and the SAME
+   `--color-*` design tokens the whole app consumes (Tailwind utilities
+   resolve them at runtime) are mapped from them once — so the 130+ designer
+   components restyle without being touched. Palettes are declared BOTH on
+   `html.wd-atelier-on` (for portals) and on the `.np-designer.wd-atelier`
+   scope root (so the very first paint — before the <html> marker effect ran —
+   already has them). Selectors are written to TIE with the per-skin
+   `.np-designer` overrides in index.css on specificity; this file is imported
+   after index.css, so source order lets Atelier win. The classic look
+   (toggle off) is byte-identical to before.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/* ── A. Palette — base LIGHT (default skin: cobalt on warm paper) ──────────── */
+html.wd-atelier-on,
+html .np-designer.wd-atelier {
+  /* Geometry & voice (universal — skins never touch these) */
+  --wd-radius:       14px;
+  --wd-gap:          10px;
+  --wd-mono: ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace;
+  --wd-shadow-panel: 0 1px 2px rgba(27, 30, 36, 0.05), 0 8px 24px -12px rgba(27, 30, 36, 0.18);
+  --wd-shadow-float: 0 2px 6px -2px rgba(27, 30, 36, 0.10), 0 16px 40px -16px rgba(27, 30, 36, 0.25);
+
+  /* Accent family */
+  --wd-accent:             #3e63e8;
+  --wd-accent-deep:        #2f51ce;
+  --wd-accent-surface:     #e2e8fd;
+  --wd-accent-surface-dim: #c9d4fb;
+  --wd-accent-on:          #ffffff;
+  --wd-accent-on-deep:     #edf0fe;
+  --wd-accent-on-surface:  #1b2c74;
+  --wd-accent-inverse:     #a9bbf7;
+
+  /* Ground & chrome — classic relationship: the canvas is the BRIGHTEST ground and the
+     floating chrome (header/sidebar/inspector) sits a step darker, like the old designer. */
+  --wd-canvas:     #faf8f3;
+  --wd-panel:      #ece9e1;
+  --wd-hairline:   rgba(27, 30, 36, 0.1);
+
+  /* Surface ramp + ink — raised elements (inputs/cards) stay bright above the panel tint. */
+  --wd-s-dim:      #ddd9d0;
+  --wd-s-bright:   #ffffff;
+  --wd-s-lowest:   #ffffff;
+  --wd-s-low:      #f3f0e9;
+  --wd-s-container:#ede9e1;
+  --wd-s-high:     #e6e2d9;
+  --wd-s-highest:  #dfdad0;
+  --wd-s-variant:  #d8d3c8;
+  --wd-ink:        #1b1e24;
+  --wd-ink-muted:  #5c6470;
+  --wd-outline:    #8b9099;
+  --wd-outline-variant: #d8d4ca;
+}
+
+/* ── B. Palette — base DARK (default dark skin adapted: ember orange on warm
+       graphite, mirroring the app's orange dark scheme) ─────────────────────── */
+html.dark.wd-atelier-on,
+html.dark .np-designer.wd-atelier {
+  --wd-shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -14px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  --wd-shadow-float: 0 2px 8px -2px rgba(0, 0, 0, 0.45), 0 20px 48px -18px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  --wd-accent:             #fc8861;
+  --wd-accent-deep:        #c5620b;
+  --wd-accent-surface:     #6a2b09;
+  --wd-accent-surface-dim: #7d340c;
+  --wd-accent-on:          #1c0c03;
+  --wd-accent-on-deep:     #ffe6d4;
+  --wd-accent-on-surface:  #ffe6d4;
+  --wd-accent-inverse:     #c5620b;
+
+  --wd-canvas:     #17140f;
+  --wd-panel:      #1e1a14;
+  --wd-hairline:   rgba(236, 231, 225, 0.09);
+
+  --wd-s-dim:      #0f0d0a;
+  --wd-s-bright:   #383025;
+  --wd-s-lowest:   #1e1a14;
+  --wd-s-low:      #221d16;
+  --wd-s-container:#262119;
+  --wd-s-high:     #2c261d;
+  --wd-s-highest:  #322b21;
+  --wd-s-variant:  #3e362a;
+  --wd-ink:        #ece7e1;
+  --wd-ink-muted:  #b3aca2;
+  --wd-outline:    #6f7781;
+  --wd-outline-variant: #37302a;
+}
+
+/* ── C. Per-skin palettes — same Atelier structure, skin voice ─────────────── */
+
+/* dark-lila: lilac on neutral graphite */
+html.dark[data-skin="dark-lila"].wd-atelier-on,
+html.dark[data-skin="dark-lila"] .np-designer.wd-atelier {
+  --wd-accent:             #9b7dff;
+  --wd-accent-deep:        #7c5cfc;
+  --wd-accent-surface:     #2d2754;
+  --wd-accent-surface-dim: #3a316a;
+  --wd-accent-on:          #160a33;
+  --wd-accent-on-deep:     #ece7ff;
+  --wd-accent-on-surface:  #ece7ff;
+  --wd-accent-inverse:     #7c5cfc;
+
+  --wd-canvas:     #161616;
+  --wd-panel:      #1d1d1d;
+  --wd-hairline:   rgba(232, 232, 232, 0.085);
+
+  --wd-s-dim:      #101010;
+  --wd-s-bright:   #353535;
+  --wd-s-lowest:   #1d1d1d;
+  --wd-s-low:      #212121;
+  --wd-s-container:#252525;
+  --wd-s-high:     #2b2b2b;
+  --wd-s-highest:  #313131;
+  --wd-s-variant:  #3a3a3a;
+  --wd-ink:        #e8e8e8;
+  --wd-ink-muted:  #a6a6a6;
+  --wd-outline:    #6b6b6b;
+  --wd-outline-variant: #343434;
+}
+
+/* dark-sparkasse: signal red on neutral near-black */
+html.dark[data-skin="dark-sparkasse"].wd-atelier-on,
+html.dark[data-skin="dark-sparkasse"] .np-designer.wd-atelier {
+  --wd-accent:             #ff0002;
+  --wd-accent-deep:        #cc0001;
+  --wd-accent-surface:     #5c0001;
+  --wd-accent-surface-dim: #7a0001;
+  --wd-accent-on:          #ffffff;
+  --wd-accent-on-deep:     #ffe0e0;
+  --wd-accent-on-surface:  #ffe0e0;
+  --wd-accent-inverse:     #cc0001;
+
+  --wd-canvas:     #151515;
+  --wd-panel:      #1c1c1c;
+  --wd-hairline:   rgba(255, 255, 255, 0.08);
+
+  --wd-s-dim:      #0e0e0e;
+  --wd-s-bright:   #323232;
+  --wd-s-lowest:   #1c1c1c;
+  --wd-s-low:      #202020;
+  --wd-s-container:#242424;
+  --wd-s-high:     #2a2a2a;
+  --wd-s-highest:  #303030;
+  --wd-s-variant:  #3a3a3a;
+  --wd-ink:        #ffffff;
+  --wd-ink-muted:  #b8b8b8;
+  --wd-outline:    #7a7a7a;
+  --wd-outline-variant: #343434;
+}
+
+/* dark-nebula: electric cyan on deep-space blue-black */
+html.dark[data-skin="dark-nebula"].wd-atelier-on,
+html.dark[data-skin="dark-nebula"] .np-designer.wd-atelier {
+  --wd-accent:             #4de4f7;
+  --wd-accent-deep:        #17b9d4;
+  --wd-accent-surface:     #0b2e39;
+  --wd-accent-surface-dim: #103a48;
+  --wd-accent-on:          #00232c;
+  --wd-accent-on-deep:     #d6fbff;
+  --wd-accent-on-surface:  #b8f4ff;
+  --wd-accent-inverse:     #22d3ee;
+
+  --wd-canvas:     #0d1322;
+  --wd-panel:      #131b2c;
+  --wd-hairline:   rgba(228, 238, 255, 0.08);
+
+  --wd-s-dim:      #070b14;
+  --wd-s-bright:   #2a3852;
+  --wd-s-lowest:   #10182a;
+  --wd-s-low:      #131c2e;
+  --wd-s-container:#172136;
+  --wd-s-high:     #1c2740;
+  --wd-s-highest:  #222e4a;
+  --wd-s-variant:  #33415e;
+  --wd-ink:        #e4eeff;
+  --wd-ink-muted:  #9db0cc;
+  --wd-outline:    #47506a;
+  --wd-outline-variant: #232e4a;
+}
+
+/* light-grey: lilac on warm cream */
+html[data-skin="light-grey"].wd-atelier-on,
+html[data-skin="light-grey"] .np-designer.wd-atelier {
+  --wd-accent:             #7c3aed;
+  --wd-accent-deep:        #7c5cfc;
+  --wd-accent-surface:     #ece7ff;
+  --wd-accent-surface-dim: #d6c9ff;
+  --wd-accent-on:          #ffffff;
+  --wd-accent-on-deep:     #ffffff;
+  --wd-accent-on-surface:  #2a0e63;
+  --wd-accent-inverse:     #c9a9ff;
+
+  --wd-canvas:     #faf7f2;
+  --wd-panel:      #eee9e1;
+  --wd-hairline:   rgba(26, 26, 26, 0.09);
+
+  --wd-s-dim:      #ded8d0;
+  --wd-s-bright:   #ffffff;
+  --wd-s-lowest:   #ffffff;
+  --wd-s-low:      #f4f0e9;
+  --wd-s-container:#efeae2;
+  --wd-s-high:     #e8e2d9;
+  --wd-s-highest:  #e2dbd1;
+  --wd-s-variant:  #d8d2c7;
+  --wd-ink:        #1a1a1a;
+  --wd-ink-muted:  #6e6a64;
+  --wd-outline:    #a89f93;
+  --wd-outline-variant: #ddd5ca;
+}
+
+/* light-sparkasse ("Bank Hell"): banking red on cool bright neutral */
+html[data-skin="light-sparkasse"].wd-atelier-on,
+html[data-skin="light-sparkasse"] .np-designer.wd-atelier {
+  --wd-accent:             #c80000;
+  --wd-accent-deep:        #ee0000;
+  --wd-accent-surface:     #fff1f1;
+  --wd-accent-surface-dim: #ffe3e3;
+  --wd-accent-on:          #ffffff;
+  --wd-accent-on-deep:     #ffffff;
+  --wd-accent-on-surface:  #5a0000;
+  --wd-accent-inverse:     #ff8080;
+
+  --wd-canvas:     #f8fafc;
+  --wd-panel:      #e9edf2;
+  --wd-hairline:   rgba(21, 25, 31, 0.09);
+
+  --wd-s-dim:      #e2e7ed;
+  --wd-s-bright:   #ffffff;
+  --wd-s-lowest:   #ffffff;
+  --wd-s-low:      #f1f4f7;
+  --wd-s-container:#eaeef3;
+  --wd-s-high:     #e3e8ee;
+  --wd-s-highest:  #dce2ea;
+  --wd-s-variant:  #d7dee7;
+  --wd-ink:        #15191f;
+  --wd-ink-muted:  #344054;
+  --wd-outline:    #667085;
+  --wd-outline-variant: #dde2e9;
+}
+
+/* ── D. Token mapping — palettes → the app's design tokens (declared ONCE;
+       every skin flows through the vars). Ties with the per-skin `.np-designer`
+       blocks in index.css → source order (this file loads last) wins. ───────── */
+html .np-designer.wd-atelier,
+html.dark .np-designer.wd-atelier {
+  --color-surface:           var(--wd-canvas);
+  --color-surface-dim:       var(--wd-s-dim);
+  --color-surface-bright:    var(--wd-s-bright);
+  --color-surface-lowest:    var(--wd-s-lowest);
+  --color-surface-low:       var(--wd-s-low);
+  --color-surface-container: var(--wd-s-container);
+  --color-surface-high:      var(--wd-s-high);
+  --color-surface-highest:   var(--wd-s-highest);
+  --color-surface-variant:   var(--wd-s-variant);
+  --color-surface-tint:      var(--wd-accent);
+
+  --color-on-surface:         var(--wd-ink);
+  --color-on-surface-variant: var(--wd-ink-muted);
+  --color-on-background:      var(--wd-ink);
+  --color-outline:            var(--wd-outline);
+  --color-outline-variant:    var(--wd-outline-variant);
+
+  --color-primary:              var(--wd-accent);
+  --color-primary-container:    var(--wd-accent-deep);
+  --color-primary-fixed:        var(--wd-accent-surface);
+  --color-primary-fixed-dim:    var(--wd-accent-surface-dim);
+  --color-on-primary:           var(--wd-accent-on);
+  --color-on-primary-container: var(--wd-accent-on-deep);
+  --color-on-primary-fixed:     var(--wd-accent-on-surface);
+  --color-inverse-primary:      var(--wd-accent-inverse);
+
+  /* Chrome helper vars consumed by index.css rules */
+  --np-controls-accent: var(--wd-accent);
+  --np-toolbar-accent:  var(--wd-accent);
+  --np-accent:          var(--wd-accent-deep);
+  --np-accent-hover:    color-mix(in srgb, var(--wd-accent-deep) 82%, black);
+  --np-accent-ring:     var(--wd-accent);
+  --np-accent-text:     var(--wd-accent);
+  --np-accent-soft:     color-mix(in srgb, var(--wd-accent) 12%, transparent);
+  --np-accent-badge:    var(--wd-accent-surface);
+  --np-toggle-on:       var(--wd-accent-deep);
+}
+
+/* ── E. Skin-stable families — status, secondary, error, elevation. Same rule
+       as classic: colour skins never re-voice execution status. ─────────────── */
+html .np-designer.wd-atelier {
+  --color-secondary:              #5d6b8a;
+  --color-secondary-container:    #dde3f5;
+  --color-secondary-fixed:        #e2e8fd;
+  --color-on-secondary:           #ffffff;
+  --color-on-secondary-container: #33415f;
+
+  --color-tertiary:              #a85e1a;
+  --color-tertiary-container:    #c77321;
+  --color-tertiary-fixed:        #f7e4ce;
+  --color-on-tertiary:           #ffffff;
+  --color-on-tertiary-container: #fdf3e7;
+
+  --color-error:              #c93b54;
+  --color-error-container:    #fbe1e6;
+  --color-on-error:           #ffffff;
+  --color-on-error-container: #8f1f33;
+
+  --color-inverse-surface:    #2a2d33;
+  --color-inverse-on-surface: #f2f3f5;
+
+  --color-success:              #189a64;
+  --color-success-container:    #d9f2e5;
+  --color-on-success:           #ffffff;
+  --color-on-success-container: #0e5c3c;
+
+  --color-warning:              #c08a1e;
+  --color-warning-container:    #f7ecd4;
+  --color-on-warning:           #ffffff;
+  --color-on-warning-container: #7a5310;
+
+  --color-info:              #64748b;
+  --color-info-container:    #e8ecf2;
+  --color-on-info:           #ffffff;
+  --color-on-info-container: #3b4657;
+
+  /* Running keeps its own steady cobalt voice in every skin — tying it to the
+     skin accent would collide with error-red (sparkasse) or paused-amber. */
+  --color-running:              #3e63e8;
+  --color-running-container:    #e2e8fd;
+  --color-on-running-container: #24398f;
+
+  --color-paused:              #c08a1e;
+  --color-paused-container:    #f7ecd4;
+  --color-on-paused-container: #7a5310;
+
+  --color-skipped:              #8a8f98;
+  --color-skipped-container:    #eff0f2;
+  --color-on-skipped-container: #555a63;
+
+  --color-custom:              #d97a26;
+  --color-custom-container:    #fbead8;
+  --color-on-custom-container: #8a4a12;
+
+  --np-controlflow-accent: #6478f0;
+
+  /* Softer, layered elevation on the bright ground */
+  --np-elev-1: 0 1px 2px rgba(27, 30, 36, 0.05), 0 2px 6px -2px rgba(27, 30, 36, 0.07);
+  --np-elev-2: 0 1px 2px rgba(27, 30, 36, 0.05), 0 8px 20px -8px rgba(27, 30, 36, 0.14);
+  --np-elev-3: 0 2px 6px -2px rgba(27, 30, 36, 0.08), 0 16px 36px -14px rgba(27, 30, 36, 0.20);
+  --np-elev-4: 0 4px 10px -4px rgba(27, 30, 36, 0.10), 0 28px 60px -20px rgba(27, 30, 36, 0.28);
+}
+html.dark .np-designer.wd-atelier {
+  --color-secondary:              #9aa8c8;
+  --color-secondary-container:    #2c3242;
+  --color-secondary-fixed:        #253059;
+  --color-on-secondary:           #141b2e;
+  --color-on-secondary-container: #dce2f2;
+
+  --color-tertiary:              #e5a35e;
+  --color-tertiary-container:    #7a4a16;
+  --color-tertiary-fixed:        #4a2c0c;
+  --color-on-tertiary:           #2a1804;
+  --color-on-tertiary-container: #f8e4cb;
+
+  --color-error:              #f27e93;
+  --color-error-container:    #55202b;
+  --color-on-error:           #3a0e17;
+  --color-on-error-container: #fbd3db;
+
+  --color-inverse-surface:    #e8eaee;
+  --color-inverse-on-surface: #23262e;
+
+  --color-success:              #4cc38a;
+  --color-success-container:    #12382a;
+  --color-on-success:           #06281c;
+  --color-on-success-container: #a9e8c9;
+
+  --color-warning:              #e0a63c;
+  --color-warning-container:    #423113;
+  --color-on-warning:           #2a1f07;
+  --color-on-warning-container: #f2dca8;
+
+  --color-info:              #94a3b8;
+  --color-info-container:    #2a3342;
+  --color-on-info:           #16202e;
+  --color-on-info-container: #d4dce8;
+
+  --color-running:              #7b96ff;
+  --color-running-container:    #232c55;
+  --color-on-running-container: #d5ddff;
+
+  --color-paused:              #e0a63c;
+  --color-paused-container:    #423113;
+  --color-on-paused-container: #f2dca8;
+
+  --color-skipped:              #7e8590;
+  --color-skipped-container:    #2a2e35;
+  --color-on-skipped-container: #c3c8d0;
+
+  --color-custom:              #ee9a55;
+  --color-custom-container:    #45280f;
+  --color-on-custom-container: #f8d9bc;
+
+  --np-controlflow-accent: #93a9ff;
+
+  --np-elev-1: 0 1px 2px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.045);
+  --np-elev-2: 0 6px 16px -6px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --np-elev-3: 0 12px 28px -10px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.055);
+  --np-elev-4: 0 20px 48px -14px rgba(0, 0, 0, 0.68), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+/* Canvas accent: index.css shields `.react-flow` back to the base blue per skin —
+   in Atelier the canvas speaks the (skin-adapted) Atelier accent like the rest of
+   the designer. Var-driven, so every skin flows through automatically. Selectors
+   tie with the skin shields; source order (this file loads last) decides. */
+html .np-designer.wd-atelier .react-flow,
+html.dark .np-designer.wd-atelier .react-flow {
+  --color-surface-tint:        var(--wd-accent);
+  --color-primary:             var(--wd-accent);
+  --color-primary-container:   var(--wd-accent-deep);
+  --color-primary-fixed:       var(--wd-accent-surface);
+  --color-primary-fixed-dim:   var(--wd-accent-surface-dim);
+  --color-on-primary:          var(--wd-accent-on);
+  --color-on-primary-container:var(--wd-accent-on-deep);
+  --color-inverse-primary:     var(--wd-accent-inverse);
+  /* The nebula/sparkasse shields pin the edge colour to base-dark — re-assert the
+     Atelier (skin-tinted) hairline so idle edges sit right on the tinted ground. */
+  --color-outline-variant:     var(--wd-outline-variant);
+}
+
+/* Body-portaled activity tooltips (outside the .np-designer scope). The <html>
+   marker class carries the full `--wd-*` palette, so the portal follows the active
+   skin automatically. Both selectors tie with the per-skin portal blocks in
+   index.css → source order wins. */
+html.wd-atelier-on .np-tooltip-portal,
+html.dark.wd-atelier-on .np-tooltip-portal {
+  --color-surface-lowest:     var(--wd-panel);
+  --color-on-surface:         var(--wd-ink);
+  --color-on-surface-variant: var(--wd-ink-muted);
+  --color-outline-variant:    var(--wd-outline-variant);
+}
+
+/* ── F. Typography — everything data-ish in mono with steady figures ───────── */
+.np-designer.wd-atelier .font-mono,
+.np-designer.wd-atelier code,
+.np-designer.wd-atelier kbd {
+  font-family: var(--wd-mono);
+  font-variant-numeric: tabular-nums;
+}
+.np-designer.wd-atelier .tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── G. Chrome geometry — floating cards on the workbench ground ───────────── */
+
+/* The whole editor sits on the canvas-coloured ground; a faint top-lit accent wash
+   keeps the ground from reading flat. */
+.np-designer.wd-atelier {
+  background:
+    radial-gradient(1200px 480px at 50% -160px, color-mix(in srgb, var(--wd-accent) 5%, transparent), transparent 70%),
+    var(--wd-canvas);
+}
+
+/* Header → slim floating toolbar card */
+.np-designer.wd-atelier .np-editor-header {
+  margin: var(--wd-gap) var(--wd-gap) 0;
+  padding: 6px 14px;
+  background: var(--wd-panel);
+  border: 1px solid var(--wd-hairline);
+  border-bottom: 1px solid var(--wd-hairline);
+  border-radius: var(--wd-radius);
+  box-shadow: var(--wd-shadow-panel);
+}
+
+/* Workspace row: gutters between the floating regions. When the run dock is
+   mounted below, the dock's own margin provides the bottom gutter — otherwise
+   main's padding would double it. */
+.np-designer.wd-atelier > main {
+  padding: var(--wd-gap);
+  gap: var(--wd-gap);
+  background: transparent;
+}
+.np-designer.wd-atelier:has(.np-execution-panel) > main {
+  padding-bottom: 0;
+}
+
+/* Status strips (replay banner, maintenance badge, sub-workflow breadcrumbs):
+   slim floating strips aligned with the card composition; tone backgrounds stay. */
+.np-designer.wd-atelier .wd-strip {
+  margin: var(--wd-gap) var(--wd-gap) 0;
+  border: 1px solid var(--wd-hairline);
+  border-radius: 10px;
+}
+
+/* Left dock (palette / workflow browser) */
+.np-designer.wd-atelier .wd-dock {
+  background: var(--wd-panel);
+  border: 1px solid var(--wd-hairline);
+  border-radius: var(--wd-radius);
+  box-shadow: var(--wd-shadow-panel);
+  overflow: hidden;
+}
+.np-designer.wd-atelier .wd-dock--rail {
+  border-radius: 12px;
+}
+
+/* Canvas region: the drafting table — inset ring instead of borders, rounded
+   like the floating cards so the ground reads as one composed surface. */
+.np-designer.wd-atelier > main > section {
+  border-radius: var(--wd-radius);
+  background: var(--wd-canvas);
+  box-shadow: inset 0 0 0 1px var(--wd-hairline);
+}
+
+/* Right inspector panels (Properties / Edge / BulkEdit share .np-anim-panel) */
+.np-designer.wd-atelier .np-anim-panel {
+  background: var(--wd-panel);
+  border: 1px solid var(--wd-hairline);
+  border-radius: var(--wd-radius);
+  box-shadow: var(--wd-shadow-panel);
+  overflow: hidden;
+}
+
+/* Bottom run dock (ExecutionPanel, expanded + collapsed) */
+.np-designer.wd-atelier .np-execution-panel {
+  margin: 0 var(--wd-gap) var(--wd-gap);
+  background: var(--wd-panel);
+  border: 1px solid var(--wd-hairline);
+  border-radius: var(--wd-radius);
+  box-shadow: var(--wd-shadow-panel);
+  overflow: hidden;
+}
+
+/* AI chat panel (right slot when open): match the inspector card */
+.np-designer.wd-atelier .wd-side-card {
+  border: 1px solid var(--wd-hairline);
+  border-radius: var(--wd-radius);
+  background: var(--wd-panel);
+  box-shadow: var(--wd-shadow-panel);
+  overflow: hidden;
+}
+
+/* Toolbar buttons: quieter idle, calmer hover — geometry only, colours are tokens */
+.np-designer.wd-atelier .np-editor-header button {
+  border-radius: 9px;
+}
+
+/* Section microlabels get the drafting voice: mono uppercase, wide tracking */
+.np-designer.wd-atelier .np-editor-header .uppercase,
+.np-designer.wd-atelier .np-anim-panel .uppercase,
+.np-designer.wd-atelier .np-execution-panel .uppercase,
+.np-designer.wd-atelier .wd-dock .uppercase {
+  font-family: var(--wd-mono);
+  letter-spacing: 0.12em;
+}
+
+/* ── H. Canvas details ─────────────────────────────────────────────────────── */
+
+/* Zoom controls: floating card chrome */
+.np-designer.wd-atelier .react-flow__controls {
+  border-radius: 12px;
+  border: 1px solid var(--wd-hairline);
+  box-shadow: var(--wd-shadow-panel);
+  overflow: hidden;
+}
+
+/* Neutralise the premium canvas' coloured ambient glows — Atelier keeps the
+   ground calm; the only light voice is the (skin-adapted) accent. */
+html.dark .wd-atelier .np-premium .react-flow::after {
+  background: radial-gradient(900px 360px at 50% 0%, color-mix(in srgb, var(--wd-accent) 5%, transparent), transparent 70%);
+}
+
+/* Edge flow animation: an accent current instead of the white premium dash */
+.wd-atelier .np-premium .np-edge-flow {
+  stroke: color-mix(in srgb, var(--wd-accent) 75%, transparent);
+}
+
+/* Node hover: gentler lift + soft shadow via drop (premium rule supplies transform) */
+.wd-atelier .np-premium .np-btn-node-wrap:hover {
+  transform: translateY(-1.5px);
+}
+
+/* Shaped nodes: swap the dark double-glow for calm layered depth (light keeps the
+   default drop-shadow from index.css, which already fits the Atelier language). */
+html.dark .wd-atelier .np-premium .np-shape-wrap {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5)) drop-shadow(0 8px 18px rgba(0, 0, 0, 0.4));
+}
+html.dark .wd-atelier .np-premium .np-shape-wrap:hover {
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.55)) drop-shadow(0 12px 24px rgba(0, 0, 0, 0.45));
+}
+html.dark .wd-atelier .np-premium .np-shape-wrap svg,
+html.dark .wd-atelier .np-premium .np-btn-node-inner svg {
+  filter: none;
+}
+
+/* Edge condition glow (dark premium) → off; condition colour lives in the stroke */
+html.dark .wd-atelier .np-premium .np-edge-g--success path.react-flow__edge-path,
+html.dark .wd-atelier .np-premium .np-edge-g--failed path.react-flow__edge-path,
+html.dark .wd-atelier .np-premium .np-edge-g--custom path.react-flow__edge-path {
+  filter: none;
+}
+
+/* Marquee selection: accent-tinted, slightly rounder */
+.np-designer.wd-atelier .react-flow__selection,
+.np-designer.wd-atelier .react-flow__nodesselection-rect {
+  border-radius: 10px;
+}
+
+/* Edge label pills: card voice in both themes */
+.wd-atelier .react-flow__edgelabel-renderer .np-edge-label-pill {
+  box-shadow: 0 1px 2px rgba(27, 30, 36, 0.08), 0 4px 12px -4px rgba(27, 30, 36, 0.18);
+}
+html.dark .wd-atelier .react-flow__edgelabel-renderer .np-edge-label-pill {
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35), 0 8px 20px -8px rgba(0, 0, 0, 0.5);
+}
+
+/* ── I. Motion discipline ──────────────────────────────────────────────────── */
+/* Cards may only fade/settle — never transform-animate panels (fixed-child trap). */
+.np-designer.wd-atelier .np-anim-panel {
+  animation: np-fade-in var(--np-dur-slow) var(--np-ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .np-designer.wd-atelier .np-anim-panel { animation: none; }
+}

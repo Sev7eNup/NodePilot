@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NodePilot.Core\NodePilot.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- OpenTelemetry bumped from 1.10.x → 1.15.3 to clear GHSA-8785-wc3w-h8q6
+         (moderate-severity vuln in OpenTelemetry.Api 1.10.0), pull a newer
+         System.Security.Cryptography.Xml that resolves GHSA-37gx-xxp4-5rgx /
+         GHSA-w3x6-4m5h-cxqf, and clear GHSA-g94r-2vxg-569j (Api) +
+         GHSA-mr8r-92fq-pj8p (OtlpExporter), both fixed in 1.15.3. -->
+    <PackageReference Include="OpenTelemetry" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Http" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" />
+    <!-- These three packages have NO stable 1.x release as of 2026-05-08; the maintainer
+         keeps them on the *-beta.1 channel even at version 1.15. We pin to the latest beta
+         to pick up bug + telemetry-shape fixes accumulated since 1.12.0-beta.1, which is
+         what the security audit flagged: Prometheus exporter, Process instrumentation, and
+         (most importantly) the EntityFrameworkCore tracer. The EF tracer's
+         SetDbStatementForText option is configured in OpenTelemetryExtensions.cs to FALSE,
+         which is the redaction control: SQL command text is never attached to the span,
+         only the operation type / db.system / db.name. So even though this is a beta,
+         row-level data values do not leak into traces. -->
+    <PackageReference Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.Process" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Extensions.Hosting" />
+    <PackageReference Include="Serilog.Settings.Configuration" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Serilog.Sinks.OpenTelemetry" />
+  </ItemGroup>
+
+</Project>

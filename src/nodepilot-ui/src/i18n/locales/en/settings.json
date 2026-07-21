@@ -1,0 +1,18 @@
+{
+  "title": "Settings",
+  "subtitle": "Manage your personal UI and stored credentials. Administrators find the global configuration (integrations, security, database …) in the \"System\" tab.",
+  "appearance": "Appearance",
+  "theme": "Theme",
+  "themeLight": "Light",
+  "themeDark": "Dark",
+  "themeDarkLila": "Dark Lilac",
+  "themeLightGrey": "Light Grey",
+  "themeSparkasseDark": "Dark Bank",
+  "themeSparkasseLight": "Light Bank",
+  "themeDarkNebula": "Nebula",
+  "themeSystem": "System",
+  "language": "Language",
+  "languageDe": "Deutsch",
+  "languageEn": "English",
+  "languageHint": "Selects the UI language. Backend texts stay in English."
+}

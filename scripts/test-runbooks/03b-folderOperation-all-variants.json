@@ -1,0 +1,93 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] folderOperation - All Variants Live",
+      "description": "Live end-to-end Test der folderOperation-Activity ueber alle 7 Operationen (create/exists/list/rename/copy/move/delete). Sandbox: C:\\temp\\nodepilot-folderop-test. Setup runScript legt Parent-Sandbox an. Sequenz: create A -> exists A (true) -> list A (empty) -> create A\\child -> list A (zeigt child) -> rename A->A-renamed -> copy A-renamed->B -> move B->C -> delete sandbox root. Pro Phase ein Log-Step mit aggregierten Outputs. Teardown runScript stellt sicher, dass nichts liegen bleibt. Output landet im NodePilot-Serilog + SupportEvents-DB-Projection.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start test suite", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+
+          { "id": "setup", "type": "activity", "position": { "x": 160, "y": 400 }, "data": { "label": "runScript: setup parent dir", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "setup", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$ErrorActionPreference = 'Stop'\n$root = 'C:\\temp\\nodepilot-folderop-test'\nif (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }\nNew-Item -Path $root -ItemType Directory -Force | Out-Null\nWrite-Output \"parent-ready: $root\"" } } },
+
+          { "id": "log_setup", "type": "activity", "position": { "x": 160, "y": 240 }, "data": { "label": "log: setup phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/folderOperation] PHASE 0 - Setup: success={{setup.success}} output={{setup.output}}" } } },
+
+          { "id": "fo_create_a", "type": "activity", "position": { "x": 480, "y": 400 }, "data": { "label": "folderOp: create A", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_create_a", "config": { "operation": "create", "path": "C:\\temp\\nodepilot-folderop-test\\A" } } },
+          { "id": "fo_exists_a", "type": "activity", "position": { "x": 800, "y": 400 }, "data": { "label": "folderOp: exists A (true)", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_exists_a", "config": { "operation": "exists", "path": "C:\\temp\\nodepilot-folderop-test\\A" } } },
+          { "id": "fo_list_empty", "type": "activity", "position": { "x": 1120, "y": 400 }, "data": { "label": "folderOp: list A (empty)", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_list_empty", "config": { "operation": "list", "path": "C:\\temp\\nodepilot-folderop-test\\A" } } },
+
+          { "id": "log_create", "type": "activity", "position": { "x": 1440, "y": 400 }, "data": { "label": "log: create+exists+list phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/folderOperation] PHASE A - create+exists+list(empty): create.success={{fo_create_a.success}} exists.value={{fo_exists_a.param.exists}} list.success={{fo_list_empty.success}} list.count={{fo_list_empty.param.count}}" } } },
+
+          { "id": "fo_create_child", "type": "activity", "position": { "x": 1760, "y": 400 }, "data": { "label": "folderOp: create A\\child", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_create_child", "config": { "operation": "create", "path": "C:\\temp\\nodepilot-folderop-test\\A\\child" } } },
+          { "id": "fo_list_one", "type": "activity", "position": { "x": 2080, "y": 400 }, "data": { "label": "folderOp: list A (1 child)", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_list_one", "config": { "operation": "list", "path": "C:\\temp\\nodepilot-folderop-test\\A" } } },
+
+          { "id": "log_nested", "type": "activity", "position": { "x": 2400, "y": 400 }, "data": { "label": "log: nested+list phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/folderOperation] PHASE B - nested+list: child.success={{fo_create_child.success}} list.success={{fo_list_one.success}} list.count={{fo_list_one.param.count}}" } } },
+
+          { "id": "fo_rename", "type": "activity", "position": { "x": 2720, "y": 400 }, "data": { "label": "folderOp: rename A->A-renamed", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_rename", "config": { "operation": "rename", "path": "C:\\temp\\nodepilot-folderop-test\\A", "newName": "A-renamed" } } },
+
+          { "id": "log_rename", "type": "activity", "position": { "x": 3040, "y": 400 }, "data": { "label": "log: rename phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/folderOperation] PHASE C - rename: success={{fo_rename.success}} newPath={{fo_rename.param.newPath}}" } } },
+
+          { "id": "fo_copy", "type": "activity", "position": { "x": 3040, "y": 580 }, "data": { "label": "folderOp: copy A-renamed->B", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_copy", "config": { "operation": "copy", "path": "C:\\temp\\nodepilot-folderop-test\\A-renamed", "destination": "C:\\temp\\nodepilot-folderop-test\\B" } } },
+
+          { "id": "log_copy", "type": "activity", "position": { "x": 2720, "y": 580 }, "data": { "label": "log: copy phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/folderOperation] PHASE D - copy: success={{fo_copy.success}} destination={{fo_copy.param.destination}}" } } },
+
+          { "id": "fo_move", "type": "activity", "position": { "x": 2400, "y": 580 }, "data": { "label": "folderOp: move B->C", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_move", "config": { "operation": "move", "path": "C:\\temp\\nodepilot-folderop-test\\B", "destination": "C:\\temp\\nodepilot-folderop-test\\C" } } },
+
+          { "id": "log_move", "type": "activity", "position": { "x": 2080, "y": 580 }, "data": { "label": "log: move phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/folderOperation] PHASE E - move: success={{fo_move.success}} destination={{fo_move.param.destination}}" } } },
+
+          { "id": "fo_delete", "type": "activity", "position": { "x": 1760, "y": 580 }, "data": { "label": "folderOp: delete sandbox root", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_delete", "config": { "operation": "delete", "path": "C:\\temp\\nodepilot-folderop-test" } } },
+
+          { "id": "log_delete", "type": "activity", "position": { "x": 1440, "y": 580 }, "data": { "label": "log: delete phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/folderOperation] PHASE F - delete: success={{fo_delete.success}}" } } },
+
+          { "id": "teardown", "type": "activity", "position": { "x": 1120, "y": 580 }, "data": { "label": "runScript: teardown belt+braces", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "teardown", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$ErrorActionPreference = 'Stop'\n$root = 'C:\\temp\\nodepilot-folderop-test'\nif (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }\nWrite-Output 'teardown-ok'" } } },
+
+          { "id": "log_summary", "type": "activity", "position": { "x": 800, "y": 580 }, "data": { "label": "log: SUMMARY", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/folderOperation] SUMMARY - All 7 operations covered.\ncreate_A={{fo_create_a.success}} exists_A={{fo_exists_a.success}} (value={{fo_exists_a.param.exists}})\nlist_empty={{fo_list_empty.success}} (count={{fo_list_empty.param.count}})\ncreate_child={{fo_create_child.success}}\nlist_one={{fo_list_one.success}} (count={{fo_list_one.param.count}})\nrename={{fo_rename.success}} (newPath={{fo_rename.param.newPath}})\ncopy={{fo_copy.success}} (dest={{fo_copy.param.destination}})\nmove={{fo_move.success}} (dest={{fo_move.param.destination}})\ndelete={{fo_delete.success}} teardown={{teardown.success}}" } } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 480, "y": 580 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": {
+            "setup_success": "{{setup.success}}",
+            "create_a_success": "{{fo_create_a.success}}",
+            "exists_a_success": "{{fo_exists_a.success}}",
+            "exists_a_value": "{{fo_exists_a.param.exists}}",
+            "list_empty_success": "{{fo_list_empty.success}}",
+            "list_empty_count": "{{fo_list_empty.param.count}}",
+            "create_child_success": "{{fo_create_child.success}}",
+            "list_one_success": "{{fo_list_one.success}}",
+            "list_one_count": "{{fo_list_one.param.count}}",
+            "rename_success": "{{fo_rename.success}}",
+            "rename_newPath": "{{fo_rename.param.newPath}}",
+            "copy_success": "{{fo_copy.success}}",
+            "copy_destination": "{{fo_copy.param.destination}}",
+            "move_success": "{{fo_move.success}}",
+            "move_destination": "{{fo_move.param.destination}}",
+            "delete_success": "{{fo_delete.success}}",
+            "teardown_success": "{{teardown.success}}"
+          } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "setup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "setup", "target": "log_setup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "setup", "target": "fo_create_a", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e4", "source": "fo_create_a", "target": "fo_exists_a", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "fo_exists_a", "target": "fo_list_empty", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "fo_list_empty", "target": "log_create", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "log_create", "target": "fo_create_child", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "fo_create_child", "target": "fo_list_one", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "fo_list_one", "target": "log_nested", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "log_nested", "target": "fo_rename", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "fo_rename", "target": "log_rename", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "log_rename", "target": "fo_copy", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "fo_copy", "target": "log_copy", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "log_copy", "target": "fo_move", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "fo_move", "target": "log_move", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "log_move", "target": "fo_delete", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "fo_delete", "target": "log_delete", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "log_delete", "target": "teardown", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e19", "source": "teardown", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e20", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

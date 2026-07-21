@@ -1,0 +1,79 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] xmlQuery - All Variants Live",
+      "description": "Live end-to-end Test der xmlQuery-Activity über alle Varianten. Phasen: A) source=inline mit kleinem XML-Literal (single + array). B) source=file via runScript-Prep (schreibt C:\\temp\\NP-TestSuite-xml-<guid>.xml, deleted in Phase F). C) xpath single-result (resultMode=single). D) xpath multi-result (resultMode=all). E) XML mit xmlns-Namespaces. F) invalid XPath (error-path, On-Failure-Edge geht zu log_phase_err). G) Cleanup + Summary + returnData. Pro Phase ein log-Step der param.result/param.count aggregiert — Output landet im NodePilot-Serilog + SupportEvents-DB-Projection. Layout: Snake-Pattern, ROW 1 LTR (Phasen A-D), ROW 2 RTL (Phasen E-G).",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 200 }, "data": { "label": "Manual: start xmlQuery suite", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+
+          { "id": "x_inline_single", "type": "activity", "position": { "x": 380, "y": 200 }, "data": { "label": "xml: inline source single", "activityType": "xmlQuery", "outputVariable": "x_inline_single", "config": { "source": "inline", "content": "<?xml version=\"1.0\"?><root><item id=\"1\">alpha</item><item id=\"2\">beta</item><item id=\"3\">gamma</item></root>", "xpath": "//item[@id='2']", "resultMode": "single" } } },
+
+          { "id": "x_inline_all", "type": "activity", "position": { "x": 700, "y": 200 }, "data": { "label": "xml: inline source all", "activityType": "xmlQuery", "outputVariable": "x_inline_all", "config": { "source": "inline", "content": "<?xml version=\"1.0\"?><root><item id=\"1\">alpha</item><item id=\"2\">beta</item><item id=\"3\">gamma</item></root>", "xpath": "//item", "resultMode": "all" } } },
+
+          { "id": "log_phase_ab", "type": "activity", "position": { "x": 1020, "y": 200 }, "data": { "label": "log: PHASE A+B inline", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/xmlQuery] PHASE A+B — Inline source:\nsingle: success={{x_inline_single.success}} result={{x_inline_single.param.result}} count={{x_inline_single.param.count}}\nall: success={{x_inline_all.success}} result={{x_inline_all.param.result}} count={{x_inline_all.param.count}}" } } },
+
+          { "id": "prep_file", "type": "activity", "position": { "x": 1340, "y": 200 }, "data": { "label": "prep: write xml file", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "prep_file", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$dir = 'C:\\temp\\NP-TestSuite-xml-' + [Guid]::NewGuid().ToString('N')\nNew-Item -Path $dir -ItemType Directory -Force | Out-Null\n$content = '<?xml version=\"1.0\"?><config><server name=\"alpha\" port=\"8080\"/><server name=\"beta\" port=\"9090\"/><server name=\"gamma\" port=\"7070\"/></config>'\n$path = Join-Path $dir 'test.xml'\nSet-Content -LiteralPath $path -Value $content -Encoding UTF8\n$xmlPath = $path\nWrite-Output \"wrote $path\"" } } },
+
+          { "id": "x_file_single", "type": "activity", "position": { "x": 1660, "y": 200 }, "data": { "label": "xml: file source single", "activityType": "xmlQuery", "outputVariable": "x_file_single", "config": { "source": "file", "path": "{{prep_file.param.xmlPath}}", "xpath": "//server[@name='beta']/@port", "resultMode": "single" } } },
+
+          { "id": "x_file_all", "type": "activity", "position": { "x": 1980, "y": 200 }, "data": { "label": "xml: file source all", "activityType": "xmlQuery", "outputVariable": "x_file_all", "config": { "source": "file", "path": "{{prep_file.param.xmlPath}}", "xpath": "//server/@port", "resultMode": "all" } } },
+
+          { "id": "log_phase_cd", "type": "activity", "position": { "x": 2300, "y": 200 }, "data": { "label": "log: PHASE C+D file", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/xmlQuery] PHASE C+D — File source:\nfile_single: success={{x_file_single.success}} result={{x_file_single.param.result}} count={{x_file_single.param.count}}\nfile_all: success={{x_file_all.success}} result={{x_file_all.param.result}} count={{x_file_all.param.count}}" } } },
+
+          { "id": "x_ns_single", "type": "activity", "position": { "x": 2300, "y": 480 }, "data": { "label": "xml: namespaces single", "activityType": "xmlQuery", "outputVariable": "x_ns_single", "config": { "source": "inline", "content": "<?xml version=\"1.0\"?><root xmlns:np=\"http://nodepilot.test/v1\" xmlns:meta=\"http://nodepilot.test/meta\"><np:item id=\"a\">first</np:item><np:item id=\"b\">second</np:item><meta:tag>tagged</meta:tag></root>", "xpath": "//np:item[@id='b']", "namespaces": { "np": "http://nodepilot.test/v1", "meta": "http://nodepilot.test/meta" }, "resultMode": "single" } } },
+
+          { "id": "x_ns_all", "type": "activity", "position": { "x": 1980, "y": 480 }, "data": { "label": "xml: namespaces all", "activityType": "xmlQuery", "outputVariable": "x_ns_all", "config": { "source": "inline", "content": "<?xml version=\"1.0\"?><root xmlns:np=\"http://nodepilot.test/v1\"><np:item id=\"a\">first</np:item><np:item id=\"b\">second</np:item><np:item id=\"c\">third</np:item></root>", "xpath": "//np:item", "namespaces": { "np": "http://nodepilot.test/v1" }, "resultMode": "all" } } },
+
+          { "id": "log_phase_e", "type": "activity", "position": { "x": 1660, "y": 480 }, "data": { "label": "log: PHASE E namespaces", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/xmlQuery] PHASE E — Namespaces:\nns_single: success={{x_ns_single.success}} result={{x_ns_single.param.result}} count={{x_ns_single.param.count}}\nns_all: success={{x_ns_all.success}} result={{x_ns_all.param.result}} count={{x_ns_all.param.count}}" } } },
+
+          { "id": "x_invalid", "type": "activity", "position": { "x": 1340, "y": 480 }, "data": { "label": "xml: invalid xpath (error)", "activityType": "xmlQuery", "outputVariable": "x_invalid", "config": { "source": "inline", "content": "<?xml version=\"1.0\"?><root><item>test</item></root>", "xpath": "//[bad-xpath", "resultMode": "single" } } },
+
+          { "id": "log_phase_err", "type": "activity", "position": { "x": 1020, "y": 480 }, "data": { "label": "log: PHASE F error", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/xmlQuery] PHASE F — Invalid XPath (expected failure):\nsuccess={{x_invalid.success}} error={{x_invalid.error}}" } } },
+
+          { "id": "cleanup", "type": "activity", "position": { "x": 700, "y": 480 }, "data": { "label": "cleanup: delete temp dir", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "cleanup", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$xml = {{prep_file.param.xmlPath}}\n$parent = Split-Path $xml\nif (Test-Path $parent) { Remove-Item -LiteralPath $parent -Recurse -Force }\nWrite-Output 'cleanup-ok'" } } },
+
+          { "id": "log_summary", "type": "activity", "position": { "x": 380, "y": 480 }, "data": { "label": "log: SUMMARY", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/xmlQuery] SUMMARY — All variants covered.\nInline: single={{x_inline_single.success}} all={{x_inline_all.success}} (count={{x_inline_all.param.count}})\nFile: single={{x_file_single.success}}={{x_file_single.param.result}} all={{x_file_all.success}} (count={{x_file_all.param.count}})\nNamespaces: single={{x_ns_single.success}}={{x_ns_single.param.result}} all={{x_ns_all.success}} (count={{x_ns_all.param.count}})\nInvalid XPath: success={{x_invalid.success}} (expected false)\nCleanup: {{cleanup.success}}" } } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 60, "y": 480 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": {
+            "inline_single_result": "{{x_inline_single.param.result}}",
+            "inline_single_count": "{{x_inline_single.param.count}}",
+            "inline_all_result": "{{x_inline_all.param.result}}",
+            "inline_all_count": "{{x_inline_all.param.count}}",
+            "file_single_result": "{{x_file_single.param.result}}",
+            "file_single_count": "{{x_file_single.param.count}}",
+            "file_all_result": "{{x_file_all.param.result}}",
+            "file_all_count": "{{x_file_all.param.count}}",
+            "ns_single_result": "{{x_ns_single.param.result}}",
+            "ns_single_count": "{{x_ns_single.param.count}}",
+            "ns_all_result": "{{x_ns_all.param.result}}",
+            "ns_all_count": "{{x_ns_all.param.count}}",
+            "invalid_success": "{{x_invalid.success}}",
+            "invalid_error": "{{x_invalid.error}}",
+            "cleanup_success": "{{cleanup.success}}"
+          } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "x_inline_single", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "x_inline_single", "target": "x_inline_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "x_inline_all", "target": "log_phase_ab", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "log_phase_ab", "target": "prep_file", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "prep_file", "target": "x_file_single", "type": "labeled", "data": { "label": "On Success", "condition": "prep_file.success" } },
+          { "id": "e6", "source": "x_file_single", "target": "x_file_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "x_file_all", "target": "log_phase_cd", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "log_phase_cd", "target": "x_ns_single", "type": "labeled", "sourceHandle": "bottom", "targetHandle": "top", "data": { "label": "Always" } },
+          { "id": "e9", "source": "x_ns_single", "target": "x_ns_all", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e10", "source": "x_ns_all", "target": "log_phase_e", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e11", "source": "log_phase_e", "target": "x_invalid", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e12", "source": "x_invalid", "target": "log_phase_err", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e13", "source": "log_phase_err", "target": "cleanup", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e14", "source": "cleanup", "target": "log_summary", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e15", "source": "log_summary", "target": "ret", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

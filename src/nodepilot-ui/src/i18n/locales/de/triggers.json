@@ -1,0 +1,100 @@
+{
+  "badges": {
+    "manual": "Manuell",
+    "schedule": "Schedule",
+    "webhook": "Webhook",
+    "fileWatcher": "Datei-Watcher",
+    "database": "Datenbank",
+    "eventLog": "Event Log"
+  },
+  "common": {
+    "required": "Erforderlich",
+    "removeParameter": "Parameter entfernen"
+  },
+  "manualTrigger": {
+    "title": "Trigger-Titel",
+    "titlePlaceholder": "z. B. Anwendung bereitstellen",
+    "descriptionPlaceholder": "Was macht dieser Workflow?",
+    "inputParameters": "Eingabeparameter",
+    "namePlaceholder": "z. B. serverName",
+    "typeString": "String",
+    "typeNumber": "Zahl",
+    "typeBoolean": "Boolean",
+    "typeSelect": "Auswahl",
+    "default": "Standard",
+    "defaultPlaceholder": "(optional)",
+    "accessVia": "Zugriff über:",
+    "noParameters": "Keine Parameter. Benutzer können diesen Workflow ohne Eingaben starten."
+  },
+  "scheduleTrigger": {
+    "presetEvery5Min": "Alle 5 Min",
+    "presetEveryHour": "Stündlich",
+    "presetDaily6Am": "Täglich 6 Uhr",
+    "presetMonFri8Am": "Mo-Fr 8 Uhr",
+    "cronExpression": "Cron-Ausdruck",
+    "nextFireTimes": "Nächste Auslösezeiten",
+    "noUpcomingFires": "(keine anstehenden Auslösungen)",
+    "descriptionPlaceholder": "z. B. Jeden Wochentag um 8 Uhr"
+  },
+  "webhookTrigger": {
+    "httpMethod": "HTTP-Methode",
+    "webhookPath": "Webhook-Pfad",
+    "secretOptional": "Secret (optional)",
+    "secretHmac": "HMAC-Secret (mind. 32 UTF-8-Bytes, per CSPRNG erzeugt)",
+    "secretPlaceholder": "Gemeinsames Secret / HMAC-Schlüssel",
+    "signatureMode": "Verifizierung",
+    "signatureModeHeader": "Shared-Secret-Header (X-Webhook-Secret)",
+    "signatureModeLegacy": "Legacy Body-only-HMAC (deaktiviert — migrieren)",
+    "signatureModeHmac": "NodePilot HMAC v2 (Replay-sicher)",
+    "signatureHeader": "Signatur-Header",
+    "signaturePrefix": "Signatur-Präfix",
+    "hmacHint": "Den dokumentierten kanonischen NodePilot-HMAC-v2-Request signieren: Timestamp, Delivery-ID, Methode, escaped Pfad, kanonische Query und Raw-Body. Requests gelten 5 Minuten, jede Delivery-ID genau einmal. Beliebige Request-Header werden nicht weitergeleitet.",
+    "legacyHmacHint": "Legacy-signatureMode 'hmac' wird abgelehnt. Vor dem Veröffentlichen NodePilot HMAC v2 auswählen und den Sender auf das neue kanonische Wire-Format umstellen.",
+    "fieldMappings": "Body-Feld-Mappings (JSONPath)",
+    "fieldMappingsHint": "Extrahiert Felder aus einem JSON-Body als benannte Parameter — Downstream-Nodes lesen {{manual.<name>}} statt webhookBody zu parsen. Gleicher JSONPath-Dialekt wie jsonQuery.",
+    "fieldName": "Parameter-Name",
+    "fieldPath": "JSONPath",
+    "addMapping": "Mapping hinzufügen",
+    "removeMapping": "Mapping entfernen"
+  },
+  "databaseTrigger": {
+    "connectionRef": "Verbindungs-Ref",
+    "pollingInterval": "Abfrageintervall (s)",
+    "sqlQuery": "SQL-Abfrage"
+  },
+  "eventLogTrigger": {
+    "logName": "Protokollname",
+    "entryType": "Eintragstyp",
+    "any": "Beliebig",
+    "successAudit": "Erfolgsüberwachung",
+    "failureAudit": "Fehlerüberwachung",
+    "sourceOptional": "Quelle (optional)",
+    "sourcePlaceholder": "z. B. MSSQLSERVER, Service Control Manager",
+    "eventIdOptional": "Ereignis-ID (optional)",
+    "eventIdPlaceholder": "z. B. 4625",
+    "lookbackMinutes": "Rückblick (Minuten)"
+  },
+  "fileWatcherTrigger": {
+    "directory": "Verzeichnis",
+    "fileFilter": "Dateifilter",
+    "watchType": "Überwachungstyp",
+    "fileCreated": "Datei erstellt",
+    "fileChanged": "Datei geändert",
+    "fileDeleted": "Datei gelöscht",
+    "fileRenamed": "Datei umbenannt",
+    "allChanges": "Alle Änderungen",
+    "includeSubdirectories": "Unterverzeichnisse einbeziehen"
+  },
+  "runDialog": {
+    "title": "Workflow ausführen",
+    "subtitle": "{{name}}",
+    "noParameters": "Keine Parameter erforderlich. Drücke „Ausführen\".",
+    "fillParameters": "Bitte fülle die Parameter aus.",
+    "execute": "Ausführen",
+    "fieldRequired": "Pflichtfeld",
+    "executeFailed": "Ausführung fehlgeschlagen: {{message}}",
+    "enterValue": "{{name}} eingeben …",
+    "lastRunUsed": "Letzter Lauf verwendete: {{value}}",
+    "lastPrefix": "letzter: {{value}}"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] powerManagement - All Variants Live",
+      "description": "Live test of powerManagement activity. SAFETY: shutdown, restart, logoff, hibernate are 'disabled: true' — running them would take down the dev box. They are kept in the workflow for schema validation + AI-prompt visibility. Only 'abort' runs live (cancels a pending shutdown; no-op when no shutdown queued). Pre-check requires admin (powerManagement.shutdown/restart need elevation; abort tolerates lower privileges but for consistency we elevate). Note: localhost-self-shutdown is additionally gated by the C4 guard (PowerManagement:AllowLocalSelfShutdown).",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "check_admin", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "pre-check: admin", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "admin_check", "config": { "engine": "auto", "timeoutSeconds": 5, "script": "$id = [Security.Principal.WindowsIdentity]::GetCurrent()\n$p = New-Object Security.Principal.WindowsPrincipal($id)\nif (-not $p.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'NodePilot.Api not elevated — powerManagement actions skipped.' }\nWrite-Output \"admin: $($id.Name)\"" } } },
+          { "id": "p_abort", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "pwr: abort (live, safe)", "activityType": "powerManagement", "targetMachineId": "localhost", "outputVariable": "p_abort", "config": { "action": "abort" } } },
+          { "id": "p_shutdown", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "pwr: shutdown (DISABLED — would kill dev)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "outputVariable": "p_shutdown", "config": { "action": "shutdown", "delaySeconds": 60, "force": false, "message": "NodePilot TestSuite — would shutdown" } } },
+          { "id": "p_restart", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "pwr: restart (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "outputVariable": "p_restart", "config": { "action": "restart", "delaySeconds": 60, "force": false } } },
+          { "id": "p_logoff", "type": "activity", "position": { "x": 640, "y": 800 }, "data": { "label": "pwr: logoff (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "outputVariable": "p_logoff", "config": { "action": "logoff" } } },
+          { "id": "p_hibernate", "type": "activity", "position": { "x": 640, "y": 1000 }, "data": { "label": "pwr: hibernate (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "outputVariable": "p_hibernate", "config": { "action": "hibernate" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/powerManagement] abort_live={{p_abort.success}} shutdown/restart/logoff/hibernate kept DISABLED for dev safety (schema-only coverage). Admin: {{admin_check.output}}" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "abort_success": "{{p_abort.success}}", "shutdown_disabled": "true", "restart_disabled": "true", "logoff_disabled": "true", "hibernate_disabled": "true", "admin_user": "{{admin_check.output}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "check_admin", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "check_admin", "target": "p_abort", "type": "labeled", "data": { "label": "On Success", "condition": "check_admin.success" } },
+          { "id": "e3", "source": "p_abort", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

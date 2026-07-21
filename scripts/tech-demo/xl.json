@@ -1,0 +1,4142 @@
+{
+  "_comment": "NodePilot Tech-Demo XL — 3-swim-lane showcase. ~106 nodes, ~170 edges. LANE TOP (y=300) Discovery: triggers + host collect + 12 remote fan-out + 10 operator branches. LANE MID (y=900) Processing: REST/SQL + XML/JSON + forEach + sub-workflows + retry-NofM + 10 deep operator combos. LANE BOT (y=1500) Ops: timing demo + remote-ops + email + power-abort + debug zone + 8 deep operator combos + cleanup. Sync bands at x=1960 (sync1) and via top-delay-phase3 (sync2), final-junction at x=10000. All 19 activity types, all 14 edge operators + AND/OR/NOT, all 3 junction modes, breakpoints, disabled nodes, disabled edges, retry policies, error paths, sub-workflow calls. Bounds: 0..10720 x 0..1920.",
+  "nodes": [
+    {
+      "id": "trg-manual",
+      "type": "activity",
+      "position": {
+        "x": 0,
+        "y": 300
+      },
+      "data": {
+        "label": "Manual Trigger (5 params)",
+        "activityType": "manualTrigger",
+        "config": {
+          "title": "Run Tech-Demo XL",
+          "parameters": [
+            {
+              "name": "environment",
+              "type": "string",
+              "required": true,
+              "default": "staging"
+            },
+            {
+              "name": "threshold",
+              "type": "string",
+              "required": false,
+              "default": "80"
+            },
+            {
+              "name": "dryRun",
+              "type": "string",
+              "required": false,
+              "default": "false"
+            },
+            {
+              "name": "pattern",
+              "type": "string",
+              "required": false,
+              "default": "Windows.*"
+            },
+            {
+              "name": "iteration",
+              "type": "string",
+              "required": false,
+              "default": "1"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "trg-schedule",
+      "type": "activity",
+      "position": {
+        "x": 0,
+        "y": 60
+      },
+      "data": {
+        "label": "Schedule Trigger (disabled)",
+        "activityType": "scheduleTrigger",
+        "disabled": true,
+        "config": {
+          "cronExpression": "0 0 6 ? * MON-FRI *"
+        }
+      }
+    },
+    {
+      "id": "trg-webhook",
+      "type": "activity",
+      "position": {
+        "x": 0,
+        "y": 180
+      },
+      "data": {
+        "label": "Webhook Trigger (disabled)",
+        "activityType": "webhookTrigger",
+        "disabled": true,
+        "config": {
+          "path": "ops/run",
+          "method": "POST",
+          "secret": ""
+        }
+      }
+    },
+    {
+      "id": "trg-filewatch",
+      "type": "activity",
+      "position": {
+        "x": 0,
+        "y": 420
+      },
+      "data": {
+        "label": "File Watcher (disabled)",
+        "activityType": "fileWatcherTrigger",
+        "disabled": true,
+        "config": {
+          "directory": "C:\\incoming",
+          "filter": "*.csv",
+          "watchType": "Created",
+          "includeSubdirectories": false
+        }
+      }
+    },
+    {
+      "id": "trg-database",
+      "type": "activity",
+      "position": {
+        "x": 0,
+        "y": 540
+      },
+      "data": {
+        "label": "DB Trigger (disabled)",
+        "activityType": "databaseTrigger",
+        "disabled": true,
+        "config": {
+          "provider": "sqlite",
+          "connectionString": "Data Source=:memory:",
+          "query": "SELECT id FROM queue WHERE processed = 0",
+          "intervalSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "trg-eventlog",
+      "type": "activity",
+      "position": {
+        "x": 0,
+        "y": 660
+      },
+      "data": {
+        "label": "EventLog Trigger (disabled)",
+        "activityType": "eventLogTrigger",
+        "disabled": true,
+        "config": {
+          "logName": "Application",
+          "source": "",
+          "entryType": "Error",
+          "messagePattern": ".*CRITICAL.*"
+        }
+      }
+    },
+    {
+      "id": "log-kickoff",
+      "type": "activity",
+      "position": {
+        "x": 360,
+        "y": 300
+      },
+      "data": {
+        "label": "Log: XL kickoff",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Tech-Demo XL started: env={{trg-manual.param.environment}} iter={{trg-manual.param.iteration}} dryRun={{trg-manual.param.dryRun}}"
+        }
+      }
+    },
+    {
+      "id": "delay-init",
+      "type": "activity",
+      "position": {
+        "x": 720,
+        "y": 300
+      },
+      "data": {
+        "label": "Delay 1s (boot settle)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 1
+        }
+      }
+    },
+    {
+      "id": "collect-host",
+      "type": "activity",
+      "position": {
+        "x": 1060,
+        "y": 300
+      },
+      "data": {
+        "label": "runScript: collect host info",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "host",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 60,
+          "retry": {
+            "maxAttempts": 2,
+            "backoff": "exponential",
+            "initialDelayMs": 500,
+            "maxDelayMs": 5000
+          },
+          "script": "# All PowerShell variables declared here are captured as {{host.param.<name>}} downstream.\n$hostName    = $env:COMPUTERNAME\n$userName    = $env:USERNAME\n$now         = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')\n$osCim       = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue\n$osName      = if ($osCim) { $osCim.Caption } else { 'Microsoft Windows' }\n$osVersion   = [System.Environment]::OSVersion.Version.ToString()\n$buildNumber = ($osVersion -split '\\\\.')[2]\n$cpuCount    = [System.Environment]::ProcessorCount\n$memTotalMB  = if ($osCim) { [math]::Round($osCim.TotalVisibleMemorySize / 1024, 0) } else { 0 }\n$memFreeMB   = if ($osCim) { [math]::Round($osCim.FreePhysicalMemory / 1024, 0) } else { 0 }\n$drive       = Get-PSDrive C -ErrorAction SilentlyContinue\nif ($drive) {\n    $diskFreeGB  = [math]::Round($drive.Free / 1GB, 2)\n    $diskUsedGB  = [math]::Round($drive.Used / 1GB, 2)\n    $diskTotalGB = [math]::Round(($drive.Free + $drive.Used) / 1GB, 2)\n    $diskUsedPct = [math]::Round(($drive.Used / ($drive.Free + $drive.Used)) * 100, 1)\n} else {\n    $diskFreeGB = 0; $diskUsedGB = 0; $diskTotalGB = 0; $diskUsedPct = 0\n}\n$cs          = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue\n$isDomain    = if ($cs) { [bool]$cs.PartOfDomain } else { $false }\n$manufacturer = if ($cs) { $cs.Manufacturer } else { 'unknown' }\n$model       = if ($cs) { $cs.Model } else { 'unknown' }\n$emptyField  = ''\n$errorLog    = ''\nWrite-Output \"Collected cpu=$cpuCount mem=${memFreeMB}MB free disk=$diskFreeGB/$diskTotalGB GB on $userName@$hostName (OS: $osName v$osVersion build $buildNumber, domain=$isDomain) at $now\"\n"
+        }
+      }
+    },
+    {
+      "id": "collect-net",
+      "type": "activity",
+      "position": {
+        "x": 1400,
+        "y": 300
+      },
+      "data": {
+        "label": "runScript: collect network info",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "net",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 30,
+          "script": "$ip         = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object { $_.PrefixOrigin -ne 'WellKnown' } | Select-Object -First 1).IPAddress\n$ipAddress  = if ($ip) { $ip } else { '127.0.0.1' }\n$gateway    = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Select-Object -First 1).NextHop\n$gatewayIp  = if ($gateway) { $gateway } else { '' }\n$dnsServer  = (Get-DnsClientServerAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ServerAddresses -First 1)\n$dnsValue   = if ($dnsServer) { $dnsServer } else { '' }\n$netUp      = if ($ipAddress -ne '127.0.0.1') { 'true' } else { 'false' }\nWrite-Output \"Net: ip=$ipAddress gw=$gatewayIp dns=$dnsValue up=$netUp\""
+        }
+      }
+    },
+    {
+      "id": "process-data",
+      "type": "activity",
+      "position": {
+        "x": 1740,
+        "y": 300
+      },
+      "data": {
+        "label": "runScript: process (BREAKPOINT)",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "proc",
+        "breakpoint": true,
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 30,
+          "retry": {
+            "maxAttempts": 3,
+            "backoff": "linear",
+            "initialDelayMs": 750,
+            "maxDelayMs": 5000
+          },
+          "script": "$iteration   = '{{trg-manual.param.iteration}}'\n$iterationNum = [int]$iteration\n$severity    = if ($iterationNum -ge 5) { 'high' } elseif ($iterationNum -ge 2) { 'medium' } else { 'low' }\n$phase       = 'processing'\n$processed   = 'true'\nWrite-Output \"Processed iter=$iteration severity=$severity phase=$phase\""
+        }
+      }
+    },
+    {
+      "id": "sync1",
+      "type": "activity",
+      "position": {
+        "x": 1960,
+        "y": 900
+      },
+      "data": {
+        "label": "Sync 1: Boot done (waitAll)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAll"
+        }
+      }
+    },
+    {
+      "id": "r01-file-exists",
+      "type": "activity",
+      "position": {
+        "x": 2100,
+        "y": 60
+      },
+      "data": {
+        "label": "fileOperation: exists?",
+        "activityType": "fileOperation",
+        "targetMachineId": "localhost",
+        "config": {
+          "operation": "exists",
+          "path": "C:\\Windows\\System32\\notepad.exe",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "r02-svc-status",
+      "type": "activity",
+      "position": {
+        "x": 2100,
+        "y": 240
+      },
+      "data": {
+        "label": "serviceManagement: Spooler status",
+        "activityType": "serviceManagement",
+        "targetMachineId": "localhost",
+        "config": {
+          "serviceName": "Spooler",
+          "action": "status",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "r03-reg-read",
+      "type": "activity",
+      "position": {
+        "x": 2100,
+        "y": 420
+      },
+      "data": {
+        "label": "registryOperation: ProductName",
+        "activityType": "registryOperation",
+        "targetMachineId": "localhost",
+        "config": {
+          "operation": "read",
+          "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+          "valueName": "ProductName",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "r04-wmi-os",
+      "type": "activity",
+      "position": {
+        "x": 2460,
+        "y": 60
+      },
+      "data": {
+        "label": "wmiQuery: Win32_OperatingSystem",
+        "activityType": "wmiQuery",
+        "targetMachineId": "localhost",
+        "config": {
+          "className": "Win32_OperatingSystem",
+          "namespace": "root\\cimv2",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "r05-prog-cmd",
+      "type": "activity",
+      "position": {
+        "x": 2460,
+        "y": 240
+      },
+      "data": {
+        "label": "startProgram: cmd /c echo",
+        "activityType": "startProgram",
+        "targetMachineId": "localhost",
+        "config": {
+          "filePath": "cmd.exe",
+          "arguments": "/c echo Hello from {{host.param.userName}}@{{host.param.hostName}}",
+          "waitForExit": true,
+          "timeoutSeconds": 30,
+          "successExitCodes": "0",
+          "retry": {
+            "maxAttempts": 3,
+            "backoff": "linear",
+            "initialDelayMs": 1000,
+            "maxDelayMs": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "r06-waitcond-a",
+      "type": "activity",
+      "position": {
+        "x": 2460,
+        "y": 420
+      },
+      "data": {
+        "label": "waitForCondition: env ready",
+        "activityType": "waitForCondition",
+        "targetMachineId": "localhost",
+        "config": {
+          "script": "$true",
+          "intervalSeconds": 2,
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "r07-file-list",
+      "type": "activity",
+      "position": {
+        "x": 2820,
+        "y": 60
+      },
+      "data": {
+        "label": "folderOperation: list System32",
+        "activityType": "folderOperation",
+        "targetMachineId": "localhost",
+        "config": {
+          "operation": "list",
+          "path": "C:\\Windows\\System32",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "r08-svc-list",
+      "type": "activity",
+      "position": {
+        "x": 2820,
+        "y": 240
+      },
+      "data": {
+        "label": "serviceManagement: BITS status",
+        "activityType": "serviceManagement",
+        "targetMachineId": "localhost",
+        "config": {
+          "serviceName": "BITS",
+          "action": "status",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "r09-reg-write",
+      "type": "activity",
+      "position": {
+        "x": 2820,
+        "y": 420
+      },
+      "data": {
+        "label": "registryOperation: write (demo)",
+        "activityType": "registryOperation",
+        "targetMachineId": "localhost",
+        "config": {
+          "operation": "write",
+          "keyPath": "HKCU:\\Software\\NodePilotDemo",
+          "valueName": "LastRun",
+          "value": "{{host.param.now}}",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "r10-wmi-cpu",
+      "type": "activity",
+      "position": {
+        "x": 3180,
+        "y": 60
+      },
+      "data": {
+        "label": "wmiQuery: Win32_Processor",
+        "activityType": "wmiQuery",
+        "targetMachineId": "localhost",
+        "config": {
+          "className": "Win32_Processor",
+          "namespace": "root\\cimv2",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "r11-prog-ps",
+      "type": "activity",
+      "position": {
+        "x": 3180,
+        "y": 240
+      },
+      "data": {
+        "label": "startProgram: powershell -c",
+        "activityType": "startProgram",
+        "targetMachineId": "localhost",
+        "config": {
+          "filePath": "powershell.exe",
+          "arguments": "-NoProfile -Command \"Write-Output 'ps-ok'\"",
+          "waitForExit": true,
+          "timeoutSeconds": 30,
+          "successExitCodes": "0"
+        }
+      }
+    },
+    {
+      "id": "r12-wmi-disk",
+      "type": "activity",
+      "position": {
+        "x": 3180,
+        "y": 420
+      },
+      "data": {
+        "label": "wmiQuery: Win32_LogicalDisk",
+        "activityType": "wmiQuery",
+        "targetMachineId": "localhost",
+        "config": {
+          "className": "Win32_LogicalDisk",
+          "namespace": "root\\cimv2",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "jall-top",
+      "type": "activity",
+      "position": {
+        "x": 3580,
+        "y": 300
+      },
+      "data": {
+        "label": "Junction: waitAll (12 remote)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAll"
+        }
+      }
+    },
+    {
+      "id": "d01-log-eqneq",
+      "type": "activity",
+      "position": {
+        "x": 3980,
+        "y": 60
+      },
+      "data": {
+        "label": "Log: env is production",
+        "activityType": "log",
+        "config": {
+          "level": "warning",
+          "message": "env matches production exactly (env={{trg-manual.param.environment}})"
+        }
+      }
+    },
+    {
+      "id": "d02-log-range",
+      "type": "activity",
+      "position": {
+        "x": 3980,
+        "y": 240
+      },
+      "data": {
+        "label": "Log: CPU in [1..128]",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "CPU count within sane range: {{host.param.cpuCount}}"
+        }
+      }
+    },
+    {
+      "id": "d03-log-disk",
+      "type": "activity",
+      "position": {
+        "x": 3980,
+        "y": 420
+      },
+      "data": {
+        "label": "Log: disk alarm",
+        "activityType": "log",
+        "config": {
+          "level": "warning",
+          "message": "Disk out of bounds: used={{host.param.diskUsedPct}}% free={{host.param.diskFreeGB}}GB threshold={{trg-manual.param.threshold}}"
+        }
+      }
+    },
+    {
+      "id": "d04-log-strings",
+      "type": "activity",
+      "position": {
+        "x": 3980,
+        "y": 600
+      },
+      "data": {
+        "label": "Log: OS is Windows family",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "OS is a Windows/Microsoft/Pro build matching ^10\\\\.: {{host.param.osName}} v{{host.param.osVersion}}"
+        }
+      }
+    },
+    {
+      "id": "d05-log-unarypos",
+      "type": "activity",
+      "position": {
+        "x": 3980,
+        "y": 780
+      },
+      "data": {
+        "label": "Log: has output & domain",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Collected host output AND machine is domain-joined: {{host.param.hostName}}"
+        }
+      }
+    },
+    {
+      "id": "d06-log-unaryneg",
+      "type": "activity",
+      "position": {
+        "x": 4340,
+        "y": 60
+      },
+      "data": {
+        "label": "Log: empty & not dry",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "emptyField is empty AND dryRun=false (dryRun={{trg-manual.param.dryRun}})"
+        }
+      }
+    },
+    {
+      "id": "d07-log-notpanic",
+      "type": "activity",
+      "position": {
+        "x": 4340,
+        "y": 240
+      },
+      "data": {
+        "label": "Log: no PANIC marker",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Host output contains no PANIC marker (safe)"
+        }
+      }
+    },
+    {
+      "id": "d08-log-build",
+      "type": "activity",
+      "position": {
+        "x": 4340,
+        "y": 420
+      },
+      "data": {
+        "label": "Log: build matches ^10 & !prod",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "build={{host.param.buildNumber}} matches ^10 and env != production"
+        }
+      }
+    },
+    {
+      "id": "d09-log-netup",
+      "type": "activity",
+      "position": {
+        "x": 4340,
+        "y": 600
+      },
+      "data": {
+        "label": "Log: net up OR has gateway",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Network is up OR gateway present: ip={{net.param.ipAddress}} gw={{net.param.gatewayIp}}"
+        }
+      }
+    },
+    {
+      "id": "d10-log-startsor",
+      "type": "activity",
+      "position": {
+        "x": 4340,
+        "y": 780
+      },
+      "data": {
+        "label": "Log: env starts prod OR stg",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "env {{trg-manual.param.environment}} starts with 'prod' or 'stg'"
+        }
+      }
+    },
+    {
+      "id": "jmatch-top",
+      "type": "activity",
+      "position": {
+        "x": 4740,
+        "y": 300
+      },
+      "data": {
+        "label": "Junction: waitAny (10 ops)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "top-log-phase2done",
+      "type": "activity",
+      "position": {
+        "x": 5100,
+        "y": 300
+      },
+      "data": {
+        "label": "Log: Phase-2 TOP complete",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Phase-2 TOP (operator gallery) complete"
+        }
+      }
+    },
+    {
+      "id": "top-delay-bridge",
+      "type": "activity",
+      "position": {
+        "x": 5420,
+        "y": 300
+      },
+      "data": {
+        "label": "Delay 1s (TOP bridge)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 1
+        }
+      }
+    },
+    {
+      "id": "top-log-phase3",
+      "type": "activity",
+      "position": {
+        "x": 5740,
+        "y": 300
+      },
+      "data": {
+        "label": "Log: Phase-3 TOP running",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "TOP entering Phase-3 hold-pattern"
+        }
+      }
+    },
+    {
+      "id": "top-delay-phase3",
+      "type": "activity",
+      "position": {
+        "x": 6060,
+        "y": 300
+      },
+      "data": {
+        "label": "Delay 2s (phase-3 hold)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 2
+        }
+      }
+    },
+    {
+      "id": "top-deep-01",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 60
+      },
+      "data": {
+        "label": "Log: (prod OR stg) & cpu>=2",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Deep combo 1: (env in {prod,stg}) AND cpu>=2"
+        }
+      }
+    },
+    {
+      "id": "top-deep-02",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 180
+      },
+      "data": {
+        "label": "Log: NOT(empty AND dry)",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Deep combo 2: NOT(output is empty AND dryRun is true)"
+        }
+      }
+    },
+    {
+      "id": "top-deep-03",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 420
+      },
+      "data": {
+        "label": "Log: build matches ^10\\.\\d+",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Deep combo 3: build matches ^10\\.\\d+ regex"
+        }
+      }
+    },
+    {
+      "id": "top-deep-04",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 540
+      },
+      "data": {
+        "label": "Log: disk>=50 OR mem<1024",
+        "activityType": "log",
+        "config": {
+          "level": "warning",
+          "message": "Deep combo 4: disk>=50% OR mem<1024MB"
+        }
+      }
+    },
+    {
+      "id": "top-j-combo",
+      "type": "activity",
+      "position": {
+        "x": 7460,
+        "y": 300
+      },
+      "data": {
+        "label": "Junction: waitAny (4 combos)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "top-log-end",
+      "type": "activity",
+      "position": {
+        "x": 7780,
+        "y": 300
+      },
+      "data": {
+        "label": "Log: TOP lane complete",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Lane TOP work complete, forwarding to sync-3"
+        }
+      }
+    },
+    {
+      "id": "m01-rest-get",
+      "type": "activity",
+      "position": {
+        "x": 2100,
+        "y": 900
+      },
+      "data": {
+        "label": "restApi: GET httpbin",
+        "activityType": "restApi",
+        "outputVariable": "rest",
+        "config": {
+          "url": "https://httpbin.org/get?host={{host.param.hostName}}&env={{trg-manual.param.environment}}",
+          "method": "GET",
+          "timeoutSeconds": 15,
+          "retry": {
+            "maxAttempts": 3,
+            "backoff": "exponential",
+            "initialDelayMs": 1000,
+            "maxDelayMs": 10000
+          }
+        }
+      }
+    },
+    {
+      "id": "m02-log-restfail",
+      "type": "activity",
+      "position": {
+        "x": 2440,
+        "y": 1080
+      },
+      "data": {
+        "label": "Log: REST failed",
+        "activityType": "log",
+        "config": {
+          "level": "warning",
+          "message": "REST call failed after retries — falling back to SQL-only path"
+        }
+      }
+    },
+    {
+      "id": "m03-sql-select",
+      "type": "activity",
+      "position": {
+        "x": 2440,
+        "y": 900
+      },
+      "data": {
+        "label": "sql: SQLite SELECT 1",
+        "activityType": "sql",
+        "outputVariable": "sql1",
+        "config": {
+          "provider": "sqlite",
+          "connectionString": "Data Source=:memory:",
+          "query": "SELECT 1 AS n, 'ok' AS msg, CURRENT_TIMESTAMP AS ts",
+          "timeoutSeconds": 15
+        }
+      }
+    },
+    {
+      "id": "m04-sql-params",
+      "type": "activity",
+      "position": {
+        "x": 2780,
+        "y": 900
+      },
+      "data": {
+        "label": "sql: SQLite with params",
+        "activityType": "sql",
+        "outputVariable": "sql2",
+        "config": {
+          "provider": "sqlite",
+          "connectionString": "Data Source=:memory:",
+          "query": "SELECT @env AS env, @host AS host, @thr AS threshold",
+          "parameters": {
+            "env": "{{trg-manual.param.environment}}",
+            "host": "{{host.param.hostName}}",
+            "thr": "{{trg-manual.param.threshold}}"
+          },
+          "timeoutSeconds": 15
+        }
+      }
+    },
+    {
+      "id": "mid-jrest",
+      "type": "activity",
+      "position": {
+        "x": 3180,
+        "y": 900
+      },
+      "data": {
+        "label": "Junction: waitAny (rest or fail)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "mid-log-phase2done",
+      "type": "activity",
+      "position": {
+        "x": 3540,
+        "y": 900
+      },
+      "data": {
+        "label": "Log: MID Phase-2 complete",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID Phase-2 (REST+SQL chain) done"
+        }
+      }
+    },
+    {
+      "id": "m05-xml",
+      "type": "activity",
+      "position": {
+        "x": 4620,
+        "y": 900
+      },
+      "data": {
+        "label": "xmlQuery: /root/item",
+        "activityType": "xmlQuery",
+        "outputVariable": "xml",
+        "config": {
+          "source": "inline",
+          "content": "<root xmlns:np=\"https://nodepilot.example\"><item id=\"1\">Alpha</item><item id=\"2\">Beta</item><item id=\"3\">Gamma</item><np:note>ok</np:note></root>",
+          "xpath": "/root/item",
+          "namespaces": {
+            "np": "https://nodepilot.example"
+          },
+          "resultMode": "all"
+        }
+      }
+    },
+    {
+      "id": "m06-json",
+      "type": "activity",
+      "position": {
+        "x": 4940,
+        "y": 900
+      },
+      "data": {
+        "label": "jsonQuery: $.items[*].name (BREAKPOINT)",
+        "activityType": "jsonQuery",
+        "outputVariable": "json",
+        "breakpoint": true,
+        "config": {
+          "source": "inline",
+          "content": "{\"items\":[{\"name\":\"a\",\"v\":1},{\"name\":\"b\",\"v\":2},{\"name\":\"c\",\"v\":3}]}",
+          "jsonPath": "$.items[*].name",
+          "resultMode": "all"
+        }
+      }
+    },
+    {
+      "id": "m07-rest-post",
+      "type": "activity",
+      "position": {
+        "x": 5260,
+        "y": 900
+      },
+      "data": {
+        "label": "restApi: POST echo",
+        "activityType": "restApi",
+        "outputVariable": "post",
+        "config": {
+          "url": "https://httpbin.org/post",
+          "method": "POST",
+          "body": "{\"host\":\"{{host.param.hostName}}\",\"env\":\"{{trg-manual.param.environment}}\",\"iter\":{{trg-manual.param.iteration}}}",
+          "headers": {
+            "Content-Type": "application/json",
+            "X-Demo-Source": "NodePilot-XL"
+          },
+          "timeoutSeconds": 20,
+          "retry": {
+            "maxAttempts": 2,
+            "backoff": "linear",
+            "initialDelayMs": 1000,
+            "maxDelayMs": 3000
+          }
+        }
+      }
+    },
+    {
+      "id": "m08-foreach",
+      "type": "activity",
+      "position": {
+        "x": 5580,
+        "y": 900
+      },
+      "data": {
+        "label": "forEach: 5 items -> child",
+        "activityType": "forEach",
+        "outputVariable": "fe",
+        "config": {
+          "childWorkflowNameOrId": "NodePilot Tech-Demo - Child",
+          "items": "[{\"fromHost\":\"itemA\"},{\"fromHost\":\"itemB\"},{\"fromHost\":\"itemC\"},{\"fromHost\":\"itemD\"},{\"fromHost\":\"itemE\"}]",
+          "itemsFormat": "json",
+          "itemParameterName": "item",
+          "indexParameterName": "idx",
+          "parameters": {
+            "fromHost": "{{host.param.hostName}}",
+            "tag": "{{trg-manual.param.environment}}",
+            "now": "{{host.param.now}}"
+          },
+          "maxParallelism": 3,
+          "continueOnError": true,
+          "timeoutSecondsPerItem": 60
+        }
+      }
+    },
+    {
+      "id": "m09-sw-sync",
+      "type": "activity",
+      "position": {
+        "x": 5900,
+        "y": 900
+      },
+      "data": {
+        "label": "startWorkflow: Child (sync)",
+        "activityType": "startWorkflow",
+        "outputVariable": "childSync",
+        "config": {
+          "workflowNameOrId": "NodePilot Tech-Demo - Child",
+          "parameters": {
+            "fromHost": "{{host.param.hostName}}",
+            "tag": "sync-{{trg-manual.param.environment}}",
+            "now": "{{host.param.now}}"
+          },
+          "waitForCompletion": true,
+          "timeoutSeconds": 60
+        }
+      }
+    },
+    {
+      "id": "m10-log-childfail",
+      "type": "activity",
+      "position": {
+        "x": 5900,
+        "y": 1080
+      },
+      "data": {
+        "label": "Log: child failed",
+        "activityType": "log",
+        "config": {
+          "level": "warning",
+          "message": "Child workflow returned failure — continuing with sync=null"
+        }
+      }
+    },
+    {
+      "id": "m11-sw-fire",
+      "type": "activity",
+      "position": {
+        "x": 6220,
+        "y": 900
+      },
+      "data": {
+        "label": "startWorkflow: Child (fire&forget)",
+        "activityType": "startWorkflow",
+        "outputVariable": "childFire",
+        "config": {
+          "workflowNameOrId": "NodePilot Tech-Demo - Child",
+          "parameters": {
+            "fromHost": "{{host.param.hostName}}",
+            "tag": "fire-{{trg-manual.param.environment}}",
+            "now": "{{host.param.now}}"
+          },
+          "waitForCompletion": false,
+          "timeoutSeconds": 10
+        }
+      }
+    },
+    {
+      "id": "m12-return-mid",
+      "type": "activity",
+      "position": {
+        "x": 6540,
+        "y": 900
+      },
+      "data": {
+        "label": "returnData: MID collector",
+        "activityType": "returnData",
+        "outputVariable": "midCollect",
+        "config": {
+          "data": {
+            "restStatus": "{{rest.param.statusCode}}",
+            "sql1Ok": "{{sql1.param.rowCount}}",
+            "sql2Ok": "{{sql2.param.rowCount}}",
+            "xmlCount": "{{xml.param.count}}",
+            "jsonCount": "{{json.param.count}}",
+            "foreachTotal": "{{fe.param.total}}",
+            "foreachSucceeded": "{{fe.param.succeeded}}",
+            "childSyncStatus": "{{childSync.param.__status}}"
+          }
+        }
+      }
+    },
+    {
+      "id": "m13-delay-a",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 720
+      },
+      "data": {
+        "label": "Delay 1s (nofM-a)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 1,
+          "retry": {
+            "maxAttempts": 2,
+            "backoff": "fixed",
+            "initialDelayMs": 500
+          }
+        }
+      }
+    },
+    {
+      "id": "m14-delay-b",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 900
+      },
+      "data": {
+        "label": "Delay 2s (nofM-b)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 2,
+          "retry": {
+            "maxAttempts": 2,
+            "backoff": "linear",
+            "initialDelayMs": 500,
+            "maxDelayMs": 2000
+          }
+        }
+      }
+    },
+    {
+      "id": "m15-delay-c",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 1080
+      },
+      "data": {
+        "label": "Delay 5s (nofM-c)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 5,
+          "retry": {
+            "maxAttempts": 2,
+            "backoff": "exponential",
+            "initialDelayMs": 500,
+            "maxDelayMs": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "m16-jnofm",
+      "type": "activity",
+      "position": {
+        "x": 7460,
+        "y": 900
+      },
+      "data": {
+        "label": "Junction: waitNofM (2/3)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitNofM",
+          "requiredCount": 2
+        }
+      }
+    },
+    {
+      "id": "m17-waitcond",
+      "type": "activity",
+      "position": {
+        "x": 7780,
+        "y": 900
+      },
+      "data": {
+        "label": "waitForCondition: poll",
+        "activityType": "waitForCondition",
+        "targetMachineId": "localhost",
+        "config": {
+          "script": "$true",
+          "intervalSeconds": 3,
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "m-d1",
+      "type": "activity",
+      "position": {
+        "x": 8140,
+        "y": 720
+      },
+      "data": {
+        "label": "Log: deep-NOT(empty & dry)",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo NOT(empty & dry)"
+        }
+      }
+    },
+    {
+      "id": "m-d2",
+      "type": "activity",
+      "position": {
+        "x": 8140,
+        "y": 840
+      },
+      "data": {
+        "label": "Log: deep-AND(OR(<,<), NOT(isTrue))",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo AND(OR(<,<), NOT(isTrue))"
+        }
+      }
+    },
+    {
+      "id": "m-d3",
+      "type": "activity",
+      "position": {
+        "x": 8140,
+        "y": 960
+      },
+      "data": {
+        "label": "Log: deep-matches AND contains",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo matches AND contains"
+        }
+      }
+    },
+    {
+      "id": "m-d4",
+      "type": "activity",
+      "position": {
+        "x": 8140,
+        "y": 1080
+      },
+      "data": {
+        "label": "Log: deep-cpu>=4 & mem>=1024",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo cpu>=4 & mem>=1024"
+        }
+      }
+    },
+    {
+      "id": "m-d5",
+      "type": "activity",
+      "position": {
+        "x": 8500,
+        "y": 720
+      },
+      "data": {
+        "label": "Log: deep-env in {prod,stg,dev}",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo env in {prod,stg,dev}"
+        }
+      }
+    },
+    {
+      "id": "m-d6",
+      "type": "activity",
+      "position": {
+        "x": 8500,
+        "y": 840
+      },
+      "data": {
+        "label": "Log: deep-host matches & !empty",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo host matches & !empty"
+        }
+      }
+    },
+    {
+      "id": "m-d7",
+      "type": "activity",
+      "position": {
+        "x": 8500,
+        "y": 960
+      },
+      "data": {
+        "label": "Log: deep-sql ok & rest ok",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo sql ok & rest ok"
+        }
+      }
+    },
+    {
+      "id": "m-d8",
+      "type": "activity",
+      "position": {
+        "x": 8500,
+        "y": 1080
+      },
+      "data": {
+        "label": "Log: deep-(ipv4 & gw set) OR 127.x",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo (ipv4 & gw set) OR 127.x"
+        }
+      }
+    },
+    {
+      "id": "m-d9",
+      "type": "activity",
+      "position": {
+        "x": 8860,
+        "y": 840
+      },
+      "data": {
+        "label": "Log: deep-fe.succ>=3 & fe.fail=0",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo fe.succ>=3 & fe.fail=0"
+        }
+      }
+    },
+    {
+      "id": "m-d10",
+      "type": "activity",
+      "position": {
+        "x": 8860,
+        "y": 960
+      },
+      "data": {
+        "label": "Log: deep-ALWAYS (mid fallback)",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "MID deep combo ALWAYS (mid fallback)"
+        }
+      }
+    },
+    {
+      "id": "m-jdeep",
+      "type": "activity",
+      "position": {
+        "x": 9220,
+        "y": 900
+      },
+      "data": {
+        "label": "Junction: waitAny (10 deep)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "m-log-end",
+      "type": "activity",
+      "position": {
+        "x": 9580,
+        "y": 900
+      },
+      "data": {
+        "label": "Log: MID lane complete",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Lane MID complete — forwarding to finale"
+        }
+      }
+    },
+    {
+      "id": "bot01-delay-fast",
+      "type": "activity",
+      "position": {
+        "x": 2100,
+        "y": 1320
+      },
+      "data": {
+        "label": "Delay 1s (fast)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 1
+        }
+      }
+    },
+    {
+      "id": "bot02-delay-med",
+      "type": "activity",
+      "position": {
+        "x": 2100,
+        "y": 1500
+      },
+      "data": {
+        "label": "Delay 3s (med)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 3
+        }
+      }
+    },
+    {
+      "id": "bot03-delay-slow",
+      "type": "activity",
+      "position": {
+        "x": 2100,
+        "y": 1680
+      },
+      "data": {
+        "label": "Delay 7s (slow)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 7
+        }
+      }
+    },
+    {
+      "id": "bot04-jany",
+      "type": "activity",
+      "position": {
+        "x": 2440,
+        "y": 1500
+      },
+      "data": {
+        "label": "Junction: waitAny (fastest)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "bot05-waitcond",
+      "type": "activity",
+      "position": {
+        "x": 2800,
+        "y": 1500
+      },
+      "data": {
+        "label": "waitForCondition: timing ready",
+        "activityType": "waitForCondition",
+        "targetMachineId": "localhost",
+        "config": {
+          "script": "$true",
+          "intervalSeconds": 2,
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "bot06-log-timing",
+      "type": "activity",
+      "position": {
+        "x": 3140,
+        "y": 1500
+      },
+      "data": {
+        "label": "Log: timing done",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT timing phase done — fastest lane finished first"
+        }
+      }
+    },
+    {
+      "id": "bot07-delay-disabled",
+      "type": "activity",
+      "position": {
+        "x": 3460,
+        "y": 1500
+      },
+      "data": {
+        "label": "Delay (node DISABLED)",
+        "activityType": "delay",
+        "disabled": true,
+        "config": {
+          "seconds": 10
+        }
+      }
+    },
+    {
+      "id": "bot08-log-afterdis",
+      "type": "activity",
+      "position": {
+        "x": 3780,
+        "y": 1500
+      },
+      "data": {
+        "label": "Log: after disabled node",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Runs even though upstream delay is disabled (via skip-cascade catch)"
+        }
+      }
+    },
+    {
+      "id": "bot09-file-copy",
+      "type": "activity",
+      "position": {
+        "x": 4620,
+        "y": 1320
+      },
+      "data": {
+        "label": "fileOperation: copy demo",
+        "activityType": "fileOperation",
+        "targetMachineId": "localhost",
+        "config": {
+          "operation": "copy",
+          "path": "C:\\Windows\\System32\\drivers\\etc\\hosts",
+          "destination": "{{host.param.userName}}-hosts-copy.txt",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "bot10-svc-restart",
+      "type": "activity",
+      "position": {
+        "x": 4620,
+        "y": 1500
+      },
+      "data": {
+        "label": "serviceManagement: status W32Time",
+        "activityType": "serviceManagement",
+        "targetMachineId": "localhost",
+        "config": {
+          "serviceName": "W32Time",
+          "action": "status",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "bot11-reg-read2",
+      "type": "activity",
+      "position": {
+        "x": 4620,
+        "y": 1680
+      },
+      "data": {
+        "label": "registryOperation: BuildLab read",
+        "activityType": "registryOperation",
+        "targetMachineId": "localhost",
+        "config": {
+          "operation": "read",
+          "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+          "valueName": "BuildLab",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "bot12-wmi-bios",
+      "type": "activity",
+      "position": {
+        "x": 4620,
+        "y": 1860
+      },
+      "data": {
+        "label": "wmiQuery: Win32_BIOS",
+        "activityType": "wmiQuery",
+        "targetMachineId": "localhost",
+        "config": {
+          "className": "Win32_BIOS",
+          "namespace": "root\\cimv2",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "bot13-jallremote",
+      "type": "activity",
+      "position": {
+        "x": 4940,
+        "y": 1500
+      },
+      "data": {
+        "label": "Junction: waitAll (4 remote)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAll"
+        }
+      }
+    },
+    {
+      "id": "bot14-email",
+      "type": "activity",
+      "position": {
+        "x": 5260,
+        "y": 1320
+      },
+      "data": {
+        "label": "emailNotification: summary",
+        "activityType": "emailNotification",
+        "config": {
+          "to": "ops@example.com",
+          "subject": "NodePilot XL demo run on {{host.param.hostName}} ({{trg-manual.param.environment}})",
+          "body": "XL run complete.\nHost: {{host.param.hostName}} ({{host.param.osName}})\nEnv: {{trg-manual.param.environment}}\nCPUs: {{host.param.cpuCount}}\nMem free: {{host.param.memFreeMB}}MB\nDisk free: {{host.param.diskFreeGB}}/{{host.param.diskTotalGB}} GB\nIteration: {{trg-manual.param.iteration}}",
+          "isHtml": false
+        }
+      }
+    },
+    {
+      "id": "bot15-power",
+      "type": "activity",
+      "position": {
+        "x": 5260,
+        "y": 1500
+      },
+      "data": {
+        "label": "powerManagement: abort (safe)",
+        "activityType": "powerManagement",
+        "targetMachineId": "localhost",
+        "config": {
+          "action": "abort",
+          "delaySeconds": 0,
+          "force": false,
+          "message": ""
+        }
+      }
+    },
+    {
+      "id": "bot16-log-disnode",
+      "type": "activity",
+      "position": {
+        "x": 5260,
+        "y": 1680
+      },
+      "data": {
+        "label": "Log: node DISABLED",
+        "activityType": "log",
+        "disabled": true,
+        "config": {
+          "level": "warning",
+          "message": "This node is node-level disabled — shown as Skipped in UI"
+        }
+      }
+    },
+    {
+      "id": "bot17-log-ghost",
+      "type": "activity",
+      "position": {
+        "x": 5580,
+        "y": 1680
+      },
+      "data": {
+        "label": "Log: ghost (disabled edge target)",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "If you see this, the disabled-edge fired (should NOT happen)"
+        }
+      }
+    },
+    {
+      "id": "bot18-log-notify",
+      "type": "activity",
+      "position": {
+        "x": 5580,
+        "y": 1500
+      },
+      "data": {
+        "label": "Log: notify done",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Notification fan complete"
+        }
+      }
+    },
+    {
+      "id": "bot19-log-bp1",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 1320
+      },
+      "data": {
+        "label": "Log: BREAKPOINT 1",
+        "activityType": "log",
+        "breakpoint": true,
+        "config": {
+          "level": "info",
+          "message": "Breakpoint 1: inspect host.param.* + rest.param.* + fe.param.*"
+        }
+      }
+    },
+    {
+      "id": "bot20-runscript-bp",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 1500
+      },
+      "data": {
+        "label": "runScript: BREAKPOINT 2",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "bp2",
+        "breakpoint": true,
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 30,
+          "script": "$summary = 'bp2-ok'\n$ranAt = (Get-Date).ToString('HH:mm:ss')\nWrite-Output \"Breakpoint 2 ran at $ranAt\""
+        }
+      }
+    },
+    {
+      "id": "bot21-log-disnode2",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 1680
+      },
+      "data": {
+        "label": "Log: another DISABLED node",
+        "activityType": "log",
+        "disabled": true,
+        "config": {
+          "level": "info",
+          "message": "2nd node-level disabled demo"
+        }
+      }
+    },
+    {
+      "id": "bot22-file-del",
+      "type": "activity",
+      "position": {
+        "x": 7100,
+        "y": 1860
+      },
+      "data": {
+        "label": "fileOperation: delete (cleanup)",
+        "activityType": "fileOperation",
+        "targetMachineId": "localhost",
+        "config": {
+          "operation": "delete",
+          "path": "{{host.param.userName}}-hosts-copy.txt",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "bot-d1",
+      "type": "activity",
+      "position": {
+        "x": 7460,
+        "y": 1320
+      },
+      "data": {
+        "label": "Log: bot-deep-matches ^Win.*Pro$",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT deep combo matches ^Win.*Pro$"
+        }
+      }
+    },
+    {
+      "id": "bot-d2",
+      "type": "activity",
+      "position": {
+        "x": 7460,
+        "y": 1500
+      },
+      "data": {
+        "label": "Log: bot-deep-matches ^10\\.0\\.\\d+",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT deep combo matches ^10\\.0\\.\\d+"
+        }
+      }
+    },
+    {
+      "id": "bot-d3",
+      "type": "activity",
+      "position": {
+        "x": 7460,
+        "y": 1680
+      },
+      "data": {
+        "label": "Log: bot-deep-contains OR starts OR ends",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT deep combo contains OR starts OR ends"
+        }
+      }
+    },
+    {
+      "id": "bot-d4",
+      "type": "activity",
+      "position": {
+        "x": 7460,
+        "y": 1860
+      },
+      "data": {
+        "label": "Log: bot-deep-NOT isEmpty AND NOT isFalse",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT deep combo NOT isEmpty AND NOT isFalse"
+        }
+      }
+    },
+    {
+      "id": "bot-d5",
+      "type": "activity",
+      "position": {
+        "x": 7820,
+        "y": 1320
+      },
+      "data": {
+        "label": "Log: bot-deep-env != empty AND != null",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT deep combo env != empty AND != null"
+        }
+      }
+    },
+    {
+      "id": "bot-d6",
+      "type": "activity",
+      "position": {
+        "x": 7820,
+        "y": 1500
+      },
+      "data": {
+        "label": "Log: bot-deep-iter>=1 & iter<=10",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT deep combo iter>=1 & iter<=10"
+        }
+      }
+    },
+    {
+      "id": "bot-d7",
+      "type": "activity",
+      "position": {
+        "x": 7820,
+        "y": 1680
+      },
+      "data": {
+        "label": "Log: bot-deep-mem<8192 OR disk<100",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT deep combo mem<8192 OR disk<100"
+        }
+      }
+    },
+    {
+      "id": "bot-d8",
+      "type": "activity",
+      "position": {
+        "x": 7820,
+        "y": 1860
+      },
+      "data": {
+        "label": "Log: bot-deep-ALWAYS (bot fallback)",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT deep combo ALWAYS (bot fallback)"
+        }
+      }
+    },
+    {
+      "id": "bot-jdeep",
+      "type": "activity",
+      "position": {
+        "x": 8180,
+        "y": 1500
+      },
+      "data": {
+        "label": "Junction: waitAny (8 bot deep)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "bot-log-cleanup",
+      "type": "activity",
+      "position": {
+        "x": 8540,
+        "y": 1500
+      },
+      "data": {
+        "label": "Log: cleanup",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "BOT cleanup complete"
+        }
+      }
+    },
+    {
+      "id": "bot-delay-final",
+      "type": "activity",
+      "position": {
+        "x": 8900,
+        "y": 1500
+      },
+      "data": {
+        "label": "Delay 1s (BOT settle)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 1
+        }
+      }
+    },
+    {
+      "id": "bot-log-end",
+      "type": "activity",
+      "position": {
+        "x": 9260,
+        "y": 1500
+      },
+      "data": {
+        "label": "Log: BOT lane complete",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Lane BOT work complete, forwarding to finale"
+        }
+      }
+    },
+    {
+      "id": "final-junction",
+      "type": "activity",
+      "position": {
+        "x": 10000,
+        "y": 900
+      },
+      "data": {
+        "label": "Junction: waitAny (3 lanes)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "final-invoke",
+      "type": "activity",
+      "position": {
+        "x": 10360,
+        "y": 900
+      },
+      "data": {
+        "label": "startWorkflow: Child (finale)",
+        "activityType": "startWorkflow",
+        "outputVariable": "childFinale",
+        "config": {
+          "workflowNameOrId": "NodePilot Tech-Demo - Child",
+          "parameters": {
+            "fromHost": "{{host.param.hostName}}",
+            "tag": "finale-{{trg-manual.param.environment}}",
+            "now": "{{host.param.now}}"
+          },
+          "waitForCompletion": true,
+          "timeoutSeconds": 60
+        }
+      }
+    },
+    {
+      "id": "final-return",
+      "type": "activity",
+      "position": {
+        "x": 10720,
+        "y": 900
+      },
+      "data": {
+        "label": "returnData: aggregate (30+ keys)",
+        "activityType": "returnData",
+        "config": {
+          "data": {
+            "environment": "{{trg-manual.param.environment}}",
+            "threshold": "{{trg-manual.param.threshold}}",
+            "dryRun": "{{trg-manual.param.dryRun}}",
+            "iteration": "{{trg-manual.param.iteration}}",
+            "host": "{{host.param.hostName}}",
+            "user": "{{host.param.userName}}",
+            "osName": "{{host.param.osName}}",
+            "osVersion": "{{host.param.osVersion}}",
+            "buildNumber": "{{host.param.buildNumber}}",
+            "cpuCount": "{{host.param.cpuCount}}",
+            "memFreeMB": "{{host.param.memFreeMB}}",
+            "memTotalMB": "{{host.param.memTotalMB}}",
+            "diskFreeGB": "{{host.param.diskFreeGB}}",
+            "diskTotalGB": "{{host.param.diskTotalGB}}",
+            "diskUsedPct": "{{host.param.diskUsedPct}}",
+            "isDomain": "{{host.param.isDomain}}",
+            "manufacturer": "{{host.param.manufacturer}}",
+            "model": "{{host.param.model}}",
+            "collectedAt": "{{host.param.now}}",
+            "ipAddress": "{{net.param.ipAddress}}",
+            "gateway": "{{net.param.gatewayIp}}",
+            "dnsServer": "{{net.param.dnsValue}}",
+            "netUp": "{{net.param.netUp}}",
+            "restStatus": "{{rest.param.statusCode}}",
+            "restPostStatus": "{{post.param.statusCode}}",
+            "sql1Rows": "{{sql1.param.rowCount}}",
+            "sql2Rows": "{{sql2.param.rowCount}}",
+            "xmlCount": "{{xml.param.count}}",
+            "jsonCount": "{{json.param.count}}",
+            "foreachTotal": "{{fe.param.total}}",
+            "foreachSucceeded": "{{fe.param.succeeded}}",
+            "foreachFailed": "{{fe.param.failed}}",
+            "childSyncStatus": "{{childSync.param.__status}}",
+            "childFinaleResult": "{{childFinale.param.result}}",
+            "severity": "{{proc.param.severity}}",
+            "phase": "{{proc.param.phase}}"
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e001",
+      "source": "trg-manual",
+      "target": "log-kickoff",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e002",
+      "source": "trg-schedule",
+      "target": "log-kickoff",
+      "type": "labeled",
+      "data": {
+        "label": "DISABLED trigger",
+        "disabled": true
+      }
+    },
+    {
+      "id": "e003",
+      "source": "trg-webhook",
+      "target": "log-kickoff",
+      "type": "labeled",
+      "data": {
+        "label": "DISABLED trigger",
+        "disabled": true
+      }
+    },
+    {
+      "id": "e004",
+      "source": "trg-filewatch",
+      "target": "log-kickoff",
+      "type": "labeled",
+      "data": {
+        "label": "DISABLED trigger",
+        "disabled": true
+      }
+    },
+    {
+      "id": "e005",
+      "source": "trg-database",
+      "target": "log-kickoff",
+      "type": "labeled",
+      "data": {
+        "label": "DISABLED trigger",
+        "disabled": true
+      }
+    },
+    {
+      "id": "e006",
+      "source": "trg-eventlog",
+      "target": "log-kickoff",
+      "type": "labeled",
+      "data": {
+        "label": "DISABLED trigger",
+        "disabled": true
+      }
+    },
+    {
+      "id": "e007",
+      "source": "log-kickoff",
+      "target": "delay-init",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "log-kickoff.success"
+      }
+    },
+    {
+      "id": "e008",
+      "source": "delay-init",
+      "target": "collect-host",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e009",
+      "source": "collect-host",
+      "target": "collect-net",
+      "type": "labeled",
+      "data": {
+        "label": "hostName set",
+        "conditionExpression": {
+          "type": "comparison",
+          "op": "isNotEmpty",
+          "left": {
+            "kind": "variable",
+            "stepId": "collect-host",
+            "field": "param",
+            "paramName": "hostName"
+          }
+        }
+      }
+    },
+    {
+      "id": "e010",
+      "source": "collect-net",
+      "target": "process-data",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "collect-net.success"
+      }
+    },
+    {
+      "id": "e011",
+      "source": "process-data",
+      "target": "sync1",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e012",
+      "source": "sync1",
+      "target": "r01-file-exists",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e013",
+      "source": "sync1",
+      "target": "r02-svc-status",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e014",
+      "source": "sync1",
+      "target": "r03-reg-read",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e015",
+      "source": "sync1",
+      "target": "r04-wmi-os",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e016",
+      "source": "sync1",
+      "target": "r05-prog-cmd",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e017",
+      "source": "sync1",
+      "target": "r06-waitcond-a",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e018",
+      "source": "sync1",
+      "target": "r07-file-list",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e019",
+      "source": "sync1",
+      "target": "r08-svc-list",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e020",
+      "source": "sync1",
+      "target": "r09-reg-write",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e021",
+      "source": "sync1",
+      "target": "r10-wmi-cpu",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e022",
+      "source": "sync1",
+      "target": "r11-prog-ps",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e023",
+      "source": "sync1",
+      "target": "r12-wmi-disk",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e024",
+      "source": "sync1",
+      "target": "m01-rest-get",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e025",
+      "source": "sync1",
+      "target": "bot01-delay-fast",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e026",
+      "source": "sync1",
+      "target": "bot02-delay-med",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e027",
+      "source": "sync1",
+      "target": "bot03-delay-slow",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e028",
+      "source": "r01-file-exists",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e029",
+      "source": "r02-svc-status",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e030",
+      "source": "r03-reg-read",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e031",
+      "source": "r04-wmi-os",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e032",
+      "source": "r05-prog-cmd",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e033",
+      "source": "r06-waitcond-a",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e034",
+      "source": "r07-file-list",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e035",
+      "source": "r08-svc-list",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e036",
+      "source": "r09-reg-write",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e037",
+      "source": "r10-wmi-cpu",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e038",
+      "source": "r11-prog-ps",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e039",
+      "source": "r12-wmi-disk",
+      "target": "jall-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e040",
+      "source": "jall-top",
+      "target": "d01-log-eqneq",
+      "type": "labeled",
+      "data": {
+        "label": "env==prod & env!=stg",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "==",
+              "left": {
+                "kind": "variable",
+                "stepId": "trg-manual",
+                "field": "param",
+                "paramName": "environment"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "production"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "!=",
+              "left": {
+                "kind": "variable",
+                "stepId": "trg-manual",
+                "field": "param",
+                "paramName": "environment"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "staging"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e041",
+      "source": "jall-top",
+      "target": "d02-log-range",
+      "type": "labeled",
+      "data": {
+        "label": "cpu in [1..128]",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": ">=",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "cpuCount"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "1"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "<=",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "cpuCount"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "128"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e042",
+      "source": "jall-top",
+      "target": "d03-log-disk",
+      "type": "labeled",
+      "data": {
+        "label": "disk% > thr OR free < 1GB",
+        "conditionExpression": {
+          "type": "group",
+          "op": "OR",
+          "children": [
+            {
+              "type": "comparison",
+              "op": ">",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "diskUsedPct"
+              },
+              "right": {
+                "kind": "variable",
+                "stepId": "trg-manual",
+                "field": "param",
+                "paramName": "threshold"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "<",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "diskFreeGB"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e043",
+      "source": "jall-top",
+      "target": "d04-log-strings",
+      "type": "labeled",
+      "data": {
+        "label": "contains+starts+ends+matches",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "contains",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "osName"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "Windows"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "startsWith",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "osName"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "Microsoft"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "endsWith",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "osName"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "Pro"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "matches",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "osVersion"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "^10\\."
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e044",
+      "source": "jall-top",
+      "target": "d05-log-unarypos",
+      "type": "labeled",
+      "data": {
+        "label": "output set & isDomain",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "isNotEmpty",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "output"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "isTrue",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "isDomain"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e045",
+      "source": "jall-top",
+      "target": "d06-log-unaryneg",
+      "type": "labeled",
+      "data": {
+        "label": "empty & !dry",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "isEmpty",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "emptyField"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "isFalse",
+              "left": {
+                "kind": "variable",
+                "stepId": "trg-manual",
+                "field": "param",
+                "paramName": "dryRun"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e046",
+      "source": "jall-top",
+      "target": "d07-log-notpanic",
+      "type": "labeled",
+      "data": {
+        "label": "NOT contains PANIC",
+        "conditionExpression": {
+          "type": "not",
+          "child": {
+            "type": "comparison",
+            "op": "contains",
+            "left": {
+              "kind": "variable",
+              "stepId": "collect-host",
+              "field": "output"
+            },
+            "right": {
+              "kind": "literal",
+              "value": "PANIC"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "e047",
+      "source": "jall-top",
+      "target": "d08-log-build",
+      "type": "labeled",
+      "data": {
+        "label": "build matches & env!=prod",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "matches",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "osVersion"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "^10\\."
+              }
+            },
+            {
+              "type": "not",
+              "child": {
+                "type": "comparison",
+                "op": "==",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "trg-manual",
+                  "field": "param",
+                  "paramName": "environment"
+                },
+                "right": {
+                  "kind": "literal",
+                  "value": "production"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e048",
+      "source": "jall-top",
+      "target": "d09-log-netup",
+      "type": "labeled",
+      "data": {
+        "label": "netUp=true OR gw set",
+        "conditionExpression": {
+          "type": "group",
+          "op": "OR",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "isTrue",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-net",
+                "field": "param",
+                "paramName": "netUp"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "isNotEmpty",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-net",
+                "field": "param",
+                "paramName": "gatewayIp"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e049",
+      "source": "jall-top",
+      "target": "d10-log-startsor",
+      "type": "labeled",
+      "data": {
+        "label": "env starts prod OR stg",
+        "conditionExpression": {
+          "type": "group",
+          "op": "OR",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "startsWith",
+              "left": {
+                "kind": "variable",
+                "stepId": "trg-manual",
+                "field": "param",
+                "paramName": "environment"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "prod"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "startsWith",
+              "left": {
+                "kind": "variable",
+                "stepId": "trg-manual",
+                "field": "param",
+                "paramName": "environment"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "stg"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e050",
+      "source": "d01-log-eqneq",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e051",
+      "source": "d02-log-range",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e052",
+      "source": "d03-log-disk",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e053",
+      "source": "d04-log-strings",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e054",
+      "source": "d05-log-unarypos",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e055",
+      "source": "d06-log-unaryneg",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e056",
+      "source": "d07-log-notpanic",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e057",
+      "source": "d08-log-build",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e058",
+      "source": "d09-log-netup",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e059",
+      "source": "d10-log-startsor",
+      "target": "jmatch-top",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e060",
+      "source": "jmatch-top",
+      "target": "top-log-phase2done",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e061",
+      "source": "top-log-phase2done",
+      "target": "top-delay-bridge",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e062",
+      "source": "top-delay-bridge",
+      "target": "top-log-phase3",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e063",
+      "source": "top-log-phase3",
+      "target": "top-delay-phase3",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e064",
+      "source": "m01-rest-get",
+      "target": "m03-sql-select",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "m01-rest-get.success"
+      }
+    },
+    {
+      "id": "e065",
+      "source": "m01-rest-get",
+      "target": "m02-log-restfail",
+      "type": "labeled",
+      "data": {
+        "label": "On Failure",
+        "condition": "m01-rest-get.failed"
+      }
+    },
+    {
+      "id": "e066",
+      "source": "m03-sql-select",
+      "target": "m04-sql-params",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e067",
+      "source": "m04-sql-params",
+      "target": "mid-jrest",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e068",
+      "source": "m02-log-restfail",
+      "target": "mid-jrest",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e069",
+      "source": "mid-jrest",
+      "target": "mid-log-phase2done",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e070",
+      "source": "bot01-delay-fast",
+      "target": "bot04-jany",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e071",
+      "source": "bot02-delay-med",
+      "target": "bot04-jany",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e072",
+      "source": "bot03-delay-slow",
+      "target": "bot04-jany",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e073",
+      "source": "bot04-jany",
+      "target": "bot05-waitcond",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e074",
+      "source": "bot05-waitcond",
+      "target": "bot06-log-timing",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e075",
+      "source": "bot06-log-timing",
+      "target": "bot07-delay-disabled",
+      "type": "labeled",
+      "data": {
+        "label": "Always (target disabled)"
+      }
+    },
+    {
+      "id": "e076",
+      "source": "bot07-delay-disabled",
+      "target": "bot08-log-afterdis",
+      "type": "labeled",
+      "data": {
+        "label": "Always (cascades from disabled)"
+      }
+    },
+    {
+      "id": "e077",
+      "source": "mid-log-phase2done",
+      "target": "m05-xml",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e078",
+      "source": "bot08-log-afterdis",
+      "target": "bot09-file-copy",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e079",
+      "source": "bot08-log-afterdis",
+      "target": "bot10-svc-restart",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e080",
+      "source": "bot08-log-afterdis",
+      "target": "bot11-reg-read2",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e081",
+      "source": "bot08-log-afterdis",
+      "target": "bot12-wmi-bios",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e082",
+      "source": "m05-xml",
+      "target": "m06-json",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "m05-xml.success"
+      }
+    },
+    {
+      "id": "e083",
+      "source": "m06-json",
+      "target": "m07-rest-post",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e084",
+      "source": "m07-rest-post",
+      "target": "m08-foreach",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "m07-rest-post.success"
+      }
+    },
+    {
+      "id": "e085",
+      "source": "m08-foreach",
+      "target": "m09-sw-sync",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e086",
+      "source": "m09-sw-sync",
+      "target": "m11-sw-fire",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "m09-sw-sync.success"
+      }
+    },
+    {
+      "id": "e087",
+      "source": "m09-sw-sync",
+      "target": "m10-log-childfail",
+      "type": "labeled",
+      "data": {
+        "label": "On Failure",
+        "condition": "m09-sw-sync.failed"
+      }
+    },
+    {
+      "id": "e088",
+      "source": "m10-log-childfail",
+      "target": "m11-sw-fire",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e089",
+      "source": "m11-sw-fire",
+      "target": "m12-return-mid",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e090",
+      "source": "bot09-file-copy",
+      "target": "bot13-jallremote",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e091",
+      "source": "bot10-svc-restart",
+      "target": "bot13-jallremote",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e092",
+      "source": "bot11-reg-read2",
+      "target": "bot13-jallremote",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e093",
+      "source": "bot12-wmi-bios",
+      "target": "bot13-jallremote",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e094",
+      "source": "bot13-jallremote",
+      "target": "bot14-email",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e095",
+      "source": "bot13-jallremote",
+      "target": "bot15-power",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e096",
+      "source": "bot13-jallremote",
+      "target": "bot16-log-disnode",
+      "type": "labeled",
+      "data": {
+        "label": "Always (target disabled)"
+      }
+    },
+    {
+      "id": "e097",
+      "source": "bot14-email",
+      "target": "bot17-log-ghost",
+      "type": "labeled",
+      "data": {
+        "label": "DISABLED edge",
+        "disabled": true
+      }
+    },
+    {
+      "id": "e098",
+      "source": "bot14-email",
+      "target": "bot18-log-notify",
+      "type": "labeled",
+      "data": {
+        "label": "Always (even on fail)"
+      }
+    },
+    {
+      "id": "e099",
+      "source": "bot15-power",
+      "target": "bot18-log-notify",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e100",
+      "source": "bot16-log-disnode",
+      "target": "bot18-log-notify",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e101",
+      "source": "bot17-log-ghost",
+      "target": "bot18-log-notify",
+      "type": "labeled",
+      "data": {
+        "label": "Always (ghost)"
+      }
+    },
+    {
+      "id": "e102",
+      "source": "top-delay-phase3",
+      "target": "top-deep-01",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e103",
+      "source": "top-delay-phase3",
+      "target": "top-deep-02",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e104",
+      "source": "top-delay-phase3",
+      "target": "top-deep-03",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e105",
+      "source": "top-delay-phase3",
+      "target": "top-deep-04",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e106",
+      "source": "top-deep-01",
+      "target": "top-j-combo",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e107",
+      "source": "top-deep-02",
+      "target": "top-j-combo",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e108",
+      "source": "top-deep-03",
+      "target": "top-j-combo",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e109",
+      "source": "top-deep-04",
+      "target": "top-j-combo",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e110",
+      "source": "top-j-combo",
+      "target": "top-log-end",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e111",
+      "source": "m12-return-mid",
+      "target": "m13-delay-a",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e112",
+      "source": "m12-return-mid",
+      "target": "m14-delay-b",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e113",
+      "source": "m12-return-mid",
+      "target": "m15-delay-c",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e114",
+      "source": "m13-delay-a",
+      "target": "m16-jnofm",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e115",
+      "source": "m14-delay-b",
+      "target": "m16-jnofm",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e116",
+      "source": "m15-delay-c",
+      "target": "m16-jnofm",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e117",
+      "source": "m16-jnofm",
+      "target": "m17-waitcond",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e118",
+      "source": "m17-waitcond",
+      "target": "m-d1",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e119",
+      "source": "m-d1",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e120",
+      "source": "m17-waitcond",
+      "target": "m-d2",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e121",
+      "source": "m-d2",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e122",
+      "source": "m17-waitcond",
+      "target": "m-d3",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e123",
+      "source": "m-d3",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e124",
+      "source": "m17-waitcond",
+      "target": "m-d4",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e125",
+      "source": "m-d4",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e126",
+      "source": "m17-waitcond",
+      "target": "m-d5",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e127",
+      "source": "m-d5",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e128",
+      "source": "m17-waitcond",
+      "target": "m-d6",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e129",
+      "source": "m-d6",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e130",
+      "source": "m17-waitcond",
+      "target": "m-d7",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e131",
+      "source": "m-d7",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e132",
+      "source": "m17-waitcond",
+      "target": "m-d8",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e133",
+      "source": "m-d8",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e134",
+      "source": "m17-waitcond",
+      "target": "m-d9",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e135",
+      "source": "m-d9",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e136",
+      "source": "m17-waitcond",
+      "target": "m-d10",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e137",
+      "source": "m-d10",
+      "target": "m-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e138",
+      "source": "m-jdeep",
+      "target": "m-log-end",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e139",
+      "source": "bot18-log-notify",
+      "target": "bot19-log-bp1",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e140",
+      "source": "bot18-log-notify",
+      "target": "bot20-runscript-bp",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e141",
+      "source": "bot18-log-notify",
+      "target": "bot21-log-disnode2",
+      "type": "labeled",
+      "data": {
+        "label": "Always (target disabled)"
+      }
+    },
+    {
+      "id": "e142",
+      "source": "bot18-log-notify",
+      "target": "bot22-file-del",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e143",
+      "source": "bot19-log-bp1",
+      "target": "bot-d1",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e144",
+      "source": "bot19-log-bp1",
+      "target": "bot-d2",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e145",
+      "source": "bot19-log-bp1",
+      "target": "bot-d3",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e146",
+      "source": "bot19-log-bp1",
+      "target": "bot-d4",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e147",
+      "source": "bot20-runscript-bp",
+      "target": "bot-d1",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e148",
+      "source": "bot20-runscript-bp",
+      "target": "bot-d2",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e149",
+      "source": "bot20-runscript-bp",
+      "target": "bot-d3",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e150",
+      "source": "bot20-runscript-bp",
+      "target": "bot-d4",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e151",
+      "source": "bot21-log-disnode2",
+      "target": "bot-d1",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e152",
+      "source": "bot21-log-disnode2",
+      "target": "bot-d2",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e153",
+      "source": "bot21-log-disnode2",
+      "target": "bot-d3",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e154",
+      "source": "bot21-log-disnode2",
+      "target": "bot-d4",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e155",
+      "source": "bot22-file-del",
+      "target": "bot-d1",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e156",
+      "source": "bot22-file-del",
+      "target": "bot-d2",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e157",
+      "source": "bot22-file-del",
+      "target": "bot-d3",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e158",
+      "source": "bot22-file-del",
+      "target": "bot-d4",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e159",
+      "source": "bot19-log-bp1",
+      "target": "bot-d5",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e160",
+      "source": "bot19-log-bp1",
+      "target": "bot-d6",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e161",
+      "source": "bot19-log-bp1",
+      "target": "bot-d7",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e162",
+      "source": "bot19-log-bp1",
+      "target": "bot-d8",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e163",
+      "source": "bot20-runscript-bp",
+      "target": "bot-d5",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e164",
+      "source": "bot20-runscript-bp",
+      "target": "bot-d6",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e165",
+      "source": "bot20-runscript-bp",
+      "target": "bot-d7",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e166",
+      "source": "bot20-runscript-bp",
+      "target": "bot-d8",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e167",
+      "source": "bot21-log-disnode2",
+      "target": "bot-d5",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e168",
+      "source": "bot21-log-disnode2",
+      "target": "bot-d6",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e169",
+      "source": "bot21-log-disnode2",
+      "target": "bot-d7",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e170",
+      "source": "bot21-log-disnode2",
+      "target": "bot-d8",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e171",
+      "source": "bot22-file-del",
+      "target": "bot-d5",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e172",
+      "source": "bot22-file-del",
+      "target": "bot-d6",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e173",
+      "source": "bot22-file-del",
+      "target": "bot-d7",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e174",
+      "source": "bot22-file-del",
+      "target": "bot-d8",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e175",
+      "source": "bot-d1",
+      "target": "bot-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e176",
+      "source": "bot-d2",
+      "target": "bot-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e177",
+      "source": "bot-d3",
+      "target": "bot-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e178",
+      "source": "bot-d4",
+      "target": "bot-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e179",
+      "source": "bot-d5",
+      "target": "bot-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e180",
+      "source": "bot-d6",
+      "target": "bot-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e181",
+      "source": "bot-d7",
+      "target": "bot-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e182",
+      "source": "bot-d8",
+      "target": "bot-jdeep",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e183",
+      "source": "bot-jdeep",
+      "target": "bot-log-cleanup",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e184",
+      "source": "bot-log-cleanup",
+      "target": "bot-delay-final",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e185",
+      "source": "bot-delay-final",
+      "target": "bot-log-end",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e186",
+      "source": "top-log-end",
+      "target": "final-junction",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e187",
+      "source": "m-log-end",
+      "target": "final-junction",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e188",
+      "source": "bot-log-end",
+      "target": "final-junction",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e189",
+      "source": "final-junction",
+      "target": "final-invoke",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e190",
+      "source": "final-invoke",
+      "target": "final-return",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "final-invoke.success"
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite Child] startWorkflow - Echo Service",
+      "description": "Child workflow consumed by [TestSuite] startWorkflow - All Variants Live. Takes input parameters (greeting, target) and returns echoData with input values plus a computed timestamp. Declared manualTrigger parameters allow the parent to use ContractMappingTable for parameter passing. Keep small (3 nodes) — purely a fixture for the parent test.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: child entry", "activityType": "manualTrigger", "config": { "parameters": [ { "name": "greeting", "type": "string", "required": true, "default": "hello" }, { "name": "target", "type": "string", "required": false, "default": "world" } ] } } },
+          { "id": "echo", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "rs: build echo", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "echo", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$msg = \"{{manual.greeting}}-{{manual.target}}\"\n$ts = (Get-Date).ToString('o')\nWrite-Output \"echoed: $msg @ $ts\"" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "returnData: child output", "activityType": "returnData", "config": { "data": { "message": "{{echo.param.msg}}", "timestamp": "{{echo.param.ts}}", "rawOutput": "{{echo.output}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "echo", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "echo", "target": "ret", "type": "labeled", "data": { "label": "On Success", "condition": "echo.success" } }
+        ]
+      }
+    },
+    {
+      "name": "[TestSuite] startWorkflow - All Variants Live",
+      "description": "Live test of startWorkflow activity calling the sibling '[TestSuite Child] startWorkflow - Echo Service'. Variants: waitForCompletion=true with parameters (parent sees child returnData mirrored as param.message/.timestamp), waitForCompletion=false (fire-and-forget — only success+child execId), templated parameters from upstream runScript, error path (non-existent workflow name → fail). Max call-depth 10 is engine-enforced; this test stays at depth 1. Both workflows are bundled in this envelope — import once, run the parent.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "rs: build params", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$g = 'guten-tag'\n$t = 'kemp-pc'\nWrite-Output 'params-ready'" } } },
+          { "id": "sw_sync", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "sw: sync w/ params", "activityType": "startWorkflow", "outputVariable": "sw_sync", "config": { "workflowNameOrId": "[TestSuite Child] startWorkflow - Echo Service", "waitForCompletion": true, "timeoutSeconds": 30, "parameters": { "greeting": "{{init.param.g}}", "target": "{{init.param.t}}" } } } },
+          { "id": "sw_async", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "sw: fire-and-forget", "activityType": "startWorkflow", "outputVariable": "sw_async", "config": { "workflowNameOrId": "[TestSuite Child] startWorkflow - Echo Service", "waitForCompletion": false, "parameters": { "greeting": "async", "target": "noWait" } } } },
+          { "id": "sw_defaults", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "sw: defaults only", "activityType": "startWorkflow", "outputVariable": "sw_defaults", "config": { "workflowNameOrId": "[TestSuite Child] startWorkflow - Echo Service", "waitForCompletion": true, "timeoutSeconds": 30, "parameters": {} } } },
+          { "id": "sw_err", "type": "activity", "position": { "x": 640, "y": 800 }, "data": { "label": "sw: missing workflow (expect fail)", "activityType": "startWorkflow", "outputVariable": "sw_err", "config": { "workflowNameOrId": "DoesNotExist-Workflow-NPTest", "waitForCompletion": true, "timeoutSeconds": 10, "parameters": {} } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/startWorkflow] sync={{sw_sync.success}} msg={{sw_sync.param.message}} async={{sw_async.success}} defaults={{sw_defaults.success}} err={{sw_err.success}} (err expected false)" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "sync_success": "{{sw_sync.success}}", "sync_childMessage": "{{sw_sync.param.message}}", "async_success": "{{sw_async.success}}", "defaults_success": "{{sw_defaults.success}}", "err_failed": "{{sw_err.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init", "target": "sw_sync", "type": "labeled", "data": { "label": "On Success", "condition": "init.success" } },
+          { "id": "e3", "source": "init", "target": "sw_async", "type": "labeled", "data": { "label": "On Success", "condition": "init.success" } },
+          { "id": "e4", "source": "init", "target": "sw_defaults", "type": "labeled", "data": { "label": "On Success", "condition": "init.success" } },
+          { "id": "e5", "source": "init", "target": "sw_err", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "sw_sync", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "sw_async", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "sw_defaults", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "sw_err", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

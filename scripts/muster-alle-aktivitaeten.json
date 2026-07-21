@@ -1,0 +1,1900 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-07-13T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Muster — Alle Aktivitäten",
+      "description": "Vollständiger Muster-Workflow: deckt alle 27 Aktivitätstypen ab (inkl. fileOperation, textFileEdit, generateText, llmQuery), alle 14 Edge-Operatoren, AND/OR/NOT, disabled Edges/Nodes, Retry, alle 3 Junction-Modi, decision/forEach/startWorkflow. Remote-Nodes laufen via localhost-Bypass in-process.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trig",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 600
+            },
+            "data": {
+              "label": "Schedule: alle 5 Min (disabled — demonstrativ)",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 0/5 * * * ? *",
+                "description": "Test workflow runs every 5 minutes"
+              },
+              "disabled": true
+            }
+          },
+          {
+            "id": "trig_manual",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 440
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Master ausführen",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "init",
+            "type": "activity",
+            "position": {
+              "x": 300,
+              "y": 600
+            },
+            "data": {
+              "label": "runScript: init vars",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "init",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$envName = \"test-env\"\n$cpuCount = \"4\"\n$freeGb = \"500\"\n$hostname = \"WIN-PC01\"\n$isDomain = \"true\"\n$emptyStr = \"\"\n$falseVal = \"false\""
+              }
+            }
+          },
+          {
+            "id": "log_start",
+            "type": "activity",
+            "position": {
+              "x": 600,
+              "y": 600
+            },
+            "data": {
+              "label": "log: execution started",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "[Master Test] Run started at {{trigger.timestamp}} — env={{init.param.envName}} host={{init.param.hostname}}"
+              }
+            }
+          },
+          {
+            "id": "log_fail",
+            "type": "activity",
+            "position": {
+              "x": 600,
+              "y": 780
+            },
+            "data": {
+              "label": "log: init failed",
+              "activityType": "log",
+              "config": {
+                "level": "error",
+                "message": "[Master Test] Init script failed — error: {{init.error}}"
+              }
+            }
+          },
+          {
+            "id": "b1_log",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 60
+            },
+            "data": {
+              "label": "log: == != AND",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Cond B1 matched: envName==test-env AND !=prod"
+              }
+            }
+          },
+          {
+            "id": "b2_log",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 240
+            },
+            "data": {
+              "label": "log: >= <= AND",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Cond B2 matched: cpuCount in [1..128]"
+              }
+            }
+          },
+          {
+            "id": "b3_log",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 420
+            },
+            "data": {
+              "label": "log: > < OR",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Cond B3 matched: freeGb>0 OR freeGb<9999"
+              }
+            }
+          },
+          {
+            "id": "b4_log",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 600
+            },
+            "data": {
+              "label": "log: contains/starts/ends/matches",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Cond B4 matched: hostname contains/starts/ends/matches WIN*"
+              }
+            }
+          },
+          {
+            "id": "b5_log",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 780
+            },
+            "data": {
+              "label": "log: isNotEmpty isTrue",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Cond B5 matched: hostname!=empty AND isDomain=true"
+              }
+            }
+          },
+          {
+            "id": "b6_log",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 960
+            },
+            "data": {
+              "label": "log: isEmpty isFalse",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Cond B6 matched: emptyStr=empty AND falseVal=false"
+              }
+            }
+          },
+          {
+            "id": "b7_log",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 1140
+            },
+            "data": {
+              "label": "log: NOT contains",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Cond B7 matched: NOT(hostname contains PANIC)"
+              }
+            }
+          },
+          {
+            "id": "disabled_log",
+            "type": "activity",
+            "position": {
+              "x": 1340,
+              "y": 1320
+            },
+            "data": {
+              "label": "log: disabled edge target",
+              "activityType": "log",
+              "config": {
+                "level": "warning",
+                "message": "This node was reached via a disabled edge (should never happen)"
+              }
+            }
+          },
+          {
+            "id": "junction_all",
+            "type": "activity",
+            "position": {
+              "x": 1680,
+              "y": 600
+            },
+            "data": {
+              "label": "Junction: waitAll (7 branches)",
+              "activityType": "junction",
+              "outputVariable": "junction_all",
+              "config": {
+                "mode": "waitAll"
+              }
+            }
+          },
+          {
+            "id": "fs_mkdir",
+            "type": "activity",
+            "position": {
+              "x": 2080,
+              "y": 200
+            },
+            "data": {
+              "label": "folderOp: create",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "fs_mkdir",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-Test"
+              }
+            }
+          },
+          {
+            "id": "fs_exists",
+            "type": "activity",
+            "position": {
+              "x": 2380,
+              "y": 200
+            },
+            "data": {
+              "label": "folderOp: exists",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "fs_exists",
+              "config": {
+                "operation": "exists",
+                "path": "C:\\Temp\\NP-Test"
+              }
+            }
+          },
+          {
+            "id": "fh_hash",
+            "type": "activity",
+            "position": {
+              "x": 3580,
+              "y": 200
+            },
+            "data": {
+              "label": "fileHash: SHA256",
+              "activityType": "fileHash",
+              "targetMachineId": "localhost",
+              "outputVariable": "fh_hash",
+              "config": {
+                "path": "C:\\Windows\\System32\\notepad.exe",
+                "algorithm": "SHA256"
+              }
+            }
+          },
+          {
+            "id": "zip_compress",
+            "type": "activity",
+            "position": {
+              "x": 3880,
+              "y": 200
+            },
+            "data": {
+              "label": "zipOp: compress",
+              "activityType": "zipOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "zip_compress",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Windows\\System32\\notepad.exe",
+                "destination": "C:\\Temp\\NP-Test\\notepad.zip",
+                "force": true
+              }
+            }
+          },
+          {
+            "id": "zip_extract",
+            "type": "activity",
+            "position": {
+              "x": 4180,
+              "y": 200
+            },
+            "data": {
+              "label": "zipOp: extract",
+              "activityType": "zipOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "zip_extract",
+              "config": {
+                "operation": "extract",
+                "source": "C:\\Temp\\NP-Test\\notepad.zip",
+                "destination": "C:\\Temp\\NP-Test\\extracted",
+                "force": true
+              }
+            }
+          },
+          {
+            "id": "fs_delete",
+            "type": "activity",
+            "position": {
+              "x": 4480,
+              "y": 200
+            },
+            "data": {
+              "label": "folderOp: delete",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "fs_delete",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\NP-Test"
+              }
+            }
+          },
+          {
+            "id": "json_q",
+            "type": "activity",
+            "position": {
+              "x": 2080,
+              "y": 600
+            },
+            "data": {
+              "label": "jsonQuery: extract alpha",
+              "activityType": "jsonQuery",
+              "outputVariable": "json_q",
+              "config": {
+                "source": "inline",
+                "content": "{\"items\":[{\"name\":\"alpha\",\"id\":1},{\"name\":\"beta\",\"id\":2}]}",
+                "jsonPath": "$.items[0].name",
+                "resultMode": "single"
+              }
+            }
+          },
+          {
+            "id": "xml_q",
+            "type": "activity",
+            "position": {
+              "x": 2380,
+              "y": 600
+            },
+            "data": {
+              "label": "xmlQuery: find item",
+              "activityType": "xmlQuery",
+              "outputVariable": "xml_q",
+              "config": {
+                "source": "inline",
+                "content": "<?xml version=\"1.0\"?><root><item id=\"1\">hello</item><item id=\"2\">world</item></root>",
+                "xpath": "//item[@id='1']",
+                "resultMode": "single"
+              }
+            }
+          },
+          {
+            "id": "rest_q",
+            "type": "activity",
+            "position": {
+              "x": 2680,
+              "y": 600
+            },
+            "data": {
+              "label": "restApi: health check",
+              "activityType": "restApi",
+              "outputVariable": "rest_q",
+              "config": {
+                "url": "http://localhost:5000/healthz/live",
+                "method": "GET",
+                "timeoutSeconds": 5,
+                "retry": {
+                  "maxAttempts": 2,
+                  "backoff": "exponential",
+                  "initialDelayMs": 500,
+                  "maxDelayMs": 5000
+                }
+              }
+            }
+          },
+          {
+            "id": "sql_q",
+            "type": "activity",
+            "position": {
+              "x": 2980,
+              "y": 600
+            },
+            "data": {
+              "label": "sql: sqlite query",
+              "activityType": "sql",
+              "outputVariable": "sql_q",
+              "config": {
+                "provider": "sqlite",
+                "dataSource": ":memory:",
+                "query": "SELECT 1 AS val, 'NodePilot-Test' AS msg",
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "svc_status",
+            "type": "activity",
+            "position": {
+              "x": 2080,
+              "y": 1000
+            },
+            "data": {
+              "label": "svc: Spooler status",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "outputVariable": "svc_status",
+              "config": {
+                "serviceName": "Spooler",
+                "action": "status"
+              }
+            }
+          },
+          {
+            "id": "reg_read",
+            "type": "activity",
+            "position": {
+              "x": 2380,
+              "y": 1000
+            },
+            "data": {
+              "label": "reg: read ProductName",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "reg_read",
+              "config": {
+                "operation": "read",
+                "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+                "valueName": "ProductName"
+              }
+            }
+          },
+          {
+            "id": "reg_write",
+            "type": "activity",
+            "position": {
+              "x": 2680,
+              "y": 1000
+            },
+            "data": {
+              "label": "reg: write test value",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "reg_write",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Test",
+                "valueName": "TestValue",
+                "value": "NodePilot-Test-123",
+                "valueType": "String"
+              }
+            }
+          },
+          {
+            "id": "reg_exists",
+            "type": "activity",
+            "position": {
+              "x": 2980,
+              "y": 1000
+            },
+            "data": {
+              "label": "reg: check exists",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "reg_exists",
+              "config": {
+                "operation": "exists",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Test",
+                "valueName": "TestValue"
+              }
+            }
+          },
+          {
+            "id": "reg_del",
+            "type": "activity",
+            "position": {
+              "x": 3280,
+              "y": 1000
+            },
+            "data": {
+              "label": "reg: delete value",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "reg_del",
+              "config": {
+                "operation": "deleteValue",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Test",
+                "valueName": "TestValue"
+              }
+            }
+          },
+          {
+            "id": "wmi_q",
+            "type": "activity",
+            "position": {
+              "x": 3580,
+              "y": 1000
+            },
+            "data": {
+              "label": "wmiQuery: Win32_OS",
+              "activityType": "wmiQuery",
+              "targetMachineId": "localhost",
+              "outputVariable": "wmi_q",
+              "config": {
+                "mode": "query",
+                "className": "Win32_OperatingSystem",
+                "namespace": "root\\cimv2"
+              }
+            }
+          },
+          {
+            "id": "prog_run",
+            "type": "activity",
+            "position": {
+              "x": 3880,
+              "y": 1000
+            },
+            "data": {
+              "label": "startProgram: echo",
+              "activityType": "startProgram",
+              "targetMachineId": "localhost",
+              "outputVariable": "prog_run",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c echo NodePilot-Test-{{init.param.envName}}",
+                "waitForExit": true,
+                "timeoutSeconds": 30,
+                "successExitCodes": "0"
+              }
+            }
+          },
+          {
+            "id": "sched_get",
+            "type": "activity",
+            "position": {
+              "x": 4180,
+              "y": 1000
+            },
+            "data": {
+              "label": "scheduledTask: get",
+              "activityType": "scheduledTask",
+              "targetMachineId": "localhost",
+              "outputVariable": "sched_get",
+              "config": {
+                "action": "get",
+                "taskName": "MicrosoftEdgeUpdateTaskMachineCore",
+                "taskPath": "\\"
+              }
+            }
+          },
+          {
+            "id": "junction_any",
+            "type": "activity",
+            "position": {
+              "x": 4500,
+              "y": 600
+            },
+            "data": {
+              "label": "Junction: waitAny (3 branches)",
+              "activityType": "junction",
+              "outputVariable": "junction_any",
+              "config": {
+                "mode": "waitAny"
+              }
+            }
+          },
+          {
+            "id": "decision_1",
+            "type": "activity",
+            "position": {
+              "x": 4900,
+              "y": 600
+            },
+            "data": {
+              "label": "Decision: envName check",
+              "activityType": "decision",
+              "outputVariable": "decision_1",
+              "breakpoint": true,
+              "config": {
+                "cases": [
+                  {
+                    "name": "is-prod",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "init",
+                        "field": "param",
+                        "paramName": "envName"
+                      },
+                      "op": "==",
+                      "right": {
+                        "kind": "literal",
+                        "value": "production"
+                      }
+                    }
+                  },
+                  {
+                    "name": "is-test",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "init",
+                        "field": "param",
+                        "paramName": "envName"
+                      },
+                      "op": "==",
+                      "right": {
+                        "kind": "literal",
+                        "value": "test-env"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "other"
+              }
+            }
+          },
+          {
+            "id": "log_prod",
+            "type": "activity",
+            "position": {
+              "x": 5200,
+              "y": 420
+            },
+            "data": {
+              "label": "log: is-prod",
+              "activityType": "log",
+              "config": {
+                "level": "warning",
+                "message": "Decision case: is-prod (should not match in test)"
+              }
+            }
+          },
+          {
+            "id": "log_test",
+            "type": "activity",
+            "position": {
+              "x": 5200,
+              "y": 600
+            },
+            "data": {
+              "label": "log: is-test ✓",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Decision case: is-test (expected branch matched ✓)"
+              }
+            }
+          },
+          {
+            "id": "log_other",
+            "type": "activity",
+            "position": {
+              "x": 5200,
+              "y": 780
+            },
+            "data": {
+              "label": "log: other",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Decision case: other (default fallback)"
+              }
+            }
+          },
+          {
+            "id": "junction_nofm",
+            "type": "activity",
+            "position": {
+              "x": 5500,
+              "y": 600
+            },
+            "data": {
+              "label": "Junction: waitNofM (req=1)",
+              "activityType": "junction",
+              "outputVariable": "junction_nofm",
+              "config": {
+                "mode": "waitNofM",
+                "requiredCount": 1
+              }
+            }
+          },
+          {
+            "id": "delay_2",
+            "type": "activity",
+            "position": {
+              "x": 5800,
+              "y": 600
+            },
+            "data": {
+              "label": "delay: 2 sec",
+              "activityType": "delay",
+              "config": {
+                "seconds": 2
+              }
+            }
+          },
+          {
+            "id": "wait_cond",
+            "type": "activity",
+            "position": {
+              "x": 6100,
+              "y": 600
+            },
+            "data": {
+              "label": "waitForCondition: poll",
+              "activityType": "waitForCondition",
+              "targetMachineId": "localhost",
+              "outputVariable": "wait_cond",
+              "config": {
+                "script": "$true",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "foreach_1",
+            "type": "activity",
+            "position": {
+              "x": 6400,
+              "y": 600
+            },
+            "data": {
+              "label": "forEach: 3 items",
+              "activityType": "forEach",
+              "outputVariable": "foreach_1",
+              "config": {
+                "items": "[\"alpha\",\"beta\",\"gamma\"]",
+                "itemsFormat": "json",
+                "childWorkflowNameOrId": "Muster — Alle Aktivitäten: Child",
+                "itemParameterName": "item",
+                "indexParameterName": "index",
+                "maxParallelism": 2,
+                "continueOnError": true,
+                "timeoutSecondsPerItem": 30
+              }
+            }
+          },
+          {
+            "id": "start_wf",
+            "type": "activity",
+            "position": {
+              "x": 6700,
+              "y": 600
+            },
+            "data": {
+              "label": "startWorkflow: fire-forget",
+              "activityType": "startWorkflow",
+              "outputVariable": "start_wf",
+              "config": {
+                "workflowNameOrId": "Muster — Alle Aktivitäten: Child",
+                "waitForCompletion": false,
+                "parameters": {
+                  "item": "master-call",
+                  "index": "0"
+                }
+              }
+            }
+          },
+          {
+            "id": "email_1",
+            "type": "activity",
+            "position": {
+              "x": 7000,
+              "y": 600
+            },
+            "data": {
+              "label": "emailNotification: done",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "test@example.com",
+                "subject": "[NP-Test] Master workflow completed",
+                "body": "Master Test — All Activities workflow completed.\nEnvironment: {{init.param.envName}}\nHost: {{init.param.hostname}}\nCPU count: {{init.param.cpuCount}}\nJSON result: {{json_q.param.result}}\nSQL val: {{sql_q.param.val}}",
+                "isHtml": false
+              }
+            }
+          },
+          {
+            "id": "power_abort",
+            "type": "activity",
+            "position": {
+              "x": 7300,
+              "y": 600
+            },
+            "data": {
+              "label": "powerMgmt: abort (disabled)",
+              "activityType": "powerManagement",
+              "targetMachineId": "localhost",
+              "disabled": true,
+              "config": {
+                "action": "abort"
+              }
+            }
+          },
+          {
+            "id": "log_done",
+            "type": "activity",
+            "position": {
+              "x": 7600,
+              "y": 600
+            },
+            "data": {
+              "label": "log: all activities done",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "[Master Test] All activities executed successfully ✓"
+              }
+            }
+          },
+          {
+            "id": "ret_data",
+            "type": "activity",
+            "position": {
+              "x": 7900,
+              "y": 600
+            },
+            "data": {
+              "label": "returnData: summary",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "envName": "{{init.param.envName}}",
+                  "hostname": "{{init.param.hostname}}",
+                  "cpuCount": "{{init.param.cpuCount}}",
+                  "decisionCase": "{{decision_1.param.case}}",
+                  "forEachCount": "{{foreach_1.param.total}}",
+                  "waitOk": "{{wait_cond.success}}"
+                }
+              }
+            }
+          },
+          {
+            "id": "fs_create",
+            "type": "activity",
+            "position": {
+              "x": 2680,
+              "y": 200
+            },
+            "data": {
+              "label": "fileOp: create file",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "fs_create",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\NP-Test\\muster.txt"
+              }
+            }
+          },
+          {
+            "id": "text_edit",
+            "type": "activity",
+            "position": {
+              "x": 2980,
+              "y": 200
+            },
+            "data": {
+              "label": "textFileEdit: append line",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "outputVariable": "text_edit",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\NP-Test\\muster.txt",
+                "content": "NodePilot muster line — {{init.param.hostname}}",
+                "encoding": "auto",
+                "lineEnding": "preserve"
+              }
+            }
+          },
+          {
+            "id": "fs_exists2",
+            "type": "activity",
+            "position": {
+              "x": 3280,
+              "y": 200
+            },
+            "data": {
+              "label": "fileOp: exists?",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "fs_exists2",
+              "config": {
+                "operation": "exists",
+                "path": "C:\\Temp\\NP-Test\\muster.txt"
+              }
+            }
+          },
+          {
+            "id": "gen_text",
+            "type": "activity",
+            "position": {
+              "x": 3280,
+              "y": 600
+            },
+            "data": {
+              "label": "generateText: password",
+              "activityType": "generateText",
+              "outputVariable": "gen_text",
+              "config": {
+                "mode": "password",
+                "length": 20,
+                "excludeAmbiguous": true
+              }
+            }
+          },
+          {
+            "id": "llm_q",
+            "type": "activity",
+            "position": {
+              "x": 3280,
+              "y": 780
+            },
+            "data": {
+              "label": "llmQuery: ask (disabled)",
+              "activityType": "llmQuery",
+              "outputVariable": "llm_q",
+              "disabled": true,
+              "config": {
+                "prompt": "Antworte nur mit dem Wort OK.",
+                "systemPrompt": "",
+                "jsonMode": false
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e_trig_init",
+            "source": "trig",
+            "target": "init",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_init_log_start",
+            "source": "init",
+            "target": "log_start",
+            "type": "labeled",
+            "data": {
+              "label": "On Success",
+              "condition": "init.success"
+            }
+          },
+          {
+            "id": "e_init_log_fail",
+            "source": "init",
+            "target": "log_fail",
+            "type": "labeled",
+            "data": {
+              "label": "On Failure",
+              "condition": "init.failed"
+            }
+          },
+          {
+            "id": "e_log_start_b1",
+            "source": "log_start",
+            "target": "b1_log",
+            "type": "labeled",
+            "data": {
+              "label": "env==test & !=prod",
+              "conditionExpression": {
+                "type": "group",
+                "op": "AND",
+                "children": [
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "envName"
+                    },
+                    "op": "==",
+                    "right": {
+                      "kind": "literal",
+                      "value": "test-env"
+                    }
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "envName"
+                    },
+                    "op": "!=",
+                    "right": {
+                      "kind": "literal",
+                      "value": "prod"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "e_log_start_b2",
+            "source": "log_start",
+            "target": "b2_log",
+            "type": "labeled",
+            "data": {
+              "label": "cpu in [1..128]",
+              "conditionExpression": {
+                "type": "group",
+                "op": "AND",
+                "children": [
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "cpuCount"
+                    },
+                    "op": ">=",
+                    "right": {
+                      "kind": "literal",
+                      "value": "1"
+                    }
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "cpuCount"
+                    },
+                    "op": "<=",
+                    "right": {
+                      "kind": "literal",
+                      "value": "128"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "e_log_start_b3",
+            "source": "log_start",
+            "target": "b3_log",
+            "type": "labeled",
+            "data": {
+              "label": "free>0 OR free<9999",
+              "conditionExpression": {
+                "type": "group",
+                "op": "OR",
+                "children": [
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "freeGb"
+                    },
+                    "op": ">",
+                    "right": {
+                      "kind": "literal",
+                      "value": "0"
+                    }
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "freeGb"
+                    },
+                    "op": "<",
+                    "right": {
+                      "kind": "literal",
+                      "value": "9999"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "e_log_start_b4",
+            "source": "log_start",
+            "target": "b4_log",
+            "type": "labeled",
+            "data": {
+              "label": "host: contains+starts+ends+matches",
+              "conditionExpression": {
+                "type": "group",
+                "op": "AND",
+                "children": [
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "hostname"
+                    },
+                    "op": "contains",
+                    "right": {
+                      "kind": "literal",
+                      "value": "WIN"
+                    }
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "hostname"
+                    },
+                    "op": "startsWith",
+                    "right": {
+                      "kind": "literal",
+                      "value": "WIN"
+                    }
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "hostname"
+                    },
+                    "op": "endsWith",
+                    "right": {
+                      "kind": "literal",
+                      "value": "01"
+                    }
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "hostname"
+                    },
+                    "op": "matches",
+                    "right": {
+                      "kind": "literal",
+                      "value": "^WIN-PC\\d+$"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "e_log_start_b5",
+            "source": "log_start",
+            "target": "b5_log",
+            "type": "labeled",
+            "data": {
+              "label": "host!=empty & isDomain=true",
+              "conditionExpression": {
+                "type": "group",
+                "op": "AND",
+                "children": [
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "hostname"
+                    },
+                    "op": "isNotEmpty"
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "isDomain"
+                    },
+                    "op": "isTrue"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "e_log_start_b6",
+            "source": "log_start",
+            "target": "b6_log",
+            "type": "labeled",
+            "data": {
+              "label": "empty=empty & false=false",
+              "conditionExpression": {
+                "type": "group",
+                "op": "AND",
+                "children": [
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "emptyStr"
+                    },
+                    "op": "isEmpty"
+                  },
+                  {
+                    "type": "comparison",
+                    "left": {
+                      "kind": "variable",
+                      "stepId": "init",
+                      "field": "param",
+                      "paramName": "falseVal"
+                    },
+                    "op": "isFalse"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "e_log_start_b7",
+            "source": "log_start",
+            "target": "b7_log",
+            "type": "labeled",
+            "data": {
+              "label": "NOT(contains PANIC)",
+              "conditionExpression": {
+                "type": "not",
+                "child": {
+                  "type": "comparison",
+                  "left": {
+                    "kind": "variable",
+                    "stepId": "init",
+                    "field": "param",
+                    "paramName": "hostname"
+                  },
+                  "op": "contains",
+                  "right": {
+                    "kind": "literal",
+                    "value": "PANIC"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "id": "e_log_start_disabled",
+            "source": "log_start",
+            "target": "disabled_log",
+            "type": "labeled",
+            "data": {
+              "label": "DISABLED edge",
+              "disabled": true
+            }
+          },
+          {
+            "id": "e_b1_junction",
+            "source": "b1_log",
+            "target": "junction_all",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_b2_junction",
+            "source": "b2_log",
+            "target": "junction_all",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_b3_junction",
+            "source": "b3_log",
+            "target": "junction_all",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_b4_junction",
+            "source": "b4_log",
+            "target": "junction_all",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_b5_junction",
+            "source": "b5_log",
+            "target": "junction_all",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_b6_junction",
+            "source": "b6_log",
+            "target": "junction_all",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_b7_junction",
+            "source": "b7_log",
+            "target": "junction_all",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_junction_all_fs",
+            "source": "junction_all",
+            "target": "fs_mkdir",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_fs_mkdir_exists",
+            "source": "fs_mkdir",
+            "target": "fs_exists",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_fh_hash_compress",
+            "source": "fh_hash",
+            "target": "zip_compress",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_zip_compress_extract",
+            "source": "zip_compress",
+            "target": "zip_extract",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_zip_extract_delete",
+            "source": "zip_extract",
+            "target": "fs_delete",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_fs_delete_any",
+            "source": "fs_delete",
+            "target": "junction_any",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_junction_all_json",
+            "source": "junction_all",
+            "target": "json_q",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_json_xml",
+            "source": "json_q",
+            "target": "xml_q",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_xml_rest",
+            "source": "xml_q",
+            "target": "rest_q",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_rest_sql",
+            "source": "rest_q",
+            "target": "sql_q",
+            "type": "labeled",
+            "data": {
+              "label": "output!=empty",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "rest_q",
+                  "field": "output"
+                },
+                "op": "isNotEmpty"
+              }
+            }
+          },
+          {
+            "id": "e_junction_all_svc",
+            "source": "junction_all",
+            "target": "svc_status",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_svc_read",
+            "source": "svc_status",
+            "target": "reg_read",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_reg_read_write",
+            "source": "reg_read",
+            "target": "reg_write",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_reg_write_exists",
+            "source": "reg_write",
+            "target": "reg_exists",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_reg_exists_del",
+            "source": "reg_exists",
+            "target": "reg_del",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_reg_del_wmi",
+            "source": "reg_del",
+            "target": "wmi_q",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_wmi_prog",
+            "source": "wmi_q",
+            "target": "prog_run",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_prog_sched",
+            "source": "prog_run",
+            "target": "sched_get",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_sched_any",
+            "source": "sched_get",
+            "target": "junction_any",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_junction_any_decision",
+            "source": "junction_any",
+            "target": "decision_1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_decision_prod",
+            "source": "decision_1",
+            "target": "log_prod",
+            "type": "labeled",
+            "data": {
+              "label": "case=is-prod",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "decision_1",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "is-prod"
+                }
+              }
+            }
+          },
+          {
+            "id": "e_decision_test",
+            "source": "decision_1",
+            "target": "log_test",
+            "type": "labeled",
+            "data": {
+              "label": "case=is-test",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "decision_1",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "is-test"
+                }
+              }
+            }
+          },
+          {
+            "id": "e_decision_other",
+            "source": "decision_1",
+            "target": "log_other",
+            "type": "labeled",
+            "data": {
+              "label": "case=other",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "decision_1",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "other"
+                }
+              }
+            }
+          },
+          {
+            "id": "e_log_prod_nofm",
+            "source": "log_prod",
+            "target": "junction_nofm",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_log_test_nofm",
+            "source": "log_test",
+            "target": "junction_nofm",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_log_other_nofm",
+            "source": "log_other",
+            "target": "junction_nofm",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_nofm_delay",
+            "source": "junction_nofm",
+            "target": "delay_2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_delay_wait",
+            "source": "delay_2",
+            "target": "wait_cond",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_wait_foreach",
+            "source": "wait_cond",
+            "target": "foreach_1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_foreach_start",
+            "source": "foreach_1",
+            "target": "start_wf",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_start_email",
+            "source": "start_wf",
+            "target": "email_1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_done_ret",
+            "source": "log_done",
+            "target": "ret_data",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_fs_exists_create",
+            "source": "fs_exists",
+            "target": "fs_create",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_fs_create_text",
+            "source": "fs_create",
+            "target": "text_edit",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_text_exists2",
+            "source": "text_edit",
+            "target": "fs_exists2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_exists2_hash",
+            "source": "fs_exists2",
+            "target": "fh_hash",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_sql_gen",
+            "source": "sql_q",
+            "target": "gen_text",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_gen_any",
+            "source": "gen_text",
+            "target": "junction_any",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_gen_llm",
+            "source": "gen_text",
+            "target": "llm_q",
+            "type": "labeled",
+            "data": {
+              "label": "DISABLED (Llm opt-in)",
+              "disabled": true
+            }
+          },
+          {
+            "id": "e_trigmanual_init",
+            "source": "trig_manual",
+            "target": "init",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_email_done",
+            "source": "email_1",
+            "target": "log_done",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_done_power",
+            "source": "log_done",
+            "target": "power_abort",
+            "type": "labeled",
+            "data": {
+              "label": "DISABLED (demonstrativ)",
+              "disabled": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Muster — Alle Aktivitäten: Child",
+      "description": "Minimaler Child-Workflow für forEach/startWorkflow im Master. manualTrigger → log → returnData.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "child_trig",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 200
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Child Workflow Parameters",
+                "parameters": [
+                  {
+                    "name": "item",
+                    "type": "string",
+                    "required": false,
+                    "default": "default_item"
+                  },
+                  {
+                    "name": "index",
+                    "type": "string",
+                    "required": false,
+                    "default": "0"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "child_log",
+            "type": "activity",
+            "position": {
+              "x": 300,
+              "y": 200
+            },
+            "data": {
+              "label": "log: process item",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Child: Processing item={{child_trig.param.item}} at index={{child_trig.param.index}}"
+              }
+            }
+          },
+          {
+            "id": "child_ret",
+            "type": "activity",
+            "position": {
+              "x": 600,
+              "y": 200
+            },
+            "data": {
+              "label": "returnData: processed",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "processedItem": "{{child_trig.param.item}}",
+                  "itemIndex": "{{child_trig.param.index}}",
+                  "status": "completed"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "ce1",
+            "source": "child_trig",
+            "target": "child_log",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "ce2",
+            "source": "child_log",
+            "target": "child_ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

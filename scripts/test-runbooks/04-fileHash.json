@@ -1,0 +1,38 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] fileHash - All Algorithms",
+      "description": "Testet fileHash mit allen 5 Algorithmen (MD5/SHA1/SHA256/SHA384/SHA512) parallel auf C:\\Windows\\System32\\notepad.exe. Plus expected-hash positiver Match (chained nach SHA256).",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "h_md5", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "fileHash: MD5", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_md5", "config": { "path": "C:\\Windows\\System32\\notepad.exe", "algorithm": "MD5" } } },
+          { "id": "h_sha1", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "fileHash: SHA1", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_sha1", "config": { "path": "C:\\Windows\\System32\\notepad.exe", "algorithm": "SHA1" } } },
+          { "id": "h_sha256", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "fileHash: SHA256 (default)", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_sha256", "config": { "path": "C:\\Windows\\System32\\notepad.exe", "algorithm": "SHA256" } } },
+          { "id": "h_sha384", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "fileHash: SHA384", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_sha384", "config": { "path": "C:\\Windows\\System32\\notepad.exe", "algorithm": "SHA384" } } },
+          { "id": "h_sha512", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "fileHash: SHA512", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_sha512", "config": { "path": "C:\\Windows\\System32\\notepad.exe", "algorithm": "SHA512" } } },
+          { "id": "h_expected_ok", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "fileHash: expected matches (positive)", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_ok", "config": { "path": "C:\\Windows\\System32\\notepad.exe", "algorithm": "SHA256", "expected": "{{h_sha256.output}}" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 600 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "md5": "{{h_md5.output}}", "sha1": "{{h_sha1.output}}", "sha256": "{{h_sha256.output}}", "sha384": "{{h_sha384.output}}", "sha512": "{{h_sha512.output}}", "expectedMatch": "{{h_expected_ok.param.match}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "h_md5", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "h_sha1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "h_sha256", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "h_sha384", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "h_sha512", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "h_sha256", "target": "h_expected_ok", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "h_md5", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "h_sha1", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "h_sha384", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "h_sha512", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "h_expected_ok", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

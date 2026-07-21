@@ -1,0 +1,557 @@
+{
+  "execution": {
+    "title": "Execution",
+    "status": {
+      "Succeeded": "Succeeded",
+      "Failed": "Failed",
+      "Running": "Running",
+      "Pending": "Pending",
+      "Cancelled": "Cancelled",
+      "Skipped": "Skipped",
+      "Paused": "Paused"
+    },
+    "running": "Running",
+    "runningCount": "{{count}} running",
+    "dryRunBadge": "Dry-Run · {{willRun}} will run · {{skipped}} skipped",
+    "pausedBreakpoint": "⏸ Paused at breakpoint — click to resume",
+    "connected": "Connected",
+    "signalrConnected": "SignalR connected",
+    "runs": "{{count}} runs",
+    "collapsePanel": "Collapse execution panel",
+    "tabs": {
+      "live": "Live",
+      "history": "History",
+      "output": "Output",
+      "watch": "Watch"
+    },
+    "historyScope": {
+      "thisWorkflow": "This workflow",
+      "allWorkflows": "All workflows",
+      "openFullList": "Open full list →"
+    },
+    "live": {
+      "noActiveExecution": "No active execution",
+      "clickTestToRun": "Click \"Test\" to run the workflow",
+      "paused": "Paused"
+    },
+    "inspector": {
+      "closeStepInspector": "Close step inspector",
+      "closeDetails": "Close details",
+      "output": "Output",
+      "error": "Error",
+      "transcript": "Transcript",
+      "started": "Started {{time}}",
+      "ended": "Ended {{time}}",
+      "fromRunStart": "+{{offset}} from run start",
+      "duration": "Duration: {{duration}}",
+      "input": "Input",
+      "targetMachine": "Target machine",
+      "credential": "Credential",
+      "outputVar": "Output var"
+    },
+    "resize": {
+      "stepList": "Drag to resize the step list. Double-click to reset.",
+      "panel": "Drag to resize. Double-click to reset."
+    },
+    "simulation": {
+      "simulating": "Dry-Run — simulating…",
+      "simulatedPath": "Dry-Run — simulated execution path",
+      "stepProgress": "Step {{current}} / {{total}}",
+      "willRunSkipped": "{{willRun}} will run · {{skipped}} skipped",
+      "executionOrder": "Execution order (all-succeed scenario)",
+      "skipped": "Skipped ({{count}})",
+      "note": "Simulation is a client-side projection assuming every step succeeds. Failure-paths (.failed edges) and disabled nodes are excluded."
+    },
+    "watch": {
+      "emptyHint": "Add expressions like <0>checkDisk.output</0> or <1>globals.apiKey</1> to watch their values during execution.",
+      "placeholder": "stepName.output or globals.varName — right-click for picker",
+      "addExpression": "Add watch expression",
+      "notFound": "not found",
+      "noActiveExecution": "no active execution",
+      "copyValue": "Copy value",
+      "remove": "Remove",
+      "globalLabel": "Global · {{name}}",
+      "globalSecretLabel": "Global · {{name}} (secret)",
+      "liveLabel": "Live",
+      "hasLiveValue": "Has a live value in the current databus",
+      "filterPlaceholder": "Filter variables…",
+      "noVariables": "No variables available",
+      "noMatches": "No matches for \"{{filter}}\"",
+      "groupWorkflow": "Workflow Variables",
+      "groupGlobals": "Globals",
+      "groupLive": "Live Databus",
+      "footerHint": "↑↓ navigate · Enter pick · Esc close"
+    },
+    "output": {
+      "waitingNamedParams": "Waiting for named parameters…",
+      "noDataBusValues": "No data bus values yet",
+      "noEntriesRunning": "Steps without named outputs (param.*) produce no entries here",
+      "noEntriesIdle": "Run a workflow to see published variables",
+      "filterPlaceholder": "Filter by key or value…",
+      "expandAll": "Expand all",
+      "expandAllGroups": "Expand all groups",
+      "collapse": "Collapse",
+      "collapseAllGroups": "Collapse all groups",
+      "breakpointTip": "Tip: add a breakpoint to also see trigger inputs and global variables",
+      "groupTrigger": "Trigger Input",
+      "groupGlobal": "Global Variables",
+      "groupOther": "Other",
+      "noEntriesMatch": "No entries match \"{{filter}}\"",
+      "clickToCollapse": "Click to collapse",
+      "clickToExpand": "Click to expand",
+      "copyValue": "Copy value"
+    },
+    "history": {
+      "noHistory": "No execution history",
+      "colStatus": "Status",
+      "colWorkflow": "Workflow",
+      "colId": "ID",
+      "colTrigger": "Trigger",
+      "colUser": "User",
+      "colSteps": "Steps",
+      "colFailedStep": "Failed Step",
+      "colStarted": "Started",
+      "colFinished": "Finished",
+      "colDuration": "Duration",
+      "colExtras": "Extras",
+      "colError": "Error",
+      "sortBy": "Sort by {{label}}",
+      "subWorkflowFrom": "Sub-Workflow — started from „{{name}}\"",
+      "subWorkflowFromParent": "Sub-Workflow — started from parent run",
+      "subWfShort": "Sub-WF",
+      "stepsRanTooltip": "{{completed}} of {{total}} steps ran (Skipped excluded)",
+      "running": "running",
+      "notYetFinished": "not yet finished",
+      "copyFullId": "{{id}}  (click to copy full ID)",
+      "showPathOnCanvas": "Show execution path on canvas",
+      "noStepsRecorded": "No steps recorded"
+    },
+    "timeline": {
+      "stepsCount": "{{count}} steps",
+      "total": "{{duration}} total",
+      "ok": "{{count}} ok",
+      "failed": "{{count}} failed",
+      "skipped": "{{count}} skipped",
+      "list": "List",
+      "gantt": "Gantt",
+      "tableView": "Table view",
+      "ganttView": "Gantt timeline view — shows parallel branches visually",
+      "colStep": "Step",
+      "colType": "Type",
+      "colStart": "Start",
+      "colEnd": "End",
+      "colDuration": "Duration",
+      "colGap": "Gap",
+      "colBar": "Bar",
+      "fromRunStart": "{{time}}   (+{{offset}} from run start)",
+      "parallelBranch": "Started before previous step completed (parallel branch)",
+      "output": "Output",
+      "outputParameters": "Output parameters",
+      "error": "Error",
+      "transcript": "Transcript"
+    }
+  },
+  "parts": {
+    "trigger": {
+      "manual": "Manual",
+      "api": "API",
+      "retry": "Retry",
+      "subWf": "Sub-WF"
+    },
+    "extras": {
+      "inputParameters": "Input parameters: {{value}}",
+      "returnData": "Return data: {{value}}",
+      "traceId": "Trace ID: {{value}}"
+    }
+  },
+  "live": {
+    "console": {
+      "filterPlaceholder": "Filter…",
+      "errors": "Errors",
+      "showOnlyErrors": "Show only error lines",
+      "pauseAutoScroll": "Pause auto-scroll",
+      "resumeAutoScroll": "Resume auto-scroll",
+      "live": "Live",
+      "paused": "Paused",
+      "waitingForOutput": "Waiting for step output…",
+      "noLinesMatch": "No lines match \"{{filter}}\"{{errorsSuffix}}",
+      "errorsOnlySuffix": " (errors only)",
+      "earlierLinesHidden": "{{count}} earlier lines hidden — buffer cap is {{cap}}.",
+      "inspectStep": "Click to inspect this step"
+    },
+    "overview": {
+      "timeline": "Timeline",
+      "console": "Console"
+    },
+    "stats": {
+      "steps": "Steps",
+      "succeeded": "{{count}} succeeded",
+      "failed": "{{count}} failed",
+      "running": "{{count}} running",
+      "elapsed": "Elapsed",
+      "eta": "ETA",
+      "etaTooltip": "Based on median past-run duration"
+    }
+  },
+  "gantt": {
+    "waitingFirstStep": "Waiting for first step…",
+    "scrub": "Drag to scrub through execution time — canvas updates in real time",
+    "reset": "Reset",
+    "clearScrub": "Clear scrub — return to final state"
+  },
+  "debug": {
+    "pausedAt": "⏸ Paused at „{{step}}\"",
+    "stepOverTrigger": "Step-Over trigger",
+    "breakpoint": "Breakpoint",
+    "variablesModified_one": "{{count}} variable modified",
+    "variablesModified_other": "{{count}} variables modified",
+    "continue": "Continue",
+    "continueTooltip": "Continue until next breakpoint (Ctrl+F5)",
+    "stepOver": "Step Over",
+    "stepOverTooltip": "Step Over — run current step, pause at next (F10)",
+    "stop": "Stop",
+    "stopTooltip": "Stop execution (Shift+F5)",
+    "resetToOriginal": "Reset to original value",
+    "noVariables": "No variables in scope at this step.",
+    "groupGlobals": "Globals",
+    "groupManual": "Manual Input",
+    "groupOther": "Other",
+    "groupStep": "Step: {{name}}"
+  },
+  "nodes": {
+    "pausedShort": "⏸ Paused",
+    "triggerPaused": "Workflow disabled — trigger paused",
+    "nextFire": "Next fire: {{time}}",
+    "paused": "Paused",
+    "next": "Next: {{time}}",
+    "coverageTooltip": "Coverage ({{days}}d): {{executed}}/{{total}} runs reached this step",
+    "criticalPathTooltip": "Critical path — {{duration}}ms",
+    "slackTooltip": "Slack: {{slack}}s",
+    "slackBadge": "+{{slack}}s slack",
+    "entryPoint": "Workflow entry point",
+    "shape": {
+      "trigger": "Trigger",
+      "controlFlow": "Control Flow",
+      "returnData": "Return Data"
+    },
+    "connectSide": "Connect {{side}}",
+    "output": "Output",
+    "input": "Input",
+    "breakpoint": {
+      "paused": "Paused at this breakpoint",
+      "conditional": "Conditional breakpoint — pauses only when condition is truthy (Debug run)",
+      "set": "Breakpoint set — pauses only during Debug run"
+    },
+    "simulation": {
+      "running": "▶ Running…",
+      "ran": "✓ Ran",
+      "skipped": "⊘ Skipped",
+      "runningNow": "Running now (dry-run)",
+      "ranDryRun": "Ran (dry-run)",
+      "skippedDryRun": "Skipped (dry-run)"
+    },
+    "disabledTooltip": "Step is disabled — skipped during execution",
+    "fanIn": {
+      "waitAll": "Junction · waitAll — fires only after ALL {{count}} incoming branches complete",
+      "waitAny": "Junction · waitAny — fires as soon as the FIRST of {{count}} incoming branches completes",
+      "waitNofM": "Junction · waitNofM — fires when {{n}} of {{count}} incoming branches succeed",
+      "implicit": "{{count}} incoming branches converge here (implicit waitAll)"
+    },
+    "lint": {
+      "errors_one": "{{count}} config error — check Properties panel",
+      "errors_other": "{{count}} config errors — check Properties panel",
+      "warnings_one": "{{count}} warning",
+      "warnings_other": "{{count}} warnings"
+    },
+    "subWorkflow": {
+      "previewUnavailable": "Preview not possible — workflow reference is a variable",
+      "openPreview": "Open sub-workflow as read-only preview"
+    },
+    "healthSparkline": "Recent execution outcomes (oldest → newest)",
+    "tooltip": {
+      "avg": "Average duration",
+      "p95": "95th percentile",
+      "last": "Last run",
+      "failTooltip": "{{rate}}% failure rate over last {{runs}} runs",
+      "fail": "{{rate}}% fail",
+      "lastN": "Last {{count}}:"
+    },
+    "group": {
+      "rename": "Double-click to rename",
+      "expand": "Expand group",
+      "collapse": "Collapse group",
+      "hiddenChildren": "Hidden children stay in the workflow and execute normally."
+    },
+    "stickyNote": {
+      "smaller": "Smaller text",
+      "larger": "Larger text",
+      "emptyHint": "Double-click to edit…",
+      "placeholder": "Write your comment…",
+      "currentFontSize": "Current font size in px"
+    }
+  },
+  "edges": {
+    "onSuccess": "On Success",
+    "onFailure": "On Failure",
+    "disabled": "disabled",
+    "insertStep": "Insert step on this edge"
+  },
+  "edgePort": {
+    "top": "Top",
+    "right": "Right",
+    "bottom": "Bottom",
+    "left": "Left"
+  },
+  "collapsed": {
+    "hiddenEdge": "hidden edge",
+    "hiddenEdges": "{{count}} hidden edges"
+  },
+  "condition": {
+    "intro": "Compare output values of previous steps with each other or with a fixed value. On both sides you can choose between <0>Variable</0> and <1>Literal</1>.",
+    "noConditionSet": "No condition set — edge is always active.",
+    "variable": "Variable",
+    "literal": "Literal",
+    "fieldMode": "Field",
+    "noUpstreamSteps": "No upstream steps available — pick Literal and use {{manual.x}} / {{globals.X}} templates",
+    "referenceStep": "Reference a step output, global, or use a literal template",
+    "useFixedValue": "Use a fixed text/number value (templates like {{globals.X}} / {{manual.X}} resolve at eval time)",
+    "literalPlaceholder": "fixed value or {{globals.X}}",
+    "outputText": "{{label}} → output (text)",
+    "errorText": "{{label}} → error (text)",
+    "successBool": "{{label}} → success (bool)",
+    "paramOption": "{{label}} → {{param}} (param)",
+    "groupGlobals": "Globals",
+    "globalsOption": "globals.{{name}}",
+    "remove": "Remove",
+    "addCondition": "Condition",
+    "addGroup": "Group"
+  },
+  "bulkEdit": {
+    "title": "Bulk Edit",
+    "selected_one": "{{count}} activity{{other}} selected",
+    "selected_other": "{{count}} activities{{other}} selected",
+    "otherCount": " (+ {{count}} other)",
+    "targetMachine": "Target Machine",
+    "selectMachine": "— select machine —",
+    "applyMachine": "Apply machine",
+    "enableDisable": "Enable / Disable",
+    "choose": "— choose —",
+    "disableAll": "Disable all",
+    "enableAll": "Enable all",
+    "applyState": "Apply state",
+    "perStepTimeout": "Per-Step Timeout (seconds)",
+    "timeoutPlaceholder": "e.g. 60",
+    "applyTimeout": "Apply timeout",
+    "retryPolicy": "Retry Policy",
+    "attemptsPlaceholder": "attempts",
+    "backoffPlaceholder": "— backoff —",
+    "backoffFixed": "fixed",
+    "backoffLinear": "linear",
+    "backoffExponential": "exponential",
+    "applyRetry": "Apply retry",
+    "note": "Bulk-Edit overwrites the respective field on all selected activity nodes (Trigger/Junction/Group excluded). Other fields stay unchanged. Undo (Ctrl+Z) reverts the bulk apply."
+  },
+  "edgePanel": {
+    "connection": "Connection",
+    "ports": "Connection ports",
+    "from": "From",
+    "to": "To",
+    "flexiblePortsOff": "Flexible ports are off. Existing custom ports still render; turn the toolbar toggle on to create more.",
+    "label": "Label",
+    "labelPlaceholder": "e.g. On Success, If True...",
+    "displayedOnArrow": "Displayed on the connection arrow",
+    "labelOverrides": "Custom label overrides the condition",
+    "auto": "Auto: ",
+    "useAuto": "Use auto",
+    "clearCustomLabel": "Clear custom label so it follows the condition automatically",
+    "conditionOptional": "Condition (optional)",
+    "simple": "Simple",
+    "expression": "Expression",
+    "conditionPlaceholder": "e.g. step-123.success",
+    "supported": "Supported: <0>stepId.success</0> or <1>stepId.failed</1>",
+    "onSuccess": "On Success",
+    "onFailure": "On Failure",
+    "always": "Always",
+    "connectionDisabled": "Connection is disabled",
+    "connectionActive": "Connection is active",
+    "disabledSkipped": "Disabled connections are skipped during workflow execution",
+    "deleteConnection": "Delete Connection",
+    "confirmDelete": "Delete this connection?"
+  },
+  "breadcrumbs": {
+    "calls": "Calls →",
+    "openChild": "Open child workflow \"{{name}}\"",
+    "notFound": "Workflow \"{{name}}\" not found — broken reference"
+  },
+  "folderPath": {
+    "homeLabel": "Root",
+    "browseFolder": "Browse folder \"{{name}}\"",
+    "openFolder": "Open folder \"{{name}}\"",
+    "subfolders": "Folders",
+    "workflows": "Workflows",
+    "upOneLevel": "Up one level",
+    "notAccessible": "You don't have access to this folder"
+  },
+  "browser": {
+    "folders": "Folders",
+    "byTrigger": "By Trigger",
+    "searchPlaceholder": "Search workflows...",
+    "loading": "Loading…",
+    "noMatches": "No matches.",
+    "noOtherWorkflows": "No other workflows available.",
+    "noWorkflowsInFolder": "No workflows in this folder.",
+    "noTrigger": "No Trigger",
+    "currentWorkflow": "Currently open workflow",
+    "current": "current",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "insertIntoStartStep": "Insert into start-workflow step",
+    "openWorkflow": "Open workflow",
+    "trigger": {
+      "manual": "Manual",
+      "schedule": "Schedule",
+      "webhook": "Webhook",
+      "fileWatch": "FileWatch",
+      "dbPoll": "DB Poll",
+      "eventLog": "EventLog"
+    }
+  },
+  "infoCard": {
+    "empty": "Hover a workflow to see details.",
+    "trigger": "Trigger",
+    "steps": "Steps",
+    "lastRun": "Last run",
+    "success": "Success",
+    "avgDuration": "Avg",
+    "version": "v{{n}}",
+    "modified": "Modified",
+    "lockedBy": "Locked by",
+    "folder": "Folder"
+  },
+  "library": {
+    "snippets": "Snippets",
+    "notInEditing": "Workflow is not being edited"
+  },
+  "overlays": {
+    "failedToStart": "Failed to start execution: {{message}}"
+  },
+  "snippets": {
+    "foreach": {
+      "name": "ForEach over a list",
+      "description": "RunScript produces a comma-separated list (e.g. hostnames from a DB query) — a ForEach-child workflow runs against each item."
+    },
+    "httpRetry": {
+      "name": "HTTP call with retry + fallback",
+      "description": "REST API call with 3 retries built-in via the retry-policy — on total failure falls through to a log step that records the error."
+    },
+    "parallelFanout": {
+      "name": "Parallel fan-out + join",
+      "description": "Three parallel branches that all wait at a Junction before continuing — good starting point for „do three things at once, then summarize\"."
+    },
+    "tryCatch": {
+      "name": "Try-Catch around script",
+      "description": "RunScript with explicit failure branch — the script runs, and on failure a log step captures the error before the flow continues."
+    }
+  },
+  "toolbar": {
+    "stopEdgeAnimation": "Stop edge animation",
+    "animateEdges": "Animate edges",
+    "switchToView": "Switch to {{view}} view",
+    "viewCard": "Card",
+    "viewClassic": "Classic",
+    "premiumCanvasOn": "Premium canvas active – switch to classic design",
+    "premiumCanvasOff": "Classic design – switch to premium canvas",
+    "nodeIconsToGlyph": "Shaped nodes – switch to icon view",
+    "nodeIconsToShape": "Icon view – switch to shaped nodes",
+    "flexiblePortsOn": "Flexible ports on — connect from/to any side",
+    "flexiblePortsOff": "Flexible ports off — classic right-to-left connections",
+    "portsAutoHideOn": "Ports auto-hide — shown near the cursor / when connecting. Click to always show.",
+    "portsAutoHideOff": "Ports always visible — click to auto-hide until the cursor nears a node.",
+    "edgeThickness": "Edge (arrow) thickness",
+    "thinnerEdges": "Thinner edges",
+    "thickerEdges": "Thicker edges",
+    "smallerNodes": "Smaller nodes",
+    "largerNodes": "Larger nodes",
+    "labelFontSize": "Activity label font size",
+    "smallerLabel": "Smaller label text",
+    "largerLabel": "Larger label text",
+    "view": "View",
+    "viewAndCanvasSettings": "View & canvas settings",
+    "routing": {
+      "smart": "Smart routing: straight for same-row, curved for cross-row",
+      "curved": "Always use smooth Bézier curves",
+      "straight": "Always use orthogonal step edges"
+    },
+    "snap": {
+      "to": "Snap to {{size}}px grid",
+      "off": "Snap to grid: off",
+      "offLabel": "Off"
+    }
+  },
+  "canvasSettings": {
+    "title": "Display",
+    "sections": {
+      "nodes": "Nodes",
+      "connections": "Connections",
+      "canvas": "Canvas"
+    },
+    "animation": {
+      "name": "Animation",
+      "desc": "Flowing pulse dots along the edges."
+    },
+    "routing": {
+      "name": "Routing",
+      "desc": "How edges are routed between nodes.",
+      "smart": "Smart",
+      "curved": "Curve",
+      "straight": "Straight"
+    },
+    "thickness": {
+      "name": "Line weight",
+      "desc": "Line weight of the edges."
+    },
+    "nodeStyle": {
+      "name": "Style",
+      "desc": "Compact silhouette or card with details.",
+      "classic": "Classic",
+      "card": "Card"
+    },
+    "nodeScale": {
+      "name": "Size",
+      "desc": "Zoom level of the node rendering."
+    },
+    "premium": {
+      "name": "Premium effects",
+      "desc": "Glow, depth and texture on the surface."
+    },
+    "iconStyle": {
+      "name": "Icon style",
+      "desc": "Bare palette glyph instead of a shaped node.",
+      "shape": "Shape",
+      "glyph": "Glyph"
+    },
+    "labelFont": {
+      "name": "Label",
+      "desc": "Font size of the activity label."
+    },
+    "flexiblePorts": {
+      "name": "Flexible ports",
+      "desc": "Connect from/to any side."
+    },
+    "autoHidePorts": {
+      "name": "Hide ports",
+      "desc": "Show ports only when the cursor nears a node."
+    },
+    "snap": {
+      "name": "Grid",
+      "desc": "Align nodes to the grid while dragging.",
+      "off": "Off"
+    }
+  },
+  "browserFolderView": "Folders",
+  "browserTriggerView": "By trigger",
+  "variablesInsertHint": "Insert into the fields below via \"Insert variable\" next to the field. Hover for the last value.",
+  "browserNoMatches": "No matches.",
+  "browserEmptyFolder": "No workflows in this folder.",
+  "browserNoOthers": "No other workflows available."
+}

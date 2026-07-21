@@ -1,0 +1,74 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] runScript - All Variants Live",
+      "description": "Live end-to-end Test der runScript-Activity. Phasen: A) Engine-Varianten (auto / powershell / pwsh — pwsh-Variant darf failen wenn PowerShell 7 nicht installiert ist, kein Hard-Fail). B) Variable-Resolution (Upstream-param OHNE umschliessende Quotes — der Auto-Quoter macht das selbst, doppelte Quotes brechen den Script). C) Structured-Output-Capture ($myVar='...' wird automatisch zu param.myVar). D) Retry exponential 3 Attempts. E) Custom Timeout (60s). F) Failure-Pfad (exit non-zero -> success=false, success-Edge zur summary-Lane wird ausgelassen, Always-Edge feuert). G) Long-running Step (Start-Sleep 3 mit 30s Timeout). Jeder Variant-Step hat outputVariable; log_summary aggregiert alle .success-Flags; returnData mappt zu Status-Map. Pre-Check ist trivial (Hostname-Echo).",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start test suite", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+
+          { "id": "init", "type": "activity", "position": { "x": 200, "y": 400 }, "data": { "label": "init: echo hostname", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$hostName = $env:COMPUTERNAME\nWrite-Output \"init-ok-on-$hostName\"" } } },
+
+          { "id": "log_phase_a", "type": "activity", "position": { "x": 500, "y": 200 }, "data": { "label": "log: PHASE A engines", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/runScript] PHASE A start — engines auto/powershell/pwsh on host {{init.param.hostName}}" } } },
+
+          { "id": "rs_auto", "type": "activity", "position": { "x": 500, "y": 400 }, "data": { "label": "runScript: engine=auto", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rs_auto", "config": { "engine": "auto", "timeoutSeconds": 15, "script": "$edition = $PSVersionTable.PSEdition\nWrite-Output \"engine=auto edition=$edition\"" } } },
+
+          { "id": "rs_winps", "type": "activity", "position": { "x": 800, "y": 400 }, "data": { "label": "runScript: engine=powershell", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rs_winps", "config": { "engine": "powershell", "timeoutSeconds": 15, "script": "$edition = $PSVersionTable.PSEdition\n$ver = $PSVersionTable.PSVersion.Major\nWrite-Output \"engine=powershell edition=$edition v=$ver\"" } } },
+
+          { "id": "rs_pwsh", "type": "activity", "position": { "x": 1100, "y": 400 }, "data": { "label": "runScript: engine=pwsh (may fail)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rs_pwsh", "config": { "engine": "pwsh", "timeoutSeconds": 15, "script": "$edition = $PSVersionTable.PSEdition\n$ver = $PSVersionTable.PSVersion.Major\nWrite-Output \"engine=pwsh edition=$edition v=$ver\"" } } },
+
+          { "id": "rs_resolve", "type": "activity", "position": { "x": 1400, "y": 400 }, "data": { "label": "runScript: var resolution (no quotes)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rs_resolve", "config": { "engine": "auto", "timeoutSeconds": 15, "script": "$upstreamHost = {{init.param.hostName}}\n$upstreamOut = {{init.output}}\nWrite-Output \"resolved-host=$upstreamHost\"\nWrite-Output \"resolved-out=$upstreamOut\"" } } },
+
+          { "id": "rs_capture", "type": "activity", "position": { "x": 1700, "y": 400 }, "data": { "label": "runScript: structured capture", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rs_capture", "config": { "engine": "auto", "timeoutSeconds": 15, "script": "$myEnv = 'production'\n$myCpu = '8'\n$myDisk = '512'\n$myFlag = 'true'\nWrite-Output 'capture-ok'" } } },
+
+          { "id": "rs_retry", "type": "activity", "position": { "x": 2000, "y": 400 }, "data": { "label": "runScript: retry exp 3x", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rs_retry", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Write-Output 'retry-attempt-completed'", "retry": { "maxAttempts": 3, "backoff": "exponential", "initialDelayMs": 500, "maxDelayMs": 4000 } } } },
+
+          { "id": "rs_timeout", "type": "activity", "position": { "x": 2300, "y": 400 }, "data": { "label": "runScript: custom timeout 60s", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rs_timeout", "config": { "engine": "auto", "timeoutSeconds": 60, "script": "Start-Sleep -Seconds 1\nWrite-Output 'custom-timeout-ok'" } } },
+
+          { "id": "rs_fail", "type": "activity", "position": { "x": 2600, "y": 580 }, "data": { "label": "runScript: error path (exit 7)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rs_fail", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Write-Output 'about-to-fail'\nWrite-Error 'intentional failure for negative path'\nexit 7" } } },
+
+          { "id": "rs_longrun", "type": "activity", "position": { "x": 2600, "y": 400 }, "data": { "label": "runScript: long-running 3s", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rs_longrun", "config": { "engine": "auto", "timeoutSeconds": 30, "script": "Start-Sleep -Seconds 3\nWrite-Output 'long-run-ok-after-3s'" } } },
+
+          { "id": "log_summary", "type": "activity", "position": { "x": 2900, "y": 400 }, "data": { "label": "log: SUMMARY", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/runScript] SUMMARY — engine: auto={{rs_auto.success}} powershell={{rs_winps.success}} pwsh={{rs_pwsh.success}} (pwsh may legitimately fail if PS7 not installed)\nresolve={{rs_resolve.success}} out={{rs_resolve.output}}\ncapture={{rs_capture.success}} env={{rs_capture.param.myEnv}} cpu={{rs_capture.param.myCpu}} disk={{rs_capture.param.myDisk}} flag={{rs_capture.param.myFlag}}\nretry={{rs_retry.success}} timeout={{rs_timeout.success}} longrun={{rs_longrun.success}}\nfail-path={{rs_fail.success}} (expected false, error={{rs_fail.error}})" } } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 3200, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": {
+            "engine_auto": "{{rs_auto.success}}",
+            "engine_powershell": "{{rs_winps.success}}",
+            "engine_pwsh": "{{rs_pwsh.success}}",
+            "resolve_success": "{{rs_resolve.success}}",
+            "resolve_output": "{{rs_resolve.output}}",
+            "capture_success": "{{rs_capture.success}}",
+            "capture_myEnv": "{{rs_capture.param.myEnv}}",
+            "capture_myCpu": "{{rs_capture.param.myCpu}}",
+            "capture_myDisk": "{{rs_capture.param.myDisk}}",
+            "capture_myFlag": "{{rs_capture.param.myFlag}}",
+            "retry_success": "{{rs_retry.success}}",
+            "timeout_success": "{{rs_timeout.success}}",
+            "longrun_success": "{{rs_longrun.success}}",
+            "fail_success": "{{rs_fail.success}}",
+            "fail_error": "{{rs_fail.error}}"
+          } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init", "target": "log_phase_a", "type": "labeled", "data": { "label": "On Success", "condition": "init.success" } },
+          { "id": "e3", "source": "init", "target": "rs_auto", "type": "labeled", "data": { "label": "On Success", "condition": "init.success" } },
+          { "id": "e4", "source": "rs_auto", "target": "rs_winps", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "rs_winps", "target": "rs_pwsh", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "rs_pwsh", "target": "rs_resolve", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "rs_resolve", "target": "rs_capture", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "rs_capture", "target": "rs_retry", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "rs_retry", "target": "rs_timeout", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "rs_timeout", "target": "rs_longrun", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "rs_timeout", "target": "rs_fail", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "rs_longrun", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "rs_fail", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "title": "Live-Ops",
+  "subtitle": "Mission Control — was gerade läuft, was gerade fertig wurde und was als Nächstes startet.",
+  "error": "Live-Ops-Daten konnten nicht geladen werden.",
+  "empty": "Keine zugänglichen Workflows.",
+  "folderFilter": {
+    "all": "Alle Ordner",
+    "label": "Ordner"
+  },
+  "pulse": {
+    "nominal": "Betrieb normal",
+    "degraded": "Beeinträchtigt",
+    "incident": "Störung",
+    "active": "aktiv",
+    "pending": "wartend",
+    "longRunning": "Langläufer",
+    "reason": {
+      "failureSpike": "Fehler-Häufung (≥5 in 10 min)",
+      "recentFailure": "kürzliche Fehlschläge",
+      "staleHeartbeat": "Dienst-Heartbeat veraltet",
+      "allHeartbeatsStale": "alle Dienst-Heartbeats veraltet",
+      "machinesUnreachable": "Maschinen nicht erreichbar",
+      "allMachinesUnreachable": "keine Maschine erreichbar",
+      "longRunning": "Langläufer aktiv"
+    }
+  },
+  "timeline": {
+    "now": "Jetzt",
+    "idle": "Gerade läuft nichts.",
+    "idleHint": "Sobald ein Workflow startet, wächst hier live sein Balken.",
+    "nextStart": "Nächster Start {{time}} — {{name}}"
+  },
+  "ticker": {
+    "title": "Live-Feed",
+    "empty": "Noch keine Live-Ereignisse.",
+    "justNow": "jetzt",
+    "minutesAgo": "vor {{count}} min",
+    "minutesAgo_one": "vor {{count}} min",
+    "minutesAgo_other": "vor {{count}} min"
+  },
+  "board": {
+    "title": "Nächste Starts",
+    "empty": "Keine geplanten Starts.",
+    "time": "Zeit",
+    "workflow": "Workflow",
+    "trigger": "Trigger",
+    "tMinus": "T-minus",
+    "in": "in {{value}}",
+    "overdue": "überfällig"
+  },
+  "health": {
+    "title": "Systemzustand",
+    "machines": "Maschinen erreichbar",
+    "heartbeats": "Dienste",
+    "stale": "veraltet",
+    "role": "Cluster-Rolle",
+    "leader": "Leader",
+    "standby": "Standby"
+  },
+  "drilldown": {
+    "title": "Ausführungsdetails",
+    "close": "Schließen",
+    "status": "Status",
+    "started": "Gestartet",
+    "completed": "Beendet",
+    "duration": "Dauer",
+    "triggeredBy": "Ausgelöst durch",
+    "error": "Fehlermeldung",
+    "parent": "Aufgerufen von",
+    "calls": "Ruft auf",
+    "cancel": "Abbrechen",
+    "openEditor": "Im Editor öffnen",
+    "loadFailed": "Details konnten nicht geladen werden."
+  }
+}

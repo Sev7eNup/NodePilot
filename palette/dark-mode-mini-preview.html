@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dark Mode Preview – Paketbauagent</title>
+  <style>
+    :root {
+      --bg: #1a1a1a;
+      --bg-glow: #2a2a2a;
+      --panel: #262626;
+      --panel-2: #202020;
+      --border: #3a3a3a;
+      --text: #ffffff;
+      --muted: #b8b8b8;
+      --accent: #FF0002;
+      --accent-2: #cc0001;
+      --ok: #34d399;
+      --err: #f87171;
+      --warn: #fbbf24;
+      --radius: 12px;
+      --shadow: 0 20px 60px rgba(0,0,0,.55);
+      --code-bg: #131313;
+      --focus: 0 0 0 3px rgba(255,0,2,.22);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 420px at 50% -15%, rgba(255,0,2,.12), transparent 58%),
+        radial-gradient(1200px 600px at 50% -10%, var(--bg-glow) 0%, var(--bg) 60%);
+      padding: 42px 22px;
+    }
+
+    .shell {
+      width: min(1120px, 100%);
+      margin: 0 auto;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr .8fr;
+      gap: 18px;
+      align-items: stretch;
+      margin-bottom: 18px;
+    }
+
+    .panel {
+      background: linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .intro { padding: 28px; position: relative; overflow: hidden; }
+    .intro::after {
+      content: "";
+      position: absolute;
+      width: 180px;
+      height: 180px;
+      right: -70px;
+      top: -70px;
+      background: rgba(255,0,2,.16);
+      filter: blur(8px);
+      border-radius: 50%;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--accent); box-shadow: 0 0 18px rgba(255,0,2,.9); }
+    h1 { margin: 0 0 10px; font-size: clamp(28px, 4vw, 44px); letter-spacing: -.04em; }
+    p { margin: 0; color: var(--muted); line-height: 1.65; }
+
+    .token-card { padding: 22px; }
+    .token-card h2, .section h2 { margin: 0 0 16px; font-size: 16px; }
+    .tokens { display: grid; gap: 10px; }
+    .token-line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: rgba(255,255,255,.018);
+    }
+    .token-line span { color: var(--muted); font-size: 12px; }
+    .token-line code { color: var(--text); font-size: 12px; }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+    }
+
+    .section { padding: 22px; }
+    .button-row { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+
+    button, .fake-button {
+      appearance: none;
+      border: 0;
+      border-radius: 10px;
+      padding: 11px 16px;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .08s ease, opacity .15s ease, border-color .15s ease, background .15s ease, color .15s ease;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    button:hover, .fake-button:hover { transform: translateY(-1px); }
+    button:focus-visible { outline: none; box-shadow: var(--focus); }
+    .primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; }
+    .primary:hover { opacity: .92; }
+    .secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .secondary:hover { color: var(--text); border-color: var(--accent); background: rgba(255,0,2,.06); }
+    .danger { background: var(--panel-2); color: var(--err); border: 1px solid var(--err); }
+    .success { background: rgba(52,211,153,.12); color: var(--ok); border: 1px solid rgba(52,211,153,.28); }
+    .disabled { opacity: .42; cursor: not-allowed; }
+    .tiny-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .9; }
+
+    .field-grid { display: grid; gap: 12px; }
+    label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    input, select, textarea {
+      width: 100%;
+      background: var(--code-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 13px;
+      font: inherit;
+      outline: none;
+    }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); box-shadow: var(--focus); }
+    textarea { min-height: 94px; resize: vertical; line-height: 1.55; }
+
+    .status-grid { display: grid; gap: 10px; }
+    .msg { padding: 11px 13px; border-radius: 10px; font-size: 13px; line-height: 1.45; }
+    .msg.ok { background: rgba(52,211,153,.10); color: var(--ok); border:1px solid rgba(52,211,153,.25); }
+    .msg.err { background: rgba(248,113,113,.12); color: var(--err); border:1px solid rgba(248,113,113,.25); }
+    .msg.warn { background: rgba(251,191,36,.12); color: var(--warn); border:1px solid rgba(251,191,36,.25); }
+
+    .mini-card-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+    .metric {
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.018);
+    }
+    .metric span { display: block; color: var(--muted); font-size: 11px; margin-bottom: 7px; }
+    .metric strong { font-size: 22px; letter-spacing: -.03em; }
+
+    .swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .swatch { display: flex; gap: 10px; align-items: center; border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: rgba(255,255,255,.015); }
+    .chip { width: 34px; height: 34px; border-radius: 9px; border: 1px solid rgba(255,255,255,.14); flex: 0 0 auto; }
+    .swatch strong { display: block; font-size: 12px; }
+    .swatch code { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+    .code {
+      margin-top: 14px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-top: 2px solid var(--accent);
+      border-radius: 10px;
+      padding: 14px;
+      color: var(--muted);
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      overflow: auto;
+    }
+
+    @media (max-width: 860px) {
+      .hero, .grid { grid-template-columns: 1fr; }
+      .mini-card-row, .swatches { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <div class="panel intro">
+        <div class="eyebrow"><span class="dot"></span> Dark Mode Palette gespeichert</div>
+        <h1>Mini UI Preview</h1>
+        <p>Diese Beispielseite nutzt die Dark-Mode-Tokens aus deiner Paketbauagent-Seite: dunkler Hintergrund, graue Panels, rote Primäraktion, grüne Success-Flächen, gelbe Warnung und rote Fehlerzustände.</p>
+      </div>
+      <aside class="panel token-card">
+        <h2>Kernfarben</h2>
+        <div class="tokens">
+          <div class="token-line"><span>Background</span><code>--bg: #1a1a1a</code></div>
+          <div class="token-line"><span>Panel</span><code>--panel: #262626</code></div>
+          <div class="token-line"><span>Panel 2</span><code>--panel-2: #202020</code></div>
+          <div class="token-line"><span>Accent</span><code>--accent: #FF0002</code></div>
+          <div class="token-line"><span>Border</span><code>--border: #3a3a3a</code></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="grid">
+      <div class="panel section">
+        <h2>Buttons</h2>
+        <div class="button-row">
+          <button class="primary"><span class="tiny-dot"></span>Generieren</button>
+          <button class="secondary">Sekundär</button>
+          <button class="danger">Abbrechen</button>
+          <button class="success">Fertig</button>
+          <button class="secondary disabled" disabled>Disabled</button>
+        </div>
+        <div class="mini-card-row">
+          <div class="metric"><span>Jobs heute</span><strong>24</strong></div>
+          <div class="metric"><span>Erfolg</span><strong>98%</strong></div>
+          <div class="metric"><span>Laufzeit</span><strong>1.4s</strong></div>
+        </div>
+        <pre class="code">button.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+}</pre>
+      </div>
+
+      <div class="panel section">
+        <h2>Formular</h2>
+        <div class="field-grid">
+          <label>Inputfeld<input value="paket-definition.pdf" /></label>
+          <label>Status<select><option>Bereit zur Generierung</option><option>Wartet</option><option>Abgeschlossen</option></select></label>
+          <label>Notiz<textarea>Die UI bleibt bewusst schlank, hochwertig und prototypentauglich.</textarea></label>
+        </div>
+      </div>
+
+      <div class="panel section">
+        <h2>Statusflächen</h2>
+        <div class="status-grid">
+          <div class="msg ok">Erfolgreich verarbeitet. Die .pwi-Datei wurde erzeugt.</div>
+          <div class="msg warn">PDF erkannt, aber Metadaten sollten geprüft werden.</div>
+          <div class="msg err">Generierung abgebrochen. Bitte Eingabedatei prüfen.</div>
+        </div>
+      </div>
+
+      <div class="panel section">
+        <h2>Alle Dark Tokens</h2>
+        <div class="swatches">
+          <article class="swatch"><span class="chip" style="background:#1a1a1a"></span><div><strong>--bg</strong><code>#1a1a1a</code></div></article>
+<article class="swatch"><span class="chip" style="background:#2a2a2a"></span><div><strong>--bg-glow</strong><code>#2a2a2a</code></div></article>
+<article class="swatch"><span class="chip" style="background:#262626"></span><div><strong>--panel</strong><code>#262626</code></div></article>
+<article class="swatch"><span class="chip" style="background:#202020"></span><div><strong>--panel-2</strong><code>#202020</code></div></article>
+<article class="swatch"><span class="chip" style="background:#3a3a3a"></span><div><strong>--border</strong><code>#3a3a3a</code></div></article>
+<article class="swatch"><span class="chip" style="background:#ffffff"></span><div><strong>--text</strong><code>#ffffff</code></div></article>
+<article class="swatch"><span class="chip" style="background:#b8b8b8"></span><div><strong>--muted</strong><code>#b8b8b8</code></div></article>
+<article class="swatch"><span class="chip" style="background:#FF0002"></span><div><strong>--accent</strong><code>#FF0002</code></div></article>
+<article class="swatch"><span class="chip" style="background:#cc0001"></span><div><strong>--accent-2</strong><code>#cc0001</code></div></article>
+<article class="swatch"><span class="chip" style="background:#34d399"></span><div><strong>--ok</strong><code>#34d399</code></div></article>
+<article class="swatch"><span class="chip" style="background:#f87171"></span><div><strong>--err</strong><code>#f87171</code></div></article>
+<article class="swatch"><span class="chip" style="background:#fbbf24"></span><div><strong>--warn</strong><code>#fbbf24</code></div></article>
+<article class="swatch"><span class="chip" style="background:#131313"></span><div><strong>--code-bg</strong><code>#131313</code></div></article>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

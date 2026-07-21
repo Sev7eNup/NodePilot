@@ -1,0 +1,198 @@
+{
+  "Database": {
+    "Provider": "{{DB_PROVIDER}}"
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "{{SQLSERVER_CONNECTION_STRING}}",
+    "Postgres": "{{POSTGRES_CONNECTION_STRING}}"
+  },
+  "Jwt": {
+    "Issuer": "{{JWT_ISSUER}}",
+    "Audience": "{{JWT_AUDIENCE}}",
+    "KeyPath": "{{DATA_PATH_ESCAPED}}\\jwt-secret.key",
+    "RotateInsecureKeyFile": false
+  },
+  "Authentication": {
+    "LocalLoginMode": "BreakGlassOnly",
+    "SessionAbsoluteLifetimeHours": 8,
+    "MaxAuthorizationStalenessMinutes": 15,
+    "Ldap": {
+      "Enabled": false,
+      "Endpoints": [],
+      "Port": 636,
+      "UseSsl": true,
+      "AllowedGroupSids": [],
+      "DirectorySyncIntervalMinutes": 5,
+      "DirectorySyncMaxConcurrency": 16
+    },
+    "Windows": {
+      "Enabled": false,
+      "AllowNtlmFallback": false,
+      "NtlmDisabledByPolicy": false
+    },
+    "Oidc": {
+      "Enabled": false,
+      "Scopes": ["openid", "profile", "email"],
+      "AllowedGroupIds": []
+    },
+    "Scim": {
+      "Enabled": false,
+      "BearerToken": null,
+      "PreviousBearerToken": null,
+      "Authority": null
+    }
+  },
+  "DataProtection": {
+    "KeyRingPath": "{{DATA_PATH_ESCAPED}}\\data-protection-keys",
+    "CertificateThumbprint": null,
+    "SharedKeyRing": false
+  },
+  "Security": {
+    "AdminSetupTokenPath": "{{DATA_PATH_ESCAPED}}\\admin-setup.token",
+    "StrictAllowedHosts": true
+  },
+  "Settings": {
+    "RuntimeOverridesPath": "{{DATA_PATH_ESCAPED}}\\appsettings.runtime.json"
+  },
+  "Kestrel": {
+    "Https": {
+      "Enabled": true,
+      "HttpsPort": {{HTTPS_PORT}},
+      "HttpPort": {{HTTP_PORT}},
+      "BindHttp": {{BIND_HTTP_JSON}},
+      "CertificateLocation": "LocalMachine",
+      "CertificateStore": "My",
+      "CertificateThumbprint": "{{CERT_THUMBPRINT}}",
+      "RedirectHttpToHttps": true
+    }
+  },
+  "Logging": {
+    "Format": "cmtrace",
+    "LogLevel": {
+      "Default": "Warning",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore.Database.Command": "Warning",
+      "Microsoft.EntityFrameworkCore.Database.Connection": "Warning",
+      "Microsoft.EntityFrameworkCore.Infrastructure": "Warning"
+    },
+    "File": {
+      "Path": "{{DATA_PATH_ESCAPED}}\\logs\\nodepilot-.log",
+      "RetainedFileCountLimit": 7,
+      "FileSizeLimitBytes": 104857600
+    },
+    "StepDetail": {
+      "Enabled": false,
+      "MaxOutputChars": 10000
+    },
+    "Redaction": {
+      "Enabled": true
+    },
+    "SupportLog": {
+      "Enabled": true,
+      "Path": "{{DATA_PATH_ESCAPED}}\\logs\\nodepilot-support-.log",
+      "RetainedFileCountLimit": 90,
+      "FileSizeLimitBytes": 10485760,
+      "DbProjectionEnabled": true
+    }
+  },
+  "Engine": {
+    "Debug": {
+      "MaxPauseMinutes": 10
+    },
+    "MaxConcurrentExecutions": {
+      "Global": 5000,
+      "PerUser": 2000
+    },
+    "MaxConcurrentSteps": 600,
+    "Runspace": {
+      "MinRunspaces": 256,
+      "MaxRunspaces": 768
+    }
+  },
+  "Threading": {
+    "MinWorkerThreads": 768,
+    "MinIoCompletionThreads": 768
+  },
+  "ExecutionDispatch": {
+    "Capacity": 2048,
+    "WorkerCount": 600
+  },
+  "Stats": {
+    "RefreshIntervalMinutes": 5,
+    "WindowDays": 7
+  },
+  "Smtp": {
+    "Host": "localhost",
+    "Port": 25,
+    "From": "nodepilot@localhost",
+    "Username": null,
+    "Password": null
+  },
+  "Llm": {
+    "Enabled": false,
+    "BaseUrl": "",
+    "ApiKey": "",
+    "Model": "",
+    "MaxTokens": 128000,
+    "TimeoutSeconds": 720
+  },
+  "Credentials": {
+    "DpapiScope": "LocalMachine"
+  },
+  "Remote": {
+    "Provider": "winrm",
+    "RequireWinRmSsl": true,
+    "Pool": {
+      "Enabled": true,
+      "IdleTtlSeconds": 120
+    }
+  },
+  "RestApi": {
+    "BlockPrivateNetworks": true,
+    "AllowedHosts": [],
+    "Proxy": {
+      "Enabled": false,
+      "Address": "",
+      "BypassList": [],
+      "Username": null,
+      "Password": null
+    }
+  },
+  "Webhook": {
+    "RequireSecret": true
+  },
+  "FileSystemOperation": {
+    "RejectTraversal": true
+  },
+  "SqlActivity": {
+    "RequireConnectionRef": true
+  },
+  "Trigger": {
+    "Database": {
+      "RequireConnectionRef": true
+    }
+  },
+  "StartProgram": {
+    "DisallowShellExecute": true
+  },
+  "ExternalTrigger": {
+    "ApiKey": "{{EXTERNAL_TRIGGER_API_KEY}}"
+  },
+  "Retention": {
+    "Executions": { "Enabled": true, "MaxAgeDays": 30, "IntervalMinutes": 60, "BatchSize": 500, "ArchivePath": "{{DATA_PATH_ESCAPED}}\\archive\\executions" },
+    "AuditLog":   { "Enabled": true, "MaxAgeDays": 365, "IntervalMinutes": 720, "BatchSize": 1000, "ArchivePath": "{{DATA_PATH_ESCAPED}}\\archive\\audit", "VerifyIntervalMinutes": 1440, "VerifyMaxFilesPerPass": 500 },
+    "WorkflowVersions": { "Enabled": true, "MaxVersionsPerWorkflow": 50, "IntervalMinutes": 1440, "BatchSize": 500 },
+    "SupportEvents": { "Enabled": true, "MaxAgeDays": 90, "IntervalMinutes": 360 }
+  },
+  "OpenTelemetry": {
+    "Enabled": false
+  },
+  "ForwardedHeaders": {
+    "KnownNetworks": [],
+    "KnownProxies": {{KNOWN_PROXIES_JSON}}
+  },
+  "AllowedHosts": "{{ALLOWED_HOSTS}}",
+  "Swagger": {
+    "DisableInNonDevelopment": true
+  }
+}

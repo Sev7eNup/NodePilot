@@ -1,0 +1,29 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] startWorkflow - Wait + Fire-and-Forget",
+      "description": "Testet startWorkflow: waitForCompletion=true (parent blockiert + Output kommt zurueck als param.*), waitForCompletion=false (fire-and-forget). Failure-Pfad (missing child) in xUnit getestet.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "sw_wait", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "startWorkflow: wait + capture output", "activityType": "startWorkflow", "outputVariable": "sw_wait", "config": { "workflowNameOrId": "[TestSuite] Child: Echo Item", "waitForCompletion": true, "timeoutSeconds": 60, "parameters": { "item": "wait-mode-call", "index": "1" } } } },
+          { "id": "sw_ff", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "startWorkflow: fire-and-forget", "activityType": "startWorkflow", "outputVariable": "sw_ff", "config": { "workflowNameOrId": "[TestSuite] Child: Echo Item", "waitForCompletion": false, "parameters": { "item": "ff-mode-call", "index": "2" } } } },
+          { "id": "log_wait_result", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "log: child returnData", "activityType": "log", "config": { "level": "info", "message": "[startWorkflow] Child returned echoedItem={{sw_wait.param.echoedItem}} status={{sw_wait.param.status}}" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "waitChildItem": "{{sw_wait.param.echoedItem}}", "waitChildStatus": "{{sw_wait.param.status}}", "ffSuccess": "{{sw_ff.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "sw_wait", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "sw_ff", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "sw_wait", "target": "log_wait_result", "type": "labeled", "data": { "label": "On Success", "condition": "sw_wait.success" } },
+          { "id": "e4", "source": "log_wait_result", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "sw_ff", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

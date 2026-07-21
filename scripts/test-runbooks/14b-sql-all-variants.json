@@ -1,0 +1,44 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] sql - All Variants Live",
+      "description": "Live test of sql activity. SQLite is the only provider tested live (no external DB required). Uses a file at C:\\temp\\nodepilot-sqltest.db. Variants: builder-mode (dataSource), raw connectionString, basic SELECT, INSERT then SELECT, parameterized query (if supported via :p / @p binding), error path (invalid SQL). SQL Server and Postgres provider steps are kept as disabled (would need live DB) — schema-validation only. Teardown removes the SQLite file.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "setup", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "setup: ensure temp dir", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "setup", "config": { "engine": "auto", "timeoutSeconds": 5, "script": "New-Item -ItemType Directory -Force -Path 'C:\\temp' | Out-Null\nRemove-Item -Force -ErrorAction SilentlyContinue 'C:\\temp\\nodepilot-sqltest.db'\nWrite-Output 'ready'" } } },
+          { "id": "s_create", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "sqlite: CREATE TABLE", "activityType": "sql", "outputVariable": "s_create", "config": { "provider": "sqlite", "dataSource": "C:\\temp\\nodepilot-sqltest.db", "query": "CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY, name TEXT, qty INTEGER);", "timeoutSeconds": 10 } } },
+          { "id": "s_insert", "type": "activity", "position": { "x": 940, "y": 400 }, "data": { "label": "sqlite: INSERT x3", "activityType": "sql", "outputVariable": "s_insert", "config": { "provider": "sqlite", "dataSource": "C:\\temp\\nodepilot-sqltest.db", "query": "INSERT INTO items (name, qty) VALUES ('alpha', 1), ('beta', 2), ('gamma', 3);", "timeoutSeconds": 10 } } },
+          { "id": "s_select_builder", "type": "activity", "position": { "x": 1240, "y": 200 }, "data": { "label": "sqlite: SELECT (builder)", "activityType": "sql", "outputVariable": "s_sel_b", "config": { "provider": "sqlite", "dataSource": "C:\\temp\\nodepilot-sqltest.db", "query": "SELECT * FROM items ORDER BY id;", "timeoutSeconds": 10 } } },
+          { "id": "s_select_raw", "type": "activity", "position": { "x": 1240, "y": 400 }, "data": { "label": "sqlite: SELECT (raw)", "activityType": "sql", "outputVariable": "s_sel_r", "config": { "provider": "sqlite", "connectionString": "Data Source=C:\\temp\\nodepilot-sqltest.db", "query": "SELECT COUNT(*) AS total FROM items;", "timeoutSeconds": 10 } } },
+          { "id": "s_err", "type": "activity", "position": { "x": 1240, "y": 600 }, "data": { "label": "sqlite: invalid SQL (expect fail)", "activityType": "sql", "outputVariable": "s_err", "config": { "provider": "sqlite", "dataSource": "C:\\temp\\nodepilot-sqltest.db", "query": "SELECT * FROM no_such_table;", "timeoutSeconds": 10 } } },
+          { "id": "s_sqlserver", "type": "activity", "position": { "x": 1240, "y": 800 }, "data": { "label": "sqlserver (disabled — no live DB)", "activityType": "sql", "disabled": true, "outputVariable": "s_sqlsrv", "config": { "provider": "sqlserver", "server": "localhost", "database": "tempdb", "authentication": "integrated", "query": "SELECT 1 AS one;", "encrypt": false, "trustServerCertificate": true } } },
+          { "id": "s_postgres", "type": "activity", "position": { "x": 1240, "y": 1000 }, "data": { "label": "postgres (disabled — no live DB)", "activityType": "sql", "disabled": true, "outputVariable": "s_pg", "config": { "provider": "postgres", "host": "127.0.0.1", "port": 5432, "database": "postgres", "username": "postgres", "password": "postgres", "query": "SELECT 1 AS one;", "sslMode": "Disable" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 1560, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1880, "y": 400 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/sql] create={{s_create.success}} insert={{s_insert.success}} sel_builder={{s_sel_b.success}} sel_raw={{s_sel_r.success}} err_expected_false={{s_err.success}}" } } },
+          { "id": "teardown", "type": "activity", "position": { "x": 2200, "y": 400 }, "data": { "label": "teardown: rm db", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "teardown", "config": { "engine": "auto", "timeoutSeconds": 5, "script": "Remove-Item -Force -ErrorAction SilentlyContinue 'C:\\temp\\nodepilot-sqltest.db'\nWrite-Output 'cleaned'" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 2520, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "create": "{{s_create.success}}", "insert": "{{s_insert.success}}", "select_builder": "{{s_sel_b.success}}", "select_raw": "{{s_sel_r.success}}", "select_raw_count": "{{s_sel_r.output}}", "error_failed": "{{s_err.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "setup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "setup", "target": "s_create", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e3", "source": "s_create", "target": "s_insert", "type": "labeled", "data": { "label": "On Success", "condition": "s_create.success" } },
+          { "id": "e4", "source": "s_insert", "target": "s_select_builder", "type": "labeled", "data": { "label": "On Success", "condition": "s_insert.success" } },
+          { "id": "e5", "source": "s_insert", "target": "s_select_raw", "type": "labeled", "data": { "label": "On Success", "condition": "s_insert.success" } },
+          { "id": "e6", "source": "s_insert", "target": "s_err", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "s_select_builder", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "s_select_raw", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "s_err", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "s_sqlserver", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "s_postgres", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "log_summary", "target": "teardown", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "teardown", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

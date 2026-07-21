@@ -1,0 +1,43 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] startProgram - All Variants Live",
+      "description": "Live test of startProgram activity. Variants: simple cmd /c echo (waitForExit=true, stdout capture), with arguments + workingDirectory, fire-and-forget (waitForExit=false → returns processId immediately), successExitCodes with non-zero allowed code (cmd /c exit 3 + successExitCodes='0,3'), error path (cmd /c exit 99 with successExitCodes='0' → fail), templated arguments from upstream. Note: useShellExecute=true intentionally not exercised — gated by StartProgram:DisallowShellExecute=true hardening flag.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "p_echo", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "sp: cmd /c echo", "activityType": "startProgram", "targetMachineId": "localhost", "outputVariable": "p_echo", "config": { "filePath": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c echo hello-from-startProgram", "waitForExit": true, "timeoutSeconds": 10, "successExitCodes": "0" } } },
+          { "id": "p_workdir", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "sp: with workingDirectory", "activityType": "startProgram", "targetMachineId": "localhost", "outputVariable": "p_wd", "config": { "filePath": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c cd", "workingDirectory": "C:\\Windows", "waitForExit": true, "timeoutSeconds": 10, "successExitCodes": "0" } } },
+          { "id": "p_async", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "sp: fire-and-forget", "activityType": "startProgram", "targetMachineId": "localhost", "outputVariable": "p_async", "config": { "filePath": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c ping -n 2 127.0.0.1 > nul", "waitForExit": false } } },
+          { "id": "p_exit3_ok", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "sp: exit 3 (allowed)", "activityType": "startProgram", "targetMachineId": "localhost", "outputVariable": "p_e3", "config": { "filePath": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c exit 3", "waitForExit": true, "timeoutSeconds": 10, "successExitCodes": "0,3" } } },
+          { "id": "p_exit99_err", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "sp: exit 99 (expect fail)", "activityType": "startProgram", "targetMachineId": "localhost", "outputVariable": "p_e99", "config": { "filePath": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c exit 99", "waitForExit": true, "timeoutSeconds": 10, "successExitCodes": "0" } } },
+          { "id": "build_arg", "type": "activity", "position": { "x": 320, "y": 1200 }, "data": { "label": "rs: build args", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "build_arg", "config": { "engine": "auto", "timeoutSeconds": 5, "script": "$cmdArgs = '/c echo templated-args-OK'\nWrite-Output 'built'" } } },
+          { "id": "p_templated", "type": "activity", "position": { "x": 640, "y": 1200 }, "data": { "label": "sp: templated args", "activityType": "startProgram", "targetMachineId": "localhost", "outputVariable": "p_tpl", "config": { "filePath": "C:\\Windows\\System32\\cmd.exe", "arguments": "{{build_arg.param.cmdArgs}}", "waitForExit": true, "timeoutSeconds": 10, "successExitCodes": "0" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 600 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/startProgram] echo={{p_echo.success}}({{p_echo.param.exitCode}}) wd={{p_wd.success}} async={{p_async.success}}(pid={{p_async.param.processId}}) exit3={{p_e3.success}}({{p_e3.param.exitCode}}) exit99_fail_expected={{p_e99.success}} tpl={{p_tpl.success}}" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1600, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "echo_stdout": "{{p_echo.param.stdout}}", "wd_stdout": "{{p_wd.param.stdout}}", "async_pid": "{{p_async.param.processId}}", "exit3_code": "{{p_e3.param.exitCode}}", "exit99_failed_as_expected": "{{p_e99.success}}", "templated_stdout": "{{p_tpl.param.stdout}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "p_echo", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "p_workdir", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "p_async", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "p_exit3_ok", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "p_exit99_err", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "trig", "target": "build_arg", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "build_arg", "target": "p_templated", "type": "labeled", "data": { "label": "On Success", "condition": "build_arg.success" } },
+          { "id": "e8", "source": "p_echo", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "p_workdir", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "p_async", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "p_exit3_ok", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "p_exit99_err", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "p_templated", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

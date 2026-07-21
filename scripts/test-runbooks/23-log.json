@@ -1,0 +1,38 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] log - All Levels & Templates",
+      "description": "Testet log-Activity: alle 3 Levels (info/warning/error), Variable-Resolution mit verschiedenen Quellen (param.*, output, success), Multi-Line-Messages, leere Message Edge-Case. Wird im StepDetail-Log und (sofern Logging:File:Path konfiguriert) in der Rolling-File auftauchen.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 500 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 500 }, "data": { "label": "init: vars", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$msg = 'hello-from-init'\n$num = '42'\nWrite-Output 'init-output-line'" } } },
+          { "id": "log_info", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "log: info", "activityType": "log", "config": { "level": "info", "message": "[TestSuite][info] Plain info-level message; numeric={{init.param.num}}" } } },
+          { "id": "log_warn", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "log: warning", "activityType": "log", "config": { "level": "warning", "message": "[TestSuite][warn] Warning with template: msg={{init.param.msg}}" } } },
+          { "id": "log_err", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "log: error", "activityType": "log", "config": { "level": "error", "message": "[TestSuite][error] Error message; init success={{init.success}} output={{init.output}}" } } },
+          { "id": "log_multi", "type": "activity", "position": { "x": 640, "y": 800 }, "data": { "label": "log: multi-line", "activityType": "log", "config": { "level": "info", "message": "[TestSuite][multi] Line 1\nLine 2: msg={{init.param.msg}}\nLine 3: num={{init.param.num}}\nLine 4: end" } } },
+          { "id": "log_empty", "type": "activity", "position": { "x": 640, "y": 1000 }, "data": { "label": "log: minimal", "activityType": "log", "config": { "level": "info", "message": "ok" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 500 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1280, "y": 500 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "totalLogs": "5", "msg": "{{init.param.msg}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init", "target": "log_info", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "init", "target": "log_warn", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "init", "target": "log_err", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "init", "target": "log_multi", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "init", "target": "log_empty", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "log_info", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "log_warn", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "log_err", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "log_multi", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "log_empty", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

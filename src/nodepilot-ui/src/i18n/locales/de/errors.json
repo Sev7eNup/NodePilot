@@ -1,0 +1,11 @@
+{
+  "generic": "Ein Fehler ist aufgetreten.",
+  "network": "Netzwerk-Fehler. Bitte erneut versuchen.",
+  "unauthorized": "Nicht autorisiert. Bitte erneut anmelden.",
+  "forbidden": "Keine Berechtigung für diese Aktion.",
+  "notFound": "Nicht gefunden.",
+  "validationFailed": "Validierung fehlgeschlagen.",
+  "fileNotJson": "{{file}} ist kein gültiges JSON.",
+  "operationFailed": "{{operation}} fehlgeschlagen: {{message}}",
+  "unknownError": "Unbekannter Fehler"
+}

@@ -1,0 +1,38 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\NodePilot.Ai\NodePilot.Ai.csproj" />
+    <ProjectReference Include="..\NodePilot.Remote\NodePilot.Remote.csproj" />
+    <ProjectReference Include="..\NodePilot.Core\NodePilot.Core.csproj" />
+    <ProjectReference Include="..\NodePilot.Data\NodePilot.Data.csproj" />
+    <ProjectReference Include="..\NodePilot.Telemetry\NodePilot.Telemetry.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- CVE-2025-6965: fixed SQLitePCLRaw 3.x native build (see Directory.Packages.props). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Http" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.PowerShell.SDK" />
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Include="Npgsql" />
+    <!-- Security floor over Markdig.Signed's transitive System.Security.Cryptography.Xml
+         (pulled via Microsoft.PowerShell.SDK); version + rationale in Directory.Packages.props. -->
+    <PackageReference Include="System.Security.Cryptography.Xml" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- IsolatedProcessLauncher hand-rolls CreateProcessW + STARTUPINFOEX + a
+         PROC_THREAD_ATTRIBUTE_LIST (pointers); these require unsafe blocks. Kept local to
+         the PowerShell/ isolation launcher — no other code in this project uses unsafe. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NodePilot.Engine.Tests" />
+  </ItemGroup>
+
+</Project>

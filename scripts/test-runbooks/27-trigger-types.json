@@ -1,0 +1,35 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] trigger-types - All 6 Trigger Types",
+      "description": "Definiert alle 6 Trigger-Typen: scheduleTrigger (alle 5 Min, ACTIVE), manualTrigger, webhookTrigger, fileWatcherTrigger (auf C:\\Windows\\Temp - existiert immer), databaseTrigger (DISABLED ohne Test-DB), eventLogTrigger. Engine validiert beim Save dass alle Trigger-Source-Schemas korrekt sind. Bei manueller Workflow-Ausfuehrung laufen alle Trigger-Knoten als Roots durch.",
+      "definition": {
+        "nodes": [
+          { "id": "trig_sched", "type": "activity", "position": { "x": 0, "y": 100 }, "data": { "label": "scheduleTrigger: every 5 min (ACTIVE)", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *", "description": "Primary firing trigger" } } },
+          { "id": "trig_manual", "type": "activity", "position": { "x": 0, "y": 280 }, "data": { "label": "manualTrigger: input params", "activityType": "manualTrigger", "config": { "title": "Manual Trigger Parameters", "parameters": [
+            { "name": "envName", "type": "string", "required": true, "default": "test-env" },
+            { "name": "level", "type": "string", "required": false, "default": "info" }
+          ] } } },
+          { "id": "trig_webhook", "type": "activity", "position": { "x": 0, "y": 460 }, "data": { "label": "webhookTrigger: /testsuite/all-triggers", "activityType": "webhookTrigger", "config": { "path": "testsuite/all-triggers", "method": "POST", "secret": "" } } },
+          { "id": "trig_file", "type": "activity", "position": { "x": 0, "y": 640 }, "data": { "label": "fileWatcherTrigger: C:\\Users\\Public\\Documents", "activityType": "fileWatcherTrigger", "config": { "directory": "C:\\Users\\Public\\Documents", "filter": "*.flag-np-test", "watchType": "created", "includeSubdirectories": false } } },
+          { "id": "trig_db", "type": "activity", "position": { "x": 0, "y": 820 }, "data": { "label": "databaseTrigger: poll (DISABLED)", "activityType": "databaseTrigger", "disabled": true, "config": { "provider": "sqlite", "connectionString": "Data Source=:memory:", "query": "SELECT 1 AS sentinel WHERE 1=0", "intervalSeconds": 60 } } },
+          { "id": "trig_evtlog", "type": "activity", "position": { "x": 0, "y": 1000 }, "data": { "label": "eventLogTrigger: Application/Information", "activityType": "eventLogTrigger", "config": { "logName": "Application", "source": "", "entryType": "Information", "messagePattern": "" } } },
+          { "id": "log_in", "type": "activity", "position": { "x": 360, "y": 550 }, "data": { "label": "log: which trigger fired", "activityType": "log", "config": { "level": "info", "message": "[trigger-types] Workflow fired (one of 6 triggers)" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 720, "y": 550 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "note": "All 6 trigger types schema-validated on save" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig_sched", "target": "log_in", "type": "labeled", "data": { "label": "Schedule" } },
+          { "id": "e2", "source": "trig_manual", "target": "log_in", "type": "labeled", "data": { "label": "Manual" } },
+          { "id": "e3", "source": "trig_webhook", "target": "log_in", "type": "labeled", "data": { "label": "Webhook" } },
+          { "id": "e4", "source": "trig_file", "target": "log_in", "type": "labeled", "data": { "label": "File" } },
+          { "id": "e5", "source": "trig_db", "target": "log_in", "type": "labeled", "data": { "label": "DB" } },
+          { "id": "e6", "source": "trig_evtlog", "target": "log_in", "type": "labeled", "data": { "label": "EventLog" } },
+          { "id": "e7", "source": "log_in", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] powerManagement - All Actions (DESTRUCTIVE DISABLED)",
+      "description": "Testet powerManagement-Schemas. ACHTUNG: shutdown/restart/logoff/hibernate sind als 'disabled: true' markiert, damit der Test sie nicht wirklich ausfuehrt - die Knoten dienen nur der Schema-/UI-Validierung. Nur 'abort' (cancel pending shutdown) ist scharfgeschaltet, weil es ohne pending shutdown ein No-Op ist.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 500 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "p_abort", "type": "activity", "position": { "x": 320, "y": 500 }, "data": { "label": "power: abort (safe no-op)", "activityType": "powerManagement", "targetMachineId": "localhost", "outputVariable": "p_abort", "config": { "action": "abort" } } },
+          { "id": "p_shutdown", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "power: shutdown (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "config": { "action": "shutdown", "delaySeconds": 60, "force": false, "message": "Test: NodePilot shutdown" } } },
+          { "id": "p_restart", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "power: restart (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "config": { "action": "restart", "delaySeconds": 30, "force": false } } },
+          { "id": "p_logoff", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "power: logoff (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "config": { "action": "logoff", "force": true } } },
+          { "id": "p_hibernate", "type": "activity", "position": { "x": 640, "y": 800 }, "data": { "label": "power: hibernate (DISABLED)", "activityType": "powerManagement", "targetMachineId": "localhost", "disabled": true, "config": { "action": "hibernate" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 500 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1280, "y": 500 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "abortOk": "{{p_abort.success}}", "note": "destructive actions are kept disabled in this runbook" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "p_abort", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "p_abort", "target": "p_shutdown", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "p_abort", "target": "p_restart", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "p_abort", "target": "p_logoff", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "p_abort", "target": "p_hibernate", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "p_shutdown", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "p_restart", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "p_logoff", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "p_hibernate", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

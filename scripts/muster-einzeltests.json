@@ -1,0 +1,5118 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-07-13T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Test — runScript",
+      "description": "Varianten: strukturierter param.*-Output, Native-Exit-Code via successExitCodes, isolated Prozess.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: param capture",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$hostName = $env:COMPUTERNAME\n$stamp = (Get-Date).ToString('o')\nWrite-Output \"host=$hostName\""
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: exit code",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "successExitCodes": "0,3",
+                "script": "cmd /c exit 3\nWrite-Output \"native exit captured\""
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: isolated process",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "isolated": true,
+                "script": "$pidInfo = $PID\nWrite-Output \"isolated pid=$pidInfo\""
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_runScript_ok": "{{s0.success}}",
+                  "v1_runScript_ok": "{{s1.success}}",
+                  "v2_runScript_ok": "{{s2.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s2",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — fileOperation",
+      "description": "Varianten: create → exists → copy → rename → move → delete (alle Operationen, Temp-Pfade).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "fileOp: create",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\np-fo-a.txt"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "fileOp: exists",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "exists",
+                "path": "C:\\Temp\\np-fo-a.txt"
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "fileOp: copy",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "copy",
+                "path": "C:\\Temp\\np-fo-a.txt",
+                "destination": "C:\\Temp\\np-fo-b.txt"
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "fileOp: rename",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "rename",
+                "path": "C:\\Temp\\np-fo-b.txt",
+                "newName": "np-fo-c.txt"
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "fileOp: move",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "move",
+                "path": "C:\\Temp\\np-fo-c.txt",
+                "destination": "C:\\Temp\\np-fo-d.txt"
+              }
+            }
+          },
+          {
+            "id": "s5",
+            "type": "activity",
+            "position": {
+              "x": 2060,
+              "y": 260
+            },
+            "data": {
+              "label": "fileOp: delete d",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\np-fo-d.txt"
+              }
+            }
+          },
+          {
+            "id": "s6",
+            "type": "activity",
+            "position": {
+              "x": 2400,
+              "y": 260
+            },
+            "data": {
+              "label": "fileOp: delete a",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\np-fo-a.txt"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2740,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_fileOperation_ok": "{{s0.success}}",
+                  "v1_fileOperation_ok": "{{s1.success}}",
+                  "v2_fileOperation_ok": "{{s2.success}}",
+                  "v3_fileOperation_ok": "{{s3.success}}",
+                  "v4_fileOperation_ok": "{{s4.success}}",
+                  "v5_fileOperation_ok": "{{s5.success}}",
+                  "v6_fileOperation_ok": "{{s6.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "s3",
+            "target": "s4",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e5",
+            "source": "s4",
+            "target": "s5",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e6",
+            "source": "s5",
+            "target": "s6",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s6",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — folderOperation",
+      "description": "Varianten: create → exists → list → copy → rename → move → delete (alle Operationen).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: create",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "create",
+                "path": "C:\\Temp\\np-fol"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: exists",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "exists",
+                "path": "C:\\Temp\\np-fol"
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: list",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "list",
+                "path": "C:\\Temp\\np-fol"
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: copy",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "copy",
+                "path": "C:\\Temp\\np-fol",
+                "destination": "C:\\Temp\\np-fol-copy"
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: rename",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "rename",
+                "path": "C:\\Temp\\np-fol-copy",
+                "newName": "np-fol-ren"
+              }
+            }
+          },
+          {
+            "id": "s5",
+            "type": "activity",
+            "position": {
+              "x": 2060,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: move",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "move",
+                "path": "C:\\Temp\\np-fol-ren",
+                "destination": "C:\\Temp\\np-fol-moved"
+              }
+            }
+          },
+          {
+            "id": "s6",
+            "type": "activity",
+            "position": {
+              "x": 2400,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: delete moved",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\np-fol-moved"
+              }
+            }
+          },
+          {
+            "id": "s7",
+            "type": "activity",
+            "position": {
+              "x": 2740,
+              "y": 260
+            },
+            "data": {
+              "label": "folderOp: delete orig",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\np-fol"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 3080,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_folderOperation_ok": "{{s0.success}}",
+                  "v1_folderOperation_ok": "{{s1.success}}",
+                  "v2_folderOperation_ok": "{{s2.success}}",
+                  "v3_folderOperation_ok": "{{s3.success}}",
+                  "v4_folderOperation_ok": "{{s4.success}}",
+                  "v5_folderOperation_ok": "{{s5.success}}",
+                  "v6_folderOperation_ok": "{{s6.success}}",
+                  "v7_folderOperation_ok": "{{s7.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "s3",
+            "target": "s4",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e5",
+            "source": "s4",
+            "target": "s5",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e6",
+            "source": "s5",
+            "target": "s6",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e7",
+            "source": "s6",
+            "target": "s7",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s7",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — fileHash",
+      "description": "Varianten: alle Algorithmen SHA256/SHA1/MD5/SHA384/SHA512 auf derselben Datei.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "fileHash: SHA256",
+              "activityType": "fileHash",
+              "targetMachineId": "localhost",
+              "config": {
+                "path": "C:\\Windows\\System32\\notepad.exe",
+                "algorithm": "SHA256"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "fileHash: SHA1",
+              "activityType": "fileHash",
+              "targetMachineId": "localhost",
+              "config": {
+                "path": "C:\\Windows\\System32\\notepad.exe",
+                "algorithm": "SHA1"
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "fileHash: MD5",
+              "activityType": "fileHash",
+              "targetMachineId": "localhost",
+              "config": {
+                "path": "C:\\Windows\\System32\\notepad.exe",
+                "algorithm": "MD5"
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "fileHash: SHA384",
+              "activityType": "fileHash",
+              "targetMachineId": "localhost",
+              "config": {
+                "path": "C:\\Windows\\System32\\notepad.exe",
+                "algorithm": "SHA384"
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "fileHash: SHA512",
+              "activityType": "fileHash",
+              "targetMachineId": "localhost",
+              "config": {
+                "path": "C:\\Windows\\System32\\notepad.exe",
+                "algorithm": "SHA512"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2060,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_fileHash_ok": "{{s0.success}}",
+                  "v1_fileHash_ok": "{{s1.success}}",
+                  "v2_fileHash_ok": "{{s2.success}}",
+                  "v3_fileHash_ok": "{{s3.success}}",
+                  "v4_fileHash_ok": "{{s4.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "s3",
+            "target": "s4",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s4",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — zipOperation",
+      "description": "Varianten: compress → extract (Round-Trip).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "zipOp: compress",
+              "activityType": "zipOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Windows\\System32\\notepad.exe",
+                "destination": "C:\\Temp\\np-zip.zip",
+                "force": true
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "zipOp: extract",
+              "activityType": "zipOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "extract",
+                "source": "C:\\Temp\\np-zip.zip",
+                "destination": "C:\\Temp\\np-unzip",
+                "force": true
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_zipOperation_ok": "{{s0.success}}",
+                  "v1_zipOperation_ok": "{{s1.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s1",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — serviceManagement",
+      "description": "Varianten: status (Spooler, BITS) + start (Spooler — idempotent bei laufendem Dienst). Destruktive Aktionen stop/restart/create/delete/setstarttype bewusst NICHT gegen echte Dienste.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "svc: status Spooler",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "config": {
+                "serviceName": "Spooler",
+                "action": "status"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "svc: status BITS",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "config": {
+                "serviceName": "BITS",
+                "action": "status"
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "svc: start Spooler",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "config": {
+                "serviceName": "Spooler",
+                "action": "start"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_serviceManagement_ok": "{{s0.success}}",
+                  "v1_serviceManagement_ok": "{{s1.success}}",
+                  "v2_serviceManagement_ok": "{{s2.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s2",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — scheduledTask",
+      "description": "Variante get (übrige start/stop/enable/disable/create/delete destruktiv → nicht gegen echte Tasks). Auf diesem Host env-abhängig: eine korrupte Fremd-Task vergiftet den Get-ScheduledTask-CIM-Provider.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "sched: get",
+              "activityType": "scheduledTask",
+              "targetMachineId": "localhost",
+              "config": {
+                "action": "get",
+                "taskName": "MicrosoftEdgeUpdateTaskMachineCore",
+                "taskPath": "\\"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_scheduledTask_ok": "{{s0.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s0",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — registryOperation",
+      "description": "Varianten: createkey → write(String) → write(DWord) → read → exists → deletevalue → deletekey (HKCU-Testschlüssel).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: createkey",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "createkey",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: write String",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
+                "valueName": "Str",
+                "value": "muster",
+                "valueType": "String"
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: write DWord",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
+                "valueName": "Num",
+                "value": "42",
+                "valueType": "DWord"
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: read",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "read",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
+                "valueName": "Str"
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: exists",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "exists",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
+                "valueName": "Num"
+              }
+            }
+          },
+          {
+            "id": "s5",
+            "type": "activity",
+            "position": {
+              "x": 2060,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: deletevalue",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "deletevalue",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
+                "valueName": "Str"
+              }
+            }
+          },
+          {
+            "id": "s6",
+            "type": "activity",
+            "position": {
+              "x": 2400,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: deletekey",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "deletekey",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2740,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_registryOperation_ok": "{{s0.success}}",
+                  "v1_registryOperation_ok": "{{s1.success}}",
+                  "v2_registryOperation_ok": "{{s2.success}}",
+                  "v3_registryOperation_ok": "{{s3.success}}",
+                  "v4_registryOperation_ok": "{{s4.success}}",
+                  "v5_registryOperation_ok": "{{s5.success}}",
+                  "v6_registryOperation_ok": "{{s6.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "s3",
+            "target": "s4",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e5",
+            "source": "s4",
+            "target": "s5",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e6",
+            "source": "s5",
+            "target": "s6",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s6",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — wmiQuery",
+      "description": "Varianten: query (className Win32_OperatingSystem) + wql (WQL SELECT). invokemethod ausgelassen (potenziell destruktiv).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "wmi: query className",
+              "activityType": "wmiQuery",
+              "targetMachineId": "localhost",
+              "config": {
+                "mode": "query",
+                "className": "Win32_OperatingSystem",
+                "namespace": "root\\cimv2"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "wmi: wql",
+              "activityType": "wmiQuery",
+              "targetMachineId": "localhost",
+              "config": {
+                "mode": "wql",
+                "query": "SELECT Name, NumberOfLogicalProcessors FROM Win32_ComputerSystem",
+                "namespace": "root\\cimv2"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_wmiQuery_ok": "{{s0.success}}",
+                  "v1_wmiQuery_ok": "{{s1.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s1",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — startProgram",
+      "description": "Varianten: waitForExit=true, non-zero Exit + successExitCodes, waitForExit=false (fire-forget).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "prog: wait+exit0",
+              "activityType": "startProgram",
+              "targetMachineId": "localhost",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c echo muster",
+                "waitForExit": true,
+                "timeoutSeconds": 30,
+                "successExitCodes": "0"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "prog: exit3 ok",
+              "activityType": "startProgram",
+              "targetMachineId": "localhost",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c exit 3",
+                "waitForExit": true,
+                "timeoutSeconds": 30,
+                "successExitCodes": "0,3"
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "prog: fire-forget",
+              "activityType": "startProgram",
+              "targetMachineId": "localhost",
+              "config": {
+                "filePath": "C:\\Windows\\System32\\cmd.exe",
+                "arguments": "/c echo bg",
+                "waitForExit": false,
+                "timeoutSeconds": 30
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_startProgram_ok": "{{s0.success}}",
+                  "v1_startProgram_ok": "{{s1.success}}",
+                  "v2_startProgram_ok": "{{s2.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s2",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — powerManagement",
+      "description": "Variante abort (sicherer No-Op). shutdown/restart/logoff/sleep/hibernate bewusst NICHT — würden die Maschine ausschalten.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "power: abort",
+              "activityType": "powerManagement",
+              "targetMachineId": "localhost",
+              "config": {
+                "action": "abort"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_powerManagement_ok": "{{s0.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s0",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — waitForCondition",
+      "description": "Varianten: alle 5 conditionTypes — script, pathExists, serviceRunning, portOpen, httpOk.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "wait: script",
+              "activityType": "waitForCondition",
+              "targetMachineId": "localhost",
+              "config": {
+                "conditionType": "script",
+                "script": "$true",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "wait: pathExists",
+              "activityType": "waitForCondition",
+              "targetMachineId": "localhost",
+              "config": {
+                "conditionType": "pathExists",
+                "path": "C:\\Windows",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "wait: serviceRunning",
+              "activityType": "waitForCondition",
+              "targetMachineId": "localhost",
+              "config": {
+                "conditionType": "serviceRunning",
+                "serviceName": "EventLog",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "wait: portOpen",
+              "activityType": "waitForCondition",
+              "targetMachineId": "localhost",
+              "config": {
+                "conditionType": "portOpen",
+                "host": "localhost",
+                "port": 5000,
+                "intervalSeconds": 1,
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "wait: httpOk",
+              "activityType": "waitForCondition",
+              "targetMachineId": "localhost",
+              "config": {
+                "conditionType": "httpOk",
+                "url": "http://localhost:5000/healthz/live",
+                "intervalSeconds": 1,
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2060,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_waitForCondition_ok": "{{s0.success}}",
+                  "v1_waitForCondition_ok": "{{s1.success}}",
+                  "v2_waitForCondition_ok": "{{s2.success}}",
+                  "v3_waitForCondition_ok": "{{s3.success}}",
+                  "v4_waitForCondition_ok": "{{s4.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "s3",
+            "target": "s4",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s4",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — textFileEdit",
+      "description": "Varianten: alle Operationen append/prepend/insert/replace/replaceline/delete (prep sät die Datei).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "prep: seed 3 lines",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "Set-Content -Path 'C:\\Temp\\np-tfe.txt' -Value @('line1','line2','line3')"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: append",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "content": "appended"
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: prepend",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "prepend",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "content": "prepended"
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: insert",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "insert",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "content": "inserted",
+                "lineNumber": 2
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: replace",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "replace",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "matchPattern": "line2",
+                "replace": "line2-REPLACED"
+              }
+            }
+          },
+          {
+            "id": "s5",
+            "type": "activity",
+            "position": {
+              "x": 2060,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: replaceline",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "replaceline",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "content": "line3-NEW",
+                "lineNumber": 3
+              }
+            }
+          },
+          {
+            "id": "s6",
+            "type": "activity",
+            "position": {
+              "x": 2400,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: delete line",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "lineNumber": 1
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2740,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_runScript_ok": "{{s0.success}}",
+                  "v1_textFileEdit_ok": "{{s1.success}}",
+                  "v2_textFileEdit_ok": "{{s2.success}}",
+                  "v3_textFileEdit_ok": "{{s3.success}}",
+                  "v4_textFileEdit_ok": "{{s4.success}}",
+                  "v5_textFileEdit_ok": "{{s5.success}}",
+                  "v6_textFileEdit_ok": "{{s6.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "s3",
+            "target": "s4",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e5",
+            "source": "s4",
+            "target": "s5",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e6",
+            "source": "s5",
+            "target": "s6",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s6",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — restApi",
+      "description": "Varianten: GET, GET mit Custom-Headers, GET mit Retry-Policy + Timeout (alle gegen lokale healthz).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: GET",
+              "activityType": "restApi",
+              "config": {
+                "url": "http://localhost:5000/healthz/live",
+                "method": "GET",
+                "timeoutSeconds": 5
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: GET+headers",
+              "activityType": "restApi",
+              "config": {
+                "url": "http://localhost:5000/healthz/ready",
+                "method": "GET",
+                "timeoutSeconds": 5,
+                "headers": {
+                  "X-Muster": "1",
+                  "Accept": "application/json"
+                }
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: GET+retry",
+              "activityType": "restApi",
+              "config": {
+                "url": "http://localhost:5000/healthz/live",
+                "method": "GET",
+                "timeoutSeconds": 5,
+                "retry": {
+                  "maxAttempts": 3,
+                  "backoff": "exponential",
+                  "initialDelayMs": 200,
+                  "maxDelayMs": 2000
+                }
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_restApi_ok": "{{s0.success}}",
+                  "v1_restApi_ok": "{{s1.success}}",
+                  "v2_restApi_ok": "{{s2.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s2",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — sql",
+      "description": "Varianten: SELECT Literal, SELECT Ausdruck/CASE, SELECT Aggregat über VALUES (sqlite in-memory).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "sql: literal",
+              "activityType": "sql",
+              "config": {
+                "provider": "sqlite",
+                "dataSource": ":memory:",
+                "query": "SELECT 1 AS val, 'muster' AS msg",
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "sql: expression",
+              "activityType": "sql",
+              "config": {
+                "provider": "sqlite",
+                "dataSource": ":memory:",
+                "query": "SELECT CASE WHEN 5>3 THEN 'yes' ELSE 'no' END AS cmp, 2+2 AS sum",
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "sql: aggregate",
+              "activityType": "sql",
+              "config": {
+                "provider": "sqlite",
+                "dataSource": ":memory:",
+                "query": "SELECT COUNT(*) AS cnt, SUM(x) AS total FROM (SELECT 1 AS x UNION SELECT 2 UNION SELECT 3)",
+                "timeoutSeconds": 10
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_sql_ok": "{{s0.success}}",
+                  "v1_sql_ok": "{{s1.success}}",
+                  "v2_sql_ok": "{{s2.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s2",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — xmlQuery",
+      "description": "Varianten: resultMode single (ein Node) + all (alle Nodes als Array).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "xml: single",
+              "activityType": "xmlQuery",
+              "config": {
+                "source": "inline",
+                "content": "<?xml version=\"1.0\"?><root><item id=\"1\">alpha</item><item id=\"2\">beta</item></root>",
+                "xpath": "//item[@id='1']",
+                "resultMode": "single"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "xml: all",
+              "activityType": "xmlQuery",
+              "config": {
+                "source": "inline",
+                "content": "<?xml version=\"1.0\"?><root><item id=\"1\">alpha</item><item id=\"2\">beta</item></root>",
+                "xpath": "//item",
+                "resultMode": "all"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_xmlQuery_ok": "{{s0.success}}",
+                  "v1_xmlQuery_ok": "{{s1.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s1",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — jsonQuery",
+      "description": "Varianten: resultMode single (ein Wert) + all (alle Treffer als Array).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "json: single",
+              "activityType": "jsonQuery",
+              "config": {
+                "source": "inline",
+                "content": "{\"items\":[{\"name\":\"alpha\",\"id\":1},{\"name\":\"beta\",\"id\":2}]}",
+                "jsonPath": "$.items[0].name",
+                "resultMode": "single"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "json: all",
+              "activityType": "jsonQuery",
+              "config": {
+                "source": "inline",
+                "content": "{\"items\":[{\"name\":\"alpha\",\"id\":1},{\"name\":\"beta\",\"id\":2}]}",
+                "jsonPath": "$.items[*].name",
+                "resultMode": "all"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_jsonQuery_ok": "{{s0.success}}",
+                  "v1_jsonQuery_ok": "{{s1.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s1",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — emailNotification",
+      "description": "Varianten: Plaintext + HTML (isHtml). Umgebungsabhängig — braucht SMTP.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "email: text",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "test@example.com",
+                "subject": "[NP] text",
+                "body": "Plaintext-Muster",
+                "isHtml": false
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "email: html",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "test@example.com",
+                "subject": "[NP] html",
+                "body": "<b>HTML</b>-Muster",
+                "isHtml": true
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_emailNotification_ok": "{{s0.success}}",
+                  "v1_emailNotification_ok": "{{s1.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s1",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — generateText",
+      "description": "Varianten: alle Modi alphanumeric/alphabetic/numeric/hex/guid/password/custom.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: alphanumeric",
+              "activityType": "generateText",
+              "config": {
+                "mode": "alphanumeric",
+                "length": 16
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: alphabetic",
+              "activityType": "generateText",
+              "config": {
+                "mode": "alphabetic",
+                "length": 12
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: numeric",
+              "activityType": "generateText",
+              "config": {
+                "mode": "numeric",
+                "length": 8
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: hex",
+              "activityType": "generateText",
+              "config": {
+                "mode": "hex",
+                "length": 32
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: guid",
+              "activityType": "generateText",
+              "config": {
+                "mode": "guid"
+              }
+            }
+          },
+          {
+            "id": "s5",
+            "type": "activity",
+            "position": {
+              "x": 2060,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: password",
+              "activityType": "generateText",
+              "config": {
+                "mode": "password",
+                "length": 20,
+                "excludeAmbiguous": true
+              }
+            }
+          },
+          {
+            "id": "s6",
+            "type": "activity",
+            "position": {
+              "x": 2400,
+              "y": 260
+            },
+            "data": {
+              "label": "gen: custom",
+              "activityType": "generateText",
+              "config": {
+                "mode": "custom",
+                "customCharset": "ABCDEF0123",
+                "length": 10
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2740,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_generateText_ok": "{{s0.success}}",
+                  "v1_generateText_ok": "{{s1.success}}",
+                  "v2_generateText_ok": "{{s2.success}}",
+                  "v3_generateText_ok": "{{s3.success}}",
+                  "v4_generateText_ok": "{{s4.success}}",
+                  "v5_generateText_ok": "{{s5.success}}",
+                  "v6_generateText_ok": "{{s6.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "s3",
+            "target": "s4",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e5",
+            "source": "s4",
+            "target": "s5",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e6",
+            "source": "s5",
+            "target": "s6",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s6",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — llmQuery",
+      "description": "Varianten: freier Text + jsonMode. Umgebungsabhängig — braucht Llm:Enabled=true.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "llm: text",
+              "activityType": "llmQuery",
+              "config": {
+                "prompt": "Antworte nur mit OK.",
+                "systemPrompt": "",
+                "jsonMode": false
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "llm: jsonMode",
+              "activityType": "llmQuery",
+              "config": {
+                "prompt": "Gib JSON {\"status\":\"ok\"} zurück.",
+                "jsonMode": true
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_llmQuery_ok": "{{s0.success}}",
+                  "v1_llmQuery_ok": "{{s1.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s1",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — log",
+      "description": "Varianten: alle Level debug/info/warning/error.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "log: debug",
+              "activityType": "log",
+              "config": {
+                "level": "debug",
+                "message": "NodePilot Muster debug"
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "log: info",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "NodePilot Muster info"
+              }
+            }
+          },
+          {
+            "id": "s2",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "log: warning",
+              "activityType": "log",
+              "config": {
+                "level": "warning",
+                "message": "NodePilot Muster warning"
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "log: error",
+              "activityType": "log",
+              "config": {
+                "level": "error",
+                "message": "NodePilot Muster error"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_log_ok": "{{s0.success}}",
+                  "v1_log_ok": "{{s1.success}}",
+                  "v2_log_ok": "{{s2.success}}",
+                  "v3_log_ok": "{{s3.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s3",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — delay",
+      "description": "Varianten: verschiedene Wartezeiten.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "delay: 1s",
+              "activityType": "delay",
+              "config": {
+                "seconds": 1
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "delay: 2s",
+              "activityType": "delay",
+              "config": {
+                "seconds": 2
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_delay_ok": "{{s0.success}}",
+                  "v1_delay_ok": "{{s1.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s1",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — returnData",
+      "description": "Variante: returnData mit mehreren Keys aus Upstream-Output/param/success + Literal.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "rs",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: compute",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "rs",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$answer = \"42\"\nWrite-Output \"raw-output\""
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 720,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "fromParam": "{{rs.param.answer}}",
+                  "fromOutput": "{{rs.output}}",
+                  "fromSuccess": "{{rs.success}}",
+                  "fromInput": "{{trg.param.input}}",
+                  "literal": "static"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "rs",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "rs",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — junction",
+      "description": "Varianten: alle 3 Modi — waitAll (2 Zweige) → waitAny (3 Zweige) → waitNofM (req=2 von 3).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 400
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "a1",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 280
+            },
+            "data": {
+              "label": "log A1",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "A1"
+              }
+            }
+          },
+          {
+            "id": "a2",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 520
+            },
+            "data": {
+              "label": "log A2",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "A2"
+              }
+            }
+          },
+          {
+            "id": "jall",
+            "type": "activity",
+            "position": {
+              "x": 720,
+              "y": 400
+            },
+            "data": {
+              "label": "junction: waitAll",
+              "activityType": "junction",
+              "outputVariable": "jall",
+              "config": {
+                "mode": "waitAll"
+              }
+            }
+          },
+          {
+            "id": "b1",
+            "type": "activity",
+            "position": {
+              "x": 1080,
+              "y": 200
+            },
+            "data": {
+              "label": "log B1",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "B1"
+              }
+            }
+          },
+          {
+            "id": "b2",
+            "type": "activity",
+            "position": {
+              "x": 1080,
+              "y": 400
+            },
+            "data": {
+              "label": "log B2",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "B2"
+              }
+            }
+          },
+          {
+            "id": "b3",
+            "type": "activity",
+            "position": {
+              "x": 1080,
+              "y": 600
+            },
+            "data": {
+              "label": "log B3",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "B3"
+              }
+            }
+          },
+          {
+            "id": "jany",
+            "type": "activity",
+            "position": {
+              "x": 1440,
+              "y": 400
+            },
+            "data": {
+              "label": "junction: waitAny",
+              "activityType": "junction",
+              "outputVariable": "jany",
+              "config": {
+                "mode": "waitAny"
+              }
+            }
+          },
+          {
+            "id": "c1",
+            "type": "activity",
+            "position": {
+              "x": 1800,
+              "y": 280
+            },
+            "data": {
+              "label": "log C1",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "C1"
+              }
+            }
+          },
+          {
+            "id": "c2",
+            "type": "activity",
+            "position": {
+              "x": 1800,
+              "y": 520
+            },
+            "data": {
+              "label": "log C2",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "C2"
+              }
+            }
+          },
+          {
+            "id": "c3",
+            "type": "activity",
+            "position": {
+              "x": 1800,
+              "y": 700
+            },
+            "data": {
+              "label": "log C3",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "C3"
+              }
+            }
+          },
+          {
+            "id": "jnofm",
+            "type": "activity",
+            "position": {
+              "x": 2160,
+              "y": 400
+            },
+            "data": {
+              "label": "junction: waitNofM (2/3)",
+              "activityType": "junction",
+              "outputVariable": "jnofm",
+              "config": {
+                "mode": "waitNofM",
+                "requiredCount": 2
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2520,
+              "y": 400
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "modes": "waitAll,waitAny,waitNofM"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trg",
+            "target": "a1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "trg",
+            "target": "a2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "a1",
+            "target": "jall",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "a2",
+            "target": "jall",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e5",
+            "source": "jall",
+            "target": "b1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e6",
+            "source": "jall",
+            "target": "b2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e7",
+            "source": "jall",
+            "target": "b3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e8",
+            "source": "b1",
+            "target": "jany",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e9",
+            "source": "b2",
+            "target": "jany",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e10",
+            "source": "b3",
+            "target": "jany",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e11",
+            "source": "jany",
+            "target": "c1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e12",
+            "source": "jany",
+            "target": "c2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e13",
+            "source": "jany",
+            "target": "c3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e14",
+            "source": "c1",
+            "target": "jnofm",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e15",
+            "source": "c2",
+            "target": "jnofm",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e16",
+            "source": "c3",
+            "target": "jnofm",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e17",
+            "source": "jnofm",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — decision",
+      "description": "Varianten: mehrere Cases (high/mid/low) + default, Routing per param.case-Edges.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 400
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "init",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 400
+            },
+            "data": {
+              "label": "runScript: value=7",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "init",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$value = \"7\""
+              }
+            }
+          },
+          {
+            "id": "dec",
+            "type": "activity",
+            "position": {
+              "x": 720,
+              "y": 400
+            },
+            "data": {
+              "label": "decision: high/mid/low",
+              "activityType": "decision",
+              "outputVariable": "dec",
+              "config": {
+                "cases": [
+                  {
+                    "name": "high",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "init",
+                        "field": "param",
+                        "paramName": "value"
+                      },
+                      "op": ">",
+                      "right": {
+                        "kind": "literal",
+                        "value": "10"
+                      }
+                    }
+                  },
+                  {
+                    "name": "mid",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "init",
+                        "field": "param",
+                        "paramName": "value"
+                      },
+                      "op": ">",
+                      "right": {
+                        "kind": "literal",
+                        "value": "5"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "low"
+              }
+            }
+          },
+          {
+            "id": "lh",
+            "type": "activity",
+            "position": {
+              "x": 1080,
+              "y": 220
+            },
+            "data": {
+              "label": "log high",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "high"
+              }
+            }
+          },
+          {
+            "id": "lm",
+            "type": "activity",
+            "position": {
+              "x": 1080,
+              "y": 400
+            },
+            "data": {
+              "label": "log mid",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "mid"
+              }
+            }
+          },
+          {
+            "id": "ll",
+            "type": "activity",
+            "position": {
+              "x": 1080,
+              "y": 580
+            },
+            "data": {
+              "label": "log low",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "low"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1440,
+              "y": 400
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "case": "{{dec.param.case}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "init",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "init",
+            "target": "dec",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "dec",
+            "target": "lh",
+            "type": "labeled",
+            "data": {
+              "label": "case=high",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "dec",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "high"
+                }
+              }
+            }
+          },
+          {
+            "id": "e3",
+            "source": "dec",
+            "target": "lm",
+            "type": "labeled",
+            "data": {
+              "label": "case=mid",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "dec",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "mid"
+                }
+              }
+            }
+          },
+          {
+            "id": "e4",
+            "source": "dec",
+            "target": "ll",
+            "type": "labeled",
+            "data": {
+              "label": "case=low",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "dec",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "low"
+                }
+              }
+            }
+          },
+          {
+            "id": "e5",
+            "source": "lh",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e6",
+            "source": "lm",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e7",
+            "source": "ll",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — forEach",
+      "description": "Varianten: itemsFormat json (parallel) + lines (seriell) — ruft je Item 'Muster Test: Child'.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: json",
+              "activityType": "forEach",
+              "config": {
+                "items": "[\"alpha\",\"beta\",\"gamma\"]",
+                "itemsFormat": "json",
+                "childWorkflowNameOrId": "Muster Test: Child",
+                "itemParameterName": "item",
+                "indexParameterName": "index",
+                "maxParallelism": 2,
+                "continueOnError": true,
+                "timeoutSecondsPerItem": 30
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: lines",
+              "activityType": "forEach",
+              "config": {
+                "items": "eins\nzwei\ndrei",
+                "itemsFormat": "lines",
+                "childWorkflowNameOrId": "Muster Test: Child",
+                "itemParameterName": "item",
+                "indexParameterName": "index",
+                "maxParallelism": 1,
+                "continueOnError": true,
+                "timeoutSecondsPerItem": 30
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_forEach_ok": "{{s0.success}}",
+                  "v1_forEach_ok": "{{s1.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s1",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — startWorkflow",
+      "description": "Varianten: waitForCompletion=true (blockierend, Contract gespiegelt) + false (fire-forget).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "s0",
+            "type": "activity",
+            "position": {
+              "x": 360,
+              "y": 260
+            },
+            "data": {
+              "label": "startWf: wait",
+              "activityType": "startWorkflow",
+              "config": {
+                "workflowNameOrId": "Muster Test: Child",
+                "waitForCompletion": true,
+                "parameters": {
+                  "item": "sync",
+                  "index": "0"
+                }
+              }
+            }
+          },
+          {
+            "id": "s1",
+            "type": "activity",
+            "position": {
+              "x": 700,
+              "y": 260
+            },
+            "data": {
+              "label": "startWf: fire-forget",
+              "activityType": "startWorkflow",
+              "config": {
+                "workflowNameOrId": "Muster Test: Child",
+                "waitForCompletion": false,
+                "parameters": {
+                  "item": "async",
+                  "index": "1"
+                }
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "v0_startWorkflow_ok": "{{s0.success}}",
+                  "v1_startWorkflow_ok": "{{s1.success}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e0",
+            "source": "trg",
+            "target": "s0",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e1",
+            "source": "s0",
+            "target": "s1",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s1",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — manualTrigger",
+      "description": "Trigger manualTrigger — Injected-Params via {{trg.param.X}} (input). Trigger-Läufe brauchen PublishedByUserId.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "outputVariable": "trg",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "lg",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "log: databus keys",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Trigger manualTrigger — input={{trg.param.input}}"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData: databus",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "manualTrigger",
+                  "param_input": "{{trg.param.input}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trg",
+            "target": "lg",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "lg",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — scheduleTrigger",
+      "description": "Trigger scheduleTrigger — Injected-Params via {{trg.param.X}} (firedAt, nextFireAt). Trigger-Läufe brauchen PublishedByUserId.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Schedule: alle 5 Min",
+              "activityType": "scheduleTrigger",
+              "outputVariable": "trg",
+              "config": {
+                "cronExpression": "0 0/5 * * * ? *",
+                "description": "Muster alle 5 Min"
+              }
+            }
+          },
+          {
+            "id": "lg",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "log: databus keys",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Trigger scheduleTrigger — firedAt={{trg.param.firedAt}}, nextFireAt={{trg.param.nextFireAt}}"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData: databus",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "scheduleTrigger",
+                  "param_firedAt": "{{trg.param.firedAt}}",
+                  "param_nextFireAt": "{{trg.param.nextFireAt}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trg",
+            "target": "lg",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "lg",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — webhookTrigger",
+      "description": "Trigger webhookTrigger — Injected-Params via {{trg.param.X}} (webhookBody, webhookMethod, webhookPath, orderId). Trigger-Läufe brauchen PublishedByUserId.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Webhook",
+              "activityType": "webhookTrigger",
+              "outputVariable": "trg",
+              "config": {
+                "path": "muster-webhook",
+                "secret": "muster-secret-123",
+                "method": "POST",
+                "fieldMappings": [
+                  {
+                    "name": "orderId",
+                    "path": "$.orderId"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "lg",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "log: databus keys",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Trigger webhookTrigger — webhookBody={{trg.param.webhookBody}}, webhookMethod={{trg.param.webhookMethod}}, webhookPath={{trg.param.webhookPath}}, orderId={{trg.param.orderId}}"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData: databus",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "webhookTrigger",
+                  "param_webhookBody": "{{trg.param.webhookBody}}",
+                  "param_webhookMethod": "{{trg.param.webhookMethod}}",
+                  "param_webhookPath": "{{trg.param.webhookPath}}",
+                  "param_orderId": "{{trg.param.orderId}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trg",
+            "target": "lg",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "lg",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — fileWatcherTrigger",
+      "description": "Trigger fileWatcherTrigger — Injected-Params via {{trg.param.X}} (fileAction, filePath, fileName). Trigger-Läufe brauchen PublishedByUserId.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "File Watcher",
+              "activityType": "fileWatcherTrigger",
+              "outputVariable": "trg",
+              "config": {
+                "filter": "*.txt",
+                "includeSubdirectories": false,
+                "directory": "C:\\Temp",
+                "watchType": "Created"
+              }
+            }
+          },
+          {
+            "id": "lg",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "log: databus keys",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Trigger fileWatcherTrigger — fileAction={{trg.param.fileAction}}, filePath={{trg.param.filePath}}, fileName={{trg.param.fileName}}"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData: databus",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "fileWatcherTrigger",
+                  "param_fileAction": "{{trg.param.fileAction}}",
+                  "param_filePath": "{{trg.param.filePath}}",
+                  "param_fileName": "{{trg.param.fileName}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trg",
+            "target": "lg",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "lg",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — databaseTrigger",
+      "description": "Trigger databaseTrigger — Injected-Params via {{trg.param.X}} (dbSentinel, dbPrevious). Trigger-Läufe brauchen PublishedByUserId.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "DB Poll",
+              "activityType": "databaseTrigger",
+              "outputVariable": "trg",
+              "config": {
+                "query": "SELECT id FROM t",
+                "provider": "sqlite",
+                "connectionString": "Data Source=muster.db",
+                "intervalSeconds": 60
+              }
+            }
+          },
+          {
+            "id": "lg",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "log: databus keys",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Trigger databaseTrigger — dbSentinel={{trg.param.dbSentinel}}, dbPrevious={{trg.param.dbPrevious}}"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData: databus",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "databaseTrigger",
+                  "param_dbSentinel": "{{trg.param.dbSentinel}}",
+                  "param_dbPrevious": "{{trg.param.dbPrevious}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trg",
+            "target": "lg",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "lg",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Test — eventLogTrigger",
+      "description": "Trigger eventLogTrigger — Injected-Params via {{trg.param.X}} (eventSource, eventEntryType, eventId, eventMessage, eventTimeWritten). Trigger-Läufe brauchen PublishedByUserId.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Event Log",
+              "activityType": "eventLogTrigger",
+              "outputVariable": "trg",
+              "config": {
+                "messagePattern": ".*muster.*",
+                "logName": "Application",
+                "entryType": "Error"
+              }
+            }
+          },
+          {
+            "id": "lg",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "log: databus keys",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Trigger eventLogTrigger — eventSource={{trg.param.eventSource}}, eventEntryType={{trg.param.eventEntryType}}, eventId={{trg.param.eventId}}, eventMessage={{trg.param.eventMessage}}, eventTimeWritten={{trg.param.eventTimeWritten}}"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData: databus",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "trigger": "eventLogTrigger",
+                  "param_eventSource": "{{trg.param.eventSource}}",
+                  "param_eventEntryType": "{{trg.param.eventEntryType}}",
+                  "param_eventId": "{{trg.param.eventId}}",
+                  "param_eventMessage": "{{trg.param.eventMessage}}",
+                  "param_eventTimeWritten": "{{trg.param.eventTimeWritten}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trg",
+            "target": "lg",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "lg",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Muster Test: Child",
+      "description": "Gemeinsamer Child-Workflow für forEach/startWorkflow. manualTrigger → log → returnData.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "c_trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 200
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Child",
+                "parameters": [
+                  {
+                    "name": "item",
+                    "type": "string",
+                    "required": false,
+                    "default": "x"
+                  },
+                  {
+                    "name": "index",
+                    "type": "string",
+                    "required": false,
+                    "default": "0"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "c_log",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 200
+            },
+            "data": {
+              "label": "log: item",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Child item={{c_trg.param.item}} idx={{c_trg.param.index}}"
+              }
+            }
+          },
+          {
+            "id": "c_ret",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 200
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "processedItem": "{{c_trg.param.item}}",
+                  "status": "done"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "ce1",
+            "source": "c_trg",
+            "target": "c_log",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "ce2",
+            "source": "c_log",
+            "target": "c_ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

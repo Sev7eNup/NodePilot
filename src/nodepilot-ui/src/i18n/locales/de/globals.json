@@ -1,0 +1,45 @@
+{
+  "title": "Globale Variablen",
+  "subtitle": "Konstanten, die in jedem Workflow per <code>{{template}}</code> verfügbar sind. Secrets werden verschlüsselt gespeichert und nie zurückgegeben.",
+  "newVariable": "Neue Variable",
+  "noVariables": "Noch keine globalen Variablen. Lege eine an, um sie in allen Workflows zu teilen.",
+  "noMatch": "Keine Variable passt zur aktuellen Suche.",
+  "searchPlaceholder": "Suche nach Name, Wert oder Beschreibung …",
+  "tableHeaders": {
+    "name": "Name",
+    "type": "Typ",
+    "value": "Wert",
+    "description": "Beschreibung",
+    "updated": "Aktualisiert",
+    "actions": "Aktionen"
+  },
+  "typeSecret": "Secret",
+  "typePlain": "Klartext",
+  "deleteConfirm": "Globale Variable „{{name}}\" löschen?",
+  "editTitle": "Variable bearbeiten",
+  "createTitle": "Neue Variable",
+  "fields": {
+    "name": "Name",
+    "value": "Wert",
+    "description": "Beschreibung (optional)",
+    "isSecret": "Secret (verschlüsselt speichern, niemals per API zurückgeben)"
+  },
+  "namePattern": "Buchstaben, Zahlen, Unterstrich, Bindestrich. Max 100 Zeichen.",
+  "valueKeepHint": "(leer lassen, um aktuellen Wert zu behalten)",
+  "folder": {
+    "heading": "Ordner",
+    "refresh": "Aktualisieren",
+    "createSubfolder": "Unterordner anlegen",
+    "newFolderPlaceholder": "Ordnername",
+    "rename": "Umbenennen",
+    "delete": "Löschen",
+    "deleteConfirm": "Ordner „{{name}}\" löschen?",
+    "deleteFailed": "Löschen fehlgeschlagen: {{msg}}",
+    "renameFailed": "Umbenennen fehlgeschlagen: {{msg}}",
+    "loadError": "Fehler beim Laden: {{msg}}",
+    "allRoot": "Alle Variablen",
+    "field": "Ordner",
+    "noVariablesInFolder": "Keine Variablen in diesem Ordner.",
+    "moved": "Variable verschoben."
+  }
+}

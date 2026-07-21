@@ -1,0 +1,205 @@
+@import 'tailwindcss';
+
+/* Dark variant anchored to html.dark — mirrors the NodePilot app shell. */
+@custom-variant dark (html.dark &);
+
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/jetbrains-mono';
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Design tokens — copied from the NodePilot app UI (Material 3 tonal palette).
+   Light = blue primary; Dark = warm charcoal + orange accent (the app's
+   `.np-shell` dark scheme). The docs site thus reads native to NodePilot users.
+   ──────────────────────────────────────────────────────────────────────────── */
+@theme {
+  --color-surface: #f8f9fb;
+  --color-surface-dim: #d9dadc;
+  --color-surface-bright: #f8f9fb;
+  --color-surface-lowest: #ffffff;
+  --color-surface-low: #f3f4f6;
+  --color-surface-container: #edeef0;
+  --color-surface-high: #e7e8ea;
+  --color-surface-highest: #e1e2e4;
+  --color-surface-variant: #e1e2e4;
+  --color-surface-tint: #0053db;
+
+  --color-primary: #004ac6;
+  --color-primary-container: #2563eb;
+  --color-primary-fixed: #dbe1ff;
+  --color-primary-fixed-dim: #b4c5ff;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #eeefff;
+  --color-on-primary-fixed: #00174b;
+  --color-inverse-primary: #b4c5ff;
+
+  --color-secondary: #495c95;
+  --color-secondary-container: #acbfff;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #394c84;
+
+  --color-tertiary: #943700;
+  --color-tertiary-container: #bc4800;
+
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error: #ffffff;
+  --color-on-error-container: #93000a;
+
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #434655;
+  --color-on-background: #191c1e;
+  --color-outline: #737686;
+  --color-outline-variant: #c3c6d7;
+  --color-inverse-surface: #2e3132;
+  --color-inverse-on-surface: #f0f1f3;
+
+  --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+}
+
+:root { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+/* Dark mode — the app's warm-charcoal `.np-shell` scheme with orange accent. */
+html.dark {
+  --color-surface: #14110e;
+  --color-surface-dim: #050403;
+  --color-surface-bright: #2f2820;
+  --color-surface-lowest: #0c0a08;
+  --color-surface-low: #181410;
+  --color-surface-container: #1e1914;
+  --color-surface-high: #251f19;
+  --color-surface-highest: #2d261e;
+  --color-surface-variant: #383028;
+
+  --color-surface-tint: #c5620b;
+  --color-primary: #fc8861;
+  --color-primary-container: #c5620b;
+  --color-primary-fixed: #6a2b09;
+  --color-primary-fixed-dim: #7d340c;
+  --color-on-primary: #1c0c03;
+  --color-on-primary-container: #ffe6d4;
+  --color-on-primary-fixed: #ffe6d4;
+  --color-inverse-primary: #c5620b;
+
+  --color-secondary: #6f7781;
+  --color-secondary-container: #2b3037;
+  --color-on-secondary: #15191d;
+  --color-on-secondary-container: #dde2e7;
+
+  --color-tertiary: #ffb595;
+  --color-tertiary-container: #6b2800;
+
+  --color-error: #ffb4ab;
+  --color-error-container: #690005;
+  --color-on-error: #690005;
+  --color-on-error-container: #ffdad6;
+
+  --color-on-surface: #ece7e1;
+  --color-on-surface-variant: #c0b9b0;
+  --color-on-background: #ece7e1;
+  --color-outline: #6f7781;
+  --color-outline-variant: #322b24;
+  --color-inverse-surface: #e2e2e6;
+  --color-inverse-on-surface: #2f3033;
+
+  --np-accent: #c5620b;
+  --np-accent-hover: #6a2b09;
+  --np-accent-ring: #fc8861;
+  --np-accent-text: #fc8861;
+  --np-accent-soft: color-mix(in srgb, #fc8861 15%, transparent);
+}
+
+/* Light-mode accent helpers (blue). */
+:root {
+  --np-accent: #004ac6;
+  --np-accent-hover: #003a9e;
+  --np-accent-ring: #2563eb;
+  --np-accent-text: #004ac6;
+  --np-accent-soft: color-mix(in srgb, #004ac6 10%, transparent);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 5.5rem;
+  }
+  body {
+    background: var(--color-surface);
+    color: var(--color-on-surface);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: color-mix(in srgb, var(--np-accent) 25%, transparent); }
+}
+
+/* Scrollbars */
+.np-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.np-scroll::-webkit-scrollbar-thumb { background: var(--color-outline-variant); border-radius: 9999px; }
+.np-scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* ── Prose / markdown content ─────────────────────────────────────────────── */
+.np-prose { color: var(--color-on-surface); line-height: 1.7; font-size: 0.95rem; }
+.np-prose h1 { font-size: 2rem; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 1rem; color: var(--color-on-surface); }
+.np-prose h2 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.01em; margin: 2.25rem 0 0.85rem; padding-top: 0.25rem; border-top: 1px solid var(--color-outline-variant); color: var(--color-on-surface); }
+.np-prose h3 { font-size: 1.12rem; font-weight: 600; margin: 1.6rem 0 0.6rem; color: var(--color-on-surface); }
+.np-prose h4 { font-size: 1rem; font-weight: 600; margin: 1.2rem 0 0.5rem; color: var(--color-on-surface); }
+.np-prose p { margin: 0.7rem 0; }
+.np-prose a { color: var(--np-accent-text); text-decoration: none; font-weight: 500; }
+.np-prose a:hover { text-decoration: underline; }
+.np-prose ul, .np-prose ol { margin: 0.7rem 0; padding-left: 1.35rem; }
+.np-prose li { margin: 0.25rem 0; }
+.np-prose ul { list-style: disc; }
+.np-prose ol { list-style: decimal; }
+.np-prose strong { color: var(--color-on-surface); font-weight: 650; }
+.np-prose hr { border: none; border-top: 1px solid var(--color-outline-variant); margin: 2rem 0; }
+.np-prose :not(pre) > code {
+  font-family: var(--font-mono); font-size: 0.85em;
+  background: var(--color-surface-container); color: var(--color-on-surface);
+  padding: 0.12em 0.38em; border-radius: 0.35rem; border: 1px solid var(--color-outline-variant);
+}
+.np-prose h2 .np-anchor, .np-prose h3 .np-anchor { opacity: 0; transition: opacity 0.15s; }
+.np-prose h2:hover .np-anchor, .np-prose h3:hover .np-anchor { opacity: 1; }
+
+/* Tables */
+.np-prose table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.875rem; display: block; overflow-x: auto; }
+.np-prose thead { background: var(--color-surface-container); }
+.np-prose th { text-align: left; font-weight: 600; padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--color-outline-variant); color: var(--color-on-surface); white-space: nowrap; }
+.np-prose td { padding: 0.55rem 0.75rem; border-bottom: 1px solid var(--color-outline-variant); vertical-align: top; }
+.np-prose tbody tr:last-child td { border-bottom: none; }
+
+/* ── Code blocks (theme-aware: light box on light skin, dark box on dark skin) */
+.np-prose pre {
+  background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 0.75rem;
+  padding: 1rem 1.1rem; overflow-x: auto; margin: 1rem 0; font-size: 0.85rem; line-height: 1.6;
+}
+.np-prose pre code { font-family: var(--font-mono); color: #1f2328; background: transparent; padding: 0; border: 0; }
+html.dark .np-prose pre { background: #0d1117; border-color: #1f2430; }
+html.dark .np-prose pre code { color: #e6e6e6; }
+
+/* highlight.js token colors — light palette (default). GitHub-light-ish, readable on #f6f8fa. */
+.hljs-comment, .hljs-quote { color: #6e7781; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #cf222e; }
+.hljs-string, .hljs-attr { color: #0a7d33; }
+.hljs-number, .hljs-literal { color: #0550ae; }
+.hljs-title, .hljs-section, .hljs-function .hljs-title { color: #8250df; }
+.hljs-type, .hljs-class .hljs-title { color: #953800; }
+.hljs-variable, .hljs-template-variable { color: #b35900; }
+.hljs-attribute { color: #0550ae; }
+.hljs-meta { color: #6e7781; }
+.hljs-deletion { color: #cf222e; }
+.hljs-addition { color: #0a7d33; }
+
+/* Dark palette — warm tokens tuned for #0d1117 (unchanged from before). */
+html.dark .hljs-comment, html.dark .hljs-quote { color: #7b8794; }
+html.dark .hljs-keyword, html.dark .hljs-selector-tag, html.dark .hljs-built_in { color: #ff9b6e; }
+html.dark .hljs-string, html.dark .hljs-attr { color: #a3e635; }
+html.dark .hljs-number, html.dark .hljs-literal { color: #fcd34d; }
+html.dark .hljs-title, html.dark .hljs-section, html.dark .hljs-function .hljs-title { color: #7dd3fc; }
+html.dark .hljs-type, html.dark .hljs-class .hljs-title { color: #c4b5fd; }
+html.dark .hljs-variable, html.dark .hljs-template-variable { color: #fda4af; }
+html.dark .hljs-attribute { color: #fbbf24; }
+html.dark .hljs-meta { color: #94a3b8; }
+html.dark .hljs-deletion { color: #fca5a5; }
+html.dark .hljs-addition { color: #a3e635; }

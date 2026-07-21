@@ -1,0 +1,34 @@
+{
+  "title": "Audit-Log",
+  "subtitle": "(Admin-only, read-only, compliance-grade)",
+  "fields": {
+    "action": "Aktion",
+    "resourceType": "Ressourcen-Typ",
+    "resourceId": "Ressourcen-ID",
+    "userId": "Benutzer-ID",
+    "ipAddress": "IP-Adresse",
+    "since": "Seit",
+    "until": "Bis",
+    "maxRows": "Max. Zeilen"
+  },
+  "tableHeaders": {
+    "timestamp": "Zeitstempel",
+    "action": "Aktion",
+    "resource": "Ressource",
+    "resourceId": "Ressourcen-ID",
+    "user": "Benutzer",
+    "ip": "IP"
+  },
+  "noEntries": "Keine Audit-Einträge passen zu den aktuellen Filtern.",
+  "showing": "Es werden die {{count}} aktuellsten Einträge angezeigt. Audit-Log ist append-only — kein Delete-Endpoint.",
+  "loadMore": "Weitere Einträge laden",
+  "retention": "Retention: Default 365 Tage via",
+  "resourcePlaceholder": "Workflow / Maschine / Credential / Execution / User",
+  "refresh": "Neu laden",
+  "export": {
+    "label": "Exportieren",
+    "csv": "Als CSV",
+    "ndjson": "Als NDJSON",
+    "hint": "Streamt alle Treffer der aktuellen Filter (kein Cap)."
+  }
+}

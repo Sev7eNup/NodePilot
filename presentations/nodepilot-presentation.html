@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NodePilot — Technik & Workflows</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          np: {
+            bg: '#101011',
+            panel: '#1b1b1e',
+            panel2: '#222226',
+            panel3: '#2a2a2f',
+            edge: '#34343b',
+            edge2: '#3a3a40',
+            lilac: '#9b7dff',
+            lilacBright: '#b9a4ff',
+            lilacDeep: '#7c5cfc',
+            lilacHover: '#6a48e8',
+            lilacInk: '#2d2754',
+            lilacDim: '#3a316a',
+            onLilac: '#160a33',
+            text: '#ece9ff',
+            text2: '#e8e8e8',
+            muted: '#a6a6b0',
+            muted2: '#6b6b6b',
+            secondary: '#a99fc0',
+            emerald: '#34d399',
+          }
+        },
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace'],
+        }
+      }
+    }
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { -webkit-font-smoothing: antialiased; }
+  html { font-size: 21px; } /* root bump (R3): 19,5→21px — Inhalte füllen die Folie maximal, Layout bleibt unangetastet */
+  html, body { height: 100%; }
+  body { background:#101011; color:#ece9ff; font-family:'Inter',system-ui,sans-serif; overflow:hidden; }
+
+  /* ── Animated atmospheric background ── */
+  .bg-stage { position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none; }
+  .blob { position:absolute; border-radius:50%; filter:blur(90px); opacity:.55; }
+  .b1 { width:60vw; height:60vw; left:-15vw; top:-15vh; background:radial-gradient(circle at 30% 30%, #7c5cfc, transparent 60%); animation:drift1 26s ease-in-out infinite; }
+  .b2 { width:55vw; height:55vw; right:-18vw; bottom:-15vh; background:radial-gradient(circle at 70% 70%, #6a48e8, transparent 60%); animation:drift2 32s ease-in-out infinite; }
+  .b3 { width:40vw; height:40vw; left:30vw; top:25vh; background:radial-gradient(circle at 50% 50%, #2d2754, transparent 65%); animation:drift3 38s ease-in-out infinite; opacity:.7; }
+  @keyframes drift1 { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(8vw,6vh) scale(1.12);} }
+  @keyframes drift2 { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(-6vw,-5vh) scale(1.08);} }
+  @keyframes drift3 { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(-4vw,4vh) scale(.92);} }
+
+  .grain { position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.035;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+  .grid-bg { background-image:radial-gradient(rgba(155,125,255,.07) 1px, transparent 1px); background-size:34px 34px; }
+
+  /* ── Slides ── */
+  .slide { display:none; position:relative; z-index:2; }
+  .slide.active { display:flex; }
+  .stage { width:100%; max-width:1280px; margin:0 auto; padding:0 4vw; }
+
+  /* ── Glass cards ── */
+  .glass { background:linear-gradient(160deg, rgba(40,38,52,.62), rgba(22,22,26,.55)); border:1px solid rgba(155,125,255,.14); backdrop-filter:blur(14px); border-radius:20px; box-shadow:0 18px 50px -20px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.04); }
+  .glass-strong { background:linear-gradient(160deg, rgba(50,44,84,.72), rgba(24,22,30,.6)); border:1px solid rgba(155,125,255,.26); backdrop-filter:blur(16px); border-radius:22px; box-shadow:0 20px 60px -18px rgba(124,92,252,.35), inset 0 1px 0 rgba(255,255,255,.06); }
+  .chip { background:rgba(45,39,84,.4); border:1px solid rgba(155,125,255,.18); border-radius:999px; }
+  .accent-grad { background:linear-gradient(120deg,#b9a4ff,#7c5cfc 60%,#6a48e8); }
+  .grad-text { background:linear-gradient(120deg,#b9a4ff,#9b7dff 45%,#7c5cfc); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .grad-border { position:relative; }
+  .grad-border::before { content:""; position:absolute; inset:0; padding:1px; border-radius:inherit; background:linear-gradient(135deg,rgba(185,164,255,.5),rgba(124,92,252,.1) 50%,rgba(106,72,232,.4)); -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none; }
+  .glow { box-shadow:0 0 70px -12px rgba(124,92,252,.45); }
+
+  /* ── Entrance animations ── */
+  @keyframes fadeUp { from { opacity:0; transform:translateY(28px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  @keyframes slideLeft { from { opacity:0; transform:translateX(-48px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes slideRight { from { opacity:0; transform:translateX(48px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes scaleIn { from { opacity:0; transform:scale(.92); } to { opacity:1; transform:scale(1); } }
+  @keyframes popIn { 0% { opacity:0; transform:scale(.8) translateY(20px); } 60% { opacity:1; transform:scale(1.04) translateY(0); } 100% { transform:scale(1); } }
+  @keyframes flow { from { stroke-dashoffset:40; } to { stroke-dashoffset:0; } }
+  @keyframes pulseGlow { 0%,100% { box-shadow:0 0 0 0 rgba(124,92,252,.5); } 50% { box-shadow:0 0 40px 8px rgba(124,92,252,.4); } }
+  @keyframes spinSlow { to { transform:rotate(360deg); } }
+  @keyframes floatY { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-12px); } }
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+  @keyframes barGrow { from { width:0; } }
+  @keyframes shimmer { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
+  @keyframes ringPulse { 0% { transform:scale(1); opacity:.6; } 100% { transform:scale(2.4); opacity:0; } }
+
+  /* ── Cancellation animation (slide 20) ── */
+  @keyframes flipRed { 0%,38% { fill:#34d399; } 52%,88% { fill:#f87171; } 100% { fill:#34d399; } }
+  @keyframes ctsFire { 0%,48% { fill:#2d2754; } 56%,72% { fill:#f87171; } 80%,100% { fill:#2d2754; } }
+  @keyframes tagIn { 0%,44% { opacity:0; } 58%,86% { opacity:1; } 100% { opacity:0; } }
+  .active .cflip { animation: flipRed 4.5s ease-in-out infinite; }
+  .active .ctsfire { animation: ctsFire 4.5s ease-in-out infinite; }
+  .active .ctag { animation: tagIn 4.5s ease-in-out infinite; }
+
+  /* ── Workflow build step-2 execution flow (slide 31) ── */
+  @keyframes wfGlow { 0%,4%,22%,100% { filter:none; } 8%,18% { filter: drop-shadow(0 0 7px #7c5cfc); } }
+  @keyframes wfSent { 0%,74%,100% { filter:none; } 82%,94% { filter: drop-shadow(0 0 8px #34d399); } }
+  @keyframes wfCondFlash { 0%,58%,100% { fill:#9b7dff; } 66%,80% { fill:#34d399; } }
+  .wf-token { opacity:0; }
+  .active .wf-token { opacity:1; filter: drop-shadow(0 0 5px #7c5cfc); }
+  .active .wf-trigger  { animation: wfGlow 5s ease-in-out infinite; }
+  .active .wf-run      { animation: wfGlow 5s ease-in-out infinite; animation-delay:1s; }
+  .active .wf-decision { animation: wfGlow 5s ease-in-out infinite; animation-delay:2s; }
+  .active .wf-email    { animation: wfSent 5s ease-in-out infinite; }
+  .active .wf-cond     { animation: wfCondFlash 5s ease-in-out infinite; }
+
+  .active .anim-fade-up { animation:fadeUp .7s cubic-bezier(.2,.7,.2,1) both; }
+  .active .anim-fade-in { animation:fadeIn .9s ease both; }
+  .active .anim-left { animation:slideLeft .7s cubic-bezier(.2,.7,.2,1) both; }
+  .active .anim-right { animation:slideRight .7s cubic-bezier(.2,.7,.2,1) both; }
+  .active .anim-scale { animation:scaleIn .6s cubic-bezier(.2,.7,.2,1) both; }
+  .active .anim-pop { animation:popIn .6s cubic-bezier(.2,.7,.2,1) both; }
+  .active .anim-glow { animation:pulseGlow 2.6s ease-in-out infinite; }
+  .active .anim-float { animation:floatY 4.5s ease-in-out infinite; }
+  .active .anim-spin { animation:spinSlow 26s linear infinite; }
+  .active .anim-blink { animation:blink 1.5s ease-in-out infinite; }
+  .active .anim-bar { animation:barGrow 1.3s cubic-bezier(.2,.7,.2,1) both; }
+
+  .d-1{animation-delay:.08s}.d-2{animation-delay:.2s}.d-3{animation-delay:.32s}.d-4{animation-delay:.44s}
+  .d-5{animation-delay:.56s}.d-6{animation-delay:.68s}.d-7{animation-delay:.80s}.d-8{animation-delay:.92s}
+  .d-9{animation-delay:1.04s}.d-10{animation-delay:1.16s}.d-11{animation-delay:1.28s}
+
+  .flow-line { stroke-dasharray:8 6; animation:flow 1.3s linear infinite; }
+
+  /* progress + nav */
+  #progress { transition:width .4s cubic-bezier(.2,.7,.2,1); }
+  .nav-dot { transition:all .25s ease; }
+  .nav-dot.active { background:#9b7dff; width:30px; box-shadow:0 0 12px rgba(155,125,255,.6); }
+
+  /* code */
+  pre { font-family:'JetBrains Mono',monospace; }
+  .tok-k{color:#c4b5fd}.tok-s{color:#b9a4ff}.tok-n{color:#a99fc0}.tok-c{color:#6b6b6b;font-style:italic}.tok-p{color:#9b7dff}
+  .codeblock { background:rgba(16,16,17,.7); border:1px solid rgba(155,125,255,.12); border-radius:14px; }
+
+  ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:#34343b;border-radius:8px}
+
+  .pill-num { background:linear-gradient(135deg,rgba(155,125,255,.2),rgba(124,92,252,.08)); border:1px solid rgba(155,125,255,.25); }
+  .ring-pulse::after { content:""; position:absolute; inset:0; border-radius:inherit; border:2px solid #7c5cfc; animation:ringPulse 2s ease-out infinite; }
+</style>
+</head>
+<body>
+
+<!-- Atmospheric background -->
+<div class="bg-stage">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+</div>
+<div class="grain"></div>
+
+<!-- Progress -->
+<div class="fixed top-0 left-0 right-0 h-1 z-50 bg-np-edge/40">
+  <div id="progress" class="h-full accent-grad" style="width:0%"></div>
+</div>
+<div class="fixed bottom-5 right-7 z-50 font-mono text-xs text-np-muted"><span id="counter">01 / 39</span></div>
+<div class="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2" id="dots"></div>
+<div class="fixed bottom-5 left-7 z-50 text-[11px] text-np-muted2 font-mono hidden md:block">← → · Space · Home/End · F = Vollbild</div>
+
+<main id="deck" class="w-screen h-screen relative">
+
+<!-- 01 — TITLE -->
+<section class="slide active w-full h-full flex-col items-center justify-center text-center grid-bg">
+  <div class="anim-float mb-10 relative">
+    <div class="ring-pulse absolute inset-0 rounded-full"></div>
+    <svg width="140" height="140" viewBox="0 0 120 120" class="anim-spin relative">
+      <defs><linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b9a4ff"/><stop offset="1" stop-color="#7c5cfc"/></linearGradient></defs>
+      <circle cx="60" cy="60" r="48" fill="none" stroke="url(#g1)" stroke-width="3" opacity=".45"/>
+      <circle cx="60" cy="60" r="34" fill="none" stroke="url(#g1)" stroke-width="2" opacity=".7"/>
+      <g fill="#9b7dff"><circle cx="60" cy="12" r="6"/><circle cx="108" cy="60" r="6"/><circle cx="60" cy="108" r="6"/><circle cx="12" cy="60" r="6"/></g>
+      <circle cx="60" cy="60" r="12" fill="url(#g1)"/>
+    </svg>
+  </div>
+  <div class="anim-fade-up d-1 chip px-5 py-2 mb-7 text-np-secondary text-sm tracking-[0.3em] uppercase">Agentless Workflow Orchestration</div>
+  <h1 class="anim-fade-up d-2 text-[7rem] leading-none font-black tracking-tight">Node<span class="grad-text">Pilot</span></h1>
+  <p class="anim-fade-up d-3 mt-7 text-3xl text-np-text2 max-w-4xl mx-auto leading-relaxed">Moderner, schlanker Ersatz für den <span class="text-np-lilac">Microsoft System Center Orchestrator</span> — für Windows-Umgebungen via WinRM.</p>
+  <div class="anim-fade-up d-4 mt-12 flex gap-3 flex-wrap justify-center">
+    <span class="chip px-4 py-2 text-base">.NET 10</span><span class="chip px-4 py-2 text-base">React 19</span><span class="chip px-4 py-2 text-base">PostgreSQL</span><span class="chip px-4 py-2 text-base">SignalR</span><span class="chip px-4 py-2 text-base">Quartz.NET</span><span class="chip px-4 py-2 text-base">WinRM</span>
+  </div>
+  <p class="anim-fade-in d-6 mt-14 text-xs text-np-muted2 font-mono uppercase tracking-[0.4em]">Technik · Architektur · Workflows bauen</p>
+</section>
+
+<!-- 02 — AGENDA -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-12">
+      <span class="text-np-lilac font-mono text-base">01</span>
+      <h2 class="text-6xl font-bold mt-2">Agenda</h2>
+    </div>
+    <div class="grid grid-cols-2 gap-x-14 gap-y-7">
+      <div class="anim-left d-2 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">02</span><div><div class="font-semibold text-lg">Was ist NodePilot?</div><div class="text-np-muted text-sm mt-0.5">Positionierung & Mission</div></div></div>
+      <div class="anim-left d-3 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">03</span><div><div class="font-semibold text-lg">Lösungsarchitektur</div><div class="text-np-muted text-sm mt-0.5">Projekte & Dep-Graph</div></div></div>
+      <div class="anim-left d-4 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">04</span><div><div class="font-semibold text-lg">Tech-Stack</div><div class="text-np-muted text-sm mt-0.5">Backend · Frontend · Daten</div></div></div>
+      <div class="anim-left d-5 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">05</span><div><div class="font-semibold text-lg">Remote & Execution</div><div class="text-np-muted text-sm mt-0.5">WinRM, agentless</div></div></div>
+      <div class="anim-right d-2 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">06</span><div><div class="font-semibold text-lg">Querschnitt</div><div class="text-np-muted text-sm mt-0.5">Auth, SignalR, Scheduling, Logging</div></div></div>
+      <div class="anim-right d-3 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">07</span><div><div class="font-semibold text-lg">Activity-Katalog</div><div class="text-np-muted text-sm mt-0.5">Remote vs. Engine-local</div></div></div>
+      <div class="anim-right d-4 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">08</span><div><div class="font-semibold text-lg">Workflow-Format</div><div class="text-np-muted text-sm mt-0.5">JSON, Nodes, Edges, Databus</div></div></div>
+      <div class="anim-right d-5 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">09</span><div><div class="font-semibold text-lg">Engine-Modell</div><div class="text-np-muted text-sm mt-0.5">Trigger, Roots, Cancellation</div></div></div>
+      <div class="anim-left d-6 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">10</span><div><div class="font-semibold text-lg">Workflows bauen</div><div class="text-np-muted text-sm mt-0.5">Schritt-für-Schritt</div></div></div>
+      <div class="anim-left d-7 glass p-5 flex gap-5 items-start grad-border"><span class="pill-num px-3 py-1 rounded-lg text-np-lilac font-mono text-sm shrink-0">11</span><div><div class="font-semibold text-lg">Erweitert</div><div class="text-np-muted text-sm mt-0.5">Custom Activities, Alerting, KI</div></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 02.5 — BIG PICTURE -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-6">
+      <span class="text-np-lilac font-mono text-base">Übersicht</span>
+      <h2 class="text-6xl font-bold mt-2">Big Picture — Gesamtarchitektur</h2>
+    </div>
+    <p class="anim-fade-up d-2 text-np-muted text-lg mb-6 max-w-5xl">Von den Clients über API und Engine bis zur Zielmaschine — ein Blick auf das gesamte System zur Laufzeit.</p>
+    <div class="anim-scale d-3 glass-strong p-8 grad-border">
+      <svg viewBox="0 0 960 470" class="w-full h-auto">
+        <defs><marker id="bp-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#7c5cfc"/></marker></defs>
+        <g font-family="Inter, system-ui, sans-serif">
+          <!-- Clients -->
+          <rect x="120" y="18" width="180" height="46" rx="10" fill="#1b1b1e" stroke="#34343b"/><text x="210" y="40" fill="#ece9ff" text-anchor="middle" font-size="13" font-weight="600">React SPA</text><text x="210" y="56" fill="#a6a6b0" text-anchor="middle" font-size="10" font-family="JetBrains Mono">nodepilot-ui</text>
+          <rect x="400" y="18" width="120" height="46" rx="10" fill="#1b1b1e" stroke="#34343b"/><text x="460" y="40" fill="#ece9ff" text-anchor="middle" font-size="13" font-weight="600">np CLI</text><text x="460" y="56" fill="#a6a6b0" text-anchor="middle" font-size="10" font-family="JetBrains Mono">dotnet tool</text>
+          <rect x="620" y="18" width="200" height="46" rx="10" fill="#1b1b1e" stroke="#34343b"/><text x="720" y="40" fill="#ece9ff" text-anchor="middle" font-size="13" font-weight="600">nodepilot-mcp</text><text x="720" y="56" fill="#a6a6b0" text-anchor="middle" font-size="10" font-family="JetBrains Mono">87 Tools · stdio</text>
+          <!-- API -->
+          <rect x="120" y="108" width="720" height="64" rx="12" fill="#2d2754" stroke="#9b7dff" stroke-width="1.5"/><text x="480" y="134" fill="#ece7ff" text-anchor="middle" font-size="14" font-weight="700">API — ASP.NET Core (.NET 10)</text><text x="480" y="156" fill="#a99fc0" text-anchor="middle" font-size="10.5" font-family="JetBrains Mono">Controllers · SignalR /hubs/execution · Auth (JWT · BCrypt · LDAP · SSO)</text>
+          <!-- Engine + Scheduler -->
+          <rect x="120" y="210" width="340" height="58" rx="10" fill="#1b1b1e" stroke="#34343b"/><text x="290" y="234" fill="#ece9ff" text-anchor="middle" font-size="13" font-weight="600">WorkflowEngine</text><text x="290" y="252" fill="#a6a6b0" text-anchor="middle" font-size="10" font-family="JetBrains Mono">ActivityRegistry · Trigger · Activities</text>
+          <rect x="540" y="210" width="300" height="58" rx="10" fill="#1b1b1e" stroke="#34343b"/><text x="690" y="234" fill="#ece9ff" text-anchor="middle" font-size="13" font-weight="600">Scheduler</text><text x="690" y="252" fill="#a6a6b0" text-anchor="middle" font-size="10" font-family="JetBrains Mono">TriggerOrchestrator + Quartz.NET</text>
+          <!-- Data + Remote -->
+          <rect x="120" y="312" width="340" height="56" rx="10" fill="#1b1b1e" stroke="#34343b"/><text x="290" y="336" fill="#ece9ff" text-anchor="middle" font-size="13" font-weight="600">Data — EF Core</text><text x="290" y="354" fill="#a6a6b0" text-anchor="middle" font-size="10" font-family="JetBrains Mono">PostgreSQL / SQL Server · DPAPI</text>
+          <rect x="540" y="312" width="300" height="56" rx="10" fill="#1b1b1e" stroke="#34343b"/><text x="690" y="336" fill="#ece9ff" text-anchor="middle" font-size="13" font-weight="600">Remote — WinRM</text><text x="690" y="354" fill="#a6a6b0" text-anchor="middle" font-size="10" font-family="JetBrains Mono">Session Factory · agentless</text>
+          <!-- Zielmaschinen -->
+          <rect x="540" y="414" width="300" height="48" rx="10" fill="#101011" stroke="#9b7dff" stroke-width="1.5"/><text x="690" y="436" fill="#9b7dff" text-anchor="middle" font-size="12.5" font-weight="600">Zielmaschinen (Windows)</text><text x="690" y="452" fill="#a6a6b0" text-anchor="middle" font-size="9.5" font-family="JetBrains Mono">WinRM-Service</text>
+        </g>
+        <g stroke="#7c5cfc" stroke-width="1.6" fill="none" marker-end="url(#bp-arrow)" opacity=".7">
+          <!-- Clients -> API -->
+          <path class="flow-line" d="M210,64 C210,86 300,92 300,108"/>
+          <path class="flow-line" d="M460,64 L460,108"/>
+          <path class="flow-line" d="M720,64 C720,86 660,92 660,108"/>
+          <!-- API -> Engine / Scheduler -->
+          <path class="flow-line" d="M300,172 C300,192 290,196 290,210"/>
+          <path class="flow-line" d="M690,172 C690,192 690,196 690,210"/>
+          <!-- Scheduler -> Engine (trigger) -->
+          <path d="M540,239 L462,239"/>
+          <!-- Engine -> Data / Remote -->
+          <path class="flow-line" d="M290,268 L290,312"/>
+          <path class="flow-line" d="M400,268 C400,290 690,295 690,312"/>
+          <!-- Remote -> Zielmaschinen -->
+          <path class="flow-line" d="M690,368 L690,414"/>
+        </g>
+        <text x="500" y="232" fill="#a99fc0" font-size="9.5" font-family="JetBrains Mono">trigger</text>
+      </svg>
+    </div>
+    <div class="anim-fade-in d-5 mt-6 flex flex-wrap gap-2 justify-center">
+      <span class="chip px-3 py-1.5 text-sm font-mono">Serilog</span><span class="chip px-3 py-1.5 text-sm font-mono">OpenTelemetry</span><span class="chip px-3 py-1.5 text-sm font-mono">AuditLog</span><span class="chip px-3 py-1.5 text-sm font-mono">DPAPI-Secrets</span><span class="chip px-3 py-1.5 text-sm font-mono">Retention</span><span class="chip px-3 py-1.5 text-sm font-mono">Rate-Limiting</span><span class="chip px-3 py-1.5 text-sm font-mono">Output-Redaction</span>
+    </div>
+  </div>
+</section>
+
+<!-- 03 — WAS IST NODEPILOT -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">02</span><h2 class="text-6xl font-bold mt-2">Was ist NodePilot?</h2></div>
+    <div class="grid grid-cols-2 gap-10 items-center">
+      <div class="anim-left d-2 glass-strong p-9">
+        <p class="text-xl text-np-text leading-relaxed">NodePilot ist eine <span class="text-np-lilacBright font-semibold">agentless Workflow-Orchestrierung</span> für Windows-Infrastrukturen. Statt Agenten auf jedem Zielsystem zu installieren, spricht NodePilot Maschinen über <span class="font-mono text-np-lilacBright">WinRM</span> an.</p>
+        <p class="mt-5 text-lg text-np-muted leading-relaxed">Es ist der moderne, schlanke Nachfolger des <span class="text-np-text">Microsoft System Center Orchestrator</span> — gleiche Konzepte (Runbooks, Activities, Schedules, Edit-Lock), aber auf aktuellem Stack gebaut.</p>
+      </div>
+      <div class="anim-right d-3 space-y-5">
+        <div class="glass p-6 flex items-center gap-5 grad-border"><div class="w-14 h-14 rounded-2xl accent-grad flex items-center justify-center text-2xl">🪶</div><div><div class="font-semibold text-lg">Schlank</div><div class="text-np-muted">Ein Windows Service, eine API, eine SPA</div></div></div>
+        <div class="glass p-6 flex items-center gap-5 grad-border"><div class="w-14 h-14 rounded-2xl accent-grad flex items-center justify-center text-2xl">🔌</div><div><div class="font-semibold text-lg">Agentless</div><div class="text-np-muted">Keine Agent-Installation auf Zielen</div></div></div>
+        <div class="glass p-6 flex items-center gap-5 grad-border"><div class="w-14 h-14 rounded-2xl accent-grad flex items-center justify-center text-2xl">⚡</div><div><div class="font-semibold text-lg">Echtzeit</div><div class="text-np-muted">SignalR-Streams während Ausführung</div></div></div>
+        <div class="glass p-6 flex items-center gap-5 grad-border"><div class="w-14 h-14 rounded-2xl accent-grad flex items-center justify-center text-2xl">🧩</div><div><div class="font-semibold text-lg">Erweiterbar</div><div class="text-np-muted">Custom Activities, MCP, KI-Assistent</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 04 — POSITIONIERUNG -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">03</span><h2 class="text-6xl font-bold mt-2">Von SCOrch zu NodePilot</h2></div>
+    <div class="grid grid-cols-2 gap-12 items-center">
+      <div class="anim-left d-2">
+        <div class="text-np-muted2 uppercase tracking-[0.3em] text-xs mb-4">SCOrch (klassisch)</div>
+        <div class="glass p-8 space-y-4 opacity-65">
+          <div class="line-through text-np-muted text-lg">Silverlight / veraltete Designer-UI</div>
+          <div class="line-through text-np-muted text-lg">Eigener Runbook-Server, Deployment-Overhead</div>
+          <div class="line-through text-np-muted text-lg">Integration Server, OIS, OldData-Blob-Storage</div>
+          <div class="line-through text-np-muted text-lg">Wartungsmodus, End-of-Life</div>
+        </div>
+      </div>
+      <div class="anim-right d-4">
+        <div class="text-np-lilac uppercase tracking-[0.3em] text-xs mb-4">NodePilot (modern)</div>
+        <div class="glass-strong p-8 space-y-4 glow">
+          <div class="flex gap-3 text-lg"><span class="text-np-emerald">✓</span> React 19 SPA + React Flow Designer</div>
+          <div class="flex gap-3 text-lg"><span class="text-np-emerald">✓</span> Single .NET 10 Windows Service</div>
+          <div class="flex gap-3 text-lg"><span class="text-np-emerald">✓</span> PostgreSQL / SQL Server</div>
+          <div class="flex gap-3 text-lg"><span class="text-np-emerald">✓</span> WinRM agentless + SignalR Echtzeit</div>
+          <div class="flex gap-3 text-lg"><span class="text-np-emerald">✓</span> OpenTelemetry, Serilog, ECS-SIEM</div>
+        </div>
+      </div>
+    </div>
+    <p class="anim-fade-in d-6 mt-10 text-np-muted text-lg max-w-4xl">Konzepte bleiben erhalten — Edit-Lock, Versionierung, Schedules, Webhooks. Die Ausführung aber läuft auf einem aktuellen, observablen Stack.</p>
+  </div>
+</section>
+
+<!-- 05 — LÖSUNGSSTRUKTUR -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">04</span><h2 class="text-6xl font-bold mt-2">Lösungsstruktur</h2></div>
+    <p class="anim-fade-up d-2 text-np-muted text-lg mb-7 max-w-4xl">11 Backend-Projekte mit klarer Abhängigkeitsrichtung — Core hat keine Abhängigkeiten, Api nutzt alle.</p>
+    <div class="grid grid-cols-4 gap-3 text-sm">
+      <div class="anim-scale d-2 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">Core</div><div class="text-np-muted">Domain Models, Interfaces — keine Abhängigkeiten</div></div>
+      <div class="anim-scale d-2 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">Ai</div><div class="text-np-muted">LLM-Stack, SSRF-Guard, Prompt-Katalog</div></div>
+      <div class="anim-scale d-3 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">Data</div><div class="text-np-muted">EF Core DbContext, CredentialStore</div></div>
+      <div class="anim-scale d-3 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">Remote</div><div class="text-np-muted">WinRM Session Factory + NoOp</div></div>
+      <div class="anim-scale d-4 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">Engine</div><div class="text-np-muted">WorkflowEngine, ActivityRegistry, Trigger</div></div>
+      <div class="anim-scale d-4 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">Scheduler</div><div class="text-np-muted">TriggerOrchestrator + ITriggerSource</div></div>
+      <div class="anim-scale d-5 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">Telemetry</div><div class="text-np-muted">OTel-Setup, PrometheusClient</div></div>
+      <div class="anim-scale d-5 glass-strong p-4 grad-border glow"><div class="text-np-lilacBright font-mono text-xs mb-1">Api ★</div><div class="text-np-muted">ASP.NET Core Host, Controller, SignalR Hub</div></div>
+      <div class="anim-scale d-6 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">Cli</div><div class="text-np-muted">np CLI — dotnet global tool, HTTP-only</div></div>
+      <div class="anim-scale d-6 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">Mcp</div><div class="text-np-muted">nodepilot-mcp — stdio, 87 Tools</div></div>
+      <div class="anim-scale d-7 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">nodepilot-ui</div><div class="text-np-muted">React SPA: Vite + Tailwind + React Flow</div></div>
+      <div class="anim-scale d-7 glass p-4 grad-border"><div class="text-np-lilac font-mono text-xs mb-1">nodepilot-docs-ui</div><div class="text-np-muted">Doku-Website — eigener Markdown-Korpus</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 06 — DEP GRAPH -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">05</span><h2 class="text-6xl font-bold mt-2">Abhängigkeits-Graph</h2></div>
+    <div class="anim-scale d-2 glass-strong p-10 grad-border">
+      <svg viewBox="0 0 920 400" class="w-full h-auto">
+        <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#7c5cfc"/></marker></defs>
+        <g font-family="JetBrains Mono" font-size="14">
+          <rect x="390" y="14" width="140" height="44" rx="10" fill="#2d2754" stroke="#9b7dff" stroke-width="1.5"/>
+          <text x="460" y="42" fill="#ece7ff" text-anchor="middle">Api</text>
+          <rect x="170" y="100" width="140" height="44" rx="10" fill="#1b1b1e" stroke="#34343b"/>
+          <text x="240" y="128" fill="#e8e8e8" text-anchor="middle">Ai</text>
+          <rect x="390" y="100" width="140" height="44" rx="10" fill="#1b1b1e" stroke="#34343b"/>
+          <text x="460" y="128" fill="#e8e8e8" text-anchor="middle">Engine</text>
+          <rect x="610" y="100" width="140" height="44" rx="10" fill="#1b1b1e" stroke="#34343b"/>
+          <text x="680" y="128" fill="#e8e8e8" text-anchor="middle">Scheduler</text>
+          <rect x="40" y="210" width="140" height="44" rx="10" fill="#1b1b1e" stroke="#34343b"/>
+          <text x="110" y="238" fill="#e8e8e8" text-anchor="middle">Data</text>
+          <rect x="240" y="210" width="140" height="44" rx="10" fill="#1b1b1e" stroke="#34343b"/>
+          <text x="310" y="238" fill="#e8e8e8" text-anchor="middle">Remote</text>
+          <rect x="440" y="210" width="140" height="44" rx="10" fill="#1b1b1e" stroke="#34343b"/>
+          <text x="510" y="238" fill="#e8e8e8" text-anchor="middle">Telemetry</text>
+          <rect x="700" y="210" width="140" height="44" rx="10" fill="#1b1b1e" stroke="#34343b"/>
+          <text x="770" y="238" fill="#e8e8e8" text-anchor="middle">Cli / Mcp</text>
+          <rect x="390" y="320" width="140" height="44" rx="10" fill="#101011" stroke="#9b7dff" stroke-width="1.5"/>
+          <text x="460" y="348" fill="#9b7dff" text-anchor="middle">Core</text>
+        </g>
+        <g stroke="#7c5cfc" stroke-width="1.6" fill="none" marker-end="url(#arrow)" opacity=".7">
+          <!-- Api -> Ai / Engine / Scheduler -->
+          <path class="flow-line" d="M420,58 C380,80 280,82 240,100"/>
+          <path class="flow-line" d="M460,58 L460,100"/>
+          <path class="flow-line" d="M500,58 C540,80 640,82 680,100"/>
+          <!-- Engine -> Ai (same row) -->
+          <path d="M390,122 L314,122"/>
+          <!-- Engine -> Data / Remote / Telemetry (fächern auseinander) -->
+          <path class="flow-line" d="M410,144 C410,172 110,172 110,210"/>
+          <path class="flow-line" d="M450,144 C450,178 310,178 310,210"/>
+          <path class="flow-line" d="M500,144 C500,178 510,178 510,210"/>
+          <!-- Ai -> Core (einzige Ai-Kante, läuft unter Engine nach Core) -->
+          <path class="flow-line" d="M240,144 C240,250 460,290 460,320"/>
+          <!-- Data / Remote / Telemetry -> Core (Fan-in) -->
+          <path class="flow-line" d="M110,254 C110,290 380,300 420,320"/>
+          <path class="flow-line" d="M310,254 C310,290 450,300 460,320"/>
+          <path class="flow-line" d="M510,254 C510,290 500,300 480,320"/>
+          <!-- Cli/Mcp -> Api (HTTP-Laufzeit, gestrichelt) -->
+          <path d="M770,210 C770,80 620,42 530,30" stroke-dasharray="4 4"/>
+        </g>
+      </svg>
+    </div>
+    <p class="anim-fade-in d-4 mt-6 text-np-muted text-base max-w-5xl"><span class="text-np-lilac font-mono">Api →</span> Ai, Engine, Scheduler, Data, Remote, Core, Telemetry · <span class="text-np-lilac font-mono">Cli/Mcp →</span> Core (HTTP-only, keine Engine-Referenz)</p>
+  </div>
+</section>
+
+<!-- 07 — TECH-STACK BACKEND -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">06</span><h2 class="text-6xl font-bold mt-2">Tech-Stack — Backend</h2></div>
+    <div class="grid grid-cols-2 gap-6">
+      <div class="anim-left d-2 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Runtime</div><div class="text-np-muted">ASP.NET Core Web API, .NET 10, Windows-only (<span class="font-mono">net10.0-windows</span>)</div></div>
+      <div class="anim-left d-3 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Hosting</div><div class="text-np-muted break-words">Windows Service via <span class="font-mono break-all">Microsoft.Extensions.Hosting.WindowsServices</span></div></div>
+      <div class="anim-left d-4 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Remote Execution</div><div class="text-np-muted">PowerShell SDK / WinRM, agentless — Provider <span class="font-mono">winrm</span> | <span class="font-mono">noop</span></div></div>
+      <div class="anim-left d-5 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Real-time</div><div class="text-np-muted">SignalR (<span class="font-mono">/hubs/execution</span>) — Step-Fortschritt live</div></div>
+      <div class="anim-right d-2 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Scheduling</div><div class="text-np-muted">Quartz.NET + <span class="font-mono">TriggerOrchestrator</span></div></div>
+      <div class="anim-right d-3 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Auth</div><div class="text-np-muted">JWT Bearer + BCrypt, Rollen Admin / Operator / Viewer</div></div>
+      <div class="anim-right d-4 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Logging</div><div class="text-np-muted">Serilog — <span class="font-mono">text|cmtrace|json|ecs-json</span> (SIEM)</div></div>
+      <div class="anim-right d-5 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Observability</div><div class="text-np-muted">OpenTelemetry opt-in, Prometheus-Scrape via Config</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 08 — TECH-STACK FRONTEND -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">07</span><h2 class="text-6xl font-bold mt-2">Tech-Stack — Frontend</h2></div>
+    <div class="grid grid-cols-3 gap-6">
+      <div class="anim-scale d-2 glass p-7 text-center grad-border"><div class="text-4xl mb-3">⚛️</div><div class="font-semibold text-xl">React 19</div><div class="text-np-muted mt-1">Concurrent Features</div></div>
+      <div class="anim-scale d-3 glass p-7 text-center grad-border"><div class="text-4xl mb-3">🟦</div><div class="font-semibold text-xl">TypeScript</div><div class="text-np-muted mt-1">Type-safe überall</div></div>
+      <div class="anim-scale d-4 glass p-7 text-center grad-border"><div class="text-4xl mb-3">🎨</div><div class="font-semibold text-xl">Tailwind CSS 4</div><div class="text-np-muted mt-1">Utility-first</div></div>
+      <div class="anim-scale d-5 glass p-7 text-center grad-border"><div class="text-4xl mb-3">⚡</div><div class="font-semibold text-xl">Vite 8</div><div class="text-np-muted mt-1">Dev-Server + Build</div></div>
+      <div class="anim-scale d-6 glass p-7 text-center grad-border"><div class="text-4xl mb-3">🕸️</div><div class="font-semibold text-xl">@xyflow/react</div><div class="text-np-muted mt-1">React Flow v12 Designer</div></div>
+      <div class="anim-scale d-7 glass p-7 text-center grad-border"><div class="text-4xl mb-3">🐻</div><div class="font-semibold text-xl">Zustand + Query</div><div class="text-np-muted mt-1">Client- & Server-State</div></div>
+    </div>
+    <div class="anim-fade-up d-8 mt-8 glass p-7 grad-border">
+      <div class="text-np-lilac font-semibold mb-3">Konventionen</div>
+      <ul class="text-np-muted space-y-2 text-lg">
+        <li>• <span class="text-np-text">i18n</span> via react-i18next — DE/EN Namespaces, Default DE</li>
+        <li>• <span class="text-np-text">Server-State</span> via React Query (<span class="font-mono">refetchOnWindowFocus:false</span>), SignalR invalidiert Caches</li>
+        <li>• Neue Seite → <span class="font-mono">src/pages/</span> + Route in <span class="font-mono">App.tsx</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 09 — DATENBANK -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">08</span><h2 class="text-6xl font-bold mt-2">Datenbank</h2></div>
+    <div class="grid grid-cols-2 gap-8 items-start">
+      <div class="anim-left d-2 space-y-5">
+        <div class="glass-strong p-6 grad-border glow"><div class="flex justify-between items-center"><span class="font-semibold text-xl">PostgreSQL</span><span class="chip px-3 py-1 text-sm text-np-lilacBright">Default</span></div><div class="text-np-muted mt-1 font-mono">ConnectionStrings:Postgres</div></div>
+        <div class="glass p-6 grad-border"><div class="flex justify-between items-center"><span class="font-semibold text-xl">SQL Server</span><span class="chip px-3 py-1 text-sm">optional</span></div><div class="text-np-muted mt-1 font-mono">ConnectionStrings:DefaultConnection</div></div>
+        <div class="glass p-6 grad-border"><div class="flex justify-between items-center"><span class="font-semibold text-xl">SQLite</span><span class="chip px-3 py-1 text-sm">Tests</span></div><div class="text-np-muted mt-1">Nur In-Memory-Test-Backend</div></div>
+      </div>
+      <div class="anim-right d-3 space-y-5">
+        <div class="glass p-7 grad-border">
+          <div class="text-np-lilac font-semibold mb-3 text-lg">Prinzipien</div>
+          <ul class="text-np-muted space-y-2 text-base">
+            <li>• <span class="text-np-text">Ein gemeinsames Migration-Set</span>, provider-agnostisch</li>
+            <li>• Bootstrap via <span class="font-mono">db.Database.Migrate()</span></li>
+            <li>• Schema-Änderungen <span class="text-np-text">immer per EF-Migration</span></li>
+            <li>• Credentials mit <span class="text-np-text">DPAPI</span> verschlüsselt</li>
+          </ul>
+        </div>
+        <div class="glass p-7 grad-border">
+          <div class="text-np-lilac font-semibold mb-3 text-lg">Retention-Services</div>
+          <div class="flex flex-wrap gap-2 text-sm">
+            <span class="chip px-3 py-1.5">Execution 30d</span><span class="chip px-3 py-1.5">AuditLog 365d</span><span class="chip px-3 py-1.5">Versions 50/WF</span><span class="chip px-3 py-1.5">SupportEvents 90d</span><span class="chip px-3 py-1.5">Notifications 90d</span><span class="chip px-3 py-1.5">IdempotencyKeys 24h</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 — REMOTE EXECUTION -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">09</span><h2 class="text-6xl font-bold mt-2">Remote Execution — Agentless</h2></div>
+    <div class="grid grid-cols-3 gap-6 items-center mb-8">
+      <div class="anim-scale d-2 glass p-8 text-center grad-border"><div class="text-4xl mb-2">🖥️</div><div class="font-semibold text-xl">NodePilot Host</div><div class="text-np-muted mt-1">WinRM-Client</div></div>
+      <div class="flex flex-col items-center anim-fade-in d-3">
+        <svg width="340" height="84" viewBox="0 0 340 84"><line x1="14" y1="42" x2="326" y2="42" stroke="#9b7dff" stroke-width="3.5" class="flow-line" stroke-dasharray="11 8"/><polygon points="326,42 308,33 308,51" fill="#7c5cfc"/><text x="170" y="28" text-anchor="middle" fill="#a99fc0" font-size="16" font-family="JetBrains Mono">WinRM / SOAP</text></svg>
+      </div>
+      <div class="anim-scale d-4 glass p-8 text-center grad-border"><div class="text-4xl mb-2">🏢</div><div class="font-semibold text-xl">Zielmaschine</div><div class="text-np-muted mt-1">WinRM-Service (Windows nativ)</div></div>
+    </div>
+    <div class="anim-fade-up d-5 grid grid-cols-2 gap-6">
+      <div class="glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Provider</div>
+        <ul class="text-np-muted space-y-2 text-base">
+          <li><span class="font-mono text-np-text">winrm</span> — Default, echte Remote-Ausführung</li>
+          <li><span class="font-mono text-np-text">noop</span> — Test/Dry-Run, via <span class="font-mono">NODEPILOT_ALLOW_NOOP_REMOTE=1</span></li>
+        </ul>
+      </div>
+      <div class="glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Hardening</div>
+        <ul class="text-np-muted space-y-2 text-base">
+          <li><span class="font-mono text-np-text">Remote:RequireWinRmSsl</span> — default true</li>
+          <li>Prozess-Isolation in Windows Job Objects (<span class="font-mono">KILL_ON_JOB_CLOSE</span>)</li>
+          <li>SSRF-Guard, Output-Redaction, Traversal-Schutz</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 — SIGNALR -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">10</span><h2 class="text-6xl font-bold mt-2">Real-time — SignalR</h2></div>
+    <div class="grid grid-cols-[3fr_2fr] gap-10 items-center">
+      <div class="anim-left d-2">
+        <svg viewBox="0 0 420 340" class="w-full max-w-2xl mx-auto" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="hubCore" cx="50%" cy="36%" r="62%">
+              <stop offset="0" stop-color="#efeaff"/>
+              <stop offset="0.55" stop-color="#b9a4ff"/>
+              <stop offset="1" stop-color="#7c5cfc"/>
+            </radialGradient>
+            <radialGradient id="aura" cx="50%" cy="50%" r="50%">
+              <stop offset="0" stop-color="#7c5cfc" stop-opacity="0.6"/>
+              <stop offset="0.55" stop-color="#6a48e8" stop-opacity="0.2"/>
+              <stop offset="1" stop-color="#6a48e8" stop-opacity="0"/>
+            </radialGradient>
+            <linearGradient id="s10ring" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#dcd2ff" stop-opacity="1"/>
+              <stop offset="0.5" stop-color="#7c5cfc" stop-opacity="0.55"/>
+              <stop offset="1" stop-color="#6a48e8" stop-opacity="0.08"/>
+            </linearGradient>
+            <linearGradient id="s10stream" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#b9a4ff"/>
+              <stop offset="1" stop-color="#7c5cfc"/>
+            </linearGradient>
+            <marker id="push" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+              <polygon points="0,0 9,4.5 0,9" fill="#9b7dff"/>
+            </marker>
+            <marker id="emit" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto">
+              <polygon points="0,0 9,4.5 0,9" fill="#34d399"/>
+            </marker>
+            <filter id="dotGlow" x="-160%" y="-160%" width="420%" height="420%">
+              <feGaussianBlur stdDeviation="2.4" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <filter id="s10coreGlow" x="-140%" y="-140%" width="380%" height="380%">
+              <feGaussianBlur stdDeviation="6" result="b"/>
+              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- Faint sparkles in negative space -->
+          <g fill="#9b7dff">
+            <circle cx="34" cy="40" r="1" opacity=".4"/>
+            <circle cx="392" cy="56" r="1.1" opacity=".35"/>
+            <circle cx="22" cy="300" r=".9" opacity=".4"/>
+            <circle cx="400" cy="296" r="1" opacity=".35"/>
+            <circle cx="210" cy="36" r=".8" opacity=".25"/>
+          </g>
+
+          <!-- Faint orbital guide ring -->
+          <circle cx="210" cy="172" r="145" fill="none" stroke="#7c5cfc" stroke-width="1" stroke-dasharray="2 7" opacity=".07"/>
+
+          <!-- Broadcast shockwaves: staggered expanding waves from hub -->
+          <g fill="none" stroke="#7c5cfc">
+            <circle cx="210" cy="172" r="34" stroke-width="2.5">
+              <animate attributeName="r" values="34;150" dur="3.6s" begin="0s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.5;0" dur="3.6s" begin="0s" repeatCount="indefinite"/>
+              <animate attributeName="stroke-width" values="2.4;0.4" dur="3.6s" begin="0s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="210" cy="172" r="34" stroke-width="2.5">
+              <animate attributeName="r" values="34;150" dur="3.6s" begin="1.2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.5;0" dur="3.6s" begin="1.2s" repeatCount="indefinite"/>
+              <animate attributeName="stroke-width" values="2.4;0.4" dur="3.6s" begin="1.2s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="210" cy="172" r="34" stroke-width="2.5">
+              <animate attributeName="r" values="34;150" dur="3.6s" begin="2.4s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.5;0" dur="3.6s" begin="2.4s" repeatCount="indefinite"/>
+              <animate attributeName="stroke-width" values="2.4;0.4" dur="3.6s" begin="2.4s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+
+          <!-- Engine event source (top) -->
+          <g>
+            <rect x="176" y="18" width="68" height="24" rx="12" fill="#11261c" stroke="#34d399" stroke-width="1.4"/>
+            <text x="210" y="30" fill="#34d399" text-anchor="middle" dominant-baseline="central" font-size="10.5" font-weight="600" font-family="Inter, sans-serif">Engine</text>
+          </g>
+          <!-- Engine -> Hub feed -->
+          <line x1="210" y1="44" x2="210" y2="138" stroke="#34d399" stroke-width="2" class="flow-line" marker-end="url(#emit)" opacity=".85"/>
+          <text x="222" y="96" fill="#a6a6b0" font-size="8" font-family="JetBrains Mono, monospace">emit</text>
+
+          <!-- Curved Bézier data streams: hub -> clients (flowing) -->
+          <g stroke="url(#s10stream)" stroke-width="1.7" class="flow-line" opacity=".5" fill="none">
+            <path d="M210,172 Q100,105 84,100" marker-end="url(#push)"/>
+            <path d="M210,172 Q320,105 336,100" marker-end="url(#push)"/>
+            <path d="M210,172 Q100,239 84,244" marker-end="url(#push)"/>
+            <path d="M210,172 Q320,239 336,244" marker-end="url(#push)"/>
+          </g>
+
+          <!-- Traveling signal pulses along each stream (staggered cascade) -->
+          <g fill="#dcd2ff" filter="url(#dotGlow)">
+            <circle r="2.8">
+              <animateMotion dur="2.4s" begin="0s" repeatCount="indefinite" path="M210,172 Q100,105 84,100"/>
+              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.16;0.82;1" dur="2.4s" begin="0s" repeatCount="indefinite"/>
+            </circle>
+            <circle r="2.8">
+              <animateMotion dur="2.4s" begin="0.6s" repeatCount="indefinite" path="M210,172 Q320,105 336,100"/>
+              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.16;0.82;1" dur="2.4s" begin="0.6s" repeatCount="indefinite"/>
+            </circle>
+            <circle r="2.8">
+              <animateMotion dur="2.4s" begin="1.2s" repeatCount="indefinite" path="M210,172 Q100,239 84,244"/>
+              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.16;0.82;1" dur="2.4s" begin="1.2s" repeatCount="indefinite"/>
+            </circle>
+            <circle r="2.8">
+              <animateMotion dur="2.4s" begin="1.8s" repeatCount="indefinite" path="M210,172 Q320,239 336,244"/>
+              <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.16;0.82;1" dur="2.4s" begin="1.8s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+
+          <!-- Hub outer halo (soft bloom) -->
+          <circle cx="210" cy="172" r="46" fill="#7c5cfc" opacity=".16" filter="url(#s10coreGlow)">
+            <animate attributeName="opacity" values="0.12;0.24;0.12" dur="2.6s" repeatCount="indefinite"/>
+          </circle>
+          <!-- Hub aura -->
+          <circle cx="210" cy="172" r="52" fill="url(#aura)">
+            <animate attributeName="opacity" values="0.7;1;0.7" dur="2.6s" repeatCount="indefinite"/>
+          </circle>
+          <!-- Rotating energy ring (bright sweeping sector) -->
+          <circle cx="210" cy="172" r="44" fill="none" stroke="url(#s10ring)" stroke-width="3" stroke-dasharray="12 8" stroke-linecap="round" opacity=".9">
+            <animateTransform attributeName="transform" type="rotate" from="0 210 172" to="360 210 172" dur="16s" repeatCount="indefinite"/>
+          </circle>
+          <!-- Counter-rotating thin ring -->
+          <circle cx="210" cy="172" r="53" fill="none" stroke="#9b7dff" stroke-width="1" stroke-dasharray="2 11" opacity=".3">
+            <animateTransform attributeName="transform" type="rotate" from="360 210 172" to="0 210 172" dur="24s" repeatCount="indefinite"/>
+          </circle>
+          <!-- Hub core -->
+          <circle cx="210" cy="172" r="34" fill="url(#hubCore)" stroke="#dcd2ff" stroke-width="1.5">
+            <animate attributeName="stroke-width" values="1.4;2.6;1.4" dur="2.6s" repeatCount="indefinite"/>
+          </circle>
+          <!-- Inner highlight (3D sheen) -->
+          <ellipse cx="200" cy="160" rx="13" ry="8" fill="#ffffff" opacity=".22"/>
+          <text x="210" y="167" fill="#160a33" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="800" font-family="Inter, sans-serif">Hub</text>
+          <text x="210" y="183" fill="#ece9ff" text-anchor="middle" dominant-baseline="central" font-size="6.5" font-family="JetBrains Mono, monospace" opacity=".85">/hubs/execution</text>
+
+          <!-- Client receive ripples (expanding ring on pulse arrival) -->
+          <g fill="none" stroke="#b9a4ff" stroke-width="1.6">
+            <circle cx="84" cy="100" r="8" opacity="0">
+              <animate attributeName="r" values="8;25;25" keyTimes="0;0.42;1" dur="2.4s" begin="2.4s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.65;0;0" keyTimes="0;0.42;1" dur="2.4s" begin="2.4s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="336" cy="100" r="8" opacity="0">
+              <animate attributeName="r" values="8;25;25" keyTimes="0;0.42;1" dur="2.4s" begin="3.0s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.65;0;0" keyTimes="0;0.42;1" dur="2.4s" begin="3.0s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="84" cy="244" r="8" opacity="0">
+              <animate attributeName="r" values="8;25;25" keyTimes="0;0.42;1" dur="2.4s" begin="3.6s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.65;0;0" keyTimes="0;0.42;1" dur="2.4s" begin="3.6s" repeatCount="indefinite"/>
+            </circle>
+            <circle cx="336" cy="244" r="8" opacity="0">
+              <animate attributeName="r" values="8;25;25" keyTimes="0;0.42;1" dur="2.4s" begin="4.2s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.65;0;0" keyTimes="0;0.42;1" dur="2.4s" begin="4.2s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+
+          <!-- Client pills (border flashes on receive) -->
+          <g font-family="Inter, sans-serif">
+            <rect x="48" y="87" width="72" height="26" rx="13" fill="#1b1b1e" stroke="#4a4266" stroke-width="1.4">
+              <animate attributeName="stroke" values="#4a4266;#dcd2ff;#4a4266;#4a4266" keyTimes="0;0.12;0.32;1" dur="2.4s" begin="2.4s" repeatCount="indefinite"/>
+            </rect>
+            <text x="84" y="100" fill="#e8e8e8" text-anchor="middle" dominant-baseline="central" font-size="10.5">Designer</text>
+
+            <rect x="300" y="87" width="72" height="26" rx="13" fill="#1b1b1e" stroke="#4a4266" stroke-width="1.4">
+              <animate attributeName="stroke" values="#4a4266;#dcd2ff;#4a4266;#4a4266" keyTimes="0;0.12;0.32;1" dur="2.4s" begin="3.0s" repeatCount="indefinite"/>
+            </rect>
+            <text x="336" y="100" fill="#e8e8e8" text-anchor="middle" dominant-baseline="central" font-size="10.5">Live-Ops</text>
+
+            <rect x="48" y="231" width="72" height="26" rx="13" fill="#1b1b1e" stroke="#4a4266" stroke-width="1.4">
+              <animate attributeName="stroke" values="#4a4266;#dcd2ff;#4a4266;#4a4266" keyTimes="0;0.12;0.32;1" dur="2.4s" begin="3.6s" repeatCount="indefinite"/>
+            </rect>
+            <text x="84" y="244" fill="#e8e8e8" text-anchor="middle" dominant-baseline="central" font-size="10.5">Exec-View</text>
+
+            <rect x="300" y="231" width="72" height="26" rx="13" fill="#1b1b1e" stroke="#4a4266" stroke-width="1.4">
+              <animate attributeName="stroke" values="#4a4266;#dcd2ff;#4a4266;#4a4266" keyTimes="0;0.12;0.32;1" dur="2.4s" begin="4.2s" repeatCount="indefinite"/>
+            </rect>
+            <text x="336" y="244" fill="#e8e8e8" text-anchor="middle" dominant-baseline="central" font-size="10.5">2. Session</text>
+          </g>
+
+          <!-- Caption -->
+          <text x="210" y="322" fill="#a6a6b0" text-anchor="middle" font-size="9" font-family="JetBrains Mono, monospace">server push → SPA-Flächen</text>
+        </svg>
+      </div>
+      <div class="anim-right d-3 space-y-5">
+        <div class="glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Wer abonniert?</div><div class="text-np-muted">Alle <span class="text-np-text">SPA-Flächen</span> — Designer, Live-Ops, Exec-View, weitere Sessions. <span class="text-np-text">Kein</span> CLI/MCP (HTTP-only).</div></div>
+        <div class="glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Was fließt?</div><div class="font-mono text-np-muted text-sm mb-1.5">/hubs/execution</div><ul class="text-np-muted space-y-1 text-base"><li>• Step-Status (Running / Done / Failed)</li><li>• StepPaused (Debugger)</li><li>• ops-feed — Live-Ops-Graph, RBAC-gefiltert</li></ul></div>
+        <div class="glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Wie abgesichert?</div><div class="text-np-muted">httpOnly <span class="font-mono">np_auth</span>-Cookie beim WebSocket-Upgrade — kein <span class="font-mono">?access_token=</span>-Querystring.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 12 — AUTH & ROLLEN -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">11</span><h2 class="text-6xl font-bold mt-2">Authentifizierung & Rollen</h2></div>
+    <div class="grid grid-cols-3 gap-5 mb-8">
+      <div class="anim-scale d-2 glass-strong p-7 text-center grad-border glow"><div class="text-4xl mb-3">👑</div><div class="font-semibold text-2xl text-np-lilacBright">Admin</div><div class="text-np-muted mt-2">Alles — Delete, Settings, Users, Force-Unlock</div></div>
+      <div class="anim-scale d-3 glass p-7 text-center grad-border"><div class="text-4xl mb-3">🛠️</div><div class="font-semibold text-2xl">Operator</div><div class="text-np-muted mt-2">Create/Edit/Execute — kein Delete</div></div>
+      <div class="anim-scale d-4 glass p-7 text-center grad-border"><div class="text-4xl mb-3">👁️</div><div class="font-semibold text-2xl">Viewer</div><div class="text-np-muted mt-2">Nur Read</div></div>
+    </div>
+    <div class="anim-fade-up d-5 grid grid-cols-2 gap-6">
+      <div class="glass p-7 grad-border"><div class="text-np-lilac font-semibold mb-3 text-lg">Auth-Pfade</div><ul class="text-np-muted space-y-2 text-base"><li>• Local-BCrypt (immer an)</li><li>• LDAP (<span class="font-mono">Authentication:Ldap:Enabled</span>)</li><li>• Windows-Negotiate (<span class="font-mono">Authentication:Windows:Enabled</span>)</li><li>Konvergieren auf JWT-Cookie + CSRF-Token</li></ul></div>
+      <div class="glass p-7 grad-border"><div class="text-np-lilac font-semibold mb-3 text-lg">Sicherheit</div><ul class="text-np-muted space-y-2 text-base"><li>• JWT 12h, <span class="font-mono">jti</span>-Revocation</li><li>• Rate-Limits: Login 50/min, Webhook 60/min</li><li>• Output-Redaction maskiert Secrets, immer aktiv</li><li>• Initial-Admin: erster Login bei leerer DB</li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- 12b — SECURITY & HARDENING -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">12</span><h2 class="text-6xl font-bold mt-2">Security &amp; Hardening</h2></div>
+    <p class="anim-fade-up d-2 text-np-muted text-lg mb-6 max-w-4xl">Default-Hardening — <span class="font-mono text-np-text">appsettings.Development.json</span> relaxt nur im Dev-Modus; Produktion ist fail-closed.</p>
+    <div class="grid grid-cols-2 gap-6 mb-6">
+      <div class="anim-left d-3 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Hardening-Flags <span class="text-np-muted2 text-sm font-normal">default true</span></div>
+        <div class="space-y-1.5 font-mono text-sm">
+          <div class="flex gap-2"><span class="text-np-emerald">✓</span><span class="text-np-text">Remote:RequireWinRmSsl</span></div>
+          <div class="flex gap-2"><span class="text-np-emerald">✓</span><span class="text-np-text">RestApi:BlockPrivateNetworks</span></div>
+          <div class="flex gap-2"><span class="text-np-emerald">✓</span><span class="text-np-text">FileSystemOperation:RejectTraversal</span></div>
+          <div class="flex gap-2"><span class="text-np-emerald">✓</span><span class="text-np-text">SqlActivity:RequireConnectionRef</span></div>
+          <div class="flex gap-2"><span class="text-np-emerald">✓</span><span class="text-np-text">StartProgram:DisallowShellExecute</span></div>
+          <div class="flex gap-2"><span class="text-np-emerald">✓</span><span class="text-np-text">Security:StrictAllowedHosts</span></div>
+          <div class="flex gap-2"><span class="text-np-emerald">✓</span><span class="text-np-text">Webhook:RequireSecret</span></div>
+        </div>
+        <div class="text-xs text-np-muted mt-3"><span class="font-mono">OpenTelemetry:PrometheusScrapeAllowAnonymous</span> default <span class="text-np-text">false</span></div>
+      </div>
+      <div class="anim-right d-4 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Rate-Limiting <span class="text-np-muted2 text-sm font-normal">per-IP Sliding-Window</span></div>
+        <div class="space-y-1.5 text-sm">
+          <div class="flex justify-between font-mono"><span class="text-np-text">login</span><span class="text-np-muted">50 / min</span></div>
+          <div class="flex justify-between font-mono"><span class="text-np-text">refresh</span><span class="text-np-muted">20 / min</span></div>
+          <div class="flex justify-between font-mono"><span class="text-np-text">webhook</span><span class="text-np-muted">60 / min</span></div>
+          <div class="flex justify-between font-mono"><span class="text-np-text">trigger</span><span class="text-np-muted">30 / min</span></div>
+          <div class="flex justify-between font-mono"><span class="text-np-text">ai-generate</span><span class="text-np-muted">20 / min</span></div>
+          <div class="flex justify-between font-mono"><span class="text-np-text">audit</span><span class="text-np-muted">60 / min</span></div>
+          <div class="flex justify-between font-mono"><span class="text-np-text">backup</span><span class="text-np-muted">10 / min</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="anim-fade-up d-5 grid grid-cols-3 gap-4">
+      <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-base">SSRF-Guard</div><div class="text-np-muted text-sm">RestApi + LLM + Webhook — Netzwerk-Gating pro Endpoint.</div></div>
+      <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-base">Output-Redaction</div><div class="text-np-muted text-sm">immer aktiv · Custom-Patterns via <span class="font-mono">Logging:Redaction:Patterns</span>.</div></div>
+      <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-base">Security-Headers</div><div class="text-np-muted text-sm">non-dev: HSTS · CSP · X-Frame-Options=DENY · nosniff · Referrer-Policy.</div></div>
+    </div>
+    <p class="anim-fade-in d-6 mt-5 text-np-muted text-sm">JWT 12h + <span class="font-mono">jti</span>-Revocation · Localhost-Bypass = Produkt-Feature, kein Guard einziehen.</p>
+  </div>
+</section>
+
+<!-- 13 — SCHEDULING -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-6"><span class="text-np-lilac font-mono text-base">13</span><h2 class="text-6xl font-bold mt-2">Scheduling & Trigger</h2></div>
+    <div class="grid grid-cols-2 gap-6 mb-6">
+      <div class="anim-left d-2 glass p-7 grad-border"><div class="text-np-lilac font-semibold mb-3 text-lg">TriggerOrchestrator</div><p class="text-np-muted text-base">Scannt alle <span class="text-np-text font-mono">5 s</span> alle Workflows nach aktiven Triggern und registriert diese bei Quartz.NET.</p><div class="mt-4 flex items-center gap-3"><div class="w-3 h-3 rounded-full bg-np-emerald anim-blink"></div><span class="text-np-muted">Quartz Scheduler läuft im Prozess</span></div></div>
+      <div class="anim-right d-3 glass p-7 grad-border"><div class="text-np-lilac font-semibold mb-3 text-lg">Trigger-Daten → Run</div><p class="text-np-muted text-base">Landen als <span class="font-mono text-np-text">manual.*</span>-Variablen im Run (<span class="font-mono">{{manual.NAME}}</span>) + als <span class="font-mono text-np-text">param.*</span> des Trigger-Nodes. <span class="text-np-text">Kein</span> <span class="font-mono">trigger.*</span>-Namespace.</p></div>
+    </div>
+    <div class="anim-fade-up d-5">
+      <div class="text-np-muted2 uppercase tracking-[0.3em] text-xs mb-3">Trigger-Typen</div>
+      <div class="grid grid-cols-3 gap-3 text-sm">
+        <div class="glass p-4 grad-border"><span class="text-np-lilac font-mono">scheduleTrigger</span><div class="text-np-muted text-xs mt-1">Quartz cron</div></div>
+        <div class="glass p-4 grad-border"><span class="text-np-lilac font-mono">fileWatcherTrigger</span><div class="text-np-muted text-xs mt-1">FileSystemWatcher</div></div>
+        <div class="glass p-4 grad-border"><span class="text-np-lilac font-mono">databaseTrigger</span><div class="text-np-muted text-xs mt-1">Timer + SELECT-Polling</div></div>
+        <div class="glass p-4 grad-border"><span class="text-np-lilac font-mono">eventLogTrigger</span><div class="text-np-muted text-xs mt-1">EventLog.EntryWritten</div></div>
+        <div class="glass p-4 grad-border"><span class="text-np-lilac font-mono">webhookTrigger</span><div class="text-np-muted text-xs mt-1">HTTP /api/webhooks</div></div>
+        <div class="glass p-4 grad-border"><span class="text-np-lilac font-mono">manualTrigger</span><div class="text-np-muted text-xs mt-1">UI / API</div></div>
+      </div>
+    </div>
+    <div class="anim-fade-up d-6 grid grid-cols-2 gap-6 mt-6">
+      <div class="glass p-6 grad-border">
+        <div class="text-np-lilac font-semibold mb-2 text-base">Webhook-Hardening</div>
+        <div class="text-np-muted text-sm mb-3">Verifikation via <span class="font-mono text-np-text">signatureMode</span>:</div>
+        <div class="space-y-2 text-sm">
+          <div class="flex gap-2"><span class="font-mono text-np-lilac">header</span><span class="text-np-muted">default · <span class="font-mono">X-Webhook-Secret</span></span></div>
+          <div class="flex gap-2"><span class="font-mono text-np-lilac">hmac</span><span class="text-np-muted">HMAC-SHA256 über Raw-Body · GitHub/GitLab/Alertmanager-kompatibel</span></div>
+        </div>
+        <div class="text-np-muted text-sm mt-3"><span class="font-mono text-np-text">fieldMappings</span> <span class="font-mono">[{name,path}]</span> — JSONPath-Felder → eigene <span class="font-mono text-np-text">manual.*</span>-Params.</div>
+      </div>
+      <div class="glass p-6 grad-border">
+        <div class="text-np-lilac font-semibold mb-2 text-base">Maintenance Windows</div>
+        <div class="text-np-muted text-sm mb-3">Zeitscheiben, in denen Trigger blockiert sind.</div>
+        <div class="font-mono text-xs text-np-muted leading-relaxed">
+          GET /api/maintenance-windows · /{id} · /affecting/{workflowId}<br>
+          POST · PUT · DELETE /{id} <span class="text-np-muted2">(Admin)</span>
+        </div>
+        <div class="flex gap-2 mt-3"><span class="chip px-2.5 py-1 text-xs">Admin/Op read</span><span class="chip px-2.5 py-1 text-xs">Admin write</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 — LOGGING & OBS -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">14</span><h2 class="text-6xl font-bold mt-2">Logging & Observability</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2 glass-strong p-8 grad-border">
+        <div class="text-4xl mb-3">📝</div>
+        <div class="text-np-lilac font-semibold text-xl mb-3">Serilog</div>
+        <div class="text-np-muted mb-4">Format via <span class="font-mono">Logging:Format</span></div>
+        <div class="flex flex-col gap-2"><div class="chip px-3 py-2"><span class="font-mono text-np-text">text</span> · <span class="font-mono">cmtrace</span> · <span class="font-mono">json</span></div><div class="chip px-3 py-2 border-np-lilac/40"><span class="font-mono text-np-lilacBright">ecs-json</span> — ECS 1.x für SIEM</div></div>
+        <p class="text-np-muted text-sm mt-4">Support-Log: File + DB-Projektion. Output-Redaction maskiert Secrets, Custom-Patterns via <span class="font-mono">Logging:Redaction:Patterns</span>.</p>
+      </div>
+      <div class="anim-right d-3 glass-strong p-8 grad-border">
+        <div class="text-4xl mb-3">📈</div>
+        <div class="text-np-lilac font-semibold text-xl mb-3">OpenTelemetry</div>
+        <ul class="text-np-muted space-y-2 text-base">
+          <li>• Opt-in, Exporter konfigurierbar</li>
+          <li>• <span class="font-mono text-np-text">PrometheusClient</span> — Scrape via Config</li>
+          <li>• <span class="font-mono text-np-text">PrometheusScrapeAllowAnonymous</span> default false</li>
+          <li>• Traces, Metrics, Logs — ein Standard</li>
+        </ul>
+        <div class="mt-5 h-2.5 bg-np-edge rounded-full overflow-hidden"><div class="anim-bar h-full accent-grad" style="width:78%"></div></div>
+        <div class="text-sm text-np-muted mt-2">Coverage-Philosophie: Backend ≥45% Line</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 15 — HOSTING / ENTERPRISE -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">15</span><h2 class="text-6xl font-bold mt-2">Hosting & Enterprise</h2></div>
+    <div class="grid grid-cols-2 gap-6">
+      <div class="anim-left d-2 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Windows Service</div><div class="text-np-muted">Produktiv als Windows Service. Deploy-Skripte unter <span class="font-mono">deploy/</span>.</div></div>
+      <div class="anim-left d-3 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Active/Passive HA</div><div class="text-np-muted"><span class="font-mono">Cluster:Enabled</span> + <span class="font-mono">ClusterLeaderService</span> + <span class="font-mono">LeaderRequiredMiddleware</span>.</div></div>
+      <div class="anim-left d-4 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Secret-Provider</div><div class="text-np-muted">Pluggable: <span class="font-mono">Dpapi</span> | <span class="font-mono">AesGcm</span> via <span class="font-mono">Secrets:Provider</span>.</div></div>
+      <div class="anim-right d-2 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">LDAP / Windows-SSO</div><div class="text-np-muted">Opt-in Auth-Pfade, konvergieren auf JWT-Cookie.</div></div>
+      <div class="anim-right d-3 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">Folder-RBAC</div><div class="text-np-muted">Shared Folders mit Per-Resource-Sharing (Stufe B).</div></div>
+      <div class="anim-right d-4 glass p-7 grad-border"><div class="text-np-lilac font-semibold text-lg mb-2">MCP-Server (opt-in)</div><div class="text-np-muted"><span class="font-mono">nodepilot-mcp</span> — stdio, HTTP-only, 87 Tools.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 15b — AUDITLOG & COMPLIANCE -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">16</span><h2 class="text-6xl font-bold mt-2">AuditLog &amp; Compliance</h2></div>
+    <p class="anim-fade-up d-2 text-np-muted text-lg mb-6 max-w-4xl">SOC2/ISO 27001-ready Audit-Trail. <span class="font-mono text-np-text">IAuditStager</span> (Core) + <span class="font-mono text-np-text">IAuditWriter</span> (Api).</p>
+    <div class="grid grid-cols-2 gap-6 mb-6">
+      <div class="anim-left d-3 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Schreib-Pipeline</div>
+        <div class="font-mono text-sm text-np-muted leading-relaxed">await _audit.LogAsync(<br>
+          &nbsp;&nbsp;AuditActions.VerbNomen,<br>
+          &nbsp;&nbsp;"Resource", id, detailsJson, ct);</div>
+        <ul class="text-sm text-np-muted space-y-1.5 mt-4">
+          <li>• Aufruf <span class="text-np-text">nach</span> <span class="font-mono">SaveChanges</span></li>
+          <li>• Schreibfehler bricht Mutation <span class="text-np-text">nie</span> ab</li>
+          <li>• Secrets nie in Details</li>
+        </ul>
+      </div>
+      <div class="anim-right d-4 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Zentraler Katalog</div>
+        <p class="text-np-muted text-sm mb-3"><span class="font-mono text-np-text">AuditActions</span> in <span class="font-mono">Core.Audit</span> — Codes nach Muster <span class="font-mono">VERB_NOMEN</span>.</p>
+        <div class="space-y-1.5 text-sm">
+          <div class="flex gap-2"><span class="text-np-emerald">✓</span><span class="text-np-text">Guard <span class="font-mono">AuditActionsCatalogTests</span> — keine rohen String-Literals</span></div>
+          <div class="flex gap-2"><span class="text-np-emerald">✓</span><span class="text-np-text">Vollständigkeit + Staleness erzwungen</span></div>
+        </div>
+        <div class="text-np-muted text-sm mt-4">Admin-only · Cursor-Pagination · Export CSV/NDJSON</div>
+      </div>
+    </div>
+    <div class="anim-fade-up d-5 glass p-6 grad-border">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <div class="text-np-lilac font-semibold text-base mb-1">Archive</div>
+          <div class="text-np-muted text-sm">gzip + SHA-256-Sidecar · periodische Verify-Pass.</div>
+        </div>
+        <div class="font-mono text-xs text-np-muted">GET /api/audit · /api/audit/export?format=csv|ndjson</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 15c — SHARED FOLDERS / FOLDER-RBAC & GLOBALS -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">17</span><h2 class="text-6xl font-bold mt-2">Shared Folders, Folder-RBAC &amp; Globals</h2></div>
+    <div class="grid grid-cols-3 gap-5 mb-6">
+      <div class="anim-left d-2 glass p-6 grad-border">
+        <div class="text-np-lilac font-semibold mb-2 text-base">Shared-Workflow-Folders</div>
+        <p class="text-np-muted text-sm mb-3">Verschachtelter Baum · <span class="font-mono text-np-text">move</span> + <span class="font-mono">move-folder</span>.</p>
+        <div class="font-mono text-xs text-np-muted leading-relaxed">POST /{id}/move<br>POST /workflows/{id}/move-folder</div>
+        <div class="chip px-2.5 py-1 text-xs mt-3">RBAC = Edit auf Folder</div>
+      </div>
+      <div class="anim-up d-3 glass p-6 grad-border">
+        <div class="text-np-lilac font-semibold mb-2 text-base">Folder-Permissions <span class="text-np-muted2 text-xs font-normal">Stufe B</span></div>
+        <p class="text-np-muted text-sm mb-3">Per-Resource-Sharing — wer darf sehen/ausführen/bearbeiten.</p>
+        <div class="font-mono text-xs text-np-muted leading-relaxed">GET/POST /{folderId}/permissions<br>PUT/DELETE /{permissionId}</div>
+      </div>
+      <div class="anim-right d-4 glass p-6 grad-border">
+        <div class="text-np-lilac font-semibold mb-2 text-base">Global Variables</div>
+        <p class="text-np-muted text-sm mb-3"><span class="font-mono text-np-text">{{globals.NAME}}</span> · optionales <span class="font-mono">folderId</span> (fehlt → Root).</p>
+        <div class="font-mono text-xs text-np-muted leading-relaxed">POST /{id}/move-folder</div>
+        <div class="flex gap-2 mt-3"><span class="chip px-2.5 py-1 text-xs">Admin/Op read</span><span class="chip px-2.5 py-1 text-xs">Admin write</span></div>
+      </div>
+    </div>
+    <div class="anim-fade-up d-5 glass p-6 grad-border">
+      <div class="flex items-center justify-between flex-wrap gap-4">
+        <div>
+          <div class="text-np-lilac font-semibold text-base mb-1">Global-Variable-Ordner</div>
+          <div class="text-np-muted text-sm">Nested wie Shared-Folders, aber <span class="text-np-text">ohne RBAC</span> — rein organisatorisch. Namen global eindeutig → <span class="font-mono text-np-text">{{globals.NAME}}</span> ordner-unabhängig.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 16 — ACTIVITY-TYPEN -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-3"><span class="text-np-lilac font-mono text-base">18</span><h2 class="text-6xl font-bold mt-2">Activity-Typen</h2></div>
+    <p class="anim-fade-up d-2 text-np-muted text-lg mb-7 max-w-4xl">Jeder Node im Workflow ist eine Activity. Sie unterscheiden sich im <span class="text-np-text">Scope</span> — wo der Code läuft.</p>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-3 glass-strong p-7 grad-border glow">
+        <div class="flex items-center gap-3 mb-3"><div class="w-12 h-12 rounded-xl accent-grad flex items-center justify-center text-2xl">🖥️</div><div class="font-semibold text-np-lilacBright text-xl">Remote (WinRM)</div></div>
+        <p class="text-np-muted text-base mb-3">Läuft auf der Zielmaschine via WinRM. Node trägt <span class="font-mono">targetMachineId</span>.</p>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="chip px-2.5 py-1 font-mono">runScript</span><span class="chip px-2.5 py-1 font-mono">fileOperation</span><span class="chip px-2.5 py-1 font-mono">folderOperation</span><span class="chip px-2.5 py-1 font-mono">textFileEdit</span><span class="chip px-2.5 py-1 font-mono">serviceManagement</span><span class="chip px-2.5 py-1 font-mono">registryOperation</span><span class="chip px-2.5 py-1 font-mono">wmiQuery</span><span class="chip px-2.5 py-1 font-mono">startProgram</span><span class="chip px-2.5 py-1 font-mono">powerManagement</span><span class="chip px-2.5 py-1 font-mono">scheduledTask</span><span class="chip px-2.5 py-1 font-mono">fileHash</span><span class="chip px-2.5 py-1 font-mono">zipOperation</span>
+        </div>
+      </div>
+      <div class="anim-right d-4 glass p-7 grad-border">
+        <div class="flex items-center gap-3 mb-3"><div class="w-12 h-12 rounded-xl bg-np-secondary/15 flex items-center justify-center text-2xl">⚙️</div><div class="font-semibold text-xl">Engine-local</div></div>
+        <p class="text-np-muted text-base mb-3">Läuft im API-Prozess — keine Zielmaschine nötig.</p>
+        <div class="flex flex-wrap gap-2 text-xs">
+          <span class="chip px-2.5 py-1 font-mono">restApi</span><span class="chip px-2.5 py-1 font-mono">sql</span><span class="chip px-2.5 py-1 font-mono">emailNotification</span><span class="chip px-2.5 py-1 font-mono">delay</span><span class="chip px-2.5 py-1 font-mono">junction</span><span class="chip px-2.5 py-1 font-mono">forEach</span><span class="chip px-2.5 py-1 font-mono">decision</span><span class="chip px-2.5 py-1 font-mono">startWorkflow</span><span class="chip px-2.5 py-1 font-mono">returnData</span><span class="chip px-2.5 py-1 font-mono">xmlQuery</span><span class="chip px-2.5 py-1 font-mono">jsonQuery</span><span class="chip px-2.5 py-1 font-mono">log</span><span class="chip px-2.5 py-1 font-mono">generateText</span><span class="chip px-2.5 py-1 font-mono">llmQuery</span>
+        </div>
+      </div>
+    </div>
+    <p class="anim-fade-in d-6 mt-6 text-np-muted text-base max-w-5xl"><span class="text-np-lilac">Hybrid:</span> <span class="font-mono">runScript</span> & <span class="font-mono">waitForCondition</span>. <span class="text-np-lilac">ControlFlow</span>-Kategorie (<span class="font-mono">junction/forEach/decision/...</span>) ist eine Palette-Achse, unabhängig vom Scope.</p>
+  </div>
+</section>
+
+<!-- 17 — ACTIVITY DETAIL -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">19</span><h2 class="text-6xl font-bold mt-2">Activity-Konfiguration</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2">
+        <div class="text-np-muted2 uppercase tracking-[0.3em] text-xs mb-4">Pro Step</div>
+        <div class="glass p-6 grad-border space-y-5">
+          <div class="border-l-2 border-np-lilac/40 pl-4">
+            <div class="font-mono text-np-text">config.retry</div>
+            <div class="text-np-muted text-sm mt-1">maxAttempts · backoff · initialDelayMs · maxDelayMs</div>
+          </div>
+          <div class="border-l-2 border-np-lilac/40 pl-4">
+            <div class="font-mono text-np-text">config.timeoutSeconds</div>
+            <div class="text-np-muted text-sm mt-1">per-Step Timeout — zusätzlich zum Execution-Timeout</div>
+          </div>
+          <div class="border-l-2 border-np-lilac/40 pl-4">
+            <div class="font-mono text-np-text">config.isolated: true</div>
+            <div class="text-np-muted text-sm mt-1">runScript nur lokal · Job Object (<span class="font-mono">KILL_ON_JOB_CLOSE</span>) · <span class="font-mono">memoryLimitMb</span> + <span class="font-mono">maxProcesses</span></div>
+          </div>
+          <div class="border-l-2 border-np-lilac/40 pl-4">
+            <div class="font-mono text-np-text">successExitCodes</div>
+            <div class="text-np-muted text-sm mt-1">Opt-in z.&nbsp;B. <span class="font-mono">"0,1"</span> → non-zero Exit wird zum Fehler</div>
+          </div>
+        </div>
+      </div>
+      <div class="anim-right d-3">
+        <div class="text-np-muted2 uppercase tracking-[0.3em] text-xs mb-4">Erfolgssemantik (runScript)</div>
+        <div class="glass p-6 grad-border">
+          <p class="text-np-muted mb-4">Ein Step scheitert <span class="text-np-text">nur</span> bei einem terminierenden PowerShell-Fehler (<span class="font-mono">throw</span> / <span class="font-mono">Write-Error</span> unter <span class="font-mono">Stop</span>-Wrapper). Ein <span class="font-mono">exit N</span> macht den Step <span class="text-np-text">nicht</span> rot.</p>
+          <div class="codeblock p-4 font-mono text-sm mb-4">
+            <span class="tok-c"># exit N macht den Step NICHT rot</span><br/>
+            exit 1 <span class="tok-c"># → success: true, exitCode: 1</span><br/>
+            <span class="tok-k">throw</span> <span class="tok-s">"boom"</span> <span class="tok-c"># → success: false</span>
+          </div>
+          <div class="text-sm text-np-muted">Exit-Code liegt immer unter <span class="font-mono text-np-text">{{step.param.exitCode}}</span>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 18 — WORKFLOW JSON -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">20</span><h2 class="text-6xl font-bold mt-2">Workflow-JSON Format</h2></div>
+    <div class="grid grid-cols-2 gap-8 items-start">
+      <div class="anim-left d-2">
+        <div class="text-np-muted2 uppercase tracking-[0.3em] text-xs mb-3">Struktur</div>
+        <pre class="glass p-5 text-sm leading-relaxed overflow-x-auto grad-border"><code><span class="tok-p">{</span>
+  <span class="tok-n">"nodes"</span>: [<span class="tok-p">{</span>
+    <span class="tok-n">"id"</span>: <span class="tok-s">"step-123"</span>,
+    <span class="tok-n">"type"</span>: <span class="tok-s">"activity"</span>,
+    <span class="tok-n">"data"</span>: <span class="tok-p">{</span>
+      <span class="tok-n">"label"</span>: <span class="tok-s">"Check Disk"</span>,
+      <span class="tok-n">"activityType"</span>: <span class="tok-s">"runScript"</span>,
+      <span class="tok-n">"targetMachineId"</span>: <span class="tok-s">"guid"</span>,
+      <span class="tok-n">"outputVariable"</span>: <span class="tok-s">"diskCheck"</span>,
+      <span class="tok-n">"config"</span>: <span class="tok-p">{</span> <span class="tok-n">"script"</span>: <span class="tok-s">"Get-PSDrive C"</span> <span class="tok-p">}</span>
+    <span class="tok-p">}</span>
+  <span class="tok-p">}</span>],
+  <span class="tok-n">"edges"</span>: [<span class="tok-p">{</span>
+    <span class="tok-n">"source"</span>: <span class="tok-s">"step-123"</span>,
+    <span class="tok-n">"target"</span>: <span class="tok-s">"step-456"</span>,
+    <span class="tok-n">"data"</span>: <span class="tok-p">{</span> <span class="tok-n">"condition"</span>: <span class="tok-s">"step-123.success"</span> <span class="tok-p">}</span>
+  <span class="tok-p">}</span>]
+<span class="tok-p">}</span></code></pre>
+      </div>
+      <div class="anim-right d-3 space-y-4">
+        <div class="glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Nodes</div><p class="text-np-muted text-base">Ein Node = eine Activity-Ausführung. <span class="font-mono">activityType</span> → Executor, <span class="font-mono">config</span> → Parameter.</p></div>
+        <div class="glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Edges</div><p class="text-np-muted text-base">Source → Target. Tragen <span class="font-mono">condition</span> + optionale <span class="font-mono">controlPoints</span>.</p></div>
+        <div class="glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Layout</div><p class="text-np-muted text-base"><span class="font-mono">data.controlPoints</span> überschreibt Auto-Routing. Styleguide: <span class="font-mono">docs/workflow-styleguide.md</span>.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 19 — EDGES & CONDITIONS -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">21</span><h2 class="text-6xl font-bold mt-2">Edge Conditions</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Shortcut-Form</div>
+        <div class="space-y-2 font-mono text-sm">
+          <div class="codeblock p-3"><span class="tok-s">"step-123.success"</span> <span class="tok-c">// bei Erfolg</span></div>
+          <div class="codeblock p-3"><span class="tok-s">"step-123.failed"</span> <span class="tok-c">// bei Fehlschlag</span></div>
+          <div class="codeblock p-3"><span class="tok-k">null</span> <span class="tok-c">// immer</span></div>
+          <div class="codeblock p-3"><span class="tok-n">disabled: true</span> <span class="tok-c">// übersprungen</span></div>
+        </div>
+      </div>
+      <div class="anim-right d-3 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Expression-AST (<span class="font-mono">conditionExpression</span>)</div>
+        <div class="space-y-1 text-base mb-3">
+          <div><span class="font-mono text-np-text">comparison</span> — ==, !=, &lt;, contains, matches, isEmpty …</div>
+          <div><span class="font-mono text-np-text">group</span> — AND / OR · <span class="font-mono text-np-text">not</span> — Negation</div>
+          <div class="text-np-muted text-sm mt-2">Operanden: <span class="font-mono">variable</span> oder <span class="font-mono">literal</span></div>
+        </div>
+        <div class="codeblock p-4 text-xs font-mono">
+<span class="tok-p">{</span> <span class="tok-n">"type"</span>: <span class="tok-s">"comparison"</span>,
+  <span class="tok-n">"left"</span>: <span class="tok-p">{</span><span class="tok-n">"type"</span>:<span class="tok-s">"variable"</span>,<span class="tok-n">"name"</span>:<span class="tok-s">"disk.free"</span><span class="tok-p">}</span>,
+  <span class="tok-n">"op"</span>: <span class="tok-s">"&lt;"</span>,
+  <span class="tok-n">"right"</span>: <span class="tok-p">{</span><span class="tok-n">"type"</span>:<span class="tok-s">"literal"</span>,<span class="tok-n">"value"</span>:<span class="tok-s">"10"</span><span class="tok-p">}</span> <span class="tok-p">}</span>
+        </div>
+      </div>
+    </div>
+    <p class="anim-fade-in d-5 mt-6 text-np-muted text-base max-w-5xl"><span class="text-np-text">Disabled Edges:</span> Target-Node wird nicht Root. Alle eingehenden disabled → Node wird <span class="font-mono">Skipped</span>.</p>
+  </div>
+</section>
+
+<!-- 20 — DATABUS -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">22</span><h2 class="text-6xl font-bold mt-2">Databus / Variablenauflösung</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Auflösungs-Tails</div>
+        <div class="space-y-2 font-mono text-sm">
+          <div class="codeblock p-3"><span class="tok-n">{{varName.output}}</span> <span class="tok-c">// Stdout</span></div>
+          <div class="codeblock p-3"><span class="tok-n">{{varName.error}}</span> <span class="tok-c">// Stderr</span></div>
+          <div class="codeblock p-3"><span class="tok-n">{{varName.success}}</span> <span class="tok-c">// "true" / "false"</span></div>
+          <div class="codeblock p-3"><span class="tok-n">{{varName.param.X}}</span> <span class="tok-c">// OutputParameter</span></div>
+          <div class="codeblock p-3"><span class="tok-n">{{globals.NAME}}</span> <span class="tok-c">// Globale Variable</span></div>
+        </div>
+        <p class="text-np-muted text-sm mt-3">Kein <span class="font-mono">outputVariable</span> → Step-ID wird genutzt.</p>
+      </div>
+      <div class="anim-right d-3 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Strukturierter Output (runScript)</div>
+        <p class="text-np-muted text-base mb-3">Deklarierte Variablen werden als <span class="font-mono">param.*</span> gecaptured:</p>
+        <div class="codeblock p-4 text-sm font-mono mb-4">
+<span class="tok-k">$hostName</span> = <span class="tok-s">"SRV01"</span><br/>
+<span class="tok-c"># → {{step.param.hostName}} = "SRV01"</span>
+        </div>
+        <div class="text-np-lilac font-semibold text-base mb-1">Auto-Quoting</div>
+        <p class="text-np-muted text-sm"><span class="font-mono">{{step.output}}</span> wird als Single-Quoted String eingesetzt. Im Script <span class="font-mono">$x = {{step.output}}</span> — nicht extra quoten.</p>
+        <div class="mt-3 text-np-lilac font-semibold text-base mb-1">Contract-Garantie</div>
+        <p class="text-np-muted text-sm">Nur <span class="text-np-text">output/error/param.X</span> werden aufgelöst — andere Tails bleiben Literal.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 21 — ENGINE MODELL -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">23</span><h2 class="text-6xl font-bold mt-2">WorkflowEngine — Execution-Modell</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2 space-y-4">
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-lg">Event-driven</div><div class="text-np-muted">Queue + <span class="font-mono">inFlight</span>-Dict. Roots = <span class="text-np-text">ausschließlich Trigger-Nodes</span>.</div></div>
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-lg">Roots</div><div class="text-np-muted">Ohne aktiven Trigger → 0 Roots → <span class="font-mono">Failed</span>. Kein <span class="font-mono">inDegree==0</span>-Fallback.</div></div>
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-lg">Per-Step-DI-Scope</div><div class="text-np-muted">Eigener Scope pro Step → scope-lokaler <span class="font-mono">DbContext</span>.</div></div>
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-lg">Startup-Reconciler</div><div class="text-np-muted">Hängende <span class="font-mono">Running/Pending/Paused</span> → <span class="font-mono">Cancelled</span>.</div></div>
+      </div>
+      <div class="anim-right d-3 glass-strong p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-4 text-lg">Cancellation</div>
+        <svg viewBox="0 0 440 300" class="w-full">
+          <defs><marker id="c-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7c5cfc"/></marker></defs>
+          <!-- Cancel sources -->
+          <g font-family="Inter, system-ui, sans-serif">
+            <rect x="8" y="34" width="124" height="30" rx="8" fill="#2d2754" stroke="#9b7dff" stroke-width="1.2"/><text x="70" y="53" fill="#ece7ff" text-anchor="middle" font-size="10" font-weight="600">cancel-all</text>
+            <rect x="8" y="92" width="124" height="30" rx="8" fill="#1b1b1e" stroke="#34343b"/><text x="70" y="111" fill="#e8e8e8" text-anchor="middle" font-size="9.5">single cancel</text>
+            <rect x="8" y="150" width="124" height="30" rx="8" fill="#1b1b1e" stroke="#34343b"/><text x="70" y="169" fill="#e8e8e8" text-anchor="middle" font-size="9.5">timeout / system</text>
+            <rect x="8" y="208" width="124" height="30" rx="8" fill="#1b1b1e" stroke="#34343b"/><text x="70" y="227" fill="#e8e8e8" text-anchor="middle" font-size="9.5">failover</text>
+          </g>
+          <!-- Signal bus + stubs (animated) -->
+          <g stroke="#7c5cfc" stroke-width="1.6" fill="none" opacity=".75">
+            <line class="flow-line" x1="132" y1="49" x2="150" y2="49"/>
+            <line class="flow-line" x1="132" y1="107" x2="150" y2="107"/>
+            <line class="flow-line" x1="132" y1="165" x2="150" y2="165"/>
+            <line class="flow-line" x1="132" y1="223" x2="150" y2="223"/>
+            <line class="flow-line" x1="150" y1="49" x2="150" y2="223"/>
+            <line class="flow-line" x1="150" y1="101" x2="178" y2="101" marker-end="url(#c-arrow)"/>
+            <line class="flow-line" x1="150" y1="161" x2="178" y2="161" marker-end="url(#c-arrow)"/>
+            <line class="flow-line" x1="150" y1="221" x2="178" y2="221" marker-end="url(#c-arrow)"/>
+          </g>
+          <!-- Registry panel -->
+          <rect x="168" y="20" width="264" height="260" rx="14" fill="#222226" stroke="#3a3a40"/>
+          <text x="300" y="42" fill="#b9a4ff" text-anchor="middle" font-size="11" font-family="JetBrains Mono">_runningExecutions</text>
+          <text x="300" y="56" fill="#a6a6b0" text-anchor="middle" font-size="8" font-family="JetBrains Mono">Dict&lt;Guid, CTS&gt;</text>
+          <!-- Row 1 -->
+          <g font-family="Inter, system-ui, sans-serif">
+            <rect x="182" y="78" width="236" height="46" rx="8" fill="#1b1b1e" stroke="#34343b"/>
+            <circle class="cflip" cx="196" cy="101" r="6" fill="#34d399" style="animation-delay:0s"/>
+            <text x="210" y="98" fill="#e8e8e8" font-size="10.5" font-family="JetBrains Mono">exec-a1f3</text>
+            <text x="210" y="114" fill="#a6a6b0" font-size="8">Running</text>
+            <rect class="ctsfire" x="298" y="90" width="34" height="22" rx="5" fill="#2d2754" stroke="rgba(155,125,255,.3)" style="animation-delay:0s"/><text x="315" y="105" fill="#b9a4ff" text-anchor="middle" font-size="8" font-family="JetBrains Mono">CTS</text>
+            <g class="ctag" style="animation-delay:0s">
+              <rect x="340" y="88" width="72" height="26" rx="5" fill="rgba(248,113,113,.12)" stroke="#f87171" stroke-width=".8"/>
+              <text x="376" y="100" fill="#f87171" text-anchor="middle" font-size="8" font-weight="600">Cancelled</text>
+              <text x="376" y="110" fill="#a6a6b0" text-anchor="middle" font-size="6.5">by cancelAll</text>
+            </g>
+          </g>
+          <!-- Row 2 -->
+          <g font-family="Inter, system-ui, sans-serif">
+            <rect x="182" y="138" width="236" height="46" rx="8" fill="#1b1b1e" stroke="#34343b"/>
+            <circle class="cflip" cx="196" cy="161" r="6" fill="#34d399" style="animation-delay:.35s"/>
+            <text x="210" y="158" fill="#e8e8e8" font-size="10.5" font-family="JetBrains Mono">exec-b2c4</text>
+            <text x="210" y="174" fill="#a6a6b0" font-size="8">Running</text>
+            <rect class="ctsfire" x="298" y="150" width="34" height="22" rx="5" fill="#2d2754" stroke="rgba(155,125,255,.3)" style="animation-delay:.35s"/><text x="315" y="165" fill="#b9a4ff" text-anchor="middle" font-size="8" font-family="JetBrains Mono">CTS</text>
+            <g class="ctag" style="animation-delay:.35s">
+              <rect x="340" y="148" width="72" height="26" rx="5" fill="rgba(248,113,113,.12)" stroke="#f87171" stroke-width=".8"/>
+              <text x="376" y="160" fill="#f87171" text-anchor="middle" font-size="8" font-weight="600">Cancelled</text>
+              <text x="376" y="170" fill="#a6a6b0" text-anchor="middle" font-size="6.5">by user</text>
+            </g>
+          </g>
+          <!-- Row 3 -->
+          <g font-family="Inter, system-ui, sans-serif">
+            <rect x="182" y="198" width="236" height="46" rx="8" fill="#1b1b1e" stroke="#34343b"/>
+            <circle class="cflip" cx="196" cy="221" r="6" fill="#34d399" style="animation-delay:.7s"/>
+            <text x="210" y="218" fill="#e8e8e8" font-size="10.5" font-family="JetBrains Mono">exec-c3d9</text>
+            <text x="210" y="234" fill="#a6a6b0" font-size="8">Paused</text>
+            <rect class="ctsfire" x="298" y="210" width="34" height="22" rx="5" fill="#2d2754" stroke="rgba(155,125,255,.3)" style="animation-delay:.7s"/><text x="315" y="225" fill="#b9a4ff" text-anchor="middle" font-size="8" font-family="JetBrains Mono">CTS</text>
+            <g class="ctag" style="animation-delay:.7s">
+              <rect x="340" y="208" width="72" height="26" rx="5" fill="rgba(248,113,113,.12)" stroke="#f87171" stroke-width=".8"/>
+              <text x="376" y="220" fill="#f87171" text-anchor="middle" font-size="8" font-weight="600">Cancelled</text>
+              <text x="376" y="230" fill="#a6a6b0" text-anchor="middle" font-size="6.5">by system</text>
+            </g>
+          </g>
+        </svg>
+        <p class="text-np-muted text-sm mt-4"><span class="font-mono text-np-text">_runningExecutions</span> Dict (Guid → CTS). Jede Cancel-Quelle (user · cancelAll · failover · timeout · reconciler) wird via <span class="font-mono text-np-text">cancelledBy</span> pro Lauf attribuiert. <span class="text-np-text">Quarantäne</span> = Disable + cancel-all.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 22 — EDIT LIFECYCLE -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-3"><span class="text-np-lilac font-mono text-base">24</span><h2 class="text-6xl font-bold mt-2">Edit-Lifecycle (Edit-Lock)</h2></div>
+    <p class="anim-fade-up d-2 text-np-muted text-lg mb-7 max-w-4xl">Per-User-Edit-Lock (<span class="font-mono">CheckedOutByUserId</span>). Mutierende Endpoints → <span class="font-mono">423 Locked</span> wenn Caller nicht Lock-Owner.</p>
+    <div class="grid grid-cols-4 gap-5 mb-8">
+      <div class="anim-scale d-3 glass p-6 text-center grad-border"><div class="text-3xl mb-3">🔒</div><div class="font-mono text-np-lilac text-base">POST /lock</div><div class="text-np-muted text-sm mt-2">Atomar IsEnabled=false + Lock setzen</div></div>
+      <div class="anim-scale d-4 glass p-6 text-center grad-border"><div class="text-3xl mb-3">🔓</div><div class="font-mono text-np-lilac text-base">POST /unlock</div><div class="text-np-muted text-sm mt-2">Lock-Fields auf null</div></div>
+      <div class="anim-scale d-5 glass-strong p-6 text-center grad-border anim-glow"><div class="text-3xl mb-3">🚀</div><div class="font-mono text-np-lilacBright text-base">POST /publish</div><div class="text-np-muted text-sm mt-2">Save + Enable + Unlock (atomar)</div></div>
+      <div class="anim-scale d-6 glass p-6 text-center grad-border"><div class="text-3xl mb-3">🛡️</div><div class="font-mono text-np-lilac text-base">POST /force-unlock</div><div class="text-np-muted text-sm mt-2">Admin-only — bricht fremden Lock</div></div>
+    </div>
+    <div class="anim-fade-up d-7 glass p-6 grad-border">
+      <div class="text-np-lilac font-semibold mb-2 text-lg">Button-State-Matrix</div>
+      <div class="font-mono text-base text-np-muted">canWrite = role !== 'Viewer' && checkedOutByUserId === currentUserId</div>
+      <p class="text-np-muted text-sm mt-2"><span class="text-np-text">Disable</span> ist nicht lock-gegated (Incident-Kill-Switch). <span class="text-np-text">Enable</span> braucht keinen Lock (423 sonst).</p>
+    </div>
+  </div>
+</section>
+
+<!-- 23 — SUB WORKFLOWS & CONTRACT -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">25</span><h2 class="text-6xl font-bold mt-2">Sub-Workflows & Contract</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">startWorkflow</div>
+        <p class="text-np-muted text-base mb-3">Ruft einen Child-Workflow auf (frischer DI-Scope) — jeden <span class="text-np-text">enabled</span> Workflow.</p>
+        <ul class="text-np-muted space-y-2 text-base">
+          <li>• Parameter landen als <span class="font-mono">manual.*</span> im Child-Run</li>
+          <li>• <span class="font-mono">waitForCompletion: true</span> → Parent blockiert</li>
+          <li>• Child-<span class="font-mono">returnData</span> als <span class="font-mono">param.*</span> gespiegelt</li>
+          <li>• Max Call-Depth: <span class="font-mono text-np-text">10</span></li>
+        </ul>
+      </div>
+      <div class="anim-right d-3 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Contract-Derivation</div>
+        <div class="space-y-2 text-base">
+          <div class="codeblock p-3"><span class="text-np-muted">Inputs ←</span> <span class="font-mono">manualTrigger.parameters</span></div>
+          <div class="codeblock p-3"><span class="text-np-muted">Outputs ←</span> <span class="font-mono">returnData.data</span>-Keys</div>
+          <div class="codeblock p-3 text-sm"><span class="text-np-muted">System:</span> <span class="font-mono">__executionId / __status / __workflowId / __workflowName</span></div>
+        </div>
+        <p class="text-np-muted text-sm mt-3">By-name-Lookup: exact-case gewinnt, sonst case-insensitive. Mehrdeutig → 409 / Step-Fehler.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 24 — CUSTOM ACTIVITIES -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">26</span><h2 class="text-6xl font-bold mt-2">Custom Activities — Plugin-System</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Was?</div>
+        <p class="text-np-muted text-base">User-authored, wiederverwendbare Activities — parametrisiertes PowerShell-Template. Ein <span class="text-np-text">runScript-Preset</span>, keine zweite Script-Engine.</p>
+        <div class="mt-4 text-np-lilac font-semibold mb-2 text-lg">Dispatch</div>
+        <p class="text-np-muted text-base"><span class="font-mono">activityType = custom:&lt;key&gt;</span> → <span class="font-mono">CustomActivityExecutor</span>. Definition im Config (<span class="font-mono">__customDefinitionId</span> + <span class="font-mono">__customKey</span> Drift-Guard).</p>
+      </div>
+      <div class="anim-right d-3 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Governance</div>
+        <ul class="text-np-muted space-y-2 text-base">
+          <li>• Create/Edit/Delete = Admin <span class="text-np-text">+</span> Operator, nur solange disabled</li>
+          <li>• Enable/Disable + Mutation enabled Defs = <span class="text-np-text">Admin-only</span></li>
+          <li>• Optimistic Concurrency via <span class="font-mono">ConcurrencyToken</span> → 409</li>
+          <li>• Execution speichert <span class="font-mono">CustomActivity{Key,Version,Hash}</span></li>
+          <li>• Import landet <span class="text-np-text">disabled</span> (Admin-Review)</li>
+        </ul>
+        <div class="mt-4 chip px-3 py-1.5 text-sm">Teil des <span class="font-mono">.npbackup</span>-Snapshots</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 25 — ALERTING -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">27</span><h2 class="text-6xl font-bold mt-2">Alerting / Notification-Rules</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Pipeline</div>
+        <div class="space-y-2.5 text-base">
+          <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-np-emerald"></div> EventTypes-Prefilter</div>
+          <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-np-emerald"></div> Scope (Global/Folders/Workflows)</div>
+          <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-np-emerald"></div> Filter-AST (<span class="font-mono">ConditionEvaluator</span>)</div>
+          <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-np-emerald"></div> Cooldown/Flap-Suppression</div>
+          <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-np-lilac"></div> Pending-Attempt pro Route persistiert <span class="text-np-muted text-xs">VOR I/O</span></div>
+          <div class="flex items-center gap-2"><div class="w-2.5 h-2.5 rounded-full bg-np-lilacBright"></div> Senden (bounded Retry, MaxAttempts=5)</div>
+        </div>
+      </div>
+      <div class="anim-right d-3 space-y-4">
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Sinks</div><p class="text-np-muted text-base">E-Mail (SMTP) + Webhook (SSRF-guarded, optional HMAC-SHA256). Self-isolating.</p></div>
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Signal-Events (Gauges)</div><div class="flex flex-wrap gap-1.5 text-xs"><span class="chip px-2 py-1 font-mono">ServiceStale</span><span class="chip px-2 py-1 font-mono">MachineUnreachable</span><span class="chip px-2 py-1 font-mono">BacklogHigh</span><span class="chip px-2 py-1 font-mono">PendingHigh</span><span class="chip px-2 py-1 font-mono">CancelRateHigh</span><span class="chip px-2 py-1 font-mono">CredentialExpiring</span><span class="chip px-2 py-1 font-mono">ScheduleMissed</span></div></div>
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Delivery-Ledger</div><p class="text-np-muted text-base"><span class="font-mono">NotificationDeliveryAttempt</span> = Zustell-Protokoll (Exactly-once).</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 26 — KI FEATURES -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">28</span><h2 class="text-6xl font-bold mt-2">KI-Features</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Opt-in (<span class="font-mono">Llm:Enabled=false</span> default)</div>
+        <ul class="text-np-muted space-y-2 text-base">
+          <li>• <span class="font-mono text-np-text">generate-script</span> — Script-Gen (SSE, tippt sich live)</li>
+          <li>• <span class="font-mono text-np-text">generate-workflow</span> — JSON</li>
+          <li>• <span class="font-mono text-np-text">chat</span> — Workflow-Assistent (SSE, Proposals)</li>
+        </ul>
+        <p class="text-np-muted text-sm mt-3">OpenAI-kompatibel, Rate-Limit 20/min/IP. Hardening: SSRF-Block, Schema-only, User-reviewed.</p>
+      </div>
+      <div class="anim-right d-3 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">LLM-Query Activity (<span class="font-mono">llmQuery</span>)</div>
+        <p class="text-np-muted text-base mb-3">Engine-lokale Activity: Prompt → Text. Per-Node überschreibbar.</p>
+        <div class="flex flex-wrap gap-2 text-sm">
+          <span class="chip px-2.5 py-1.5 font-mono">baseUrl</span><span class="chip px-2.5 py-1.5 font-mono">model</span><span class="chip px-2.5 py-1.5 font-mono">apiKey</span><span class="chip px-2.5 py-1.5 font-mono">maxTokens</span><span class="chip px-2.5 py-1.5 font-mono">temperature</span><span class="chip px-2.5 py-1.5 font-mono">jsonMode</span>
+        </div>
+        <p class="text-np-muted text-sm mt-3">Gated durch zentralen <span class="font-mono">Llm:Enabled</span>-Kill-Switch. Stack in <span class="font-mono text-np-text">NodePilot.Ai</span>.</p>
+      </div>
+    </div>
+    <p class="anim-fade-in d-5 mt-6 text-np-muted text-base max-w-5xl">Tool-Calling opt-in (<span class="font-mono">Llm:EnableToolCalling</span>): read-only Analyse + Execution-Logs — immer redigiert, Folder-Read-gated.</p>
+  </div>
+</section>
+
+<!-- 27 — IMPORT/EXPORT & BACKUP -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">29</span><h2 class="text-6xl font-bold mt-2">Import/Export & System-Backup</h2></div>
+    <div class="grid grid-cols-2 gap-8 items-stretch">
+      <div class="anim-left d-2 glass p-7 grad-border flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3"><div class="w-11 h-11 rounded-xl bg-np-secondary/15 flex items-center justify-center text-2xl">📦</div><div class="font-semibold text-xl">Workflow-Export</div></div>
+          <span class="chip px-3 py-1 text-xs">Teilen · Migration</span>
+        </div>
+        <div class="space-y-2.5 flex-1">
+          <div class="flex gap-3 items-start"><span class="text-np-muted2 text-sm font-mono shrink-0 w-24">Zweck</span><span class="text-np-muted text-sm">Workflows weitergeben / portieren — <span class="text-np-text">kein DR</span></span></div>
+          <div class="flex gap-3 items-start"><span class="text-np-muted2 text-sm font-mono shrink-0 w-24">Format</span><span class="text-np-muted text-sm font-mono">nodepilot-workflow-export/v1</span></div>
+          <div class="flex gap-3 items-start"><span class="text-np-muted2 text-sm font-mono shrink-0 w-24">Import</span><span class="text-np-muted text-sm">neue Einträge · Kollision → „(Imported 2)" · Ziel-Folder <span class="font-mono">?folderId=</span> (RBAC = Edit)</span></div>
+          <div class="flex gap-3 items-start"><span class="text-np-muted2 text-sm font-mono shrink-0 w-24">SCOrch</span><span class="text-np-muted text-sm"><span class="font-mono text-np-text">POST /import-scorch</span> — Migration</span></div>
+        </div>
+        <div class="mt-4 border-l-2 border-amber-400/60 pl-4">
+          <div class="text-sm text-np-muted"><span class="text-amber-300 font-semibold">Secrets redigiert</span> <span class="font-mono">***</span> — Teilen-Artefakt, <span class="text-np-text">nicht restaurierbar</span>.</div>
+        </div>
+      </div>
+      <div class="anim-right d-3 glass-strong p-7 grad-border glow flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-3"><div class="w-11 h-11 rounded-xl accent-grad flex items-center justify-center text-2xl">🛟</div><div class="font-semibold text-xl text-np-lilacBright">System-Backup <span class="text-np-muted2 text-base font-normal">ADR 0001</span></div></div>
+          <span class="chip px-3 py-1 text-xs border-np-lilac/40">Disaster Recovery</span>
+        </div>
+        <div class="space-y-2.5 flex-1">
+          <div class="flex gap-3 items-start"><span class="text-np-muted2 text-sm font-mono shrink-0 w-24">Zweck</span><span class="text-np-muted text-sm">Voller DR-Snapshot der Konfiguration</span></div>
+          <div class="flex gap-3 items-start"><span class="text-np-muted2 text-sm font-mono shrink-0 w-24">Inhalt</span><span class="text-np-muted text-sm">Workflows+Folders/Sharing · Machines · Credentials · Globals+Ordner · Users · Settings <span class="text-np-muted2">(≠ Executions/Audit/Stats)</span></span></div>
+          <div class="flex gap-3 items-start"><span class="text-np-muted2 text-sm font-mono shrink-0 w-24">Format</span><span class="text-np-muted text-sm font-mono">nodepilot-system-backup/v1 (.npbackup)</span></div>
+          <div class="flex gap-3 items-start"><span class="text-np-muted2 text-sm font-mono shrink-0 w-24">Restore</span><span class="text-np-muted text-sm">Ref-Validierung · EF-Transaktion · ID-Remap · Konflikt <span class="font-mono">skip/rename/overwrite</span> · Last-Admin-Schutz</span></div>
+        </div>
+        <div class="mt-4 border-l-2 border-emerald-400/60 pl-4">
+          <div class="text-sm text-np-muted"><span class="text-emerald-300 font-semibold">Secrets Passphrase-Rewrap</span> (PBKDF2→HKDF→AES-GCM) + Whole-file-HMAC — <span class="text-np-text">restaurierbar</span>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 28 — WORKFLOW BAUEN 1 -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-3"><span class="text-np-lilac font-mono text-base">30</span><h2 class="text-6xl font-bold mt-2">Workflows bauen — Schritt&nbsp;1</h2></div>
+    <p class="anim-fade-up d-2 text-np-muted text-lg mb-7 max-w-4xl">Designer öffnen, Trigger wählen, Maschinen & Credentials anlegen.</p>
+    <div class="grid grid-cols-3 gap-6 mb-8">
+      <div class="anim-left d-3 glass p-7 grad-border"><div class="pill-num inline-block px-3 py-1 rounded-lg text-np-lilac font-mono text-sm mb-3">1.1</div><div class="font-semibold text-xl mb-1">Maschine anlegen</div><div class="text-np-muted"><span class="font-mono">POST /api/machines</span> + <span class="font-mono">POST /{id}/test</span> prüft WinRM-Reachability.</div></div>
+      <div class="anim-left d-4 glass p-7 grad-border"><div class="pill-num inline-block px-3 py-1 rounded-lg text-np-lilac font-mono text-sm mb-3">1.2</div><div class="font-semibold text-xl mb-1">Credential anlegen</div><div class="text-np-muted"><span class="font-mono">POST /api/credentials</span> — DPAPI-verschlüsselt, optional <span class="font-mono">ExpiresAt</span>.</div></div>
+      <div class="anim-left d-5 glass p-7 grad-border"><div class="pill-num inline-block px-3 py-1 rounded-lg text-np-lilac font-mono text-sm mb-3">1.3</div><div class="font-semibold text-xl mb-1">Trigger wählen</div><div class="text-np-muted">Palette → Trigger-Node ziehen. Er ist der <span class="text-np-text">Root</span> der Execution.</div></div>
+    </div>
+    <div class="anim-fade-up d-6 glass p-6 grad-border">
+      <div class="text-np-lilac font-semibold mb-2 text-lg">💡 Tipp</div>
+      <p class="text-np-muted text-base">Globale Variablen für wiederverwendbare Werte anlegen (<span class="font-mono">{{globals.NAME}}</span>). Vor dem Script-Gen: <span class="font-mono">docs/workflow-styleguide.md</span> lesen.</p>
+    </div>
+  </div>
+</section>
+
+<!-- 29 — WORKFLOW BAUEN 2 -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-3"><span class="text-np-lilac font-mono text-base">31</span><h2 class="text-6xl font-bold mt-2">Workflows bauen — Schritt&nbsp;2</h2></div>
+    <p class="anim-fade-up d-2 text-np-muted text-lg mb-7 max-w-4xl">Activities verdrahten, Config ausfüllen, Edges mit Conditions versehen.</p>
+    <div class="grid grid-cols-2 gap-10 items-center">
+      <div class="anim-left d-3 glass p-8 grad-border">
+        <svg viewBox="0 0 400 300" class="w-full mx-auto">
+          <g stroke="#9b7dff" stroke-width="1.5" fill="none" class="flow-line" opacity=".8">
+            <path d="M100,74 L100,130"/>
+            <path d="M170,154 L198,154"/>
+            <path d="M260,184 L270,236"/>
+            <path d="M198,154 C160,182 130,202 110,236"/>
+          </g>
+          <g class="wf-trigger">
+            <rect x="30" y="28" width="140" height="46" rx="10" fill="#2d2754" stroke="#9b7dff" stroke-width="1.5"/>
+            <text x="100" y="56" fill="#ece7ff" text-anchor="middle" font-size="12" font-weight="bold">manualTrigger</text>
+          </g>
+          <g class="wf-run">
+            <rect x="30" y="130" width="140" height="48" rx="10" fill="#1b1b1e" stroke="#34343b" stroke-width="1.5"/>
+            <text x="100" y="151" fill="#e8e8e8" text-anchor="middle" font-size="10.5">runScript</text>
+            <text x="100" y="166" fill="#a6a6b0" text-anchor="middle" font-size="8.5">Check Disk</text>
+          </g>
+          <g class="wf-decision">
+            <polygon points="260,124 322,154 260,184 198,154" fill="#1b1b1e" stroke="#34343b" stroke-width="1.5"/>
+            <text x="260" y="158" fill="#e8e8e8" text-anchor="middle" font-size="9.5">decision</text>
+          </g>
+          <g class="wf-email">
+            <rect x="210" y="236" width="120" height="44" rx="10" fill="#1b1b1e" stroke="#34343b" stroke-width="1.5"/>
+            <text x="270" y="262" fill="#e8e8e8" text-anchor="middle" font-size="10.5">email</text>
+          </g>
+          <g class="wf-log">
+            <rect x="50" y="236" width="120" height="44" rx="10" fill="#1b1b1e" stroke="#34343b" stroke-width="1.5"/>
+            <text x="110" y="262" fill="#e8e8e8" text-anchor="middle" font-size="10.5">log</text>
+          </g>
+          <text x="128" y="112" fill="#34d399" font-size="9">success</text>
+          <text x="278" y="208" fill="#9b7dff" font-size="9" class="wf-cond">free&lt;10</text>
+          <text x="148" y="208" fill="#a6a6b0" font-size="9">else</text>
+          <circle r="5" fill="#7c5cfc" class="wf-token">
+            <animateMotion dur="5s" repeatCount="indefinite" calcMode="linear"
+              keyTimes="0;0.9;1" keyPoints="0;1;1"
+              path="M100,51 L100,154 L260,154 L270,258" />
+          </circle>
+        </svg>
+      </div>
+      <div class="anim-right d-4 space-y-4">
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-lg">2.1 Activity ziehen</div><div class="text-np-muted">Palette → Canvas. Config-Panel füllt <span class="font-mono">data.config</span>.</div></div>
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-lg">2.2 Edge + Condition</div><div class="text-np-muted">Verbinden → Condition (<span class="font-mono">step.success</span> oder Expression-AST).</div></div>
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-lg">2.3 outputVariable</div><div class="text-np-muted">Name vergeben → 下游 per <span class="font-mono">{{name.output}}</span>.</div></div>
+        <div class="glass p-5 grad-border"><div class="text-np-lilac font-semibold mb-1 text-lg">2.4 Step-Test</div><div class="text-np-muted"><span class="font-mono">POST /{id}/steps/{stepId}/test</span> — einzelner Step ohne Full-Run.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 30 — WORKFLOW BAUEN 3 -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-3"><span class="text-np-lilac font-mono text-base">32</span><h2 class="text-6xl font-bold mt-2">Workflows bauen — Schritt&nbsp;3</h2></div>
+    <p class="anim-fade-up d-2 text-np-muted text-lg mb-7 max-w-4xl">Lock → Speichern → Publish. Debug-Run, dann aktivieren & überwachen.</p>
+    <div class="grid grid-cols-4 gap-5 mb-8">
+      <div class="anim-scale d-3 glass p-6 text-center grad-border"><div class="text-3xl mb-3">🔒</div><div class="font-semibold text-lg">Lock</div><div class="text-np-muted text-sm mt-2">Disable + Lock-Fields</div></div>
+      <div class="anim-scale d-4 glass p-6 text-center grad-border"><div class="text-3xl mb-3">💾</div><div class="font-semibold text-lg">Save</div><div class="text-np-muted text-sm mt-2">Version-History wird snapshottet</div></div>
+      <div class="anim-scale d-5 glass-strong p-6 text-center grad-border anim-glow"><div class="text-3xl mb-3">🚀</div><div class="font-semibold text-lg text-np-lilacBright">Publish</div><div class="text-np-muted text-sm mt-2">Save + Enable + Unlock</div></div>
+      <div class="anim-scale d-6 glass p-6 text-center grad-border"><div class="text-3xl mb-3">▶️</div><div class="font-semibold text-lg">Execute</div><div class="text-np-muted text-sm mt-2">202 + ExecutionId, SignalR live</div></div>
+    </div>
+    <div class="anim-fade-up d-7 grid grid-cols-2 gap-6">
+      <div class="glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Debug-Run</div><p class="text-np-muted"><span class="font-mono">POST /execute</span> mit <span class="font-mono">debug: true</span> → Breakpoints, <span class="font-mono">StepPaused</span> via SignalR. Resume via <span class="font-mono">POST /executions/{id}/resume</span>.</p></div>
+      <div class="glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Überwachen</div><p class="text-np-muted">Step-Status live, Cancel pro Lauf (<span class="font-mono">cancelledBy</span>), Retry/Resume. Quarantäne = Disable + cancel-all.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 31 — API OVERVIEW -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">33</span><h2 class="text-6xl font-bold mt-2">API — Fläche im Überblick</h2></div>
+    <div class="grid grid-cols-3 gap-4 text-base">
+      <div class="anim-left d-2 space-y-3">
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Workflows</div><div class="text-np-muted text-sm mt-1">CRUD + execute/lock/unlock/publish</div></div>
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Versionen & Contract</div><div class="text-np-muted text-sm mt-1">versions, rollback, contract</div></div>
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Step-Test & Coverage</div><div class="text-np-muted text-sm mt-1">steps/test, coverage, step-health</div></div>
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Executions</div><div class="text-np-muted text-sm mt-1">list, steps, cancel/retry/resume</div></div>
+      </div>
+      <div class="anim-left d-3 space-y-3">
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Machines / Credentials</div><div class="text-np-muted text-sm mt-1">CRUD + machine test</div></div>
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Globals & Folders</div><div class="text-np-muted text-sm mt-1">global-variables + -folders</div></div>
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Trigger & Webhooks</div><div class="text-np-muted text-sm mt-1">/trigger/{name}, /webhooks/{w}/{p}</div></div>
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Import/Export & Backup</div><div class="text-np-muted text-sm mt-1">export, import, backup</div></div>
+      </div>
+      <div class="anim-right d-2 space-y-3">
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Alerting</div><div class="text-np-muted text-sm mt-1">rules, test-fire, deliveries</div></div>
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Operations / Dashboard</div><div class="text-np-muted text-sm mt-1">/operations/graph, /stats/dashboard</div></div>
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">Admin-Settings</div><div class="text-np-muted text-sm mt-1">sections, status, test/smtp|llm</div></div>
+        <div class="glass p-4 grad-border"><div class="text-np-lilac font-mono text-sm">AI / MCP / CLI</div><div class="text-np-muted text-sm mt-1">ai/* + nodepilot-mcp (87) + np</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 32 — CLI & MCP -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">34</span><h2 class="text-6xl font-bold mt-2">CLI & MCP-Server</h2></div>
+    <div class="grid grid-cols-2 gap-8">
+      <div class="anim-left d-2 glass p-7 grad-border">
+        <div class="flex items-center gap-3 mb-3"><span class="text-3xl">⌨️</span><div class="font-semibold text-xl">np CLI</div></div>
+        <p class="text-np-muted mb-3">Reiner HTTP-Client gegen REST-Endpoints. <span class="font-mono">dotnet global tool</span>.</p>
+        <div class="flex flex-wrap gap-1.5 text-xs">
+          <span class="chip px-2 py-1 font-mono">auth</span><span class="chip px-2 py-1 font-mono">workflow</span><span class="chip px-2 py-1 font-mono">exec</span><span class="chip px-2 py-1 font-mono">machine</span><span class="chip px-2 py-1 font-mono">credential</span><span class="chip px-2 py-1 font-mono">globals</span><span class="chip px-2 py-1 font-mono">user</span><span class="chip px-2 py-1 font-mono">shared-folder</span><span class="chip px-2 py-1 font-mono">maintenance</span><span class="chip px-2 py-1 font-mono">alerting</span><span class="chip px-2 py-1 font-mono">audit</span><span class="chip px-2 py-1 font-mono">backup</span><span class="chip px-2 py-1 font-mono">db</span><span class="chip px-2 py-1 font-mono">cron</span><span class="chip px-2 py-1 font-mono">health</span><span class="chip px-2 py-1 font-mono">dashboard</span>
+        </div>
+      </div>
+      <div class="anim-right d-3 glass-strong p-7 grad-border glow">
+        <div class="flex items-center gap-3 mb-3"><span class="text-3xl">🤖</span><div class="font-semibold text-xl text-np-lilacBright">nodepilot-mcp</div></div>
+        <p class="text-np-muted mb-3">Reiner HTTP-Client + In-Proc-Analyse. AI-Agent steuert Workflows <span class="text-np-text">+ bearbeitet</span>.</p>
+        <ul class="text-np-muted space-y-1.5 text-base">
+          <li>• <span class="font-mono text-np-text">87 Tools</span>, 3 Resources — Transport stdio</li>
+          <li>• Reused DPAPI-Session der CLI</li>
+          <li>• Hybrid: Full-Definition + atomarer <span class="font-mono">apply_workflow_patch</span></li>
+          <li>• Destruktiv nur bei <span class="font-mono text-np-text">NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 33 — BEST PRACTICES -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-8"><span class="text-np-lilac font-mono text-base">35</span><h2 class="text-6xl font-bold mt-2">Best Practices</h2></div>
+    <div class="grid grid-cols-2 gap-6">
+      <div class="anim-left d-2 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Workflows</div>
+        <ul class="text-np-muted space-y-2 text-base">
+          <li>• Styleguide <span class="font-mono text-np-text">docs/workflow-styleguide.md</span> zuerst</li>
+          <li>• Immer Trigger-Node als Root</li>
+          <li>• <span class="font-mono text-np-text">outputVariable</span> sprechend benennen</li>
+          <li>• Edges mit Conditions, nicht mit Reihenfolge-Annahmen</li>
+          <li>• Pro Step Retry + Timeout konfigurieren</li>
+          <li>• Secrets via <span class="font-mono">{{globals.X}}</span> / Credentials</li>
+        </ul>
+      </div>
+      <div class="anim-right d-3 glass p-7 grad-border">
+        <div class="text-np-lilac font-semibold mb-3 text-lg">Engine & Operations</div>
+        <ul class="text-np-muted space-y-2 text-base">
+          <li>• <span class="font-mono text-np-text">throw</span> für Fehler, nicht <span class="font-mono">exit N</span></li>
+          <li>• Lokales <span class="font-mono text-np-text">runScript</span> mit <span class="font-mono">isolated: true</span></li>
+          <li>• Sub-Workflows für Wiederverwendung, Max-Depth 10</li>
+          <li>• Retention-Services konfigurieren</li>
+          <li>• Alerting opt-in per Daten — idle bis Regel existiert</li>
+          <li>• Tests sind Pflicht (<span class="font-mono">Method_Scenario_Expected</span>)</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 34 — ZUSAMMENFASSUNG -->
+<section class="slide w-full h-full flex-col justify-center">
+  <div class="stage">
+    <div class="anim-fade-up d-1 mb-10"><span class="text-np-lilac font-mono text-base">36</span><h2 class="text-6xl font-bold mt-2">Zusammenfassung</h2></div>
+    <div class="grid grid-cols-3 gap-5">
+      <div class="anim-scale d-2 glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Architektur</div><div class="text-np-muted">11 sauber getrennte Projekte, klare Dep-Richtung, Core abhängigkeitsfrei.</div></div>
+      <div class="anim-scale d-3 glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Execution</div><div class="text-np-muted">Agentless via WinRM, event-driven Engine, Trigger = Roots, Per-Step-Scope.</div></div>
+      <div class="anim-scale d-4 glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Workflows</div><div class="text-np-muted">JSON: Nodes + Edges, Databus-Auflösung, Edit-Lock, Versionierung.</div></div>
+      <div class="anim-scale d-5 glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Querschnitt</div><div class="text-np-muted">SignalR, Quartz, Serilog, OTel, JWT/Rollen, Retention.</div></div>
+      <div class="anim-scale d-6 glass p-6 grad-border"><div class="text-np-lilac font-semibold mb-2 text-lg">Erweiterbar</div><div class="text-np-muted">Custom Activities, Alerting, KI-Assistent, MCP-Server, CLI.</div></div>
+      <div class="anim-scale d-7 glass-strong p-6 grad-border glow"><div class="text-np-lilacBright font-semibold mb-2 text-lg">Enterprise</div><div class="text-np-muted">HA A/P, Secret-Provider, LDAP/SSO, Folder-RBAC, ECS-SIEM.</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 35 — END -->
+<section class="slide w-full h-full flex-col items-center justify-center text-center grid-bg">
+  <div class="anim-float mb-10 relative">
+    <div class="ring-pulse absolute inset-0 rounded-full"></div>
+    <svg width="120" height="120" viewBox="0 0 120 120" class="anim-spin relative">
+      <circle cx="60" cy="60" r="48" fill="none" stroke="#7c5cfc" stroke-width="3" opacity=".45"/>
+      <circle cx="60" cy="60" r="34" fill="none" stroke="#9b7dff" stroke-width="2" opacity=".7"/>
+      <circle cx="60" cy="60" r="12" fill="#9b7dff"/>
+    </svg>
+  </div>
+  <h2 class="anim-fade-up d-2 text-8xl font-black">Vielen <span class="grad-text">Dank</span></h2>
+  <p class="anim-fade-up d-3 mt-7 text-2xl text-np-text2 max-w-2xl">Fragen? — schau in <span class="font-mono text-np-lilac">docs/</span> oder frag den <span class="text-np-text">Workflow-Assistenten</span>.</p>
+  <div class="anim-fade-in d-5 mt-12 flex gap-3 flex-wrap justify-center">
+    <span class="chip px-4 py-2 text-base font-mono">NodePilot</span><span class="chip px-4 py-2 text-base font-mono">.NET 10</span><span class="chip px-4 py-2 text-base font-mono">agentless</span><span class="chip px-4 py-2 text-base font-mono">WinRM</span>
+  </div>
+</section>
+
+</main>
+
+<script>
+  const slides = Array.from(document.querySelectorAll('.slide'));
+  const counter = document.getElementById('counter');
+  const progress = document.getElementById('progress');
+  const dotsContainer = document.getElementById('dots');
+  let current = 0;
+  slides.forEach((_, i) => { const d = document.createElement('div'); d.className = 'nav-dot h-2.5 w-2.5 rounded-full bg-np-edge cursor-pointer'; d.onclick = () => go(i); dotsContainer.appendChild(d); });
+  const dots = Array.from(dotsContainer.children);
+  function go(i) {
+    if (i < 0) i = 0; if (i > slides.length - 1) i = slides.length - 1;
+    slides[current].classList.remove('active'); dots[current].classList.remove('active');
+    current = i;
+    slides[current].classList.add('active'); dots[current].classList.add('active');
+    const n = String(current + 1).padStart(2, '0'), total = String(slides.length).padStart(2, '0');
+    counter.textContent = `${n} / ${total}`;
+    progress.style.width = ((current + 1) / slides.length * 100) + '%';
+  }
+  go(0);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') { e.preventDefault(); go(current + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(current - 1); }
+    else if (e.key === 'Home') go(0);
+    else if (e.key === 'End') go(slides.length - 1);
+    else if (e.key === 'f' || e.key === 'F') { if (!document.fullscreenElement) document.documentElement.requestFullscreen(); else document.exitFullscreen(); }
+  });
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('button, a, .nav-dot, input, textarea, pre, code')) return;
+    const x = e.clientX / window.innerWidth;
+    if (x < 0.3) go(current - 1); else if (x > 0.7) go(current + 1);
+  });
+</script>
+</body>
+</html>

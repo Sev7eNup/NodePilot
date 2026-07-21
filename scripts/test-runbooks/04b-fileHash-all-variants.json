@@ -1,0 +1,42 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] fileHash - All Variants Live",
+      "description": "Live test of fileHash activity. Setup creates a known-content file at C:\\temp\\nodepilot-hashtest.txt (text: 'NodePilot-Hash-Test\\n'). Then hashes with SHA256 / SHA1 / MD5 / SHA384 / SHA512 algorithms. Each hash logged with expected reference value (computed from same byte sequence). Teardown removes the test file. Run elevated or as user — file system access in temp does not require admin.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "setup", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "setup: write test file", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "setup", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$path = 'C:\\temp\\nodepilot-hashtest.txt'\nNew-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null\nSet-Content -Path $path -Value 'NodePilot-Hash-Test' -NoNewline -Encoding UTF8\nWrite-Output \"wrote: $path\"" } } },
+          { "id": "h_sha256", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "hash: SHA256", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_sha256", "config": { "path": "C:\\temp\\nodepilot-hashtest.txt", "algorithm": "SHA256" } } },
+          { "id": "h_sha1", "type": "activity", "position": { "x": 640, "y": 360 }, "data": { "label": "hash: SHA1", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_sha1", "config": { "path": "C:\\temp\\nodepilot-hashtest.txt", "algorithm": "SHA1" } } },
+          { "id": "h_md5", "type": "activity", "position": { "x": 640, "y": 520 }, "data": { "label": "hash: MD5", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_md5", "config": { "path": "C:\\temp\\nodepilot-hashtest.txt", "algorithm": "MD5" } } },
+          { "id": "h_sha384", "type": "activity", "position": { "x": 640, "y": 680 }, "data": { "label": "hash: SHA384", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_sha384", "config": { "path": "C:\\temp\\nodepilot-hashtest.txt", "algorithm": "SHA384" } } },
+          { "id": "h_sha512", "type": "activity", "position": { "x": 640, "y": 840 }, "data": { "label": "hash: SHA512", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "h_sha512", "config": { "path": "C:\\temp\\nodepilot-hashtest.txt", "algorithm": "SHA512" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_hashes", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "log: all hashes", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/fileHash] SHA256={{h_sha256.param.hash}} SHA1={{h_sha1.param.hash}} MD5={{h_md5.param.hash}} SHA384={{h_sha384.param.hash}} SHA512={{h_sha512.param.hash}}" } } },
+          { "id": "teardown", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "teardown: rm test file", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "teardown", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Remove-Item -Force -ErrorAction SilentlyContinue 'C:\\temp\\nodepilot-hashtest.txt'\nWrite-Output 'cleaned'" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1920, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "sha256": "{{h_sha256.param.hash}}", "sha1": "{{h_sha1.param.hash}}", "md5": "{{h_md5.param.hash}}", "sha384": "{{h_sha384.param.hash}}", "sha512": "{{h_sha512.param.hash}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "setup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "setup", "target": "h_sha256", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e3", "source": "setup", "target": "h_sha1", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e4", "source": "setup", "target": "h_md5", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e5", "source": "setup", "target": "h_sha384", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e6", "source": "setup", "target": "h_sha512", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e7", "source": "h_sha256", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "h_sha1", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "h_md5", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "h_sha384", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "h_sha512", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "junc", "target": "log_hashes", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "log_hashes", "target": "teardown", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "teardown", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

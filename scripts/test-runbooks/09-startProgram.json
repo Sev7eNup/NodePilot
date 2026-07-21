@@ -1,0 +1,32 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] startProgram - All Variants",
+      "description": "Testet startProgram: waitForExit=true mit Standard-Exit-0, custom successExitCodes (exit 42 als success akzeptiert), waitForExit=false (fire-and-forget). Verwendet cmd.exe /c als Wrapper - keine echten externen Programme. Failure-Pfad in xUnit getestet.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "init: build args", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$envName = 'test-env'\nWrite-Output 'init-ok'" } } },
+          { "id": "p_echo", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "startProgram: echo (waitForExit, exit 0)", "activityType": "startProgram", "targetMachineId": "localhost", "outputVariable": "p_echo", "config": { "filePath": "cmd.exe", "arguments": "/c echo Hello-from-{{init.param.envName}}", "waitForExit": true, "timeoutSeconds": 15, "successExitCodes": "0" } } },
+          { "id": "p_exit_42", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "startProgram: exit 42 (custom successExitCodes)", "activityType": "startProgram", "targetMachineId": "localhost", "outputVariable": "p_exit_42", "config": { "filePath": "cmd.exe", "arguments": "/c exit 42", "waitForExit": true, "timeoutSeconds": 15, "successExitCodes": "0,42" } } },
+          { "id": "p_fire_forget", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "startProgram: fire-and-forget", "activityType": "startProgram", "targetMachineId": "localhost", "outputVariable": "p_ff", "config": { "filePath": "cmd.exe", "arguments": "/c exit 0", "waitForExit": false, "timeoutSeconds": 5 } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "echoStdout": "{{p_echo.param.stdout}}", "exit42Code": "{{p_exit_42.param.exitCode}}", "ffPid": "{{p_ff.param.processId}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init", "target": "p_echo", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "init", "target": "p_exit_42", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "init", "target": "p_fire_forget", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "p_echo", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "p_exit_42", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "p_fire_forget", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

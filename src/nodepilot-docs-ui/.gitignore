@@ -1,0 +1,11 @@
+node_modules/
+.vitepress/dist/
+.vitepress/cache/
+dist/
+*.log
+.DS_Store
+
+# Build artifacts (compiled vite config + TS incremental caches)
+vite.config.js
+vite.config.d.ts
+*.tsbuildinfo

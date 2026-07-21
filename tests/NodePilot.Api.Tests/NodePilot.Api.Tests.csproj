@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Moq" />
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
+    <!-- CVE-2025-6965: fixed SQLitePCLRaw 3.x native build (see Directory.Packages.props). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="WireMock.Net" />
+    <!-- Force patched floors over WireMock.Net's vulnerable transitives (test-only):
+         Scriban.Signed 5.5.0 → GHSA-24c8-4792-22hx (HIGH, array.insert_at OOM DoS),
+         Microsoft.OpenApi 2.4.1 (via WireMock.Net.OpenApiParser) → GHSA-v5pm-xwqc-g5wc. -->
+    <PackageReference Include="Scriban.Signed" />
+    <PackageReference Include="Microsoft.OpenApi" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NodePilot.Api\NodePilot.Api.csproj" />
+    <ProjectReference Include="..\..\src\NodePilot.Core\NodePilot.Core.csproj" />
+    <ProjectReference Include="..\..\src\NodePilot.Data\NodePilot.Data.csproj" />
+    <ProjectReference Include="..\NodePilot.TestCommons\NodePilot.TestCommons.csproj" />
+  </ItemGroup>
+
+</Project>

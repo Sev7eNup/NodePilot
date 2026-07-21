@@ -1,0 +1,557 @@
+{
+  "execution": {
+    "title": "Ausführung",
+    "status": {
+      "Succeeded": "Erfolgreich",
+      "Failed": "Fehlgeschlagen",
+      "Running": "Läuft",
+      "Pending": "Ausstehend",
+      "Cancelled": "Abgebrochen",
+      "Skipped": "Übersprungen",
+      "Paused": "Pausiert"
+    },
+    "running": "Läuft",
+    "runningCount": "{{count}} laufend",
+    "dryRunBadge": "Probelauf · {{willRun}} laufen · {{skipped}} übersprungen",
+    "pausedBreakpoint": "⏸ Am Breakpoint pausiert — zum Fortsetzen klicken",
+    "connected": "Verbunden",
+    "signalrConnected": "SignalR verbunden",
+    "runs": "{{count}} Läufe",
+    "collapsePanel": "Ausführungs-Panel einklappen",
+    "tabs": {
+      "live": "Live",
+      "history": "Verlauf",
+      "output": "Ausgabe",
+      "watch": "Watch"
+    },
+    "historyScope": {
+      "thisWorkflow": "Dieser Workflow",
+      "allWorkflows": "Alle Workflows",
+      "openFullList": "Vollständige Liste öffnen →"
+    },
+    "live": {
+      "noActiveExecution": "Keine aktive Ausführung",
+      "clickTestToRun": "Auf \"Test\" klicken, um den Workflow auszuführen",
+      "paused": "Pausiert"
+    },
+    "inspector": {
+      "closeStepInspector": "Step-Inspector schließen",
+      "closeDetails": "Details schließen",
+      "output": "Ausgabe",
+      "error": "Fehler",
+      "transcript": "Transkript",
+      "started": "Start {{time}}",
+      "ended": "Ende {{time}}",
+      "fromRunStart": "+{{offset}} ab Lauf-Start",
+      "duration": "Dauer: {{duration}}",
+      "input": "Eingabe",
+      "targetMachine": "Zielmaschine",
+      "credential": "Credential",
+      "outputVar": "Ausgabe-Variable"
+    },
+    "resize": {
+      "stepList": "Ziehen, um die Step-Liste zu skalieren. Doppelklick zum Zurücksetzen.",
+      "panel": "Ziehen zum Skalieren. Doppelklick zum Zurücksetzen."
+    },
+    "simulation": {
+      "simulating": "Probelauf — simuliere…",
+      "simulatedPath": "Probelauf — simulierter Ausführungspfad",
+      "stepProgress": "Schritt {{current}} / {{total}}",
+      "willRunSkipped": "{{willRun}} laufen · {{skipped}} übersprungen",
+      "executionOrder": "Ausführungsreihenfolge (alles-erfolgreich-Szenario)",
+      "skipped": "Übersprungen ({{count}})",
+      "note": "Die Simulation ist eine clientseitige Projektion, die annimmt, dass jeder Schritt erfolgreich ist. Fehlerpfade (.failed-Kanten) und deaktivierte Nodes sind ausgeschlossen."
+    },
+    "watch": {
+      "emptyHint": "Füge Ausdrücke wie <0>checkDisk.output</0> oder <1>globals.apiKey</1> hinzu, um ihre Werte während der Ausführung zu beobachten.",
+      "placeholder": "stepName.output oder globals.varName — Rechtsklick für Auswahl",
+      "addExpression": "Watch-Ausdruck hinzufügen",
+      "notFound": "nicht gefunden",
+      "noActiveExecution": "keine aktive Ausführung",
+      "copyValue": "Wert kopieren",
+      "remove": "Entfernen",
+      "globalLabel": "Global · {{name}}",
+      "globalSecretLabel": "Global · {{name}} (Secret)",
+      "liveLabel": "Live",
+      "hasLiveValue": "Hat einen Live-Wert im aktuellen Databus",
+      "filterPlaceholder": "Variablen filtern…",
+      "noVariables": "Keine Variablen verfügbar",
+      "noMatches": "Keine Treffer für \"{{filter}}\"",
+      "groupWorkflow": "Workflow-Variablen",
+      "groupGlobals": "Globals",
+      "groupLive": "Live-Databus",
+      "footerHint": "↑↓ navigieren · Enter auswählen · Esc schließen"
+    },
+    "output": {
+      "waitingNamedParams": "Warte auf benannte Parameter…",
+      "noDataBusValues": "Noch keine Databus-Werte",
+      "noEntriesRunning": "Steps ohne benannte Ausgaben (param.*) erzeugen hier keine Einträge",
+      "noEntriesIdle": "Workflow ausführen, um veröffentlichte Variablen zu sehen",
+      "filterPlaceholder": "Nach Schlüssel oder Wert filtern…",
+      "expandAll": "Alle ausklappen",
+      "expandAllGroups": "Alle Gruppen ausklappen",
+      "collapse": "Einklappen",
+      "collapseAllGroups": "Alle Gruppen einklappen",
+      "breakpointTip": "Tipp: Setze einen Breakpoint, um auch Trigger-Eingaben und globale Variablen zu sehen",
+      "groupTrigger": "Trigger-Eingabe",
+      "groupGlobal": "Globale Variablen",
+      "groupOther": "Sonstige",
+      "noEntriesMatch": "Keine Einträge passen zu \"{{filter}}\"",
+      "clickToCollapse": "Zum Einklappen klicken",
+      "clickToExpand": "Zum Ausklappen klicken",
+      "copyValue": "Wert kopieren"
+    },
+    "history": {
+      "noHistory": "Kein Ausführungsverlauf",
+      "colStatus": "Status",
+      "colWorkflow": "Workflow",
+      "colId": "ID",
+      "colTrigger": "Trigger",
+      "colUser": "Benutzer",
+      "colSteps": "Steps",
+      "colFailedStep": "Fehler-Step",
+      "colStarted": "Gestartet",
+      "colFinished": "Beendet",
+      "colDuration": "Dauer",
+      "colExtras": "Extras",
+      "colError": "Fehler",
+      "sortBy": "Sortieren nach {{label}}",
+      "subWorkflowFrom": "Sub-Workflow — gestartet aus „{{name}}\"",
+      "subWorkflowFromParent": "Sub-Workflow — gestartet aus übergeordnetem Run",
+      "subWfShort": "Sub-WF",
+      "stepsRanTooltip": "{{completed}} von {{total}} Steps gelaufen (Skipped ausgeschlossen)",
+      "running": "läuft",
+      "notYetFinished": "noch nicht beendet",
+      "copyFullId": "{{id}}  (klicken, um vollständige ID zu kopieren)",
+      "showPathOnCanvas": "Ausführungspfad auf Canvas anzeigen",
+      "noStepsRecorded": "Keine Steps aufgezeichnet"
+    },
+    "timeline": {
+      "stepsCount": "{{count}} Steps",
+      "total": "{{duration}} gesamt",
+      "ok": "{{count}} ok",
+      "failed": "{{count}} fehlgeschlagen",
+      "skipped": "{{count}} übersprungen",
+      "list": "Liste",
+      "gantt": "Gantt",
+      "tableView": "Tabellenansicht",
+      "ganttView": "Gantt-Timeline-Ansicht — zeigt parallele Branches visuell",
+      "colStep": "Step",
+      "colType": "Typ",
+      "colStart": "Start",
+      "colEnd": "Ende",
+      "colDuration": "Dauer",
+      "colGap": "Lücke",
+      "colBar": "Balken",
+      "fromRunStart": "{{time}}   (+{{offset}} ab Lauf-Start)",
+      "parallelBranch": "Vor Abschluss des vorherigen Steps gestartet (paralleler Branch)",
+      "output": "Ausgabe",
+      "outputParameters": "Output-Parameter",
+      "error": "Fehler",
+      "transcript": "Transkript"
+    }
+  },
+  "parts": {
+    "trigger": {
+      "manual": "Manuell",
+      "api": "API",
+      "retry": "Retry",
+      "subWf": "Sub-WF"
+    },
+    "extras": {
+      "inputParameters": "Eingabeparameter: {{value}}",
+      "returnData": "Rückgabedaten: {{value}}",
+      "traceId": "Trace-ID: {{value}}"
+    }
+  },
+  "live": {
+    "console": {
+      "filterPlaceholder": "Filtern…",
+      "errors": "Fehler",
+      "showOnlyErrors": "Nur Fehlerzeilen anzeigen",
+      "pauseAutoScroll": "Auto-Scroll pausieren",
+      "resumeAutoScroll": "Auto-Scroll fortsetzen",
+      "live": "Live",
+      "paused": "Pausiert",
+      "waitingForOutput": "Warte auf Step-Ausgabe…",
+      "noLinesMatch": "Keine Zeilen passen zu \"{{filter}}\"{{errorsSuffix}}",
+      "errorsOnlySuffix": " (nur Fehler)",
+      "earlierLinesHidden": "{{count}} frühere Zeilen ausgeblendet — Puffergrenze ist {{cap}}.",
+      "inspectStep": "Klicken, um diesen Step zu inspizieren"
+    },
+    "overview": {
+      "timeline": "Timeline",
+      "console": "Konsole"
+    },
+    "stats": {
+      "steps": "Steps",
+      "succeeded": "{{count}} erfolgreich",
+      "failed": "{{count}} fehlgeschlagen",
+      "running": "{{count}} laufend",
+      "elapsed": "Verstrichen",
+      "eta": "ETA",
+      "etaTooltip": "Basierend auf der Median-Dauer vergangener Läufe"
+    }
+  },
+  "gantt": {
+    "waitingFirstStep": "Warte auf ersten Step…",
+    "scrub": "Ziehen, um durch die Ausführungszeit zu scrubben — Canvas aktualisiert in Echtzeit",
+    "reset": "Zurücksetzen",
+    "clearScrub": "Scrub löschen — zum Endzustand zurückkehren"
+  },
+  "debug": {
+    "pausedAt": "⏸ Pausiert bei „{{step}}\"",
+    "stepOverTrigger": "Step-Over-Trigger",
+    "breakpoint": "Breakpoint",
+    "variablesModified_one": "{{count}} Variable geändert",
+    "variablesModified_other": "{{count}} Variablen geändert",
+    "continue": "Fortsetzen",
+    "continueTooltip": "Bis zum nächsten Breakpoint fortsetzen (Strg+F5)",
+    "stepOver": "Step Over",
+    "stepOverTooltip": "Step Over — aktuellen Step ausführen, beim nächsten pausieren (F10)",
+    "stop": "Stopp",
+    "stopTooltip": "Ausführung stoppen (Umschalt+F5)",
+    "resetToOriginal": "Auf Originalwert zurücksetzen",
+    "noVariables": "Keine Variablen im Geltungsbereich dieses Steps.",
+    "groupGlobals": "Globals",
+    "groupManual": "Manuelle Eingabe",
+    "groupOther": "Sonstige",
+    "groupStep": "Step: {{name}}"
+  },
+  "nodes": {
+    "pausedShort": "⏸ Pausiert",
+    "triggerPaused": "Workflow deaktiviert — Trigger pausiert",
+    "nextFire": "Nächste Auslösung: {{time}}",
+    "paused": "Pausiert",
+    "next": "Nächste: {{time}}",
+    "coverageTooltip": "Abdeckung ({{days}}T): {{executed}}/{{total}} Läufe erreichten diesen Step",
+    "criticalPathTooltip": "Kritischer Pfad — {{duration}}ms",
+    "slackTooltip": "Puffer: {{slack}}s",
+    "slackBadge": "+{{slack}}s Puffer",
+    "entryPoint": "Workflow-Einstiegspunkt",
+    "shape": {
+      "trigger": "Trigger",
+      "controlFlow": "Kontrollfluss",
+      "returnData": "Rückgabedaten"
+    },
+    "connectSide": "{{side}} verbinden",
+    "output": "Ausgabe",
+    "input": "Eingabe",
+    "breakpoint": {
+      "paused": "An diesem Breakpoint pausiert",
+      "conditional": "Bedingter Breakpoint — pausiert nur, wenn die Bedingung wahr ist (Debug-Lauf)",
+      "set": "Breakpoint gesetzt — pausiert nur während des Debug-Laufs"
+    },
+    "simulation": {
+      "running": "▶ Läuft…",
+      "ran": "✓ Gelaufen",
+      "skipped": "⊘ Übersprungen",
+      "runningNow": "Läuft jetzt (Probelauf)",
+      "ranDryRun": "Gelaufen (Probelauf)",
+      "skippedDryRun": "Übersprungen (Probelauf)"
+    },
+    "disabledTooltip": "Step ist deaktiviert — wird bei der Ausführung übersprungen",
+    "fanIn": {
+      "waitAll": "Junction · waitAll — löst erst aus, wenn ALLE {{count}} eingehenden Branches abgeschlossen sind",
+      "waitAny": "Junction · waitAny — löst aus, sobald der ERSTE von {{count}} eingehenden Branches abgeschlossen ist",
+      "waitNofM": "Junction · waitNofM — löst aus, wenn {{n}} von {{count}} eingehenden Branches erfolgreich sind",
+      "implicit": "{{count}} eingehende Branches laufen hier zusammen (implizites waitAll)"
+    },
+    "lint": {
+      "errors_one": "{{count}} Konfigurationsfehler — Eigenschaften-Panel prüfen",
+      "errors_other": "{{count}} Konfigurationsfehler — Eigenschaften-Panel prüfen",
+      "warnings_one": "{{count}} Warnung",
+      "warnings_other": "{{count}} Warnungen"
+    },
+    "subWorkflow": {
+      "previewUnavailable": "Vorschau nicht möglich — Workflow-Referenz ist eine Variable",
+      "openPreview": "Sub-Workflow als read-only Vorschau öffnen"
+    },
+    "healthSparkline": "Letzte Ausführungsergebnisse (älteste → neueste)",
+    "tooltip": {
+      "avg": "Durchschnittliche Dauer",
+      "p95": "95. Perzentil",
+      "last": "Letzter Lauf",
+      "failTooltip": "{{rate}}% Fehlerrate über die letzten {{runs}} Läufe",
+      "fail": "{{rate}}% Fehler",
+      "lastN": "Letzte {{count}}:"
+    },
+    "group": {
+      "rename": "Doppelklick zum Umbenennen",
+      "expand": "Gruppe ausklappen",
+      "collapse": "Gruppe einklappen",
+      "hiddenChildren": "Verborgene Kinder bleiben im Workflow und werden normal ausgeführt."
+    },
+    "stickyNote": {
+      "smaller": "Kleinerer Text",
+      "larger": "Größerer Text",
+      "emptyHint": "Doppelklick zum Bearbeiten…",
+      "placeholder": "Schreibe deinen Kommentar…",
+      "currentFontSize": "Aktuelle Schriftgröße in px"
+    }
+  },
+  "edges": {
+    "onSuccess": "Bei Erfolg",
+    "onFailure": "Bei Fehler",
+    "disabled": "deaktiviert",
+    "insertStep": "Step auf dieser Kante einfügen"
+  },
+  "edgePort": {
+    "top": "Oben",
+    "right": "Rechts",
+    "bottom": "Unten",
+    "left": "Links"
+  },
+  "collapsed": {
+    "hiddenEdge": "versteckte Kante",
+    "hiddenEdges": "{{count}} versteckte Kanten"
+  },
+  "condition": {
+    "intro": "Vergleiche Output-Werte vorheriger Steps miteinander oder mit einem festen Wert. Auf beiden Seiten kannst du zwischen <0>Variable</0> und <1>Literal</1> wählen.",
+    "noConditionSet": "Keine Bedingung gesetzt — Kante ist immer aktiv.",
+    "variable": "Variable",
+    "literal": "Literal",
+    "fieldMode": "Field",
+    "noUpstreamSteps": "Keine vorgelagerten Steps verfügbar — wähle Literal und nutze {{manual.x}} / {{globals.X}} Templates",
+    "referenceStep": "Auf einen Step-Output, Global oder ein Literal-Template verweisen",
+    "useFixedValue": "Festen Text-/Zahlenwert verwenden (Templates wie {{globals.X}} / {{manual.X}} werden zur Auswertungszeit aufgelöst)",
+    "literalPlaceholder": "fester Wert oder {{globals.X}}",
+    "outputText": "{{label}} → output (Text)",
+    "errorText": "{{label}} → error (Text)",
+    "successBool": "{{label}} → success (bool)",
+    "paramOption": "{{label}} → {{param}} (param)",
+    "groupGlobals": "Globals",
+    "globalsOption": "globals.{{name}}",
+    "remove": "Entfernen",
+    "addCondition": "Bedingung",
+    "addGroup": "Gruppe"
+  },
+  "bulkEdit": {
+    "title": "Sammelbearbeitung",
+    "selected_one": "{{count}} Aktivität{{other}} ausgewählt",
+    "selected_other": "{{count}} Aktivitäten{{other}} ausgewählt",
+    "otherCount": " (+ {{count}} weitere)",
+    "targetMachine": "Zielmaschine",
+    "selectMachine": "— Maschine wählen —",
+    "applyMachine": "Maschine anwenden",
+    "enableDisable": "Aktivieren / Deaktivieren",
+    "choose": "— wählen —",
+    "disableAll": "Alle deaktivieren",
+    "enableAll": "Alle aktivieren",
+    "applyState": "Status anwenden",
+    "perStepTimeout": "Timeout pro Step (Sekunden)",
+    "timeoutPlaceholder": "z. B. 60",
+    "applyTimeout": "Timeout anwenden",
+    "retryPolicy": "Retry-Policy",
+    "attemptsPlaceholder": "Versuche",
+    "backoffPlaceholder": "— Backoff —",
+    "backoffFixed": "fix",
+    "backoffLinear": "linear",
+    "backoffExponential": "exponentiell",
+    "applyRetry": "Retry anwenden",
+    "note": "Sammelbearbeitung überschreibt das jeweilige Feld an allen markierten Activity-Nodes (Trigger/Junction/Group ausgeschlossen). Andere Felder bleiben unverändert. Undo (Strg+Z) macht den Sammel-Apply zurück."
+  },
+  "edgePanel": {
+    "connection": "Verbindung",
+    "ports": "Verbindungs-Ports",
+    "from": "Von",
+    "to": "Nach",
+    "flexiblePortsOff": "Flexible Ports sind aus. Vorhandene benutzerdefinierte Ports werden weiterhin gerendert; aktiviere den Toolbar-Schalter, um mehr zu erstellen.",
+    "label": "Bezeichnung",
+    "labelPlaceholder": "z. B. Bei Erfolg, Falls Wahr...",
+    "displayedOnArrow": "Wird auf dem Verbindungspfeil angezeigt",
+    "labelOverrides": "Eigene Bezeichnung überschreibt die Bedingung",
+    "auto": "Auto: ",
+    "useAuto": "Auto verwenden",
+    "clearCustomLabel": "Eigene Bezeichnung löschen, damit sie automatisch der Bedingung folgt",
+    "conditionOptional": "Bedingung (optional)",
+    "simple": "Einfach",
+    "expression": "Ausdruck",
+    "conditionPlaceholder": "z. B. step-123.success",
+    "supported": "Unterstützt: <0>stepId.success</0> oder <1>stepId.failed</1>",
+    "onSuccess": "Bei Erfolg",
+    "onFailure": "Bei Fehler",
+    "always": "Immer",
+    "connectionDisabled": "Verbindung ist deaktiviert",
+    "connectionActive": "Verbindung ist aktiv",
+    "disabledSkipped": "Deaktivierte Verbindungen werden bei der Workflow-Ausführung übersprungen",
+    "deleteConnection": "Verbindung löschen",
+    "confirmDelete": "Diese Verbindung löschen?"
+  },
+  "breadcrumbs": {
+    "calls": "Ruft auf →",
+    "openChild": "Child-Workflow \"{{name}}\" öffnen",
+    "notFound": "Workflow \"{{name}}\" nicht gefunden — defekte Referenz"
+  },
+  "folderPath": {
+    "homeLabel": "Stammverzeichnis",
+    "browseFolder": "Ordner \"{{name}}\" durchsuchen",
+    "openFolder": "Ordner \"{{name}}\" öffnen",
+    "subfolders": "Ordner",
+    "workflows": "Workflows",
+    "upOneLevel": "Eine Ebene höher",
+    "notAccessible": "Kein Zugriff auf diesen Ordner"
+  },
+  "browser": {
+    "folders": "Ordner",
+    "byTrigger": "Nach Trigger",
+    "searchPlaceholder": "Workflows suchen...",
+    "loading": "Lädt…",
+    "noMatches": "Keine Treffer.",
+    "noOtherWorkflows": "Keine anderen Workflows vorhanden.",
+    "noWorkflowsInFolder": "Keine Workflows in diesem Ordner.",
+    "noTrigger": "Kein Trigger",
+    "currentWorkflow": "Aktuell geöffneter Workflow",
+    "current": "aktuell",
+    "enabled": "Aktiviert",
+    "disabled": "Deaktiviert",
+    "insertIntoStartStep": "In Start-Workflow-Step einsetzen",
+    "openWorkflow": "Workflow öffnen",
+    "trigger": {
+      "manual": "Manuell",
+      "schedule": "Zeitplan",
+      "webhook": "Webhook",
+      "fileWatch": "Datei-Watch",
+      "dbPoll": "DB-Poll",
+      "eventLog": "EventLog"
+    }
+  },
+  "infoCard": {
+    "empty": "Workflow für Details hovern.",
+    "trigger": "Trigger",
+    "steps": "Schritte",
+    "lastRun": "Letzter Lauf",
+    "success": "Erfolg",
+    "avgDuration": "Ø-Dauer",
+    "version": "v{{n}}",
+    "modified": "Geändert",
+    "lockedBy": "Gesperrt von",
+    "folder": "Ordner"
+  },
+  "library": {
+    "snippets": "Snippets",
+    "notInEditing": "Workflow ist nicht in Bearbeitung"
+  },
+  "overlays": {
+    "failedToStart": "Ausführung konnte nicht gestartet werden: {{message}}"
+  },
+  "snippets": {
+    "foreach": {
+      "name": "ForEach über eine Liste",
+      "description": "RunScript erzeugt eine kommagetrennte Liste (z. B. Hostnamen aus einer DB-Abfrage) — ein ForEach-Child-Workflow läuft gegen jedes Element."
+    },
+    "httpRetry": {
+      "name": "HTTP-Aufruf mit Retry + Fallback",
+      "description": "REST-API-Aufruf mit 3 eingebauten Retries über die Retry-Policy — bei Totalausfall fällt er auf einen Log-Step zurück, der den Fehler protokolliert."
+    },
+    "parallelFanout": {
+      "name": "Paralleler Fan-out + Join",
+      "description": "Drei parallele Branches, die alle an einer Junction warten, bevor es weitergeht — guter Startpunkt für „mach drei Dinge gleichzeitig, dann fasse zusammen\"."
+    },
+    "tryCatch": {
+      "name": "Try-Catch um ein Script",
+      "description": "RunScript mit explizitem Fehler-Branch — das Script läuft, und bei Fehler erfasst ein Log-Step den Fehler, bevor der Ablauf weitergeht."
+    }
+  },
+  "toolbar": {
+    "stopEdgeAnimation": "Kanten-Animation stoppen",
+    "animateEdges": "Kanten animieren",
+    "switchToView": "Zur {{view}}-Ansicht wechseln",
+    "viewCard": "Karten",
+    "viewClassic": "Klassisch",
+    "premiumCanvasOn": "Premium-Canvas aktiv – auf klassisches Design wechseln",
+    "premiumCanvasOff": "Klassisches Design – auf Premium-Canvas wechseln",
+    "nodeIconsToGlyph": "Geformte Nodes – auf Icon-Ansicht wechseln",
+    "nodeIconsToShape": "Icon-Ansicht – auf geformte Nodes wechseln",
+    "flexiblePortsOn": "Flexible Ports an — von/zu jeder Seite verbinden",
+    "flexiblePortsOff": "Flexible Ports aus — klassische Rechts-nach-Links-Verbindungen",
+    "portsAutoHideOn": "Ports werden automatisch ausgeblendet — sichtbar bei Cursor-Nähe / beim Verbinden. Klick für dauerhaft sichtbar.",
+    "portsAutoHideOff": "Ports immer sichtbar — Klick, um sie bis zur Cursor-Nähe auszublenden.",
+    "edgeThickness": "Kanten-(Pfeil-)Dicke",
+    "thinnerEdges": "Dünnere Kanten",
+    "thickerEdges": "Dickere Kanten",
+    "smallerNodes": "Kleinere Nodes",
+    "largerNodes": "Größere Nodes",
+    "labelFontSize": "Schriftgröße der Aktivitäts-Bezeichnung",
+    "smallerLabel": "Kleinerer Bezeichnungstext",
+    "largerLabel": "Größerer Bezeichnungstext",
+    "view": "Ansicht",
+    "viewAndCanvasSettings": "Ansicht & Canvas-Einstellungen",
+    "routing": {
+      "smart": "Smart-Routing: gerade bei gleicher Reihe, gekurvt bei Reihenwechsel",
+      "curved": "Immer weiche Bézier-Kurven verwenden",
+      "straight": "Immer orthogonale Step-Kanten verwenden"
+    },
+    "snap": {
+      "to": "An {{size}}px-Raster ausrichten",
+      "off": "Am Raster ausrichten: aus",
+      "offLabel": "Aus"
+    }
+  },
+  "canvasSettings": {
+    "title": "Darstellung",
+    "sections": {
+      "nodes": "Knoten",
+      "connections": "Verbindungen",
+      "canvas": "Canvas"
+    },
+    "animation": {
+      "name": "Animation",
+      "desc": "Fließende Fluss-Punkte entlang der Kanten."
+    },
+    "routing": {
+      "name": "Routing",
+      "desc": "Wie Kanten zwischen Nodes geführt werden.",
+      "smart": "Smart",
+      "curved": "Kurve",
+      "straight": "Gerade"
+    },
+    "thickness": {
+      "name": "Linienstärke",
+      "desc": "Linienstärke der Kanten."
+    },
+    "nodeStyle": {
+      "name": "Stil",
+      "desc": "Kompakte Silhouette oder Karte mit Details.",
+      "classic": "Klassisch",
+      "card": "Karte"
+    },
+    "nodeScale": {
+      "name": "Größe",
+      "desc": "Zoom-Stufe der Node-Darstellung."
+    },
+    "premium": {
+      "name": "Premium-Effekte",
+      "desc": "Glow, Tiefe und Textur auf der Fläche."
+    },
+    "iconStyle": {
+      "name": "Icon-Stil",
+      "desc": "Nacktes Palette-Glyph statt geformter Node.",
+      "shape": "Form",
+      "glyph": "Glyph"
+    },
+    "labelFont": {
+      "name": "Beschriftung",
+      "desc": "Schriftgröße der Aktivitäts-Bezeichnung."
+    },
+    "flexiblePorts": {
+      "name": "Flexible Ports",
+      "desc": "Von/zu jeder Seite verbinden."
+    },
+    "autoHidePorts": {
+      "name": "Ports ausblenden",
+      "desc": "Ports nur bei Cursor-Nähe zeigen."
+    },
+    "snap": {
+      "name": "Raster",
+      "desc": "Nodes beim Ziehen am Raster ausrichten.",
+      "off": "Aus"
+    }
+  },
+  "browserFolderView": "Ordner",
+  "browserTriggerView": "Nach Trigger",
+  "variablesInsertHint": "In Feldern unten einfügen via „Variable einfügen\" neben dem Feld. Hovern für letzten Wert.",
+  "browserNoMatches": "Keine Treffer.",
+  "browserEmptyFolder": "Keine Workflows in diesem Ordner.",
+  "browserNoOthers": "Keine anderen Workflows vorhanden."
+}

@@ -1,0 +1,39 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] forEach - All Variants",
+      "description": "Testet forEach: itemsFormat=json, itemsFormat=lines, itemsFormat=auto, maxParallelism (1=seriell und 4=parallel), continueOnError, custom itemParameterName/indexParameterName, leere Collection (Edge-Case 0 Iterationen), per-item-Timeout. Ruft 'TestSuite Child: Echo Item'.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 700 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "fe_json_seq", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "forEach: json, parallel=1", "activityType": "forEach", "outputVariable": "fe_seq", "config": { "items": "[\"alpha\",\"beta\",\"gamma\"]", "itemsFormat": "json", "childWorkflowNameOrId": "[TestSuite] Child: Echo Item", "itemParameterName": "item", "indexParameterName": "index", "maxParallelism": 1, "continueOnError": false, "timeoutSecondsPerItem": 30 } } },
+          { "id": "fe_json_par", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "forEach: json, parallel=4", "activityType": "forEach", "outputVariable": "fe_par", "config": { "items": "[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\"]", "itemsFormat": "json", "childWorkflowNameOrId": "[TestSuite] Child: Echo Item", "maxParallelism": 4, "continueOnError": true, "timeoutSecondsPerItem": 30 } } },
+          { "id": "fe_lines", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "forEach: lines format", "activityType": "forEach", "outputVariable": "fe_lines", "config": { "items": "host-A\nhost-B\nhost-C\nhost-D", "itemsFormat": "lines", "childWorkflowNameOrId": "[TestSuite] Child: Echo Item", "maxParallelism": 2, "timeoutSecondsPerItem": 30 } } },
+          { "id": "fe_auto", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "forEach: auto-detect (JSON)", "activityType": "forEach", "outputVariable": "fe_auto", "config": { "items": "[\"x\",\"y\"]", "itemsFormat": "auto", "childWorkflowNameOrId": "[TestSuite] Child: Echo Item", "maxParallelism": 2 } } },
+          { "id": "fe_custom_params", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "forEach: custom param names", "activityType": "forEach", "outputVariable": "fe_custom", "config": { "items": "[\"q\",\"r\",\"s\"]", "itemsFormat": "json", "childWorkflowNameOrId": "[TestSuite] Child: Echo Item", "itemParameterName": "item", "indexParameterName": "index", "parameters": { "extraStatic": "constant-value" } } } },
+          { "id": "fe_empty", "type": "activity", "position": { "x": 320, "y": 1200 }, "data": { "label": "forEach: empty collection", "activityType": "forEach", "outputVariable": "fe_empty", "config": { "items": "[]", "itemsFormat": "json", "childWorkflowNameOrId": "[TestSuite] Child: Echo Item" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 640, "y": 700 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 960, "y": 700 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "seqTotal": "{{fe_json_seq.param.total}}", "parTotal": "{{fe_json_par.param.total}}", "linesTotal": "{{fe_lines.param.total}}", "autoTotal": "{{fe_auto.param.total}}", "customTotal": "{{fe_custom_params.param.total}}", "emptyTotal": "{{fe_empty.param.total}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "fe_json_seq", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "fe_json_par", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "fe_lines", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "fe_auto", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "fe_custom_params", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "trig", "target": "fe_empty", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "fe_json_seq", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "fe_json_par", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "fe_lines", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "fe_auto", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "fe_custom_params", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "fe_empty", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

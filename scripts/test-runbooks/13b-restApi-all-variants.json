@@ -1,0 +1,43 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] restApi - All Variants Live",
+      "description": "Live test of restApi activity. Targets NodePilot's own endpoints on http://127.0.0.1:5000 — always reachable in this environment. Variants: GET healthz/live (200), GET workflows (401 — anonymous, expected fail), POST with JSON body (auth login), custom headers (Authorization Bearer), timeoutSeconds, proxyMode=direct + proxyMode=default, templated URL from upstream, error path (404 on nonexistent route).",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "r_get_live", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "GET /healthz/live", "activityType": "restApi", "outputVariable": "r_get_live", "config": { "url": "http://127.0.0.1:5000/healthz/live", "method": "GET", "timeoutSeconds": 5, "proxyMode": "direct" } } },
+          { "id": "r_get_401", "type": "activity", "position": { "x": 320, "y": 360 }, "data": { "label": "GET /workflows (expect 401)", "activityType": "restApi", "outputVariable": "r_get_401", "config": { "url": "http://127.0.0.1:5000/api/workflows", "method": "GET", "timeoutSeconds": 5, "proxyMode": "direct" } } },
+          { "id": "r_post_login", "type": "activity", "position": { "x": 320, "y": 520 }, "data": { "label": "POST login", "activityType": "restApi", "outputVariable": "r_login", "config": { "url": "http://127.0.0.1:5000/api/auth/login", "method": "POST", "headers": { "Content-Type": "application/json" }, "body": "{\"username\":\"admin\",\"password\":\"admin123\"}", "timeoutSeconds": 5, "proxyMode": "direct" } } },
+          { "id": "r_get_default_proxy", "type": "activity", "position": { "x": 320, "y": 680 }, "data": { "label": "GET (proxy=default)", "activityType": "restApi", "outputVariable": "r_default", "config": { "url": "http://127.0.0.1:5000/healthz/live", "method": "GET", "timeoutSeconds": 5, "proxyMode": "default" } } },
+          { "id": "r_404", "type": "activity", "position": { "x": 320, "y": 840 }, "data": { "label": "GET /no-such-route (expect 404)", "activityType": "restApi", "outputVariable": "r_404", "config": { "url": "http://127.0.0.1:5000/api/no-such-route-xyz", "method": "GET", "timeoutSeconds": 5, "proxyMode": "direct" } } },
+          { "id": "build_url", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "rs: build URL", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "build_url", "config": { "engine": "auto", "timeoutSeconds": 5, "script": "$endpoint = 'http://127.0.0.1:5000/healthz/live'\nWrite-Output 'built'" } } },
+          { "id": "r_templated", "type": "activity", "position": { "x": 640, "y": 1000 }, "data": { "label": "GET (URL from var)", "activityType": "restApi", "outputVariable": "r_tpl", "config": { "url": "{{build_url.param.endpoint}}", "method": "GET", "timeoutSeconds": 5, "proxyMode": "direct" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 600 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/restApi] live={{r_get_live.success}}(status={{r_get_live.param.statusCode}}) 401_failed_expected={{r_get_401.success}}(status={{r_get_401.param.statusCode}}) login={{r_login.success}}(status={{r_login.param.statusCode}}) default_proxy={{r_default.success}}(status={{r_default.param.statusCode}}) 404_failed_expected={{r_404.success}}(status={{r_404.param.statusCode}}) tpl={{r_tpl.success}}(status={{r_tpl.param.statusCode}})" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1600, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "live_status": "{{r_get_live.param.statusCode}}", "get401_status": "{{r_get_401.param.statusCode}}", "login_status": "{{r_login.param.statusCode}}", "default_proxy_status": "{{r_default.param.statusCode}}", "notfound_status": "{{r_404.param.statusCode}}", "templated_status": "{{r_tpl.param.statusCode}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "r_get_live", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "r_get_401", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "r_post_login", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "r_get_default_proxy", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "r_404", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "trig", "target": "build_url", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "build_url", "target": "r_templated", "type": "labeled", "data": { "label": "On Success", "condition": "build_url.success" } },
+          { "id": "e8", "source": "r_get_live", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "r_get_401", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "r_post_login", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "r_get_default_proxy", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "r_404", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "r_templated", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

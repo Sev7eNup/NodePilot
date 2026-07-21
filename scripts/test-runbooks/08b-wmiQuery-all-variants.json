@@ -1,0 +1,47 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] wmiQuery - All Variants Live",
+      "description": "Live test of wmiQuery activity in all 3 modes: query (legacy raw output), wql (explicit WQL string), invokeMethod. Uses safe read-only CIM classes (Win32_OperatingSystem, Win32_ComputerSystem). captureProperties variants: empty (legacy raw text), single property, multiple properties (projection into param.<Name> + param.count). Non-default namespace via root\\Microsoft\\Windows\\Storage. Filter parameter test. invokeMethod via Win32_Process.Create with a no-op cmd (creates an exit-immediately cmd process — minimal side effect). Error path: invalid class name.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "w_legacy", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "wmi: legacy raw (no capture)", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "w_legacy", "config": { "mode": "query", "className": "Win32_OperatingSystem", "namespace": "root\\cimv2" } } },
+          { "id": "w_capture1", "type": "activity", "position": { "x": 320, "y": 380 }, "data": { "label": "wmi: capture 1 prop", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "w_cap1", "config": { "mode": "query", "className": "Win32_OperatingSystem", "namespace": "root\\cimv2", "captureProperties": ["Caption"] } } },
+          { "id": "w_capture_multi", "type": "activity", "position": { "x": 320, "y": 560 }, "data": { "label": "wmi: capture multi prop", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "w_cap_m", "config": { "mode": "query", "className": "Win32_ComputerSystem", "namespace": "root\\cimv2", "captureProperties": ["Name", "Manufacturer", "Model", "TotalPhysicalMemory"] } } },
+          { "id": "w_wql", "type": "activity", "position": { "x": 320, "y": 740 }, "data": { "label": "wmi: WQL mode", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "w_wql", "config": { "mode": "wql", "query": "SELECT Caption, Version FROM Win32_OperatingSystem", "namespace": "root\\cimv2", "captureProperties": ["Caption", "Version"] } } },
+          { "id": "w_filter", "type": "activity", "position": { "x": 320, "y": 920 }, "data": { "label": "wmi: with filter", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "w_filter", "config": { "mode": "query", "className": "Win32_Process", "namespace": "root\\cimv2", "filter": "Name='System'", "captureProperties": ["Name", "ProcessId"] } } },
+          { "id": "w_ns", "type": "activity", "position": { "x": 320, "y": 1100 }, "data": { "label": "wmi: non-default namespace", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "w_ns", "config": { "mode": "query", "className": "MSFT_Volume", "namespace": "root\\Microsoft\\Windows\\Storage", "captureProperties": ["DriveLetter", "FileSystemLabel", "FileSystem"] } } },
+          { "id": "w_invoke", "type": "activity", "position": { "x": 320, "y": 1280 }, "data": { "label": "wmi: invokeMethod (Process.Create)", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "w_invoke", "config": { "mode": "invokeMethod", "className": "Win32_Process", "namespace": "root\\cimv2", "methodName": "Create", "methodArguments": { "CommandLine": "cmd /c exit" } } } },
+          { "id": "w_err", "type": "activity", "position": { "x": 320, "y": 1460 }, "data": { "label": "wmi: invalid class (expect fail)", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "w_err", "config": { "mode": "query", "className": "NotARealClass_NodePilotTest", "namespace": "root\\cimv2" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 760, "y": 700 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1080, "y": 700 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/wmiQuery] legacy={{w_legacy.success}} cap1_Caption={{w_cap1.param.Caption}} multi_Name={{w_cap_m.param.Name}} multi_count={{w_cap_m.param.count}} wql_Version={{w_wql.param.Version}} filter_count={{w_filter.param.count}} ns_count={{w_ns.param.count}} invoke={{w_invoke.success}} err_failed={{w_err.success}}" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1400, "y": 700 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "legacy_success": "{{w_legacy.success}}", "capture1_Caption": "{{w_cap1.param.Caption}}", "captureMulti_Name": "{{w_cap_m.param.Name}}", "captureMulti_Model": "{{w_cap_m.param.Model}}", "captureMulti_count": "{{w_cap_m.param.count}}", "wql_Caption": "{{w_wql.param.Caption}}", "wql_Version": "{{w_wql.param.Version}}", "filter_count": "{{w_filter.param.count}}", "namespace_count": "{{w_ns.param.count}}", "invoke_success": "{{w_invoke.success}}", "err_failed_as_expected": "{{w_err.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "w_legacy", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "w_capture1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "w_capture_multi", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "w_wql", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "w_filter", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "trig", "target": "w_ns", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "trig", "target": "w_invoke", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "trig", "target": "w_err", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "w_legacy", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "w_capture1", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "w_capture_multi", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "w_wql", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "w_filter", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "w_ns", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "w_invoke", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "w_err", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

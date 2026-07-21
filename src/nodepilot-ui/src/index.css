@@ -1,0 +1,2950 @@
+@import "tailwindcss";
+/* Dark variant is anchored explicitly to `html.dark` so it can NEVER bleed in
+   from a `.dark` class that any library (React Flow's `.react-flow.dark`,
+   third-party widgets, etc.) might apply to a non-root element. The theme
+   store toggles `.dark` only on `<html>` — so in light mode no descendant
+   selector can match, and `dark:` utilities are guaranteed to stay off. */
+@custom-variant dark (html.dark &);
+@import '@fontsource-variable/inter';
+
+@theme {
+  --color-surface: #f8f9fb;
+  --color-surface-dim: #d9dadc;
+  --color-surface-bright: #f8f9fb;
+  --color-surface-lowest: #ffffff;
+  --color-surface-low: #f3f4f6;
+  --color-surface-container: #edeef0;
+  --color-surface-high: #e7e8ea;
+  --color-surface-highest: #e1e2e4;
+  --color-surface-variant: #e1e2e4;
+  --color-surface-tint: #0053db;
+
+  --color-primary: #004ac6;
+  --color-primary-container: #2563eb;
+  --color-primary-fixed: #dbe1ff;
+  --color-primary-fixed-dim: #b4c5ff;
+  --color-on-primary: #ffffff;
+  --color-on-primary-container: #eeefff;
+  --color-on-primary-fixed: #00174b;
+  --color-inverse-primary: #b4c5ff;
+
+  --color-secondary: #495c95;
+  --color-secondary-container: #acbfff;
+  --color-secondary-fixed: #dbe1ff;
+  --color-on-secondary: #ffffff;
+  --color-on-secondary-container: #394c84;
+
+  --color-tertiary: #943700;
+  --color-tertiary-container: #bc4800;
+  --color-tertiary-fixed: #ffdbcd;
+  --color-on-tertiary: #ffffff;
+  --color-on-tertiary-container: #ffede6;
+
+  --color-error: #ba1a1a;
+  --color-error-container: #ffdad6;
+  --color-on-error: #ffffff;
+  --color-on-error-container: #93000a;
+
+  --color-on-surface: #191c1e;
+  --color-on-surface-variant: #434655;
+  --color-on-background: #191c1e;
+  --color-outline: #737686;
+  --color-outline-variant: #c3c6d7;
+
+  /* Fill for the designer node connection-handles (ports). Light mode reuses the
+     light outline-variant; html.dark lifts it to a clearly-visible light grey so
+     the dots read on the near-black node silhouettes across every dark skin. */
+  --np-port-fill: var(--color-outline-variant);
+  --color-inverse-surface: #2e3132;
+  --color-inverse-on-surface: #f0f1f3;
+
+  /* ── Semantische Status-Tokens ────────────────────────────────────────────
+     Einheitliche Quelle für success/warn/info/running/paused/skipped überall
+     im Designer (Edges, Node-Ringe, MiniMap, Gantt, Badges, Banner). Skins
+     überschreiben diese Tokens bewusst NICHT — Status bleibt skin-stabil.
+     „failed/danger" nutzt die bestehende M3 `--color-error`-Familie (kein
+     zweites Rot). Konsum via Utilities (bg-success, text-on-warning-container,
+     …) oder `var(--color-…)` in SVG/Canvas. */
+  --color-success: #16a34a;
+  --color-success-container: #dcfce7;
+  --color-on-success: #ffffff;
+  --color-on-success-container: #166534;
+
+  --color-warning: #d97706;
+  --color-warning-container: #fef3c7;
+  --color-on-warning: #ffffff;
+  --color-on-warning-container: #92400e;
+
+  --color-info: #4f46e5;
+  --color-info-container: #e0e7ff;
+  --color-on-info: #ffffff;
+  --color-on-info-container: #3730a3;
+
+  --color-running: #f59e0b;
+  --color-running-container: #fef3c7;
+  --color-on-running-container: #92400e;
+
+  --color-paused: #ea580c;
+  --color-paused-container: #ffedd5;
+  --color-on-paused-container: #9a3412;
+
+  --color-skipped: #6b7280;
+  --color-skipped-container: #f3f4f6;
+  --color-on-skipped-container: #4b5563;
+
+  /* „Custom"-Edge-Condition (Expression / sonstige Bedingung): eigenes Orange.
+     Mentales Modell: Success = grün, Failure = rot, Custom-Condition = orange.
+     Eigene Familie statt `paused`/`warning` zweckzuentfremden; Skins über-
+     schreiben sie nicht (wie die übrigen Status-Tokens). Stroke, Pfeilspitze
+     und Label-Pill teilen sich diese eine Farbe. */
+  --color-custom: #f97316;
+  --color-custom-container: #ffedd5;
+  --color-on-custom-container: #9a3412;
+
+  --font-headline: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-label: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  /* Slow ping for the simulation "revealing" badge (ActivityNode) — the class
+     `animate-ping-slow` was referenced but never defined before. */
+  --animate-ping-slow: np-ping-slow 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  @keyframes np-ping-slow {
+    75%, 100% { transform: scale(1.6); opacity: 0; }
+  }
+}
+
+/* ── Skalen-Tokens (Radius / Elevation / Motion / Z) ─────────────────────────
+   Verbindliche Stufen für den Designer-Refresh. Radien: Chip=xs, Input=sm,
+   Karte=md, Panel/Node-Card=lg, Modal=xl. Elevation ersetzt ad-hoc-Schatten;
+   dark bekommt tiefere Schatten + Inset-Hairline (wie die .np-shell-Remaps). */
+:root {
+  --np-radius-xs: 4px;
+  --np-radius-sm: 6px;
+  --np-radius-md: 8px;
+  --np-radius-lg: 12px;
+  --np-radius-xl: 16px;
+
+  --np-elev-0: none;
+  --np-elev-1: 0 1px 2px rgba(23, 26, 31, 0.06), 0 1px 3px rgba(23, 26, 31, 0.08);
+  --np-elev-2: 0 2px 6px -1px rgba(23, 26, 31, 0.08), 0 4px 12px -2px rgba(23, 26, 31, 0.10);
+  --np-elev-3: 0 6px 16px -4px rgba(23, 26, 31, 0.12), 0 12px 28px -6px rgba(23, 26, 31, 0.14);
+  --np-elev-4: 0 12px 32px -8px rgba(23, 26, 31, 0.18), 0 24px 56px -12px rgba(23, 26, 31, 0.22);
+
+  --np-dur-fast: 80ms;
+  --np-dur-base: 140ms;
+  --np-dur-slow: 220ms;
+  --np-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  --np-ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+
+  --np-z-panel: 30;
+  --np-z-popover: 50;
+  --np-z-overlay: 60;
+  --np-z-modal: 70;
+  --np-z-toast: 80;
+}
+
+/* ── Switch (checkbox-as-switch) ─────────────────────────────────────────────
+   Semantisch bleibt es ein natives Checkbox-Input (Fokus/Tastatur/Tests
+   unverändert); visuell Track + Knob. Konsumiert von SwitchField (shared.tsx). */
+input[type='checkbox'].np-switch {
+  appearance: none;
+  position: relative;
+  width: 32px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: var(--color-outline-variant);
+  cursor: inherit;
+  transition: background-color var(--np-dur-base) var(--np-ease-out);
+  outline: none;
+}
+input[type='checkbox'].np-switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--color-surface-lowest);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform var(--np-dur-base) var(--np-ease-out);
+}
+input[type='checkbox'].np-switch:checked {
+  background: var(--color-primary);
+}
+input[type='checkbox'].np-switch:checked::before {
+  transform: translateX(14px);
+}
+input[type='checkbox'].np-switch:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+
+/* Klassische Checkboxen (Mehrfach-Auswahl-Listen etc.) folgen dem Akzent-Token. */
+.np-designer input[type='checkbox']:not(.np-switch) {
+  accent-color: var(--color-primary);
+}
+
+/* Motion-Utilities für Overlays/Panels — Enter-Animationen, reduced-motion-gated.
+   WICHTIG: kein `both`/`forwards`-Fill — Chrome hält sonst nach Animationsende eine
+   Identity-Transform-Matrix auf dem Element, und JEDE Transform macht das Element zum
+   Containing Block für position:fixed-Nachfahren (hat den Fullscreen-Script-Editor im
+   Properties-Panel eingesperrt: Backdrop blurrte nur das Panel, Dialog unsichtbar).
+   `np-anim-panel` animiert deshalb NUR Opacity — Panels enthalten fixe Dialoge. */
+@keyframes np-fade-in   { from { opacity: 0; } }
+@keyframes np-scale-in  { from { opacity: 0; transform: scale(0.97); } }
+.np-anim-backdrop { animation: np-fade-in var(--np-dur-base) var(--np-ease-out); }
+.np-anim-overlay  { animation: np-scale-in var(--np-dur-base) var(--np-ease-out); }
+.np-anim-panel    { animation: np-fade-in var(--np-dur-base) var(--np-ease-out); }
+@media (prefers-reduced-motion: reduce) {
+  .np-anim-backdrop, .np-anim-overlay, .np-anim-panel { animation: none; }
+}
+
+/* Tell the browser explicitly which color scheme is active. Without this,
+   Chrome/Edge "Auto Dark Mode for Web Contents" can re-tint our light-mode
+   page, which made banners/buttons look dark even when no `dark:` Tailwind
+   class was active. */
+:root { color-scheme: light; }
+html.dark { color-scheme: dark; }
+
+/* Dark mode — override every token under html.dark */
+html.dark {
+  --color-surface: #1a1c20;
+  --color-surface-dim: #131517;
+  --color-surface-bright: #3a3c42;
+  --color-surface-lowest: #111214;
+  --color-surface-low: #1e2024;
+  --color-surface-container: #242629;
+  --color-surface-high: #2a2c30;
+  --color-surface-highest: #303237;
+  --color-surface-variant: #3c3e46;
+  --color-surface-tint: #4a7ef5;
+
+  --color-primary: #aac7ff;
+  --color-primary-container: #0040a0;
+  --color-primary-fixed: #002d73;
+  --color-primary-fixed-dim: #1a3d8a;
+  --color-on-primary: #00286a;
+  --color-on-primary-container: #dae2ff;
+  --color-on-primary-fixed: #dae2ff;
+  --color-inverse-primary: #004ac6;
+
+  --color-secondary: #b4c5ff;
+  --color-secondary-container: #2d3f7a;
+  --color-secondary-fixed: #1e2f6a;
+  --color-on-secondary: #1c2f6e;
+  --color-on-secondary-container: #dbe1ff;
+
+  --color-tertiary: #ffb595;
+  --color-tertiary-container: #6b2800;
+  --color-tertiary-fixed: #4d1a00;
+  --color-on-tertiary: #4d1a00;
+  --color-on-tertiary-container: #ffdbcd;
+
+  --color-error: #ffb4ab;
+  --color-error-container: #690005;
+  --color-on-error: #690005;
+  --color-on-error-container: #ffdad6;
+
+  --color-on-surface: #e2e2e6;
+  --color-on-surface-variant: #c4c6d0;
+  --color-on-background: #e2e2e6;
+  --color-outline: #8e9099;
+  --color-outline-variant: #43474e;
+  --color-inverse-surface: #e2e2e6;
+
+  /* Ports need to pop on the dark node silhouettes — the dark outline-variant
+     (#43474e) all but vanishes there. Lift to a light neutral grey (shared by
+     every dark skin, since they all cascade under html.dark). */
+  --np-port-fill: #9aa0ac;
+  --color-inverse-on-surface: #2f3033;
+
+  /* Status-Tokens — dark (Skins überschreiben nicht, s. @theme-Kommentar). */
+  --color-success: #4ade80;
+  --color-success-container: #14532d;
+  --color-on-success: #052e16;
+  --color-on-success-container: #bbf7d0;
+
+  --color-warning: #fbbf24;
+  --color-warning-container: #78350f;
+  --color-on-warning: #451a03;
+  --color-on-warning-container: #fde68a;
+
+  --color-info: #818cf8;
+  --color-info-container: #312e81;
+  --color-on-info: #e0e7ff;
+  --color-on-info-container: #c7d2fe;
+
+  --color-running: #fbbf24;
+  --color-running-container: #78350f;
+  --color-on-running-container: #fde68a;
+
+  --color-paused: #fb923c;
+  --color-paused-container: #7c2d12;
+  --color-on-paused-container: #fed7aa;
+
+  --color-skipped: #9ca3af;
+  --color-skipped-container: #374151;
+  --color-on-skipped-container: #d1d5db;
+
+  /* Custom-Edge-Condition — dark: hellere Orange-Stufe, damit sie auf dunklem
+     Canvas trägt (analog success/failed dark). */
+  --color-custom: #fb923c;
+  --color-custom-container: #7c2d12;
+  --color-on-custom-container: #fed7aa;
+
+  /* Elevation — dark: tiefere Schatten + Inset-Hairline. */
+  --np-elev-1: 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --np-elev-2: 0 4px 10px -2px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --np-elev-3: 0 10px 24px -6px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.055);
+  --np-elev-4: 0 18px 40px -10px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DARK-MODE REVAMP — "fancy" warm-charcoal base + dark-orange accent.
+   Scoped to `.np-shell` (the authenticated app shell + the login screen) so it
+   NEVER touches the workflow designer: AppLayout renders the designer route as a
+   bare <Outlet/> with no `.np-shell` ancestor, so it keeps the plain `html.dark`
+   tokens above unchanged. Everything here only redefines CSS custom properties
+   on the scope (cascades to children) plus a handful of dark-only utility
+   remaps — no component files needed.
+   ──────────────────────────────────────────────────────────────────────────── */
+html.dark .np-shell {
+  /* Warm-neutral charcoal ramp (was cold blue-grey) — deeper + a hair of warmth
+     so the orange accent feels native instead of bolted on. Order preserved:
+     lowest = darkest (cards) … highest = lightest. */
+  --color-surface:          #14110e;
+  --color-surface-dim:      #050403;
+  --color-surface-bright:   #2f2820;
+  --color-surface-lowest:   #0c0a08;
+  --color-surface-low:      #181410;
+  --color-surface-container: #1e1914;
+  --color-surface-high:     #251f19;
+  --color-surface-highest:  #2d261e;
+  --color-surface-variant:  #383028;
+
+  /* Accent → dark orange. `primary` is the readable accent (text/icon/active-nav
+     text); `primary-fixed` is the subtle accent surface (active nav bg, badges,
+     avatar). `primary-container` is the deep fill for the rare bg-primary button. */
+  --color-surface-tint:        #c5620b;
+  --color-primary:             #fc8861;
+  --color-primary-container:   #c5620b;
+  --color-primary-fixed:       #6a2b09;
+  --color-primary-fixed-dim:   #7d340c;
+  --color-on-primary:          #1c0c03;
+  --color-on-primary-container:#ffe6d4;
+  /* Text on the subtle accent surface (primary-fixed = deep brown). Without this the
+     base html.dark value (#dae2ff, blue-tinted) leaks through on selected folders/tags. */
+  --color-on-primary-fixed:    #ffe6d4;
+  --color-inverse-primary:     #c5620b;
+
+  --color-secondary:           #6f7781;
+  --color-secondary-container: #2b3037;
+  --color-secondary-fixed:     #6a2b09;
+  --color-on-secondary:        #15191d;
+  --color-on-secondary-container: #dde2e7;
+
+  /* Warm off-white text; the palette's slate (#6F7781) as the outline gives cool
+     dividers a deliberate contrast against the warm near-black surfaces. */
+  --color-on-surface:          #ece7e1;
+  --color-on-surface-variant:  #c0b9b0;
+  --color-on-background:        #ece7e1;
+  --color-outline:             #6f7781;
+  --color-outline-variant:     #322b24;
+
+  /* Helper vars for the blue→orange utility remaps below. */
+  --np-accent:        #c5620b;  /* primary button fill — palette orange */
+  --np-accent-hover:  #6a2b09;  /* button hover — palette deep brown-orange */
+  --np-accent-ring:   #fc8861;  /* focus ring — palette peach */
+  --np-accent-text:   #fc8861;  /* accent text / icons / links — palette peach */
+  --np-accent-soft:   color-mix(in srgb, #fc8861 15%, transparent); /* subtle hover bg */
+  --np-accent-badge:  #6a2b09;  /* info-badge bg — palette deep brown */
+  --np-toggle-on:     #c5620b;  /* "on" toggle fill — palette orange */
+}
+
+/* Content backdrop: a faint warm depth-glow at the top instead of a flat fill. */
+html.dark .np-shell main {
+  background:
+    radial-gradient(110% 70% at 50% -8%, color-mix(in srgb, var(--np-accent) 6%, transparent) 0%, transparent 55%),
+    var(--color-surface-low);
+}
+/* Login screen: same warm glow over the base surface. */
+html.dark .np-shell.np-login {
+  background:
+    radial-gradient(90% 60% at 50% 0%, color-mix(in srgb, var(--np-accent) 8%, transparent) 0%, transparent 55%),
+    var(--color-surface);
+}
+
+/* ── Login screen: atmospheric, skin-aware backdrop ──────────────────────────
+   The auth page is the product's first impression, so it earns a richer treatment
+   than the app shell: two slowly-drifting accent aurora blobs + a vignette-masked
+   grid behind a frosted-glass card. Everything keys on --color-primary /
+   --color-primary-container, so the whole scene recolors with the active skin. */
+.np-login { position: relative; overflow: hidden; isolation: isolate; }
+
+.np-login-aurora { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
+.np-login-aurora::before,
+.np-login-aurora::after {
+  content: ""; position: absolute; border-radius: 50%; filter: blur(72px); opacity: 0.5;
+  background: radial-gradient(circle at 50% 50%, var(--color-primary), transparent 68%);
+}
+.np-login-aurora::before {
+  width: 44rem; height: 44rem; top: -15rem; left: -11rem;
+  animation: npLoginDriftA 24s ease-in-out infinite alternate;
+}
+.np-login-aurora::after {
+  width: 38rem; height: 38rem; bottom: -15rem; right: -11rem;
+  background: radial-gradient(circle at 50% 50%, var(--color-primary-container), transparent 68%);
+  animation: npLoginDriftB 28s ease-in-out infinite alternate;
+}
+html:not(.dark) .np-login-aurora::before,
+html:not(.dark) .np-login-aurora::after { opacity: 0.42; }
+
+@keyframes npLoginDriftA {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(5rem, 3.5rem, 0) scale(1.14); }
+}
+@keyframes npLoginDriftB {
+  from { transform: translate3d(0, 0, 0) scale(1); }
+  to   { transform: translate3d(-4.5rem, -3rem, 0) scale(1.1); }
+}
+
+.np-login-grid {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--color-on-surface) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--color-on-surface) 9%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px;
+  -webkit-mask-image: radial-gradient(ellipse 58% 52% at 50% 44%, #000 0%, transparent 78%);
+          mask-image: radial-gradient(ellipse 58% 52% at 50% 44%, #000 0%, transparent 78%);
+}
+
+/* Frosted-glass auth card with an accent glow + a top hairline sheen. */
+.np-login-card {
+  position: relative;
+  background: color-mix(in srgb, var(--color-surface-lowest) 80%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.35);
+          backdrop-filter: blur(18px) saturate(1.35);
+  border: 1px solid color-mix(in srgb, var(--color-on-surface) 10%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, #fff 14%, transparent),
+    0 32px 80px -34px color-mix(in srgb, var(--color-primary) 50%, transparent),
+    0 12px 34px -18px rgba(0, 0, 0, 0.45);
+}
+html:not(.dark) .np-login-card {
+  /* Light skins: a near-solid white card with a firmer border + accent-tinted lift,
+     so the glass still reads as a distinct surface over the bright background. */
+  background: color-mix(in srgb, var(--color-surface-lowest) 92%, transparent);
+  border-color: color-mix(in srgb, var(--color-on-surface) 14%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, #fff 70%, transparent),
+    0 26px 60px -30px color-mix(in srgb, var(--color-primary) 38%, transparent),
+    0 8px 24px -16px rgba(0, 0, 0, 0.14);
+}
+.np-login-card::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+  border-top-left-radius: inherit; border-top-right-radius: inherit;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--color-primary) 65%, transparent), transparent);
+}
+
+/* Accent halo behind the brand mark so the logo reads as lit, not pasted on. */
+.np-login-logo { position: relative; }
+.np-login-logo::before {
+  content: ""; position: absolute; inset: -20%; z-index: -1;
+  background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--color-primary) 28%, transparent), transparent 68%);
+  filter: blur(14px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .np-login-aurora::before, .np-login-aurora::after { animation: none; }
+}
+
+/* Sidebar gets a subtle vertical gradient + a warm hairline edge for depth.
+   Lifted lighter than the original (#181410 → #0b0907) for a warmer, less near-black rail. */
+html.dark .np-shell aside {
+  background: linear-gradient(180deg, #241e18 0%, #16120e 100%);
+}
+/* dark-lila is neutral grey, not warm — override the brown rail with a grey gradient
+   keyed to its own surface ramp (top ≈ surface-low, bottom ≈ surface-dim). */
+html.dark[data-skin="dark-lila"] .np-shell aside {
+  background: linear-gradient(180deg, #2a2a2a 0%, #161616 100%);
+}
+/* Logo gets a faint accent halo so the brand mark reads as lit, not pasted on. */
+html.dark .np-shell aside img[alt="NodePilot logo"] {
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--np-accent) 35%, transparent));
+}
+
+/* ── Accent remap: hardcoded Tailwind blues → the skin accent ──
+   Scoped to the `np-accent-remap` marker class (set on <html> by applyTheme for every
+   skin whose accent isn't blue: dark/dark-lila/light-grey — NOT the blue `light`
+   default). The rules read the `--np-accent*` helper vars, which each skin redefines,
+   so one rule set serves every accent. These win over the layered Tailwind utilities
+   (unlayered custom CSS > @layer utilities), so no specificity gymnastics needed. */
+html.np-accent-remap .np-shell .bg-blue-600,
+html.np-accent-remap .np-shell .hover\:bg-blue-600:hover { background-color: var(--np-accent); }
+html.np-accent-remap .np-shell .bg-blue-700,
+html.np-accent-remap .np-shell .hover\:bg-blue-700:hover { background-color: var(--np-accent-hover); }
+html.np-accent-remap .np-shell .bg-blue-500 { background-color: var(--np-toggle-on); }
+html.np-accent-remap .np-shell .bg-blue-400 { background-color: var(--np-toggle-on); }
+html.np-accent-remap .np-shell .bg-blue-100 { background-color: var(--np-accent-badge); }
+html.np-accent-remap .np-shell .bg-blue-50  { background-color: var(--np-accent-soft); }
+html.np-accent-remap .np-shell .hover\:bg-blue-50:hover { background-color: var(--np-accent-soft); }
+
+html.np-accent-remap .np-shell .text-blue-400,
+html.np-accent-remap .np-shell .text-blue-500,
+html.np-accent-remap .np-shell .text-blue-600,
+html.np-accent-remap .np-shell .text-blue-700,
+html.np-accent-remap .np-shell .text-blue-800,
+html.np-accent-remap .np-shell .hover\:text-blue-600:hover { color: var(--np-accent-text); }
+
+html.np-accent-remap .np-shell .border-blue-500,
+html.np-accent-remap .np-shell .border-blue-600,
+html.np-accent-remap .np-shell .border-blue-700,
+html.np-accent-remap .np-shell .focus\:border-blue-600:focus { border-color: var(--np-accent); }
+
+html.np-accent-remap .np-shell .ring-blue-500,
+html.np-accent-remap .np-shell .focus\:ring-blue-500:focus { --tw-ring-color: var(--np-accent-ring); }
+
+/* Modifier / opacity blue variants the exact-class rules above don't catch — disabled
+   button fills, column/row resize-handle hover/active tints, and the translucent
+   status-pill fill (its text is already remapped above, so the bg must follow too).
+   color-mix preserves each utility's original opacity, so only the hue changes. */
+/* Muted accent (blended toward surface) so a disabled button still reads as inactive —
+   mirrors the original blue-400-vs-blue-600 tint gap, which a solid accent would erase. */
+html.np-accent-remap .np-shell .disabled\:bg-blue-400:disabled { background-color: color-mix(in srgb, var(--np-accent) 42%, var(--color-surface-bright)); }
+html.np-accent-remap .np-shell .bg-blue-500\/15,
+html.np-accent-remap .np-shell .hover\:bg-blue-500\/15:hover { background-color: color-mix(in srgb, var(--np-toggle-on) 15%, transparent); }
+html.np-accent-remap .np-shell .hover\:bg-blue-400\/70:hover { background-color: color-mix(in srgb, var(--np-toggle-on) 70%, transparent); }
+html.np-accent-remap .np-shell .active\:bg-blue-500\/80:active { background-color: color-mix(in srgb, var(--np-toggle-on) 80%, transparent); }
+html.np-accent-remap .np-shell .hover\:bg-blue-500\/60:hover { background-color: color-mix(in srgb, var(--np-toggle-on) 60%, transparent); }
+html.np-accent-remap .np-shell .hover\:bg-blue-500\/40:hover { background-color: color-mix(in srgb, var(--np-toggle-on) 40%, transparent); }
+html.np-accent-remap .np-shell .group:hover .group-hover\:bg-blue-600\/60 { background-color: color-mix(in srgb, var(--np-accent) 60%, transparent); }
+
+/* Primary buttons: a touch of depth + a soft orange bloom on hover — premium feel. */
+html.dark .np-shell .bg-blue-600 { box-shadow: 0 1px 2px rgba(0,0,0,0.45); transition: background-color .15s, box-shadow .15s; }
+html.dark .np-shell .bg-blue-600:hover { box-shadow: 0 4px 14px -4px color-mix(in srgb, var(--np-accent) 70%, transparent); }
+
+/* Cards/panels: stronger dark shadow + a faint top hairline so surfaces float. */
+html.dark .np-shell .shadow    { box-shadow: 0 1px 2px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.045); }
+html.dark .np-shell .shadow-md { box-shadow: 0 4px 10px -2px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.05); }
+html.dark .np-shell .shadow-lg { box-shadow: 0 10px 24px -6px rgba(0,0,0,0.6), inset 0 0 0 1px rgba(255,255,255,0.055); }
+html.dark .np-shell .shadow-xl { box-shadow: 0 18px 40px -10px rgba(0,0,0,0.65), inset 0 0 0 1px rgba(255,255,255,0.06); }
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DARK-MODE DESIGNER ACCENT — flip the blue app-accent to dark-orange in the
+   workflow designer's CHROME (toolbar, banners, sidebar, execution/properties
+   panels) so it matches the `.np-shell` orange scheme. The designer route renders
+   as a bare <Outlet/> (no `.np-shell` ancestor), so it would otherwise keep the
+   cold-blue base `html.dark` accent.
+
+   Mechanism mirrors `.np-shell`: redefine ONLY the `primary` accent family on the
+   `.np-designer` root (the editor container) → every `*-primary*` token usage
+   (~130 spots: publish button, tabs, History pills, links, selected-workflow
+   highlight, focus rings, machine-coloring toggle, variable tags, CodeMirror)
+   turns orange. Surfaces/secondary are left untouched on purpose — the ask was
+   "blue → orange", not "warm the charcoal".
+
+   CANVAS SHIELD: the `.react-flow` subtree (nodes, edges, handles, selection
+   rings, edge labels) re-asserts the base-blue accent so the graph stays exactly
+   as-is — the user explicitly wants nodes/activities/canvas untouched. Hardcoded
+   blue/indigo INSIDE the canvas (ActivityNode rings, LabeledEdge strokes) is left
+   alone in the components, so nothing leaks in here.
+
+   Dark-only by construction (scoped to `html.dark`) → light mode is byte-identical
+   and the dark/light toggle in Settings keeps working. */
+html.dark .np-designer {
+  /* Warm-charcoal surfaces (mirror the orange `.np-shell`) so the designer AREA
+     backgrounds — canvas backdrop, exec/properties panels, sidebar, toolbar,
+     minimap/controls — match the skin. `--act-*` node colors are separate → untouched. */
+  --color-surface:          #14110e;
+  --color-surface-dim:      #050403;
+  --color-surface-bright:   #2f2820;
+  --color-surface-lowest:   #0c0a08;
+  --color-surface-low:      #181410;
+  --color-surface-container:#1e1914;
+  --color-surface-high:     #251f19;
+  --color-surface-highest:  #2d261e;
+  --color-surface-variant:  #383028;
+  --color-secondary:           #6f7781;
+  --color-secondary-container: #2b3037;
+  --color-on-surface:          #ece7e1;
+  --color-on-surface-variant:  #c0b9b0;
+  --color-on-background:        #ece7e1;
+  --color-outline:             #6f7781;
+  --color-outline-variant:     #322b24;
+
+  --color-surface-tint:        #c5620b;
+  --color-primary:             #fc8861;
+  --color-primary-container:   #c5620b;
+  --color-primary-fixed:       #6a2b09;
+  --color-primary-fixed-dim:   #7d340c;
+  --color-on-primary:          #1c0c03;
+  --color-on-primary-container:#ffe6d4;
+  --color-on-primary-fixed:    #ffe6d4;
+  --color-inverse-primary:     #c5620b;
+  /* Controls-Akzent (Hover-Tint der React-Flow-Controls): Chrome-Orange als Literal, damit
+     es der `.react-flow`-Blau-Shield unten NICHT auf Canvas-Blau zurücksetzt. */
+  --np-controls-accent:        #fc8861;
+}
+/* Shield the graph canvas ACCENT only: restore the base dark (blue) accent so React
+   Flow selection rings / edge-select stay neutral. Surfaces are intentionally NOT
+   reset here → the canvas backdrop follows the skin surface above. */
+html.dark .np-designer .react-flow {
+  --color-surface-tint:        #4a7ef5;
+  --color-primary:             #aac7ff;
+  --color-primary-container:   #0040a0;
+  --color-primary-fixed:       #002d73;
+  --color-primary-fixed-dim:   #1a3d8a;
+  --color-on-primary:          #00286a;
+  --color-on-primary-container:#dae2ff;
+  --color-inverse-primary:     #004ac6;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SKIN: "dark lila" — neutral grey/black surfaces + a lilac accent (palette taken
+   from the Voxwright dark theme). Selected in Settings → writes `data-skin="dark-lila"`
+   on <html> (still a `dark` base, so all `html.dark` tokens + code-editor/React-Flow
+   theming keep working). These blocks only OVERRIDE the orange dark default, so the
+   light scheme and the orange dark scheme stay byte-identical.
+
+   ▶ Adding another skin = mirror these two blocks with a new `[data-skin="<id>"]`
+   (plus a THEMES entry + i18n label). The base dark structure is reused for free. */
+html.dark[data-skin="dark-lila"] .np-shell {
+  /* Neutral grey ramp (Voxwright): no warm/cool tint. lowest = darkest … bright = lightest. */
+  --color-surface:          #1e1e1e;
+  --color-surface-dim:      #141414;
+  --color-surface-bright:   #383838;
+  --color-surface-lowest:   #171717;
+  --color-surface-low:      #222222;
+  --color-surface-container:#252525;
+  --color-surface-high:     #2d2d2d;
+  --color-surface-highest:  #333333;
+  --color-surface-variant:  #3a3a3a;
+
+  /* Lilac accent. `primary` = readable accent (text/icon/active); `primary-container`
+     = deep fill; `primary-fixed` = subtle accent surface (badges, active nav, tags). */
+  --color-surface-tint:        #7c5cfc;
+  --color-primary:             #9b7dff;
+  --color-primary-container:   #7c5cfc;
+  --color-primary-fixed:       #2d2754;
+  --color-primary-fixed-dim:   #3a316a;
+  --color-on-primary:          #160a33;
+  --color-on-primary-container:#ece7ff;
+  /* Text on the subtle accent surface (primary-fixed = deep lilac); else the base
+     html.dark #dae2ff (blue-tinted) leaks through. */
+  --color-on-primary-fixed:    #ece7ff;
+  --color-inverse-primary:     #7c5cfc;
+
+  --color-secondary:           #a99fc0;
+  --color-secondary-container: #322c50;
+
+  --color-on-surface:          #e8e8e8;
+  --color-on-surface-variant:  #a6a6a6;
+  --color-on-background:        #e8e8e8;
+  --color-outline:             #6b6b6b;
+  --color-outline-variant:     #3a3a3a;
+
+  /* Re-skin the blue→accent utility remap helpers (the remap RULES are unchanged —
+     they read these vars, so pointing them at lilac re-skins every hardcoded blue). */
+  --np-accent:        #7c5cfc;
+  --np-accent-hover:  #6a48e8;
+  --np-accent-ring:   #9b7dff;
+  --np-accent-text:   #9b7dff;
+  --np-accent-soft:   color-mix(in srgb, #9b7dff 15%, transparent);
+  --np-accent-badge:  #2d2754;
+  --np-toggle-on:     #7c5cfc;
+  --np-toolbar-accent:        #9b7dff;
+}
+
+/* Designer: neutral-grey surfaces + lilac accent (override the orange `.np-designer`).
+   The shared `html.dark .np-designer .react-flow` shield keeps the canvas selection
+   accent neutral; surfaces cascade through so the backdrop follows the skin. */
+html.dark[data-skin="dark-lila"] .np-designer {
+  --color-surface:          #1e1e1e;
+  --color-surface-dim:      #141414;
+  --color-surface-bright:   #383838;
+  --color-surface-lowest:   #171717;
+  --color-surface-low:      #222222;
+  --color-surface-container:#252525;
+  --color-surface-high:     #2d2d2d;
+  --color-surface-highest:  #333333;
+  --color-surface-variant:  #3a3a3a;
+  --color-secondary:           #a99fc0;
+  --color-secondary-container: #322c50;
+  --color-on-surface:          #e8e8e8;
+  --color-on-surface-variant:  #a6a6a6;
+  --color-on-background:        #e8e8e8;
+  --color-outline:             #6b6b6b;
+  --color-outline-variant:     #3a3a3a;
+
+  --color-surface-tint:        #7c5cfc;
+  --color-primary:             #9b7dff;
+  --color-primary-container:   #7c5cfc;
+  --color-primary-fixed:       #2d2754;
+  --color-primary-fixed-dim:   #3a316a;
+  --color-on-primary:          #160a33;
+  --color-on-primary-container:#ece7ff;
+  --color-on-primary-fixed:    #ece7ff;
+  --color-inverse-primary:     #7c5cfc;
+  --np-toolbar-accent:                 #9b7dff;
+  --np-controls-accent:        #9b7dff;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SKIN: "dark-sparkasse" — purer Rot-Akzent (#FF0002) auf einem neutralen
+   Near-Black-Grey-Ramp (kein Rotstich in den Surfaces). Dark base (wie dark-lila).
+   Palette-Quelle: palette/dark-mode-palette.json. Secondary-Tokens werden NUR
+   in .np-shell gesetzt — .np-designer setzt sie NICHT, damit
+   --color-secondary-container nicht in den React-Flow-Canvas leckt und
+   REST-Methoden-Badges (ActivityNode) neutral (base-dark grau-blau) bleiben. */
+html.dark[data-skin="dark-sparkasse"] .np-shell {
+  /* Neutraler Grey-Ramp (dunkel → hell), kein Rotstich. */
+  --color-surface:          #1f1f1f;
+  --color-surface-dim:      #161616;
+  --color-surface-bright:   #303030;
+  --color-surface-lowest:   #131313;
+  --color-surface-low:      #1a1a1a;
+  --color-surface-container:#232323;
+  --color-surface-high:     #262626;
+  --color-surface-highest:  #2a2a2a;
+  --color-surface-variant:  #3a3a3a;
+
+  /* Purer Rot-Akzent. primary = #FF0002 (Gradient-Fill mit weißer Schrift);
+     primary-container = tiefer Fill (#cc0001); primary-fixed = subtile
+     Akzent-Surface (Badges, aktiver Nav). */
+  --color-surface-tint:        #FF0002;
+  --color-primary:             #FF0002;
+  --color-primary-container:   #cc0001;
+  --color-primary-fixed:       #5c0001;
+  --color-primary-fixed-dim:   #7a0001;
+  --color-on-primary:          #ffffff;  /* Weiß auf purem Rot */
+  --color-on-primary-container:#ffe0e0;
+  --color-on-primary-fixed:    #ffe0e0;
+  --color-inverse-primary:     #cc0001;
+
+  /* Secondary neutral (Mute/Bg-glow abgeleitet) — bewusst NICHT rot. */
+  --color-secondary:           #b8b8b8;
+  --color-secondary-container: #2a2a2a;
+  --color-on-secondary:        #1a1a1a;
+  --color-on-secondary-container:#b8b8b8;
+
+  --color-on-surface:          #ffffff;
+  --color-on-surface-variant:  #b8b8b8;
+  --color-on-background:       #ffffff;
+  --color-outline:             #7a7a7a;
+  --color-outline-variant:     #3a3a3a;
+
+  /* Accent-Remap-Helper für np-accent-remap (Blue→Red). */
+  --np-accent:        #FF0002;
+  --np-accent-hover:  #cc0001;
+  --np-accent-ring:   #FF0002;
+  --np-accent-text:   #FF0002;
+  --np-accent-soft:   color-mix(in srgb, #FF0002 15%, transparent);
+  --np-accent-badge:  #5c0001;
+  --np-toggle-on:     #FF0002;
+  --np-toolbar-accent:        #FF0002;
+}
+
+/* Designer: gleiche Surfaces + Accent, aber OHNE Secondary-Tokens — damit erbt
+   .react-flow den neutralen base-dark --color-secondary-container und Badges
+   bleiben grau-blau statt rotbraun. Der shared html.dark .np-designer .react-flow
+   Shield übernimmt Primary-Token-Reset automatisch. */
+html.dark[data-skin="dark-sparkasse"] .np-designer {
+  --color-surface:          #1f1f1f;
+  --color-surface-dim:      #161616;
+  --color-surface-bright:   #303030;
+  --color-surface-lowest:   #131313;
+  --color-surface-low:      #1a1a1a;
+  --color-surface-container:#232323;
+  --color-surface-high:     #262626;
+  --color-surface-highest:  #2a2a2a;
+  --color-surface-variant:  #3a3a3a;
+
+  --color-on-surface:          #ffffff;
+  --color-on-surface-variant:  #b8b8b8;
+  --color-on-background:       #ffffff;
+  --color-outline:             #7a7a7a;
+  --color-outline-variant:     #3a3a3a;
+
+  --color-surface-tint:        #FF0002;
+  --color-primary:             #FF0002;
+  --color-primary-container:   #cc0001;
+  --color-primary-fixed:       #5c0001;
+  --color-primary-fixed-dim:   #7a0001;
+  --color-on-primary:          #ffffff;
+  --color-on-primary-container:#ffe0e0;
+  --color-on-primary-fixed:    #ffe0e0;
+  --color-inverse-primary:     #cc0001;
+  --np-toolbar-accent:                 #FF0002;
+  --np-controls-accent:        #FF0002;
+}
+/* Edges im dark-sparkasse Canvas: identischer Wert wie base-dark html.dark (Zeile 130),
+   damit die Edges dieselbe Farbe haben wie im Standard-Dark/Premium-Canvas-Modus. */
+html.dark[data-skin="dark-sparkasse"] .np-designer .react-flow {
+  --color-outline-variant:     #43474e;
+}
+/* Gezielte Aufhellung von Designer-Header und Execution-Panel — surface-lowest wäre
+   dort zu nah an Schwarz, alle anderen surface-lowest-Elemente (ActivityNodes, etc.)
+   bleiben unberührt. */
+html.dark[data-skin="dark-sparkasse"] .np-editor-header,
+html.dark[data-skin="dark-sparkasse"] .np-execution-panel {
+  --color-surface-lowest: #1a1a1a;
+  --color-surface-low:    #202020;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SKIN: "dark-nebula" — futuristic Deep-Space look: a COOL, blue-tinted near-black
+   surface ramp + an electric-cyan accent (#22d3ee) with a violet secondary glow.
+   Dark base (like dark-lila/dark-sparkasse). Unlike the other dark skins this one
+   also carries an ENHANCED DEPTH LAYER further down (glass cards, cyan glow, mesh
+   backdrop) — modelled on the "BANK HELL" light-sparkasse layer. Palette-Quelle:
+   palette/nebula-palette.json. These blocks only OVERRIDE the orange dark default,
+   so every other scheme stays byte-identical. */
+html.dark[data-skin="dark-nebula"] .np-shell {
+  /* Cool, faintly blue-tinted near-black ramp (dark → light). */
+  --color-surface:          #0c1220;
+  --color-surface-dim:      #05080f;
+  --color-surface-bright:   #2a3852;
+  --color-surface-lowest:   #080c15;
+  --color-surface-low:      #0f1626;
+  --color-surface-container:#131b2c;
+  --color-surface-high:     #1a2436;
+  --color-surface-highest:  #212c42;
+  --color-surface-variant:  #33415e;
+
+  /* Electric-cyan accent. `primary` = readable accent (text/icon/active); `primary-
+     container` = deep fill; `primary-fixed` = subtle accent surface (badges, active nav). */
+  --color-surface-tint:        #22d3ee;
+  --color-primary:             #4de4f7;
+  --color-primary-container:   #17b9d4;
+  --color-primary-fixed:       #0b2e39;
+  --color-primary-fixed-dim:   #103a48;
+  --color-on-primary:          #00232c;
+  --color-on-primary-container:#d6fbff;
+  /* Text on the subtle accent surface (primary-fixed = deep teal); else the base
+     html.dark #dae2ff (blue-tinted) leaks through. */
+  --color-on-primary-fixed:    #b8f4ff;
+  --color-inverse-primary:     #22d3ee;
+
+  /* Violet secondary — used only for glow/mute, never a flat fill. */
+  --color-secondary:           #a78bfa;
+  --color-secondary-container: #241e3d;
+  --color-on-secondary:        #12091f;
+  --color-on-secondary-container:#e7e0ff;
+
+  /* Cool off-white text; a cool slate outline for crisp dividers on the blue-black. */
+  --color-on-surface:          #e4eeff;
+  --color-on-surface-variant:  #9db0cc;
+  --color-on-background:        #e4eeff;
+  --color-outline:             #47506a;
+  --color-outline-variant:     #202942;
+
+  /* Re-skin the blue→accent utility remap helpers (rules unchanged, they read these). */
+  --np-accent:        #17b9d4;
+  --np-accent-hover:  #0fa5c0;
+  --np-accent-ring:   #4de4f7;
+  --np-accent-text:   #4de4f7;
+  --np-accent-soft:   color-mix(in srgb, #4de4f7 15%, transparent);
+  --np-accent-badge:  #0b2e39;
+  --np-toggle-on:     #22d3ee;
+  --np-toolbar-accent:        #4de4f7;
+}
+
+/* Designer: same cool surfaces + cyan accent (override the orange `.np-designer`).
+   Secondary tokens are deliberately NOT set here (like dark-sparkasse) so the violet
+   never leaks into React-Flow node/method badges; the shared `.react-flow` blue shield
+   resets the canvas accent, `--np-controls-accent` (cyan literal) survives it. */
+html.dark[data-skin="dark-nebula"] .np-designer {
+  --color-surface:          #0c1220;
+  --color-surface-dim:      #05080f;
+  --color-surface-bright:   #2a3852;
+  --color-surface-lowest:   #080c15;
+  --color-surface-low:      #0f1626;
+  --color-surface-container:#131b2c;
+  --color-surface-high:     #1a2436;
+  --color-surface-highest:  #212c42;
+  --color-surface-variant:  #33415e;
+  --color-on-surface:          #e4eeff;
+  --color-on-surface-variant:  #9db0cc;
+  --color-on-background:        #e4eeff;
+  --color-outline:             #47506a;
+  --color-outline-variant:     #202942;
+
+  --color-surface-tint:        #22d3ee;
+  --color-primary:             #4de4f7;
+  --color-primary-container:   #17b9d4;
+  --color-primary-fixed:       #0b2e39;
+  --color-primary-fixed-dim:   #103a48;
+  --color-on-primary:          #00232c;
+  --color-on-primary-container:#d6fbff;
+  --color-on-primary-fixed:    #b8f4ff;
+  --color-inverse-primary:     #22d3ee;
+  --np-toolbar-accent:                 #4de4f7;
+  --np-controls-accent:        #4de4f7;
+}
+/* Edges in the nebula canvas: identical to base-dark html.dark, so edges match the
+   standard/premium canvas instead of picking up the skin outline. */
+html.dark[data-skin="dark-nebula"] .np-designer .react-flow {
+  --color-outline-variant:     #43474e;
+}
+/* Lift the designer header + execution panel off pure near-black (surface-lowest is
+   too close to black there); all other surface-lowest elements stay untouched. */
+html.dark[data-skin="dark-nebula"] .np-editor-header,
+html.dark[data-skin="dark-nebula"] .np-execution-panel {
+  --color-surface-lowest: #0f1626;
+  --color-surface-low:    #131c2e;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SKIN: "light grey" — Voxwright LIGHT theme: warm cream surfaces + the same lilac
+   accent. A LIGHT base (no `.dark` class), so it overrides the default light `:root`
+   tokens via `html[data-skin="light-grey"]`. The blue→accent utility remap reaches it
+   through the shared `np-accent-remap` marker class (set because this skin's accent
+   isn't blue), re-pointed at the lilac `--np-accent*` helpers below. */
+html[data-skin="light-grey"] .np-shell {
+  /* Warm cream ramp (Voxwright): lightest (white cards) … dimmest (warm beige). */
+  --color-surface:          #faf8f5;
+  --color-surface-dim:      #ded8d0;
+  --color-surface-bright:   #ffffff;
+  --color-surface-lowest:   #ffffff;
+  --color-surface-low:      #f5f0eb;
+  --color-surface-container:#f0ebe4;
+  --color-surface-high:     #eae4dc;
+  --color-surface-highest:  #e8e0d8;
+  --color-surface-variant:  #ded8d0;
+
+  /* Lilac accent — `primary` is deepened for readable text/icons on cream. */
+  --color-surface-tint:        #7c5cfc;
+  --color-primary:             #7c3aed;
+  --color-primary-container:   #7c5cfc;
+  --color-primary-fixed:       #ece7ff;
+  --color-primary-fixed-dim:   #d6c9ff;
+  --color-on-primary:          #ffffff;
+  --color-on-primary-container:#ffffff;
+  --color-on-primary-fixed:    #2a0e63;
+  --color-inverse-primary:     #c9a9ff;
+
+  --color-secondary:           #6e675f;
+  --color-secondary-container: #e7e0f5;
+
+  --color-on-surface:          #1a1a1a;
+  --color-on-surface-variant:  #6e6a64;
+  --color-on-background:        #1a1a1a;
+  --color-outline:             #a89f93;
+  --color-outline-variant:     #e0d9d0;
+
+  /* Blue→accent utility-remap helpers (lilac, light-mode variants). */
+  --np-accent:        #7c5cfc;
+  --np-accent-hover:  #6d28d9;
+  --np-accent-ring:   #7c3aed;
+  --np-accent-text:   #6d28d9;
+  --np-accent-soft:   color-mix(in srgb, #7c5cfc 14%, transparent);
+  --np-accent-badge:  #ece7ff;
+  --np-toggle-on:     #7c5cfc;
+  --np-toolbar-accent:        #7c3aed;
+}
+
+/* Designer: warm cream surfaces + lilac accent. The canvas-accent shield below keeps
+   selection rings neutral (base light blue); surfaces cascade so the backdrop follows. */
+html[data-skin="light-grey"] .np-designer {
+  --color-surface:          #faf8f5;
+  --color-surface-dim:      #ded8d0;
+  --color-surface-bright:   #ffffff;
+  --color-surface-lowest:   #ffffff;
+  --color-surface-low:      #f5f0eb;
+  --color-surface-container:#f0ebe4;
+  --color-surface-high:     #eae4dc;
+  --color-surface-highest:  #e8e0d8;
+  --color-surface-variant:  #ded8d0;
+  --color-secondary:           #6e675f;
+  --color-secondary-container: #e7e0f5;
+  --color-on-surface:          #1a1a1a;
+  --color-on-surface-variant:  #6e6a64;
+  --color-on-background:        #1a1a1a;
+  --color-outline:             #a89f93;
+  --color-outline-variant:     #e0d9d0;
+
+  --color-surface-tint:        #7c5cfc;
+  --color-primary:             #7c3aed;
+  --color-primary-container:   #7c5cfc;
+  --color-primary-fixed:       #ece7ff;
+  --color-primary-fixed-dim:   #d6c9ff;
+  --color-on-primary:          #ffffff;
+  --color-on-primary-container:#ffffff;
+  --color-on-primary-fixed:    #2a0e63;
+  --color-inverse-primary:     #c9a9ff;
+  --np-toolbar-accent:                 #7c3aed;
+  --np-controls-accent:        #7c3aed;
+}
+html[data-skin="light-grey"] .np-designer .react-flow {
+  --color-surface-tint:        #0053db;
+  --color-primary:             #004ac6;
+  --color-primary-container:   #2563eb;
+  --color-primary-fixed:       #dbe1ff;
+  --color-primary-fixed-dim:   #b4c5ff;
+  --color-on-primary:          #ffffff;
+  --color-on-primary-container:#eeefff;
+  --color-inverse-primary:     #b4c5ff;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   SKIN: "light-sparkasse" / "Bank Hell" — neutraler heller Banking-Look mit
+   rotem Aktionsakzent. Light base (kein .dark), override via
+   `html[data-skin="light-sparkasse"]`. Secondary-Tokens bleiben in .np-shell,
+   damit Canvas-Badges neutral bleiben. */
+html[data-skin="light-sparkasse"] .np-shell,
+html[data-skin="light-sparkasse"] .np-designer {
+  --np-bank-primary:        #ff0000;
+  --np-bank-primary-dark:   #cc0000;
+  --np-bank-primary-deep:   #a90000;
+  --np-bank-primary-soft:   #fff1f1;
+  --np-bank-primary-soft-2: #ffe3e3;
+
+  --np-bank-bg:            #f3f5f7;
+  --np-bank-bg-elevated:   #f8fafc;
+  --np-bank-surface:       #ffffff;
+  --np-bank-surface-soft:  #fbfcfd;
+  --np-bank-text:          #15191f;
+  --np-bank-text-soft:     #344054;
+  --np-bank-muted:         #667085;
+  --np-bank-border:        #e4e7ec;
+  --np-bank-border-strong: #d0d5dd;
+
+  --np-bank-shadow-xs:      0 1px 2px rgba(16, 24, 40, 0.05);
+  --np-bank-shadow-sm:      0 4px 12px rgba(16, 24, 40, 0.07);
+  --np-bank-shadow-md:      0 14px 36px rgba(16, 24, 40, 0.12);
+  --np-bank-shadow-lg:      0 24px 60px rgba(16, 24, 40, 0.16);
+  --np-bank-shadow-primary: 0 16px 34px rgba(255, 0, 0, 0.24);
+}
+
+html[data-skin="light-sparkasse"] .np-shell {
+  /* Bright, cool-neutral surface ramp. */
+  --color-surface:          #f3f5f7;
+  --color-surface-dim:      #e9edf2;
+  --color-surface-bright:   #f8fafc;
+  --color-surface-lowest:   #ffffff;
+  --color-surface-low:      #f8fafc;
+  --color-surface-container:#eef1f4;
+  --color-surface-high:     #e9edf2;
+  --color-surface-highest:  #e2e7ed;
+  --color-surface-variant:  #e4e7ec;
+
+  /* Deep red is reserved for readable text/focus states; the vivid red fills CTA gradients. */
+  --color-surface-tint:        #ff0000;
+  --color-primary:             #c80000;
+  --color-primary-container:   #ee0000;
+  --color-primary-fixed:       #fff1f1;
+  --color-primary-fixed-dim:   #ffe3e3;
+  --color-on-primary:          #ffffff;
+  --color-on-primary-container:#ffffff;
+  --color-on-primary-fixed:    #5a0000;
+  --color-inverse-primary:     #ff8080;
+
+  --color-secondary:           #344054;
+  --color-secondary-container: #f8fafc;
+  --color-on-secondary:        #ffffff;
+  --color-on-secondary-container:#15191f;
+
+  --color-on-surface:          #15191f;
+  --color-on-surface-variant:  #344054;
+  --color-on-background:       #15191f;
+  --color-outline:             #667085;
+  --color-outline-variant:     #e4e7ec;
+
+  /* Blue-to-accent remap helpers for existing action utilities. */
+  --np-accent:        #ee0000;
+  --np-accent-hover:  #d40000;
+  --np-accent-ring:   #c80000;
+  --np-accent-text:   #c80000;
+  --np-accent-soft:   color-mix(in srgb, #ee0000 14%, transparent);
+  --np-accent-badge:  #ffdbdb;
+  --np-toggle-on:     #ee0000;
+  --np-toolbar-accent:        #c80000;
+}
+
+/* Designer chrome shares the Bank Hell surfaces and accent; React Flow keeps its
+   neutral base-light secondary tokens below. */
+html[data-skin="light-sparkasse"] .np-designer {
+  --color-surface:          var(--np-bank-bg);
+  --color-surface-dim:      #e9edf2;
+  --color-surface-bright:   var(--np-bank-bg-elevated);
+  --color-surface-lowest:   var(--np-bank-surface);
+  --color-surface-low:      var(--np-bank-bg-elevated);
+  --color-surface-container:#eef1f4;
+  --color-surface-high:     #e9edf2;
+  --color-surface-highest:  #e2e7ed;
+  --color-surface-variant:  var(--np-bank-border);
+
+  --color-on-surface:          var(--np-bank-text);
+  --color-on-surface-variant:  var(--np-bank-text-soft);
+  --color-on-background:       var(--np-bank-text);
+  --color-outline:             var(--np-bank-muted);
+  --color-outline-variant:     var(--np-bank-border);
+
+  --color-surface-tint:        var(--np-bank-primary);
+  --color-primary:             #c80000;
+  --color-primary-container:   #ee0000;
+  --color-primary-fixed:       var(--np-bank-primary-soft);
+  --color-primary-fixed-dim:   var(--np-bank-primary-soft-2);
+  --color-on-primary:          #ffffff;
+  --color-on-primary-container:#ffffff;
+  --color-on-primary-fixed:    #5a0000;
+  --color-inverse-primary:     #ff8080;
+  --np-toolbar-accent:                 #c80000;
+  --np-controls-accent:        #c80000;
+}
+/* Restore base light blue selection accent in the React Flow canvas. */
+html[data-skin="light-sparkasse"] .np-designer .react-flow {
+  --color-surface-tint:        #0053db;
+  --color-primary:             #004ac6;
+  --color-primary-container:   #2563eb;
+  --color-primary-fixed:       #dbe1ff;
+  --color-primary-fixed-dim:   #b4c5ff;
+  --color-on-primary:          #ffffff;
+  --color-on-primary-container:#eeefff;
+  --color-inverse-primary:     #b4c5ff;
+  /* Edges im light-sparkasse Canvas: identischer Wert wie base-light :root (Zeile 71) +
+     np-arrow-default fill, damit Kanten dieselbe Farbe haben wie im Standard-Light/Premium-Canvas. */
+  --color-outline-variant:     #c3c6d7;
+}
+
+/* ── Activity tooltip portal (designer) ──────────────────────────────────────
+   ActivityNode's hover tooltip is portaled to <body> (to escape the React-Flow
+   viewport transform), so it falls OUT of the `.np-designer` token scope and would
+   otherwise paint with the global base tokens. Re-assert the active skin's designer
+   surface tokens on the portal marker — only the four the tooltip consumes
+   (surface-lowest, on-surface, on-surface-variant, outline-variant). The default
+   light skin needs nothing: the portal already inherits the matching :root tokens. */
+html.dark .np-tooltip-portal {
+  --color-surface-lowest:     #0c0a08;
+  --color-on-surface:         #ece7e1;
+  --color-on-surface-variant: #c0b9b0;
+  --color-outline-variant:    #322b24;
+}
+html.dark[data-skin="dark-lila"] .np-tooltip-portal {
+  --color-surface-lowest:     #171717;
+  --color-on-surface:         #e8e8e8;
+  --color-on-surface-variant: #a6a6a6;
+  --color-outline-variant:    #3a3a3a;
+}
+html[data-skin="light-grey"] .np-tooltip-portal {
+  --color-surface-lowest:     #ffffff;
+  --color-on-surface:         #1a1a1a;
+  --color-on-surface-variant: #6e6a64;
+  --color-outline-variant:    #e0d9d0;
+}
+html.dark[data-skin="dark-sparkasse"] .np-tooltip-portal {
+  --color-surface-lowest:     #131313;
+  --color-on-surface:         #ffffff;
+  --color-on-surface-variant: #b8b8b8;
+  --color-outline-variant:    #3a3a3a;
+}
+html.dark[data-skin="dark-nebula"] .np-tooltip-portal {
+  --color-surface-lowest:     #0f1626;
+  --color-on-surface:         #e4eeff;
+  --color-on-surface-variant: #9db0cc;
+  --color-outline-variant:    #202942;
+}
+/* Bank Hell tooltip: explicit bright surface outside the designer token scope. */
+html[data-skin="light-sparkasse"] .np-tooltip-portal {
+  --color-surface-lowest:     #ffffff;
+  --color-on-surface:         #15191f;
+  --color-on-surface-variant: #344054;
+  --color-outline-variant:    #e4e7ec;
+}
+
+/* ── Activity-Icon-Palette (light mode) ── */
+:root {
+  --act-manualTrigger-color:#dc2626;      --act-manualTrigger-bg:#fef2f2;      --act-manualTrigger-border:#fca5a5;
+  --act-scheduleTrigger-color:#ca8a04;    --act-scheduleTrigger-bg:#fefce8;    --act-scheduleTrigger-border:#fde047;
+  --act-webhookTrigger-color:#ea580c;     --act-webhookTrigger-bg:#fff7ed;     --act-webhookTrigger-border:#fdba74;
+  --act-fileWatcherTrigger-color:#16a34a; --act-fileWatcherTrigger-bg:#f0fdf4; --act-fileWatcherTrigger-border:#86efac;
+  --act-databaseTrigger-color:#7c3aed;    --act-databaseTrigger-bg:#f5f3ff;    --act-databaseTrigger-border:#c4b5fd;
+  --act-eventLogTrigger-color:#0284c7;    --act-eventLogTrigger-bg:#f0f9ff;    --act-eventLogTrigger-border:#7dd3fc;
+  --act-runScript-color:#2563eb;          --act-runScript-bg:#dbeafe;          --act-runScript-border:#93c5fd;
+  --act-fileOperation-color:#d97706;      --act-fileOperation-bg:#fef3c7;      --act-fileOperation-border:#fcd34d;
+  --act-folderOperation-color:#d97706;    --act-folderOperation-bg:#fef3c7;    --act-folderOperation-border:#fcd34d;
+  --act-textFileEdit-color:#65a30d;       --act-textFileEdit-bg:#ecfccb;       --act-textFileEdit-border:#bef264;
+  --act-fileHash-color:#7c3aed;           --act-fileHash-bg:#ede9fe;           --act-fileHash-border:#c4b5fd;
+  --act-zipOperation-color:#a16207;       --act-zipOperation-bg:#fef9c3;       --act-zipOperation-border:#facc15;
+  --act-serviceManagement-color:#16a34a;  --act-serviceManagement-bg:#dcfce7;  --act-serviceManagement-border:#86efac;
+  --act-scheduledTask-color:#c026d3;      --act-scheduledTask-bg:#fae8ff;      --act-scheduledTask-border:#f0abfc;
+  --act-registryOperation-color:#9333ea;  --act-registryOperation-bg:#f3e8ff;  --act-registryOperation-border:#c4b5fd;
+  --act-wmiQuery-color:#0891b2;           --act-wmiQuery-bg:#cffafe;           --act-wmiQuery-border:#67e8f9;
+  --act-startProgram-color:#e11d48;       --act-startProgram-bg:#ffe4e6;       --act-startProgram-border:#fda4af;
+  --act-powerManagement-color:#b91c1c;    --act-powerManagement-bg:#fee2e2;    --act-powerManagement-border:#fca5a5;
+  --act-waitForCondition-color:#0891b2;   --act-waitForCondition-bg:#cffafe;   --act-waitForCondition-border:#67e8f9;
+  --act-restApi-color:#ea580c;            --act-restApi-bg:#ffedd5;            --act-restApi-border:#fdba74;
+  --act-sql-color:#0369a1;                --act-sql-bg:#e0f2fe;                --act-sql-border:#7dd3fc;
+  --act-xmlQuery-color:#0d9488;           --act-xmlQuery-bg:#ccfbf1;           --act-xmlQuery-border:#5eead4;
+  --act-jsonQuery-color:#b45309;          --act-jsonQuery-bg:#fef3c7;          --act-jsonQuery-border:#fbbf24;
+  --act-emailNotification-color:#db2777;  --act-emailNotification-bg:#fce7f3;  --act-emailNotification-border:#f9a8d4;
+  --act-delay-color:#6b7280;              --act-delay-bg:#f3f4f6;              --act-delay-border:#d1d5db;
+  --act-generateText-color:#059669;       --act-generateText-bg:#d1fae5;       --act-generateText-border:#6ee7b7;
+  --act-llmQuery-color:#7c3aed;           --act-llmQuery-bg:#ede9fe;           --act-llmQuery-border:#c4b5fd;
+  --act-log-color:#475569;                --act-log-bg:#f1f5f9;                --act-log-border:#cbd5e1;
+  --act-junction-color:#4f46e5;           --act-junction-bg:#eef2ff;           --act-junction-border:#c7d2fe;
+  --act-decision-color:#4338ca;           --act-decision-bg:#e0e7ff;           --act-decision-border:#a5b4fc;
+  --act-startWorkflow-color:#4f46e5;      --act-startWorkflow-bg:#eef2ff;      --act-startWorkflow-border:#c7d2fe;
+  --act-forEach-color:#4f46e5;            --act-forEach-bg:#eef2ff;            --act-forEach-border:#c7d2fe;
+  --act-returnData-color:#1e293b;         --act-returnData-bg:#e2e8f0;         --act-returnData-border:#94a3b8;
+  /* Shared accent for the control-flow node-group frame (double-outline). Indigo to match the
+     control activities' own colour family; one var since all control colours are indigo. */
+  --np-controlflow-accent:#6366f1;
+}
+
+/* ── Activity-Icon-Palette (dark mode) — dunkles Tint-BG + hellere Icon-Farbe ── */
+html.dark {
+  --act-manualTrigger-color:#fca5a5;      --act-manualTrigger-bg:#4f1e21;      --act-manualTrigger-border:#9a3a3a;
+  --act-scheduleTrigger-color:#fde68a;    --act-scheduleTrigger-bg:#473810;    --act-scheduleTrigger-border:#8a6a14;
+  --act-webhookTrigger-color:#fdba74;     --act-webhookTrigger-bg:#4a2d14;     --act-webhookTrigger-border:#92521d;
+  --act-fileWatcherTrigger-color:#86efac; --act-fileWatcherTrigger-bg:#1d4129; --act-fileWatcherTrigger-border:#34754d;
+  --act-databaseTrigger-color:#c4b5fd;    --act-databaseTrigger-bg:#33265a;    --act-databaseTrigger-border:#6848a3;
+  --act-eventLogTrigger-color:#7dd3fc;    --act-eventLogTrigger-bg:#163b56;    --act-eventLogTrigger-border:#246a9a;
+  --act-runScript-color:#93c5fd;          --act-runScript-bg:#264874;          --act-runScript-border:#436db4;
+  --act-fileOperation-color:#fcd34d;      --act-fileOperation-bg:#3f3412;      --act-fileOperation-border:#7d6118;
+  --act-folderOperation-color:#fcd34d;    --act-folderOperation-bg:#3f3412;    --act-folderOperation-border:#7d6118;
+  --act-textFileEdit-color:#bef264;       --act-textFileEdit-bg:#2f4012;       --act-textFileEdit-border:#5d8119;
+  --act-fileHash-color:#c4b5fd;           --act-fileHash-bg:#33265a;           --act-fileHash-border:#6848a3;
+  --act-zipOperation-color:#facc15;       --act-zipOperation-bg:#3c3110;       --act-zipOperation-border:#735a16;
+  --act-serviceManagement-color:#86efac;  --act-serviceManagement-bg:#1d4129;  --act-serviceManagement-border:#34754d;
+  --act-scheduledTask-color:#f0abfc;      --act-scheduledTask-bg:#481b4e;      --act-scheduledTask-border:#8c2c9b;
+  --act-registryOperation-color:#d8b4fe;  --act-registryOperation-bg:#33265a;  --act-registryOperation-border:#6848a3;
+  --act-wmiQuery-color:#67e8f9;           --act-wmiQuery-bg:#16454f;           --act-wmiQuery-border:#247a90;
+  --act-startProgram-color:#fda4af;       --act-startProgram-bg:#502034;       --act-startProgram-border:#9e3661;
+  --act-powerManagement-color:#fca5a5;    --act-powerManagement-bg:#472020;    --act-powerManagement-border:#8c2f2f;
+  --act-waitForCondition-color:#67e8f9;   --act-waitForCondition-bg:#16454f;   --act-waitForCondition-border:#247a90;
+  --act-restApi-color:#fdba74;            --act-restApi-bg:#4a2d14;            --act-restApi-border:#92521d;
+  --act-sql-color:#7dd3fc;                --act-sql-bg:#153b56;                --act-sql-border:#1f6a9a;
+  --act-xmlQuery-color:#5eead4;           --act-xmlQuery-bg:#164139;           --act-xmlQuery-border:#24796e;
+  --act-jsonQuery-color:#fbbf24;          --act-jsonQuery-bg:#3f2e11;          --act-jsonQuery-border:#765119;
+  --act-emailNotification-color:#f9a8d4;  --act-emailNotification-bg:#4a1c36;  --act-emailNotification-border:#8c2c67;
+  --act-delay-color:#c0c6d2;              --act-delay-bg:#34383f;              --act-delay-border:#6b7079;
+  --act-generateText-color:#6ee7b7;       --act-generateText-bg:#143f30;       --act-generateText-border:#2b7a5b;
+  --act-llmQuery-color:#c4b5fd;           --act-llmQuery-bg:#2a1a52;           --act-llmQuery-border:#6d28d9;
+  --act-log-color:#bcc6da;                --act-log-bg:#2f3749;                --act-log-border:#5a688c;
+  --act-junction-color:#a5b4fc;           --act-junction-bg:#2d2d62;           --act-junction-border:#5454ad;
+  --act-decision-color:#a5b4fc;           --act-decision-bg:#2d2e62;           --act-decision-border:#5354ad;
+  --act-startWorkflow-color:#a5b4fc;      --act-startWorkflow-bg:#2d2d62;      --act-startWorkflow-border:#5454ad;
+  --act-forEach-color:#a5b4fc;            --act-forEach-bg:#2d2d62;            --act-forEach-border:#5454ad;
+  --act-returnData-color:#bcc6da;         --act-returnData-bg:#2f3749;         --act-returnData-border:#5a688c;
+  /* Control-flow group frame accent (dark): lighter indigo so it reads on the near-black canvas. */
+  --np-controlflow-accent:#a5b4fc;
+}
+
+body {
+  font-family: var(--font-body);
+  color: var(--color-on-surface);
+  background: var(--color-surface);
+}
+
+/* React Flow MiniMap: override default white background in dark mode */
+html.dark .react-flow__minimap {
+  background: var(--color-surface-container) !important;
+}
+
+/* React Flow Controls — unified NodePilot chrome. Feeds React Flow v12's own
+   --xy-controls-* variables (consumed by @xyflow/react/dist/style.css at the right place →
+   no specificity fight, no !important, and the stock :last-child divider-reset stays intact).
+   ONE rule set covers light + dark + all skins because the tokens resolve per theme AND per
+   .np-designer scope; applies to every canvas (designer, operations graph, mobile, sub-workflow
+   preview). Icons follow `color` because React Flow's SVGs use fill:currentColor; the disabled
+   fade is the stock `svg { fill-opacity: .4 }` over the base color.
+   The stock controls container has NO border-radius of its own → radius/overflow win here
+   without a specificity bump. */
+.react-flow__controls {
+  border-radius: 0.5rem;                 /* rounded-lg chrome */
+  overflow: hidden;                      /* clip square button corners to the rounded container */
+  --xy-controls-button-background-color: color-mix(in srgb, var(--color-surface-container) 82%, transparent);
+  --xy-controls-button-background-color-hover: color-mix(in srgb, var(--np-controls-accent, var(--color-primary)) 14%, var(--color-surface-container));
+  --xy-controls-button-color: var(--color-on-surface-variant);
+  --xy-controls-button-color-hover: var(--color-on-surface);
+  --xy-controls-button-border-color: transparent;   /* remove stock grey dividers */
+}
+
+.input-field {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border-radius: 0.375rem;
+  background-color: var(--color-surface-high);
+  border: 1px solid transparent;
+  color: var(--color-on-surface);
+  transition: all 0.15s;
+  outline: none;
+}
+.input-field:focus {
+  background-color: var(--color-surface-container);
+  border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+textarea.input-field {
+  resize: vertical;
+}
+
+/* ── Toolbar proximity glow (designer EditorHeader) ─────────────────────────────
+   Each toolbar cluster (<ToolbarSection>) blooms a soft, diffuse colored halo at its
+   BOTTOM edge as the cursor approaches. Intensity rides the `--np-glow` custom property
+   (0..1, written per animation frame by <ToolbarGlow>). The provider does NO React
+   re-renders and NO per-frame layout reads; here only `opacity` animates — very likely
+   compositor-only, kept deliberately cheap (a small layer with a constant blur).
+
+   Stacking: `isolation: isolate` gives the section its own stacking context so the bloom's
+   z-index stays local and can NEVER fall behind the header background (a negative z-index
+   would risk exactly that). Inside it the bloom sits at z 0 (behind) and the opaque controls
+   at z 1 (in front). The section is transparent, so the bloom still paints over the header.
+
+   No `mix-blend-mode` on purpose: blending interacts unpredictably with the section's
+   stacking context and isn't worth the risk. Visibility on white (light) vs near-black
+   (dark) is tuned via the `color-mix` stops below, with a stronger dark-mode override. */
+/* Dedicated vivid orange for the lifecycle section — the activity-palette oranges read too
+   close to the run section's red. Declared per theme so dark mode stays correct. */
+:root { --np-toolbar-accent: #f97316; }
+html.dark { --np-toolbar-accent: #fb923c; }
+
+.np-toolbar-section {
+  position: relative;
+  isolation: isolate;
+}
+/* Light skins compress the surface ramp near white: the clusters (drawn at 75% surface-container)
+   wash into the surface-lowest header, so idle toolbar buttons look like they float and only the
+   hover fill reads as a button. Give the clusters a full-opacity fill + hairline border so they
+   read as raised trays at rest. Dark skins already separate via a much larger surface step, so
+   they keep the subtler 75% look. */
+html:not(.dark) .np-toolbar-section {
+  background-color: var(--color-surface-container);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--color-outline-variant) 85%, transparent),
+    0 1px 2px rgb(0 0 0 / 0.05);
+}
+.np-toolbar-section > :not(.np-glow-bloom) {
+  position: relative;
+  z-index: 1;
+}
+.np-glow-bloom {
+  position: absolute;
+  z-index: 0;
+  /* `left`/`width` are driven per-frame by <ToolbarGlow>: the fallbacks span the whole section
+     (the wide "approach" state); once the cursor is concretely over a button, the provider
+     narrows them to just under that button, and the transition below collapses it smoothly. */
+  left: var(--np-bloom-left, -4%);
+  right: auto;
+  width: var(--np-bloom-width, 108%);
+  bottom: -8px;
+  height: 30px;
+  pointer-events: none;
+  will-change: opacity;
+  border-radius: 6px;
+  /* Vertical linear (not radial) so the color is EVEN across the width — strong at the bottom
+     edge, fading upward. The only side softening is the ~8px blur bleed at the extreme L/R. */
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--np-section-color, transparent) 60%, transparent) 0%,
+    color-mix(in srgb, var(--np-section-color, transparent) 32%, transparent) 50%,
+    transparent 100%
+  );
+  filter: blur(8px);
+  /* `* 0.6` dials the whole effect down (a literal multiplier — safe everywhere, unlike a
+     var×var product). Lower the factor for an even subtler glow, raise it toward 1 for more. */
+  opacity: calc(var(--np-glow, 0) * 0.6);
+  transition: opacity 120ms linear, left 140ms ease, width 140ms ease;
+}
+/* Dark surfaces are near-black, so push the bloom harder to keep it readable. */
+html.dark .np-glow-bloom {
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--np-section-color, transparent) 74%, transparent) 0%,
+    color-mix(in srgb, var(--np-section-color, transparent) 42%, transparent) 50%,
+    transparent 100%
+  );
+}
+
+/* The proximity tracking is itself motion — disable it under reduced-motion (the provider
+   also skips wiring up its listeners). */
+@media (prefers-reduced-motion: reduce) {
+  .np-glow-bloom { transition: none; opacity: 0; }
+}
+
+/* React Flow overrides */
+.react-flow__attribution {
+  display: none !important;
+}
+
+/* Edges UNTER Nodes rendern. Activities sollen immer vordergründig sichtbar sein — wenn
+   eine Bezier-Kurve geometrisch durch eine Node-Bbox läuft, wird sie dort vom Node verdeckt.
+   Trade-off: bei Fan-Out mit großem Y-Abstand kann die Kurve teilweise hinter Zwischen-
+   Nodes verschwinden; akzeptabel, weil Activities als Hauptobjekte visuell Priorität haben.
+   Werte explizit gesetzt, weil React Flow's `elevateEdgesOnSelect` (siehe WorkflowEditorPage)
+   einzelne Edge-Elemente per inline-style auf z-index 1000 hebt — ohne expliziten höheren
+   Wert auf der Node-Layer würden ausgewählte Edges sonst über den Nodes liegen. */
+.react-flow__edges {
+  z-index: 1 !important;
+}
+.react-flow__nodes {
+  z-index: 5 !important;
+}
+.react-flow__edgelabel-renderer {
+  z-index: 4 !important;
+}
+
+/* Wenn der User eine Edge selektiert hat (Edit-Mode für genau diese Kante), darf weder
+   die Bezier-Linie noch das Label noch ein Reshape-Handle hinter einer Activity-Node
+   verschwinden — sonst sind die Handles nicht klickbar. :has() hebt beide Schichten
+   (Edges + EdgeLabels) über die Nodes-Schicht, sobald irgendeine Edge `.selected` trägt.
+   Trade-off: auch nicht-selektierte Edges rutschen kurz darüber — akzeptabel, weil
+   das nur während aktiver Edge-Selection passiert und die selektierte Kante via
+   elevateEdgesOnSelect (inline z:1000) weiterhin prominent über den anderen liegt.
+   :has() ist seit Firefox 121 (Dez 2023) Cross-Browser baseline. */
+.react-flow:has(.react-flow__edge.selected) .react-flow__edges,
+.react-flow:has(.react-flow__edge.selected) .react-flow__edgelabel-renderer {
+  z-index: 10 !important;
+}
+
+/* Scrollbars — schmal, transparenter Track, Thumb in den Outline-Tokens.
+   Greift in Light + Dark, weil die Variablen pro Theme überschrieben werden.
+   Firefox + Edge alt nutzen `scrollbar-width/color`, Chromium/Safari die ::-webkit-Pseudos. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-outline-variant) 70%, transparent) transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--color-outline-variant) 75%, transparent);
+  border-radius: 8px;
+  /* 2px transparenter Border + background-clip: padding-box ergibt einen "schwebenden"
+     Thumb mit Luft zum Track-Rand — sieht bei schmalen Containern nicht so klobig aus. */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--color-outline) 85%, transparent);
+}
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--color-outline);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DESIGN OVERHAUL — "Beluga" dashboard primitives.
+   Token-driven so they adapt to light + dark automatically; the dark variant
+   adds the depth-glow + accent halo that makes the surface read as modern glass.
+   Scoped utility classes (no Tailwind @layer) so they win over utilities cleanly.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/* Glass card — replaces the old `bg-surface-lowest rounded-xl shadow-md ring-1`. */
+.np-card {
+  position: relative;
+  background-color: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 1.25rem; /* 20px */
+}
+html.dark .np-shell .np-card {
+  /* Lift the card base out of near-black (#0c0a08) to a warm dark-grey so short
+     boxes don't read as a pure-black well. The directional gradient still layers
+     the lighter top sheen on top. */
+  background-color: var(--color-surface-container);
+  background-image:
+    linear-gradient(157deg, color-mix(in srgb, var(--color-surface-high) 55%, transparent) 0%, transparent 58%);
+  border-color: color-mix(in srgb, #ffffff 7%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 5%, transparent),
+    0 14px 40px -18px rgba(0, 0, 0, 0.75);
+}
+
+/* Shared-Folders box: a lighter, more uniform card. The default np-card gradient fades to
+   the (darker) container base over the lower ~42%, which reads heavy on this prominent,
+   resizable panel. Lift the base to the highest surface token and lay a soft full-height
+   sheen so it stays evenly lit top-to-bottom. Token-based → adapts to every dark theme. */
+html.dark .np-shell .np-card.np-folder-card {
+  background-color: var(--color-surface-highest);
+  background-image:
+    linear-gradient(157deg, color-mix(in srgb, #ffffff 6%, transparent) 0%, transparent 75%);
+}
+
+/* Table column-header tint. A hair above surface-low (midway toward the card body
+   surface-container) so the header is a touch lighter than the plain surface-low bar
+   but still sits just under the body — distinct without the harsh near-black. Token-
+   based so it adapts to light + dark. Tune here once for every list table. */
+.np-col-header {
+  background-color: color-mix(in srgb, var(--color-surface-low), var(--color-surface-container));
+}
+
+/* Hero card — same glass, plus an accent halo so the signature element pops. */
+.np-card-hero { border-radius: 1.5rem; /* 24px */ }
+html.dark .np-shell .np-card-hero {
+  border-color: color-mix(in srgb, var(--np-accent) 28%, transparent);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in srgb, #ffffff 6%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--np-accent) 14%, transparent),
+    0 28px 70px -28px color-mix(in srgb, var(--np-accent) 40%, transparent);
+}
+/* Light mode hero: a soft accent tint instead of a glow. */
+html:not(.dark) .np-card-hero {
+  border-color: color-mix(in srgb, var(--color-primary) 25%, var(--color-outline-variant));
+  box-shadow: 0 18px 50px -24px color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+/* Hover lift for clickable list rows inside cards. */
+.np-row {
+  border-radius: 0.625rem;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.np-row:hover { background-color: color-mix(in srgb, var(--color-on-surface) 6%, transparent); }
+
+/* Token-driven controls for dashboard/settings surfaces. */
+.np-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 65%, transparent);
+  border-radius: 0.5rem;
+  background-color: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.np-btn:hover:not(:disabled) {
+  background-color: var(--color-surface-low);
+  border-color: color-mix(in srgb, var(--color-outline-variant) 85%, var(--color-primary) 15%);
+}
+.np-btn:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-primary) 55%, transparent);
+  outline-offset: 2px;
+}
+.np-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.np-btn-sm {
+  min-height: 1.75rem;
+  padding: 0.3125rem 0.625rem;
+  font-size: 0.8125rem;
+}
+.np-btn-icon {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+.np-btn-icon-sm {
+  width: 1.5rem;
+  height: 1.5rem;
+  min-height: 1.5rem;
+  padding: 0;
+  border-radius: 0.375rem;
+}
+.np-btn-primary {
+  border-color: transparent;
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+  box-shadow: 0 10px 24px -18px var(--color-primary);
+}
+.np-btn-primary:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--color-primary) 88%, #000000);
+  border-color: transparent;
+}
+.np-btn-secondary {
+  background-color: var(--color-surface-high);
+  color: var(--color-on-surface);
+}
+.np-btn-ghost {
+  border-color: transparent;
+  background-color: transparent;
+  color: var(--color-on-surface-variant);
+}
+.np-btn-ghost:hover:not(:disabled) {
+  background-color: var(--color-surface-low);
+  color: var(--color-on-surface);
+  border-color: transparent;
+}
+.np-btn-selected {
+  border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-outline-variant));
+  background-color: var(--color-primary-fixed);
+  color: var(--color-on-primary-fixed);
+  font-weight: 600;
+}
+.np-btn-attention {
+  border-color: color-mix(in srgb, #f59e0b 55%, transparent);
+  background-color: color-mix(in srgb, #f59e0b 12%, transparent);
+  color: #b45309;
+}
+html.dark .np-shell .np-btn-attention { color: #fbbf24; }
+.np-btn-danger {
+  border-color: color-mix(in srgb, #ef4444 50%, transparent);
+  background-color: color-mix(in srgb, #ef4444 12%, transparent);
+  color: #dc2626;
+}
+html.dark .np-shell .np-btn-danger { color: #f87171; }
+.np-btn-success {
+  border-color: color-mix(in srgb, #22c55e 42%, transparent);
+  background-color: color-mix(in srgb, #22c55e 10%, transparent);
+  color: #15803d;
+}
+html.dark .np-shell .np-btn-success { color: #4ade80; }
+
+.np-tab-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--color-outline-variant);
+}
+.np-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: -1px;
+  padding: 0.5rem 0.875rem;
+  border-bottom: 2px solid transparent;
+  color: var(--color-on-surface-variant);
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.np-tab:hover:not(:disabled) {
+  background-color: var(--color-surface-low);
+  color: var(--color-on-surface);
+}
+.np-tab.is-active {
+  border-bottom-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+.np-tab:disabled {
+  cursor: not-allowed;
+  color: color-mix(in srgb, var(--color-on-surface-variant) 50%, transparent);
+}
+
+.np-segmented {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-outline-variant) 65%, transparent);
+  border-radius: 0.5rem;
+  background-color: var(--color-surface-lowest);
+}
+.np-segment {
+  min-height: 1.875rem;
+  padding: 0.375rem 0.75rem;
+  border-right: 1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent);
+  color: var(--color-on-surface-variant);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1rem;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.np-segment:last-child { border-right: 0; }
+.np-segment:hover:not(.is-active) { background-color: var(--color-surface-low); }
+.np-segment.is-active {
+  background-color: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
+/* Accent gradient text — for the big hero numeral. */
+.np-accent-text {
+  background-image: linear-gradient(120deg, var(--color-primary), color-mix(in srgb, var(--color-primary) 55%, #ffffff));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Gradient progress fill (Top/Failing bars get depth instead of a flat block). */
+.np-bar { border-radius: 9999px; transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1); }
+.np-bar-ok   { background-image: linear-gradient(90deg, #15803d, #22c55e); }
+.np-bar-warn { background-image: linear-gradient(90deg, #b45309, #f59e0b); }
+.np-bar-bad  { background-image: linear-gradient(90deg, #b91c1c, #ef4444); }
+
+/* ── Sidebar redesign ─────────────────────────────────────────────────────────
+   Faithful port of the sidebar design mock. Geometry / gradients / shadows mirror the
+   mock 1:1; every colour flows through the app's --color-* tokens (plus a small,
+   sidebar-local --np-sb-* set derived from them) so the exact look adapts to light/dark
+   and to each skin's accent instead of hard-coding the mock's crimson. On-surface-alpha
+   overlays are used for chrome so they auto-invert between light and dark bases. */
+
+.np-sidebar {
+  isolation: isolate;
+
+  --np-sb-border:        color-mix(in srgb, var(--color-on-surface) 10%, transparent);
+  --np-sb-divider:       color-mix(in srgb, var(--color-on-surface) 12%, transparent);
+  --np-sb-control:       color-mix(in srgb, var(--color-on-surface) 5%, transparent);
+  --np-sb-control-hover: color-mix(in srgb, var(--color-on-surface) 9%, transparent);
+  --np-sb-heading:       color-mix(in srgb, var(--color-on-surface-variant) 64%, transparent);
+  --np-sb-muted:         color-mix(in srgb, var(--color-on-surface-variant) 74%, transparent);
+  /* Brighter "raised" fill for the search box + account card. Light bases → near-white
+     (the mock has them ~white); dark bases override to a soft white overlay below. */
+  --np-sb-raised:        color-mix(in srgb, #ffffff 82%, var(--color-surface));
+  --np-sb-raised-soft:   color-mix(in srgb, #ffffff 64%, var(--color-surface));
+  --np-sb-raised-hover:  color-mix(in srgb, #ffffff 94%, var(--color-surface));
+
+  background:
+    radial-gradient(circle at 0 0, color-mix(in srgb, var(--color-primary) 12%, transparent), transparent 270px),
+    linear-gradient(180deg, var(--color-surface) 0%, var(--color-surface-low) 100%);
+  border-right: 1px solid var(--np-sb-border);
+  box-shadow: 12px 0 34px color-mix(in srgb, #000 10%, transparent);
+}
+
+/* Expanded desktop geometry from the reference. The off-canvas mobile drawer and the
+   56px collapsed rail keep their existing product-specific dimensions. */
+.np-sidebar-expanded { width: 292px; }
+@media (min-width: 1024px) and (max-width: 1150px) {
+  .np-sidebar-expanded { width: 264px; }
+}
+
+/* Dark bases: the raised fill is a soft white overlay layered over the dark rail. */
+html.dark .np-sidebar {
+  --np-sb-raised:        color-mix(in srgb, #ffffff 6%, transparent);
+  --np-sb-raised-soft:   color-mix(in srgb, #ffffff 3.5%, transparent);
+  --np-sb-raised-hover:  color-mix(in srgb, #ffffff 9%, transparent);
+}
+
+/* ── Brand ─────────────────────────────────────────────────────────────────── */
+/* Faint accent-tinted rounded tile framing the real per-skin BrandLogo. */
+.np-brand-mark {
+  border: 1px solid color-mix(in srgb, var(--color-primary) 26%, transparent);
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--color-primary) 22%, transparent),
+    color-mix(in srgb, var(--color-primary) 5%, transparent));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-on-surface) 8%, transparent),
+    0 8px 24px color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.np-brand-edition {
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 24%, transparent);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+/* ── Search ────────────────────────────────────────────────────────────────── */
+.np-sb-search-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 66px 0 36px;
+  border: 1px solid var(--np-sb-border);
+  border-radius: 11px;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+  background: var(--np-sb-raised);
+  color: var(--color-on-surface);
+  font-family: inherit;
+  font-size: 13px;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+.np-sb-search-input::placeholder { color: var(--np-sb-muted); }
+.np-sb-search-input:hover {
+  border-color: color-mix(in srgb, var(--color-on-surface) 16%, transparent);
+  background: var(--np-sb-raised-hover);
+}
+.np-sb-search-input:focus {
+  border-color: color-mix(in srgb, var(--color-primary) 46%, transparent);
+  background: var(--np-sb-raised-hover);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+/* Strip the native type=search chrome (magnifier / clear ✕) so only our icon + kbd show. */
+.np-sb-search-input::-webkit-search-cancel-button,
+.np-sb-search-input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.np-sb-search-kbd {
+  padding: 4px 7px;
+  border: 1px solid var(--np-sb-border);
+  border-radius: 6px;
+  background: var(--np-sb-control);
+  color: var(--np-sb-muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────────── */
+/* Category label with a divider line filling the rest of the row. */
+.np-sb-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  padding: 0 10px;
+  color: var(--np-sb-heading);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.np-sb-section-title::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--np-sb-divider);
+}
+
+/* ── Nav links: [icon tile] [label] [badge] grid ───────────────────────────── */
+.np-shell aside a.np-nav {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 5px 10px 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: var(--np-sb-text, var(--color-on-surface-variant));
+  font-size: 13.5px;
+  font-weight: 540;
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.np-shell aside a.np-nav:hover {
+  border-color: var(--np-sb-border);
+  background: var(--np-sb-control-hover);
+  color: var(--color-on-surface);
+}
+
+/* 34px rounded icon tile. */
+.np-nav-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--np-sb-icon, color-mix(in srgb, var(--color-on-surface-variant) 88%, transparent));
+  transition: background-color .16s ease, color .16s ease, border-color .16s ease;
+}
+.np-nav-icon > .bi {
+  font-size: 16px;
+  line-height: 1;
+}
+.np-shell aside a.np-nav:hover .np-nav-icon {
+  color: var(--color-on-surface);
+  background: var(--np-sb-control);
+}
+
+/* Active route: accent gradient fill + border + glow, lit icon tile, left accent bar. */
+.np-shell aside a.np-nav[aria-current="page"] {
+  border-color: var(--np-sb-active-border, color-mix(in srgb, var(--color-primary) 24%, transparent));
+  background: var(--np-sb-active-background, linear-gradient(90deg,
+    color-mix(in srgb, var(--color-primary) 15%, transparent),
+    color-mix(in srgb, var(--color-primary) 5.5%, transparent)));
+  color: var(--np-sb-active-text, var(--color-primary));
+  box-shadow: var(--np-sb-active-shadow,
+    inset 0 1px 0 color-mix(in srgb, var(--color-on-surface) 5%, transparent),
+    0 7px 22px color-mix(in srgb, var(--color-primary) 8%, transparent));
+}
+.np-shell aside a.np-nav[aria-current="page"] .np-nav-icon {
+  border-color: var(--np-sb-active-icon-border, color-mix(in srgb, var(--color-primary) 20%, transparent));
+  background: var(--np-sb-active-icon-background, color-mix(in srgb, var(--color-primary) 14%, transparent));
+  color: var(--np-sb-active-icon, var(--color-primary));
+  box-shadow: var(--np-sb-active-icon-shadow, none);
+}
+.np-shell aside a.np-nav[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: 11px;
+  bottom: 11px;
+  left: -4px;
+  width: 3px;
+  border-radius: 0 4px 4px 0;
+  background: var(--np-sb-active-accent, var(--color-primary));
+  box-shadow: var(--np-sb-active-accent-shadow, 0 0 13px color-mix(in srgb, var(--color-primary) 55%, transparent));
+}
+
+/* Collapsed rail: centre the icon tile, drop the label/badge columns. */
+.np-shell aside a.np-nav.np-nav-rail {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 0;
+  min-height: 42px;
+  padding: 4px;
+}
+
+/* In the rail, hover/active highlight the ICON TILE only — the expanded item's full-width
+   gradient fill, border, glow and left accent bar would read as a broken red block when
+   squeezed into the 56px rail. (The tile itself still lights up via .np-nav-icon rules.) */
+.np-shell aside a.np-nav.np-nav-rail,
+.np-shell aside a.np-nav.np-nav-rail:hover,
+.np-shell aside a.np-nav.np-nav-rail[aria-current="page"] {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  color: var(--color-on-surface-variant);
+}
+.np-shell aside a.np-nav.np-nav-rail[aria-current="page"]::before {
+  display: none;
+}
+
+/* ── Nav badges ────────────────────────────────────────────────────────────── */
+.np-nav-badge {
+  justify-self: end;
+  min-width: 22px;
+  padding: 3px 6px;
+  border: 1px solid var(--np-sb-border);
+  border-radius: 999px;
+  background: var(--np-sb-control);
+  color: var(--np-sb-badge, var(--color-on-surface-variant));
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.2;
+  text-align: center;
+}
+.np-nav-badge.is-running {
+  border-color: var(--np-sb-running-border, color-mix(in srgb, var(--color-primary) 26%, transparent));
+  background: var(--np-sb-running-background, color-mix(in srgb, var(--color-primary) 14%, transparent));
+  color: var(--np-sb-running-text, var(--color-primary));
+}
+.np-nav-badge.is-alerts {
+  border-color: color-mix(in srgb, var(--color-warning) 28%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  color: var(--color-warning);
+}
+.np-nav-badge.is-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+}
+.np-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  animation: npLivePulse 1.8s ease-in-out infinite;
+}
+@keyframes npLivePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+/* ── Footer: account panel + controls ──────────────────────────────────────── */
+.np-profile-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  min-height: 60px;
+  padding: 8px;
+  border: 1px solid var(--np-sb-border);
+  border-radius: 12px;
+  background: linear-gradient(145deg, var(--np-sb-raised), var(--np-sb-raised-soft));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 40%, transparent);
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+.np-profile-card:hover {
+  border-color: color-mix(in srgb, var(--color-on-surface) 16%, transparent);
+  background: linear-gradient(145deg, var(--np-sb-raised-hover), var(--np-sb-raised));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 55%, transparent),
+    0 7px 20px color-mix(in srgb, #000 8%, transparent);
+}
+
+/* Account/rail avatar: accent gradient tile with glow. */
+.np-avatar {
+  background: linear-gradient(145deg,
+    var(--color-primary),
+    color-mix(in srgb, var(--color-primary) 62%, #000));
+  color: var(--color-on-primary);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    0 6px 16px color-mix(in srgb, var(--color-primary) 24%, transparent);
+}
+
+.np-account-badge {
+  padding: 3px 6px;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 20%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+  font-size: 8.5px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+.np-account-menu-btn {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--np-sb-muted);
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+.np-account-menu-btn:hover {
+  border-color: var(--np-sb-border);
+  background: var(--np-sb-control-hover);
+  color: var(--color-on-surface);
+}
+
+/* Skin trigger + language switch + logout share the mock's control geometry. */
+.np-skin-btn {
+  width: 40px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--np-sb-border);
+  border-radius: 10px;
+  background: var(--np-sb-control);
+  color: color-mix(in srgb, var(--color-on-surface-variant) 88%, transparent);
+  transition: color .16s ease, border-color .16s ease, background .16s ease, transform .16s ease, box-shadow .16s ease;
+}
+.np-skin-btn:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 24%, transparent);
+  background: color-mix(in srgb, var(--color-primary) 9%, transparent);
+  color: var(--color-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 5px 16px color-mix(in srgb, #000 10%, transparent);
+}
+
+.np-lang-switch {
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--np-sb-border);
+  border-radius: 10px;
+  background: var(--np-sb-control);
+}
+.np-lang-btn {
+  min-width: 42px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--np-sb-muted);
+  font-size: 10.5px;
+  font-weight: 700;
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+.np-lang-btn:hover { color: var(--color-on-surface); background: var(--np-sb-control-hover); }
+.np-lang-btn.is-active {
+  border-color: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--color-primary) 16%, transparent),
+    color-mix(in srgb, var(--color-primary) 9%, transparent));
+  color: var(--color-primary);
+}
+
+.np-logout-btn {
+  width: 100%;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--np-sb-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  transition: color .16s ease, border-color .16s ease, background .16s ease;
+}
+.np-logout-btn:hover {
+  border-color: color-mix(in srgb, #ef4444 24%, transparent);
+  background: color-mix(in srgb, #ef4444 10%, transparent);
+  color: #ef4444;
+}
+
+/* Collapse button: hover glow. */
+.np-collapse-btn:hover {
+  background-color: color-mix(in srgb, var(--color-primary) 10%, var(--color-surface-highest) 90%);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-primary) 14%, transparent);
+}
+
+/* Entrance: a subtle fade-up, staggered via inline animation-delay. */
+@keyframes npFadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+.np-fade-up { animation: npFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-fade-up { animation: none; }
+  .np-bar { transition: none; }
+}
+
+/* Native form controls follow the theme accent instead of the browser's default
+   blue. Inside the app shell --color-primary is the dark-orange accent; in light
+   mode / the designer it resolves to that scope's primary — so checkboxes,
+   radios and range sliders always match the surrounding scheme. */
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  accent-color: var(--color-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CANVAS PREMIUM REDESIGN — v2
+   All premium selectors scoped to .np-premium (set on the canvas
+   <section> when premiumCanvas store flag is true). Dark via .dark
+   prefix (covers both dark and dark-lila skins).
+   box-shadow depth and glass sheen are in ActivityNode.tsx inline
+   styles so live-status / heatmap / critical-path can override them.
+   CSS here handles: vignette, hover lift, shaped-node drop-shadow,
+   icon glow, edge animation, edge condition glow.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── Canvas: vignette + ambient glow ─────────────────────────── */
+
+/* z-index 3 = above edges (1), below edge-labels (4) and nodes (5). */
+.np-premium .react-flow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  background:
+    linear-gradient(90deg,
+      var(--color-surface) 0%, transparent 10%,
+      transparent 90%, var(--color-surface) 100%),
+    linear-gradient(180deg,
+      var(--color-surface) 0%, transparent 12%,
+      transparent 88%, var(--color-surface) 100%);
+}
+
+.dark .np-premium .react-flow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background:
+    radial-gradient(circle at 14% 20%, rgba(53,229,154,.04), transparent 28%),
+    radial-gradient(circle at 84% 30%, rgba(74,168,255,.05), transparent 30%),
+    radial-gradient(circle at 50% 80%, rgba(141,108,255,.04), transparent 26%);
+}
+
+/* ── Square nodes: hover lift ─────────────────────────────────── */
+/* Depth is inline box-shadow in ActivityNode.tsx — only Y-lift lives here
+   so it never conflicts with heatmap / critical-path overrides. */
+.np-premium .np-btn-node-wrap {
+  transition: transform .18s ease;
+  will-change: transform;
+}
+.np-premium .np-btn-node-wrap:hover {
+  transform: translateY(-2px);
+}
+
+/* Connection handles: circular + surface ring; no size override. */
+.np-premium .np-btn-node-wrap .react-flow__handle {
+  border-radius: 50% !important;
+  box-shadow: 0 0 0 1.5px var(--color-surface) !important;
+  transition: background-color .15s, box-shadow .15s !important;
+}
+.np-premium .np-btn-node-wrap .react-flow__handle:hover {
+  background-color: var(--color-primary) !important;
+  box-shadow: 0 0 0 2px var(--color-surface), 0 0 8px var(--color-primary) !important;
+}
+
+/* Port (connection-handle) fill. Driven by --np-port-fill so dark skins can lift
+   the dot off the near-black node silhouette; !important overrides React Flow's
+   built-in .react-flow__handle background. Hover keeps the accent highlight. */
+.np-port-dot {
+  background-color: var(--np-port-fill) !important;
+}
+.np-port-dot:hover {
+  background-color: var(--color-primary) !important;
+}
+
+/* ── Shaped nodes (Trigger / Junction / returnData) ─────────────── */
+/* clip-path prevents box-shadow — filter:drop-shadow follows the clipped outline.
+   --np-act-color is set as inline CSS variable on the wrapper in ActivityNode.tsx.
+   transition includes transform so Tailwind's scale-105/scale-110 still animate. */
+.np-premium .np-shape-wrap {
+  filter: drop-shadow(0 3px 8px rgba(0,0,0,.14));
+  transition: filter .18s ease, transform 150ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.np-premium .np-shape-wrap:hover {
+  filter: drop-shadow(0 8px 18px rgba(0,0,0,.22));
+}
+
+/* Shaped nodes dark: double-glow trick — tight/bright inner + wide/soft outer = sharp edge, visible halo */
+.dark .np-premium .np-shape-wrap {
+  filter:
+    drop-shadow(0 0 2px color-mix(in srgb, var(--np-act-color, currentColor) 80%, transparent))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--np-act-color, currentColor) 32%, transparent))
+    drop-shadow(0 4px 12px rgba(0,0,0,.5));
+}
+.dark .np-premium .np-shape-wrap:hover {
+  filter:
+    drop-shadow(0 0 3px color-mix(in srgb, var(--np-act-color, currentColor) 90%, transparent))
+    drop-shadow(0 0 10px color-mix(in srgb, var(--np-act-color, currentColor) 42%, transparent))
+    drop-shadow(0 6px 16px rgba(0,0,0,.58));
+}
+
+/* Icon glow: same double-glow — crisp bright core + soft halo */
+.dark .np-premium .np-shape-wrap svg,
+.dark .np-premium .np-btn-node-inner svg {
+  filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 6px color-mix(in srgb, currentColor 45%, transparent));
+}
+
+/* ── Edge: flow animation ─────────────────────────────────────── */
+@keyframes npEdgeFlow {
+  to { stroke-dashoffset: -110; }
+}
+
+/* fill:none + pointer-events:none are intrinsic to this stroke-only overlay and must
+   stay OUTSIDE the .np-premium scope: a non-premium host (e.g. the mobile read-only
+   graph in MobileWorkflowView, which reuses LabeledEdge but carries no .np-premium
+   ancestor) would otherwise render the open Bézier as a solid black fill — most
+   visible on curved edges, in both light and dark skins. */
+.np-edge-flow {
+  fill: none;
+  pointer-events: none;
+}
+
+.np-premium .np-edge-flow {
+  stroke: rgba(255,255,255,.6);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 7 48;
+  animation: npEdgeFlow 3.6s linear infinite;
+}
+
+/* ── Edge: condition glow (dark mode) — rides the semantic status tokens ── */
+.dark .np-premium .np-edge-g--success path.react-flow__edge-path {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--color-success) 45%, transparent));
+}
+.dark .np-premium .np-edge-g--failed path.react-flow__edge-path {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--color-error) 45%, transparent));
+}
+.dark .np-premium .np-edge-g--custom path.react-flow__edge-path {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--color-custom) 45%, transparent));
+}
+
+/* ── Connection line (drag-to-connect preview) ───────────────── */
+@keyframes npConnectionDash {
+  to { stroke-dashoffset: -10; }
+}
+.np-connection-dash {
+  animation: npConnectionDash 0.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .np-connection-dash { animation: none; }
+}
+
+/* ── Marquee / selection rectangle — token-tinted instead of stock RF blue ── */
+.np-designer .react-flow__selection {
+  background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--color-primary) 55%, transparent);
+  border-radius: var(--np-radius-sm);
+}
+.np-designer .react-flow__nodesselection-rect {
+  background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+  border: 1.5px dashed color-mix(in srgb, var(--color-primary) 45%, transparent);
+  border-radius: var(--np-radius-sm);
+}
+
+/* ── Edge label pill (dark depth) ───────────────────────────── */
+.dark .np-premium .react-flow__edgelabel-renderer .np-edge-label-pill {
+  backdrop-filter: blur(10px);
+  box-shadow: 0 6px 18px rgba(0,0,0,.28);
+}
+
+/* ── Reduced motion ──────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .np-premium .np-btn-node-wrap,
+  .np-premium .np-btn-node-wrap:hover {
+    transform: none;
+    will-change: auto;
+    transition: none;
+  }
+  .np-premium .np-shape-wrap,
+  .dark .np-premium .np-shape-wrap {
+    transition: none;
+  }
+  .np-premium .np-edge-flow { animation: none; }
+}
+
+/* ===========================================================================
+   Live-Ops / Mission Control. Token-driven so it recolors with every
+   light/dark skin; glow is softened on light skins to avoid washing out.
+   =========================================================================== */
+
+/* --- System-pulse header: state-tinted banner + heartbeat dot -------------- */
+.np-ops-pulse {
+  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
+}
+.np-ops-pulse--nominal  { border-top: 2px solid color-mix(in srgb, var(--color-success) 55%, transparent); }
+.np-ops-pulse--degraded { border-top: 2px solid color-mix(in srgb, var(--color-warning) 65%, transparent); }
+.np-ops-pulse--incident {
+  border-top: 2px solid var(--color-error);
+  background: color-mix(in srgb, var(--color-error) 6%, var(--color-surface));
+}
+
+.np-ops-pulse-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+.np-ops-pulse-dot--nominal {
+  background: var(--color-success);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-success) 60%, transparent);
+  animation: npOpsHeartbeat 1.6s ease-in-out infinite;
+}
+.np-ops-pulse-dot--degraded {
+  background: var(--color-warning);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-warning) 60%, transparent);
+  animation: npOpsHeartbeat 1.1s ease-in-out infinite;
+}
+.np-ops-pulse-dot--incident {
+  background: var(--color-error);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-error) 70%, transparent);
+  animation: npOpsHeartbeat 0.7s ease-in-out infinite;
+}
+@keyframes npOpsHeartbeat {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%      { transform: scale(1.35); opacity: 0.75; }
+}
+
+/* --- Timeline track: gridlines, NOW line, bars ----------------------------- */
+.np-ops-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--color-outline-variant) 55%, transparent);
+  pointer-events: none;
+}
+.np-ops-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--color-primary);
+  pointer-events: none;
+  z-index: 2;
+}
+.dark .np-ops-now { box-shadow: 0 0 10px color-mix(in srgb, var(--color-primary) 65%, transparent); }
+
+.np-ops-bar {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--np-ops-bar-color) 70%, transparent);
+  background: color-mix(in srgb, var(--np-ops-bar-color) 30%, var(--color-surface));
+  cursor: pointer;
+  /* Between 1 Hz clock ticks the geometry glides at compositor speed. */
+  transition: left 1s linear, width 1s linear;
+}
+.np-ops-bar:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+.np-ops-bar--selected {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+  z-index: 3;
+}
+.np-ops-bar--running {
+  background:
+    linear-gradient(100deg, transparent 30%, color-mix(in srgb, white 22%, transparent) 50%, transparent 70%)
+    color-mix(in srgb, var(--np-ops-bar-color) 42%, var(--color-surface));
+  background-size: 220% 100%, 100% 100%;
+  box-shadow: 0 0 12px color-mix(in srgb, var(--np-ops-bar-color) 45%, transparent);
+  animation: npOpsSheen 2.6s linear infinite;
+}
+html:not(.dark) .np-ops-bar--running {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--np-ops-bar-color) 30%, transparent);
+}
+@keyframes npOpsSheen {
+  from { background-position: 220% 0, 0 0; }
+  to   { background-position: -120% 0, 0 0; }
+}
+.np-ops-bar--clipped {
+  mask-image: linear-gradient(to right, transparent, black 16px);
+}
+.np-ops-bar-label {
+  padding: 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--color-on-surface);
+}
+
+/* --- Lane zebra: groups parallel sub-rows under their lane label ------------ */
+.np-ops-lane-bg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent);
+}
+.np-ops-lane-bg--alt {
+  background: color-mix(in srgb, var(--color-on-surface) 4%, transparent);
+}
+
+/* --- Call connectors: parent run → sub-workflow run ------------------------- */
+.np-ops-connector path {
+  fill: none;
+  stroke: color-mix(in srgb, var(--color-primary) 75%, transparent);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 3;
+}
+.np-ops-connector circle {
+  fill: var(--color-primary);
+}
+
+/* --- Event ticker: entrance animation -------------------------------------- */
+.np-ops-ticker-item {
+  animation: npTickerIn 240ms ease-out;
+}
+@keyframes npTickerIn {
+  from { transform: translateY(-6px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+/* --- Departure board: split-flap row flip on remount ------------------------ */
+.np-ops-flap {
+  animation: npOpsFlap 300ms ease-out;
+  transform-origin: top;
+}
+@keyframes npOpsFlap {
+  from { transform: rotateX(80deg); opacity: 0; }
+  to   { transform: rotateX(0); opacity: 1; }
+}
+
+/* --- Health rail: contributors to a degraded/incident pulse ----------------- */
+.np-ops-health--hot {
+  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .np-ops-pulse-dot--nominal,
+  .np-ops-pulse-dot--degraded,
+  .np-ops-pulse-dot--incident { animation: none; }
+  .np-ops-bar { transition: none; }
+  .np-ops-bar--running { animation: none; }
+  .np-ops-ticker-item { animation: none; }
+  .np-ops-flap { animation: none; }
+}
+
+/* ===========================================================================
+   BANK HELL - light banking depth layer
+
+   The skin deliberately changes material treatment instead of layout: bright
+   surfaces, restrained red atmosphere, tactile controls, and clear elevation.
+   Every selector is limited to the existing Bank Hell marker so the other skins
+   retain their current visual language.
+   =========================================================================== */
+
+/* The application canvas reads as an elevated, light service surface instead of a
+   flat grey field. The red stays deliberately low-opacity and never becomes neon. */
+html[data-skin="light-sparkasse"] .np-shell > main {
+  background:
+    radial-gradient(105% 78% at 100% -24%, color-mix(in srgb, var(--np-bank-primary) 9%, transparent) 0%, transparent 58%),
+    radial-gradient(68% 48% at -12% 0%, rgba(255, 255, 255, 0.92) 0%, transparent 66%),
+    linear-gradient(180deg, var(--np-bank-bg-elevated) 0%, var(--np-bank-bg) 100%);
+}
+
+/* App and mobile headers retain their existing position/dimensions, but gain the
+   translucent elevated bar called for by the skin. */
+html[data-skin="light-sparkasse"] .np-shell > main > header,
+html[data-skin="light-sparkasse"] .np-shell > header {
+  background-color: color-mix(in srgb, #ffffff 86%, transparent);
+  border-color: color-mix(in srgb, var(--np-bank-border) 86%, transparent);
+  box-shadow:
+    inset 0 -1px 0 rgba(255, 255, 255, 0.72),
+    0 8px 22px -22px rgba(16, 24, 40, 0.46);
+}
+
+html[data-skin="light-sparkasse"] .np-shell .np-sidebar {
+  /* The reference intentionally uses softer, sidebar-specific text ramps than the
+     higher-contrast Bank Hell content palette. Keep those values local to this rail. */
+  --np-sb-border: #dfe4eb;
+  --np-sb-divider: #e4e8ee;
+  --np-sb-control: rgba(255, 255, 255, 0.78);
+  --np-sb-control-hover: #eef1f5;
+  --np-sb-heading: #929bad;
+  --np-sb-muted: #8b95a6;
+  --np-sb-text: #475569;
+  --np-sb-icon: #667085;
+  --np-sb-badge: #8b95a6;
+  --np-sb-raised: rgba(255, 255, 255, 0.82);
+  --np-sb-raised-hover: #ffffff;
+
+  --np-sb-active-border: rgba(242, 36, 53, 0.24);
+  --np-sb-active-background: linear-gradient(90deg, rgba(242, 36, 53, 0.15), rgba(242, 36, 53, 0.055));
+  --np-sb-active-text: #ff6875;
+  --np-sb-active-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 7px 22px rgba(242, 36, 53, 0.08);
+  --np-sb-active-icon-border: rgba(242, 36, 53, 0.2);
+  --np-sb-active-icon-background: rgba(242, 36, 53, 0.14);
+  --np-sb-active-icon: #ff4e5d;
+  --np-sb-active-icon-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --np-sb-active-accent: #f22435;
+  --np-sb-active-accent-shadow: 0 0 13px rgba(242, 36, 53, 0.22);
+  --np-sb-running-border: rgba(242, 36, 53, 0.22);
+  --np-sb-running-background: rgba(242, 36, 53, 0.12);
+  --np-sb-running-text: #ff6875;
+
+  font-family: "Segoe UI", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background:
+    radial-gradient(112% 26% at 14% 0%, color-mix(in srgb, var(--np-bank-primary) 10%, transparent) 0%, transparent 74%),
+    linear-gradient(180deg, #ffffff 0%, var(--np-bank-surface-soft) 56%, var(--np-bank-bg-elevated) 100%);
+  border-color: color-mix(in srgb, var(--np-bank-border) 88%, transparent);
+}
+
+html[data-skin="light-sparkasse"] .np-shell .np-sidebar::after {
+  background: linear-gradient(180deg, transparent, var(--np-bank-primary), var(--np-bank-primary-dark), transparent);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--np-bank-primary) 42%, transparent));
+  opacity: 0.42;
+}
+
+html[data-skin="light-sparkasse"] .np-shell .np-sidebar :is(.np-nav, .np-sb-section-title) {
+  line-height: normal;
+}
+
+/* Keep generic utility elevations coherent for panels that do not use np-card. */
+html[data-skin="light-sparkasse"] .np-shell .shadow {
+  box-shadow: var(--np-bank-shadow-xs);
+}
+html[data-skin="light-sparkasse"] .np-shell .shadow-sm {
+  box-shadow: var(--np-bank-shadow-sm);
+}
+html[data-skin="light-sparkasse"] .np-shell .shadow-md {
+  box-shadow: var(--np-bank-shadow-md);
+}
+html[data-skin="light-sparkasse"] .np-shell .shadow-lg {
+  box-shadow: var(--np-bank-shadow-lg);
+}
+html[data-skin="light-sparkasse"] .np-shell .shadow-xl {
+  box-shadow: 0 30px 72px -30px rgba(16, 24, 40, 0.28);
+}
+
+/* Cards use a white-to-soft-white material, a top inset highlight, and a clear but
+   soft elevation. Static information cards stay still; only existing interactive
+   cards and rows lift on hover. */
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card {
+  background-color: var(--np-bank-surface);
+  background-image: linear-gradient(145deg, #ffffff 0%, var(--np-bank-surface-soft) 100%);
+  border-color: var(--np-bank-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    var(--np-bank-shadow-sm);
+}
+
+/* Health states are semantic, not generic cards: preserve their red/amber/green
+   signal while keeping the same restrained elevation as the surrounding shell. */
+html[data-skin="light-sparkasse"] .np-shell .np-status-card {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    var(--np-bank-shadow-sm);
+}
+
+html[data-skin="light-sparkasse"] .np-shell .np-status-card[data-health="critical"] {
+  background-color: #fff7f7;
+  background-image: linear-gradient(145deg, #ffffff 0%, #fff4f4 100%);
+  border-color: color-mix(in srgb, #ef4444 42%, var(--np-bank-border));
+}
+
+html[data-skin="light-sparkasse"] .np-shell .np-status-card[data-health="warning"] {
+  background-color: #fffbeb;
+  background-image: linear-gradient(145deg, #fffef8 0%, #fff9e6 100%);
+  border-color: color-mix(in srgb, #f59e0b 40%, var(--np-bank-border));
+}
+
+html[data-skin="light-sparkasse"] .np-shell .np-status-card[data-health="healthy"] {
+  background-color: #f3fcf7;
+  background-image: linear-gradient(145deg, #ffffff 0%, #f0fbf4 100%);
+  border-color: color-mix(in srgb, #22c55e 34%, var(--np-bank-border));
+}
+
+html[data-skin="light-sparkasse"] .np-shell .np-card-hero {
+  border-color: color-mix(in srgb, var(--np-bank-primary) 24%, var(--np-bank-border));
+  background-image:
+    radial-gradient(72% 115% at 100% 0%, color-mix(in srgb, var(--np-bank-primary) 9%, transparent) 0%, transparent 62%),
+    linear-gradient(145deg, #ffffff 0%, var(--np-bank-surface-soft) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.96),
+    0 0 0 1px color-mix(in srgb, var(--np-bank-primary) 7%, transparent),
+    var(--np-bank-shadow-md),
+    0 22px 46px -32px rgba(255, 0, 0, 0.34);
+}
+
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card[role="button"],
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card.cursor-pointer,
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-row {
+  transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card[role="button"]:hover,
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card.cursor-pointer:hover {
+    border-color: color-mix(in srgb, var(--np-bank-primary) 24%, var(--np-bank-border));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.95),
+      var(--np-bank-shadow-md),
+      0 18px 36px -30px rgba(255, 0, 0, 0.30);
+    transform: translateY(-4px);
+  }
+
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-row:hover {
+    background-color: color-mix(in srgb, var(--np-bank-primary) 5%, #ffffff);
+    box-shadow: var(--np-bank-shadow-xs);
+    transform: translateY(-2px);
+  }
+}
+
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card[role="button"]:focus-visible {
+  outline: 2px solid var(--np-bank-primary);
+  outline-offset: 3px;
+}
+
+/* Secondary controls get a separate material from the surrounding page. */
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-btn:not(.np-btn-primary, .np-btn-ghost, .np-btn-selected, .np-btn-attention, .np-btn-danger, .np-btn-success) {
+  background-color: var(--np-bank-surface);
+  background-image: linear-gradient(180deg, #ffffff 0%, var(--np-bank-bg-elevated) 100%);
+  border-color: var(--np-bank-border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.88),
+    var(--np-bank-shadow-xs);
+  transition: background-color 160ms ease, background-image 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-btn:not(.np-btn-primary, .np-btn-ghost, .np-btn-selected, .np-btn-attention, .np-btn-danger, .np-btn-success):hover:not(:disabled) {
+  background-color: var(--np-bank-primary-soft);
+  background-image: linear-gradient(180deg, #ffffff 0%, var(--np-bank-primary-soft) 100%);
+  border-color: color-mix(in srgb, var(--np-bank-primary) 30%, var(--np-bank-border));
+  box-shadow: var(--np-bank-shadow-sm);
+  transform: translateY(-1px);
+}
+
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-btn.np-btn-secondary {
+  background-color: var(--np-bank-surface);
+  background-image: linear-gradient(180deg, #ffffff 0%, var(--np-bank-bg-elevated) 100%);
+  color: var(--color-primary);
+  border-color: color-mix(in srgb, var(--np-bank-primary) 18%, var(--np-bank-border));
+}
+
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-btn:not(.np-btn-primary, .np-btn-ghost, .np-btn-selected, .np-btn-attention, .np-btn-danger, .np-btn-success):active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-btn-selected {
+  background-color: var(--np-bank-primary-soft);
+  background-image: linear-gradient(180deg, #ffffff 0%, var(--np-bank-primary-soft) 100%);
+  border-color: color-mix(in srgb, var(--np-bank-primary) 38%, var(--np-bank-border));
+  color: var(--color-primary);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), var(--np-bank-shadow-xs);
+}
+
+html[data-skin="light-sparkasse"] .np-shell :is(button, a).bg-surface-lowest.border-outline-variant {
+  background-image: linear-gradient(180deg, #ffffff 0%, var(--np-bank-bg-elevated) 100%);
+  border-color: var(--np-bank-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), var(--np-bank-shadow-xs);
+}
+
+/* Standard inputs intentionally use the same white material as cards. The selector
+   is deliberately limited to the shared input class, normal outlined fields, and the
+   login fields: transparent notes, warning/error inputs, and editor-only controls keep
+   their own semantic treatment. */
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) :is(
+  .input-field,
+  #np-login-username,
+  #np-login-password,
+  input.border-outline-variant,
+  select.border-outline-variant,
+  textarea.border-outline-variant,
+  input.border-outline,
+  select.border-outline,
+  textarea.border-outline
+) {
+  background-color: var(--np-bank-surface);
+  background-image: linear-gradient(180deg, #ffffff 0%, var(--np-bank-surface-soft) 100%);
+  border-color: var(--np-bank-border);
+  color: var(--np-bank-text);
+  box-shadow:
+    inset 0 1px 2px rgba(16, 24, 40, 0.05),
+    var(--np-bank-shadow-xs);
+}
+
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) :is(
+  .input-field,
+  #np-login-username,
+  #np-login-password,
+  input.border-outline-variant,
+  select.border-outline-variant,
+  textarea.border-outline-variant,
+  input.border-outline,
+  select.border-outline,
+  textarea.border-outline
+)::placeholder {
+  color: var(--np-bank-muted);
+}
+
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) :is(
+  .input-field,
+  #np-login-username,
+  #np-login-password,
+  input.border-outline-variant,
+  select.border-outline-variant,
+  textarea.border-outline-variant,
+  input.border-outline,
+  select.border-outline,
+  textarea.border-outline
+):focus {
+  background-color: #ffffff;
+  border-color: var(--np-bank-primary);
+  box-shadow:
+    inset 0 1px 2px rgba(16, 24, 40, 0.04),
+    0 0 0 4px color-mix(in srgb, var(--np-bank-primary) 20%, transparent),
+    0 10px 20px -16px rgba(16, 24, 40, 0.32);
+}
+
+html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) :is(button, a, [role="button"]):focus-visible {
+  outline: 2px solid var(--np-bank-primary);
+  outline-offset: 3px;
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   highlight.js token colors for AI-chat code blocks (rehype-highlight, wired in
+   components/common/Markdown.tsx). Global `.hljs-*` classes — they only ever match
+   the token <span>s the highlighter emits. Token COLORS only; the code box itself
+   keeps the app surface tokens (bg-surface-high). Light default + html.dark overrides
+   (themeStore toggles `html.dark`). Mirrors the docs SPA palette for consistency.
+   ────────────────────────────────────────────────────────────────────────── */
+.hljs-comment, .hljs-quote { color: #6e7781; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #cf222e; }
+.hljs-string, .hljs-attr { color: #0a7d33; }
+.hljs-number, .hljs-literal { color: #0550ae; }
+.hljs-title, .hljs-section, .hljs-function .hljs-title { color: #8250df; }
+.hljs-type, .hljs-class .hljs-title { color: #953800; }
+.hljs-variable, .hljs-template-variable { color: #b35900; }
+.hljs-attribute { color: #0550ae; }
+.hljs-meta { color: #6e7781; }
+.hljs-deletion { color: #cf222e; }
+.hljs-addition { color: #0a7d33; }
+
+html.dark .hljs-comment, html.dark .hljs-quote { color: #7b8794; }
+html.dark .hljs-keyword, html.dark .hljs-selector-tag, html.dark .hljs-built_in { color: #ff9b6e; }
+html.dark .hljs-string, html.dark .hljs-attr { color: #a3e635; }
+html.dark .hljs-number, html.dark .hljs-literal { color: #fcd34d; }
+html.dark .hljs-title, html.dark .hljs-section, html.dark .hljs-function .hljs-title { color: #7dd3fc; }
+html.dark .hljs-type, html.dark .hljs-class .hljs-title { color: #c4b5fd; }
+html.dark .hljs-variable, html.dark .hljs-template-variable { color: #fda4af; }
+html.dark .hljs-attribute { color: #fbbf24; }
+html.dark .hljs-meta { color: #94a3b8; }
+html.dark .hljs-deletion { color: #fca5a5; }
+html.dark .hljs-addition { color: #a3e635; }
+
+/* Login remains the same composition, with the strongest card depth in the skin. */
+html[data-skin="light-sparkasse"] .np-shell.np-login {
+  background:
+    radial-gradient(90% 68% at 12% 6%, color-mix(in srgb, var(--np-bank-primary) 13%, transparent) 0%, transparent 58%),
+    radial-gradient(76% 58% at 94% 100%, color-mix(in srgb, var(--np-bank-primary) 8%, transparent) 0%, transparent 60%),
+    linear-gradient(145deg, var(--np-bank-bg-elevated) 0%, var(--np-bank-bg) 100%);
+}
+
+html[data-skin="light-sparkasse"] .np-login-aurora::before,
+html[data-skin="light-sparkasse"] .np-login-aurora::after {
+  opacity: 0.25;
+}
+
+html[data-skin="light-sparkasse"] .np-login-card {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.97) 0%, rgba(251, 252, 253, 0.94) 100%);
+  border-color: color-mix(in srgb, var(--np-bank-border-strong) 72%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.98),
+    0 0 0 1px color-mix(in srgb, var(--np-bank-primary) 8%, transparent),
+    var(--np-bank-shadow-lg),
+    0 30px 58px -36px rgba(255, 0, 0, 0.40);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card[role="button"],
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card.cursor-pointer,
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-row,
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-btn:not(.np-btn-primary, .np-btn-ghost, .np-btn-selected, .np-btn-attention, .np-btn-danger, .np-btn-success) {
+    transition: none;
+  }
+
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card[role="button"]:hover,
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-card.cursor-pointer:hover,
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-row:hover,
+  html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) .np-btn:not(.np-btn-primary, .np-btn-ghost, .np-btn-selected, .np-btn-attention, .np-btn-danger, .np-btn-success):hover:not(:disabled) {
+    transform: none;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   NEBULA — futuristic depth layer (dark-nebula only)
+   The counterpart to the "BANK HELL" light layer above, but for a deep-space glass
+   aesthetic: frosted-glass cards (backdrop-blur), cool cyan-tinted elevation shadows,
+   a cyan glow on hover/active surfaces, gradient primary buttons, a glowing sidebar
+   edge + nav pill, and a cyan/violet radial glow + faint blueprint grid in the
+   content backdrop. Everything is scoped to `html.dark[data-skin="dark-nebula"]`,
+   so no other skin changes. All depth knobs live in the private token block below —
+   tune `--np-glass-blur` / `--np-nb-shadow-*` / `--np-glow` to dial the effect.
+   ──────────────────────────────────────────────────────────────────────────── */
+html.dark[data-skin="dark-nebula"] .np-shell,
+html.dark[data-skin="dark-nebula"] .np-designer {
+  --np-glass-fill:   color-mix(in srgb, var(--color-surface-lowest) 58%, transparent);
+  --np-glass-blur:   14px;
+  --np-glass-border: color-mix(in srgb, #4de4f7 16%, color-mix(in srgb, #ffffff 6%, transparent));
+  --np-sheen:        inset 0 1px 0 0 color-mix(in srgb, #ffffff 8%, transparent);
+  --np-grid:         color-mix(in srgb, #4de4f7 6%, transparent);
+  --np-glow:         #22d3ee;
+  --np-glow-violet:  #7c5cfc;
+  --np-nb-shadow-xs: 0 1px 2px rgba(2, 6, 14, 0.55);
+  --np-nb-shadow-sm: 0 6px 18px -6px rgba(2, 6, 14, 0.70);
+  --np-nb-shadow-md: 0 14px 34px -10px rgba(2, 6, 14, 0.75);
+  --np-nb-shadow-lg: 0 26px 60px -18px rgba(2, 6, 14, 0.80);
+  --np-nb-glow:      0 0 0 1px color-mix(in srgb, #22d3ee 22%, transparent),
+                     0 10px 34px -8px color-mix(in srgb, #22d3ee 38%, transparent);
+}
+
+/* Content backdrop: cyan glow (top) + violet aurora (corner) + faint blueprint grid. */
+html.dark[data-skin="dark-nebula"] .np-shell > main {
+  background-color: var(--color-surface-low);
+  background-image:
+    radial-gradient(120% 82% at 50% -12%, color-mix(in srgb, var(--np-glow) 12%, transparent) 0%, transparent 55%),
+    radial-gradient(72% 60% at 100% -6%, color-mix(in srgb, var(--np-glow-violet) 10%, transparent) 0%, transparent 52%),
+    linear-gradient(to right, var(--np-grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--np-grid) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 44px 44px, 44px 44px;
+}
+/* Login: intensify the same scene (aurora blobs already recolor via --color-primary). */
+html.dark[data-skin="dark-nebula"] .np-shell.np-login {
+  background-color: var(--color-surface);
+  background-image:
+    radial-gradient(90% 62% at 50% 0%, color-mix(in srgb, var(--np-glow) 14%, transparent) 0%, transparent 55%),
+    radial-gradient(70% 60% at 100% 100%, color-mix(in srgb, var(--np-glow-violet) 12%, transparent) 0%, transparent 55%);
+}
+
+/* Elevation utilities → cool nebula ramp + a faint inner cyan sheen. */
+html.dark[data-skin="dark-nebula"] .np-shell .shadow    { box-shadow: var(--np-nb-shadow-xs), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 6%, transparent); }
+html.dark[data-skin="dark-nebula"] .np-shell .shadow-sm { box-shadow: var(--np-nb-shadow-sm), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 7%, transparent); }
+html.dark[data-skin="dark-nebula"] .np-shell .shadow-md { box-shadow: var(--np-nb-shadow-md), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 8%, transparent); }
+html.dark[data-skin="dark-nebula"] .np-shell .shadow-lg { box-shadow: var(--np-nb-shadow-lg), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 9%, transparent); }
+html.dark[data-skin="dark-nebula"] .np-shell .shadow-xl { box-shadow: 0 34px 74px -22px rgba(2, 6, 14, 0.85), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 10%, transparent); }
+
+/* Glass cards: translucent fill + backdrop blur + cyan hairline + top sheen. */
+html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card {
+  background: var(--np-glass-fill);
+  -webkit-backdrop-filter: blur(var(--np-glass-blur)) saturate(1.25);
+          backdrop-filter: blur(var(--np-glass-blur)) saturate(1.25);
+  border: 1px solid var(--np-glass-border);
+  box-shadow: var(--np-sheen), var(--np-nb-shadow-sm);
+}
+
+/* Hero card: the signature — cyan-lit border + corner glow + cyan bloom lift.
+   Self-contained (works whether or not it also carries .np-card). */
+html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card-hero {
+  -webkit-backdrop-filter: blur(var(--np-glass-blur)) saturate(1.3);
+          backdrop-filter: blur(var(--np-glass-blur)) saturate(1.3);
+  border: 1px solid color-mix(in srgb, var(--np-glow) 40%, var(--np-glass-border));
+  background-color: var(--np-glass-fill);
+  background-image:
+    radial-gradient(120% 100% at 100% 0%, color-mix(in srgb, var(--np-glow) 14%, transparent) 0%, transparent 55%),
+    linear-gradient(157deg, color-mix(in srgb, var(--color-surface-high) 55%, transparent) 0%, transparent 60%);
+  box-shadow:
+    var(--np-sheen),
+    0 0 0 1px color-mix(in srgb, var(--np-glow) 20%, transparent),
+    var(--np-nb-shadow-md),
+    0 22px 48px -30px color-mix(in srgb, var(--np-glow) 55%, transparent);
+}
+
+/* Interactive cards/rows: neon-rim lift on hover. */
+html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card[role="button"],
+html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card.cursor-pointer,
+html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row {
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background-color .16s ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card[role="button"]:hover,
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card.cursor-pointer:hover {
+    border-color: color-mix(in srgb, var(--np-glow) 50%, transparent);
+    box-shadow: var(--np-sheen), var(--np-nb-glow);
+    transform: translateY(-4px);
+  }
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row:hover {
+    background-color: color-mix(in srgb, var(--np-glow) 8%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--np-glow) 22%, transparent);
+    transform: translateY(-2px);
+  }
+}
+html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card[role="button"]:focus-visible,
+html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--np-glow) 70%, transparent);
+  outline-offset: 2px;
+}
+
+/* Primary buttons: cyan gradient fill + glow (covers .np-btn-primary and the remapped
+   Tailwind .bg-blue-600). on-primary text stays dark → high contrast on the cyan. */
+html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-btn-primary,
+html.dark[data-skin="dark-nebula"] .np-shell .bg-blue-600 {
+  background-image: linear-gradient(180deg, #5fe8f9 0%, var(--np-accent) 100%);
+  box-shadow: var(--np-nb-shadow-xs), inset 0 1px 0 0 color-mix(in srgb, #ffffff 24%, transparent);
+}
+@media (hover: hover) and (pointer: fine) {
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-btn-primary:hover:not(:disabled),
+  html.dark[data-skin="dark-nebula"] .np-shell .bg-blue-600:hover {
+    box-shadow: 0 8px 28px -6px color-mix(in srgb, var(--np-glow) 60%, transparent), inset 0 1px 0 0 color-mix(in srgb, #ffffff 30%, transparent);
+  }
+}
+
+/* Sidebar: deep blue-black vertical gradient + a glowing cyan→violet right edge. */
+html.dark[data-skin="dark-nebula"] .np-shell aside {
+  background: linear-gradient(180deg, #10192b 0%, #070b14 100%);
+}
+html.dark[data-skin="dark-nebula"] .np-shell .np-sidebar::after {
+  background: linear-gradient(180deg, var(--np-glow), var(--np-glow-violet));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--np-glow) 55%, transparent));
+  opacity: 0.5;
+}
+
+/* Active nav item: glass plate + glowing cyan left accent bar. */
+html.dark[data-skin="dark-nebula"] .np-shell aside a.np-nav[aria-current="page"] {
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--np-glow) 16%, transparent),
+    color-mix(in srgb, var(--np-glow) 5%, transparent) 62%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 14%, transparent);
+}
+html.dark[data-skin="dark-nebula"] .np-shell aside a.np-nav[aria-current="page"]::before {
+  background: linear-gradient(180deg, var(--np-glow), var(--np-glow-violet));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--np-glow) 55%, transparent);
+}
+
+/* Reduced motion: drop the skin's hover transforms. */
+@media (prefers-reduced-motion: reduce) {
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card[role="button"],
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card.cursor-pointer,
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row {
+    transition: none;
+  }
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card[role="button"]:hover,
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card.cursor-pointer:hover,
+  html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row:hover {
+    transform: none;
+  }
+}

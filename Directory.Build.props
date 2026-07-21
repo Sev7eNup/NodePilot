@@ -1,0 +1,22 @@
+<Project>
+
+  <!--
+    Repo-wide MSBuild props. Imported automatically by every .csproj under the repo root
+    (the npm projects under src/nodepilot-ui and src/nodepilot-docs-ui have no .csproj and
+    are unaffected).
+  -->
+
+  <!--
+    Shared build settings — every NodePilot project targets the same TFM and opts into the
+    same language surface. Individual csproj files no longer repeat these; change them here
+    (or override per-project only when a project genuinely needs to differ).
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Version>1.0.0</Version>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,127 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] serviceManagement - All Variants Live",
+      "description": "Live end-to-end Test der serviceManagement-Activity ueber alle 7 Aktionen (status/start/stop/restart/create/delete/setStartType) + alle 4 startupType-Varianten (Automatic/AutomaticDelayedStart/Manual/Disabled). Setup-Voraussetzung: NodePilot.Api MUSS als Administrator laufen — New-Service + sc.exe delete + Set-Service -StartupType brauchen Admin-Rechte. Pre-Check-Step verifiziert Elevation upfront. Phasen: 0) Pre-Check Admin. A) Status auf 2 immer-vorhandene Services (Spooler, W32Time) — Baseline ohne Lifecycle. B) Create einen Test-Service NP-TestSuite-Svc mit binaryPath=cmd.exe /c rem. C) setStartType durch alle 4 Varianten zyklisch (Automatic → AutomaticDelayedStart → Manual → Disabled) jeweils mit Verify-Status. D) Lifecycle start → status (Running) → stop → status (Stopped) → restart → status. E) Cleanup delete. F) returnData mit Phasen-Map. Pro Phase ein log-Step der success/state aggregiert.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start test suite", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+
+          { "id": "check_admin", "type": "activity", "position": { "x": 160, "y": 200 }, "data": { "label": "pre-check: admin elevation", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "admin_check", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$id = [System.Security.Principal.WindowsIdentity]::GetCurrent()\n$p = New-Object System.Security.Principal.WindowsPrincipal($id)\n$isAdmin = $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)\n$currentUser = $id.Name\nWrite-Output \"Current user: $currentUser\"\nWrite-Output \"Is admin: $isAdmin\"\nif (-not $isAdmin) {\n  throw \"NodePilot.Api is NOT running elevated. serviceManagement requires admin rights for New-Service / sc.exe delete / Set-Service -StartupType. Restart NodePilot.Api as Administrator and rerun.\"\n}" } } },
+
+          { "id": "log_precheck", "type": "activity", "position": { "x": 160, "y": 60 }, "data": { "label": "log: pre-check result", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/serviceManagement] PHASE 0 — Elevation check passed: {{admin_check.output}}" } } },
+
+          { "id": "stat_spooler", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "status: Spooler", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_spooler", "config": { "action": "status", "serviceName": "Spooler" } } },
+          { "id": "stat_w32time", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "status: W32Time", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_w32time", "config": { "action": "status", "serviceName": "W32Time" } } },
+
+          { "id": "log_baseline", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "log: baseline phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/serviceManagement] PHASE A — Baseline status (always-present services):\nSpooler: success={{stat_spooler.success}} status={{stat_spooler.param.status}} startType={{stat_spooler.param.startType}}\nW32Time: success={{stat_w32time.success}} status={{stat_w32time.param.status}} startType={{stat_w32time.param.startType}}" } } },
+
+          { "id": "create_svc", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "create: NP-TestSuite-Svc (Manual)", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "create_svc", "config": { "action": "create", "serviceName": "NP-TestSuite-Svc", "binaryPath": "C:\\Windows\\System32\\cmd.exe /c rem", "displayName": "NP TestSuite Service", "description": "Synthetic service created by NodePilot test suite", "startupType": "Manual" } } },
+          { "id": "stat_after_create", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "status: after create", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_after_create", "config": { "action": "status", "serviceName": "NP-TestSuite-Svc" } } },
+
+          { "id": "log_create", "type": "activity", "position": { "x": 1920, "y": 400 }, "data": { "label": "log: create phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/serviceManagement] PHASE B — Create:\ncreate: success={{create_svc.success}}\nstatus after create: status={{stat_after_create.param.status}} startType={{stat_after_create.param.startType}} (expected Stopped/Manual)" } } },
+
+          { "id": "set_auto", "type": "activity", "position": { "x": 2240, "y": 400 }, "data": { "label": "setStartType: Automatic", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "set_auto", "config": { "action": "setStartType", "serviceName": "NP-TestSuite-Svc", "startupType": "Automatic" } } },
+          { "id": "stat_auto", "type": "activity", "position": { "x": 2560, "y": 400 }, "data": { "label": "status: after Automatic", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_auto", "config": { "action": "status", "serviceName": "NP-TestSuite-Svc" } } },
+          { "id": "set_delayed", "type": "activity", "position": { "x": 2880, "y": 400 }, "data": { "label": "setStartType: AutomaticDelayedStart", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "set_delayed", "config": { "action": "setStartType", "serviceName": "NP-TestSuite-Svc", "startupType": "AutomaticDelayedStart" } } },
+          { "id": "stat_delayed", "type": "activity", "position": { "x": 3200, "y": 400 }, "data": { "label": "status: after delayed", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_delayed", "config": { "action": "status", "serviceName": "NP-TestSuite-Svc" } } },
+          { "id": "set_manual", "type": "activity", "position": { "x": 3520, "y": 400 }, "data": { "label": "setStartType: Manual", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "set_manual", "config": { "action": "setStartType", "serviceName": "NP-TestSuite-Svc", "startupType": "Manual" } } },
+          { "id": "stat_manual", "type": "activity", "position": { "x": 3840, "y": 400 }, "data": { "label": "status: after Manual", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_manual", "config": { "action": "status", "serviceName": "NP-TestSuite-Svc" } } },
+          { "id": "set_disabled", "type": "activity", "position": { "x": 4160, "y": 400 }, "data": { "label": "setStartType: Disabled", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "set_disabled", "config": { "action": "setStartType", "serviceName": "NP-TestSuite-Svc", "startupType": "Disabled" } } },
+          { "id": "stat_disabled", "type": "activity", "position": { "x": 4480, "y": 400 }, "data": { "label": "status: after Disabled", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_disabled", "config": { "action": "status", "serviceName": "NP-TestSuite-Svc" } } },
+
+          { "id": "log_startup_types", "type": "activity", "position": { "x": 4800, "y": 400 }, "data": { "label": "log: startupType phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/serviceManagement] PHASE C — setStartType cycle (4 variants):\nAutomatic: set={{set_auto.success}} startType={{stat_auto.param.startType}}\nAutomaticDelayedStart: set={{set_delayed.success}} startType={{stat_delayed.param.startType}} (Set-Service kennt das nicht; sc.exe patcht den Bit — startType-Output bleibt 'Automatic')\nManual: set={{set_manual.success}} startType={{stat_manual.param.startType}}\nDisabled: set={{set_disabled.success}} startType={{stat_disabled.param.startType}}" } } },
+
+          { "id": "set_back_manual", "type": "activity", "position": { "x": 5120, "y": 400 }, "data": { "label": "setStartType: Manual (reset)", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "set_back_manual", "config": { "action": "setStartType", "serviceName": "NP-TestSuite-Svc", "startupType": "Manual" } } },
+
+          { "id": "stop_spooler", "type": "activity", "position": { "x": 5440, "y": 400 }, "data": { "label": "stop: Spooler (real svc lifecycle)", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stop_svc", "config": { "action": "stop", "serviceName": "Spooler" } } },
+          { "id": "delay_start", "type": "activity", "position": { "x": 5760, "y": 400 }, "data": { "label": "delay 2s", "activityType": "delay", "config": { "seconds": 2 } } },
+          { "id": "stat_stopped", "type": "activity", "position": { "x": 6080, "y": 400 }, "data": { "label": "status: Spooler (Stopped)", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_stopped", "config": { "action": "status", "serviceName": "Spooler" } } },
+          { "id": "start_spooler", "type": "activity", "position": { "x": 6400, "y": 400 }, "data": { "label": "start: Spooler", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "start_svc", "config": { "action": "start", "serviceName": "Spooler" } } },
+          { "id": "delay_stop", "type": "activity", "position": { "x": 6720, "y": 400 }, "data": { "label": "delay 2s", "activityType": "delay", "config": { "seconds": 2 } } },
+          { "id": "stat_running", "type": "activity", "position": { "x": 7040, "y": 400 }, "data": { "label": "status: Spooler (Running)", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_running", "config": { "action": "status", "serviceName": "Spooler" } } },
+          { "id": "restart_svc", "type": "activity", "position": { "x": 7360, "y": 400 }, "data": { "label": "restart: Spooler", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "restart_svc", "config": { "action": "restart", "serviceName": "Spooler" } } },
+          { "id": "delay_restart", "type": "activity", "position": { "x": 7680, "y": 400 }, "data": { "label": "delay 2s", "activityType": "delay", "config": { "seconds": 2 } } },
+          { "id": "stat_restarted", "type": "activity", "position": { "x": 8000, "y": 400 }, "data": { "label": "status: after restart", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "stat_restarted", "config": { "action": "status", "serviceName": "Spooler" } } },
+
+          { "id": "log_lifecycle", "type": "activity", "position": { "x": 8320, "y": 400 }, "data": { "label": "log: lifecycle phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/serviceManagement] PHASE D — Runtime lifecycle on REAL service Spooler (cmd.exe /c rem cannot be a real Windows service so we switch to Spooler for start/stop/restart):\nstop: success={{stop_svc.success}} → status={{stat_stopped.param.status}}\nstart: success={{start_svc.success}} → status={{stat_running.param.status}}\nrestart: success={{restart_svc.success}} → status={{stat_restarted.param.status}}" } } },
+
+          { "id": "stop_before_del", "type": "activity", "position": { "x": 8640, "y": 400 }, "data": { "label": "noop pre-delete (cmd svc not running)", "activityType": "log", "outputVariable": "stop_before_del", "config": { "level": "info", "message": "[TestSuite/serviceManagement] cmd.exe-based svc is not running (cannot be), so no stop needed before delete." } } },
+          { "id": "delete_svc", "type": "activity", "position": { "x": 8960, "y": 400 }, "data": { "label": "delete: NP-TestSuite-Svc", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "delete_svc", "config": { "action": "delete", "serviceName": "NP-TestSuite-Svc" } } },
+
+          { "id": "log_cleanup", "type": "activity", "position": { "x": 9280, "y": 400 }, "data": { "label": "log: cleanup phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/serviceManagement] PHASE E — Cleanup:\nstop before delete: success={{stop_before_del.success}}\ndelete: success={{delete_svc.success}} output={{delete_svc.output}}" } } },
+
+          { "id": "log_summary", "type": "activity", "position": { "x": 9600, "y": 400 }, "data": { "label": "log: SUMMARY", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/serviceManagement] SUMMARY — All 7 actions x 4 startupType variants covered.\nBaseline status: Spooler={{stat_spooler.success}} W32Time={{stat_w32time.success}}\nCreate: {{create_svc.success}} (startType={{stat_after_create.param.startType}})\nSetStartType cycle: Auto={{set_auto.success}} Delayed={{set_delayed.success}} Manual={{set_manual.success}} Disabled={{set_disabled.success}}\nLifecycle: start={{start_svc.success}} stop={{stop_svc.success}} restart={{restart_svc.success}}\nCleanup: stop={{stop_before_del.success}} delete={{delete_svc.success}}" } } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 9920, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": {
+            "baseline_spooler_status": "{{stat_spooler.param.status}}",
+            "baseline_spooler_startType": "{{stat_spooler.param.startType}}",
+            "baseline_w32time_status": "{{stat_w32time.param.status}}",
+            "create_success": "{{create_svc.success}}",
+            "create_status": "{{stat_after_create.param.status}}",
+            "create_startType": "{{stat_after_create.param.startType}}",
+            "setStartType_automatic": "{{set_auto.success}}",
+            "startType_after_automatic": "{{stat_auto.param.startType}}",
+            "setStartType_delayed": "{{set_delayed.success}}",
+            "startType_after_delayed": "{{stat_delayed.param.startType}}",
+            "setStartType_manual": "{{set_manual.success}}",
+            "startType_after_manual": "{{stat_manual.param.startType}}",
+            "setStartType_disabled": "{{set_disabled.success}}",
+            "startType_after_disabled": "{{stat_disabled.param.startType}}",
+            "lifecycle_start": "{{start_svc.success}}",
+            "lifecycle_status_after_start": "{{stat_running.param.status}}",
+            "lifecycle_stop": "{{stop_svc.success}}",
+            "lifecycle_status_after_stop": "{{stat_stopped.param.status}}",
+            "lifecycle_restart": "{{restart_svc.success}}",
+            "lifecycle_status_after_restart": "{{stat_restarted.param.status}}",
+            "cleanup_stop": "{{stop_before_del.success}}",
+            "cleanup_delete": "{{delete_svc.success}}"
+          } } } }
+        ],
+        "edges": [
+          { "id": "e0a", "source": "trig", "target": "check_admin", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e0b", "source": "check_admin", "target": "log_precheck", "type": "labeled", "data": { "label": "On Success", "condition": "check_admin.success" } },
+          { "id": "e1", "source": "check_admin", "target": "stat_spooler", "type": "labeled", "data": { "label": "On Success", "condition": "check_admin.success" } },
+          { "id": "e2", "source": "stat_spooler", "target": "stat_w32time", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "stat_w32time", "target": "log_baseline", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e4", "source": "log_baseline", "target": "create_svc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "create_svc", "target": "stat_after_create", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "stat_after_create", "target": "log_create", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e7", "source": "log_create", "target": "set_auto", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "set_auto", "target": "stat_auto", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "stat_auto", "target": "set_delayed", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "set_delayed", "target": "stat_delayed", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "stat_delayed", "target": "set_manual", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "set_manual", "target": "stat_manual", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "stat_manual", "target": "set_disabled", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "set_disabled", "target": "stat_disabled", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "stat_disabled", "target": "log_startup_types", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e16", "source": "log_startup_types", "target": "set_back_manual", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "set_back_manual", "target": "stop_spooler", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "stop_spooler", "target": "delay_start", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e19", "source": "delay_start", "target": "stat_stopped", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e20", "source": "stat_stopped", "target": "start_spooler", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e21", "source": "start_spooler", "target": "delay_stop", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e22", "source": "delay_stop", "target": "stat_running", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e23", "source": "stat_running", "target": "restart_svc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e24", "source": "restart_svc", "target": "delay_restart", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e25", "source": "delay_restart", "target": "stat_restarted", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e26", "source": "stat_restarted", "target": "log_lifecycle", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e27", "source": "log_lifecycle", "target": "stop_before_del", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e28", "source": "stop_before_del", "target": "delete_svc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e29", "source": "delete_svc", "target": "log_cleanup", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e30", "source": "log_cleanup", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e31", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

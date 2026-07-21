@@ -1,0 +1,76 @@
+{
+  "nodes": [
+    {
+      "id": "child-trigger",
+      "type": "activity",
+      "position": { "x": 200, "y": -40 },
+      "data": {
+        "label": "Manual Entry",
+        "activityType": "manualTrigger",
+        "config": {}
+      }
+    },
+    {
+      "id": "child-log",
+      "type": "activity",
+      "position": { "x": 200, "y": 100 },
+      "data": {
+        "label": "Sub-Workflow Started",
+        "activityType": "log",
+        "outputVariable": "childLog",
+        "config": {
+          "level": "info",
+          "message": "Child workflow invoked from parent"
+        }
+      }
+    },
+    {
+      "id": "child-delay",
+      "type": "activity",
+      "position": { "x": 200, "y": 240 },
+      "data": {
+        "label": "Tiny Pause",
+        "activityType": "delay",
+        "config": { "seconds": 1 }
+      }
+    },
+    {
+      "id": "child-return",
+      "type": "activity",
+      "position": { "x": 200, "y": 380 },
+      "data": {
+        "label": "Return Data",
+        "activityType": "returnData",
+        "config": {
+          "data": {
+            "result": "child-success",
+            "echoedMessage": "{{childLog.param.message}}"
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "ec0",
+      "source": "child-trigger",
+      "target": "child-log",
+      "type": "labeled",
+      "data": { "label": "Always" }
+    },
+    {
+      "id": "ec1",
+      "source": "child-log",
+      "target": "child-delay",
+      "type": "labeled",
+      "data": { "label": "On Success", "condition": "child-log.success" }
+    },
+    {
+      "id": "ec2",
+      "source": "child-delay",
+      "target": "child-return",
+      "type": "labeled",
+      "data": { "label": "Always" }
+    }
+  ]
+}

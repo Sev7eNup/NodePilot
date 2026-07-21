@@ -1,0 +1,27 @@
+{
+  "title": "Metriken",
+  "subtitle": "Native Betriebsmetriken aus Prometheus · aktualisiert alle 30 Sekunden",
+  "sections": "Metrikbereiche",
+  "sectionLabels": {
+    "missionControl": "Mission Control",
+    "workflows": "Workflows",
+    "activities": "Aktivitäten",
+    "winrm": "WinRM",
+    "triggers": "Trigger",
+    "api": "API & HTTP",
+    "runtime": "Laufzeit",
+    "security": "Sicherheit & Audit",
+    "ai": "KI / LLM",
+    "database": "Datenbank"
+  },
+  "live": "Live",
+  "paused": "Pausiert",
+  "pause": "Aktualisierung pausieren",
+  "resume": "Aktualisierung fortsetzen",
+  "refresh": "Aktualisieren",
+  "openGrafana": "In Grafana öffnen",
+  "notConfigured": "Prometheus ist nicht konfiguriert",
+  "notConfiguredDetail": "Hinterlege einen Prometheus Query Endpoint und aktiviere OpenTelemetry, damit NodePilot die Metriken anzeigen kann.",
+  "openSettings": "Zu den Einstellungen",
+  "loadFailed": "Metriken konnten nicht geladen werden"
+}

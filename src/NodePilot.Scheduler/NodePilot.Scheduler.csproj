@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\NodePilot.Engine\NodePilot.Engine.csproj" />
+    <ProjectReference Include="..\NodePilot.Data\NodePilot.Data.csproj" />
+    <ProjectReference Include="..\NodePilot.Core\NodePilot.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Quartz.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Data.SqlClient" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <!-- CVE-2025-6965: fixed SQLitePCLRaw 3.x native build (see Directory.Packages.props). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
+    <PackageReference Include="System.Diagnostics.EventLog" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="NodePilot.Engine.Tests" />
+  </ItemGroup>
+
+</Project>

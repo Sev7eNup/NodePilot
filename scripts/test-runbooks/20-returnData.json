@@ -1,0 +1,25 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] returnData - Multiple Keys & Templates",
+      "description": "Testet returnData: viele Keys, geschachtelte Templates aus mehreren Upstream-Steps, leerer-Wert-Fall, statische Konstanten ohne Template, Mix aus Strings/Booleans/Numbers (alle als String serialisiert).",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "init: many vars", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$envName = 'test-env'\n$cpuCount = '4'\n$freeGb = '500'\n$hostname = 'WIN-PC01'\n$isProd = 'false'\n$emptyVal = ''\nWrite-Output 'init-ok'" } } },
+          { "id": "wmi_os", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "wmi: OS info", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "wmi_os", "config": { "className": "Win32_OperatingSystem", "namespace": "root\\cimv2", "captureProperties": ["Caption"] } } },
+          { "id": "ret", "type": "activity", "position": { "x": 640, "y": 500 }, "data": { "label": "returnData: full snapshot", "activityType": "returnData", "config": { "data": { "envName": "{{init.param.envName}}", "cpuCount": "{{init.param.cpuCount}}", "freeGb": "{{init.param.freeGb}}", "hostname": "{{init.param.hostname}}", "isProd": "{{init.param.isProd}}", "emptyVal": "{{init.param.emptyVal}}", "osCaption": "{{wmi_os.param.Caption}}", "initOutput": "{{init.output}}", "initSuccess": "{{init.success}}", "wmiSuccess": "{{wmi_os.success}}", "staticTag": "[TestSuite-returnData-v1]", "embedded": "host={{init.param.hostname}}|env={{init.param.envName}}|os={{wmi_os.param.Caption}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "wmi_os", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "init", "target": "ret", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "wmi_os", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

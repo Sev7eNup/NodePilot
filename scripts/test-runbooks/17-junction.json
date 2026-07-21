@@ -1,0 +1,62 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] junction - All 3 Modes",
+      "description": "Testet alle 3 junction-Modes: waitAll (5 Branches), waitAny (3 Branches mit unterschiedlich langen Delays - sollte sofort weiter wenn der schnellste durch ist), waitNofM (5 Branches, requiredCount=3). Verifiziert dass die Junction tatsaechlich auf die richtige Anzahl Eingaenge wartet.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "wa1", "type": "activity", "position": { "x": 320, "y": 100 }, "data": { "label": "waitAll branch 1", "activityType": "delay", "config": { "seconds": 1 } } },
+          { "id": "wa2", "type": "activity", "position": { "x": 320, "y": 240 }, "data": { "label": "waitAll branch 2", "activityType": "delay", "config": { "seconds": 1 } } },
+          { "id": "wa3", "type": "activity", "position": { "x": 320, "y": 380 }, "data": { "label": "waitAll branch 3", "activityType": "delay", "config": { "seconds": 2 } } },
+          { "id": "wa4", "type": "activity", "position": { "x": 320, "y": 520 }, "data": { "label": "waitAll branch 4", "activityType": "delay", "config": { "seconds": 1 } } },
+          { "id": "wa5", "type": "activity", "position": { "x": 320, "y": 660 }, "data": { "label": "waitAll branch 5", "activityType": "delay", "config": { "seconds": 3 } } },
+          { "id": "j_all", "type": "activity", "position": { "x": 640, "y": 380 }, "data": { "label": "junction: waitAll (5)", "activityType": "junction", "outputVariable": "j_all", "config": { "mode": "waitAll" } } },
+          { "id": "wn1", "type": "activity", "position": { "x": 960, "y": 240 }, "data": { "label": "waitAny fast 1s", "activityType": "delay", "config": { "seconds": 1 } } },
+          { "id": "wn2", "type": "activity", "position": { "x": 960, "y": 380 }, "data": { "label": "waitAny mid 4s", "activityType": "delay", "config": { "seconds": 4 } } },
+          { "id": "wn3", "type": "activity", "position": { "x": 960, "y": 520 }, "data": { "label": "waitAny slow 8s", "activityType": "delay", "config": { "seconds": 8 } } },
+          { "id": "j_any", "type": "activity", "position": { "x": 1280, "y": 380 }, "data": { "label": "junction: waitAny (3)", "activityType": "junction", "outputVariable": "j_any", "config": { "mode": "waitAny" } } },
+          { "id": "nm1", "type": "activity", "position": { "x": 1600, "y": 100 }, "data": { "label": "nofM branch 1 (1s)", "activityType": "delay", "config": { "seconds": 1 } } },
+          { "id": "nm2", "type": "activity", "position": { "x": 1600, "y": 240 }, "data": { "label": "nofM branch 2 (2s)", "activityType": "delay", "config": { "seconds": 2 } } },
+          { "id": "nm3", "type": "activity", "position": { "x": 1600, "y": 380 }, "data": { "label": "nofM branch 3 (3s)", "activityType": "delay", "config": { "seconds": 3 } } },
+          { "id": "nm4", "type": "activity", "position": { "x": 1600, "y": 520 }, "data": { "label": "nofM branch 4 (5s)", "activityType": "delay", "config": { "seconds": 5 } } },
+          { "id": "nm5", "type": "activity", "position": { "x": 1600, "y": 660 }, "data": { "label": "nofM branch 5 (7s)", "activityType": "delay", "config": { "seconds": 7 } } },
+          { "id": "j_nofm", "type": "activity", "position": { "x": 1920, "y": 380 }, "data": { "label": "junction: waitNofM req=3", "activityType": "junction", "outputVariable": "j_nofm", "config": { "mode": "waitNofM", "requiredCount": 3 } } },
+          { "id": "ret", "type": "activity", "position": { "x": 2240, "y": 380 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "allOk": "{{j_all.success}}", "anyOk": "{{j_any.success}}", "nofmOk": "{{j_nofm.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "wa1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "wa2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "wa3", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "wa4", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "wa5", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "wa1", "target": "j_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "wa2", "target": "j_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "wa3", "target": "j_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "wa4", "target": "j_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "wa5", "target": "j_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "j_all", "target": "wn1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "j_all", "target": "wn2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "j_all", "target": "wn3", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "wn1", "target": "j_any", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "wn2", "target": "j_any", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "wn3", "target": "j_any", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "j_any", "target": "nm1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "j_any", "target": "nm2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e19", "source": "j_any", "target": "nm3", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e20", "source": "j_any", "target": "nm4", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e21", "source": "j_any", "target": "nm5", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e22", "source": "nm1", "target": "j_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e23", "source": "nm2", "target": "j_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e24", "source": "nm3", "target": "j_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e25", "source": "nm4", "target": "j_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e26", "source": "nm5", "target": "j_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e27", "source": "j_nofm", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

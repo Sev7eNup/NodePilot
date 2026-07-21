@@ -1,0 +1,1493 @@
+{
+  "_comment": "NodePilot Tech-Demo - Full Showcase. 37 nodes, ~55 edges. Covers all 17 activities, all 14 edge operators + AND/OR/NOT, all 3 junction modes (waitAll, waitAny, waitNofM), retry policies, step-timeouts, node-level disabled, breakpoint, disabled edge, sub-workflow, On-Success/On-Failure error paths. LTR layout: x-step 260, y-lane 160, main lane y=480. Build: ~5200x1120 px.",
+  "nodes": [
+    {
+      "id": "trigger-manual",
+      "type": "activity",
+      "position": {
+        "x": 0,
+        "y": 480
+      },
+      "data": {
+        "label": "Manual Trigger (4 params)",
+        "activityType": "manualTrigger",
+        "config": {
+          "title": "Run Tech-Demo",
+          "parameters": [
+            {
+              "name": "environment",
+              "type": "string",
+              "required": true,
+              "default": "staging"
+            },
+            {
+              "name": "threshold",
+              "type": "string",
+              "required": false,
+              "default": "80"
+            },
+            {
+              "name": "dryRun",
+              "type": "string",
+              "required": false,
+              "default": "false"
+            },
+            {
+              "name": "pattern",
+              "type": "string",
+              "required": false,
+              "default": "Windows.*"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "log-start",
+      "type": "activity",
+      "position": {
+        "x": 320,
+        "y": 480
+      },
+      "data": {
+        "label": "Log: workflow started",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Tech-Demo started: env={{trigger-manual.param.environment}} threshold={{trigger-manual.param.threshold}} dryRun={{trigger-manual.param.dryRun}} pattern={{trigger-manual.param.pattern}}"
+        }
+      }
+    },
+    {
+      "id": "delay-init",
+      "type": "activity",
+      "position": {
+        "x": 620,
+        "y": 480
+      },
+      "data": {
+        "label": "Delay 1s",
+        "activityType": "delay",
+        "config": {
+          "seconds": 1
+        }
+      }
+    },
+    {
+      "id": "collect-host",
+      "type": "activity",
+      "position": {
+        "x": 920,
+        "y": 480
+      },
+      "data": {
+        "label": "runScript: collect host info",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "host",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 60,
+          "retry": {
+            "maxAttempts": 2,
+            "backoff": "exponential",
+            "initialDelayMs": 500,
+            "maxDelayMs": 5000
+          },
+          "script": "# Every variable declared here is captured as {{host.param.<name>}} for downstream use.\n$hostName    = $env:COMPUTERNAME\n$userName    = $env:USERNAME\n$now         = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss')\n$osCim       = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue\n$osName      = if ($osCim) { $osCim.Caption } else { 'Microsoft Windows' }\n$osVersion   = [System.Environment]::OSVersion.Version.ToString()\n$buildNumber = ($osVersion -split '\\.')[2]\n$cpuCount    = [System.Environment]::ProcessorCount\n$drive       = Get-PSDrive C -ErrorAction SilentlyContinue\nif ($drive) {\n    $diskFreeGB  = [math]::Round($drive.Free / 1GB, 2)\n    $diskUsedGB  = [math]::Round($drive.Used / 1GB, 2)\n    $diskTotalGB = [math]::Round(($drive.Free + $drive.Used) / 1GB, 2)\n    $diskUsedPct = [math]::Round(($drive.Used / ($drive.Free + $drive.Used)) * 100, 1)\n} else {\n    $diskFreeGB = 0; $diskUsedGB = 0; $diskTotalGB = 0; $diskUsedPct = 0\n}\n$cs          = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue\n$isDomain    = if ($cs) { [bool]$cs.PartOfDomain } else { $false }\n$emptyField  = ''\n$errorLog    = ''\nWrite-Output \"Collected $cpuCount CPU(s), $diskFreeGB/$diskTotalGB GB free ($diskUsedPct% used) as $userName@$hostName (OS: $osName v$osVersion build $buildNumber, domain=$isDomain) at $now\""
+        }
+      }
+    },
+    {
+      "id": "file-exists",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 120
+      },
+      "data": {
+        "label": "fileOperation: exists?",
+        "activityType": "fileOperation",
+        "targetMachineId": "localhost",
+        "config": {
+          "operation": "exists",
+          "path": "C:\\Windows\\System32\\notepad.exe",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "svc-status",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 300
+      },
+      "data": {
+        "label": "serviceManagement: Spooler",
+        "activityType": "serviceManagement",
+        "targetMachineId": "localhost",
+        "config": {
+          "serviceName": "Spooler",
+          "action": "status",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "reg-read",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 480
+      },
+      "data": {
+        "label": "registryOperation: ProductName",
+        "activityType": "registryOperation",
+        "targetMachineId": "localhost",
+        "config": {
+          "operation": "read",
+          "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion",
+          "valueName": "ProductName",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "wmi-os",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 660
+      },
+      "data": {
+        "label": "wmiQuery: Win32_OperatingSystem",
+        "activityType": "wmiQuery",
+        "targetMachineId": "localhost",
+        "config": {
+          "className": "Win32_OperatingSystem",
+          "namespace": "root\\cimv2",
+          "timeoutSeconds": 30
+        }
+      }
+    },
+    {
+      "id": "prog-cmd",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 840
+      },
+      "data": {
+        "label": "startProgram: cmd /c echo",
+        "activityType": "startProgram",
+        "targetMachineId": "localhost",
+        "config": {
+          "filePath": "cmd.exe",
+          "arguments": "/c echo Hello from {{host.param.userName}}@{{host.param.hostName}} (cpu={{host.param.cpuCount}})",
+          "waitForExit": true,
+          "timeoutSeconds": 30,
+          "successExitCodes": "0",
+          "retry": {
+            "maxAttempts": 3,
+            "backoff": "linear",
+            "initialDelayMs": 1000,
+            "maxDelayMs": 5000
+          }
+        }
+      }
+    },
+    {
+      "id": "junction-all",
+      "type": "activity",
+      "position": {
+        "x": 1640,
+        "y": 480
+      },
+      "data": {
+        "label": "Junction: waitAll (5)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAll"
+        }
+      }
+    },
+    {
+      "id": "log-eq-neq",
+      "type": "activity",
+      "position": {
+        "x": 1980,
+        "y": 60
+      },
+      "data": {
+        "label": "Log: env is production",
+        "activityType": "log",
+        "config": {
+          "level": "warning",
+          "message": "env matches production exactly (env={{trigger-manual.param.environment}})"
+        }
+      }
+    },
+    {
+      "id": "log-range",
+      "type": "activity",
+      "position": {
+        "x": 1980,
+        "y": 240
+      },
+      "data": {
+        "label": "Log: CPU in valid range",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "CPU count within sane range: {{host.param.cpuCount}}"
+        }
+      }
+    },
+    {
+      "id": "log-disk-alarm",
+      "type": "activity",
+      "position": {
+        "x": 1980,
+        "y": 420
+      },
+      "data": {
+        "label": "Log: disk alarm",
+        "activityType": "log",
+        "config": {
+          "level": "warning",
+          "message": "Disk out of bounds: used={{host.param.diskUsedPct}}% free={{host.param.diskFreeGB}}GB threshold={{trigger-manual.param.threshold}}"
+        }
+      }
+    },
+    {
+      "id": "log-strings",
+      "type": "activity",
+      "position": {
+        "x": 1980,
+        "y": 600
+      },
+      "data": {
+        "label": "Log: OS is Windows family",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "OS is a Windows/Microsoft/Pro build matching ^10\\\\.: {{host.param.osName}} v{{host.param.osVersion}}"
+        }
+      }
+    },
+    {
+      "id": "log-unary-pos",
+      "type": "activity",
+      "position": {
+        "x": 1980,
+        "y": 780
+      },
+      "data": {
+        "label": "Log: has output & domain",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Collected host output AND machine is domain-joined: {{host.param.hostName}}"
+        }
+      }
+    },
+    {
+      "id": "log-unary-neg",
+      "type": "activity",
+      "position": {
+        "x": 1980,
+        "y": 960
+      },
+      "data": {
+        "label": "Log: empty & not dry",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "emptyField is empty AND dryRun=false (dryRun={{trigger-manual.param.dryRun}})"
+        }
+      }
+    },
+    {
+      "id": "log-not-panic",
+      "type": "activity",
+      "position": {
+        "x": 1980,
+        "y": 1140
+      },
+      "data": {
+        "label": "Log: no PANIC",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Host output contains no PANIC marker (safe)"
+        }
+      }
+    },
+    {
+      "id": "junction-match",
+      "type": "activity",
+      "position": {
+        "x": 2320,
+        "y": 480
+      },
+      "data": {
+        "label": "Junction: waitAny (7)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "rest-get",
+      "type": "activity",
+      "position": {
+        "x": 2620,
+        "y": 480
+      },
+      "data": {
+        "label": "restApi: GET httpbin",
+        "activityType": "restApi",
+        "outputVariable": "rest",
+        "config": {
+          "url": "https://httpbin.org/get?host={{host.param.hostName}}&env={{trigger-manual.param.environment}}",
+          "method": "GET",
+          "timeoutSeconds": 15,
+          "retry": {
+            "maxAttempts": 3,
+            "backoff": "exponential",
+            "initialDelayMs": 1000,
+            "maxDelayMs": 10000
+          }
+        }
+      }
+    },
+    {
+      "id": "sql-mem",
+      "type": "activity",
+      "position": {
+        "x": 2920,
+        "y": 380
+      },
+      "data": {
+        "label": "sql: SQLite SELECT 1",
+        "activityType": "sql",
+        "config": {
+          "provider": "sqlite",
+          "connectionString": "Data Source=:memory:",
+          "query": "SELECT 1 AS n, 'ok' AS msg, CURRENT_TIMESTAMP AS ts",
+          "timeoutSeconds": 15
+        }
+      }
+    },
+    {
+      "id": "log-rest-fail",
+      "type": "activity",
+      "position": {
+        "x": 2920,
+        "y": 620
+      },
+      "data": {
+        "label": "Log: REST failed",
+        "activityType": "log",
+        "config": {
+          "level": "warning",
+          "message": "REST call failed after retries - continuing on error path"
+        }
+      }
+    },
+    {
+      "id": "junction-rest",
+      "type": "activity",
+      "position": {
+        "x": 3220,
+        "y": 480
+      },
+      "data": {
+        "label": "Junction: waitAny (ok/fail)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "xml-parse",
+      "type": "activity",
+      "position": {
+        "x": 3520,
+        "y": 480
+      },
+      "data": {
+        "label": "xmlQuery: //item",
+        "activityType": "xmlQuery",
+        "config": {
+          "source": "inline",
+          "content": "<root xmlns:np=\"https://nodepilot.example\"><item id=\"1\">Alpha</item><item id=\"2\">Beta</item><np:note>ok</np:note></root>",
+          "xpath": "/root/item",
+          "namespaces": {
+            "np": "https://nodepilot.example"
+          },
+          "resultMode": "all"
+        }
+      }
+    },
+    {
+      "id": "json-parse",
+      "type": "activity",
+      "position": {
+        "x": 3820,
+        "y": 480
+      },
+      "data": {
+        "label": "jsonQuery: $.items[*].name",
+        "activityType": "jsonQuery",
+        "config": {
+          "source": "inline",
+          "content": "{\"items\":[{\"name\":\"a\"},{\"name\":\"b\"},{\"name\":\"c\"}]}",
+          "jsonPath": "$.items[*].name",
+          "resultMode": "all"
+        }
+      }
+    },
+    {
+      "id": "delay-fast",
+      "type": "activity",
+      "position": {
+        "x": 4120,
+        "y": 320
+      },
+      "data": {
+        "label": "Delay 1s (fast lane)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 1
+        }
+      }
+    },
+    {
+      "id": "delay-med",
+      "type": "activity",
+      "position": {
+        "x": 4120,
+        "y": 480
+      },
+      "data": {
+        "label": "Delay 3s (med lane)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 3
+        }
+      }
+    },
+    {
+      "id": "delay-slow",
+      "type": "activity",
+      "position": {
+        "x": 4120,
+        "y": 640
+      },
+      "data": {
+        "label": "Delay 7s (slow lane)",
+        "activityType": "delay",
+        "config": {
+          "seconds": 7
+        }
+      }
+    },
+    {
+      "id": "junction-any",
+      "type": "activity",
+      "position": {
+        "x": 4420,
+        "y": 480
+      },
+      "data": {
+        "label": "Junction: waitAny (fastest)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "delay-r1",
+      "type": "activity",
+      "position": {
+        "x": 4720,
+        "y": 320
+      },
+      "data": {
+        "label": "Delay 1s",
+        "activityType": "delay",
+        "config": {
+          "seconds": 1
+        }
+      }
+    },
+    {
+      "id": "delay-r2",
+      "type": "activity",
+      "position": {
+        "x": 4720,
+        "y": 480
+      },
+      "data": {
+        "label": "Delay 2s",
+        "activityType": "delay",
+        "config": {
+          "seconds": 2
+        }
+      }
+    },
+    {
+      "id": "delay-r3",
+      "type": "activity",
+      "position": {
+        "x": 4720,
+        "y": 640
+      },
+      "data": {
+        "label": "Delay 5s",
+        "activityType": "delay",
+        "config": {
+          "seconds": 5
+        }
+      }
+    },
+    {
+      "id": "junction-nofm",
+      "type": "activity",
+      "position": {
+        "x": 5020,
+        "y": 480
+      },
+      "data": {
+        "label": "Junction: waitNofM (2/3)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitNofM",
+          "requiredCount": 2
+        }
+      }
+    },
+    {
+      "id": "log-disabled-node",
+      "type": "activity",
+      "position": {
+        "x": 5320,
+        "y": 280
+      },
+      "data": {
+        "label": "Log (node DISABLED)",
+        "activityType": "log",
+        "disabled": true,
+        "config": {
+          "level": "warning",
+          "message": "This node is disabled at the node level - shown as Skipped."
+        }
+      }
+    },
+    {
+      "id": "log-breakpoint",
+      "type": "activity",
+      "position": {
+        "x": 5320,
+        "y": 480
+      },
+      "data": {
+        "label": "Log (BREAKPOINT)",
+        "activityType": "log",
+        "breakpoint": true,
+        "config": {
+          "level": "info",
+          "message": "Breakpoint checkpoint - inspect host.param.* and rest.param.* here"
+        }
+      }
+    },
+    {
+      "id": "email-notify",
+      "type": "activity",
+      "position": {
+        "x": 5320,
+        "y": 680
+      },
+      "data": {
+        "label": "emailNotification",
+        "activityType": "emailNotification",
+        "config": {
+          "to": "ops@example.com",
+          "subject": "NodePilot Tech-Demo run on {{host.param.hostName}} (env={{trigger-manual.param.environment}})",
+          "body": "Run completed at {{host.param.now}}\nHost: {{host.param.hostName}} ({{host.param.osName}})\nUser: {{host.param.userName}}\nCPUs: {{host.param.cpuCount}}\nDisk C: {{host.param.diskFreeGB}}/{{host.param.diskTotalGB}} GB free ({{host.param.diskUsedPct}}% used)",
+          "isHtml": false
+        }
+      }
+    },
+    {
+      "id": "log-nowhere",
+      "type": "activity",
+      "position": {
+        "x": 5320,
+        "y": 880
+      },
+      "data": {
+        "label": "Log (disabled edge target)",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "If you see this, the disabled edge fired (should not happen)."
+        }
+      }
+    },
+    {
+      "id": "junction-final",
+      "type": "activity",
+      "position": {
+        "x": 5620,
+        "y": 480
+      },
+      "data": {
+        "label": "Junction: waitAny (merge)",
+        "activityType": "junction",
+        "config": {
+          "mode": "waitAny"
+        }
+      }
+    },
+    {
+      "id": "invoke-child",
+      "type": "activity",
+      "position": {
+        "x": 5920,
+        "y": 480
+      },
+      "data": {
+        "label": "startWorkflow: Child",
+        "activityType": "startWorkflow",
+        "outputVariable": "child",
+        "config": {
+          "workflowNameOrId": "NodePilot Tech-Demo - Child",
+          "parameters": {
+            "fromHost": "{{host.param.hostName}}",
+            "tag": "{{trigger-manual.param.environment}}",
+            "now": "{{host.param.now}}"
+          },
+          "waitForCompletion": true,
+          "timeoutSeconds": 120
+        }
+      }
+    },
+    {
+      "id": "return-final",
+      "type": "activity",
+      "position": {
+        "x": 6220,
+        "y": 480
+      },
+      "data": {
+        "label": "returnData (aggregate)",
+        "activityType": "returnData",
+        "config": {
+          "data": {
+            "environment": "{{trigger-manual.param.environment}}",
+            "dryRun": "{{trigger-manual.param.dryRun}}",
+            "host": "{{host.param.hostName}}",
+            "user": "{{host.param.userName}}",
+            "osName": "{{host.param.osName}}",
+            "osVersion": "{{host.param.osVersion}}",
+            "buildNumber": "{{host.param.buildNumber}}",
+            "cpuCount": "{{host.param.cpuCount}}",
+            "diskFreeGB": "{{host.param.diskFreeGB}}",
+            "diskTotalGB": "{{host.param.diskTotalGB}}",
+            "diskUsedPct": "{{host.param.diskUsedPct}}",
+            "isDomain": "{{host.param.isDomain}}",
+            "collectedAt": "{{host.param.now}}",
+            "restStatus": "{{rest.param.statusCode}}",
+            "childResult": "{{child.param.result}}",
+            "childEcho": "{{child.param.echoedMessage}}",
+            "childRanAt": "{{child.param.childRanAt}}"
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trig-logstart",
+      "source": "trigger-manual",
+      "target": "log-start",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-logstart-delay",
+      "source": "log-start",
+      "target": "delay-init",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "log-start.success"
+      }
+    },
+    {
+      "id": "e-delay-collect",
+      "source": "delay-init",
+      "target": "collect-host",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-collect-file",
+      "source": "collect-host",
+      "target": "file-exists",
+      "type": "labeled",
+      "data": {
+        "label": "hostName set",
+        "conditionExpression": {
+          "type": "comparison",
+          "op": "isNotEmpty",
+          "left": {
+            "kind": "variable",
+            "stepId": "collect-host",
+            "field": "param",
+            "paramName": "hostName"
+          }
+        }
+      }
+    },
+    {
+      "id": "e-collect-svc",
+      "source": "collect-host",
+      "target": "svc-status",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "collect-host.success"
+      }
+    },
+    {
+      "id": "e-collect-reg",
+      "source": "collect-host",
+      "target": "reg-read",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-collect-wmi",
+      "source": "collect-host",
+      "target": "wmi-os",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "collect-host.success"
+      }
+    },
+    {
+      "id": "e-collect-prog",
+      "source": "collect-host",
+      "target": "prog-cmd",
+      "type": "labeled",
+      "data": {
+        "label": "hostName set & cpu>=1",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "isNotEmpty",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "hostName"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": ">=",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "cpuCount"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e-file-jall",
+      "source": "file-exists",
+      "target": "junction-all",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-svc-jall",
+      "source": "svc-status",
+      "target": "junction-all",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-reg-jall",
+      "source": "reg-read",
+      "target": "junction-all",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-wmi-jall",
+      "source": "wmi-os",
+      "target": "junction-all",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-prog-jall",
+      "source": "prog-cmd",
+      "target": "junction-all",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-jall-eqneq",
+      "source": "junction-all",
+      "target": "log-eq-neq",
+      "type": "labeled",
+      "data": {
+        "label": "env==prod & env!=stg",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "==",
+              "left": {
+                "kind": "variable",
+                "stepId": "trigger-manual",
+                "field": "param",
+                "paramName": "environment"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "production"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "!=",
+              "left": {
+                "kind": "variable",
+                "stepId": "trigger-manual",
+                "field": "param",
+                "paramName": "environment"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "staging"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e-jall-range",
+      "source": "junction-all",
+      "target": "log-range",
+      "type": "labeled",
+      "data": {
+        "label": "cpu in [1..128]",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": ">=",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "cpuCount"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "1"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "<=",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "cpuCount"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "128"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e-jall-diskalarm",
+      "source": "junction-all",
+      "target": "log-disk-alarm",
+      "type": "labeled",
+      "data": {
+        "label": "disk% > thr  OR  free < 1GB",
+        "conditionExpression": {
+          "type": "group",
+          "op": "OR",
+          "children": [
+            {
+              "type": "comparison",
+              "op": ">",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "diskUsedPct"
+              },
+              "right": {
+                "kind": "variable",
+                "stepId": "trigger-manual",
+                "field": "param",
+                "paramName": "threshold"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "<",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "diskFreeGB"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "1"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e-jall-strings",
+      "source": "junction-all",
+      "target": "log-strings",
+      "type": "labeled",
+      "data": {
+        "label": "contains+starts+ends+matches",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "contains",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "osName"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "Windows"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "startsWith",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "osName"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "Microsoft"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "endsWith",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "osName"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "Pro"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "matches",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "osVersion"
+              },
+              "right": {
+                "kind": "literal",
+                "value": "^10\\."
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e-jall-unarypos",
+      "source": "junction-all",
+      "target": "log-unary-pos",
+      "type": "labeled",
+      "data": {
+        "label": "output set & isDomain",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "isNotEmpty",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "output"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "isTrue",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "isDomain"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e-jall-unaryneg",
+      "source": "junction-all",
+      "target": "log-unary-neg",
+      "type": "labeled",
+      "data": {
+        "label": "empty & !dry",
+        "conditionExpression": {
+          "type": "group",
+          "op": "AND",
+          "children": [
+            {
+              "type": "comparison",
+              "op": "isEmpty",
+              "left": {
+                "kind": "variable",
+                "stepId": "collect-host",
+                "field": "param",
+                "paramName": "emptyField"
+              }
+            },
+            {
+              "type": "comparison",
+              "op": "isFalse",
+              "left": {
+                "kind": "variable",
+                "stepId": "trigger-manual",
+                "field": "param",
+                "paramName": "dryRun"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "e-jall-notpanic",
+      "source": "junction-all",
+      "target": "log-not-panic",
+      "type": "labeled",
+      "data": {
+        "label": "NOT contains PANIC",
+        "conditionExpression": {
+          "type": "not",
+          "child": {
+            "type": "comparison",
+            "op": "contains",
+            "left": {
+              "kind": "variable",
+              "stepId": "collect-host",
+              "field": "output"
+            },
+            "right": {
+              "kind": "literal",
+              "value": "PANIC"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "e-eqneq-jmatch",
+      "source": "log-eq-neq",
+      "target": "junction-match",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-range-jmatch",
+      "source": "log-range",
+      "target": "junction-match",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-diskalarm-jmatch",
+      "source": "log-disk-alarm",
+      "target": "junction-match",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-strings-jmatch",
+      "source": "log-strings",
+      "target": "junction-match",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-unarypos-jmatch",
+      "source": "log-unary-pos",
+      "target": "junction-match",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-unaryneg-jmatch",
+      "source": "log-unary-neg",
+      "target": "junction-match",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-notpanic-jmatch",
+      "source": "log-not-panic",
+      "target": "junction-match",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-jmatch-rest",
+      "source": "junction-match",
+      "target": "rest-get",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-rest-sql",
+      "source": "rest-get",
+      "target": "sql-mem",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "rest-get.success"
+      }
+    },
+    {
+      "id": "e-rest-fail",
+      "source": "rest-get",
+      "target": "log-rest-fail",
+      "type": "labeled",
+      "data": {
+        "label": "On Failure",
+        "condition": "rest-get.failed"
+      }
+    },
+    {
+      "id": "e-sql-jrest",
+      "source": "sql-mem",
+      "target": "junction-rest",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-fail-jrest",
+      "source": "log-rest-fail",
+      "target": "junction-rest",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-jrest-xml",
+      "source": "junction-rest",
+      "target": "xml-parse",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-xml-json",
+      "source": "xml-parse",
+      "target": "json-parse",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "xml-parse.success"
+      }
+    },
+    {
+      "id": "e-json-df",
+      "source": "json-parse",
+      "target": "delay-fast",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-json-dm",
+      "source": "json-parse",
+      "target": "delay-med",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-json-ds",
+      "source": "json-parse",
+      "target": "delay-slow",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-df-jany",
+      "source": "delay-fast",
+      "target": "junction-any",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-dm-jany",
+      "source": "delay-med",
+      "target": "junction-any",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-ds-jany",
+      "source": "delay-slow",
+      "target": "junction-any",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-jany-r1",
+      "source": "junction-any",
+      "target": "delay-r1",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-jany-r2",
+      "source": "junction-any",
+      "target": "delay-r2",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-jany-r3",
+      "source": "junction-any",
+      "target": "delay-r3",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-r1-jnofm",
+      "source": "delay-r1",
+      "target": "junction-nofm",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-r2-jnofm",
+      "source": "delay-r2",
+      "target": "junction-nofm",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-r3-jnofm",
+      "source": "delay-r3",
+      "target": "junction-nofm",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-jnofm-disabled",
+      "source": "junction-nofm",
+      "target": "log-disabled-node",
+      "type": "labeled",
+      "data": {
+        "label": "Always (target disabled)"
+      }
+    },
+    {
+      "id": "e-jnofm-break",
+      "source": "junction-nofm",
+      "target": "log-breakpoint",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-jnofm-email",
+      "source": "junction-nofm",
+      "target": "email-notify",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-email-nowhere",
+      "source": "email-notify",
+      "target": "log-nowhere",
+      "type": "labeled",
+      "data": {
+        "label": "DISABLED edge",
+        "disabled": true
+      }
+    },
+    {
+      "id": "e-disabled-jfinal",
+      "source": "log-disabled-node",
+      "target": "junction-final",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-break-jfinal",
+      "source": "log-breakpoint",
+      "target": "junction-final",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-email-jfinal",
+      "source": "email-notify",
+      "target": "junction-final",
+      "type": "labeled",
+      "data": {
+        "label": "Always (even on fail)"
+      }
+    },
+    {
+      "id": "e-jfinal-child",
+      "source": "junction-final",
+      "target": "invoke-child",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-child-return",
+      "source": "invoke-child",
+      "target": "return-final",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "invoke-child.success"
+      }
+    }
+  ]
+}

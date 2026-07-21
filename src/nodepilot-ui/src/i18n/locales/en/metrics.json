@@ -1,0 +1,27 @@
+{
+  "title": "Metrics",
+  "subtitle": "Native operational metrics from Prometheus · refreshed every 30 seconds",
+  "sections": "Metric areas",
+  "sectionLabels": {
+    "missionControl": "Mission Control",
+    "workflows": "Workflows",
+    "activities": "Activities",
+    "winrm": "WinRM",
+    "triggers": "Triggers",
+    "api": "API & HTTP",
+    "runtime": "Runtime",
+    "security": "Security & Audit",
+    "ai": "AI / LLM",
+    "database": "Database"
+  },
+  "live": "Live",
+  "paused": "Paused",
+  "pause": "Pause refresh",
+  "resume": "Resume refresh",
+  "refresh": "Refresh",
+  "openGrafana": "Open in Grafana",
+  "notConfigured": "Prometheus is not configured",
+  "notConfiguredDetail": "Configure a Prometheus query endpoint and enable OpenTelemetry to show metrics in NodePilot.",
+  "openSettings": "Open settings",
+  "loadFailed": "Metrics could not be loaded"
+}

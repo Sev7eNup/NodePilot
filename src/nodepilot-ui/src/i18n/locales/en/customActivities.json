@@ -1,0 +1,88 @@
+{
+  "title": "Custom Nodes",
+  "subtitle": "Reusable, PowerShell-backed activities that appear in the designer palette.",
+  "new": "New Custom Node",
+  "empty": "No custom nodes yet. Create one to add a reusable activity to the palette.",
+  "noMatch": "No custom nodes match your search.",
+  "searchPlaceholder": "Search custom nodes…",
+  "import": "Import",
+  "export": "Export",
+  "status": {
+    "enabled": "Live",
+    "draft": "Draft"
+  },
+  "columns": {
+    "name": "Name",
+    "key": "Key",
+    "status": "Status",
+    "scope": "Scope",
+    "version": "Version",
+    "updated": "Updated",
+    "actions": "Actions"
+  },
+  "scope": {
+    "remote": "Remote",
+    "local": "Local"
+  },
+  "actions": {
+    "edit": "Edit",
+    "delete": "Delete",
+    "enable": "Enable",
+    "disable": "Disable",
+    "versions": "Version history"
+  },
+  "create": "Create custom node",
+  "editTitle": "Edit custom node",
+  "lockedHint": "This node is live (enabled). Only an administrator can edit it — ask an admin to disable it first.",
+  "deleteConfirm": "Delete custom node \"{{name}}\"? Existing workflows that use it will fail until updated.",
+  "fields": {
+    "name": "Name",
+    "key": "Key (immutable)",
+    "keyHint": "Stable slug used in the activity type. Letters, digits, _ and - (max 64). Cannot be changed later.",
+    "description": "Description",
+    "icon": "Icon",
+    "color": "Accent color",
+    "engine": "PowerShell engine",
+    "runsRemote": "Runs on a target machine (WinRM)",
+    "isolated": "Run isolated (Windows Job Object)",
+    "defaultTimeout": "Default timeout (seconds)",
+    "successExitCodes": "Success exit codes (comma-separated)",
+    "script": "PowerShell template",
+    "scriptHint": "Declared inputs are injected as $variables. Publish declared outputs by setting same-named $variables in the script. Use {{globals.NAME}} for secrets - never hard-code them.",
+    "inputs": "Inputs",
+    "outputs": "Outputs"
+  },
+  "param": {
+    "name": "Name",
+    "label": "Label",
+    "type": "Type",
+    "required": "Required",
+    "default": "Default",
+    "options": "Options (comma-separated)",
+    "description": "Description",
+    "addInput": "Add input",
+    "addOutput": "Add output",
+    "remove": "Remove"
+  },
+  "iconPicker": {
+    "title": "Choose an icon",
+    "search": "Search icons…",
+    "useTyped": "Use \"{{name}}\""
+  },
+  "lintWarnings": "Security lint warnings",
+  "conflictReload": "Someone else changed this node. Reload and re-apply your changes.",
+  "importInvalidJson": "File \"{{file}}\" is not valid custom-node export JSON.",
+  "importDone": "Imported {{count}} custom node(s) (disabled — review and enable).",
+  "versionsTitle": "Version history",
+  "versions": {
+    "current": "Current state: v{{version}}",
+    "empty": "No previous versions yet — snapshots are created when changes are saved.",
+    "version": "Version",
+    "createdAt": "Created",
+    "createdBy": "By",
+    "changeNote": "Change note"
+  },
+  "rollback": "Roll back to this version",
+  "rollbackConfirm": "Roll back \"{{name}}\" to version {{version}}? The current state is snapshotted as a new version first.",
+  "rollbackDone": "Rolled back to version {{version}}."
+}

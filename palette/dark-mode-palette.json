@@ -1,0 +1,17 @@
+{
+  "bg": "#1a1a1a",
+  "bg-glow": "#2a2a2a",
+  "panel": "#262626",
+  "panel-2": "#202020",
+  "border": "#3a3a3a",
+  "text": "#ffffff",
+  "muted": "#b8b8b8",
+  "accent": "#FF0002",
+  "accent-2": "#cc0001",
+  "ok": "#34d399",
+  "err": "#f87171",
+  "warn": "#fbbf24",
+  "radius": "12px",
+  "shadow": "0 20px 60px rgba(0,0,0,.55)",
+  "code-bg": "#131313"
+}

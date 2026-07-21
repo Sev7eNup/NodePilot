@@ -1,0 +1,37 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] forEach - All Variants Live",
+      "description": "Live test of forEach activity. Each iteration invokes the existing '[TestSuite Child] startWorkflow - Echo Service' child (which takes greeting+target params). forEach maps its per-iteration item to greeting via itemParameterName=greeting, and provides target statically via the parameters block. Variants cover: items as inline JSON, items from upstream templated value, lines format, maxParallelism=1 (sequential) vs >1 (parallel), continueOnError=true, and custom itemParameterName. The success-only Echo child means fail-fast continueOnError=false is covered by unit tests, not this live runbook.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "init_items", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "rs: emit JSON list", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init_items", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$itemsJson = '[\"x1\",\"x2\",\"x3\"]'\nWrite-Output 'emitted'" } } },
+          { "id": "fe_inline_seq", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "forEach: inline 3 (seq)", "activityType": "forEach", "outputVariable": "fe_inline_seq", "config": { "childWorkflowNameOrId": "[TestSuite Child] startWorkflow - Echo Service", "items": "[\"alpha\",\"beta\",\"gamma\"]", "itemsFormat": "json", "itemParameterName": "greeting", "parameters": { "target": "fe-seq" }, "maxParallelism": 1, "continueOnError": true, "timeoutSecondsPerItem": 30 } } },
+          { "id": "fe_inline_par", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "forEach: parallel 5 (max=3)", "activityType": "forEach", "outputVariable": "fe_inline_par", "config": { "childWorkflowNameOrId": "[TestSuite Child] startWorkflow - Echo Service", "items": "[\"one\",\"two\",\"three\",\"four\",\"five\"]", "itemsFormat": "json", "itemParameterName": "greeting", "parameters": { "target": "fe-par" }, "maxParallelism": 3, "continueOnError": true, "timeoutSecondsPerItem": 30 } } },
+          { "id": "fe_upstream", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "forEach: from upstream JSON", "activityType": "forEach", "outputVariable": "fe_upstream", "config": { "childWorkflowNameOrId": "[TestSuite Child] startWorkflow - Echo Service", "items": "{{init_items.param.itemsJson}}", "itemsFormat": "json", "itemParameterName": "greeting", "parameters": { "target": "fe-upstream" }, "maxParallelism": 2, "continueOnError": true, "timeoutSecondsPerItem": 30 } } },
+          { "id": "fe_lines", "type": "activity", "position": { "x": 640, "y": 800 }, "data": { "label": "forEach: lines format", "activityType": "forEach", "outputVariable": "fe_lines", "config": { "childWorkflowNameOrId": "[TestSuite Child] startWorkflow - Echo Service", "items": "lineA\nlineB\nlineC", "itemsFormat": "lines", "itemParameterName": "greeting", "parameters": { "target": "fe-lines" }, "maxParallelism": 1, "continueOnError": true, "timeoutSecondsPerItem": 30 } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/forEach] inline_seq={{fe_inline_seq.success}} total={{fe_inline_seq.param.total}} ok={{fe_inline_seq.param.succeeded}} fail={{fe_inline_seq.param.failed}} | parallel={{fe_inline_par.success}} total={{fe_inline_par.param.total}} | upstream={{fe_upstream.success}} total={{fe_upstream.param.total}} | lines={{fe_lines.success}} total={{fe_lines.param.total}}" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "inline_seq_success": "{{fe_inline_seq.success}}", "inline_seq_total": "{{fe_inline_seq.param.total}}", "inline_par_success": "{{fe_inline_par.success}}", "inline_par_total": "{{fe_inline_par.param.total}}", "upstream_success": "{{fe_upstream.success}}", "upstream_total": "{{fe_upstream.param.total}}", "lines_success": "{{fe_lines.success}}", "lines_total": "{{fe_lines.param.total}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init_items", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init_items", "target": "fe_inline_seq", "type": "labeled", "data": { "label": "On Success", "condition": "init_items.success" } },
+          { "id": "e3", "source": "init_items", "target": "fe_inline_par", "type": "labeled", "data": { "label": "On Success", "condition": "init_items.success" } },
+          { "id": "e4", "source": "init_items", "target": "fe_upstream", "type": "labeled", "data": { "label": "On Success", "condition": "init_items.success" } },
+          { "id": "e5", "source": "init_items", "target": "fe_lines", "type": "labeled", "data": { "label": "On Success", "condition": "init_items.success" } },
+          { "id": "e6", "source": "fe_inline_seq", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "fe_inline_par", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "fe_upstream", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "fe_lines", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

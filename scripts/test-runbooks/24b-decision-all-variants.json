@@ -1,0 +1,57 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] decision - All Operators Live",
+      "description": "Live test of decision routing. An upstream runScript seeds typical workflow variables (env=prod, cpu=8, disk=72, name='kemp-pc-01', flag='true', empty=''). The decision exercises 7 cases that together cover ALL 14 comparison operators (==, !=, <, >, <=, >=, contains, startsWith, endsWith, matches, isEmpty, isNotEmpty, isTrue, isFalse) plus AND/OR/NOT grouping. Each matching case routes to its own log step. Default case fires if no other matches. Junction waitAny converges → returnData with caseTaken value.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "rs: seed vars", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$envName = 'prod'\n$cpuCount = '8'\n$diskPct = '72'\n$hostName = 'kemp-pc-01'\n$flag = 'true'\n$empty = ''\nWrite-Output 'seeded'" } } },
+          { "id": "dec", "type": "activity", "position": { "x": 700, "y": 600 }, "data": { "label": "decision: 7 cases", "activityType": "decision", "outputVariable": "dec", "config": { "defaultCaseName": "default", "cases": [
+            { "name": "case_eq_neq_and", "conditionExpression": { "group": "AND", "items": [ { "comparison": "==", "left": { "variable": { "stepId": "init", "field": "param.envName" } }, "right": { "literal": "prod" } }, { "comparison": "!=", "left": { "variable": { "stepId": "init", "field": "param.envName" } }, "right": { "literal": "stg" } } ] } },
+            { "name": "case_gte_lte", "conditionExpression": { "group": "AND", "items": [ { "comparison": ">=", "left": { "variable": { "stepId": "init", "field": "param.cpuCount" } }, "right": { "literal": "1" } }, { "comparison": "<=", "left": { "variable": { "stepId": "init", "field": "param.cpuCount" } }, "right": { "literal": "128" } } ] } },
+            { "name": "case_gt_lt_or", "conditionExpression": { "group": "OR", "items": [ { "comparison": ">", "left": { "variable": { "stepId": "init", "field": "param.diskPct" } }, "right": { "literal": "90" } }, { "comparison": "<", "left": { "variable": { "stepId": "init", "field": "param.cpuCount" } }, "right": { "literal": "1000" } } ] } },
+            { "name": "case_strings", "conditionExpression": { "group": "AND", "items": [ { "comparison": "contains", "left": { "variable": { "stepId": "init", "field": "param.hostName" } }, "right": { "literal": "kemp" } }, { "comparison": "startsWith", "left": { "variable": { "stepId": "init", "field": "param.hostName" } }, "right": { "literal": "kemp" } }, { "comparison": "endsWith", "left": { "variable": { "stepId": "init", "field": "param.hostName" } }, "right": { "literal": "-01" } }, { "comparison": "matches", "left": { "variable": { "stepId": "init", "field": "param.hostName" } }, "right": { "literal": "^kemp-pc-\\d+$" } } ] } },
+            { "name": "case_isNotEmpty_isTrue", "conditionExpression": { "group": "AND", "items": [ { "comparison": "isNotEmpty", "left": { "variable": { "stepId": "init", "field": "param.hostName" } } }, { "comparison": "isTrue", "left": { "variable": { "stepId": "init", "field": "param.flag" } } } ] } },
+            { "name": "case_isEmpty_isFalse", "conditionExpression": { "group": "AND", "items": [ { "comparison": "isEmpty", "left": { "variable": { "stepId": "init", "field": "param.empty" } } }, { "comparison": "isFalse", "left": { "variable": { "stepId": "init", "field": "param.flag" } }, "not": true } ] } },
+            { "name": "case_not_contains_panic", "conditionExpression": { "comparison": "contains", "left": { "variable": { "stepId": "init", "field": "output" } }, "right": { "literal": "PANIC" }, "not": true } }
+          ] } } },
+          { "id": "log_c1", "type": "activity", "position": { "x": 1080, "y": 60 }, "data": { "label": "log: case_eq_neq_and", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/decision] case_eq_neq_and taken: env=={{init.param.envName}} env!=stg" } } },
+          { "id": "log_c2", "type": "activity", "position": { "x": 1080, "y": 240 }, "data": { "label": "log: case_gte_lte", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/decision] case_gte_lte taken: cpu in [1..128] actual={{init.param.cpuCount}}" } } },
+          { "id": "log_c3", "type": "activity", "position": { "x": 1080, "y": 420 }, "data": { "label": "log: case_gt_lt_or", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/decision] case_gt_lt_or taken: disk>90 OR cpu<1000 disk={{init.param.diskPct}} cpu={{init.param.cpuCount}}" } } },
+          { "id": "log_c4", "type": "activity", "position": { "x": 1080, "y": 600 }, "data": { "label": "log: case_strings", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/decision] case_strings taken: host={{init.param.hostName}}" } } },
+          { "id": "log_c5", "type": "activity", "position": { "x": 1080, "y": 780 }, "data": { "label": "log: case_isNE_isT", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/decision] case_isNotEmpty_isTrue taken" } } },
+          { "id": "log_c6", "type": "activity", "position": { "x": 1080, "y": 960 }, "data": { "label": "log: case_isE_isF", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/decision] case_isEmpty_isFalse(!) taken" } } },
+          { "id": "log_c7", "type": "activity", "position": { "x": 1080, "y": 1140 }, "data": { "label": "log: NOT contains PANIC", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/decision] case_not_contains_panic taken: output={{init.output}}" } } },
+          { "id": "log_def", "type": "activity", "position": { "x": 1080, "y": 1320 }, "data": { "label": "log: default", "activityType": "log", "config": { "level": "warning", "message": "[TestSuite/decision] default case fired — no operator matched (unexpected)" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 1440, "y": 600 }, "data": { "label": "junction: waitAny", "activityType": "junction", "config": { "mode": "waitAny" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1760, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "caseTaken": "{{dec.param.caseName}}", "decisionSuccess": "{{dec.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init", "target": "dec", "type": "labeled", "data": { "label": "On Success", "condition": "init.success" } },
+          { "id": "e3", "source": "dec", "target": "log_c1", "type": "labeled", "data": { "label": "case_eq_neq_and", "condition": "dec.param.caseName == 'case_eq_neq_and'" } },
+          { "id": "e4", "source": "dec", "target": "log_c2", "type": "labeled", "data": { "label": "case_gte_lte", "condition": "dec.param.caseName == 'case_gte_lte'" } },
+          { "id": "e5", "source": "dec", "target": "log_c3", "type": "labeled", "data": { "label": "case_gt_lt_or", "condition": "dec.param.caseName == 'case_gt_lt_or'" } },
+          { "id": "e6", "source": "dec", "target": "log_c4", "type": "labeled", "data": { "label": "case_strings", "condition": "dec.param.caseName == 'case_strings'" } },
+          { "id": "e7", "source": "dec", "target": "log_c5", "type": "labeled", "data": { "label": "isNE+isT", "condition": "dec.param.caseName == 'case_isNotEmpty_isTrue'" } },
+          { "id": "e8", "source": "dec", "target": "log_c6", "type": "labeled", "data": { "label": "isE+isF(!)", "condition": "dec.param.caseName == 'case_isEmpty_isFalse'" } },
+          { "id": "e9", "source": "dec", "target": "log_c7", "type": "labeled", "data": { "label": "NOT contains", "condition": "dec.param.caseName == 'case_not_contains_panic'" } },
+          { "id": "e10", "source": "dec", "target": "log_def", "type": "labeled", "data": { "label": "default", "condition": "dec.param.caseName == 'default'" } },
+          { "id": "e11", "source": "log_c1", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "log_c2", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "log_c3", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "log_c4", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "log_c5", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "log_c6", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "log_c7", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "log_def", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e19", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

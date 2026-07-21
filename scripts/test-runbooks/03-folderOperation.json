@@ -1,0 +1,41 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] folderOperation - All Variants",
+      "description": "Testet alle folderOperation-Varianten: create, exists, list, copy, move, rename, delete. Sandbox unter C:\\Temp\\NP-TestSuite\\folder-op; cleanup am Ende.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "fo_create", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "folderOp: create A", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_create", "config": { "operation": "create", "path": "C:\\Temp\\NP-TestSuite\\folder-op\\A" } } },
+          { "id": "fo_create_b", "type": "activity", "position": { "x": 320, "y": 580 }, "data": { "label": "folderOp: create A\\sub", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_create_b", "config": { "operation": "create", "path": "C:\\Temp\\NP-TestSuite\\folder-op\\A\\sub" } } },
+          { "id": "fo_exists_t", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "folderOp: exists (true)", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_exists_t", "config": { "operation": "exists", "path": "C:\\Temp\\NP-TestSuite\\folder-op\\A" } } },
+          { "id": "fo_exists_f", "type": "activity", "position": { "x": 640, "y": 580 }, "data": { "label": "folderOp: exists (false)", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_exists_f", "config": { "operation": "exists", "path": "C:\\Temp\\NP-TestSuite\\folder-op\\nonexistent" } } },
+          { "id": "fo_list", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "folderOp: list children", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_list", "config": { "operation": "list", "path": "C:\\Temp\\NP-TestSuite\\folder-op\\A" } } },
+          { "id": "fo_copy", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "folderOp: copy A -> B", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_copy", "config": { "operation": "copy", "path": "C:\\Temp\\NP-TestSuite\\folder-op\\A", "destination": "C:\\Temp\\NP-TestSuite\\folder-op\\B" } } },
+          { "id": "fo_rename", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "folderOp: rename B -> B-renamed", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_rename", "config": { "operation": "rename", "path": "C:\\Temp\\NP-TestSuite\\folder-op\\B", "newName": "B-renamed" } } },
+          { "id": "fo_move", "type": "activity", "position": { "x": 1920, "y": 400 }, "data": { "label": "folderOp: move B-renamed -> C", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "fo_move", "config": { "operation": "move", "path": "C:\\Temp\\NP-TestSuite\\folder-op\\B-renamed", "destination": "C:\\Temp\\NP-TestSuite\\folder-op\\C" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 2240, "y": 460 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "fo_del_root", "type": "activity", "position": { "x": 2560, "y": 460 }, "data": { "label": "folderOp: delete sandbox root", "activityType": "folderOperation", "targetMachineId": "localhost", "outputVariable": "cleanup", "config": { "operation": "delete", "path": "C:\\Temp\\NP-TestSuite\\folder-op" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 2880, "y": 460 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "list": "{{fo_list.output}}", "existsT": "{{fo_exists_t.output}}", "existsF": "{{fo_exists_f.output}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "fo_create", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "fo_create", "target": "fo_create_b", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "fo_create_b", "target": "fo_exists_t", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "fo_create_b", "target": "fo_exists_f", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "fo_exists_t", "target": "fo_list", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "fo_list", "target": "fo_copy", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "fo_copy", "target": "fo_rename", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "fo_rename", "target": "fo_move", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "fo_move", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "fo_exists_f", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "junc", "target": "fo_del_root", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "fo_del_root", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

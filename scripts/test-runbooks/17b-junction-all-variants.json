@@ -1,0 +1,56 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] junction - All Variants Live",
+      "description": "Live test of junction activity in all three modes: waitAll (blocks until ALL upstream complete), waitAny (fires on FIRST upstream complete, siblings cancelled into Skipped), waitNofM (fires when requiredCount upstream succeed). Each junction is fed by 3 parallel runScript branches with different durations (Start-Sleep 1/2/3) so the modes can be observed: waitAll completes after slowest (~3s), waitAny after fastest (~1s), waitNofM with requiredCount=2 after second-fastest (~2s). Final log_summary reports each mode's behaviour.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "a_fast", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "rs: 1s", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "a_fast", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Start-Sleep 1; Write-Output 'fast-1s'" } } },
+          { "id": "a_med", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "rs: 2s", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "a_med", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Start-Sleep 2; Write-Output 'med-2s'" } } },
+          { "id": "a_slow", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "rs: 3s", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "a_slow", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Start-Sleep 3; Write-Output 'slow-3s'" } } },
+          { "id": "junc_all", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "outputVariable": "junc_all", "config": { "mode": "waitAll" } } },
+          { "id": "log_all", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "log: after waitAll", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/junction] waitAll fired: fast={{a_fast.success}} med={{a_med.success}} slow={{a_slow.success}}" } } },
+          { "id": "b_fast", "type": "activity", "position": { "x": 1280, "y": 200 }, "data": { "label": "rs: 1s (any)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "b_fast", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Start-Sleep 1; Write-Output 'b-fast'" } } },
+          { "id": "b_med", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "rs: 2s (any)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "b_med", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Start-Sleep 2; Write-Output 'b-med'" } } },
+          { "id": "b_slow", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "rs: 3s (any)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "b_slow", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Start-Sleep 3; Write-Output 'b-slow'" } } },
+          { "id": "junc_any", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "junction: waitAny", "activityType": "junction", "outputVariable": "junc_any", "config": { "mode": "waitAny" } } },
+          { "id": "log_any", "type": "activity", "position": { "x": 1920, "y": 400 }, "data": { "label": "log: after waitAny", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/junction] waitAny fired — junc={{junc_any.success}} fastest={{b_fast.success}} (siblings b_med/b_slow are Skipped at the moment log_any runs and their fields are not resolvable yet — this is expected)" } } },
+          { "id": "c_a", "type": "activity", "position": { "x": 2240, "y": 200 }, "data": { "label": "rs: 1s (NofM)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "c_a", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Start-Sleep 1; Write-Output 'c-a'" } } },
+          { "id": "c_b", "type": "activity", "position": { "x": 2240, "y": 400 }, "data": { "label": "rs: 2s (NofM)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "c_b", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Start-Sleep 2; Write-Output 'c-b'" } } },
+          { "id": "c_c", "type": "activity", "position": { "x": 2240, "y": 600 }, "data": { "label": "rs: 3s (NofM)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "c_c", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Start-Sleep 3; Write-Output 'c-c'" } } },
+          { "id": "junc_nofm", "type": "activity", "position": { "x": 2560, "y": 400 }, "data": { "label": "junction: waitNofM (2/3)", "activityType": "junction", "outputVariable": "junc_nofm", "config": { "mode": "waitNofM", "requiredCount": 2 } } },
+          { "id": "log_nofm", "type": "activity", "position": { "x": 2880, "y": 400 }, "data": { "label": "log: after waitNofM", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/junction] waitNofM(2/3) fired — junc={{junc_nofm.success}} a={{c_a.success}} b={{c_b.success}} (c may still be running at this point and is not resolved here)" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 3200, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "waitAll_done": "{{junc_all.success}}", "waitAny_done": "{{junc_any.success}}", "waitNofM_done": "{{junc_nofm.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "a_fast", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "a_med", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "a_slow", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "a_fast", "target": "junc_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "a_med", "target": "junc_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "a_slow", "target": "junc_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "junc_all", "target": "log_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "log_all", "target": "b_fast", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "log_all", "target": "b_med", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "log_all", "target": "b_slow", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "b_fast", "target": "junc_any", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "b_med", "target": "junc_any", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "b_slow", "target": "junc_any", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "junc_any", "target": "log_any", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "log_any", "target": "c_a", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "log_any", "target": "c_b", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "log_any", "target": "c_c", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "c_a", "target": "junc_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e19", "source": "c_b", "target": "junc_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e20", "source": "c_c", "target": "junc_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e21", "source": "junc_nofm", "target": "log_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e22", "source": "log_nofm", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

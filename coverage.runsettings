@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Coverage settings for `dotnet test` with the XPlat Code Coverage collector.
+
+  Excludes auto-generated / non-meaningfully-testable code so the reported number reflects
+  hand-written production logic: EF Core migrations plus the model snapshot (codegen,
+  executed only by Migrate), and anything marked GeneratedCode / ExcludeFromCodeCoverage.
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <ExcludeByAttribute>GeneratedCodeAttribute,ExcludeFromCodeCoverageAttribute,CompilerGeneratedAttribute</ExcludeByAttribute>
+          <ExcludeByFile>**/Migrations/*.cs</ExcludeByFile>
+          <SkipAutoProps>true</SkipAutoProps>
+          <Exclude>[*]NodePilot.Data.Migrations.*</Exclude>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

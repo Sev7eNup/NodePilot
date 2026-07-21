@@ -1,0 +1,285 @@
+{
+  "_comment": "NodePilot Stress-Test. 16 Nodes, 25 Edges. Fächert nach log-start auf 11 parallele Branches auf: 6× runScript CPU-Burn (Primes, sqrt-Summe, SHA256, Regex-Churn, Matrix-Mult, Sort), 2× jsonQuery, 2× xmlQuery, 1× delay 55s. Alle CPU-Skripte sind Stopwatch-gegated auf 55s (CPU-unabhängige Laufzeit). Gesamt-Laufzeit: ~55-60s. runScript-Branches nutzen targetMachineId='localhost' → In-Process-Bypass, kein WinRM nötig. Layout: Main-Lane y=900, x-Step 400, y-Lane 180. Größe: 1780×1800 px.",
+  "nodes": [
+    {
+      "id": "trigger-manual",
+      "type": "activity",
+      "position": { "x": 0, "y": 900 },
+      "data": {
+        "label": "Manual Trigger",
+        "activityType": "manualTrigger",
+        "config": {
+          "title": "Run Stress-Test",
+          "parameters": [
+            {
+              "name": "label",
+              "type": "string",
+              "required": false,
+              "default": "ad-hoc"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "log-start",
+      "type": "activity",
+      "position": { "x": 340, "y": 900 },
+      "data": {
+        "label": "Log: stress start",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Stress-Test gestartet (label={{trigger-manual.param.label}}) — 11 parallele Branches, je ~55s"
+        }
+      }
+    },
+    {
+      "id": "burn-primes",
+      "type": "activity",
+      "position": { "x": 740, "y": 0 },
+      "data": {
+        "label": "runScript: prime sieve (55s)",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "burnPrimes",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 120,
+          "script": "$sw = [Diagnostics.Stopwatch]::StartNew()\n$passes = 0\n$totalPrimes = 0\nwhile ($sw.Elapsed.TotalSeconds -lt 55) {\n  $N = 2000000\n  $isComp = New-Object 'bool[]' ($N + 1)\n  for ($i = 2; $i -le [int][math]::Sqrt($N); $i++) {\n    if (-not $isComp[$i]) {\n      for ($j = $i * $i; $j -le $N; $j += $i) { $isComp[$j] = $true }\n    }\n  }\n  $primeCount = 0\n  for ($i = 2; $i -le $N; $i++) { if (-not $isComp[$i]) { $primeCount++ } }\n  $totalPrimes += $primeCount\n  $passes++\n}\n$branch = 'primes'\n$elapsed = [math]::Round($sw.Elapsed.TotalSeconds, 2)\nWrite-Host \"primes passes=$passes totalPrimes=$totalPrimes elapsed=${elapsed}s\""
+        }
+      }
+    },
+    {
+      "id": "burn-sqrt",
+      "type": "activity",
+      "position": { "x": 740, "y": 180 },
+      "data": {
+        "label": "runScript: sqrt sum (55s)",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "burnSqrt",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 120,
+          "script": "$sw = [Diagnostics.Stopwatch]::StartNew()\n$passes = 0\n$sum = 0.0\nwhile ($sw.Elapsed.TotalSeconds -lt 55) {\n  for ($i = 1; $i -le 5000000; $i++) { $sum += [math]::Sqrt($i) }\n  $passes++\n}\n$branch = 'sqrt'\n$total = [math]::Round($sum, 2)\n$elapsed = [math]::Round($sw.Elapsed.TotalSeconds, 2)\nWrite-Host \"sqrt passes=$passes sum=$total elapsed=${elapsed}s\""
+        }
+      }
+    },
+    {
+      "id": "burn-hash",
+      "type": "activity",
+      "position": { "x": 740, "y": 360 },
+      "data": {
+        "label": "runScript: SHA256 chain (55s)",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "burnHash",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 120,
+          "script": "$sw = [Diagnostics.Stopwatch]::StartNew()\n$sha = [System.Security.Cryptography.SHA256]::Create()\n$rounds = 0\n$prev = [System.Text.Encoding]::UTF8.GetBytes('nodepilot-seed')\nwhile ($sw.Elapsed.TotalSeconds -lt 55) {\n  for ($i = 0; $i -lt 50000; $i++) { $prev = $sha.ComputeHash($prev) }\n  $rounds += 50000\n}\n$sha.Dispose()\n$branch = 'hash'\n$finalHex = ($prev | ForEach-Object { $_.ToString('x2') }) -join ''\n$elapsed = [math]::Round($sw.Elapsed.TotalSeconds, 2)\nWrite-Host \"hash rounds=$rounds elapsed=${elapsed}s final=$finalHex\""
+        }
+      }
+    },
+    {
+      "id": "burn-regex",
+      "type": "activity",
+      "position": { "x": 740, "y": 540 },
+      "data": {
+        "label": "runScript: regex churn (55s)",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "burnRegex",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 120,
+          "script": "$sw = [Diagnostics.Stopwatch]::StartNew()\n$hits = 0\n$total = 0\n$pattern = '(?i)error\\s+code\\s+(\\d{3,5})'\n$rng = [System.Random]::new(42)\nwhile ($sw.Elapsed.TotalSeconds -lt 55) {\n  for ($i = 0; $i -lt 25000; $i++) {\n    $line = \"log line $total level=\" + @('info','warn','error')[$rng.Next(0,3)] + \" error code \" + $rng.Next(100,99999) + \" payload=\" + ([guid]::NewGuid())\n    if ($line -match $pattern) { $hits++ }\n    $total++\n  }\n}\n$branch = 'regex'\n$elapsed = [math]::Round($sw.Elapsed.TotalSeconds, 2)\nWrite-Host \"regex hits=$hits / total=$total elapsed=${elapsed}s\""
+        }
+      }
+    },
+    {
+      "id": "burn-matrix",
+      "type": "activity",
+      "position": { "x": 740, "y": 720 },
+      "data": {
+        "label": "runScript: matrix mult (55s)",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "burnMatrix",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 120,
+          "script": "$sw = [Diagnostics.Stopwatch]::StartNew()\n$passes = 0\n$trace = 0.0\n$rng = [System.Random]::new(1)\n$N = 200\nwhile ($sw.Elapsed.TotalSeconds -lt 55) {\n  $A = New-Object 'double[,]' $N, $N\n  $B = New-Object 'double[,]' $N, $N\n  $C = New-Object 'double[,]' $N, $N\n  for ($i = 0; $i -lt $N; $i++) { for ($j = 0; $j -lt $N; $j++) { $A[$i,$j] = $rng.NextDouble(); $B[$i,$j] = $rng.NextDouble() } }\n  for ($i = 0; $i -lt $N; $i++) {\n    for ($j = 0; $j -lt $N; $j++) {\n      $s = 0.0\n      for ($k = 0; $k -lt $N; $k++) { $s += $A[$i,$k] * $B[$k,$j] }\n      $C[$i,$j] = $s\n    }\n  }\n  for ($i = 0; $i -lt $N; $i++) { $trace += $C[$i,$i] }\n  $passes++\n}\n$branch = 'matrix'\n$traceRounded = [math]::Round($trace, 4)\n$elapsed = [math]::Round($sw.Elapsed.TotalSeconds, 2)\nWrite-Host \"matrix passes=$passes trace=$traceRounded elapsed=${elapsed}s\""
+        }
+      }
+    },
+    {
+      "id": "burn-sort",
+      "type": "activity",
+      "position": { "x": 740, "y": 900 },
+      "data": {
+        "label": "runScript: sort churn (55s)",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "burnSort",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 120,
+          "script": "$sw = [Diagnostics.Stopwatch]::StartNew()\n$N = 1000000\n$rng = [System.Random]::new(7)\n$passes = 0\n$lastMid = 0\nwhile ($sw.Elapsed.TotalSeconds -lt 55) {\n  $arr = New-Object 'int[]' $N\n  for ($i = 0; $i -lt $N; $i++) { $arr[$i] = $rng.Next() }\n  [Array]::Sort($arr)\n  $lastMid = $arr[[int]($N/2)]\n  $passes++\n}\n$branch = 'sort'\n$elapsed = [math]::Round($sw.Elapsed.TotalSeconds, 2)\nWrite-Host \"sort passes=$passes mid=$lastMid elapsed=${elapsed}s\""
+        }
+      }
+    },
+    {
+      "id": "json-filter",
+      "type": "activity",
+      "position": { "x": 740, "y": 1080 },
+      "data": {
+        "label": "jsonQuery: filter >50",
+        "activityType": "jsonQuery",
+        "outputVariable": "jsonFilter",
+        "config": {
+          "source": "inline",
+          "content": "{\"items\":[{\"id\":1,\"val\":3,\"tag\":\"a\"},{\"id\":2,\"val\":87,\"tag\":\"b\"},{\"id\":3,\"val\":42,\"tag\":\"a\"},{\"id\":4,\"val\":99,\"tag\":\"c\"},{\"id\":5,\"val\":14,\"tag\":\"a\"},{\"id\":6,\"val\":63,\"tag\":\"b\"},{\"id\":7,\"val\":71,\"tag\":\"a\"},{\"id\":8,\"val\":8,\"tag\":\"c\"},{\"id\":9,\"val\":55,\"tag\":\"b\"},{\"id\":10,\"val\":22,\"tag\":\"a\"},{\"id\":11,\"val\":91,\"tag\":\"c\"},{\"id\":12,\"val\":37,\"tag\":\"b\"},{\"id\":13,\"val\":68,\"tag\":\"a\"},{\"id\":14,\"val\":4,\"tag\":\"c\"},{\"id\":15,\"val\":76,\"tag\":\"b\"},{\"id\":16,\"val\":29,\"tag\":\"a\"},{\"id\":17,\"val\":83,\"tag\":\"c\"},{\"id\":18,\"val\":51,\"tag\":\"b\"},{\"id\":19,\"val\":12,\"tag\":\"a\"},{\"id\":20,\"val\":95,\"tag\":\"c\"}]}",
+          "jsonPath": "$.items[?(@.val > 50)].id",
+          "resultMode": "all"
+        }
+      }
+    },
+    {
+      "id": "json-deep",
+      "type": "activity",
+      "position": { "x": 740, "y": 1260 },
+      "data": {
+        "label": "jsonQuery: deep $..name",
+        "activityType": "jsonQuery",
+        "outputVariable": "jsonDeep",
+        "config": {
+          "source": "inline",
+          "content": "{\"org\":{\"name\":\"root\",\"children\":[{\"name\":\"eng\",\"children\":[{\"name\":\"platform\",\"children\":[{\"name\":\"alice\"},{\"name\":\"bob\"}]},{\"name\":\"frontend\",\"children\":[{\"name\":\"carol\"},{\"name\":\"dan\"}]}]},{\"name\":\"ops\",\"children\":[{\"name\":\"sre\",\"children\":[{\"name\":\"eve\"},{\"name\":\"frank\"}]},{\"name\":\"netops\",\"children\":[{\"name\":\"gina\"},{\"name\":\"hank\"}]}]},{\"name\":\"sales\",\"children\":[{\"name\":\"emea\",\"children\":[{\"name\":\"ivy\"}]},{\"name\":\"amer\",\"children\":[{\"name\":\"jack\"}]}]}]}}",
+          "jsonPath": "$..name",
+          "resultMode": "all"
+        }
+      }
+    },
+    {
+      "id": "xml-filter",
+      "type": "activity",
+      "position": { "x": 740, "y": 1440 },
+      "data": {
+        "label": "xmlQuery: //host[@up='y']",
+        "activityType": "xmlQuery",
+        "outputVariable": "xmlFilter",
+        "config": {
+          "source": "inline",
+          "content": "<hosts><host name='h01' up='y' cpu='12'/><host name='h02' up='n' cpu='8'/><host name='h03' up='y' cpu='32'/><host name='h04' up='y' cpu='16'/><host name='h05' up='n' cpu='4'/><host name='h06' up='y' cpu='64'/><host name='h07' up='y' cpu='24'/><host name='h08' up='n' cpu='2'/><host name='h09' up='y' cpu='48'/><host name='h10' up='y' cpu='128'/></hosts>",
+          "xpath": "//host[@up='y']/@name",
+          "resultMode": "all"
+        }
+      }
+    },
+    {
+      "id": "xml-deep",
+      "type": "activity",
+      "position": { "x": 740, "y": 1620 },
+      "data": {
+        "label": "xmlQuery: cpu sum",
+        "activityType": "xmlQuery",
+        "outputVariable": "xmlDeep",
+        "config": {
+          "source": "inline",
+          "content": "<hosts><host name='h01' up='y' cpu='12'/><host name='h02' up='n' cpu='8'/><host name='h03' up='y' cpu='32'/><host name='h04' up='y' cpu='16'/><host name='h05' up='n' cpu='4'/><host name='h06' up='y' cpu='64'/><host name='h07' up='y' cpu='24'/><host name='h08' up='n' cpu='2'/><host name='h09' up='y' cpu='48'/><host name='h10' up='y' cpu='128'/></hosts>",
+          "xpath": "sum(//host[@up='y']/@cpu)",
+          "resultMode": "single"
+        }
+      }
+    },
+    {
+      "id": "delay-55s",
+      "type": "activity",
+      "position": { "x": 740, "y": 1800 },
+      "data": {
+        "label": "Delay 55s",
+        "activityType": "delay",
+        "config": { "seconds": 55 }
+      }
+    },
+    {
+      "id": "junction-all",
+      "type": "junction",
+      "position": { "x": 1140, "y": 900 },
+      "data": {
+        "label": "Junction: waitAll (11)",
+        "activityType": "junction",
+        "config": { "mode": "waitAll" }
+      }
+    },
+    {
+      "id": "log-summary",
+      "type": "activity",
+      "position": { "x": 1480, "y": 900 },
+      "data": {
+        "label": "Log: summary",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Stress-Test fertig — primesPasses={{burnPrimes.param.passes}} sqrtPasses={{burnSqrt.param.passes}} hashRounds={{burnHash.param.rounds}} regexHits={{burnRegex.param.hits}} matrixPasses={{burnMatrix.param.passes}} sortPasses={{burnSort.param.passes}} jsonFilterCount={{jsonFilter.param.count}} jsonDeepCount={{jsonDeep.param.count}} xmlUpCount={{xmlFilter.param.count}} xmlCpuSum={{xmlDeep.param.result}}"
+        }
+      }
+    },
+    {
+      "id": "return-data",
+      "type": "activity",
+      "position": { "x": 1780, "y": 900 },
+      "data": {
+        "label": "returnData",
+        "activityType": "returnData",
+        "config": {
+          "data": {
+            "label": "{{trigger-manual.param.label}}",
+            "primesPasses": "{{burnPrimes.param.passes}}",
+            "sqrtPasses": "{{burnSqrt.param.passes}}",
+            "hashRounds": "{{burnHash.param.rounds}}",
+            "regexHits": "{{burnRegex.param.hits}}",
+            "matrixPasses": "{{burnMatrix.param.passes}}",
+            "sortPasses": "{{burnSort.param.passes}}",
+            "jsonFilterCount": "{{jsonFilter.param.count}}",
+            "jsonDeepCount": "{{jsonDeep.param.count}}",
+            "xmlUpCount": "{{xmlFilter.param.count}}",
+            "xmlCpuSum": "{{xmlDeep.param.result}}"
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e-trig-log",         "source": "trigger-manual", "target": "log-start",    "type": "labeled", "data": { "label": "Always" } },
+
+    { "id": "e-log-primes",       "source": "log-start", "target": "burn-primes",  "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-sqrt",         "source": "log-start", "target": "burn-sqrt",    "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-hash",         "source": "log-start", "target": "burn-hash",    "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-regex",        "source": "log-start", "target": "burn-regex",   "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-matrix",       "source": "log-start", "target": "burn-matrix",  "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-sort",         "source": "log-start", "target": "burn-sort",    "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-jsonfilter",   "source": "log-start", "target": "json-filter",  "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-jsondeep",     "source": "log-start", "target": "json-deep",    "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-xmlfilter",    "source": "log-start", "target": "xml-filter",   "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-xmldeep",      "source": "log-start", "target": "xml-deep",     "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-log-delay",        "source": "log-start", "target": "delay-55s",    "type": "labeled", "data": { "label": "Always" } },
+
+    { "id": "e-primes-junc",      "source": "burn-primes", "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "burn-primes.success" } },
+    { "id": "e-sqrt-junc",        "source": "burn-sqrt",   "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "burn-sqrt.success" } },
+    { "id": "e-hash-junc",        "source": "burn-hash",   "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "burn-hash.success" } },
+    { "id": "e-regex-junc",       "source": "burn-regex",  "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "burn-regex.success" } },
+    { "id": "e-matrix-junc",      "source": "burn-matrix", "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "burn-matrix.success" } },
+    { "id": "e-sort-junc",        "source": "burn-sort",   "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "burn-sort.success" } },
+    { "id": "e-jsonfilter-junc",  "source": "json-filter", "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "json-filter.success" } },
+    { "id": "e-jsondeep-junc",    "source": "json-deep",   "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "json-deep.success" } },
+    { "id": "e-xmlfilter-junc",   "source": "xml-filter",  "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "xml-filter.success" } },
+    { "id": "e-xmldeep-junc",     "source": "xml-deep",    "target": "junction-all", "type": "labeled", "data": { "label": "On Success", "condition": "xml-deep.success" } },
+    { "id": "e-delay-junc",       "source": "delay-55s",   "target": "junction-all", "type": "labeled", "data": { "label": "Always" } },
+
+    { "id": "e-junc-summary",     "source": "junction-all", "target": "log-summary", "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-summary-return",   "source": "log-summary",  "target": "return-data", "type": "labeled", "data": { "label": "Always" } }
+  ]
+}

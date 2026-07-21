@@ -1,0 +1,177 @@
+# Secrets — never commit
+**/jwt-secret.key
+**/admin-setup.token
+*.pfx
+*.pem
+*.p12
+.env
+.env.local
+# ASP.NET DataProtection key ring (DataProtection:KeyRingPath default) — crypto
+# key material generated at runtime next to the API; committing it would leak
+# the keys that protect auth cookies and OIDC tickets.
+**/data-protection-keys/
+
+# Runtime-mutable settings (Admin → Settings → SMTP/LLM persistence).
+# Generated at runtime by SettingsController; can contain SMTP/LDAP/LLM passwords
+# in production. Source of truth lives in deploy/ templates, not in git history.
+**/appsettings.runtime.json
+**/appsettings.runtime.json.bak*
+
+# Build output
+bin/
+obj/
+dist/
+*.suo
+*.user
+.vs/
+.build-obj/
+.build-out/
+.dotnet-cli-home/
+
+# SQLite file left behind by sql-activity tests that use a file-backed Data Source
+# (the real app uses Postgres/SQL Server; tests otherwise use in-memory SQLite).
+test.db
+**/test.db
+
+# Local run logs (stress tests, ad-hoc backend runs)
+.runlogs/
+**/backend.log
+**/backend.err.log
+**/backend.out.log
+# Hidden run-log/pid files left by ad-hoc dev launches
+# (.api.log, .api-pg.log, .ui.log, .stress-test.log, .api.pid, ...)
+/.api*.log
+/.api*.err
+/.api*.pid
+/.ui*.log
+/.ui*.err
+/.ui*.pid
+/.stress-test*.log
+/.stress-test*.err
+/.stress-test*.pid
+/.migrate-tool/
+
+# Visible run logs from ad-hoc launches (api-base.log, stress-iter1.log, ui-fresh.log, ...)
+/api-*.log
+/api-*.err
+/api-*.err.log
+/stress-*.log
+/stress-*.err
+/ui-*.log
+/ui-*.err
+**/api.log
+# Dev-server logs from the `np run …`-style launches in CLAUDE.md
+/logs-backend-dev.log
+/logs-backend-dev.err.log
+/logs-backend-dev.out.log
+/logs-frontend-dev.log
+/logs-frontend-dev.err.log
+/logs-frontend-dev.out.log
+/logs-test/
+
+# Coverage reports — locally-generated HTML/text from
+# `dotnet test --collect:"XPlat Code Coverage"` + reportgenerator (Backend)
+# and `npm run test:coverage` (Frontend). Re-generated on demand; not for the repo.
+/coverage-baseline/
+/coverage-post/
+/coverage-report/
+/coverage/
+
+# Personal/local-only files (machines snapshot, copied hosts file)
+/machines.json
+**/flori-hosts-copy.txt
+
+# Personal workflow scratch under scripts/ — exported via the UI for ad-hoc work,
+# not committed. Test-Workflows for the suite still live under scripts/test-*-workflow.json
+# and scripts/test-master-*.json (those ARE tracked).
+/scripts/dog-care-workflow.json
+/scripts/fi-letters-workflow.json
+/scripts/male-health-workflow.json
+/scripts/rose-garden-care-workflow.json
+
+# Output of `Import-*-Runbook.ps1`-style scripts — contains local DB Guids that
+# never match another machine. Re-generated whenever the runbook library is
+# re-imported, so it has no business living in the repo.
+/scripts/test-runbooks/.import-result.json
+
+# Python cache (stress test harness)
+**/__pycache__/
+
+# Backend coverage output (dotnet test --collect:"XPlat Code Coverage" + reportgenerator)
+TestResults/
+coverage-report/
+# Playwright reporter output (root-level .last-run.json etc.)
+/test-results/
+
+# Ad-hoc scratch area for local experiments (parked API logs, recheck copies, ...)
+/tmp/
+
+# SQLite runtime DB + ad-hoc backups
+**/nodepilot.db
+**/nodepilot.db-*
+**/nodepilot.db.bak-*
+**/test-migrate.db
+**/test-migrate.db-*
+
+# dev-reset.ps1 transient logs (build/test/start output, kept locally for debugging)
+.dev-logs/
+
+# Local artefact + backup folders produced by Build-Artifact.ps1 / manual zips
+out/
+backup/
+# …but the system-configuration backup feature (ADR 0001) lives in source folders named
+# "Backup" — re-include those so the generic backup/ rule doesn't swallow real code.
+!src/NodePilot.Api/Services/Backup/
+!src/NodePilot.Cli/Commands/Backup/
+!tests/NodePilot.Api.Tests/Services/Backup/
+
+# Local UI coverage scratch (when reportgenerator runs into a partial directory)
+src/nodepilot-ui/coverage-new*/
+
+# Playwright accessibility/snapshot dumps (runtime, not repo content)
+ws-snapshot.md
+
+# Rolling logs
+**/logs/
+
+# Playwright MCP runtime logs
+.playwright-mcp/
+
+# Node
+**/node_modules/
+
+# Test runtime artefacts (screenshots / YAML dumps from manual smoke tests)
+*.png
+*.yml
+tmp_*
+!docker-compose.yml
+!prometheus.yml
+!appsettings.loadtests.json
+!samples/**/*.yml
+!.github/workflows/*.yml
+!.github/workflows/*.yaml
+# Bundled UI assets — negate the *.png rule above for Vite's public/ folder
+!src/nodepilot-ui/public/*.png
+# Docs site brand logos (imported by the docs SPA, not a public/ folder)
+!src/nodepilot-docs-ui/src/assets/*.png
+# Docs site favicon (served from its public/ folder)
+!src/nodepilot-docs-ui/public/*.png
+
+# IDE
+.idea/
+*.swp
+.DS_Store
+perf-trace-output/
+
+# Sonar scan artifacts (2026-05-16)
+.sonar-report-data/
+.sonarqube/
+src/nodepilot-ui/coverage-sonar/
+
+# MSBuild / VS Language Service cache (regenerated on every build)
+**/*.csproj.lscache
+
+# Claude Code internal task state
+.claude/scheduled_tasks.lock
+# Local, per-developer Claude Code permissions/settings — must not be committed
+.claude/settings.local.json

@@ -1,0 +1,408 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-27T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Windows Update — Health Check",
+      "description": "Diagnostiziert den Windows-Update-Zustand auf einem Host. Generiert WindowsUpdate.log (via Get-WindowsUpdateLog), liest WU- + CBS-Tails, prüft parallel die WU-Services (wuauserv/BITS/UsoSvc), die Registry-Results-Keys (Install + Auto Update), Win32_QuickFixEngineering + Win32_OperatingSystem und das Pending-Reboot-Marker (WinSxS\\pending.xml). Decision klassifiziert nach pending / degraded / healthy / stale. PowerShell nur 2x verwendet, beide Skripte ≤8 Zeilen.",
+      "definition": {
+        "nodes": [
+          { "id": "note_diag", "type": "stickyNote", "position": { "x": 960, "y": 40 },
+            "data": { "label": "Note", "activityType": "note",
+              "text": "Phase B — Parallel Diagnostics\n4 Lanes (services / registry / WMI / filesystem), konvergieren am waitAll. Alle Remote-Activities sind auf localhost = In-Process-Bypass.",
+              "fontSize": 13, "disabled": true } },
+          { "id": "note_classify", "type": "stickyNote", "position": { "x": 2540, "y": 40 },
+            "data": { "label": "Note", "activityType": "note",
+              "text": "Phase C — State Classification\nDecision schaut auf pending.xml, Service-Status, WU-Errors, Hotfix-Count → pending / degraded / healthy / stale.",
+              "fontSize": 13, "disabled": true } },
+
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 },
+            "data": {
+              "label": "Manual Trigger: WU Health Check",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Windows Update Health Check",
+                "parameters": [
+                  { "name": "tailLines",     "type": "string", "required": false, "default": "200" },
+                  { "name": "freshnessDays", "type": "string", "required": false, "default": "14"  }
+                ]
+              }
+            } },
+
+          { "id": "gen_log", "type": "activity", "position": { "x": 480, "y": 600 },
+            "data": {
+              "label": "runScript: Generate WindowsUpdate.log",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "gen_log",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "$logDir = \"C:\\Windows\\Temp\\NodePilot-WU\"\n$wuLogPath = \"$logDir\\WindowsUpdate.log\"\n$cbsLogPath = \"C:\\Windows\\Logs\\CBS\\CBS.log\"\nNew-Item -ItemType Directory -Path $logDir -Force | Out-Null\nGet-WindowsUpdateLog -LogPath $wuLogPath -Confirm:$false -EA SilentlyContinue | Out-Null\n$wuKb = \"$(if (Test-Path $wuLogPath) { [int]((Get-Item $wuLogPath).Length / 1KB) } else { 0 })\""
+              }
+            } },
+
+          { "id": "svc_wu", "type": "activity", "position": { "x": 860, "y": 200 },
+            "data": {
+              "label": "svc: wuauserv status",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "outputVariable": "svc_wu",
+              "config": { "serviceName": "wuauserv", "action": "status" }
+            } },
+          { "id": "svc_bits", "type": "activity", "position": { "x": 1140, "y": 200 },
+            "data": {
+              "label": "svc: BITS status",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "outputVariable": "svc_bits",
+              "config": { "serviceName": "BITS", "action": "status" }
+            } },
+          { "id": "svc_uso", "type": "activity", "position": { "x": 1420, "y": 200 },
+            "data": {
+              "label": "svc: UsoSvc status",
+              "activityType": "serviceManagement",
+              "targetMachineId": "localhost",
+              "outputVariable": "svc_uso",
+              "config": { "serviceName": "UsoSvc", "action": "status" }
+            } },
+
+          { "id": "reg_install", "type": "activity", "position": { "x": 860, "y": 420 },
+            "data": {
+              "label": "reg: WU Install Results exists?",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "reg_install",
+              "config": {
+                "operation": "exists",
+                "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\Results\\Install"
+              }
+            } },
+          { "id": "reg_au", "type": "activity", "position": { "x": 1140, "y": 420 },
+            "data": {
+              "label": "reg: Auto Update Policy",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "reg_au",
+              "config": {
+                "operation": "listValues",
+                "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update"
+              }
+            } },
+
+          { "id": "wmi_qfe", "type": "activity", "position": { "x": 860, "y": 780 },
+            "data": {
+              "label": "wmi: hotfixes (QFE)",
+              "activityType": "wmiQuery",
+              "targetMachineId": "localhost",
+              "outputVariable": "wmi_qfe",
+              "config": {
+                "mode": "query",
+                "className": "Win32_QuickFixEngineering",
+                "namespace": "root\\cimv2",
+                "captureProperties": ["HotFixID", "InstalledOn", "Description"]
+              }
+            } },
+          { "id": "wmi_os", "type": "activity", "position": { "x": 1140, "y": 780 },
+            "data": {
+              "label": "wmi: OS LastBoot",
+              "activityType": "wmiQuery",
+              "targetMachineId": "localhost",
+              "outputVariable": "wmi_os",
+              "config": {
+                "mode": "query",
+                "className": "Win32_OperatingSystem",
+                "namespace": "root\\cimv2",
+                "captureProperties": ["Caption", "Version", "LastBootUpTime"]
+              }
+            } },
+
+          { "id": "fs_sd", "type": "activity", "position": { "x": 860, "y": 1000 },
+            "data": {
+              "label": "folderOp: SoftwareDistribution\\Download",
+              "activityType": "folderOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "fs_sd",
+              "config": {
+                "operation": "list",
+                "path": "C:\\Windows\\SoftwareDistribution\\Download"
+              }
+            } },
+          { "id": "fs_pending", "type": "activity", "position": { "x": 1140, "y": 1000 },
+            "data": {
+              "label": "fileOp: WinSxS\\pending.xml exists?",
+              "activityType": "fileOperation",
+              "targetMachineId": "localhost",
+              "outputVariable": "fs_pending",
+              "config": {
+                "operation": "exists",
+                "path": "C:\\Windows\\WinSxS\\pending.xml"
+              }
+            } },
+
+          { "id": "junction_all", "type": "activity", "position": { "x": 1760, "y": 600 },
+            "data": {
+              "label": "Junction: waitAll (4 lanes)",
+              "activityType": "junction",
+              "outputVariable": "join_diag",
+              "config": { "mode": "waitAll" }
+            } },
+
+          { "id": "read_tails", "type": "activity", "position": { "x": 2060, "y": 600 },
+            "data": {
+              "label": "runScript: Tail WU + CBS log",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "read_tails",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$wu = {{gen_log.param.wuLogPath}}\n$cbs = {{gen_log.param.cbsLogPath}}\n$tail = [int]{{trig.param.tailLines}}\n$wuErr = \"$((Select-String -Path $wu -Pattern 'FATAL|error 0x' -EA SilentlyContinue).Count)\"\n$cbsErr = \"$((Select-String -Path $cbs -Pattern '(?i)\\bfail\\b|, error\\b' -EA SilentlyContinue).Count)\"\n$wuLast = ((Get-Content $wu -Tail 1 -EA SilentlyContinue) -join '').Trim()\n$cbsLast = ((Get-Content $cbs -Tail 1 -EA SilentlyContinue) -join '').Trim()"
+              }
+            } },
+
+          { "id": "decision_state", "type": "activity", "position": { "x": 2360, "y": 600 },
+            "data": {
+              "label": "Decision: classify WU state",
+              "activityType": "decision",
+              "outputVariable": "state",
+              "config": {
+                "cases": [
+                  {
+                    "name": "pending",
+                    "condition": {
+                      "type": "comparison",
+                      "left":  { "kind": "variable", "stepId": "fs_pending", "field": "param", "paramName": "exists" },
+                      "op": "isTrue"
+                    }
+                  },
+                  {
+                    "name": "degraded",
+                    "condition": {
+                      "type": "group",
+                      "op": "OR",
+                      "children": [
+                        {
+                          "type": "comparison",
+                          "left":  { "kind": "variable", "stepId": "svc_wu", "field": "param", "paramName": "status" },
+                          "op": "!=",
+                          "right": { "kind": "literal", "value": "Running" }
+                        },
+                        {
+                          "type": "comparison",
+                          "left":  { "kind": "variable", "stepId": "gen_log", "field": "success" },
+                          "op": "isFalse"
+                        },
+                        {
+                          "type": "comparison",
+                          "left":  { "kind": "variable", "stepId": "read_tails", "field": "param", "paramName": "wuErr" },
+                          "op": ">",
+                          "right": { "kind": "literal", "value": "0" }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "healthy",
+                    "condition": {
+                      "type": "group",
+                      "op": "AND",
+                      "children": [
+                        {
+                          "type": "comparison",
+                          "left":  { "kind": "variable", "stepId": "wmi_qfe", "field": "param", "paramName": "count" },
+                          "op": ">=",
+                          "right": { "kind": "literal", "value": "1" }
+                        },
+                        {
+                          "type": "comparison",
+                          "left":  { "kind": "variable", "stepId": "reg_install", "field": "param", "paramName": "exists" },
+                          "op": "isTrue"
+                        },
+                        {
+                          "type": "comparison",
+                          "left":  { "kind": "variable", "stepId": "svc_bits", "field": "param", "paramName": "status" },
+                          "op": "==",
+                          "right": { "kind": "literal", "value": "Running" }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "defaultCaseName": "stale"
+              }
+            } },
+
+          { "id": "case_healthy", "type": "activity", "position": { "x": 2700, "y": 240 },
+            "data": {
+              "label": "log: state = healthy",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "[WU Health] healthy — wuauserv={{svc_wu.param.status}}, BITS={{svc_bits.param.status}}, UsoSvc={{svc_uso.param.status}}, hotfixes={{wmi_qfe.param.count}}, lastHotfix={{wmi_qfe.param.HotFixID}}"
+              }
+            } },
+          { "id": "case_pending", "type": "activity", "position": { "x": 2700, "y": 460 },
+            "data": {
+              "label": "log: state = pending (reboot)",
+              "activityType": "log",
+              "config": {
+                "level": "warning",
+                "message": "[WU Health] pending — WinSxS\\pending.xml exists; servicing operations queued. Reboot required before next scan."
+              }
+            } },
+          { "id": "case_stale", "type": "activity", "position": { "x": 2700, "y": 740 },
+            "data": {
+              "label": "log: state = stale",
+              "activityType": "log",
+              "config": {
+                "level": "warning",
+                "message": "[WU Health] stale — services OK aber keine kürzliche Install-Aktivität (Install-Results-Key exists={{reg_install.param.exists}}, hotfixes={{wmi_qfe.param.count}}). Letztes Tail-Line WU: {{read_tails.param.wuLast}}"
+              }
+            } },
+          { "id": "case_degraded", "type": "activity", "position": { "x": 2700, "y": 960 },
+            "data": {
+              "label": "log: state = degraded",
+              "activityType": "log",
+              "config": {
+                "level": "error",
+                "message": "[WU Health] degraded — wuauserv={{svc_wu.param.status}}, gen_log.success={{gen_log.success}}, WU-Errors={{read_tails.param.wuErr}}, CBS-Errors={{read_tails.param.cbsErr}}. Letztes WU-Tail: {{read_tails.param.wuLast}} | letztes CBS-Tail: {{read_tails.param.cbsLast}}"
+              }
+            } },
+
+          { "id": "junction_nofm", "type": "activity", "position": { "x": 3040, "y": 600 },
+            "data": {
+              "label": "Junction: waitNofM (1 of 4)",
+              "activityType": "junction",
+              "outputVariable": "join_state",
+              "config": { "mode": "waitNofM", "requiredCount": 1 }
+            } },
+
+          { "id": "email_report", "type": "activity", "position": { "x": 3380, "y": 600 },
+            "data": {
+              "label": "email: WU Health Report",
+              "activityType": "emailNotification",
+              "config": {
+                "to": "ops@example.com",
+                "subject": "[WU Health] {{wmi_os.param.Caption}} — state={{state.param.case}}",
+                "isHtml": false,
+                "body": "Windows Update Health Report\n=============================\nState: {{state.param.case}}\nOS: {{wmi_os.param.Caption}} ({{wmi_os.param.Version}})\nLastBoot: {{wmi_os.param.LastBootUpTime}}\n\nServices:\n  wuauserv = {{svc_wu.param.status}}\n  BITS     = {{svc_bits.param.status}}\n  UsoSvc   = {{svc_uso.param.status}}\n\nUpdate State:\n  Hotfixes installed:    {{wmi_qfe.param.count}}\n  Latest HotFixID:       {{wmi_qfe.param.HotFixID}} ({{wmi_qfe.param.InstalledOn}})\n  Install-Results key:   {{reg_install.param.exists}}\n  AU policy values:      {{reg_au.param.count}}\n  pending.xml exists:    {{fs_pending.param.exists}}\n\nLogs:\n  WindowsUpdate.log:     {{gen_log.param.wuLogPath}}\n  CBS.log:               {{gen_log.param.cbsLogPath}}\n  WU FATAL/0x matches:   {{read_tails.param.wuErr}}\n  CBS fail/, error:      {{read_tails.param.cbsErr}}\n  WU last line:          {{read_tails.param.wuLast}}\n  CBS last line:         {{read_tails.param.cbsLast}}\n"
+              }
+            } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 3680, "y": 600 },
+            "data": {
+              "label": "returnData: WU summary",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "state":            "{{state.param.case}}",
+                  "os":               "{{wmi_os.param.Caption}}",
+                  "osVersion":        "{{wmi_os.param.Version}}",
+                  "lastBoot":         "{{wmi_os.param.LastBootUpTime}}",
+                  "hotfixCount":      "{{wmi_qfe.param.count}}",
+                  "latestHotfix":     "{{wmi_qfe.param.HotFixID}}",
+                  "latestHotfixDate": "{{wmi_qfe.param.InstalledOn}}",
+                  "wuauservStatus":   "{{svc_wu.param.status}}",
+                  "bitsStatus":       "{{svc_bits.param.status}}",
+                  "usoStatus":        "{{svc_uso.param.status}}",
+                  "regInstallExists": "{{reg_install.param.exists}}",
+                  "regAuCount":       "{{reg_au.param.count}}",
+                  "pendingXmlExists": "{{fs_pending.param.exists}}",
+                  "wuLogPath":        "{{gen_log.param.wuLogPath}}",
+                  "cbsLogPath":       "{{gen_log.param.cbsLogPath}}",
+                  "wuLogKb":          "{{gen_log.param.wuKb}}",
+                  "wuErrorMatches":   "{{read_tails.param.wuErr}}",
+                  "cbsErrorMatches":  "{{read_tails.param.cbsErr}}",
+                  "wuLastLine":       "{{read_tails.param.wuLast}}",
+                  "cbsLastLine":      "{{read_tails.param.cbsLast}}"
+                }
+              }
+            } }
+        ],
+
+        "edges": [
+          { "id": "e_trig_gen", "source": "trig", "target": "gen_log", "type": "labeled",
+            "data": { "label": "Start" } },
+
+          { "id": "e_gen_svc", "source": "gen_log", "target": "svc_wu",
+            "sourceHandle": "top", "targetHandle": "bottom", "type": "labeled",
+            "data": { "label": "→ services" } },
+          { "id": "e_gen_reg", "source": "gen_log", "target": "reg_install", "type": "labeled",
+            "data": { "label": "→ registry" } },
+          { "id": "e_gen_wmi", "source": "gen_log", "target": "wmi_qfe", "type": "labeled",
+            "data": { "label": "→ WMI" } },
+          { "id": "e_gen_fs", "source": "gen_log", "target": "fs_sd",
+            "sourceHandle": "bottom", "targetHandle": "top", "type": "labeled",
+            "data": { "label": "→ filesystem" } },
+
+          { "id": "e_svc1_svc2", "source": "svc_wu",   "target": "svc_bits",  "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_svc2_svc3", "source": "svc_bits", "target": "svc_uso",   "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_reg1_reg2", "source": "reg_install", "target": "reg_au", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_wmi1_wmi2", "source": "wmi_qfe",  "target": "wmi_os",    "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_fs1_fs2",   "source": "fs_sd",    "target": "fs_pending","type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_svc_join", "source": "svc_uso",    "target": "junction_all",
+            "sourceHandle": "bottom", "targetHandle": "top", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_reg_join", "source": "reg_au",     "target": "junction_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_wmi_join", "source": "wmi_os",     "target": "junction_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_fs_join",  "source": "fs_pending", "target": "junction_all",
+            "sourceHandle": "top", "targetHandle": "bottom", "type": "labeled",
+            "data": { "label": "Always" } },
+
+          { "id": "e_join_read",     "source": "junction_all", "target": "read_tails",     "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_read_decision", "source": "read_tails",   "target": "decision_state", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_dec_healthy",  "source": "decision_state", "target": "case_healthy",
+            "sourceHandle": "top", "targetHandle": "bottom", "type": "labeled",
+            "data": { "label": "case=healthy",
+              "conditionExpression": {
+                "type": "comparison",
+                "left":  { "kind": "variable", "stepId": "state", "field": "param", "paramName": "case" },
+                "op": "==",
+                "right": { "kind": "literal", "value": "healthy" }
+              } } },
+          { "id": "e_dec_pending",  "source": "decision_state", "target": "case_pending", "type": "labeled",
+            "data": { "label": "case=pending",
+              "conditionExpression": {
+                "type": "comparison",
+                "left":  { "kind": "variable", "stepId": "state", "field": "param", "paramName": "case" },
+                "op": "==",
+                "right": { "kind": "literal", "value": "pending" }
+              } } },
+          { "id": "e_dec_stale",    "source": "decision_state", "target": "case_stale", "type": "labeled",
+            "data": { "label": "case=stale",
+              "conditionExpression": {
+                "type": "comparison",
+                "left":  { "kind": "variable", "stepId": "state", "field": "param", "paramName": "case" },
+                "op": "==",
+                "right": { "kind": "literal", "value": "stale" }
+              } } },
+          { "id": "e_dec_degraded", "source": "decision_state", "target": "case_degraded",
+            "sourceHandle": "bottom", "targetHandle": "top", "type": "labeled",
+            "data": { "label": "case=degraded",
+              "conditionExpression": {
+                "type": "comparison",
+                "left":  { "kind": "variable", "stepId": "state", "field": "param", "paramName": "case" },
+                "op": "==",
+                "right": { "kind": "literal", "value": "degraded" }
+              } } },
+
+          { "id": "e_healthy_nofm",  "source": "case_healthy",  "target": "junction_nofm",
+            "sourceHandle": "bottom", "targetHandle": "top", "type": "labeled",
+            "data": { "label": "Always" } },
+          { "id": "e_pending_nofm",  "source": "case_pending",  "target": "junction_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_stale_nofm",    "source": "case_stale",    "target": "junction_nofm", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_degraded_nofm", "source": "case_degraded", "target": "junction_nofm",
+            "sourceHandle": "top", "targetHandle": "bottom", "type": "labeled",
+            "data": { "label": "Always" } },
+
+          { "id": "e_nofm_email", "source": "junction_nofm", "target": "email_report", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_email_ret",  "source": "email_report",  "target": "ret",          "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

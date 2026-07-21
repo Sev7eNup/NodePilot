@@ -1,0 +1,46 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] jsonQuery - Inline + File + JSONPath Modes",
+      "description": "Testet jsonQuery: source=inline mit verschiedenen JSONPath-Expressions (Index, Wildcard, Filter), source=file (mit Vorbereitung), resultMode=single+all. resultMode 'count'/'exists' existieren nicht in der Activity - stattdessen 'all' verwenden und param.count auswerten.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "j_single", "type": "activity", "position": { "x": 320, "y": 100 }, "data": { "label": "json: inline single by index", "activityType": "jsonQuery", "outputVariable": "j_single", "config": { "source": "inline", "content": "{\"items\":[{\"name\":\"alpha\",\"id\":1},{\"name\":\"beta\",\"id\":2},{\"name\":\"gamma\",\"id\":3}]}", "jsonPath": "$.items[1].name", "resultMode": "single" } } },
+          { "id": "j_all", "type": "activity", "position": { "x": 320, "y": 280 }, "data": { "label": "json: inline all (wildcard)", "activityType": "jsonQuery", "outputVariable": "j_all", "config": { "source": "inline", "content": "{\"items\":[{\"name\":\"alpha\"},{\"name\":\"beta\"},{\"name\":\"gamma\"}]}", "jsonPath": "$.items[*].name", "resultMode": "all" } } },
+          { "id": "j_filter", "type": "activity", "position": { "x": 320, "y": 460 }, "data": { "label": "json: filter expression", "activityType": "jsonQuery", "outputVariable": "j_filter", "config": { "source": "inline", "content": "{\"items\":[{\"id\":1,\"active\":true},{\"id\":2,\"active\":false},{\"id\":3,\"active\":true}]}", "jsonPath": "$.items[?(@.active==true)].id", "resultMode": "all" } } },
+          { "id": "j_count_via_all", "type": "activity", "position": { "x": 320, "y": 640 }, "data": { "label": "json: count via resultMode=all + param.count", "activityType": "jsonQuery", "outputVariable": "j_count", "config": { "source": "inline", "content": "{\"items\":[1,2,3,4,5,6,7]}", "jsonPath": "$.items[*]", "resultMode": "all" } } },
+          { "id": "j_exists_t", "type": "activity", "position": { "x": 320, "y": 820 }, "data": { "label": "json: exists-true via single + non-null check", "activityType": "jsonQuery", "outputVariable": "j_ex_t", "config": { "source": "inline", "content": "{\"foo\":{\"bar\":42}}", "jsonPath": "$.foo.bar", "resultMode": "single" } } },
+          { "id": "j_exists_f", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "json: exists-false via single + count==0", "activityType": "jsonQuery", "outputVariable": "j_ex_f", "config": { "source": "inline", "content": "{\"foo\":{\"bar\":42}}", "jsonPath": "$.foo.missing", "resultMode": "single" } } },
+          { "id": "prep_json", "type": "activity", "position": { "x": 320, "y": 1180 }, "data": { "label": "prep: write json file", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "prep", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$dir = 'C:\\Temp\\NP-TestSuite\\json-' + [Guid]::NewGuid().ToString('N')\nNew-Item -Path $dir -ItemType Directory -Force | Out-Null\n$obj = @{config=@{servers=@(@{name='alpha';port=8080}, @{name='beta';port=9090})}}\n$path = Join-Path $dir 'test.json'\n$obj | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $path -Encoding UTF8\n$jsonPath = $path\nWrite-Output $path" } } },
+          { "id": "j_file", "type": "activity", "position": { "x": 640, "y": 1180 }, "data": { "label": "json: source=file", "activityType": "jsonQuery", "outputVariable": "j_file", "config": { "source": "file", "path": "{{prep.param.jsonPath}}", "jsonPath": "$.config.servers[1].name", "resultMode": "single" } } },
+          { "id": "cleanup", "type": "activity", "position": { "x": 960, "y": 1180 }, "data": { "label": "cleanup: parent dir", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "cleanup", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$j = {{prep.param.jsonPath}}\n$parent = Split-Path $j\nif (Test-Path $parent) { Remove-Item -LiteralPath $parent -Recurse -Force }\nWrite-Output 'cleanup-ok'" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1600, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "single": "{{j_single.param.result}}", "allCount": "{{j_all.param.count}}", "filterCount": "{{j_filter.param.count}}", "countViaAll": "{{j_count_via_all.param.count}}", "existsT": "{{j_exists_t.param.count}}", "existsF": "{{j_exists_f.param.count}}", "fileResult": "{{j_file.param.result}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "j_single", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "j_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "j_filter", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "j_count_via_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "j_exists_t", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "trig", "target": "j_exists_f", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "trig", "target": "prep_json", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "prep_json", "target": "j_file", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "j_file", "target": "cleanup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "j_single", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "j_all", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "j_filter", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "j_count_via_all", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "j_exists_t", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "j_exists_f", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "cleanup", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

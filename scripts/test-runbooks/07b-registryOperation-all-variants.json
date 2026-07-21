@@ -1,0 +1,57 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] registryOperation - All Variants Live",
+      "description": "Live test of registryOperation activity. Uses HKCU:\\Software\\NodePilot-TestSuite (writable without admin). All 8 operations: createKey → write 6 valueTypes (String, ExpandString, Binary, DWord, MultiString, QWord) → read each back → listValues → listSubKeys → exists (key + value) → deleteValue → deleteKey. Teardown removes the test key.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "r_createkey", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "reg: createKey", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_create", "config": { "operation": "createKey", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite" } } },
+          { "id": "r_w_str", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "write: String", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_str", "config": { "operation": "write", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite", "valueName": "MyString", "value": "hello", "valueType": "String" } } },
+          { "id": "r_w_expand", "type": "activity", "position": { "x": 640, "y": 360 }, "data": { "label": "write: ExpandString", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_exp", "config": { "operation": "write", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite", "valueName": "MyExpand", "value": "%TEMP%\\sample", "valueType": "ExpandString" } } },
+          { "id": "r_w_dword", "type": "activity", "position": { "x": 640, "y": 520 }, "data": { "label": "write: DWord", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_dw", "config": { "operation": "write", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite", "valueName": "MyDword", "value": "42", "valueType": "DWord" } } },
+          { "id": "r_w_qword", "type": "activity", "position": { "x": 640, "y": 680 }, "data": { "label": "write: QWord", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_qw", "config": { "operation": "write", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite", "valueName": "MyQword", "value": "9999999999", "valueType": "QWord" } } },
+          { "id": "r_w_multi", "type": "activity", "position": { "x": 640, "y": 840 }, "data": { "label": "write: MultiString", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_mu", "config": { "operation": "write", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite", "valueName": "MyMulti", "value": "one\ntwo\nthree", "valueType": "MultiString" } } },
+          { "id": "r_w_bin", "type": "activity", "position": { "x": 640, "y": 1000 }, "data": { "label": "write: Binary", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_bi", "config": { "operation": "write", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite", "valueName": "MyBinary", "value": "01,02,03,04", "valueType": "Binary" } } },
+          { "id": "r_read_str", "type": "activity", "position": { "x": 960, "y": 360 }, "data": { "label": "read: MyString", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_read", "config": { "operation": "read", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite", "valueName": "MyString" } } },
+          { "id": "r_read_all", "type": "activity", "position": { "x": 960, "y": 520 }, "data": { "label": "read: (all values)", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_read_all", "config": { "operation": "read", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite" } } },
+          { "id": "r_listvalues", "type": "activity", "position": { "x": 960, "y": 680 }, "data": { "label": "listValues", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_lv", "config": { "operation": "listValues", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite" } } },
+          { "id": "r_listsubkeys", "type": "activity", "position": { "x": 960, "y": 840 }, "data": { "label": "listSubKeys", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_lsk", "config": { "operation": "listSubKeys", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite" } } },
+          { "id": "r_exists_k", "type": "activity", "position": { "x": 960, "y": 1000 }, "data": { "label": "exists: key", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_ex_k", "config": { "operation": "exists", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite" } } },
+          { "id": "r_exists_v", "type": "activity", "position": { "x": 960, "y": 1160 }, "data": { "label": "exists: value", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_ex_v", "config": { "operation": "exists", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite", "valueName": "MyDword" } } },
+          { "id": "r_delval", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "deleteValue: MyString", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_dv", "config": { "operation": "deleteValue", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite", "valueName": "MyString" } } },
+          { "id": "r_delkey", "type": "activity", "position": { "x": 1600, "y": 600 }, "data": { "label": "deleteKey: root", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_dk", "config": { "operation": "deleteKey", "keyPath": "HKCU:\\Software\\NodePilot-TestSuite" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1920, "y": 600 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/registryOperation] createKey={{r_create.success}} writes(6)={{r_w_str.success}}/{{r_w_exp.success}}/{{r_w_dw.success}}/{{r_w_qw.success}}/{{r_w_mu.success}}/{{r_w_bi.success}} read={{r_read.param.value}} type={{r_read.param.type}} listValues={{r_lv.param.count}} listSubKeys={{r_lsk.param.count}} exists_key={{r_ex_k.param.exists}} exists_value={{r_ex_v.param.exists}} delValue={{r_dv.success}} delKey={{r_dk.success}}" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 2240, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "createKey": "{{r_create.success}}", "write_String": "{{r_w_str.success}}", "write_ExpandString": "{{r_w_exp.success}}", "write_DWord": "{{r_w_dw.success}}", "write_QWord": "{{r_w_qw.success}}", "write_MultiString": "{{r_w_mu.success}}", "write_Binary": "{{r_w_bi.success}}", "read_value": "{{r_read.param.value}}", "read_type": "{{r_read.param.type}}", "listValues_count": "{{r_lv.param.count}}", "listSubKeys_count": "{{r_lsk.param.count}}", "exists_key": "{{r_ex_k.param.exists}}", "exists_value": "{{r_ex_v.param.exists}}", "deleteValue": "{{r_dv.success}}", "deleteKey": "{{r_dk.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "r_createkey", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "r_createkey", "target": "r_w_str", "type": "labeled", "data": { "label": "On Success", "condition": "r_createkey.success" } },
+          { "id": "e3", "source": "r_createkey", "target": "r_w_expand", "type": "labeled", "data": { "label": "On Success", "condition": "r_createkey.success" } },
+          { "id": "e4", "source": "r_createkey", "target": "r_w_dword", "type": "labeled", "data": { "label": "On Success", "condition": "r_createkey.success" } },
+          { "id": "e5", "source": "r_createkey", "target": "r_w_qword", "type": "labeled", "data": { "label": "On Success", "condition": "r_createkey.success" } },
+          { "id": "e6", "source": "r_createkey", "target": "r_w_multi", "type": "labeled", "data": { "label": "On Success", "condition": "r_createkey.success" } },
+          { "id": "e7", "source": "r_createkey", "target": "r_w_bin", "type": "labeled", "data": { "label": "On Success", "condition": "r_createkey.success" } },
+          { "id": "e8", "source": "r_w_str", "target": "r_read_str", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "r_w_dword", "target": "r_read_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "r_w_dword", "target": "r_listvalues", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "r_w_dword", "target": "r_listsubkeys", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "r_w_dword", "target": "r_exists_k", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "r_w_dword", "target": "r_exists_v", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "r_read_str", "target": "r_delval", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "r_read_all", "target": "r_delval", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "r_listvalues", "target": "r_delval", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "r_listsubkeys", "target": "r_delval", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "r_exists_k", "target": "r_delval", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e19", "source": "r_exists_v", "target": "r_delval", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e20", "source": "r_delval", "target": "r_delkey", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e21", "source": "r_delkey", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e22", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

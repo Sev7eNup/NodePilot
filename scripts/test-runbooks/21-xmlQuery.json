@@ -1,0 +1,37 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] xmlQuery - Inline + File + Namespaces + Modes",
+      "description": "Testet xmlQuery: source=inline (single + all), source=file (mit Vorbereitung), mit XML-Namespaces, resultMode=single/all. Pro Run einen Sandbox-Pfad mit GUID-Suffix damit parallele Runs nicht kollidieren.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "x_inline_single", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "xml: inline, single", "activityType": "xmlQuery", "outputVariable": "x_single", "config": { "source": "inline", "content": "<?xml version=\"1.0\"?><root><item id=\"1\">alpha</item><item id=\"2\">beta</item><item id=\"3\">gamma</item></root>", "xpath": "//item[@id='2']", "resultMode": "single" } } },
+          { "id": "x_inline_all", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "xml: inline, all", "activityType": "xmlQuery", "outputVariable": "x_all", "config": { "source": "inline", "content": "<?xml version=\"1.0\"?><root><item id=\"1\">alpha</item><item id=\"2\">beta</item><item id=\"3\">gamma</item></root>", "xpath": "//item", "resultMode": "all" } } },
+          { "id": "x_ns", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "xml: namespaces", "activityType": "xmlQuery", "outputVariable": "x_ns", "config": { "source": "inline", "content": "<?xml version=\"1.0\"?><root xmlns:np=\"http://nodepilot.test/v1\"><np:item id=\"a\">first</np:item><np:item id=\"b\">second</np:item></root>", "xpath": "//np:item[@id='b']", "namespaces": { "np": "http://nodepilot.test/v1" }, "resultMode": "single" } } },
+          { "id": "prep_xml", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "prep: write xml file (unique per run)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "prep", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$dir = 'C:\\Temp\\NP-TestSuite\\xml-' + [Guid]::NewGuid().ToString('N')\nNew-Item -Path $dir -ItemType Directory -Force | Out-Null\n$content = '<?xml version=\"1.0\"?><config><server name=\"alpha\" port=\"8080\"/><server name=\"beta\" port=\"9090\"/></config>'\n$path = Join-Path $dir 'test.xml'\nSet-Content -LiteralPath $path -Value $content -Encoding UTF8\n$xmlPath = $path\nWrite-Output $path" } } },
+          { "id": "x_file", "type": "activity", "position": { "x": 640, "y": 800 }, "data": { "label": "xml: source=file", "activityType": "xmlQuery", "outputVariable": "x_file", "config": { "source": "file", "path": "{{prep.param.xmlPath}}", "xpath": "//server[@name='beta']/@port", "resultMode": "single" } } },
+          { "id": "cleanup", "type": "activity", "position": { "x": 960, "y": 800 }, "data": { "label": "cleanup: parent dir", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "cleanup", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$xml = {{prep.param.xmlPath}}\n$parent = Split-Path $xml\nif (Test-Path $parent) { Remove-Item -LiteralPath $parent -Recurse -Force }\nWrite-Output 'cleanup-ok'" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1600, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "single": "{{x_single.param.result}}", "allCount": "{{x_all.param.count}}", "nsResult": "{{x_ns.param.result}}", "fileResult": "{{x_file.param.result}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "x_inline_single", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "x_inline_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "x_ns", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "prep_xml", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "prep_xml", "target": "x_file", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "x_file", "target": "cleanup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "x_inline_single", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "x_inline_all", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "x_ns", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "cleanup", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

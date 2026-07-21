@@ -1,0 +1,18 @@
+{
+  "title": "Einstellungen",
+  "subtitle": "Persönliche Oberfläche und hinterlegte Anmeldedaten verwalten. Die globale Konfiguration (Integrationen, Sicherheit, Datenbank …) finden Administratoren im Reiter „System\".",
+  "appearance": "Darstellung",
+  "theme": "Theme",
+  "themeLight": "Hell",
+  "themeDark": "Dunkel",
+  "themeDarkLila": "Dunkel Lila",
+  "themeLightGrey": "Hell Grau",
+  "themeSparkasseDark": "Bank Dunkel",
+  "themeSparkasseLight": "Bank Hell",
+  "themeDarkNebula": "Nebula",
+  "themeSystem": "System",
+  "language": "Sprache",
+  "languageDe": "Deutsch",
+  "languageEn": "English",
+  "languageHint": "Wählt die UI-Sprache. Backend-Texte bleiben Englisch."
+}

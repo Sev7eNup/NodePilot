@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: nodepilot-api
+    static_configs:
+      # On Windows/macOS host: host.docker.internal resolves to the docker host.
+      # Adjust port if the API runs elsewhere.
+      - targets: ["host.docker.internal:5000"]
+    metrics_path: /metrics

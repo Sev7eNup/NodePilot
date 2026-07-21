@@ -1,0 +1,35 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] runScript - All Variants",
+      "description": "Testet runScript: engine=auto/powershell, structured Output (multi-var capture), Variable-Resolution OHNE umschliessende Quotes (Auto-Quoter macht das selbst, sonst doppelt), Custom-Timeout, Retry exponential. engine=pwsh nicht enthalten weil PowerShell 7 nicht zwingend installiert ist - durch xUnit unit-test abgedeckt. Failure-Routing wird in 25-edge-conditions getestet.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "rs_auto", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "runScript: engine=auto, multi-var", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "auto", "config": { "engine": "auto", "timeoutSeconds": 30, "script": "$envName = 'test-env'\n$cpuCount = '4'\n$now = (Get-Date).ToString('o')\nWrite-Output \"runScript-auto-OK\"" } } },
+          { "id": "rs_winps", "type": "activity", "position": { "x": 640, "y": 220 }, "data": { "label": "runScript: engine=powershell (Windows PS 5.1)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "winps", "config": { "engine": "powershell", "timeoutSeconds": 20, "script": "$myEdition = $PSVersionTable.PSEdition\nWrite-Output \"winps-edition-$myEdition\"" } } },
+          { "id": "rs_resolve", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "runScript: variable resolution upstream (no quotes!)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "resolve", "config": { "engine": "auto", "timeoutSeconds": 20, "script": "$upstreamEnv = {{auto.param.envName}}\n$upstreamCpu = {{auto.param.cpuCount}}\nWrite-Output \"resolved-env=$upstreamEnv-cpu=$upstreamCpu\"" } } },
+          { "id": "rs_retry", "type": "activity", "position": { "x": 640, "y": 580 }, "data": { "label": "runScript: with retry (exp backoff)", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "retried", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Write-Output 'retry-test-OK'", "retry": { "maxAttempts": 3, "backoff": "exponential", "initialDelayMs": 500, "maxDelayMs": 4000 } } } },
+          { "id": "rs_timeout", "type": "activity", "position": { "x": 640, "y": 760 }, "data": { "label": "runScript: long-running with sufficient timeout", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "longrun", "config": { "engine": "auto", "timeoutSeconds": 30, "script": "Start-Sleep -Seconds 2\nWrite-Output 'long-OK'" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 460 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1280, "y": 460 }, "data": { "label": "returnData: summary", "activityType": "returnData", "config": { "data": { "autoOutput": "{{auto.output}}", "winpsOutput": "{{winps.output}}", "resolveOutput": "{{resolve.output}}", "retryOutput": "{{retried.output}}", "longOutput": "{{longrun.output}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "rs_auto", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "rs_auto", "target": "rs_winps", "type": "labeled", "data": { "label": "On Success", "condition": "rs_auto.success" } },
+          { "id": "e3", "source": "rs_auto", "target": "rs_resolve", "type": "labeled", "data": { "label": "On Success", "condition": "rs_auto.success" } },
+          { "id": "e4", "source": "rs_auto", "target": "rs_retry", "type": "labeled", "data": { "label": "On Success", "condition": "rs_auto.success" } },
+          { "id": "e5", "source": "rs_auto", "target": "rs_timeout", "type": "labeled", "data": { "label": "On Success", "condition": "rs_auto.success" } },
+          { "id": "e6", "source": "rs_winps", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "rs_resolve", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "rs_retry", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "rs_timeout", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

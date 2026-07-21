@@ -1,0 +1,11 @@
+{
+  "generic": "An error occurred.",
+  "network": "Network error. Please retry.",
+  "unauthorized": "Unauthorized. Please log in again.",
+  "forbidden": "You do not have permission for this action.",
+  "notFound": "Not found.",
+  "validationFailed": "Validation failed.",
+  "fileNotJson": "{{file}} is not valid JSON.",
+  "operationFailed": "{{operation}} failed: {{message}}",
+  "unknownError": "Unknown error"
+}

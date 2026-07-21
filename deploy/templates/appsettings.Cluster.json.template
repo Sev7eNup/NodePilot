@@ -1,0 +1,40 @@
+{
+  "//": "Active/Passive HA cluster configuration. Drop into appsettings.Production.json.",
+  "//": "See docs/ha-active-passive.md for the full operator runbook.",
+  "Cluster": {
+    "Enabled": true,
+    "//NodeId": "Set explicitly per host. Container hosts MUST set this — Environment.MachineName auto-generates a 12-hex-hash that's unstable across restarts.",
+    "NodeId": "{{NODE_ID}}",
+    "LeaseTtlSeconds": 30,
+    "LeaseRenewSeconds": 10,
+    "LeaseDbTimeoutSeconds": 3
+  },
+  "Jwt": {
+    "//": "All three keys MUST be set explicitly and IDENTICALLY on every cluster node.",
+    "//": "Jwt:Key — base64-encoded ≥32 bytes. Generate once with:",
+    "//": "  PowerShell 5.1+: $r=[Security.Cryptography.RandomNumberGenerator]::Create();$b=New-Object byte[] 32;try{$r.GetBytes($b);[Convert]::ToBase64String($b)}finally{$r.Dispose();[Array]::Clear($b,0,$b.Length)}",
+    "//": "  Bash:       openssl rand -base64 32",
+    "Key": "{{JWT_KEY_BASE64_32_BYTES}}",
+    "Issuer": "{{JWT_ISSUER}}",
+    "Audience": "{{JWT_AUDIENCE}}"
+  },
+  "Database": {
+    "Provider": "sqlserver",
+    "//": "Or 'postgres'. The DB itself MUST be HA-replicated separately (AlwaysOn AG / Patroni / RDS Multi-AZ)."
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "Server={{SQL_VIP_HOSTNAME}};Database=NodePilot;Trusted_Connection=True;Encrypt=Strict;TrustServerCertificate=False;HostNameInCertificate={{SQL_VIP_HOSTNAME}}"
+  },
+  "Secrets": {
+    "//": "DPAPI is machine-bound and is REJECTED at boot when Cluster:Enabled=true — a standby could not decrypt Node A's ciphertexts after failover.",
+    "//": "Clusters MUST use AES-GCM with a shared MasterKey covering both stores (Credentials + Secret-Globals).",
+    "//": "MasterKey: base64-encoded 32 bytes, IDENTICAL on every node. Ship via the Secrets__MasterKey env var, never in this file. See docs/secrets-providers.md.",
+    "Provider": "AesGcm",
+    "MasterKey": "{{SECRETS_MASTER_KEY_BASE64_32_BYTES}}"
+  },
+  "Logging": {
+    "File": {
+      "Path": "C:\\ProgramData\\NodePilot\\logs\\nodepilot-.log"
+    }
+  }
+}

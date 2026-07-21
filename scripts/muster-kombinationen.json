@@ -1,0 +1,631 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-07-13T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Muster — Trigger → Databus",
+      "description": "Beweist, dass Output-Parameter der Start-Aktivität (Trigger) auf den Databus geschrieben werden: Trigger-Parameter werden via {{trigger.param.x}} (universell, Contract-Tail) von runScript/log/returnData konsumiert und zurückgegeben. Der runScript zeigt zusätzlich {{manual.x}} (flache Script-Variable).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trigger",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 300
+            },
+            "data": {
+              "label": "Manual Trigger (3 Params)",
+              "activityType": "manualTrigger",
+              "outputVariable": "trigger",
+              "config": {
+                "title": "Databus-Parameter",
+                "parameters": [
+                  {
+                    "name": "environment",
+                    "type": "string",
+                    "required": true,
+                    "default": "prod"
+                  },
+                  {
+                    "name": "region",
+                    "type": "string",
+                    "required": false,
+                    "default": "eu-central"
+                  },
+                  {
+                    "name": "count",
+                    "type": "string",
+                    "required": false,
+                    "default": "3"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "use",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 300
+            },
+            "data": {
+              "label": "runScript: konsumiert Trigger-Params",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "use",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$envParam = {{trigger.param.environment}}\n$region = {{trigger.param.region}}\n$combined = \"$envParam/$region\"\nWrite-Output $combined"
+              }
+            }
+          },
+          {
+            "id": "lg",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 300
+            },
+            "data": {
+              "label": "log: trigger.param.*",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "trigger.param.environment={{trigger.param.environment}} | trigger.param.region={{trigger.param.region}} | script={{use.output}}"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1140,
+              "y": 300
+            },
+            "data": {
+              "label": "returnData: Nachweis",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "environment": "{{trigger.param.environment}}",
+                  "region": "{{trigger.param.region}}",
+                  "count": "{{trigger.param.count}}",
+                  "consumedByScript": "{{use.output}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trigger",
+            "target": "use",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "use",
+            "target": "lg",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "lg",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Muster — Variable-Pipe",
+      "description": "Kombiniert runScript → jsonQuery → decision → log und reicht Variablen (param/output) durch den Databus.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "gen",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: emit json",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "gen",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$payload = '{\"name\":\"alpha\",\"score\":9}'\nWrite-Output $payload"
+              }
+            }
+          },
+          {
+            "id": "jq",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "label": "jsonQuery: name",
+              "activityType": "jsonQuery",
+              "outputVariable": "jq",
+              "config": {
+                "source": "inline",
+                "content": "{{gen.output}}",
+                "jsonPath": "$.name",
+                "resultMode": "single"
+              }
+            }
+          },
+          {
+            "id": "dec",
+            "type": "activity",
+            "position": {
+              "x": 1140,
+              "y": 260
+            },
+            "data": {
+              "label": "decision: name==alpha",
+              "activityType": "decision",
+              "outputVariable": "dec",
+              "config": {
+                "cases": [
+                  {
+                    "name": "is-alpha",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "jq",
+                        "field": "output"
+                      },
+                      "op": "==",
+                      "right": {
+                        "kind": "literal",
+                        "value": "alpha"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "other"
+              }
+            }
+          },
+          {
+            "id": "lg",
+            "type": "activity",
+            "position": {
+              "x": 1520,
+              "y": 140
+            },
+            "data": {
+              "label": "log: matched",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Name={{jq.output}} case={{dec.param.case}}"
+              }
+            }
+          },
+          {
+            "id": "lo",
+            "type": "activity",
+            "position": {
+              "x": 1520,
+              "y": 380
+            },
+            "data": {
+              "label": "log: other",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "Other branch"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1900,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "name": "{{jq.output}}",
+                  "case": "{{dec.param.case}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trg",
+            "target": "gen",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "gen",
+            "target": "jq",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "jq",
+            "target": "dec",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "dec",
+            "target": "lg",
+            "type": "labeled",
+            "data": {
+              "label": "case=is-alpha",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "dec",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "is-alpha"
+                }
+              }
+            }
+          },
+          {
+            "id": "e5",
+            "source": "dec",
+            "target": "lo",
+            "type": "labeled",
+            "data": {
+              "label": "case=other",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "dec",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "other"
+                }
+              }
+            }
+          },
+          {
+            "id": "e6",
+            "source": "lg",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e7",
+            "source": "lo",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Muster — Sub-Workflow (Parent)",
+      "description": "Ruft einen Child-Workflow per startWorkflow (wait) und per forEach (fan-out) auf und aggregiert die Contract-Outputs.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 260
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Parameter",
+                "parameters": [
+                  {
+                    "name": "input",
+                    "type": "string",
+                    "required": false,
+                    "default": "muster"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "sw",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 140
+            },
+            "data": {
+              "label": "startWorkflow: single",
+              "activityType": "startWorkflow",
+              "outputVariable": "sw",
+              "config": {
+                "workflowNameOrId": "Muster — Sub-Workflow: Child",
+                "waitForCompletion": true,
+                "parameters": {
+                  "item": "single",
+                  "index": "0"
+                }
+              }
+            }
+          },
+          {
+            "id": "fe",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 380
+            },
+            "data": {
+              "label": "forEach: batch",
+              "activityType": "forEach",
+              "outputVariable": "fe",
+              "config": {
+                "items": "[\"a\",\"b\",\"c\"]",
+                "itemsFormat": "json",
+                "childWorkflowNameOrId": "Muster — Sub-Workflow: Child",
+                "itemParameterName": "item",
+                "indexParameterName": "index",
+                "maxParallelism": 3,
+                "continueOnError": true,
+                "timeoutSecondsPerItem": 30
+              }
+            }
+          },
+          {
+            "id": "j",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 260
+            },
+            "data": {
+              "label": "junction: waitAll",
+              "activityType": "junction",
+              "outputVariable": "j",
+              "config": {
+                "mode": "waitAll"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1140,
+              "y": 260
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "single": "{{sw.param.processedItem}}",
+                  "batchCount": "{{fe.param.total}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e1",
+            "source": "trg",
+            "target": "sw",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e2",
+            "source": "trg",
+            "target": "fe",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "sw",
+            "target": "j",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "fe",
+            "target": "j",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e5",
+            "source": "j",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "Muster — Sub-Workflow: Child",
+      "description": "Child für Muster — Sub-Workflow (Parent). Nimmt item/index, gibt returnData zurück.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "c_trg",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 200
+            },
+            "data": {
+              "label": "Manual Trigger",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Child",
+                "parameters": [
+                  {
+                    "name": "item",
+                    "type": "string",
+                    "required": false,
+                    "default": "x"
+                  },
+                  {
+                    "name": "index",
+                    "type": "string",
+                    "required": false,
+                    "default": "0"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "id": "c_rs",
+            "type": "activity",
+            "position": {
+              "x": 380,
+              "y": 200
+            },
+            "data": {
+              "label": "runScript: transform",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "c_rs",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$upper = '{{c_trg.param.item}}'.ToUpper()"
+              }
+            }
+          },
+          {
+            "id": "c_ret",
+            "type": "activity",
+            "position": {
+              "x": 760,
+              "y": 200
+            },
+            "data": {
+              "label": "returnData",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "processedItem": "{{c_rs.param.upper}}",
+                  "index": "{{c_trg.param.index}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "ce1",
+            "source": "c_trg",
+            "target": "c_rs",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "ce2",
+            "source": "c_rs",
+            "target": "c_ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

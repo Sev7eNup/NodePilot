@@ -1,0 +1,32 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] zipOperation - Compress + Extract",
+      "description": "Testet zipOperation: compress mit allen 3 compressionLevels (Optimal/Fastest/NoCompression) und extract round-trip. Sequenziell statt parallel um File-Locks beim Lesen der Source notepad.exe zu vermeiden. Pro Run unique Sandbox.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "prep", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "runScript: unique sandbox", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "prep", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$sandbox = 'C:\\Temp\\NP-TestSuite\\zip-op-' + [Guid]::NewGuid().ToString('N')\nNew-Item -Path $sandbox -ItemType Directory -Force | Out-Null\nWrite-Output $sandbox" } } },
+          { "id": "z_optimal", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "zip: compress Optimal", "activityType": "zipOperation", "targetMachineId": "localhost", "outputVariable": "z_optimal", "config": { "operation": "compress", "source": "C:\\Windows\\System32\\notepad.exe", "destination": "{{prep.param.sandbox}}\\np-optimal.zip", "compressionLevel": "Optimal", "force": true } } },
+          { "id": "z_fastest", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "zip: compress Fastest", "activityType": "zipOperation", "targetMachineId": "localhost", "outputVariable": "z_fastest", "config": { "operation": "compress", "source": "C:\\Windows\\System32\\notepad.exe", "destination": "{{prep.param.sandbox}}\\np-fastest.zip", "compressionLevel": "Fastest", "force": true } } },
+          { "id": "z_none", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "zip: compress NoCompression", "activityType": "zipOperation", "targetMachineId": "localhost", "outputVariable": "z_none", "config": { "operation": "compress", "source": "C:\\Windows\\System32\\notepad.exe", "destination": "{{prep.param.sandbox}}\\np-none.zip", "compressionLevel": "NoCompression", "force": true } } },
+          { "id": "z_extract", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "zip: extract Optimal", "activityType": "zipOperation", "targetMachineId": "localhost", "outputVariable": "z_extract", "config": { "operation": "extract", "source": "{{prep.param.sandbox}}\\np-optimal.zip", "destination": "{{prep.param.sandbox}}\\extracted", "force": true } } },
+          { "id": "cleanup", "type": "activity", "position": { "x": 1920, "y": 400 }, "data": { "label": "runScript: cleanup sandbox", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "cleanup", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$sb = {{prep.param.sandbox}}\nif (Test-Path $sb) { Remove-Item -LiteralPath $sb -Recurse -Force }\nWrite-Output 'cleanup-ok'" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 2240, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "optimalSize": "{{z_optimal.param.sizeBytes}}", "fastestSize": "{{z_fastest.param.sizeBytes}}", "noneSize": "{{z_none.param.sizeBytes}}", "extractDest": "{{z_extract.param.destination}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "prep", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "prep", "target": "z_optimal", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "z_optimal", "target": "z_fastest", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "z_fastest", "target": "z_none", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "z_none", "target": "z_extract", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "z_extract", "target": "cleanup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "cleanup", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

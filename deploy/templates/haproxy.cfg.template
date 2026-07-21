@@ -1,0 +1,96 @@
+# HAProxy 2.x example for NodePilot Active/Passive HA.
+# Replace placeholders before deploying. See docs/ha-active-passive.md for context.
+# When Authentication:Windows:Enabled is true, also see docs/ldap-windows-sso.md
+# (HAProxy section). Negotiate / Kerberos requires one persistent backend connection
+# per client session. Replace every {{...}} placeholder before validating/deploying.
+
+global
+    maxconn 10000
+    log /dev/log local0
+
+defaults
+    log     global
+    mode    http
+    option  httplog
+    option  dontlognull
+    timeout connect 5s
+    timeout client  60s
+    timeout server  60s
+    timeout http-request    10s
+    timeout http-keep-alive 60s
+    # SSO requirement #1: keep the frontend and backend HTTP/1.1 connections persistent.
+    # Negotiate is connection-scoped; closing the backend side between challenge legs
+    # restarts the handshake and can trigger an NTLM fallback.
+    option  http-keep-alive
+
+frontend nodepilot_frontend
+    # SSO requirement #2: alpn http/1.1 prevents browsers from negotiating HTTP/2.
+    # H2 multiplexes streams over a single connection, which breaks the per-connection
+    # auth context that Negotiate relies on. Browsers know this and fall back to H1
+    # when they see WWW-Authenticate: Negotiate, but pinning here makes the behaviour
+    # deterministic + auditable.
+    bind *:443 ssl crt {{TLS_CERT_PATH}} alpn http/1.1
+    redirect scheme https code 301 if !{ ssl_fc }
+
+    # Trust boundary: never pass client-supplied forwarding metadata through. NodePilot
+    # must list the HAProxy transport IP under ForwardedHeaders:KnownProxies, so only
+    # headers received directly from this proxy affect client IP/rate-limit decisions.
+    http-request del-header Forwarded
+    http-request del-header X-Forwarded-For
+    http-request del-header X-Forwarded-Proto
+    option forwardfor header X-Forwarded-For
+    http-request set-header X-Forwarded-Proto https
+
+    default_backend nodepilot_active
+
+backend nodepilot_active
+    # /healthz/leader returns 200 only on the active leader (fail-closed: also requires
+    # the lease to be in-TTL and renewed). 503 on a follower or a leader that has lost
+    # DB connectivity. The 5s probe interval gives ~5s LB-detection latency on top of
+    # the cluster-internal failover (~30-45s).
+    option httpchk
+    http-check send meth GET uri /healthz/leader hdr Host {{BACKEND_TLS_SERVER_NAME}}
+    http-check expect status 200
+    # Fail closed when the private CA or backend identity cannot be verified. Both node
+    # certificates must contain {{BACKEND_TLS_SERVER_NAME}} in their SAN extension,
+    # and the same name must be present in NodePilot's AllowedHosts setting.
+    default-server inter 5s fall 2 rise 1 ssl verify required ca-file {{BACKEND_CA_FILE}} alpn http/1.1
+
+    # Never move an idle backend connection to another frontend session. Together with
+    # http-keep-alive this preserves the 1:1 connection affinity required by Negotiate.
+    http-reuse never
+
+    # SSO requirement #3: balance source + hash-type consistent. The Negotiate handshake
+    # is multi-request (Type-1 → 401-Negotiate → Type-2 → 200). If the second leg lands
+    # on a different backend, the browser sees a fresh challenge and retries or falls
+    # back to NTLM. Source-IP sticky-balancing keeps the multi-request handshake on
+    # one backend. Note: with `backup` semantics below, source-balancing has only one
+    # active target most of the time anyway — the directive matters at failover.
+    balance source
+    hash-type consistent
+
+    # `backup` on node-b means HAProxy only forwards traffic to it when node-a's
+    # health-check has failed. Without `backup` HAProxy would round-robin and the
+    # follower would log 503s for each scattered request, since the LeaderRequiredMiddleware
+    # rejects mutating endpoints on a follower as defense-in-depth.
+    server node-a {{NODE_A_IP}}:443 check sni str({{BACKEND_TLS_SERVER_NAME}}) check-sni {{BACKEND_TLS_SERVER_NAME}} verifyhost {{BACKEND_TLS_SERVER_NAME}}
+    server node-b {{NODE_B_IP}}:443 check backup sni str({{BACKEND_TLS_SERVER_NAME}}) check-sni {{BACKEND_TLS_SERVER_NAME}} verifyhost {{BACKEND_TLS_SERVER_NAME}}
+
+# Optional: dedicated frontend for /healthz endpoints with no SSL termination, so internal
+# monitoring can poll without cert overhead.
+frontend healthz_internal
+    bind *:8080
+    acl is_health path_beg /healthz/
+    http-request deny deny_status 404 unless is_health
+    http-request del-header Forwarded
+    http-request del-header X-Forwarded-For
+    http-request del-header X-Forwarded-Proto
+    http-request set-header Host {{BACKEND_TLS_SERVER_NAME}}
+    default_backend nodepilot_active
+
+# ----------------------------------------------------------------------------------
+# Non-SSO tuning
+# ----------------------------------------------------------------------------------
+# If Windows SSO is disabled, `http-reuse never` may be changed to `http-reuse safe`
+# for more backend-connection reuse. Keep certificate verification and trusted-header
+# handling unchanged.

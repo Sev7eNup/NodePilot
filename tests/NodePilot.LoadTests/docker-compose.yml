@@ -1,0 +1,47 @@
+# Load test support stack: SQL Server for a realistic DB backend (SQLite's DB-wide write lock
+# makes results dominated by SQLite, not NodePilot), Prometheus scraping the API host, and
+# Grafana with a pre-configured NodePilot dashboard.
+#
+# Setup:  copy .env.example to .env and fill in passwords, then
+#   docker compose -f docker-compose.yml --env-file .env up -d
+# Tear down: docker compose -f docker-compose.yml down -v
+
+services:
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_SA_PASSWORD:?MSSQL_SA_PASSWORD must be set in .env}"
+      MSSQL_PID: "Express"
+    ports:
+      - "1433:1433"
+    volumes:
+      - sqlserver-data:/var/opt/mssql
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    extra_hosts:
+      # So a Prometheus container can scrape the NodePilot API running on the docker host.
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${GF_SECURITY_ADMIN_PASSWORD:?GF_SECURITY_ADMIN_PASSWORD must be set in .env}"
+      # Anonymous access is OFF by default. Operators who genuinely want an open dashboard
+      # (e.g. a read-only kiosk display) can flip this in their local .env.
+      GF_AUTH_ANONYMOUS_ENABLED: "${GF_AUTH_ANONYMOUS_ENABLED:-false}"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Viewer"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-dashboard.json:/var/lib/grafana/dashboards/nodepilot.json:ro
+
+volumes:
+  sqlserver-data:
+  grafana-data:

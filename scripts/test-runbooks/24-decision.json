@@ -1,0 +1,62 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] decision - Multi-Case Routing",
+      "description": "Testet decision: 2 Decisions hintereinander, mehrere Cases pro Decision (==, contains, group AND, NOT), defaultCaseName-Fallback, Routing per param.case-Edge-Conditions. Verifiziert dass die Engine wirklich genau einen passenden Case nimmt + dass der Fallback bei keinem Match greift.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "init: env=test, severity=high", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$envName = 'test-env'\n$severity = 'high'\n$cpuCount = '8'\nWrite-Output 'init-ok'" } } },
+          { "id": "dec_env", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "decision: env routing", "activityType": "decision", "outputVariable": "dec_env", "config": { "cases": [
+            { "name": "is-prod", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"envName"}, "op": "==", "right": {"kind":"literal","value":"production"} } },
+            { "name": "is-test", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"envName"}, "op": "==", "right": {"kind":"literal","value":"test-env"} } },
+            { "name": "is-staging", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"envName"}, "op": "contains", "right": {"kind":"literal","value":"stag"} } }
+          ], "defaultCaseName": "other-env" } } },
+          { "id": "log_prod", "type": "activity", "position": { "x": 960, "y": 200 }, "data": { "label": "log: case=is-prod", "activityType": "log", "config": { "level": "warning", "message": "[decision] env=is-prod (unexpected)" } } },
+          { "id": "log_test", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "log: case=is-test (expected)", "activityType": "log", "config": { "level": "info", "message": "[decision] env=is-test - expected branch matched" } } },
+          { "id": "log_stag", "type": "activity", "position": { "x": 960, "y": 600 }, "data": { "label": "log: case=is-staging", "activityType": "log", "config": { "level": "info", "message": "[decision] env=is-staging" } } },
+          { "id": "log_other", "type": "activity", "position": { "x": 960, "y": 800 }, "data": { "label": "log: case=other-env (default)", "activityType": "log", "config": { "level": "info", "message": "[decision] env=default fallback" } } },
+          { "id": "junc1", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "junction: waitAny first decision", "activityType": "junction", "config": { "mode": "waitAny" } } },
+          { "id": "dec_sev", "type": "activity", "position": { "x": 1600, "y": 600 }, "data": { "label": "decision: severity + cpu (group AND, NOT)", "activityType": "decision", "outputVariable": "dec_sev", "config": { "cases": [
+            { "name": "high-and-many-cpu", "condition": { "type": "group", "op": "AND", "children": [
+              { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"severity"}, "op": "==", "right": {"kind":"literal","value":"high"} },
+              { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"cpuCount"}, "op": ">=", "right": {"kind":"literal","value":"4"} }
+            ] } },
+            { "name": "low-but-not-empty", "condition": { "type": "group", "op": "AND", "children": [
+              { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"severity"}, "op": "==", "right": {"kind":"literal","value":"low"} },
+              { "type": "not", "child": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"severity"}, "op": "isEmpty" } }
+            ] } }
+          ], "defaultCaseName": "fallback" } } },
+          { "id": "log_sev_match", "type": "activity", "position": { "x": 1920, "y": 500 }, "data": { "label": "log: high+cpu match", "activityType": "log", "config": { "level": "info", "message": "[decision] severity=high + cpu>=4 matched" } } },
+          { "id": "log_sev_low", "type": "activity", "position": { "x": 1920, "y": 700 }, "data": { "label": "log: low (unreachable)", "activityType": "log", "config": { "level": "warning", "message": "[decision] severity=low (unexpected, severity is high)" } } },
+          { "id": "log_sev_fb", "type": "activity", "position": { "x": 1920, "y": 900 }, "data": { "label": "log: fallback", "activityType": "log", "config": { "level": "info", "message": "[decision] sev fallback" } } },
+          { "id": "junc2", "type": "activity", "position": { "x": 2240, "y": 600 }, "data": { "label": "junction: waitAny second decision", "activityType": "junction", "config": { "mode": "waitAny" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 2560, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "envCase": "{{dec_env.param.case}}", "envMatched": "{{dec_env.param.matched}}", "envReason": "{{dec_env.param.reason}}", "sevCase": "{{dec_sev.param.case}}", "sevMatched": "{{dec_sev.param.matched}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init", "target": "dec_env", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "dec_env", "target": "log_prod", "type": "labeled", "data": { "label": "case=is-prod", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_env","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"is-prod"} } } },
+          { "id": "e4", "source": "dec_env", "target": "log_test", "type": "labeled", "data": { "label": "case=is-test", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_env","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"is-test"} } } },
+          { "id": "e5", "source": "dec_env", "target": "log_stag", "type": "labeled", "data": { "label": "case=is-staging", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_env","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"is-staging"} } } },
+          { "id": "e6", "source": "dec_env", "target": "log_other", "type": "labeled", "data": { "label": "case=other-env", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_env","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"other-env"} } } },
+          { "id": "e7", "source": "log_prod", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "log_test", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "log_stag", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "log_other", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "junc1", "target": "dec_sev", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "dec_sev", "target": "log_sev_match", "type": "labeled", "data": { "label": "case=high-and-many-cpu", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_sev","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"high-and-many-cpu"} } } },
+          { "id": "e13", "source": "dec_sev", "target": "log_sev_low", "type": "labeled", "data": { "label": "case=low-but-not-empty", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_sev","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"low-but-not-empty"} } } },
+          { "id": "e14", "source": "dec_sev", "target": "log_sev_fb", "type": "labeled", "data": { "label": "case=fallback", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_sev","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"fallback"} } } },
+          { "id": "e15", "source": "log_sev_match", "target": "junc2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "log_sev_low", "target": "junc2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "log_sev_fb", "target": "junc2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "junc2", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

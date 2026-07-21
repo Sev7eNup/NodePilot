@@ -1,0 +1,67 @@
+{
+  "title": "Backup & Wiederherstellung",
+  "subtitle": "Konfigurations-Backup des Systems. Enthält Workflows, Ordner/Freigaben, Maschinen, Anmeldedaten, globale Variablen, Benutzer und Einstellungen — aber KEINE Ausführungshistorie, Audit-Logs oder Statistiken.",
+  "tabs": {
+    "backup": "Backup erstellen",
+    "restore": "Wiederherstellen"
+  },
+  "sections": {
+    "folders": "Ordner & Freigaben",
+    "users": "Benutzer",
+    "credentials": "Anmeldedaten",
+    "machines": "Maschinen",
+    "globalVariables": "Globale Variablen",
+    "customActivities": "Custom Nodes",
+    "workflows": "Workflows",
+    "settings": "Einstellungen",
+    "folderGrants": "Ordner-Berechtigungen"
+  },
+  "backup": {
+    "selectSections": "Zu sichernde Bereiche",
+    "dependencyNote": "Harte Abhängigkeiten (z. B. Maschinen und Anmeldedaten für Workflows) werden automatisch mit gesichert.",
+    "passphrase": "Passphrase",
+    "passphraseConfirm": "Passphrase bestätigen",
+    "passphraseHint": "Mindestens 12 Zeichen. Ohne diese Passphrase ist das Backup unwiederbringlich — sicher aufbewahren.",
+    "create": "Backup herunterladen",
+    "creating": "Erstelle Backup …",
+    "success": "Backup wurde heruntergeladen.",
+    "mismatch": "Die Passphrasen stimmen nicht überein.",
+    "tooShort": "Passphrase muss mindestens 12 Zeichen lang sein.",
+    "noSections": "Mindestens einen Bereich auswählen.",
+    "items": "{{count}} Einträge"
+  },
+  "restore": {
+    "selectFile": "Backup-Datei (.npbackup)",
+    "passphrase": "Passphrase",
+    "passphraseHint": "Ohne Passphrase nur Struktur-Vorschau (Integrität nicht geprüft).",
+    "preview": "Vorschau",
+    "previewing": "Analysiere …",
+    "integrityVerified": "Integrität geprüft",
+    "integrityUnverified": "Integrität nicht geprüft — Passphrase eingeben für vollständige Prüfung",
+    "appVersion": "Backup-Version",
+    "col": {
+      "section": "Bereich",
+      "inBackup": "Im Backup",
+      "new": "Neu",
+      "conflicts": "Konflikte",
+      "policy": "Bei Konflikt",
+      "created": "Erstellt",
+      "overwritten": "Überschrieben",
+      "skipped": "Übersprungen",
+      "renamed": "Umbenannt"
+    },
+    "policy": {
+      "skip": "Überspringen",
+      "rename": "Umbenennen",
+      "overwrite": "Überschreiben"
+    },
+    "run": "Wiederherstellen",
+    "running": "Stelle wieder her …",
+    "confirm": "Die Wiederherstellung kann bestehende Konfiguration verändern oder überschreiben. Fortfahren?",
+    "success": "Wiederherstellung abgeschlossen.",
+    "settings": "Einstellungen",
+    "settingsApplied": "angewendet (ggf. ist ein Neustart erforderlich)",
+    "settingsSkipped": "nicht angewendet"
+  },
+  "warnings": "Warnungen"
+}

@@ -1,0 +1,34 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] emailNotification - All Variants Live",
+      "description": "Live test of emailNotification activity. ALL variants WILL FAIL in dev without an SMTP server reachable on Smtp:Host (default localhost:25 in appsettings) — the failures are expected and confirm the schema/error-path. Variants cover: plain-text body, HTML body (isHtml=true), templated subject+body from upstream runScript output/param, single-recipient (only mode supported). Run with a real SMTP configured (Settings → SMTP) to see real sends.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "rs: seed", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$hostName = $env:COMPUTERNAME\n$now = (Get-Date).ToString('o')\nWrite-Output 'seeded'" } } },
+          { "id": "em_plain", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "email: plain text", "activityType": "emailNotification", "outputVariable": "em_plain", "config": { "to": "ops@example.invalid", "subject": "NodePilot test (plain)", "body": "This is a plain text notification.", "isHtml": false } } },
+          { "id": "em_html", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "email: HTML", "activityType": "emailNotification", "outputVariable": "em_html", "config": { "to": "ops@example.invalid", "subject": "NodePilot test (HTML)", "body": "<html><body><h2>Hi</h2><p>This is <b>HTML</b>.</p></body></html>", "isHtml": true } } },
+          { "id": "em_templated", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "email: templated", "activityType": "emailNotification", "outputVariable": "em_tpl", "config": { "to": "ops@example.invalid", "subject": "NodePilot test on {{init.param.hostName}}", "body": "Run at {{init.param.now}} init.success={{init.success}} output={{init.output}}", "isHtml": false } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/emailNotification] plain={{em_plain.success}} html={{em_html.success}} templated={{em_tpl.success}} (failures expected if no SMTP)" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "plain_success": "{{em_plain.success}}", "html_success": "{{em_html.success}}", "templated_success": "{{em_tpl.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "init", "target": "em_plain", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "init", "target": "em_html", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "init", "target": "em_templated", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "em_plain", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "em_html", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "em_templated", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

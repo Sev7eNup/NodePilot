@@ -1,0 +1,241 @@
+{
+  "_comment": "Production-shape workflow: SCCM package create -> distribute to all DPs -> set security scopes, then AD group provisioning (two groups with nesting), with phase-boundary logs and success/failure email reporting. Every failing step routes through a shared log-failure node before the failure email so the incident is persisted in the Serilog rolling file even if SMTP is down. SCCM distribution has a retry policy for transient network issues. PowerShell uses real ConfigMgr/ActiveDirectory cmdlets with an automatic simulation fallback when the modules aren't installed, so the same definition runs in prod AND on a dev box without modification. Layout follows the LTR Showcase Styleguide (x-step 340, y-lane 200, main lane y=400, success branch above, failure branch below).",
+  "nodes": [
+    {
+      "id": "trigger",
+      "type": "activity",
+      "position": { "x": 0, "y": 400 },
+      "data": {
+        "label": "Manual Trigger (deployment parameters)",
+        "activityType": "manualTrigger",
+        "config": {
+          "parameters": [
+            { "name": "packageName",            "type": "string", "required": true,  "default": "ProductX-Install-1.0" },
+            { "name": "packageSourcePath",      "type": "string", "required": true,  "default": "\\\\fileserver\\sources\\ProductX\\1.0" },
+            { "name": "packageManufacturer",    "type": "string", "required": false, "default": "Contoso" },
+            { "name": "packageVersion",         "type": "string", "required": false, "default": "1.0.0" },
+            { "name": "sccmSiteCode",           "type": "string", "required": true,  "default": "P01" },
+            { "name": "sccmSiteServer",         "type": "string", "required": true,  "default": "sccm01.corp.local" },
+            { "name": "distributionPointGroup", "type": "string", "required": true,  "default": "All Distribution Points" },
+            { "name": "securityScope",          "type": "string", "required": true,  "default": "Default" },
+            { "name": "adGroup1Name",           "type": "string", "required": true,  "default": "SG-ProductX-Admins" },
+            { "name": "adGroup2Name",           "type": "string", "required": true,  "default": "SG-ProductX-Users" },
+            { "name": "adOU",                   "type": "string", "required": true,  "default": "OU=Security Groups,DC=corp,DC=local" },
+            { "name": "notificationEmail",      "type": "string", "required": true,  "default": "it-ops@corp.local" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "log-start",
+      "type": "activity",
+      "position": { "x": 340, "y": 400 },
+      "data": {
+        "label": "Log: Deployment started",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Deployment started | package='{{trigger.param.packageName}} {{trigger.param.packageVersion}}' | site={{trigger.param.sccmSiteCode}}@{{trigger.param.sccmSiteServer}} | scope={{trigger.param.securityScope}} | adOU={{trigger.param.adOU}} | groups={{trigger.param.adGroup1Name}} <- {{trigger.param.adGroup2Name}}"
+        }
+      }
+    },
+    {
+      "id": "sccm-create-package",
+      "type": "activity",
+      "position": { "x": 680, "y": 400 },
+      "data": {
+        "label": "SCCM: Create Package",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "pkg",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 120,
+          "script": "$ErrorActionPreference = 'Stop'\n$packageName    = '{{trigger.param.packageName}}'\n$packageSource  = '{{trigger.param.packageSourcePath}}'\n$manufacturer   = '{{trigger.param.packageManufacturer}}'\n$packageVersion = '{{trigger.param.packageVersion}}'\n$siteCode       = '{{trigger.param.sccmSiteCode}}'\n$siteServer     = '{{trigger.param.sccmSiteServer}}'\n\nWrite-Output \"=== SCCM: Create Package ===\"\nWrite-Output \"Name:   $packageName $packageVersion ($manufacturer)\"\nWrite-Output \"Source: $packageSource\"\nWrite-Output \"Site:   $siteCode on $siteServer\"\n\ntry {\n    $cmModule = if ($env:SMS_ADMIN_UI_PATH) { Join-Path $env:SMS_ADMIN_UI_PATH '..\\ConfigurationManager.psd1' } else { $null }\n    $sccmAvailable = $cmModule -and (Test-Path $cmModule)\n\n    if ($sccmAvailable) {\n        if (-not (Get-Module ConfigurationManager)) { Import-Module $cmModule }\n        if (-not (Get-PSDrive -Name $siteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {\n            New-PSDrive -Name $siteCode -PSProvider CMSite -Root $siteServer -Scope Global | Out-Null\n        }\n        Push-Location \"$($siteCode):\\\"\n        try {\n            $created = New-CMPackage -Name $packageName -Manufacturer $manufacturer -Version $packageVersion -Path $packageSource\n            $packageId = $created.PackageID\n        } finally { Pop-Location }\n        $mode = 'live'\n    } else {\n        # Simulation path - lets this workflow run on dev boxes without ConfigMgr installed.\n        $packageId = 'SIM{0:D5}' -f (Get-Random -Maximum 99999)\n        $mode = 'simulated'\n        Write-Output '  [SIM] ConfigurationManager module not found - running simulation'\n    }\n    Write-Output \"Package created: ID=$packageId (mode=$mode)\"\n} catch {\n    Write-Error \"SCCM package creation failed: $($_.Exception.Message)\"\n    throw\n}"
+        }
+      }
+    },
+    {
+      "id": "sccm-distribute",
+      "type": "activity",
+      "position": { "x": 1020, "y": 400 },
+      "data": {
+        "label": "SCCM: Distribute to all DPs (retry 3x)",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "dist",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 300,
+          "retry": {
+            "maxAttempts": 3,
+            "backoff": "exponential",
+            "initialDelayMs": 2000,
+            "maxDelayMs": 20000
+          },
+          "script": "$ErrorActionPreference = 'Stop'\n$packageId  = '{{pkg.param.packageId}}'\n$siteCode   = '{{trigger.param.sccmSiteCode}}'\n$siteServer = '{{trigger.param.sccmSiteServer}}'\n$dpGroup    = '{{trigger.param.distributionPointGroup}}'\n\nWrite-Output \"=== SCCM: Distribute Content ===\"\nWrite-Output \"PackageID: $packageId\"\nWrite-Output \"DP Group:  $dpGroup\"\n\ntry {\n    $cmModule = if ($env:SMS_ADMIN_UI_PATH) { Join-Path $env:SMS_ADMIN_UI_PATH '..\\ConfigurationManager.psd1' } else { $null }\n    $sccmAvailable = $cmModule -and (Test-Path $cmModule)\n    $dpList = @()\n\n    if ($sccmAvailable) {\n        if (-not (Get-Module ConfigurationManager)) { Import-Module $cmModule }\n        if (-not (Get-PSDrive -Name $siteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {\n            New-PSDrive -Name $siteCode -PSProvider CMSite -Root $siteServer -Scope Global | Out-Null\n        }\n        Push-Location \"$($siteCode):\\\"\n        try {\n            Start-CMContentDistribution -PackageId $packageId -DistributionPointGroupName $dpGroup\n            $dpList = Get-CMDistributionPoint | Select-Object -ExpandProperty NetworkOSPath\n        } finally { Pop-Location }\n        $mode = 'live'\n    } else {\n        $dpList = @('\\\\DP01.corp.local','\\\\DP02.corp.local','\\\\DP03.corp.local')\n        $mode = 'simulated'\n        Write-Output '  [SIM] ConfigurationManager module not found - running simulation'\n    }\n\n    $dpCount   = $dpList.Count\n    $dpSummary = $dpList -join ', '\n    if ($dpCount -lt 1) { throw \"No distribution points matched group '$dpGroup'\" }\n    Write-Output \"Distributed to $dpCount DP(s): $dpSummary (mode=$mode)\"\n} catch {\n    Write-Error \"SCCM distribution failed: $($_.Exception.Message)\"\n    throw\n}"
+        }
+      }
+    },
+    {
+      "id": "sccm-set-scopes",
+      "type": "activity",
+      "position": { "x": 1360, "y": 400 },
+      "data": {
+        "label": "SCCM: Set Security Scopes",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "scope",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 120,
+          "script": "$ErrorActionPreference = 'Stop'\n$packageId  = '{{pkg.param.packageId}}'\n$scopeName  = '{{trigger.param.securityScope}}'\n$siteCode   = '{{trigger.param.sccmSiteCode}}'\n$siteServer = '{{trigger.param.sccmSiteServer}}'\n\nWrite-Output \"=== SCCM: Apply Security Scope ===\"\nWrite-Output \"PackageID: $packageId\"\nWrite-Output \"Scope:     $scopeName\"\n\ntry {\n    $cmModule = if ($env:SMS_ADMIN_UI_PATH) { Join-Path $env:SMS_ADMIN_UI_PATH '..\\ConfigurationManager.psd1' } else { $null }\n    $sccmAvailable = $cmModule -and (Test-Path $cmModule)\n\n    if ($sccmAvailable) {\n        if (-not (Get-Module ConfigurationManager)) { Import-Module $cmModule }\n        if (-not (Get-PSDrive -Name $siteCode -PSProvider CMSite -ErrorAction SilentlyContinue)) {\n            New-PSDrive -Name $siteCode -PSProvider CMSite -Root $siteServer -Scope Global | Out-Null\n        }\n        Push-Location \"$($siteCode):\\\"\n        try {\n            $p = Get-CMPackage -Id $packageId\n            if (-not $p) { throw \"Package $packageId not found\" }\n            $s = Get-CMSecurityScope -Name $scopeName\n            if (-not $s) { throw \"Security scope '$scopeName' not found\" }\n            Add-CMObjectSecurityScope -InputObject $p -Scope $s\n        } finally { Pop-Location }\n        $mode = 'live'\n    } else {\n        $mode = 'simulated'\n        Write-Output '  [SIM] ConfigurationManager module not found - running simulation'\n    }\n\n    $scopeApplied = $scopeName\n    Write-Output \"Security scope '$scopeApplied' applied to $packageId (mode=$mode)\"\n} catch {\n    Write-Error \"SCCM scope assignment failed: $($_.Exception.Message)\"\n    throw\n}"
+        }
+      }
+    },
+    {
+      "id": "log-sccm-done",
+      "type": "activity",
+      "position": { "x": 1700, "y": 400 },
+      "data": {
+        "label": "Log: SCCM phase complete",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "SCCM phase complete | packageId={{pkg.param.packageId}} | dps={{dist.param.dpCount}} ({{dist.param.dpSummary}}) | scope={{scope.param.scopeApplied}} | mode={{pkg.param.mode}}"
+        }
+      }
+    },
+    {
+      "id": "ad-create-group1",
+      "type": "activity",
+      "position": { "x": 2040, "y": 400 },
+      "data": {
+        "label": "AD: Create Parent Group",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "grp1",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 90,
+          "script": "$ErrorActionPreference = 'Stop'\n$groupName = '{{trigger.param.adGroup1Name}}'\n$ouPath    = '{{trigger.param.adOU}}'\n$groupDesc = 'Parent security group for ProductX (provisioned by NodePilot)'\n\nWrite-Output \"=== AD: Create Parent Group ===\"\nWrite-Output \"Group: $groupName\"\nWrite-Output \"OU:    $ouPath\"\n\ntry {\n    $adAvailable = $null -ne (Get-Module -ListAvailable -Name ActiveDirectory)\n\n    if ($adAvailable) {\n        Import-Module ActiveDirectory\n        $existing = Get-ADGroup -Filter \"Name -eq '$groupName'\" -ErrorAction SilentlyContinue\n        if ($existing) {\n            $group1Dn  = $existing.DistinguishedName\n            $group1Sid = $existing.SID.Value\n            $action    = 'reused'\n        } else {\n            $g = New-ADGroup -Name $groupName -GroupScope Global -GroupCategory Security -Path $ouPath -Description $groupDesc -PassThru\n            $group1Dn  = $g.DistinguishedName\n            $group1Sid = $g.SID.Value\n            $action    = 'created'\n        }\n        $mode = 'live'\n    } else {\n        $group1Dn  = \"CN=$groupName,$ouPath\"\n        $group1Sid = 'S-1-5-21-SIM-' + (Get-Random -Maximum 99999)\n        $action    = 'simulated'\n        $mode      = 'simulated'\n        Write-Output '  [SIM] ActiveDirectory module not found - running simulation'\n    }\n\n    Write-Output \"Parent group $action: $group1Dn (mode=$mode)\"\n} catch {\n    Write-Error \"AD parent group provisioning failed: $($_.Exception.Message)\"\n    throw\n}"
+        }
+      }
+    },
+    {
+      "id": "ad-create-group2",
+      "type": "activity",
+      "position": { "x": 2380, "y": 400 },
+      "data": {
+        "label": "AD: Create Child Group",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "grp2",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 90,
+          "script": "$ErrorActionPreference = 'Stop'\n$groupName = '{{trigger.param.adGroup2Name}}'\n$ouPath    = '{{trigger.param.adOU}}'\n$groupDesc = 'Child security group for ProductX users (provisioned by NodePilot)'\n\nWrite-Output \"=== AD: Create Child Group ===\"\nWrite-Output \"Group: $groupName\"\nWrite-Output \"OU:    $ouPath\"\n\ntry {\n    $adAvailable = $null -ne (Get-Module -ListAvailable -Name ActiveDirectory)\n\n    if ($adAvailable) {\n        Import-Module ActiveDirectory\n        $existing = Get-ADGroup -Filter \"Name -eq '$groupName'\" -ErrorAction SilentlyContinue\n        if ($existing) {\n            $group2Dn  = $existing.DistinguishedName\n            $group2Sid = $existing.SID.Value\n            $action    = 'reused'\n        } else {\n            $g = New-ADGroup -Name $groupName -GroupScope Global -GroupCategory Security -Path $ouPath -Description $groupDesc -PassThru\n            $group2Dn  = $g.DistinguishedName\n            $group2Sid = $g.SID.Value\n            $action    = 'created'\n        }\n        $mode = 'live'\n    } else {\n        $group2Dn  = \"CN=$groupName,$ouPath\"\n        $group2Sid = 'S-1-5-21-SIM-' + (Get-Random -Maximum 99999)\n        $action    = 'simulated'\n        $mode      = 'simulated'\n        Write-Output '  [SIM] ActiveDirectory module not found - running simulation'\n    }\n\n    Write-Output \"Child group $action: $group2Dn (mode=$mode)\"\n} catch {\n    Write-Error \"AD child group provisioning failed: $($_.Exception.Message)\"\n    throw\n}"
+        }
+      }
+    },
+    {
+      "id": "ad-nest-groups",
+      "type": "activity",
+      "position": { "x": 2720, "y": 400 },
+      "data": {
+        "label": "AD: Nest Child into Parent Group",
+        "activityType": "runScript",
+        "targetMachineId": "localhost",
+        "outputVariable": "nest",
+        "config": {
+          "engine": "auto",
+          "timeoutSeconds": 60,
+          "script": "$ErrorActionPreference = 'Stop'\n$parentName = '{{trigger.param.adGroup1Name}}'\n$childName  = '{{trigger.param.adGroup2Name}}'\n$parentDn   = '{{grp1.param.group1Dn}}'\n$childDn    = '{{grp2.param.group2Dn}}'\n\nWrite-Output \"=== AD: Nest Groups ===\"\nWrite-Output \"Parent: $parentName\"\nWrite-Output \"Child:  $childName\"\nWrite-Output \"Membership: $childDn -> $parentDn\"\n\ntry {\n    $adAvailable = $null -ne (Get-Module -ListAvailable -Name ActiveDirectory)\n\n    if ($adAvailable) {\n        Import-Module ActiveDirectory\n        $alreadyMember = Get-ADGroupMember -Identity $parentDn -ErrorAction SilentlyContinue | Where-Object { $_.distinguishedName -eq $childDn }\n        if ($alreadyMember) {\n            $action = 'already-member'\n        } else {\n            Add-ADGroupMember -Identity $parentDn -Members $childDn\n            $action = 'added'\n        }\n        $mode = 'live'\n    } else {\n        $action = 'simulated'\n        $mode   = 'simulated'\n        Write-Output '  [SIM] ActiveDirectory module not found - running simulation'\n    }\n\n    $nestMembership = \"$childName -> $parentName\"\n    Write-Output \"Nesting $action for $nestMembership (mode=$mode)\"\n} catch {\n    Write-Error \"AD group nesting failed: $($_.Exception.Message)\"\n    throw\n}"
+        }
+      }
+    },
+    {
+      "id": "log-ad-done",
+      "type": "activity",
+      "position": { "x": 3060, "y": 400 },
+      "data": {
+        "label": "Log: AD phase complete",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "AD phase complete | parent={{grp1.param.group1Dn}} | child={{grp2.param.group2Dn}} | nesting={{nest.param.action}} ({{nest.param.nestMembership}}) | mode={{grp1.param.mode}}"
+        }
+      }
+    },
+    {
+      "id": "email-success",
+      "type": "activity",
+      "position": { "x": 3400, "y": 200 },
+      "data": {
+        "label": "Email: Success Report",
+        "activityType": "emailNotification",
+        "config": {
+          "to": "{{trigger.param.notificationEmail}}",
+          "subject": "[OK] Deployment '{{trigger.param.packageName}}' completed",
+          "isHtml": false,
+          "body": "Package deployment + AD provisioning completed successfully.\n\nSCCM\n  Package:      {{trigger.param.packageName}} {{trigger.param.packageVersion}}\n  PackageID:    {{pkg.param.packageId}}\n  Mode:         {{pkg.param.mode}}\n  Site:         {{trigger.param.sccmSiteCode}} @ {{trigger.param.sccmSiteServer}}\n  Source:       {{trigger.param.packageSourcePath}}\n  Distributed:  {{dist.param.dpCount}} DP(s) -> {{dist.param.dpSummary}}\n  Scope:        {{scope.param.scopeApplied}}\n\nActive Directory\n  OU:           {{trigger.param.adOU}}\n  Parent Group: {{grp1.param.group1Dn}}\n  Child Group:  {{grp2.param.group2Dn}}\n  Nesting:      {{nest.param.nestMembership}} ({{nest.param.action}})\n\n-- NodePilot"
+        }
+      }
+    },
+    {
+      "id": "log-failure",
+      "type": "activity",
+      "position": { "x": 3060, "y": 600 },
+      "data": {
+        "label": "Log: Deployment FAILED (shared)",
+        "activityType": "log",
+        "config": {
+          "level": "error",
+          "message": "Deployment FAILED | package='{{trigger.param.packageName}} {{trigger.param.packageVersion}}' | site={{trigger.param.sccmSiteCode}} | parent={{trigger.param.adGroup1Name}} | child={{trigger.param.adGroup2Name}} | see StepExecution rows for failing-step ErrorOutput (root cause)"
+        }
+      }
+    },
+    {
+      "id": "email-failure",
+      "type": "activity",
+      "position": { "x": 3400, "y": 600 },
+      "data": {
+        "label": "Email: Failure Report",
+        "activityType": "emailNotification",
+        "config": {
+          "to": "{{trigger.param.notificationEmail}}",
+          "subject": "[FAIL] Deployment '{{trigger.param.packageName}}' aborted",
+          "isHtml": false,
+          "body": "Package deployment workflow FAILED. Check the NodePilot execution log for the failing step and its error output.\n\nContext\n  Package:   {{trigger.param.packageName}} {{trigger.param.packageVersion}}\n  Site:      {{trigger.param.sccmSiteCode}} @ {{trigger.param.sccmSiteServer}}\n  OU:        {{trigger.param.adOU}}\n  Parent:    {{trigger.param.adGroup1Name}}\n  Child:     {{trigger.param.adGroup2Name}}\n\nNo rollback has been performed automatically - inspect the partial state and remediate manually.\n\n-- NodePilot"
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "id": "e-trig-logstart",    "source": "trigger",             "target": "log-start",           "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-logstart-pkg",     "source": "log-start",           "target": "sccm-create-package", "type": "labeled", "data": { "label": "Always" } },
+
+    { "id": "e-pkg-dist",         "source": "sccm-create-package", "target": "sccm-distribute",     "type": "labeled", "data": { "label": "On Success", "condition": "sccm-create-package.success" } },
+    { "id": "e-pkg-fail",         "source": "sccm-create-package", "target": "log-failure",         "type": "labeled", "data": { "label": "On Failure", "condition": "sccm-create-package.failed" } },
+
+    { "id": "e-dist-scope",       "source": "sccm-distribute",     "target": "sccm-set-scopes",     "type": "labeled", "data": { "label": "On Success", "condition": "sccm-distribute.success" } },
+    { "id": "e-dist-fail",        "source": "sccm-distribute",     "target": "log-failure",         "type": "labeled", "data": { "label": "On Failure", "condition": "sccm-distribute.failed" } },
+
+    { "id": "e-scope-logsccm",    "source": "sccm-set-scopes",     "target": "log-sccm-done",       "type": "labeled", "data": { "label": "On Success", "condition": "sccm-set-scopes.success" } },
+    { "id": "e-scope-fail",       "source": "sccm-set-scopes",     "target": "log-failure",         "type": "labeled", "data": { "label": "On Failure", "condition": "sccm-set-scopes.failed" } },
+
+    { "id": "e-logsccm-grp1",     "source": "log-sccm-done",       "target": "ad-create-group1",    "type": "labeled", "data": { "label": "Always" } },
+
+    { "id": "e-grp1-grp2",        "source": "ad-create-group1",    "target": "ad-create-group2",    "type": "labeled", "data": { "label": "On Success", "condition": "ad-create-group1.success" } },
+    { "id": "e-grp1-fail",        "source": "ad-create-group1",    "target": "log-failure",         "type": "labeled", "data": { "label": "On Failure", "condition": "ad-create-group1.failed" } },
+
+    { "id": "e-grp2-nest",        "source": "ad-create-group2",    "target": "ad-nest-groups",      "type": "labeled", "data": { "label": "On Success", "condition": "ad-create-group2.success" } },
+    { "id": "e-grp2-fail",        "source": "ad-create-group2",    "target": "log-failure",         "type": "labeled", "data": { "label": "On Failure", "condition": "ad-create-group2.failed" } },
+
+    { "id": "e-nest-logad",       "source": "ad-nest-groups",      "target": "log-ad-done",         "type": "labeled", "data": { "label": "On Success", "condition": "ad-nest-groups.success" } },
+    { "id": "e-nest-fail",        "source": "ad-nest-groups",      "target": "log-failure",         "type": "labeled", "data": { "label": "On Failure", "condition": "ad-nest-groups.failed" } },
+
+    { "id": "e-logad-emailok",    "source": "log-ad-done",         "target": "email-success",       "type": "labeled", "data": { "label": "Always" } },
+    { "id": "e-logfail-emailerr", "source": "log-failure",         "target": "email-failure",       "type": "labeled", "data": { "label": "Always" } }
+  ]
+}

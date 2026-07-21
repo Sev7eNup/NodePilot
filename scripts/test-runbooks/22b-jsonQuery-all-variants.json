@@ -1,0 +1,84 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] jsonQuery - All Variants Live",
+      "description": "Live end-to-end Test der jsonQuery-Activity über alle Varianten. Phasen: A) source=inline mit JSON-Literal — jsonPath simple ($.foo). B) jsonPath array element ($.items[0]). C) jsonPath wildcard ($.items[*].name). D) resultMode=single vs all. E) Filter-Expression ($.items[?(@.active==true)]). F) source=file via runScript-Prep (schreibt C:\\temp\\NP-TestSuite-json-<guid>.json, deleted in Phase H). G) invalid jsonPath (error-path). H) Cleanup + Summary + returnData. Pro Phase ein log-Step der param.result/param.count aggregiert. Layout: Snake mit ROW 1 LTR (Phasen A-F), ROW 2 RTL (Phasen G-H).",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 200 }, "data": { "label": "Manual: start jsonQuery suite", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+
+          { "id": "j_simple", "type": "activity", "position": { "x": 380, "y": 200 }, "data": { "label": "json: simple path $.foo", "activityType": "jsonQuery", "outputVariable": "j_simple", "config": { "source": "inline", "content": "{\"foo\":\"bar\",\"num\":42,\"flag\":true}", "jsonPath": "$.foo", "resultMode": "single" } } },
+
+          { "id": "j_array_idx", "type": "activity", "position": { "x": 700, "y": 200 }, "data": { "label": "json: array index $.items[0]", "activityType": "jsonQuery", "outputVariable": "j_array_idx", "config": { "source": "inline", "content": "{\"items\":[{\"name\":\"alpha\",\"id\":1},{\"name\":\"beta\",\"id\":2},{\"name\":\"gamma\",\"id\":3}]}", "jsonPath": "$.items[0]", "resultMode": "single" } } },
+
+          { "id": "j_wildcard", "type": "activity", "position": { "x": 1020, "y": 200 }, "data": { "label": "json: wildcard $.items[*].name", "activityType": "jsonQuery", "outputVariable": "j_wildcard", "config": { "source": "inline", "content": "{\"items\":[{\"name\":\"alpha\"},{\"name\":\"beta\"},{\"name\":\"gamma\"}]}", "jsonPath": "$.items[*].name", "resultMode": "all" } } },
+
+          { "id": "log_phase_abc", "type": "activity", "position": { "x": 1340, "y": 200 }, "data": { "label": "log: PHASE A-C inline", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/jsonQuery] PHASE A-C — Inline paths:\nsimple: success={{j_simple.success}} result={{j_simple.param.result}}\narray_idx: success={{j_array_idx.success}} result={{j_array_idx.param.result}}\nwildcard: success={{j_wildcard.success}} result={{j_wildcard.param.result}} count={{j_wildcard.param.count}}" } } },
+
+          { "id": "j_single_mode", "type": "activity", "position": { "x": 1660, "y": 200 }, "data": { "label": "json: resultMode=single", "activityType": "jsonQuery", "outputVariable": "j_single", "config": { "source": "inline", "content": "{\"items\":[{\"id\":1,\"name\":\"alpha\"},{\"id\":2,\"name\":\"beta\"}]}", "jsonPath": "$.items[1].name", "resultMode": "single" } } },
+
+          { "id": "j_all_mode", "type": "activity", "position": { "x": 1980, "y": 200 }, "data": { "label": "json: resultMode=all", "activityType": "jsonQuery", "outputVariable": "j_all", "config": { "source": "inline", "content": "{\"items\":[{\"id\":1,\"name\":\"alpha\"},{\"id\":2,\"name\":\"beta\"},{\"id\":3,\"name\":\"gamma\"}]}", "jsonPath": "$.items[*]", "resultMode": "all" } } },
+
+          { "id": "j_filter", "type": "activity", "position": { "x": 2300, "y": 200 }, "data": { "label": "json: filter active==true", "activityType": "jsonQuery", "outputVariable": "j_filter", "config": { "source": "inline", "content": "{\"items\":[{\"id\":1,\"active\":true},{\"id\":2,\"active\":false},{\"id\":3,\"active\":true},{\"id\":4,\"active\":true}]}", "jsonPath": "$.items[?(@.active==true)].id", "resultMode": "all" } } },
+
+          { "id": "log_phase_de", "type": "activity", "position": { "x": 2620, "y": 200 }, "data": { "label": "log: PHASE D+E modes & filter", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/jsonQuery] PHASE D+E — Modes & filter:\nsingle: success={{j_single_mode.success}} result={{j_single_mode.param.result}}\nall: success={{j_all_mode.success}} count={{j_all_mode.param.count}}\nfilter active: success={{j_filter.success}} result={{j_filter.param.result}} count={{j_filter.param.count}}" } } },
+
+          { "id": "prep_file", "type": "activity", "position": { "x": 2620, "y": 480 }, "data": { "label": "prep: write json file", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "prep_file", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$dir = 'C:\\temp\\NP-TestSuite-json-' + [Guid]::NewGuid().ToString('N')\nNew-Item -Path $dir -ItemType Directory -Force | Out-Null\n$obj = @{config=@{servers=@(@{name='alpha';port=8080}, @{name='beta';port=9090}, @{name='gamma';port=7070})}; version='1.2.3'}\n$path = Join-Path $dir 'test.json'\n$obj | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $path -Encoding UTF8\n$jsonPath = $path\nWrite-Output \"wrote $path\"" } } },
+
+          { "id": "j_file_single", "type": "activity", "position": { "x": 2300, "y": 480 }, "data": { "label": "json: file single", "activityType": "jsonQuery", "outputVariable": "j_file_single", "config": { "source": "file", "path": "{{prep_file.param.jsonPath}}", "jsonPath": "$.config.servers[1].name", "resultMode": "single" } } },
+
+          { "id": "j_file_all", "type": "activity", "position": { "x": 1980, "y": 480 }, "data": { "label": "json: file all", "activityType": "jsonQuery", "outputVariable": "j_file_all", "config": { "source": "file", "path": "{{prep_file.param.jsonPath}}", "jsonPath": "$.config.servers[*].port", "resultMode": "all" } } },
+
+          { "id": "log_phase_f", "type": "activity", "position": { "x": 1660, "y": 480 }, "data": { "label": "log: PHASE F file", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/jsonQuery] PHASE F — File source:\nfile_single: success={{j_file_single.success}} result={{j_file_single.param.result}}\nfile_all: success={{j_file_all.success}} result={{j_file_all.param.result}} count={{j_file_all.param.count}}" } } },
+
+          { "id": "j_invalid", "type": "activity", "position": { "x": 1340, "y": 480 }, "data": { "label": "json: invalid path (error)", "activityType": "jsonQuery", "outputVariable": "j_invalid", "config": { "source": "inline", "content": "{\"foo\":\"bar\"}", "jsonPath": "$..[?(@.broken", "resultMode": "single" } } },
+
+          { "id": "log_phase_g", "type": "activity", "position": { "x": 1020, "y": 480 }, "data": { "label": "log: PHASE G error", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/jsonQuery] PHASE G — Invalid jsonPath (expected failure):\nsuccess={{j_invalid.success}} error={{j_invalid.error}}" } } },
+
+          { "id": "cleanup", "type": "activity", "position": { "x": 700, "y": 480 }, "data": { "label": "cleanup: delete temp dir", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "cleanup", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$j = {{prep_file.param.jsonPath}}\n$parent = Split-Path $j\nif (Test-Path $parent) { Remove-Item -LiteralPath $parent -Recurse -Force }\nWrite-Output 'cleanup-ok'" } } },
+
+          { "id": "log_summary", "type": "activity", "position": { "x": 380, "y": 480 }, "data": { "label": "log: SUMMARY", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/jsonQuery] SUMMARY — All variants covered.\nInline: simple={{j_simple.success}} arr_idx={{j_array_idx.success}} wildcard={{j_wildcard.success}} (count={{j_wildcard.param.count}})\nModes: single={{j_single_mode.success}}={{j_single_mode.param.result}} all={{j_all_mode.success}} (count={{j_all_mode.param.count}})\nFilter active: {{j_filter.success}} (count={{j_filter.param.count}})\nFile: single={{j_file_single.success}}={{j_file_single.param.result}} all={{j_file_all.success}} (count={{j_file_all.param.count}})\nInvalid: success={{j_invalid.success}} (expected false)\nCleanup: {{cleanup.success}}" } } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 60, "y": 480 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": {
+            "simple_result": "{{j_simple.param.result}}",
+            "array_idx_result": "{{j_array_idx.param.result}}",
+            "wildcard_result": "{{j_wildcard.param.result}}",
+            "wildcard_count": "{{j_wildcard.param.count}}",
+            "single_mode_result": "{{j_single_mode.param.result}}",
+            "all_mode_count": "{{j_all_mode.param.count}}",
+            "filter_result": "{{j_filter.param.result}}",
+            "filter_count": "{{j_filter.param.count}}",
+            "file_single_result": "{{j_file_single.param.result}}",
+            "file_all_result": "{{j_file_all.param.result}}",
+            "file_all_count": "{{j_file_all.param.count}}",
+            "invalid_success": "{{j_invalid.success}}",
+            "invalid_error": "{{j_invalid.error}}",
+            "cleanup_success": "{{cleanup.success}}"
+          } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "j_simple", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "j_simple", "target": "j_array_idx", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "j_array_idx", "target": "j_wildcard", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "j_wildcard", "target": "log_phase_abc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "log_phase_abc", "target": "j_single_mode", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "j_single_mode", "target": "j_all_mode", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "j_all_mode", "target": "j_filter", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "j_filter", "target": "log_phase_de", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "log_phase_de", "target": "prep_file", "type": "labeled", "sourceHandle": "bottom", "targetHandle": "top", "data": { "label": "Always" } },
+          { "id": "e10", "source": "prep_file", "target": "j_file_single", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "On Success", "condition": "prep_file.success" } },
+          { "id": "e11", "source": "j_file_single", "target": "j_file_all", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e12", "source": "j_file_all", "target": "log_phase_f", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e13", "source": "log_phase_f", "target": "j_invalid", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e14", "source": "j_invalid", "target": "log_phase_g", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e15", "source": "log_phase_g", "target": "cleanup", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e16", "source": "cleanup", "target": "log_summary", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } },
+          { "id": "e17", "source": "log_summary", "target": "ret", "type": "labeled", "sourceHandle": "left", "targetHandle": "right", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

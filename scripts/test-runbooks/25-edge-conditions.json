@@ -1,0 +1,91 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] edge-conditions - All 14 Operators + AND/OR/NOT + Legacy + Disabled",
+      "description": "Coverage-Test fuer ConditionEvaluator: alle 14 comparison-Operatoren (==, !=, <, >, <=, >=, contains, startsWith, endsWith, matches, isEmpty, isNotEmpty, isTrue, isFalse), group-Modi AND/OR, NOT-Negation, disabled-Edge (Target wird Skipped), legacy String-Conditions (stepId.success / stepId.failed), node-level disabled. Jeder Branch endet auf einem eigenen Log, Junction sammelt alle erwarteten Treffer.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 1500 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 1500 }, "data": { "label": "init: many fixture vars", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "fx", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$envName = 'test-env'\n$cpuCount = '4'\n$freeGb = '500'\n$hostname = 'WIN-PC01'\n$isDomain = 'true'\n$emptyStr = ''\n$falseVal = 'false'\nWrite-Output 'init-ok'" } } },
+          { "id": "log_eq", "type": "activity", "position": { "x": 640, "y": 100 }, "data": { "label": "log: ==", "activityType": "log", "config": { "level": "info", "message": "Edge OP == matched" } } },
+          { "id": "log_neq", "type": "activity", "position": { "x": 640, "y": 220 }, "data": { "label": "log: !=", "activityType": "log", "config": { "level": "info", "message": "Edge OP != matched" } } },
+          { "id": "log_lt", "type": "activity", "position": { "x": 640, "y": 340 }, "data": { "label": "log: <", "activityType": "log", "config": { "level": "info", "message": "Edge OP < matched" } } },
+          { "id": "log_gt", "type": "activity", "position": { "x": 640, "y": 460 }, "data": { "label": "log: >", "activityType": "log", "config": { "level": "info", "message": "Edge OP > matched" } } },
+          { "id": "log_le", "type": "activity", "position": { "x": 640, "y": 580 }, "data": { "label": "log: <=", "activityType": "log", "config": { "level": "info", "message": "Edge OP <= matched" } } },
+          { "id": "log_ge", "type": "activity", "position": { "x": 640, "y": 700 }, "data": { "label": "log: >=", "activityType": "log", "config": { "level": "info", "message": "Edge OP >= matched" } } },
+          { "id": "log_contains", "type": "activity", "position": { "x": 640, "y": 820 }, "data": { "label": "log: contains", "activityType": "log", "config": { "level": "info", "message": "Edge OP contains matched" } } },
+          { "id": "log_starts", "type": "activity", "position": { "x": 640, "y": 940 }, "data": { "label": "log: startsWith", "activityType": "log", "config": { "level": "info", "message": "Edge OP startsWith matched" } } },
+          { "id": "log_ends", "type": "activity", "position": { "x": 640, "y": 1060 }, "data": { "label": "log: endsWith", "activityType": "log", "config": { "level": "info", "message": "Edge OP endsWith matched" } } },
+          { "id": "log_matches", "type": "activity", "position": { "x": 640, "y": 1180 }, "data": { "label": "log: matches (regex)", "activityType": "log", "config": { "level": "info", "message": "Edge OP matches matched" } } },
+          { "id": "log_isempty", "type": "activity", "position": { "x": 640, "y": 1300 }, "data": { "label": "log: isEmpty", "activityType": "log", "config": { "level": "info", "message": "Edge OP isEmpty matched" } } },
+          { "id": "log_isnotempty", "type": "activity", "position": { "x": 640, "y": 1420 }, "data": { "label": "log: isNotEmpty", "activityType": "log", "config": { "level": "info", "message": "Edge OP isNotEmpty matched" } } },
+          { "id": "log_istrue", "type": "activity", "position": { "x": 640, "y": 1540 }, "data": { "label": "log: isTrue", "activityType": "log", "config": { "level": "info", "message": "Edge OP isTrue matched" } } },
+          { "id": "log_isfalse", "type": "activity", "position": { "x": 640, "y": 1660 }, "data": { "label": "log: isFalse", "activityType": "log", "config": { "level": "info", "message": "Edge OP isFalse matched" } } },
+          { "id": "log_and", "type": "activity", "position": { "x": 640, "y": 1780 }, "data": { "label": "log: group AND", "activityType": "log", "config": { "level": "info", "message": "Edge group AND matched" } } },
+          { "id": "log_or", "type": "activity", "position": { "x": 640, "y": 1900 }, "data": { "label": "log: group OR", "activityType": "log", "config": { "level": "info", "message": "Edge group OR matched" } } },
+          { "id": "log_not", "type": "activity", "position": { "x": 640, "y": 2020 }, "data": { "label": "log: NOT", "activityType": "log", "config": { "level": "info", "message": "Edge NOT matched" } } },
+          { "id": "log_legacy_succ", "type": "activity", "position": { "x": 640, "y": 2140 }, "data": { "label": "log: legacy stepId.success", "activityType": "log", "config": { "level": "info", "message": "Edge legacy success matched" } } },
+          { "id": "log_legacy_fail_neg", "type": "activity", "position": { "x": 640, "y": 2260 }, "data": { "label": "log: legacy stepId.failed (should NOT fire)", "activityType": "log", "config": { "level": "warning", "message": "Legacy fail edge fired (unexpected - init succeeded)" } } },
+          { "id": "log_disabled_edge", "type": "activity", "position": { "x": 640, "y": 2380 }, "data": { "label": "log: disabled-edge target (should NOT fire)", "activityType": "log", "config": { "level": "warning", "message": "Disabled-edge target fired (unexpected)" } } },
+          { "id": "log_node_disabled", "type": "activity", "position": { "x": 640, "y": 2500 }, "data": { "label": "log: node-disabled (should NOT execute)", "activityType": "log", "disabled": true, "config": { "level": "warning", "message": "Node-disabled fired (unexpected)" } } },
+          { "id": "log_after_disabled", "type": "activity", "position": { "x": 960, "y": 2500 }, "data": { "label": "log: after-disabled (should be Skipped)", "activityType": "log", "config": { "level": "info", "message": "After-disabled-node (will be Skipped because upstream is disabled)" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 1280, "y": 1500 }, "data": { "label": "junction: waitAll expected matches", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1600, "y": 1500 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "note": "All 14 operators + AND/OR/NOT + legacy + disabled tested" } } } }
+        ],
+        "edges": [
+          { "id": "e_init", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_eq", "source": "init", "target": "log_eq", "type": "labeled", "data": { "label": "envName == 'test-env'", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"envName"}, "op": "==", "right": {"kind":"literal","value":"test-env"} } } },
+          { "id": "e_neq", "source": "init", "target": "log_neq", "type": "labeled", "data": { "label": "envName != 'prod'", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"envName"}, "op": "!=", "right": {"kind":"literal","value":"prod"} } } },
+          { "id": "e_lt", "source": "init", "target": "log_lt", "type": "labeled", "data": { "label": "cpu < 8", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"cpuCount"}, "op": "<", "right": {"kind":"literal","value":"8"} } } },
+          { "id": "e_gt", "source": "init", "target": "log_gt", "type": "labeled", "data": { "label": "cpu > 1", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"cpuCount"}, "op": ">", "right": {"kind":"literal","value":"1"} } } },
+          { "id": "e_le", "source": "init", "target": "log_le", "type": "labeled", "data": { "label": "cpu <= 4", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"cpuCount"}, "op": "<=", "right": {"kind":"literal","value":"4"} } } },
+          { "id": "e_ge", "source": "init", "target": "log_ge", "type": "labeled", "data": { "label": "cpu >= 4", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"cpuCount"}, "op": ">=", "right": {"kind":"literal","value":"4"} } } },
+          { "id": "e_contains", "source": "init", "target": "log_contains", "type": "labeled", "data": { "label": "host contains 'PC'", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"hostname"}, "op": "contains", "right": {"kind":"literal","value":"PC"} } } },
+          { "id": "e_starts", "source": "init", "target": "log_starts", "type": "labeled", "data": { "label": "host startsWith 'WIN'", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"hostname"}, "op": "startsWith", "right": {"kind":"literal","value":"WIN"} } } },
+          { "id": "e_ends", "source": "init", "target": "log_ends", "type": "labeled", "data": { "label": "host endsWith '01'", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"hostname"}, "op": "endsWith", "right": {"kind":"literal","value":"01"} } } },
+          { "id": "e_matches", "source": "init", "target": "log_matches", "type": "labeled", "data": { "label": "host matches regex", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"hostname"}, "op": "matches", "right": {"kind":"literal","value":"^WIN-PC\\d+$"} } } },
+          { "id": "e_isempty", "source": "init", "target": "log_isempty", "type": "labeled", "data": { "label": "emptyStr isEmpty", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"emptyStr"}, "op": "isEmpty" } } },
+          { "id": "e_isnotempty", "source": "init", "target": "log_isnotempty", "type": "labeled", "data": { "label": "host isNotEmpty", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"hostname"}, "op": "isNotEmpty" } } },
+          { "id": "e_istrue", "source": "init", "target": "log_istrue", "type": "labeled", "data": { "label": "isDomain isTrue", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"isDomain"}, "op": "isTrue" } } },
+          { "id": "e_isfalse", "source": "init", "target": "log_isfalse", "type": "labeled", "data": { "label": "falseVal isFalse", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"falseVal"}, "op": "isFalse" } } },
+          { "id": "e_and", "source": "init", "target": "log_and", "type": "labeled", "data": { "label": "env=='test-env' AND cpu>=4", "conditionExpression": { "type": "group", "op": "AND", "children": [
+            { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"envName"}, "op": "==", "right": {"kind":"literal","value":"test-env"} },
+            { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"cpuCount"}, "op": ">=", "right": {"kind":"literal","value":"4"} }
+          ] } } },
+          { "id": "e_or", "source": "init", "target": "log_or", "type": "labeled", "data": { "label": "env=='prod' OR cpu>=4", "conditionExpression": { "type": "group", "op": "OR", "children": [
+            { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"envName"}, "op": "==", "right": {"kind":"literal","value":"prod"} },
+            { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"cpuCount"}, "op": ">=", "right": {"kind":"literal","value":"4"} }
+          ] } } },
+          { "id": "e_not", "source": "init", "target": "log_not", "type": "labeled", "data": { "label": "NOT(host contains 'PANIC')", "conditionExpression": { "type": "not", "child": { "type": "comparison", "left": {"kind":"variable","stepId":"fx","field":"param","paramName":"hostname"}, "op": "contains", "right": {"kind":"literal","value":"PANIC"} } } } },
+          { "id": "e_legacy_succ", "source": "init", "target": "log_legacy_succ", "type": "labeled", "data": { "label": "legacy: init.success", "condition": "fx.success" } },
+          { "id": "e_legacy_fail", "source": "init", "target": "log_legacy_fail_neg", "type": "labeled", "data": { "label": "legacy: init.failed (NOT)", "condition": "fx.failed" } },
+          { "id": "e_disabled", "source": "init", "target": "log_disabled_edge", "type": "labeled", "data": { "label": "DISABLED edge (NOT)", "disabled": true } },
+          { "id": "e_to_disabled", "source": "init", "target": "log_node_disabled", "type": "labeled", "data": { "label": "to disabled node" } },
+          { "id": "e_after_disabled", "source": "log_node_disabled", "target": "log_after_disabled", "type": "labeled", "data": { "label": "Always (parent skipped)" } },
+          { "id": "j1", "source": "log_eq", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j2", "source": "log_neq", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j3", "source": "log_lt", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j4", "source": "log_gt", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j5", "source": "log_le", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j6", "source": "log_ge", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j7", "source": "log_contains", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j8", "source": "log_starts", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j9", "source": "log_ends", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j10", "source": "log_matches", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j11", "source": "log_isempty", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j12", "source": "log_isnotempty", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j13", "source": "log_istrue", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j14", "source": "log_isfalse", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j15", "source": "log_and", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j16", "source": "log_or", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j17", "source": "log_not", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j18", "source": "log_legacy_succ", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "j_ret", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

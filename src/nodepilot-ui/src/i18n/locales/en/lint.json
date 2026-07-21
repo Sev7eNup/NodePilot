@@ -1,0 +1,18 @@
+{
+  "severityError": "Error",
+  "severityWarning": "Warning",
+  "severityInfo": "Info",
+  "noIssues": "No issues found.",
+  "rules": {
+    "missingScript": "Script step without script content",
+    "missingTargetMachine": "Remote step without target machine",
+    "orphanNode": "Node has no incoming edge",
+    "unreachableNode": "Node is unreachable",
+    "cycleDetected": "Cycle detected: {{path}}",
+    "missingTrigger": "Workflow has no trigger",
+    "duplicateOutputVariable": "Duplicate output variable name: {{name}}",
+    "invalidCron": "Invalid cron expression: {{expression}}",
+    "missingCondition": "Decision branch without condition",
+    "junctionWithoutSources": "Junction without enough incoming edges"
+  }
+}

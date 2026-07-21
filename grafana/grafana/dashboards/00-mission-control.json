@@ -1,0 +1,927 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      },
+      {
+        "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+        "enable": true,
+        "expr": "changes(process_start_time_seconds[1m]) > 0 or vector(0) * 0",
+        "iconColor": "#a78bfa",
+        "name": "API Restarts",
+        "step": "1m",
+        "titleFormat": "API restart"
+      }
+    ]
+  },
+  "description": "NodePilot Mission Control — RED + USE methodology. Throughput, errors, latency at a glance, drill-down via row links.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    { "asDropdown": false, "icon": "external link", "includeVars": true, "keepTime": true, "tags": ["nodepilot"], "targetBlank": false, "title": "All NodePilot dashboards", "tooltip": "Open dashboard list", "type": "dashboards" }
+  ],
+  "panels": [
+    {
+      "type": "text",
+      "id": 1,
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "html",
+        "code": { "language": "html", "showLineNumbers": false, "showMiniMap": false },
+        "content": "<div style=\"display:flex;align-items:center;justify-content:space-between;padding:6px 18px;background:linear-gradient(135deg,#0f172a 0%,#1e293b 50%,#0f172a 100%);border-radius:6px;border:1px solid #334155;height:100%;\"><div><div style=\"font-size:24px;font-weight:700;color:#f1f5f9;letter-spacing:0.5px;\">NodePilot · Mission Control</div><div style=\"font-size:13px;color:#94a3b8;margin-top:4px;\">Workflow orchestration health · RED method (Rate · Errors · Duration) + system saturation</div></div><div style=\"display:flex;gap:14px;font-size:11px;\"><a href=\"/d/nodepilot-workflows-v2\" style=\"color:#60a5fa;text-decoration:none;padding:4px 10px;border:1px solid #1e40af;border-radius:4px;background:#1e3a8a30;\">Workflows</a><a href=\"/d/nodepilot-activities\" style=\"color:#60a5fa;text-decoration:none;padding:4px 10px;border:1px solid #1e40af;border-radius:4px;background:#1e3a8a30;\">Activities</a><a href=\"/d/nodepilot-winrm\" style=\"color:#60a5fa;text-decoration:none;padding:4px 10px;border:1px solid #1e40af;border-radius:4px;background:#1e3a8a30;\">WinRM</a><a href=\"/d/nodepilot-triggers\" style=\"color:#60a5fa;text-decoration:none;padding:4px 10px;border:1px solid #1e40af;border-radius:4px;background:#1e3a8a30;\">Triggers</a><a href=\"/d/nodepilot-api\" style=\"color:#60a5fa;text-decoration:none;padding:4px 10px;border:1px solid #1e40af;border-radius:4px;background:#1e3a8a30;\">API</a><a href=\"/d/nodepilot-runtime\" style=\"color:#60a5fa;text-decoration:none;padding:4px 10px;border:1px solid #1e40af;border-radius:4px;background:#1e3a8a30;\">Runtime</a><a href=\"/d/nodepilot-security\" style=\"color:#60a5fa;text-decoration:none;padding:4px 10px;border:1px solid #1e40af;border-radius:4px;background:#1e3a8a30;\">Security</a></div></div>"
+      }
+    },
+
+    {
+      "type": "row",
+      "id": 100,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 },
+      "title": "Live KPIs",
+      "collapsed": false,
+      "panels": []
+    },
+
+    {
+      "type": "stat",
+      "id": 10,
+      "title": "Active Executions",
+      "description": "Workflows currently running. Sustained spikes near the global cap (default 5000) hint at capacity pressure.",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(nodepilot_executions_active) or vector(0)", "legendFormat": "active", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#3b82f6", "value": 1 },
+            { "color": "#f59e0b", "value": 100 },
+            { "color": "#ef4444", "value": 1000 }
+          ]},
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "percentChangeColorMode": "standard",
+        "showPercentChange": false
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 11,
+      "title": "Throughput",
+      "description": "Execution starts per minute over the last 5 min.",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(nodepilot_executions_started_total[5m])) * 60 or vector(0)", "legendFormat": "exec/min", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#475569", "value": null },
+            { "color": "#3b82f6", "value": 0.01 }
+          ]},
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 12,
+      "title": "Success Rate (1h)",
+      "description": "Share of completed executions with status=Succeeded. <95% deserves a look; <80% is paging-worthy.",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        {
+          "expr": "(sum(rate(nodepilot_executions_completed_total{status=\"Succeeded\"}[1h])) or vector(0)) / clamp_min(sum(rate(nodepilot_executions_completed_total[1h])), 0.0001)",
+          "legendFormat": "success",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#ef4444", "value": null },
+            { "color": "#f59e0b", "value": 0.80 },
+            { "color": "#10b981", "value": 0.95 }
+          ]},
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1
+        }
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 13,
+      "title": "p95 Duration (5m)",
+      "description": "95th-percentile end-to-end execution latency.",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 5 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(nodepilot_execution_duration_milliseconds_bucket[5m])) by (le)) or vector(0)",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#f59e0b", "value": 30000 },
+            { "color": "#ef4444", "value": 120000 }
+          ]},
+          "unit": "ms"
+        }
+      },
+      "options": {
+        "colorMode": "background_solid",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 14,
+      "title": "Failed (1h)",
+      "description": "Count of executions completed with status=Failed in the last hour.",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(increase(nodepilot_executions_completed_total{status=\"Failed\"}[1h])) or vector(0)", "legendFormat": "failed/h", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#f59e0b", "value": 1 },
+            { "color": "#ef4444", "value": 10 }
+          ]},
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 15,
+      "title": "Cancellations (1h)",
+      "description": "User/admin-induced execution cancellations. Internal junction-race skips (reason=junction_race emitted by waitNofM) are excluded — they are normal control-flow, not abort signals.",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(increase(nodepilot_execution_cancellations_total{reason!=\"junction_race\"}[1h])) or vector(0)", "legendFormat": "cancel/h", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#f59e0b", "value": 1 },
+            { "color": "#ef4444", "value": 50 }
+          ]},
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 16,
+      "title": "Active WinRM Sessions",
+      "description": "Open PowerShell runspaces. Bounded by Pool.MaxConcurrentPerMachine × machine-count.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(nodepilot_winrm_sessions_active) or vector(0)", "legendFormat": "active", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#475569", "value": null },
+            { "color": "#3b82f6", "value": 1 },
+            { "color": "#f59e0b", "value": 100 },
+            { "color": "#ef4444", "value": 500 }
+          ]},
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 17,
+      "title": "SignalR Connections",
+      "description": "Live-attached browser sessions.",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 10 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(nodepilot_signalr_connections_active) or vector(0)", "legendFormat": "clients", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#475569", "value": null },
+            { "color": "#3b82f6", "value": 1 }
+          ]},
+          "unit": "short"
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+
+    {
+      "type": "row",
+      "id": 200,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "title": "Workflow Throughput & Outcomes",
+      "collapsed": false,
+      "panels": []
+    },
+
+    {
+      "type": "timeseries",
+      "id": 20,
+      "title": "Executions: Started vs Completed",
+      "description": "Rate of executions entering vs exiting the engine. Persistent gap = backlog growing.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(nodepilot_executions_started_total[2m]))", "legendFormat": "started", "refId": "A" },
+        { "expr": "sum(rate(nodepilot_executions_completed_total[2m]))", "legendFormat": "completed", "refId": "B" },
+        { "expr": "sum(rate(nodepilot_executions_rejected_total[2m]))", "legendFormat": "rejected", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 12,
+            "gradientMode": "opacity",
+            "hideFrom": { "legend": false, "tooltip": false, "viz": false },
+            "insertNulls": false,
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": { "type": "linear" },
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "none" },
+            "thresholdsStyle": { "mode": "off" }
+          },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] },
+          "unit": "ops"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "started" }, "properties": [{ "id": "color", "value": { "fixedColor": "#3b82f6", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "completed" }, "properties": [{ "id": "color", "value": { "fixedColor": "#10b981", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "rejected" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ef4444", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "calcs": ["last", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "id": 21,
+      "title": "Completed by Status",
+      "description": "Stacked breakdown of execution outcomes.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 15 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum by (status) (rate(nodepilot_executions_completed_total[2m]))", "legendFormat": "{{status}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 35,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "ops"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Succeeded" }, "properties": [{ "id": "color", "value": { "fixedColor": "#10b981", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Failed" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ef4444", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Cancelled" }, "properties": [{ "id": "color", "value": { "fixedColor": "#f59e0b", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "calcs": ["sum", "last"], "displayMode": "table", "placement": "bottom", "showLegend": true }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "id": 22,
+      "title": "Execution Duration p50 / p95 / p99",
+      "description": "Distribution of end-to-end execution latency.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(nodepilot_execution_duration_milliseconds_bucket[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(nodepilot_execution_duration_milliseconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(nodepilot_execution_duration_milliseconds_bucket[5m])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 8,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "showPoints": "never",
+            "spanNulls": true
+          },
+          "unit": "ms"
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "p50" }, "properties": [{ "id": "color", "value": { "fixedColor": "#10b981", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p95" }, "properties": [{ "id": "color", "value": { "fixedColor": "#f59e0b", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "p99" }, "properties": [{ "id": "color", "value": { "fixedColor": "#ef4444", "mode": "fixed" } }] }
+        ]
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "calcs": ["last", "mean", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true }
+      }
+    },
+
+    {
+      "type": "timeseries",
+      "id": 23,
+      "title": "Steps by Activity Type (rate/s)",
+      "description": "Stacked: which activity types are doing the most work right now?",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 24 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum by (activity_type) (rate(nodepilot_steps_executed_total[2m]))", "legendFormat": "{{activity_type}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "gradientMode": "opacity",
+            "lineInterpolation": "smooth",
+            "lineWidth": 1,
+            "showPoints": "never",
+            "spanNulls": true,
+            "stacking": { "group": "A", "mode": "normal" }
+          },
+          "unit": "ops"
+        }
+      },
+      "options": {
+        "tooltip": { "mode": "multi", "sort": "desc" },
+        "legend": { "calcs": ["sum", "last"], "displayMode": "table", "placement": "right", "showLegend": true }
+      }
+    },
+
+    {
+      "type": "row",
+      "id": 300,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "title": "Top Offenders & Slowest Workflows",
+      "collapsed": false,
+      "panels": []
+    },
+
+    {
+      "type": "bargauge",
+      "id": 30,
+      "title": "Top 10 Workflows by Failures (1h)",
+      "description": "Count of Failed-status completions per workflow over the last hour.",
+      "gridPos": { "h": 9, "w": 8, "x": 0, "y": 34 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "topk(10, sum by (workflow_name) (increase(nodepilot_executions_completed_total{status=\"Failed\"}[1h])))", "legendFormat": "{{workflow_name}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#f59e0b", "value": 1 },
+            { "color": "#ef4444", "value": 5 }
+          ]},
+          "unit": "short",
+          "decimals": 0
+        }
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "valueMode": "color"
+      }
+    },
+
+    {
+      "type": "bargauge",
+      "id": 31,
+      "title": "Top 10 Slowest Workflows (p95, 1h)",
+      "description": "Workflows with the highest 95th-percentile execution duration.",
+      "gridPos": { "h": 9, "w": 8, "x": 8, "y": 34 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "topk(10, histogram_quantile(0.95, sum by (workflow_name, le) (rate(nodepilot_execution_duration_milliseconds_bucket[1h]))))", "legendFormat": "{{workflow_name}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#3b82f6", "value": 1000 },
+            { "color": "#f59e0b", "value": 30000 },
+            { "color": "#ef4444", "value": 120000 }
+          ]},
+          "unit": "ms",
+          "decimals": 0
+        }
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "valueMode": "color"
+      }
+    },
+
+    {
+      "type": "bargauge",
+      "id": 32,
+      "title": "Top 10 Workflows by Throughput (1h)",
+      "description": "Most-executed workflows over the last hour.",
+      "gridPos": { "h": 9, "w": 8, "x": 16, "y": 34 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "topk(10, sum by (workflow_name) (increase(nodepilot_executions_started_total[1h])))", "legendFormat": "{{workflow_name}}", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "continuous-BlPu" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] },
+          "unit": "short",
+          "decimals": 0
+        }
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "showUnfilled": true,
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "valueMode": "color"
+      }
+    },
+
+    {
+      "type": "row",
+      "id": 400,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 43 },
+      "title": "Per-Workflow Scorecard (last 1h)",
+      "collapsed": false,
+      "panels": []
+    },
+
+    {
+      "type": "table",
+      "id": 40,
+      "title": "Workflow Scorecard",
+      "description": "Per-workflow KPIs over the dashboard time range. Click a row to deep-link to the per-workflow drilldown.",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 44 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum by (workflow_name) (increase(nodepilot_executions_started_total[$__range]))", "legendFormat": "Started", "refId": "A", "format": "table", "instant": true },
+        { "expr": "sum by (workflow_name) (increase(nodepilot_executions_completed_total{status=\"Succeeded\"}[$__range]))", "legendFormat": "Succeeded", "refId": "B", "format": "table", "instant": true },
+        { "expr": "sum by (workflow_name) (increase(nodepilot_executions_completed_total{status=\"Failed\"}[$__range]))", "legendFormat": "Failed", "refId": "C", "format": "table", "instant": true },
+        { "expr": "sum by (workflow_name) (increase(nodepilot_executions_completed_total{status=\"Cancelled\"}[$__range]))", "legendFormat": "Cancelled", "refId": "D", "format": "table", "instant": true },
+        { "expr": "(sum by (workflow_name) (increase(nodepilot_executions_completed_total{status=\"Succeeded\"}[$__range])) or on(workflow_name) sum by (workflow_name) (0 * nodepilot_executions_started_total)) / clamp_min(sum by (workflow_name) (increase(nodepilot_executions_completed_total[$__range])), 0.0001)", "legendFormat": "SuccessRate", "refId": "E", "format": "table", "instant": true },
+        { "expr": "histogram_quantile(0.50, sum by (workflow_name, le) (rate(nodepilot_execution_duration_milliseconds_bucket[$__range])))", "legendFormat": "p50", "refId": "F", "format": "table", "instant": true },
+        { "expr": "histogram_quantile(0.95, sum by (workflow_name, le) (rate(nodepilot_execution_duration_milliseconds_bucket[$__range])))", "legendFormat": "p95", "refId": "G", "format": "table", "instant": true }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "instance": true, "job": true },
+            "indexByName": { "workflow_name": 0, "Value #A": 1, "Value #B": 2, "Value #C": 3, "Value #D": 4, "Value #E": 5, "Value #F": 6, "Value #G": 7 },
+            "renameByName": {
+              "workflow_name": "Workflow",
+              "Value #A": "Started",
+              "Value #B": "Succeeded",
+              "Value #C": "Failed",
+              "Value #D": "Cancelled",
+              "Value #E": "Success Rate",
+              "Value #F": "p50",
+              "Value #G": "p95"
+            }
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "custom": {
+            "align": "auto",
+            "cellOptions": { "type": "auto" },
+            "filterable": true,
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "Started" }, "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "#60a5fa" } },
+            { "id": "decimals", "value": 0 }
+          ]},
+          { "matcher": { "id": "byName", "options": "Succeeded" }, "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "#10b981" } },
+            { "id": "decimals", "value": 0 }
+          ]},
+          { "matcher": { "id": "byName", "options": "Failed" }, "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "#ef4444" } },
+            { "id": "decimals", "value": 0 }
+          ]},
+          { "matcher": { "id": "byName", "options": "Cancelled" }, "properties": [
+            { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+            { "id": "color", "value": { "mode": "fixed", "fixedColor": "#f59e0b" } },
+            { "id": "decimals", "value": 0 }
+          ]},
+          { "matcher": { "id": "byName", "options": "Success Rate" }, "properties": [
+            { "id": "unit", "value": "percentunit" },
+            { "id": "decimals", "value": 2 },
+            { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "#7f1d1d", "value": null },
+              { "color": "#92400e", "value": 0.80 },
+              { "color": "#065f46", "value": 0.95 }
+            ]}},
+            { "id": "min", "value": 0 },
+            { "id": "max", "value": 1 }
+          ]},
+          { "matcher": { "id": "byName", "options": "p50" }, "properties": [
+            { "id": "unit", "value": "ms" },
+            { "id": "decimals", "value": 0 },
+            { "id": "custom.cellOptions", "value": { "type": "color-text" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "#10b981", "value": null },
+              { "color": "#f59e0b", "value": 5000 },
+              { "color": "#ef4444", "value": 30000 }
+            ]}}
+          ]},
+          { "matcher": { "id": "byName", "options": "p95" }, "properties": [
+            { "id": "unit", "value": "ms" },
+            { "id": "decimals", "value": 0 },
+            { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+            { "id": "thresholds", "value": { "mode": "absolute", "steps": [
+              { "color": "#064e3b", "value": null },
+              { "color": "#7c2d12", "value": 30000 },
+              { "color": "#7f1d1d", "value": 120000 }
+            ]}}
+          ]},
+          { "matcher": { "id": "byName", "options": "Workflow" }, "properties": [
+            { "id": "custom.width", "value": 320 },
+            { "id": "links", "value": [
+              { "title": "Drill into ${__value.text}", "url": "/d/nodepilot-workflows-v2?var-workflow_name=${__value.text}&${__url_time_range}", "targetBlank": false }
+            ]}
+          ]}
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": { "show": true, "reducer": ["sum"], "fields": ["Started", "Succeeded", "Failed", "Cancelled"], "countRows": false, "enablePagination": false },
+        "sortBy": [{ "displayName": "Failed", "desc": true }]
+      }
+    },
+
+    {
+      "type": "row",
+      "id": 500,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 56 },
+      "title": "Saturation Snapshot",
+      "collapsed": false,
+      "panels": []
+    },
+
+    {
+      "type": "stat",
+      "id": 50,
+      "title": "CPU",
+      "description": "Process CPU utilization over the last 1 minute.",
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "100 * (sum(rate(process_cpu_time_seconds_total[1m])) / on() group_left() avg(process_cpu_count))", "legendFormat": "cpu", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#f59e0b", "value": 70 },
+            { "color": "#ef4444", "value": 90 }
+          ]},
+          "unit": "percent",
+          "min": 0,
+          "max": 100
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 51,
+      "title": "Memory (RSS)",
+      "description": "Process working set / resident memory.",
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "process_memory_usage_bytes", "legendFormat": "rss", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#f59e0b", "value": 1073741824 },
+            { "color": "#ef4444", "value": 4294967296 }
+          ]},
+          "unit": "bytes"
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 52,
+      "title": "GC Heap",
+      "description": "Managed GC heap size at the last collection.",
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(dotnet_gc_last_collection_heap_size_bytes)", "legendFormat": "heap", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#f59e0b", "value": 536870912 },
+            { "color": "#ef4444", "value": 2147483648 }
+          ]},
+          "unit": "bytes"
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 53,
+      "title": "ThreadPool Backlog",
+      "description": "Items currently queued for the .NET ThreadPool. Sustained >0 = saturation.",
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(dotnet_thread_pool_queue_length_total) or vector(0)", "legendFormat": "queued", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#f59e0b", "value": 1 },
+            { "color": "#ef4444", "value": 50 }
+          ]},
+          "unit": "short",
+          "decimals": 1
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 54,
+      "title": "HTTP RPS",
+      "description": "API request rate (requests per second, all routes).",
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_server_request_duration_seconds_count{http_route!~\"^/(metrics|healthz)(/.*)?$\"}[1m])) or vector(0)", "legendFormat": "rps", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#475569", "value": null },
+            { "color": "#3b82f6", "value": 1 }
+          ]},
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    },
+
+    {
+      "type": "stat",
+      "id": 55,
+      "title": "HTTP 5xx",
+      "description": "Server-error rate over the last 5 minutes.",
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 57 },
+      "datasource": { "type": "prometheus", "uid": "nodepilot-prometheus" },
+      "targets": [
+        { "expr": "sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\",http_route!~\"^/(metrics|healthz)(/.*)?$\"}[5m])) or vector(0)", "legendFormat": "5xx/s", "refId": "A" }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "decimals": 2,
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "#10b981", "value": null },
+            { "color": "#f59e0b", "value": 0.01 },
+            { "color": "#ef4444", "value": 0.5 }
+          ]},
+          "unit": "reqps"
+        }
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "textMode": "value_and_name",
+        "reduceOptions": { "calcs": ["lastNotNull"] }
+      }
+    }
+  ],
+  "preload": false,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["nodepilot", "overview", "mission-control"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h"]
+  },
+  "timezone": "browser",
+  "title": "NodePilot · Mission Control",
+  "uid": "nodepilot-mission-control",
+  "version": 1,
+  "weekStart": ""
+}

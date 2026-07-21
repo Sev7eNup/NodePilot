@@ -1,0 +1,45 @@
+{
+  "title": "Global Variables",
+  "subtitle": "Shared constants available in every workflow via <code>{{template}}</code>. Secrets are encrypted at rest and never returned.",
+  "newVariable": "New Variable",
+  "noVariables": "No global variables yet. Create one to share it across all workflows.",
+  "noMatch": "No variable matches the current search.",
+  "searchPlaceholder": "Search by name, value, or description …",
+  "tableHeaders": {
+    "name": "Name",
+    "type": "Type",
+    "value": "Value",
+    "description": "Description",
+    "updated": "Updated",
+    "actions": "Actions"
+  },
+  "typeSecret": "Secret",
+  "typePlain": "Plain",
+  "deleteConfirm": "Delete global variable \"{{name}}\"?",
+  "editTitle": "Edit Variable",
+  "createTitle": "New Variable",
+  "fields": {
+    "name": "Name",
+    "value": "Value",
+    "description": "Description (optional)",
+    "isSecret": "Secret (encrypt at rest, never returned via API)"
+  },
+  "namePattern": "Letters, digits, underscore, hyphen. Max 100 chars.",
+  "valueKeepHint": "(leave empty to keep existing)",
+  "folder": {
+    "heading": "Folders",
+    "refresh": "Refresh",
+    "createSubfolder": "Create subfolder",
+    "newFolderPlaceholder": "Folder name",
+    "rename": "Rename",
+    "delete": "Delete",
+    "deleteConfirm": "Delete folder \"{{name}}\"?",
+    "deleteFailed": "Delete failed: {{msg}}",
+    "renameFailed": "Rename failed: {{msg}}",
+    "loadError": "Failed to load: {{msg}}",
+    "allRoot": "All variables",
+    "field": "Folder",
+    "noVariablesInFolder": "No variables in this folder.",
+    "moved": "Variable moved."
+  }
+}

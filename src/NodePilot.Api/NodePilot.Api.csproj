@@ -1,0 +1,65 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <!-- Emit XML doc file so Swashbuckle can surface triple-slash comments in Swagger UI.
+         NoWarn 1591 suppresses "missing XML comment on public member" — we annotate where
+         it helps operators, not exhaustively. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
+    <UserSecretsId>37f6eb5a-82da-486c-ad19-f48b59916ab9</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.Negotiate" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" />
+    <!-- Microsoft.AspNetCore.OpenApi (built-in .NET 10 spec) removed — Swashbuckle now owns
+         the OpenAPI pipeline end-to-end. Coexistence forced Microsoft.OpenApi 2.x which has
+         a breaking Models-namespace move that Swashbuckle 10.1.7 doesn't track. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Formatting.Compact" />
+    <PackageReference Include="Serilog.Sinks.Async" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Swashbuckle.AspNetCore" />
+    <!-- Security floor over Swashbuckle's transitive Microsoft.OpenApi; version + rationale
+         in Directory.Packages.props. -->
+    <PackageReference Include="Microsoft.OpenApi" />
+    <PackageReference Include="System.DirectoryServices.Protocols" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NodePilot.Ai\NodePilot.Ai.csproj" />
+    <ProjectReference Include="..\NodePilot.Engine\NodePilot.Engine.csproj" />
+    <ProjectReference Include="..\NodePilot.Scheduler\NodePilot.Scheduler.csproj" />
+    <ProjectReference Include="..\NodePilot.Data\NodePilot.Data.csproj" />
+    <ProjectReference Include="..\NodePilot.Remote\NodePilot.Remote.csproj" />
+    <ProjectReference Include="..\NodePilot.Core\NodePilot.Core.csproj" />
+    <ProjectReference Include="..\NodePilot.Telemetry\NodePilot.Telemetry.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="NodePilot.Api.Tests" />
+    <!-- The provisioned Grafana dashboards are the native Metrics UI's source of truth. -->
+    <EmbeddedResource Include="..\..\grafana\grafana\dashboards\*.json" Link="MetricsDashboards\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Ship the curated documentation corpus as content next to the app
+         (ContentRoot/knowledge/docs) so the global "AI Chat" knowledge assistant can LIVE-READ it
+         in dev (dotnet run) AND prod (dotnet publish) — flows through both with no deploy-script
+         edit. Live-read, NOT embedded: doc edits flow in on the next build/deploy, nothing to
+         re-index. The source-code corpus is shipped separately by deploy/Build-Artifact.ps1. -->
+    <Content Include="..\nodepilot-docs-ui\content\**\*.md"
+             Link="knowledge\docs\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest"
+             CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

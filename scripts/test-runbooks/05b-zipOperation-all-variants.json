@@ -1,0 +1,41 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] zipOperation - All Variants Live",
+      "description": "Live test of zipOperation activity. Setup creates source files at C:\\temp\\nodepilot-ziptest\\source\\ (3 files). Variants: compress single file, compress folder, compress with glob pattern, compressionLevel=Optimal/Fastest/NoCompression, force=true overwrite, extract back to a different folder, error path (non-existent source). Teardown removes the test tree.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "setup", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "rs: seed source tree", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "setup", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$root = 'C:\\temp\\nodepilot-ziptest'\nRemove-Item -Recurse -Force -ErrorAction SilentlyContinue $root\nNew-Item -ItemType Directory -Force -Path \"$root\\source\\sub\" | Out-Null\nNew-Item -ItemType Directory -Force -Path \"$root\\out\" | Out-Null\nNew-Item -ItemType Directory -Force -Path \"$root\\extract\" | Out-Null\nSet-Content -Path \"$root\\source\\a.txt\" -Value 'aaaa'\nSet-Content -Path \"$root\\source\\b.log\" -Value 'bbbb'\nSet-Content -Path \"$root\\source\\sub\\c.txt\" -Value 'cccc'\nWrite-Output 'seeded'" } } },
+          { "id": "z_file_opt", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "zip: single file (Optimal)", "activityType": "zipOperation", "targetMachineId": "localhost", "outputVariable": "z_file", "config": { "operation": "compress", "source": "C:\\temp\\nodepilot-ziptest\\source\\a.txt", "destination": "C:\\temp\\nodepilot-ziptest\\out\\file-opt.zip", "compressionLevel": "Optimal", "force": true } } },
+          { "id": "z_folder_fast", "type": "activity", "position": { "x": 640, "y": 360 }, "data": { "label": "zip: folder (Fastest)", "activityType": "zipOperation", "targetMachineId": "localhost", "outputVariable": "z_folder", "config": { "operation": "compress", "source": "C:\\temp\\nodepilot-ziptest\\source", "destination": "C:\\temp\\nodepilot-ziptest\\out\\folder-fast.zip", "compressionLevel": "Fastest", "force": true } } },
+          { "id": "z_glob_nocomp", "type": "activity", "position": { "x": 640, "y": 520 }, "data": { "label": "zip: glob *.txt (NoCompression)", "activityType": "zipOperation", "targetMachineId": "localhost", "outputVariable": "z_glob", "config": { "operation": "compress", "source": "C:\\temp\\nodepilot-ziptest\\source\\*.txt", "destination": "C:\\temp\\nodepilot-ziptest\\out\\txt-only.zip", "compressionLevel": "NoCompression", "force": true } } },
+          { "id": "z_extract", "type": "activity", "position": { "x": 940, "y": 360 }, "data": { "label": "zip: extract folder", "activityType": "zipOperation", "targetMachineId": "localhost", "outputVariable": "z_extract", "config": { "operation": "extract", "source": "C:\\temp\\nodepilot-ziptest\\out\\folder-fast.zip", "destination": "C:\\temp\\nodepilot-ziptest\\extract", "force": true } } },
+          { "id": "z_err", "type": "activity", "position": { "x": 940, "y": 520 }, "data": { "label": "zip: missing source (expect fail)", "activityType": "zipOperation", "targetMachineId": "localhost", "outputVariable": "z_err", "config": { "operation": "compress", "source": "C:\\temp\\nodepilot-ziptest\\does-not-exist.xyz", "destination": "C:\\temp\\nodepilot-ziptest\\out\\err.zip" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 1240, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1560, "y": 400 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/zipOperation] file_opt={{z_file.success}}({{z_file.param.sizeBytes}}B) folder_fast={{z_folder.success}}({{z_folder.param.sizeBytes}}B) glob_nocomp={{z_glob.success}} extract={{z_extract.success}} err_fail_expected={{z_err.success}}" } } },
+          { "id": "teardown", "type": "activity", "position": { "x": 1880, "y": 400 }, "data": { "label": "teardown: rm tree", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "teardown", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue 'C:\\temp\\nodepilot-ziptest'\nWrite-Output 'cleaned'" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 2200, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "file_optimal_size": "{{z_file.param.sizeBytes}}", "folder_fastest_size": "{{z_folder.param.sizeBytes}}", "glob_nocomp_size": "{{z_glob.param.sizeBytes}}", "extract_success": "{{z_extract.success}}", "err_failed_as_expected": "{{z_err.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "setup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "setup", "target": "z_file_opt", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e3", "source": "setup", "target": "z_folder_fast", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e4", "source": "setup", "target": "z_glob_nocomp", "type": "labeled", "data": { "label": "On Success", "condition": "setup.success" } },
+          { "id": "e5", "source": "z_folder_fast", "target": "z_extract", "type": "labeled", "data": { "label": "On Success", "condition": "z_folder_fast.success" } },
+          { "id": "e6", "source": "setup", "target": "z_err", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "z_file_opt", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "z_extract", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "z_glob_nocomp", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "z_err", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "log_summary", "target": "teardown", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "teardown", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

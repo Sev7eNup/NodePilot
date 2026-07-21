@@ -1,0 +1,88 @@
+{
+  "title": "Custom Nodes",
+  "subtitle": "Wiederverwendbare, PowerShell-basierte Activities, die in der Designer-Palette erscheinen.",
+  "new": "Neue Custom Node",
+  "empty": "Noch keine Custom Nodes. Lege eine an, um eine wiederverwendbare Activity zur Palette hinzuzufügen.",
+  "noMatch": "Keine Custom Nodes passen zur Suche.",
+  "searchPlaceholder": "Custom Nodes suchen…",
+  "import": "Importieren",
+  "export": "Exportieren",
+  "status": {
+    "enabled": "Live",
+    "draft": "Entwurf"
+  },
+  "columns": {
+    "name": "Name",
+    "key": "Key",
+    "status": "Status",
+    "scope": "Ziel",
+    "version": "Version",
+    "updated": "Geändert",
+    "actions": "Aktionen"
+  },
+  "scope": {
+    "remote": "Remote",
+    "local": "Lokal"
+  },
+  "actions": {
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "enable": "Aktivieren",
+    "disable": "Deaktivieren",
+    "versions": "Versionsverlauf"
+  },
+  "create": "Custom Node erstellen",
+  "editTitle": "Custom Node bearbeiten",
+  "lockedHint": "Diese Node ist live (aktiviert). Nur ein Administrator kann sie bearbeiten — bitte einen Admin, sie zuerst zu deaktivieren.",
+  "deleteConfirm": "Custom Node \"{{name}}\" löschen? Bestehende Workflows, die sie nutzen, schlagen fehl, bis sie angepasst werden.",
+  "fields": {
+    "name": "Name",
+    "key": "Key (unveränderlich)",
+    "keyHint": "Stabiler Slug im Activity-Typ. Buchstaben, Ziffern, _ und - (max. 64). Später nicht änderbar.",
+    "description": "Beschreibung",
+    "icon": "Icon",
+    "color": "Akzentfarbe",
+    "engine": "PowerShell-Engine",
+    "runsRemote": "Läuft auf Zielmaschine (WinRM)",
+    "isolated": "Isoliert ausführen (Windows Job Object)",
+    "defaultTimeout": "Standard-Timeout (Sekunden)",
+    "successExitCodes": "Erfolgs-Exit-Codes (kommagetrennt)",
+    "script": "PowerShell-Template",
+    "scriptHint": "Deklarierte Inputs werden als $Variablen injiziert. Deklarierte Outputs veröffentlichst du, indem das Script gleichnamige $Variablen setzt. Für Secrets {{globals.NAME}} nutzen - niemals hartkodieren.",
+    "inputs": "Inputs",
+    "outputs": "Outputs"
+  },
+  "param": {
+    "name": "Name",
+    "label": "Beschriftung",
+    "type": "Typ",
+    "required": "Pflicht",
+    "default": "Standard",
+    "options": "Optionen (kommagetrennt)",
+    "description": "Beschreibung",
+    "addInput": "Input hinzufügen",
+    "addOutput": "Output hinzufügen",
+    "remove": "Entfernen"
+  },
+  "iconPicker": {
+    "title": "Icon wählen",
+    "search": "Icons suchen…",
+    "useTyped": "\"{{name}}\" verwenden"
+  },
+  "lintWarnings": "Security-Lint-Warnungen",
+  "conflictReload": "Jemand anderes hat diese Node geändert. Neu laden und Änderungen erneut anwenden.",
+  "importInvalidJson": "Datei \"{{file}}\" ist kein gültiges Custom-Node-Export-JSON.",
+  "importDone": "{{count}} Custom Node(s) importiert (deaktiviert — prüfen und aktivieren).",
+  "versionsTitle": "Versionsverlauf",
+  "versions": {
+    "current": "Aktueller Stand: v{{version}}",
+    "empty": "Noch keine älteren Versionen — Snapshots entstehen beim Speichern von Änderungen.",
+    "version": "Version",
+    "createdAt": "Erstellt",
+    "createdBy": "Von",
+    "changeNote": "Änderungsnotiz"
+  },
+  "rollback": "Auf diese Version zurücksetzen",
+  "rollbackConfirm": "\"{{name}}\" auf Version {{version}} zurücksetzen? Der aktuelle Stand wird vorher als neue Version gesichert.",
+  "rollbackDone": "Auf Version {{version}} zurückgesetzt."
+}

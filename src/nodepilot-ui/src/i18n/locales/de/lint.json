@@ -1,0 +1,18 @@
+{
+  "severityError": "Fehler",
+  "severityWarning": "Warnung",
+  "severityInfo": "Info",
+  "noIssues": "Keine Probleme gefunden.",
+  "rules": {
+    "missingScript": "Skript-Step ohne Skript-Inhalt",
+    "missingTargetMachine": "Remote-Step ohne Ziel-Maschine",
+    "orphanNode": "Node hat keine eingehende Edge",
+    "unreachableNode": "Node ist nicht erreichbar",
+    "cycleDetected": "Zyklus erkannt: {{path}}",
+    "missingTrigger": "Workflow hat keinen Trigger",
+    "duplicateOutputVariable": "Doppelter Output-Variablen-Name: {{name}}",
+    "invalidCron": "Ungültiger Cron-Ausdruck: {{expression}}",
+    "missingCondition": "Decision-Branch ohne Bedingung",
+    "junctionWithoutSources": "Junction ohne ausreichend Eingangs-Edges"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] retry-policy - Fixed/Linear/Exponential",
+      "description": "Testet RetryPolicy mit allen 3 Backoff-Modi (fixed/linear/exponential). Plus restApi mit Retry. Exhaust-Pfad (alle Attempts schlagen fehl) in xUnit unit test.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "rt_fixed", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "retry: fixed backoff", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rt_fixed", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Write-Output 'fixed-backoff-OK'", "retry": { "maxAttempts": 3, "backoff": "fixed", "initialDelayMs": 500, "maxDelayMs": 500 } } } },
+          { "id": "rt_linear", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "retry: linear backoff", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rt_linear", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Write-Output 'linear-backoff-OK'", "retry": { "maxAttempts": 4, "backoff": "linear", "initialDelayMs": 250, "maxDelayMs": 2000 } } } },
+          { "id": "rt_exp", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "retry: exponential backoff", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rt_exp", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Write-Output 'exp-backoff-OK'", "retry": { "maxAttempts": 5, "backoff": "exponential", "initialDelayMs": 200, "maxDelayMs": 5000 } } } },
+          { "id": "rt_rest", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "retry: restApi exponential", "activityType": "restApi", "outputVariable": "rt_rest", "config": { "url": "http://localhost:5000/healthz/live", "method": "GET", "timeoutSeconds": 5, "retry": { "maxAttempts": 3, "backoff": "exponential", "initialDelayMs": 500, "maxDelayMs": 4000 } } } },
+          { "id": "junc", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "fixedOk": "{{rt_fixed.success}}", "linearOk": "{{rt_linear.success}}", "expOk": "{{rt_exp.success}}", "restOk": "{{rt_rest.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "rt_fixed", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "rt_linear", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "rt_exp", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "rt_rest", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "rt_fixed", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "rt_linear", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "rt_exp", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "rt_rest", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

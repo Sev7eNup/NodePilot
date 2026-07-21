@@ -1,0 +1,45 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] waitForCondition - All Variants Live",
+      "description": "Live test of waitForCondition activity in all 5 conditionType variants: script (legacy PS expression), pathExists, serviceRunning, portOpen, httpOk. Targets are guaranteed-reachable: NodePilot's own port 5000 + healthz/live + Spooler service (typically running). Also includes a timeout-failure path (unreachable port with short timeoutSeconds). All polls run with intervalSeconds=2 and reasonable timeouts.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Manual: start", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+          { "id": "setup_path", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "rs: prep + spawn path-target", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "setup_path", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Remove-Item -Force -ErrorAction SilentlyContinue 'C:\\temp\\np-wait-target.txt'\nNew-Item -ItemType Directory -Force -Path 'C:\\temp' | Out-Null\n# Spawn a detached cmd that sleeps 3s then writes the target file. Background not via Start-Job (not supported by the hosted runspace) but via a fire-and-forget Process.\n$psi = New-Object System.Diagnostics.ProcessStartInfo\n$psi.FileName = 'cmd.exe'\n$psi.Arguments = '/c timeout /t 3 /nobreak >nul & echo present > C:\\temp\\np-wait-target.txt'\n$psi.UseShellExecute = $false\n$psi.CreateNoWindow = $true\n[System.Diagnostics.Process]::Start($psi) | Out-Null\nWrite-Output 'spawned'" } } },
+          { "id": "w_path", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "wfc: pathExists", "activityType": "waitForCondition", "targetMachineId": "localhost", "outputVariable": "w_path", "config": { "conditionType": "pathExists", "path": "C:\\temp\\np-wait-target.txt", "intervalSeconds": 1, "timeoutSeconds": 15 } } },
+          { "id": "w_svc", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "wfc: serviceRunning (Spooler)", "activityType": "waitForCondition", "targetMachineId": "localhost", "outputVariable": "w_svc", "config": { "conditionType": "serviceRunning", "serviceName": "Spooler", "intervalSeconds": 1, "timeoutSeconds": 10 } } },
+          { "id": "w_port", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "wfc: portOpen (5000)", "activityType": "waitForCondition", "targetMachineId": "localhost", "outputVariable": "w_port", "config": { "conditionType": "portOpen", "host": "127.0.0.1", "port": 5000, "intervalSeconds": 1, "timeoutSeconds": 10 } } },
+          { "id": "w_http", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "wfc: httpOk (healthz/live)", "activityType": "waitForCondition", "targetMachineId": "localhost", "outputVariable": "w_http", "config": { "conditionType": "httpOk", "url": "http://127.0.0.1:5000/healthz/live", "intervalSeconds": 1, "timeoutSeconds": 10 } } },
+          { "id": "w_script", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "wfc: script (legacy)", "activityType": "waitForCondition", "targetMachineId": "localhost", "outputVariable": "w_script", "config": { "conditionType": "script", "script": "Test-Path 'C:\\Windows'", "intervalSeconds": 1, "timeoutSeconds": 10 } } },
+          { "id": "w_timeout", "type": "activity", "position": { "x": 320, "y": 1200 }, "data": { "label": "wfc: timeout (port 65500 unreach)", "activityType": "waitForCondition", "targetMachineId": "localhost", "outputVariable": "w_timeout", "config": { "conditionType": "portOpen", "host": "127.0.0.1", "port": 65500, "intervalSeconds": 1, "timeoutSeconds": 4 } } },
+          { "id": "junc", "type": "activity", "position": { "x": 960, "y": 600 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "log_summary", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "log: summary", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/waitForCondition] path={{w_path.success}}({{w_path.param.attempts}}att,{{w_path.param.elapsedSeconds}}s) svc={{w_svc.success}} port={{w_port.success}} http={{w_http.success}} script={{w_script.success}} timeout_expected_false={{w_timeout.success}}" } } },
+          { "id": "teardown", "type": "activity", "position": { "x": 1600, "y": 600 }, "data": { "label": "teardown: rm path-target", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "teardown", "config": { "engine": "auto", "timeoutSeconds": 5, "script": "Remove-Item -Force -ErrorAction SilentlyContinue 'C:\\temp\\np-wait-target.txt'\nWrite-Output 'cleaned'" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1920, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "pathExists": "{{w_path.success}}", "pathExists_attempts": "{{w_path.param.attempts}}", "serviceRunning": "{{w_svc.success}}", "portOpen": "{{w_port.success}}", "httpOk": "{{w_http.success}}", "script": "{{w_script.success}}", "timeout_path_failed_as_expected": "{{w_timeout.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "setup_path", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "setup_path", "target": "w_path", "type": "labeled", "data": { "label": "On Success", "condition": "setup_path.success" } },
+          { "id": "e3", "source": "trig", "target": "w_svc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "w_port", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "w_http", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "trig", "target": "w_script", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "trig", "target": "w_timeout", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "w_path", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "w_svc", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "w_port", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "w_http", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "w_script", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "w_timeout", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "junc", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "log_summary", "target": "teardown", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "teardown", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

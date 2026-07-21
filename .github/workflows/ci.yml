@@ -1,0 +1,210 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  backend:
+    name: Backend build + tests
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Reject vulnerable NuGet dependencies
+        shell: pwsh
+        run: |
+          $auditJson = & dotnet list NodePilot.slnx package --vulnerable --include-transitive --format json
+          if ($LASTEXITCODE -ne 0) {
+            throw "dotnet package vulnerability audit failed with exit code $LASTEXITCODE."
+          }
+          $report = $auditJson | ConvertFrom-Json -ErrorAction Stop
+          $vulnerable = @(
+            foreach ($project in @($report.projects)) {
+              foreach ($framework in @($project.frameworks)) {
+                $packages = @($framework.topLevelPackages) + @($framework.transitivePackages)
+                foreach ($package in $packages) {
+                  $advisories = @($package.vulnerabilities | Where-Object { $null -ne $_ })
+                  if ($null -ne $package -and $advisories.Count -gt 0) {
+                    $package
+                  }
+                }
+              }
+            }
+          )
+          if ($vulnerable.Count -gt 0) {
+            $vulnerable | ConvertTo-Json -Depth 8
+            throw "NuGet vulnerability audit found $($vulnerable.Count) vulnerable package entries."
+          }
+
+      - name: Deployment security contracts (Windows PowerShell 5.1)
+        shell: powershell
+        run: |
+          .\deploy\Test-DeploymentTemplates.ps1
+          .\deploy\Test-ArtifactSecurity.ps1
+
+      - name: Deployment security contracts (PowerShell 7)
+        shell: pwsh
+        run: .\deploy\Test-ArtifactSecurity.ps1
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Restore local tools (reportgenerator)
+        run: dotnet tool restore
+
+      - name: Test with coverage
+        run: dotnet test --configuration Release --no-build --logger "trx;LogFileName=test_results.trx" --collect:"XPlat Code Coverage" --results-directory TestResults
+
+      - name: Generate coverage report
+        if: always()
+        run: dotnet reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:"Html;Cobertura;TextSummary"
+
+      - name: Enforce minimum line coverage
+        shell: pwsh
+        run: |
+          # Floor chosen ~5pp below the 49.6% baseline measured 2026-04-26 — leaves room
+          # for normal churn while still catching a step-change regression. Raise this as
+          # the suite grows; do not lower it without a written reason.
+          $minLineCoverage = 45
+          [xml]$cov = Get-Content coverage-report/Cobertura.xml
+          $rate = [double]$cov.coverage.'line-rate'
+          $pct = [math]::Round($rate * 100, 2)
+          Write-Host "Backend line coverage: $pct% (required minimum: $minLineCoverage%)"
+          if ($pct -lt $minLineCoverage) {
+            Write-Error "Backend line coverage $pct% is below the required minimum of $minLineCoverage%."
+            exit 1
+          }
+
+      - name: Upload test results
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-test-results
+          path: '**/test_results.trx'
+
+      - name: Upload coverage report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-coverage-report
+          path: coverage-report/
+
+  frontend:
+    name: Frontend build + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/nodepilot-ui
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/nodepilot-ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Reject vulnerable npm dependencies
+        run: npm audit --audit-level=moderate
+
+      - name: Lint
+        # Ratchet: errors always fail; warnings are capped at the current floor (11 —
+        # 3 react-compiler "incompatible library" skips + 8 legacy exhaustive-deps) so any
+        # NEW warning fails the run. Drive the cap toward 0 as the residual deps are cleaned.
+        run: npm run lint:ci
+
+      - name: Type check + build
+        run: npm run build
+
+      - name: Tests with coverage
+        # Coverage thresholds live in vitest.config.ts; this fails the run if the line/
+        # statement/branch/function rate drops below the floor configured there.
+        run: npm run test:coverage
+
+      - name: Upload coverage report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-coverage-report
+          path: src/nodepilot-ui/coverage/
+
+  docs-ui:
+    name: Docs UI build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/nodepilot-docs-ui
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/nodepilot-docs-ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Reject vulnerable npm dependencies
+        run: npm audit --audit-level=moderate
+
+      - name: Lint
+        # docs-ui is warning-clean today — capped at 0 so any new warning fails the run.
+        run: npm run lint:ci
+
+      - name: Type check + build
+        run: npm run build
+
+  e2e:
+    name: Frontend E2E (Playwright)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/nodepilot-ui
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: src/nodepilot-ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Playwright browsers
+        # ~200 MB download, but cached by setup-node + actions/cache; subsequent runs are fast.
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: playwright-report
+          path: src/nodepilot-ui/playwright-report/

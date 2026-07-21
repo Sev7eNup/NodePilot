@@ -1,0 +1,291 @@
+{
+  "_comment": "Curated per-activity config-key reference for the workflow-editing agent. Hand-maintained — derived from src/nodepilot-ui/src/lib/activityConfigFacts.ts (required-field rules) + the activity config components + docs/claude-reference.md. The backend ActivityCatalog only carries stable OUTPUT params, not these CONFIG keys; this fills that gap. Keep in sync when activity configs change.",
+  "schemaVersion": 1,
+  "activities": {
+    "runScript": {
+      "description": "Run a PowerShell script (hybrid: local engine, or remote via WinRM when targetMachineId is set).",
+      "configKeys": [
+        { "key": "script", "type": "string", "required": true, "description": "PowerShell script body. Reference upstream values as {{step.output}} (auto single-quoted)." },
+        { "key": "engine", "type": "string", "required": false, "description": "auto | runspace | pwsh. 'pwsh' spawns an external PS7 process (needed for Start-Job)." },
+        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Per-step timeout." },
+        { "key": "isolated", "type": "boolean", "required": false, "description": "Local-only: run process-isolated in a Windows Job Object." },
+        { "key": "successExitCodes", "type": "string", "required": false, "description": "Comma-separated exit codes treated as success (e.g. \"0,1\"). Makes non-zero exits a failure." },
+        { "key": "memoryLimitMb", "type": "number", "required": false, "description": "Isolated mode only: aggregate job memory cap." },
+        { "key": "maxProcesses", "type": "number", "required": false, "description": "Isolated mode only: max processes in the job." }
+      ]
+    },
+    "fileOperation": {
+      "description": "Remote file operation over WinRM.",
+      "configKeys": [
+        { "key": "operation", "type": "string", "required": true, "description": "copy | move | delete | exists | create | rename." },
+        { "key": "path", "type": "string", "required": true, "description": "Source/target path." },
+        { "key": "destination", "type": "string", "required": false, "description": "Required for copy/move." },
+        { "key": "newName", "type": "string", "required": false, "description": "Required for rename." }
+      ]
+    },
+    "folderOperation": {
+      "description": "Remote folder operation over WinRM.",
+      "configKeys": [
+        { "key": "operation", "type": "string", "required": true, "description": "copy | move | delete | exists | list | create | rename." },
+        { "key": "path", "type": "string", "required": true, "description": "Source/target folder path." },
+        { "key": "destination", "type": "string", "required": false, "description": "Required for copy/move." },
+        { "key": "newName", "type": "string", "required": false, "description": "Required for rename." }
+      ]
+    },
+    "fileHash": {
+      "description": "Compute / compare a file hash (remote).",
+      "configKeys": [
+        { "key": "path", "type": "string", "required": true, "description": "File path." },
+        { "key": "algorithm", "type": "string", "required": false, "description": "SHA256 (default) | SHA1 | MD5 | SHA384 | SHA512." },
+        { "key": "expectedHash", "type": "string", "required": false, "description": "If set, the step compares and exposes {{step.param.match}}." }
+      ]
+    },
+    "zipOperation": {
+      "description": "Create or extract a ZIP archive (remote).",
+      "configKeys": [
+        { "key": "operation", "type": "string", "required": true, "description": "compress | extract." },
+        { "key": "path", "type": "string", "required": true, "description": "Source path/glob." },
+        { "key": "destination", "type": "string", "required": true, "description": "Target archive / extract directory." }
+      ]
+    },
+    "serviceManagement": {
+      "description": "Manage a Windows service (remote).",
+      "configKeys": [
+        { "key": "serviceName", "type": "string", "required": true, "description": "Service name." },
+        { "key": "action", "type": "string", "required": true, "description": "status | start | stop | restart | create | delete | setStartType." },
+        { "key": "binaryPath", "type": "string", "required": false, "description": "Required for create." },
+        { "key": "startupType", "type": "string", "required": false, "description": "Required for setStartType: Automatic | Manual | Disabled." }
+      ]
+    },
+    "scheduledTask": {
+      "description": "Manage a Windows scheduled task (remote).",
+      "configKeys": [
+        { "key": "taskName", "type": "string", "required": true, "description": "Task name/path." },
+        { "key": "action", "type": "string", "required": false, "description": "run | enable | disable | query | delete." }
+      ]
+    },
+    "registryOperation": {
+      "description": "Read/write the Windows registry (remote).",
+      "configKeys": [
+        { "key": "keyPath", "type": "string", "required": true, "description": "e.g. HKLM:\\SOFTWARE\\..." },
+        { "key": "operation", "type": "string", "required": true, "description": "read | write | deleteValue | deleteKey | createKey | exists | listSubKeys | listValues." },
+        { "key": "valueName", "type": "string", "required": false, "description": "Required for write/deleteValue." },
+        { "key": "valueType", "type": "string", "required": false, "description": "String | ExpandString | Binary | DWord | MultiString | QWord." },
+        { "key": "valueData", "type": "string", "required": false, "description": "Value to write." }
+      ]
+    },
+    "wmiQuery": {
+      "description": "WMI/CIM query or method invocation (remote).",
+      "configKeys": [
+        { "key": "mode", "type": "string", "required": false, "description": "query (default) | wql | invokeMethod." },
+        { "key": "className", "type": "string", "required": false, "description": "Required for query/invokeMethod, e.g. Win32_OperatingSystem." },
+        { "key": "query", "type": "string", "required": false, "description": "Required for wql mode." },
+        { "key": "methodName", "type": "string", "required": false, "description": "Required for invokeMethod." },
+        { "key": "captureProperties", "type": "array", "required": false, "description": "CIM property names projected to {{step.param.<Name>}} (+ param.count)." }
+      ]
+    },
+    "startProgram": {
+      "description": "Start a program/process (remote).",
+      "configKeys": [
+        { "key": "filePath", "type": "string", "required": true, "description": "Executable path." },
+        { "key": "arguments", "type": "string", "required": false, "description": "Command-line arguments." },
+        { "key": "workingDirectory", "type": "string", "required": false, "description": "Working directory." },
+        { "key": "waitForExit", "type": "boolean", "required": false, "description": "Block until the process exits and capture stdout/stderr/exitCode." }
+      ]
+    },
+    "powerManagement": {
+      "description": "Shutdown/restart/etc. (remote).",
+      "configKeys": [
+        { "key": "action", "type": "string", "required": true, "description": "shutdown | restart | logoff | hibernate | sleep | lock." },
+        { "key": "delaySeconds", "type": "number", "required": false, "description": "Delay before the action." }
+      ]
+    },
+    "waitForCondition": {
+      "description": "Poll until a condition is met (hybrid; local without a target machine).",
+      "configKeys": [
+        { "key": "conditionType", "type": "string", "required": false, "description": "What to poll (script/file/service/...)." },
+        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Overall poll timeout." },
+        { "key": "pollIntervalSeconds", "type": "number", "required": false, "description": "Interval between checks." }
+      ]
+    },
+    "restApi": {
+      "description": "HTTP request (engine-local).",
+      "configKeys": [
+        { "key": "url", "type": "string", "required": true, "description": "Request URL." },
+        { "key": "method", "type": "string", "required": false, "description": "GET (default) | POST | PUT | PATCH | DELETE | HEAD." },
+        { "key": "headers", "type": "object", "required": false, "description": "Request headers map." },
+        { "key": "body", "type": "string", "required": false, "description": "Request body." },
+        { "key": "proxyMode", "type": "string", "required": false, "description": "Per-step proxy override." }
+      ]
+    },
+    "sql": {
+      "description": "Run a SQL query (engine-local).",
+      "configKeys": [
+        { "key": "query", "type": "string", "required": true, "description": "SQL statement." },
+        { "key": "provider", "type": "string", "required": false, "description": "sqlserver (default) | postgres | sqlite." },
+        { "key": "connectionRef", "type": "string", "required": false, "description": "Named connection ref (preferred). Or use builder fields / connectionString." },
+        { "key": "connectionString", "type": "string", "required": false, "description": "Raw connection string (secret)." },
+        { "key": "server", "type": "string", "required": false, "description": "sqlserver builder host." },
+        { "key": "host", "type": "string", "required": false, "description": "postgres builder host." },
+        { "key": "dataSource", "type": "string", "required": false, "description": "sqlite file path." }
+      ]
+    },
+    "textFileEdit": {
+      "description": "Line-oriented text file edit (remote).",
+      "configKeys": [
+        { "key": "operation", "type": "string", "required": true, "description": "append | prepend | insert | replaceLine | delete | replace." },
+        { "key": "path", "type": "string", "required": true, "description": "File path." },
+        { "key": "content", "type": "string", "required": false, "description": "Required for append/prepend/insert/replaceLine." },
+        { "key": "lineNumber", "type": "number", "required": false, "description": "Required for insert/replaceLine (and one delete selector)." },
+        { "key": "lineRange", "type": "array", "required": false, "description": "[from,to] delete selector." },
+        { "key": "matchPattern", "type": "string", "required": false, "description": "Regex selector for delete/replace." },
+        { "key": "replace", "type": "string", "required": false, "description": "Replacement for 'replace' (empty string = delete matches)." }
+      ]
+    },
+    "emailNotification": {
+      "description": "Send an email (engine-local).",
+      "configKeys": [
+        { "key": "to", "type": "string", "required": true, "description": "Recipient(s)." },
+        { "key": "subject", "type": "string", "required": true, "description": "Subject." },
+        { "key": "body", "type": "string", "required": false, "description": "Body." },
+        { "key": "isHtml", "type": "boolean", "required": false, "description": "Send as HTML." },
+        { "key": "cc", "type": "string", "required": false, "description": "CC recipient(s)." }
+      ]
+    },
+    "delay": {
+      "description": "Pause the workflow (engine-local).",
+      "configKeys": [
+        { "key": "seconds", "type": "number", "required": true, "description": "Delay in seconds (> 0)." }
+      ]
+    },
+    "generateText": {
+      "description": "Generate random text/passwords (engine-local).",
+      "configKeys": [
+        { "key": "mode", "type": "string", "required": false, "description": "alphanumeric (default) | custom | ... ." },
+        { "key": "length", "type": "number", "required": false, "description": "Output length." },
+        { "key": "customCharset", "type": "string", "required": false, "description": "Required when mode = custom." }
+      ]
+    },
+    "llmQuery": {
+      "description": "Call an OpenAI-compatible chat-completions endpoint (engine-local). Uses the global Llm:* config by default; per-node config can override the endpoint/model/key. Requires Llm:Enabled=true. Outputs: {{step.output}} = answer text; {{step.param.model|promptTokens|completionTokens|totalTokens|finishReason}} (token params are '' when the server omits usage).",
+      "configKeys": [
+        { "key": "prompt", "type": "string", "required": true, "description": "User prompt. Supports {{variables}}." },
+        { "key": "systemPrompt", "type": "string", "required": false, "description": "Optional system message; empty = passthrough (no default)." },
+        { "key": "model", "type": "string", "required": false, "description": "Override the global model." },
+        { "key": "baseUrl", "type": "string", "required": false, "description": "Override the global endpoint (absolute http/https; cloud-metadata endpoints are blocked)." },
+        { "key": "apiKey", "type": "string", "required": false, "description": "Override the global bearer key (secret; redacted on export/MCP)." },
+        { "key": "maxTokens", "type": "number", "required": false, "description": "Override the global max output tokens (> 0)." },
+        { "key": "temperature", "type": "number", "required": false, "description": "Sampling temperature 0..2 (per-node only; omitted = provider default)." },
+        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Per-step LLM timeout (> 0)." },
+        { "key": "jsonMode", "type": "boolean", "required": false, "description": "Set response_format=json_object. The answer is NOT parsed/validated by the activity." }
+      ]
+    },
+    "xmlQuery": {
+      "description": "XPath query over XML (engine-local).",
+      "configKeys": [
+        { "key": "path", "type": "string", "required": false, "description": "XML file path (path or content required)." },
+        { "key": "content", "type": "string", "required": false, "description": "Inline XML (path or content required)." },
+        { "key": "xpath", "type": "string", "required": true, "description": "XPath expression." }
+      ]
+    },
+    "jsonQuery": {
+      "description": "JSONPath query over JSON (engine-local).",
+      "configKeys": [
+        { "key": "path", "type": "string", "required": false, "description": "JSON file path (path or content required)." },
+        { "key": "content", "type": "string", "required": false, "description": "Inline JSON (path or content required)." },
+        { "key": "jsonPath", "type": "string", "required": true, "description": "JSONPath expression." }
+      ]
+    },
+    "log": {
+      "description": "Write a log line (engine-local).",
+      "configKeys": [
+        { "key": "message", "type": "string", "required": false, "description": "Message (supports {{…}})." },
+        { "key": "level", "type": "string", "required": false, "description": "Info (default) | Warning | Error | Debug." }
+      ]
+    },
+    "decision": {
+      "description": "Multi-case branch (control flow).",
+      "configKeys": [
+        { "key": "cases", "type": "array", "required": false, "description": "Ordered cases; each routes to a labelled output." }
+      ]
+    },
+    "junction": {
+      "description": "Join parallel branches (control flow).",
+      "configKeys": [
+        { "key": "mode", "type": "string", "required": false, "description": "waitAll (default) | waitAny | waitNofM." },
+        { "key": "requiredCount", "type": "number", "required": false, "description": "N for waitNofM." }
+      ]
+    },
+    "forEach": {
+      "description": "Iterate over a collection (control flow).",
+      "configKeys": [
+        { "key": "items", "type": "string", "required": true, "description": "Collection to iterate (often a {{…}} array)." }
+      ]
+    },
+    "startWorkflow": {
+      "description": "Call a child workflow (control flow).",
+      "configKeys": [
+        { "key": "workflowId", "type": "string", "required": false, "description": "Child workflow id (or workflowName)." },
+        { "key": "workflowName", "type": "string", "required": false, "description": "Child workflow name (or workflowId)." },
+        { "key": "parameters", "type": "object", "required": false, "description": "Inputs passed as manual.* to the child." },
+        { "key": "waitForCompletion", "type": "boolean", "required": false, "description": "Block for the child and mirror its returnData (default true)." }
+      ]
+    },
+    "returnData": {
+      "description": "Return data to the parent / mark workflow output (control flow).",
+      "configKeys": [
+        { "key": "data", "type": "object", "required": true, "description": "Key/value map; keys become downstream {{…}} param outputs and the workflow contract." }
+      ]
+    },
+    "manualTrigger": {
+      "description": "Manual/API start trigger.",
+      "configKeys": [
+        { "key": "parameters", "type": "array", "required": false, "description": "Declared inputs [{name,type,required,default,description}] → {{manual.<name>}}." },
+        { "key": "title", "type": "string", "required": false, "description": "Display title." }
+      ]
+    },
+    "scheduleTrigger": {
+      "description": "Quartz cron schedule trigger.",
+      "configKeys": [
+        { "key": "cronExpression", "type": "string", "required": true, "description": "Quartz cron, e.g. '0 0 2 * * ?'. Validate with the validate_cron tool." }
+      ]
+    },
+    "webhookTrigger": {
+      "description": "HTTP webhook trigger.",
+      "configKeys": [
+        { "key": "method", "type": "string", "required": false, "description": "HTTP verb to match (POST default)." },
+        { "key": "path", "type": "string", "required": false, "description": "Webhook path segment." },
+        { "key": "secret", "type": "string", "required": false, "description": "Shared secret (X-Webhook-Secret); secret value." }
+      ]
+    },
+    "fileWatcherTrigger": {
+      "description": "FileSystemWatcher trigger — fires on file-system changes in a directory.",
+      "configKeys": [
+        { "key": "directory", "type": "string", "required": true, "description": "Directory to watch." },
+        { "key": "watchType", "type": "string", "required": false, "description": "created (default) | changed | deleted | renamed." },
+        { "key": "filter", "type": "string", "required": false, "description": "Glob filter, e.g. *.csv." },
+        { "key": "includeSubdirectories", "type": "boolean", "required": false, "description": "Recurse into subfolders." }
+      ]
+    },
+    "databaseTrigger": {
+      "description": "Timer + SELECT-polling trigger — fires per row returned by the query.",
+      "configKeys": [
+        { "key": "query", "type": "string", "required": true, "description": "SELECT to poll." },
+        { "key": "connectionRef", "type": "string", "required": false, "description": "Named connection ref (preferred; may be required by Trigger:Database:RequireConnectionRef)." },
+        { "key": "connectionString", "type": "string", "required": false, "description": "Raw connection string (secret)." },
+        { "key": "provider", "type": "string", "required": false, "description": "sqlserver | postgres | sqlite." },
+        { "key": "pollingIntervalSeconds", "type": "number", "required": false, "description": "Poll interval." }
+      ]
+    },
+    "eventLogTrigger": {
+      "description": "Windows Event Log trigger (EventLog.EntryWritten).",
+      "configKeys": [
+        { "key": "logName", "type": "string", "required": false, "description": "Log name (default Application)." },
+        { "key": "eventId", "type": "number", "required": false, "description": "Match a specific event id." },
+        { "key": "entryType", "type": "string", "required": false, "description": "Information | Warning | Error | ... ." },
+        { "key": "source", "type": "string", "required": false, "description": "Event source filter." },
+        { "key": "lookbackMinutes", "type": "number", "required": false, "description": "On startup, replay entries from the last N minutes." }
+      ]
+    }
+  }
+}

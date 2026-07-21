@@ -1,0 +1,134 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-18T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] scheduledTask - All Variants Live",
+      "description": "Live end-to-end Test der scheduledTask-Activity über alle Varianten. Setup-Voraussetzung: NodePilot.Api MUSS als Administrator laufen — ScheduledTaskActivity erzwingt LogonType=ServiceAccount + runAsUser=SYSTEM, beides braucht Admin. Ohne Elevation schlagen alle Register fehl mit 'Zugriff verweigert' und alle Folge-Steps erben Null-Outputs. Pre-Check-Step verifiziert Elevation upfront. Phasen: 0) Pre-Check Admin-Rechte. A) Register je 1 Task pro triggerType (once/daily/weekly/atLogon/atStartup) + Runner (powershell sleep 30). B) Get auf alle 5 Trigger-Varianten zur Bestätigung. C) Lifecycle auf Daily: disable → get (verify Disabled) → enable → get (verify Ready). D) Runner-Lifecycle: start → 2s warten → get (verify Running) → stop → 2s warten → get (verify Ready). E) Cleanup: unregister aller 6 NP-TestSuite-*-Tasks. F) returnData mit Status-Map jeder Variante. Pro Phase ein log-Step der success/state aller Steps aggregiert — Output landet im NodePilot-Serilog (Console + Rolling-File) und in der SupportEvents-DB-Projection.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Manual: start test suite", "activityType": "manualTrigger", "config": { "parameters": [] } } },
+
+          { "id": "check_admin", "type": "activity", "position": { "x": 160, "y": 200 }, "data": { "label": "pre-check: admin elevation", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "admin_check", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$id = [System.Security.Principal.WindowsIdentity]::GetCurrent()\n$p = New-Object System.Security.Principal.WindowsPrincipal($id)\n$isAdmin = $p.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)\n$currentUser = $id.Name\nWrite-Output \"Current user: $currentUser\"\nWrite-Output \"Is admin: $isAdmin\"\nif (-not $isAdmin) {\n  throw \"NodePilot.Api is NOT running elevated. ScheduledTaskActivity requires admin rights to register tasks under SYSTEM (the activity hardcodes LogonType=ServiceAccount). Restart NodePilot.Api as Administrator and rerun, or modify the activity to support InteractiveToken/S4U logon types.\"\n}" } } },
+
+          { "id": "log_precheck", "type": "activity", "position": { "x": 160, "y": 60 }, "data": { "label": "log: pre-check result", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/scheduledTask] PHASE 0 — Elevation check passed: {{admin_check.output}}" } } },
+
+          { "id": "reg_once", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "register: once", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "reg_once", "config": { "action": "register", "taskName": "NP-TestSuite-Once", "program": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c rem NP-TestSuite-DoNothing", "triggerType": "once", "startTime": "2099-01-01T03:00:00", "runAsUser": "SYSTEM", "force": true } } },
+          { "id": "reg_daily", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "register: daily", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "reg_daily", "config": { "action": "register", "taskName": "NP-TestSuite-Daily", "program": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c rem NP-TestSuite-DoNothing", "triggerType": "daily", "startTime": "03:00", "daysInterval": 1, "runAsUser": "SYSTEM", "force": true } } },
+          { "id": "reg_weekly", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "register: weekly", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "reg_weekly", "config": { "action": "register", "taskName": "NP-TestSuite-Weekly", "program": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c rem NP-TestSuite-DoNothing", "triggerType": "weekly", "startTime": "03:00", "daysOfWeek": ["Monday", "Wednesday", "Friday"], "weeksInterval": 1, "runAsUser": "SYSTEM", "force": true } } },
+          { "id": "reg_logon", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "register: atLogon", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "reg_logon", "config": { "action": "register", "taskName": "NP-TestSuite-AtLogon", "program": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c rem NP-TestSuite-DoNothing", "triggerType": "atLogon", "runAsUser": "SYSTEM", "force": true } } },
+          { "id": "reg_startup", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "register: atStartup (highest)", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "reg_startup", "config": { "action": "register", "taskName": "NP-TestSuite-AtStartup", "program": "C:\\Windows\\System32\\cmd.exe", "arguments": "/c rem NP-TestSuite-DoNothing", "triggerType": "atStartup", "runAsUser": "SYSTEM", "runLevel": "highest", "force": true } } },
+          { "id": "reg_runner", "type": "activity", "position": { "x": 1920, "y": 400 }, "data": { "label": "register: runner (sleep 30)", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "reg_runner", "config": { "action": "register", "taskName": "NP-TestSuite-Runner", "program": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "arguments": "-NoProfile -Command \"Start-Sleep -Seconds 30\"", "triggerType": "once", "startTime": "2099-01-01T03:00:00", "runAsUser": "SYSTEM", "force": true } } },
+
+          { "id": "log_reg", "type": "activity", "position": { "x": 2240, "y": 400 }, "data": { "label": "log: register phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/scheduledTask] PHASE A — Register results:\nonce={{reg_once.success}}\ndaily={{reg_daily.success}}\nweekly={{reg_weekly.success}}\natLogon={{reg_logon.success}}\natStartup={{reg_startup.success}}\nrunner={{reg_runner.success}}" } } },
+
+          { "id": "get_once", "type": "activity", "position": { "x": 2560, "y": 400 }, "data": { "label": "get: once", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "get_once", "config": { "action": "get", "taskName": "NP-TestSuite-Once" } } },
+          { "id": "get_daily", "type": "activity", "position": { "x": 2880, "y": 400 }, "data": { "label": "get: daily", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "get_daily", "config": { "action": "get", "taskName": "NP-TestSuite-Daily" } } },
+          { "id": "get_weekly", "type": "activity", "position": { "x": 3200, "y": 400 }, "data": { "label": "get: weekly", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "get_weekly", "config": { "action": "get", "taskName": "NP-TestSuite-Weekly" } } },
+          { "id": "get_logon", "type": "activity", "position": { "x": 3520, "y": 400 }, "data": { "label": "get: atLogon", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "get_logon", "config": { "action": "get", "taskName": "NP-TestSuite-AtLogon" } } },
+          { "id": "get_startup", "type": "activity", "position": { "x": 3840, "y": 400 }, "data": { "label": "get: atStartup", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "get_startup", "config": { "action": "get", "taskName": "NP-TestSuite-AtStartup" } } },
+
+          { "id": "log_get", "type": "activity", "position": { "x": 4160, "y": 400 }, "data": { "label": "log: get phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/scheduledTask] PHASE B — Get results (state should be Ready):\nonce: success={{get_once.success}} state={{get_once.param.state}}\ndaily: success={{get_daily.success}} state={{get_daily.param.state}}\nweekly: success={{get_weekly.success}} state={{get_weekly.param.state}}\natLogon: success={{get_logon.success}} state={{get_logon.param.state}}\natStartup: success={{get_startup.success}} state={{get_startup.param.state}}" } } },
+
+          { "id": "disable_daily", "type": "activity", "position": { "x": 4480, "y": 400 }, "data": { "label": "disable: daily", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "disable_daily", "config": { "action": "disable", "taskName": "NP-TestSuite-Daily" } } },
+          { "id": "get_disabled", "type": "activity", "position": { "x": 4800, "y": 400 }, "data": { "label": "get: daily (after disable)", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "get_disabled", "config": { "action": "get", "taskName": "NP-TestSuite-Daily" } } },
+          { "id": "enable_daily", "type": "activity", "position": { "x": 5120, "y": 400 }, "data": { "label": "enable: daily", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "enable_daily", "config": { "action": "enable", "taskName": "NP-TestSuite-Daily" } } },
+          { "id": "get_enabled", "type": "activity", "position": { "x": 5440, "y": 400 }, "data": { "label": "get: daily (after enable)", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "get_enabled", "config": { "action": "get", "taskName": "NP-TestSuite-Daily" } } },
+
+          { "id": "log_lifecycle", "type": "activity", "position": { "x": 5760, "y": 400 }, "data": { "label": "log: lifecycle phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/scheduledTask] PHASE C — Daily lifecycle (Disabled → Ready expected):\ndisable: success={{disable_daily.success}}\nget after disable: state={{get_disabled.param.state}}\nenable: success={{enable_daily.success}}\nget after enable: state={{get_enabled.param.state}}" } } },
+
+          { "id": "start_runner", "type": "activity", "position": { "x": 6080, "y": 400 }, "data": { "label": "start: runner", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "start_runner", "config": { "action": "start", "taskName": "NP-TestSuite-Runner" } } },
+          { "id": "delay_run", "type": "activity", "position": { "x": 6400, "y": 400 }, "data": { "label": "delay 2s (let runner start)", "activityType": "delay", "config": { "seconds": 2 } } },
+          { "id": "get_running", "type": "activity", "position": { "x": 6720, "y": 400 }, "data": { "label": "get: runner (Running)", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "get_running", "config": { "action": "get", "taskName": "NP-TestSuite-Runner" } } },
+          { "id": "stop_runner", "type": "activity", "position": { "x": 7040, "y": 400 }, "data": { "label": "stop: runner", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "stop_runner", "config": { "action": "stop", "taskName": "NP-TestSuite-Runner" } } },
+          { "id": "delay_stop", "type": "activity", "position": { "x": 7360, "y": 400 }, "data": { "label": "delay 2s (let runner stop)", "activityType": "delay", "config": { "seconds": 2 } } },
+          { "id": "get_idle", "type": "activity", "position": { "x": 7680, "y": 400 }, "data": { "label": "get: runner (Ready)", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "get_idle", "config": { "action": "get", "taskName": "NP-TestSuite-Runner" } } },
+
+          { "id": "log_runner", "type": "activity", "position": { "x": 8000, "y": 400 }, "data": { "label": "log: runner phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/scheduledTask] PHASE D — Runner lifecycle (Running → Ready expected):\nstart: success={{start_runner.success}}\nget running: state={{get_running.param.state}}\nstop: success={{stop_runner.success}}\nget idle: state={{get_idle.param.state}}\nlastTaskResult={{get_idle.param.lastTaskResult}}" } } },
+
+          { "id": "unreg_once", "type": "activity", "position": { "x": 8320, "y": 400 }, "data": { "label": "unregister: once", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "unreg_once", "config": { "action": "unregister", "taskName": "NP-TestSuite-Once" } } },
+          { "id": "unreg_daily", "type": "activity", "position": { "x": 8640, "y": 400 }, "data": { "label": "unregister: daily", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "unreg_daily", "config": { "action": "unregister", "taskName": "NP-TestSuite-Daily" } } },
+          { "id": "unreg_weekly", "type": "activity", "position": { "x": 8960, "y": 400 }, "data": { "label": "unregister: weekly", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "unreg_weekly", "config": { "action": "unregister", "taskName": "NP-TestSuite-Weekly" } } },
+          { "id": "unreg_logon", "type": "activity", "position": { "x": 9280, "y": 400 }, "data": { "label": "unregister: atLogon", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "unreg_logon", "config": { "action": "unregister", "taskName": "NP-TestSuite-AtLogon" } } },
+          { "id": "unreg_startup", "type": "activity", "position": { "x": 9600, "y": 400 }, "data": { "label": "unregister: atStartup", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "unreg_startup", "config": { "action": "unregister", "taskName": "NP-TestSuite-AtStartup" } } },
+          { "id": "unreg_runner", "type": "activity", "position": { "x": 9920, "y": 400 }, "data": { "label": "unregister: runner", "activityType": "scheduledTask", "targetMachineId": "localhost", "outputVariable": "unreg_runner", "config": { "action": "unregister", "taskName": "NP-TestSuite-Runner" } } },
+
+          { "id": "log_cleanup", "type": "activity", "position": { "x": 10240, "y": 400 }, "data": { "label": "log: cleanup phase", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/scheduledTask] PHASE E — Cleanup unregister:\nonce={{unreg_once.success}}\ndaily={{unreg_daily.success}}\nweekly={{unreg_weekly.success}}\natLogon={{unreg_logon.success}}\natStartup={{unreg_startup.success}}\nrunner={{unreg_runner.success}}" } } },
+
+          { "id": "log_summary", "type": "activity", "position": { "x": 10560, "y": 400 }, "data": { "label": "log: SUMMARY", "activityType": "log", "config": { "level": "info", "message": "[TestSuite/scheduledTask] SUMMARY — All 7 actions × 5 triggerTypes covered.\nRegister (6 tasks): once={{reg_once.success}} daily={{reg_daily.success}} weekly={{reg_weekly.success}} atLogon={{reg_logon.success}} atStartup={{reg_startup.success}} runner={{reg_runner.success}}\nGet (5 tasks): once={{get_once.success}} daily={{get_daily.success}} weekly={{get_weekly.success}} atLogon={{get_logon.success}} atStartup={{get_startup.success}}\nLifecycle daily: disable={{disable_daily.success}} enable={{enable_daily.success}} → states {{get_disabled.param.state}}/{{get_enabled.param.state}}\nRunner: start={{start_runner.success}} stop={{stop_runner.success}} → states {{get_running.param.state}}/{{get_idle.param.state}}\nUnregister (6 tasks): once={{unreg_once.success}} daily={{unreg_daily.success}} weekly={{unreg_weekly.success}} atLogon={{unreg_logon.success}} atStartup={{unreg_startup.success}} runner={{unreg_runner.success}}" } } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 10880, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": {
+            "register_once": "{{reg_once.success}}",
+            "register_daily": "{{reg_daily.success}}",
+            "register_weekly": "{{reg_weekly.success}}",
+            "register_atLogon": "{{reg_logon.success}}",
+            "register_atStartup": "{{reg_startup.success}}",
+            "register_runner": "{{reg_runner.success}}",
+            "get_once_state": "{{get_once.param.state}}",
+            "get_daily_state": "{{get_daily.param.state}}",
+            "get_weekly_state": "{{get_weekly.param.state}}",
+            "get_atLogon_state": "{{get_logon.param.state}}",
+            "get_atStartup_state": "{{get_startup.param.state}}",
+            "lifecycle_disable_state": "{{get_disabled.param.state}}",
+            "lifecycle_enable_state": "{{get_enabled.param.state}}",
+            "runner_start": "{{start_runner.success}}",
+            "runner_running_state": "{{get_running.param.state}}",
+            "runner_stop": "{{stop_runner.success}}",
+            "runner_idle_state": "{{get_idle.param.state}}",
+            "runner_lastTaskResult": "{{get_idle.param.lastTaskResult}}",
+            "unregister_once": "{{unreg_once.success}}",
+            "unregister_daily": "{{unreg_daily.success}}",
+            "unregister_weekly": "{{unreg_weekly.success}}",
+            "unregister_atLogon": "{{unreg_logon.success}}",
+            "unregister_atStartup": "{{unreg_startup.success}}",
+            "unregister_runner": "{{unreg_runner.success}}"
+          } } } }
+        ],
+        "edges": [
+          { "id": "e0a", "source": "trig", "target": "check_admin", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e0b", "source": "check_admin", "target": "log_precheck", "type": "labeled", "data": { "label": "On Success", "condition": "check_admin.success" } },
+          { "id": "e1", "source": "check_admin", "target": "reg_once", "type": "labeled", "data": { "label": "On Success", "condition": "check_admin.success" } },
+          { "id": "e2", "source": "reg_once", "target": "reg_daily", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "reg_daily", "target": "reg_weekly", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "reg_weekly", "target": "reg_logon", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "reg_logon", "target": "reg_startup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "reg_startup", "target": "reg_runner", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "reg_runner", "target": "log_reg", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e8", "source": "log_reg", "target": "get_once", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "get_once", "target": "get_daily", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "get_daily", "target": "get_weekly", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "get_weekly", "target": "get_logon", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "get_logon", "target": "get_startup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "get_startup", "target": "log_get", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e14", "source": "log_get", "target": "disable_daily", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "disable_daily", "target": "get_disabled", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "get_disabled", "target": "enable_daily", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "enable_daily", "target": "get_enabled", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "get_enabled", "target": "log_lifecycle", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e19", "source": "log_lifecycle", "target": "start_runner", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e20", "source": "start_runner", "target": "delay_run", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e21", "source": "delay_run", "target": "get_running", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e22", "source": "get_running", "target": "stop_runner", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e23", "source": "stop_runner", "target": "delay_stop", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e24", "source": "delay_stop", "target": "get_idle", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e25", "source": "get_idle", "target": "log_runner", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e26", "source": "log_runner", "target": "unreg_once", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e27", "source": "unreg_once", "target": "unreg_daily", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e28", "source": "unreg_daily", "target": "unreg_weekly", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e29", "source": "unreg_weekly", "target": "unreg_logon", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e30", "source": "unreg_logon", "target": "unreg_startup", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e31", "source": "unreg_startup", "target": "unreg_runner", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e32", "source": "unreg_runner", "target": "log_cleanup", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e33", "source": "log_cleanup", "target": "log_summary", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e34", "source": "log_summary", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

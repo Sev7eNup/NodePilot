@@ -1,0 +1,24 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NodePilot.Ai/NodePilot.Ai.csproj" />
+    <Project Path="src/NodePilot.Api/NodePilot.Api.csproj" />
+    <Project Path="src/NodePilot.Core/NodePilot.Core.csproj" />
+    <Project Path="src/NodePilot.Data/NodePilot.Data.csproj" />
+    <Project Path="src/NodePilot.Engine/NodePilot.Engine.csproj" />
+    <Project Path="src/NodePilot.Remote/NodePilot.Remote.csproj" />
+    <Project Path="src/NodePilot.Scheduler/NodePilot.Scheduler.csproj" />
+    <Project Path="src/NodePilot.Telemetry/NodePilot.Telemetry.csproj" />
+    <Project Path="src/NodePilot.Cli/NodePilot.Cli.csproj" />
+    <Project Path="src/NodePilot.Mcp/NodePilot.Mcp.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NodePilot.TestCommons/NodePilot.TestCommons.csproj" />
+    <Project Path="tests/NodePilot.Ai.Tests/NodePilot.Ai.Tests.csproj" />
+    <Project Path="tests/NodePilot.Engine.Tests/NodePilot.Engine.Tests.csproj" />
+    <Project Path="tests/NodePilot.Data.Tests/NodePilot.Data.Tests.csproj" />
+    <Project Path="tests/NodePilot.Api.Tests/NodePilot.Api.Tests.csproj" />
+    <Project Path="tests/NodePilot.Cli.Tests/NodePilot.Cli.Tests.csproj" />
+    <Project Path="tests/NodePilot.Mcp.Tests/NodePilot.Mcp.Tests.csproj" />
+    <Project Path="tests/NodePilot.LoadTests/NodePilot.LoadTests.csproj" />
+  </Folder>
+</Solution>

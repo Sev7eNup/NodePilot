@@ -1,0 +1,67 @@
+{
+  "title": "Backup & Restore",
+  "subtitle": "System configuration backup. Includes workflows, folders/sharing, machines, credentials, global variables, users and settings — but NOT execution history, audit logs or statistics.",
+  "tabs": {
+    "backup": "Create backup",
+    "restore": "Restore"
+  },
+  "sections": {
+    "folders": "Folders & sharing",
+    "users": "Users",
+    "credentials": "Credentials",
+    "machines": "Machines",
+    "globalVariables": "Global variables",
+    "customActivities": "Custom Nodes",
+    "workflows": "Workflows",
+    "settings": "Settings",
+    "folderGrants": "Folder permissions"
+  },
+  "backup": {
+    "selectSections": "Sections to back up",
+    "dependencyNote": "Hard dependencies (e.g. machines and credentials referenced by workflows) are included automatically.",
+    "passphrase": "Passphrase",
+    "passphraseConfirm": "Confirm passphrase",
+    "passphraseHint": "At least 12 characters. Without this passphrase the backup is unrecoverable — store it safely.",
+    "create": "Download backup",
+    "creating": "Creating backup …",
+    "success": "Backup downloaded.",
+    "mismatch": "Passphrases do not match.",
+    "tooShort": "Passphrase must be at least 12 characters.",
+    "noSections": "Select at least one section.",
+    "items": "{{count}} items"
+  },
+  "restore": {
+    "selectFile": "Backup file (.npbackup)",
+    "passphrase": "Passphrase",
+    "passphraseHint": "Without a passphrase only a structure preview is shown (integrity unverified).",
+    "preview": "Preview",
+    "previewing": "Analysing …",
+    "integrityVerified": "Integrity verified",
+    "integrityUnverified": "Integrity unverified — enter the passphrase for a full check",
+    "appVersion": "Backup version",
+    "col": {
+      "section": "Section",
+      "inBackup": "In backup",
+      "new": "New",
+      "conflicts": "Conflicts",
+      "policy": "On conflict",
+      "created": "Created",
+      "overwritten": "Overwritten",
+      "skipped": "Skipped",
+      "renamed": "Renamed"
+    },
+    "policy": {
+      "skip": "Skip",
+      "rename": "Rename",
+      "overwrite": "Overwrite"
+    },
+    "run": "Restore",
+    "running": "Restoring …",
+    "confirm": "Restoring may change or overwrite existing configuration. Continue?",
+    "success": "Restore complete.",
+    "settings": "Settings",
+    "settingsApplied": "applied (a restart may be required)",
+    "settingsSkipped": "not applied"
+  },
+  "warnings": "Warnings"
+}

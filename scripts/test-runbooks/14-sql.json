@@ -1,0 +1,39 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] sql - Providers & Connection Variants",
+      "description": "Testet sql-Activity gegen verfuegbare Provider: sqlite mit :memory: (single+multi-row), postgres dev-cluster (User 'nodepilot' + Passwort aus dev appsettings), raw connectionString sqlite. SQL-Server Builder-Variante als 'disabled: true' weil keine SQL-Server-Instanz lokal laeuft. connectionRef ebenfalls disabled (braucht SqlActivity:ConnectionStrings:main config).",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "sq_lite_simple", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "sql: sqlite SELECT 1", "activityType": "sql", "outputVariable": "sq_simple", "config": { "provider": "sqlite", "dataSource": ":memory:", "query": "SELECT 1 AS val, 'hello' AS msg", "timeoutSeconds": 10 } } },
+          { "id": "sq_lite_multi", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "sql: sqlite multi-row", "activityType": "sql", "outputVariable": "sq_multi", "config": { "provider": "sqlite", "dataSource": ":memory:", "query": "WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt WHERE x<5) SELECT x AS num, 'row-'||x AS lbl FROM cnt", "timeoutSeconds": 10 } } },
+          { "id": "sq_pg_dev", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "sql: postgres dev-cluster", "activityType": "sql", "outputVariable": "sq_pg", "config": { "provider": "postgres", "host": "127.0.0.1", "port": 5432, "database": "nodepilot", "username": "nodepilot", "password": "<your-postgres-password>", "sslMode": "Disable", "query": "SELECT version() AS pgver, current_database() AS db", "timeoutSeconds": 10 } } },
+          { "id": "sq_raw_cs", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "sql: raw connectionString sqlite", "activityType": "sql", "outputVariable": "sq_raw", "config": { "provider": "sqlite", "connectionString": "Data Source=:memory:", "query": "SELECT 'raw-cs' AS source", "timeoutSeconds": 10 } } },
+          { "id": "sq_sqlsrv_int", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "sql: sqlserver integrated (DISABLED, no instance)", "activityType": "sql", "disabled": true, "outputVariable": "sq_sqlsrv_int", "config": { "provider": "sqlserver", "server": "localhost", "database": "master", "authentication": "integrated", "encrypt": true, "trustServerCertificate": true, "query": "SELECT @@VERSION AS version", "timeoutSeconds": 10 } } },
+          { "id": "sq_sqlsrv_sql", "type": "activity", "position": { "x": 320, "y": 1100 }, "data": { "label": "sql: sqlserver SQL-auth (DISABLED)", "activityType": "sql", "disabled": true, "outputVariable": "sq_sqlsrv_sql", "config": { "provider": "sqlserver", "server": "localhost", "database": "master", "authentication": "sql", "username": "sa", "password": "Password123!", "encrypt": true, "trustServerCertificate": true, "query": "SELECT 1 AS one", "timeoutSeconds": 10 } } },
+          { "id": "sq_ref", "type": "activity", "position": { "x": 320, "y": 1200 }, "data": { "label": "sql: connectionRef (DISABLED, needs Config)", "activityType": "sql", "disabled": true, "outputVariable": "sq_ref", "config": { "provider": "sqlserver", "connectionRef": "main", "query": "SELECT 1", "timeoutSeconds": 10 } } },
+          { "id": "junc", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 960, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "simpleVal": "{{sq_simple.param.val}}", "simpleMsg": "{{sq_simple.param.msg}}", "multiOutput": "{{sq_multi.output}}", "rawOutput": "{{sq_raw.output}}", "pgVer": "{{sq_pg.param.pgver}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "sq_lite_simple", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "sq_lite_multi", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "sq_pg_dev", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "sq_raw_cs", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "sq_sqlsrv_int", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "trig", "target": "sq_sqlsrv_sql", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "trig", "target": "sq_ref", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "sq_lite_simple", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "sq_lite_multi", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "sq_pg_dev", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "sq_raw_cs", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

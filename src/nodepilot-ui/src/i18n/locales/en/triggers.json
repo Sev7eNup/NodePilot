@@ -1,0 +1,100 @@
+{
+  "badges": {
+    "manual": "Manual",
+    "schedule": "Schedule",
+    "webhook": "Webhook",
+    "fileWatcher": "File Watcher",
+    "database": "Database",
+    "eventLog": "Event Log"
+  },
+  "common": {
+    "required": "Required",
+    "removeParameter": "Remove parameter"
+  },
+  "manualTrigger": {
+    "title": "Trigger Title",
+    "titlePlaceholder": "e.g. Deploy Application",
+    "descriptionPlaceholder": "What does this workflow do?",
+    "inputParameters": "Input Parameters",
+    "namePlaceholder": "e.g. serverName",
+    "typeString": "String",
+    "typeNumber": "Number",
+    "typeBoolean": "Boolean",
+    "typeSelect": "Select",
+    "default": "Default",
+    "defaultPlaceholder": "(optional)",
+    "accessVia": "Access via:",
+    "noParameters": "No parameters. Users can start this workflow without input."
+  },
+  "scheduleTrigger": {
+    "presetEvery5Min": "Every 5 min",
+    "presetEveryHour": "Every hour",
+    "presetDaily6Am": "Daily 6 AM",
+    "presetMonFri8Am": "Mon-Fri 8 AM",
+    "cronExpression": "Cron Expression",
+    "nextFireTimes": "Next fire times",
+    "noUpcomingFires": "(no upcoming fires)",
+    "descriptionPlaceholder": "e.g. Every weekday at 8 AM"
+  },
+  "webhookTrigger": {
+    "httpMethod": "HTTP Method",
+    "webhookPath": "Webhook Path",
+    "secretOptional": "Secret (optional)",
+    "secretHmac": "HMAC secret (32+ UTF-8 bytes, CSPRNG-generated)",
+    "secretPlaceholder": "Shared secret / HMAC key",
+    "signatureMode": "Verification",
+    "signatureModeHeader": "Shared secret header (X-Webhook-Secret)",
+    "signatureModeLegacy": "Legacy body-only HMAC (disabled — migrate)",
+    "signatureModeHmac": "NodePilot HMAC v2 (replay-safe)",
+    "signatureHeader": "Signature header",
+    "signaturePrefix": "Signature prefix",
+    "hmacHint": "Sign the documented NodePilot-HMAC-v2 canonical request: timestamp, delivery ID, method, escaped path, canonical query, and raw body. Requests are valid for 5 minutes and each delivery ID is accepted once. Arbitrary request headers are not forwarded.",
+    "legacyHmacHint": "Legacy signatureMode 'hmac' is rejected. Select NodePilot HMAC v2 and update the sender to the new canonical wire format before publishing.",
+    "fieldMappings": "Body field mappings (JSONPath)",
+    "fieldMappingsHint": "Extract fields from a JSON body into named parameters — downstream nodes read {{manual.<name>}} instead of parsing webhookBody. Same JSONPath dialect as jsonQuery.",
+    "fieldName": "Parameter name",
+    "fieldPath": "JSONPath",
+    "addMapping": "Add mapping",
+    "removeMapping": "Remove mapping"
+  },
+  "databaseTrigger": {
+    "connectionRef": "Connection Ref",
+    "pollingInterval": "Polling Interval (s)",
+    "sqlQuery": "SQL Query"
+  },
+  "eventLogTrigger": {
+    "logName": "Log Name",
+    "entryType": "Entry Type",
+    "any": "Any",
+    "successAudit": "Success Audit",
+    "failureAudit": "Failure Audit",
+    "sourceOptional": "Source (optional)",
+    "sourcePlaceholder": "e.g. MSSQLSERVER, Service Control Manager",
+    "eventIdOptional": "Event ID (optional)",
+    "eventIdPlaceholder": "e.g. 4625",
+    "lookbackMinutes": "Lookback (minutes)"
+  },
+  "fileWatcherTrigger": {
+    "directory": "Directory",
+    "fileFilter": "File Filter",
+    "watchType": "Watch Type",
+    "fileCreated": "File Created",
+    "fileChanged": "File Changed",
+    "fileDeleted": "File Deleted",
+    "fileRenamed": "File Renamed",
+    "allChanges": "All Changes",
+    "includeSubdirectories": "Include subdirectories"
+  },
+  "runDialog": {
+    "title": "Run workflow",
+    "subtitle": "{{name}}",
+    "noParameters": "No parameters required. Press \"Run\".",
+    "fillParameters": "Please fill in the parameters.",
+    "execute": "Run",
+    "fieldRequired": "Required",
+    "executeFailed": "Execution failed: {{message}}",
+    "enterValue": "Enter {{name}}…",
+    "lastRunUsed": "Last run used: {{value}}",
+    "lastPrefix": "last: {{value}}"
+  }
+}

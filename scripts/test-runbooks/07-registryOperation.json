@@ -1,0 +1,64 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] registryOperation - All Operations & Types",
+      "description": "Testet alle registryOperation-Operationen: read (single + all), write mit allen valueTypes (String/ExpandString/Binary/DWord/MultiString/QWord), createKey, exists (key + value), listSubKeys, listValues, deleteValue, deleteKey. Sandbox unter HKCU:\\SOFTWARE\\NP-TestSuite-Reg.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 800 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "r_create", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "reg: createKey", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_create", "config": { "operation": "createKey", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg" } } },
+          { "id": "r_w_str", "type": "activity", "position": { "x": 640, "y": 200 }, "data": { "label": "reg: write String", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_str", "config": { "operation": "write", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg", "valueName": "StrVal", "value": "hello-world", "valueType": "String" } } },
+          { "id": "r_w_exp", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "reg: write ExpandString", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_exp", "config": { "operation": "write", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg", "valueName": "ExpVal", "value": "%TEMP%\\foo", "valueType": "ExpandString" } } },
+          { "id": "r_w_dw", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "reg: write DWord", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_dw", "config": { "operation": "write", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg", "valueName": "DwVal", "value": "42", "valueType": "DWord" } } },
+          { "id": "r_w_qw", "type": "activity", "position": { "x": 640, "y": 800 }, "data": { "label": "reg: write QWord", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_qw", "config": { "operation": "write", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg", "valueName": "QwVal", "value": "9999999999", "valueType": "QWord" } } },
+          { "id": "r_w_bin", "type": "activity", "position": { "x": 640, "y": 1000 }, "data": { "label": "reg: write Binary", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_bin", "config": { "operation": "write", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg", "valueName": "BinVal", "value": "DEADBEEF", "valueType": "Binary" } } },
+          { "id": "r_w_multi", "type": "activity", "position": { "x": 640, "y": 1200 }, "data": { "label": "reg: write MultiString", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_w_multi", "config": { "operation": "write", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg", "valueName": "MultiVal", "value": "alpha\nbeta\ngamma", "valueType": "MultiString" } } },
+          { "id": "junc_w", "type": "activity", "position": { "x": 960, "y": 700 }, "data": { "label": "junction: waitAll writes", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "r_read_single", "type": "activity", "position": { "x": 1280, "y": 200 }, "data": { "label": "reg: read single", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_read_single", "config": { "operation": "read", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg", "valueName": "StrVal" } } },
+          { "id": "r_read_all", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "reg: read all values", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_read_all", "config": { "operation": "read", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg" } } },
+          { "id": "r_exists_k", "type": "activity", "position": { "x": 1280, "y": 600 }, "data": { "label": "reg: exists key", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_exists_k", "config": { "operation": "exists", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg" } } },
+          { "id": "r_exists_v", "type": "activity", "position": { "x": 1280, "y": 800 }, "data": { "label": "reg: exists value", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_exists_v", "config": { "operation": "exists", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg", "valueName": "StrVal" } } },
+          { "id": "r_list_v", "type": "activity", "position": { "x": 1280, "y": 1000 }, "data": { "label": "reg: listValues", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_list_v", "config": { "operation": "listValues", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg" } } },
+          { "id": "r_list_sub", "type": "activity", "position": { "x": 1280, "y": 1200 }, "data": { "label": "reg: listSubKeys (HKCU:\\SOFTWARE)", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_list_sub", "config": { "operation": "listSubKeys", "keyPath": "HKCU:\\SOFTWARE" } } },
+          { "id": "junc_r", "type": "activity", "position": { "x": 1600, "y": 700 }, "data": { "label": "junction: waitAll reads", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "r_del_v", "type": "activity", "position": { "x": 1920, "y": 700 }, "data": { "label": "reg: deleteValue", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_del_v", "config": { "operation": "deleteValue", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg", "valueName": "StrVal" } } },
+          { "id": "r_del_k", "type": "activity", "position": { "x": 2240, "y": 700 }, "data": { "label": "reg: deleteKey", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "r_del_k", "config": { "operation": "deleteKey", "keyPath": "HKCU:\\SOFTWARE\\NP-TestSuite-Reg" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 2560, "y": 700 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "single": "{{r_read_single.param.value}}", "type": "{{r_read_single.param.type}}", "valuesCount": "{{r_read_all.param.count}}", "keyExists": "{{r_exists_k.param.exists}}", "valExists": "{{r_exists_v.param.exists}}", "subKeyCount": "{{r_list_sub.param.count}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "r_create", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "r_create", "target": "r_w_str", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "r_create", "target": "r_w_exp", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "r_create", "target": "r_w_dw", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "r_create", "target": "r_w_qw", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "r_create", "target": "r_w_bin", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "r_create", "target": "r_w_multi", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "r_w_str", "target": "junc_w", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "r_w_exp", "target": "junc_w", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "r_w_dw", "target": "junc_w", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "r_w_qw", "target": "junc_w", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "r_w_bin", "target": "junc_w", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e13", "source": "r_w_multi", "target": "junc_w", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e14", "source": "junc_w", "target": "r_read_single", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e15", "source": "junc_w", "target": "r_read_all", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e16", "source": "junc_w", "target": "r_exists_k", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e17", "source": "junc_w", "target": "r_exists_v", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e18", "source": "junc_w", "target": "r_list_v", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e19", "source": "junc_w", "target": "r_list_sub", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e20", "source": "r_read_single", "target": "junc_r", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e21", "source": "r_read_all", "target": "junc_r", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e22", "source": "r_exists_k", "target": "junc_r", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e23", "source": "r_exists_v", "target": "junc_r", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e24", "source": "r_list_v", "target": "junc_r", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e25", "source": "r_list_sub", "target": "junc_r", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e26", "source": "junc_r", "target": "r_del_v", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e27", "source": "r_del_v", "target": "r_del_k", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e28", "source": "r_del_k", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

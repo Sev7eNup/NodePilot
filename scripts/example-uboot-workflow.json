@@ -1,0 +1,664 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-20T00:00:00Z",
+  "workflows": [
+    {
+      "name": "U-Boot — Patrol Mission Dive Sequence",
+      "description": "Visueller Demo-Workflow als U-Boot-Silhouette (Seitenansicht, LTR): Bug=manualTrigger, Decks bilden Hull-Top, Conning Tower + Periskop ragen oben hervor, Kiel bildet Hull-Bottom mit zentralem Junction (Cruise-Depth), zwei Diving Planes als Flossen unter dem Rumpf, Heck + Propeller (returnData) rechts. Logisch: Pre-Dive-Checks + Periskop-Recon laufen oben, Ballast-Flutung + Tauchsequenz unten — beide Stränge konvergieren am Junction (waitAll), danach Cruise → Sonar → Ascent → Mission Complete.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "note_phase1",
+            "type": "stickyNote",
+            "position": { "x": 200, "y": 700 },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "text": "Phase 1 — Surface Pre-Dive\nHull, Engines, Battery, Trim. LTR entlang Deck. Parallel startet unten die Ballast-Vorbereitung.",
+              "fontSize": 13,
+              "disabled": true
+            }
+          },
+          {
+            "id": "note_phase2",
+            "type": "stickyNote",
+            "position": { "x": 1620, "y": 60 },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "text": "Phase 2 — Conning Tower & Periskop\nHatch öffnen → Periskop raus → 360°-Scan → Wetter/Sea-State → Periskop runter & Hatch sealen.",
+              "fontSize": 13,
+              "disabled": true
+            }
+          },
+          {
+            "id": "note_phase3",
+            "type": "stickyNote",
+            "position": { "x": 1320, "y": 1420 },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "text": "Phase 3 — Dive & Cruise\nBallast-Flutung, Tauchstufen 20m → 80m, Junction (waitAll: surface-sealed + ballast-ready), Cruise 200m, Sonar-Recon.",
+              "fontSize": 13,
+              "disabled": true
+            }
+          },
+          {
+            "id": "note_phase4",
+            "type": "stickyNote",
+            "position": { "x": 3320, "y": 660 },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "text": "Phase 4 — Ascent & Return\nBallast blasen, Engine Slow Ahead, Mission Complete via returnData.",
+              "fontSize": 13,
+              "disabled": true
+            }
+          },
+
+          {
+            "id": "bow",
+            "type": "activity",
+            "position": { "x": 200, "y": 940 },
+            "data": {
+              "label": "manualTrigger: Mission Start",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "U-Boot Patrol — Begin",
+                "parameters": [
+                  { "name": "missionId",   "type": "string", "required": false, "default": "U-505-A1" },
+                  { "name": "targetDepth", "type": "string", "required": false, "default": "200" },
+                  { "name": "captainName", "type": "string", "required": false, "default": "Cpt. Lange" }
+                ]
+              }
+            }
+          },
+
+          {
+            "id": "deck1",
+            "type": "activity",
+            "position": { "x": 460, "y": 860 },
+            "data": {
+              "label": "runScript: Hull Integrity",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "hull",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$pressureHpa = \"1013\"\n$leakRate    = \"0.00\"\n$status      = \"nominal\"\nWrite-Output \"[Hull] Integrity OK — pressure=$pressureHpa hPa, leaks=$leakRate L/min\""
+              }
+            }
+          },
+          {
+            "id": "deck2",
+            "type": "activity",
+            "position": { "x": 820, "y": 820 },
+            "data": {
+              "label": "runScript: Diesel Engine",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "diesel",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$rpm     = \"0\"\n$oilPsi  = \"42\"\n$tempC   = \"45\"\nWrite-Output \"[Diesel] standby — rpm=$rpm, oil=$oilPsi psi, temp=$tempC C\""
+              }
+            }
+          },
+          {
+            "id": "deck3",
+            "type": "activity",
+            "position": { "x": 1180, "y": 800 },
+            "data": {
+              "label": "runScript: Battery Charge",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "battery",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$batteryPercent = \"98\"\n$cellsOk        = \"true\"\nWrite-Output \"[Battery] charge=$batteryPercent% — cells=$cellsOk\""
+              }
+            }
+          },
+
+          {
+            "id": "tower_bl",
+            "type": "activity",
+            "position": { "x": 1620, "y": 620 },
+            "data": {
+              "label": "runScript: Open Tower Hatch",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "hatchOpen",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 15,
+                "script": "$hatchState = \"open\"\nWrite-Output \"[Tower] hatch state=$hatchState\""
+              }
+            }
+          },
+          {
+            "id": "tower_tl",
+            "type": "activity",
+            "position": { "x": 1620, "y": 440 },
+            "data": {
+              "label": "runScript: Raise Periscope",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "periscopeUp",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 15,
+                "script": "$periscopeState = \"raised\"\nWrite-Output \"[Periscope] state=$periscopeState\""
+              }
+            }
+          },
+          {
+            "id": "periscope",
+            "type": "activity",
+            "position": { "x": 1800, "y": 200 },
+            "data": {
+              "label": "runScript: Periscope 360-deg Scan",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "scan",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$bearing      = \"0..360\"\n$contacts     = \"0\"\n$threatLevel  = \"low\"\n$visibilityNm = \"8\"\nWrite-Output \"[Periscope] 360 scan complete — contacts=$contacts threat=$threatLevel visibility=$visibilityNm nm\""
+              }
+            }
+          },
+          {
+            "id": "tower_tr",
+            "type": "activity",
+            "position": { "x": 1980, "y": 440 },
+            "data": {
+              "label": "restApi: Sea State (Weather)",
+              "activityType": "restApi",
+              "outputVariable": "weather",
+              "config": {
+                "url": "https://httpbin.org/json",
+                "method": "GET",
+                "timeoutSeconds": 10,
+                "headers": [
+                  { "name": "Accept", "value": "application/json" }
+                ]
+              }
+            }
+          },
+          {
+            "id": "tower_br",
+            "type": "activity",
+            "position": { "x": 1980, "y": 620 },
+            "data": {
+              "label": "runScript: Lower Periscope, Seal",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "sealed",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 15,
+                "script": "$periscopeState = \"stowed\"\n$hatchState     = \"sealed\"\nWrite-Output \"[Tower] periscope=$periscopeState hatch=$hatchState\""
+              }
+            }
+          },
+
+          {
+            "id": "deck4",
+            "type": "activity",
+            "position": { "x": 2200, "y": 800 },
+            "data": {
+              "label": "decision: Dive Conditions OK?",
+              "activityType": "decision",
+              "outputVariable": "diveDecision",
+              "config": {
+                "cases": [
+                  {
+                    "name": "dive-ok",
+                    "condition": {
+                      "type": "group",
+                      "op": "AND",
+                      "items": [
+                        {
+                          "type": "comparison",
+                          "left":  { "kind": "variable", "stepId": "battery", "field": "param", "paramName": "batteryPercent" },
+                          "op":    ">=",
+                          "right": { "kind": "literal", "value": "50" }
+                        },
+                        {
+                          "type": "comparison",
+                          "left":  { "kind": "variable", "stepId": "scan",    "field": "param", "paramName": "threatLevel" },
+                          "op":    "!=",
+                          "right": { "kind": "literal", "value": "high" }
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "defaultCaseName": "abort"
+              }
+            }
+          },
+          {
+            "id": "deck5",
+            "type": "activity",
+            "position": { "x": 2560, "y": 820 },
+            "data": {
+              "label": "log: DIVE! DIVE! DIVE!",
+              "activityType": "log",
+              "config": {
+                "level": "warning",
+                "message": "[Klaxon] DIVE! DIVE! DIVE! — Mission {{bow.param.missionId}} ({{bow.param.captainName}}) descending to {{bow.param.targetDepth}}m"
+              }
+            }
+          },
+          {
+            "id": "deck6",
+            "type": "activity",
+            "position": { "x": 2920, "y": 860 },
+            "data": {
+              "label": "runScript: Seal Outer Hatches",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "outerSealed",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 20,
+                "script": "$sealedHatches = \"8\"\nWrite-Output \"[Hull] outer hatches sealed=$sealedHatches/8\""
+              }
+            }
+          },
+          {
+            "id": "stern",
+            "type": "activity",
+            "position": { "x": 3200, "y": 940 },
+            "data": {
+              "label": "runScript: Engage Stern Dive Planes",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "sternPlanes",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 15,
+                "script": "$sternAngleDeg = \"-10\"\n$ruderDeg      = \"0\"\nWrite-Output \"[Stern] dive planes angle=$sternAngleDeg deg, rudder=$ruderDeg deg\""
+              }
+            }
+          },
+
+          {
+            "id": "prop_top",
+            "type": "activity",
+            "position": { "x": 3520, "y": 820 },
+            "data": {
+              "label": "runScript: Engine Slow Ahead 1/3",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "telegraph",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 15,
+                "script": "$shaftRpm     = \"120\"\n$speedKnots   = \"4\"\nWrite-Output \"[Engine Room] SLOW AHEAD 1/3 — shaft=$shaftRpm rpm, speed=$speedKnots kn\""
+              }
+            }
+          },
+          {
+            "id": "prop_bot",
+            "type": "activity",
+            "position": { "x": 3520, "y": 1100 },
+            "data": {
+              "label": "returnData: Mission Complete",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "missionId":     "{{bow.param.missionId}}",
+                  "captain":       "{{bow.param.captainName}}",
+                  "targetDepth":   "{{bow.param.targetDepth}}",
+                  "contacts":      "{{scan.param.contacts}}",
+                  "batteryStart":  "{{battery.param.batteryPercent}}",
+                  "sealedHatches": "{{outerSealed.param.sealedHatches}}",
+                  "status":        "surfaced"
+                }
+              }
+            }
+          },
+
+          {
+            "id": "keel1",
+            "type": "activity",
+            "position": { "x": 460, "y": 1100 },
+            "data": {
+              "label": "runScript: Flood Forward Tanks",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "ballast",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$tanksFlooding = \"true\"\n$fillPercent   = \"0\"\nWrite-Output \"[Ballast] forward tanks flooding=$tanksFlooding fill=$fillPercent%\""
+              }
+            }
+          },
+          {
+            "id": "keel2",
+            "type": "activity",
+            "position": { "x": 820, "y": 1140 },
+            "data": {
+              "label": "runScript: Dive Depth 20m",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "depth20",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$depthM   = \"20\"\n$rateMpm  = \"5\"\nWrite-Output \"[Helm] depth=$depthM m, descent rate=$rateMpm m/min\""
+              }
+            }
+          },
+          {
+            "id": "keel3",
+            "type": "activity",
+            "position": { "x": 1180, "y": 1160 },
+            "data": {
+              "label": "runScript: Dive Depth 80m",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "depth80",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$depthM   = \"80\"\n$hullStress = \"low\"\nWrite-Output \"[Helm] depth=$depthM m, hull stress=$hullStress\""
+              }
+            }
+          },
+          {
+            "id": "junction",
+            "type": "activity",
+            "position": { "x": 1800, "y": 1180 },
+            "data": {
+              "label": "Junction: Cruise Depth (waitAll)",
+              "activityType": "junction",
+              "outputVariable": "cruiseReady",
+              "config": {
+                "mode": "waitAll"
+              }
+            }
+          },
+          {
+            "id": "keel4",
+            "type": "activity",
+            "position": { "x": 2200, "y": 1160 },
+            "data": {
+              "label": "delay: Cruise Hold 200m (5s)",
+              "activityType": "delay",
+              "config": {
+                "seconds": 5
+              }
+            }
+          },
+          {
+            "id": "keel5",
+            "type": "activity",
+            "position": { "x": 2560, "y": 1140 },
+            "data": {
+              "label": "runScript: Sonar Mission Recon",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "sonar",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$surfaceContacts = \"2\"\n$subContacts     = \"0\"\n$bearingPrimary  = \"045\"\nWrite-Output \"[Sonar] surface=$surfaceContacts sub=$subContacts bearing=$bearingPrimary\""
+              }
+            }
+          },
+          {
+            "id": "keel6",
+            "type": "activity",
+            "position": { "x": 2920, "y": 1100 },
+            "data": {
+              "label": "runScript: Blow Ballast / Ascend",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "ascent",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "$ballastState = \"blowing\"\n$ascentMpm    = \"8\"\nWrite-Output \"[Ballast] state=$ballastState ascent rate=$ascentMpm m/min\""
+              }
+            }
+          },
+
+          {
+            "id": "fin_fwd",
+            "type": "activity",
+            "position": { "x": 820, "y": 1300 },
+            "data": {
+              "label": "runScript: Fwd Dive Plane -15°",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "fwdPlane",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 15,
+                "script": "$fwdAngleDeg = \"-15\"\nWrite-Output \"[Bow Planes] angle=$fwdAngleDeg deg\""
+              }
+            }
+          },
+          {
+            "id": "fin_aft",
+            "type": "activity",
+            "position": { "x": 2560, "y": 1300 },
+            "data": {
+              "label": "runScript: Aft Dive Plane Trim",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "aftPlane",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 15,
+                "script": "$aftAngleDeg = \"-5\"\n$trim        = \"level\"\nWrite-Output \"[Stern Planes] angle=$aftAngleDeg deg trim=$trim\""
+              }
+            }
+          }
+        ],
+
+        "edges": [
+          {
+            "id": "e_bow_deck1",
+            "source": "bow", "target": "deck1",
+            "type": "labeled",
+            "data": { "label": "Mission Start" }
+          },
+          {
+            "id": "e_deck1_deck2",
+            "source": "deck1", "target": "deck2",
+            "type": "labeled",
+            "data": { "label": "On Success", "condition": "deck1.success" }
+          },
+          {
+            "id": "e_deck2_deck3",
+            "source": "deck2", "target": "deck3",
+            "type": "labeled",
+            "data": { "label": "On Success", "condition": "deck2.success" }
+          },
+
+          {
+            "id": "e_deck3_towerbl",
+            "source": "deck3", "target": "tower_bl",
+            "sourceHandle": "top", "targetHandle": "bottom",
+            "type": "labeled",
+            "data": { "label": "Begin Recon" }
+          },
+          {
+            "id": "e_towerbl_towertl",
+            "source": "tower_bl", "target": "tower_tl",
+            "sourceHandle": "top", "targetHandle": "bottom",
+            "type": "labeled",
+            "data": { "label": "Hatch Open", "condition": "tower_bl.success" }
+          },
+          {
+            "id": "e_towertl_periscope",
+            "source": "tower_tl", "target": "periscope",
+            "sourceHandle": "top", "targetHandle": "bottom",
+            "type": "labeled",
+            "data": { "label": "Periscope Up", "condition": "tower_tl.success" }
+          },
+          {
+            "id": "e_periscope_towertr",
+            "source": "periscope", "target": "tower_tr",
+            "sourceHandle": "bottom", "targetHandle": "top",
+            "type": "labeled",
+            "data": { "label": "Scan Done", "condition": "periscope.success" }
+          },
+          {
+            "id": "e_towertr_towerbr",
+            "source": "tower_tr", "target": "tower_br",
+            "sourceHandle": "bottom", "targetHandle": "top",
+            "type": "labeled",
+            "data": { "label": "Weather OK", "condition": "tower_tr.success" }
+          },
+          {
+            "id": "e_towerbr_deck4",
+            "source": "tower_br", "target": "deck4",
+            "sourceHandle": "right", "targetHandle": "left",
+            "type": "labeled",
+            "data": { "label": "Hatch Sealed", "condition": "tower_br.success" }
+          },
+
+          {
+            "id": "e_deck4_deck5",
+            "source": "deck4", "target": "deck5",
+            "type": "labeled",
+            "data": {
+              "label": "case=dive-ok",
+              "conditionExpression": {
+                "type": "comparison",
+                "left":  { "kind": "variable", "stepId": "diveDecision", "field": "param", "paramName": "case" },
+                "op":    "==",
+                "right": { "kind": "literal", "value": "dive-ok" }
+              }
+            }
+          },
+          {
+            "id": "e_deck5_deck6",
+            "source": "deck5", "target": "deck6",
+            "type": "labeled",
+            "data": { "label": "Klaxon Sounded", "condition": "deck5.success" }
+          },
+          {
+            "id": "e_deck6_stern",
+            "source": "deck6", "target": "stern",
+            "type": "labeled",
+            "data": { "label": "Hatches Sealed", "condition": "deck6.success" }
+          },
+
+          {
+            "id": "e_stern_junction",
+            "source": "stern", "target": "junction",
+            "sourceHandle": "bottom", "targetHandle": "right",
+            "type": "labeled",
+            "data": {
+              "label": "Surface Sealed",
+              "condition": "stern.success",
+              "controlPoints": { "cp1x": 3200, "cp1y": 1380, "cp2x": 2400, "cp2y": 1380 }
+            }
+          },
+
+          {
+            "id": "e_bow_keel1",
+            "source": "bow", "target": "keel1",
+            "sourceHandle": "bottom", "targetHandle": "top",
+            "type": "labeled",
+            "data": { "label": "Parallel: Ballast Prep" }
+          },
+          {
+            "id": "e_keel1_keel2",
+            "source": "keel1", "target": "keel2",
+            "type": "labeled",
+            "data": { "label": "Tanks Flooding", "condition": "keel1.success" }
+          },
+          {
+            "id": "e_keel2_finfwd",
+            "source": "keel2", "target": "fin_fwd",
+            "sourceHandle": "bottom", "targetHandle": "top",
+            "type": "labeled",
+            "data": { "label": "Trim Bow Planes" }
+          },
+          {
+            "id": "e_finfwd_keel3",
+            "source": "fin_fwd", "target": "keel3",
+            "sourceHandle": "right", "targetHandle": "bottom",
+            "type": "labeled",
+            "data": { "label": "Fwd Plane OK", "condition": "fin_fwd.success" }
+          },
+          {
+            "id": "e_keel2_keel3",
+            "source": "keel2", "target": "keel3",
+            "type": "labeled",
+            "data": { "label": "Descending", "condition": "keel2.success" }
+          },
+          {
+            "id": "e_keel3_junction",
+            "source": "keel3", "target": "junction",
+            "sourceHandle": "right", "targetHandle": "left",
+            "type": "labeled",
+            "data": { "label": "80m Reached", "condition": "keel3.success" }
+          },
+
+          {
+            "id": "e_junction_keel4",
+            "source": "junction", "target": "keel4",
+            "sourceHandle": "right", "targetHandle": "left",
+            "type": "labeled",
+            "data": { "label": "All Systems Nominal" }
+          },
+          {
+            "id": "e_keel4_keel5",
+            "source": "keel4", "target": "keel5",
+            "type": "labeled",
+            "data": { "label": "Cruising 200m" }
+          },
+          {
+            "id": "e_keel5_finaft",
+            "source": "keel5", "target": "fin_aft",
+            "sourceHandle": "bottom", "targetHandle": "top",
+            "type": "labeled",
+            "data": { "label": "Aft Plane Trim" }
+          },
+          {
+            "id": "e_finaft_keel6",
+            "source": "fin_aft", "target": "keel6",
+            "sourceHandle": "right", "targetHandle": "bottom",
+            "type": "labeled",
+            "data": { "label": "Trim Level", "condition": "fin_aft.success" }
+          },
+          {
+            "id": "e_keel5_keel6",
+            "source": "keel5", "target": "keel6",
+            "type": "labeled",
+            "data": { "label": "Recon Logged", "condition": "keel5.success" }
+          },
+
+          {
+            "id": "e_keel6_proptop",
+            "source": "keel6", "target": "prop_top",
+            "sourceHandle": "right", "targetHandle": "left",
+            "type": "labeled",
+            "data": { "label": "Ascending", "condition": "keel6.success" }
+          },
+          {
+            "id": "e_proptop_propbot",
+            "source": "prop_top", "target": "prop_bot",
+            "sourceHandle": "bottom", "targetHandle": "top",
+            "type": "labeled",
+            "data": { "label": "Engine Ahead", "condition": "prop_top.success" }
+          }
+        ]
+      }
+    }
+  ]
+}

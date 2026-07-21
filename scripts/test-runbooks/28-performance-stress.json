@@ -1,0 +1,232 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] performance-stress - Deep Parallelism + Multi-Decision + forEach + Retry",
+      "description": "Stress-Test fuer Engine-Throughput und Variable-Resolution: ~70 Nodes, 6 Junctions, 3 Decisions, 1 forEach (5 Items parallel), 4 Retry-Chains, 3 Decision-Routing-Stufen, viele Variable-Templates ueber mehrere Hops, gemischte Activity-Typen (runScript, fileHash, jsonQuery, xmlQuery, restApi, sql, wmi, registry, delay, log, decision, forEach, junction, returnData). Laeuft alle 5 Min und stresst Scheduler, Engine-Queue und DB-Persistenz mit ~70 StepExecutions pro Run.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 1500 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "init", "type": "activity", "position": { "x": 320, "y": 1500 }, "data": { "label": "init: many vars + structured output", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "init", "config": { "engine": "auto", "timeoutSeconds": 30, "script": "$envName = 'test-env'\n$severity = 'high'\n$cpuCount = '8'\n$freeGb = '500'\n$hostname = $env:COMPUTERNAME\n$timestamp = (Get-Date).ToString('o')\n$tenantId = 'tenant-' + (Get-Random -Maximum 1000)\n$batchSize = '5'\nWrite-Output 'init-OK'" } } },
+
+          { "id": "lvl1_a", "type": "activity", "position": { "x": 640, "y": 100 }, "data": { "label": "L1.A runScript: heavy", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "l1a", "config": { "engine": "auto", "timeoutSeconds": 30, "script": "$diskCount = (Get-PSDrive -PSProvider FileSystem).Count\n$procCount = (Get-Process).Count\nWrite-Output \"disks=$diskCount procs=$procCount\"" } } },
+          { "id": "lvl1_b", "type": "activity", "position": { "x": 640, "y": 300 }, "data": { "label": "L1.B fileHash sha256", "activityType": "fileHash", "targetMachineId": "localhost", "outputVariable": "l1b", "config": { "path": "C:\\Windows\\System32\\notepad.exe", "algorithm": "SHA256" } } },
+          { "id": "lvl1_c", "type": "activity", "position": { "x": 640, "y": 500 }, "data": { "label": "L1.C jsonQuery wildcard", "activityType": "jsonQuery", "outputVariable": "l1c", "config": { "source": "inline", "content": "{\"servers\":[{\"name\":\"a\",\"port\":8080},{\"name\":\"b\",\"port\":9090},{\"name\":\"c\",\"port\":7070}]}", "jsonPath": "$.servers[*].name", "resultMode": "all" } } },
+          { "id": "lvl1_d", "type": "activity", "position": { "x": 640, "y": 700 }, "data": { "label": "L1.D xmlQuery", "activityType": "xmlQuery", "outputVariable": "l1d", "config": { "source": "inline", "content": "<?xml version=\"1.0\"?><config><node id=\"1\">primary</node><node id=\"2\">secondary</node></config>", "xpath": "//node[@id='1']", "resultMode": "single" } } },
+          { "id": "lvl1_e", "type": "activity", "position": { "x": 640, "y": 900 }, "data": { "label": "L1.E restApi /healthz", "activityType": "restApi", "outputVariable": "l1e", "config": { "url": "http://localhost:5000/healthz/live", "method": "GET", "timeoutSeconds": 5, "retry": { "maxAttempts": 2, "backoff": "exponential", "initialDelayMs": 500, "maxDelayMs": 3000 } } } },
+          { "id": "lvl1_f", "type": "activity", "position": { "x": 640, "y": 1100 }, "data": { "label": "L1.F sql sqlite", "activityType": "sql", "outputVariable": "l1f", "config": { "provider": "sqlite", "dataSource": ":memory:", "query": "SELECT 1 AS one, 'stress' AS lbl", "timeoutSeconds": 10 } } },
+          { "id": "lvl1_g", "type": "activity", "position": { "x": 640, "y": 1300 }, "data": { "label": "L1.G wmi OS", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "l1g", "config": { "className": "Win32_OperatingSystem", "namespace": "root\\cimv2", "captureProperties": ["Caption"] } } },
+          { "id": "lvl1_h", "type": "activity", "position": { "x": 640, "y": 1500 }, "data": { "label": "L1.H reg read ProductName", "activityType": "registryOperation", "targetMachineId": "localhost", "outputVariable": "l1h", "config": { "operation": "read", "keyPath": "HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", "valueName": "ProductName" } } },
+          { "id": "lvl1_i", "type": "activity", "position": { "x": 640, "y": 1700 }, "data": { "label": "L1.I delay 2s", "activityType": "delay", "outputVariable": "l1i", "config": { "seconds": 2 } } },
+          { "id": "lvl1_j", "type": "activity", "position": { "x": 640, "y": 1900 }, "data": { "label": "L1.J wmi LogicalDisk", "activityType": "wmiQuery", "targetMachineId": "localhost", "outputVariable": "l1j", "config": { "className": "Win32_LogicalDisk", "namespace": "root\\cimv2", "filter": "DriveType=3" } } },
+          { "id": "lvl1_k", "type": "activity", "position": { "x": 640, "y": 2100 }, "data": { "label": "L1.K log fan-out", "activityType": "log", "config": { "level": "info", "message": "[stress] L1 branches running env={{init.param.envName}} tenant={{init.param.tenantId}}" } } },
+          { "id": "lvl1_l", "type": "activity", "position": { "x": 640, "y": 2300 }, "data": { "label": "L1.L runScript: random work", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "l1l", "config": { "engine": "auto", "timeoutSeconds": 20, "script": "$rand = Get-Random -Maximum 100\nWrite-Output \"random=$rand\"" } } },
+
+          { "id": "junc1", "type": "activity", "position": { "x": 960, "y": 1200 }, "data": { "label": "junction 1: waitAll L1 (12)", "activityType": "junction", "outputVariable": "junc1", "config": { "mode": "waitAll" } } },
+
+          { "id": "dec_route", "type": "activity", "position": { "x": 1280, "y": 1200 }, "data": { "label": "decision 1: route by env (4-way)", "activityType": "decision", "outputVariable": "dec_route", "config": { "cases": [
+            { "name": "to-prod", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"envName"}, "op": "==", "right": {"kind":"literal","value":"production"} } },
+            { "name": "to-test", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"envName"}, "op": "==", "right": {"kind":"literal","value":"test-env"} } },
+            { "name": "to-staging", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"envName"}, "op": "contains", "right": {"kind":"literal","value":"stag"} } }
+          ], "defaultCaseName": "to-fallback" } } },
+
+          { "id": "p_prod_a", "type": "activity", "position": { "x": 1600, "y": 200 }, "data": { "label": "P-prod A log", "activityType": "log", "config": { "level": "warning", "message": "[stress] PROD path (unexpected)" } } },
+          { "id": "p_prod_b", "type": "activity", "position": { "x": 1600, "y": 380 }, "data": { "label": "P-prod B delay", "activityType": "delay", "config": { "seconds": 1 } } },
+
+          { "id": "p_test_a", "type": "activity", "position": { "x": 1600, "y": 600 }, "data": { "label": "P-test A runScript", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "pta", "config": { "engine": "auto", "timeoutSeconds": 15, "script": "$msg = 'test-path-A'\nWrite-Output $msg" } } },
+          { "id": "p_test_b", "type": "activity", "position": { "x": 1600, "y": 780 }, "data": { "label": "P-test B jsonQuery", "activityType": "jsonQuery", "outputVariable": "ptb", "config": { "source": "inline", "content": "{\"path\":\"test\",\"items\":[1,2,3,4,5]}", "jsonPath": "$.items[*]", "resultMode": "all" } } },
+          { "id": "p_test_c", "type": "activity", "position": { "x": 1600, "y": 960 }, "data": { "label": "P-test C delay 1s", "activityType": "delay", "config": { "seconds": 1 } } },
+          { "id": "p_test_d", "type": "activity", "position": { "x": 1600, "y": 1140 }, "data": { "label": "P-test D log", "activityType": "log", "config": { "level": "info", "message": "[stress] test path D - msg from A: {{pta.param.msg}}, count from B: {{ptb.param.count}}" } } },
+
+          { "id": "p_stag_a", "type": "activity", "position": { "x": 1600, "y": 1380 }, "data": { "label": "P-stag A log", "activityType": "log", "config": { "level": "info", "message": "[stress] STAGING path" } } },
+          { "id": "p_stag_b", "type": "activity", "position": { "x": 1600, "y": 1560 }, "data": { "label": "P-stag B delay", "activityType": "delay", "config": { "seconds": 1 } } },
+
+          { "id": "p_fb_a", "type": "activity", "position": { "x": 1600, "y": 1800 }, "data": { "label": "P-fallback A log", "activityType": "log", "config": { "level": "info", "message": "[stress] FALLBACK path" } } },
+          { "id": "p_fb_b", "type": "activity", "position": { "x": 1600, "y": 1980 }, "data": { "label": "P-fallback B delay", "activityType": "delay", "config": { "seconds": 1 } } },
+
+          { "id": "junc2", "type": "activity", "position": { "x": 1920, "y": 1200 }, "data": { "label": "junction 2: waitAny route", "activityType": "junction", "outputVariable": "junc2", "config": { "mode": "waitAny" } } },
+
+          { "id": "dec_sev", "type": "activity", "position": { "x": 2240, "y": 1200 }, "data": { "label": "decision 2: severity (group AND/NOT, 5 cases)", "activityType": "decision", "outputVariable": "dec_sev", "config": { "cases": [
+            { "name": "critical", "condition": { "type": "group", "op": "AND", "children": [
+              { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"severity"}, "op": "==", "right": {"kind":"literal","value":"critical"} },
+              { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"cpuCount"}, "op": ">=", "right": {"kind":"literal","value":"4"} }
+            ] } },
+            { "name": "high", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"severity"}, "op": "==", "right": {"kind":"literal","value":"high"} } },
+            { "name": "medium", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"severity"}, "op": "==", "right": {"kind":"literal","value":"medium"} } },
+            { "name": "low", "condition": { "type": "group", "op": "OR", "children": [
+              { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"severity"}, "op": "==", "right": {"kind":"literal","value":"low"} },
+              { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"severity"}, "op": "==", "right": {"kind":"literal","value":"info"} }
+            ] } },
+            { "name": "no-severity", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"init","field":"param","paramName":"severity"}, "op": "isEmpty" } }
+          ], "defaultCaseName": "unknown-sev" } } },
+
+          { "id": "sev_crit", "type": "activity", "position": { "x": 2560, "y": 600 }, "data": { "label": "sev: CRITICAL log", "activityType": "log", "config": { "level": "error", "message": "[stress] sev=critical" } } },
+          { "id": "sev_high", "type": "activity", "position": { "x": 2560, "y": 800 }, "data": { "label": "sev: HIGH (expected)", "activityType": "log", "config": { "level": "warning", "message": "[stress] sev=high (expected)" } } },
+          { "id": "sev_med", "type": "activity", "position": { "x": 2560, "y": 1000 }, "data": { "label": "sev: MEDIUM log", "activityType": "log", "config": { "level": "info", "message": "[stress] sev=medium" } } },
+          { "id": "sev_low", "type": "activity", "position": { "x": 2560, "y": 1200 }, "data": { "label": "sev: LOW log", "activityType": "log", "config": { "level": "info", "message": "[stress] sev=low" } } },
+          { "id": "sev_none", "type": "activity", "position": { "x": 2560, "y": 1400 }, "data": { "label": "sev: NONE log", "activityType": "log", "config": { "level": "info", "message": "[stress] sev=empty" } } },
+          { "id": "sev_unk", "type": "activity", "position": { "x": 2560, "y": 1600 }, "data": { "label": "sev: UNKNOWN log", "activityType": "log", "config": { "level": "info", "message": "[stress] sev=unknown fallback" } } },
+
+          { "id": "junc3", "type": "activity", "position": { "x": 2880, "y": 1200 }, "data": { "label": "junction 3: waitAny sev", "activityType": "junction", "outputVariable": "junc3", "config": { "mode": "waitAny" } } },
+
+          { "id": "fe_batch", "type": "activity", "position": { "x": 3200, "y": 1200 }, "data": { "label": "forEach: 5 items parallel=3", "activityType": "forEach", "outputVariable": "fe_batch", "config": { "items": "[\"task-1\",\"task-2\",\"task-3\",\"task-4\",\"task-5\"]", "itemsFormat": "json", "childWorkflowNameOrId": "[TestSuite] Child: Echo Item", "itemParameterName": "item", "indexParameterName": "index", "maxParallelism": 3, "continueOnError": true, "timeoutSecondsPerItem": 30 } } },
+
+          { "id": "rt1", "type": "activity", "position": { "x": 3520, "y": 1000 }, "data": { "label": "retry chain 1 fixed", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rt1", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Write-Output 'rt1-ok'", "retry": { "maxAttempts": 2, "backoff": "fixed", "initialDelayMs": 200, "maxDelayMs": 200 } } } },
+          { "id": "rt2", "type": "activity", "position": { "x": 3520, "y": 1200 }, "data": { "label": "retry chain 2 linear", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rt2", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Write-Output 'rt2-ok'", "retry": { "maxAttempts": 3, "backoff": "linear", "initialDelayMs": 200, "maxDelayMs": 1000 } } } },
+          { "id": "rt3", "type": "activity", "position": { "x": 3520, "y": 1400 }, "data": { "label": "retry chain 3 exp", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "rt3", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "Write-Output 'rt3-ok'", "retry": { "maxAttempts": 4, "backoff": "exponential", "initialDelayMs": 200, "maxDelayMs": 3000 } } } },
+
+          { "id": "junc4", "type": "activity", "position": { "x": 3840, "y": 1200 }, "data": { "label": "junction 4: waitAll retries", "activityType": "junction", "config": { "mode": "waitAll" } } },
+
+          { "id": "post_a", "type": "activity", "position": { "x": 4160, "y": 800 }, "data": { "label": "post A log", "activityType": "log", "config": { "level": "info", "message": "[stress] post-A done. sev case: {{dec_sev.param.case}}" } } },
+          { "id": "post_b", "type": "activity", "position": { "x": 4160, "y": 1000 }, "data": { "label": "post B runScript", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "postb", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$summary = 'post-summary'\nWrite-Output 'post-b-ok'" } } },
+          { "id": "post_c", "type": "activity", "position": { "x": 4160, "y": 1200 }, "data": { "label": "post C jsonQuery", "activityType": "jsonQuery", "outputVariable": "postc", "config": { "source": "inline", "content": "{\"summary\":{\"ok\":true,\"count\":42}}", "jsonPath": "$.summary.count", "resultMode": "single" } } },
+          { "id": "post_d", "type": "activity", "position": { "x": 4160, "y": 1400 }, "data": { "label": "post D delay 1s", "activityType": "delay", "config": { "seconds": 1 } } },
+          { "id": "post_e", "type": "activity", "position": { "x": 4160, "y": 1600 }, "data": { "label": "post E log final stats", "activityType": "log", "config": { "level": "info", "message": "[stress] all post-tasks done. forEach total={{fe_batch.param.total}} succeeded={{fe_batch.param.succeeded}}" } } },
+
+          { "id": "junc5", "type": "activity", "position": { "x": 4480, "y": 1200 }, "data": { "label": "junction 5: waitAll post", "activityType": "junction", "outputVariable": "junc5", "config": { "mode": "waitAll" } } },
+
+          { "id": "dec_final", "type": "activity", "position": { "x": 4800, "y": 1200 }, "data": { "label": "decision 3: success threshold", "activityType": "decision", "outputVariable": "dec_final", "config": { "cases": [
+            { "name": "all-clear", "condition": { "type": "group", "op": "AND", "children": [
+              { "type": "comparison", "left": {"kind":"variable","stepId":"fe_batch","field":"param","paramName":"failed"}, "op": "==", "right": {"kind":"literal","value":"0"} },
+              { "type": "comparison", "left": {"kind":"variable","stepId":"l1e","field":"success"}, "op": "isTrue" }
+            ] } },
+            { "name": "partial-fail", "condition": { "type": "comparison", "left": {"kind":"variable","stepId":"fe_batch","field":"param","paramName":"failed"}, "op": ">", "right": {"kind":"literal","value":"0"} } }
+          ], "defaultCaseName": "needs-investigation" } } },
+
+          { "id": "fin_clear", "type": "activity", "position": { "x": 5120, "y": 1000 }, "data": { "label": "final: all clear", "activityType": "log", "config": { "level": "info", "message": "[stress] all-clear: forEach OK, REST OK" } } },
+          { "id": "fin_partial", "type": "activity", "position": { "x": 5120, "y": 1200 }, "data": { "label": "final: partial fail", "activityType": "log", "config": { "level": "warning", "message": "[stress] partial-fail: failed={{fe_batch.param.failed}}" } } },
+          { "id": "fin_invest", "type": "activity", "position": { "x": 5120, "y": 1400 }, "data": { "label": "final: needs investigation", "activityType": "log", "config": { "level": "warning", "message": "[stress] needs-investigation fallback" } } },
+
+          { "id": "junc6", "type": "activity", "position": { "x": 5440, "y": 1200 }, "data": { "label": "junction 6: waitAny final", "activityType": "junction", "config": { "mode": "waitAny" } } },
+
+          { "id": "ret", "type": "activity", "position": { "x": 5760, "y": 1200 }, "data": { "label": "returnData: full snapshot", "activityType": "returnData", "config": { "data": {
+            "envName": "{{init.param.envName}}",
+            "tenantId": "{{init.param.tenantId}}",
+            "hostname": "{{init.param.hostname}}",
+            "timestamp": "{{init.param.timestamp}}",
+            "l1aOutput": "{{l1a.output}}",
+            "l1bHash": "{{l1b.output}}",
+            "l1cCount": "{{l1c.param.count}}",
+            "l1dResult": "{{l1d.param.result}}",
+            "l1eHealth": "{{l1e.output}}",
+            "l1fSqlVal": "{{l1f.param.one}}",
+            "l1gOsCaption": "{{l1g.param.Caption}}",
+            "l1hReg": "{{l1h.param.value}}",
+            "routeCase": "{{dec_route.param.case}}",
+            "sevCase": "{{dec_sev.param.case}}",
+            "feTotal": "{{fe_batch.param.total}}",
+            "feSucceeded": "{{fe_batch.param.succeeded}}",
+            "feFailed": "{{fe_batch.param.failed}}",
+            "rt1Ok": "{{rt1.success}}",
+            "rt2Ok": "{{rt2.success}}",
+            "rt3Ok": "{{rt3.success}}",
+            "postCount": "{{postc.param.result}}",
+            "finalCase": "{{dec_final.param.case}}"
+          } } } }
+        ],
+        "edges": [
+          { "id": "e_init", "source": "trig", "target": "init", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_l1a", "source": "init", "target": "lvl1_a", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1b", "source": "init", "target": "lvl1_b", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1c", "source": "init", "target": "lvl1_c", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1d", "source": "init", "target": "lvl1_d", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1e", "source": "init", "target": "lvl1_e", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1f", "source": "init", "target": "lvl1_f", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1g", "source": "init", "target": "lvl1_g", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1h", "source": "init", "target": "lvl1_h", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1i", "source": "init", "target": "lvl1_i", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1j", "source": "init", "target": "lvl1_j", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1k", "source": "init", "target": "lvl1_k", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_l1l", "source": "init", "target": "lvl1_l", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_j1_a", "source": "lvl1_a", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_b", "source": "lvl1_b", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_c", "source": "lvl1_c", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_d", "source": "lvl1_d", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_e", "source": "lvl1_e", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_f", "source": "lvl1_f", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_g", "source": "lvl1_g", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_h", "source": "lvl1_h", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_i", "source": "lvl1_i", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_j", "source": "lvl1_j", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_k", "source": "lvl1_k", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j1_l", "source": "lvl1_l", "target": "junc1", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_j1_dec", "source": "junc1", "target": "dec_route", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_dec_prod", "source": "dec_route", "target": "p_prod_a", "type": "labeled", "data": { "label": "case=to-prod", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_route","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"to-prod"} } } },
+          { "id": "e_prod_b", "source": "p_prod_a", "target": "p_prod_b", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_dec_test", "source": "dec_route", "target": "p_test_a", "type": "labeled", "data": { "label": "case=to-test", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_route","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"to-test"} } } },
+          { "id": "e_test_b", "source": "p_test_a", "target": "p_test_b", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_test_c", "source": "p_test_b", "target": "p_test_c", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_test_d", "source": "p_test_c", "target": "p_test_d", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_dec_stag", "source": "dec_route", "target": "p_stag_a", "type": "labeled", "data": { "label": "case=to-staging", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_route","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"to-staging"} } } },
+          { "id": "e_stag_b", "source": "p_stag_a", "target": "p_stag_b", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_dec_fb", "source": "dec_route", "target": "p_fb_a", "type": "labeled", "data": { "label": "case=to-fallback", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_route","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"to-fallback"} } } },
+          { "id": "e_fb_b", "source": "p_fb_a", "target": "p_fb_b", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_prod_j2", "source": "p_prod_b", "target": "junc2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_test_j2", "source": "p_test_d", "target": "junc2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_stag_j2", "source": "p_stag_b", "target": "junc2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_fb_j2", "source": "p_fb_b", "target": "junc2", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_j2_dec", "source": "junc2", "target": "dec_sev", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_sev_crit", "source": "dec_sev", "target": "sev_crit", "type": "labeled", "data": { "label": "case=critical", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_sev","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"critical"} } } },
+          { "id": "e_sev_high", "source": "dec_sev", "target": "sev_high", "type": "labeled", "data": { "label": "case=high", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_sev","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"high"} } } },
+          { "id": "e_sev_med", "source": "dec_sev", "target": "sev_med", "type": "labeled", "data": { "label": "case=medium", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_sev","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"medium"} } } },
+          { "id": "e_sev_low", "source": "dec_sev", "target": "sev_low", "type": "labeled", "data": { "label": "case=low", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_sev","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"low"} } } },
+          { "id": "e_sev_none", "source": "dec_sev", "target": "sev_none", "type": "labeled", "data": { "label": "case=no-severity", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_sev","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"no-severity"} } } },
+          { "id": "e_sev_unk", "source": "dec_sev", "target": "sev_unk", "type": "labeled", "data": { "label": "case=unknown-sev", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_sev","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"unknown-sev"} } } },
+
+          { "id": "e_sev_j3_crit", "source": "sev_crit", "target": "junc3", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_sev_j3_high", "source": "sev_high", "target": "junc3", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_sev_j3_med", "source": "sev_med", "target": "junc3", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_sev_j3_low", "source": "sev_low", "target": "junc3", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_sev_j3_none", "source": "sev_none", "target": "junc3", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_sev_j3_unk", "source": "sev_unk", "target": "junc3", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_j3_fe", "source": "junc3", "target": "fe_batch", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_fe_rt1", "source": "fe_batch", "target": "rt1", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_fe_rt2", "source": "fe_batch", "target": "rt2", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_fe_rt3", "source": "fe_batch", "target": "rt3", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_rt1_j4", "source": "rt1", "target": "junc4", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_rt2_j4", "source": "rt2", "target": "junc4", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_rt3_j4", "source": "rt3", "target": "junc4", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_j4_post_a", "source": "junc4", "target": "post_a", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j4_post_b", "source": "junc4", "target": "post_b", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j4_post_c", "source": "junc4", "target": "post_c", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j4_post_d", "source": "junc4", "target": "post_d", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_j4_post_e", "source": "junc4", "target": "post_e", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_post_j5_a", "source": "post_a", "target": "junc5", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_post_j5_b", "source": "post_b", "target": "junc5", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_post_j5_c", "source": "post_c", "target": "junc5", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_post_j5_d", "source": "post_d", "target": "junc5", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_post_j5_e", "source": "post_e", "target": "junc5", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_j5_dec_fin", "source": "junc5", "target": "dec_final", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_fin_clear", "source": "dec_final", "target": "fin_clear", "type": "labeled", "data": { "label": "case=all-clear", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_final","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"all-clear"} } } },
+          { "id": "e_fin_partial", "source": "dec_final", "target": "fin_partial", "type": "labeled", "data": { "label": "case=partial-fail", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_final","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"partial-fail"} } } },
+          { "id": "e_fin_invest", "source": "dec_final", "target": "fin_invest", "type": "labeled", "data": { "label": "case=needs-investigation", "conditionExpression": { "type": "comparison", "left": {"kind":"variable","stepId":"dec_final","field":"param","paramName":"case"}, "op": "==", "right": {"kind":"literal","value":"needs-investigation"} } } },
+
+          { "id": "e_fin_j6_clear", "source": "fin_clear", "target": "junc6", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_fin_j6_partial", "source": "fin_partial", "target": "junc6", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e_fin_j6_invest", "source": "fin_invest", "target": "junc6", "type": "labeled", "data": { "label": "Always" } },
+
+          { "id": "e_j6_ret", "source": "junc6", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

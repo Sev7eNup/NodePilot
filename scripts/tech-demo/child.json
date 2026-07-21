@@ -1,0 +1,68 @@
+{
+  "_comment": "Child workflow used by 'NodePilot Tech-Demo - Full Showcase' via startWorkflow. Simple 3-node linear flow: manualTrigger -> log -> returnData. The returnData fields appear as child.param.* on the invoke-child step in the parent.",
+  "nodes": [
+    {
+      "id": "child-trigger",
+      "type": "activity",
+      "position": { "x": 0, "y": 0 },
+      "data": {
+        "label": "Manual Trigger (child)",
+        "activityType": "manualTrigger",
+        "config": {
+          "title": "Child demo trigger",
+          "parameters": [
+            { "name": "fromHost", "type": "string", "required": true },
+            { "name": "tag",      "type": "string", "required": false, "default": "n/a" },
+            { "name": "now",      "type": "string", "required": false, "default": "(unknown)" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "child-echo",
+      "type": "activity",
+      "position": { "x": 260, "y": 0 },
+      "data": {
+        "label": "Log: echo caller",
+        "activityType": "log",
+        "config": {
+          "level": "info",
+          "message": "Child called from {{child-trigger.param.fromHost}} (tag={{child-trigger.param.tag}}) at {{child-trigger.param.now}}"
+        }
+      }
+    },
+    {
+      "id": "child-return",
+      "type": "activity",
+      "position": { "x": 520, "y": 0 },
+      "data": {
+        "label": "Return to parent",
+        "activityType": "returnData",
+        "config": {
+          "data": {
+            "result": "SUCCESS",
+            "echoedMessage": "Hello from {{child-trigger.param.fromHost}}",
+            "childRanAt": "{{child-trigger.param.now}}",
+            "childTag": "{{child-trigger.param.tag}}"
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "ce-trigger-echo",
+      "source": "child-trigger",
+      "target": "child-echo",
+      "type": "labeled",
+      "data": { "label": "Always" }
+    },
+    {
+      "id": "ce-echo-return",
+      "source": "child-echo",
+      "target": "child-return",
+      "type": "labeled",
+      "data": { "label": "On Success", "condition": "child-echo.success" }
+    }
+  ]
+}

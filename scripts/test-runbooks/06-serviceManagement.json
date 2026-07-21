@@ -1,0 +1,33 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] serviceManagement - All Actions",
+      "description": "Testet serviceManagement: status auf 2 immer-vorhandenen Standard-Services (Spooler, W32Time). start/stop/restart sind 'disabled: true' damit sie keine Lifecycle-Aktionen triggern - die Engine ueberspringt disabled Knoten korrekt. Failure-Pfade getrennt in xUnit unit tests.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "svc_spooler", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "svc: status Spooler", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "svc_spooler", "config": { "serviceName": "Spooler", "action": "status" } } },
+          { "id": "svc_w32time", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "svc: status W32Time", "activityType": "serviceManagement", "targetMachineId": "localhost", "outputVariable": "svc_w32time", "config": { "serviceName": "W32Time", "action": "status" } } },
+          { "id": "svc_start_disabled", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "svc: start (DISABLED to avoid side effect)", "activityType": "serviceManagement", "targetMachineId": "localhost", "disabled": true, "config": { "serviceName": "Spooler", "action": "start" } } },
+          { "id": "svc_stop_disabled", "type": "activity", "position": { "x": 320, "y": 700 }, "data": { "label": "svc: stop (DISABLED)", "activityType": "serviceManagement", "targetMachineId": "localhost", "disabled": true, "config": { "serviceName": "Spooler", "action": "stop" } } },
+          { "id": "svc_restart_disabled", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "svc: restart (DISABLED)", "activityType": "serviceManagement", "targetMachineId": "localhost", "disabled": true, "config": { "serviceName": "Spooler", "action": "restart" } } },
+          { "id": "junc", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "spooler": "{{svc_spooler.output}}", "w32time": "{{svc_w32time.output}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "svc_spooler", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "svc_w32time", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "svc_start_disabled", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "svc_stop_disabled", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "svc_restart_disabled", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "svc_spooler", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "svc_w32time", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

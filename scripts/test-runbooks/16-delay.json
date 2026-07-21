@@ -1,0 +1,37 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] delay - Various Durations",
+      "description": "Testet delay-Activity: 1s, 3s und 7s parallel, dann eine sequenzielle Kette von 3x1s. Total = ~ max(1,3,7) + 3 = 10s.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 500 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "d_1s", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "delay: 1s", "activityType": "delay", "outputVariable": "d_1", "config": { "seconds": 1 } } },
+          { "id": "d_3s", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "delay: 3s", "activityType": "delay", "outputVariable": "d_3", "config": { "seconds": 3 } } },
+          { "id": "d_7s", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "delay: 7s", "activityType": "delay", "outputVariable": "d_7", "config": { "seconds": 7 } } },
+          { "id": "d_seq_a", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "delay: seq A 1s", "activityType": "delay", "outputVariable": "d_a", "config": { "seconds": 1 } } },
+          { "id": "d_seq_b", "type": "activity", "position": { "x": 640, "y": 800 }, "data": { "label": "delay: seq B 1s", "activityType": "delay", "outputVariable": "d_b", "config": { "seconds": 1 } } },
+          { "id": "d_seq_c", "type": "activity", "position": { "x": 960, "y": 800 }, "data": { "label": "delay: seq C 1s", "activityType": "delay", "outputVariable": "d_c", "config": { "seconds": 1 } } },
+          { "id": "junc", "type": "activity", "position": { "x": 1280, "y": 500 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 1600, "y": 500 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "note": "All delays completed" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "d_1s", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "d_3s", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "d_7s", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "d_seq_a", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "d_seq_a", "target": "d_seq_b", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "d_seq_b", "target": "d_seq_c", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "d_1s", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "d_3s", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "d_7s", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "d_seq_c", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

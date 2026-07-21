@@ -1,0 +1,39 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] restApi - Methods & Proxy Modes",
+      "description": "Testet restApi: GET (Health) mit + ohne Retry, GET mit proxyMode=default und =direct (beide gegen Localhost - kein externer DNS noetig). POST/PUT/DELETE als 'disabled: true' (Schema-Validation, brauchen sonst Auth-Token). proxyMode=custom Schema ist im Activity-Code abgedeckt aber hier nicht aktiv (verlangt externen DNS). 404-Failure-Pfad in xUnit getestet.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 600 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "r_get_health", "type": "activity", "position": { "x": 320, "y": 200 }, "data": { "label": "REST: GET /healthz/live", "activityType": "restApi", "outputVariable": "r_health", "config": { "url": "http://localhost:5000/healthz/live", "method": "GET", "timeoutSeconds": 5 } } },
+          { "id": "r_get_ready", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "REST: GET /healthz/ready (with retry)", "activityType": "restApi", "outputVariable": "r_ready", "config": { "url": "http://localhost:5000/healthz/ready", "method": "GET", "timeoutSeconds": 10, "retry": { "maxAttempts": 3, "backoff": "exponential", "initialDelayMs": 500, "maxDelayMs": 4000 } } } },
+          { "id": "r_get_proxy_default", "type": "activity", "position": { "x": 320, "y": 600 }, "data": { "label": "REST: GET proxyMode=default", "activityType": "restApi", "outputVariable": "r_pdef", "config": { "url": "http://localhost:5000/healthz/live", "method": "GET", "timeoutSeconds": 5, "proxyMode": "default" } } },
+          { "id": "r_get_proxy_direct", "type": "activity", "position": { "x": 320, "y": 800 }, "data": { "label": "REST: GET proxyMode=direct", "activityType": "restApi", "outputVariable": "r_pdir", "config": { "url": "http://localhost:5000/healthz/live", "method": "GET", "timeoutSeconds": 5, "proxyMode": "direct" } } },
+          { "id": "r_post", "type": "activity", "position": { "x": 320, "y": 1000 }, "data": { "label": "REST: POST with headers+body (DISABLED, needs auth)", "activityType": "restApi", "disabled": true, "outputVariable": "r_post", "config": { "url": "http://localhost:5000/api/test", "method": "POST", "timeoutSeconds": 10, "headers": { "Content-Type": "application/json", "X-Test-Header": "NP-TestSuite" }, "body": "{\"key\":\"value\",\"num\":42}" } } },
+          { "id": "r_put", "type": "activity", "position": { "x": 320, "y": 1100 }, "data": { "label": "REST: PUT (DISABLED)", "activityType": "restApi", "disabled": true, "outputVariable": "r_put", "config": { "url": "http://localhost:5000/api/test/1", "method": "PUT", "timeoutSeconds": 10, "body": "{\"updated\":true}" } } },
+          { "id": "r_delete", "type": "activity", "position": { "x": 320, "y": 1200 }, "data": { "label": "REST: DELETE (DISABLED)", "activityType": "restApi", "disabled": true, "outputVariable": "r_del", "config": { "url": "http://localhost:5000/api/test/1", "method": "DELETE", "timeoutSeconds": 10 } } },
+          { "id": "junc", "type": "activity", "position": { "x": 640, "y": 600 }, "data": { "label": "junction: waitAll", "activityType": "junction", "config": { "mode": "waitAll" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 960, "y": 600 }, "data": { "label": "returnData", "activityType": "returnData", "config": { "data": { "healthOutput": "{{r_health.output}}", "readyOutput": "{{r_ready.output}}", "pdefOutput": "{{r_get_proxy_default.output}}", "pdirOutput": "{{r_get_proxy_direct.output}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "r_get_health", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "trig", "target": "r_get_ready", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "trig", "target": "r_get_proxy_default", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "trig", "target": "r_get_proxy_direct", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "trig", "target": "r_post", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "r_post", "target": "r_put", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "r_put", "target": "r_delete", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "r_get_health", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "r_get_ready", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "r_get_proxy_default", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "r_get_proxy_direct", "target": "junc", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e12", "source": "junc", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] Child: Echo Item",
+      "description": "Geteiltes Child-Workflow fuer forEach- und startWorkflow-Runbooks. Hat sowohl scheduleTrigger (alle 5 Min) als auch manualTrigger. Wenn vom Parent gerufen, kommen item/index aus den Parametern; bei Schedule-Fire defaulten beide auf Standardwerte.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trig_sched",
+            "type": "activity",
+            "position": { "x": 0, "y": 100 },
+            "data": {
+              "label": "Schedule: every 5 min",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 0/5 * * * ? *",
+                "description": "Child fires standalone every 5 min"
+              }
+            }
+          },
+          {
+            "id": "trig_manual",
+            "type": "activity",
+            "position": { "x": 0, "y": 280 },
+            "data": {
+              "label": "Manual: from parent",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Child Workflow Parameters",
+                "parameters": [
+                  { "name": "item", "type": "string", "required": false, "default": "scheduled-default" },
+                  { "name": "index", "type": "string", "required": false, "default": "0" }
+                ]
+              }
+            }
+          },
+          {
+            "id": "log_in",
+            "type": "activity",
+            "position": { "x": 320, "y": 190 },
+            "data": {
+              "label": "log: received",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "[Child] item={{trig_manual.param.item}} index={{trig_manual.param.index}}"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": { "x": 640, "y": 190 },
+            "data": {
+              "label": "returnData: echo",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "echoedItem": "{{trig_manual.param.item}}",
+                  "echoedIndex": "{{trig_manual.param.index}}",
+                  "status": "child-ok"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          { "id": "ce1", "source": "trig_sched", "target": "log_in", "type": "labeled", "data": { "label": "Schedule" } },
+          { "id": "ce2", "source": "trig_manual", "target": "log_in", "type": "labeled", "data": { "label": "Manual" } },
+          { "id": "ce3", "source": "log_in", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}

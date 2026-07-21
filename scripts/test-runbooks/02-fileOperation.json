@@ -1,0 +1,40 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-05-10T00:00:00Z",
+  "workflows": [
+    {
+      "name": "[TestSuite] fileOperation - All Variants",
+      "description": "Testet alle fileOperation-Varianten in einer end-to-end-Sequenz: create -> exists -> copy -> rename -> move -> delete. Pro Run unique Sandbox unter C:\\Temp\\NP-TestSuite\\file-op-<guid> damit parallele Runs nicht kollidieren. Cleanup am Ende.",
+      "definition": {
+        "nodes": [
+          { "id": "trig", "type": "activity", "position": { "x": 0, "y": 400 }, "data": { "label": "Schedule: every 5 min", "activityType": "scheduleTrigger", "config": { "cronExpression": "0 0/5 * * * ? *" } } },
+          { "id": "prep_dir", "type": "activity", "position": { "x": 320, "y": 400 }, "data": { "label": "runScript: unique sandbox", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "prep", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$sandbox = 'C:\\Temp\\NP-TestSuite\\file-op-' + [Guid]::NewGuid().ToString('N')\nNew-Item -Path $sandbox -ItemType Directory -Force | Out-Null\nWrite-Output $sandbox" } } },
+          { "id": "f_create", "type": "activity", "position": { "x": 640, "y": 400 }, "data": { "label": "fileOp: create empty file", "activityType": "fileOperation", "targetMachineId": "localhost", "outputVariable": "f_create", "config": { "operation": "create", "path": "{{prep.param.sandbox}}\\source.txt" } } },
+          { "id": "f_exists_t", "type": "activity", "position": { "x": 960, "y": 400 }, "data": { "label": "fileOp: exists (true)", "activityType": "fileOperation", "targetMachineId": "localhost", "outputVariable": "f_exists_t", "config": { "operation": "exists", "path": "{{prep.param.sandbox}}\\source.txt" } } },
+          { "id": "f_copy", "type": "activity", "position": { "x": 1280, "y": 400 }, "data": { "label": "fileOp: copy", "activityType": "fileOperation", "targetMachineId": "localhost", "outputVariable": "f_copy", "config": { "operation": "copy", "path": "{{prep.param.sandbox}}\\source.txt", "destination": "{{prep.param.sandbox}}\\copied.txt" } } },
+          { "id": "f_rename", "type": "activity", "position": { "x": 1600, "y": 400 }, "data": { "label": "fileOp: rename copy", "activityType": "fileOperation", "targetMachineId": "localhost", "outputVariable": "f_rename", "config": { "operation": "rename", "path": "{{prep.param.sandbox}}\\copied.txt", "newName": "renamed.txt" } } },
+          { "id": "f_move", "type": "activity", "position": { "x": 1920, "y": 400 }, "data": { "label": "fileOp: move", "activityType": "fileOperation", "targetMachineId": "localhost", "outputVariable": "f_move", "config": { "operation": "move", "path": "{{prep.param.sandbox}}\\renamed.txt", "destination": "{{prep.param.sandbox}}\\moved.txt" } } },
+          { "id": "f_exists_f", "type": "activity", "position": { "x": 2240, "y": 400 }, "data": { "label": "fileOp: exists on missing (returns false ok)", "activityType": "fileOperation", "targetMachineId": "localhost", "outputVariable": "f_exists_f", "config": { "operation": "exists", "path": "{{prep.param.sandbox}}\\does-not-exist.xyz" } } },
+          { "id": "f_del_src", "type": "activity", "position": { "x": 2560, "y": 400 }, "data": { "label": "fileOp: delete source", "activityType": "fileOperation", "targetMachineId": "localhost", "outputVariable": "f_del_src", "config": { "operation": "delete", "path": "{{prep.param.sandbox}}\\source.txt" } } },
+          { "id": "f_del_moved", "type": "activity", "position": { "x": 2880, "y": 400 }, "data": { "label": "fileOp: delete moved", "activityType": "fileOperation", "targetMachineId": "localhost", "outputVariable": "f_del_moved", "config": { "operation": "delete", "path": "{{prep.param.sandbox}}\\moved.txt" } } },
+          { "id": "cleanup_dir", "type": "activity", "position": { "x": 3200, "y": 400 }, "data": { "label": "runScript: drop sandbox", "activityType": "runScript", "targetMachineId": "localhost", "outputVariable": "cleanup", "config": { "engine": "auto", "timeoutSeconds": 10, "script": "$sb = {{prep.param.sandbox}}\nif (Test-Path $sb) { Remove-Item -LiteralPath $sb -Recurse -Force }\nWrite-Output 'cleanup-ok'" } } },
+          { "id": "ret", "type": "activity", "position": { "x": 3520, "y": 400 }, "data": { "label": "returnData: summary", "activityType": "returnData", "config": { "data": { "createdFile": "{{f_create.output}}", "existsTrue": "{{f_exists_t.output}}", "existsFalse": "{{f_exists_f.output}}", "moveOk": "{{f_move.success}}", "cleanupOk": "{{cleanup.success}}" } } } }
+        ],
+        "edges": [
+          { "id": "e1", "source": "trig", "target": "prep_dir", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e2", "source": "prep_dir", "target": "f_create", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e3", "source": "f_create", "target": "f_exists_t", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e4", "source": "f_exists_t", "target": "f_copy", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e5", "source": "f_copy", "target": "f_rename", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e6", "source": "f_rename", "target": "f_move", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e7", "source": "f_move", "target": "f_exists_f", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e8", "source": "f_exists_f", "target": "f_del_src", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e9", "source": "f_del_src", "target": "f_del_moved", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e10", "source": "f_del_moved", "target": "cleanup_dir", "type": "labeled", "data": { "label": "Always" } },
+          { "id": "e11", "source": "cleanup_dir", "target": "ret", "type": "labeled", "data": { "label": "Always" } }
+        ]
+      }
+    }
+  ]
+}
