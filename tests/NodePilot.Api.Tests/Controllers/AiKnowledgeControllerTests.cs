@@ -8,6 +8,7 @@ using NodePilot.Ai;
 using NodePilot.Ai.Knowledge;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Security;
+using NodePilot.Core.Interfaces;
 using NodePilot.Data;
 using NodePilot.TestCommons;
 using Xunit;
@@ -33,7 +34,7 @@ public class AiKnowledgeControllerTests
         var db = TestDbFactory.Create();
         var registry = new KnowledgeChatToolRegistry(new DocsKnowledgeReader(kOptions), new SourceCodeKnowledgeReader(kOptions));
         var operational = new OperationalKnowledgeReader(db, new StubAuditDetailsRedactor());
-        var assistant = new KnowledgeAssistantService(llm, new PromptCatalog(), registry, llmOptions, kOptions, operational);
+        var assistant = new KnowledgeAssistantService(llm, new PromptCatalog(), registry, llmOptions, kOptions, operational, new StubSettingsKnowledgeReader());
         var audit = new CapturingAuditWriter();
         var authz = new ResourceAuthorizationService(db);
         var controller = new AiKnowledgeController(llmOptions, kOptions, assistant, authz, audit, NullLogger<AiKnowledgeController>.Instance);
@@ -67,6 +68,13 @@ public class AiKnowledgeControllerTests
     private static KnowledgeCapabilitiesDto Caps(AiKnowledgeController c) =>
         (c.Capabilities().Result as OkObjectResult)!.Value as KnowledgeCapabilitiesDto
         ?? throw new InvalidOperationException("capabilities not returned");
+
+    // These controller tests never exercise read_settings (tool-calling is off by default); an empty
+    // snapshot keeps the assistant constructible.
+    private sealed class StubSettingsKnowledgeReader : ISettingsKnowledgeReader
+    {
+        public IReadOnlyList<SettingsSectionKnowledge> GetRedactedSnapshot() => Array.Empty<SettingsSectionKnowledge>();
+    }
 
     // ---- 503 gating ----------------------------------------------------------------------------
 

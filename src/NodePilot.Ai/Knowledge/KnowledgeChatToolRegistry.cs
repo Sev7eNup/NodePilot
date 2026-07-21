@@ -16,7 +16,8 @@ public sealed record KnowledgeToolContext(
     bool DocsEnabled,
     bool OperationalEnabled,
     bool SourceCodeEnabled,
-    IOperationalKnowledgeReader? Operational);
+    IOperationalKnowledgeReader? Operational,
+    ISettingsKnowledgeReader? Settings);
 
 /// <summary>Read-only tool registry for the global "AI Chat" knowledge assistant.</summary>
 public interface IKnowledgeToolRegistry
@@ -51,6 +52,7 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
     private static bool OpGate(KnowledgeToolContext c) => c.OperationalEnabled && c.Operational is not null;
     private static bool OpPrivGate(KnowledgeToolContext c) => OpGate(c) && c.IsPrivileged;
     private static bool SourceGate(KnowledgeToolContext c) => c.SourceCodeEnabled && c.IsPrivileged;
+    private static bool SettingsGate(KnowledgeToolContext c) => c.IsPrivileged && c.Settings is not null;
 
     public KnowledgeChatToolRegistry(IDocsKnowledgeReader docs, ISourceCodeKnowledgeReader source)
     {
@@ -150,6 +152,21 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
                     StringParam("path", "Relativer Quellcode-Pfad aus search_source.", required: true)),
                 (a, _, _) => Task.FromResult(ReadFile(source.Read(GetString(a, "path")))),
                 SourceGate),
+
+            ["read_settings"] = new(
+                new LlmToolDefinition("read_settings",
+                    "Liefert die aktuelle NodePilot-Systemkonfiguration (Admin-Einstellungen, secret-redigiert) je "
+                    + "Sektion als JSON — die EFFEKTIVEN Werte inkl. Runtime-Overrides: u.a. Engine/Runspaces, "
+                    + "Retention, Logging, Remote/WinRM, Threading, Authentifizierung. Die verlässliche Quelle für "
+                    + "Fragen nach eingestellten Werten oder Defaults ('wie viele Runspaces werden beim Start vorab "
+                    + "allokiert', 'welches Log-Format', 'wie lange werden Executions aufbewahrt') — nicht raten. "
+                    + "Optional per 'section' auf eine Sektion eingrenzen.",
+                    ParseParams("""
+                        {"type":"object","properties":{
+                          "section":{"type":"string","description":"Optionaler Sektions-Teilname (z.B. 'Engine', 'Retention', 'Remote'). Leer = alle Sektionen."}}}
+                        """)),
+                (a, ctx, _) => Task.FromResult(ReadSettings(ctx, a)),
+                SettingsGate),
         };
     }
 
@@ -206,6 +223,31 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
         result.Ok
             ? new { path = result.Path, content = result.Content }
             : new { error = result.Error };
+
+    // ---- settings -----------------------------------------------------------------------------
+
+    private static object ReadSettings(KnowledgeToolContext ctx, JsonElement args)
+    {
+        var filter = GetOptionalString(args, "section");
+        IReadOnlyList<Core.Interfaces.SettingsSectionKnowledge> sections = ctx.Settings!.GetRedactedSnapshot();
+        if (!string.IsNullOrWhiteSpace(filter))
+            sections = sections
+                .Where(s => s.Section.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                            || s.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        return new
+        {
+            note = "Secrets sind redigiert (\"********\"). Werte sind die effektive Konfiguration inkl. Runtime-Overrides.",
+            count = sections.Count,
+            sections = sections.Select(s => new
+            {
+                section = s.Section,
+                displayName = s.DisplayName,
+                hotReloadable = s.HotReloadable,
+                values = s.Values,
+            }).ToArray(),
+        };
+    }
 
     // ---- operational --------------------------------------------------------------------------
 

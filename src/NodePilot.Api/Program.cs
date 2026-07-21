@@ -141,6 +141,8 @@ builder.Services.AddScoped<NodePilot.Core.Interfaces.IExecutionLogReader, NodePi
 // Instance-wide operational/workflow reader for the global "AI Chat" knowledge assistant:
 // RBAC-scoped, secret-redacted, read-only (see the reader's docs).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.IOperationalKnowledgeReader, NodePilot.Data.OperationalKnowledgeReader>();
+// Secret-redacted admin-settings snapshot for the same assistant (read_settings tool, Admin/Operator).
+builder.Services.AddScoped<NodePilot.Core.Interfaces.ISettingsKnowledgeReader, NodePilot.Api.Ai.SettingsKnowledgeReader>();
 builder.Services.AddScoped<IMaintenanceWindowStore, MaintenanceWindowStore>();
 builder.Services.AddScoped<INotificationRuleStore, NotificationRuleStore>();
 // Singleton evaluator: an immutable in-memory snapshot read on the dispatch hot path, refreshed
