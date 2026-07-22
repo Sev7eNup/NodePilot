@@ -312,7 +312,7 @@ export function AiChatPage() {
       {caps && <SourceBadges caps={caps} t={t} />}
 
       {/* Messages */}
-      <div className="relative mt-3 min-h-0 flex-1">
+      <div className="relative mt-6 min-h-0 flex-1">
         <div ref={scrollRef} onScroll={onScroll} className="absolute inset-0 space-y-5 overflow-y-auto pr-1">
           {messages.length === 0 ? (
             <EmptyState examples={examples} onPick={sendQuestion} t={t} />
