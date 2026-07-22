@@ -376,7 +376,9 @@
     "connectionActive": "Connection is active",
     "disabledSkipped": "Disabled connections are skipped during workflow execution",
     "deleteConnection": "Delete Connection",
-    "confirmDelete": "Delete this connection?"
+    "confirmDelete": "Delete this connection?",
+    "status": "Status",
+    "deleteSection": "Remove connection"
   },
   "breadcrumbs": {
     "calls": "Calls →",
