@@ -9,7 +9,7 @@ import {
   User,
   WarningAltFilled,
 } from '@carbon/icons-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -35,6 +35,22 @@ export function DashboardQuickActions({
   const { canWrite, isViewer, isAdmin } = useRole();
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState('');
+  // Dismiss the inline "new workflow" input when the user clicks anywhere else on the
+  // dashboard. `mousedown` (not `click`) so the input closes before focus/activation
+  // events fire on the other element. The toggle button + input live inside one ref so
+  // clicks on them don't count as "outside".
+  const newWorkflowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showNew) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (newWorkflowRef.current && !newWorkflowRef.current.contains(e.target as Node)) {
+        setShowNew(false);
+        setNewName('');
+      }
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [showNew]);
 
   const createMutation = useMutation({
     mutationFn: (name: string) =>
@@ -78,24 +94,26 @@ export function DashboardQuickActions({
       </span>
       {canWrite && (
         <>
-          <button type="button" className={primaryBtn} onClick={() => setShowNew((v) => !v)}>
-            <Add size={15} /> {t('dashboard:quickActions.newWorkflow')}
-          </button>
-          {showNew && (
-            <span className="flex items-center gap-1.5">
-              <input
-                autoFocus
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') submitNew(); if (e.key === 'Escape') { setShowNew(false); setNewName(''); } }}
-                placeholder={t('dashboard:quickActions.newWorkflowPrompt')}
-                className="px-2 py-1 text-sm border border-outline-variant rounded-md bg-surface-lowest w-56"
-              />
-              <button type="button" className={iconBtn} onClick={submitNew} disabled={!newName.trim() || createMutation.isPending}>
-                <ArrowDownLeft size={15} />
-              </button>
-            </span>
-          )}
+          <div ref={newWorkflowRef} className="flex items-center gap-2">
+            <button type="button" className={primaryBtn} onClick={() => setShowNew((v) => !v)}>
+              <Add size={15} /> {t('dashboard:quickActions.newWorkflow')}
+            </button>
+            {showNew && (
+              <span className="flex items-center gap-1.5">
+                <input
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') submitNew(); if (e.key === 'Escape') { setShowNew(false); setNewName(''); } }}
+                  placeholder={t('dashboard:quickActions.newWorkflowPrompt')}
+                  className="px-2 py-1 text-sm border border-outline-variant rounded-md bg-surface-lowest w-56"
+                />
+                <button type="button" className={iconBtn} onClick={submitNew} disabled={!newName.trim() || createMutation.isPending}>
+                  <ArrowDownLeft size={15} />
+                </button>
+              </span>
+            )}
+          </div>
           <button type="button" className={actionBtn} onClick={() => navigate('/workflows')}>
             <Play size={15} /> {t('dashboard:quickActions.triggerWorkflow')}
           </button>

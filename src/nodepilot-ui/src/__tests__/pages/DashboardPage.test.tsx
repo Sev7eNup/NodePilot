@@ -200,6 +200,29 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('button', { name: /Personal settings/i })).toBeInTheDocument();
   });
 
+  it('dismisses the New Workflow input when clicking elsewhere on the dashboard', async () => {
+    // Regression: the inline "new workflow" name input only closed on Escape/submit, so
+    // changing your mind and clicking elsewhere left it stuck open. It must close on any
+    // outside click. Admin role is required for the mutating quick-action to render.
+    useAuthStore.setState({ userId: 'a1', username: 'admin', role: 'Admin', isAuthenticated: true });
+    server.use(
+      http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)),
+      http.get(`${BASE}/api/maintenance-windows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/alerting/deliveries`, () => HttpResponse.json([])),
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText(/Quick actions/i)).toBeInTheDocument());
+
+    const userEvent = (await import('@testing-library/user-event')).default;
+    // Open the inline name input.
+    await userEvent.click(screen.getByRole('button', { name: /New workflow/i }));
+    expect(screen.getByPlaceholderText(/Name of the new workflow/i)).toBeInTheDocument();
+
+    // Click a KPI label that lives outside the new-workflow control → the input must close.
+    await userEvent.click(screen.getByText('Workflows'));
+    expect(screen.queryByPlaceholderText(/Name of the new workflow/i)).not.toBeInTheDocument();
+  });
+
   it('filters the recent executions table by status when the donut segment is clicked', async () => {
     server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json({
       ...BASE_STATS,
