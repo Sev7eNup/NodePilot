@@ -28,9 +28,11 @@ alongside `dotnet test` and `npm run test:run`.
   colors/geometry the existing visual assertions were written against. The seed is skipped once
   the app itself persisted a full designStore state (so mid-test toggles survive `page.reload`).
   Atelier-path specs live in `designer-atelier.spec.ts` and seed `'atelier'` explicitly.
-- **The preview build renders the UI in English** (i18n falls back to EN). Use
-  language-agnostic selectors: `getByRole` with bilingual regex (`/save|speichern/i`),
-  input attributes, `getByText(/…/i)`. A few editor strings stay German even under EN.
+- **The preview build renders the UI in English** (i18n falls back to EN). All
+  activity- and trigger-config panels are translated for both DE and EN. Prefer
+  language-agnostic selectors anyway — `getByRole` with bilingual regex
+  (`/save|speichern/i`), input attributes, `getByText(/…/i)` — since a few
+  non-config editor strings may still render German under EN.
 - Editor in **State B (editable)**: mock `**/api/workflows/<id>` with
   `checkedOutByUserId: MOCK_USER.id` and the `definitionJson` you need; seed nodes clustered
   top-left (React Flow virtualizes off-screen nodes and the bottom-right minimap intercepts
