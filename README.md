@@ -23,28 +23,28 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 <details open>
 <summary><b>🎨 Workflow Designer</b></summary>
 
-![Workflow Designer — parallel fan-out/fan-in, live properties panel, seven-cluster toolbar](docs/images/designerdark.png)
+![Workflow Designer — parallel fan-out/fan-in, live properties panel, seven-cluster toolbar](docs/images/designerdarklilac.png)
 
 </details>
 
 <details>
 <summary><b>📊 Dashboard</b></summary>
 
-![Dashboard](docs/images/dashboarddark.png)
+![Dashboard — run status, success-rate trend, p95 top workflows, quick actions](docs/images/dashboarddarklilac.png)
 
 </details>
 
 <details>
-<summary><b>🤖 AI Chat Assistant</b></summary>
+<summary><b>🛰️ Live-Ops Mission Control</b></summary>
 
-![AI Chat assistant](docs/images/aichatdark.png)
+![Live-Ops Mission Control — what's running right now, what just finished, what starts next](docs/images/liveopsdarklilac.png)
 
 </details>
 
 <details>
 <summary><b>🧾 Support Log — live tail</b></summary>
 
-![Support log — live tail plus structured support events](docs/images/loglight.png)
+![Support log — live tail plus structured support events](docs/images/logdarklilac.png)
 
 </details>
 
