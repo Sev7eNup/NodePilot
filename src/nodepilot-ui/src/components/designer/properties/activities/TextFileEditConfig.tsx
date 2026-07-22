@@ -1,30 +1,31 @@
 import { useEffect, useMemo } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import type { ConfigProps } from '../shared';
 import { Field, VariableInsertField } from '../shared';
 import { FieldGrid } from '../panelChrome';
 
 const OPERATIONS = [
-  { value: 'append', label: 'Append (Zeile anhängen)' },
-  { value: 'prepend', label: 'Prepend (Zeile voranstellen)' },
-  { value: 'insert', label: 'Insert (an Zeilennummer einfügen)' },
-  { value: 'replaceLine', label: 'Replace Line (ganze Zeile ersetzen)' },
-  { value: 'delete', label: 'Delete (Zeile / Range / Pattern)' },
-  { value: 'replace', label: 'Replace (Text suchen & ersetzen)' },
+  { value: 'append', key: 'opAppend' },
+  { value: 'prepend', key: 'opPrepend' },
+  { value: 'insert', key: 'opInsert' },
+  { value: 'replaceLine', key: 'opReplaceLine' },
+  { value: 'delete', key: 'opDelete' },
+  { value: 'replace', key: 'opReplace' },
 ] as const;
 
 const ENCODINGS = [
-  { value: 'auto', label: 'Auto (BOM-sniff → fallback UTF-8)' },
-  { value: 'utf8', label: 'UTF-8 (ohne BOM)' },
-  { value: 'utf8-bom', label: 'UTF-8 (mit BOM)' },
-  { value: 'utf16le', label: 'UTF-16 LE' },
-  { value: 'utf16be', label: 'UTF-16 BE' },
-  { value: 'ascii', label: 'ASCII' },
+  { value: 'auto', key: 'encAuto' },
+  { value: 'utf8', key: 'encUtf8' },
+  { value: 'utf8-bom', key: 'encUtf8Bom' },
+  { value: 'utf16le', key: 'encUtf16le' },
+  { value: 'utf16be', key: 'encUtf16be' },
+  { value: 'ascii', key: 'encAscii' },
 ] as const;
 
 const LINE_ENDINGS = [
-  { value: 'preserve', label: 'Preserve (original beibehalten)' },
-  { value: 'crlf', label: 'CRLF (Windows)' },
-  { value: 'lf', label: 'LF (Unix)' },
+  { value: 'preserve', key: 'lePreserve' },
+  { value: 'crlf', key: 'leCrlf' },
+  { value: 'lf', key: 'leLf' },
 ] as const;
 
 type DeleteMode = 'line' | 'range' | 'pattern';
@@ -38,6 +39,7 @@ function inferDeleteMode(config: Record<string, unknown>): DeleteMode {
 }
 
 export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Readonly<ConfigProps>) {
+  const { t } = useTranslation('properties');
   const operation = (config.operation as string) || 'append';
   const encoding = (config.encoding as string) || 'auto';
   const lineEnding = (config.lineEnding as string) || 'preserve';
@@ -79,22 +81,28 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
 
   const lineRangeArr = Array.isArray(config.lineRange) ? (config.lineRange as number[]) : [];
 
+  const deleteModeLabels: Record<DeleteMode, string> = {
+    line: t('config.textFileEdit.deleteModeLine'),
+    range: t('config.textFileEdit.deleteModeRange'),
+    pattern: t('config.textFileEdit.deleteModePattern'),
+  };
+
   return (
     <>
       <FieldGrid>
-        <Field label="Operation">
+        <Field label={t('config.textFileEdit.operation')}>
           <select
             value={operation}
             onChange={(e) => onUpdate({ operation: e.target.value })}
             className="input-field"
           >
             {OPERATIONS.map((op) => (
-              <option key={op.value} value={op.value}>{op.label}</option>
+              <option key={op.value} value={op.value}>{t(`config.textFileEdit.${op.key}`)}</option>
             ))}
           </select>
         </Field>
         <VariableInsertField
-          label="Datei-Pfad"
+          label={t('config.textFileEdit.filePath')}
           value={(config.path as string) || ''}
           onChange={(v) => onUpdate({ path: v })}
           upstreamVars={upstreamVars}
@@ -105,21 +113,22 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
       {needsContent && (
         <VariableInsertField
           label={
-            operation === 'replaceLine' ? 'Neuer Zeilen-Inhalt'
-            : 'Inhalt (eine oder mehrere Zeilen, \\n-getrennt)'
+            operation === 'replaceLine'
+              ? t('config.textFileEdit.contentLabelReplaceLine')
+              : t('config.textFileEdit.contentLabelDefault')
           }
           value={(config.content as string) || ''}
           onChange={(v) => onUpdate({ content: v })}
           upstreamVars={upstreamVars}
           multiline
           rows={4}
-          placeholder={operation === 'append' ? '127.0.0.1 nodepilot.local' : 'neuer Wert'}
+          placeholder={operation === 'append' ? '127.0.0.1 nodepilot.local' : t('config.textFileEdit.contentPlaceholder')}
           mono
         />
       )}
 
       {needsLineNumber && !needsLineRange && (
-        <Field label="Zeilennummer (1-basiert)">
+        <Field label={t('config.textFileEdit.lineNumber')}>
           <input
             type="number"
             min={1}
@@ -129,13 +138,13 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
               onUpdate({ lineNumber: v });
             }}
             className="input-field"
-            placeholder="z. B. 1 = erste Zeile"
+            placeholder={t('config.textFileEdit.lineNumberPlaceholder')}
           />
         </Field>
       )}
 
       {operation === 'delete' && (
-        <Field label="Delete-Modus">
+        <Field label={t('config.textFileEdit.deleteMode')}>
           <div className="inline-flex rounded-md border border-outline-variant overflow-hidden">
             {(['line', 'range', 'pattern'] as DeleteMode[]).map((mode) => (
               <button
@@ -149,9 +158,7 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
                     : 'bg-surface-container hover:bg-surface-high text-on-surface')
                 }
               >
-                {mode === 'line' && 'Einzelne Zeile'}
-                {mode === 'range' && 'Zeilen-Range'}
-                {mode === 'pattern' && 'Pattern-Match'}
+                {deleteModeLabels[mode]}
               </button>
             ))}
           </div>
@@ -160,7 +167,7 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
 
       {needsLineRange && (
         <FieldGrid>
-          <Field label="Von (1-basiert, inkl.)">
+          <Field label={t('config.textFileEdit.rangeFrom')}>
             <input
               type="number"
               min={1}
@@ -172,7 +179,7 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
               className="input-field"
             />
           </Field>
-          <Field label="Bis (1-basiert, inkl.)">
+          <Field label={t('config.textFileEdit.rangeTo')}>
             <input
               type="number"
               min={1}
@@ -189,7 +196,7 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
 
       {needsMatchPattern && (
         <VariableInsertField
-          label={useRegex ? 'Match-Pattern (.NET Regex)' : 'Suchtext (literal)'}
+          label={useRegex ? t('config.textFileEdit.matchLabelRegex') : t('config.textFileEdit.matchLabelLiteral')}
           value={(config.matchPattern as string) || ''}
           onChange={(v) => onUpdate({ matchPattern: v })}
           upstreamVars={upstreamVars}
@@ -200,20 +207,20 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
 
       {needsReplace && (
         <VariableInsertField
-          label="Ersetzungs-Text (Captures via $1, $2, …)"
+          label={t('config.textFileEdit.replace')}
           value={(config.replace as string) || ''}
           onChange={(v) => onUpdate({ replace: v })}
           upstreamVars={upstreamVars}
           multiline
           rows={3}
-          placeholder="neuer Wert"
+          placeholder={t('config.textFileEdit.contentPlaceholder')}
           mono
         />
       )}
 
       {(needsMatchPattern || needsReplace) && (
         <FieldGrid>
-          <Field label="Regex">
+          <Field label={t('config.textFileEdit.regex')}>
             <label className="flex items-center gap-2 py-1 text-sm">
               <input
                 type="checkbox"
@@ -221,10 +228,10 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
                 onChange={(e) => onUpdate({ useRegex: e.target.checked })}
                 className="w-4 h-4 rounded border-outline-variant accent-primary"
               />
-              {useRegex ? '.NET Regex (PCRE-ähnlich)' : 'Literal-Suche'}
+              {useRegex ? t('config.textFileEdit.regexOn') : t('config.textFileEdit.regexOff')}
             </label>
           </Field>
-          <Field label="Case-Insensitive">
+          <Field label={t('config.textFileEdit.caseInsensitive')}>
             <label className="flex items-center gap-2 py-1 text-sm">
               <input
                 type="checkbox"
@@ -232,14 +239,14 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
                 onChange={(e) => onUpdate({ ignoreCase: e.target.checked })}
                 className="w-4 h-4 rounded border-outline-variant accent-primary"
               />
-              {ignoreCase ? 'Groß-/Kleinschreibung ignorieren' : 'Exakt vergleichen'}
+              {ignoreCase ? t('config.textFileEdit.caseInsensitiveOn') : t('config.textFileEdit.caseInsensitiveOff')}
             </label>
           </Field>
         </FieldGrid>
       )}
 
       {needsReplace && (
-        <Field label="Vorkommen">
+        <Field label={t('config.textFileEdit.occurrences')}>
           <div className="inline-flex rounded-md border border-outline-variant overflow-hidden">
             {(['all', 'first'] as const).map((mode) => (
               <button
@@ -253,7 +260,7 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
                     : 'bg-surface-container hover:bg-surface-high text-on-surface')
                 }
               >
-                {mode === 'all' ? 'Alle' : 'Nur erstes'}
+                {mode === 'all' ? t('config.textFileEdit.occurrencesAll') : t('config.textFileEdit.occurrencesFirst')}
               </button>
             ))}
           </div>
@@ -262,7 +269,7 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
 
       {operation === 'append' && (
         <FieldGrid>
-          <Field label="Append nur wenn fehlt">
+          <Field label={t('config.textFileEdit.appendIfMissing')}>
             <label className="flex items-center gap-2 py-1 text-sm">
               <input
                 type="checkbox"
@@ -270,11 +277,11 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
                 onChange={(e) => onUpdate({ appendIfMissing: e.target.checked })}
                 className="w-4 h-4 rounded border-outline-variant accent-primary"
               />
-              {appendIfMissing ? 'Idempotent — Zeile wird übersprungen falls vorhanden' : 'Immer anhängen'}
+              {appendIfMissing ? t('config.textFileEdit.appendIfMissingOn') : t('config.textFileEdit.appendIfMissingOff')}
             </label>
           </Field>
           {appendIfMissing && (
-            <Field label="Match-Strategie">
+            <Field label={t('config.textFileEdit.matchStrategy')}>
               <label className="flex items-center gap-2 py-1 text-sm">
                 <input
                   type="checkbox"
@@ -283,8 +290,8 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
                   className="w-4 h-4 rounded border-outline-variant accent-primary"
                 />
                 {appendIfMissingExact
-                  ? 'Exakte Zeile (nach Trim)'
-                  : 'Substring (case-insensitive — z. B. für hosts-File mit variabler IP)'}
+                  ? t('config.textFileEdit.matchStrategyExact')
+                  : t('config.textFileEdit.matchStrategySubstring')}
               </label>
             </Field>
           )}
@@ -292,32 +299,32 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
       )}
 
       <FieldGrid>
-        <Field label="Encoding">
+        <Field label={t('config.textFileEdit.encoding')}>
           <select
             value={encoding}
             onChange={(e) => onUpdate({ encoding: e.target.value })}
             className="input-field"
           >
             {ENCODINGS.map((enc) => (
-              <option key={enc.value} value={enc.value}>{enc.label}</option>
+              <option key={enc.value} value={enc.value}>{t(`config.textFileEdit.${enc.key}`)}</option>
             ))}
           </select>
         </Field>
-        <Field label="Zeilenende">
+        <Field label={t('config.textFileEdit.lineEnding')}>
           <select
             value={lineEnding}
             onChange={(e) => onUpdate({ lineEnding: e.target.value })}
             className="input-field"
           >
             {LINE_ENDINGS.map((le) => (
-              <option key={le.value} value={le.value}>{le.label}</option>
+              <option key={le.value} value={le.value}>{t(`config.textFileEdit.${le.key}`)}</option>
             ))}
           </select>
         </Field>
       </FieldGrid>
 
       <FieldGrid>
-        <Field label="Backup-Suffix (optional)">
+        <Field label={t('config.textFileEdit.backupSuffix')}>
           <input
             type="text"
             value={(config.backupSuffix as string) || ''}
@@ -327,7 +334,7 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
           />
         </Field>
         {supportsCreateIfMissing && (
-          <Field label="Datei anlegen falls fehlt">
+          <Field label={t('config.textFileEdit.createIfMissing')}>
             <label className="flex items-center gap-2 py-1 text-sm">
               <input
                 type="checkbox"
@@ -335,13 +342,13 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
                 onChange={(e) => onUpdate({ createIfMissing: e.target.checked })}
                 className="w-4 h-4 rounded border-outline-variant accent-primary"
               />
-              {createIfMissing ? 'Leere Datei wird angelegt falls nicht vorhanden' : 'Fehler wenn Datei fehlt'}
+              {createIfMissing ? t('config.textFileEdit.createIfMissingOn') : t('config.textFileEdit.createIfMissingOff')}
             </label>
           </Field>
         )}
       </FieldGrid>
 
-      <Field label="Dry-Run">
+      <Field label={t('config.textFileEdit.dryRun')}>
         <label className="flex items-center gap-2 py-1 text-sm">
           <input
             type="checkbox"
@@ -349,16 +356,19 @@ export function TextFileEditConfig({ config, onUpdate, upstreamVars = [] }: Read
             onChange={(e) => onUpdate({ dryRun: e.target.checked })}
             className="w-4 h-4 rounded border-outline-variant accent-primary"
           />
-          {dryRun ? 'Simulation — Datei wird nicht verändert, linesChanged wird berechnet' : 'Mutationen werden geschrieben'}
+          {dryRun ? t('config.textFileEdit.dryRunOn') : t('config.textFileEdit.dryRunOff')}
         </label>
       </Field>
 
       <div className="text-[11px] text-on-surface-variant leading-snug">
-        Hinweis: maximale Dateigröße ist standardmäßig 50&nbsp;MB
-        (<code className="bg-surface-high px-1 rounded">FileSystemOperation:TextEdit:MaxFileSizeMB</code>).
-        Für größere Dateien <code className="bg-surface-high px-1 rounded">runScript</code> mit
-        Stream-IO nutzen. Schreibvorgang ist atomar (Temp-Datei + Move), Dry-Run und Backup-Suffix
-        machen Tests sicher.
+        <Trans
+          i18nKey="config.textFileEdit.maxSizeHint"
+          ns="properties"
+          components={[
+            <code key={0} className="bg-surface-high px-1 rounded" />,
+            <code key={1} className="bg-surface-high px-1 rounded" />,
+          ]}
+        />
       </div>
     </>
   );
