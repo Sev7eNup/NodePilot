@@ -1,4 +1,5 @@
 import { useState, useCallback, lazy, Suspense } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Field, SwitchField, type ConfigProps } from '../shared';
 import { CodeField, FieldGrid } from '../panelChrome';
 import { api } from '../../../../api/client';
@@ -10,7 +11,10 @@ import type { StepTestResult } from '../../../../types/api';
 // the user actually clicks "Open Editor".
 const ScriptEditorDialog = lazy(() => import('../../ScriptEditorDialog'));
 
+const CODE_HINT = 'bg-amber-100/80 dark:bg-amber-900/40 px-1 rounded';
+
 export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowId, stepId, outputVariableName, isLocalTarget = true }: Readonly<ConfigProps>) {
+  const { t } = useTranslation('properties');
   const [showEditor, setShowEditor] = useState(false);
   const script = (config.script as string) || '';
   const transcript = (config.transcript as boolean) === true;
@@ -28,12 +32,12 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
   const canRun = !!workflowId && !!stepId;
   const runStepTest = useCallback(async (): Promise<StepTestResult> => {
     if (!workflowId || !stepId) {
-      return { success: false, output: null, errorOutput: null, outputParameters: {}, durationMs: 0, errorMessage: 'Step nicht identifizierbar (fehlende workflowId oder stepId).' };
+      return { success: false, output: null, errorOutput: null, outputParameters: {}, durationMs: 0, errorMessage: t('config.runScript.stepNotIdentifiable') };
     }
     return api.post<StepTestResult>(`/workflows/${workflowId}/steps/${stepId}/test`, {
       configOverride: config,
     });
-  }, [workflowId, stepId, config]);
+  }, [workflowId, stepId, config, t]);
 
   // AI script generation (streaming): the script types itself out live in the Monaco editor.
   const handleAiGenerate = useAiScriptStream({ workflowId, stepId, upstreamVars });
@@ -41,43 +45,49 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
   return (
     <>
       <FieldGrid>
-        <Field label="Engine">
+        <Field label={t('config.runScript.engineLabel')}>
           <select
             value={(config.engine as string) || 'auto'}
             onChange={(e) => onUpdate({ engine: e.target.value })}
             className="input-field"
           >
-            <option value="auto">Auto (PS7 → PS5.1)</option>
-            <option value="pwsh">PowerShell 7</option>
-            <option value="powershell">Windows PS 5.1</option>
+            <option value="auto">{t('config.runScript.engineAuto')}</option>
+            <option value="pwsh">{t('config.runScript.enginePwsh')}</option>
+            <option value="powershell">{t('config.runScript.enginePowerShell')}</option>
           </select>
         </Field>
         <SwitchField
-          label="Auto-Logging"
-          ariaLabel="Auto-Logging"
+          label={t('config.runScript.autoLogging')}
+          ariaLabel={t('config.runScript.autoLogging')}
           checked={transcript}
           onChange={(checked) => onUpdate({ transcript: checked })}
-          stateText={transcript ? 'Transcript an' : 'Aus'}
+          stateText={transcript ? t('config.runScript.autoLoggingOn') : t('config.runScript.autoLoggingOff')}
         />
       </FieldGrid>
 
-      <Field label="Erfolg bei Exit-Codes">
+      <Field label={t('config.runScript.successExitCodes')}>
         <input
           type="text"
           value={(config.successExitCodes as string) || ''}
           onChange={(e) => onUpdate({ successExitCodes: e.target.value || undefined })}
           className="input-field"
-          placeholder="leer = nur fehler-basiert (sonst z. B. 0,1)"
+          placeholder={t('config.runScript.successExitCodesPlaceholder')}
         />
         <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-          Leer: Step scheitert nur bei einem PowerShell-Fehler/<code>throw</code> — ein <code>exit N</code> zählt
-          nicht als Fehler. Sonst komma-separiert → Erfolg nur bei diesen Exit-Codes. Greift in allen Engines auf
-          den letzten Native-Command-Code (<code>$LASTEXITCODE</code>); ein script-eigenes <code>exit N</code> nur
-          im Prozess/isoliert-Modus.
+          <Trans
+            i18nKey="config.runScript.successExitCodesHint"
+            ns="properties"
+            components={[
+              <code key={0} />,
+              <code key={1} />,
+              <code key={2} />,
+              <code key={3} />,
+            ]}
+          />
         </p>
       </Field>
 
-      <Field label="PowerShell Script">
+      <Field label={t('config.runScript.scriptLabel')}>
         <CodeField
           language="powershell"
           value={script}
@@ -86,51 +96,56 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
           upstreamRefs={upstreamRefs}
           minLines={12}
           onOpenFullscreen={() => setShowEditor(true)}
-          placeholder="# Write-Output 'hello'"
+          placeholder={t('config.runScript.scriptEditorPlaceholder')}
         />
       </Field>
 
       <p className="text-[10px] font-label text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/40 rounded-md px-2 py-1.5 leading-snug">
-        <strong className="font-semibold">Hinweis:</strong>{' '}
-        <code className="bg-amber-100/80 dark:bg-amber-900/40 px-1 rounded">{'{{step.output}}'}</code> wird als
-        PowerShell-Single-Quoted-String <code className="bg-amber-100/80 dark:bg-amber-900/40 px-1 rounded">'…'</code> eingebettet —
-        also <code className="bg-amber-100/80 dark:bg-amber-900/40 px-1 rounded">$x = {'{{step.output}}'}</code>, nicht{' '}
-        <code className="bg-amber-100/80 dark:bg-amber-900/40 px-1 rounded">$x = '{'{{step.output}}'}'</code>.
+        <Trans
+          i18nKey="config.runScript.quotingHint"
+          ns="properties"
+          components={[
+            <strong key={0} className="font-semibold" />,
+            <code key={1} className={CODE_HINT}>{`{{step.output}}`}</code>,
+            <code key={2} className={CODE_HINT}>{'…'}</code>,
+            <code key={3} className={CODE_HINT}>{`$x = {{step.output}}`}</code>,
+            <code key={4} className={CODE_HINT}>{`$x = '{{step.output}}'`}</code>,
+          ]}
+        />
       </p>
 
       {transcript && (
         <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-          Per <code>Start-Transcript</code>: zeilenweises Protokoll der Cmdlets + Outputs als separates
-          „Transcript"-Feld in der Step-Ansicht. Volumen-intensiv — nur bei Bedarf.
+          <Trans
+            i18nKey="config.runScript.transcriptHint"
+            ns="properties"
+            components={[<code key={0} />]}
+          />
         </p>
       )}
 
       <SwitchField
-        label="Prozess-Isolation"
-        ariaLabel="Prozess-Isolation"
+        label={t('config.runScript.isolated')}
+        ariaLabel={t('config.runScript.isolated')}
         checked={isolated}
         disabled={!isLocalTarget}
         onChange={(checked) => onUpdate({ isolated: checked })}
-        stateText={isolated ? 'Isolierter Prozess' : 'Aus'}
+        stateText={isolated ? t('config.runScript.isolatedOn') : t('config.runScript.isolatedOff')}
       />
 
       {!isLocalTarget && (
         <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-          Prozess-Isolation gilt nur für lokale Ausführung. Remote-Steps laufen außerhalb des
-          NodePilot-Hosts via WinRM (eigene Session, aber ohne Job-Object-Limits) — das Backend
-          entscheidet final.
+          {t('config.runScript.remoteIsolatedHint')}
         </p>
       )}
 
       {isolated && isLocalTarget && (
         <>
           <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-            Läuft in einem separaten Prozess (kein In-Process-Pool) — etwas langsamer, dafür
-            Crash-/Leak-Containment: ein abstürzendes Skript reißt den Orchestrator nicht mit, und
-            beim Host-Neustart bleiben keine verwaisten Prozesse zurück.
+            {t('config.runScript.isolatedHint')}
           </p>
           <FieldGrid>
-            <Field label="Speicherlimit (MB)">
+            <Field label={t('config.runScript.memoryLimit')}>
               <input
                 type="number"
                 min={0}
@@ -140,10 +155,10 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
                   onUpdate({ memoryLimitMb: Number.isFinite(n) && n > 0 ? n : undefined });
                 }}
                 className="input-field"
-                placeholder="0 = unbegrenzt"
+                placeholder={t('config.runScript.unlimitedPlaceholder')}
               />
             </Field>
-            <Field label="Max. Prozesse">
+            <Field label={t('config.runScript.maxProcesses')}>
               <input
                 type="number"
                 min={0}
@@ -153,13 +168,12 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
                   onUpdate({ maxProcesses: Number.isFinite(n) && n > 0 ? n : undefined });
                 }}
                 className="input-field"
-                placeholder="0 = unbegrenzt"
+                placeholder={t('config.runScript.unlimitedPlaceholder')}
               />
             </Field>
           </FieldGrid>
           <p className="text-[10px] font-label text-on-surface-variant leading-snug">
-            Speicherlimit lässt Allokationen fehlschlagen (Skript sieht OutOfMemory), erzwingt keine
-            sofortige Terminierung.
+            {t('config.runScript.memoryLimitHint')}
           </p>
         </>
       )}

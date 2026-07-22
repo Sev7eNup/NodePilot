@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Field, VariableInsertField, type ConfigProps } from '../shared';
 import { CodeField, FieldGrid, Section } from '../panelChrome';
 
@@ -18,13 +19,18 @@ function headersToText(headers: unknown): string {
 }
 
 export function RestApiConfig({ config, onUpdate, upstreamVars = [] }: Readonly<ConfigProps>) {
+  const { t } = useTranslation('properties');
   const proxyMode = (config.proxyMode as string) || 'default';
   const method = (config.method as string) || 'GET';
   const hasBody = method === 'POST' || method === 'PUT' || method === 'PATCH';
+  const proxyBadge =
+    proxyMode === 'default' ? t('config.restApi.proxyBadgeDefault')
+    : proxyMode === 'custom' ? t('config.restApi.proxyBadgeCustom')
+    : t('config.restApi.proxyBadgeDirect');
   return (
     <>
       <FieldGrid>
-        <Field label="Method">
+        <Field label={t('config.restApi.method')}>
           <select
             value={method}
             onChange={(e) => onUpdate({ method: e.target.value })}
@@ -39,7 +45,7 @@ export function RestApiConfig({ config, onUpdate, upstreamVars = [] }: Readonly<
           </select>
         </Field>
         <VariableInsertField
-          label="URL"
+          label={t('config.restApi.url')}
           value={(config.url as string) || ''}
           onChange={(v) => onUpdate({ url: v })}
           upstreamVars={upstreamVars}
@@ -48,7 +54,7 @@ export function RestApiConfig({ config, onUpdate, upstreamVars = [] }: Readonly<
       </FieldGrid>
 
       <VariableInsertField
-        label="Headers (eine pro Zeile: Key: Value)"
+        label={t('config.restApi.headers')}
         value={headersToText(config.headers)}
         onChange={(v) => onUpdate({ headers: v })}
         upstreamVars={upstreamVars}
@@ -59,7 +65,7 @@ export function RestApiConfig({ config, onUpdate, upstreamVars = [] }: Readonly<
       />
 
       {hasBody && (
-        <Field label="Body (JSON)">
+        <Field label={t('config.restApi.body')}>
           <CodeField
             language="json"
             value={(config.body as string) || ''}
@@ -72,38 +78,38 @@ export function RestApiConfig({ config, onUpdate, upstreamVars = [] }: Readonly<
       )}
 
       <Section
-        title="Proxy"
+        title={t('config.restApi.proxyMode')}
         collapsible
         nested
         defaultOpen={proxyMode !== 'default'}
         action={
           <span className="font-label text-[9px] text-outline">
-            {proxyMode === 'default' ? 'Standard' : proxyMode === 'custom' ? 'Eigener' : 'Direkt'}
+            {proxyBadge}
           </span>
         }
       >
-        <Field label="Modus">
+        <Field label={t('config.restApi.proxyModeLabel')}>
           <select
             value={proxyMode}
             onChange={(e) => onUpdate({ proxyMode: e.target.value })}
             className="input-field"
           >
-            <option value="default">Standard (globale Konfiguration)</option>
-            <option value="custom">Eigener Proxy</option>
-            <option value="direct">Kein Proxy (direkt)</option>
+            <option value="default">{t('config.restApi.proxyDefaultOption')}</option>
+            <option value="custom">{t('config.restApi.proxyCustomOption')}</option>
+            <option value="direct">{t('config.restApi.proxyDirectOption')}</option>
           </select>
         </Field>
         {proxyMode === 'custom' && (
           <>
             <VariableInsertField
-              label="Proxy-URL"
+              label={t('config.restApi.proxyAddress')}
               value={(config.proxyAddress as string) || ''}
               onChange={(v) => onUpdate({ proxyAddress: v })}
               upstreamVars={upstreamVars}
               placeholder="http://proxy.corp.local:8080"
             />
             <VariableInsertField
-              label="Kein-Proxy-Liste (komma-separiert, Wildcards erlaubt)"
+              label={t('config.restApi.noProxy')}
               value={(config.noProxy as string) || ''}
               onChange={(v) => onUpdate({ noProxy: v })}
               upstreamVars={upstreamVars}

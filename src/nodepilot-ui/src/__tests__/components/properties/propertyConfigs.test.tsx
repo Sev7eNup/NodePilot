@@ -71,7 +71,7 @@ describe('RunScriptConfig', () => {
     const onUpdate = vi.fn();
     wrap(<RunScriptConfig config={{ isolated: false }} onUpdate={onUpdate} upstreamVars={[]} />);
 
-    const checkbox = screen.getByRole('checkbox', { name: 'Prozess-Isolation' }) as HTMLInputElement;
+    const checkbox = screen.getByRole('checkbox', { name: 'Process isolation' }) as HTMLInputElement;
     expect(checkbox.checked).toBe(false);
     expect(checkbox.disabled).toBe(false); // isLocalTarget defaults to true
 
@@ -84,10 +84,10 @@ describe('RunScriptConfig', () => {
     const onUpdate = vi.fn();
     wrap(<RunScriptConfig config={{ isolated: false }} onUpdate={onUpdate} upstreamVars={[]} isLocalTarget={false} />);
 
-    const checkbox = screen.getByRole('checkbox', { name: 'Prozess-Isolation' }) as HTMLInputElement;
+    const checkbox = screen.getByRole('checkbox', { name: 'Process isolation' }) as HTMLInputElement;
     expect(checkbox.disabled).toBe(true);
     // Remote-only hint is shown.
-    expect(screen.getByText(/nur für lokale Ausführung/i)).toBeInTheDocument();
+    expect(screen.getByText(/only applies to local execution/i)).toBeInTheDocument();
   });
 
   it('memoryLimitField_emitsPatch_whenIsolatedAndLocal', () => {
@@ -123,7 +123,7 @@ describe('RunScriptConfig', () => {
     const onUpdate = vi.fn();
     wrap(<RunScriptConfig config={{ isolated: true }} onUpdate={onUpdate} upstreamVars={[]} isLocalTarget={false} />);
 
-    const checkbox = screen.getByRole('checkbox', { name: 'Prozess-Isolation' }) as HTMLInputElement;
+    const checkbox = screen.getByRole('checkbox', { name: 'Process isolation' }) as HTMLInputElement;
     expect(checkbox.checked).toBe(true);  // stored config value preserved
     expect(checkbox.disabled).toBe(true); // but not editable on a remote target
   });
@@ -132,7 +132,7 @@ describe('RunScriptConfig', () => {
     const onUpdate = vi.fn();
     wrap(<RunScriptConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
 
-    const input = screen.getByPlaceholderText(/fehler-basiert/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/error-based/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: '0,1' } });
 
     expect(onUpdate).toHaveBeenCalledWith({ successExitCodes: '0,1' });
@@ -142,7 +142,7 @@ describe('RunScriptConfig', () => {
     const onUpdate = vi.fn();
     wrap(<RunScriptConfig config={{ successExitCodes: '0' }} onUpdate={onUpdate} upstreamVars={[]} />);
 
-    const input = screen.getByPlaceholderText(/fehler-basiert/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/error-based/i) as HTMLInputElement;
     expect(input.value).toBe('0');
     fireEvent.change(input, { target: { value: '' } });
 
@@ -230,7 +230,7 @@ describe('SqlConfig', () => {
     const onUpdate = vi.fn();
     wrap(<SqlConfig config={{ server: 'db01', database: 'App' }} onUpdate={onUpdate} upstreamVars={[]} />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Connection String' }));
+    fireEvent.click(screen.getByRole('tab', { name: /connection string/i }));
     // Backend resolves the path by looking at which fields are present: Builder fields must
     // be cleared on mode-switch, otherwise a stale `server` would override the user's
     // freshly typed raw connection string.

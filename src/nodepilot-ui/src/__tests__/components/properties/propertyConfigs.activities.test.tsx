@@ -355,19 +355,19 @@ describe('ScheduledTaskConfig', () => {
 
   it('registerAction_revealsProgramAndTriggerFields', () => {
     wrap(<ScheduledTaskConfig config={{ action: 'register' }} onUpdate={vi.fn()} upstreamVars={[]} />);
-    expect(screen.getByText(/Programm \(executable\)/i)).toBeInTheDocument();
-    expect(screen.getByText('Trigger-Typ')).toBeInTheDocument();
+    expect(screen.getByText(/Program \(executable\)/i)).toBeInTheDocument();
+    expect(screen.getByText('Trigger type')).toBeInTheDocument();
   });
 
   it('weeklyTrigger_showsDayButtonsAndIntervalField', () => {
     wrap(<ScheduledTaskConfig config={{ action: 'register', triggerType: 'weekly' }} onUpdate={vi.fn()} upstreamVars={[]} />);
-    expect(screen.getByText('Wochentage')).toBeInTheDocument();
-    expect(screen.getByText('Intervall (Wochen)')).toBeInTheDocument();
+    expect(screen.getByText('Weekdays')).toBeInTheDocument();
+    expect(screen.getByText('Interval (weeks)')).toBeInTheDocument();
   });
 
   it('unregisterAction_showsDangerWarning', () => {
     wrap(<ScheduledTaskConfig config={{ action: 'unregister' }} onUpdate={vi.fn()} upstreamVars={[]} />);
-    expect(screen.getByText(/Löscht den Task dauerhaft/i)).toBeInTheDocument();
+    expect(screen.getByText(/Permanently deletes the task/i)).toBeInTheDocument();
   });
 
   // The dropdown defaults visually to "get", but the saved JSON had no `action` key,
@@ -611,8 +611,8 @@ describe('RegistryConfig', () => {
 
   it('writeOperation_showsValueAndType', () => {
     wrap(<RegistryConfig config={{ operation: 'write' }} onUpdate={vi.fn()} upstreamVars={[]} />);
-    expect(screen.getByText('Wert')).toBeInTheDocument();
-    expect(screen.getByText('Value-Typ')).toBeInTheDocument();
+    expect(screen.getByText('Value')).toBeInTheDocument();
+    expect(screen.getByText('Value-Type')).toBeInTheDocument();
   });
 
   it('deleteKeyOperation_hidesValueName', () => {

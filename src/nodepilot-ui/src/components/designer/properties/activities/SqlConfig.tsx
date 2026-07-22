@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { Field, VariableInsertField, type ConfigProps } from '../shared';
 import { CodeField, FieldGrid } from '../panelChrome';
 
@@ -28,6 +29,7 @@ const BUILDER_KEYS_BY_PROVIDER: Record<string, string[]> = {
 };
 
 export function SqlConfig({ config, onUpdate, upstreamVars = [] }: Readonly<ConfigProps>) {
+  const { t } = useTranslation('properties');
   const provider = (config.provider as string) || 'sqlserver';
   const mode = inferMode(config);
 
@@ -54,24 +56,31 @@ export function SqlConfig({ config, onUpdate, upstreamVars = [] }: Readonly<Conf
     onUpdate(patch);
   };
 
+  const rawPlaceholder =
+    provider === 'sqlite'
+      ? 'Data Source=C:\\path\\to\\db.sqlite'
+      : provider === 'postgres'
+        ? 'Host=localhost;Database=mydb;Username=…;Password=…'
+        : 'Server=.\\SQLEXPRESS;Database=MyDb;Integrated Security=True';
+
   return (
     <>
       <FieldGrid>
-        <Field label="Provider">
+        <Field label={t('config.sql.provider')}>
           <select
             value={provider}
             onChange={(e) => switchProvider(e.target.value)}
             className="input-field"
           >
-            <option value="sqlserver">SQL Server</option>
-            <option value="sqlite">SQLite</option>
-            <option value="postgres">PostgreSQL</option>
+            <option value="sqlserver">{t('config.sql.providerSqlServer')}</option>
+            <option value="sqlite">{t('config.sql.providerSqlite')}</option>
+            <option value="postgres">{t('config.sql.providerPostgres')}</option>
           </select>
         </Field>
-        <Field label="Verbindung definieren als">
-          <div className="flex gap-1 rounded-md bg-surface-high p-0.5" role="tablist" aria-label="Verbindungs-Modus">
-            <ModeButton active={mode === 'builder'} onClick={switchToBuilder} label="Builder" />
-            <ModeButton active={mode === 'raw'} onClick={switchToRaw} label="Connection String" />
+        <Field label={t('config.sql.connectionDefineAs')}>
+          <div className="flex gap-1 rounded-md bg-surface-high p-0.5" role="tablist" aria-label={t('config.sql.connectionDefineAs')}>
+            <ModeButton active={mode === 'builder'} onClick={switchToBuilder} label={t('config.sql.modeBuilder')} />
+            <ModeButton active={mode === 'raw'} onClick={switchToRaw} label={t('config.sql.modeConnectionString')} />
           </div>
         </Field>
       </FieldGrid>
@@ -79,7 +88,7 @@ export function SqlConfig({ config, onUpdate, upstreamVars = [] }: Readonly<Conf
       {mode === 'builder' ? (
         <BuilderFields provider={provider} config={config} onUpdate={onUpdate} upstreamVars={upstreamVars} />
       ) : (
-        <Field label="Connection String">
+        <Field label={t('config.sql.connectionString')}>
           <VariableInsertField
             label=""
             value={(config.connectionString as string) || ''}
@@ -88,18 +97,12 @@ export function SqlConfig({ config, onUpdate, upstreamVars = [] }: Readonly<Conf
             mono
             multiline
             rows={2}
-            placeholder={
-              provider === 'sqlite'
-                ? 'Data Source=C:\\path\\to\\db.sqlite'
-                : provider === 'postgres'
-                  ? 'Host=localhost;Database=mydb;Username=…;Password=…'
-                  : 'Server=.\\SQLEXPRESS;Database=MyDb;Integrated Security=True'
-            }
+            placeholder={rawPlaceholder}
           />
         </Field>
       )}
 
-      <Field label="SQL Query">
+      <Field label={t('config.sql.query')}>
         <CodeField
           language="sql"
           value={(config.query as string) || ''}
@@ -137,9 +140,10 @@ function BuilderFields({
   onUpdate: (patch: Record<string, unknown>) => void;
   upstreamVars: ConfigProps['upstreamVars'];
 }>) {
+  const { t } = useTranslation('properties');
   if (provider === 'sqlite') {
     return (
-      <Field label="Data Source (Datei-Pfad)">
+      <Field label={t('config.sql.dataSource')}>
         <VariableInsertField
           label=""
           value={(config.dataSource as string) || ''}
@@ -155,7 +159,7 @@ function BuilderFields({
   if (provider === 'postgres') {
     return (
       <FieldGrid>
-        <Field label="Host">
+        <Field label={t('config.sql.host')}>
           <VariableInsertField
             label=""
             value={(config.host as string) || ''}
@@ -164,7 +168,7 @@ function BuilderFields({
             placeholder="pg01.example.com"
           />
         </Field>
-        <Field label="Port">
+        <Field label={t('config.sql.port')}>
           <input
             type="number"
             value={(config.port as number) || 5432}
@@ -174,7 +178,7 @@ function BuilderFields({
             max={65535}
           />
         </Field>
-        <Field label="Datenbank">
+        <Field label={t('config.sql.database')}>
           <VariableInsertField
             label=""
             value={(config.database as string) || ''}
@@ -183,7 +187,7 @@ function BuilderFields({
             placeholder="appdb"
           />
         </Field>
-        <Field label="SSL-Mode">
+        <Field label={t('config.sql.sslMode')}>
           <select
             value={(config.sslMode as string) || 'Prefer'}
             onChange={(e) => onUpdate({ sslMode: e.target.value })}
@@ -197,7 +201,7 @@ function BuilderFields({
             <option value="VerifyFull">VerifyFull</option>
           </select>
         </Field>
-        <Field label="Benutzername">
+        <Field label={t('config.sql.username')}>
           <VariableInsertField
             label=""
             value={(config.username as string) || ''}
@@ -206,7 +210,7 @@ function BuilderFields({
             placeholder="postgres"
           />
         </Field>
-        <Field label="Passwort">
+        <Field label={t('config.sql.password')}>
           <VariableInsertField
             label=""
             value={(config.password as string) || ''}
@@ -225,7 +229,7 @@ function BuilderFields({
   return (
     <>
       <FieldGrid>
-        <Field label="Server (Host\\Instance oder Host,Port)">
+        <Field label={t('config.sql.server')}>
           <VariableInsertField
             label=""
             value={(config.server as string) || ''}
@@ -234,7 +238,7 @@ function BuilderFields({
             placeholder="db01\\SQLEXPRESS"
           />
         </Field>
-        <Field label="Datenbank">
+        <Field label={t('config.sql.database')}>
           <VariableInsertField
             label=""
             value={(config.database as string) || ''}
@@ -243,7 +247,7 @@ function BuilderFields({
             placeholder="Reporting"
           />
         </Field>
-        <Field label="Authentifizierung">
+        <Field label={t('config.sql.authentication')}>
           <select
             value={auth}
             onChange={(e) => {
@@ -259,11 +263,11 @@ function BuilderFields({
             }}
             className="input-field"
           >
-            <option value="integrated">Integrated (Windows-Auth)</option>
-            <option value="sql">SQL-Login (Username/Password)</option>
+            <option value="integrated">{t('config.sql.authIntegrated')}</option>
+            <option value="sql">{t('config.sql.authSql')}</option>
           </select>
         </Field>
-        <Field label="Encrypt / TLS">
+        <Field label={t('config.sql.encryptTls')}>
           <div className="flex flex-col gap-1.5 pt-1">
             <label className="flex items-center gap-2 text-xs font-label">
               <input
@@ -271,7 +275,7 @@ function BuilderFields({
                 checked={(config.encrypt as boolean | undefined) ?? true}
                 onChange={(e) => onUpdate({ encrypt: e.target.checked })}
               />
-              Encrypt (Default an)
+              {t('config.sql.encryptLabel')}
             </label>
             <label className="flex items-center gap-2 text-xs font-label">
               <input
@@ -279,14 +283,14 @@ function BuilderFields({
                 checked={(config.trustServerCertificate as boolean | undefined) ?? false}
                 onChange={(e) => onUpdate({ trustServerCertificate: e.target.checked })}
               />
-              TrustServerCertificate
+              {t('config.sql.trustServerCertificate')}
             </label>
           </div>
         </Field>
       </FieldGrid>
       {auth === 'sql' && (
         <FieldGrid>
-          <Field label="Benutzername">
+          <Field label={t('config.sql.username')}>
             <VariableInsertField
               label=""
               value={(config.username as string) || ''}
@@ -295,7 +299,7 @@ function BuilderFields({
               placeholder="svc-app"
             />
           </Field>
-          <Field label="Passwort">
+          <Field label={t('config.sql.password')}>
             <VariableInsertField
               label=""
               value={(config.password as string) || ''}
