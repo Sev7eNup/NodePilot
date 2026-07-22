@@ -36,8 +36,16 @@ export function useWorkflowCallRefs(nodes: Node[]): WorkflowCallRef[] {
       let ref: string | undefined;
       if (activityType === 'startWorkflow') ref = config.workflowNameOrId as string | undefined;
       else if (activityType === 'forEach') ref = config.childWorkflowNameOrId as string | undefined;
-      if (!ref || ref.includes('{{')) continue; // skip dynamic / unresolved refs
-      const target = workflows.find((w) => w.id === ref || w.name === ref) ?? null;
+      if (!ref || ref.includes('{{')) continue;  // skip dynamic / unresolved refs
+      // Resolve like the backend WorkflowNameResolver: id or exact-case name wins,
+      // otherwise fall back to a case-/whitespace-insensitive name match. Without the
+      // fallback, SCOrch-imported refs that differ only by casing render as broken
+      // (non-clickable) pills even though the engine would resolve them fine.
+      const norm = (s: string) => s.trim().toLowerCase();
+      const target =
+        workflows.find((w) => w.id === ref || w.name === ref) ??
+        workflows.find((w) => norm(w.name) === norm(ref)) ??
+        null;
       out.push({ sourceLabel: label, refName: ref, target });
     }
     // Dedupe by target id (a workflow may be referenced multiple times — show once).

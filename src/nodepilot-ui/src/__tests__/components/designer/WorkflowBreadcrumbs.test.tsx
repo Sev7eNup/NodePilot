@@ -26,10 +26,10 @@ function callNode(id: string, ref: string, activityType = 'startWorkflow'): Node
   };
 }
 
-function renderBreadcrumbs(nodes: Node[]) {
+function renderBreadcrumbs(nodes: Node[], workflows: Workflow[] = [CHILD]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // Seed the cache so ref-resolution is deterministic without hitting the network.
-  qc.setQueryData(['workflows'], [CHILD]);
+  qc.setQueryData(['workflows'], workflows);
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
@@ -52,6 +52,22 @@ describe('WorkflowBreadcrumbs', () => {
     renderBreadcrumbs([callNode('n1', CHILD.name)]);
     const link = screen.getByRole('link', { name: /Child workflow/ });
     expect(link).toHaveAttribute('href', `/workflows/${CHILD.id}`);
+  });
+
+  it('resolves a reference that differs only by casing/whitespace to a link', () => {
+    renderBreadcrumbs([callNode('n1', '  CHILD WORKFLOW  ')]);
+    const link = screen.getByRole('link', { name: /Child workflow/ });
+    expect(link).toHaveAttribute('href', `/workflows/${CHILD.id}`);
+    expect(screen.queryByRole('link')).not.toBeNull();
+  });
+
+  it('prefers the exact-case match when workflows differ only by case', () => {
+    const upper = mkWorkflow('aaaaaaaa-0000-0000-0000-000000000001', 'Report');
+    const lower = mkWorkflow('bbbbbbbb-0000-0000-0000-000000000002', 'report');
+    renderBreadcrumbs([callNode('n1', 'Report')], [lower, upper]);
+    expect(screen.getByRole('link', { name: /Report/ })).toHaveAttribute(
+      'href', `/workflows/${upper.id}`,
+    );
   });
 
   it('resolves a forEach child reference too', () => {
