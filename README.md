@@ -18,6 +18,38 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 
 ---
 
+## Screenshots
+
+<details open>
+<summary><b>🎨 Workflow Designer</b></summary>
+
+![Workflow Designer — parallel fan-out/fan-in, live properties panel, seven-cluster toolbar](docs/images/designerdark.png)
+
+</details>
+
+<details>
+<summary><b>📊 Dashboard</b></summary>
+
+![Dashboard](docs/images/dashboarddark.png)
+
+</details>
+
+<details>
+<summary><b>🤖 AI Chat Assistant</b></summary>
+
+![AI Chat assistant](docs/images/aichatdark.png)
+
+</details>
+
+<details>
+<summary><b>🧾 Support Log — live tail</b></summary>
+
+![Support log — live tail plus structured support events](docs/images/loglight.png)
+
+</details>
+
+---
+
 ## Table of Contents
 
 - [Why NodePilot](#why-nodepilot)
@@ -487,7 +519,7 @@ NodePilot ships **27 built-in activities** in two scopes — *Remote* (executed 
 
 | Type | Description | Key Config |
 |---|---|---|
-| `runScript` | Execute a PowerShell script locally when no target/localhost is selected, or through NodePilot's WinRM wrapper when a non-local target is selected. Auto-captures script-scope variables as `param.*` outputs. Fails only on a terminating PowerShell error (`throw`/`Write-Error`) — an `exit N` does not fail the step unless `successExitCodes` is set; `isolated: true` runs it in its own Windows Job Object process. | `script`, `engine` (`auto`/`pwsh`/`powershell`), `timeoutSeconds`, `successExitCodes`, `isolated`, `memoryLimitMb`, `maxProcesses` |
+| `runScript` | Execute a PowerShell script locally when no target/localhost is selected, or through NodePilot's WinRM wrapper when a non-local target is selected. With no target the script runs on the API host and may open its own WinRM session (`Invoke-Command`/`New-PSSession`, SCOrch-style self-managed remoting) — at the cost of NodePilot's managed session pool, credential store and machine audit. Auto-captures script-scope variables as `param.*` outputs. Fails only on a terminating PowerShell error (`throw`/`Write-Error`) — an `exit N` does not fail the step unless `successExitCodes` is set; `isolated: true` runs it in its own Windows Job Object process. | `script`, `engine` (`auto`/`pwsh`/`powershell`), `timeoutSeconds`, `successExitCodes`, `isolated`, `memoryLimitMb`, `maxProcesses` |
 | `fileOperation` | Copy / move / delete / test-exists / rename — **files only** (asserts `-PathType Leaf`) | `operation`, `path`, `destination`, `newName` |
 | `folderOperation` | Copy / move / delete / test-exists / list / create / rename — **folders only** (asserts `-PathType Container`) | `operation`, `path`, `destination`, `newName` |
 | `textFileEdit` | Line-oriented text edit — append / prepend / insert / delete / replace / replaceLine — BOM-aware encoding, atomic write, optional backup, dry-run | `operation`, `path`, `content`, `matchPattern`, `replace`, `lineNumber` |
