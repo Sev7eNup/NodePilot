@@ -35,6 +35,14 @@ describe('CloneConfigButton — visibility', () => {
     expect(screen.getByTestId('clone-config-button')).toBeInTheDocument();
   });
 
+  it('renders the translated (EN) button label, not a hardcoded German string', () => {
+    const current = activityNode('s1', { activityType: 'runScript' });
+    const sibling = activityNode('s2', { activityType: 'runScript', targetMachineId: 'm-1' });
+    render(<CloneConfigButton currentNode={current} allNodes={[current, sibling]} onClone={vi.fn()} />);
+    expect(screen.getByText('Adopt config from…')).toBeInTheDocument();
+    expect(screen.queryByText('Config übernehmen von…')).not.toBeInTheDocument();
+  });
+
   it('renders for remote-only candidates even with different activity types', () => {
     const current = activityNode('s1', { activityType: 'serviceManagement' });
     const sibling = activityNode('s2', { activityType: 'runScript', targetMachineId: 'm-1', credentialId: 'c-1' });
@@ -130,7 +138,7 @@ describe('CloneConfigButton — clone action', () => {
     expect(patched.outputVariable).toBe('targetOut');
   });
 
-  it('shows a "Übernommen" confirmation badge briefly after cloning', () => {
+  it('shows a confirmation badge briefly after cloning', () => {
     const current = activityNode('s1', { activityType: 'runScript' });
     const sibling = activityNode('s2', {
       activityType: 'runScript',
@@ -141,10 +149,10 @@ describe('CloneConfigButton — clone action', () => {
     fireEvent.click(screen.getByTestId('clone-config-button'));
     fireEvent.click(screen.getByTestId('clone-source-s2'));
 
-    expect(screen.getByText('Übernommen')).toBeInTheDocument();
+    expect(screen.getByText('Adopted')).toBeInTheDocument();
     // Badge resets after the timeout fires
     act(() => { vi.advanceTimersByTime(2000); });
-    expect(screen.queryByText('Übernommen')).not.toBeInTheDocument();
+    expect(screen.queryByText('Adopted')).not.toBeInTheDocument();
   });
 
   it('closes the popover after a clone', () => {
@@ -166,8 +174,8 @@ describe('CloneConfigButton — scope toggle', () => {
     render(<CloneConfigButton currentNode={current} allNodes={[current, sameType, remoteOther]} onClone={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('clone-config-button'));
-    expect(screen.getByText(/Vollständig.*gleicher Typ/)).toBeInTheDocument();
-    expect(screen.getByText(/Nur Maschine \+ Credential/)).toBeInTheDocument();
+    expect(screen.getByText(/Full.*same type/i)).toBeInTheDocument();
+    expect(screen.getByText(/Machine \+ credential only/i)).toBeInTheDocument();
   });
 
   it('switching to remoteOnly scope expands candidate list to other remote types', () => {
@@ -183,7 +191,7 @@ describe('CloneConfigButton — scope toggle', () => {
     expect(screen.queryByText('Service-Step')).not.toBeInTheDocument();
 
     // Switch scope
-    fireEvent.click(screen.getByText(/Nur Maschine \+ Credential/));
+    fireEvent.click(screen.getByText(/Machine \+ credential only/i));
     expect(screen.getByText('Service-Step')).toBeInTheDocument();
   });
 
@@ -193,6 +201,6 @@ describe('CloneConfigButton — scope toggle', () => {
     render(<CloneConfigButton currentNode={current} allNodes={[current, sibling]} onClone={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('clone-config-button'));
-    expect(screen.queryByText(/Nur Maschine \+ Credential/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Machine \+ credential only/i)).not.toBeInTheDocument();
   });
 });
