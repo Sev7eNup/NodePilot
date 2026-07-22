@@ -376,7 +376,9 @@
     "connectionActive": "Verbindung ist aktiv",
     "disabledSkipped": "Deaktivierte Verbindungen werden bei der Workflow-Ausführung übersprungen",
     "deleteConnection": "Verbindung löschen",
-    "confirmDelete": "Diese Verbindung löschen?"
+    "confirmDelete": "Diese Verbindung löschen?",
+    "status": "Status",
+    "deleteSection": "Verbindung entfernen"
   },
   "breadcrumbs": {
     "calls": "Ruft auf →",
