@@ -61,13 +61,14 @@ export function useCanvasConnect({
     if (!connectionState.fromNode) return;
     const clientX = 'clientX' in event ? (event as MouseEvent).clientX : (event as TouchEvent).touches[0]?.clientX ?? 0;
     const clientY = 'clientY' in event ? (event as MouseEvent).clientY : (event as TouchEvent).touches[0]?.clientY ?? 0;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect) return;
+    // QuickConnectPicker is portaled to document.body and uses `fixed` positioning, so it
+    // needs viewport coordinates (clientX/clientY), not canvas-relative offsets.
+    if (!canvasRef.current) return;
     setQuickConnect({
       fromNodeId: connectionState.fromNode.id,
       fromHandleId: connectionState.fromHandle?.id ?? null,
-      screenX: clientX - rect.left,
-      screenY: clientY - rect.top,
+      screenX: clientX,
+      screenY: clientY,
       flowPosition: screenToFlowPosition({ x: clientX, y: clientY }),
     });
   }, [canvasRef, screenToFlowPosition]);
