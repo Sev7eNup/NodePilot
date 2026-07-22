@@ -24,13 +24,13 @@
   <!-- ASP.NET Core / hosting / auth -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.7" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.5" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.5" />
     <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.5" />
-    <PackageVersion Include="System.DirectoryServices.Protocols" Version="10.0.7" />
+    <PackageVersion Include="System.DirectoryServices.Protocols" Version="10.0.10" />
     <PackageVersion Include="System.Diagnostics.EventLog" Version="10.0.5" />
     <PackageVersion Include="BCrypt.Net-Next" Version="4.1.0" />
   </ItemGroup>
@@ -128,9 +128,11 @@
 
   <!-- Security-pinned floors over vulnerable transitives -->
   <ItemGroup>
-    <!-- Markdig.Signed (transitive via Microsoft.PowerShell.SDK) brings 10.0.5, which is
-         vulnerable to GHSA-37gx-xxp4-5rgx / GHSA-w3x6-4m5h-cxqf. Force 10.0.6. -->
-    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.6" />
+    <!-- System.Security.Cryptography.Xml (transitive via Microsoft.PowerShell.SDK) brings a
+         version vulnerable to a chain of advisories; the 2026-07-21 patch batch
+         (GHSA-cvvh-rhrc-wg4q / -g8r8-53c2-pm3f / -23rf-6693-g89p / -8q5v-6pqq-x66h) is only
+         cleared in 10.0.10. Force it. -->
+    <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.10" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.5" />
   </ItemGroup>
 
