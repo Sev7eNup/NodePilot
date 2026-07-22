@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { ActivityPickerGrid } from './ActivityPickerGrid';
 
 export function EdgeInserter({ onPick, onClose }: Readonly<{
@@ -6,9 +7,13 @@ export function EdgeInserter({ onPick, onClose }: Readonly<{
   onPick: (type: string, label: string) => void;
   onClose: () => void;
 }>) {
-  return (
+  // Portaled to document.body so the picker escapes every ancestor stacking
+  // context — in particular the ExecutionPanel's `isolate`, which otherwise
+  // overlaps the fixed z-40 picker rendered inside <main>. Always renders
+  // topmost, regardless of where on the canvas the drag originated.
+  return createPortal(
     <div
-      className="np-anim-backdrop fixed inset-0 z-40 flex items-center justify-center bg-black/10"
+      className="np-anim-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/10"
       onClick={onClose}
       onKeyDown={(e) => e.key === 'Escape' && onClose()}
       role="presentation"
@@ -22,6 +27,7 @@ export function EdgeInserter({ onPick, onClose }: Readonly<{
       >
         <ActivityPickerGrid onPick={onPick} onClose={onClose} />
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
