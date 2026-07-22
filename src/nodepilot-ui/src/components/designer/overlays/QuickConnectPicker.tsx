@@ -1,5 +1,6 @@
 import { Close } from '@carbon/icons-react';
 import { useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { buildActivityCategories } from '../library/activityCategories';
 import { ActivityIcon } from '../library/NodeLibrary';
@@ -17,7 +18,10 @@ export function QuickConnectPicker({ x, y, onPick, onClose }: Readonly<Props>) {
     () => buildActivityCategories().filter((c) => c.key !== 'triggers' && c.key !== 'annotations'),
     [i18n.language],
   );
-  return (
+  // Portaled to document.body so the picker escapes every ancestor stacking context — in
+  // particular the ExecutionPanel's `isolate`, which otherwise overlaps the picker rendered
+  // inside <main>. Uses `fixed` positioning with viewport coordinates (x/y are clientX/clientY).
+  return createPortal(
     <>
       {/* Transparent backdrop to catch outside clicks */}
       <div
@@ -28,7 +32,7 @@ export function QuickConnectPicker({ x, y, onPick, onClose }: Readonly<Props>) {
         tabIndex={-1}
       />
       <div
-        className="absolute z-50 w-[320px] max-h-[60vh] overflow-y-auto bg-surface-lowest rounded-lg shadow-2xl border border-outline-variant/30"
+        className="fixed z-50 w-[320px] max-h-[60vh] overflow-y-auto bg-surface-lowest rounded-lg shadow-2xl border border-outline-variant/30"
         style={{ left: x, top: y }}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
@@ -60,6 +64,7 @@ export function QuickConnectPicker({ x, y, onPick, onClose }: Readonly<Props>) {
           ))}
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
