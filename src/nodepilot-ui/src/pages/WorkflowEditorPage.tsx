@@ -1332,37 +1332,20 @@ function WorkflowEditorInner() {
                 color="var(--color-outline-variant)"
                 className="opacity-25"
               />
-            ) : premiumCanvas ? (
-              // Premium free mode: dual-level crosshatch — 80 px major + 16 px minor grid
-              // (das klassische Papier-/Karomuster). Der Design-Toggle lässt das Raster
-              // bewusst unangetastet. Der minor grid gets bgColor="transparent" so it
-              // doesn't paint over the major.
-              <>
-                <Background
-                  id="np-bg-major"
-                  variant={BackgroundVariant.Lines}
-                  gap={80}
-                  size={0.55}
-                  color={isDark ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.05)'}
-                />
-                <Background
-                  id="np-bg-minor"
-                  variant={BackgroundVariant.Lines}
-                  gap={16}
-                  size={0.3}
-                  bgColor="transparent"
-                  color={isDark ? 'rgba(255,255,255,.022)' : 'rgba(0,0,0,.022)'}
-                />
-              </>
             ) : (
-              // Classic free mode: standard dot grid.
+              // Free mode (Premium UND Classic): ein einzelnes Punktraster (Dot grid),
+              // für beide Modi identisch — alleine, ohne Karomuster. Deutlich sichtbar,
+              // aber nicht aufdringlich. Die hellen Skins tragen einen spürbar stärkeren
+              // Alpha als die dunklen: auf hellem Grund braucht es mehr Kontrast, damit das
+              // Raster klar liest; auf dunklem Grund reicht ein moderaterer Wert (weiß liest
+              // ohnehin lauter), damit es präsent, aber nicht dominant wirkt. Etwas größere
+              // Dots unterstützen die Sichtbarkeit, ohne das Raster schwer wirken zu lassen.
               <Background
-                id="np-bg-classic"
+                id="np-bg-dots"
                 variant={BackgroundVariant.Dots}
-                gap={20}
-                size={1}
-                color="var(--color-outline-variant)"
-                className="opacity-40"
+                gap={24}
+                size={1.6}
+                color={isDark ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.42)'}
               />
             )}
             {machineColoringEnabled && legendMachines.length > 0 && (
