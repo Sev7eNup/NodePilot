@@ -6,8 +6,8 @@ import type { Workflow, LastExecutionInfo } from '../types/api';
 import { formatDate, formatDuration, formatRelative } from '../lib/format';
 import { TRIGGER_BADGE_META } from '../lib/triggerBadgeMeta';
 import {
-  Add, Apps, CheckmarkFilled, ChevronDown, ChevronUp, CircleDash, Copy, DocumentExport,
-  Download, Edit, ErrorFilled, FlashFilled, Locked, MagicWandFilled, Play, Power,
+  Add, Apps, ChatBot, CheckmarkFilled, ChevronDown, ChevronUp, CircleDash, Copy, DocumentExport,
+  Download, Edit, ErrorFilled, FlashFilled, Locked, Play, Power,
   SubtractAlt, Time, Touch_1, TrashCan, Unlocked, Upload,
 } from '@carbon/icons-react';
 import { useEffect, useRef, useState, useMemo } from 'react';
@@ -574,7 +574,7 @@ export function WorkflowsPage() {
               className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white rounded-md hover:bg-violet-700 transition-colors text-sm"
               title={t('workflows:newAiWorkflowTitle')}
             >
-              <MagicWandFilled size={16} /> <span className="hidden sm:inline">{t('workflows:newAiWorkflow')}</span>
+              <ChatBot size={16} /> <span className="hidden sm:inline">{t('workflows:newAiWorkflow')}</span>
             </button>
           )}
           {canWrite && (
