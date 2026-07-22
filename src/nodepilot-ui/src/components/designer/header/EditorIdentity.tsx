@@ -1,4 +1,4 @@
-import { ArrowLeft, MagicWandFilled } from '@carbon/icons-react';
+import { ArrowLeft, ChatBot } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { WorkflowDesignerIcon } from '../WorkflowDesignerIcon';
@@ -80,7 +80,7 @@ export function EditorIdentity({ aiChatOpen, onToggleAiChat }: Readonly<{
         }`}
         title={t('ai:chat.buttonTitle')}
       >
-        <MagicWandFilled size={15} />
+        <ChatBot size={15} />
         <span className="hidden xl:inline">{t('ai:chat.buttonLabel')}</span>
       </button>
     </div>
