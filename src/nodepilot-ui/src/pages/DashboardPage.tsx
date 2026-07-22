@@ -281,17 +281,17 @@ export function DashboardPage() {
       {/* Three compact insight charts — status, quality trend, performance. */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 mb-5">
         <div className="np-fade-up" style={{ animationDelay: '160ms' }}>
-          <Panel title={t('dashboard:runStatusWindow', { window: windowLabel })} icon={ChartPie} iconClass="text-emerald-500">
+          <Panel title={t('dashboard:runStatusWindow', { window: windowLabel })} icon={ChartPie} iconClass="text-emerald-500" className="h-full">
             <RunStatusDonut counts={stats.last24h} tokens={tokens} onSelect={(status) => setStatusFilter(status)} />
           </Panel>
         </div>
         <div className="np-fade-up" style={{ animationDelay: '200ms' }}>
-          <Panel title={t('dashboard:successTrendWindow', { window: windowLabel })} icon={ChartLine} iconClass="text-primary">
+          <Panel title={t('dashboard:successTrendWindow', { window: windowLabel })} icon={ChartLine} iconClass="text-primary" className="h-full">
             <SuccessRateTrend buckets={stats.last24hBuckets} windowHours={windowHours} tokens={tokens} />
           </Panel>
         </div>
         <div className="np-fade-up" style={{ animationDelay: '240ms' }}>
-          <Panel title={t('dashboard:p95TopWorkflows')} icon={Time} iconClass="text-amber-500">
+          <Panel title={t('dashboard:p95TopWorkflows')} icon={Time} iconClass="text-amber-500" className="h-full">
             <P95WorkflowBars items={stats.topWorkflows} tokens={tokens} />
           </Panel>
         </div>
@@ -1148,10 +1148,10 @@ function LiveDuration({ startedAt }: Readonly<{ startedAt: string }>) {
 }
 
 function Panel({
-  title, icon: Icon, iconClass, divided = false, children,
-}: Readonly<{ title: string; icon: React.ElementType; iconClass?: string; divided?: boolean; children: React.ReactNode }>) {
+  title, icon: Icon, iconClass, divided = false, className, children,
+}: Readonly<{ title: string; icon: React.ElementType; iconClass?: string; divided?: boolean; className?: string; children: React.ReactNode }>) {
   return (
-    <div className="np-card p-5">
+    <div className={`np-card p-5 ${className ?? ''}`}>
       <h3 className={`font-semibold text-on-surface flex items-center gap-2 ${divided ? 'pb-3 mb-0 border-b border-outline-variant/25' : 'mb-3'}`}>
         <Icon size={16} className={iconClass ?? 'text-outline'} />
         {title}
