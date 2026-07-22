@@ -1,6 +1,7 @@
 import { Checkmark, ChevronDown, Copy } from '@carbon/icons-react';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Node } from '@xyflow/react';
+import { useTranslation } from 'react-i18next';
 import {
   buildClonedDataPatch,
   applyClonedPatch,
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export function CloneConfigButton({ currentNode, allNodes, onClone }: Readonly<Props>) {
+  const { t } = useTranslation(['properties']);
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<CloneScope>('all');
   const [justCloned, setJustCloned] = useState(false);
@@ -108,12 +110,12 @@ export function CloneConfigButton({ currentNode, allNodes, onClone }: Readonly<P
         type="button"
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-surface-high hover:bg-surface-highest text-on-surface-variant text-[11px] font-label font-semibold transition-colors w-full justify-between"
-        title="Übernimmt die komplette Config (inkl. Script/Query/Pfad) plus Maschine + Credential von einem anderen Step. Label und Output-Variable bleiben."
+        title={t('properties:cloneConfig.buttonTooltip')}
         data-testid="clone-config-button"
       >
         <span className="flex items-center gap-1.5">
           {justCloned ? <Checkmark size={12} className="text-green-600" /> : <Copy size={12} />}
-          {justCloned ? 'Übernommen' : 'Config übernehmen von…'}
+          {justCloned ? t('properties:cloneConfig.cloned') : t('properties:cloneConfig.button')}
         </span>
         <ChevronDown size={12} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -131,14 +133,14 @@ export function CloneConfigButton({ currentNode, allNodes, onClone }: Readonly<P
                 onClick={() => setScope('all')}
                 className={`py-1.5 transition-colors ${scope === 'all' ? 'bg-primary-fixed text-primary' : 'text-on-surface-variant hover:bg-surface-high'}`}
               >
-                Vollständig (gleicher Typ)
+                {t('properties:cloneConfig.scopeAll')}
               </button>
               <button
                 type="button"
                 onClick={() => setScope('remoteOnly')}
                 className={`py-1.5 transition-colors ${scope === 'remoteOnly' ? 'bg-primary-fixed text-primary' : 'text-on-surface-variant hover:bg-surface-high'}`}
               >
-                Nur Maschine + Credential
+                {t('properties:cloneConfig.scopeRemoteOnly')}
               </button>
             </div>
           )}
@@ -146,20 +148,20 @@ export function CloneConfigButton({ currentNode, allNodes, onClone }: Readonly<P
           <div className="px-3 py-2 border-b border-outline-variant/10 bg-surface-low text-[10px] font-label text-on-surface-variant leading-snug">
             {scope === 'all' ? (
               <>
-                Übernimmt die <strong>komplette Config</strong> von einem anderen <strong>{currentActivityType}</strong>
-                {remoteHere && <> &mdash; inkl. Maschine + Credential</>}.
-                <div className="mt-1 italic">Label + Output-Variable bleiben unverändert.</div>
+                {t('properties:cloneConfig.helpAllPre')} <strong>{t('properties:cloneConfig.helpAllBold')}</strong> {t('properties:cloneConfig.helpAllMid')} <strong>{currentActivityType}</strong>
+                {remoteHere && <> &mdash; {t('properties:cloneConfig.helpAllRemoteSuffix')}</>}.
+                <div className="mt-1 italic">{t('properties:cloneConfig.helpAllFooter')}</div>
               </>
             ) : (
-              <>Übernimmt nur <strong>Maschine</strong> + <strong>Credential</strong> von einem beliebigen Remote-Step. Config bleibt unverändert.</>
+              <>{t('properties:cloneConfig.helpRemoteOnlyPre')} <strong>{t('properties:cloneConfig.helpRemoteOnlyBold1')}</strong> {t('properties:cloneConfig.helpRemoteOnlyPlus')} <strong>{t('properties:cloneConfig.helpRemoteOnlyBold2')}</strong> {t('properties:cloneConfig.helpRemoteOnlyPost')}</>
             )}
           </div>
 
           {candidates.length === 0 ? (
             <div className="px-3 py-3 text-[11px] font-label text-outline italic">
               {scope === 'all'
-                ? `Kein anderer ${currentActivityType}-Step im Workflow.`
-                : 'Kein Remote-Step mit gesetzter Maschine im Workflow.'}
+                ? t('properties:cloneConfig.emptyAll', { type: currentActivityType })
+                : t('properties:cloneConfig.emptyRemoteOnly')}
             </div>
           ) : (
             <ul className="max-h-64 overflow-y-auto" role="listbox">
