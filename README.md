@@ -169,6 +169,21 @@ $env:OpenTelemetry__Exporters__PrometheusScrape = "true"
 
 See [grafana/README.md](grafana/README.md) for the full walk-through.
 
+### Example workflow
+
+Want to see the designer in action without building anything? Import the bundled
+showcase — a nightly fleet health-check that fans out three parallel probes, gathers
+them at a junction, and routes a decision to an alert or an all-green log:
+
+```
+scripts/readme-showcase-workflow.json
+```
+
+Import it via the **Workflows** page → *Import* (or `POST /api/import`). It exercises
+every shape you'll meet in production — schedule trigger, `runScript`, `log`, `junction`
+(waitAll), `decision`, `emailNotification`, `returnData`, plus three phase sticky-notes —
+laid out to fill the canvas width and run top-to-bottom.
+
 ---
 
 ## Workflow Designer (Frontend)

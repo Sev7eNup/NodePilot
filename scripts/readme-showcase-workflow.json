@@ -1,0 +1,481 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-07-22T22:00:00Z",
+  "workflows": [
+    {
+      "name": "Nightly Fleet Health Check & Auto-Remediation",
+      "description": "Showcase workflow for the GitHub README - a scatter/gather pattern: nightly schedule triggers host discovery, three probes (disk, services, event-log) fan out and run in parallel, a junction gathers them, a decision routes to an ops alert or an all-green log, and the run returns a structured nightly report.",
+      "definition": {
+        "nodes": [
+          {
+            "id": "trig",
+            "type": "activity",
+            "position": {
+              "x": 80,
+              "y": 40
+            },
+            "data": {
+              "label": "Schedule: nightly 02:00",
+              "activityType": "scheduleTrigger",
+              "outputVariable": "trig",
+              "config": {
+                "cronExpression": "0 0 2 * * ? *",
+                "description": "Nightly fleet health check, every night at 02:00"
+              }
+            }
+          },
+          {
+            "id": "init",
+            "type": "activity",
+            "position": {
+              "x": 80,
+              "y": 240
+            },
+            "data": {
+              "label": "runScript: Discover target hosts",
+              "activityType": "runScript",
+              "outputVariable": "init",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "# Pull the managed-host list from the fleet registry\n$hosts = @('SRV-WEB-01','SRV-DB-01','SRV-FILE-01')\n$hostList = $hosts -join ','\nWrite-Output $hostList"
+              }
+            }
+          },
+          {
+            "id": "logstart",
+            "type": "activity",
+            "position": {
+              "x": 80,
+              "y": 440
+            },
+            "data": {
+              "label": "log: Run started",
+              "activityType": "log",
+              "outputVariable": "logstart",
+              "config": {
+                "level": "info",
+                "message": "Nightly fleet health check started - targets={{init.output}}"
+              }
+            }
+          },
+          {
+            "id": "disk",
+            "type": "activity",
+            "position": {
+              "x": 80,
+              "y": 900
+            },
+            "data": {
+              "label": "runScript: Disk capacity probe",
+              "activityType": "runScript",
+              "outputVariable": "disk",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "$free = (Get-PSDrive C).Free / 1GB\n$freeGb = [math]::Round($free,1)\nWrite-Output (\"{0} GB free on C:\" -f $freeGb)"
+              }
+            }
+          },
+          {
+            "id": "svc",
+            "type": "activity",
+            "position": {
+              "x": 640,
+              "y": 900
+            },
+            "data": {
+              "label": "runScript: Service health probe",
+              "activityType": "runScript",
+              "outputVariable": "svc",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Get-Service Spooler,wuauserv,WinRM |\n  Select-Object Name,Status |\n  Format-Table -AutoSize | Out-String"
+              }
+            }
+          },
+          {
+            "id": "evt",
+            "type": "activity",
+            "position": {
+              "x": 1200,
+              "y": 900
+            },
+            "data": {
+              "label": "runScript: Event-log scan",
+              "activityType": "runScript",
+              "outputVariable": "evt",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "Get-WinEvent -LogName System -MaxEvents 5 -ErrorAction SilentlyContinue |\n  Select-Object TimeCreated,Id,LevelDisplayName |\n  Format-Table -AutoSize | Out-String"
+              }
+            }
+          },
+          {
+            "id": "jwait",
+            "type": "activity",
+            "position": {
+              "x": 640,
+              "y": 1160
+            },
+            "data": {
+              "label": "junction: waitAll (3 probes)",
+              "activityType": "junction",
+              "outputVariable": "jwait",
+              "config": {
+                "mode": "waitAll"
+              }
+            }
+          },
+          {
+            "id": "agg",
+            "type": "activity",
+            "position": {
+              "x": 640,
+              "y": 1360
+            },
+            "data": {
+              "label": "runScript: Aggregate findings",
+              "activityType": "runScript",
+              "outputVariable": "agg",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 60,
+                "script": "# Gather the three probe outputs and decide whether anything needs attention\n$disk = {{disk.output}}\n$svc = {{svc.output}}\n$evt = {{evt.output}}\n$issuesFound = 'false'\n$summary = \"Disk: $disk | Services: $svc | Events: $evt\"\nWrite-Output $summary"
+              }
+            }
+          },
+          {
+            "id": "issues",
+            "type": "activity",
+            "position": {
+              "x": 640,
+              "y": 1560
+            },
+            "data": {
+              "label": "decision: Issues found?",
+              "activityType": "decision",
+              "outputVariable": "issues",
+              "config": {
+                "cases": [
+                  {
+                    "name": "issues-found",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "agg",
+                        "field": "param",
+                        "paramName": "issuesFound"
+                      },
+                      "op": "==",
+                      "right": {
+                        "kind": "literal",
+                        "value": "true"
+                      }
+                    }
+                  },
+                  {
+                    "name": "all-green",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "agg",
+                        "field": "param",
+                        "paramName": "issuesFound"
+                      },
+                      "op": "==",
+                      "right": {
+                        "kind": "literal",
+                        "value": "false"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "all-green"
+              }
+            }
+          },
+          {
+            "id": "alert",
+            "type": "activity",
+            "position": {
+              "x": 240,
+              "y": 1820
+            },
+            "data": {
+              "label": "email: Alert ops team",
+              "activityType": "emailNotification",
+              "outputVariable": "alert",
+              "config": {
+                "to": "ops-team@example.com",
+                "subject": "[NodePilot] Fleet health check needs attention",
+                "isHtml": false,
+                "body": "The nightly fleet health check flagged an issue.\n\nSummary:\n{{agg.output}}\n\nInvestigate via the NodePilot operations cockpit."
+              }
+            }
+          },
+          {
+            "id": "green",
+            "type": "activity",
+            "position": {
+              "x": 1040,
+              "y": 1820
+            },
+            "data": {
+              "label": "log: All green",
+              "activityType": "log",
+              "outputVariable": "green",
+              "config": {
+                "level": "info",
+                "message": "Fleet health check passed - no action required. {{agg.output}}"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 640,
+              "y": 2040
+            },
+            "data": {
+              "label": "returnData: Nightly report",
+              "activityType": "returnData",
+              "outputVariable": "ret",
+              "config": {
+                "data": {
+                  "summary": "{{agg.output}}",
+                  "issuesFound": "{{agg.param.issuesFound}}",
+                  "targets": "{{init.output}}",
+                  "disk": "{{disk.output}}",
+                  "services": "{{svc.output}}",
+                  "events": "{{evt.output}}"
+                }
+              }
+            }
+          },
+          {
+            "id": "note1",
+            "type": "stickyNote",
+            "position": {
+              "x": 40,
+              "y": 20
+            },
+            "style": {
+              "width": 480,
+              "height": 620
+            },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "disabled": true,
+              "text": "Phase 1 · Discovery\n\nSchedule fires nightly, discovers the managed-host fleet, and logs the run start."
+            }
+          },
+          {
+            "id": "note2",
+            "type": "stickyNote",
+            "position": {
+              "x": 40,
+              "y": 860
+            },
+            "style": {
+              "width": 1320,
+              "height": 240
+            },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "disabled": true,
+              "text": "Phase 2 · Parallel probes (scatter)\n\nThree independent checks fan out and run concurrently — disk capacity, service health, and the Windows event log."
+            }
+          },
+          {
+            "id": "note3",
+            "type": "stickyNote",
+            "position": {
+              "x": 160,
+              "y": 1340
+            },
+            "style": {
+              "width": 1040,
+              "height": 740
+            },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "disabled": true,
+              "text": "Phase 3 · Triage & report (gather + verdict)\n\nThe junction waits for all probes, aggregation merges the findings, the decision routes to an alert or an all-green log, and the final step returns the nightly report."
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e_trig_init",
+            "source": "trig",
+            "target": "init",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_init_logstart",
+            "source": "init",
+            "target": "logstart",
+            "type": "labeled",
+            "data": {
+              "label": "On Success",
+              "condition": "init.success"
+            }
+          },
+          {
+            "id": "e_logstart_disk",
+            "source": "logstart",
+            "target": "disk",
+            "type": "labeled",
+            "data": {
+              "label": "On Success",
+              "condition": "logstart.success"
+            }
+          },
+          {
+            "id": "e_logstart_svc",
+            "source": "logstart",
+            "target": "svc",
+            "type": "labeled",
+            "data": {
+              "label": "On Success",
+              "condition": "logstart.success"
+            }
+          },
+          {
+            "id": "e_logstart_evt",
+            "source": "logstart",
+            "target": "evt",
+            "type": "labeled",
+            "data": {
+              "label": "On Success",
+              "condition": "logstart.success"
+            }
+          },
+          {
+            "id": "e_disk_jwait",
+            "source": "disk",
+            "target": "jwait",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_svc_jwait",
+            "source": "svc",
+            "target": "jwait",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_evt_jwait",
+            "source": "evt",
+            "target": "jwait",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_jwait_agg",
+            "source": "jwait",
+            "target": "agg",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_agg_issues",
+            "source": "agg",
+            "target": "issues",
+            "type": "labeled",
+            "data": {
+              "label": "On Success",
+              "condition": "agg.success"
+            }
+          },
+          {
+            "id": "e_issues_alert",
+            "source": "issues",
+            "target": "alert",
+            "type": "labeled",
+            "data": {
+              "label": "case=issues-found",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "issues",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "issues-found"
+                }
+              }
+            }
+          },
+          {
+            "id": "e_issues_green",
+            "source": "issues",
+            "target": "green",
+            "type": "labeled",
+            "data": {
+              "label": "case=all-green",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "issues",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "all-green"
+                }
+              }
+            }
+          },
+          {
+            "id": "e_alert_ret",
+            "source": "alert",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_green_ret",
+            "source": "green",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
