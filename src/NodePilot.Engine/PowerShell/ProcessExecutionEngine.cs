@@ -17,31 +17,42 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
     private readonly string _executable;
     private readonly ILogger _logger;
 
+    // Grace period for the isolated stdout/stderr drain AFTER the root process has exited and its
+    // job tree has been terminated. At that point no legitimate writer to the pipe remains, so an
+    // unbounded wait can only be blocked by a leaked inherited pipe handle in an unrelated process
+    // (see ProcessSpawnCoordinator). Bounding the drain converts that permanent hang into an
+    // at-most-grace wait, so the isolated step always returns. Configurable via
+    // Engine:IsolatedDrainGraceSeconds.
+    private readonly TimeSpan _isolatedDrainGrace;
+
     public string EngineType { get; }
     public bool IsAvailable { get; }
 
     // internal (not private) so tests can construct an engine pointing at a deliberately invalid
-    // executable to exercise the isolated native-failure catch path. InternalsVisibleTo grants
+    // executable to exercise the isolated native-failure catch path, and inject a tiny drain grace
+    // to exercise the leaked-handle drain-timeout path fast. InternalsVisibleTo grants
     // NodePilot.Engine.Tests access; production still uses the CreatePwsh/CreateWindowsPowerShell
     // factory methods.
-    internal ProcessExecutionEngine(string engineType, string executable, bool available, ILogger logger)
+    internal ProcessExecutionEngine(string engineType, string executable, bool available, ILogger logger,
+        TimeSpan? isolatedDrainGrace = null)
     {
         EngineType = engineType;
         _executable = executable;
         IsAvailable = available;
         _logger = logger;
+        _isolatedDrainGrace = isolatedDrainGrace is { } g && g > TimeSpan.Zero ? g : TimeSpan.FromSeconds(5);
     }
 
-    public static ProcessExecutionEngine CreatePwsh(ILogger logger)
+    public static ProcessExecutionEngine CreatePwsh(ILogger logger, TimeSpan? isolatedDrainGrace = null)
     {
         var path = FindExecutable("pwsh.exe", "pwsh");
-        return new ProcessExecutionEngine("pwsh", path ?? "pwsh.exe", path is not null, logger);
+        return new ProcessExecutionEngine("pwsh", path ?? "pwsh.exe", path is not null, logger, isolatedDrainGrace);
     }
 
-    public static ProcessExecutionEngine CreateWindowsPowerShell(ILogger logger)
+    public static ProcessExecutionEngine CreateWindowsPowerShell(ILogger logger, TimeSpan? isolatedDrainGrace = null)
     {
         var path = FindExecutable("powershell.exe", "powershell");
-        return new ProcessExecutionEngine("powershell", path ?? "powershell.exe", path is not null, logger);
+        return new ProcessExecutionEngine("powershell", path ?? "powershell.exe", path is not null, logger, isolatedDrainGrace);
     }
 
     public async Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct)
@@ -91,7 +102,14 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
 
             _logger.LogDebug("Starting {Engine}: {File}", EngineType, tempScript);
-            process.Start();
+            // Serialize with the isolated launcher's inheritable-handle window: this redirected
+            // Process.Start uses bInheritHandles:true with no HANDLE_LIST, so without the gate it
+            // could inherit a concurrent isolated launch's pipe write-handles and wedge that run.
+            // See ProcessSpawnCoordinator. Only Start() needs the lock — the reads run after.
+            lock (ProcessSpawnCoordinator.Gate)
+            {
+                process.Start();
+            }
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
@@ -213,8 +231,20 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             string stderr;
             try
             {
-                stdout = await stdoutTask;
-                stderr = await stderrTask;
+                var drain = await DrainReadsAsync(stdoutTask, stderrTask, _isolatedDrainGrace, ct);
+                stdout = drain.Stdout;
+                stderr = drain.Stderr;
+                if (drain.DrainTimedOut)
+                {
+                    // Leaked inherited pipe handle: the root is long dead and the job tree terminated,
+                    // yet the write-end is still open in some other process (see ProcessSpawnCoordinator).
+                    // We returned captured output and abandoned the drain rather than hang forever.
+                    _logger.LogWarning(
+                        "Isolated {Engine} (pid {Pid}): stdout/stderr did not reach EOF within {Grace:0}s after the " +
+                        "root process exited and its job tree was terminated — a leaked inherited pipe handle in another " +
+                        "process is holding the write-end open. Returned captured output and abandoned the drain.",
+                        EngineType, launched.ProcessId, _isolatedDrainGrace.TotalSeconds);
+                }
             }
             catch (OperationCanceledException)
             {
@@ -287,6 +317,42 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
         }
     }
 
+    /// <summary>
+    /// Drains the isolated stdout/stderr reads with a bounded grace. Call ONLY after the root process
+    /// has exited and its job tree has been terminated: at that point no legitimate writer to the pipe
+    /// remains, so a read that has not reached EOF within <paramref name="grace"/> is blocked by a
+    /// leaked inherited pipe handle in an unrelated process and is abandoned (and observed, so its
+    /// eventual fault never raises an UnobservedTaskException). <c>DrainTimedOut</c> reports the leak.
+    /// A real user cancel (<paramref name="ct"/>) propagates as <see cref="OperationCanceledException"/>.
+    /// </summary>
+    internal static async Task<(string Stdout, string Stderr, bool DrainTimedOut)> DrainReadsAsync(
+        Task<string> stdoutTask, Task<string> stderrTask, TimeSpan grace, CancellationToken ct)
+    {
+        try
+        {
+            await Task.WhenAll(stdoutTask, stderrTask).WaitAsync(grace, ct).ConfigureAwait(false);
+            return (await stdoutTask.ConfigureAwait(false), await stderrTask.ConfigureAwait(false), false);
+        }
+        catch (TimeoutException)
+        {
+            return (ObserveAbandonedRead(stdoutTask), ObserveAbandonedRead(stderrTask), true);
+        }
+    }
+
+    /// <summary>
+    /// Returns a completed read's text, or empty for a read still blocked by a leaked inherited pipe
+    /// handle. A still-pending read is observed via a continuation so its eventual fault
+    /// (ObjectDisposedException once the reader is disposed) never raises an UnobservedTaskException.
+    /// </summary>
+    private static string ObserveAbandonedRead(Task<string> readTask)
+    {
+        if (readTask.IsCompletedSuccessfully)
+            return readTask.Result;
+        _ = readTask.ContinueWith(static t => { _ = t.Exception; },
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return string.Empty;
+    }
+
     private static string? FindExecutable(string windowsName, string unixName)
     {
         try
@@ -299,7 +365,14 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 CreateNoWindow = true,
                 RedirectStandardOutput = true,
             };
-            using var p = Process.Start(psi);
+            // Gate the redirected spawn too (see ProcessSpawnCoordinator) — this runs at engine
+            // construction, but serializing it keeps the "every inheritable spawn is gated" invariant.
+            Process? p;
+            lock (ProcessSpawnCoordinator.Gate)
+            {
+                p = Process.Start(psi);
+            }
+            using var _p = p;
             var output = p?.StandardOutput.ReadToEnd().Trim();
             p?.WaitForExit(3000);
             if (p?.ExitCode == 0 && !string.IsNullOrEmpty(output))

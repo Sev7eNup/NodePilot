@@ -41,6 +41,22 @@ in den Kontext-Window geladen werden müssen, aber bei Bedarf nachschlagbar sind
 
 `config.isolated: true` startet das Script als eigenen Prozess race-frei in einem Windows Job Object (`KILL_ON_JOB_CLOSE` → keine verwaisten Prozesse bei Host-Crash/Restart + Crash-/Leak-Containment). Opt-in Caps: `memoryLimitMb` (JOB_MEMORY, aggregat über alle Prozesse des Jobs — lässt Allokationen fehlschlagen, terminiert nicht) + `maxProcesses`. Erzwingt einen Prozess-Engine (nie Runspace-Pool); No-Op auf dem Remote/WinRM-Pfad. Impl: `IsolatedProcessLauncher` (STARTUPINFOEX + `PROC_THREAD_ATTRIBUTE_JOB_LIST` — Prozess startet direkt im Job, kein Assign-after-Spawn-Race).
 
+**Handle-Inheritance-Hardening (fixt „Execution hängt in Running obwohl alle Nodes fertig sind"):** Die stdout/stderr-Anonymous-Pipes des isolierten Childs sind kurzzeitig *inheritable* im API-Prozess offen. Ein *anderer* gleichzeitiger `CreateProcess`/`Process.Start` mit `bInheritHandles:true` ohne `HANDLE_LIST` (non-isolated runScript, `startProgram`, user-`Start-Job`) konnte diese Write-Handles erben und die Pipe offenhalten → `ReadToEndAsync` erreicht nie EOF → der Step-Task terminiert nie → Execution bleibt ewig `Running`. Zwei Gegenmaßnahmen: (1) **`ProcessSpawnCoordinator`** serialisiert *alle* NodePilot-eigenen inheritable-handle-Spawns (Launcher-Fenster + non-isolated `Process.Start` + Executable-Probe) hinter einem Prozess-globalen Lock, sodass sich kein Vererbungsfenster mit einem anderen Spawn überschneidet. (2) **Bounded Drain:** nach `WaitForExit` + `TerminateJobObject` existiert kein legitimer Pipe-Writer mehr, daher wird der stdout/stderr-Drain auf `Engine:IsolatedDrainGraceSeconds` (default 5 s) begrenzt — bleibt ein Read nach dieser Frist offen (geleaktes Handle in einem Fremdprozess), gibt der Step das bereits gepufferte Output zurück, loggt eine Warnung und terminiert (statt ewig zu hängen). `DrainReadsAsync` observiert die abgebrochenen Reads, sodass kein `UnobservedTaskException` entsteht.
+
+### runScript — Ausführungsort (local vs. remote & Self-Managed-Remoting)
+
+`runScript` ist *hybrid*; der Dispatch entscheidet allein anhand der gesetzten Maschine ([RunScriptActivity.cs:88-91](../src/NodePilot.Engine/Activities/RunScriptActivity.cs#L88-L91)):
+
+- **Maschine gesetzt** (non-loopback bzw. + Credential) → NodePilot baut die WinRM-Session über die gepoolte `WinRmSessionFactory` (`ExecuteRemoteAsync`). Das Script läuft auf dem Ziel, **kein** Session-Management im Script nötig.
+- **Keine Maschine** (bzw. loopback ohne Credential) → der Node läuft **engine-local im API-Host** (`ExecuteLocalAsync`, Runspace-Pool bzw. isolierter Prozess). Von dort kann das Script die Remote-Verbindung **selbst** herstellen — SCOrch-Stil: `Invoke-Command -ComputerName SRV01 -Credential $c { … }` / `New-PSSession`. Sinnvoll für dynamische Ziellisten, Fan-out auf N Maschinen in **einem** Node oder Jump-Host-Ketten.
+
+**Trade-offs beim Self-Managen** (bewusst außerhalb des managed WinRM-Pfads):
+
+1. Läuft auf dem **API-Host**, nicht auf dem Ziel — der Host braucht Netz-/WinRM-Client-Zugriff (TrustedHosts/Kerberos/SSL) selbst.
+2. Der DPAPI-**Credential-Store ist nicht verdrahtet** → `PSCredential` im Script selbst bauen; Secret via `{{globals.NAME}}` (im Output redigiert), nie hardcoden.
+3. **Kein** Machine-Targeting/-Test (`POST /{id}/test`), keine `StepExecution.TargetMachine`-Zuordnung, keine per-Machine-Telemetrie/-Health.
+4. Hardening (`Remote:RequireWinRmSsl`, SSL-Enforcement, Session-Pool) **greift nicht** — es hängt am Factory-Pfad.
+
 ---
 
 ## Trigger — Injected-Params

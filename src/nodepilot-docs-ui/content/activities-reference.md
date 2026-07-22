@@ -8,9 +8,10 @@ Pro Step: `config.retry` (`maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayM
 
 ## `runScript`
 
-**Hybrid.** Führt PowerShell aus.
+**Hybrid.** Führt PowerShell aus — mit gesetzter Maschine über NodePilots managed WinRM-Session; **ohne** Maschine engine-local im API-Host, wo das Script die Remote-Verbindung via `Invoke-Command`/`New-PSSession` auch selbst managen kann (SCOrch-Stil, Trade-offs siehe [Remote-Execution](configuration/remote-execution)).
 
 - **Config:** `script`, `engine` (`auto`/`pwsh`/`powershell`), `timeoutSeconds`, `isolated` (bool, nur lokal — eigener Prozess im Windows Job Object: Crash-/Leak-Containment, keine verwaisten Prozesse) + optionale Caps `memoryLimitMb` (lässt Allokationen fehlschlagen, terminiert nicht) / `maxProcesses`, `successExitCodes` (komma-separiert, opt-in Exit-Code-Gate)
+- **Isolation-Robustheit:** Isolierte Läufe können nicht mehr in `Running` hängen bleiben. NodePilot serialisiert inheritable-handle-Spawns und begrenzt den stdout/stderr-Drain nach Prozess-Exit auf `Engine:IsolatedDrainGraceSeconds` (default 5 s), damit ein in einen Fremdprozess geleaktes Pipe-Handle den Step nicht dauerhaft blockiert.
 - **Outputs:** `output`, `error`, `param.exitCode` (immer), `param.*` (auto-captured deklarierte Variablen)
 - **Erfolg (fehler-basiert):** Ein Step scheitert **nur** bei einem terminierenden PowerShell-Fehler (`throw` / `Write-Error` unter `Stop`). Ein `exit N` macht den Step **nicht** rot. Wer das will, setzt `successExitCodes` (z. B. `"0"`). `successExitCodes`/`param.exitCode` greifen für Native-Command-Codes (`$LASTEXITCODE`) in allen Engines; ein script-eigenes `exit N` ist nur im Prozess/isoliert-Modus als Wert sichtbar (Runspace sieht `exit` nicht).
 - **Notes:** Deklarierte Variablen werden zu `param.*` (`$hostName = …` → `{{step.param.hostName}}`). Auto-Quoting: `{{step.output}}` wird als Single-Quoted String eingesetzt — `$x = {{step.output}}` schreiben, nicht `$x = '{{step.output}}'`.

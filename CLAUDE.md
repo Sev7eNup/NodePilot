@@ -183,7 +183,7 @@ Config-Keys & Output-Semantik pro Activity: siehe `docs/claude-reference.md`.
 
 **Retry pro Step:** `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`.
 **Execution-Timeout:** `timeoutSeconds` im Execute-Body + per-Step `config.timeoutSeconds`.
-**Prozess-Isolation (`runScript`, nur lokal):** `config.isolated: true` → eigener Prozess in einem Windows Job Object (Crash-/Leak-Containment, keine verwaisten Prozesse), opt-in Caps `memoryLimitMb`/`maxProcesses`; No-Op auf dem Remote/WinRM-Pfad. Details: `docs/claude-reference.md`.
+**Prozess-Isolation (`runScript`, nur lokal):** `config.isolated: true` → eigener Prozess in einem Windows Job Object (Crash-/Leak-Containment, keine verwaisten Prozesse), opt-in Caps `memoryLimitMb`/`maxProcesses`; No-Op auf dem Remote/WinRM-Pfad. Inheritable-Pipe-Handles gegen Cross-Inheritance geschützt (`ProcessSpawnCoordinator` serialisiert alle inheritable Spawns) + Bounded stdout/stderr-Drain nach Prozess-Exit (`Engine:IsolatedDrainGraceSeconds`, default 5 s) — verhindert „Execution hängt in Running" durch geleakte Pipe-Handles. Details: `docs/claude-reference.md`.
 
 ## Custom Activities (Plugin-System)
 

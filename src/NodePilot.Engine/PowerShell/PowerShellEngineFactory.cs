@@ -30,8 +30,16 @@ public class PowerShellEngineFactory
     public PowerShellEngineFactory(ILoggerFactory loggerFactory, IConfiguration? configuration = null)
     {
         var logger = loggerFactory.CreateLogger<PowerShellEngineFactory>();
-        _pwsh = ProcessExecutionEngine.CreatePwsh(logger);
-        _windowsPowerShell = ProcessExecutionEngine.CreateWindowsPowerShell(logger);
+
+        // Bound the isolated stdout/stderr drain that runs after the root process exits + the job
+        // tree is terminated. A leaked inherited pipe handle in an unrelated process would otherwise
+        // keep the pipe write-end open forever and hang the step (see ProcessSpawnCoordinator).
+        // 0/negative falls back to the engine default (5s).
+        var drainGraceSeconds = configuration?.GetValue<int?>("Engine:IsolatedDrainGraceSeconds") ?? 5;
+        var isolatedDrainGrace = drainGraceSeconds > 0 ? TimeSpan.FromSeconds(drainGraceSeconds) : (TimeSpan?)null;
+
+        _pwsh = ProcessExecutionEngine.CreatePwsh(logger, isolatedDrainGrace);
+        _windowsPowerShell = ProcessExecutionEngine.CreateWindowsPowerShell(logger, isolatedDrainGrace);
 
         // Runspace pool sizing: process-spawn pwsh.exe per script costs ~50-200ms (process
         // start + temp file write + module load) and ~30 MB RAM. The runspace pool reuses

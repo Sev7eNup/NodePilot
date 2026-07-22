@@ -20,7 +20,14 @@ namespace NodePilot.Engine.PowerShell;
 ///
 /// Handle inheritance is restricted to exactly {NUL-stdin, stdout-pipe, stderr-pipe} via
 /// <c>PROC_THREAD_ATTRIBUTE_HANDLE_LIST</c>, so <c>bInheritHandles:true</c> does not leak unrelated
-/// inheritable handles of the API host into the child.
+/// inheritable handles of the API host into the child (<b>inbound</b> protection — what this child
+/// inherits).
+///
+/// <b>Outbound</b> protection — our own stdout/stderr pipe write-handles must not leak into <i>other</i>
+/// processes — is a separate concern the handle list does NOT cover: those client handles are created
+/// inheritable and are briefly open in this process, so any concurrent <c>CreateProcess</c>/
+/// <c>Process.Start</c> elsewhere would inherit them and hold the pipe write-end open forever.
+/// <see cref="ProcessSpawnCoordinator"/> serializes every inheritable-handle spawn to prevent exactly that.
 ///
 /// Windows-only by construction (the orchestrator targets <c>net10.0-windows</c>); callers guard
 /// with <see cref="OperatingSystem.IsWindows"/>.
@@ -60,6 +67,22 @@ internal static partial class IsolatedProcessLauncher
     /// any native failure (caller turns it into a failed step result).
     /// </summary>
     public static LaunchedIsolatedProcess Launch(
+        string executable,
+        string arguments,
+        string? workingDirectory,
+        ProcessIsolationLimits? limits)
+    {
+        // Serialize against every other inheritable-handle spawn in this process (see
+        // ProcessSpawnCoordinator): while this launch has its inheritable pipe write-handles open,
+        // no concurrent CreateProcess/Process.Start may run and inherit them. The section is fully
+        // synchronous (native CreateProcess), so the monitor lock is never held across an await.
+        lock (ProcessSpawnCoordinator.Gate)
+        {
+            return LaunchCore(executable, arguments, workingDirectory, limits);
+        }
+    }
+
+    private static LaunchedIsolatedProcess LaunchCore(
         string executable,
         string arguments,
         string? workingDirectory,
