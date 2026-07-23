@@ -7,36 +7,11 @@
     "all": "Alle Ordner",
     "label": "Ordner"
   },
-  "pulse": {
-    "nominal": "Betrieb normal",
-    "degraded": "Beeinträchtigt",
-    "incident": "Störung",
-    "active": "aktiv",
-    "pending": "wartend",
-    "longRunning": "Langläufer",
-    "reason": {
-      "failureSpike": "Fehler-Häufung (≥5 in 10 min)",
-      "recentFailure": "kürzliche Fehlschläge",
-      "staleHeartbeat": "Dienst-Heartbeat veraltet",
-      "allHeartbeatsStale": "alle Dienst-Heartbeats veraltet",
-      "machinesUnreachable": "Maschinen nicht erreichbar",
-      "allMachinesUnreachable": "keine Maschine erreichbar",
-      "longRunning": "Langläufer aktiv"
-    }
-  },
   "timeline": {
     "now": "Jetzt",
     "idle": "Gerade läuft nichts.",
     "idleHint": "Sobald ein Workflow startet, wächst hier live sein Balken.",
     "nextStart": "Nächster Start {{time}} — {{name}}"
-  },
-  "ticker": {
-    "title": "Live-Feed",
-    "empty": "Noch keine Live-Ereignisse.",
-    "justNow": "jetzt",
-    "minutesAgo": "vor {{count}} min",
-    "minutesAgo_one": "vor {{count}} min",
-    "minutesAgo_other": "vor {{count}} min"
   },
   "board": {
     "title": "Nächste Starts",
@@ -48,18 +23,10 @@
     "in": "in {{value}}",
     "overdue": "überfällig"
   },
-  "health": {
-    "title": "Systemzustand",
-    "machines": "Maschinen erreichbar",
-    "heartbeats": "Dienste",
-    "stale": "veraltet",
-    "role": "Cluster-Rolle",
-    "leader": "Leader",
-    "standby": "Standby"
-  },
   "drilldown": {
     "title": "Ausführungsdetails",
     "close": "Schließen",
+    "executionId": "Job-ID",
     "status": "Status",
     "started": "Gestartet",
     "completed": "Beendet",

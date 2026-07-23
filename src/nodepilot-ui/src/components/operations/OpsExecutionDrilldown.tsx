@@ -4,6 +4,7 @@ import { Edit, Misuse, Close, ArrowUpLeft, TreeView } from '@carbon/icons-react'
 import { getExecution } from '../../api/operations';
 import { npStatusFromExecution, rawStatusLabelKey, STATUS_BADGE_CLASS } from '../../lib/statusTokens';
 import { formatDuration } from '../../lib/opsTimeline';
+import { CopyButton } from '../common/CopyButton';
 
 // Slide-over drilldown for a single execution (timeline bar / ticker click). Fetches the
 // detail row for error message, triggeredBy and the parent link; live context (status,
@@ -59,6 +60,13 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         <dl className="space-y-2 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <dt className="text-on-surface-variant">{t('operations:drilldown.executionId')}</dt>
+            <dd className="flex min-w-0 items-center justify-end gap-1.5">
+              <span className="truncate font-mono text-xs text-on-surface" title={executionId}>{executionId}</span>
+              <CopyButton text={executionId} size={11} className="shrink-0 rounded p-0.5 text-on-surface-variant transition-colors hover:bg-surface-high hover:text-on-surface" />
+            </dd>
+          </div>
           <div className="flex items-center justify-between gap-2">
             <dt className="text-on-surface-variant">{t('operations:drilldown.status')}</dt>
             <dd>

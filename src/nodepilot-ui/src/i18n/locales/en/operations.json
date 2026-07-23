@@ -7,36 +7,11 @@
     "all": "All folders",
     "label": "Folder"
   },
-  "pulse": {
-    "nominal": "Operations nominal",
-    "degraded": "Degraded",
-    "incident": "Incident",
-    "active": "active",
-    "pending": "pending",
-    "longRunning": "long-running",
-    "reason": {
-      "failureSpike": "failure spike (≥5 in 10 min)",
-      "recentFailure": "recent failures",
-      "staleHeartbeat": "stale service heartbeat",
-      "allHeartbeatsStale": "all service heartbeats stale",
-      "machinesUnreachable": "machines unreachable",
-      "allMachinesUnreachable": "no machine reachable",
-      "longRunning": "long-running executions"
-    }
-  },
   "timeline": {
     "now": "Now",
     "idle": "Nothing is running right now.",
     "idleHint": "As soon as a workflow starts, its bar grows here live.",
     "nextStart": "Next start {{time}} — {{name}}"
-  },
-  "ticker": {
-    "title": "Live feed",
-    "empty": "No live events yet.",
-    "justNow": "just now",
-    "minutesAgo": "{{count}} min ago",
-    "minutesAgo_one": "{{count}} min ago",
-    "minutesAgo_other": "{{count}} min ago"
   },
   "board": {
     "title": "Next starts",
@@ -48,18 +23,10 @@
     "in": "in {{value}}",
     "overdue": "overdue"
   },
-  "health": {
-    "title": "System health",
-    "machines": "Machines reachable",
-    "heartbeats": "Services",
-    "stale": "stale",
-    "role": "Cluster role",
-    "leader": "Leader",
-    "standby": "Standby"
-  },
   "drilldown": {
     "title": "Execution details",
     "close": "Close",
+    "executionId": "Job ID",
     "status": "Status",
     "started": "Started",
     "completed": "Completed",

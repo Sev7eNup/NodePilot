@@ -6,20 +6,16 @@ import { WarningAltFilled } from '@carbon/icons-react';
 import { getOperationsGraph, getOpsDashboardStats, cancelExecution } from '../api/operations';
 import { useOperationsFeed } from '../hooks/useOperationsFeed';
 import { useOpsClock } from '../hooks/useOpsClock';
-import { useOperationsStore, countScoped } from '../stores/operationsStore';
-import { derivePulseState } from '../lib/opsPulse';
-import { OpsPulseHeader } from '../components/operations/OpsPulseHeader';
+import { useOperationsStore } from '../stores/operationsStore';
 import { OpsTimeline } from '../components/operations/OpsTimeline';
-import { OpsEventTicker } from '../components/operations/OpsEventTicker';
 import { OpsDepartureBoard } from '../components/operations/OpsDepartureBoard';
-import { OpsHealthRail } from '../components/operations/OpsHealthRail';
 import { OpsExecutionDrilldown } from '../components/operations/OpsExecutionDrilldown';
 import { EmptyState } from '../components/common/EmptyState';
 
-// Live-Ops Mission Control: pulse header (system state + live clock), the real-time
-// execution timeline as the centerpiece, the SignalR event ticker + infra health rail on
-// the right, and the next-fires departure board at the bottom. The snapshot poll (5 s) is
-// the authoritative source; SignalR deltas make everything feel instant in between.
+// Live-Ops Mission Control: the real-time execution timeline as the centerpiece (running +
+// recently-finished bars, drill-down + cancel) and the next-fires departure board at the
+// bottom. The snapshot poll (5 s) is the authoritative source; SignalR deltas make
+// everything feel instant in between.
 
 export function OperationsPage() {
   const { t } = useTranslation(['operations', 'executions', 'common']);
@@ -47,7 +43,6 @@ export function OperationsPage() {
   useOperationsFeed();
   const seedRunning = useOperationsStore((s) => s.seedRunning);
   const runningMap = useOperationsStore((s) => s.runningExecsByWorkflow);
-  const tickerEvents = useOperationsStore((s) => s.tickerEvents);
   const locallySettled = useOperationsStore((s) => s.locallySettled);
 
   // Seed the live store from the authoritative snapshot. `lastStatusByWf` drives the
@@ -90,26 +85,10 @@ export function OperationsPage() {
     () => (data?.recent ?? []).filter((r) => scopedWorkflowIds.has(r.workflowId)),
     [data, scopedWorkflowIds],
   );
-  const scopedTicker = useMemo(
-    () => tickerEvents.filter((e) => scopedWorkflowIds.has(e.workflowId)),
-    [tickerEvents, scopedWorkflowIds],
-  );
   const scopedTriggers = useMemo(
     () => (stats?.armedTriggers ?? []).filter((a) => scopedWorkflowIds.has(a.workflowId)),
     [stats, scopedWorkflowIds],
   );
-
-  const runningCount = countScoped(runningMap, scopedWorkflowIds, 'Running');
-  const pendingCount = countScoped(runningMap, scopedWorkflowIds, 'Pending');
-
-  const pulse = useMemo(() => derivePulseState({
-    nowMs,
-    recent: scopedRecent.map((r) => ({ status: r.status, completedAtMs: Date.parse(r.completedAt) })),
-    heartbeats: stats?.healthHeartbeats ?? [],
-    machinesTotal: stats?.machinesTotal ?? 0,
-    machinesReachable: stats?.machinesReachable ?? 0,
-    longRunningCount: stats?.longRunningCount ?? 0,
-  }), [nowMs, scopedRecent, stats]);
 
   const nextStart = useMemo(() => {
     let best: { name: string; atMs: number } | null = null;
@@ -200,76 +179,49 @@ export function OperationsPage() {
         </label>
       </header>
 
-      {data && (
-        <OpsPulseHeader
-          state={pulse.state}
-          reasons={pulse.reasons}
-          runningCount={runningCount}
-          pendingCount={pendingCount}
-          longRunningCount={stats?.longRunningCount ?? 0}
-          nowMs={nowMs}
-        />
-      )}
-
-      <div className="flex min-h-0 flex-1 flex-col gap-3 lg:flex-row">
-        {/* Main stage: timeline + drilldown overlay */}
-        <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-outline-variant bg-surface p-3">
-          {isLoading && (
-            <div className="flex h-full items-center justify-center text-on-surface-variant">{t('common:loading')}</div>
-          )}
-          {isError && (
-            <div className="flex h-full items-center justify-center text-error">{t('operations:error')}</div>
-          )}
-          {data && scopedNodes.length === 0 && (
-            <EmptyState icon={<WarningAltFilled size={22} />} title={t('operations:empty')} />
-          )}
-          {data && scopedNodes.length > 0 && (
-            <OpsTimeline
-              nowMs={nowMs}
-              running={data.running}
-              recent={data.recent}
-              locallySettled={locallySettled}
-              scopedWorkflowIds={scopedWorkflowIds}
-              nodesById={nodesById}
-              selectedExecutionId={selected}
-              nextStart={nextStart}
-              onSelect={setSelected}
-            />
-          )}
-
-          {selected && selectedContext && selectedNode && (
-            <OpsExecutionDrilldown
-              executionId={selected}
-              workflowName={selectedNode.name}
-              folderPath={selectedNode.folderPath}
-              callees={selectedCallees}
-              status={selectedContext.status}
-              startedAtMs={selectedContext.startedAtMs}
-              completedAtMs={selectedContext.completedAtMs}
-              nowMs={nowMs}
-              canCancel={data?.capabilities.canCancel ?? false}
-              cancelPending={cancel.isPending}
-              onCancel={(id) => cancel.mutate(id)}
-              onOpenEditor={() => navigate(`/workflows/${selectedContext.workflowId}`)}
-              onSelectExecution={setSelected}
-              onClose={() => setSelected(null)}
-            />
-          )}
-        </div>
-
-        {/* Right rail: event ticker + infra health */}
-        <div className="flex w-full shrink-0 flex-col gap-4 rounded-2xl border border-outline-variant bg-surface p-3 lg:w-[300px]">
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <OpsEventTicker events={scopedTicker} nodesById={nodesById} nowMs={nowMs} onSelect={setSelected} />
-          </div>
-          <OpsHealthRail
-            machinesTotal={stats?.machinesTotal ?? 0}
-            machinesReachable={stats?.machinesReachable ?? 0}
-            heartbeats={stats?.healthHeartbeats ?? []}
-            clusterRole={stats?.clusterRole ?? null}
-            reasons={pulse.reasons}
+      {/* Main stage: timeline + drilldown overlay */}
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-outline-variant bg-surface p-3">
+        {isLoading && (
+          <div className="flex h-full items-center justify-center text-on-surface-variant">{t('common:loading')}</div>
+        )}
+        {isError && (
+          <div className="flex h-full items-center justify-center text-error">{t('operations:error')}</div>
+        )}
+        {data && scopedNodes.length === 0 && (
+          <EmptyState icon={<WarningAltFilled size={22} />} title={t('operations:empty')} />
+        )}
+        {data && scopedNodes.length > 0 && (
+          <OpsTimeline
+            nowMs={nowMs}
+            running={data.running}
+            recent={data.recent}
+            locallySettled={locallySettled}
+            scopedWorkflowIds={scopedWorkflowIds}
+            nodesById={nodesById}
+            selectedExecutionId={selected}
+            nextStart={nextStart}
+            onSelect={setSelected}
           />
-        </div>
+        )}
+
+        {selected && selectedContext && selectedNode && (
+          <OpsExecutionDrilldown
+            executionId={selected}
+            workflowName={selectedNode.name}
+            folderPath={selectedNode.folderPath}
+            callees={selectedCallees}
+            status={selectedContext.status}
+            startedAtMs={selectedContext.startedAtMs}
+            completedAtMs={selectedContext.completedAtMs}
+            nowMs={nowMs}
+            canCancel={data?.capabilities.canCancel ?? false}
+            cancelPending={cancel.isPending}
+            onCancel={(id) => cancel.mutate(id)}
+            onOpenEditor={() => navigate(`/workflows/${selectedContext.workflowId}`)}
+            onSelectExecution={setSelected}
+            onClose={() => setSelected(null)}
+          />
+        )}
       </div>
 
       <OpsDepartureBoard triggers={scopedTriggers} nowMs={nowMs} />

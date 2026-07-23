@@ -1,6 +1,6 @@
 ﻿import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  useOperationsStore, effectiveStatusFor, countScoped,
+  useOperationsStore, effectiveStatusFor,
 } from '../../stores/operationsStore';
 
 beforeEach(() => useOperationsStore.getState().reset());
@@ -202,22 +202,5 @@ describe('operationsStore', () => {
 
   it('effectiveStatusFor does not collapse a pure-Pending workflow to Running', () => {
     expect(effectiveStatusFor([{ id: 'a', status: 'Pending', startedAtMs: 0 }], undefined, 'Succeeded')).toBe('Pending');
-  });
-
-  // --- countScoped (folder-scoped active/pending counts) ---
-
-  it('countScoped counts only executions within the scoped workflow set', () => {
-    const { applyStatus } = useOperationsStore.getState();
-    applyStatus('e1', 'w1', 'Running');
-    applyStatus('e2', 'w1', 'Pending');
-    applyStatus('e3', 'w2', 'Running');
-    applyStatus('e4', 'w3', 'Pending');
-    const map = useOperationsStore.getState().runningExecsByWorkflow;
-    expect(countScoped(map, new Set(['w1', 'w2']), 'Running')).toBe(2);
-    expect(countScoped(map, new Set(['w1', 'w2']), 'Pending')).toBe(1);
-    expect(countScoped(map, new Set(['w1']), 'Running')).toBe(1);
-    expect(countScoped(map, new Set(['w1']), 'Pending')).toBe(1);
-    expect(countScoped(map, new Set(['w3']), 'Pending')).toBe(1);
-    expect(countScoped(map, new Set<string>(), 'Running')).toBe(0);
   });
 });

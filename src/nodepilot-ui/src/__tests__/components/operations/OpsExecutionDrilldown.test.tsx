@@ -80,6 +80,12 @@ describe('OpsExecutionDrilldown', () => {
     expect(onCancel).toHaveBeenCalledWith('ex-1');
   });
 
+  it('shows the execution id with a copy button', () => {
+    renderDrilldown();
+    expect(screen.getByText('ex-1')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^(Copy|Kopieren)$/ })).toBeInTheDocument();
+  });
+
   it('cancel is hidden without the capability and for settled runs', () => {
     renderDrilldown({ canCancel: false });
     expect(screen.queryByRole('button', { name: /Cancel/ })).not.toBeInTheDocument();
