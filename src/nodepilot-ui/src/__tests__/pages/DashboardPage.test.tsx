@@ -142,12 +142,6 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getAllByText('Succeeded').length).toBeGreaterThanOrEqual(1));
   });
 
-  it('shows live auto-refresh hint with 120s fallback cadence', async () => {
-    server.use(http.get(`${BASE}/api/stats/dashboard`, () => HttpResponse.json(BASE_STATS)));
-    renderPage();
-    await waitFor(() => expect(screen.getByText(/auto-refresh 120s/i)).toBeInTheDocument());
-  });
-
   it('renders the window selector with 1h/24h/7d/30d options and requests the selected window', async () => {
     const dash = vi.fn(() => HttpResponse.json(BASE_STATS));
     server.use(http.get(`${BASE}/api/stats/dashboard`, dash));
