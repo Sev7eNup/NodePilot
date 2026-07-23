@@ -71,7 +71,7 @@ public class SqlKnowledgeReaderTests
     }
 
     [Fact]
-    public async Task ExecuteRead_MasksPasswordHashColumn_ToStars()
+    public async Task ExecuteRead_RejectsDirectPasswordHashReference()
     {
         using var db = TestDbFactory.Create();
         db.Users.Add(new User { Username = "admin", PasswordHash = "SUPER_SECRET_HASH" });
@@ -80,11 +80,24 @@ public class SqlKnowledgeReaderTests
         var reader = NewReader(db);
         var result = await reader.ExecuteReadAsync("SELECT Username, PasswordHash FROM Users", CancellationToken.None);
 
-        result.Error.Should().BeNull();
-        result.Columns.Should().Equal("Username", "PasswordHash");
-        result.Rows.Should().ContainSingle();
-        result.Rows[0][0].Should().Be("admin");
-        result.Rows[0][1].Should().Be("***"); // PasswordHash is a known secret column → masked by name
+        result.Error.Should().Be("Query references a protected column.");
+        result.Rows.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("SELECT PasswordHash AS x FROM Users")]
+    [InlineData("SELECT substr(PasswordHash, 1, 4) AS prefix FROM Users")]
+    [InlineData("SELECT \"PasswordHash\" AS x FROM Users")]
+    public async Task ExecuteRead_RejectsProtectedColumnReferencesBeforeExecution(string sql)
+    {
+        using var db = TestDbFactory.Create();
+        db.Users.Add(new User { Username = "admin", PasswordHash = "SUPER_SECRET_HASH" });
+        await db.SaveChangesAsync();
+
+        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
+
+        result.Error.Should().Be("Query references a protected column.");
+        result.Rows.Should().BeEmpty();
     }
 
     [Fact]
@@ -96,9 +109,8 @@ public class SqlKnowledgeReaderTests
 
         var reader = NewReader(db);
         var result = await reader.ExecuteReadAsync("SELECT Name, Value FROM GlobalVariables", CancellationToken.None);
-        result.Error.Should().BeNull();
-        result.Rows[0][0].Should().Be("api-key");
-        result.Rows[0][1].Should().Be("***"); // GlobalVariable.Value masked by name
+        result.Error.Should().Be("Query references a protected column.");
+        result.Rows.Should().BeEmpty();
     }
 
     [Fact]
@@ -109,6 +121,22 @@ public class SqlKnowledgeReaderTests
         var result = await reader.ExecuteReadAsync("SELEC * FROM NoSuchTable", CancellationToken.None);
         result.Error.Should().NotBeNullOrEmpty();
         result.Rows.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetTable_IncludesForeignKeysAndProviderContext()
+    {
+        using var db = TestDbFactory.Create();
+        var reader = NewReader(db);
+
+        var detail = await reader.GetTableAsync("WorkflowExecution", CancellationToken.None);
+
+        reader.Provider.Should().Be("sqlite");
+        detail.Should().NotBeNull();
+        detail!.ForeignKeys.Should().Contain(fk =>
+            fk.Columns.Contains("WorkflowId")
+            && fk.PrincipalTable == "Workflows"
+            && fk.PrincipalColumns.Contains("Id"));
     }
 
     [Fact]

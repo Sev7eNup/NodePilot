@@ -372,7 +372,7 @@ public static class SettingsSectionAdapters
             MaxTokens = section["MaxTokens"]?.GetValue<int>() ?? 4096,
             TimeoutSeconds = section["TimeoutSeconds"]?.GetValue<int>() ?? 90,
             EnableToolCalling = section["EnableToolCalling"]?.GetValue<bool>() ?? false,
-            ToolCallMaxDepth = section["ToolCallMaxDepth"]?.GetValue<int>() ?? 4,
+            ToolCallMaxDepth = section["ToolCallMaxDepth"]?.GetValue<int>() ?? 6,
         };
     }
 

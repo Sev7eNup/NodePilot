@@ -69,6 +69,16 @@ public sealed class DbAdminMetadataService
                 ));
             }
 
+            var foreignKeys = entityType.GetForeignKeys()
+                .Where(fk => fk.PrincipalEntityType.ClrType is not null)
+                .Select(fk => new ForeignKeyMeta(
+                    Columns: fk.Properties.Select(p => p.Name).ToList(),
+                    PrincipalEntityName: fk.PrincipalEntityType.ClrType.Name,
+                    PrincipalDbTableName: fk.PrincipalEntityType.GetTableName()
+                        ?? fk.PrincipalEntityType.ClrType.Name,
+                    PrincipalColumns: fk.PrincipalKey.Properties.Select(p => p.Name).ToList()))
+                .ToList();
+
             map[name] = new TableMeta(
                 EntityType: entityType,
                 Name: name,
@@ -76,6 +86,7 @@ public sealed class DbAdminMetadataService
                 PkColumns: pkNames,
                 Capabilities: caps,
                 Columns: columns,
+                ForeignKeys: foreignKeys,
                 CascadeDeletesTo: cascadeTo
             );
         }
@@ -98,8 +109,15 @@ public record TableMeta(
     List<string> PkColumns,
     DbAdminPolicy.EntityCapabilities Capabilities,
     List<ColumnMeta> Columns,
+    List<ForeignKeyMeta> ForeignKeys,
     List<string> CascadeDeletesTo
 );
+
+public record ForeignKeyMeta(
+    List<string> Columns,
+    string PrincipalEntityName,
+    string PrincipalDbTableName,
+    List<string> PrincipalColumns);
 
 public record ColumnMeta(
     string Name,

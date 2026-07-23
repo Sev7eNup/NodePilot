@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Linq;
 using System.Net;
 using System.Net.Http.Headers;
@@ -23,6 +24,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     // JsonDocument.ParseAsync. 16 MiB is well above any realistic chat-completion payload
     // (typical Workflow-Gen responses are <100 KiB) and safe to allocate in one shot.
     private const long MaxResponseBytes = 16L * 1024 * 1024;
+    private static readonly ConcurrentDictionary<string, byte> MaxCompletionTokenEndpoints =
+        new(StringComparer.OrdinalIgnoreCase);
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly LlmClientConfig _config;
@@ -45,16 +48,32 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         // response body mentions `max_completion_tokens`) and retry once with the new key. Local
         // and older endpoints keep receiving `max_tokens` as before. Same fallback idiom as the
         // response_format/stream_options fallbacks below.
-        try
+        var effectiveRequest = request;
+        var useMaxCompletionTokens = PrefersMaxCompletionTokens();
+        for (var attempt = 0; ; attempt++)
         {
-            return await CompleteWithJsonFallbackAsync(request, useMaxCompletionTokens: false, ct);
-        }
-        catch (LlmException ex) when (IsMaxTokensUnsupported(ex))
-        {
-            _logger.LogWarning(
-                "LLM upstream rejected max_tokens with HTTP 400 — retrying with max_completion_tokens. Body: {BodyExcerpt}",
-                ex.BodyExcerpt);
-            return await CompleteWithJsonFallbackAsync(request, useMaxCompletionTokens: true, ct);
+            try
+            {
+                return await CompleteWithJsonFallbackAsync(
+                    effectiveRequest, useMaxCompletionTokens, ct);
+            }
+            catch (LlmException ex) when (!useMaxCompletionTokens && IsMaxTokensUnsupported(ex))
+            {
+                RememberMaxCompletionTokens();
+                useMaxCompletionTokens = true;
+                _logger.LogWarning(
+                    "LLM upstream rejected max_tokens with HTTP 400 — retrying with max_completion_tokens. Body: {BodyExcerpt}",
+                    ex.BodyExcerpt);
+            }
+            catch (LlmException ex) when (HasStrictTools(effectiveRequest) && IsStrictToolsUnsupported(ex))
+            {
+                effectiveRequest = WithoutStrictTools(effectiveRequest);
+                _logger.LogWarning(
+                    "LLM upstream rejected strict function schemas — retrying with best-effort tool calling. Body: {BodyExcerpt}",
+                    ex.BodyExcerpt);
+            }
+
+            if (attempt >= 2) throw new InvalidOperationException("LLM compatibility fallback limit exceeded.");
         }
     }
 
@@ -75,7 +94,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         catch (LlmException ex) when (request.JsonMode
             && ex.Kind == LlmErrorKind.UpstreamError
             && ex.HttpStatus == (int)HttpStatusCode.BadRequest
-            && !IsMaxTokensUnsupported(ex))
+            && !IsMaxTokensUnsupported(ex)
+            && !IsStrictToolsUnsupported(ex))
         {
             _logger.LogWarning(
                 "LLM upstream rejected response_format=json_object with HTTP 400 — retrying without it. Body: {BodyExcerpt}",
@@ -95,6 +115,32 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         && ex.HttpStatus == (int)HttpStatusCode.BadRequest
         && ex.BodyExcerpt is { } body
         && body.Contains("max_completion_tokens", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsStrictToolsUnsupported(LlmException ex) =>
+        ex.Kind == LlmErrorKind.UpstreamError
+        && ex.HttpStatus == (int)HttpStatusCode.BadRequest
+        && ex.BodyExcerpt is { } body
+        && (body.Contains("strict", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("additionalProperties", StringComparison.OrdinalIgnoreCase));
+
+    private bool PrefersMaxCompletionTokens() =>
+        MaxCompletionTokenEndpoints.ContainsKey(CompatibilityKey);
+
+    private void RememberMaxCompletionTokens() =>
+        MaxCompletionTokenEndpoints.TryAdd(CompatibilityKey, 0);
+
+    private string CompatibilityKey => $"{_config.BaseUrl.TrimEnd('/')}|{_config.Model}";
+
+    private static bool HasStrictTools(LlmRequest request) =>
+        request.Tools?.Any(t => t.Strict) == true;
+
+    private static LlmRequest WithoutStrictTools(LlmRequest request) =>
+        request with
+        {
+            Tools = request.Tools?
+                .Select(t => t.Strict ? t with { Strict = false } : t)
+                .ToArray(),
+        };
 
     private async Task<LlmResponse> SendOnceAsync(
         LlmRequest request, bool includeJsonResponseFormat, bool useMaxCompletionTokens, CancellationToken ct)
@@ -251,26 +297,43 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         // yield isn't allowed inside try/catch, hence these are separate methods. The outer catch
         // here handles the max_tokens quirk (see CompleteAsync).
         HttpResponseMessage resp;
-        try
+        var effectiveRequest = request;
+        var useMaxCompletionTokens = PrefersMaxCompletionTokens();
+        for (var attempt = 0; ; attempt++)
         {
-            resp = await SendStreamingWithStreamOptionsFallbackAsync(request, useMaxCompletionTokens: false, token);
-        }
-        catch (LlmException ex) when (IsMaxTokensUnsupported(ex))
-        {
-            _logger.LogWarning(
-                "LLM upstream rejected max_tokens with HTTP 400 — retrying with max_completion_tokens. Body: {BodyExcerpt}",
-                ex.BodyExcerpt);
-            resp = await SendStreamingWithStreamOptionsFallbackAsync(request, useMaxCompletionTokens: true, token);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            throw new LlmException(LlmErrorKind.Timeout,
-                $"LLM-Endpoint hat innerhalb von {_config.TimeoutSeconds}s nicht geantwortet ({_config.BaseUrl}).");
-        }
-        catch (HttpRequestException ex)
-        {
-            throw new LlmException(LlmErrorKind.Unreachable,
-                $"LLM-Endpoint nicht erreichbar ({_config.BaseUrl}): {ex.Message}", inner: ex);
+            try
+            {
+                resp = await SendStreamingWithStreamOptionsFallbackAsync(
+                    effectiveRequest, useMaxCompletionTokens, token);
+                break;
+            }
+            catch (LlmException ex) when (!useMaxCompletionTokens && IsMaxTokensUnsupported(ex))
+            {
+                RememberMaxCompletionTokens();
+                useMaxCompletionTokens = true;
+                _logger.LogWarning(
+                    "LLM upstream rejected max_tokens with HTTP 400 — retrying with max_completion_tokens. Body: {BodyExcerpt}",
+                    ex.BodyExcerpt);
+            }
+            catch (LlmException ex) when (HasStrictTools(effectiveRequest) && IsStrictToolsUnsupported(ex))
+            {
+                effectiveRequest = WithoutStrictTools(effectiveRequest);
+                _logger.LogWarning(
+                    "LLM upstream rejected strict function schemas — retrying with best-effort tool calling. Body: {BodyExcerpt}",
+                    ex.BodyExcerpt);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new LlmException(LlmErrorKind.Timeout,
+                    $"LLM-Endpoint hat innerhalb von {_config.TimeoutSeconds}s nicht geantwortet ({_config.BaseUrl}).");
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new LlmException(LlmErrorKind.Unreachable,
+                    $"LLM-Endpoint nicht erreichbar ({_config.BaseUrl}): {ex.Message}", inner: ex);
+            }
+
+            if (attempt >= 2) throw new InvalidOperationException("LLM compatibility fallback limit exceeded.");
         }
 
         using (resp)
@@ -378,7 +441,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         }
         catch (LlmException ex) when (ex.Kind == LlmErrorKind.UpstreamError
             && ex.HttpStatus == (int)HttpStatusCode.BadRequest
-            && !IsMaxTokensUnsupported(ex))
+            && !IsMaxTokensUnsupported(ex)
+            && !IsStrictToolsUnsupported(ex))
         {
             _logger.LogWarning("LLM upstream rejected stream_options with HTTP 400 — retrying without it.");
             return await SendStreamingAsync(request, includeStreamOptions: false, useMaxCompletionTokens, token);
@@ -471,10 +535,20 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     private static void AppendTools(Dictionary<string, object?> body, LlmRequest request)
     {
         if (request.Tools is not { Count: > 0 } tools) return;
-        body["tools"] = tools.Select(t => new
+        body["tools"] = tools.Select(t =>
         {
-            type = "function",
-            function = new { name = t.Name, description = t.Description, parameters = t.Parameters },
+            var function = new Dictionary<string, object?>
+            {
+                ["name"] = t.Name,
+                ["description"] = t.Description,
+                ["parameters"] = t.Parameters,
+            };
+            if (t.Strict) function["strict"] = true;
+            return new Dictionary<string, object?>
+            {
+                ["type"] = "function",
+                ["function"] = function,
+            };
         }).ToArray();
         body["tool_choice"] = request.ToolChoice ?? "auto";
     }

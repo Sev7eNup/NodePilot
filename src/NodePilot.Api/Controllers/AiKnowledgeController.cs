@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using NodePilot.Ai;
 using NodePilot.Ai.Knowledge;
 using NodePilot.Api.Ai;
@@ -67,12 +70,13 @@ public sealed class AiKnowledgeController : ControllerBase
     {
         var k = _knowledgeOptions.CurrentValue;
         var enabled = _llmOptions.CurrentValue.Enabled && k.Enabled;
+        var toolSourcesEnabled = enabled && _llmOptions.CurrentValue.EnableToolCalling;
         return Ok(new KnowledgeCapabilitiesDto(
             Enabled: enabled,
-            Docs: enabled && k.DocsEnabled,
-            Operational: enabled && k.OperationalEnabled,
-            SourceCode: enabled && k.SourceCodeEnabled && User.IsPrivileged(),
-            Db: enabled && k.DbEnabled && User.IsPrivileged()));
+            Docs: toolSourcesEnabled && k.DocsEnabled,
+            Operational: toolSourcesEnabled && k.OperationalEnabled,
+            SourceCode: toolSourcesEnabled && k.SourceCodeEnabled && User.IsPrivileged(),
+            Db: toolSourcesEnabled && k.DbEnabled && User.IsPrivileged()));
     }
 
     /// <summary>Streams one knowledge-chat turn as Server-Sent Events (delta/tool_call/tool_result/done/error).</summary>
@@ -126,6 +130,7 @@ public sealed class AiKnowledgeController : ControllerBase
         var model = "unknown";
         var durationMs = 0;
         var toolCalls = 0;
+        var dbQueryFingerprints = new List<string>();
         int? promptTokens = null, completionTokens = null;
 
         async Task Write(ChatStreamEvent e)
@@ -137,6 +142,9 @@ public sealed class AiKnowledgeController : ControllerBase
                     break;
                 case ChatStreamEvent.ToolCallEvent tc:
                     toolCalls++;
+                    if (string.Equals(tc.ToolName, "execute_readonly_sql", StringComparison.Ordinal)
+                        && TryFingerprintSqlToolCall(tc.ArgumentsJson) is { } fingerprint)
+                        dbQueryFingerprints.Add(fingerprint);
                     await sse.WriteAsync("tool_call", new { toolName = tc.ToolName, toolId = tc.ToolId }, ct);
                     break;
                 case ChatStreamEvent.ToolResultEvent tr:
@@ -167,17 +175,20 @@ public sealed class AiKnowledgeController : ControllerBase
         catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
         {
             RecordResult("cancelled");
-            await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged, cancelled: true);
+            await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged,
+                dbQueryFingerprints, cancelled: true);
             return new EmptyResult();
         }
 
         RecordSuccess(model, durationMs, promptTokens, completionTokens);
-        await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged, cancelled: false, ct);
+        await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged,
+            dbQueryFingerprints, cancelled: false, ct);
         return new EmptyResult();
     }
 
     private Task AuditAsync(string model, int durationMs, int toolCalls, int turnCount,
-        AiKnowledgeOptions k, bool isPrivileged, bool cancelled, CancellationToken ct = default) =>
+        AiKnowledgeOptions k, bool isPrivileged, IReadOnlyList<string> dbQueryFingerprints,
+        bool cancelled, CancellationToken ct = default) =>
         _audit.LogAsync(AuditActions.AiKnowledgeAsked, "AiKnowledge", null,
             AuditDetails.Json(
                 ("model", model),
@@ -188,8 +199,31 @@ public sealed class AiKnowledgeController : ControllerBase
                 ("docs", k.DocsEnabled),
                 ("operational", k.OperationalEnabled),
                 ("sourceCode", k.SourceCodeEnabled && isPrivileged),
-                ("db", k.DbEnabled && isPrivileged)),
+                ("db", k.DbEnabled && isPrivileged),
+                // Never audit SQL text: it may contain user-supplied literals. Stable fingerprints
+                // still let operators correlate repeated/problematic queries without leaking data.
+                ("dbQueryCount", dbQueryFingerprints.Count),
+                ("dbQueryFingerprints", string.Join(",", dbQueryFingerprints))),
             ct);
+
+    private static string? TryFingerprintSqlToolCall(string argumentsJson)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(argumentsJson);
+            if (!doc.RootElement.TryGetProperty("sql", out var sqlElement)
+                || sqlElement.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(sqlElement.GetString()))
+                return null;
+            var sql = sqlElement.GetString()!;
+            var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sql)))[..16];
+            return $"{hash}:{sql.Length}";
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static List<AiChatTurnDto> NormalizeHistory(IReadOnlyList<AiChatTurnDto>? history)
     {

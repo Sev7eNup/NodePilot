@@ -51,5 +51,5 @@ public sealed class LlmSettingsDto
 
     /// <summary>Max LLM rounds with tool calls per chat turn (loop guard). 1–10.</summary>
     [Range(1, 10)]
-    public int ToolCallMaxDepth { get; set; } = 4;
+    public int ToolCallMaxDepth { get; set; } = 6;
 }

@@ -67,6 +67,6 @@ public class LlmOptions
     /// </summary>
     public bool EnableToolCalling { get; set; }
 
-    /// <summary>Max. LLM rounds with tool calls per chat turn (guards against infinite loops). Default 4.</summary>
-    public int ToolCallMaxDepth { get; set; } = 4;
+    /// <summary>Max. LLM rounds with tool calls per chat turn (guards against infinite loops). Default 6.</summary>
+    public int ToolCallMaxDepth { get; set; } = 6;
 }
