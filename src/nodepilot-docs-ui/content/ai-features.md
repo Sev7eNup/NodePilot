@@ -64,6 +64,23 @@ Neben den drei UI-Helpern gibt es eine **LLM-Activity für Workflows**: [`llmQue
 
 Ist `Llm:EnableToolCalling=true`, kann der Chat zusätzlich eine **opt-in read-only Tool-Calling-Schleife** fahren (`tool_choice: auto`): das Modell ruft Analyse-Tools (`analyze_workflow`, `list_activity_types`) auf der secret-redigierten Definition auf sowie **Execution-Log-Tools** (`list_recent_executions`, `get_execution_steps`, `get_failure_context`), mit denen der Assistent vergangene Läufe und Fehlschläge des geöffneten Workflows analysiert — letztere nur bei gespeichertem Workflow und Folder-Read-Recht des Callers; die Outputs sind secret-redigiert und gekürzt. Der Stream erhält dann `tool_call`- und `tool_result`-Events. Begrenzt durch `Llm:ToolCallMaxDepth` (Default `4`); die letzte Runde droppt `tools` und erzwingt eine Text-Antwort.
 
+## Globaler Wissens-Chat (`/ai-chat`)
+
+Vom workflow-spezifischen Chat getrennt: ein seitenweiter, **canvas-freier** read-only Q&A-Assistent
+(`POST /api/ai/knowledge/ask`, SSE; Capabilities `GET /api/ai/knowledge/capabilities`). Opt-in via
+`AiKnowledge:Enabled` (zusätzlich zu `Llm:Enabled`), hot-reloadbar. **Vier admin-toggelbare
+Wissensquellen** (Sektion `AiKnowledge`): Docs (`DocsEnabled`), Workflows & Betrieb
+(`OperationalEnabled`, RBAC-folder-scoped), Quellcode (`SourceCodeEnabled`, Admin/Op) und
+**DB / text2sql** (`DbEnabled`, Admin/Op) — letzteres default aus. Zudem `read_settings` (Admin/Op).
+
+**text2sql**: das LLM übersetzt die Frage in SQL, NodePilot liefert nur Schema (`list_db_tables`,
+`get_db_table`) und Read-Only-Ausführung (`execute_readonly_sql` — ein Statement, Keyword-Whitelist
+`SELECT`/`WITH`/`EXPLAIN`/`SHOW`/`VALUES`/`TABLE`, Schreibvorgänge serverseitig abgelehnt). **Secret-Schutz
+zweilagig**: Schema-Tools verbergen `IsHidden`-Spalten (`PasswordHash`, `EncryptedPassword`, byte[]);
+Result-Spalten mit einem Secret-Spalten-Namen (auch `GlobalVariable.Value`) werden pro Zelle `***`,
+alle anderen Zellen laufen zusätzlich durch den Redactor. Row-Cap 200; SQL-Fehler als `Error`-Feld
+(für Query-Korrektur). Tool-Calling wie beim Workflow-Chat.
+
 ## Hardening
 
 - SSRF-Block, `UseProxy=false`, Klartext-ApiKey-Warning.

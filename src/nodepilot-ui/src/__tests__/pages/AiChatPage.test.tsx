@@ -45,7 +45,7 @@ async function ask(question: string) {
 beforeEach(() => {
   askMock.mockReset();
   capsMock.mockReset();
-  capsMock.mockResolvedValue({ enabled: true, docs: true, operational: true, sourceCode: false });
+  capsMock.mockResolvedValue({ enabled: true, docs: true, operational: true, sourceCode: false, db: false });
   // History lives in a module-global store — clear it so threads don't leak between tests.
   useAiChatStore.setState({ messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} });
   useAuthStore.setState({ userId: null });
@@ -62,7 +62,7 @@ describe('AiChatPage', () => {
   });
 
   it('shows the disabled state when the chat is off', async () => {
-    capsMock.mockResolvedValue({ enabled: false, docs: false, operational: false, sourceCode: false });
+    capsMock.mockResolvedValue({ enabled: false, docs: false, operational: false, sourceCode: false, db: false });
     renderPage();
     expect(await screen.findByText(/ai chat is disabled/i)).toBeInTheDocument();
   });

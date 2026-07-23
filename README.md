@@ -819,7 +819,7 @@ it never permits plaintext connections to remote hosts.
 
 ## `nodepilot-mcp` — the MCP server
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server (`dotnet global tool`) that lets an AI agent (Claude Desktop/Code, or any MCP client) **drive and edit workflows and read data** — 96 tools over the same REST API the SPA uses, plus in-process graph/data-bus analysis for the in-canvas chat assistant. Like the CLI: **HTTP-only, no backend dependencies**, and it reuses the CLI's `np auth login` session.
+A [Model Context Protocol](https://modelcontextprotocol.io) server (`dotnet global tool`) that lets an AI agent (Claude Desktop/Code, or any MCP client) **drive and edit workflows and read data** — 99 tools over the same REST API the SPA uses, plus in-process graph/data-bus analysis for the in-canvas chat assistant. Like the CLI: **HTTP-only, no backend dependencies**, and it reuses the CLI's `np auth login` session.
 
 ```powershell
 dotnet pack src/NodePilot.Mcp -c Release -o ./out/mcp

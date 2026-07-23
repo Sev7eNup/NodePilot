@@ -184,6 +184,7 @@ export interface KnowledgeCapabilities {
   docs: boolean;
   operational: boolean;
   sourceCode: boolean;
+  db: boolean;
 }
 
 /** Handlers for the read-only knowledge stream — deliberately leaner than {@link ChatStreamHandlers}

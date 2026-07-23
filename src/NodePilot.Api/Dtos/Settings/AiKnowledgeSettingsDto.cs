@@ -20,6 +20,9 @@ public sealed class AiKnowledgeSettingsDto
     /// <summary>Exposes the repository source code. Source-code tools are additionally Admin/Operator-only at request time.</summary>
     public bool SourceCodeEnabled { get; set; }
 
+    /// <summary>Exposes the App-DB as a read-only text2sql source. Admin/Operator-only at request time; result cells are secret-redacted.</summary>
+    public bool DbEnabled { get; set; }
+
     /// <summary>Docs corpus root. Empty resolves to <c>{ContentRoot}/knowledge/docs</c>.</summary>
     [StringLength(1024)]
     public string? DocsRootPath { get; set; }

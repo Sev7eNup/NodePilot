@@ -71,7 +71,8 @@ public sealed class AiKnowledgeController : ControllerBase
             Enabled: enabled,
             Docs: enabled && k.DocsEnabled,
             Operational: enabled && k.OperationalEnabled,
-            SourceCode: enabled && k.SourceCodeEnabled && User.IsPrivileged()));
+            SourceCode: enabled && k.SourceCodeEnabled && User.IsPrivileged(),
+            Db: enabled && k.DbEnabled && User.IsPrivileged()));
     }
 
     /// <summary>Streams one knowledge-chat turn as Server-Sent Events (delta/tool_call/tool_result/done/error).</summary>
@@ -186,7 +187,8 @@ public sealed class AiKnowledgeController : ControllerBase
                 ("cancelled", cancelled),
                 ("docs", k.DocsEnabled),
                 ("operational", k.OperationalEnabled),
-                ("sourceCode", k.SourceCodeEnabled && isPrivileged)),
+                ("sourceCode", k.SourceCodeEnabled && isPrivileged),
+                ("db", k.DbEnabled && isPrivileged)),
             ct);
 
     private static List<AiChatTurnDto> NormalizeHistory(IReadOnlyList<AiChatTurnDto>? history)
@@ -257,4 +259,4 @@ public sealed class AiKnowledgeController : ControllerBase
 }
 
 /// <summary>Effective knowledge-chat capabilities for the current user (drives nav visibility + source badges).</summary>
-public sealed record KnowledgeCapabilitiesDto(bool Enabled, bool Docs, bool Operational, bool SourceCode);
+public sealed record KnowledgeCapabilitiesDto(bool Enabled, bool Docs, bool Operational, bool SourceCode, bool Db);

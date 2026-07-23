@@ -41,7 +41,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
 - **Observability:** OpenTelemetry opt-in. Prometheus-Scrape via Config.
 - **Hosting:** Windows Service via `Microsoft.Extensions.Hosting.WindowsServices`
-- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 96 Tools, HTTP-only gegen die REST-API
+- **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 99 Tools, HTTP-only gegen die REST-API
 - **Enterprise (opt-in):** Active/Passive HA (`Cluster:Enabled`), pluggable Secret-Provider (`Secrets:Provider` = `Dpapi`|`AesGcm`), LDAP/Windows-SSO, ECS-JSON-SIEM, Folder-RBAC
 
 ## Solution-Struktur
@@ -143,7 +143,7 @@ Retention-Services im Scheduler: Execution (30d), AuditLog (365d), WorkflowVersi
 | Custom Activities | `GET /api/custom-activities` (alle Rollen; `?includeDisabled=true` Admin/Op), CRUD + `POST /{id}/rollback/{v}` (Admin/Op; enabled nur Admin), `POST /{id}/enable\|disable` (Admin), `GET /export` + `POST /import` (Admin/Op) |
 | Scheduler | `GET /api/triggers/schedule/next-fires` |
 | System | `GET /api/system/host-info` (alle Rollen — Host-Identität des API-Hosts, prozess-gecacht) |
-| AI | `POST /api/ai/generate-script\|generate-workflow` (Admin/Op), `POST /api/ai/chat` (alle Rollen), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Op) — opt-in, siehe KI-Features |
+| AI | `POST /api/ai/generate-script\|generate-workflow` (Admin/Op), `POST /api/ai/chat` (alle Rollen), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Op), `POST /api/ai/knowledge/ask` (alle Rollen) + `GET /api/ai/knowledge/capabilities` — opt-in, siehe KI-Features |
 | Secrets | `POST /api/secrets/reencrypt` (Admin) |
 | Health | `GET /healthz/live`, `GET /healthz/ready`, `GET /healthz/leader` (HA-Leader-Probe, fail-closed) (AllowAnonymous) |
 
@@ -326,7 +326,7 @@ Reiner HTTP-Client gegen REST-Endpoints. `dotnet global tool`. Befehlsbereiche: 
 
 ## MCP-Server (`nodepilot-mcp`)
 
-Reiner HTTP-Client gegen die REST-API (wie die CLI) + In-Proc-Analyse gegen `NodePilot.Core` — **kein** neuer Backend-Pfad (96 Tools, 3 Resources), Transport stdio; reused die DPAPI-Session der CLI (`np auth login`). Destruktive Tools (`delete_*`, `force_unlock_workflow`, `cancel_all_executions`, `test_step`) werden nur bei `NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true` registriert; Workflow-Definitionen werden vor Tool-Output secret-redigiert, bei publish/patch werden echte Secrets aus der gespeicherten Version wiederhergestellt. Volle Doku: `docs/mcp-server.md`.
+Reiner HTTP-Client gegen die REST-API (wie die CLI) + In-Proc-Analyse gegen `NodePilot.Core` — **kein** neuer Backend-Pfad (99 Tools, 3 Resources), Transport stdio; reused die DPAPI-Session der CLI (`np auth login`). Destruktive Tools (`delete_*`, `force_unlock_workflow`, `cancel_all_executions`, `test_step`) werden nur bei `NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true` registriert; Workflow-Definitionen werden vor Tool-Output secret-redigiert, bei publish/patch werden echte Secrets aus der gespeicherten Version wiederhergestellt. Volle Doku: `docs/mcp-server.md`.
 
 **Architektur-Konvention:** Neuer API-Endpoint → Methode in `NodePilot.Mcp/Api/NodePilotApiClient.cs` (DTOs in `Mcp/Api/Dtos/` dupliziert) + `[McpServerTool]`-Methode in der passenden `Tools/*Tools.cs` (destruktiv → `DestructiveTools` + `get_safety_status`-Liste pflegen), ggf. Klasse in `Program.cs` via `WithTools<T>()` registrieren (**nie** `WithToolsFromAssembly`), WireMock-Test ergänzen. Frontend-Databus-/Lint-Logik wird in `Mcp/Analysis/` gespiegelt (`upstreamVariables.ts`, `activityConfigFacts.ts`, `workflowLint.ts`).
 
@@ -376,6 +376,7 @@ Opt-in (`Llm:Enabled=false` default), OpenAI-kompatibler Endpunkt, Rate-Limit 20
 
 - **`POST /api/ai/generate-script`** (Admin/Op, SSE-Streaming — tippt live in Monaco) + **`POST /api/ai/generate-workflow`** (Admin/Op, JSON).
 - **`POST /api/ai/chat`** (alle Rollen, SSE) — Workflow-Assistent: erklärt/ändert den aktuellen Workflow; Proposals nur Admin/Op, Merge per Node-ID aufs unredigierte Original (Secrets/Layout erhalten). Secrets werden vor jedem LLM-Call redigiert (`WorkflowSecretRedactor`). **Tool-Calling** opt-in (`Llm:EnableToolCalling`): read-only Analyse- + Execution-Log-Tools, gecappt via `Llm:ToolCallMaxDepth`. Threads/Verlauf/Export clientseitig persistent.
+- **Globaler AI-Chat / Wissens-Assistent** (`POST /api/ai/knowledge/ask`, SSE; `GET /api/ai/knowledge/capabilities`) — seitenweiter read-only Q&A in `/ai-chat`, canvas-frei. Vier admin-toggelbare Wissensquellen (Sektion `AiKnowledge`, hot-reloadbar, alle `false`-default außer Docs/Operational): **Docs** (`DocsEnabled`), **Operational** (`OperationalEnabled`, RBAC-folder-gescoped), **Source-Code** (`SourceCodeEnabled`, Admin/Op), **DB / text2sql** (`DbEnabled`, Admin/Op). DB-Tools (`list_db_tables`/`get_db_table`/`execute_readonly_sql`) über `ISqlKnowledgeReader` (Core-Interface, Api-Impl `SqlKnowledgeReader` reuses `DbAdminMetadataService`+`DbAdminQueryExecutor`): Schema ohne Secret-Spalten, Read-Only-SQL mit **zweilagiger Zell-Redaktion** (Hidden-Spalten-Name → `***`, Rest via `IAuditDetailsRedactor`), Row-Cap 200, SQL-Fehler als `Error`-Feld. Tool-Calling wie beim Workflow-Chat (`Llm:EnableToolCalling`).
 - **`llmQuery`-Activity:** Engine-lokal, Prompt→Text; per-Node-Overrides `baseUrl`/`model`/`apiKey`/`maxTokens`/`temperature`/`timeoutSeconds`/`jsonMode`, **gated durch `Llm:Enabled`** (zentraler Kill-Switch). Teilt Transport + SSRF-Guard via `ILlmClientFactory`; einziger BaseUrl-Validierungspunkt ist `LlmEndpointGuard.NormalizeAndValidateBaseUrl`. Prompt-Excluded (nicht für Workflow-Auto-Generierung).
 - **Hardening:** SSRF-Block (Cloud-Metadata), `UseProxy=false`, Klartext-ApiKey-Warning, Prompt-Injection-Mitigation (Schema-only, User-reviewed Insert). Drift-Schutz: `PromptCatalogDriftTest.cs`. Audit: `AI_*`-Codes.
 
