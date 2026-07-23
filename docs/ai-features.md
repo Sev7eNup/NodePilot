@@ -67,11 +67,10 @@ vLLM, LocalAI und llama.cpp-Server.
 
 | Modell | Größe | Stärke | Mindest-RAM | `BaseUrl` (Beispiel Ollama) |
 |---|---|---|---|---|
-| **Qwen2.5-Coder 32B** | 19 GB | Beste Code- + JSON-Qualität in der Klasse | 32 GB | `http://localhost:11434/v1` |
-| Qwen2.5-Coder 14B | 9 GB | Solider Mid-Tier-Allrounder | 16 GB | `http://localhost:11434/v1` |
-| DeepSeek-Coder V2 16B | 9 GB | Stark bei strukturiertem Output (JSON-Mode) | 16 GB | `http://localhost:11434/v1` |
-| Codestral 22B | 13 GB | Mistral-Variante; gut bei PowerShell | 24 GB | `http://localhost:11434/v1` |
-| GPT-OSS 20B | 12 GB | Solide bei kleineren Setups | 24 GB | siehe LM-Studio-Default |
+| **Gemma 4 31B** | 19 GB | Beste Allround-Code- + Reasoning-Qualität in der Klasse | 32 GB | `http://localhost:11434/v1` |
+| Gemma 4 26B A4B | 15 GB | MoE (4B active) — schnelle Inferenz, hoher Durchsatz bei geringer Rechenlast | 24 GB | `http://localhost:11434/v1` |
+| Qwen 3.6 27B | 16 GB | Ausgezeichneter strukturierter / JSON-Output + zuverlässiges Tool-Calling | 32 GB | `http://localhost:11434/v1` |
+| Qwen 3.6 35B A3B | 20 GB | MoE (3B active) — größte Gesamt-Param-Anzahl, Top-JSON/Tool-Calling bei geringen Active-Kosten | 32 GB | `http://localhost:11434/v1` |
 
 **Tipp**: Workflow-Generierung profitiert von größeren Context-Windows
 (`workflow-example.json` als Few-Shot frisst ~1k Token). Modelle mit ≥ 16k Context bevorzugt.
@@ -81,7 +80,7 @@ vLLM, LocalAI und llama.cpp-Server.
 
 ```bash
 ollama serve
-ollama pull qwen2.5-coder:32b
+ollama pull qwen3.6-coder:27b
 ```
 
 `appsettings.json`:
@@ -91,7 +90,7 @@ ollama pull qwen2.5-coder:32b
   "Llm": {
     "Enabled": true,
     "BaseUrl": "http://localhost:11434/v1",
-    "Model": "qwen2.5-coder:32b",
+    "Model": "qwen3.6-coder:27b",
     "MaxTokens": 16384,
     "TimeoutSeconds": 360
   }
@@ -217,6 +216,40 @@ der Server **keine** `tools` mehr und erzwingt so eine Text-Antwort. Der SSE-Str
 zusätzlich `tool_call`- und `tool_result`-Events; das UI zeigt einen „🔧 analyze_workflow —
 running…/checked"-Indikator. Voraussetzung: ein Modell, das Function-Calling zuverlässig kann —
 viele kleine lokale Modelle nicht. Aus → der Chat verhält sich exakt wie vorher.
+
+---
+
+## Globaler AI-Chat / Wissens-Assistent (`/ai-chat`)
+
+Vom workflow-spezifischen Chat getrennt: ein seitenweiter, **canvas-freier** read-only Q&A-Assistent
+in der UI-Seite `/ai-chat` (`POST /api/ai/knowledge/ask`, SSE; Capabilities `GET /api/ai/knowledge/capabilities`).
+Erklärt Konzepte, beantwortet „wie viele Workflows/Maschinen/Execution gibt es", hilft bei Konfig- und
+Code-Fragen — ohne einen Workflow im Designer zu öffnen. Opt-in via `AiKnowledge:Enabled` (zusätzlich zu
+`Llm:Enabled`), hot-reloadbar.
+
+**Vier Wissensquellen**, jede admin-toggelbar (Sektion `AiKnowledge`); Docs + Operational default an,
+Source-Code + DB default aus:
+
+| Quelle | Toggle | Tools | Gate |
+|---|---|---|---|
+| Dokumentation | `DocsEnabled` | `search_docs`, `read_doc` | — |
+| Workflows & Betrieb | `OperationalEnabled` | `list_workflows`, `get_workflow_definition`, `analyze_workflow`, `list_recent_executions`, `list_workflow_executions`, `list_machines`, `get_next_scheduled_fires` | RBAC-folder-scoped |
+| Systemkonfiguration | (immer, wenn privilegiert) | `read_settings` | Admin/Operator |
+| Quellcode | `SourceCodeEnabled` | `search_source`, `read_source` | Admin/Operator |
+| **DB / text2sql** | `DbEnabled` | `list_db_tables`, `get_db_table`, `execute_readonly_sql` | Admin/Operator |
+
+**text2sql** heißt: das LLM übersetzt die Frage in SQL, NodePilot liefert nur Schema + Read-Only-Ausführung.
+Die DB-Tools laufen über `ISqlKnowledgeReader` (Core-Interface, Api-Impl `SqlKnowledgeReader` reuses die
+DbAdmin-Services). `execute_readonly_sql` nimmt ein einzelnes Statement (Whitelist `SELECT`/`WITH`/`EXPLAIN`/
+`SHOW`/`VALUES`/`TABLE`, serverseitig erzwungen; Schreibvorgänge abgelehnt). **Secret-Schutz zweilagig**:
+Schema-Tools verbergen `IsHidden`-Spalten (`PasswordHash`, `EncryptedPassword`, byte[]); in Result-Spalten
+mit einem Secret-Spalten-Namen (auch `GlobalVariable.Value`) wird jede Zelle `***`, alle anderen Zellen
+laufen zusätzlich durch den `IAuditDetailsRedactor`. Row-Cap 200, SQL-Fehler kommen als `Error`-Feld zurück
+(damit das Modell die Query korrigieren kann). Tool-Calling wie beim Workflow-Chat (`Llm:EnableToolCalling`).
+
+> Restrisiko: ein aliasiertes Secret (`SELECT PasswordHash AS p`) lässt sich nicht zuverlässig auf seine
+> Quellspalte zurückmappen — der `IAuditDetailsRedactor` ist dort die Fallback-Verteidigung. Da die Quelle
+> Admin/Operator-gated ist, ist das akzeptiert.
 
 ---
 
