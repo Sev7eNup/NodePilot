@@ -43,7 +43,8 @@ public interface IKnowledgeToolRegistry
 public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-    private static readonly JsonElement NoParams = ParseParams("""{"type":"object","properties":{}}""");
+    private static readonly JsonElement NoParams =
+        ParseParams("""{"type":"object","properties":{},"additionalProperties":false}""");
 
     private delegate Task<object> Handler(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct);
     private sealed record Tool(LlmToolDefinition Def, Handler Run, Func<KnowledgeToolContext, bool> Gate);
@@ -161,14 +162,15 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
                     "Listet die Tabellen der NodePilot-App-Datenbank mit ihren (nicht versteckten) Spalten — "
                     + "die Basis für SQL-Fragen. Jede Tabelle nennt ihren echten DB-Tabellennamen (DbTableName), "
                     + "den du in SQL verwenden musst, Primärschlüssel und Spaltennamen. Secret-Spalten fehlen.",
-                    NoParams),
+                    NoParams, Strict: true),
                 ListDbTablesAsync, SqlGate),
 
             ["get_db_table"] = new(
                 new LlmToolDefinition("get_db_table",
                     "Liefert die vollständige Spaltenliste einer Tabelle (Name, Typ, Nullable, Primärschlüssel) "
                     + "per Entity-Name oder DbTableName — für gezielte Joins/Filter. Secret-Spalten fehlen.",
-                    StringParam("name", "Tabellenname (Entity-Name oder DbTableName).", required: true)),
+                    StringParam("name", "Tabellenname (Entity-Name oder DbTableName).", required: true),
+                    Strict: true),
                 GetDbTableAsync, SqlGate),
 
             ["execute_readonly_sql"] = new(
@@ -177,7 +179,8 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
                     + "SELECT/WITH/EXPLAIN/SHOW/VALUES/TABLE — Schreibvorgänge werden serverseitig abgelehnt). "
                     + "Nutze DbTableName aus list_db_tables. Result-Spalten, die Secret-Spalten heißen, sind "
                     + "redigiert (\"***\") — wähle sie nicht aktiv. Fehler (Bad SQL/Timeout) kommen als Error-Feld zurück.",
-                    StringParam("sql", "Ein einzelnes Read-Only-SQL-Statement.", required: true)),
+                    StringParam("sql", "Ein einzelnes Read-Only-SQL-Statement.", required: true),
+                    Strict: true),
                 ExecuteReadonlySqlAsync, SqlGate),
 
             ["read_settings"] = new(
@@ -358,7 +361,19 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
     private static async Task<object> ListDbTablesAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
     {
         var tables = await ctx.Sql!.ListTablesAsync(ct);
-        return new { count = tables.Count, tables };
+        return new
+        {
+            provider = ctx.Sql.Provider,
+            dialectInstruction = ctx.Sql.Provider switch
+            {
+                "postgres" => "Use PostgreSQL syntax and double-quoted identifiers when quoting is needed.",
+                "sqlserver" => "Use SQL Server T-SQL syntax and bracketed identifiers when quoting is needed.",
+                "sqlite" => "Use SQLite syntax.",
+                _ => $"Use the SQL dialect reported as '{ctx.Sql.Provider}'.",
+            },
+            count = tables.Count,
+            tables,
+        };
     }
 
     private static async Task<object> GetDbTableAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
@@ -403,8 +418,16 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
     private static string Truncate(string json)
     {
         if (json.Length <= AiKnowledgeOptions.MaxToolResultChars) return json;
-        return json[..AiKnowledgeOptions.MaxToolResultChars]
-               + "…[Ergebnis gekürzt — enger fragen oder gezielter suchen]";
+        // Never hand malformed, mid-token JSON to a model. A compact valid envelope makes the
+        // truncation explicit and keeps enough preview context for a narrower follow-up tool call.
+        var previewChars = Math.Min(json.Length, AiKnowledgeOptions.MaxToolResultChars / 2);
+        return JsonSerializer.Serialize(new
+        {
+            truncated = true,
+            originalChars = json.Length,
+            resultPreview = json[..previewChars],
+            instruction = "Ergebnis gekürzt — enger fragen oder gezielter suchen.",
+        }, Json);
     }
 
     private static string Error(string message) => JsonSerializer.Serialize(new { error = message }, Json);
@@ -414,7 +437,7 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
         var desc = description.Replace("\\", "\\\\").Replace("\"", "\\\"");
         var req = required ? $",\"required\":[\"{name}\"]" : "";
         return ParseParams(
-            $"{{\"type\":\"object\",\"properties\":{{\"{name}\":{{\"type\":\"string\",\"description\":\"{desc}\"}}}}{req}}}");
+            $"{{\"type\":\"object\",\"properties\":{{\"{name}\":{{\"type\":\"string\",\"description\":\"{desc}\"}}}}{req},\"additionalProperties\":false}}");
     }
 
     private static JsonElement ParseParams(string json)

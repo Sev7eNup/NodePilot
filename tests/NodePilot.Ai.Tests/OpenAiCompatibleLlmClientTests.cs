@@ -1,5 +1,6 @@
 using NodePilot.Ai;
 using System.Net;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -192,6 +193,44 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
         var retryBody = _server.LogEntries.Last().RequestMessage.Body!;
         retryBody.Should().Contain("max_completion_tokens");
         retryBody.Should().NotContain("\"max_tokens\"");
+
+        // The compatibility decision is shared across short-lived clients for the same endpoint/model,
+        // so subsequent calls do not pay another guaranteed HTTP 400 round-trip.
+        var second = await BuildClient().CompleteAsync(
+            new LlmRequest("sys", "user"), CancellationToken.None);
+        second.Content.Should().Be("recovered");
+        _server.LogEntries.Should().HaveCount(3);
+        _server.LogEntries.Last().RequestMessage.Body.Should().Contain("max_completion_tokens");
+    }
+
+    [Fact]
+    public async Task CompleteAsync_StrictToolsUnsupported_RetriesWithoutStrict()
+    {
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost()
+                .WithBody(b => b != null && b.Contains("\"strict\":true")))
+            .RespondWith(Response.Create().WithStatusCode(400)
+                .WithBody("""{"error":{"message":"strict function schemas are unsupported"}}"""));
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost()
+                .WithBody(b => b != null && !b.Contains("\"strict\":true")))
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                model = "test-model",
+                choices = new[] { new { message = new { content = "fallback ok" } } },
+            }));
+
+        var parameters = JsonDocument.Parse(
+            """{"type":"object","properties":{},"additionalProperties":false}""").RootElement.Clone();
+        var request = new LlmRequest("sys", "user", Tools:
+        [
+            new LlmToolDefinition("list_db_tables", "schema", parameters, Strict: true),
+        ]);
+
+        var response = await BuildClient().CompleteAsync(request, CancellationToken.None);
+
+        response.Content.Should().Be("fallback ok");
+        _server.LogEntries.Should().HaveCount(2);
+        _server.LogEntries.First().RequestMessage.Body.Should().Contain("\"strict\":true");
+        _server.LogEntries.Last().RequestMessage.Body.Should().NotContain("\"strict\":true");
     }
 
     [Fact]

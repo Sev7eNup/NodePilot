@@ -39,6 +39,7 @@ public class KnowledgeChatToolRegistryTests
 
     private sealed class FakeSql : ISqlKnowledgeReader
     {
+        public string Provider { get; set; } = "postgres";
         public List<DbTableKnowledgeSummary> Tables { get; set; } = new();
         public DbTableKnowledgeDetail? TableDetail { get; set; }
         public SqlQueryKnowledgeResult QueryResult { get; set; } = new(Array.Empty<string>(), Array.Empty<IReadOnlyList<string?>>(), false, 0, null);
@@ -332,6 +333,7 @@ public class KnowledgeChatToolRegistryTests
         };
         var r = await reg.ExecuteAsync("list_db_tables", "{}", Ctx(sql: sql), CancellationToken.None);
         using var doc = JsonDocument.Parse(r);
+        doc.RootElement.GetProperty("provider").GetString().Should().Be("postgres");
         doc.RootElement.GetProperty("count").GetInt32().Should().Be(1);
         doc.RootElement.GetProperty("tables")[0].GetProperty("dbTableName").GetString().Should().Be("Workflows");
     }
@@ -388,5 +390,26 @@ public class KnowledgeChatToolRegistryTests
         var r = await reg.ExecuteAsync("execute_readonly_sql", """{"sql":"SELECT 1"}""", Ctx(db: true, priv: false, src: false), CancellationToken.None);
         JsonDocument.Parse(r).RootElement.GetProperty("error").GetString().Should().Contain("nicht verfügbar");
         sql.LastSql.Should().BeNull(); // gate stops execution before the reader.
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_OversizedSqlResult_ReturnsValidExplicitTruncationEnvelope()
+    {
+        var reg = Registry(out _, out _, out var sql);
+        sql.QueryResult = new SqlQueryKnowledgeResult(
+            new[] { "Payload" },
+            Enumerable.Range(0, 200)
+                .Select(_ => (IReadOnlyList<string?>)new[] { new string('x', 500) })
+                .ToArray(),
+            true, 1, null);
+
+        var r = await reg.ExecuteAsync(
+            "execute_readonly_sql", """{"sql":"SELECT Payload FROM LargeTable"}""",
+            Ctx(sql: sql), CancellationToken.None);
+
+        using var doc = JsonDocument.Parse(r);
+        doc.RootElement.GetProperty("truncated").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("resultPreview").GetString().Should().NotBeNullOrEmpty();
+        r.Length.Should().BeLessThan(AiKnowledgeOptions.MaxToolResultChars);
     }
 }

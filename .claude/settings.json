@@ -297,7 +297,9 @@
       "Bash(wait)",
       "PowerShell($errs=$null; $toks=$null; [void][System.Management.Automation.Language.Parser]::ParseFile\\('e:\\\\NodePilot\\\\scripts\\\\seed-custom-alert-rules.ps1',[ref]$toks,[ref]$errs\\); if\\($errs\\){ $errs | ForEach-Object { Write-Host \"PARSE ERROR: $\\($_.Message\\) @ $\\($_.Extent.StartLineNumber\\)\" } } else { Write-Host \"OK: parses cleanly, $\\($toks.Count\\) tokens\" })",
       "mcp__playwright__browser_navigate",
-      "PowerShell(dotnet build e:\\\\NodePilot\\\\NodePilot.sln --nologo -v q 2>&1)"
+      "PowerShell(dotnet build e:\\\\NodePilot\\\\NodePilot.sln --nologo -v q 2>&1)",
+      "PowerShell(Get-Process pwsh,powershell -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,StartTime,@{N='RunMin';E={[math]::Round\\(\\(\\(Get-Date\\)-$_.StartTime\\).TotalMinutes,1\\)}},@{N='CPU_s';E={[math]::Round\\($_.CPU,1\\)}} | Sort-Object StartTime | Format-Table -AutoSize)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\")"
     ],
     "additionalDirectories": [
       "e:\\NodePilot",

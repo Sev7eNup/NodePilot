@@ -250,7 +250,7 @@ function LlmCard() {
 
   const [form, setForm] = useState<LlmDto>({
     enabled: false, baseUrl: '', apiKey: null, model: '', maxTokens: 4096, timeoutSeconds: 90,
-    enableToolCalling: false, toolCallMaxDepth: 4,
+    enableToolCalling: false, toolCallMaxDepth: 6,
   });
   const [keyMode, setKeyMode] = useState<SecretFieldMode>('keep');
   const [keyValue, setKeyValue] = useState('');

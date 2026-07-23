@@ -20,7 +20,7 @@ Opt-in (`Llm:Enabled=false` default). OpenAI-kompatibel. Rate-Limit 20/Min/IP. G
     "MaxTokens": 4096,
     "TimeoutSeconds": 90,
     "EnableToolCalling": false,
-    "ToolCallMaxDepth": 4
+    "ToolCallMaxDepth": 6
   }
 }
 ```
@@ -34,7 +34,7 @@ Opt-in (`Llm:Enabled=false` default). OpenAI-kompatibel. Rate-Limit 20/Min/IP. G
 | `MaxTokens` | `4096` | Cap der LLM-Response. |
 | `TimeoutSeconds` | `90` | HTTP-Timeout. |
 | `EnableToolCalling` | `false` | Opt-in. Lässt den Chat (`POST /api/ai/chat`) read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. Aus → keine `tools` gesendet. |
-| `ToolCallMaxDepth` | `4` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Letzte Runde droppt `tools` → erzwingt Text-Antwort. |
+| `ToolCallMaxDepth` | `6` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Letzte Runde droppt `tools` → erzwingt Text-Antwort. |
 
 **Sofort wirksam (Hot-Reload):** `Llm` ist eine der hot-reloadablen Settings-Sektionen — `ILlmClientFactory` und die Controller-Gates lesen `IOptionsMonitor<LlmOptions>.CurrentValue` pro Verwendung. Ein Save (inkl. des `Llm:Enabled`-Kill-Switches) wirkt ohne Dienst-Neustart.
 
@@ -62,7 +62,7 @@ Neben den drei UI-Helpern gibt es eine **LLM-Activity für Workflows**: [`llmQue
 
 `chat` und `generate-script` streamen als **Server-Sent-Events** — die Ausgabe ist ab dem ersten Token sichtbar. Events: `delta` (Text-Token), `building` (chat: Start der Definitions-Bauphase — UI zeigt „Generiere Workflow-Änderung…"), `proposal` (chat: fertiger Vorschlag, am Ende), `done` (Model + Dauer), `error`. Der Stop-Button bzw. das Schließen des Dialogs bricht den Stream sauber ab (kein Fehler, partielle Ausgabe bleibt; Audit `cancelled=true`). Voraussetzung: der LLM-Endpoint unterstützt `stream:true` (alle OpenAI-kompatiblen Server; `stream_options` hat einen Fallback, und der `max_tokens`→`max_completion_tokens`-Quirk neuerer OpenAI-Modelle wird automatisch per Retry abgefangen). `generate-workflow` bleibt non-streaming (JSON-Envelope + Stats-Preview).
 
-Ist `Llm:EnableToolCalling=true`, kann der Chat zusätzlich eine **opt-in read-only Tool-Calling-Schleife** fahren (`tool_choice: auto`): das Modell ruft Analyse-Tools (`analyze_workflow`, `list_activity_types`) auf der secret-redigierten Definition auf sowie **Execution-Log-Tools** (`list_recent_executions`, `get_execution_steps`, `get_failure_context`), mit denen der Assistent vergangene Läufe und Fehlschläge des geöffneten Workflows analysiert — letztere nur bei gespeichertem Workflow und Folder-Read-Recht des Callers; die Outputs sind secret-redigiert und gekürzt. Der Stream erhält dann `tool_call`- und `tool_result`-Events. Begrenzt durch `Llm:ToolCallMaxDepth` (Default `4`); die letzte Runde droppt `tools` und erzwingt eine Text-Antwort.
+Ist `Llm:EnableToolCalling=true`, kann der Chat zusätzlich eine **opt-in read-only Tool-Calling-Schleife** fahren (`tool_choice: auto`): das Modell ruft Analyse-Tools (`analyze_workflow`, `list_activity_types`) auf der secret-redigierten Definition auf sowie **Execution-Log-Tools** (`list_recent_executions`, `get_execution_steps`, `get_failure_context`), mit denen der Assistent vergangene Läufe und Fehlschläge des geöffneten Workflows analysiert — letztere nur bei gespeichertem Workflow und Folder-Read-Recht des Callers; die Outputs sind secret-redigiert und gekürzt. Der Stream erhält dann `tool_call`- und `tool_result`-Events. Begrenzt durch `Llm:ToolCallMaxDepth` (Default `6`); die letzte Runde droppt `tools` und erzwingt eine Text-Antwort.
 
 ## Globaler Wissens-Chat (`/ai-chat`)
 
@@ -73,13 +73,14 @@ Wissensquellen** (Sektion `AiKnowledge`): Docs (`DocsEnabled`), Workflows & Betr
 (`OperationalEnabled`, RBAC-folder-scoped), Quellcode (`SourceCodeEnabled`, Admin/Op) und
 **DB / text2sql** (`DbEnabled`, Admin/Op) — letzteres default aus. Zudem `read_settings` (Admin/Op).
 
-**text2sql**: das LLM übersetzt die Frage in SQL, NodePilot liefert nur Schema (`list_db_tables`,
-`get_db_table`) und Read-Only-Ausführung (`execute_readonly_sql` — ein Statement, Keyword-Whitelist
-`SELECT`/`WITH`/`EXPLAIN`/`SHOW`/`VALUES`/`TABLE`, Schreibvorgänge serverseitig abgelehnt). **Secret-Schutz
-zweilagig**: Schema-Tools verbergen `IsHidden`-Spalten (`PasswordHash`, `EncryptedPassword`, byte[]);
-Result-Spalten mit einem Secret-Spalten-Namen (auch `GlobalVariable.Value`) werden pro Zelle `***`,
-alle anderen Zellen laufen zusätzlich durch den Redactor. Row-Cap 200; SQL-Fehler als `Error`-Feld
-(für Query-Korrektur). Tool-Calling wie beim Workflow-Chat.
+**text2sql**: das LLM übersetzt die Frage in provider-spezifisches SQL. `list_db_tables` liefert Dialekt
+und Schema, `get_db_table` zusätzlich Foreign Keys. `execute_readonly_sql` akzeptiert genau ein Statement
+bis 64 KiB; ein zentraler Executor-Guard erzwingt die Read-only-Whitelist und blockiert mutierende Keywords,
+gefährliche Routinen und `EXPLAIN ANALYZE`. Geschützte Spalten werden im Schema verborgen und bereits bei
+jeder SQL-Referenz abgelehnt (auch Alias-/Ausdrucksvarianten); Result-Masking und der Redactor bleiben als
+zweite Schicht. Row-Cap 200; große Resultate bleiben valides JSON mit Truncation-Hinweis. DB-Tools verwenden
+Strict Function Schemas mit automatischem Best-Effort-Fallback für inkompatible lokale Endpoints. Die
+Capability erscheint nur bei aktivem `Llm:EnableToolCalling`.
 
 ## Hardening
 

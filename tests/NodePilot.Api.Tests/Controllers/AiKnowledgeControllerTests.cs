@@ -79,6 +79,7 @@ public class AiKnowledgeControllerTests
     // text2sql tools are only exercised via the manual smoke path; an empty stub keeps the assistant constructible.
     private sealed class StubSqlKnowledgeReader : ISqlKnowledgeReader
     {
+        public string Provider => "sqlite";
         public Task<IReadOnlyList<DbTableKnowledgeSummary>> ListTablesAsync(CancellationToken ct)
             => Task.FromResult<IReadOnlyList<DbTableKnowledgeSummary>>(Array.Empty<DbTableKnowledgeSummary>());
         public Task<DbTableKnowledgeDetail?> GetTableAsync(string name, CancellationToken ct)
@@ -167,6 +168,47 @@ public class AiKnowledgeControllerTests
     }
 
     [Fact]
+    public async Task Ask_DbToolCall_AuditsFingerprintButNeverSqlText()
+    {
+        var (controller, audit, llm, _) = Build(
+            role: "Operator", enableToolCalling: true, db: true);
+        const string sql = "SELECT COUNT(*) FROM Workflows";
+        llm.EnqueueToolCallStreamWithFinish(
+            new[] { new LlmToolCall("sql-1", "execute_readonly_sql", $$"""{"sql":"{{sql}}"}""") },
+            "tool_calls");
+        llm.EnqueueStream("Es gibt keine Workflows.");
+
+        await controller.Ask(new KnowledgeAskRequest("Wie viele Workflows?", null), CancellationToken.None);
+
+        var call = audit.Calls.Should().ContainSingle(c => c.Action == "AI_KNOWLEDGE_ASKED").Subject;
+        call.Details.Should().Contain("\"dbQueryCount\":1");
+        call.Details.Should().Contain("dbQueryFingerprints");
+        call.Details.Should().NotContain(sql);
+    }
+
+    [Fact]
+    public async Task Ask_Text2SqlDiscoveryAndCorrection_FitsDefaultToolDepth()
+    {
+        var (controller, _, llm, body) = Build(
+            role: "Operator", enableToolCalling: true, db: true);
+        llm.EnqueueToolCallStream([new LlmToolCall("c1", "list_db_tables", "{}")]);
+        llm.EnqueueToolCallStream(
+            [new LlmToolCall("c2", "get_db_table", """{"name":"Workflow"}""")]);
+        llm.EnqueueToolCallStream(
+            [new LlmToolCall("c3", "execute_readonly_sql", """{"sql":"SELECT nope FROM Workflows"}""")]);
+        llm.EnqueueToolCallStream(
+            [new LlmToolCall("c4", "execute_readonly_sql", """{"sql":"SELECT COUNT(*) FROM Workflows"}""")]);
+        llm.EnqueueStream("Es gibt 0 Workflows.");
+
+        await controller.Ask(
+            new KnowledgeAskRequest("Wie viele Workflows gibt es?", null),
+            CancellationToken.None);
+
+        llm.Calls.Should().HaveCount(5);
+        ParseSse(body).Should().Contain(e => e.ev == "done");
+    }
+
+    [Fact]
     public async Task Ask_ForwardsTimeZone_IntoSystemPromptTimeContext()
     {
         var (controller, _, llm, _) = Build(role: "Viewer");
@@ -201,7 +243,7 @@ public class AiKnowledgeControllerTests
     [Fact]
     public void Capabilities_AllEnabledPrivileged_AllTrue()
     {
-        var (controller, _, _, _) = Build(src: true, db: true, role: "Admin");
+        var (controller, _, _, _) = Build(src: true, db: true, role: "Admin", enableToolCalling: true);
         var caps = Caps(controller);
         caps.Enabled.Should().BeTrue();
         caps.Docs.Should().BeTrue();
@@ -225,7 +267,7 @@ public class AiKnowledgeControllerTests
     [Fact]
     public void Capabilities_Viewer_SourceCodeAndDbFalse_EvenWhenEnabled()
     {
-        var (controller, _, _, _) = Build(src: true, db: true, role: "Viewer");
+        var (controller, _, _, _) = Build(src: true, db: true, role: "Viewer", enableToolCalling: true);
         var caps = Caps(controller);
         caps.Enabled.Should().BeTrue();
         caps.Docs.Should().BeTrue();
@@ -236,19 +278,34 @@ public class AiKnowledgeControllerTests
     [Fact]
     public void Capabilities_DbReflectedOnlyForPrivileged()
     {
-        var (controller, _, _, _) = Build(db: true, role: "Operator");
+        var (controller, _, _, _) = Build(db: true, role: "Operator", enableToolCalling: true);
         Caps(controller).Db.Should().BeTrue();
-        var (controllerOff, _, _, _) = Build(db: false, role: "Operator");
+        var (controllerOff, _, _, _) = Build(db: false, role: "Operator", enableToolCalling: true);
         Caps(controllerOff).Db.Should().BeFalse();
     }
 
     [Fact]
     public void Capabilities_PerSourceToggleReflected()
     {
-        var (controller, _, _, _) = Build(docs: true, op: false, src: true, role: "Admin");
+        var (controller, _, _, _) = Build(
+            docs: true, op: false, src: true, role: "Admin", enableToolCalling: true);
         var caps = Caps(controller);
         caps.Docs.Should().BeTrue();
         caps.Operational.Should().BeFalse();
         caps.SourceCode.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Capabilities_ToolCallingDisabled_SourceBadgesAreFalse()
+    {
+        var (controller, _, _, _) = Build(
+            docs: true, op: true, src: true, db: true, role: "Admin",
+            enableToolCalling: false);
+        var caps = Caps(controller);
+        caps.Enabled.Should().BeTrue();
+        caps.Docs.Should().BeFalse();
+        caps.Operational.Should().BeFalse();
+        caps.SourceCode.Should().BeFalse();
+        caps.Db.Should().BeFalse();
     }
 }

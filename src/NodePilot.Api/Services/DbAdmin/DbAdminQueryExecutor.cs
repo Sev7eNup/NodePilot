@@ -24,6 +24,8 @@ namespace NodePilot.Api.Services.DbAdmin;
 /// </summary>
 public sealed class DbAdminQueryExecutor
 {
+    public const int MaxSqlLength = 64 * 1024;
+
     // First-keyword whitelist for read-mode. Defence-in-depth — the read-only transaction
     // is the real guard, this just rejects obviously-wrong inputs before opening a connection.
     private static readonly HashSet<string> ReadOnlyKeywords = new(StringComparer.OrdinalIgnoreCase)
@@ -159,8 +161,7 @@ public sealed class DbAdminQueryExecutor
 
     public Task<DbAdminQueryResult> ExecuteReadAsync(string sql, CancellationToken ct)
     {
-        if (ContainsMultipleStatements(sql))
-            throw new InvalidOperationException("Read mode accepts exactly one SQL statement.");
+        DbAdminReadOnlySqlGuard.Validate(sql);
         return ExecuteAsync(sql, writeMode: false, ct);
     }
 

@@ -46,7 +46,11 @@ public sealed record LlmStreamEvent(
 /// <param name="Name">Unique tool name (snake_case, matching the MCP tool naming).</param>
 /// <param name="Description">What the tool does and when it's useful — this text drives the model's choice.</param>
 /// <param name="Parameters">JSON schema (object) of the parameters; an empty <c>{ "type":"object","properties":{} }</c> when there are none.</param>
-public sealed record LlmToolDefinition(string Name, string Description, JsonElement Parameters);
+public sealed record LlmToolDefinition(
+    string Name,
+    string Description,
+    JsonElement Parameters,
+    bool Strict = false);
 
 /// <summary>
 /// A tool call requested by the model, taken from <c>choices[].message.tool_calls</c>.

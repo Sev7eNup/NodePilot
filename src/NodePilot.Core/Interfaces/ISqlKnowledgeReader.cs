@@ -16,6 +16,9 @@ namespace NodePilot.Core.Interfaces;
 /// </summary>
 public interface ISqlKnowledgeReader
 {
+    /// <summary>Active SQL dialect token (<c>postgres</c>, <c>sqlserver</c>, ...).</summary>
+    string Provider { get; }
+
     /// <summary>All tracked tables, with their non-hidden columns named. Secret columns are omitted.</summary>
     Task<IReadOnlyList<DbTableKnowledgeSummary>> ListTablesAsync(CancellationToken ct);
 
@@ -46,7 +49,14 @@ public sealed record DbColumnKnowledge(
 public sealed record DbTableKnowledgeDetail(
     string Name,
     string DbTableName,
-    IReadOnlyList<DbColumnKnowledge> Columns);
+    IReadOnlyList<DbColumnKnowledge> Columns,
+    IReadOnlyList<DbForeignKeyKnowledge> ForeignKeys);
+
+/// <summary>A foreign-key relationship originating at the described table.</summary>
+public sealed record DbForeignKeyKnowledge(
+    IReadOnlyList<string> Columns,
+    string PrincipalTable,
+    IReadOnlyList<string> PrincipalColumns);
 
 /// <summary>Redacted result of a read-only SQL statement. <see cref="Error"/> is non-null when the
 /// statement failed to execute (bad SQL, timeout, …) so the model can retry with a corrected query;

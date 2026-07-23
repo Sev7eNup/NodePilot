@@ -34,7 +34,7 @@ namespace NodePilot.Api.Controllers;
 public class DbAdminController : ControllerBase
 {
     private const int MaxTake = 200;
-    private const int MaxSqlLength = 64 * 1024; // 64 KB — enough for ad-hoc queries, blocks runaway pastes.
+    private const int MaxSqlLength = DbAdminQueryExecutor.MaxSqlLength;
     private const string WriteConfirmHeader = "X-Confirm-Write";
     private const string WriteConfirmValue = "ALLOW";
 

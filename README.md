@@ -761,7 +761,7 @@ NodePilot ships two **opt-in** AI helpers that work against **OpenAI-compatible 
     "MaxTokens": 4096,
     "TimeoutSeconds": 90,
     "EnableToolCalling": false,              // enable chat read-only tool-calling
-    "ToolCallMaxDepth": 4                    // tool-loop depth cap
+    "ToolCallMaxDepth": 6                    // tool-loop depth cap
   }
 }
 ```
@@ -997,7 +997,7 @@ All settings live in [`src/NodePilot.Api/appsettings.json`](src/NodePilot.Api/ap
 | `Llm:MaxTokens` | `4096` | Response cap |
 | `Llm:TimeoutSeconds` | `90` | HTTP timeout |
 | `Llm:EnableToolCalling` | `false` | Enable chat read-only tool-calling (function-calling loop) |
-| `Llm:ToolCallMaxDepth` | `4` | Tool-loop depth cap (max LLM rounds with tool calls per turn, 1–10) |
+| `Llm:ToolCallMaxDepth` | `6` | Tool-loop depth cap (max LLM rounds with tool calls per turn, 1–10) |
 
 ### Production deployment (set by the installer)
 

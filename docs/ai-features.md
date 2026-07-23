@@ -39,7 +39,7 @@ Ollama) sofort funktionieren.
     "MaxTokens": 4096,
     "TimeoutSeconds": 90,
     "EnableToolCalling": false,
-    "ToolCallMaxDepth": 4
+    "ToolCallMaxDepth": 6
   }
 }
 ```
@@ -53,7 +53,7 @@ Ollama) sofort funktionieren.
 | `MaxTokens` | `4096` | Cap der LLM-Antwort. Reicht für ein typisches Script und einen mittelgroßen Workflow. Bei großen Modellen (32k+ Context) gerne erhöhen. |
 | `TimeoutSeconds` | `90` | HTTP-Timeout. Großzügig für lokale Modelle, klein genug um nicht ewig zu hängen. |
 | `EnableToolCalling` | `false` | Opt-in. Lässt den Chat-Assistenten (`POST /api/ai/chat`) read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`, nur wenn es hilft). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. Aus → der Chat verhält sich exakt wie vorher (keine `tools` gesendet). |
-| `ToolCallMaxDepth` | `4` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). In der letzten erlaubten Runde sendet der Server **keine** `tools` → erzwingt eine Text-Antwort (vermeidet den `tool_choice:none`-Literal, den manche lokale Endpoints mit HTTP 400 ablehnen). |
+| `ToolCallMaxDepth` | `6` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Lässt bei text2sql nach Schema-Discovery noch Raum für SQL-Korrekturen. In der letzten erlaubten Runde sendet der Server **keine** `tools` → erzwingt eine Text-Antwort. |
 
 **Restart erforderlich**: ja — Options werden beim Startup gebunden.
 
@@ -211,7 +211,7 @@ erst angeboten — der Chat läuft normal weiter). Ihre Ergebnisse sind **doppel
 gekürzt (1500 Zeichen pro Output-Feld, 500 für Fehlermeldungen, max. 100 Steps; `get_failure_context`
 kürzt Step-Outputs erst bei 2000 Zeichen).
 
-Begrenzt durch `Llm:ToolCallMaxDepth` (Default `4`, gültig 1–10): in der letzten erlaubten Runde sendet
+Begrenzt durch `Llm:ToolCallMaxDepth` (Default `6`, gültig 1–10): in der letzten erlaubten Runde sendet
 der Server **keine** `tools` mehr und erzwingt so eine Text-Antwort. Der SSE-Stream erhält dabei
 zusätzlich `tool_call`- und `tool_result`-Events; das UI zeigt einen „🔧 analyze_workflow —
 running…/checked"-Indikator. Voraussetzung: ein Modell, das Function-Calling zuverlässig kann —
@@ -238,18 +238,20 @@ Source-Code + DB default aus:
 | Quellcode | `SourceCodeEnabled` | `search_source`, `read_source` | Admin/Operator |
 | **DB / text2sql** | `DbEnabled` | `list_db_tables`, `get_db_table`, `execute_readonly_sql` | Admin/Operator |
 
-**text2sql** heißt: das LLM übersetzt die Frage in SQL, NodePilot liefert nur Schema + Read-Only-Ausführung.
+**text2sql** heißt: das LLM übersetzt die Frage in provider-spezifisches SQL, NodePilot liefert SQL-Dialekt,
+Schema, Foreign Keys und Read-Only-Ausführung.
 Die DB-Tools laufen über `ISqlKnowledgeReader` (Core-Interface, Api-Impl `SqlKnowledgeReader` reuses die
-DbAdmin-Services). `execute_readonly_sql` nimmt ein einzelnes Statement (Whitelist `SELECT`/`WITH`/`EXPLAIN`/
-`SHOW`/`VALUES`/`TABLE`, serverseitig erzwungen; Schreibvorgänge abgelehnt). **Secret-Schutz zweilagig**:
-Schema-Tools verbergen `IsHidden`-Spalten (`PasswordHash`, `EncryptedPassword`, byte[]); in Result-Spalten
-mit einem Secret-Spalten-Namen (auch `GlobalVariable.Value`) wird jede Zelle `***`, alle anderen Zellen
-laufen zusätzlich durch den `IAuditDetailsRedactor`. Row-Cap 200, SQL-Fehler kommen als `Error`-Feld zurück
-(damit das Modell die Query korrigieren kann). Tool-Calling wie beim Workflow-Chat (`Llm:EnableToolCalling`).
-
-> Restrisiko: ein aliasiertes Secret (`SELECT PasswordHash AS p`) lässt sich nicht zuverlässig auf seine
-> Quellspalte zurückmappen — der `IAuditDetailsRedactor` ist dort die Fallback-Verteidigung. Da die Quelle
-> Admin/Operator-gated ist, ist das akzeptiert.
+DbAdmin-Services). `execute_readonly_sql` nimmt ein einzelnes Statement bis 64 KiB. Der Guard sitzt am
+Executor (nicht nur am HTTP-Controller), erlaubt als erstes Keyword nur `SELECT`/`WITH`/`EXPLAIN`/`SHOW`/
+`VALUES`/`TABLE` und lehnt mutierende Keywords, gefährliche Routinen, Multi-Statements sowie
+`EXPLAIN ANALYZE` ab. PostgreSQL setzt zusätzlich `SET TRANSACTION READ ONLY`; alle Provider rollen die
+Transaktion zurück. **Secret-Schutz mehrlagig**: Schema-Tools verbergen `IsHidden`-Spalten; jede SQL-Referenz
+auf eine geschützte Spalte wird bereits vor Ausführung abgelehnt (auch Alias-/Ausdrucksvarianten);
+Result-Spalten werden zusätzlich nach Namen maskiert und übrige Zellen durch den `IAuditDetailsRedactor`
+geführt. Row-Cap 200. Übergroße Tool-Resultate bleiben valides JSON mit explizitem Truncation-Hinweis.
+DB-Tools nutzen Strict Function Schemas; inkompatible lokale Endpoints erhalten automatisch einen
+Best-Effort-Retry. SQL-Text wird nicht auditiert, stattdessen nur Anzahl und SHA-256-Kurzfingerprints.
+Text2SQL ist nur als Capability sichtbar, wenn `Llm:EnableToolCalling=true` ist.
 
 ---
 

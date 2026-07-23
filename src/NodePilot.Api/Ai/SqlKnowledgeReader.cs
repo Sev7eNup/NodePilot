@@ -37,6 +37,11 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
     // Result-column names that must never leave the reader unredacted. Built once: every column
     // flagged IsHidden in any table, plus the masked-by-name set above.
     private readonly HashSet<string> _secretColumnNames;
+    private readonly HashSet<string> _blockedSecretIdentifiers;
+    private static readonly HashSet<string> GlobalVariableTableIdentifiers =
+        new(["GlobalVariable", "GlobalVariables"], StringComparer.OrdinalIgnoreCase);
+    private static readonly HashSet<string> GlobalVariableValueIdentifier =
+        new(["Value"], StringComparer.OrdinalIgnoreCase);
 
     public SqlKnowledgeReader(DbAdminMetadataService metadata, DbAdminQueryExecutor executor, IAuditDetailsRedactor redactor)
     {
@@ -44,11 +49,14 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
         _executor = executor;
         _redactor = redactor;
         _secretColumnNames = BuildSecretColumnNames();
+        _blockedSecretIdentifiers = BuildBlockedSecretIdentifiers();
     }
+
+    public string Provider => _executor.Provider;
 
     private HashSet<string> BuildSecretColumnNames()
     {
-        var set = new HashSet<string>(StringComparer.Ordinal);
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var t in _metadata.GetAllTables())
         {
             foreach (var c in t.Columns)
@@ -58,6 +66,15 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
             }
         }
         foreach (var n in MaskedColumnNames) set.Add(n);
+        return set;
+    }
+
+    private HashSet<string> BuildBlockedSecretIdentifiers()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in _metadata.GetAllTables())
+        foreach (var c in t.Columns)
+            if (c.IsHidden) set.Add(c.Name);
         return set;
     }
 
@@ -82,12 +99,33 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
             .Where(c => !c.IsHidden)
             .Select(c => new DbColumnKnowledge(c.Name, FriendlyType(c), c.IsNullable, c.IsPrimaryKey))
             .ToList();
-        return Task.FromResult<DbTableKnowledgeDetail?>(new DbTableKnowledgeDetail(t.Name, t.DbTableName, cols));
+        var visibleNames = cols.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var foreignKeys = t.ForeignKeys
+            .Where(fk => fk.Columns.All(visibleNames.Contains))
+            .Select(fk => new DbForeignKeyKnowledge(
+                fk.Columns, fk.PrincipalDbTableName, fk.PrincipalColumns))
+            .ToList();
+        return Task.FromResult<DbTableKnowledgeDetail?>(
+            new DbTableKnowledgeDetail(t.Name, t.DbTableName, cols, foreignKeys));
     }
 
     public async Task<SqlQueryKnowledgeResult> ExecuteReadAsync(string sql, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
+
+        // Result-column masking cannot recover source lineage after aliases/expressions. Reject any
+        // query that mentions a hidden schema identifier before it reaches the database. The
+        // GlobalVariable.Value mask is table-specific because "Value" alone is a common safe column
+        // name elsewhere.
+        if (DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, _blockedSecretIdentifiers)
+            || (DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, GlobalVariableTableIdentifiers)
+                && DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, GlobalVariableValueIdentifier)))
+        {
+            return new SqlQueryKnowledgeResult(
+                Array.Empty<string>(), Array.Empty<IReadOnlyList<string?>>(), false,
+                sw.ElapsedMilliseconds, "Query references a protected column.");
+        }
+
         DbAdminQueryResult result;
         try
         {

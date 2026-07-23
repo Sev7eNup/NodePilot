@@ -1,0 +1,1952 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gorillas – Banana Artillery</title>
+  <style>
+    :root {
+      --panel: rgba(7, 12, 30, 0.88);
+      --panel-2: rgba(12, 18, 43, 0.92);
+      --panel-3: rgba(255,255,255,0.045);
+      --panel-border: rgba(255,255,255,0.14);
+      --panel-border-strong: rgba(255,255,255,0.18);
+      --text: #f6f7ff;
+      --muted: #aeb8d9;
+      --muted-2: rgba(174,184,217,.72);
+      --accent: #ffd84a;
+      --accent-2: #62d6ff;
+      --accent-3: #93ffe8;
+      --danger: #ff626f;
+      --shadow-soft: 0 20px 50px rgba(0,0,0,.26);
+      --shadow-card: 0 18px 45px rgba(0,0,0,.28);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background:
+        radial-gradient(circle at top, #17234d 0%, #080c1d 48%, #03050d 100%);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      overflow-x: hidden;
+    }
+
+    body {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 10px;
+    }
+
+    .shell {
+      width: min(1500px, 100%);
+      border: 1px solid var(--panel-border);
+      border-radius: 18px;
+      overflow: hidden;
+      background: rgba(2, 5, 16, 0.72);
+      box-shadow:
+        0 22px 58px rgba(0,0,0,0.42),
+        inset 0 1px 0 rgba(255,255,255,0.05);
+      backdrop-filter: blur(16px);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 16px;
+      background:
+        radial-gradient(circle at top left, rgba(98,214,255,.14), transparent 34%),
+        radial-gradient(circle at top right, rgba(255,216,74,.1), transparent 30%),
+        linear-gradient(180deg, rgba(18,27,59,.96), rgba(8,12,28,.94));
+      border-bottom: 1px solid var(--panel-border);
+      box-shadow: inset 0 -1px 0 rgba(255,255,255,.04);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .logo {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.03)),
+        linear-gradient(145deg, rgba(13,20,45,.98), rgba(26,40,84,.94));
+      border: 1px solid rgba(255,255,255,.12);
+      box-shadow:
+        inset 0 1px 0 rgba(255,255,255,.08),
+        0 12px 32px rgba(0,0,0,.32),
+        0 0 0 1px rgba(255,255,255,.03);
+      overflow: hidden;
+      flex: 0 0 auto;
+    }
+
+    .logo svg {
+      width: 28px;
+      height: 28px;
+      display: block;
+      filter: drop-shadow(0 4px 10px rgba(0,0,0,.22));
+    }
+
+    .brand h1 {
+      font-size: clamp(16px, 1.6vw, 22px);
+      margin: 0;
+      letter-spacing: .03em;
+      line-height: 1.05;
+    }
+
+    .brand p {
+      margin: 3px 0 0;
+      color: var(--muted-2);
+      font-size: 11px;
+      letter-spacing: .02em;
+    }
+
+    .scoreboard {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .score {
+      padding: 8px 11px;
+      border-radius: 12px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.03));
+      border: 1px solid rgba(255,255,255,.1);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+      font-weight: 800;
+      white-space: nowrap;
+      min-width: 110px;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    .stage {
+      position: relative;
+      background: #050915;
+    }
+
+    canvas {
+      width: 100%;
+      height: auto;
+      display: block;
+      aspect-ratio: 7 / 4;
+      cursor: crosshair;
+      touch-action: none;
+    }
+
+    .hud {
+      display: grid;
+      grid-template-columns: minmax(260px, 1fr) minmax(250px, 310px) minmax(260px, 1fr);
+      gap: 12px;
+      align-items: stretch;
+      padding: 12px;
+      background:
+        radial-gradient(circle at top, rgba(98,214,255,.08), transparent 30%),
+        linear-gradient(180deg, rgba(12,18,43,.99), rgba(5,8,20,.98));
+      border-top: 1px solid var(--panel-border);
+    }
+
+    .player-card, .center-card {
+      border: 1px solid rgba(255,255,255,.09);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.03));
+      border-radius: 16px;
+      padding: 12px;
+      min-width: 0;
+      box-shadow: var(--shadow-card);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .player-card::before, .center-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(180deg, rgba(255,255,255,.05), transparent 30%);
+      pointer-events: none;
+    }
+
+    .player-card.active {
+      border-color: rgba(98,214,255,.45);
+      box-shadow:
+        0 0 0 1px rgba(98,214,255,.14),
+        0 24px 48px rgba(0,0,0,.32),
+        inset 0 0 0 1px rgba(255,255,255,.02);
+    }
+
+    .player-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .player-title strong {
+      font-size: 13px;
+      letter-spacing: .02em;
+    }
+
+    .turn-pill {
+      font-size: 9px;
+      font-weight: 900;
+      color: #10151d;
+      background: linear-gradient(135deg, var(--accent), var(--accent-3));
+      border-radius: 999px;
+      padding: 5px 8px;
+      display: none;
+      box-shadow: 0 8px 16px rgba(98,214,255,.18);
+    }
+
+    .player-card.active .turn-pill {
+      display: inline-flex;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 9px;
+      position: relative;
+      z-index: 1;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .range-label {
+      display: grid;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.07);
+      border-radius: 13px;
+      padding: 10px 10px 8px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+
+    .range-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .range-value {
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 900;
+      padding: 5px 8px;
+      border-radius: 999px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.05));
+      border: 1px solid rgba(255,255,255,.08);
+      min-width: 52px;
+      text-align: center;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 8px;
+      border-radius: 999px;
+      appearance: none;
+      -webkit-appearance: none;
+      background:
+        linear-gradient(90deg, rgba(255,216,74,.98), rgba(98,214,255,.98));
+      outline: none;
+      cursor: pointer;
+      box-shadow:
+        inset 0 0 0 1px rgba(255,255,255,.08),
+        inset 0 2px 8px rgba(0,0,0,.18);
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 35%, #ffffff, #dce8ff 72%);
+      border: 2px solid rgba(9,14,33,.92);
+      box-shadow:
+        0 5px 18px rgba(0,0,0,.34),
+        0 0 0 4px rgba(98,214,255,.12);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 35% 35%, #ffffff, #dce8ff 72%);
+      border: 2px solid rgba(9,14,33,.92);
+      box-shadow:
+        0 5px 18px rgba(0,0,0,.34),
+        0 0 0 4px rgba(98,214,255,.12);
+    }
+
+    input[type="range"]::-moz-range-track {
+      height: 10px;
+      border-radius: 999px;
+      background:
+        linear-gradient(90deg, rgba(255,216,74,.98), rgba(98,214,255,.98));
+    }
+
+    input[type="range"]:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+      filter: saturate(.7);
+    }
+
+    .range-scale {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9px;
+      color: rgba(255,255,255,.42);
+      margin-top: -1px;
+      letter-spacing: .02em;
+    }
+
+    .center-card {
+      width: min(300px, 28vw);
+      display: grid;
+      align-content: center;
+      gap: 10px;
+      text-align: center;
+    }
+
+    .wind {
+      color: var(--accent-2);
+      font-weight: 900;
+      letter-spacing: .03em;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(98,214,255,.08);
+      border: 1px solid rgba(98,214,255,.14);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.03);
+    }
+
+    .message {
+      min-height: 40px;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 800;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.04);
+      border: 1px solid rgba(255,255,255,.07);
+      line-height: 1.4;
+    }
+
+    .mode-switch {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5px;
+      padding: 5px;
+      border-radius: 14px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02));
+      border: 1px solid rgba(255,255,255,.08);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+
+    .mode-button {
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid transparent;
+      font-size: 10px;
+      white-space: nowrap;
+      letter-spacing: .02em;
+    }
+
+    .mode-button.active {
+      color: #10151d;
+      background: linear-gradient(135deg, #ffe66d, #63d7ff);
+      border-color: rgba(255,255,255,.34);
+      box-shadow: 0 9px 18px rgba(0,0,0,.22);
+    }
+
+    .actions {
+      display: flex;
+      gap: 8px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      border-radius: 12px;
+      padding: 9px 12px;
+      font: inherit;
+      font-weight: 900;
+      cursor: pointer;
+      transition: transform .15s ease, filter .15s ease, opacity .15s ease, box-shadow .15s ease;
+    }
+
+    button:hover {
+      transform: translateY(-1px);
+      filter: brightness(1.05);
+      box-shadow: 0 10px 18px rgba(0,0,0,.16);
+    }
+
+    button:active { transform: translateY(1px) scale(.99); }
+    button:disabled { cursor: not-allowed; opacity: .45; transform: none; box-shadow: none; }
+
+    .fire {
+      color: #11151d;
+      background: linear-gradient(135deg, #ffe66d, #ffb703);
+      box-shadow: 0 10px 20px rgba(255,183,3,.2);
+      min-width: 126px;
+      font-size: 13px;
+    }
+
+    .secondary {
+      color: var(--text);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+      border: 1px solid rgba(255,255,255,.1);
+      min-width: 116px;
+      font-size: 13px;
+    }
+
+    .help {
+      padding: 10px 14px 14px;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: center;
+      background:
+        linear-gradient(180deg, rgba(10,14,30,.98), rgba(5,8,20,.98));
+      border-top: 1px solid rgba(255,255,255,.05);
+      line-height: 1.5;
+    }
+
+    .help kbd {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 6px;
+      color: #fff;
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.1);
+      box-shadow: inset 0 -1px 0 rgba(255,255,255,.08);
+    }
+
+    @media (max-width: 820px) {
+      body { padding: 0; }
+      .shell { border-radius: 0; min-height: 100vh; }
+      .topbar { align-items: flex-start; }
+      .hud {
+        grid-template-columns: 1fr 1fr;
+      }
+      .center-card {
+        grid-column: 1 / -1;
+        grid-row: 1;
+        width: 100%;
+        max-width: none;
+      }
+      .player-card { grid-row: 2; }
+    }
+
+    @media (max-width: 560px) {
+      .topbar { flex-direction: column; }
+      .scoreboard { width: 100%; justify-content: flex-start; }
+      .hud { grid-template-columns: 1fr; }
+      .center-card, .player-card { grid-column: 1; grid-row: auto; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand">
+        
+        <div class="logo" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="8" y="37" width="10" height="16" rx="2.5" fill="#69D7FF"/>
+            <rect x="22" y="30" width="10" height="23" rx="2.5" fill="#8D7BFF"/>
+            <rect x="36" y="24" width="10" height="29" rx="2.5" fill="#62D6FF"/>
+            <rect x="50" y="18" width="8" height="35" rx="2.5" fill="#FFD84A"/>
+            <path d="M18 18C18 11.3726 23.3726 6 30 6H31C37.6274 6 43 11.3726 43 18V19.5C43 21.433 42.2339 23.2869 40.8701 24.6507L39.2 26.3208C38.2971 27.2237 37.7886 28.4482 37.7886 29.725V31.0573C37.7886 33.7258 35.6258 35.8886 32.9573 35.8886H30.1257C27.4572 35.8886 25.2944 33.7258 25.2944 31.0573V29.9C25.2944 28.5047 24.7402 27.1665 23.7536 26.1799L20.8713 23.2976C19.0357 21.462 18 18.9724 18 16.3766V18Z" fill="#FFD84A"/>
+            <path d="M41.5 16.5C38.1 15.8 34.9 17.1 32.6 19.6C29.8 22.5 28.9 27 29.9 31.4" stroke="#6D4A00" stroke-width="3" stroke-linecap="round"/>
+            <circle cx="33.5" cy="17.5" r="2" fill="#6D4A00"/>
+          </svg>
+        </div>
+        <div>
+          <h1>GORILLAS: Banana Artillery</h1>
+          <p>Eine moderne Hommage an den QBasic-Klassiker</p>
+        </div>
+      </div>
+      <div class="scoreboard">
+        <div class="score"><span id="scoreName1">Spieler 1</span>: <span id="score1">0</span></div>
+        <div class="score"><span id="scoreName2">Computer</span>: <span id="score2">0</span></div>
+      </div>
+    </header>
+
+    <section class="stage">
+      <canvas id="game" width="1680" height="960" aria-label="Gorillas Spielfeld"></canvas>
+    </section>
+
+    <section class="hud">
+      <article class="player-card" id="card1">
+        <div class="player-title">
+          <strong id="playerName1">🦍 Spieler 1</strong>
+          <span class="turn-pill">AM ZUG</span>
+        </div>
+        <div class="controls">
+          <label class="range-label">
+            <span class="range-head">
+              <span>Winkel</span>
+              <span class="range-value" id="angle1Value">45°</span>
+            </span>
+            <input id="angle1" type="range" min="0" max="180" step="1" value="45" />
+            <span class="range-scale"><span>0°</span><span>180°</span></span>
+          </label>
+          <label class="range-label">
+            <span class="range-head">
+              <span>Kraft</span>
+              <span class="range-value" id="power1Value">65</span>
+            </span>
+            <input id="power1" type="range" min="10" max="200" step="1" value="65" />
+            <span class="range-scale"><span>10</span><span>200</span></span>
+          </label>
+        </div>
+      </article>
+
+      <article class="center-card">
+        <div class="mode-switch" aria-label="Spielmodus">
+          <button class="mode-button active" id="modeCpu" type="button">🤖 Gegen Computer</button>
+          <button class="mode-button" id="modeLocal" type="button">👥 1 gegen 1</button>
+        </div>
+        <div class="wind" id="wind">Wind: 0</div>
+        <div class="message" id="message">Spieler 1 beginnt</div>
+        <div class="actions">
+          <button class="fire" id="fire">🍌 Wurf auslösen</button>
+          <button class="secondary" id="newRound">↻ Neue Runde</button>
+        </div>
+      </article>
+
+      <article class="player-card" id="card2">
+        <div class="player-title">
+          <strong id="playerName2">🤖 Computer</strong>
+          <span class="turn-pill">AM ZUG</span>
+        </div>
+        <div class="controls">
+          <label class="range-label">
+            <span class="range-head">
+              <span>Winkel</span>
+              <span class="range-value" id="angle2Value">45°</span>
+            </span>
+            <input id="angle2" type="range" min="0" max="180" step="1" value="45" />
+            <span class="range-scale"><span>0°</span><span>180°</span></span>
+          </label>
+          <label class="range-label">
+            <span class="range-head">
+              <span>Kraft</span>
+              <span class="range-value" id="power2Value">65</span>
+            </span>
+            <input id="power2" type="range" min="10" max="200" step="1" value="65" />
+            <span class="range-scale"><span>10</span><span>200</span></span>
+          </label>
+        </div>
+      </article>
+    </section>
+
+    <div class="help">
+      Standardmäßig spielst du gegen den Computer. Optional lässt sich lokales 1 gegen 1 auswählen.
+      Die Gebäude sind zerstörbar. Bodenwind, Höhenwind und Böen verändern die Flugbahn deutlich.
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const canvas = document.getElementById("game");
+      const ctx = canvas.getContext("2d");
+      const buildingLayer = document.createElement("canvas");
+      const buildingCtx = buildingLayer.getContext("2d");
+
+      const ui = {
+        angle: [
+          document.getElementById("angle1"),
+          document.getElementById("angle2")
+        ],
+        power: [
+          document.getElementById("power1"),
+          document.getElementById("power2")
+        ],
+        angleValue: [
+          document.getElementById("angle1Value"),
+          document.getElementById("angle2Value")
+        ],
+        powerValue: [
+          document.getElementById("power1Value"),
+          document.getElementById("power2Value")
+        ],
+        card: [
+          document.getElementById("card1"),
+          document.getElementById("card2")
+        ],
+        score: [
+          document.getElementById("score1"),
+          document.getElementById("score2")
+        ],
+        scoreName: [
+          document.getElementById("scoreName1"),
+          document.getElementById("scoreName2")
+        ],
+        playerName: [
+          document.getElementById("playerName1"),
+          document.getElementById("playerName2")
+        ],
+        modeCpu: document.getElementById("modeCpu"),
+        modeLocal: document.getElementById("modeLocal"),
+        wind: document.getElementById("wind"),
+        message: document.getElementById("message"),
+        fire: document.getElementById("fire"),
+        newRound: document.getElementById("newRound")
+      };
+
+      const state = {
+        buildings: [],
+        holes: [],
+        gorillas: [],
+        stars: [],
+        clouds: [],
+        projectile: null,
+        particles: [],
+        currentPlayer: 0,
+        mode: "cpu",
+        computerTimer: null,
+        turnToken: 0,
+        wind: 0,
+        windShear: 0,
+        windGust: 0,
+        windPhase: 0,
+        scores: [0, 0],
+        roundOver: false,
+        animating: false,
+        lastTime: performance.now(),
+        sunPhase: 0
+      };
+
+      const COLORS = [
+        "#3853a4", "#553aa8", "#1e6f92", "#7d3e84",
+        "#2f6f67", "#8b3c5e", "#654a9d", "#30658f"
+      ];
+
+      const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
+      const isComputerTurn = () =>
+        state.mode === "cpu" &&
+        state.currentPlayer === 1 &&
+        !state.roundOver;
+
+      const getPlayerName = (index) =>
+        index === 1 && state.mode === "cpu"
+          ? "Computer"
+          : `Spieler ${index + 1}`;
+
+      const readNumber = (input, fallback) => {
+        const value = Number(input.value);
+        return Number.isFinite(value) ? value : fallback;
+      };
+      const rand = (min, max) => Math.random() * (max - min) + min;
+      const irand = (min, max) => Math.floor(rand(min, max + 1));
+
+      function resizeCanvas() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = canvas.getBoundingClientRect();
+        const displayWidth = Math.max(640, Math.floor(rect.width * dpr));
+        const displayHeight = Math.floor(displayWidth * 4 / 7);
+
+        if (canvas.width !== displayWidth || canvas.height !== displayHeight) {
+          canvas.width = displayWidth;
+          canvas.height = displayHeight;
+          buildingLayer.width = displayWidth;
+          buildingLayer.height = displayHeight;
+          generateRound(true);
+        }
+      }
+
+      function buildStars() {
+        state.stars = Array.from({ length: 90 }, () => ({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height * 0.48,
+          r: rand(0.6, 2.3),
+          a: rand(0.35, 1)
+        }));
+
+        state.clouds = Array.from({ length: 4 }, (_, i) => ({
+          x: rand(0, canvas.width),
+          y: rand(canvas.height * 0.07, canvas.height * 0.22),
+          speed: rand(3, 8),
+          scale: rand(0.6, 1.25)
+        }));
+      }
+
+      function generateBuildings() {
+        state.buildings = [];
+        state.holes = [];
+
+        const minW = canvas.width * 0.032;
+        const maxW = canvas.width * 0.058;
+        let x = 0;
+        let index = 0;
+
+        while (x < canvas.width) {
+          const w = Math.min(rand(minW, maxW), canvas.width - x + 2);
+          const centerX = x + w / 2;
+          const normalizedX = centerX / canvas.width;
+          const centerDistance = Math.abs(normalizedX - 0.5) / 0.5;
+          const centerFactor = Math.pow(
+            1 - Math.min(1, centerDistance),
+            1.08
+          );
+
+          let minHeightRatio = 0.18 + centerFactor * 0.18;
+          let maxHeightRatio = 0.43 + centerFactor * 0.33;
+
+          if (normalizedX < 0.18 || normalizedX > 0.82) {
+            minHeightRatio = 0.17;
+            maxHeightRatio = 0.46;
+          }
+
+          let heightRatio = rand(minHeightRatio, maxHeightRatio);
+
+          if (normalizedX > 0.22 && normalizedX < 0.78) {
+            const skylineRoll = Math.random();
+
+            if (skylineRoll > 0.72) {
+              heightRatio = rand(0.66, 0.84);
+            } else if (skylineRoll < 0.18) {
+              heightRatio = rand(0.24, 0.40);
+            }
+          }
+
+          const h = canvas.height * Math.min(heightRatio, 0.84);
+          const y = canvas.height - h;
+
+          state.buildings.push({
+            x,
+            y,
+            w,
+            h,
+            color: COLORS[index % COLORS.length],
+            windowSeed: Math.random() * 10000
+          });
+
+          x += w;
+          index++;
+        }
+
+        const towerTargets = [
+          rand(0.3, 0.39),
+          rand(0.46, 0.54),
+          rand(0.61, 0.7)
+        ];
+
+        for (const target of towerTargets) {
+          let closest = null;
+          let closestDistance = Infinity;
+
+          for (const building of state.buildings) {
+            const center = (building.x + building.w / 2) / canvas.width;
+            const distance = Math.abs(center - target);
+
+            if (distance < closestDistance) {
+              closest = building;
+              closestDistance = distance;
+            }
+          }
+
+          if (closest) {
+            closest.h = canvas.height * rand(0.68, 0.82);
+            closest.y = canvas.height - closest.h;
+          }
+        }
+
+        if (state.buildings.length >= 4) {
+          const leftHost = state.buildings[1];
+          const rightHost = state.buildings[state.buildings.length - 2];
+          const leftIsLow = Math.random() < 0.5;
+
+          leftHost.h = canvas.height * (
+            leftIsLow ? rand(0.18, 0.28) : rand(0.36, 0.50)
+          );
+          rightHost.h = canvas.height * (
+            leftIsLow ? rand(0.36, 0.50) : rand(0.18, 0.28)
+          );
+
+          leftHost.y = canvas.height - leftHost.h;
+          rightHost.y = canvas.height - rightHost.h;
+        }
+      }
+
+      function findGorillaBuilding(fromLeft) {
+        const count = state.buildings.length;
+
+        if (count < 2) {
+          return state.buildings[0];
+        }
+
+        // Linker Gorilla: zweites Haus von links.
+        // Rechter Gorilla: zweites Haus von rechts.
+        return fromLeft
+          ? state.buildings[1]
+          : state.buildings[count - 2];
+      }
+
+      function placeGorillas() {
+        const leftB = findGorillaBuilding(true);
+        const rightB = findGorillaBuilding(false);
+
+        createGorillaSafetyZone(leftB, true);
+        createGorillaSafetyZone(rightB, false);
+
+        const radius = Math.max(25, canvas.width * 0.021);
+        state.gorillas = [
+          {
+            x: leftB.x + leftB.w / 2,
+            y: leftB.y - radius * 1.12,
+            r: radius,
+            building: leftB,
+            alive: true,
+            facing: 1
+          },
+          {
+            x: rightB.x + rightB.w / 2,
+            y: rightB.y - radius * 1.12,
+            r: radius,
+            building: rightB,
+            alive: true,
+            facing: -1
+          }
+        ];
+      }
+
+      function createGorillaSafetyZone(hostBuilding, isLeftSide) {
+        const hostCenter = hostBuilding.x + hostBuilding.w / 2;
+        const safeRadius = canvas.width * 0.115;
+        const maximumNeighbourHeight =
+          Math.min(
+            canvas.height * 0.49,
+            hostBuilding.h + canvas.height * 0.12
+          );
+
+        for (const building of state.buildings) {
+          if (building === hostBuilding) continue;
+
+          const center = building.x + building.w / 2;
+          const distance = Math.abs(center - hostCenter);
+
+          if (distance > safeRadius) continue;
+
+          // Nur Gebäude in Richtung Spielfeldmitte sind für den Wurf relevant.
+          const liesTowardCenter = isLeftSide
+            ? center > hostCenter
+            : center < hostCenter;
+
+          if (!liesTowardCenter) continue;
+
+          const proximity = 1 - distance / safeRadius;
+          const localMaximum =
+            maximumNeighbourHeight -
+            canvas.height * 0.08 * proximity;
+
+          if (building.h > localMaximum) {
+            building.h = localMaximum;
+            building.y = canvas.height - building.h;
+          }
+        }
+      }
+
+      function generateRound(keepScore = true) {
+        if (!keepScore) state.scores = [0, 0];
+
+        clearTimeout(state.computerTimer);
+        state.computerTimer = null;
+        state.turnToken++;
+
+        state.projectile = null;
+        state.particles = [];
+        state.roundOver = false;
+        state.animating = false;
+        state.currentPlayer = irand(0, 1);
+
+        const windDirection = Math.random() < 0.5 ? -1 : 1;
+        state.wind = windDirection * rand(11, 31);
+        state.windShear = rand(-15, 15);
+        state.windGust = rand(0.12, 0.34);
+        state.windPhase = rand(0, Math.PI * 2);
+        state.sunPhase = rand(0, Math.PI * 2);
+
+        buildStars();
+        generateBuildings();
+        placeGorillas();
+        updateUI();
+        scheduleComputerTurn();
+      }
+
+      function updateUI() {
+        ui.score[0].textContent = state.scores[0];
+        ui.score[1].textContent = state.scores[1];
+
+        ui.scoreName[0].textContent = "Spieler 1";
+        ui.scoreName[1].textContent =
+          state.mode === "cpu" ? "Computer" : "Spieler 2";
+        ui.playerName[0].textContent = "🦍 Spieler 1";
+        ui.playerName[1].textContent =
+          state.mode === "cpu" ? "🤖 Computer" : "🦍 Spieler 2";
+
+        ui.modeCpu.classList.toggle("active", state.mode === "cpu");
+        ui.modeLocal.classList.toggle("active", state.mode === "local");
+
+        ui.angleValue.forEach((element, index) => {
+          element.textContent = `${ui.angle[index].value}°`;
+        });
+
+        ui.powerValue.forEach((element, index) => {
+          element.textContent = ui.power[index].value;
+        });
+
+
+        ui.card.forEach((card, index) => {
+          card.classList.toggle("active", !state.roundOver && index === state.currentPlayer);
+        });
+
+        const groundDirection =
+          state.wind > 0.5 ? "→" : state.wind < -0.5 ? "←" : "•";
+        const highWind = state.wind + state.windShear;
+        const highDirection =
+          highWind > 0.5 ? "→" : highWind < -0.5 ? "←" : "•";
+
+        ui.wind.textContent =
+          `Wind ${groundDirection} ${Math.abs(state.wind).toFixed(1)} · ` +
+          `oben ${highDirection} ${Math.abs(highWind).toFixed(1)}`;
+        const computerTurn = isComputerTurn();
+        ui.fire.disabled = state.animating || state.roundOver || computerTurn;
+
+        ui.angle.forEach((input, i) => {
+          input.disabled =
+            state.animating ||
+            state.roundOver ||
+            i !== state.currentPlayer ||
+            computerTurn;
+        });
+
+        ui.power.forEach((input, i) => {
+          input.disabled =
+            state.animating ||
+            state.roundOver ||
+            i !== state.currentPlayer ||
+            computerTurn;
+        });
+
+        if (!state.roundOver && !state.animating) {
+          ui.message.textContent = computerTurn
+            ? "Der Computer berechnet seinen Wurf..."
+            : `${getPlayerName(state.currentPlayer)} ist am Zug`;
+        }
+      }
+
+      function drawBackground(time) {
+        const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        sky.addColorStop(0, "#0a153b");
+        sky.addColorStop(0.52, "#243c78");
+        sky.addColorStop(0.78, "#f06e6e");
+        sky.addColorStop(1, "#ffb25c");
+        ctx.fillStyle = sky;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (const star of state.stars) {
+          const twinkle = 0.6 + Math.sin(time * 0.002 + star.x) * 0.35;
+          ctx.globalAlpha = star.a * twinkle;
+          ctx.fillStyle = "#fff";
+          ctx.beginPath();
+          ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+
+        const sunX = canvas.width * 0.52;
+        const sunY = canvas.height * 0.26;
+        const sunR = canvas.width * 0.045;
+        const glow = ctx.createRadialGradient(sunX, sunY, 1, sunX, sunY, sunR * 2.2);
+        glow.addColorStop(0, "rgba(255,236,140,.9)");
+        glow.addColorStop(0.45, "rgba(255,170,91,.32)");
+        glow.addColorStop(1, "rgba(255,120,90,0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunR * 2.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#ffd47b";
+        ctx.beginPath();
+        ctx.arc(sunX, sunY, sunR, 0, Math.PI * 2);
+        ctx.fill();
+
+        for (const cloud of state.clouds) {
+          drawCloud(cloud);
+        }
+
+        const haze = ctx.createLinearGradient(0, canvas.height * 0.54, 0, canvas.height);
+        haze.addColorStop(0, "rgba(255,183,115,0)");
+        haze.addColorStop(1, "rgba(255,112,91,.22)");
+        ctx.fillStyle = haze;
+        ctx.fillRect(0, canvas.height * 0.5, canvas.width, canvas.height * 0.5);
+      }
+
+      function drawCloud(cloud) {
+        ctx.save();
+        ctx.translate(cloud.x, cloud.y);
+        ctx.scale(cloud.scale, cloud.scale);
+        ctx.fillStyle = "rgba(255,255,255,.12)";
+        ctx.beginPath();
+        ctx.arc(0, 0, 28, Math.PI, 0);
+        ctx.arc(30, -10, 38, Math.PI, 0);
+        ctx.arc(70, 2, 27, Math.PI, 0);
+        ctx.lineTo(95, 25);
+        ctx.lineTo(-28, 25);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawBuildings() {
+        const c = buildingCtx;
+        c.clearRect(0, 0, buildingLayer.width, buildingLayer.height);
+
+        for (const b of state.buildings) {
+          const grad = c.createLinearGradient(b.x, b.y, b.x + b.w, b.y + b.h);
+          grad.addColorStop(0, b.color);
+          grad.addColorStop(1, shade(b.color, -35));
+          c.fillStyle = grad;
+          c.fillRect(b.x, b.y, b.w + 1, b.h);
+
+          c.fillStyle = "rgba(255,255,255,.09)";
+          c.fillRect(b.x + 3, b.y + 3, 3, b.h - 3);
+
+          const colW = Math.max(11, b.w / 6);
+          const rowH = Math.max(16, canvas.height * 0.037);
+          let row = 0;
+
+          for (let wy = b.y + 16; wy < canvas.height - 14; wy += rowH) {
+            let col = 0;
+            for (let wx = b.x + 10; wx < b.x + b.w - 8; wx += colW) {
+              const lit = pseudoRandom(b.windowSeed + row * 19 + col * 7) > 0.46;
+              c.fillStyle = lit ? "rgba(255,223,128,.88)" : "rgba(7,14,38,.66)";
+              c.fillRect(wx, wy, Math.max(4, colW * 0.42), Math.max(6, rowH * 0.42));
+              col++;
+            }
+            row++;
+          }
+
+          c.fillStyle = "rgba(2,6,20,.55)";
+          c.fillRect(b.x, canvas.height - 8, b.w + 1, 8);
+        }
+
+        for (const hole of state.holes) {
+          c.save();
+          c.globalCompositeOperation = "destination-out";
+          craterPath(c, hole);
+          c.fill();
+          c.restore();
+        }
+
+        for (const hole of state.holes) {
+          const building = state.buildings[hole.buildingIndex];
+          if (!building) continue;
+
+          c.save();
+          c.beginPath();
+          c.rect(building.x, building.y, building.w, building.h);
+          c.clip();
+
+          c.globalCompositeOperation = "source-over";
+          c.strokeStyle = "rgba(18,10,13,.92)";
+          c.lineWidth = Math.max(4, hole.r * 0.13);
+          c.lineJoin = "round";
+          craterPath(c, hole);
+          c.stroke();
+
+          c.strokeStyle = "rgba(255,132,62,.32)";
+          c.lineWidth = Math.max(1.5, hole.r * 0.035);
+          craterPath(c, hole);
+          c.stroke();
+
+          c.strokeStyle = "rgba(194,201,207,.7)";
+          c.lineWidth = Math.max(2, hole.r * 0.055);
+          for (let i = -1; i <= 1; i++) {
+            const yy = hole.y + i * hole.r * 0.36;
+            const offset = hole.floorOffsets[i + 1] || 0;
+            c.beginPath();
+            c.moveTo(hole.x - hole.r * 0.72, yy);
+            c.lineTo(hole.x + hole.r * 0.72, yy + offset);
+            c.stroke();
+          }
+
+          c.strokeStyle = "rgba(15,13,23,.82)";
+          c.lineWidth = Math.max(1.2, hole.r * 0.035);
+          for (const crack of hole.cracks) {
+            const sx = hole.x + Math.cos(crack.angle) * hole.r * 0.7;
+            const sy = hole.y + Math.sin(crack.angle) * hole.r * 0.7;
+            const mx = hole.x + Math.cos(crack.angle + crack.bend) * crack.length * 0.68;
+            const my = hole.y + Math.sin(crack.angle + crack.bend) * crack.length * 0.68;
+            const ex = hole.x + Math.cos(crack.angle) * crack.length;
+            const ey = hole.y + Math.sin(crack.angle) * crack.length;
+
+            c.beginPath();
+            c.moveTo(sx, sy);
+            c.lineTo(mx, my);
+            c.lineTo(ex, ey);
+            c.stroke();
+
+            if (crack.branch) {
+              c.beginPath();
+              c.moveTo(mx, my);
+              c.lineTo(
+                mx + Math.cos(crack.angle + 0.65) * crack.length * 0.28,
+                my + Math.sin(crack.angle + 0.65) * crack.length * 0.28
+              );
+              c.stroke();
+            }
+          }
+
+          c.strokeStyle = "rgba(125,139,150,.85)";
+          c.lineWidth = Math.max(1.2, hole.r * 0.035);
+          for (let i = 0; i < 4; i++) {
+            const a = -0.85 + i * 0.55;
+            const x1 = hole.x + Math.cos(a) * hole.r * 0.72;
+            const y1 = hole.y + Math.sin(a) * hole.r * 0.72;
+            const rebar = hole.rebarOffsets[i];
+            c.beginPath();
+            c.moveTo(x1, y1);
+            c.lineTo(x1 + rebar.x, y1 + hole.r * rebar.y);
+            c.stroke();
+          }
+
+          c.restore();
+        }
+
+        ctx.drawImage(buildingLayer, 0, 0);
+      }
+
+      function craterPath(target, hole) {
+        target.beginPath();
+        hole.points.forEach((point, index) => {
+          const px = hole.x + Math.cos(point.angle) * hole.r * point.factor;
+          const py = hole.y + Math.sin(point.angle) * hole.r * point.factor;
+          if (index === 0) target.moveTo(px, py);
+          else target.lineTo(px, py);
+        });
+        target.closePath();
+      }
+
+      function shade(hex, amount) {
+        const n = parseInt(hex.slice(1), 16);
+        const r = clamp((n >> 16) + amount, 0, 255);
+        const g = clamp(((n >> 8) & 0xff) + amount, 0, 255);
+        const b = clamp((n & 0xff) + amount, 0, 255);
+        return `rgb(${r}, ${g}, ${b})`;
+      }
+
+      function pseudoRandom(seed) {
+        const x = Math.sin(seed) * 43758.5453;
+        return x - Math.floor(x);
+      }
+
+      function drawGorilla(g, index, time) {
+        if (!g.alive) return;
+
+        const isActive = index === state.currentPlayer && !state.roundOver;
+        const bob = isActive && !state.animating ? Math.sin(time * 0.006) * 1.5 : 0;
+        const throwingPose = isActive;
+        const r = g.r;
+
+        ctx.save();
+        ctx.translate(g.x, g.y + bob);
+        ctx.scale(g.facing, 1);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+
+        if (isActive) {
+          ctx.strokeStyle = "rgba(255,216,74,.7)";
+          ctx.lineWidth = Math.max(3, r * .13);
+          ctx.beginPath();
+          ctx.ellipse(0, r * .05, r * 1.42, r * 1.52, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        const fur = ctx.createRadialGradient(-r * .22, -r * .48, r * .08, 0, 0, r * 1.35);
+        fur.addColorStop(0, "#66625c");
+        fur.addColorStop(.38, "#353533");
+        fur.addColorStop(1, "#111416");
+
+        ctx.strokeStyle = "#171a1c";
+        ctx.lineWidth = r * .45;
+        ctx.beginPath();
+        ctx.moveTo(-r * .34, r * .48);
+        ctx.lineTo(-r * .48, r * 1.0);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(r * .34, r * .48);
+        ctx.lineTo(r * .48, r * 1.0);
+        ctx.stroke();
+
+        ctx.fillStyle = "#111416";
+        ctx.beginPath();
+        ctx.ellipse(-r * .58, r * 1.08, r * .38, r * .18, -.08, 0, Math.PI * 2);
+        ctx.ellipse(r * .58, r * 1.08, r * .38, r * .18, .08, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = fur;
+        ctx.beginPath();
+        ctx.moveTo(-r * .92, -r * .22);
+        ctx.bezierCurveTo(-r * .86, -r * .75, -r * .48, -r * .86, 0, -r * .78);
+        ctx.bezierCurveTo(r * .48, -r * .86, r * .86, -r * .75, r * .92, -r * .22);
+        ctx.bezierCurveTo(r * .82, r * .45, r * .57, r * .78, 0, r * .84);
+        ctx.bezierCurveTo(-r * .57, r * .78, -r * .82, r * .45, -r * .92, -r * .22);
+        ctx.closePath();
+        ctx.fill();
+
+        const chest = ctx.createLinearGradient(0, -r * .65, 0, r * .65);
+        chest.addColorStop(0, "rgba(150,151,145,.64)");
+        chest.addColorStop(1, "rgba(74,76,74,.25)");
+        ctx.fillStyle = chest;
+        ctx.beginPath();
+        ctx.ellipse(0, r * .05, r * .58, r * .67, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "#171a1c";
+        ctx.lineWidth = r * .43;
+
+        ctx.beginPath();
+        ctx.moveTo(-r * .73, -r * .28);
+        ctx.lineTo(-r * 1.15, r * .28);
+        ctx.lineTo(-r * 1.04, r * .91);
+        ctx.stroke();
+
+        if (throwingPose) {
+          ctx.beginPath();
+          ctx.moveTo(r * .73, -r * .28);
+          ctx.lineTo(r * 1.0, -r * .82);
+          ctx.lineTo(r * 1.18, -r * 1.14);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(r * .73, -r * .28);
+          ctx.lineTo(r * 1.12, r * .3);
+          ctx.lineTo(r * 1.0, r * .91);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = "#202325";
+        ctx.beginPath();
+        ctx.ellipse(-r * 1.04, r * .96, r * .3, r * .23, -.15, 0, Math.PI * 2);
+        if (throwingPose) {
+          ctx.ellipse(r * 1.18, -r * 1.14, r * .25, r * .22, .2, 0, Math.PI * 2);
+        } else {
+          ctx.ellipse(r * 1.0, r * .96, r * .3, r * .23, .15, 0, Math.PI * 2);
+        }
+        ctx.fill();
+
+        ctx.fillStyle = fur;
+        ctx.beginPath();
+        ctx.ellipse(r * .02, -r * .86, r * .5, r * .52, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#252729";
+        ctx.beginPath();
+        ctx.arc(-r * .44, -r * .86, r * .15, 0, Math.PI * 2);
+        ctx.arc(r * .47, -r * .86, r * .15, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#77736c";
+        ctx.beginPath();
+        ctx.ellipse(r * .13, -r * .68, r * .39, r * .3, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "#101214";
+        ctx.lineWidth = r * .14;
+        ctx.beginPath();
+        ctx.moveTo(-r * .28, -r * .98);
+        ctx.quadraticCurveTo(r * .04, -r * 1.1, r * .35, -r * .96);
+        ctx.stroke();
+
+        ctx.fillStyle = "#050607";
+        ctx.beginPath();
+        ctx.arc(-r * .12, -r * .93, r * .052, 0, Math.PI * 2);
+        ctx.arc(r * .22, -r * .93, r * .052, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#202020";
+        ctx.beginPath();
+        ctx.ellipse(r * .16, -r * .73, r * .19, r * .13, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#070707";
+        ctx.beginPath();
+        ctx.arc(r * .08, -r * .75, r * .035, 0, Math.PI * 2);
+        ctx.arc(r * .24, -r * .75, r * .035, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = "#211515";
+        ctx.lineWidth = Math.max(1.5, r * .055);
+        ctx.beginPath();
+        ctx.moveTo(-r * .02, -r * .57);
+        ctx.quadraticCurveTo(r * .17, -r * .48, r * .39, -r * .58);
+        ctx.stroke();
+
+        ctx.strokeStyle = "rgba(190,190,181,.18)";
+        ctx.lineWidth = Math.max(1, r * .035);
+        for (let i = 0; i < 7; i++) {
+          const yy = -r * .45 + i * r * .14;
+          ctx.beginPath();
+          ctx.moveTo(-r * .55, yy);
+          ctx.lineTo(-r * .18, yy + r * .08);
+          ctx.moveTo(r * .55, yy);
+          ctx.lineTo(r * .18, yy + r * .08);
+          ctx.stroke();
+        }
+
+        if (throwingPose && !state.animating) {
+          ctx.save();
+          ctx.translate(r * 1.36, -r * 1.23);
+          ctx.rotate(-0.42);
+          drawBananaShape(r * .24);
+          ctx.restore();
+        }
+
+        ctx.restore();
+      }
+
+      function drawBananaShape(size) {
+        ctx.save();
+        ctx.strokeStyle = "#5d4300";
+        ctx.lineWidth = Math.max(1.5, size * .12);
+        ctx.fillStyle = "#ffd72e";
+        ctx.beginPath();
+        ctx.arc(0, 0, size, 0.35, Math.PI + 0.2);
+        ctx.arc(size * .35, -size * .22, size * .76, Math.PI + 0.1, 0.15, true);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      function drawProjectile() {
+        const p = state.projectile;
+        if (!p) return;
+
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        drawBananaShape(Math.max(9, canvas.width * .0085));
+        ctx.restore();
+
+        ctx.fillStyle = "rgba(255,229,94,.24)";
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      function drawParticles() {
+        for (const p of state.particles) {
+          const alpha = clamp(p.life / p.maxLife, 0, 1);
+          ctx.globalAlpha = alpha;
+
+          if (p.kind === "debris") {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.rotation);
+            ctx.fillStyle = p.color;
+            ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+            ctx.strokeStyle = "rgba(10,10,15,.45)";
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-p.w / 2, -p.h / 2, p.w, p.h);
+            ctx.restore();
+          } else {
+            ctx.fillStyle = p.color;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      function getWindAcceleration(y, elapsed) {
+        const altitude = clamp(1 - y / canvas.height, 0, 1);
+        const windAtHeight =
+          state.wind + state.windShear * altitude;
+        const gustMultiplier =
+          1 + Math.sin(elapsed * 2.15 + state.windPhase) * state.windGust;
+
+        return (
+          windAtHeight *
+          gustMultiplier *
+          canvas.width *
+          0.00055
+        );
+      }
+
+      function simulationHitsBuilding(x, y) {
+        for (const building of state.buildings) {
+          const insideBuilding =
+            x >= building.x &&
+            x <= building.x + building.w &&
+            y >= building.y &&
+            y <= canvas.height;
+
+          if (!insideBuilding) continue;
+
+          const insideHole = state.holes.some(
+            hole => Math.hypot(x - hole.x, y - hole.y) < hole.r
+          );
+
+          if (!insideHole) return true;
+        }
+
+        return false;
+      }
+
+      function simulateComputerShot(angle, power) {
+        const shooter = state.gorillas[1];
+        const target = state.gorillas[0];
+        const direction = -1;
+        const radians = angle * Math.PI / 180;
+        const speed = power * canvas.width * 0.00365;
+
+        let x = shooter.x + direction * shooter.r * 1.34;
+        let y = shooter.y - shooter.r * 1.18;
+        let vx = Math.cos(radians) * speed * direction;
+        let vy = -Math.sin(radians) * speed;
+        let elapsed = 0;
+        let minimumDistance = Infinity;
+        let impactDistance = Infinity;
+        const gravity = canvas.height * 0.74;
+        const dt = 0.028;
+
+        for (let step = 0; step < 620; step++) {
+          const windAcceleration = getWindAcceleration(y, elapsed);
+          vx += windAcceleration * dt;
+          vy += gravity * dt;
+          x += vx * dt;
+          y += vy * dt;
+          elapsed += dt;
+
+          const targetDistance = Math.hypot(x - target.x, y - target.y);
+          minimumDistance = Math.min(minimumDistance, targetDistance);
+
+          if (targetDistance < target.r * 1.3) {
+            return {
+              hit: true,
+              score: -100000 + elapsed,
+              minimumDistance
+            };
+          }
+
+          if (elapsed > 0.12 && simulationHitsBuilding(x, y)) {
+            impactDistance = targetDistance;
+            return {
+              hit: false,
+              score:
+                minimumDistance +
+                impactDistance * 0.55 +
+                420,
+              minimumDistance
+            };
+          }
+
+          if (
+            x < -100 ||
+            x > canvas.width + 100 ||
+            y > canvas.height + 100 ||
+            y < -canvas.height * 0.42
+          ) {
+            return {
+              hit: false,
+              score: minimumDistance + 180,
+              minimumDistance
+            };
+          }
+        }
+
+        return {
+          hit: false,
+          score: minimumDistance + 260,
+          minimumDistance
+        };
+      }
+
+      function calculateComputerShot() {
+        let best = {
+          angle: 55,
+          power: 95,
+          score: Infinity,
+          hit: false
+        };
+
+        // Grobe Suche über realistische hohe Wurfbögen.
+        for (let angle = 24; angle <= 88; angle += 2) {
+          for (let power = 24; power <= 200; power += 4) {
+            const result = simulateComputerShot(angle, power);
+
+            if (result.score < best.score) {
+              best = {
+                angle,
+                power,
+                score: result.score,
+                hit: result.hit
+              };
+            }
+          }
+        }
+
+        // Lokale Verfeinerung rund um den besten Kandidaten.
+        const refinedStartAngle = Math.max(12, best.angle - 3);
+        const refinedEndAngle = Math.min(89, best.angle + 3);
+        const refinedStartPower = Math.max(10, best.power - 7);
+        const refinedEndPower = Math.min(200, best.power + 7);
+
+        for (
+          let angle = refinedStartAngle;
+          angle <= refinedEndAngle;
+          angle += 0.5
+        ) {
+          for (
+            let power = refinedStartPower;
+            power <= refinedEndPower;
+            power += 1
+          ) {
+            const result = simulateComputerShot(angle, power);
+
+            if (result.score < best.score) {
+              best = {
+                angle,
+                power,
+                score: result.score,
+                hit: result.hit
+              };
+            }
+          }
+        }
+
+        // Kleine menschliche Ungenauigkeit: Treffer sind wahrscheinlich,
+        // aber der Computer ist nicht bei jedem Versuch perfekt.
+        const accuracyRoll = Math.random();
+        const angleSpread =
+          accuracyRoll < 0.2 ? rand(-3.2, 3.2) : rand(-1.35, 1.35);
+        const powerSpread =
+          accuracyRoll < 0.2 ? rand(-8, 8) : rand(-3.5, 3.5);
+
+        return {
+          angle: clamp(Math.round(best.angle + angleSpread), 0, 180),
+          power: clamp(Math.round(best.power + powerSpread), 10, 200)
+        };
+      }
+
+      function scheduleComputerTurn() {
+        clearTimeout(state.computerTimer);
+        state.computerTimer = null;
+
+        if (!isComputerTurn() || state.animating) return;
+
+        const token = state.turnToken;
+        state.computerTimer = setTimeout(() => {
+          if (
+            token !== state.turnToken ||
+            !isComputerTurn() ||
+            state.animating
+          ) {
+            return;
+          }
+
+          const shot = calculateComputerShot();
+          ui.angle[1].value = shot.angle;
+          ui.power[1].value = shot.power;
+          updateUI();
+
+          state.computerTimer = setTimeout(() => {
+            if (
+              token === state.turnToken &&
+              isComputerTurn() &&
+              !state.animating
+            ) {
+              shoot();
+            }
+          }, 550);
+        }, 850);
+      }
+
+      function render(time) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawBackground(time);
+        drawBuildings();
+        state.gorillas.forEach((g, i) => drawGorilla(g, i, time));
+        drawProjectile();
+        drawParticles();
+      }
+
+      function shoot() {
+        if (state.animating || state.roundOver) return;
+
+        const player = state.currentPlayer;
+        const angle = readNumber(ui.angle[player], 45);
+        const power = readNumber(ui.power[player], 65);
+
+        ui.angle[player].value = angle;
+        ui.power[player].value = power;
+
+        const g = state.gorillas[player];
+        const direction = player === 0 ? 1 : -1;
+        const rad = angle * Math.PI / 180;
+        const speed = power * canvas.width * 0.00365;
+
+        state.projectile = {
+          x: g.x + direction * g.r * 1.34,
+          y: g.y - g.r * 1.18,
+          vx: Math.cos(rad) * speed * direction,
+          vy: -Math.sin(rad) * speed,
+          rotation: 0,
+          elapsed: 0,
+          owner: player
+        };
+
+        state.animating = true;
+        ui.message.textContent = `${getPlayerName(player)} wirft...`;
+        updateUI();
+      }
+
+      function pointInBuilding(x, y) {
+        for (const b of state.buildings) {
+          if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= canvas.height) {
+            const insideHole = state.holes.some(h => Math.hypot(x - h.x, y - h.y) < h.r);
+            if (!insideHole) return b;
+          }
+        }
+        return null;
+      }
+
+      function updateProjectile(dt) {
+        const p = state.projectile;
+        if (!p) return;
+
+        const gravity = canvas.height * 0.74;
+        const windAccel = getWindAcceleration(p.y, p.elapsed);
+
+        p.vx += windAccel * dt;
+        p.vy += gravity * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.elapsed += dt;
+        p.rotation += dt * 7.5;
+
+        for (let i = 0; i < state.gorillas.length; i++) {
+          const g = state.gorillas[i];
+          if (!g.alive) continue;
+
+          const hitDistance = g.r * 1.3;
+          if (Math.hypot(p.x - g.x, p.y - g.y) < hitDistance) {
+            explode(p.x, p.y, true, i, g.building);
+            return;
+          }
+        }
+
+        const hitBuilding = pointInBuilding(p.x, p.y);
+        if (hitBuilding) {
+          explode(p.x, p.y, false, -1, hitBuilding);
+          return;
+        }
+
+        if (
+          p.x < -60 ||
+          p.x > canvas.width + 60 ||
+          p.y > canvas.height + 80 ||
+          p.y < -canvas.height * 0.35
+        ) {
+          state.projectile = null;
+          finishMiss();
+        }
+      }
+
+      function explode(x, y, gorillaHit, victim = -1, hitBuilding = null) {
+        state.projectile = null;
+
+        const radius = gorillaHit
+          ? Math.max(46, canvas.width * .042)
+          : Math.max(36, canvas.width * .031);
+
+        const buildingIndex = hitBuilding ? state.buildings.indexOf(hitBuilding) : -1;
+        const pointCount = irand(15, 21);
+        const points = Array.from({ length: pointCount }, (_, index) => ({
+          angle: (index / pointCount) * Math.PI * 2,
+          factor: rand(.72, 1.24)
+        }));
+        const cracks = Array.from({ length: irand(7, 11) }, () => {
+          const angle = rand(0, Math.PI * 2);
+          return {
+            angle,
+            bend: rand(-.22, .22),
+            length: radius * rand(1.05, 1.9),
+            branch: Math.random() > .48
+          };
+        });
+
+        const floorOffsets = [
+          rand(-2, 2),
+          rand(-2, 2),
+          rand(-2, 2)
+        ];
+
+        const rebarOffsets = Array.from({ length: 4 }, () => ({
+          x: rand(-5, 5),
+          y: rand(0.22, 0.48)
+        }));
+
+        state.holes.push({
+          x,
+          y,
+          r: radius,
+          points,
+          cracks,
+          buildingIndex,
+          floorOffsets,
+          rebarOffsets
+        });
+
+        const explosionColors = ["#fff2a6", "#ffd84a", "#ff9d2e", "#ff544f", "#5c1725"];
+        for (let i = 0; i < 78; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const speed = rand(80, 360);
+          const life = rand(.5, 1.12);
+          state.particles.push({
+            kind: "spark",
+            x,
+            y,
+            vx: Math.cos(a) * speed,
+            vy: Math.sin(a) * speed,
+            life,
+            maxLife: life,
+            size: rand(2, 8),
+            color: explosionColors[irand(0, explosionColors.length - 1)]
+          });
+        }
+
+        const facadeColor = hitBuilding ? hitBuilding.color : "#5d6370";
+        for (let i = 0; i < 34; i++) {
+          const a = rand(-Math.PI * .95, Math.PI * .15);
+          const speed = rand(85, 285);
+          const life = rand(1.0, 2.2);
+          state.particles.push({
+            kind: "debris",
+            x: x + rand(-radius * .25, radius * .25),
+            y: y + rand(-radius * .25, radius * .25),
+            vx: Math.cos(a) * speed,
+            vy: Math.sin(a) * speed - rand(20, 100),
+            life,
+            maxLife: life,
+            w: rand(5, 15),
+            h: rand(4, 11),
+            rotation: rand(0, Math.PI * 2),
+            spin: rand(-8, 8),
+            color: Math.random() > .28 ? facadeColor : "#aab1b7"
+          });
+        }
+
+        for (let i = 0; i < 20; i++) {
+          const life = rand(1.1, 2.2);
+          state.particles.push({
+            kind: "smoke",
+            x: x + rand(-radius * .35, radius * .35),
+            y: y + rand(-radius * .2, radius * .2),
+            vx: rand(-28, 28),
+            vy: rand(-90, -35),
+            life,
+            maxLife: life,
+            size: rand(8, 20),
+            grow: rand(8, 16),
+            color: Math.random() > .45 ? "rgba(38,39,45,.72)" : "rgba(86,68,64,.58)"
+          });
+        }
+
+        if (gorillaHit) {
+          state.gorillas[victim].alive = false;
+          const winner = victim === state.currentPlayer
+            ? 1 - state.currentPlayer
+            : state.currentPlayer;
+
+          state.scores[winner]++;
+          state.roundOver = true;
+          state.animating = false;
+          clearTimeout(state.computerTimer);
+          state.turnToken++;
+          ui.message.textContent = victim === state.currentPlayer
+            ? `Eigentreffer! ${getPlayerName(winner)} gewinnt`
+            : `Treffer! ${getPlayerName(winner)} gewinnt`;
+          updateUI();
+        } else {
+          setTimeout(() => finishMiss(), 620);
+        }
+      }
+
+      function finishMiss() {
+        if (state.roundOver) return;
+
+        state.animating = false;
+        state.currentPlayer = 1 - state.currentPlayer;
+        state.turnToken++;
+
+        ui.message.textContent =
+          `Daneben – ${getPlayerName(state.currentPlayer)} ist dran`;
+        updateUI();
+        scheduleComputerTurn();
+      }
+
+      function updateParticles(dt) {
+        for (const p of state.particles) {
+          p.life -= dt;
+
+          if (p.kind === "smoke") {
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vx *= Math.pow(.985, dt * 60);
+            p.vy *= Math.pow(.992, dt * 60);
+            p.size += p.grow * dt;
+          } else {
+            p.vy += canvas.height * 0.45 * dt;
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.vx *= Math.pow(0.985, dt * 60);
+            if (p.kind === "debris") p.rotation += p.spin * dt;
+          }
+        }
+        state.particles = state.particles.filter(p => p.life > 0);
+      }
+
+      function updateClouds(dt) {
+        for (const cloud of state.clouds) {
+          cloud.x += cloud.speed * dt;
+          if (cloud.x > canvas.width + 130) cloud.x = -130;
+        }
+      }
+
+      function loop(now) {
+        const dt = Math.min((now - state.lastTime) / 1000, 0.033);
+        state.lastTime = now;
+
+        updateClouds(dt);
+        if (state.projectile) updateProjectile(dt);
+        updateParticles(dt);
+        render(now);
+
+        requestAnimationFrame(loop);
+      }
+
+      ui.fire.addEventListener("click", () => {
+        if (!isComputerTurn()) shoot();
+      });
+
+      ui.newRound.addEventListener("click", () => generateRound(true));
+
+      function setGameMode(mode) {
+        if (mode !== "cpu" && mode !== "local") return;
+        if (state.mode === mode) return;
+
+        clearTimeout(state.computerTimer);
+        state.computerTimer = null;
+        state.mode = mode;
+        state.scores = [0, 0];
+        generateRound(false);
+      }
+
+      ui.modeCpu.addEventListener("click", () => setGameMode("cpu"));
+      ui.modeLocal.addEventListener("click", () => setGameMode("local"));
+
+      [...ui.angle, ...ui.power].forEach(input => {
+        input.addEventListener("input", updateUI);
+        input.addEventListener("change", updateUI);
+      });
+
+      document.addEventListener("keydown", event => {
+        if (event.key === "Enter" && !isComputerTurn()) {
+          event.preventDefault();
+          shoot();
+        }
+      });
+
+      canvas.addEventListener("pointerdown", event => {
+        if (
+          state.animating ||
+          state.roundOver ||
+          isComputerTurn()
+        ) {
+          return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mx = (event.clientX - rect.left) * scaleX;
+        const my = (event.clientY - rect.top) * scaleY;
+        const g = state.gorillas[state.currentPlayer];
+
+        const dx = mx - g.x;
+        const dy = my - g.y;
+        const direction = state.currentPlayer === 0 ? 1 : -1;
+        const horizontal = Math.max(1, dx * direction);
+
+        const angle = clamp(
+          Math.round(Math.atan2(-dy, horizontal) * 180 / Math.PI),
+          0,
+          180
+        );
+        const distance = Math.hypot(dx, dy);
+        const power = clamp(
+          Math.round(distance / canvas.width * 190),
+          10,
+          200
+        );
+
+        ui.angle[state.currentPlayer].value = angle;
+        ui.power[state.currentPlayer].value = power;
+        updateUI();
+      });
+
+      window.addEventListener("resize", resizeCanvas);
+
+      generateRound(false);
+      resizeCanvas();
+      requestAnimationFrame(loop);
+    })();
+  </script>
+</body>
+</html>

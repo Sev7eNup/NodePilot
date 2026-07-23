@@ -119,18 +119,41 @@ public class DbAdminQueryExecutorTests
     }
 
     [Fact]
-    public async Task ExecuteReadAsync_RollsBackWithoutPersisting()
+    public async Task ExecuteReadAsync_RejectsMutatingStatementAtExecutorBoundary()
     {
         using var db = TestDbFactory.Create();
         var exec = NewExecutor(db);
 
-        // Even a mutating statement is rolled back in read mode (defence-in-depth transaction).
-        await exec.ExecuteReadAsync(
+        var act = () => exec.ExecuteReadAsync(
             "INSERT INTO Workflows (Id, Name, DefinitionJson, Version, IsEnabled, CreatedAt, UpdatedAt, ActivityCount, FolderId) " +
             "VALUES ('11111111-1111-1111-1111-111111111111', 'ghost', '{}', 1, 0, '2026-01-01', '2026-01-01', 0, '00000000-0000-0000-0000-000000000001')",
             CancellationToken.None);
 
-        var read = await exec.ExecuteReadAsync("SELECT COUNT(*) AS c FROM Workflows", CancellationToken.None);
-        read.Rows[0][0].Should().Be(0L, "the read-mode transaction rolls back any write");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*INSERT*not allowed*");
+        db.Workflows.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("WITH x AS (SELECT 1) DELETE FROM Workflows")]
+    [InlineData("SELECT 1 INTO NewTable")]
+    [InlineData("EXEC xp_cmdshell 'whoami'")]
+    [InlineData("SELECT pg_sleep(5)")]
+    [InlineData("EXPLAIN ANALYZE SELECT 1")]
+    public async Task ExecuteReadAsync_RejectsDangerousSingleStatements(string sql)
+    {
+        using var db = TestDbFactory.Create();
+        var act = () => NewExecutor(db).ExecuteReadAsync(sql, CancellationToken.None);
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task ExecuteReadAsync_DangerousWordsInsideLiteralsAndComments_AreIgnored()
+    {
+        using var db = TestDbFactory.Create();
+        var result = await NewExecutor(db).ExecuteReadAsync(
+            "SELECT 'DELETE INTO pg_sleep' AS text /* EXEC xp_cmdshell */",
+            CancellationToken.None);
+        result.Rows.Should().ContainSingle();
     }
 }
