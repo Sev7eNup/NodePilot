@@ -689,12 +689,66 @@ public class WorkflowEngineTests
 
         execution.Status.Should().Be(ExecutionStatus.Failed);
         execution.CompletedAt.Should().NotBeNull();
+        execution.ErrorMessage.Should().Be("Activity \"step-1\" failed: Script failed");
 
         var steps = _db.StepExecutions.Where(s => s.WorkflowExecutionId == execution.Id).ToList();
         steps.Should().HaveCount(2); // trigger-1 + step-1
         var failedStep = steps.Single(s => s.StepId == "step-1");
         failedStep.Status.Should().Be(ExecutionStatus.Failed);
         failedStep.ErrorOutput.Should().Be("Script failed");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_MultipleStepsFail_SummarizesFirstFailureAndAdditionalCount()
+    {
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((StepExecutionContext ctx, JsonElement _, CancellationToken _) =>
+                new ActivityResult { Success = false, ErrorOutput = $"{ctx.StepId} failed" });
+
+        const string definition = """
+            {
+              "nodes": [
+                {"id":"trigger-1","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"manualTrigger","config":{}}},
+                {"id":"step-1","type":"activity","position":{"x":0,"y":0},"data":{"label":"Primary activity","activityType":"runScript","config":{}}},
+                {"id":"step-2","type":"activity","position":{"x":0,"y":0},"data":{"label":"Secondary activity","activityType":"runScript","config":{}}}
+              ],
+              "edges": [
+                {"id":"te","source":"trigger-1","target":"step-1"},
+                {"id":"e1","source":"step-1","target":"step-2","data":{"condition":"step-1.failed"}}
+              ]
+            }
+            """;
+        var workflow = CreateWorkflow(definition);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "test-user", CancellationToken.None);
+
+        execution.Status.Should().Be(ExecutionStatus.Failed);
+        execution.ErrorMessage.Should().Be(
+            "Activity \"Primary activity\" failed: step-1 failed (+1 more failed activities)");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_StepFailsWithoutErrorOutput_OmitsEmptyDetail()
+    {
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityResult { Success = false });
+
+        var workflow = CreateWorkflow(BuildSingleNodeWorkflow("unnamed-step"));
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await _engine.ExecuteAsync(workflow, "test-user", CancellationToken.None);
+
+        execution.Status.Should().Be(ExecutionStatus.Failed);
+        execution.ErrorMessage.Should().Be("Activity \"unnamed-step\" failed");
     }
 
     [Fact]
@@ -708,6 +762,7 @@ public class WorkflowEngineTests
 
         execution.Status.Should().Be(ExecutionStatus.Succeeded);
         execution.CompletedAt.Should().NotBeNull();
+        execution.ErrorMessage.Should().BeNull();
 
         var steps = _db.StepExecutions.Where(s => s.WorkflowExecutionId == execution.Id).ToList();
         steps.Should().HaveCount(4); // step-1/2/3 + trigger-1
@@ -1232,6 +1287,8 @@ public class WorkflowEngineTests
         execution.Status.Should().Be(ExecutionStatus.Failed,
             "a cycle-only graph has no entry point and must not silently succeed");
         execution.ErrorMessage.Should().NotBeNullOrEmpty();
+        execution.ErrorMessage.Should().NotStartWith("Activity ",
+            "engine-level graph failures must keep their existing workflow error");
         execution.CompletedAt.Should().NotBeNull();
 
         // No steps should have been created — nothing could run.

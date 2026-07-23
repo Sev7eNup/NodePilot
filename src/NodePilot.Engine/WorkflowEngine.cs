@@ -982,16 +982,46 @@ public class WorkflowEngine : IWorkflowEngine
         }
         // Determine overall status. Using Count instead of Any: it uses the same query
         // plan (an index seek on WorkflowExecutionId), but also gives us the exact
-        // failure count for the support log without a second round-trip.
+        // failure count for the support log and the compact workflow-level failure summary.
         var failedStepCount = await _db.StepExecutions
             .AsNoTracking()
             .CountAsync(s => s.WorkflowExecutionId == execution.Id && s.Status == ExecutionStatus.Failed, CancellationToken.None);
 
         var desiredStatus = failedStepCount > 0 ? ExecutionStatus.Failed : ExecutionStatus.Succeeded;
+        string? failureSummary = null;
+        if (failedStepCount > 0)
+        {
+            // ErrorOutput remains authoritative on StepExecution. WorkflowExecution.ErrorMessage
+            // carries only a compact triage summary for lists, notifications, and sub-workflow
+            // callers. StartedAt + Id makes the selected failure deterministic when branches fail
+            // concurrently.
+            var firstFailure = await _db.StepExecutions
+                .AsNoTracking()
+                .Where(s => s.WorkflowExecutionId == execution.Id && s.Status == ExecutionStatus.Failed)
+                .OrderBy(s => s.StartedAt)
+                .ThenBy(s => s.Id)
+                .Select(s => new { s.StepId, s.StepName, s.ErrorOutput })
+                .FirstAsync(CancellationToken.None);
+
+            var stepLabel = string.IsNullOrWhiteSpace(firstFailure.StepName)
+                ? firstFailure.StepId
+                : firstFailure.StepName;
+            var errorDetail = string.IsNullOrWhiteSpace(firstFailure.ErrorOutput)
+                ? string.Empty
+                : $": {firstFailure.ErrorOutput}";
+            var additionalFailures = failedStepCount > 1
+                ? $" (+{failedStepCount - 1} more failed activities)"
+                : string.Empty;
+
+            failureSummary = RedactAndCap(
+                $"Activity \"{stepLabel}\" failed{errorDetail}{additionalFailures}",
+                32 * 1024);
+        }
+
         await PersistTerminalStateResilientAsync(
             run,
             desiredStatus,
-            errorMessage: null,
+            errorMessage: failureSummary,
             cancelledBy: null,
             "execution.terminal");
 
