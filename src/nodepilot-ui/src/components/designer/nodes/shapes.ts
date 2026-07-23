@@ -36,7 +36,7 @@ export const NODE_SHAPES = [
   // per-activity control-flow shapes (rendered with the shared indigo frame)
   'diamond', 'hexLong', 'reel', 'tagLeft',
   // per-activity action shapes
-  'hexPointy', 'hexFlat', 'octagon', 'chamferedSquare', 'cross', 'starburst',
+  'hexPointy', 'hexFlat', 'octagon', 'chamferedSquare', 'stopwatch', 'starburst',
   'house', 'shield', 'blockArrow', 'chevronLeft', 'cylinder', 'pillH',
   'banner', 'plaque', 'kite', 'gem', 'pentagonUp', 'pentagonDown',
   'trapezoidUp', 'trapezoidDown', 'circle', 'speechBubble',
@@ -152,15 +152,19 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
 
   // 21 per-activity action shapes (polygons generated via scratchpad/gen-shapes.mjs). `size` is
   // area-compensated (1/sqrt(visible-fill), capped at 1.25) so every silhouette reads equal;
-  // `iconScale` 1.0 → inside-icon matches square. The ONLY two exceptions are `cross` and
-  // `starburst`: their central inscribed region is too small to hold a full-size icon at a calm
-  // footprint, so they keep a reduced iconScale (the documented "Sinthaftigkeit" trade-off —
-  // equalizing them fully would balloon the node +30–55%).
+  // `iconScale` 1.0 → inside-icon matches square. The ONLY exception is `starburst`: its central
+  // inscribed region is too small to hold a full-size icon at a calm footprint, so it keeps a
+  // reduced iconScale (the documented "Sinthaftigkeit" trade-off — equalizing it fully would
+  // balloon the node +30–55%).
   hexPointy: blob('polygon(50.0% 0.0%, 100.0% 25.0%, 100.0% 75.0%, 50.0% 100.0%, 0.0% 75.0%, 0.0% 25.0%)', 1.10),
   hexFlat: blob('polygon(25.0% 0.0%, 75.0% 0.0%, 100.0% 50.0%, 75.0% 100.0%, 25.0% 100.0%, 0.0% 50.0%)', 1.10),
   octagon: blob('polygon(30.0% 0.0%, 70.0% 0.0%, 100.0% 30.0%, 100.0% 70.0%, 70.0% 100.0%, 30.0% 100.0%, 0.0% 70.0%, 0.0% 30.0%)', 1.10),
   chamferedSquare: blob('polygon(16.0% 0.0%, 84.0% 0.0%, 100.0% 16.0%, 100.0% 84.0%, 84.0% 100.0%, 16.0% 100.0%, 0.0% 84.0%, 0.0% 16.0%)', 1.10),
-  cross: blob('polygon(34.0% 0.0%, 66.0% 0.0%, 66.0% 34.0%, 100.0% 34.0%, 100.0% 66.0%, 66.0% 66.0%, 66.0% 100.0%, 34.0% 100.0%, 34.0% 66.0%, 0.0% 66.0%, 0.0% 34.0%, 34.0% 34.0%)', 1.25, 0.80),
+  // delay — stopwatch tile: square body (y 12–100 %) with a slim crown tab on top
+  // (x 42–58 %, y 0–12 %). Thematically fits delay's `schedule` (clock) icon and stays distinct
+  // from waitForCondition (circle + hourglass icon) and house (whose roof spans the full width,
+  // not a 16 %-wide tab). All four port midpoints land on the silhouette → no handleInset.
+  stopwatch: blob('polygon(0% 12%, 0% 100%, 100% 100%, 100% 12%, 58% 12%, 58% 0%, 42% 0%, 42% 12%)', 1.05),
   starburst: blob('polygon(50.0% 0.0%, 62.0% 38.0%, 100.0% 50.0%, 62.0% 62.0%, 50.0% 100.0%, 38.0% 62.0%, 0.0% 50.0%, 38.0% 38.0%)', 1.25, 0.88),
   house: blob('polygon(50.0% 0.0%, 100.0% 34.0%, 100.0% 100.0%, 0.0% 100.0%, 0.0% 34.0%)', 1.12, 1.0, { top: 0.34 }),
   // iconOffsetY: the shield tapers to a point at the bottom (50% 100%) → its visual center is
@@ -210,7 +214,7 @@ const ACTION_SHAPE = {
   registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'blockArrow',
   powerManagement: 'starburst', waitForCondition: 'circle', restApi: 'chevronLeft', sql: 'cylinder',
   xmlQuery: 'kite', jsonQuery: 'trapezoidDown', emailNotification: 'banner', textFileEdit: 'house',
-  generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'cross',
+  generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
 } as const satisfies Record<ShapedActivityType, NodeShape>;
 
 /** Control-flow activities — each gets its own shape; all render with the shared indigo frame.
