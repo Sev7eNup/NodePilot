@@ -240,13 +240,13 @@ export function CustomActivitiesPage() {
               onChange={handleImportFile}
             />
             <button onClick={() => importInputRef.current?.click()} disabled={importMutation.isPending}
-              className="flex items-center gap-2 px-3 py-2 bg-surface-container text-on-surface rounded-md hover:bg-surface-high text-sm disabled:opacity-50">
+              className="flex items-center gap-2 px-3 py-2 bg-surface-container text-on-surface rounded-md hover:bg-surface-high text-sm whitespace-nowrap disabled:opacity-50">
               <Upload size={16} /> <span className="hidden sm:inline">{importMutation.isPending ? t('common:importing') : t('customActivities:import')}</span>
             </button>
-            <button onClick={onExport} className="flex items-center gap-2 px-3 py-2 bg-surface-container text-on-surface rounded-md hover:bg-surface-high text-sm">
+            <button onClick={onExport} className="flex items-center gap-2 px-3 py-2 bg-surface-container text-on-surface rounded-md hover:bg-surface-high text-sm whitespace-nowrap">
               <Download size={16} /> <span className="hidden sm:inline">{t('customActivities:export')}</span>
             </button>
-            <button onClick={openCreate} className="flex items-center gap-2 px-3 py-2 sm:px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm">
+            <button onClick={openCreate} className="flex items-center gap-2 px-3 py-2 sm:px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm whitespace-nowrap">
               <Add size={16} /> <span className="hidden sm:inline">{t('customActivities:new')}</span>
             </button>
           </div>
