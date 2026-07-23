@@ -1,0 +1,40 @@
+{
+  "name": "verify-timeout-reap",
+  "description": "Live-Verify Szenario B: Timeout (8s) muss root + Enkel reapen trotz 300s/600s Sleep",
+  "nodes": [
+    {
+      "id": "trigger-1",
+      "type": "trigger",
+      "position": { "x": 100, "y": 80 },
+      "data": {
+        "label": "Manual",
+        "activityType": "manualTrigger",
+        "config": { "parameters": [] }
+      }
+    },
+    {
+      "id": "step-1",
+      "type": "activity",
+      "position": { "x": 100, "y": 220 },
+      "data": {
+        "label": "Timeout-Reap Probe",
+        "activityType": "runScript",
+        "config": {
+          "engine": "powershell",
+          "isolated": true,
+          "timeoutSeconds": 8,
+          "script": "Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile -Command \"Start-Sleep -Seconds 600\"' -WindowStyle Hidden; Start-Sleep -Seconds 300; 'done'"
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-trigger-step",
+      "source": "trigger-1",
+      "target": "step-1",
+      "type": "labeled",
+      "data": { "label": "On Trigger", "condition": "trigger-1.success", "disabled": false }
+    }
+  ]
+}

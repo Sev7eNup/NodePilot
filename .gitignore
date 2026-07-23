@@ -177,3 +177,6 @@ src/nodepilot-ui/coverage-sonar/
 .claude/scheduled_tasks.lock
 # Local, per-developer Claude Code permissions/settings — must not be committed
 .claude/settings.local.json
+
+# Local presentations / slide decks (not part of the product)
+presentations/

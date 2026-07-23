@@ -1,0 +1,39 @@
+
+> nodepilot-ui@1.0.0 dev
+> vite
+
+
+  [32m[1mVITE[22m v8.1.0[39m  [2mready in [0m[1m722[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.178.52:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://192.168.80.1:[1m5173[22m/[39m
+  [32m➜[39m  [1mNetwork[22m: [36mhttp://172.22.80.1:[1m5173[22m/[39m
+[2m23:38:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowEditorPage.tsx, /src/index.css[22m
+[2m23:41:17[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowEditorPage.tsx, /src/index.css[22m
+[2m23:43:16[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowEditorPage.tsx, /src/index.css[22m
+[2m23:49:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowEditorPage.tsx, /src/index.css[22m
+[2m23:53:33[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowEditorPage.tsx, /src/index.css[22m
+[2m23:53:34[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowEditorPage.tsx, /src/index.css[22m
+[2m23:55:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/designer/header/EditorIdentity.tsx[22m
+[2m23:55:42[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/designer/header/EditorIdentity.tsx[22m
+[2m23:58:27[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowsPage.tsx, /src/index.css[22m
+[2m23:58:28[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowsPage.tsx, /src/index.css[22m
+[2m23:59:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowsPage.tsx, /src/index.css[22m
+[2m23:59:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/designer/header/EditorIdentity.tsx[22m
+[2m23:59:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/WorkflowsPage.tsx, /src/index.css[22m
+[2m23:59:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/designer/header/EditorIdentity.tsx[22m
+[2m00:01:56[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/AiChatPage.tsx, /src/index.css[22m
+[2m00:04:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/AiChatPage.tsx, /src/index.css[22m
+[2m00:04:39[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/AiChatPage.tsx, /src/index.css[22m
+[2m00:46:43[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/admin-settings/AiKnowledgeSection.tsx[22m
+[2m00:46:50[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/admin-settings/AiKnowledgeSection.tsx[22m
+[2m00:47:10[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/i18n/locales/de/adminSettings.json[22m
+[2m00:47:26[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/i18n/locales/en/adminSettings.json[22m
+[2m00:47:47[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/index.css, /src/components/layout/Sidebar.tsx, /src/components/ai/WorkflowGenerationDialog.tsx, /src/components/ai/AiWorkflowChatPanel.tsx, /src/components/designer/EditorOverlays.tsx, /src/components/designer/properties/activities/RunScriptConfig.tsx, /src/pages/AiChatPage.tsx[22m
+[2m00:48:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/AiChatPage.tsx, /src/index.css[22m
+[2m00:48:13[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/AiChatPage.tsx, /src/index.css[22m
+[2m00:48:38[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/i18n/locales/de/ai.json[22m
+[2m00:48:46[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mpage reload [39m[2msrc/i18n/locales/en/ai.json[22m
+[2m01:01:10[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/AiChatPage.tsx, /src/index.css[22m
+[2m01:01:11[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/src/pages/AiChatPage.tsx, /src/index.css[22m

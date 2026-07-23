@@ -1,0 +1,970 @@
+[2m23:32:24[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:32:24.522Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:32:24[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:32:24[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:32:24[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:32:50[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:32:50.267Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:32:50[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:32:50[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:32:50[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:35:38[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:35:38.274Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:35:38[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:35:38[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:35:38[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784756106682 has been disposed
+[2m23:35:39[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784756106687 has been disposed
+[2m23:35:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:35:43.436Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:35:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:35:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:35:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:39:12[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:39:12.194Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:39:12[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:39:12[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:39:12[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784756351815 has been disposed
+[2m23:39:13[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784756351820 has been disposed
+[2m23:39:15[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:39:15.180Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:39:15[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:39:15[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:39:15[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:41:35[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:41:35.664Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:41:35[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:41:35[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:41:35[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:43:42[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:43:42.630Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:43:42[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:43:42[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:43:42[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:46:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:46:36.577Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:46:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:46:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:48:00[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784755968233 has been disposed
+[2m23:48:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:48:00.887Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:48:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:48:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:48:04[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784755968238 has been disposed
+[2m23:48:04[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:48:04.684Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:48:04[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:48:04[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:49:12[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:49:12.748Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:49:12[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:49:12[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:49:12[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:51:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:51:56.124Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:51:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:51:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:51:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:55:42[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReferenceError: MagicWandFilled is not defined
+    at EditorIdentity (http://localhost:5173/src/components/designer/header/EditorIdentity.tsx?t=1784757342311:107:40)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:8309:6)
+    at performWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:7994:27)
+
+The above error occurred in the <EditorIdentity> component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, ErrorBoundary.
+
+[2m23:55:42[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[WorkflowEditor] render failure ReferenceError: MagicWandFilled is not defined
+    at EditorIdentity (http://localhost:5173/src/components/designer/header/EditorIdentity.tsx?t=1784757342311:107:40)
+    at Object.react_stack_bottom_frame (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:12866:12)
+    at renderWithHooks (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:4213:19)
+    at updateFunctionComponent (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:5569:16)
+    at beginWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:6140:20)
+    at runWithFiberInDEV (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:851:66)
+    at performUnitOfWork (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:8429:92)
+    at workLoopSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:8325:37)
+    at renderRootSync (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:8309:6)
+    at performWorkOnRoot (http://localhost:5173/node_modules/.vite/deps/react-dom_client.js?v=28455d54:7994:27) 
+    at EditorIdentity (http://localhost:5173/src/components/designer/header/EditorIdentity.tsx?t=1784757342311:14:34)
+    at header (<anonymous>)
+    at ClassicEditorHeader (http://localhost:5173/src/components/designer/header/ClassicEditorHeader.tsx:37:39)
+    at EditorHeader (http://localhost:5173/src/components/designer/EditorHeader.tsx:17:24)
+    at div (<anonymous>)
+    at WorkflowEditorInner (http://localhost:5173/src/pages/WorkflowEditorPage.tsx?t=1784757214625:165:16)
+    at BatchProvider (http://localhost:5173/node_modules/.vite/deps/@xyflow_react.js?v=28455d54:6695:26)
+    at ReactFlowProvider (http://localhost:5173/node_modules/.vite/deps/@xyflow_react.js?v=28455d54:9643:44)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.tsx:4:8)
+    at WorkflowEditorPage (http://localhost:5173/src/pages/WorkflowEditorPage.tsx?t=1784757214625:71:16)
+    at RenderedRoute (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=28455d54:4137:26)
+    at Outlet (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=28455d54:4764:25)
+    at AppLayout (http://localhost:5173/src/components/layout/AppLayout.tsx:29:19)
+    at ProtectedRoute (http://localhost:5173/src/App.tsx:72:27)
+    at RenderedRoute (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=28455d54:4137:26)
+    at RenderErrorBoundary (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=28455d54:4071:3)
+    at DataRoutes2 (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=28455d54:4704:24)
+    at Router (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=28455d54:4769:29)
+    at RouterProvider (http://localhost:5173/node_modules/.vite/deps/react-router-dom.js?v=28455d54:4514:27)
+    at RouterProvider2 (<anonymous>)
+    at Suspense (<anonymous>)
+    at QueryClientProvider (http://localhost:5173/node_modules/.vite/deps/@tanstack_react-query.js?v=28455d54:2534:30)
+    at ErrorBoundary (http://localhost:5173/src/components/ErrorBoundary.tsx:4:8)
+    at App (http://localhost:5173/src/App.tsx:347:16)
+[2m23:56:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:56:43.626Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:56:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:56:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:56:43[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:57:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:57:28.398Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:57:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:57:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:57:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:57:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mError[22m: ResizeObserver loop completed with undelivered notifications.
+[39m > ../../../@vite/client:531:50
+
+[2m23:57:29[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mError[22m: ResizeObserver loop completed with undelivered notifications.
+[39m > ../../../@vite/client:531:50
+
+[2m23:58:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:58:56.293Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:58:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:58:56[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:59:23[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784757403193 has been disposed
+[2m23:59:23[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T21:59:23.882Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m23:59:23[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:59:23[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m23:59:25[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784757403198 has been disposed
+[2m00:05:08[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:05:08.053Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:05:08[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:05:08[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:05:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:05:16.311Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:05:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:05:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:05:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:05:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mError[22m: ResizeObserver loop completed with undelivered notifications.
+[39m > ../../../@vite/client:531:50
+
+[2m00:05:17[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [31m[Unhandled error] [1mError[22m: ResizeObserver loop completed with undelivered notifications.
+[39m > ../../../@vite/client:531:50
+
+[2m00:07:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:07:28.474Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:07:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:07:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:09:34[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784757403203 has been disposed
+[2m00:09:34[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:09:34.942Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:09:34[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:09:34[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:09:48[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784757403208 has been disposed
+[2m00:10:24[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:10:24.870Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:10:24[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:10:24[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:13:48[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784757403213 has been disposed
+[2m00:13:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:13:48.405Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:13:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:13:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:13:48[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784757403218 has been disposed
+[2m00:13:49[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:13:49.758Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:13:49[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:13:49[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:13:49[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:18:08[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[2026-07-22T22:18:08.048Z] Warning: The page is being frozen, this will likely lead to the connection being closed and messages being lost. For more information see the docs at https://learn.microsoft.com/aspnet/core/signalr/javascript-client#bsleep
+[2m00:18:53[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:18:53.902Z] Error: Connection disconnected with error 'Error: Server returned an error on close: Connection closed with an error.'.
+[2m00:25:03[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m00:25:03[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:25:03.275Z] Error: Connection disconnected with error 'Error: WebSocket closed with status code: 1006 (no reason given).'.
+[2m00:25:03[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:25:03[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:25:03.290Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:25:03[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:25:03[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:25:03.292Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:25:03[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:25:05[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:25:05[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:25:05.558Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:25:05[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:25:05[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:25:05.559Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:25:05[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:25:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:25:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:25:16.566Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:25:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:25:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:25:16.568Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:25:16[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:25:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:25:47[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:25:47.559Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:25:47[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:25:47[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:25:47.559Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:25:47[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:25:51[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?workflowId=72135ce3-d39d-44a3-8b93-7d28ba72d60c&activeOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:25:51[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[useWorkflowSignalR] bulk hydration: list executions failed Error: Bad Gateway
+    at authedFetch (http://localhost:5173/src/api/client.ts:76:9)
+    at async request (http://localhost:5173/src/api/client.ts:81:19)
+    at async http://localhost:5173/src/hooks/useSignalR.ts:266:10
+[2m00:26:51[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?workflowId=72135ce3-d39d-44a3-8b93-7d28ba72d60c&activeOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:26:51[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[useWorkflowSignalR] bulk hydration: list executions failed Error: Bad Gateway
+    at authedFetch (http://localhost:5173/src/api/client.ts:76:9)
+    at async request (http://localhost:5173/src/api/client.ts:81:19)
+    at async http://localhost:5173/src/hooks/useSignalR.ts:266:10
+[2m00:27:51[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?workflowId=72135ce3-d39d-44a3-8b93-7d28ba72d60c&activeOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:27:51[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[useWorkflowSignalR] bulk hydration: list executions failed Error: Bad Gateway
+    at authedFetch (http://localhost:5173/src/api/client.ts:76:9)
+    at async request (http://localhost:5173/src/api/client.ts:81:19)
+    at async http://localhost:5173/src/hooks/useSignalR.ts:266:10
+[2m00:28:18[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/workflows/72135ce3-d39d-44a3-8b93-7d28ba72d60c/step-health?stepIds=schedule,token,work,query,join,summary,return,existingCall1,existingCall2,existingCall3,durationHold&limit=8[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:18[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?workflowId=72135ce3-d39d-44a3-8b93-7d28ba72d60c[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:18[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?workflowId=72135ce3-d39d-44a3-8b93-7d28ba72d60c&activeOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:18[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[useWorkflowSignalR] bulk hydration: list executions failed Error: Bad Gateway
+    at authedFetch (http://localhost:5173/src/api/client.ts:76:9)
+    at async request (http://localhost:5173/src/api/client.ts:81:19)
+    at async http://localhost:5173/src/hooks/useSignalR.ts:266:10
+[2m00:28:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?workflowId=72135ce3-d39d-44a3-8b93-7d28ba72d60c&activeOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:19[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[useWorkflowSignalR] bulk hydration: list executions failed Error: Bad Gateway
+    at authedFetch (http://localhost:5173/src/api/client.ts:76:9)
+    at async request (http://localhost:5173/src/api/client.ts:81:19)
+    at async http://localhost:5173/src/hooks/useSignalR.ts:266:10
+[2m00:28:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/workflows/72135ce3-d39d-44a3-8b93-7d28ba72d60c/step-health?stepIds=schedule,token,work,query,join,summary,return,existingCall1,existingCall2,existingCall3,durationHold&limit=8[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?workflowId=72135ce3-d39d-44a3-8b93-7d28ba72d60c[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/ai/knowledge/capabilities[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/system/host-info[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/shared-workflow-folders[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/workflows[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:21[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:21[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:21[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/ai/knowledge/capabilities[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:21[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/shared-workflow-folders[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:21[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/workflows[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:25[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/dbadmin/tables[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:26[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/dbadmin/tables[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:28[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/shared-workflow-folders[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:28[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/workflows[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:29[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/observability/config[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:29[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?terminalOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:29[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/workflows[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:28:30[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?terminalOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:29:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:29:21[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:29:22[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/me[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:29:22[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/observability/config[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:29:22[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/methods[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:29:22[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/methods[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:29:25[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:29:31[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:29:31.394Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:29:31[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:29:31[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:29:32[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784759362136 has been disposed
+[2m00:29:32[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784759362141 has been disposed
+[2m00:32:51[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:32:51.303Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:32:51[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:32:51[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:32:51[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:47:19[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760432020 has been disposed
+[2m00:47:19[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:47:19.671Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:47:19[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:47:19[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:47:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:47:28.096Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:47:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:47:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:47:28[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760447980 has been disposed
+[2m00:48:40[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:48:40.172Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:48:40[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:48:40[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:48:40[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760520040 has been disposed
+[2m00:48:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:48:48.134Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:48:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:48:48[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:48:48[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760527967 has been disposed
+[2m00:49:01[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:49:01.031Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:49:01[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:49:01[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:49:01[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760540888 has been disposed
+[2m00:49:02[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:49:02.248Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:49:02[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:49:02[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:49:02[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760542073 has been disposed
+[2m00:50:58[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760542078 has been disposed
+[2m00:51:07[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mA component is changing a controlled input to be uncontrolled. This is likely caused by the value changing from a defined to undefined, which should not happen. Decide between using a controlled or uncontrolled input element for the lifetime of the component. More info: https://react.dev/link/controlled-components
+[2m00:51:15[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760542083 has been disposed
+[2m00:51:15[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:51:15.417Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m00:51:15[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:51:15[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m00:51:26[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m00:51:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:51:26.241Z] Error: Connection disconnected with error 'Error: WebSocket closed with status code: 1006 (no reason given).'.
+[2m00:51:26[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:51:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:51:26.295Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:51:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:51:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:51:26.297Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:51:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:51:28[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:51:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:51:28.555Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:51:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:51:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:51:28.555Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:51:28[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:51:39[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:51:39[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:51:39.562Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:51:39[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:51:39[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:51:39.562Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:51:39[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:52:10[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:52:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:52:10.559Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:52:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:52:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T22:52:10.560Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m00:52:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m00:59:52[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m00:59:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m00:59:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m00:59:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m00:59:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m00:59:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+
+The above error occurred in the <Route> component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, RenderErrorBoundary.
+
+[2m00:59:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact Router caught the following error during render SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m00:59:55[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760542088 has been disposed
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/ai/knowledge/capabilities[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/maintenance-windows[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/deliveries?limit=50[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/observability/config[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:00[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760542093 has been disposed
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T23:00:00.187Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T23:00:00.187Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T23:00:00.187Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._startWithStateTransitions (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:842:4)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-22T23:00:00.187Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._startWithStateTransitions (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:842:4)
+[2m01:00:00[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._startWithStateTransitions (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:842:4)
+[2m01:00:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/ai/knowledge/capabilities[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/maintenance-windows[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/deliveries?limit=50[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:01[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784760542098 has been disposed
+[2m01:00:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?terminalOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/workflows[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:01[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/observability/config[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?terminalOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:02[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/workflows[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m01:00:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+
+The above error occurred in the <Route> component.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, RenderErrorBoundary.
+
+[2m01:00:10[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact Router caught the following error during render SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:32[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:32[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:32[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:32[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:33[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+
+The above error occurred in one of your React components.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, RenderErrorBoundary.
+
+[2m01:00:33[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact Router caught the following error during render SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError handled by React Router default ErrorBoundary: SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m01:00:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+
+The above error occurred in one of your React components.
+
+React will try to recreate this component tree from scratch using the error boundary you provided, RenderErrorBoundary.
+
+[2m01:00:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mReact Router caught the following error during render SyntaxError: The requested module '/node_modules/.vite/deps/@carbon_icons-react.js?v=28455d54' does not provide an export named 'Database'
+[2m07:32:18[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:32:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:32:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:32:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:32:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:44:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:44:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:44:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:44:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:44:20[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:50:43[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:50:56[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/ai/knowledge/ask[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:50:58[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:51:13[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:51:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/me[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:51:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/observability/config[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:51:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/methods[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:51:16[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/methods[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m07:51:19[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/login[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:01:19[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:01:19.463Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m08:01:19[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m08:01:19[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m08:01:19[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784785876396 has been disposed
+[2m08:01:21[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[ECharts] Instance ec_1784785876401 has been disposed
+[2m08:18:45[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:18:45.346Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m08:18:45[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m08:18:45[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m08:18:45[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m08:35:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:35:36.469Z] Error: Failed to start the connection: Error: The connection was stopped during negotiation.
+[2m08:35:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m08:35:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m08:35:36[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mSignalR connect failed: Error: The connection was stopped during negotiation.
+    at HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1956:103)
+[2m08:40:41[22m [31m[1m[vite][22m[39m [31mws proxy error:[39m
+Error: read ECONNRESET
+    at TCP.onStreamRead (node:internal/stream_base_commons:216:20)
+[2m08:40:41[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:40:41.723Z] Error: Connection disconnected with error 'Error: WebSocket closed with status code: 1006 (no reason given).'.
+[2m08:40:41[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:40:41[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:40:41.740Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m08:40:41[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m08:40:41[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:40:41.753Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m08:40:41[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m08:40:44[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:40:44[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:40:44.589Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m08:40:44[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m08:40:44[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:40:44.590Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m08:40:44[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m08:40:45[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:40:46[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:40:46[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/alerting/rules[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:40:47[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/stats/dashboard?windowHours=24[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:40:50[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/executions?workflowId=09ba8698-2a6b-4981-8c8b-391eccb5640f&activeOnly=true[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:40:50[22m [33m[1m[vite][22m[39m [33m[2m(client)[22m[39m [2m[console.warn] [22m[useWorkflowSignalR] bulk hydration: list executions failed Error: Bad Gateway
+    at authedFetch (http://localhost:5173/src/api/client.ts:76:9)
+    at async request (http://localhost:5173/src/api/client.ts:81:19)
+    at async http://localhost:5173/src/hooks/useSignalR.ts:266:10
+[2m08:40:54[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:40:55[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:40:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:40:55.586Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m08:40:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m08:40:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:40:55.586Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m08:40:55[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m08:41:09[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:41:24[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:41:26[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /hubs/execution/negotiate?negotiateVersion=1[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:41:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:41:26.592Z] Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m08:41:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m08:41:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22m[2026-07-23T06:41:26.593Z] Error: Failed to start the connection: Error: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+[2m08:41:26[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mError: Failed to complete negotiation with the server: Error: Bad Gateway: Status code '502'
+    at HttpConnection._getNegotiationResponse (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:2011:26)
+    at async HttpConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1955:26)
+    at async HttpConnection.start (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1893:3)
+    at async HubConnection._startInternal (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:860:3)
+    at async HubConnection._reconnect (http://localhost:5173/node_modules/.vite/deps/@microsoft_signalr.js?v=28455d54:1265:5)
+[2m08:45:25[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+[2m08:45:40[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /healthz/live[39m
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
