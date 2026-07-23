@@ -74,11 +74,11 @@ describe('MobileWorkflowView', () => {
     // MobileWorkflowView supplies NodeScaleOverrideContext = 3 (lg), so the reused ActivityNode
     // renders its icon at the lg scale rather than the xs default — the override is what makes the
     // phone graph legible without touching the global design store. runScript is a shaped node
-    // (hexPointy); its Carbon icon renders at lg iconFont × the shape's iconScale × a modest growth
-    // factor (see ActivityNode SHAPED_ICON_GROW), applied as the SVG width/height.
+    // (hexPointy); its Carbon icon renders at lg iconFont × the shape's iconScale (the direct
+    // size factor — see ActivityNode shaped-icon sizing), applied as the SVG width/height.
     const shape = getNodeShape('runScript');
     const iconScale = getIconScaleMultiplier(shape);
-    const lgIconSize = String(Math.max(10, Math.round(NODE_SCALES[3].iconFont * iconScale * 1.35)));
+    const lgIconSize = String(Math.max(10, Math.round(NODE_SCALES[3].iconFont * iconScale)));
     const icons = Array.from(container.querySelectorAll<SVGSVGElement>('svg'));
     expect(icons.some((el) => el.getAttribute('width') === lgIconSize)).toBe(true);
   });
