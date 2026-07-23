@@ -51,6 +51,13 @@ describe('OpsTimeline', () => {
     expect(onSelect).toHaveBeenCalledWith('run-1');
   });
 
+  it('shows a copyable execution-id chip next to each workflow name in the lane label', () => {
+    renderTimeline();
+    // 8-char prefix of the execution id, in parens, behind the workflow name.
+    expect(screen.getByText('(run-1)')).toBeInTheDocument();
+    expect(screen.getByText('(done-1)')).toBeInTheDocument();
+  });
+
   it('marks the selected bar', () => {
     renderTimeline({ selectedExecutionId: 'run-1' });
     expect(screen.getByTitle(/Nightly Backup · Running/)).toHaveAttribute('aria-pressed', 'true');

@@ -2288,43 +2288,6 @@ input[type="range"] {
    light/dark skin; glow is softened on light skins to avoid washing out.
    =========================================================================== */
 
-/* --- System-pulse header: state-tinted banner + heartbeat dot -------------- */
-.np-ops-pulse {
-  background: color-mix(in srgb, var(--color-surface) 96%, transparent);
-}
-.np-ops-pulse--nominal  { border-top: 2px solid color-mix(in srgb, var(--color-success) 55%, transparent); }
-.np-ops-pulse--degraded { border-top: 2px solid color-mix(in srgb, var(--color-warning) 65%, transparent); }
-.np-ops-pulse--incident {
-  border-top: 2px solid var(--color-error);
-  background: color-mix(in srgb, var(--color-error) 6%, var(--color-surface));
-}
-
-.np-ops-pulse-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 9999px;
-  flex-shrink: 0;
-}
-.np-ops-pulse-dot--nominal {
-  background: var(--color-success);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--color-success) 60%, transparent);
-  animation: npOpsHeartbeat 1.6s ease-in-out infinite;
-}
-.np-ops-pulse-dot--degraded {
-  background: var(--color-warning);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--color-warning) 60%, transparent);
-  animation: npOpsHeartbeat 1.1s ease-in-out infinite;
-}
-.np-ops-pulse-dot--incident {
-  background: var(--color-error);
-  box-shadow: 0 0 12px color-mix(in srgb, var(--color-error) 70%, transparent);
-  animation: npOpsHeartbeat 0.7s ease-in-out infinite;
-}
-@keyframes npOpsHeartbeat {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50%      { transform: scale(1.35); opacity: 0.75; }
-}
-
 /* --- Timeline track: gridlines, NOW line, bars ----------------------------- */
 .np-ops-gridline {
   position: absolute;
@@ -2417,15 +2380,6 @@ html:not(.dark) .np-ops-bar--running {
   fill: var(--color-primary);
 }
 
-/* --- Event ticker: entrance animation -------------------------------------- */
-.np-ops-ticker-item {
-  animation: npTickerIn 240ms ease-out;
-}
-@keyframes npTickerIn {
-  from { transform: translateY(-6px); opacity: 0; }
-  to   { transform: translateY(0); opacity: 1; }
-}
-
 /* --- Departure board: split-flap row flip on remount ------------------------ */
 .np-ops-flap {
   animation: npOpsFlap 300ms ease-out;
@@ -2436,18 +2390,9 @@ html:not(.dark) .np-ops-bar--running {
   to   { transform: rotateX(0); opacity: 1; }
 }
 
-/* --- Health rail: contributors to a degraded/incident pulse ----------------- */
-.np-ops-health--hot {
-  background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface));
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .np-ops-pulse-dot--nominal,
-  .np-ops-pulse-dot--degraded,
-  .np-ops-pulse-dot--incident { animation: none; }
   .np-ops-bar { transition: none; }
   .np-ops-bar--running { animation: none; }
-  .np-ops-ticker-item { animation: none; }
   .np-ops-flap { animation: none; }
 }
 

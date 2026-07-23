@@ -84,20 +84,16 @@ function renderPage() {
 }
 
 describe('OperationsPage', () => {
-  it('renders pulse header, timeline bars and the departure board from both snapshots', async () => {
+  it('renders timeline bars and the departure board from both snapshots', async () => {
     renderPage();
     // Timeline: running bar for wf-1 + settled failed bar for wf-2.
     expect(await screen.findByTitle(/Nightly Backup · Running/)).toBeInTheDocument();
     expect(screen.getByTitle(/Report Gen · Failed/)).toBeInTheDocument();
-    // Pulse header: recent failure (8 min ago) → degraded; 1 active.
-    expect(screen.getByRole('status')).toHaveTextContent('Degraded');
     // Departure board sorted by fire time: Health Check (+10) before Nightly Backup (+30).
     const board = screen.getByRole('table');
     const rows = within(board).getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('Health Check');
     expect(rows[1]).toHaveTextContent('Nightly Backup');
-    // Health rail machines fraction.
-    expect(screen.getByText('3/3')).toBeInTheDocument();
   });
 
   it('opens the drilldown from a timeline bar and can cancel the running execution', async () => {
@@ -128,7 +124,7 @@ describe('OperationsPage', () => {
     expect(await screen.findByText('Nothing is running right now.')).toBeInTheDocument();
   });
 
-  it('folder filter scopes timeline bars, ticker and departure board together', async () => {
+  it('folder filter scopes timeline bars and departure board together', async () => {
     renderPage();
     await screen.findByTitle(/Nightly Backup · Running/);
     const select = screen.getByRole('combobox') as HTMLSelectElement;

@@ -6,10 +6,11 @@ import type { LocalSettled } from '../../stores/operationsStore';
 import { rawStatusLabelKey } from '../../lib/statusTokens';
 import {
   windowFor, buildTimelineBars, assignLanes, placeBar, axisTicks, timeToX, pairCallConnectors,
-  type PlacedBar,
+  isActiveBarStatus, type PlacedBar,
 } from '../../lib/opsTimeline';
 import { OpsTimelineBar, OPS_ROW_H } from './OpsTimelineBar';
 import { EmptyState } from '../common/EmptyState';
+import { CopyableId } from '../common/CopyableId';
 
 // The Mission-Control centerpiece: a real-time horizontal timeline. Running executions grow
 // toward the NOW line; settled ones freeze and drift left out of the window. One lane per
@@ -73,6 +74,21 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
     [placed, w],
   );
 
+  // Representative execution (job) id per workflow/lane for the copyable chip next to the
+  // workflow name: prefer an active run, else the most recently started bar. The per-bar id
+  // is always available via the drilldown (click a bar) for multi-run lanes.
+  const laneExecId = useMemo(() => {
+    const best = new Map<string, { id: string; active: boolean; startedAtMs: number }>();
+    for (const b of placedBars) {
+      const active = isActiveBarStatus(b.status);
+      const prev = best.get(b.workflowId);
+      if (!prev || (active && !prev.active) || (active === prev.active && b.startedAtMs > prev.startedAtMs)) {
+        best.set(b.workflowId, { id: b.executionId, active, startedAtMs: b.startedAtMs });
+      }
+    }
+    return best;
+  }, [placedBars]);
+
   // Call connectors: elbow lines from the parent bar down/up to each sub-workflow bar's start.
   const connectors = useMemo(() => pairCallConnectors(placedBars), [placedBars]);
 
@@ -131,10 +147,13 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
                   left: Math.min(lane.depth, 3) * 14,
                 }}
               >
-                <div className={`line-clamp-2 break-words text-[13px] font-label font-medium leading-[16px] ${lane.hasActive ? 'text-on-surface' : 'text-on-surface-variant'}`} title={lane.name}>
-                  {lane.depth > 0 && <span className="mr-1 text-outline" aria-hidden="true">↳</span>}
-                  {lane.name}
-                  {lane.subRowCount > 1 && <span className="ml-1 text-[11px] text-outline">×{lane.subRowCount}</span>}
+                <div className={`flex items-center gap-1 text-[13px] font-label font-medium leading-[16px] ${lane.hasActive ? 'text-on-surface' : 'text-on-surface-variant'}`} title={lane.name}>
+                  {lane.depth > 0 && <span className="shrink-0 text-outline" aria-hidden="true">↳</span>}
+                  <span className="min-w-0 truncate">{lane.name}</span>
+                  {laneExecId.has(lane.workflowId) && (
+                    <CopyableId id={laneExecId.get(lane.workflowId)!.id} />
+                  )}
+                  {lane.subRowCount > 1 && <span className="shrink-0 text-[11px] text-outline">×{lane.subRowCount}</span>}
                 </div>
                 {lane.folderPath !== '/' && (
                   <div className="truncate text-[11px] text-outline" title={lane.folderPath}>{lane.folderPath}</div>

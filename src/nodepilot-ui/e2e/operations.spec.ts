@@ -1,10 +1,10 @@
 import { test, expect, type Page, type Route } from '@playwright/test';
 import { installDefaultMocks } from './fixtures/mockApi';
 
-// Hermetic spec for the Live-Ops Mission-Control view (/operations): pulse header, real-time
-// execution timeline, event ticker, health rail and next-fires departure board. All APIs are
-// mocked via page.route; SignalR is 404-stubbed by installDefaultMocks so the page runs off
-// the polled snapshot (ticker stays in its empty state).
+// Hermetic spec for the Live-Ops Mission-Control view (/operations): real-time execution
+// timeline (running + recently-finished bars), bar drill-down + cancel, and the next-fires
+// departure board. All APIs are mocked via page.route; SignalR is 404-stubbed by
+// installDefaultMocks so the page runs off the polled snapshot.
 
 const json = (r: Route, body: unknown) =>
   r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
@@ -56,27 +56,20 @@ async function mock(page: Page) {
   await page.route('**/api/executions/ex-1', (r) => json(r, EXEC_DETAIL));
 }
 
-test('pulse header, timeline bars, ticker empty state and health rail render from the snapshots', async ({ page }) => {
+test('timeline bars render from the snapshots', async ({ page }) => {
   await mock(page);
   await page.goto('/operations');
 
   // "Live-Ops" appears twice (TopBar page-title chip + the page <h1>); scope to main content.
   await expect(page.locator('#np-main-scroll').getByRole('heading', { name: 'Live-Ops' })).toBeVisible();
 
-  // Pulse header: recent failure + stale heartbeat + machine down → Degraded.
-  await expect(page.locator('.np-ops-pulse')).toContainText('Degraded');
-
   // Timeline: a growing running bar (wf-1) and a settled failed bar (wf-2).
   await expect(page.getByTitle(/Nightly Backup · Running/)).toBeVisible();
   await expect(page.getByTitle(/Cleanup Temp · Failed/)).toBeVisible();
 
-  // Ticker: SignalR is stubbed out → empty state.
-  await expect(page.getByText('No live events yet.')).toBeVisible();
-
-  // Health rail: machines fraction + stale service badge ("stale" also appears inside the
-  // pulse-header reason text, so match the badge's exact text).
-  await expect(page.getByText('2/3')).toBeVisible();
-  await expect(page.getByText('stale', { exact: true })).toBeVisible();
+  // Copyable execution-id chips (8-char prefix in parens) behind each workflow name.
+  await expect(page.getByText('(ex-1)')).toBeVisible();
+  await expect(page.getByText('(ex-2)')).toBeVisible();
 });
 
 test('timeline bar opens the drilldown with cancel + open-in-editor', async ({ page }) => {
@@ -88,6 +81,9 @@ test('timeline bar opens the drilldown with cancel + open-in-editor', async ({ p
   await page.getByTitle(/Nightly Backup · Running/).click();
 
   await expect(page.getByRole('button', { name: 'Open in editor' })).toBeVisible();
+  // The drilldown surfaces the execution (job) id with a copy button.
+  await expect(page.getByLabel('Execution details').getByText('ex-1')).toBeVisible();
+  await expect(page.getByLabel('Execution details').getByRole('button', { name: 'Copy' })).toBeVisible();
   await expect(page.getByText('schedule', { exact: true })).toBeVisible(); // triggeredBy from the detail fetch
 
   await page.getByRole('button', { name: 'Cancel' }).click();

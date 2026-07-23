@@ -237,17 +237,3 @@ export function effectiveStatusFor(
   if (liveStatus) return liveStatus;
   return lastStatus ?? null;
 }
-
-/** Count live executions with `status` (Running|Pending) across the folder-scoped workflows. */
-export function countScoped(
-  runningExecsByWorkflow: Record<string, LiveExec[]>,
-  scopedWorkflowIds: Set<string>,
-  status: string,
-): number {
-  let n = 0;
-  for (const wfId of scopedWorkflowIds) {
-    const list = runningExecsByWorkflow[wfId];
-    if (list) n += list.filter((e) => e.status === status).length;
-  }
-  return n;
-}
