@@ -8,6 +8,7 @@ import { standardSQL } from '@codemirror/legacy-modes/mode/sql';
 import { keymap } from '@codemirror/view';
 import { dbAdminApi, type DbAdminQueryResponse } from '../../api/dbadmin';
 import { useThemeStore, resolveTheme } from '../../stores/themeStore';
+import { ResizeHandle, useResizableColumns, type ResizableColumn } from './useResizableColumns';
 
 const HISTORY_KEY = 'nodepilot.dbAdmin.queryHistory';
 const DRAFT_SQL_KEY = 'nodepilot.dbAdmin.queryDraft';
@@ -351,6 +352,11 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
 
 function ResultTable({ data }: Readonly<{ data: DbAdminQueryResponse }>) {
   const { t } = useTranslation(['database', 'common']);
+  const resizableColumns = data.columns.map<ResizableColumn>((column, index) => ({
+    key: `${index}:${column.name}`,
+    defaultWidth: 200,
+  }));
+  const { getWidth, resizeBy, startResize, totalWidth } = useResizableColumns(resizableColumns);
 
   return (
     <div className="p-4">
@@ -371,13 +377,26 @@ function ResultTable({ data }: Readonly<{ data: DbAdminQueryResponse }>) {
         <p className="text-sm text-on-surface-variant">{t('database:query.noResultSet')}</p>
       ) : (
         <div className="overflow-x-auto bg-surface-lowest rounded-md border border-outline-variant/20">
-          <table className="text-xs font-mono">
+          <table className="text-xs font-mono table-fixed" style={{ width: totalWidth }}>
+            <colgroup>
+              {resizableColumns.map((column) => (
+                <col key={column.key} style={{ width: getWidth(column) }} />
+              ))}
+            </colgroup>
             <thead className="np-col-header text-left">
               <tr>
-                {data.columns.map((c) => (
-                  <th key={c.name} className="px-3 py-2 font-semibold text-on-surface-variant whitespace-nowrap">
-                    {c.name}
-                    <span className="ml-1 text-[10px] font-normal text-outline">({c.type})</span>
+                {data.columns.map((c, index) => (
+                  <th key={`${index}:${c.name}`} className="relative px-3 py-2 font-semibold text-on-surface-variant whitespace-nowrap overflow-hidden">
+                    <span className="block truncate">
+                      {c.name}
+                      <span className="ml-1 text-[10px] font-normal text-outline">({c.type})</span>
+                    </span>
+                    <ResizeHandle
+                      label={t('database:resizeColumn', { name: c.name })}
+                      column={resizableColumns[index]}
+                      onPointerDown={startResize}
+                      onResizeBy={resizeBy}
+                    />
                   </th>
                 ))}
               </tr>
@@ -386,7 +405,7 @@ function ResultTable({ data }: Readonly<{ data: DbAdminQueryResponse }>) {
               {data.rows.map((row, i) => (
                 <tr key={i} className="hover:bg-surface-low">
                   {row.map((cell, j) => (
-                    <td key={j} className="px-3 py-1.5 whitespace-nowrap text-on-surface-variant">
+                    <td key={j} className="px-3 py-1.5 whitespace-nowrap text-on-surface-variant truncate overflow-hidden">
                       {renderCell(cell)}
                     </td>
                   ))}

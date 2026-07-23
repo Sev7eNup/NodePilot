@@ -128,6 +128,31 @@ describe('QueryPane', () => {
     expect(screen.getByText('Username')).toBeInTheDocument();
   });
 
+  it('resultTable_columnsCanBeResized', async () => {
+    vi.mocked(dbAdminApi.query).mockResolvedValue({
+      columns: [{ name: 'Username', type: 'string' }],
+      rows: [['alice']],
+      rowsAffected: null,
+      durationMs: 12,
+      truncated: false,
+      mode: 'read',
+    });
+
+    wrap(<QueryPane />);
+    await waitFor(() => expect(screen.getByText('postgres')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByTestId('sql-editor'), { target: { value: 'SELECT Username FROM Users' } });
+    await userEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+    await waitFor(() => expect(screen.getByText('alice')).toBeInTheDocument());
+
+    const handle = screen.getByRole('separator', { name: 'Resize Username column' });
+    const column = document.querySelector('colgroup col') as HTMLElement;
+    expect(column).toHaveStyle({ width: '200px' });
+
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' });
+    expect(column).toHaveStyle({ width: '184px' });
+  });
+
   it('errorState_rendersServerMessage', async () => {
     vi.mocked(dbAdminApi.query).mockRejectedValue(new Error('Statement starts with UPDATE which is not allowed'));
 
