@@ -138,6 +138,26 @@ describe('DbViewerPage', () => {
     await waitFor(() => expect(screen.getByText('My Workflow')).toBeInTheDocument());
   });
 
+  it('tableColumns_canBeResizedWithKeyboardAndPointer', async () => {
+    wrap(<DbViewerPage />);
+
+    await waitFor(() => screen.getByText('Workflows'));
+    await userEvent.click(screen.getByRole('button', { name: /Workflows/ }));
+    await waitFor(() => screen.getByText('My Workflow'));
+
+    const handle = screen.getByRole('separator', { name: 'Resize Name column' });
+    const nameColumn = document.querySelectorAll('colgroup col')[1] as HTMLElement;
+    expect(nameColumn).toHaveStyle({ width: '200px' });
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight' });
+    expect(nameColumn).toHaveStyle({ width: '216px' });
+
+    fireEvent.pointerDown(handle, { clientX: 100 });
+    fireEvent.pointerMove(window, { clientX: 150 });
+    fireEvent.pointerUp(window);
+    expect(nameColumn).toHaveStyle({ width: '266px' });
+  });
+
   it('cellClick_string_opensDialogWithTextInput', async () => {
     wrap(<DbViewerPage />);
 

@@ -13,6 +13,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { dbAdminApi } from '../../api/dbadmin';
 import { EditCellDialog } from './EditCellDialog';
+import { ResizeHandle, useResizableColumns, type ResizableColumn } from './useResizableColumns';
 import type { DbAdminTableInfo, DbAdminColumnInfo } from '../../api/dbadmin';
 import { toast } from '../../stores/toastStore';
 import { confirmDialog } from '../../stores/confirmStore';
@@ -70,6 +71,11 @@ export function TableGrid({ table }: Readonly<Props>) {
   });
 
   const visibleColumns = table.columns;
+  const resizableColumns = visibleColumns.map<ResizableColumn>((column) => ({
+    key: column.name,
+    defaultWidth: defaultColumnWidth(column),
+  }));
+  const { getWidth, resizeBy, startResize, totalWidth } = useResizableColumns(resizableColumns);
 
   function getPkValues(row: Record<string, unknown>): string[] {
     return table.pkColumns.map((pk) => String(row[pk] ?? ''));
@@ -153,23 +159,40 @@ export function TableGrid({ table }: Readonly<Props>) {
       </div>
       {/* Table */}
       <div className="flex-1 overflow-auto">
-        <table className="w-full text-left border-collapse min-w-max">
+        <table
+          className="text-left border-collapse table-fixed"
+          style={{ width: totalWidth + (table.capabilities.canDelete ? 40 : 0) }}
+        >
+          <colgroup>
+            {resizableColumns.map((column) => (
+              <col key={column.key} style={{ width: getWidth(column) }} />
+            ))}
+            {table.capabilities.canDelete && <col style={{ width: 40 }} />}
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-surface-low">
             <tr>
-              {visibleColumns.map((col) => (
+              {visibleColumns.map((col, index) => (
                 <th
                   key={col.name}
                   onClick={() => handleHeaderClick(col.name)}
-                  className="px-3 py-2 text-[10px] font-label font-semibold uppercase tracking-wider text-on-surface-variant border-b border-outline-variant/20 whitespace-nowrap select-none cursor-pointer hover:text-on-surface"
+                  className="relative px-3 py-2 text-[10px] font-label font-semibold uppercase tracking-wider text-on-surface-variant border-b border-outline-variant/20 whitespace-nowrap select-none cursor-pointer hover:text-on-surface"
                 >
-                  <span className="inline-flex items-center gap-1">
+                  <span className="inline-flex max-w-full items-center gap-1 overflow-hidden">
+                    <span className="truncate">
                     {col.name}
+                    </span>
                     {col.isPrimaryKey && <span className="text-primary text-[8px] font-bold ml-0.5">PK</span>}
                     {col.isReadOnly && !col.isPrimaryKey && <span className="text-outline text-[8px] ml-0.5">RO</span>}
                     {orderBy === col.name && (
                       desc ? <ChevronDown size={11} /> : <ChevronUp size={11} />
                     )}
                   </span>
+                  <ResizeHandle
+                    label={t('database:resizeColumn', { name: col.name })}
+                    column={resizableColumns[index]}
+                    onPointerDown={startResize}
+                    onResizeBy={resizeBy}
+                  />
                 </th>
               ))}
               {table.capabilities.canDelete && (
@@ -202,7 +225,7 @@ export function TableGrid({ table }: Readonly<Props>) {
                       key={col.name}
                       onClick={() => canEdit ? handleCellClick(row, col) : undefined}
                       title={canEdit ? undefined : col.isReadOnly ? t('database:readonlyColumn') : col.isMasked ? t('database:maskedValue') : undefined}
-                      className={`px-3 py-1.5 text-sm text-on-surface max-w-[280px] truncate align-middle ${
+                      className={`px-3 py-1.5 text-sm text-on-surface truncate overflow-hidden align-middle ${
                         canEdit
                           ? 'cursor-pointer hover:bg-primary-fixed/40 rounded'
                           : col.isReadOnly || col.isMasked
@@ -304,4 +327,12 @@ function formatDateTime(s: string): string {
   } catch {
     return s;
   }
+}
+
+function defaultColumnWidth(column: DbAdminColumnInfo): number {
+  if (column.clrType.startsWith('guid')) return 270;
+  if (column.clrType.startsWith('datetime')) return 190;
+  if (column.clrType.startsWith('boolean')) return 120;
+  if (column.clrType.startsWith('int') || column.clrType.startsWith('decimal') || column.clrType.startsWith('double')) return 130;
+  return 200;
 }

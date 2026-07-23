@@ -9,6 +9,7 @@
   "noRows": "Keine Einträge",
   "loading": "Lade Daten…",
   "columns": "Spalten",
+  "resizeColumn": "Spaltenbreite für {{name}} ändern",
   "actions": "Aktionen",
   "edit": "Bearbeiten",
   "delete": "Löschen",

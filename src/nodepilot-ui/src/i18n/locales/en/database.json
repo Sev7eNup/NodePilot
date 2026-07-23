@@ -9,6 +9,7 @@
   "noRows": "No entries",
   "loading": "Loading data…",
   "columns": "Columns",
+  "resizeColumn": "Resize {{name}} column",
   "actions": "Actions",
   "edit": "Edit",
   "delete": "Delete",
