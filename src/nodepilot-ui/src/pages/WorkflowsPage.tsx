@@ -438,6 +438,14 @@ export function WorkflowsPage() {
       switch (sortBy) {
         case 'name':        cmp = a.name.localeCompare(b.name); break;
         case 'activities':  cmp = (a.activityCount ?? 0) - (b.activityCount ?? 0); break;
+        case 'triggers': {
+          // triggerTypes is a string[] of trigger-type keys; sort by the lexicographically
+          // ordered composition so workflows sharing the same trigger(s) group together.
+          // Empty trigger sets sort first in asc (empty string < any non-empty).
+          const ka = (a.triggerTypes ?? []).slice().sort().join(',');
+          const kb = (b.triggerTypes ?? []).slice().sort().join(',');
+          cmp = ka.localeCompare(kb); break;
+        }
         case 'status':      cmp = Number(b.isEnabled) - Number(a.isEnabled); break;
         case 'lastRun':     cmp = (a.lastExecution?.startedAt ?? '').localeCompare(b.lastExecution?.startedAt ?? ''); break;
         case 'successRate': {
