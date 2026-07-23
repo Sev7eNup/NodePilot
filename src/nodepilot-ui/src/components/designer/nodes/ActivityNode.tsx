@@ -182,8 +182,8 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const outerFramePx = controlFramePx + entryFramePx;
   const entryAccentColor = 'var(--color-success)';
   // Debugger breakpoint: set by the author in the Properties panel, only takes effect during a
-  // debug run. Rendered as a red circle (like an IDE breakpoint) top-left on the node, positioned
-  // so it doesn't collide with the simulation label or the fan-in badge.
+  // debug run. Rendered as a SMALL red dot (IDE-style) tucked into the top-left corner so it
+  // doesn't cover the node's shape/icon — see BreakpointBadge.
   const hasBreakpoint = (data.breakpoint as boolean) === true;
   const hasBreakpointCondition = hasBreakpoint && !!(data.breakpointCondition as string);
 
@@ -966,13 +966,15 @@ function EntryPointBadge({
 
 /* ---- Breakpoint Badge (Debugger) ---- */
 
-/** Red circle, like an IDE breakpoint. Positioned top-left on the node so it doesn't collide
- *  with the fan-in badge (top-middle) or the disabled badge (top-right). When the step is
- *  CURRENTLY stopped at this breakpoint (liveStatus=Paused), the circle also pulses.
- *  `positionOverride` replaces the default position for special shapes (pennant/diamond/flag). */
+/** Small red dot, like an IDE breakpoint. Sits discreetly in the TOP-LEFT corner so the node's
+ *  shape + icon stay fully readable (a full-size dot covered the node identity). Kept small
+ *  (9–14 px, scaling only mildly with zoom) but with a white ring + shadow so it stays clearly
+ *  visible on any node colour. When the step is CURRENTLY stopped at this breakpoint
+ *  (liveStatus=Paused), the dot also pulses. `positionOverride` replaces the default corner
+ *  position for special shapes (pennant/diamond/flag) so the dot lands ON the silhouette. */
 function BreakpointBadge({ active, conditional = false, iconBox = 20, positionOverride }: Readonly<{ active: boolean; conditional?: boolean; iconBox?: number; positionOverride?: BadgePosition }>) {
   const { t } = useTranslation('designer');
-  const size = Math.max(10, Math.round(iconBox * 0.45));
+  const size = Math.min(14, Math.max(9, Math.round(iconBox * 0.2)));
   const title = active
     ? t('nodes.breakpoint.paused')
     : conditional
