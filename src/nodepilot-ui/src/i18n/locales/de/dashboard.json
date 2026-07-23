@@ -1,6 +1,5 @@
 {
   "title": "Dashboard",
-  "autoRefresh": "Live · Auto-Refresh 120 s",
   "windowLabel": "Zeitraum",
   "window": { "1h": "1 h", "24h": "24 h", "7d": "7 Tage", "30d": "30 Tage" },
   "runsWindow": "Runs ({{window}})",

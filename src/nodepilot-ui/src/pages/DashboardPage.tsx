@@ -218,7 +218,7 @@ export function DashboardPage() {
         llmEnabled={stats.llmEnabled}
       />
       <DashboardQuickActions longRunningCount={stats.longRunningCount} />
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div className="flex flex-wrap items-center gap-3 mb-5">
         <div className="np-segmented">
           {WINDOW_OPTIONS.map((h) => (
             <button
@@ -231,7 +231,6 @@ export function DashboardPage() {
             </button>
           ))}
         </div>
-        <p className="text-xs text-outline">{t('dashboard:autoRefresh')}</p>
       </div>
       {/* HERO — radial gauge (left) + KPI cluster (centre) + live runs (right). */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-5 mb-5">
