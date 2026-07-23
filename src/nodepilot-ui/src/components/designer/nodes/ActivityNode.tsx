@@ -85,10 +85,11 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const summary = summarizeActivityConfig(activityType, config);
   const isEntryTrigger = TRIGGER_ACTIVITY_TYPES.has(activityType);
 
-  // Shape system: trigger nodes become left-pointing pentagons (~1.12x, a mirrored bookend to
-  // returnData), control-flow nodes become diamonds (~1.18x), and returnData becomes a
-  // right-pointing pentagon (~1.12x). Square (the default) leaves the existing render path
-  // untouched, so there's zero regression risk for the majority of nodes.
+  // Shape system: trigger nodes become left-pointing pentagons (a mirrored bookend to
+  // returnData), control-flow nodes become diamonds, and returnData becomes a right-pointing
+  // pentagon. Each shape's `size` is area-compensated so every silhouette reads optically equal,
+  // and `iconScale` makes the inside-icon match the square node's icon (see shapes.ts). Square
+  // (the default) leaves the existing render path untouched.
   const shape: NodeShape = getNodeShape(activityType);
   const sizeMultiplier = getNodeSizeMultiplier(shape);
   const iconScale = getIconScaleMultiplier(shape);
@@ -110,15 +111,20 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   // Classic "icon view": render the bare palette glyph (large, accent-coloured, no silhouette)
   // instead of the clip-path shape. Toggle lives in the toolbar; card mode is unaffected.
   const useGlyphIcon = nodeStyle === 'classic' && nodeIconStyle === 'glyph';
-  // Icon-view sizing: `glyphFs` is the rendered icon size. Carbon icons are SVGs centered in a
-  // square viewBox, so the node's icon-box is that square — no ink measurement / centering translate
-  // is needed (the Material-Symbols ink metrics the old font approach required are gone).
-  const glyphFs = Math.round(effectiveIconBox * 0.82);
+  // Icon-view sizing: `glyphFs` is the rendered icon size AND the node footprint (the wrapper is
+  // sized to glyphFs). It is derived from the raw `iconBox` WITHOUT the per-shape `sizeMultiplier`
+  // so every bare-glyph node is the exact same size regardless of its silhouette form — optical
+  // equality across all activities in icon view. Carbon icons are SVGs centered in a square
+  // viewBox, so no ink measurement / centering translate is needed.
+  const glyphFs = Math.round(scale.iconBox * 0.82);
   const IconComp = ACTIVITY_ICON_COMPONENTS[ac.icon] ?? FALLBACK_ACTIVITY_ICON;
-  // Shaped (silhouette) icon: kept slightly larger than the iconFont-based size and positioned by
-  // the per-shape X/Y offset only (the SVG is already centered — no ink translate).
-  const SHAPED_ICON_GROW = 1.35;
-  const shapedIconFs = Math.max(10, Math.round(scale.iconFont * iconScale * SHAPED_ICON_GROW));
+  // Shaped (silhouette) icon: `iconScale` is now the DIRECT size factor relative to `iconFont`
+  // (the same value the square path uses), so an `iconScale` of 1.0 renders the inside-icon at
+  // exactly the same px as a square node's icon — equal across all activities. Only the few
+  // sparse/pointed silhouettes that can't hold a full-size icon at a calm footprint keep an
+  // `iconScale < 1.0` (see SHAPE_DEFS). Positioned by the per-shape X/Y offset only (the SVG is
+  // already centered — no ink translate).
+  const shapedIconFs = Math.max(10, Math.round(scale.iconFont * iconScale));
   const shapedIconTx = Math.round(iconOffsetX * effectiveIconBox);
   const shapedIconTy = Math.round(iconOffsetY * effectiveIconBox);
   const shapedIconStyle: React.CSSProperties = {
@@ -556,9 +562,9 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
               />
             )}
             {/* Icon (centered) — not clipped so it always renders fully even at small scales.
-                Enlarged to fill the per-shape allowance (effectiveIconBox × iconScale) and
-                ink-centred (em-box→ink translate) plus the per-shape X/Y offset, so asymmetric
-                ligatures like xml `</>` / json `{}` seat on their visible ink, not the em-box. */}
+                Sized to `iconFont × iconScale` (iconScale 1.0 = same px as a square node's icon,
+                so inside-icons read equal across all shapes), plus the per-shape X/Y offset so
+                asymmetric glyphs seat on their visual center (e.g. speechBubble body sits high). */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <IconComp
                 size={shapedIconFs}
@@ -764,7 +770,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
             className={`mr-2 relative flex items-center justify-center shrink-0 rounded-[var(--np-radius-sm)] ${liveStyle?.pulse ? 'animate-pulse' : ''}`}
             style={{ width: 26, height: 26, backgroundColor: ac.bgColor, border: `1px solid ${ac.borderColor}` }}
           >
-            <IconComp size={16} style={{ color: ac.color }} />
+            <IconComp size={15} style={{ color: ac.color }} />
           </span>
         )}
         {showEntryMarker && <EntryPointBadge iconBox={scale.iconBox} inline />}

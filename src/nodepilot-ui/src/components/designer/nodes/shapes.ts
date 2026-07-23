@@ -117,67 +117,77 @@ const FLAG_BADGES: BadgeProfile = {
   bottomRight: { bottom: '-4px', right: '15%' },
 };
 
-/** Shorthand for an action-blob shape (defaults: size 1.12, BLOB_BADGES). */
-const blob = (clip: string, iconScale = 0.92, handleInset?: HandleInset, iconOffsetY?: number): ShapeDef =>
-  ({ clip, size: 1.12, iconScale, badges: BLOB_BADGES, handleInset, iconOffsetY });
+/** Shorthand for an action-blob shape. `size` is the per-shape bounding-box multiplier on
+ *  `scale.iconBox`, area-compensated so every silhouette reads as optically equal in size
+ *  (sparse shapes capped at 1.25 — see SHAPE_DEFS). `iconScale` is the DIRECT inside-icon size
+ *  factor on `scale.iconFont` (1.0 = same px as a square node's icon; <1.0 only for the few
+ *  silhouettes that can't hold a full-size icon at a calm footprint). */
+const blob = (clip: string, size: number, iconScale = 1.0, handleInset?: HandleInset, iconOffsetY?: number): ShapeDef =>
+  ({ clip, size, iconScale, badges: BLOB_BADGES, handleInset, iconOffsetY });
 
-/** Shorthand for a control-flow shape: slightly bigger than diamond (1.18) + DIAMOND_BADGES
- *  (20% inset, since the corners are clipped); the shared control-flow frame is added in
- *  ActivityNode. */
-const control = (clip: string, iconScale = 0.92, handleInset?: HandleInset): ShapeDef =>
-  ({ clip, size: 1.18, iconScale, badges: DIAMOND_BADGES, handleInset });
+/** Shorthand for a control-flow shape: DIAMOND_BADGES (20% inset, since the corners are clipped);
+ *  the shared control-flow frame is added in ActivityNode. `size`/`iconScale` as in `blob()`. */
+const control = (clip: string, size: number, iconScale = 1.0, handleInset?: HandleInset): ShapeDef =>
+  ({ clip, size, iconScale, badges: DIAMOND_BADGES, handleInset });
 
 // --- Registry -------------------------------------------------------------
 export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
+  // `square` is the optical anchor: size 1.0, iconScale 1.0 → its inside-icon (iconFont) is the
+  // equal-size target every other shape is tuned toward.
   square: { clip: undefined, size: 1.0, iconScale: 1.0, badges: SQUARE_BADGES },
-  // Bookend pair (trigger + returnData) — values carried over unchanged.
-  // iconOffsetX: the pentagon's visual center of mass sits off to one side of the bbox center
-  // (pennant body spans 25–100%, point at 0% → center of mass ~56%; flag is the mirror, ~44%).
-  // Shift the icon toward the body's center, otherwise it looks skewed toward the pointed end.
-  // Mirrored symmetrically, just like the shape itself.
-  pennant: { clip: 'polygon(100% 0%, 25% 0%, 0% 50%, 25% 100%, 100% 100%)', size: 1.12, iconScale: 0.95, badges: PENNANT_BADGES, iconOffsetX: 0.06 },
-  flag: { clip: 'polygon(0% 0%, 75% 0%, 100% 50%, 75% 100%, 0% 100%)', size: 1.12, iconScale: 0.95, badges: FLAG_BADGES, iconOffsetX: -0.06 },
+  // Bookend pair (trigger + returnData). `size` area-compensated (pennant/flag fill ~62% of their
+  // bbox → bumped to 1.25 so the silhouettes read equal to square); iconScale 1.0 → inside-icon
+  // matches square. iconOffsetX shifts the icon toward the body's center of mass (pennant body
+  // spans 25–100%, point at 0% → center ~56%; flag is the mirror, ~44%), mirrored like the shape.
+  pennant: { clip: 'polygon(100% 0%, 25% 0%, 0% 50%, 25% 100%, 100% 100%)', size: 1.25, iconScale: 1.0, badges: PENNANT_BADGES, iconOffsetX: 0.06 },
+  flag: { clip: 'polygon(0% 0%, 75% 0%, 100% 50%, 75% 100%, 0% 100%)', size: 1.25, iconScale: 1.0, badges: FLAG_BADGES, iconOffsetX: -0.06 },
 
-  // Control-flow shapes (each rendered with the shared indigo frame). decision keeps the
-  // iconic flowchart diamond; junction/forEach/startWorkflow get their own silhouettes.
-  diamond: { clip: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', size: 1.18, iconScale: 0.95, badges: DIAMOND_BADGES, handleInset: { right: 0.02 } },
-  hexLong: control('polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%)', 0.95),          // junction (merge bar)
-  reel: control('polygon(0% 0%, 42% 0%, 50% 13%, 58% 0%, 100% 0%, 100% 100%, 58% 100%, 50% 87%, 42% 100%, 0% 100%)', 0.92, { top: 0.13, bottom: 0.13 }), // forEach (loop/reel)
-  tagLeft: control('polygon(15% 0%, 100% 0%, 100% 100%, 15% 100%, 0% 50%)', 0.92),                  // startWorkflow (launch tag)
+  // Control-flow shapes (each rendered with the shared indigo frame). `size` area-compensated:
+  // diamond fills 50% of its bbox → capped at 1.25; hexLong/reel/tagLeft tuned by visible area
+  // (elongated hexLong keeps its width as a recognition cue, sized by height). iconScale 1.0.
+  diamond: { clip: 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)', size: 1.25, iconScale: 1.0, badges: DIAMOND_BADGES, handleInset: { right: 0.02 } },
+  hexLong: control('polygon(15% 0%, 85% 0%, 100% 50%, 85% 100%, 15% 100%, 0% 50%)', 1.10),          // junction (merge bar)
+  reel: control('polygon(0% 0%, 42% 0%, 50% 13%, 58% 0%, 100% 0%, 100% 100%, 58% 100%, 50% 87%, 42% 100%, 0% 100%)', 1.20, 1.0, { top: 0.13, bottom: 0.13 }), // forEach (loop/reel)
+  tagLeft: control('polygon(15% 0%, 100% 0%, 100% 100%, 15% 100%, 0% 50%)', 1.24),                  // startWorkflow (launch tag)
 
-  // 21 per-activity action shapes (generated; see gen-shapes.mjs)
-  hexPointy: blob('polygon(50.0% 0.0%, 100.0% 25.0%, 100.0% 75.0%, 50.0% 100.0%, 0.0% 75.0%, 0.0% 25.0%)', 0.95),
-  hexFlat: blob('polygon(25.0% 0.0%, 75.0% 0.0%, 100.0% 50.0%, 75.0% 100.0%, 25.0% 100.0%, 0.0% 50.0%)', 0.85),
-  octagon: blob('polygon(30.0% 0.0%, 70.0% 0.0%, 100.0% 30.0%, 100.0% 70.0%, 70.0% 100.0%, 30.0% 100.0%, 0.0% 70.0%, 0.0% 30.0%)', 0.95),
-  chamferedSquare: blob('polygon(16.0% 0.0%, 84.0% 0.0%, 100.0% 16.0%, 100.0% 84.0%, 84.0% 100.0%, 16.0% 100.0%, 0.0% 84.0%, 0.0% 16.0%)', 0.95),
-  cross: blob('polygon(34.0% 0.0%, 66.0% 0.0%, 66.0% 34.0%, 100.0% 34.0%, 100.0% 66.0%, 66.0% 66.0%, 66.0% 100.0%, 34.0% 100.0%, 34.0% 66.0%, 0.0% 66.0%, 0.0% 34.0%, 34.0% 34.0%)', 0.7),
-  starburst: blob('polygon(50.0% 0.0%, 62.0% 38.0%, 100.0% 50.0%, 62.0% 62.0%, 50.0% 100.0%, 38.0% 62.0%, 0.0% 50.0%, 38.0% 38.0%)', 0.62),
-  house: blob('polygon(50.0% 0.0%, 100.0% 34.0%, 100.0% 100.0%, 0.0% 100.0%, 0.0% 34.0%)', 0.9, { top: 0.34 }),
+  // 21 per-activity action shapes (polygons generated via scratchpad/gen-shapes.mjs). `size` is
+  // area-compensated (1/sqrt(visible-fill), capped at 1.25) so every silhouette reads equal;
+  // `iconScale` 1.0 → inside-icon matches square. The ONLY two exceptions are `cross` and
+  // `starburst`: their central inscribed region is too small to hold a full-size icon at a calm
+  // footprint, so they keep a reduced iconScale (the documented "Sinthaftigkeit" trade-off —
+  // equalizing them fully would balloon the node +30–55%).
+  hexPointy: blob('polygon(50.0% 0.0%, 100.0% 25.0%, 100.0% 75.0%, 50.0% 100.0%, 0.0% 75.0%, 0.0% 25.0%)', 1.10),
+  hexFlat: blob('polygon(25.0% 0.0%, 75.0% 0.0%, 100.0% 50.0%, 75.0% 100.0%, 25.0% 100.0%, 0.0% 50.0%)', 1.10),
+  octagon: blob('polygon(30.0% 0.0%, 70.0% 0.0%, 100.0% 30.0%, 100.0% 70.0%, 70.0% 100.0%, 30.0% 100.0%, 0.0% 70.0%, 0.0% 30.0%)', 1.10),
+  chamferedSquare: blob('polygon(16.0% 0.0%, 84.0% 0.0%, 100.0% 16.0%, 100.0% 84.0%, 84.0% 100.0%, 16.0% 100.0%, 0.0% 84.0%, 0.0% 16.0%)', 1.10),
+  cross: blob('polygon(34.0% 0.0%, 66.0% 0.0%, 66.0% 34.0%, 100.0% 34.0%, 100.0% 66.0%, 66.0% 66.0%, 66.0% 100.0%, 34.0% 100.0%, 34.0% 66.0%, 0.0% 66.0%, 0.0% 34.0%, 34.0% 34.0%)', 1.25, 0.80),
+  starburst: blob('polygon(50.0% 0.0%, 62.0% 38.0%, 100.0% 50.0%, 62.0% 62.0%, 50.0% 100.0%, 38.0% 62.0%, 0.0% 50.0%, 38.0% 38.0%)', 1.25, 0.88),
+  house: blob('polygon(50.0% 0.0%, 100.0% 34.0%, 100.0% 100.0%, 0.0% 100.0%, 0.0% 34.0%)', 1.12, 1.0, { top: 0.34 }),
   // iconOffsetY: the shield tapers to a point at the bottom (50% 100%) → its visual center is
   // at ~40% y, so an icon placed at the bbox center (50%) sits too low; shift it up ~10% so it
   // reads as centered inside the shield.
-  shield: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 55.0%, 50.0% 100.0%, 0.0% 55.0%)', 0.9, { bottom: 0 }, -0.10),
-  blockArrow: blob('polygon(0.0% 26.0%, 55.0% 26.0%, 55.0% 6.0%, 100.0% 50.0%, 55.0% 94.0%, 55.0% 74.0%, 0.0% 74.0%)', 0.78, { top: 0.26, bottom: 0.26 }),
-  chevronLeft: blob('polygon(100.0% 26.0%, 45.0% 26.0%, 45.0% 6.0%, 0.0% 50.0%, 45.0% 94.0%, 45.0% 74.0%, 100.0% 74.0%)', 0.78, { top: 0.26, bottom: 0.26 }),
-  cylinder: blob('polygon(0.0% 14.0%, 1.7% 10.9%, 6.7% 8.0%, 14.6% 5.5%, 25.0% 3.6%, 37.1% 2.4%, 50.0% 2.0%, 62.9% 2.4%, 75.0% 3.6%, 85.4% 5.5%, 93.3% 8.0%, 98.3% 10.9%, 100.0% 14.0%, 100.0% 14.0%, 100.0% 86.0%, 100.0% 86.0%, 98.3% 89.1%, 93.3% 92.0%, 85.4% 94.5%, 75.0% 96.4%, 62.9% 97.6%, 50.0% 98.0%, 37.1% 97.6%, 25.0% 96.4%, 14.6% 94.5%, 6.7% 92.0%, 1.7% 89.1%, 0.0% 86.0%, 0.0% 86.0%, 0.0% 14.0%)', 0.9, { top: 0.14, bottom: 0.14 }),
-  pillH: blob('polygon(12.0% 12.0%, 88.0% 12.0%, 88.0% 12.0%, 91.1% 13.3%, 94.0% 17.1%, 96.5% 23.1%, 98.4% 31.0%, 99.6% 40.2%, 100.0% 50.0%, 99.6% 59.8%, 98.4% 69.0%, 96.5% 76.9%, 94.0% 82.9%, 91.1% 86.7%, 88.0% 88.0%, 88.0% 88.0%, 12.0% 88.0%, 12.0% 88.0%, 8.9% 86.7%, 6.0% 82.9%, 3.5% 76.9%, 1.6% 69.0%, 0.4% 59.8%, 0.0% 50.0%, 0.4% 40.2%, 1.6% 31.0%, 3.5% 23.1%, 6.0% 17.1%, 8.9% 13.3%, 12.0% 12.0%)', 0.95, { top: 0.12, bottom: 0.12 }),
-  banner: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 100.0%, 50.0% 82.0%, 0.0% 100.0%)', 0.9, { bottom: 0.18 }),
-  plaque: blob('polygon(16.0% 0.0%, 100.0% 0.0%, 100.0% 84.0%, 84.0% 100.0%, 0.0% 100.0%, 0.0% 16.0%)', 0.95),
-  kite: blob('polygon(50.0% 12.0%, 100.0% 50.0%, 50.0% 100.0%, 0.0% 50.0%)', 0.72, { top: 0.12 }),
-  gem: blob('polygon(28.0% 22.0%, 72.0% 22.0%, 100.0% 50.0%, 72.0% 78.0%, 28.0% 78.0%, 0.0% 50.0%)', 0.78, { top: 0.22, bottom: 0.22 }),
-  pentagonUp: blob('polygon(50.0% 0.0%, 100.0% 50.0%, 82.0% 100.0%, 18.0% 100.0%, 0.0% 50.0%)', 0.85, { top: 0 }),
+  shield: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 55.0%, 50.0% 100.0%, 0.0% 55.0%)', 1.20, 1.0, { bottom: 0 }, -0.10),
+  blockArrow: blob('polygon(0.0% 26.0%, 55.0% 26.0%, 55.0% 6.0%, 100.0% 50.0%, 55.0% 94.0%, 55.0% 74.0%, 0.0% 74.0%)', 1.25, 1.0, { top: 0.26, bottom: 0.26 }),
+  chevronLeft: blob('polygon(100.0% 26.0%, 45.0% 26.0%, 45.0% 6.0%, 0.0% 50.0%, 45.0% 94.0%, 45.0% 74.0%, 100.0% 74.0%)', 1.25, 1.0, { top: 0.26, bottom: 0.26 }),
+  cylinder: blob('polygon(0.0% 14.0%, 1.7% 10.9%, 6.7% 8.0%, 14.6% 5.5%, 25.0% 3.6%, 37.1% 2.4%, 50.0% 2.0%, 62.9% 2.4%, 75.0% 3.6%, 85.4% 5.5%, 93.3% 8.0%, 98.3% 10.9%, 100.0% 14.0%, 100.0% 14.0%, 100.0% 86.0%, 100.0% 86.0%, 98.3% 89.1%, 93.3% 92.0%, 85.4% 94.5%, 75.0% 96.4%, 62.9% 97.6%, 50.0% 98.0%, 37.1% 97.6%, 25.0% 96.4%, 14.6% 94.5%, 6.7% 92.0%, 1.7% 89.1%, 0.0% 86.0%, 0.0% 86.0%, 0.0% 14.0%)', 1.08, 1.0, { top: 0.14, bottom: 0.14 }),
+  pillH: blob('polygon(12.0% 12.0%, 88.0% 12.0%, 88.0% 12.0%, 91.1% 13.3%, 94.0% 17.1%, 96.5% 23.1%, 98.4% 31.0%, 99.6% 40.2%, 100.0% 50.0%, 99.6% 59.8%, 98.4% 69.0%, 96.5% 76.9%, 94.0% 82.9%, 91.1% 86.7%, 88.0% 88.0%, 88.0% 88.0%, 12.0% 88.0%, 12.0% 88.0%, 8.9% 86.7%, 6.0% 82.9%, 3.5% 76.9%, 1.6% 69.0%, 0.4% 59.8%, 0.0% 50.0%, 0.4% 40.2%, 1.6% 31.0%, 3.5% 23.1%, 6.0% 17.1%, 8.9% 13.3%, 12.0% 12.0%)', 1.08, 1.0, { top: 0.12, bottom: 0.12 }),
+  banner: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 100.0%, 50.0% 82.0%, 0.0% 100.0%)', 1.20, 1.0, { bottom: 0.18 }),
+  plaque: blob('polygon(16.0% 0.0%, 100.0% 0.0%, 100.0% 84.0%, 84.0% 100.0%, 0.0% 100.0%, 0.0% 16.0%)', 1.04),
+  kite: blob('polygon(50.0% 12.0%, 100.0% 50.0%, 50.0% 100.0%, 0.0% 50.0%)', 1.25, 1.0, { top: 0.12 }),
+  gem: blob('polygon(28.0% 22.0%, 72.0% 22.0%, 100.0% 50.0%, 72.0% 78.0%, 28.0% 78.0%, 0.0% 50.0%)', 1.25, 1.0, { top: 0.22, bottom: 0.22 }),
+  pentagonUp: blob('polygon(50.0% 0.0%, 100.0% 50.0%, 82.0% 100.0%, 18.0% 100.0%, 0.0% 50.0%)', 1.20, 1.0, { top: 0 }),
   // iconOffsetY: pentagonDown tapers to a point at the bottom (50% 100%) → its visual center is
   // at ~42% y, so an icon at the bbox center (50%) sits too low; shift it up ~8% (same idea as
   // shield/speechBubble).
-  pentagonDown: blob('polygon(18.0% 0.0%, 82.0% 0.0%, 100.0% 50.0%, 50.0% 100.0%, 0.0% 50.0%)', 0.85, { bottom: 0 }, -0.08),
-  trapezoidUp: blob('polygon(28.0% 0.0%, 72.0% 0.0%, 100.0% 100.0%, 0.0% 100.0%)', 0.85, { left: 0.13, right: 0.13, top: 0 }),
-  trapezoidDown: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 72.0% 100.0%, 28.0% 100.0%)', 0.85, { left: 0.13, right: 0.13, bottom: 0 }),
-  circle: blob('polygon(50.0% 0.0%, 59.8% 1.0%, 69.1% 3.8%, 77.8% 8.4%, 85.4% 14.6%, 91.6% 22.2%, 96.2% 30.9%, 99.0% 40.2%, 100.0% 50.0%, 99.0% 59.8%, 96.2% 69.1%, 91.6% 77.8%, 85.4% 85.4%, 77.8% 91.6%, 69.1% 96.2%, 59.8% 99.0%, 50.0% 100.0%, 40.2% 99.0%, 30.9% 96.2%, 22.2% 91.6%, 14.6% 85.4%, 8.4% 77.8%, 3.8% 69.1%, 1.0% 59.8%, 0.0% 50.0%, 1.0% 40.2%, 3.8% 30.9%, 8.4% 22.2%, 14.6% 14.6%, 22.2% 8.4%, 30.9% 3.8%, 40.2% 1.0%)', 0.95),
+  pentagonDown: blob('polygon(18.0% 0.0%, 82.0% 0.0%, 100.0% 50.0%, 50.0% 100.0%, 0.0% 50.0%)', 1.20, 1.0, { bottom: 0 }, -0.08),
+  trapezoidUp: blob('polygon(28.0% 0.0%, 72.0% 0.0%, 100.0% 100.0%, 0.0% 100.0%)', 1.24, 1.0, { left: 0.13, right: 0.13, top: 0 }),
+  trapezoidDown: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 72.0% 100.0%, 28.0% 100.0%)', 1.24, 1.0, { left: 0.13, right: 0.13, bottom: 0 }),
+  circle: blob('polygon(50.0% 0.0%, 59.8% 1.0%, 69.1% 3.8%, 77.8% 8.4%, 85.4% 14.6%, 91.6% 22.2%, 96.2% 30.9%, 99.0% 40.2%, 100.0% 50.0%, 99.0% 59.8%, 96.2% 69.1%, 91.6% 77.8%, 85.4% 85.4%, 77.8% 91.6%, 69.1% 96.2%, 59.8% 99.0%, 50.0% 100.0%, 40.2% 99.0%, 30.9% 96.2%, 22.2% 91.6%, 14.6% 85.4%, 8.4% 77.8%, 3.8% 69.1%, 1.0% 59.8%, 0.0% 50.0%, 1.0% 40.2%, 3.8% 30.9%, 8.4% 22.2%, 14.6% 14.6%, 22.2% 8.4%, 30.9% 3.8%, 40.2% 1.0%)', 1.13),
   // llmQuery — chat/speech bubble with a tail (body fills the upper 75%; left+right edges reach the
   // vertical mid so ReactFlow ports dock cleanly). Distinct from the 8-point `starburst`.
   // iconOffsetY: Body center sits at 37.5% of the bbox (upper 75% body + lower-25% tail), but the
   // icon container centers at 50% → shift the icon up so it reads as centered in the bubble body.
-  speechBubble: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 75.0%, 42.0% 75.0%, 26.0% 100.0%, 26.0% 75.0%, 0.0% 75.0%)', 0.82, { bottom: 0.25 }, -0.12),
+  speechBubble: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 75.0%, 42.0% 75.0%, 26.0% 100.0%, 26.0% 75.0%, 0.0% 75.0%)', 1.15, 1.0, { bottom: 0.25 }, -0.12),
 };
 
 /** clip-path strings, derived from the registry (a single source of truth). */
