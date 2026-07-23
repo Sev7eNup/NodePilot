@@ -78,7 +78,7 @@ public static class SettingsSectionAdapters
 
             new DelegateSettingsSectionAdapter<AiKnowledgeSettingsDto>(
                 Descriptor("AiKnowledge"),
-                ["AiKnowledge:Enabled", "AiKnowledge:DocsEnabled", "AiKnowledge:OperationalEnabled", "AiKnowledge:SourceCodeEnabled", "AiKnowledge:DocsRootPath", "AiKnowledge:SourceCodeRootPath", "AiKnowledge:DocsMaxFileBytes", "AiKnowledge:DocsMaxResults", "AiKnowledge:SourceCodeMaxFileBytes", "AiKnowledge:SourceCodeMaxResults"],
+                ["AiKnowledge:Enabled", "AiKnowledge:DocsEnabled", "AiKnowledge:OperationalEnabled", "AiKnowledge:SourceCodeEnabled", "AiKnowledge:DbEnabled", "AiKnowledge:DocsRootPath", "AiKnowledge:SourceCodeRootPath", "AiKnowledge:DocsMaxFileBytes", "AiKnowledge:DocsMaxResults", "AiKnowledge:SourceCodeMaxFileBytes", "AiKnowledge:SourceCodeMaxResults"],
                 () => BuildAiKnowledgeDto(aiKnowledgeOptions.CurrentValue),
                 BuildAiKnowledgeDtoFromJson,
                 (dto, _) => BuildAiKnowledgeSectionObject(dto)),
@@ -401,6 +401,7 @@ public static class SettingsSectionAdapters
         DocsEnabled = s.DocsEnabled,
         OperationalEnabled = s.OperationalEnabled,
         SourceCodeEnabled = s.SourceCodeEnabled,
+        DbEnabled = s.DbEnabled,
         DocsRootPath = s.DocsRootPath,
         SourceCodeRootPath = s.SourceCodeRootPath,
         DocsMaxFileBytes = s.DocsMaxFileBytes,
@@ -418,6 +419,7 @@ public static class SettingsSectionAdapters
             DocsEnabled = section["DocsEnabled"]?.GetValue<bool>() ?? true,
             OperationalEnabled = section["OperationalEnabled"]?.GetValue<bool>() ?? true,
             SourceCodeEnabled = section["SourceCodeEnabled"]?.GetValue<bool>() ?? false,
+            DbEnabled = section["DbEnabled"]?.GetValue<bool>() ?? false,
             DocsRootPath = ReadNullableString(section, "DocsRootPath"),
             SourceCodeRootPath = ReadNullableString(section, "SourceCodeRootPath"),
             DocsMaxFileBytes = section["DocsMaxFileBytes"]?.GetValue<int>() ?? 262_144,
@@ -435,6 +437,7 @@ public static class SettingsSectionAdapters
             ["DocsEnabled"] = dto.DocsEnabled,
             ["OperationalEnabled"] = dto.OperationalEnabled,
             ["SourceCodeEnabled"] = dto.SourceCodeEnabled,
+            ["DbEnabled"] = dto.DbEnabled,
             ["DocsMaxFileBytes"] = dto.DocsMaxFileBytes,
             ["DocsMaxResults"] = dto.DocsMaxResults,
             ["SourceCodeMaxFileBytes"] = dto.SourceCodeMaxFileBytes,

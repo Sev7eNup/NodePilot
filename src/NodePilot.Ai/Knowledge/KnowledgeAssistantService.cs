@@ -34,7 +34,8 @@ public sealed class KnowledgeAssistantService(
     IOptionsMonitor<LlmOptions> llmOptions,
     IOptionsMonitor<AiKnowledgeOptions> knowledgeOptions,
     IOperationalKnowledgeReader operational,
-    ISettingsKnowledgeReader settings)
+    ISettingsKnowledgeReader settings,
+    ISqlKnowledgeReader sql)
 {
     private static readonly string[] AllowedRoles = { "user", "assistant" };
 
@@ -67,8 +68,12 @@ public sealed class KnowledgeAssistantService(
             // only for privileged callers (Admin/Operator) — read_settings is gated to them.
             var operationalReader = kOpts.OperationalEnabled ? operational : null;
             var settingsReader = isPrivileged ? settings : null;
+            // Raw SQL can read secret columns, so the DB source requires both the admin toggle AND
+            // privilege. The reader itself redacts every cell regardless; this gate keeps the tools
+            // off the menu for non-privileged callers entirely.
+            var sqlReader = (kOpts.DbEnabled && isPrivileged) ? sql : null;
             toolContext = new KnowledgeToolContext(
-                accessible, isPrivileged, kOpts.DocsEnabled, kOpts.OperationalEnabled, kOpts.SourceCodeEnabled, operationalReader, settingsReader);
+                accessible, isPrivileged, kOpts.DocsEnabled, kOpts.OperationalEnabled, kOpts.SourceCodeEnabled, kOpts.DbEnabled, operationalReader, settingsReader, sqlReader);
             toolDefs = tools.GetTools(toolContext);
             if (toolDefs.Count == 0)
             {

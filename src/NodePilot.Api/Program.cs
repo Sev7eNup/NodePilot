@@ -143,6 +143,8 @@ builder.Services.AddScoped<NodePilot.Core.Interfaces.IExecutionLogReader, NodePi
 builder.Services.AddScoped<NodePilot.Core.Interfaces.IOperationalKnowledgeReader, NodePilot.Data.OperationalKnowledgeReader>();
 // Secret-redacted admin-settings snapshot for the same assistant (read_settings tool, Admin/Operator).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.ISettingsKnowledgeReader, NodePilot.Api.Ai.SettingsKnowledgeReader>();
+// Read-only, cell-redacted App-DB schema + query reader for the text2sql knowledge tools (Admin/Op-gated).
+builder.Services.AddScoped<NodePilot.Core.Interfaces.ISqlKnowledgeReader, NodePilot.Api.Ai.SqlKnowledgeReader>();
 builder.Services.AddScoped<IMaintenanceWindowStore, MaintenanceWindowStore>();
 builder.Services.AddScoped<INotificationRuleStore, NotificationRuleStore>();
 // Singleton evaluator: an immutable in-memory snapshot read on the dispatch hot path, refreshed

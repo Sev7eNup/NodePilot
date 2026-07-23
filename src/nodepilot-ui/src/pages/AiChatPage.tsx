@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Add, BareMetalServer, Chat, Checkbox, Checkmark, ChevronDown, CircleDash, Code, Document,
+  Add, BareMetalServer, Chat, Checkbox, Checkmark, ChevronDown, CircleDash, Code, DataBase, Document,
   Download, Edit, Email, FlowModeler, Renew, Reset, Save, Send, Time, Tools, TrashCan, WarningAlt,
 } from '@carbon/icons-react';
 import {
@@ -459,6 +459,7 @@ function SourceBadges({ caps, t }: { caps: KnowledgeCapabilities; t: (k: string)
     { on: caps.docs, icon: Document, label: t('ai:knowledge.sourceDocs') },
     { on: caps.operational, icon: FlowModeler, label: t('ai:knowledge.sourceOperational') },
     { on: caps.sourceCode, icon: Code, label: t('ai:knowledge.sourceCode') },
+    { on: caps.db, icon: DataBase, label: t('ai:knowledge.sourceDb') },
   ];
   const active = badges.filter((b) => b.on);
   if (active.length === 0) return null;

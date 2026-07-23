@@ -697,6 +697,37 @@ public sealed class NodePilotApiClient
 
     // ---- Plumbing -----------------------------------------------------------
 
+    // ---- DbAdmin (read-only SQL / text2sql) ---------------------------------
+
+    /// <summary>Schema catalog for every EF-tracked table. Admin-only server-side; hidden secret
+    /// columns (PasswordHash/EncryptedPassword/byte[]) are excluded by the API, GlobalVariable.Value
+    /// arrives masked as "***".</summary>
+    public async Task<List<DbAdminTableInfo>> ListDbTablesAsync(CancellationToken ct)
+    {
+        EnsureReady();
+        using var res = await _http.GetAsync("api/dbadmin/tables", ct);
+        return await ParseAsync<List<DbAdminTableInfo>>(res, ct);
+    }
+
+    /// <summary>DB provider + read-query limits (maxRows, timeout) so an agent can respect them.</summary>
+    public async Task<DbAdminInfoResponse> GetDbInfoAsync(CancellationToken ct)
+    {
+        EnsureReady();
+        using var res = await _http.GetAsync("api/dbadmin/info", ct);
+        return await ParseAsync<DbAdminInfoResponse>(res, ct);
+    }
+
+    /// <summary>Execute a single read-only SQL statement. <paramref name="mode"/> is forced to
+    /// "read" by the caller; the server additionally enforces a SELECT/WITH/EXPLAIN/SHOW/VALUES/TABLE
+    /// keyword whitelist, single-statement, rollback-guarantee, row-cap and timeout.</summary>
+    public async Task<DbAdminQueryResponse> ExecuteDbReadQueryAsync(string sql, CancellationToken ct)
+    {
+        EnsureReady();
+        var req = new DbAdminQueryRequest(sql, Mode: "read");
+        using var res = await _http.PostAsJsonAsync("api/dbadmin/query", req, JsonOptions, ct);
+        return await ParseAsync<DbAdminQueryResponse>(res, ct);
+    }
+
     private static async Task<T> ParseAsync<T>(HttpResponseMessage res, CancellationToken ct)
     {
         await EnsureSuccessAsync(res, ct);

@@ -19,7 +19,7 @@ public class AiKnowledgeControllerTests
 {
     private static (AiKnowledgeController controller, CapturingAuditWriter audit, FakeLlmClient llm, MemoryStream body)
         Build(bool llmEnabled = true, bool knowledgeEnabled = true, bool docs = true, bool op = true, bool src = false,
-              string role = "Operator", bool enableToolCalling = false)
+              string role = "Operator", bool enableToolCalling = false, bool db = false)
     {
         var llmOptions = new StaticOptionsMonitor<LlmOptions>(new LlmOptions
         {
@@ -28,15 +28,15 @@ public class AiKnowledgeControllerTests
         });
         var kOptions = new StaticOptionsMonitor<AiKnowledgeOptions>(new AiKnowledgeOptions
         {
-            Enabled = knowledgeEnabled, DocsEnabled = docs, OperationalEnabled = op, SourceCodeEnabled = src,
+            Enabled = knowledgeEnabled, DocsEnabled = docs, OperationalEnabled = op, SourceCodeEnabled = src, DbEnabled = db,
         });
         var llm = new FakeLlmClient();
-        var db = TestDbFactory.Create();
+        var dbContext = TestDbFactory.Create();
         var registry = new KnowledgeChatToolRegistry(new DocsKnowledgeReader(kOptions), new SourceCodeKnowledgeReader(kOptions));
-        var operational = new OperationalKnowledgeReader(db, new StubAuditDetailsRedactor());
-        var assistant = new KnowledgeAssistantService(llm, new PromptCatalog(), registry, llmOptions, kOptions, operational, new StubSettingsKnowledgeReader());
+        var operational = new OperationalKnowledgeReader(dbContext, new StubAuditDetailsRedactor());
+        var assistant = new KnowledgeAssistantService(llm, new PromptCatalog(), registry, llmOptions, kOptions, operational, new StubSettingsKnowledgeReader(), new StubSqlKnowledgeReader());
         var audit = new CapturingAuditWriter();
-        var authz = new ResourceAuthorizationService(db);
+        var authz = new ResourceAuthorizationService(dbContext);
         var controller = new AiKnowledgeController(llmOptions, kOptions, assistant, authz, audit, NullLogger<AiKnowledgeController>.Instance);
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
@@ -74,6 +74,17 @@ public class AiKnowledgeControllerTests
     private sealed class StubSettingsKnowledgeReader : ISettingsKnowledgeReader
     {
         public IReadOnlyList<SettingsSectionKnowledge> GetRedactedSnapshot() => Array.Empty<SettingsSectionKnowledge>();
+    }
+
+    // text2sql tools are only exercised via the manual smoke path; an empty stub keeps the assistant constructible.
+    private sealed class StubSqlKnowledgeReader : ISqlKnowledgeReader
+    {
+        public Task<IReadOnlyList<DbTableKnowledgeSummary>> ListTablesAsync(CancellationToken ct)
+            => Task.FromResult<IReadOnlyList<DbTableKnowledgeSummary>>(Array.Empty<DbTableKnowledgeSummary>());
+        public Task<DbTableKnowledgeDetail?> GetTableAsync(string name, CancellationToken ct)
+            => Task.FromResult<DbTableKnowledgeDetail?>(null);
+        public Task<SqlQueryKnowledgeResult> ExecuteReadAsync(string sql, CancellationToken ct)
+            => Task.FromResult(new SqlQueryKnowledgeResult(Array.Empty<string>(), Array.Empty<IReadOnlyList<string?>>(), false, 0, null));
     }
 
     // ---- 503 gating ----------------------------------------------------------------------------
@@ -190,33 +201,45 @@ public class AiKnowledgeControllerTests
     [Fact]
     public void Capabilities_AllEnabledPrivileged_AllTrue()
     {
-        var (controller, _, _, _) = Build(src: true, role: "Admin");
+        var (controller, _, _, _) = Build(src: true, db: true, role: "Admin");
         var caps = Caps(controller);
         caps.Enabled.Should().BeTrue();
         caps.Docs.Should().BeTrue();
         caps.Operational.Should().BeTrue();
         caps.SourceCode.Should().BeTrue();
+        caps.Db.Should().BeTrue();
     }
 
     [Fact]
     public void Capabilities_LlmDisabled_EverythingFalse()
     {
-        var (controller, _, _, _) = Build(llmEnabled: false, src: true, role: "Admin");
+        var (controller, _, _, _) = Build(llmEnabled: false, src: true, db: true, role: "Admin");
         var caps = Caps(controller);
         caps.Enabled.Should().BeFalse();
         caps.Docs.Should().BeFalse();
         caps.Operational.Should().BeFalse();
         caps.SourceCode.Should().BeFalse();
+        caps.Db.Should().BeFalse();
     }
 
     [Fact]
-    public void Capabilities_Viewer_SourceCodeFalse_EvenWhenEnabled()
+    public void Capabilities_Viewer_SourceCodeAndDbFalse_EvenWhenEnabled()
     {
-        var (controller, _, _, _) = Build(src: true, role: "Viewer");
+        var (controller, _, _, _) = Build(src: true, db: true, role: "Viewer");
         var caps = Caps(controller);
         caps.Enabled.Should().BeTrue();
         caps.Docs.Should().BeTrue();
         caps.SourceCode.Should().BeFalse(); // source-code is Admin/Operator only
+        caps.Db.Should().BeFalse();        // DB (raw SQL) is Admin/Operator only
+    }
+
+    [Fact]
+    public void Capabilities_DbReflectedOnlyForPrivileged()
+    {
+        var (controller, _, _, _) = Build(db: true, role: "Operator");
+        Caps(controller).Db.Should().BeTrue();
+        var (controllerOff, _, _, _) = Build(db: false, role: "Operator");
+        Caps(controllerOff).Db.Should().BeFalse();
     }
 
     [Fact]

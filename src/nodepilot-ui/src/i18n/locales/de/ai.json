@@ -116,6 +116,7 @@
     "sourceDocs": "Doku",
     "sourceOperational": "Workflows & Betrieb",
     "sourceCode": "Quellcode",
+    "sourceDb": "Datenbank",
     "disabledTitle": "KI-Chat ist deaktiviert",
     "disabledBody": "Ein Administrator kann ihn in den Einstellungen unter „AI-Wissen (Chat)“ aktivieren (setzt Llm:Enabled voraus).",
     "examples": [

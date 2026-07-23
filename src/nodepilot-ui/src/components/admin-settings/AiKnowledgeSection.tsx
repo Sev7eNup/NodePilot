@@ -15,6 +15,7 @@ type AiKnowledgeDto = {
   docsEnabled: boolean;
   operationalEnabled: boolean;
   sourceCodeEnabled: boolean;
+  dbEnabled: boolean;
   docsRootPath: string | null;
   sourceCodeRootPath: string | null;
   docsMaxFileBytes: number;
@@ -25,9 +26,10 @@ type AiKnowledgeDto = {
 
 /**
  * "AI Knowledge (Chat)" section — governs the global AI-Chat assistant: a master switch plus
- * three per-source toggles (docs / operational data / source code) and the two live-read root
- * paths. Hot-reloadable (the chat reads IOptionsMonitor per turn), so a save takes effect without
- * a restart. Source-code exposure carries an inline confidentiality warning.
+ * four per-source toggles (docs / operational data / source code / database) and the two live-read
+ * root paths. Hot-reloadable (the chat reads IOptionsMonitor per turn), so a save takes effect
+ * without a restart. Source-code and database exposure each carry an inline confidentiality warning
+ * (database = read-only SQL / text2sql, Admin/Operator-gated, secret cells redacted).
  */
 export function AiKnowledgeSection() {
   const { t } = useTranslation(['adminSettings', 'common']);
@@ -36,6 +38,7 @@ export function AiKnowledgeSection() {
     docsEnabled: true,
     operationalEnabled: true,
     sourceCodeEnabled: false,
+    dbEnabled: false,
     docsRootPath: null,
     sourceCodeRootPath: null,
     docsMaxFileBytes: 262144,
@@ -51,6 +54,7 @@ export function AiKnowledgeSection() {
     DocsEnabled: form.docsEnabled,
     OperationalEnabled: form.operationalEnabled,
     SourceCodeEnabled: form.sourceCodeEnabled,
+    DbEnabled: form.dbEnabled,
     DocsRootPath: form.docsRootPath,
     SourceCodeRootPath: form.sourceCodeRootPath,
     DocsMaxFileBytes: form.docsMaxFileBytes,
@@ -82,6 +86,14 @@ export function AiKnowledgeSection() {
         {form.sourceCodeEnabled && (
           <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
             {t('aiKnowledge.sourceCodeWarning')}
+          </div>
+        )}
+        <Toggle label={t('aiKnowledge.dbEnabled')} checked={form.dbEnabled}
+          onChange={(v) => set({ ...form, dbEnabled: v })}
+          configKey="AiKnowledge:DbEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
+        {form.dbEnabled && (
+          <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
+            {t('aiKnowledge.dbWarning')}
           </div>
         )}
 

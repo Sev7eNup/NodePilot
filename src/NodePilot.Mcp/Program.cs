@@ -39,6 +39,7 @@ var mcp = builder.Services
     .WithTools<AlertingTools>()
     .WithTools<SystemAlertingTools>()
     .WithTools<CanvasAssistantTools>()
+    .WithTools<DbAdminMcpTools>()
     .WithResources<NodePilotResources>();
 
 // Destructive/admin tools are registered ONLY when explicitly enabled — so the agent never

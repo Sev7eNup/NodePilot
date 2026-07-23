@@ -16,8 +16,10 @@ public sealed record KnowledgeToolContext(
     bool DocsEnabled,
     bool OperationalEnabled,
     bool SourceCodeEnabled,
+    bool DbEnabled,
     IOperationalKnowledgeReader? Operational,
-    ISettingsKnowledgeReader? Settings);
+    ISettingsKnowledgeReader? Settings,
+    ISqlKnowledgeReader? Sql);
 
 /// <summary>Read-only tool registry for the global "AI Chat" knowledge assistant.</summary>
 public interface IKnowledgeToolRegistry
@@ -53,6 +55,7 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
     private static bool OpPrivGate(KnowledgeToolContext c) => OpGate(c) && c.IsPrivileged;
     private static bool SourceGate(KnowledgeToolContext c) => c.SourceCodeEnabled && c.IsPrivileged;
     private static bool SettingsGate(KnowledgeToolContext c) => c.IsPrivileged && c.Settings is not null;
+    private static bool SqlGate(KnowledgeToolContext c) => c.DbEnabled && c.IsPrivileged && c.Sql is not null;
 
     public KnowledgeChatToolRegistry(IDocsKnowledgeReader docs, ISourceCodeKnowledgeReader source)
     {
@@ -152,6 +155,30 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
                     StringParam("path", "Relativer Quellcode-Pfad aus search_source.", required: true)),
                 (a, _, _) => Task.FromResult(ReadFile(source.Read(GetString(a, "path")))),
                 SourceGate),
+
+            ["list_db_tables"] = new(
+                new LlmToolDefinition("list_db_tables",
+                    "Listet die Tabellen der NodePilot-App-Datenbank mit ihren (nicht versteckten) Spalten — "
+                    + "die Basis für SQL-Fragen. Jede Tabelle nennt ihren echten DB-Tabellennamen (DbTableName), "
+                    + "den du in SQL verwenden musst, Primärschlüssel und Spaltennamen. Secret-Spalten fehlen.",
+                    NoParams),
+                ListDbTablesAsync, SqlGate),
+
+            ["get_db_table"] = new(
+                new LlmToolDefinition("get_db_table",
+                    "Liefert die vollständige Spaltenliste einer Tabelle (Name, Typ, Nullable, Primärschlüssel) "
+                    + "per Entity-Name oder DbTableName — für gezielte Joins/Filter. Secret-Spalten fehlen.",
+                    StringParam("name", "Tabellenname (Entity-Name oder DbTableName).", required: true)),
+                GetDbTableAsync, SqlGate),
+
+            ["execute_readonly_sql"] = new(
+                new LlmToolDefinition("execute_readonly_sql",
+                    "Führt EIN einzelnes Read-Only-SQL-Statement gegen die NodePilot-App-DB aus (nur "
+                    + "SELECT/WITH/EXPLAIN/SHOW/VALUES/TABLE — Schreibvorgänge werden serverseitig abgelehnt). "
+                    + "Nutze DbTableName aus list_db_tables. Result-Spalten, die Secret-Spalten heißen, sind "
+                    + "redigiert (\"***\") — wähle sie nicht aktiv. Fehler (Bad SQL/Timeout) kommen als Error-Feld zurück.",
+                    StringParam("sql", "Ein einzelnes Read-Only-SQL-Statement.", required: true)),
+                ExecuteReadonlySqlAsync, SqlGate),
 
             ["read_settings"] = new(
                 new LlmToolDefinition("read_settings",
@@ -324,6 +351,34 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
         var items = await ctx.Operational!.ListScheduledFiresAsync(
             ctx.Accessible, GetOptionalString(args, "idOrName"), GetIntOr(args, "count", 3), 25, ct);
         return new { count = items.Count, note = "Alle Zeiten sind UTC.", schedules = items };
+    }
+
+    // ---- sql (text2sql) -----------------------------------------------------------------------
+
+    private static async Task<object> ListDbTablesAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
+    {
+        var tables = await ctx.Sql!.ListTablesAsync(ct);
+        return new { count = tables.Count, tables };
+    }
+
+    private static async Task<object> GetDbTableAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
+    {
+        var name = GetString(args, "name");
+        var table = await ctx.Sql!.GetTableAsync(name, ct);
+        return table is null
+            ? new { error = $"Tabelle '{name}' nicht gefunden." }
+            : new { table };
+    }
+
+    private static async Task<object> ExecuteReadonlySqlAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
+    {
+        var sql = GetString(args, "sql");
+        if (string.IsNullOrWhiteSpace(sql))
+            return new { error = "Parameter 'sql' fehlt." };
+        var result = await ctx.Sql!.ExecuteReadAsync(sql, ct);
+        return result.Error is null
+            ? new { columns = result.Columns, rows = result.Rows, truncated = result.Truncated, durationMs = result.DurationMs }
+            : new { error = result.Error, durationMs = result.DurationMs };
     }
 
     // ---- arg helpers --------------------------------------------------------------------------

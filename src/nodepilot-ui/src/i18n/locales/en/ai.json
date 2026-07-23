@@ -116,6 +116,7 @@
     "sourceDocs": "Docs",
     "sourceOperational": "Workflows & operations",
     "sourceCode": "Source code",
+    "sourceDb": "Database",
     "disabledTitle": "AI Chat is disabled",
     "disabledBody": "An administrator can enable it in Settings under \"AI Knowledge (Chat)\" (requires Llm:Enabled).",
     "examples": [
