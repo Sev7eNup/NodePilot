@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Audit;
-using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Core.WorkflowDefinitions;
@@ -16,37 +15,16 @@ namespace NodePilot.Data;
 /// query. Workflow definitions are redacted twice before leaving: key-based
 /// (<see cref="WorkflowSecretRedactor"/>) plus a pattern-based pass over the serialized text
 /// (<see cref="IAuditDetailsRedactor"/>) that also catches secrets hard-coded inside runScript
-/// bodies. Free-text execution fields are pattern-redacted too — deliberately stricter than the
-/// role gradient in <c>ExecutionsController</c>, because results go to an external LLM.
+/// bodies — deliberately stricter than the role gradient in <c>ExecutionsController</c>, because
+/// results go to an external LLM. Scope is the slice the database tools cannot provide: a
+/// workflow's redacted definition, structural analysis input, and computed scheduled-fire
+/// forecasts. Listing workflows/executions/machines is left to the <c>execute_readonly_sql</c>
+/// text2sql tools against the app database.
 /// </summary>
 public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDetailsRedactor redactor)
     : IOperationalKnowledgeReader
 {
     private const int MaxTake = 50;
-
-    public async Task<IReadOnlyList<WorkflowKnowledgeSummary>> ListWorkflowsAsync(
-        AccessibleFolderSet accessible, string? nameFilter, int take, CancellationToken ct)
-    {
-        if (IsNoAccess(accessible)) return [];
-        take = Math.Clamp(take, 1, MaxTake);
-
-        var q = Scoped(db.Workflows.AsNoTracking(), accessible);
-        if (!string.IsNullOrWhiteSpace(nameFilter))
-        {
-            var f = nameFilter.Trim().ToLower();
-            q = q.Where(w => w.Name.ToLower().Contains(f));
-        }
-
-        var rows = await q
-            .OrderBy(w => w.Name)
-            .Take(take)
-            .Select(w => new { w.Id, w.Name, w.Description, w.IsEnabled, w.ActivityCount, w.TriggerTypesJson, w.UpdatedAt })
-            .ToListAsync(ct);
-
-        return rows.Select(w => new WorkflowKnowledgeSummary(
-            w.Id, w.Name, w.Description, w.IsEnabled, w.ActivityCount,
-            ParseTriggerTypes(w.TriggerTypesJson), w.UpdatedAt)).ToList();
-    }
 
     public async Task<WorkflowKnowledgeDetail?> GetWorkflowDefinitionAsync(
         AccessibleFolderSet accessible, string idOrName, CancellationToken ct)
@@ -56,47 +34,6 @@ public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDeta
 
         return new WorkflowKnowledgeDetail(
             wf.Id, wf.Name, wf.Description, wf.IsEnabled, RedactDefinition(wf.DefinitionJson));
-    }
-
-    public async Task<IReadOnlyList<ExecutionKnowledgeSummary>> ListRecentExecutionsAsync(
-        AccessibleFolderSet accessible, string? status, int take, CancellationToken ct)
-    {
-        if (IsNoAccess(accessible)) return [];
-        take = Math.Clamp(take, 1, MaxTake);
-
-        IQueryable<WorkflowExecution> q = db.WorkflowExecutions.AsNoTracking();
-        if (!accessible.IsUnrestricted)
-            q = q.Where(e => accessible.FolderIds.Contains(e.Workflow.FolderId));
-        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<ExecutionStatus>(status, ignoreCase: true, out var parsed))
-            q = q.Where(e => e.Status == parsed);
-
-        return await ProjectExecutionsAsync(q.OrderByDescending(e => e.StartedAt).Take(take), ct);
-    }
-
-    public async Task<IReadOnlyList<ExecutionKnowledgeSummary>> GetWorkflowExecutionsAsync(
-        AccessibleFolderSet accessible, string idOrName, int take, CancellationToken ct)
-    {
-        var wf = await ResolveWorkflowAsync(accessible, idOrName, ct);
-        if (wf is null) return [];
-        take = Math.Clamp(take, 1, MaxTake);
-
-        var q = db.WorkflowExecutions.AsNoTracking()
-            .Where(e => e.WorkflowId == wf.Id)
-            .OrderByDescending(e => e.StartedAt)
-            .Take(take);
-        return await ProjectExecutionsAsync(q, ct);
-    }
-
-    public async Task<IReadOnlyList<MachineKnowledgeSummary>> ListMachinesAsync(int take, CancellationToken ct)
-    {
-        take = Math.Clamp(take, 1, MaxTake);
-        var rows = await db.ManagedMachines.AsNoTracking()
-            .OrderBy(m => m.Name)
-            .Take(take)
-            .Select(m => new MachineKnowledgeSummary(
-                m.Id, m.Name, m.Hostname, m.WinRmPort, m.UseSsl, m.IsReachable, m.LastConnectivityCheck, m.Tags))
-            .ToListAsync(ct);
-        return rows;
     }
 
     public async Task<IReadOnlyList<ScheduledFireForecast>> ListScheduledFiresAsync(
@@ -192,28 +129,6 @@ public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDeta
         return ci.Count == 1 ? ci[0] : null;
     }
 
-    private async Task<IReadOnlyList<ExecutionKnowledgeSummary>> ProjectExecutionsAsync(
-        IQueryable<WorkflowExecution> q, CancellationToken ct)
-    {
-        var rows = await q
-            .Select(e => new
-            {
-                e.Id,
-                e.WorkflowId,
-                WorkflowName = e.Workflow.Name,
-                e.Status,
-                e.StartedAt,
-                e.CompletedAt,
-                e.TriggeredBy,
-                e.ErrorMessage,
-            })
-            .ToListAsync(ct);
-
-        return rows.Select(e => new ExecutionKnowledgeSummary(
-            e.Id, e.WorkflowId, e.WorkflowName, e.Status.ToString(),
-            e.StartedAt, e.CompletedAt, e.TriggeredBy, redactor.Redact(e.ErrorMessage))).ToList();
-    }
-
     private string RedactDefinition(string definitionJson)
     {
         string keyRedacted;
@@ -229,19 +144,5 @@ public sealed class OperationalKnowledgeReader(NodePilotDbContext db, IAuditDeta
         // Pattern-based pass: catches secrets hard-coded in free-text (e.g. a runScript body) that
         // the key-based redactor can't see.
         return redactor.Redact(keyRedacted) ?? keyRedacted;
-    }
-
-    private static IReadOnlyList<string> ParseTriggerTypes(string? triggerTypesJson)
-    {
-        if (string.IsNullOrWhiteSpace(triggerTypesJson)) return [];
-        try
-        {
-            var arr = JsonSerializer.Deserialize<List<string>>(triggerTypesJson);
-            return arr is null ? [] : arr.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
     }
 }

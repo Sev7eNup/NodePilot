@@ -77,17 +77,6 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
                 (a, _, _) => Task.FromResult(ReadFile(docs.Read(GetString(a, "path")))),
                 DocsGate),
 
-            ["list_workflows"] = new(
-                new LlmToolDefinition("list_workflows",
-                    "Listet die im System eingespielten Workflows (nur die der User sehen darf), optional nach "
-                    + "Namensteil gefiltert: Name, aktiviert?, Aktivitätenzahl, Trigger-Typen.",
-                    ParseParams("""
-                        {"type":"object","properties":{
-                          "nameFilter":{"type":"string","description":"Optionaler Namensteil-Filter."},
-                          "take":{"type":"integer","minimum":1,"maximum":50,"description":"Max. Anzahl (Default 25)."}}}
-                        """)),
-                ListWorkflowsAsync, OpGate),
-
             ["get_workflow_definition"] = new(
                 new LlmToolDefinition("get_workflow_definition",
                     "Liefert die (secret-redigierte) Definition EINES Workflows (nodes/edges/config) per Name oder ID — "
@@ -101,34 +90,6 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
                     + "Orphan-Steps, Zyklen, Remote-Steps ohne Ziel-Maschine. Rufe es bei 'prüfe Workflow X'.",
                     StringParam("idOrName", "Workflow-Name oder GUID.", required: true)),
                 AnalyzeWorkflowAsync, OpPrivGate),
-
-            ["list_recent_executions"] = new(
-                new LlmToolDefinition("list_recent_executions",
-                    "Jüngste Ausführungen über die ganze Instanz (folder-gescoped), optional nach Status gefiltert "
-                    + "(z.B. 'Failed' für Fehlschläge). Status/Zeiten/Fehlermeldung sind redigiert.",
-                    ParseParams("""
-                        {"type":"object","properties":{
-                          "status":{"type":"string","description":"Optional: Pending|Running|Succeeded|Failed|Cancelled|Paused."},
-                          "take":{"type":"integer","minimum":1,"maximum":50,"description":"Max. Anzahl (Default 20)."}}}
-                        """)),
-                ListRecentExecutionsAsync, OpGate),
-
-            ["list_workflow_executions"] = new(
-                new LlmToolDefinition("list_workflow_executions",
-                    "Jüngste Läufe EINES bestimmten Workflows (per Name/ID) — für 'warum schlägt Workflow X fehl?'.",
-                    ParseParams("""
-                        {"type":"object","properties":{
-                          "idOrName":{"type":"string","description":"Workflow-Name oder GUID."},
-                          "take":{"type":"integer","minimum":1,"maximum":50,"description":"Max. Anzahl (Default 20)."}},
-                          "required":["idOrName"]}
-                        """)),
-                ListWorkflowExecutionsAsync, OpGate),
-
-            ["list_machines"] = new(
-                new LlmToolDefinition("list_machines",
-                    "Listet die verwalteten Ziel-Maschinen (Name, Host, WinRM-Port, Erreichbarkeit) — nie Credentials.",
-                    NoParams),
-                ListMachinesAsync, OpGate),
 
             ["get_next_scheduled_fires"] = new(
                 new LlmToolDefinition("get_next_scheduled_fires",
@@ -281,12 +242,6 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
 
     // ---- operational --------------------------------------------------------------------------
 
-    private static async Task<object> ListWorkflowsAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
-    {
-        var items = await ctx.Operational!.ListWorkflowsAsync(ctx.Accessible, GetOptionalString(args, "nameFilter"), GetIntOr(args, "take", 25), ct);
-        return new { count = items.Count, workflows = items };
-    }
-
     private static async Task<object> GetWorkflowDefinitionAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
     {
         var detail = await ctx.Operational!.GetWorkflowDefinitionAsync(ctx.Accessible, GetString(args, "idOrName"), ct);
@@ -329,24 +284,6 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
         {
             return new { error = "Workflow-Definition ist kein gültiges JSON." };
         }
-    }
-
-    private static async Task<object> ListRecentExecutionsAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
-    {
-        var items = await ctx.Operational!.ListRecentExecutionsAsync(ctx.Accessible, GetOptionalString(args, "status"), GetIntOr(args, "take", 20), ct);
-        return new { count = items.Count, executions = items };
-    }
-
-    private static async Task<object> ListWorkflowExecutionsAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
-    {
-        var items = await ctx.Operational!.GetWorkflowExecutionsAsync(ctx.Accessible, GetString(args, "idOrName"), GetIntOr(args, "take", 20), ct);
-        return new { count = items.Count, executions = items };
-    }
-
-    private static async Task<object> ListMachinesAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)
-    {
-        var items = await ctx.Operational!.ListMachinesAsync(50, ct);
-        return new { count = items.Count, machines = items };
     }
 
     private static async Task<object> GetNextScheduledFiresAsync(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct)

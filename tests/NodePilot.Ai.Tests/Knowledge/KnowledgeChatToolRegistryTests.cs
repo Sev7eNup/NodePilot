@@ -83,13 +83,15 @@ public class KnowledgeChatToolRegistryTests
         names.Should().Contain(new[]
         {
             "search_docs", "read_doc",
-            "list_workflows", "get_workflow_definition", "analyze_workflow",
-            "list_recent_executions", "list_workflow_executions", "list_machines",
+            "get_workflow_definition", "analyze_workflow",
             "get_next_scheduled_fires",
             "search_source", "read_source",
             "read_settings",
             "list_db_tables", "get_db_table", "execute_readonly_sql",
         });
+        // The four list tools (workflows / executions / machines) were retired in favour of the
+        // database text2sql tools — they must never be offered, even with everything enabled.
+        names.Should().NotContain(new[] { "list_workflows", "list_recent_executions", "list_workflow_executions", "list_machines" });
     }
 
     [Fact]
@@ -98,7 +100,7 @@ public class KnowledgeChatToolRegistryTests
         var reg = Registry(out _, out _, out _);
         var names = ToolNames(reg, Ctx(docs: false));
         names.Should().NotContain("search_docs").And.NotContain("read_doc");
-        names.Should().Contain("list_workflows");
+        names.Should().Contain("get_workflow_definition");
     }
 
     [Fact]
@@ -106,7 +108,7 @@ public class KnowledgeChatToolRegistryTests
     {
         var reg = Registry(out _, out _, out _);
         var names = ToolNames(reg, Ctx(op: false));
-        names.Should().NotContain(new[] { "list_workflows", "get_workflow_definition", "analyze_workflow", "list_recent_executions", "list_workflow_executions", "list_machines", "get_next_scheduled_fires" });
+        names.Should().NotContain(new[] { "get_workflow_definition", "analyze_workflow", "get_next_scheduled_fires" });
         names.Should().Contain("search_docs");
     }
 
@@ -115,8 +117,9 @@ public class KnowledgeChatToolRegistryTests
     {
         var reg = Registry(out _, out _, out _);
         var names = ToolNames(reg, Ctx(priv: false, src: false));
-        // Non-privileged keeps list/status tools but NOT definition/analysis (content).
-        names.Should().Contain("list_workflows").And.Contain("list_recent_executions").And.Contain("list_machines");
+        // Non-privileged keeps the non-sensitive operational tool (next-fire forecast) but NOT the
+        // workflow-content tools (definition/analysis need privilege).
+        names.Should().Contain("get_next_scheduled_fires");
         names.Should().NotContain("get_workflow_definition").And.NotContain("analyze_workflow");
     }
 
@@ -264,16 +267,6 @@ public class KnowledgeChatToolRegistryTests
         using var doc = JsonDocument.Parse(r);
         doc.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
         r.Should().Contain("orphan-node");
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_ListRecentExecutions_PassesStatusFilter()
-    {
-        var reg = Registry(out _, out _, out _);
-        var op = new FakeOperationalKnowledgeReader();
-        await reg.ExecuteAsync("list_recent_executions", """{"status":"Failed","take":5}""", Ctx(opReader: op), CancellationToken.None);
-        op.LastStatus.Should().Be("Failed");
-        op.LastTake.Should().Be(5);
     }
 
     [Fact]

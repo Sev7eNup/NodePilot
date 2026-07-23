@@ -233,7 +233,8 @@ Source-Code + DB default aus:
 | Quelle | Toggle | Tools | Gate |
 |---|---|---|---|
 | Dokumentation | `DocsEnabled` | `search_docs`, `read_doc` | — |
-| Workflows & Betrieb | `OperationalEnabled` | `list_workflows`, `get_workflow_definition`, `analyze_workflow`, `list_recent_executions`, `list_workflow_executions`, `list_machines`, `get_next_scheduled_fires` | RBAC-folder-scoped |
+| Workflows & Betrieb | `OperationalEnabled` | `get_workflow_definition`, `analyze_workflow`, `get_next_scheduled_fires` | RBAC-folder-scoped |
+| Workflows & Betrieb (Listen) | via DB-Quelle | "Welche Workflows/Läufe/Maschinen gibt es" → `list_db_tables` + `execute_readonly_sql` | Admin/Operator (text2sql) |
 | Systemkonfiguration | (immer, wenn privilegiert) | `read_settings` | Admin/Operator |
 | Quellcode | `SourceCodeEnabled` | `search_source`, `read_source` | Admin/Operator |
 | **DB / text2sql** | `DbEnabled` | `list_db_tables`, `get_db_table`, `execute_readonly_sql` | Admin/Operator |

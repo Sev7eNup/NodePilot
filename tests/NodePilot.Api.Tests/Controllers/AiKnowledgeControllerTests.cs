@@ -155,10 +155,10 @@ public class AiKnowledgeControllerTests
     {
         var (controller, _, llm, body) = Build(enableToolCalling: true);
         // Local endpoint reports finish_reason "stop" while still emitting a tool call — must still run.
-        llm.EnqueueToolCallStreamWithFinish(new[] { new LlmToolCall("c1", "list_workflows", "{}") }, "stop");
-        llm.EnqueueStream("Hier sind die Workflows.");
+        llm.EnqueueToolCallStreamWithFinish(new[] { new LlmToolCall("c1", "get_next_scheduled_fires", "{}") }, "stop");
+        llm.EnqueueStream("Die nächsten Cron-Feuerzeiten.");
 
-        var result = await controller.Ask(new KnowledgeAskRequest("Liste Workflows", null), CancellationToken.None);
+        var result = await controller.Ask(new KnowledgeAskRequest("Wann laufen die Workflows als Nächstes?", null), CancellationToken.None);
 
         result.Should().BeOfType<EmptyResult>();
         var events = ParseSse(body);

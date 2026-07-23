@@ -80,6 +80,7 @@ export function AiKnowledgeSection() {
         <Toggle label={t('aiKnowledge.operationalEnabled')} checked={form.operationalEnabled}
           onChange={(v) => set({ ...form, operationalEnabled: v })}
           configKey="AiKnowledge:OperationalEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
+        <p className="text-xs text-on-surface-variant -mt-1 mb-1">{t('aiKnowledge.operationalHint')}</p>
         <Toggle label={t('aiKnowledge.sourceCodeEnabled')} checked={form.sourceCodeEnabled}
           onChange={(v) => set({ ...form, sourceCodeEnabled: v })}
           configKey="AiKnowledge:SourceCodeEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />

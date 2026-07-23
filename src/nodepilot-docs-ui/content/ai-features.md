@@ -70,7 +70,9 @@ Vom workflow-spezifischen Chat getrennt: ein seitenweiter, **canvas-freier** rea
 (`POST /api/ai/knowledge/ask`, SSE; Capabilities `GET /api/ai/knowledge/capabilities`). Opt-in via
 `AiKnowledge:Enabled` (zusätzlich zu `Llm:Enabled`), hot-reloadbar. **Vier admin-toggelbare
 Wissensquellen** (Sektion `AiKnowledge`): Docs (`DocsEnabled`), Workflows & Betrieb
-(`OperationalEnabled`, RBAC-folder-scoped), Quellcode (`SourceCodeEnabled`, Admin/Op) und
+(`OperationalEnabled`, RBAC-folder-scoped — liefert nur die Workflow-Definition, die statische
+Analyse und die Cron-Voraussage; reine Listen wie Workflows/Läufe/Maschinen werden über die
+DB-Quelle per text2sql beantwortet), Quellcode (`SourceCodeEnabled`, Admin/Op) und
 **DB / text2sql** (`DbEnabled`, Admin/Op) — letzteres default aus. Zudem `read_settings` (Admin/Op).
 
 **text2sql**: das LLM übersetzt die Frage in provider-spezifisches SQL. `list_db_tables` liefert Dialekt
