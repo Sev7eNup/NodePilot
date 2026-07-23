@@ -607,6 +607,47 @@ describe('WorkflowsPage — Sorting', () => {
     // Status sort uses Number(b.isEnabled) - Number(a.isEnabled) → enabled first asc
     expect(rows[1].textContent).toContain('OnOne');
   });
+
+  it('sorts by Triggers (lexicographic by trigger-type composition)', async () => {
+    // Seed in non-sorted order: webhook, schedule, manual. Asc key order is
+    // manualTrigger < scheduleTrigger < webhookTrigger.
+    server.use(
+      http.get(`${BASE}/api/workflows`, () =>
+        HttpResponse.json([
+          mkWorkflow({ id: 'w', name: 'W-WF', triggerTypes: ['webhookTrigger'] }),
+          mkWorkflow({ id: 's', name: 'S-WF', triggerTypes: ['scheduleTrigger'] }),
+          mkWorkflow({ id: 'm', name: 'M-WF', triggerTypes: ['manualTrigger'] }),
+        ])
+      )
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText('W-WF')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Triggers'));
+
+    const rows = screen.getAllByRole('row');
+    expect(rows[1].textContent).toContain('M-WF');
+    expect(rows[3].textContent).toContain('W-WF');
+  });
+
+  it('sorts empty-trigger workflows first in asc Triggers sort', async () => {
+    server.use(
+      http.get(`${BASE}/api/workflows`, () =>
+        HttpResponse.json([
+          mkWorkflow({ id: 't', name: 'Has-Trig', triggerTypes: ['scheduleTrigger'] }),
+          mkWorkflow({ id: 'e', name: 'Empty-Trig', triggerTypes: [] }),
+        ])
+      )
+    );
+    renderPage();
+    await waitFor(() => expect(screen.getByText('Has-Trig')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByText('Triggers'));
+
+    const rows = screen.getAllByRole('row');
+    // Empty composition ('') sorts before any non-empty key in asc order.
+    expect(rows[1].textContent).toContain('Empty-Trig');
+  });
 });
 
 describe('WorkflowsPage — Export & SCOrch result modal', () => {
