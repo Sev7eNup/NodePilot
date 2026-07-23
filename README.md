@@ -744,10 +744,10 @@ NodePilot ships two **opt-in** AI helpers that work against **OpenAI-compatible 
 
 | Model | Size | Strength | Min RAM |
 |---|---|---|---|
-| **Qwen2.5-Coder 32B** | 19 GB | Best code + JSON quality in class | 32 GB |
-| Qwen2.5-Coder 14B | 9 GB | Solid mid-tier all-rounder | 16 GB |
-| DeepSeek-Coder V2 16B | 9 GB | Excellent at structured / JSON output | 16 GB |
-| Codestral 22B | 13 GB | Mistral variant, strong at PowerShell | 24 GB |
+| **Gemma 4 31B** | 19 GB | Best all-round code + reasoning quality in class | 32 GB |
+| Gemma 4 26B A4B | 15 GB | MoE (4B active) — fast inference, high throughput at low compute | 24 GB |
+| Qwen 3.6 27B | 16 GB | Excellent structured / JSON output + reliable tool-calling | 32 GB |
+| Qwen 3.6 35B A3B | 20 GB | MoE (3B active) — largest total params, top JSON/tool-calling at low active cost | 32 GB |
 
 ### Configuration
 
@@ -757,7 +757,7 @@ NodePilot ships two **opt-in** AI helpers that work against **OpenAI-compatible 
     "Enabled": false,
     "BaseUrl": "http://localhost:11434/v1",   // Ollama default
     "ApiKey": null,                           // env var Llm__ApiKey recommended
-    "Model": "qwen2.5-coder:32b",
+    "Model": "qwen3.6-coder:27b",
     "MaxTokens": 4096,
     "TimeoutSeconds": 90,
     "EnableToolCalling": false,              // enable chat read-only tool-calling
@@ -819,7 +819,7 @@ it never permits plaintext connections to remote hosts.
 
 ## `nodepilot-mcp` — the MCP server
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server (`dotnet global tool`) that lets an AI agent (Claude Desktop/Code, or any MCP client) **drive and edit workflows and read data** — 96 tools over the same REST API the SPA uses, plus in-process graph/data-bus analysis for the in-canvas chat assistant. Like the CLI: **HTTP-only, no backend dependencies**, and it reuses the CLI's `np auth login` session.
+A [Model Context Protocol](https://modelcontextprotocol.io) server (`dotnet global tool`) that lets an AI agent (Claude Desktop/Code, or any MCP client) **drive and edit workflows and read data** — 99 tools over the same REST API the SPA uses, plus in-process graph/data-bus analysis for the in-canvas chat assistant. Like the CLI: **HTTP-only, no backend dependencies**, and it reuses the CLI's `np auth login` session.
 
 ```powershell
 dotnet pack src/NodePilot.Mcp -c Release -o ./out/mcp
