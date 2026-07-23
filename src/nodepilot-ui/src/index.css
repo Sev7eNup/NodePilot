@@ -371,7 +371,7 @@ html.dark .np-shell main {
 /* Login screen: same warm glow over the base surface. */
 html.dark .np-shell.np-login {
   background:
-    radial-gradient(90% 60% at 50% 0%, color-mix(in srgb, var(--np-accent) 8%, transparent) 0%, transparent 55%),
+    radial-gradient(90% 60% at 50% 0%, color-mix(in srgb, var(--np-accent) 4%, transparent) 0%, transparent 55%),
     var(--color-surface);
 }
 
@@ -385,8 +385,8 @@ html.dark .np-shell.np-login {
 .np-login-aurora { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
 .np-login-aurora::before,
 .np-login-aurora::after {
-  content: ""; position: absolute; border-radius: 50%; filter: blur(72px); opacity: 0.5;
-  background: radial-gradient(circle at 50% 50%, var(--color-primary), transparent 68%);
+  content: ""; position: absolute; border-radius: 50%; filter: blur(72px); opacity: 0.3;
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--color-primary) 70%, transparent), transparent 68%);
 }
 .np-login-aurora::before {
   width: 44rem; height: 44rem; top: -15rem; left: -11rem;
@@ -394,11 +394,15 @@ html.dark .np-shell.np-login {
 }
 .np-login-aurora::after {
   width: 38rem; height: 38rem; bottom: -15rem; right: -11rem;
-  background: radial-gradient(circle at 50% 50%, var(--color-primary-container), transparent 68%);
+  background: radial-gradient(circle at 50% 50%, color-mix(in srgb, var(--color-primary-container) 70%, transparent), transparent 68%);
   animation: npLoginDriftB 28s ease-in-out infinite alternate;
 }
 html:not(.dark) .np-login-aurora::before,
-html:not(.dark) .np-login-aurora::after { opacity: 0.42; }
+html:not(.dark) .np-login-aurora::after { opacity: 0.2; }
+/* Dark skins: a colored glow reads brighter on a dark ground than on light, so pull the
+   blobs back a notch further than the light variant for a calmer corner haze. */
+html.dark .np-login-aurora::before,
+html.dark .np-login-aurora::after { opacity: 0.1; }
 
 @keyframes npLoginDriftA {
   from { transform: translate3d(0, 0, 0) scale(1); }
@@ -2760,14 +2764,14 @@ html.dark .hljs-addition { color: #a3e635; }
 /* Login remains the same composition, with the strongest card depth in the skin. */
 html[data-skin="light-sparkasse"] .np-shell.np-login {
   background:
-    radial-gradient(90% 68% at 12% 6%, color-mix(in srgb, var(--np-bank-primary) 13%, transparent) 0%, transparent 58%),
-    radial-gradient(76% 58% at 94% 100%, color-mix(in srgb, var(--np-bank-primary) 8%, transparent) 0%, transparent 60%),
+    radial-gradient(90% 68% at 12% 6%, color-mix(in srgb, var(--np-bank-primary) 8%, transparent) 0%, transparent 58%),
+    radial-gradient(76% 58% at 94% 100%, color-mix(in srgb, var(--np-bank-primary) 5%, transparent) 0%, transparent 60%),
     linear-gradient(145deg, var(--np-bank-bg-elevated) 0%, var(--np-bank-bg) 100%);
 }
 
 html[data-skin="light-sparkasse"] .np-login-aurora::before,
 html[data-skin="light-sparkasse"] .np-login-aurora::after {
-  opacity: 0.25;
+  opacity: 0.14;
 }
 
 html[data-skin="light-sparkasse"] .np-login-card {
@@ -2837,8 +2841,8 @@ html.dark[data-skin="dark-nebula"] .np-shell > main {
 html.dark[data-skin="dark-nebula"] .np-shell.np-login {
   background-color: var(--color-surface);
   background-image:
-    radial-gradient(90% 62% at 50% 0%, color-mix(in srgb, var(--np-glow) 14%, transparent) 0%, transparent 55%),
-    radial-gradient(70% 60% at 100% 100%, color-mix(in srgb, var(--np-glow-violet) 12%, transparent) 0%, transparent 55%);
+    radial-gradient(90% 62% at 50% 0%, color-mix(in srgb, var(--np-glow) 4%, transparent) 0%, transparent 55%),
+    radial-gradient(70% 60% at 100% 100%, color-mix(in srgb, var(--np-glow-violet) 2%, transparent) 0%, transparent 55%);
 }
 
 /* Elevation utilities → cool nebula ramp + a faint inner cyan sheen. */
