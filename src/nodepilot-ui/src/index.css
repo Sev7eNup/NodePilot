@@ -2904,10 +2904,13 @@ html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row:focus-vi
 }
 
 /* Primary buttons: cyan gradient fill + glow (covers .np-btn-primary and the remapped
-   Tailwind .bg-blue-600). on-primary text stays dark → high contrast on the cyan. */
+   Tailwind .bg-blue-600). on-primary text stays dark → high contrast on the cyan.
+   The explicit `color` overrides hardcoded Tailwind `text-white` on .bg-blue-600 buttons
+   (white-on-cyan ≈ 1.4:1 would fail WCAG AA); this selector outranks the .text-white utility. */
 html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-btn-primary,
 html.dark[data-skin="dark-nebula"] .np-shell .bg-blue-600 {
   background-image: linear-gradient(180deg, #5fe8f9 0%, var(--np-accent) 100%);
+  color: var(--color-on-primary);
   box-shadow: var(--np-nb-shadow-xs), inset 0 1px 0 0 color-mix(in srgb, #ffffff 24%, transparent);
 }
 @media (hover: hover) and (pointer: fine) {
