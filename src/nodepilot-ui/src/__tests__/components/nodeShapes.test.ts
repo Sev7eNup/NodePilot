@@ -47,7 +47,7 @@ const ACTION_MAP: Record<string, NodeShape> = {
   registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'blockArrow',
   powerManagement: 'starburst', waitForCondition: 'circle', restApi: 'chevronLeft', sql: 'cylinder',
   xmlQuery: 'kite', jsonQuery: 'trapezoidDown', emailNotification: 'banner', textFileEdit: 'house',
-  generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'cross',
+  generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
 };
 
 /** The per-activity control-flow mapping (must mirror CONTROL_SHAPE in shapes.ts). */
