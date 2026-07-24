@@ -51,7 +51,17 @@ public sealed class OidcAuthController(
 
         var external = await HttpContext.AuthenticateAsync(AuthenticationSetup.OidcExternalSchemeName);
         if (!external.Succeeded || external.Principal is null)
+        {
+            await audit.LogAsync(
+                AuditActions.LoginFailed,
+                "User",
+                null,
+                AuditDetails.Json(
+                    ("source", "Oidc"),
+                    ("reason", "oidc_external_ticket_invalid")),
+                ct);
             return RedirectFailure("authentication_failed");
+        }
 
         var mapped = await mapper.MapAsync(external.Principal, ct);
         if (!mapped.Succeeded)

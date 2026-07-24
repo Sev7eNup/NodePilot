@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Diagnostics;
 using NodePilot.Api.Dtos;
+using NodePilot.Core.Audit;
 using NodePilot.Data;
 
 namespace NodePilot.Api.Controllers;
@@ -30,15 +31,18 @@ public class DiagnosticsController : ControllerBase
     private readonly ISupportLogFileResolver _resolver;
     private readonly NodePilotDbContext _db;
     private readonly ILogger<DiagnosticsController> _logger;
+    private readonly IAuditWriter _audit;
 
     public DiagnosticsController(
         ISupportLogFileResolver resolver,
         NodePilotDbContext db,
-        ILogger<DiagnosticsController> logger)
+        ILogger<DiagnosticsController> logger,
+        IAuditWriter audit)
     {
         _resolver = resolver;
         _db = db;
         _logger = logger;
+        _audit = audit;
     }
 
     /// <summary>
@@ -98,7 +102,7 @@ public class DiagnosticsController : ControllerBase
     /// <c>yyyy-MM-dd</c> format (e.g. <c>2026-05-15</c>). 404 if the file doesn't exist.
     /// </summary>
     [HttpGet("support-log/download")]
-    public IActionResult Download([FromQuery] string date)
+    public async Task<IActionResult> Download([FromQuery] string date, CancellationToken ct = default)
     {
         if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture,
                 DateTimeStyles.None, out var parsedDate))
@@ -111,6 +115,16 @@ public class DiagnosticsController : ControllerBase
 
         var stream = new FileStream(
             file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        var fileInfo = new FileInfo(file);
+        await _audit.LogAsync(
+            AuditActions.SupportLogDownloaded,
+            "SupportLog",
+            null,
+            AuditDetails.Json(
+                ("date", date),
+                ("file", Path.GetFileName(file)),
+                ("bytes", fileInfo.Length)),
+            ct);
         return File(stream, "text/plain", Path.GetFileName(file));
     }
 
@@ -408,6 +422,20 @@ public class DiagnosticsController : ControllerBase
         }
 
         await writer.FlushAsync(ct);
+        await _audit.LogAsync(
+            AuditActions.SupportEventsExported,
+            "SupportEvent",
+            null,
+            AuditDetails.Json(
+                ("format", isNdjson ? "ndjson" : "csv"),
+                ("since", since),
+                ("until", until),
+                ("level", level),
+                ("eventType", eventType),
+                ("workflowId", workflowId),
+                ("executionId", executionId),
+                ("exported", batch)),
+            ct);
     }
 
     private static void CsvField(StringBuilder sb, string? value)

@@ -41,7 +41,8 @@ public class DiagnosticsControllerEventsTests
         => new(
             resolver: new NoopResolver(),
             db: db,
-            logger: NullLogger<DiagnosticsController>.Instance);
+            logger: NullLogger<DiagnosticsController>.Instance,
+            audit: NoopAuditWriter.Instance);
 
     private static SupportEventPageResponse PageOf(ActionResult<SupportEventPageResponse> r)
         => (SupportEventPageResponse)((OkObjectResult)r.Result!).Value!;

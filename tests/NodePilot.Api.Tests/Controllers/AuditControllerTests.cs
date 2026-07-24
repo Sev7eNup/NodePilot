@@ -40,7 +40,7 @@ public class AuditControllerTests
             db.AuditLog.Add(Entry("WORKFLOW_CREATED", DateTime.UtcNow.AddMinutes(-i)));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var result = await controller.GetAll(
             action: null, resourceType: null, resourceId: null, userId: null,
             ipAddress: null, since: null, until: null,
@@ -60,7 +60,7 @@ public class AuditControllerTests
         db.AuditLog.Add(Entry("WORKFLOW_UPDATED", DateTime.UtcNow));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var result = await controller.GetAll(
             action: "LOGIN_FAILED", resourceType: null, resourceId: null, userId: null,
             ipAddress: null, since: null, until: null,
@@ -80,7 +80,7 @@ public class AuditControllerTests
         db.AuditLog.Add(Entry("WORKFLOW_CREATED", DateTime.UtcNow, resourceId: Guid.NewGuid()));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var result = await controller.GetAll(
             action: null, resourceType: null, resourceId: target, userId: null,
             ipAddress: null, since: null, until: null,
@@ -101,7 +101,7 @@ public class AuditControllerTests
         db.AuditLog.Add(Entry("X", ref0.AddHours(+1))); // out (too new)
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var result = await controller.GetAll(
             action: null, resourceType: null, resourceId: null, userId: null,
             ipAddress: null, since: ref0.AddHours(-2), until: ref0,
@@ -120,7 +120,7 @@ public class AuditControllerTests
         db.AuditLog.Add(Entry("X", DateTime.UtcNow, ipAddress: null));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var result = await controller.GetAll(
             action: null, resourceType: null, resourceId: null, userId: null,
             ipAddress: "10.0.0.2", since: null, until: null,
@@ -138,7 +138,7 @@ public class AuditControllerTests
         db.AuditLog.Add(Entry("X", DateTime.UtcNow, username: "alice", ipAddress: "::1"));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var result = await controller.GetAll(
             action: null, resourceType: null, resourceId: null, userId: null,
             ipAddress: null, since: null, until: null,
@@ -159,7 +159,7 @@ public class AuditControllerTests
             db.AuditLog.Add(Entry("X", DateTime.UtcNow.AddMinutes(-i)));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var result = await controller.GetAll(
             action: null, resourceType: null, resourceId: null, userId: null,
             ipAddress: null, since: null, until: null,
@@ -183,7 +183,7 @@ public class AuditControllerTests
             db.AuditLog.Add(Entry("X", DateTime.UtcNow.AddMinutes(-i)));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var result = await controller.GetAll(
             action: null, resourceType: null, resourceId: null, userId: null,
             ipAddress: null, since: null, until: null,
@@ -202,7 +202,7 @@ public class AuditControllerTests
         db.AuditLog.Add(Entry("X", DateTime.UtcNow));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var result = await controller.GetAll(
             action: null, resourceType: null, resourceId: null, userId: null,
             ipAddress: null, since: null, until: null,
@@ -221,7 +221,8 @@ public class AuditControllerTests
         db.AuditLog.Add(Entry("LOGIN_FAILED", DateTime.UtcNow, username: "bob", ipAddress: "10.0.0.2"));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var audit = new CapturingAuditWriter();
+        var controller = new AuditController(db, audit);
         var httpCtx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
         var bodyStream = new MemoryStream();
         httpCtx.Response.Body = bodyStream;
@@ -236,6 +237,9 @@ public class AuditControllerTests
         body.Should().Contain("alice").And.Contain("bob");
         body.Should().Contain("10.0.0.1").And.Contain("10.0.0.2");
         httpCtx.Response.ContentType.Should().StartWith("text/csv");
+        audit.Calls.Should().ContainSingle(call =>
+            call.Action == NodePilot.Core.Audit.AuditActions.AuditLogExported
+            && call.Details!.Contains("\"exported\":2"));
     }
 
     [Fact]
@@ -246,7 +250,7 @@ public class AuditControllerTests
         db.AuditLog.Add(Entry("Y", DateTime.UtcNow, username: "u2"));
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var httpCtx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
         var bodyStream = new MemoryStream();
         httpCtx.Response.Body = bodyStream;
@@ -270,7 +274,7 @@ public class AuditControllerTests
     public async Task ExportStream_UnsupportedFormat_Returns400()
     {
         var db = CreateContext();
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var httpCtx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
         httpCtx.Response.Body = new MemoryStream();
         controller.ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext { HttpContext = httpCtx };
@@ -294,7 +298,7 @@ public class AuditControllerTests
         });
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var httpCtx = new Microsoft.AspNetCore.Http.DefaultHttpContext();
         var bodyStream = new MemoryStream();
         httpCtx.Response.Body = bodyStream;
@@ -330,7 +334,7 @@ public class AuditControllerTests
         }
         await db.SaveChangesAsync();
 
-        var controller = new AuditController(db);
+        var controller = new AuditController(db, NoopAuditWriter.Instance);
         var collected = new List<AuditEntryResponse>();
         DateTime? afterTs = null;
         Guid? afterId = null;

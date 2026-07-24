@@ -114,6 +114,10 @@ public class AuditActionsCatalogTests
             {
                 actionArgument = NamedOrPositionalArgument(invocation.ArgumentList, "action", 1);
             }
+            else if (methodName == "WriteQueryAuditAsync")
+            {
+                actionArgument = NamedOrPositionalArgument(invocation.ArgumentList, "action", 0);
+            }
             else if (methodName == "Build"
                      && invocation.Expression is MemberAccessExpressionSyntax member
                      && (member.Expression.ToString().Contains("stager", StringComparison.OrdinalIgnoreCase)
@@ -214,7 +218,8 @@ public class AuditActionsCatalogTests
         var containingMethod = identifier.FirstAncestorOrSelf<MethodDeclarationSyntax>();
         if (containingMethod?.ParameterList.Parameters.Any(p => p.Identifier.ValueText == name) == true
             && name == "action"
-            && containingMethod.Identifier.ValueText is "Build" or "LogAsync" or "SaveMutationWithAuditAsync")
+            && containingMethod.Identifier.ValueText is
+                "Build" or "LogAsync" or "SaveMutationWithAuditAsync" or "WriteQueryAuditAsync")
         {
             // These are the two catalog-enforcing boundary implementations and the mapper's
             // transactional wrapper. Their production call sites are inspected separately.

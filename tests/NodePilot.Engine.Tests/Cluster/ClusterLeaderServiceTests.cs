@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodePilot.Core.Audit;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Scheduler.Cluster;
@@ -105,6 +106,10 @@ public sealed class ClusterLeaderServiceTests : IDisposable
 
         var row = _seedContext.ClusterLeaders.AsNoTracking().Single(r => r.Resource == "primary");
         row.OwnerNodeId.Should().Be("node-a");
+        var audit = _seedContext.AuditLog.AsNoTracking()
+            .Single(entry => entry.Action == AuditActions.ClusterLeadershipAcquired);
+        audit.Details.Should().Contain("\"nodeId\":\"node-a\"");
+        audit.Details.Should().Contain("\"leaseEpoch\":1");
     }
 
     [Fact]

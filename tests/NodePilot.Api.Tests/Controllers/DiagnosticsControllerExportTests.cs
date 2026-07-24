@@ -45,13 +45,23 @@ public sealed class DiagnosticsControllerExportTests
         public string? GetFileForDate(DateOnly date) => FileForAnyDate;
     }
 
-    private static DiagnosticsController MakeController(Data.NodePilotDbContext db, ISupportLogFileResolver? resolver = null)
-        => new(resolver ?? new NoopResolver(), db, NullLogger<DiagnosticsController>.Instance);
+    private static DiagnosticsController MakeController(
+        Data.NodePilotDbContext db,
+        ISupportLogFileResolver? resolver = null,
+        CapturingAuditWriter? audit = null)
+        => new(
+            resolver ?? new NoopResolver(),
+            db,
+            NullLogger<DiagnosticsController>.Instance,
+            (NodePilot.Core.Audit.IAuditWriter?)audit ?? NoopAuditWriter.Instance);
 
     /// <summary>Wires a writable Response.Body so the streaming export can be captured.</summary>
-    private static (DiagnosticsController Ctrl, MemoryStream Body) WithResponseBody(Data.NodePilotDbContext db, ISupportLogFileResolver? resolver = null)
+    private static (DiagnosticsController Ctrl, MemoryStream Body) WithResponseBody(
+        Data.NodePilotDbContext db,
+        ISupportLogFileResolver? resolver = null,
+        CapturingAuditWriter? audit = null)
     {
-        var ctrl = MakeController(db, resolver);
+        var ctrl = MakeController(db, resolver, audit);
         var body = new MemoryStream();
         var http = new DefaultHttpContext();
         http.Response.Body = body;
@@ -73,7 +83,8 @@ public sealed class DiagnosticsControllerExportTests
         db.SupportEvents.Add(E("USER_LOG", DateTime.UtcNow, message: "hello", workflowName: "Daily"));
         await db.SaveChangesAsync();
 
-        var (ctrl, body) = WithResponseBody(db);
+        var audit = new CapturingAuditWriter();
+        var (ctrl, body) = WithResponseBody(db, audit: audit);
         await ctrl.ExportEvents("csv", ct: CancellationToken.None);
 
         var text = ReadBody(body);
@@ -81,6 +92,9 @@ public sealed class DiagnosticsControllerExportTests
         text.Should().Contain("USER_LOG").And.Contain("hello").And.Contain("Daily");
         ctrl.Response.ContentType.Should().Contain("text/csv");
         ctrl.Response.Headers.ContentDisposition.ToString().Should().Contain(".csv");
+        audit.Calls.Should().ContainSingle(call =>
+            call.Action == NodePilot.Core.Audit.AuditActions.SupportEventsExported
+            && call.Details!.Contains("\"exported\":1"));
     }
 
     [Fact]
@@ -283,25 +297,25 @@ public sealed class DiagnosticsControllerExportTests
     // ===== Download ==========================================================
 
     [Fact]
-    public void Download_InvalidDate_Returns400()
+    public async Task Download_InvalidDate_Returns400()
     {
         var db = TestDbFactory.Create();
         var ctrl = MakeController(db);
-        var result = ctrl.Download("not-a-date");
+        var result = await ctrl.Download("not-a-date");
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
-    public void Download_MissingFile_Returns404()
+    public async Task Download_MissingFile_Returns404()
     {
         var db = TestDbFactory.Create();
         var ctrl = MakeController(db, new NoopResolver { FileForAnyDate = null });
-        var result = ctrl.Download("2026-05-15");
+        var result = await ctrl.Download("2026-05-15");
         result.Should().BeOfType<NotFoundResult>();
     }
 
     [Fact]
-    public void Download_ExistingFile_ReturnsFileStream()
+    public async Task Download_ExistingFile_ReturnsFileStream()
     {
         var dir = Path.Combine(Path.GetTempPath(), "np-diag-dl-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -310,12 +324,16 @@ public sealed class DiagnosticsControllerExportTests
         try
         {
             var db = TestDbFactory.Create();
-            var ctrl = MakeController(db, new NoopResolver { FileForAnyDate = file });
-            var result = ctrl.Download("2026-05-15");
+            var audit = new CapturingAuditWriter();
+            var ctrl = MakeController(db, new NoopResolver { FileForAnyDate = file }, audit);
+            var result = await ctrl.Download("2026-05-15");
 
             var fileResult = result.Should().BeOfType<FileStreamResult>().Subject;
             fileResult.ContentType.Should().Be("text/plain");
             fileResult.FileDownloadName.Should().Be("nodepilot-support-20260515.log");
+            audit.Calls.Should().ContainSingle(call =>
+                call.Action == NodePilot.Core.Audit.AuditActions.SupportLogDownloaded
+                && call.Details!.Contains("\"bytes\":11"));
             fileResult.FileStream.Dispose();
         }
         finally { try { Directory.Delete(dir, recursive: true); } catch { } }

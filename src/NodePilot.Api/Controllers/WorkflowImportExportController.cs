@@ -400,16 +400,22 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 rb.ActivityCount, rb.HeuristicCount, rb.FallbackCount));
         }
 
+        var variablesCreated = importedVariables.Count(v => v.CreatedNow);
         if (created.Count > 0)
         {
             await _db.SaveChangesAsync(ct);
+        }
 
+        if (created.Count > 0 || variablesCreated > 0)
+        {
             var detailsJson = JsonSerializer.Serialize(new
             {
                 created = created.Count,
-                variables = importedVariables.Count(v => v.CreatedNow),
+                variables = variablesCreated,
+                variablesSkipped = importedVariables.Count(v => v.Skipped),
                 fallbacks = created.Sum(c => c.FallbackCount),
                 heuristics = created.Sum(c => c.HeuristicCount),
+                folderId = targetFolderId,
             });
             await _audit.LogAsync(AuditActions.WorkflowImportedScorch, "Workflow", null, detailsJson, ct);
         }

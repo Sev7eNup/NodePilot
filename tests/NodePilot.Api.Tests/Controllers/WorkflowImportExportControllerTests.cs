@@ -306,6 +306,41 @@ public class WorkflowImportExportControllerTests
     }
 
     [Fact]
+    public async Task ImportScorch_VariablesOnly_CreatesVariableAndEmitsAudit()
+    {
+        var db = CreateContext();
+        var (h, audit) = NewControllerWithAudit(db);
+        var variableId = Guid.NewGuid();
+        var xml = $"""
+                   <ExportData>
+                     <GlobalSettings>
+                       <Variables>
+                         <Object>
+                           <ObjectTypeName>Variable</ObjectTypeName>
+                           <UniqueID>{variableId}</UniqueID>
+                           <Name>ImportedEndpoint</Name>
+                           <Value>https://example.invalid</Value>
+                         </Object>
+                       </Variables>
+                     </GlobalSettings>
+                   </ExportData>
+                   """;
+        h.ImportExport.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = await h.ImportExport.ImportScorch(null, CancellationToken.None);
+
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ScorchImportResponse>().Subject;
+        response.Created.Should().Be(0);
+        response.Variables.Should().ContainSingle(v => v.Name == "ImportedEndpoint" && v.CreatedNow);
+        db.GlobalVariables.Should().ContainSingle(v => v.Name == "ImportedEndpoint");
+        var call = audit.Calls.Should().ContainSingle().Subject;
+        call.Action.Should().Be("WORKFLOW_IMPORTED_SCORCH");
+        call.Details.Should().Contain("\"created\":0");
+        call.Details.Should().Contain("\"variables\":1");
+    }
+
+    [Fact]
     public async Task ExportOne_EmitsWorkflowExportedAudit()
     {
         var db = CreateContext();

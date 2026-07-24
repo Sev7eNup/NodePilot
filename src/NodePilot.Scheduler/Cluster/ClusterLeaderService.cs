@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NodePilot.Core.Audit;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -174,10 +175,47 @@ public sealed class ClusterLeaderService : BackgroundService, IClusterStateProvi
             _logger.LogInformation(
                 "Acquired cluster lease. NodeId={NodeId}, LeaseEpoch={Epoch}, ExpiresAt={ExpiresAt:O}",
                 NodeId, row.LeaseEpoch, row.ExpiresAt);
+            await WriteLeadershipAcquiredAuditAsync(
+                scope.ServiceProvider, db, row.LeaseEpoch, row.ExpiresAt, ct);
             ApplyLeadershipChange(isLeader: true, leaseExpiresAt: acquireExpiresAt,
                 epoch: row.LeaseEpoch, markRenewSuccess: true);
         }
         // else: another node still holds a fresh lease — stay follower silently.
+    }
+
+    /// <summary>
+    /// Persists and forwards the leadership transition after the lease update has committed.
+    /// </summary>
+    private async Task WriteLeadershipAcquiredAuditAsync(
+        IServiceProvider services,
+        NodePilotDbContext db,
+        long leaseEpoch,
+        DateTime expiresAt,
+        CancellationToken ct)
+    {
+        try
+        {
+            var stager = services.GetService<IAuditStager>() ?? new AuditStager();
+            var entry = stager.Build(
+                AuditActions.ClusterLeadershipAcquired,
+                AuditActor.System,
+                resourceType: nameof(ClusterLeader),
+                details: AuditDetails.Json(
+                    ("nodeId", NodeId),
+                    ("leaseEpoch", leaseEpoch),
+                    ("expiresAt", expiresAt)));
+            db.AuditLog.Add(entry);
+            await db.SaveChangesAsync(ct);
+            AuditEventForwarder.ForwardCommitted(_logger, entry);
+        }
+        catch (Exception ex)
+        {
+            // Lease acquisition is already committed by the atomic UPDATE. Audit persistence
+            // must not make the node incorrectly believe that it is still a follower.
+            _logger.LogWarning(ex,
+                "Failed to persist cluster leadership acquisition audit. NodeId={NodeId}, LeaseEpoch={LeaseEpoch}",
+                NodeId, leaseEpoch);
+        }
     }
 
     /// <summary>

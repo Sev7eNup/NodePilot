@@ -141,7 +141,7 @@ Remove-Item -LiteralPath 'C:\Temp\NP-TestSuite' -Recurse -Force -ErrorAction Sil
 ### Audit / Beobachtbarkeit
 - **Execution-List in der UI:** Filter auf "[TestSuite]" zeigt alle Test-Runs.
 - **`GET /api/workflows/{id}/coverage?windowDays=N`:** liefert pro Step `executedCount`/`failedCount`/`skippedCount`. Ideal für Drift-Detection (Wert sollte ~12/h pro Step liegen, abweichende Werte zeigen broken Branches an).
-- **Audit-Log:** `GET /api/audit?action=EXECUTION_STARTED` zeigt alle Schedule-Fires.
+- **Support-Events:** `GET /api/diagnostics/support-events?eventType=EXECUTION_STARTED` zeigt die Engine-Starts einschließlich Trigger-Kontext. `EXECUTION_STARTED` im Audit-Log ist auf manuell gestartete Runs beschränkt.
 - **Coverage-Heatmap im Editor:** Toolbar-Toggle (Target-Icon) tinted Knoten je nach Run-Frequenz.
 
 ## Wartung & Erweiterung

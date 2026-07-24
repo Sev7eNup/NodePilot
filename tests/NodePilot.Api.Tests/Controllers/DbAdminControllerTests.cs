@@ -672,6 +672,26 @@ public class DbAdminControllerTests
     }
 
     [Theory]
+    [InlineData("", 0)]
+    [InlineData("-- comment only", 0)]
+    [InlineData("SELECT 1", 1)]
+    [InlineData("SELECT ';' AS value;", 1)]
+    [InlineData("SELECT 1; UPDATE Users SET IsActive = 0; DELETE FROM Users;", 3)]
+    public void CountStatements_IgnoresQuotedTerminatorsAndCountsBatch(string sql, int expected)
+    {
+        DbAdminQueryExecutor.CountStatements(sql).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("DELETE FROM AuditLog")]
+    [InlineData("DROP TABLE public.\"AuditLog\"")]
+    [InlineData("EXEC('DELETE FROM AuditLog')")]
+    public void ReferencesProtectedAuditStorage_FindsDirectAndDynamicReferences(string sql)
+    {
+        DbAdminQueryExecutor.ReferencesProtectedAuditStorage(sql).Should().BeTrue();
+    }
+
+    [Theory]
     [InlineData("Microsoft.EntityFrameworkCore.Sqlite", "sqlite")]
     [InlineData("Npgsql.EntityFrameworkCore.PostgreSQL", "postgres")]
     [InlineData("Microsoft.EntityFrameworkCore.SqlServer", "sqlserver")]
@@ -857,6 +877,37 @@ public class DbAdminControllerTests
 
         var refreshed = await db.Users.AsNoTracking().SingleAsync(u => u.Username == "victim");
         refreshed.IsActive.Should().BeFalse();
+
+        var audit = await db.AuditLog.AsNoTracking()
+            .Where(a => a.Action == "DBADMIN_SQL_WRITE_ATTEMPTED" || a.Action == "DBADMIN_SQL_WRITE")
+            .OrderBy(a => a.Timestamp)
+            .ToListAsync();
+        audit.Select(a => a.Action).Should().Equal(
+            "DBADMIN_SQL_WRITE_ATTEMPTED",
+            "DBADMIN_SQL_WRITE");
+        audit.Should().OnlyContain(a => a.Details!.Contains("\"sqlSha256\"")
+                                        && a.Details.Contains("\"sqlBytes\"")
+                                        && a.Details.Contains("\"statementCount\":1"));
+    }
+
+    [Fact]
+    public async Task ExecuteQuery_WriteMode_TargetsAuditStorage_Returns400AndAuditsRejection()
+    {
+        var (ctrl, db) = NewController(
+            options: new DbAdminOptions { AllowWriteQueries = true },
+            confirmWriteHeader: "ALLOW");
+
+        var result = await ctrl.ExecuteQuery(
+            new DbAdminQueryRequest("DELETE FROM AuditLog", "write"),
+            CancellationToken.None);
+
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        bad.Value.Should().BeOfType<DbAdminQueryError>().Subject.Code
+            .Should().Be("protected_audit_storage");
+        var audit = await db.AuditLog.AsNoTracking()
+            .SingleAsync(a => a.Action == "DBADMIN_SQL_WRITE");
+        audit.Details.Should().Contain("\"success\":\"false\"");
+        audit.Details.Should().Contain("\"reason\":\"protected_audit_storage\"");
     }
 
     [Fact]
@@ -887,6 +938,22 @@ public class DbAdminControllerTests
         var audit = await db.AuditLog.AsNoTracking().Where(a => a.Action == "DBADMIN_SQL_EXECUTED").ToListAsync();
         audit.Should().HaveCount(1);
         audit[0].Details.Should().Contain("\"success\":\"false\"");
+    }
+
+    [Fact]
+    public async Task GetRows_Success_WritesTableViewAudit()
+    {
+        var (ctrl, db) = NewController();
+
+        var result = await ctrl.GetRows("Workflow", skip: 0, take: 25, orderBy: "Name",
+            desc: true, ct: CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        var audit = await db.AuditLog.AsNoTracking()
+            .SingleAsync(a => a.Action == "DBADMIN_ROWS_VIEWED");
+        audit.Details.Should().Contain("\"table\":\"Workflow\"");
+        audit.Details.Should().Contain("\"take\":25");
+        audit.Details.Should().Contain("\"descending\":true");
     }
 
     [Fact]

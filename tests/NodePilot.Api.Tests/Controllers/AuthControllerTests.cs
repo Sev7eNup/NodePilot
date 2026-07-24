@@ -9,6 +9,7 @@ using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
+using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -167,7 +168,8 @@ public sealed class AuthControllerTests : IDisposable
         var db = CreateContext();
         var config = CreateConfig();
         WriteBootstrapToken("correct-token");
-        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var audit = new CapturingAuditWriter();
+        var controller = new AuthController(db, config, audit, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(setupToken: null) },
         };
@@ -178,6 +180,9 @@ public sealed class AuthControllerTests : IDisposable
         // Assert
         result.Result.Should().BeOfType<UnauthorizedObjectResult>();
         (await db.Users.AnyAsync()).Should().BeFalse("no user must be created without a valid setup token");
+        audit.Calls.Should().ContainSingle(call =>
+            call.Action == AuditActions.LoginFailed
+            && call.Details!.Contains("\"reason\":\"bootstrap_token_invalid\""));
     }
 
     [Fact]
@@ -186,7 +191,8 @@ public sealed class AuthControllerTests : IDisposable
         var db = CreateContext();
         var config = CreateConfig();
         WriteBootstrapToken("correct-token");
-        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var audit = new CapturingAuditWriter();
+        var controller = new AuthController(db, config, audit, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(setupToken: "wrong") },
         };
@@ -195,6 +201,9 @@ public sealed class AuthControllerTests : IDisposable
 
         result.Result.Should().BeOfType<UnauthorizedObjectResult>();
         (await db.Users.AnyAsync()).Should().BeFalse();
+        audit.Calls.Should().ContainSingle(call =>
+            call.Action == AuditActions.LoginFailed
+            && call.Details!.Contains("\"reason\":\"bootstrap_token_invalid\""));
     }
 
     [Fact]

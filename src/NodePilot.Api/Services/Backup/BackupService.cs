@@ -17,6 +17,7 @@ public sealed record BackupExportResult(
     byte[] Content,
     IReadOnlyList<string> IncludedSections,
     IReadOnlyList<string> AutoIncludedSections,
+    IReadOnlyList<BackupSectionCount> Counts,
     IReadOnlyList<string> Warnings,
     bool ContainsSecrets);
 
@@ -86,8 +87,12 @@ public sealed class BackupService(IEnumerable<IBackupPart> parts)
 
         var sections = new JsonObject();
         var includedOrdered = SectionOrder.Where(effective.Contains).ToList();
+        var counts = new List<BackupSectionCount>(includedOrdered.Count);
         foreach (var key in includedOrdered)
+        {
+            counts.Add(new BackupSectionCount(key, await byKey[key].CountAsync(ct)));
             sections[key] = await byKey[key].ExportAsync(ctx, ct);
+        }
 
         var envelope = new JsonObject
         {
@@ -118,7 +123,7 @@ public sealed class BackupService(IEnumerable<IBackupPart> parts)
         var containsSecrets = sections.ToJsonString()
             .Contains("\"" + WorkflowDefinitionSecretRewriter.EncKey + "\"", StringComparison.Ordinal);
 
-        return new BackupExportResult(content, includedOrdered, autoIncluded, ctx.Warnings, containsSecrets);
+        return new BackupExportResult(content, includedOrdered, autoIncluded, counts, ctx.Warnings, containsSecrets);
     }
 
     private static string AppVersion()

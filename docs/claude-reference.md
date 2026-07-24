@@ -228,15 +228,15 @@ Globale Flags: `--server`, `--profile`, `-o table|json|yaml`, `--no-color`, `-v`
 - `GLOBAL_VARIABLE_CREATED|UPDATED|DELETED`
 - `LOGIN_SUCCESS|LOGIN_FAILED|LOGIN_LOCKED|LOGOUT|TOKEN_REFRESHED|USER_CREATED_BOOTSTRAP`
 - `USER_CREATED|USER_ROLE_CHANGED|USER_ACTIVATED|USER_DEACTIVATED|USER_PASSWORD_RESET|USER_DELETED`
-- `CREDENTIAL_DECRYPTED` (pro Decryption, nicht pro Run)
+- `CREDENTIAL_DECRYPTED|CREDENTIAL_DECRYPT_FAILED` (pro Decryption-Versuch, nicht pro Run; Fehlerdetails enthalten nur Provider und Fehlerklasse)
 - `USER_LDAP_JIT_CREATED|JIT_UPDATED|LINKED|REFUSED_COLLISION|REFUSED_BOOTSTRAP` + `USER_WINDOWS_*` (gleiche Suffixe; Code ist `USER_{providerTag}_…` mit `providerTag` = LDAP|WINDOWS)
-- `EXECUTION_STARTED|EXECUTION_CANCELLED|EXECUTION_RETRIED|EXECUTION_RESUMED|EXECUTION_STEP_OVER|EXECUTION_DEBUG_STOP`
+- `EXECUTION_STARTED|EXECUTION_CANCELLED|EXECUTION_RETRIED|EXECUTION_RESUMED|EXECUTION_STEP_OVER|EXECUTION_DEBUG_STOP|EXECUTION_RECOVERED_FAILOVER`
 - `WEBHOOK_TRIGGERED` | `EXTERNAL_TRIGGER_FIRED` (nur erfolgreiche Fires)
 - `TRIGGER_FIRE_SUPPRESSED`
-- `WORKFLOW_IMPORTED_SCORCH` | `WORKFLOW_EXPORTED` | `WORKFLOW_EXPORTED_BULK` | `WORKFLOW_IMPORTED`
+- `WORKFLOW_IMPORTED_SCORCH` | `WORKFLOW_EXPORTED` | `WORKFLOW_EXPORTED_BULK` | `WORKFLOW_IMPORTED` | `CUSTOM_ACTIVITY_EXPORTED`
 - `AI_SCRIPT_GENERATED|AI_WORKFLOW_GENERATED|AI_WORKFLOW_EXPLAINED|AI_PROPOSAL_APPLIED` (Chat-Assistent; Details: nur Counts model/durationMs/modifyProposed/nodeCount/turnCount bzw. Node-/Edge-Counts bei Applied — kein Prompt-/JSON-Text)
-- `DBADMIN_ROW_UPDATED` | `DBADMIN_ROW_DELETED`
-- `DBADMIN_SQL_EXECUTED` | `DBADMIN_SQL_WRITE` (Admin SQL-Konsole; statement-preview in details)
+- `DBADMIN_ROWS_VIEWED` | `DBADMIN_ROW_UPDATED` | `DBADMIN_ROW_DELETED`
+- `DBADMIN_SQL_EXECUTED` | `DBADMIN_SQL_WRITE_ATTEMPTED` | `DBADMIN_SQL_WRITE` (Admin SQL-Konsole; Preview, SHA-256, Byte- und Statement-Anzahl in Details; direkter Zugriff auf `AuditLog` ist blockiert)
 - `SECRETS_REENCRYPTED` (Passphrase-Rewrap aller Secrets)
 - `FOLDER_CREATED|FOLDER_UPDATED|FOLDER_MOVED|FOLDER_DELETED` | `WORKFLOW_MOVED` (Shared-Folders / RBAC Stufe A)
 - `FOLDER_PERMISSION_UPDATED|FOLDER_PERMISSION_REVOKED` (Per-Folder-Grants)
@@ -244,9 +244,13 @@ Globale Flags: `--server`, `--profile`, `-o table|json|yaml`, `--no-color`, `-v`
 - `ALERT_RULE_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (Alerting / Notification-Rules — siehe `docs/alerting.md`)
 - `SYSTEM_ALERT_POLICY_CREATED|UPDATED|DELETED|ENABLED|DISABLED|TEST_FIRED` (System-Alert-Policies, ADR 0008)
 - `BACKUP_EXPORTED|BACKUP_RESTORED` (System-Configuration Backup, ADR 0001)
+- `AUDIT_LOG_EXPORTED` | `SUPPORT_EVENTS_EXPORTED` | `SUPPORT_LOG_DOWNLOADED` (sensible Diagnose-/Compliance-Exporte)
+- `CLUSTER_LEADERSHIP_ACQUIRED` (HA-Lease mit Node-ID und Fencing-Epoch)
 - `SETTINGS_{SMTP|LLM|RETENTION|AUTHENTICATION|LOGGING|OPENTELEMETRY|STATS|DBADMIN}_UPDATED` (Admin-Settings, ein Code pro Section)
 
 **Audit-Write-Pipeline (Phase 3):** Jeder Audit-Write läuft durch `IAuditStager` (in [NodePilot.Core/Audit/](src/NodePilot.Core/Audit/)), inkl. der drei ehemals direkten Bypass-Pfade. HTTP-Controller nutzen `IAuditWriter` (in [NodePilot.Api/Audit/](src/NodePilot.Api/Audit/AuditWriter.cs)); der wrappt den Stager mit `HttpContextAccessor`-Actor-Resolution + ECS-Log-Forward + Support-Log-Whitelist-Check. Redaction + 4 KiB-Cap gelten überall einheitlich.
+
+Audit-Fehler brechen normale Mutationen nicht ab. Die einzige bewusst fail-closed ausgelegte Ausnahme ist der beliebige DB-Admin-SQL-Schreibmodus: Er benötigt vor der Ausführung einen persistierten `DBADMIN_SQL_WRITE_ATTEMPTED`-Eintrag; ohne verfügbares Audit wird das SQL nicht ausgeführt.
 
 **Archive-Integrität:** `AuditLogRetentionService.ArchiveAsync` schreibt gzip-komprimierte `audit-{date}-{ticks}-{rand}.ndjson.gz` plus SHA-256-Sidecar. Periodische Verify-Pass (default daily) rechnet Hashes neu und alerted via Metric `nodepilot.audit_archive.hash_drift` bei Drift.
 
@@ -330,7 +334,7 @@ Voller DR-Snapshot der **Konfiguration** — getrennt vom redigierten Workflow-E
 
 **Sicherungen:** Last-Admin-Schutz (Restore lässt nie 0 aktive Admins zurück → Abbruch). User-`overwrite` bumpt `SecurityStamp` + setzt `PasswordChangedAt` bei Hash-/Rollen-/Status-Änderung (invalidiert Sessions). Verwaiste Grants (Principal-User existiert nicht) werden mit Warnung übersprungen, nicht wiederbelebt.
 
-**Audit:** `BACKUP_EXPORTED` (mit akkuratem `containsSecrets` — nur wahr wenn tatsächlich ein `$enc`-Feld versiegelt wurde) / `BACKUP_RESTORED` (Passphrase nie im Log). **Rate-Limit:** Policy `backup` (10/min/IP) auf dem ganzen Controller — Export liest Secrets, Restore ist ein schwerer Bulk-Write. **Fehlerbild:** falsche Passphrase / MAC-Fehler / unresolvable Refs / Last-Admin → 409; strukturell kaputte (aber MAC-valide) Datei → 400 (nicht 500). **CLI:** `np backup manifest|export|preview|restore`; Passphrase via `--passphrase-env`/`--passphrase-file`/Prompt, nie als Flag.
+**Audit:** `BACKUP_EXPORTED` (Counts je Sektion und akkurates `containsSecrets` — nur wahr wenn tatsächlich ein `$enc`-Feld versiegelt wurde) / `BACKUP_RESTORED` (effektive Konflikt-Policy und Ergebnis je Sektion; Passphrase nie im Log). **Rate-Limit:** Policy `backup` (10/min/IP) auf dem ganzen Controller — Export liest Secrets, Restore ist ein schwerer Bulk-Write. **Fehlerbild:** falsche Passphrase / MAC-Fehler / unresolvable Refs / Last-Admin → 409; strukturell kaputte (aber MAC-valide) Datei → 400 (nicht 500). **CLI:** `np backup manifest|export|preview|restore`; Passphrase via `--passphrase-env`/`--passphrase-file`/Prompt, nie als Flag.
 
 **Test-Coverage-Lücke (bewusst):** Die Execution-Strategy-Kapselung (Schritt 3) wird von den Tests über SQLites *non-retrying* Strategy ausgeführt, aber nicht *erzwungen* — ein Entfernen des Wrappers bliebe in SQLite-Tests grün und würde erst gegen echtes Postgres/SQL Server brechen. Der ADR-Kommentar + Code-Kommentar halten die Invariante fest.
 

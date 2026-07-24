@@ -49,6 +49,20 @@ public class CustomActivitiesControllerTests
     }
 
     [Fact]
+    public async Task Export_AuditsSensitiveScriptExport()
+    {
+        var db = TestDbFactory.Create();
+        var (controller, audit, _) = NewController(db);
+
+        var result = await controller.Export(CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        audit.Calls.Should().ContainSingle(call =>
+            call.Action == NodePilot.Core.Audit.AuditActions.CustomActivityExported
+            && call.Details!.Contains("\"count\":0"));
+    }
+
+    [Fact]
     public async Task Create_OutputNamedExitCode_Rejected()
     {
         var db = TestDbFactory.Create();

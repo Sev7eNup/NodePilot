@@ -35,7 +35,11 @@ public sealed class DiagnosticsControllerTests : IDisposable
     }
 
     private DiagnosticsController Create(StubResolver resolver)
-        => new(resolver, NodePilot.TestCommons.TestDbFactory.Create(), NullLogger<DiagnosticsController>.Instance);
+        => new(
+            resolver,
+            NodePilot.TestCommons.TestDbFactory.Create(),
+            NullLogger<DiagnosticsController>.Instance,
+            NoopAuditWriter.Instance);
 
     [Fact]
     public void Tail_NoFile_Returns200WithEmptyLines()
@@ -109,23 +113,23 @@ public sealed class DiagnosticsControllerTests : IDisposable
     }
 
     [Fact]
-    public void Download_InvalidDate_ReturnsBadRequest()
+    public async Task Download_InvalidDate_ReturnsBadRequest()
     {
         var ctrl = Create(new StubResolver());
-        var result = ctrl.Download("not-a-date");
+        var result = await ctrl.Download("not-a-date");
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
-    public void Download_FileMissing_Returns404()
+    public async Task Download_FileMissing_Returns404()
     {
         var ctrl = Create(new StubResolver());
-        var result = ctrl.Download("2026-05-15");
+        var result = await ctrl.Download("2026-05-15");
         result.Should().BeOfType<NotFoundResult>();
     }
 
     [Fact]
-    public void Download_FileExists_StreamsPlainTextFile()
+    public async Task Download_FileExists_StreamsPlainTextFile()
     {
         var file = Path.Combine(_tempDir, "nodepilot-support-20260515.log");
         File.WriteAllText(file, "complete file contents\n");
@@ -133,7 +137,7 @@ public sealed class DiagnosticsControllerTests : IDisposable
         resolver.ByDate[new DateOnly(2026, 5, 15)] = file;
 
         var ctrl = Create(resolver);
-        var result = ctrl.Download("2026-05-15");
+        var result = await ctrl.Download("2026-05-15");
 
         var fsr = result.Should().BeOfType<FileStreamResult>().Subject;
         fsr.ContentType.Should().Be("text/plain");

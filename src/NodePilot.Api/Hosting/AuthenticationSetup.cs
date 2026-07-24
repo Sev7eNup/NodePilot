@@ -8,6 +8,7 @@ using NodePilot.Api.Security;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.Api.Security.Oidc;
 using NodePilot.Api.Security.Scim;
+using NodePilot.Core.Audit;
 
 namespace NodePilot.Api.Hosting;
 
@@ -195,11 +196,20 @@ public static class AuthenticationSetup
                     }
                     options.Events = new OpenIdConnectEvents
                     {
-                        OnRemoteFailure = context =>
+                        OnRemoteFailure = async context =>
                         {
+                            var audit = context.HttpContext.RequestServices
+                                .GetRequiredService<IAuditWriter>();
+                            await audit.LogAsync(
+                                AuditActions.LoginFailed,
+                                "User",
+                                null,
+                                AuditDetails.Json(
+                                    ("source", "Oidc"),
+                                    ("reason", "oidc_remote_failure")),
+                                context.HttpContext.RequestAborted);
                             context.HandleResponse();
                             context.Response.Redirect("/login?oidcError=authentication_failed");
-                            return Task.CompletedTask;
                         },
                     };
                 });

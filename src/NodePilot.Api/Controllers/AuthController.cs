@@ -361,6 +361,11 @@ public class AuthController : ControllerBase
                 if (!NodePilot.Api.Security.AdminBootstrap.Validate(env, presented, _config))
                 {
                     _ = BCrypt.Net.BCrypt.Verify(request.Password, DummyHash); // keep timing stable
+                    await _audit.LogAsync(AuditActions.LoginFailed, "User", null,
+                        AuditDetails.Json(
+                            ("username", SafeUsernameForAudit(request.Username)),
+                            ("source", "LocalBootstrap"),
+                            ("reason", "bootstrap_token_invalid")), ct);
                     return Unauthorized(new
                     {
                         message = "Admin bootstrap required. Send the X-Setup-Token header " +
@@ -376,6 +381,11 @@ public class AuthController : ControllerBase
                     && !string.Equals(pinnedUsername.Trim(), request.Username, StringComparison.Ordinal))
                 {
                     _ = BCrypt.Net.BCrypt.Verify(request.Password, DummyHash);
+                    await _audit.LogAsync(AuditActions.LoginFailed, "User", null,
+                        AuditDetails.Json(
+                            ("username", SafeUsernameForAudit(request.Username)),
+                            ("source", "LocalBootstrap"),
+                            ("reason", "bootstrap_username_mismatch")), ct);
                     return Unauthorized(new
                     {
                         message = "Admin bootstrap required: the presented setup token is valid but the username does not match NodePilot:BootstrapAdminUsername.",
@@ -395,11 +405,21 @@ public class AuthController : ControllerBase
                 if (bootstrap.Status == BootstrapAdminCreationStatus.UsersAlreadyExist)
                 {
                     _ = BCrypt.Net.BCrypt.Verify(request.Password, DummyHash);
+                    await _audit.LogAsync(AuditActions.LoginFailed, "User", null,
+                        AuditDetails.Json(
+                            ("username", SafeUsernameForAudit(request.Username)),
+                            ("source", "LocalBootstrap"),
+                            ("reason", "bootstrap_window_closed")), ct);
                     return Unauthorized(new { message = "Invalid credentials" });
                 }
                 if (bootstrap.Status == BootstrapAdminCreationStatus.TokenInvalid)
                 {
                     _ = BCrypt.Net.BCrypt.Verify(request.Password, DummyHash);
+                    await _audit.LogAsync(AuditActions.LoginFailed, "User", null,
+                        AuditDetails.Json(
+                            ("username", SafeUsernameForAudit(request.Username)),
+                            ("source", "LocalBootstrap"),
+                            ("reason", "bootstrap_window_closed")), ct);
                     return Unauthorized(new { message = "Admin bootstrap window has closed" });
                 }
 

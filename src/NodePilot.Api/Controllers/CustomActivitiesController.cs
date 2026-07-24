@@ -196,6 +196,16 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
             d.Isolated, d.MemoryLimitMb, d.MaxProcesses, d.DefaultTimeoutSeconds, d.SuccessExitCodes,
             CustomActivityParameters.ParseInputs(d.InputParametersJson),
             CustomActivityParameters.ParseOutputs(d.OutputParametersJson))).ToList();
+        await audit.LogAsync(
+            AuditActions.CustomActivityExported,
+            "CustomActivity",
+            null,
+            AuditDetails.Json(
+                ("schema", ExportSchema),
+                ("count", items.Count),
+                ("enabled", rows.Count(row => row.IsEnabled)),
+                ("disabled", rows.Count(row => !row.IsEnabled))),
+            ct);
         return Ok(new CustomActivityExportEnvelope(ExportSchema, 1, DateTime.UtcNow, items));
     }
 

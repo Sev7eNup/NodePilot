@@ -65,6 +65,7 @@ public sealed class BackupController : ControllerBase
             AuditDetails.Json(
                 ("sections", string.Join(",", result.IncludedSections)),
                 ("autoIncluded", string.Join(",", result.AutoIncludedSections)),
+                ("counts", string.Join(",", result.Counts.Select(count => $"{count.Section}:{count.Count}"))),
                 ("containsSecrets", result.ContainsSecrets.ToString()),
                 ("warnings", result.Warnings.Count.ToString())),
             ct);
@@ -151,6 +152,8 @@ public sealed class BackupController : ControllerBase
         await _audit.LogAsync(AuditActions.BackupRestored, "Backup", null,
             AuditDetails.Json(
                 ("sections", string.Join(",", result.Sections.Select(r => $"{r.Section}:+{r.Created}/~{r.Overwritten}/={r.Skipped}/»{r.Renamed}"))),
+                ("policies", string.Join(",", result.Sections.Select(section =>
+                    $"{section.Section}:{policies.GetValueOrDefault(section.Section, RestoreConflictPolicy.Skip)}"))),
                 ("settings", result.Settings?.Applied.ToString() ?? "n/a"),
                 ("warnings", result.Warnings.Count.ToString())),
             ct);
