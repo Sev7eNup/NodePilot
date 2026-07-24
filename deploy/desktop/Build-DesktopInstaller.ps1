@@ -40,6 +40,15 @@ function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Assert-Tool([string] $name, [string] $probe) {
     if (-not (Get-Command $probe -ErrorAction SilentlyContinue)) { throw "Required tool '$name' not found on PATH ($probe)." }
 }
+# Runs a native tool with stderr demoted so a warning written to stderr (e.g. vite/rolldown's
+# INVALID_ANNOTATION note, or dotnet/forge diagnostics) does not get escalated to a terminating
+# error under $ErrorActionPreference='Stop'. Success is decided solely by the exit code.
+function Invoke-Tool([scriptblock] $Command, [string] $FailMessage) {
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Command } finally { $ErrorActionPreference = $prev }
+    if ($LASTEXITCODE -ne 0) { throw $FailMessage }
+}
 
 # --- pre-flight ------------------------------------------------------------------------------
 Write-Step 'Pre-flight checks'
@@ -89,9 +98,10 @@ Copy-Item -LiteralPath $appIco -Destination $setupIco -Force
 
 # --- 1. API (self-contained) -----------------------------------------------------------------
 Write-Step 'Publishing API (self-contained win-x64)'
-& dotnet publish $ApiCsproj -c $Configuration -r win-x64 --self-contained true `
-    -p:UseAppHost=true -p:DebugType=embedded -o (Join-Path $Stage 'app')
-if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed ($LASTEXITCODE)." }
+Invoke-Tool {
+    & dotnet publish $ApiCsproj -c $Configuration -r win-x64 --self-contained true `
+        -p:UseAppHost=true -p:DebugType=embedded -o (Join-Path $Stage 'app')
+} 'dotnet publish failed.'
 
 # --- 2. SPA -> wwwroot -----------------------------------------------------------------------
 if (-not $SkipSpaBuild) {
@@ -101,9 +111,9 @@ if (-not $SkipSpaBuild) {
         # npm ci wipes node_modules first; a running vite dev server would EPERM-lock esbuild.
         # Reuse existing deps when present; a clean machine still gets a full install.
         if (-not (Test-Path -LiteralPath (Join-Path $UiDir 'node_modules'))) {
-            & npm.cmd ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci (ui) failed.' }
+            Invoke-Tool { & npm.cmd ci } 'npm ci (ui) failed.'
         }
-        & npm.cmd run build; if ($LASTEXITCODE -ne 0) { throw 'npm run build (ui) failed.' }
+        Invoke-Tool { & npm.cmd run build } 'npm run build (ui) failed.'
     } finally { Pop-Location }
 }
 $spaDist = Join-Path $UiDir 'dist'
@@ -116,8 +126,8 @@ Copy-Item -Path (Join-Path $spaDist '*') -Destination $wwwroot -Recurse -Force
 Write-Step 'Packaging Electron shell'
 Push-Location $DesktopDir
 try {
-    & npm.cmd ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci (desktop) failed.' }
-    & npm.cmd run package; if ($LASTEXITCODE -ne 0) { throw 'electron-forge package failed.' }
+    Invoke-Tool { & npm.cmd ci } 'npm ci (desktop) failed.'
+    Invoke-Tool { & npm.cmd run package } 'electron-forge package failed.'
 } finally { Pop-Location }
 $forgeOut = Join-Path $DesktopDir 'out\NodePilot-win32-x64'
 if (-not (Test-Path -LiteralPath (Join-Path $forgeOut 'NodePilot.exe'))) { throw "Electron package missing: $forgeOut\NodePilot.exe" }
@@ -145,8 +155,9 @@ foreach ($f in @('Provision-LocalDb.ps1', 'Update-Desktop.ps1', 'Uninstall-Deskt
 
 # --- 6. compile installer --------------------------------------------------------------------
 Write-Step 'Compiling installer (Inno Setup)'
-& $IsccPath "/DStageDir=$Stage" "/DAppVersion=$Version" "/DOutputDir=$OutputRoot" (Join-Path $PSScriptRoot 'NodePilot.iss')
-if ($LASTEXITCODE -ne 0) { throw "ISCC failed ($LASTEXITCODE)." }
+Invoke-Tool {
+    & $IsccPath "/DStageDir=$Stage" "/DAppVersion=$Version" "/DOutputDir=$OutputRoot" (Join-Path $PSScriptRoot 'NodePilot.iss')
+} 'ISCC failed.'
 
 $installer = Join-Path $OutputRoot "NodePilot-Desktop-Setup-$Version.exe"
 if (-not (Test-Path -LiteralPath $installer)) { throw "Installer not produced: $installer" }
