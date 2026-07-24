@@ -106,6 +106,10 @@ public sealed class BackupServiceExportTests : IDisposable
             BackupSections.Folders, BackupSections.Users,
         });
         result.AutoIncludedSections.Should().Contain(BackupSections.Credentials);
+        result.Counts.Should().Contain(count =>
+            count.Section == BackupSections.Workflows && count.Count == 1);
+        result.Counts.Select(count => count.Section)
+            .Should().BeEquivalentTo(result.IncludedSections);
     }
 
     [Fact]

@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Dtos;
+using NodePilot.Core.Audit;
 using NodePilot.Data;
 
 namespace NodePilot.Api.Controllers;
@@ -26,10 +27,12 @@ public class AuditController : ControllerBase
     private const int MaxTake = 500;
 
     private readonly NodePilotDbContext _db;
+    private readonly IAuditWriter _audit;
 
-    public AuditController(NodePilotDbContext db)
+    public AuditController(NodePilotDbContext db, IAuditWriter audit)
     {
         _db = db;
+        _audit = audit;
     }
 
     /// <summary>
@@ -212,6 +215,21 @@ public class AuditController : ControllerBase
         }
 
         await writer.FlushAsync(ct);
+        await _audit.LogAsync(
+            AuditActions.AuditLogExported,
+            "AuditLog",
+            null,
+            AuditDetails.Json(
+                ("format", isNdjson ? "ndjson" : "csv"),
+                ("action", action),
+                ("resourceType", resourceType),
+                ("resourceId", resourceId),
+                ("userId", userId),
+                ("ipAddress", ipAddress),
+                ("since", since),
+                ("until", until),
+                ("exported", batch)),
+            ct);
     }
 
     /// <summary>

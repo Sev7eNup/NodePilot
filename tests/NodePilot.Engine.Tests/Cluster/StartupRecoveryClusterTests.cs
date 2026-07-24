@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Engine.Execution;
@@ -98,6 +99,12 @@ public sealed class StartupRecoveryClusterTests : IDisposable
         theirRow!.Status.Should().Be(ExecutionStatus.Cancelled);
         theirRow.ErrorMessage.Should().Contain("node-a", "audit trail must mention which node recovered");
         theirRow.ErrorMessage.Should().Contain("leaseEpoch=5");
+        var audit = _db.AuditLog.Single(entry =>
+            entry.Action == AuditActions.ExecutionRecoveredFailover
+            && entry.ResourceId == theirs);
+        audit.Details.Should().Contain("\"originalOwnerNodeId\":\"node-b\"");
+        audit.Details.Should().Contain("\"recoveredByNodeId\":\"node-a\"");
+        audit.Details.Should().Contain("\"leaseEpoch\":5");
     }
 
     [Fact]

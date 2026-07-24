@@ -37,6 +37,7 @@ public static class AuditActions
 
     public const string CredentialCreated = "CREDENTIAL_CREATED";
     public const string CredentialDecrypted = "CREDENTIAL_DECRYPTED";
+    public const string CredentialDecryptFailed = "CREDENTIAL_DECRYPT_FAILED";
     public const string CredentialDeleted = "CREDENTIAL_DELETED";
     public const string CredentialUpdated = "CREDENTIAL_UPDATED";
 
@@ -44,6 +45,7 @@ public static class AuditActions
     public const string CustomActivityDeleted = "CUSTOM_ACTIVITY_DELETED";
     public const string CustomActivityDisabled = "CUSTOM_ACTIVITY_DISABLED";
     public const string CustomActivityEnabled = "CUSTOM_ACTIVITY_ENABLED";
+    public const string CustomActivityExported = "CUSTOM_ACTIVITY_EXPORTED";
     public const string CustomActivityImported = "CUSTOM_ACTIVITY_IMPORTED";
     public const string CustomActivityRolledBack = "CUSTOM_ACTIVITY_ROLLED_BACK";
     public const string CustomActivityUpdated = "CUSTOM_ACTIVITY_UPDATED";
@@ -51,6 +53,7 @@ public static class AuditActions
     public const string ExecutionBlockedMaintenanceWindow = "EXECUTION_BLOCKED_MAINTENANCE_WINDOW";
     public const string ExecutionCancelled = "EXECUTION_CANCELLED";
     public const string ExecutionDebugStop = "EXECUTION_DEBUG_STOP";
+    public const string ExecutionRecoveredFailover = "EXECUTION_RECOVERED_FAILOVER";
     public const string ExecutionResumed = "EXECUTION_RESUMED";
     public const string ExecutionRetried = "EXECUTION_RETRIED";
     public const string ExecutionStepOver = "EXECUTION_STEP_OVER";
@@ -157,8 +160,15 @@ public static class AuditActions
 
     public const string DbAdminRowDeleted = "DBADMIN_ROW_DELETED";
     public const string DbAdminRowUpdated = "DBADMIN_ROW_UPDATED";
+    public const string DbAdminRowsViewed = "DBADMIN_ROWS_VIEWED";
     public const string DbAdminSqlExecuted = "DBADMIN_SQL_EXECUTED";
     public const string DbAdminSqlWrite = "DBADMIN_SQL_WRITE";
+    public const string DbAdminSqlWriteAttempted = "DBADMIN_SQL_WRITE_ATTEMPTED";
+
+    public const string AuditLogExported = "AUDIT_LOG_EXPORTED";
+    public const string ClusterLeadershipAcquired = "CLUSTER_LEADERSHIP_ACQUIRED";
+    public const string SupportEventsExported = "SUPPORT_EVENTS_EXPORTED";
+    public const string SupportLogDownloaded = "SUPPORT_LOG_DOWNLOADED";
 
     public const string WebhookTriggered = "WEBHOOK_TRIGGERED";
 

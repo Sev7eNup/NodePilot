@@ -329,6 +329,29 @@ public class AuditWriterTests
             $"failure-outcome action '{action}' must mirror to support-log even outside the whitelist");
     }
 
+    [Fact]
+    public async Task LogAsync_DetailsReportFailure_ForwardsFailureOutcome()
+    {
+        var captor = new ScopeCapturingLogger();
+        var db = TestDbFactory.Create();
+        var writer = new AuditWriter(
+            db,
+            new HttpContextAccessor { HttpContext = new DefaultHttpContext() },
+            captor);
+
+        await writer.LogAsync(
+            AuditActions.DbAdminSqlExecuted,
+            "DbAdminQuery",
+            null,
+            AuditDetails.Json(("success", "false")),
+            CancellationToken.None);
+
+        captor.LastScope.Should().Contain(p => p.Key == "event.outcome"
+                                                && p.Value != null
+                                                && string.Equals(p.Value.ToString(), "failure",
+                                                    StringComparison.Ordinal));
+    }
+
     /// <summary>
     /// Negative pin: high-frequency actions that are deliberately excluded from the support
     /// log (token refresh every 12h per user, editor churn, every single credential

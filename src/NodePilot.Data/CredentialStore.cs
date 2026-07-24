@@ -149,7 +149,8 @@ public class CredentialStore : ICredentialStore
         {
             plaintext = _protector.Unprotect(credential.EncryptedPassword);
         }
-        catch (CryptographicException ex)
+        catch (Exception ex) when (
+            ex is CryptographicException || ex is FormatException || ex is ArgumentException)
         {
             // Crypto failure is almost always an operational misconfiguration:
             // - DPAPI: service-account change, DB restored on a different host, or
@@ -162,6 +163,20 @@ public class CredentialStore : ICredentialStore
                 "Likely causes: provider switched without re-encryption, key rotation without re-encryption, " +
                 "or DB restored from a host with a different DPAPI binding.",
                 credential.Id, credential.Name, _protector.ProviderName);
+            AppendDecryptAudit(
+                _auditStager.Build(
+                    action: AuditActions.CredentialDecryptFailed,
+                    actor: AuditActor.System,
+                    resourceType: "Credential",
+                    resourceId: credential.Id,
+                    details: AuditDetails.Json(
+                        ("name", credential.Name),
+                        ("provider", _protector.ProviderName),
+                        ("actor", string.IsNullOrWhiteSpace(actor) ? "unknown" : actor),
+                        ("workflowExecutionId", workflowExecutionId?.ToString()),
+                        ("errorClass", ex.GetType().Name))),
+                credential.Id,
+                "failed decrypt");
             throw;
         }
 
@@ -201,6 +216,16 @@ public class CredentialStore : ICredentialStore
                 ("actor", string.IsNullOrWhiteSpace(actor) ? "unknown" : actor),
                 ("workflowExecutionId", workflowExecutionId?.ToString())));
 
+        AppendDecryptAudit(auditEntry, credential.Id, "decrypt");
+
+        return plaintext;
+    }
+
+    private void AppendDecryptAudit(
+        AuditLogEntry auditEntry,
+        Guid credentialId,
+        string operation)
+    {
         if (_scopeFactory is not null)
         {
             _ = Task.Run(async () =>
@@ -216,8 +241,8 @@ public class CredentialStore : ICredentialStore
                 catch (Exception ex)
                 {
                     _logger?.LogWarning(ex,
-                        "Failed to append decrypt-audit entry for credential {CredentialId}",
-                        credential.Id);
+                        "Failed to append {Operation}-audit entry for credential {CredentialId}",
+                        operation, credentialId);
                 }
             });
         }
@@ -234,12 +259,10 @@ public class CredentialStore : ICredentialStore
             catch (Exception ex)
             {
                 _logger?.LogWarning(ex,
-                    "Failed to append decrypt-audit entry for credential {CredentialId}",
-                    credential.Id);
+                    "Failed to append {Operation}-audit entry for credential {CredentialId}",
+                    operation, credentialId);
             }
         }
-
-        return plaintext;
     }
 
     private byte[] EncryptPassword(string password) => _protector.Protect(password);

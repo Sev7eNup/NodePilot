@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Data;
 
@@ -160,13 +161,14 @@ public static class StartupRecovery
             return 0;
         }
 
-        var candidateIds = await db.WorkflowExecutions.AsNoTracking()
+        var candidates = await db.WorkflowExecutions.AsNoTracking()
             .Where(execution => (execution.Status == ExecutionStatus.Running
                                  || execution.Status == ExecutionStatus.Pending
                                  || execution.Status == ExecutionStatus.Paused)
                               && execution.OwnerNodeId != ourNodeId)
-            .Select(execution => execution.Id)
+            .Select(execution => new { execution.Id, execution.OwnerNodeId })
             .ToListAsync(ct);
+        var candidateIds = candidates.Select(candidate => candidate.Id).ToList();
         if (candidateIds.Count == 0)
         {
             await transaction.CommitAsync(ct);
@@ -218,7 +220,26 @@ public static class StartupRecovery
                         $"Step orphaned by cluster failover (recovered by '{ourNodeId}')."), ct);
         }
 
+        var ownerByExecutionId = candidates.ToDictionary(
+            candidate => candidate.Id,
+            candidate => candidate.OwnerNodeId);
+        var stager = new AuditStager();
+        var auditEntries = recoveredIds
+            .Select(executionId => stager.Build(
+                AuditActions.ExecutionRecoveredFailover,
+                AuditActor.System,
+                resourceType: "WorkflowExecution",
+                resourceId: executionId,
+                details: AuditDetails.Json(
+                    ("originalOwnerNodeId", ownerByExecutionId[executionId]),
+                    ("recoveredByNodeId", ourNodeId),
+                    ("leaseEpoch", leaseEpoch))))
+            .ToList();
+        db.AuditLog.AddRange(auditEntries);
+        await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
+        foreach (var entry in auditEntries)
+            AuditEventForwarder.ForwardCommitted(logger, entry);
         db.ChangeTracker.Clear();
         logger.LogWarning(
             "Startup recovery: marked {ExecutionCount} orphaned execution(s) and {StepCount} orphaned step(s) as Cancelled. Mode={Mode}",

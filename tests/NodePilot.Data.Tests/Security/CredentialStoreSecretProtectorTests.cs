@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodePilot.Core.Audit;
 using NodePilot.Data.Security;
 using NodePilot.TestCommons;
 using Xunit;
@@ -53,6 +54,13 @@ public class CredentialStoreSecretProtectorTests
         var act = () => storeB.DecryptPassword(cred2);
         act.Should().Throw<CryptographicException>(
             "decrypting with the wrong AES-GCM key must surface a clean cryptographic failure, not a silent corruption");
+
+        var audit = db.AuditLog.Single(entry =>
+            entry.Action == AuditActions.CredentialDecryptFailed
+            && entry.ResourceId == cred.Id);
+        audit.Details.Should().Contain("\"provider\":\"AesGcm\"");
+        audit.Details.Should().Contain("\"errorClass\":\"AuthenticationTagMismatchException\"");
+        audit.Details.Should().NotContain("secret");
     }
 
     [Fact]

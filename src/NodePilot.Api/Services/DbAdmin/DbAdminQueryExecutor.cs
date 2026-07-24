@@ -108,10 +108,20 @@ public sealed class DbAdminQueryExecutor
     /// PostgreSQL dollar-quoted strings, and comments are ignored. Trailing semicolons are allowed.
     /// </summary>
     public static bool ContainsMultipleStatements(string sql)
+        => CountStatements(sql) > 1;
+
+    /// <summary>
+    /// Counts SQL statements while ignoring terminators inside comments, literals and
+    /// quoted identifiers. Used for audit metadata so a long batch cannot hide extra
+    /// statements beyond the stored preview.
+    /// </summary>
+    public static int CountStatements(string sql)
     {
         if (string.IsNullOrWhiteSpace(sql))
-            return false;
+            return 0;
 
+        var count = 0;
+        var hasToken = false;
         for (var i = 0; i < sql.Length; i++)
         {
             var ch = sql[i];
@@ -130,34 +140,56 @@ public sealed class DbAdminQueryExecutor
 
             if (ch == '\'')
             {
+                hasToken = true;
                 SkipQuoted(sql, ref i, '\'');
                 continue;
             }
 
             if (ch == '"')
             {
+                hasToken = true;
                 SkipQuoted(sql, ref i, '"');
                 continue;
             }
 
             if (ch == '[')
             {
+                hasToken = true;
                 SkipBracketIdentifier(sql, ref i);
                 continue;
             }
 
             if (ch == '$' && TryReadDollarQuoteTag(sql, i, out var tag))
             {
+                hasToken = true;
                 SkipDollarQuoted(sql, ref i, tag);
                 continue;
             }
 
-            if (ch == ';' && HasSqlTokenAfterTerminator(sql, i + 1))
-                return true;
+            if (ch == ';')
+            {
+                if (hasToken)
+                {
+                    count++;
+                    hasToken = false;
+                }
+                continue;
+            }
+
+            if (!char.IsWhiteSpace(ch))
+                hasToken = true;
         }
 
-        return false;
+        return count + (hasToken ? 1 : 0);
     }
+
+    /// <summary>
+    /// Write-mode must never be able to alter the table that proves what write-mode did.
+    /// The raw substring check intentionally also catches dynamic-SQL string literals.
+    /// A pre-execution forwarded audit event remains the second line of defence.
+    /// </summary>
+    public static bool ReferencesProtectedAuditStorage(string sql)
+        => sql.Contains("AuditLog", StringComparison.OrdinalIgnoreCase);
 
     public Task<DbAdminQueryResult> ExecuteReadAsync(string sql, CancellationToken ct)
     {
@@ -283,31 +315,6 @@ public sealed class DbAdminQueryExecutor
         if (t == typeof(DateTime) || t == typeof(DateTimeOffset)) return "datetime";
         if (t == typeof(byte[])) return "bytes";
         return t.Name.ToLowerInvariant();
-    }
-
-    private static bool HasSqlTokenAfterTerminator(string sql, int index)
-    {
-        for (var i = index; i < sql.Length; i++)
-        {
-            if (char.IsWhiteSpace(sql[i]) || sql[i] == ';')
-                continue;
-
-            if (sql[i] == '-' && i + 1 < sql.Length && sql[i + 1] == '-')
-            {
-                SkipLineComment(sql, ref i);
-                continue;
-            }
-
-            if (sql[i] == '/' && i + 1 < sql.Length && sql[i + 1] == '*')
-            {
-                SkipBlockComment(sql, ref i);
-                continue;
-            }
-
-            return true;
-        }
-
-        return false;
     }
 
     private static void SkipLineComment(string sql, ref int index)

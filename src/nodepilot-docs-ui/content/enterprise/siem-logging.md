@@ -47,7 +47,7 @@ Jeder erfolgreiche Audit-Row wird zusätzlich als strukturiertes ECS-Event emitt
 | `event.action` | Action-Verb | `WORKFLOW_PUBLISHED` |
 | `event.category` | aus Action-Prefix gemappt | `iam` (Login/User/Credential), `process` (Execution/Trigger), `configuration` (Workflow/Machine) |
 | `event.kind` | konstant | `event` |
-| `event.outcome` | konstant bei Erfolg | `success` |
+| `event.outcome` | aus Action und strukturiertem `details.success` abgeleitet | `success`, `failure` oder bei `*_ATTEMPTED` `unknown` |
 | `event.dataset` | konstant | `nodepilot.audit` |
 | `event.id` | AuditLog-Row-ID | UUID |
 | `event.original` | redacted Details-JSON | `{"name":"Daily-Report","version":4}` |

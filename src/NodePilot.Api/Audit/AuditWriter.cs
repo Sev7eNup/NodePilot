@@ -99,7 +99,7 @@ public class AuditWriter : IAuditWriter
             // mapping. The redacted details JSON is also forwarded so investigators can
             // pivot from "WORKFLOW_PUBLISHED" to the named workflow without joining back
             // to the AuditLog table.
-            var outcome = MapEventOutcome(action);
+            var outcome = AuditEventClassification.Outcome(action, entry.Details);
             // Support-log mirror: on the allowlist (Auth/User-Mgmt/Publish/Trigger/Secrets)
             // OR any failure outcome — this way brute-force attempts, failed decryptions,
             // and other `_FAILED/_SUPPRESSED/_REJECTED` actions land in the support log
@@ -111,7 +111,7 @@ public class AuditWriter : IAuditWriter
                 ["support.event_type"] = "AUDIT",
                 ["support.message"] = $"{action} user={actor.Username ?? "-"} resource={resourceType ?? "-"}/{resourceId?.ToString() ?? "-"} ip={actor.IpAddress ?? "-"}",
                 ["event.action"]   = action,
-                ["event.category"] = MapEventCategory(action),
+                ["event.category"] = AuditEventClassification.Category(action),
                 ["event.kind"]     = "event",
                 ["event.outcome"]  = outcome,
                 ["event.dataset"]  = "nodepilot.audit",
@@ -156,55 +156,7 @@ public class AuditWriter : IAuditWriter
         }
     }
 
-    /// <summary>
-    /// Maps a NodePilot audit action to an ECS <c>event.outcome</c> value. Verb suffixes
-    /// that semantically mean "the action did not happen" map to <c>failure</c>; everything
-    /// else is <c>success</c>. The single explicit exception is <c>LOGIN_LOCKED</c>
-    /// (account lockout after a brute-force threshold) — semantically a failure, but the
-    /// <c>_LOCKED</c> suffix is also used by the workflow-edit-lock lifecycle
-    /// (<c>WORKFLOW_LOCKED</c>) which is a successful admin operation. Keeping
-    /// <c>LOGIN_LOCKED</c> as an explicit name match avoids that collision.
-    /// </summary>
-    private static string MapEventOutcome(string action)
-    {
-        if (string.IsNullOrEmpty(action)) return "success";
-        if (action == "LOGIN_LOCKED") return "failure";
-        if (action.EndsWith("_FAILED", StringComparison.Ordinal)) return "failure";
-        if (action.EndsWith("_SUPPRESSED", StringComparison.Ordinal)) return "failure";
-        if (action.EndsWith("_REJECTED", StringComparison.Ordinal)) return "failure";
-        if (action.EndsWith("_REFUSED_COLLISION", StringComparison.Ordinal)) return "failure";
-        return "success";
-    }
-
-    /// <summary>
-    /// Maps a NodePilot audit action to an ECS <c>event.category</c> bucket. The mapping
-    /// follows the standard ECS taxonomy so SIEM rules that gate on
-    /// <c>event.category == "iam"</c> for login events / role changes match NodePilot
-    /// data out-of-the-box. Anything we can't classify lands in "configuration" — the
-    /// closest catch-all for "an admin changed something on the platform".
-    /// </summary>
-    private static string MapEventCategory(string action)
-    {
-        if (string.IsNullOrEmpty(action)) return "configuration";
-        if (action.StartsWith("LOGIN_", StringComparison.Ordinal)
-            || action == "BREAK_GLASS_LOGIN_SUCCESS"
-            || action == "LOGOUT"
-            || action.StartsWith("TOKEN_", StringComparison.Ordinal)
-            || action.StartsWith("USER_", StringComparison.Ordinal))
-            return "iam";
-        if (action.StartsWith("CREDENTIAL_", StringComparison.Ordinal)
-            || action.StartsWith("GLOBAL_VARIABLE_", StringComparison.Ordinal)
-            || action.StartsWith("FOLDER_PERMISSION_", StringComparison.Ordinal)
-            || action == "SECRETS_REENCRYPTED")
-            return "iam";
-        if (action.StartsWith("EXECUTION_", StringComparison.Ordinal)
-            || action == "WEBHOOK_TRIGGERED"
-            || action == "EXTERNAL_TRIGGER_FIRED"
-            || action == "TRIGGER_FIRE_SUPPRESSED")
-            return "process";
-        return "configuration";
-    }
-
+    /// <summary>Resolves the current HTTP actor, or the system actor outside a request.</summary>
     private AuditActor ResolveActor()
     {
         var ctx = _httpContextAccessor.HttpContext;

@@ -1,5 +1,7 @@
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Data;
+using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -118,6 +120,7 @@ public class DbAdminController : ControllerBase
         skip = Math.Max(skip, 0);
 
         var (total, rows) = await DbAdminQueryBuilder.QueryAsync(_db, table, skip, take, orderBy, desc, ct);
+        await WriteRowsViewedAuditAsync(name, skip, take, orderBy, desc, total, rows.Count, ct);
         return Ok(new DbAdminRowsResponse(total, rows));
     }
 
@@ -476,11 +479,46 @@ public class DbAdminController : ControllerBase
 
             // The header is the deliberate "I know what I'm doing" gesture from the UI. Curl-only
             // operators have to set it explicitly — which is exactly the friction we want for a
-            // statement that could DROP the AuditLog table.
+            // statement that mutates arbitrary application data. AuditLog storage is blocked below.
             if (!Request.Headers.TryGetValue(WriteConfirmHeader, out var confirmHeader)
                 || !string.Equals(confirmHeader.ToString(), WriteConfirmValue, StringComparison.Ordinal))
                 return BadRequest(new DbAdminQueryError("missing_confirmation",
                     $"Write mode requires the '{WriteConfirmHeader}: {WriteConfirmValue}' header.", null));
+
+            if (DbAdminQueryExecutor.ReferencesProtectedAuditStorage(req.Sql))
+            {
+                await WriteQueryAuditAsync(
+                    AuditActions.DbAdminSqlWrite,
+                    mode,
+                    req.Sql,
+                    success: false,
+                    rowsAffected: null,
+                    reason: "protected_audit_storage",
+                    ct);
+                return BadRequest(new DbAdminQueryError(
+                    "protected_audit_storage",
+                    "Write-mode cannot target NodePilot audit storage.",
+                    null));
+            }
+
+            // Write-mode is the one fail-closed exception to the general best-effort audit
+            // policy. If the durable + forwarded attempt cannot be recorded, executing
+            // arbitrary SQL would create a change with no surviving evidence.
+            var attemptRecorded = await WriteQueryAuditAsync(
+                AuditActions.DbAdminSqlWriteAttempted,
+                mode,
+                req.Sql,
+                success: null,
+                rowsAffected: null,
+                reason: null,
+                ct);
+            if (!attemptRecorded)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new DbAdminQueryError(
+                    "audit_unavailable",
+                    "Write query was not executed because its audit attempt could not be persisted.",
+                    HttpContext.TraceIdentifier));
+            }
         }
 
         DbAdminQueryResult result;
@@ -505,7 +543,14 @@ public class DbAdminController : ControllerBase
                 mode, correlationId, Preview(req.Sql));
 
             // Audit failures too — failed write attempts are interesting.
-            await WriteQueryAuditAsync(mode, req.Sql, success: false, rowsAffected: null, ct);
+            await WriteQueryAuditAsync(
+                mode == "write" ? AuditActions.DbAdminSqlWrite : AuditActions.DbAdminSqlExecuted,
+                mode,
+                req.Sql,
+                success: false,
+                rowsAffected: null,
+                reason: "execution_failed",
+                ct);
 
             var message = mode == "write"
                 ? "Statement rejected by the database."
@@ -513,7 +558,14 @@ public class DbAdminController : ControllerBase
             return Conflict(new DbAdminQueryError("execution_failed", message, correlationId));
         }
 
-        await WriteQueryAuditAsync(mode, req.Sql, success: true, rowsAffected: result.RowsAffected, ct);
+        await WriteQueryAuditAsync(
+            mode == "write" ? AuditActions.DbAdminSqlWrite : AuditActions.DbAdminSqlExecuted,
+            mode,
+            req.Sql,
+            success: true,
+            rowsAffected: result.RowsAffected,
+            reason: null,
+            ct);
 
         return Ok(new DbAdminQueryResponse(
             Columns: result.Columns,
@@ -524,18 +576,21 @@ public class DbAdminController : ControllerBase
             Mode: result.Mode));
     }
 
-    private async Task WriteQueryAuditAsync(string mode, string sql, bool success, int? rowsAffected,
+    private async Task<bool> WriteQueryAuditAsync(
+        string action,
+        string mode,
+        string sql,
+        bool? success,
+        int? rowsAffected,
+        string? reason,
         CancellationToken ct)
     {
         var auditActor = new AuditActor(GetCallerId(), User.FindFirstValue(ClaimTypes.Name),
             HttpContext?.Connection?.RemoteIpAddress?.ToString());
-        var action = mode == "write"
-            ? AuditActions.DbAdminSqlWrite
-            : AuditActions.DbAdminSqlExecuted;
 
         // The stager already caps details at 4 KiB, so even pathological SQL pastes are bounded
-        // in audit storage. Statement preview gives enough context for incident reviewers without
-        // duplicating the whole thing in details.
+        // in audit storage. The full statement is represented by a stable hash + byte length +
+        // statement count; only the bounded preview itself is retained.
         var auditEntry = _stager.Build(
             action: action,
             actor: auditActor,
@@ -543,22 +598,69 @@ public class DbAdminController : ControllerBase
             resourceId: null,
             details: AuditDetails.Json(
                 ("mode", mode),
-                ("success", success ? "true" : "false"),
+                ("success", success.HasValue ? (success.Value ? "true" : "false") : "pending"),
+                ("reason", reason),
                 ("rowsAffected", rowsAffected?.ToString() ?? string.Empty),
-                ("sql", Preview(sql))));
+                ("sql", Preview(sql)),
+                ("sqlSha256", SqlHash(sql)),
+                ("sqlBytes", Encoding.UTF8.GetByteCount(sql)),
+                ("statementCount", DbAdminQueryExecutor.CountStatements(sql))));
         _db.AuditLog.Add(auditEntry);
 
         try
         {
             await _db.SaveChangesAsync(ct);
             AuditEventForwarder.ForwardCommitted(_logger, auditEntry);
+            return true;
         }
         catch (Exception ex)
         {
             // Never let an audit write failure mask the actual query result.
             _logger.LogError(ex, "Failed to persist DbAdmin query audit entry");
+            return false;
         }
     }
+
+    private async Task WriteRowsViewedAuditAsync(
+        string table,
+        int skip,
+        int take,
+        string? orderBy,
+        bool descending,
+        long total,
+        int returned,
+        CancellationToken ct)
+    {
+        var actor = new AuditActor(GetCallerId(), User.FindFirstValue(ClaimTypes.Name),
+            HttpContext?.Connection?.RemoteIpAddress?.ToString());
+        var entry = _stager.Build(
+            AuditActions.DbAdminRowsViewed,
+            actor,
+            "DbAdminTable",
+            null,
+            AuditDetails.Json(
+                ("table", table),
+                ("skip", skip),
+                ("take", take),
+                ("orderBy", orderBy),
+                ("descending", descending),
+                ("total", total),
+                ("returned", returned)));
+        _db.AuditLog.Add(entry);
+
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            AuditEventForwarder.ForwardCommitted(_logger, entry);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to persist DbAdmin table-view audit entry");
+        }
+    }
+
+    private static string SqlHash(string sql)
+        => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sql))).ToLowerInvariant();
 
     private static string Preview(string sql)
     {

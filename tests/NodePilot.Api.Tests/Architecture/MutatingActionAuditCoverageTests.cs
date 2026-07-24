@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 using FluentAssertions;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Architecture;
@@ -32,6 +34,15 @@ public sealed class MutatingActionAuditCoverageTests
             "Stateless dry-run that evaluates a draft rule (in-memory '__preview__' draft) against sample event context; writes no state and triggers no remote/external work.",
         ["SystemAlertingController.Preview"] =
             "Stateless dry-run that samples a system-alert source and reports which current instances match; writes no state and triggers no remote/external work.",
+    };
+
+    private static readonly Dictionary<string, string> SensitiveReadAuditSignals = new(StringComparer.Ordinal)
+    {
+        ["AuditController.ExportStream"] = "AuditActions.AuditLogExported",
+        ["DiagnosticsController.Download"] = "AuditActions.SupportLogDownloaded",
+        ["DiagnosticsController.ExportEvents"] = "AuditActions.SupportEventsExported",
+        ["CustomActivitiesController.Export"] = "AuditActions.CustomActivityExported",
+        ["DbAdminController.GetRows"] = "WriteRowsViewedAuditAsync",
     };
 
     [Fact]
@@ -68,6 +79,36 @@ public sealed class MutatingActionAuditCoverageTests
         seenExemptions.Should().BeEquivalentTo(AllowedUnauditedActions.Keys,
             "stale audit exemptions should be removed when endpoints start auditing or disappear");
         missing.Should().BeEmpty("mutating HTTP actions should emit an audit event or carry an explicit rationale");
+    }
+
+    [Fact]
+    public void SensitiveReadAndExportActions_EmitTheirDedicatedAuditSignals()
+    {
+        var controllersDir = Path.Combine(
+            FindRepoRoot().FullName, "src", "NodePilot.Api", "Controllers");
+        var missing = new List<string>();
+
+        foreach (var (key, signal) in SensitiveReadAuditSignals)
+        {
+            var separator = key.IndexOf('.');
+            var controller = key[..separator];
+            var methodName = key[(separator + 1)..];
+            var file = Path.Combine(controllersDir, controller + ".cs");
+            var root = CSharpSyntaxTree.ParseText(File.ReadAllText(file), path: file).GetRoot();
+            var method = root.DescendantNodes().OfType<MethodDeclarationSyntax>()
+                .SingleOrDefault(candidate => candidate.Identifier.ValueText == methodName);
+
+            if (method is null
+                || !method.AttributeLists.SelectMany(list => list.Attributes)
+                    .Any(attribute => attribute.Name.ToString().EndsWith("HttpGet", StringComparison.Ordinal))
+                || !method.ToFullString().Contains(signal, StringComparison.Ordinal))
+            {
+                missing.Add($"{key} -> {signal}");
+            }
+        }
+
+        missing.Should().BeEmpty(
+            "downloads and exports of sensitive operational data require explicit audit coverage");
     }
 
     private static bool BodyHasAuditSignal(string body)
