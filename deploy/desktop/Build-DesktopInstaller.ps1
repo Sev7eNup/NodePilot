@@ -98,7 +98,11 @@ if (-not $SkipSpaBuild) {
     Write-Step 'Building SPA'
     Push-Location $UiDir
     try {
-        & npm.cmd ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci (ui) failed.' }
+        # npm ci wipes node_modules first; a running vite dev server would EPERM-lock esbuild.
+        # Reuse existing deps when present; a clean machine still gets a full install.
+        if (-not (Test-Path -LiteralPath (Join-Path $UiDir 'node_modules'))) {
+            & npm.cmd ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci (ui) failed.' }
+        }
         & npm.cmd run build; if ($LASTEXITCODE -ne 0) { throw 'npm run build (ui) failed.' }
     } finally { Pop-Location }
 }
