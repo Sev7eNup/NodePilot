@@ -46,6 +46,11 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = 'Stop'
 
+# Self-diagnosing: capture the full run (including the failing step + error) to a log so a failed
+# provisioning during an otherwise-hidden installer run can be inspected without re-running it.
+$TranscriptPath = Join-Path $env:TEMP 'nodepilot-provision.log'
+try { Start-Transcript -Path $TranscriptPath -Force | Out-Null } catch { }
+
 # --- paths -----------------------------------------------------------------------------------
 $PgBinPath   = Join-Path $InstallPath 'pgsql\bin'
 $AppPath     = Join-Path $InstallPath 'app'
@@ -331,9 +336,17 @@ if (Get-Service -Name $ApiServiceName -ErrorAction SilentlyContinue) {
     & sc.exe delete $ApiServiceName | Out-Null
     Start-Sleep -Seconds 2
 }
+# New-Service (NOT sc.exe create): the .NET SCM API stores the quoted binary path + args verbatim
+# in ImagePath, so an install path under "C:\Program Files\..." (with spaces) is handled correctly.
+# sc.exe's `binPath= <value>` breaks through PowerShell native-argument quoting when the path
+# contains spaces -- the create silently fails and the following registry step then throws.
+# New-Service runs as LocalSystem by default and throws loudly on failure.
 $binPath = "`"$ApiExe`" --contentRoot `"$AppPath`""
-& sc.exe create $ApiServiceName binPath= $binPath start= delayed-auto obj= 'LocalSystem' DisplayName= "$ApiServiceDisplayName" depend= $DbServiceName | Out-Null
-& sc.exe description $ApiServiceName "NodePilot workflow orchestrator (desktop, loopback)." | Out-Null
+New-Service -Name $ApiServiceName -BinaryPathName $binPath -DisplayName $ApiServiceDisplayName `
+    -Description 'NodePilot workflow orchestrator (desktop, loopback).' `
+    -StartupType Automatic -DependsOn $DbServiceName | Out-Null
+# Delayed auto-start + recovery actions (no binPath involved, so sc.exe is safe here).
+& sc.exe config $ApiServiceName start= delayed-auto | Out-Null
 & sc.exe failure $ApiServiceName reset= 86400 actions= restart/5000/restart/5000/restart/60000 | Out-Null
 
 # Service environment: ASPNETCORE_ENVIRONMENT + the ACL-protected DB connection string.
