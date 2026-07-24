@@ -71,9 +71,9 @@ test.describe('Atelier-Designsprache', () => {
     await expect(page.locator('.np-designer.wd-atelier')).toBeVisible();
     await expect(page.locator('html.wd-atelier-on')).toHaveCount(1);
 
-    // Canvas grid: Atelier keeps the familiar premium crosshatch (explicit user ask —
-    // the dot-grid experiment was too faint).
-    await expect(page.locator('pattern[id$="np-bg-major"]')).toHaveCount(1);
+    // Canvas grid: free mode renders the unified dot grid (Premium + Classic share the
+    // same dot branch since the crosshatch was retired).
+    await expect(page.locator('pattern[id$="np-bg-dots"]')).toHaveCount(1);
 
     // Token proof: the editor header resolves the Atelier cobalt accent, not the base blue.
     const accent = await page.locator('.np-editor-header').evaluate((el) =>
@@ -162,6 +162,6 @@ test.describe('Atelier-Designsprache', () => {
     await openEditor(page);
     await expect(page.locator('.np-designer')).toBeVisible();
     await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
-    await expect(page.locator('pattern[id$="np-bg-major"]')).toHaveCount(1);
+    await expect(page.locator('pattern[id$="np-bg-dots"]')).toHaveCount(1);
   });
 });

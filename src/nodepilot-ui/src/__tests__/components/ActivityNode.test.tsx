@@ -213,7 +213,7 @@ describe('ActivityNode', () => {
       ['restApi', 'chevronLeft'],
       ['runScript', 'hexPointy'],
       ['generateText', 'pillH'],
-      ['delay', 'cross'],
+      ['delay', 'stopwatch'],
     ])('mounts the %s action node (%s shape) without crashing', (activityType) => {
       renderActivityNode({ label: `n-${activityType}`, activityType, config: {} });
       expect(screen.getByText(`n-${activityType}`)).toBeInTheDocument();

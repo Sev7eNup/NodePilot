@@ -29,7 +29,7 @@ const EXPECTED_ACTION: Record<string, NodeShape> = {
   registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'blockArrow',
   powerManagement: 'starburst', waitForCondition: 'circle', restApi: 'chevronLeft', sql: 'cylinder',
   xmlQuery: 'kite', jsonQuery: 'trapezoidDown', emailNotification: 'banner', textFileEdit: 'house',
-  generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'cross',
+  generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
 };
 
 describe('getNodeShape — precedence', () => {

@@ -172,20 +172,20 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     const state = routeWorkflow(page, definitionWith(seed));
     await openAndSelect(page, /run script/i);
 
-    // Process-isolation checkbox (label stays German even under EN preview); enabled because the
+    // Process-isolation checkbox (EN preview → "Process isolation"); enabled because the
     // step has no target machine (local execution).
-    const iso = page.getByRole('checkbox', { name: 'Prozess-Isolation' });
+    const iso = page.getByRole('checkbox', { name: 'Process isolation' });
     await expect(iso).toBeVisible();
     await expect(iso).toBeEnabled();
 
     // Toggling it on reveals the optional resource-cap fields (anchor on the exact labels so the
-    // "Speicherlimit lässt …" hint paragraph doesn't also match).
+    // "Memory limit makes …" hint paragraph doesn't also match).
     await iso.check();
-    await expect(page.getByText(/Speicherlimit \(MB\)/)).toBeVisible();
-    await expect(page.getByText(/Max\. Prozesse/)).toBeVisible();
+    await expect(page.getByText(/Memory limit \(MB\)/)).toBeVisible();
+    await expect(page.getByText(/Max\. processes/)).toBeVisible();
 
-    // The successExitCodes input (German placeholder) gates exit-based failure when set.
-    const sec = page.getByPlaceholder(/fehler-basiert/i);
+    // The successExitCodes input (placeholder) gates exit-based failure when set.
+    const sec = page.getByPlaceholder(/error-based/i);
     await expect(sec).toBeVisible();
     await sec.fill('0,1');
 
@@ -206,10 +206,10 @@ test.describe('Node Activity-Config UIs (Teil 2)', () => {
     await openAndSelect(page, /run script/i);
 
     // Isolation runs on the NodePilot host only → disabled (greyed) for a remote step, with a hint.
-    const iso = page.getByRole('checkbox', { name: 'Prozess-Isolation' });
+    const iso = page.getByRole('checkbox', { name: 'Process isolation' });
     await expect(iso).toBeVisible();
     await expect(iso).toBeDisabled();
-    await expect(page.getByText(/nur für lokale Ausführung/i)).toBeVisible();
+    await expect(page.getByText(/only applies to local execution/i)).toBeVisible();
   });
 
   // ---------- 2.3 — fileOperation + folderOperation (dynamic per operation) ----------
