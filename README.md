@@ -186,6 +186,24 @@ laid out to fill the canvas width and run top-to-bottom.
 
 ---
 
+## Desktop app (one-click local install)
+
+Besides the server rollout, NodePilot ships as a **local desktop application** for Windows 11 x64:
+a single signed `.exe` that bundles the app, a self-contained .NET 10 runtime, and a **local
+PostgreSQL** server, installs everything as background Windows services, and opens a native
+**Electron** window on top — fully **offline**, no runtime prerequisites, no external database.
+
+The backend runs as an always-on service (so scheduled/webhook triggers keep firing when the window
+is closed) under the new `Deployment:Mode=Desktop` posture — `Production`-hardened, but loopback-only
+Kestrel and a bundled 127.0.0.1 Postgres. The Electron shell is a thin, hardened viewer that pins the
+loopback certificate by SHA-256 (no system root CA). Build and internals: [`deploy/desktop/README.md`](deploy/desktop/README.md).
+
+```powershell
+deploy/desktop/Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\path\to\pgsql' -Version 1.0.0
+```
+
+---
+
 ## Workflow Designer (Frontend)
 
 The designer is a React 19 + TypeScript 6 SPA built on [@xyflow/react](https://reactflow.dev/) (React Flow v12), styled with Tailwind CSS 4, and bundled by Vite 8. Auto-layout uses **Dagre** and **ELK**; the script editor is **Monaco**; live updates ride **SignalR (`@microsoft/signalr`)**; data fetching is **TanStack Query**; state is **Zustand**; forms are **React Hook Form + Zod**. It lives at `/workflows/:id`.

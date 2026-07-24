@@ -1,0 +1,129 @@
+# NodePilot Desktop (Electron) — machine-wide, offline one-click installer
+
+This directory builds NodePilot as a **local desktop application** for **Windows 11 x64**: a single
+signed `.exe` that installs the app, a bundled .NET 10 runtime, and a **local PostgreSQL** server,
+then runs everything as background Windows services with a native Electron window on top. No .NET
+runtime, no external database, and no internet connection are required at install time.
+
+It is a distinct shipping target from the server rollout in [`../README.md`](../README.md) — that one
+is a domain-joined Windows **Server** as a service behind Kestrel TLS with an external database.
+
+## Architecture
+
+NodePilot is an *orchestrator*: schedule / file-watcher / webhook triggers must fire even when no
+window is open. So the backend runs as an always-on service and the Electron shell is a thin viewer.
+
+```
+Installer (.exe, signed)
+ ├─ C:\Program Files\NodePilot\   app\ (self-contained API + wwwroot) · desktop\ (Electron) · pgsql\ (PG16) · deploy\
+ ├─ C:\ProgramData\NodePilot\     pgdata\ · logs\ · secrets\ · keys · admin-setup.token · desktop.json · backups\
+ ├─ Service "NodePilotDb"  (postgres, NetworkService, 127.0.0.1:<pgport>, boot-start)
+ ├─ Service "NodePilot"    (NodePilot.Api.exe, LocalSystem, https://127.0.0.1:<apiport>, boot-start, depend= NodePilotDb)
+ └─ Start Menu / Desktop → NodePilot.exe (Electron → loads the origin from desktop.json)
+```
+
+The .NET backend already serves the SPA same-origin (`UseStaticFiles` + `MapFallbackToFile`), so the
+Electron shell never bundles or renders the frontend itself — it points a hardened `BrowserWindow`
+at `https://localhost:<port>` and manages nothing but the window and the tray.
+
+### `Deployment:Mode=Desktop`
+
+The desktop package runs with `ASPNETCORE_ENVIRONMENT=Production` (full hardening: security headers,
+Swagger off, inline-password guard) plus a new posture key **`Deployment:Mode=Desktop`**. Desktop mode
+relaxes **only** the things that make sense for a machine talking to itself:
+
+- `DatabaseTlsBootValidator` accepts `Database:AllowInsecureTls=true` **only** for a loopback DB host
+  under Desktop mode (a 127.0.0.1 Postgres with no PKI). Remote hosts still fail closed.
+- Kestrel binds **loopback only** (`ListenLocalhost`), never every interface.
+- Before the migration bootstrap, the API waits up to **120 s** for Postgres connectivity (only
+  reachability is retried; a migration/schema error surfaces immediately).
+
+Everything else stays hardened. `Deployment:Mode` defaults to `Server`; an unknown value is a boot error.
+
+### desktop.json — installer → shell handoff (no secrets)
+
+`%ProgramData%\NodePilot\desktop.json` tells the Electron shell what to load and trust:
+
+```json
+{ "schemaVersion": 1, "origin": "https://localhost:47000",
+  "certificateSha256": "<uppercase-hex>", "serviceName": "NodePilot" }
+```
+
+The DB password is **never** here — it lives only in the ACL-restricted `ConnectionStrings__Postgres`
+service-environment value.
+
+## Security model
+
+- **API runs as LocalSystem** (zero-config). Consequence: loopback `runScript` activities run with
+  **SYSTEM** rights. This is an explicit v1 decision for a single-user local orchestrator.
+- **Postgres runs as NetworkService**, bound to 127.0.0.1 only.
+- **Loopback TLS by pinning, not a root CA.** The installer creates a self-signed `localhost`
+  certificate in `LocalMachine\My`; the Electron session pins it by SHA-256 fingerprint. No system
+  trust store is modified, so an ordinary browser visiting the URL *may warn* — that is expected;
+  Electron is the supported entry point.
+- **Electron hardening:** the SPA window has `contextIsolation`, `sandbox`, `webSecurity` on,
+  `nodeIntegration` off, and **no preload / no IPC**. Navigation off-origin, popups, downloads, and
+  permission requests are all blocked.
+- **First-run token never reaches the renderer.** See below.
+- **Minimal ACLs** on ProgramData, the service registry key, the cert key, `pgdata`, `secrets\`,
+  `backups\`, and the per-user handoff file.
+
+### First-run admin setup
+
+1. On first boot (empty users table) the API writes a one-shot `admin-setup.token` (SYSTEM-owned).
+2. The elevated installer copies it into the installing user's profile as
+   `%LOCALAPPDATA%\NodePilot\admin-setup.handoff` (ACL-restricted), then launches Electron as that user.
+3. Electron shows a **local** setup page whose only bridge is `completeAdminSetup({username,password})`.
+4. The main process reads the handoff token, `POST /api/auth/login` with header `X-Setup-Token`, shares
+   the returned cookies with the SPA session, deletes **both** token copies, and opens the preload-less
+   SPA window. The token is never exposed to the renderer.
+
+## Build
+
+Requirements: .NET 10 SDK, Node + npm, [Inno Setup 6](https://jrsoftware.org/isdl.php) (`ISCC.exe`),
+and a PostgreSQL 16 binaries folder (the `pgsql` directory from the EDB zip distribution).
+
+```powershell
+./Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\path\to\pgsql' -Version 1.0.0
+# -> out\NodePilot-Desktop-Setup-1.0.0.exe   (sign with your Authenticode cert before distribution)
+```
+
+The build publishes the API self-contained (`-r win-x64 --self-contained true`, no single-file — the
+PowerShell SDK is folder-deployed), builds the SPA into `app\wwwroot`, packages the Electron shell with
+Electron Forge, stages the Postgres binaries + scripts, generates icons, and compiles the installer.
+
+## Install / update / uninstall
+
+- **Install:** run the `.exe` as a local administrator (UAC). It lays down files, runs
+  `Provision-LocalDb.ps1` (Postgres cluster + service, cert, config, API service, desktop.json, token
+  handoff), and launches the shell.
+- **Update:** run a newer installer. On an existing cluster it takes an ACL-protected `pg_dump` first,
+  overwrites binaries, and re-provisions idempotently. `Update-Desktop.ps1` also implements a full
+  staged update with binary + config + DB rollback for direct/advanced use. Postgres **major** upgrades
+  are out of scope for v1.
+- **Uninstall:** removes both services, the certificate, and Program Files. **ProgramData and `pgdata`
+  are preserved** unless `Uninstall-Desktop.ps1 -PurgeData` is used.
+
+## Files
+
+| File | Role |
+|---|---|
+| `Build-DesktopInstaller.ps1` | Build orchestrator (publish + SPA + Electron + stage + ISCC). |
+| `NodePilot.iss` | Inno Setup installer definition. |
+| `Provision-LocalDb.ps1` | First-run/idempotent runtime provisioner (DB, services, cert, config, handoff). |
+| `Update-Desktop.ps1` | Pre-upgrade backup + full staged update with rollback. |
+| `Uninstall-Desktop.ps1` | Service + cert removal (data preserved by default). |
+| `appsettings.Desktop.json.template` | Production-hardened desktop config (rendered by the provisioner). |
+
+## On-VM validation (test plan)
+
+The PowerShell + Inno + provisioning paths cannot be exercised on a build host; validate on a clean
+Windows 11 x64 VM without .NET/Postgres preinstalled:
+
+1. Install → both services running, `pgdata` initialized, `desktop.json` written, cert pinned.
+2. `GET https://127.0.0.1:<apiport>/healthz/ready` → 200 (migration ran).
+3. Launch shell → SPA loads without a cert warning → first-run admin creation → a `runScript`
+   workflow against `localhost` runs in-process.
+4. Close the window → a `scheduleTrigger` still fires in the background → reopen is single-instance.
+5. Reboot → services auto-start. Upgrade → users/credentials/workflows/PG data survive; forced health
+   failure rolls back. Uninstall → services gone, `pgdata` preserved (or purged with `-PurgeData`).

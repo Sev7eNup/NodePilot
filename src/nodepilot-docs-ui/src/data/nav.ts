@@ -81,6 +81,7 @@ export const navGroups: NavGroup[] = [
     label: 'Deployment & Mehr',
     items: [
       { path: 'deployment/production', title: 'Produktions-Rollout' },
+      { path: 'deployment/desktop', title: 'Desktop-App (Electron)' },
       { path: 'ai-features', title: 'AI-Features' },
       { path: 'alerting', title: 'Alerting' },
       { path: 'observability', title: 'Observability' },

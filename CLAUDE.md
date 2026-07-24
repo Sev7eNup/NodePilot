@@ -103,7 +103,7 @@ Zwei Provider, umschaltbar über `Database:Provider`:
 - **Neue Migration:** `dotnet ef migrations add <Name> --project src/NodePilot.Data --startup-project src/NodePilot.Api --context NodePilotDbContext`. **Pflicht-Postprocessing:** alle `type: "..."`-Annotations entfernen.
 - Schema-Änderungen IMMER per EF-Migration. Kein DDL-Hotpatching.
 - Credentials mit DPAPI verschlüsselt (`Credentials:DpapiScope`).
-- **DB-TLS strikt (default):** `DatabaseTlsBootValidator` bricht den Boot ab, wenn die Connection den Server nicht verifiziert (`Encrypt=Strict`/`TrustServerCertificate=False` bzw. `SSL Mode=VerifyFull`). Dev-only-Escape: `Database:AllowInsecureTls=true` (nur Loopback).
+- **DB-TLS strikt (default):** `DatabaseTlsBootValidator` bricht den Boot ab, wenn die Connection den Server nicht verifiziert (`Encrypt=Strict`/`TrustServerCertificate=False` bzw. `SSL Mode=VerifyFull`). Escape `Database:AllowInsecureTls=true` nur bei Loopback-Host **und** entweder Development-Env **oder** `Deployment:Mode=Desktop` (Desktop-Posture, siehe Production Deployment).
 
 Retention-Services im Scheduler: Execution (30d), AuditLog (365d), WorkflowVersions (50/Workflow), SupportEvents (90d), Notifications (90d) — opt-out via `Retention:*:Enabled: false`. IdempotencyKeys (24h, fixe TTL) läuft immer.
 
@@ -402,3 +402,5 @@ Getrennt vom Workflow-Export: voller DR-Snapshot der Konfiguration (Workflows+Fo
 ## Production Deployment
 
 Produktiv-Rollout über `deploy/`-Skripte — Claude führt sie **nicht** aus. Vollständige Doku: `deploy/README.md`. Architektur (gMSA, Kestrel-HTTPS, Install-Dir-Split, Config-Keys, Stolperfallen): siehe `docs/claude-reference.md`.
+
+**Desktop-App (Electron, `deploy/desktop/`):** zweites Shipping-Ziel — maschinenweiter, offline Win-11-x64-`.exe`-Installer mit gebündeltem lokalem Postgres + self-contained .NET, alles als Boot-Start-Dienste (API=LocalSystem, PG=NetworkService), Electron als dünner gehärteter Viewer (SHA-256-Cert-Pinning, kein Root-CA). Posture `Deployment:Mode` (`Server`|`Desktop`, default `Server`): Desktop relaxiert **nur** loopback-DB-TLS + Kestrel-`ListenLocalhost` + 120s-Postgres-Wait vor dem Migration-Bootstrap; Rest bleibt Production-gehärtet. First-Run-Admin via Token-Handoff (`X-Setup-Token`). Volle Doku: `deploy/desktop/README.md`.
