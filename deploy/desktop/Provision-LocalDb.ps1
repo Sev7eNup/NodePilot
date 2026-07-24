@@ -152,6 +152,19 @@ function Invoke-Native([string] $exe, [string[]] $arguments, [hashtable] $env = 
     }
 }
 
+# --- 0. idempotency: remove any prior NodePilot services -------------------------------------
+# A re-run/upgrade must not collide with a running postmaster on the reused data directory, and
+# must free the old binaries. Stop + delete both services up front (no-op on a clean install).
+Write-Step 'Removing any prior NodePilot services'
+foreach ($svc in @($ApiServiceName, $DbServiceName)) {
+    if (Get-Service -Name $svc -ErrorAction SilentlyContinue) {
+        & sc.exe stop $svc | Out-Null
+        Start-Sleep -Seconds 2
+        & sc.exe delete $svc | Out-Null
+        Start-Sleep -Seconds 1
+    }
+}
+
 # --- 1. ports --------------------------------------------------------------------------------
 Write-Step 'Selecting free loopback ports'
 $HttpsPort = Get-FreePort $HttpsPortRangeStart $HttpsPortRangeEnd
