@@ -98,8 +98,8 @@ if (-not $SkipSpaBuild) {
     Write-Step 'Building SPA'
     Push-Location $UiDir
     try {
-        & npm ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci (ui) failed.' }
-        & npm run build; if ($LASTEXITCODE -ne 0) { throw 'npm run build (ui) failed.' }
+        & npm.cmd ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci (ui) failed.' }
+        & npm.cmd run build; if ($LASTEXITCODE -ne 0) { throw 'npm run build (ui) failed.' }
     } finally { Pop-Location }
 }
 $spaDist = Join-Path $UiDir 'dist'
@@ -112,8 +112,8 @@ Copy-Item -Path (Join-Path $spaDist '*') -Destination $wwwroot -Recurse -Force
 Write-Step 'Packaging Electron shell'
 Push-Location $DesktopDir
 try {
-    & npm ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci (desktop) failed.' }
-    & npm run package; if ($LASTEXITCODE -ne 0) { throw 'electron-forge package failed.' }
+    & npm.cmd ci; if ($LASTEXITCODE -ne 0) { throw 'npm ci (desktop) failed.' }
+    & npm.cmd run package; if ($LASTEXITCODE -ne 0) { throw 'electron-forge package failed.' }
 } finally { Pop-Location }
 $forgeOut = Join-Path $DesktopDir 'out\NodePilot-win32-x64'
 if (-not (Test-Path -LiteralPath (Join-Path $forgeOut 'NodePilot.exe'))) { throw "Electron package missing: $forgeOut\NodePilot.exe" }
