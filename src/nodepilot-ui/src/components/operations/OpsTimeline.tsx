@@ -14,11 +14,14 @@ import { CopyableId } from '../common/CopyableId';
 
 // The Mission-Control centerpiece: a real-time horizontal timeline. Running executions grow
 // toward the NOW line; settled ones freeze and drift left out of the window. One lane per
-// workflow, overlapping runs stack into sub-rows. All geometry comes from lib/opsTimeline
-// (pure, unit-tested); this component only measures the track and maps geometry onto divs.
+// workflow, overlapping runs stack into sub-rows — and each sub-row gets its own labeled
+// entry (full workflow name + that run's job id), so concurrent runs of the same workflow
+// show as separate rows instead of a single name with a ×N badge. All geometry comes from
+// lib/opsTimeline (pure, unit-tested); this component only measures the track and maps
+// geometry onto divs.
 
 const LANE_GAP = 8;
-const LABEL_COL_PX = 264;
+const LABEL_COL_PX = 380;
 
 export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWorkflowIds, nodesById, selectedExecutionId, nextStart, onSelect }: Readonly<{
   nowMs: number;
@@ -74,16 +77,19 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
     [placed, w],
   );
 
-  // Representative execution (job) id per workflow/lane for the copyable chip next to the
-  // workflow name: prefer an active run, else the most recently started bar. The per-bar id
-  // is always available via the drilldown (click a bar) for multi-run lanes.
-  const laneExecId = useMemo(() => {
+  // Representative execution (job) id per lane sub-row for the copyable chip next to the
+  // workflow name: each overlapping run gets its own row label, so we key by (laneIndex,
+  // subRow) and pick the most relevant bar on that row — prefer an active run, else the most
+  // recently started one. (A sub-row can hold several sequential, non-overlapping runs; the
+  // chip names the live/latest one. Every bar stays clickable for its own drilldown.)
+  const rowExecId = useMemo(() => {
     const best = new Map<string, { id: string; active: boolean; startedAtMs: number }>();
     for (const b of placedBars) {
+      const key = `${b.laneIndex}:${b.subRow}`;
       const active = isActiveBarStatus(b.status);
-      const prev = best.get(b.workflowId);
+      const prev = best.get(key);
       if (!prev || (active && !prev.active) || (active === prev.active && b.startedAtMs > prev.startedAtMs)) {
-        best.set(b.workflowId, { id: b.executionId, active, startedAtMs: b.startedAtMs });
+        best.set(key, { id: b.executionId, active, startedAtMs: b.startedAtMs });
       }
     }
     return best;
@@ -137,29 +143,34 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
                 aria-hidden="true"
               />
             ))}
-            {lanes.map((lane, i) => (
-              <div
-                key={lane.workflowId}
-                className="absolute right-0 flex flex-col justify-start gap-0.5 overflow-hidden pr-3 pt-[7px]"
-                style={{
-                  top: laneTops.tops[i],
-                  height: lane.subRowCount * OPS_ROW_H,
-                  left: Math.min(lane.depth, 3) * 14,
-                }}
-              >
-                <div className={`flex items-center gap-1 text-[13px] font-label font-medium leading-[16px] ${lane.hasActive ? 'text-on-surface' : 'text-on-surface-variant'}`} title={lane.name}>
-                  {lane.depth > 0 && <span className="shrink-0 text-outline" aria-hidden="true">↳</span>}
-                  <span className="min-w-0 truncate">{lane.name}</span>
-                  {laneExecId.has(lane.workflowId) && (
-                    <CopyableId id={laneExecId.get(lane.workflowId)!.id} />
-                  )}
-                  {lane.subRowCount > 1 && <span className="shrink-0 text-[11px] text-outline">×{lane.subRowCount}</span>}
-                </div>
-                {lane.folderPath !== '/' && (
-                  <div className="truncate text-[11px] text-outline" title={lane.folderPath}>{lane.folderPath}</div>
-                )}
-              </div>
-            ))}
+            {lanes.flatMap((lane, i) =>
+              Array.from({ length: lane.subRowCount }, (_, r) => r).map((r) => {
+                const idKey = `${i}:${r}`;
+                return (
+                  <div
+                    key={`${lane.workflowId}#${r}`}
+                    className="absolute right-0 flex flex-col justify-start gap-0.5 overflow-hidden pr-3 pt-[6px]"
+                    style={{
+                      top: laneTops.tops[i] + r * OPS_ROW_H,
+                      height: OPS_ROW_H,
+                      left: Math.min(lane.depth, 3) * 14,
+                    }}
+                  >
+                    <div
+                      className={`flex items-center gap-1 text-[13px] font-label font-medium leading-[16px] ${lane.hasActive ? 'text-on-surface' : 'text-on-surface-variant'}`}
+                      title={lane.name}
+                    >
+                      {lane.depth > 0 && <span className="shrink-0 text-outline" aria-hidden="true">↳</span>}
+                      <span className="whitespace-nowrap">{lane.name}</span>
+                      {rowExecId.has(idKey) && <CopyableId id={rowExecId.get(idKey)!.id} />}
+                    </div>
+                    {r === 0 && lane.folderPath !== '/' && (
+                      <div className="truncate text-[11px] text-outline" title={lane.folderPath}>{lane.folderPath}</div>
+                    )}
+                  </div>
+                );
+              }),
+            )}
           </div>
         </div>
 
