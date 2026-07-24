@@ -57,7 +57,6 @@ $ApiExe      = Join-Path $AppPath 'NodePilot.Api.exe'
 $initdb      = Join-Path $PgBinPath 'initdb.exe'
 $pg_ctl      = Join-Path $PgBinPath 'pg_ctl.exe'
 $psql        = Join-Path $PgBinPath 'psql.exe'
-$pg_isready  = Join-Path $PgBinPath 'pg_isready.exe'
 $TemplatePath = Join-Path $PSScriptRoot 'appsettings.Desktop.json.template'
 $RenderedConfig = Join-Path $AppPath 'appsettings.Production.json'
 
@@ -73,7 +72,10 @@ New-Item -ItemType Directory -Force -Path $DataPath, $PgData, $SecretsDir, $Logs
 
 function New-RandomSecret([int] $bytes = 32) {
     $buf = New-Object byte[] $bytes
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($buf)
+    # Windows PowerShell 5.1 runs on .NET Framework, which has no static RandomNumberGenerator.Fill
+    # (that is .NET 5+). Use the instance API, which exists on both Framework and modern .NET.
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($buf) } finally { $rng.Dispose() }
     # URL/shell-safe base64 without padding-sensitive characters that complicate connection strings.
     return ([Convert]::ToBase64String($buf)) -replace '[+/=]', ''
 }
@@ -94,7 +96,7 @@ function Get-FreePort([int] $start, [int] $end) {
     throw "No free port available in range $start-$end."
 }
 
-function Set-RestrictedAcl([string] $path, [string[]] $extraReadPrincipals = @()) {
+function Set-RestrictedAcl([string] $path, [string[]] $extraReadPrincipals = @(), [switch] $NoCurrentUser) {
     # SYSTEM + Administrators FullControl, inheritance disabled; optional extra read grants.
     $acl = New-Object System.Security.AccessControl.DirectorySecurity
     if (-not (Test-Path -LiteralPath $path -PathType Container)) {
@@ -107,12 +109,25 @@ function Set-RestrictedAcl([string] $path, [string[]] $extraReadPrincipals = @()
     } else { [System.Security.AccessControl.InheritanceFlags]::None }
     $prop = [System.Security.AccessControl.PropagationFlags]::None
     $allow = [System.Security.AccessControl.AccessControlType]::Allow
-    foreach ($sid in @('S-1-5-18', 'S-1-5-32-544')) {
+    # SYSTEM + Administrators always. The installing user is added too (unless -NoCurrentUser),
+    # because PostgreSQL's initdb/postgres, when started by an admin on Windows, re-exec under a
+    # restricted token that DROPS the Administrators group -- only the user SID survives it, so PG
+    # needs that grant on pgdata/pwfile. -NoCurrentUser is used for the JWT / data-protection key
+    # parent (DataPath): the backend fail-closes the boot if an untrusted principal can mutate it.
+    $fullSids = [System.Collections.ArrayList]@('S-1-5-18', 'S-1-5-32-544')
+    if (-not $NoCurrentUser) { [void]$fullSids.Add(([System.Security.Principal.WindowsIdentity]::GetCurrent()).User.Value) }
+    foreach ($sid in $fullSids) {
         $id = New-Object System.Security.Principal.SecurityIdentifier($sid)
         $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($id, $rights, $inherit, $prop, $allow)))
     }
     foreach ($principal in $extraReadPrincipals) {
-        $id = New-Object System.Security.Principal.NTAccount($principal)
+        # Accept well-known SID strings (locale-invariant) or account names. Names like
+        # "BUILTIN\Users" do not resolve on non-English Windows, so callers pass SIDs.
+        $id = if ($principal -match '^S-\d-') {
+            New-Object System.Security.Principal.SecurityIdentifier($principal)
+        } else {
+            New-Object System.Security.Principal.NTAccount($principal)
+        }
         $read = [System.Security.AccessControl.FileSystemRights]'ReadAndExecute'
         $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($id, $read, $inherit, $prop, $allow)))
     }
@@ -150,6 +165,11 @@ $roleSecretFile  = Join-Path $SecretsDir 'pg-nodepilot.secret'
 $clusterInitialized = Test-Path -LiteralPath (Join-Path $PgData 'PG_VERSION')
 if (-not $clusterInitialized) {
     Write-Step 'Initializing PostgreSQL cluster (initdb)'
+    # Grant the installing user (+ SYSTEM/Admins) FullControl on the still-empty data dir BEFORE
+    # initdb runs. PostgreSQL re-execs under a restricted token that drops Administrators, so it
+    # writes the cluster as the bare user SID and must own this directory. (NetworkService, needed
+    # by the runtime service, is added after init below.)
+    Set-RestrictedAcl -path $PgData
     $superPw = New-RandomSecret
     $pwFile = Join-Path $SecretsDir 'initdb.pw'
     try {
@@ -199,7 +219,7 @@ host    all             all             ::1/128                 scram-sha-256
 Set-RestrictedAcl -path $PgData -extraReadPrincipals @()
 $pgAcl = Get-Acl -LiteralPath $PgData
 $svcRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-    (New-Object System.Security.Principal.NTAccount('NT AUTHORITY\NetworkService')),
+    (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-20')),
     [System.Security.AccessControl.FileSystemRights]::Modify,
     [System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit',
     [System.Security.AccessControl.PropagationFlags]::None,
@@ -216,19 +236,23 @@ $dbSecret = if (Test-Path -LiteralPath $roleSecretFile) {
 }
 
 Invoke-Native $pg_ctl @('-D', $PgData, '-o', "-p $PgPort -c listen_addresses=127.0.0.1", '-w', 'start')
+# PGPASSWORD for the whole block so EVERY psql call authenticates non-interactively; every psql
+# also gets -w (--no-password) so it fails fast instead of ever prompting on a console.
+$prevPgPassword = $env:PGPASSWORD
+$env:PGPASSWORD = $superPw
 try {
-    $env = @{ PGPASSWORD = $superPw }
-    $roleExists = (& $psql '-h' '127.0.0.1' '-p' $PgPort '-U' 'postgres' '-d' 'postgres' '-tAc' "SELECT 1 FROM pg_roles WHERE rolname='$DbRole'" 2>$null)
+    $roleExists = (& $psql '-w' '-h' '127.0.0.1' '-p' "$PgPort" '-U' 'postgres' '-d' 'postgres' '-tAc' "SELECT 1 FROM pg_roles WHERE rolname='$DbRole'" 2>$null)
     if ("$roleExists".Trim() -ne '1') {
-        Invoke-Native $psql @('-h','127.0.0.1','-p',"$PgPort",'-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',"CREATE ROLE $DbRole LOGIN PASSWORD '$dbSecret'") $env
+        Invoke-Native $psql @('-w','-h','127.0.0.1','-p',"$PgPort",'-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',"CREATE ROLE $DbRole LOGIN PASSWORD '$dbSecret'")
     } else {
-        Invoke-Native $psql @('-h','127.0.0.1','-p',"$PgPort",'-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',"ALTER ROLE $DbRole LOGIN PASSWORD '$dbSecret'") $env
+        Invoke-Native $psql @('-w','-h','127.0.0.1','-p',"$PgPort",'-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',"ALTER ROLE $DbRole LOGIN PASSWORD '$dbSecret'")
     }
-    $dbExists = (& $psql '-h' '127.0.0.1' '-p' $PgPort '-U' 'postgres' '-d' 'postgres' '-tAc' "SELECT 1 FROM pg_database WHERE datname='$DbName'" 2>$null)
+    $dbExists = (& $psql '-w' '-h' '127.0.0.1' '-p' "$PgPort" '-U' 'postgres' '-d' 'postgres' '-tAc' "SELECT 1 FROM pg_database WHERE datname='$DbName'" 2>$null)
     if ("$dbExists".Trim() -ne '1') {
-        Invoke-Native $psql @('-h','127.0.0.1','-p',"$PgPort",'-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',"CREATE DATABASE $DbName OWNER $DbRole") $env
+        Invoke-Native $psql @('-w','-h','127.0.0.1','-p',"$PgPort",'-U','postgres','-d','postgres','-v','ON_ERROR_STOP=1','-c',"CREATE DATABASE $DbName OWNER $DbRole")
     }
 } finally {
+    $env:PGPASSWORD = $prevPgPassword
     Invoke-Native $pg_ctl @('-D', $PgData, '-w', 'stop')
 }
 
@@ -259,7 +283,12 @@ $cert = if ($existing) { $existing } else {
         -NotAfter (Get-Date).AddYears(10)
 }
 $certThumbprint = $cert.Thumbprint
-$certSha256 = $cert.GetCertHashString([System.Security.Cryptography.HashAlgorithmName]::SHA256)
+# SHA-256 over the DER cert, uppercase hex without separators (matches Node's fingerprint256 after
+# stripping colons, which the Electron shell pins against). Computed manually so we do not depend on
+# the GetCertHashString(HashAlgorithmName) overload that only exists on .NET Framework 4.8+.
+$sha = [System.Security.Cryptography.SHA256]::Create()
+try { $certSha256 = (($sha.ComputeHash($cert.RawData)) | ForEach-Object { $_.ToString('X2') }) -join '' }
+finally { $sha.Dispose() }
 Write-Host "    Thumbprint=$certThumbprint"
 
 # --- 6. render Production config -------------------------------------------------------------
@@ -326,7 +355,13 @@ $handoff = [ordered]@{
     serviceName       = $ApiServiceName
 }
 [System.IO.File]::WriteAllText($DesktopJson, ($handoff | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
-Set-RestrictedAcl -path $DesktopJson -extraReadPrincipals @('BUILTIN\Users')
+Set-RestrictedAcl -path $DesktopJson -extraReadPrincipals @('S-1-5-32-545')
+
+# Lock DataPath (the JWT / data-protection key parent) BEFORE the API starts: SYSTEM + Admins only,
+# plus Users read/traverse so the Electron shell can reach desktop.json. NO installing-user
+# mutation -- otherwise the backend's key-directory security check fail-closes the boot.
+Set-RestrictedAcl -path $SecretsDir
+Set-RestrictedAcl -path $DataPath -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser
 
 # --- 9. start services + health poll ---------------------------------------------------------
 Write-Step 'Starting services'
@@ -345,9 +380,6 @@ for ($i = 0; $i -lt 90; $i++) {
     } catch { Start-Sleep -Seconds 2 }
 }
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
-
-Set-RestrictedAcl -path $SecretsDir
-Set-RestrictedAcl -path $DataPath -extraReadPrincipals @('BUILTIN\Users')
 
 if (-not $ready) {
     Write-Warning "API did not report /healthz/ready within the timeout. Check $LogsDir and the '$ApiServiceName' service."
