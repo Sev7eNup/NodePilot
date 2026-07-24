@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';" />
+  <title>NodePilot — First-time setup</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; height: 100vh; display: flex; align-items: center; justify-content: center;
+      font-family: "Segoe UI", system-ui, sans-serif; background: #0b1020; color: #e6e8ef;
+    }
+    .card { width: 380px; padding: 32px; }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    p.sub { margin: 0 0 24px; font-size: 13px; opacity: .7; }
+    label { display: block; font-size: 12px; margin: 16px 0 6px; opacity: .85; }
+    input {
+      width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #2a3350;
+      background: #141a2e; color: #e6e8ef; font-size: 14px;
+    }
+    input:focus { outline: 2px solid #4f7cff; border-color: transparent; }
+    button {
+      margin-top: 24px; width: 100%; padding: 11px; border: 0; border-radius: 8px;
+      background: #4f7cff; color: #fff; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: default; }
+    .error { margin-top: 16px; font-size: 13px; color: #ff8080; min-height: 18px; }
+  </style>
+</head>
+<body>
+  <form class="card" id="form" autocomplete="off">
+    <h1>Welcome to NodePilot</h1>
+    <p class="sub">Create the local administrator account to finish setup.</p>
+
+    <label for="username">Administrator username</label>
+    <input id="username" name="username" type="text" required minlength="1" autofocus />
+
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" required minlength="8" />
+
+    <label for="confirm">Confirm password</label>
+    <input id="confirm" name="confirm" type="password" required minlength="8" />
+
+    <button id="submit" type="submit">Create administrator</button>
+    <div class="error" id="error" role="alert"></div>
+  </form>
+
+  <script>
+    (function () {
+      var form = document.getElementById('form');
+      var submit = document.getElementById('submit');
+      var errorEl = document.getElementById('error');
+
+      form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        errorEl.textContent = '';
+        var username = document.getElementById('username').value.trim();
+        var password = document.getElementById('password').value;
+        var confirm = document.getElementById('confirm').value;
+
+        if (password.length < 8) { errorEl.textContent = 'Password must be at least 8 characters.'; return; }
+        if (password !== confirm) { errorEl.textContent = 'Passwords do not match.'; return; }
+
+        submit.disabled = true;
+        submit.textContent = 'Creating…';
+        window.nodepilotSetup.completeAdminSetup({ username: username, password: password })
+          .then(function (result) {
+            if (!result || !result.ok) {
+              errorEl.textContent = (result && result.error) || 'Setup failed.';
+              submit.disabled = false;
+              submit.textContent = 'Create administrator';
+            }
+            // On success the main process closes this window and opens the app.
+          })
+          .catch(function (e) {
+            errorEl.textContent = String(e && e.message ? e.message : e);
+            submit.disabled = false;
+            submit.textContent = 'Create administrator';
+          });
+      });
+    })();
+  </script>
+</body>
+</html>
