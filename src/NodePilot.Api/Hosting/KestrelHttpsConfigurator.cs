@@ -1,6 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
+using NodePilot.Api.Configuration;
 
 namespace NodePilot.Api.Hosting;
 
@@ -23,6 +24,13 @@ public static class KestrelHttpsConfigurator
         public string CertificateLocation { get; init; } = "LocalMachine";
         public string? CertificateThumbprint { get; init; }
         public bool RedirectHttpToHttps { get; init; } = true;
+
+        /// <summary>
+        /// When true, Kestrel binds to loopback (127.0.0.1 / ::1) only instead of every
+        /// interface. Set from <c>Deployment:Mode=Desktop</c>: the desktop package is a
+        /// single-machine install whose API must never be reachable from the network.
+        /// </summary>
+        public bool LoopbackOnly { get; init; }
     }
 
     public static Options ReadOptions(IConfiguration config)
@@ -40,6 +48,8 @@ public static class KestrelHttpsConfigurator
                 ? "LocalMachine" : section["CertificateLocation"]!,
             CertificateThumbprint = section["CertificateThumbprint"],
             RedirectHttpToHttps = section.GetValue<bool?>("RedirectHttpToHttps") ?? true,
+            // Desktop posture forces loopback binding regardless of the Kestrel section.
+            LoopbackOnly = DeploymentModeReader.IsDesktop(config),
         };
     }
 
@@ -137,11 +147,19 @@ public static class KestrelHttpsConfigurator
         var httpsProtocols = ResolveHttpsProtocols(windowsAuthEnabled);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
+            // Desktop mode binds loopback only (single-machine install, never network-reachable);
+            // server mode binds every interface behind the TLS terminator, as before.
+            void Bind(int port, Action<ListenOptions> configure)
+            {
+                if (opts.LoopbackOnly) kestrel.ListenLocalhost(port, configure);
+                else kestrel.ListenAnyIP(port, configure);
+            }
+
             if (opts.BindHttp)
             {
-                kestrel.ListenAnyIP(opts.HttpPort);
+                Bind(opts.HttpPort, _ => { });
             }
-            kestrel.ListenAnyIP(opts.HttpsPort, listen =>
+            Bind(opts.HttpsPort, listen =>
             {
                 listen.Protocols = httpsProtocols;
                 listen.UseHttps(cert);

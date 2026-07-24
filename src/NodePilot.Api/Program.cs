@@ -7,6 +7,7 @@ using NodePilot.Api.Configuration;
 using NodePilot.Api.Hosting;
 using NodePilot.Telemetry;
 using Microsoft.AspNetCore.HostFiltering;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Serilog;
 
@@ -380,6 +381,21 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
     var bootstrapDbLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    // Desktop mode: the bundled Postgres runs as its own Windows service and may still be
+    // starting when the API service comes up (the service `depend=` narrows but doesn't fully
+    // close the race, especially on first boot after initdb). Wait up to 120s for connectivity
+    // before migrating. Only reachability is awaited — a schema/migration error is never retried
+    // and surfaces immediately from Bootstrap below.
+    if (DeploymentModeReader.IsDesktop(builder.Configuration))
+    {
+        await DatabaseReadinessGate.WaitForDatabaseAsync(
+            canConnectAsync: token => db.Database.CanConnectAsync(token),
+            timeout: TimeSpan.FromSeconds(120),
+            pollInterval: TimeSpan.FromSeconds(2),
+            logger: bootstrapDbLogger);
+    }
+
     MigrationBootstrapper.Bootstrap(db, bootstrapDbLogger);
 
     // Surface the active secret protector so operators see "DPAPI" vs "AES-GCM" in the

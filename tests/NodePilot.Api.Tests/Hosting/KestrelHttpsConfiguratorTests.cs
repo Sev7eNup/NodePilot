@@ -64,6 +64,18 @@ public class KestrelHttpsConfiguratorTests
         opts.RedirectHttpToHttps.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("Desktop", true)]
+    [InlineData("desktop", true)]
+    [InlineData("Server", false)]
+    [InlineData(null, false)]
+    public void ReadOptions_LoopbackOnly_TracksDeploymentMode(string? mode, bool expected)
+    {
+        var kv = new Dictionary<string, string?> { ["Kestrel:Https:Enabled"] = "true" };
+        if (mode is not null) kv["Deployment:Mode"] = mode;
+        KestrelHttpsConfigurator.ReadOptions(Build(kv)).LoopbackOnly.Should().Be(expected);
+    }
+
     [Fact]
     public void ParseStoreLocation_UnknownValue_Throws()
     {
