@@ -149,7 +149,7 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
                 return (
                   <div
                     key={`${lane.workflowId}#${r}`}
-                    className="absolute right-0 flex flex-col justify-start gap-0.5 overflow-hidden pr-3 pt-[6px]"
+                    className="absolute right-0 flex flex-col justify-start gap-0 overflow-hidden pr-3 pt-[4px]"
                     style={{
                       top: laneTops.tops[i] + r * OPS_ROW_H,
                       height: OPS_ROW_H,
@@ -165,7 +165,7 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
                       {rowExecId.has(idKey) && <CopyableId id={rowExecId.get(idKey)!.id} />}
                     </div>
                     {r === 0 && lane.folderPath !== '/' && (
-                      <div className="truncate text-[11px] text-outline" title={lane.folderPath}>{lane.folderPath}</div>
+                      <div className="truncate text-[11px] leading-[14px] text-on-surface-variant" title={lane.folderPath}>{lane.folderPath}</div>
                     )}
                   </div>
                 );
