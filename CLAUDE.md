@@ -366,7 +366,7 @@ Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloa
 
 ## AuditLog
 
-`IAuditWriter` injizieren, `await _audit.LogAsync(AuditActions.VerbNomen, "Resource", resourceId, detailsJson, ct)` **nach** `SaveChanges`. Schreibfehler darf Mutation nie abbrechen. Passwörter/Secrets nie in Details.
+`IAuditWriter` injizieren, `await _audit.LogAsync(AuditActions.VerbNomen, "Resource", resourceId, detailsJson, ct)` **nach** `SaveChanges`. Schreibfehler darf normale Mutation nie abbrechen. Ausnahme: DB-Admin-Write-SQL läuft fail-closed — ohne vorab persistierten `DBADMIN_SQL_WRITE_ATTEMPTED`-Eintrag wird das SQL nicht ausgeführt. Passwörter/Secrets nie in Details.
 
 Audit-Codes folgen dem Muster `VERB_NOMEN` und sind **zentral** in `NodePilot.Core.Audit.AuditActions` registriert — nie ein rohes String-Literal am Call-Site (Guard: `AuditActionsCatalogTests`). Pipeline: `IAuditStager` (Core) + `IAuditWriter` (Api, wrappt Stager); Archive gzip + SHA-256-Sidecar. Code-Übersicht: `docs/claude-reference.md`.
 
