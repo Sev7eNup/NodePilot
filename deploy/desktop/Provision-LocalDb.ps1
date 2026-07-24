@@ -353,5 +353,35 @@ if (-not $ready) {
     Write-Warning "API did not report /healthz/ready within the timeout. Check $LogsDir and the '$ApiServiceName' service."
     exit 1
 }
+
+# --- 10. admin bootstrap handoff (first run only) --------------------------------------------
+# The API wrote a SYSTEM-owned one-shot setup token under DataPath during first boot. Copy it
+# into the installing user's profile so the user-context Electron shell (started next) can read
+# it and drive first-run admin creation. ACL-restricted to the installing user + SYSTEM. No-op
+# on re-install (token absent once users exist).
+Write-Step 'Writing admin setup handoff'
+$tokenPath = Join-Path $DataPath 'admin-setup.token'
+if (Test-Path -LiteralPath $tokenPath) {
+    $handoffDir = Join-Path $env:LOCALAPPDATA 'NodePilot'
+    New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
+    $handoffPath = Join-Path $handoffDir 'admin-setup.handoff'
+    $tokenValue = [System.IO.File]::ReadAllText($tokenPath)
+    $userSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User
+    if (Test-Path -LiteralPath $handoffPath) { Remove-Item -LiteralPath $handoffPath -Force }
+    New-Item -ItemType File -Path $handoffPath | Out-Null
+    $hacl = New-Object System.Security.AccessControl.FileSecurity
+    $hacl.SetAccessRuleProtection($true, $false)
+    $hacl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $userSid, [System.Security.AccessControl.FileSystemRights]::FullControl,
+        [System.Security.AccessControl.AccessControlType]::Allow)))
+    $hacl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+        (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-18')),
+        [System.Security.AccessControl.FileSystemRights]::FullControl,
+        [System.Security.AccessControl.AccessControlType]::Allow)))
+    Set-Acl -LiteralPath $handoffPath -AclObject $hacl
+    [System.IO.File]::WriteAllText($handoffPath, $tokenValue, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Host "    First-run handoff written to $handoffPath"
+}
+
 Write-Host "NodePilot desktop runtime provisioned. Origin: $origin" -ForegroundColor Green
 exit 0
