@@ -41,7 +41,12 @@ ist eine flache runScript-Variable und bleibt in Configs Literal — daher nutze
 - `test-master-all-activities.json` — lebendes **Styleguide-Referenz-Beispiel** (siehe `docs/workflow-styleguide.md`)
   und Few-Shot für die KI-Workflow-Generierung (`src/NodePilot.Ai/Prompts/workflow-example.json`). Nicht verändern.
 
+## Realistische Betriebs-Beispiele (hand-gebaut)
+
+- `example-windows-update-health-workflow.json` — Windows-Update-Health-Check eines Hosts (CBS-/WU-Log-Tails, Service-/Registry-/WMI-/FS-Probes, `decision`-Klassifikation).
+- `endsystem-log-korrelation-workflow.json` — **Stündliche KI-Log-Korrelation** über drei Endsysteme: SCCM-Server (CCM/CBS/VSS), Billing-Block (konfigurierbare App-Logs) und PostgreSQL-DB-Server. `scheduleTrigger` (`0 0 * * * ? *`) + manueller Run; je System `runScript`-Sammler → `llmQuery`-Triage, dann `waitAll` → `llmQuery`-Korrelation (`jsonMode`) → `jsonQuery` (severity/summary) → `decision` → Log + `returnData`. Konfiguration (Hosts, Log-Pfade, Tail, Fehler-Regex) im **CONFIG-Block des `init`-Nodes**. Braucht `Llm:Enabled=true`; die drei Ziel-Hosts sind Platzhalter-Hostnamen → für echten WinRM-Lauf via `/api/machines` + `/api/credentials` registrieren und im CONFIG-Block eintragen.
+
 ## Kreative Demo-Workflows (hand-gebaut)
 
 `dog-care-workflow.json`, `rose-garden-care-workflow.json`, `example-uboot-workflow.json`,
-`example-windows-update-health-workflow.json`, `decorative-flower.json`, `male-health-workflow.json`.
+`decorative-flower.json`, `male-health-workflow.json`.

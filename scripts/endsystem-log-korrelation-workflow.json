@@ -1,0 +1,762 @@
+{
+  "schema": "nodepilot-workflow-export/v1",
+  "exportVersion": 1,
+  "exportedAt": "2026-07-24T00:00:00Z",
+  "workflows": [
+    {
+      "name": "Endsystem-Log-Korrelation (SCCM / Billing / DB)",
+      "description": "Sammelt stuendlich die relevanten Logs von SCCM-Server (CCM/CBS/VSS), Billing-Block (konfigurierbare App-Logs) und PostgreSQL-DB-Server, triagiert jedes System per LLM und korreliert die drei Triagen zu Root-Cause + Massnahmen (jsonMode). Decision routet nach severity; Ergebnis als Log + returnData. Konfiguration im CONFIG-Block des init-Nodes. Benoetigt Llm:Enabled=true; die 3 Ziel-Hosts sind Platzhalter-Hostnamen (fuer echten WinRM-Lauf via /api/machines + /api/credentials registrieren).",
+      "definition": {
+        "nodes": [
+          {
+            "id": "note_a",
+            "type": "stickyNote",
+            "position": {
+              "x": 360,
+              "y": 40
+            },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "text": "Phase A — Trigger & Init\nStuendlicher Schedule (0 0 * * * ? *) + manueller \"Run now\". init traegt den CONFIG-Block (Hosts/Pfade/Tuning) und reicht ihn als cfg.param.* weiter.",
+              "fontSize": 13,
+              "disabled": true
+            }
+          },
+          {
+            "id": "note_b",
+            "type": "stickyNote",
+            "position": {
+              "x": 1080,
+              "y": 40
+            },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "text": "Phase B — Sammeln + Pro-System-Triage\n3 Lanes (SCCM / Billing / PostgreSQL-DB): runScript liest die Logs remote, ein llmQuery triagiert je System.",
+              "fontSize": 13,
+              "disabled": true
+            }
+          },
+          {
+            "id": "note_c",
+            "type": "stickyNote",
+            "position": {
+              "x": 2440,
+              "y": 40
+            },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "text": "Phase C — Korrelation (LLM)\nwaitAll fuehrt die 3 Triagen zusammen; correlate (jsonMode) bildet systemuebergreifend Root-Cause + Massnahmen. jsonQuery zieht severity + summary.",
+              "fontSize": 13,
+              "disabled": true
+            }
+          },
+          {
+            "id": "note_d",
+            "type": "stickyNote",
+            "position": {
+              "x": 3560,
+              "y": 40
+            },
+            "data": {
+              "label": "Note",
+              "activityType": "note",
+              "text": "Phase D — Bewertung & Ausgabe\nDecision routet nach severity, jeder Zweig loggt, waitNofM(1) fuehrt zusammen, returnData liefert die strukturierte Zusammenfassung.",
+              "fontSize": 13,
+              "disabled": true
+            }
+          },
+          {
+            "id": "trg_sched",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 440
+            },
+            "data": {
+              "label": "Schedule: stuendlich",
+              "activityType": "scheduleTrigger",
+              "config": {
+                "cronExpression": "0 0 * * * ? *",
+                "description": "Sammelt & korreliert Endsystem-Logs jede Stunde."
+              }
+            }
+          },
+          {
+            "id": "trg_manual",
+            "type": "activity",
+            "position": {
+              "x": 0,
+              "y": 760
+            },
+            "data": {
+              "label": "Manual Trigger: Run now",
+              "activityType": "manualTrigger",
+              "config": {
+                "title": "Endsystem-Log-Korrelation — On-Demand",
+                "parameters": []
+              }
+            }
+          },
+          {
+            "id": "init",
+            "type": "activity",
+            "position": {
+              "x": 460,
+              "y": 600
+            },
+            "data": {
+              "label": "runScript: CONFIG (Hosts/Pfade)",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "outputVariable": "cfg",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "script": "# ============================================================\n#  CONFIG  —  einzige Editierstelle des Workflows.\n#  Hostnamen, Log-Pfade und Tuning-Werte hier anpassen.\n#  Alle Werte werden als {{cfg.param.*}} an die Read-Nodes\n#  weitergereicht (auch das Node-Feld targetMachineId).\n# ============================================================\n$sccmHost        = \"SCCM-Server\"\n$billingHost     = \"Billing-Block\"\n$dbHost          = \"BusinessStore-DB\"\n$tailLines       = \"300\"\n$errRegex        = \"error|fail|fatal|exception|denied|0x8\"\n$sccmLogDir      = \"C:\\Windows\\CCM\\Logs\"\n$cbsLog          = \"C:\\Windows\\Logs\\CBS\\CBS.log\"\n$billingLogPaths = \"C:\\Billing\\Logs\\*.log;C:\\ProgramData\\Billing\\*.log\"\n$pgLogDir        = \"C:\\Program Files\\PostgreSQL\\16\\data\\log\"\n$runStamp        = (Get-Date).ToString(\"s\")"
+              }
+            }
+          },
+          {
+            "id": "log_start",
+            "type": "activity",
+            "position": {
+              "x": 800,
+              "y": 600
+            },
+            "data": {
+              "label": "log: Lauf gestartet",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "[LogCorr] Lauf gestartet @ {{cfg.param.runStamp}} — tail={{cfg.param.tailLines}} — Ziele: {{cfg.param.sccmHost}} / {{cfg.param.billingHost}} / {{cfg.param.dbHost}}"
+              }
+            }
+          },
+          {
+            "id": "read_sccm",
+            "type": "activity",
+            "position": {
+              "x": 1120,
+              "y": 200
+            },
+            "data": {
+              "label": "runScript: SCCM CCM+CBS+VSS",
+              "activityType": "runScript",
+              "targetMachineId": "{{cfg.param.sccmHost}}",
+              "outputVariable": "sccm",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "# SCCM-Server: CCM-Client-Logs + CBS + VSS-Events einsammeln\n$tail = [int]{{cfg.param.tailLines}}\n$rx   = {{cfg.param.errRegex}}\n$dir  = {{cfg.param.sccmLogDir}}\n$cbs  = {{cfg.param.cbsLog}}\n$lines = New-Object System.Collections.Generic.List[string]\nif (Test-Path $dir) {\n  Get-ChildItem -Path $dir -Filter *.log -EA SilentlyContinue | ForEach-Object {\n    Select-String -Path $_.FullName -Pattern $rx -EA SilentlyContinue | Select-Object -Last 40 | ForEach-Object {\n      $lines.Add((\"CCM \" + $_.Filename + \":\" + $_.LineNumber + \" \" + $_.Line.Trim())) }\n  }\n}\nSelect-String -Path $cbs -Pattern $rx -EA SilentlyContinue | Select-Object -Last 60 | ForEach-Object {\n  $lines.Add((\"CBS \" + $_.Line.Trim())) }\ntry {\n  Get-WinEvent -FilterHashtable @{LogName=\"Application\"; ProviderName=@(\"VSS\",\"volsnap\")} -MaxEvents 40 -EA SilentlyContinue |\n    Where-Object { $_.LevelDisplayName -eq \"Error\" -or $_.LevelDisplayName -eq \"Warning\" } | ForEach-Object {\n      $lines.Add((\"VSS [\" + $_.TimeCreated + \"] \" + $_.LevelDisplayName + \" \" + $_.Id + \" \" + (($_.Message -split \"`n\")[0]).Trim())) }\n} catch { }\n$errCount = \"$($lines.Count)\"\n$digest = ($lines | Select-Object -Last $tail) -join \"`n\"\nif ([string]::IsNullOrWhiteSpace($digest)) { $digest = \"Keine Fehler-/Warn-Eintraege in CCM/CBS/VSS gefunden.\" }"
+              }
+            }
+          },
+          {
+            "id": "triage_sccm",
+            "type": "activity",
+            "position": {
+              "x": 1460,
+              "y": 200
+            },
+            "data": {
+              "label": "llmQuery: Triage SCCM",
+              "activityType": "llmQuery",
+              "outputVariable": "sccmAi",
+              "config": {
+                "systemPrompt": "Du bist ein SCCM-/Windows-Servicing-Experte. Analysiere die folgenden Log-Auszuege EINES Servers. Nenne knapp: erkannte Probleme, Schweregrad, wahrscheinliche Ursache. Maximal 8 Bullet-Zeilen, Deutsch. Wenn nichts auffaellt: \"unauffaellig\".",
+                "prompt": "SCCM-Server Log-Digest:\n\n{{sccm.param.digest}}",
+                "jsonMode": false
+              }
+            }
+          },
+          {
+            "id": "read_billing",
+            "type": "activity",
+            "position": {
+              "x": 1120,
+              "y": 600
+            },
+            "data": {
+              "label": "runScript: Billing-Logs",
+              "activityType": "runScript",
+              "targetMachineId": "{{cfg.param.billingHost}}",
+              "outputVariable": "billing",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "# Billing-Block: konfigurierbare App-Log-Pfade + CBS + Application-EventLog\n$tail  = [int]{{cfg.param.tailLines}}\n$rx    = {{cfg.param.errRegex}}\n$paths = {{cfg.param.billingLogPaths}}\n$cbs   = {{cfg.param.cbsLog}}\n$lines = New-Object System.Collections.Generic.List[string]\nforeach ($p in ($paths -split \";\")) {\n  $p = $p.Trim()\n  if ([string]::IsNullOrWhiteSpace($p)) { continue }\n  Get-ChildItem -Path $p -EA SilentlyContinue | ForEach-Object {\n    Select-String -Path $_.FullName -Pattern $rx -EA SilentlyContinue | Select-Object -Last 40 | ForEach-Object {\n      $lines.Add((\"APP \" + $_.Filename + \":\" + $_.LineNumber + \" \" + $_.Line.Trim())) }\n  }\n}\nSelect-String -Path $cbs -Pattern $rx -EA SilentlyContinue | Select-Object -Last 40 | ForEach-Object {\n  $lines.Add((\"CBS \" + $_.Line.Trim())) }\ntry {\n  Get-WinEvent -FilterHashtable @{LogName=\"Application\"; Level=@(1,2,3)} -MaxEvents 40 -EA SilentlyContinue | ForEach-Object {\n    $lines.Add((\"EVT [\" + $_.TimeCreated + \"] \" + $_.LevelDisplayName + \" \" + $_.ProviderName + \" \" + $_.Id)) }\n} catch { }\n$errCount = \"$($lines.Count)\"\n$digest = ($lines | Select-Object -Last $tail) -join \"`n\"\nif ([string]::IsNullOrWhiteSpace($digest)) { $digest = \"Keine Billing-/CBS-/Event-Eintraege gefunden (Pfade in CONFIG pruefen).\" }"
+              }
+            }
+          },
+          {
+            "id": "triage_billing",
+            "type": "activity",
+            "position": {
+              "x": 1460,
+              "y": 600
+            },
+            "data": {
+              "label": "llmQuery: Triage Billing",
+              "activityType": "llmQuery",
+              "outputVariable": "billingAi",
+              "config": {
+                "systemPrompt": "Du bist ein Applikations-Betriebsexperte fuer ein Billing-System. Analysiere die folgenden Log-Auszuege EINES Servers. Nenne knapp: erkannte Probleme, Schweregrad, wahrscheinliche Ursache. Maximal 8 Bullet-Zeilen, Deutsch. Wenn nichts auffaellt: \"unauffaellig\".",
+                "prompt": "Billing-Block Log-Digest:\n\n{{billing.param.digest}}",
+                "jsonMode": false
+              }
+            }
+          },
+          {
+            "id": "read_db",
+            "type": "activity",
+            "position": {
+              "x": 1120,
+              "y": 1000
+            },
+            "data": {
+              "label": "runScript: Postgres+CBS+EVT",
+              "activityType": "runScript",
+              "targetMachineId": "{{cfg.param.dbHost}}",
+              "outputVariable": "dbsrv",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 120,
+                "script": "# Business-Store-DB (PostgreSQL): neuestes pg-Log + CBS + Application-EventLog\n$tail = [int]{{cfg.param.tailLines}}\n$dir  = {{cfg.param.pgLogDir}}\n$cbs  = {{cfg.param.cbsLog}}\n$lines = New-Object System.Collections.Generic.List[string]\nif (Test-Path $dir) {\n  $newest = Get-ChildItem -Path $dir -Filter *.log -EA SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1\n  if ($newest) {\n    Get-Content -Path $newest.FullName -Tail $tail -EA SilentlyContinue | Where-Object { $_ -match \"ERROR|FATAL|PANIC|WARNING\" } | ForEach-Object {\n      $lines.Add((\"PG \" + $_.Trim())) }\n  }\n}\nSelect-String -Path $cbs -Pattern \"error|fail|fatal\" -EA SilentlyContinue | Select-Object -Last 30 | ForEach-Object {\n  $lines.Add((\"CBS \" + $_.Line.Trim())) }\ntry {\n  Get-WinEvent -FilterHashtable @{LogName=\"Application\"; ProviderName=@(\"PostgreSQL\")} -MaxEvents 40 -EA SilentlyContinue | ForEach-Object {\n    $lines.Add((\"EVT [\" + $_.TimeCreated + \"] \" + $_.LevelDisplayName + \" \" + $_.Id + \" \" + (($_.Message -split \"`n\")[0]).Trim())) }\n} catch { }\n$errCount = \"$($lines.Count)\"\n$digest = ($lines | Select-Object -Last $tail) -join \"`n\"\nif ([string]::IsNullOrWhiteSpace($digest)) { $digest = \"Keine Postgres-/CBS-/Event-Eintraege gefunden.\" }"
+              }
+            }
+          },
+          {
+            "id": "triage_db",
+            "type": "activity",
+            "position": {
+              "x": 1460,
+              "y": 1000
+            },
+            "data": {
+              "label": "llmQuery: Triage DB",
+              "activityType": "llmQuery",
+              "outputVariable": "dbAi",
+              "config": {
+                "systemPrompt": "Du bist ein PostgreSQL-DBA. Analysiere die folgenden Log-Auszuege EINES Servers. Nenne knapp: erkannte Probleme, Schweregrad, wahrscheinliche Ursache. Maximal 8 Bullet-Zeilen, Deutsch. Wenn nichts auffaellt: \"unauffaellig\".",
+                "prompt": "PostgreSQL-DB-Server Log-Digest:\n\n{{dbsrv.param.digest}}",
+                "jsonMode": false
+              }
+            }
+          },
+          {
+            "id": "join_collect",
+            "type": "activity",
+            "position": {
+              "x": 1800,
+              "y": 600
+            },
+            "data": {
+              "label": "Junction: waitAll (3)",
+              "activityType": "junction",
+              "outputVariable": "join",
+              "config": {
+                "mode": "waitAll"
+              }
+            }
+          },
+          {
+            "id": "log_collected",
+            "type": "activity",
+            "position": {
+              "x": 2140,
+              "y": 600
+            },
+            "data": {
+              "label": "log: Logs gesammelt",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "[LogCorr] Logs gesammelt — SCCM err={{sccm.param.errCount}}, Billing err={{billing.param.errCount}}, DB err={{dbsrv.param.errCount}} — starte Korrelation"
+              }
+            }
+          },
+          {
+            "id": "correlate",
+            "type": "activity",
+            "position": {
+              "x": 2480,
+              "y": 600
+            },
+            "data": {
+              "label": "llmQuery: Korrelation (JSON)",
+              "activityType": "llmQuery",
+              "outputVariable": "ai",
+              "config": {
+                "systemPrompt": "Du bist ein Senior-Betriebsingenieur fuer Windows, SCCM und PostgreSQL. Du erhaeltst drei Vor-Triagen (SCCM-Server, Billing-Block, PostgreSQL-DB-Server). Korreliere systemuebergreifend, bestimme die wahrscheinlichste gemeinsame Ursache, bewerte den Gesamt-Schweregrad und nenne konkrete, umsetzbare Massnahmen. Antworte AUSSCHLIESSLICH mit einem einzigen JSON-Objekt — kein Markdown, kein Freitext davor oder danach.",
+                "prompt": "Zeitpunkt: {{cfg.param.runStamp}}\nFehlerzahlen: SCCM={{sccm.param.errCount}}, Billing={{billing.param.errCount}}, DB={{dbsrv.param.errCount}}\n\n=== Triage SCCM-Server ===\n{{sccmAi.output}}\n\n=== Triage Billing-Block ===\n{{billingAi.output}}\n\n=== Triage PostgreSQL-DB ===\n{{dbAi.output}}\n\nGib GENAU dieses JSON-Schema zurueck (severity = critical | warning | healthy):\n{\"severity\":\"warning\",\"correlated\":true,\"rootCause\":\"...\",\"findings\":[\"...\"],\"recommendedActions\":[\"...\"],\"summary\":\"...\"}",
+                "jsonMode": true,
+                "timeoutSeconds": 120
+              }
+            }
+          },
+          {
+            "id": "extract_sev",
+            "type": "activity",
+            "position": {
+              "x": 2820,
+              "y": 600
+            },
+            "data": {
+              "label": "jsonQuery: severity",
+              "activityType": "jsonQuery",
+              "outputVariable": "sev",
+              "config": {
+                "source": "inline",
+                "content": "{{ai.output}}",
+                "jsonPath": "$.severity",
+                "resultMode": "single"
+              }
+            }
+          },
+          {
+            "id": "extract_summary",
+            "type": "activity",
+            "position": {
+              "x": 3160,
+              "y": 600
+            },
+            "data": {
+              "label": "jsonQuery: summary",
+              "activityType": "jsonQuery",
+              "outputVariable": "summ",
+              "config": {
+                "source": "inline",
+                "content": "{{ai.output}}",
+                "jsonPath": "$.summary",
+                "resultMode": "single"
+              }
+            }
+          },
+          {
+            "id": "decision_sev",
+            "type": "activity",
+            "position": {
+              "x": 3500,
+              "y": 600
+            },
+            "data": {
+              "label": "Decision: severity",
+              "activityType": "decision",
+              "outputVariable": "route",
+              "config": {
+                "cases": [
+                  {
+                    "name": "critical",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "sev",
+                        "field": "output"
+                      },
+                      "op": "==",
+                      "right": {
+                        "kind": "literal",
+                        "value": "critical"
+                      }
+                    }
+                  },
+                  {
+                    "name": "warning",
+                    "condition": {
+                      "type": "comparison",
+                      "left": {
+                        "kind": "variable",
+                        "stepId": "sev",
+                        "field": "output"
+                      },
+                      "op": "==",
+                      "right": {
+                        "kind": "literal",
+                        "value": "warning"
+                      }
+                    }
+                  }
+                ],
+                "defaultCaseName": "healthy"
+              }
+            }
+          },
+          {
+            "id": "case_critical",
+            "type": "activity",
+            "position": {
+              "x": 3840,
+              "y": 300
+            },
+            "data": {
+              "label": "log: CRITICAL",
+              "activityType": "log",
+              "config": {
+                "level": "error",
+                "message": "[LogCorr] CRITICAL — {{summ.output}} | SCCM={{sccm.param.errCount}} Billing={{billing.param.errCount}} DB={{dbsrv.param.errCount}}"
+              }
+            }
+          },
+          {
+            "id": "case_warning",
+            "type": "activity",
+            "position": {
+              "x": 3840,
+              "y": 600
+            },
+            "data": {
+              "label": "log: WARNING",
+              "activityType": "log",
+              "config": {
+                "level": "warning",
+                "message": "[LogCorr] WARNING — {{summ.output}} | SCCM={{sccm.param.errCount}} Billing={{billing.param.errCount}} DB={{dbsrv.param.errCount}}"
+              }
+            }
+          },
+          {
+            "id": "case_healthy",
+            "type": "activity",
+            "position": {
+              "x": 3840,
+              "y": 900
+            },
+            "data": {
+              "label": "log: HEALTHY",
+              "activityType": "log",
+              "config": {
+                "level": "info",
+                "message": "[LogCorr] HEALTHY — keine korrelierten Probleme. {{summ.output}}"
+              }
+            }
+          },
+          {
+            "id": "join_act",
+            "type": "activity",
+            "position": {
+              "x": 4180,
+              "y": 600
+            },
+            "data": {
+              "label": "Junction: waitNofM (1/3)",
+              "activityType": "junction",
+              "outputVariable": "joinAct",
+              "config": {
+                "mode": "waitNofM",
+                "requiredCount": 1
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 4520,
+              "y": 600
+            },
+            "data": {
+              "label": "returnData: Zusammenfassung",
+              "activityType": "returnData",
+              "config": {
+                "data": {
+                  "severity": "{{sev.output}}",
+                  "summary": "{{summ.output}}",
+                  "route": "{{route.param.case}}",
+                  "sccmErrors": "{{sccm.param.errCount}}",
+                  "billingErrors": "{{billing.param.errCount}}",
+                  "dbErrors": "{{dbsrv.param.errCount}}",
+                  "aiAnalysis": "{{ai.output}}",
+                  "runStamp": "{{cfg.param.runStamp}}"
+                }
+              }
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "e_sched_init",
+            "source": "trg_sched",
+            "target": "init",
+            "type": "labeled",
+            "data": {
+              "label": "Schedule (1h)"
+            }
+          },
+          {
+            "id": "e_manual_init",
+            "source": "trg_manual",
+            "target": "init",
+            "type": "labeled",
+            "data": {
+              "label": "Run now"
+            }
+          },
+          {
+            "id": "e_init_logstart",
+            "source": "init",
+            "target": "log_start",
+            "type": "labeled",
+            "data": {
+              "label": "On Success",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "cfg",
+                  "field": "success"
+                },
+                "op": "isTrue"
+              }
+            }
+          },
+          {
+            "id": "e_logstart_sccm",
+            "source": "log_start",
+            "target": "read_sccm",
+            "type": "labeled",
+            "sourceHandle": "top",
+            "data": {
+              "label": "→ SCCM"
+            }
+          },
+          {
+            "id": "e_logstart_billing",
+            "source": "log_start",
+            "target": "read_billing",
+            "type": "labeled",
+            "data": {
+              "label": "→ Billing"
+            }
+          },
+          {
+            "id": "e_logstart_db",
+            "source": "log_start",
+            "target": "read_db",
+            "type": "labeled",
+            "sourceHandle": "bottom",
+            "data": {
+              "label": "→ DB"
+            }
+          },
+          {
+            "id": "e_sccm_triage",
+            "source": "read_sccm",
+            "target": "triage_sccm",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_billing_triage",
+            "source": "read_billing",
+            "target": "triage_billing",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_db_triage",
+            "source": "read_db",
+            "target": "triage_db",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_triage_sccm_join",
+            "source": "triage_sccm",
+            "target": "join_collect",
+            "type": "labeled",
+            "targetHandle": "top",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_triage_billing_join",
+            "source": "triage_billing",
+            "target": "join_collect",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_triage_db_join",
+            "source": "triage_db",
+            "target": "join_collect",
+            "type": "labeled",
+            "targetHandle": "bottom",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_join_logcoll",
+            "source": "join_collect",
+            "target": "log_collected",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_logcoll_correlate",
+            "source": "log_collected",
+            "target": "correlate",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_correlate_sev",
+            "source": "correlate",
+            "target": "extract_sev",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_sev_summary",
+            "source": "extract_sev",
+            "target": "extract_summary",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_summary_decision",
+            "source": "extract_summary",
+            "target": "decision_sev",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_dec_critical",
+            "source": "decision_sev",
+            "target": "case_critical",
+            "type": "labeled",
+            "sourceHandle": "top",
+            "targetHandle": "bottom",
+            "data": {
+              "label": "case=critical",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "route",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "critical"
+                }
+              }
+            }
+          },
+          {
+            "id": "e_dec_warning",
+            "source": "decision_sev",
+            "target": "case_warning",
+            "type": "labeled",
+            "data": {
+              "label": "case=warning",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "route",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "warning"
+                }
+              }
+            }
+          },
+          {
+            "id": "e_dec_healthy",
+            "source": "decision_sev",
+            "target": "case_healthy",
+            "type": "labeled",
+            "sourceHandle": "bottom",
+            "targetHandle": "top",
+            "data": {
+              "label": "case=healthy",
+              "conditionExpression": {
+                "type": "comparison",
+                "left": {
+                  "kind": "variable",
+                  "stepId": "route",
+                  "field": "param",
+                  "paramName": "case"
+                },
+                "op": "==",
+                "right": {
+                  "kind": "literal",
+                  "value": "healthy"
+                }
+              }
+            }
+          },
+          {
+            "id": "e_critical_join",
+            "source": "case_critical",
+            "target": "join_act",
+            "type": "labeled",
+            "sourceHandle": "bottom",
+            "targetHandle": "top",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_warning_join",
+            "source": "case_warning",
+            "target": "join_act",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_healthy_join",
+            "source": "case_healthy",
+            "target": "join_act",
+            "type": "labeled",
+            "sourceHandle": "top",
+            "targetHandle": "bottom",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e_joinact_ret",
+            "source": "join_act",
+            "target": "ret",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
