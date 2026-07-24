@@ -237,7 +237,9 @@ internal sealed class SystemLdapConnectionAdapter : ILdapConnectionAdapter
     {
         var search = new SearchRequest(
             opts.BaseDn,
-            $"(&(objectClass=user)(objectSid={sidFilter}))",
+            // objectCategory=person excludes computer accounts (which are also objectClass=user)
+            // so a machine object can never masquerade as a login principal.
+            $"(&(objectCategory=person)(objectClass=user)(objectSid={sidFilter}))",
             SearchScope.Subtree,
             "objectSid", "userPrincipalName", "displayName", "cn", "userAccountControl");
         var response = (SearchResponse)connection.SendRequest(search);
@@ -489,7 +491,9 @@ internal sealed class SystemLdapConnectionAdapter : ILdapConnectionAdapter
         {
             var userSearch = new SearchRequest(
                 opts.BaseDn,
-                $"(&(objectClass=user)(userPrincipalName={EscapeFilter(upn)}))",
+                // objectCategory=person excludes computer accounts (also objectClass=user) that
+                // could otherwise share a userPrincipalName with a real login principal.
+                $"(&(objectCategory=person)(objectClass=user)(userPrincipalName={EscapeFilter(upn)}))",
                 SearchScope.Subtree,
                 "objectSid", "objectGUID", "displayName", "cn", "distinguishedName");
 

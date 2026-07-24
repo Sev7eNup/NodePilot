@@ -90,6 +90,11 @@ public sealed class AuthenticationBootValidator : IBootValidator
 
         ValidateRange(config, issues, "Authentication:Ldap:DirectorySyncIntervalMinutes", 1, 5, 5);
         ValidateRange(config, issues, "Authentication:Ldap:DirectorySyncMaxConcurrency", 1, 32, 16);
+        // Same 1–5 s bound the Admin-settings DTO enforces ([Range(1,5)]). Without this the
+        // config-as-code path (appsettings / env vars) could set e.g. 5000, and the production
+        // adapter only clamps the lower bound (Math.Max(1, …)) — a DC hiccup would then pin
+        // request threads for the full inflated timeout.
+        ValidateRange(config, issues, "Authentication:Ldap:BindTimeoutSeconds", 1, 5, 5);
 
         if (config.GetValue<bool>("Authentication:Ldap:AllowLocalUserAutoLink"))
             Error(issues, "Authentication:Ldap:AllowLocalUserAutoLink",

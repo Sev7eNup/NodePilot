@@ -196,6 +196,34 @@ public sealed class AuthenticationBootValidatorTests
         issues.Should().Contain(i => i.ConfigKey == "Authentication:Ldap:AllowLocalUserAutoLink");
     }
 
+    [Theory]
+    [InlineData("5000")]
+    [InlineData("0")]
+    public void LdapBindTimeout_OutsideOneToFiveSeconds_IsRejected(string value)
+    {
+        var config = Config(new Dictionary<string, string?>
+        {
+            ["Authentication:Ldap:Enabled"] = "true",
+            ["Authentication:Ldap:BindTimeoutSeconds"] = value,
+        });
+
+        Validate(config).Should().Contain(i =>
+            i.ConfigKey == "Authentication:Ldap:BindTimeoutSeconds");
+    }
+
+    [Fact]
+    public void LdapBindTimeout_WithinBounds_IsAccepted()
+    {
+        var config = Config(new Dictionary<string, string?>
+        {
+            ["Authentication:Ldap:Enabled"] = "true",
+            ["Authentication:Ldap:BindTimeoutSeconds"] = "5",
+        });
+
+        Validate(config).Should().NotContain(i =>
+            i.ConfigKey == "Authentication:Ldap:BindTimeoutSeconds");
+    }
+
     private static IConfiguration Config(Dictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 

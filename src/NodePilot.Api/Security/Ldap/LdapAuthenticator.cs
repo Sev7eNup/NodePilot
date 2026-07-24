@@ -16,8 +16,12 @@ public enum LdapAuthOutcome
     /// is populated.</summary>
     Success,
     /// <summary>LDAP is disabled by config, or the circuit breaker is open, or an
-    /// infrastructure failure occurred. The caller MAY fall back to the local-password
-    /// path so a DC outage doesn't lock out local admins.</summary>
+    /// infrastructure failure occurred. The AuthController returns HTTP 503 for external
+    /// logins on this outcome — it does NOT fall back to the local-password path, because
+    /// doing so would let an attacker pivot a DC outage into a username-squat against a
+    /// local hash. Local / break-glass admins stay usable during an outage for a different
+    /// reason: rows that carry a PasswordHash skip the LDAP path entirely before this
+    /// outcome is ever produced.</summary>
     Unavailable,
 }
 

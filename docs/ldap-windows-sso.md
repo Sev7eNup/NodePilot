@@ -21,6 +21,7 @@ All login paths issue the same server-side, revocable NodePilot session. Directo
 - Existing users are never merged automatically. Any username collision fails closed and is audited; `AllowLocalUserAutoLink=true` is rejected at startup and by the Admin settings validator.
 - AD access requires membership in at least one configured `AllowedGroupSids` entry.
 - LDAP uses port 636/LDAPS and full certificate validation against the API host's Windows certificate store — the DC certificate must chain to a CA the host trusts; there is no in-app bypass. Plaintext simple bind is refused unconditionally. LDAP referrals are never chased; every query is answered by the deliberately configured endpoint.
+- Multi-DC directory access is **all-DC consensus, not login failover**. The password bind tries the configured endpoints in order, but the authoritative SID/group lookup that follows every login queries *every* configured DC and requires them to agree on existence, enabled state and group membership. An unreachable or disagreeing DC makes the login fail closed (HTTP 503) — it does not fail over to a surviving DC. Configure only DCs you expect to be reachable together; a single always-on DC is the simplest correct topology. (Destructive offboarding likewise requires all-DC agreement so a partial outage never mass-revokes access.)
 - Windows SSO is Kerberos-only. `AllowNtlmFallback` must remain `false`, and startup requires `NtlmDisabledByPolicy=true` as an operator attestation that host/domain policy rejects incoming NTLM.
 - Memberships are authority-scoped server-side snapshots. AD sync runs every one to five minutes, and external authorization is rejected once the last authoritative snapshot is more than 15 minutes old.
 - Deactivation, tombstoning or access-group removal revokes sessions and stops pending, running or paused executions belonging to the effective user, including schedules, webhooks and external triggers.
@@ -230,7 +231,7 @@ Common failures:
 |---|---|
 | Repeating `401 Negotiate` | SPN ownership, browser intranet policy, HTTP/1.1 persistence and `http-reuse never` |
 | NTLM succeeds | Host/domain policy is not actually blocking NTLM; do not attest `NtlmDisabledByPolicy` yet |
-| LDAPS connection fails or health is degraded | DC SAN/hostname, trust chain, port 636, service-bind DN, firewall and every configured failover endpoint |
+| LDAPS connection fails or health is degraded | DC SAN/hostname, trust chain, port 636, service-bind DN, firewall and every configured endpoint (all must be reachable — access is all-DC consensus, not failover) |
 | Startup refuses an existing SSO database | Provision or restore an active local Admin with password and `IsBreakGlass=true` before enabling external authentication |
 | LDAP and Windows create different users | LDAP must return `objectSid`; Windows must supply the same canonical `PrimarySid` |
 | Login works, then fails within 15 minutes | Directory/SCIM membership source is stale or unavailable; this is fail-closed behavior |
@@ -241,7 +242,7 @@ Common failures:
 
 Run this matrix against real AD and production-equivalent HAProxy—not a mock directory:
 
-1. Validate both LDAPS endpoints with full certificate verification and force primary-DC failure to prove failover.
+1. Validate every configured LDAPS endpoint with full certificate verification. Then decide the multi-DC contract explicitly: the current semantics are **all-DC consensus, not login failover** — the bind fails over across endpoints, but the authoritative post-bind lookup requires every DC to agree, so a primary-DC outage blocks external logins (fail-closed 503) instead of failing over. Either accept and document that (single-DC or always-both topology), or implement a quorum/degraded login path before sign-off.
 2. Log in the same person once through LDAP and once through Windows; verify both use the same NodePilot user id and AD SID identity.
 3. Capture the Windows handshake through HAProxy and verify Kerberos succeeds over persistent HTTP/1.1 connections.
 4. Remove the Kerberos ticket or force an NTLM-only client; verify NodePilot access is denied and no NTLM-authenticated session is created.
@@ -253,3 +254,5 @@ Run this matrix against real AD and production-equivalent HAProxy—not a mock d
 10. Restart both HA nodes after changing authentication settings and verify discovery, readiness and provider-specific Admin UI state.
 
 Until all applicable checks pass and evidence is retained, use the status **AD SSO Preview**.
+
+A local pre-check harness for the LDAP password path lives in [`scripts/ldap-testdc/`](../scripts/ldap-testdc/README.md): a Samba AD DC in Docker with real LDAPS and a throwaway CA, a 13-step login suite (nested `tokenGroups`, role mapping, group gate, JIT, H-17, admin probe) plus an outage drill — validated 2026-07-24. It exercises the real `SystemLdapConnectionAdapter` wire path end to end but does **not** replace this field test: it covers no Kerberos/Negotiate handshake, no multi-DC consensus, and no HAProxy path. Note that with a single configured endpoint the harness cannot exercise item 1 above — and per the current reconciliation semantics, a primary-DC failure blocks external logins rather than failing over (see `ReconcileEndpointResults`); resolve that design-vs-doc tension before running the field test.

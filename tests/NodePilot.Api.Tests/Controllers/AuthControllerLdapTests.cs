@@ -256,6 +256,41 @@ public sealed class AuthControllerLdapTests : IDisposable
     }
 
     [Fact]
+    public async Task Login_EmptyDbWithSetupTokenHeader_SkipsLdapForBootstrap()
+    {
+        // With LDAP enabled the LDAP-first bind would otherwise intercept the one-shot
+        // bootstrap login (unknown username → InvalidCredentials/503), making an instance
+        // with LDAP already on impossible to initialise. A presented X-Setup-Token on an
+        // empty Users table must therefore bypass LDAP and reach the local bootstrap path.
+        _db.Users.RemoveRange(_db.Users);
+        await _db.SaveChangesAsync();
+
+        var (controller, adapter) = NewController();
+        controller.Request.Headers[NodePilot.Api.Security.AdminBootstrap.TokenHeader] = "any-token";
+
+        await controller.Login(new LoginRequest("admin", "pw"), default);
+
+        adapter.Calls.Should().Be(0,
+            "a presented setup token on an empty DB must reach local bootstrap, not the LDAP bind");
+    }
+
+    [Fact]
+    public async Task Login_EmptyDbWithoutSetupToken_StillAttemptsLdap()
+    {
+        // The bootstrap bypass is gated on the header — without it the LDAP-first path is
+        // unchanged, so a normal (non-bootstrap) login still probes the directory.
+        _db.Users.RemoveRange(_db.Users);
+        await _db.SaveChangesAsync();
+
+        var (controller, adapter) = NewController();
+        adapter.Result = null; // directory rejects
+
+        await controller.Login(new LoginRequest("alice", "pw"), default);
+
+        adapter.Calls.Should().Be(1, "without a setup token the LDAP-first path is unchanged");
+    }
+
+    [Fact]
     public async Task LdapCancellation_ReleasesPreJitReservation()
     {
         var (controller, adapter) = NewController();

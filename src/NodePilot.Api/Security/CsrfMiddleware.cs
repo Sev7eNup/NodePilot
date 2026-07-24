@@ -82,8 +82,15 @@ public sealed class CsrfMiddleware
         // an earlier session and the password is valid, we WILL set a fresh cookie regardless
         // of whether CSRF was provided, so gating login on CSRF is pointless. Login already
         // has its own rate limit + bootstrap-token + password check.
+        //
+        // /api/auth/windows is the same kind of cookie-bootstrap endpoint: it is Negotiate-
+        // gated (needs a Kerberos ticket the browser only presents in the Intranet zone) and
+        // mints a fresh np_auth + np_csrf pair on success. Without this exemption a re-triggered
+        // SSO while a *stale* np_auth cookie without a matching np_csrf is still present would
+        // 403 before the handshake. It shares login's rate limiter, so it is not left unguarded.
         var path = ctx.Request.Path;
-        if (path.StartsWithSegments("/api/auth/login")) return false;
+        if (path.StartsWithSegments("/api/auth/login")
+            || path.StartsWithSegments("/api/auth/windows")) return false;
 
         return true;
     }

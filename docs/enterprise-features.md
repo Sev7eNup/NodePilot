@@ -550,7 +550,13 @@ Negotiate ist connection-scoped. Das ausgelieferte
 Nur die Transport-IP des Proxys gehört in `ForwardedHeaders:KnownProxies`. SPN,
 Browser-Intranet-Policy und NTLM-Block-Policy bleiben explizite Deployment-Aufgaben.
 
-### LDAP-Failover und Offboarding
+### LDAP-Directory-Konsens und Offboarding
+
+> **Kein Login-Failover:** Der Password-Bind versucht die Endpoints der Reihe nach, aber der
+> autoritative Lookup danach verlangt **All-DC-Konsens** — ein einziger nicht erreichbarer DC
+> lässt den externen Login fail-closed (503) scheitern, statt auf einen überlebenden DC
+> auszuweichen. Nur gemeinsam erreichbare DCs konfigurieren (ein Always-On-DC ist die
+> einfachste korrekte Topologie).
 
 Der Directory-Lookup befragt alle konfigurierten DCs. „User nicht gefunden“ wird nur
 akzeptiert, wenn jeder konfigurierte DC dies bestätigt. Gefundene Snapshots gelten nur
@@ -562,8 +568,9 @@ Autorisierung damit fail-closed.
 
 Ein kompletter Pass, in dem alle bekannten AD-Identitäten fehlen, wird als falsche `BaseDn`
 oder unzureichende Search-Berechtigung verworfen und erzeugt keine Massen-Tombstones. Der
-Directory-Healthcheck prüft alle DCs und meldet den Verlust der Failover-Kapazität als
-`Degraded`. Sobald ein externer Provider aktiv ist, verweigert eine bestehende Datenbank
+Directory-Healthcheck prüft alle DCs und meldet einen nicht erreichbaren DC als
+`Degraded` — das ist reine Health-Anzeige; externe Logins sind bereits bei einem einzigen
+nicht erreichbaren DC fail-closed (siehe Konsens-Hinweis oben). Sobald ein externer Provider aktiv ist, verweigert eine bestehende Datenbank
 ohne aktiven lokalen Break-Glass-Admin den Start.
 
 Automatisierte Ausführungen tragen den Publisher als effektiven Principal. Vor Worker-Start
