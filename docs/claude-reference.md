@@ -317,10 +317,17 @@ Electron als dünner Viewer.
 - `KestrelHttpsConfigurator`: `ListenLocalhost` statt `ListenAnyIP` (`LoopbackOnly`, nicht abschaltbar)
 - `DatabaseReadinessGate`: ≤120 s Warten auf Postgres vor dem Migration-Bootstrap (nur Erreichbarkeit, keine Migrationsfehler)
 
-**Konsequenzen (nicht offensichtlich):** kein Netzwerkzugriff → **eingehende Webhooks und die externe
-Trigger-API sind unbrauchbar** (letztere zusätzlich per leerem `ExternalTrigger:ApiKey` aus); nur
-lokales Login (`LocalLoginMode=Enabled`); lokale `runScript` laufen als **SYSTEM**; Remote-WinRM
-braucht hinterlegte Credentials; **HA unmöglich** (Cluster+DPAPI = Boot-Error, kein `Jwt:Key`).
+**Konsequenzen (nicht offensichtlich):** Der Loopback-Bind trifft den **kompletten Listener** — SPA,
+`/api/*`, `/hubs/*`, `/healthz`, `/api/webhooks/*`. Es ist **nicht** so, dass einzelne Routen gesperrt
+wären und der Rest der API aus dem Netz erreichbar bliebe (häufiges Missverständnis). Daraus:
+**eingehende Webhooks und die externe Trigger-API unbrauchbar** (letztere zusätzlich per leerem
+`ExternalTrigger:ApiKey` aus), kein Team-Zugriff; nur lokales Login (`LocalLoginMode=Enabled`);
+lokale `runScript` laufen als **SYSTEM**; Remote-WinRM braucht hinterlegte Credentials;
+**HA unmöglich** (Cluster+DPAPI = Boot-Error, kein `Jwt:Key`).
+
+**Was unverändert bleibt:** alle nicht-eingehenden Trigger (`schedule`/`fileWatcher`/`database`/
+`eventLog`/`manual`) und jede ausgehende Automatisierung (WinRM, `restApi`, `sql`, SMTP,
+Alerting-Webhooks). Merksatz: *ausgehend alles, eingehend nichts.*
 
 **Windows-/PS-5.1-Stolperfallen im Provisionierer** (alle real aufgetreten):
 - `RandomNumberGenerator.Fill` und `GetCertHashString(HashAlgorithmName)` sind .NET-Core-/4.8-APIs — unter PS 5.1 nicht vorhanden
