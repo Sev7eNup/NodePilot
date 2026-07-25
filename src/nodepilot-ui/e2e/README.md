@@ -111,8 +111,10 @@ alongside `dotnet test` and `npm run test:run`.
 | 77 | AI workflow assistant + SSE streaming (explain + propose, role-gated apply, stale-guard; chat/script SSE mocked via `text/event-stream` body) | `ai-assistant.spec.ts` |
 | 9 (DR) | System-config Backup & Restore (export validation + restore preview/run) | `backup.spec.ts` |
 | — (new) | Live-Ops Mission Control: real-time execution timeline (running + recently-finished bars), bar drill-down + cancel, next-fires departure board, folder scoping | `operations.spec.ts` |
-| 78 | Alerting rules (list/create/test-fire/secret-redaction/role-gating/gauge-scope-gate/deliveries-modal/cancelledBy-filter) | _vitest `AlertingPage.test.tsx` + `ConditionBuilderEventSource.test.tsx`; Playwright spec is a follow-up_ |
+| 78 | Alerting rules (list/create/test-fire/secret-redaction/role-gating/gauge-scope-gate/deliveries-modal/cancelledBy-filter) | `alerting.spec.ts` |
 | — (new) | Atelier-Designsprache: Scope-Klassen + Token-Adaption, Skin-Adaption, Header-Umschalter (role=switch), Persistenz über Reload, Classic-Suite-Pin | `designer-atelier.spec.ts` |
+| — (new) | Global AI Chat (`/ai-chat`) — SSE Q&A over docs, operational context, source code, DB/text2sql; tool-call indicators, thread persistence, export-to-Markdown, regenerate, role-gated source badges (DB/source Admin/Operator only) | `ai-chat.spec.ts` |
+| — (new) | Custom Activities (`/custom-activities`) — CRUD lifecycle: create/edit/delete (Admin+Operator while disabled), enable/disable (Admin only), export/import, rollback; draft-state enforcement, role-gating | `custom-activities.spec.ts` |
 
 ## Not covered as UI e2e (by design)
 
