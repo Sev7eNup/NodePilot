@@ -301,6 +301,43 @@ describe('ActivityNode', () => {
     });
   });
 
+  // Health sparkline: the last outcomes of this step as small dots. It is a second information
+  // layer next to the live-status colouring — a pinned run (which survives the SignalR TTL on
+  // purpose) must not hide it. Only the dry-run simulation suppresses it.
+  describe('health sparkline', () => {
+    const health = [{ status: 'Succeeded' }, { status: 'Failed' }, { status: 'Succeeded' }];
+    const dots = (c: HTMLElement) => ({
+      green: c.querySelectorAll('div.bg-green-400').length,
+      red: c.querySelectorAll('div.bg-red-400').length,
+    });
+
+    it('renders the outcome dots on an idle node', () => {
+      const { container } = renderActivityNode({ label: 'Idle', activityType: 'runScript', config: {}, __health: health });
+      expect(dots(container)).toEqual({ green: 2, red: 1 });
+    });
+
+    it('keeps the dots while a finished run is pinned on the canvas', () => {
+      const { container } = renderActivityNode({ label: 'Pinned', activityType: 'runScript', config: {}, __health: health, __liveStatus: 'Succeeded' });
+      expect(dots(container)).toEqual({ green: 2, red: 1 });
+    });
+
+    it('keeps the dots while the step is running', () => {
+      const { container } = renderActivityNode({ label: 'Running', activityType: 'runScript', config: {}, __health: health, __liveStatus: 'Running' });
+      expect(dots(container)).toEqual({ green: 2, red: 1 });
+    });
+
+    it('keeps the dots during a live run in classic style too', () => {
+      useDesignStore.setState({ nodeStyle: 'classic' });
+      const { container } = renderActivityNode({ label: 'Classic', activityType: 'runScript', config: {}, __health: health, __liveStatus: 'Succeeded' });
+      expect(dots(container)).toEqual({ green: 2, red: 1 });
+    });
+
+    it('suppresses the dots during a dry-run simulation', () => {
+      const { container } = renderActivityNode({ label: 'Sim', activityType: 'runScript', config: {}, __health: health, __simulated: 'reachable' });
+      expect(dots(container)).toEqual({ green: 0, red: 0 });
+    });
+  });
+
   // Auto-hide ports: with autoHidePorts on, the (active) port handles render at opacity 0 until the
   // node is selected/hovered, the cursor is near (pointer store), or a connection is dragged toward it.
   // The handles stay in the DOM + connectable — only opacity changes.

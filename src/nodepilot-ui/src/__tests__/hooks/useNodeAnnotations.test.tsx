@@ -308,6 +308,58 @@ describe('useNodeAnnotations', () => {
         expect(hadHealth).toBe(true);
       });
     });
+
+    it('re-applies __health/__stats after a node rebuild, without refetching', async () => {
+      // Regression: after save/publish/lock the editor rebuilds `nodes` from definitionJson,
+      // which strips the annotations. Without `nodes` in the effect deps the sparkline stayed
+      // gone until the next 60 s refetch (__stats: 5 min).
+      mockApiGet.mockImplementation((url: string) => {
+        if (url.includes('/step-health')) return Promise.resolve({ 'step-a': [{ status: 'Failed', startedAt: '2026-04-26T12:00:00Z' }] });
+        if (url.includes('/step-stats')) return Promise.resolve({ 'step-a': { totalRuns: 3, failedRuns: 1, failureRate: 0.33, avgDurationMs: 10, p95DurationMs: 20, lastDurationMs: 12 } });
+        return Promise.resolve({});
+      });
+
+      const harness = setup({ initialNodes: [makeNode('step-a')] });
+
+      const annotations = () => harness.getCurrentNodes()[0].data as Record<string, unknown>;
+      await waitFor(() => {
+        expect(annotations().__health).toBeDefined();
+        expect(annotations().__stats).toBeDefined();
+      });
+
+      const requestsBefore = mockApiGet.mock.calls.length;
+
+      // Workflow refetch: fresh node objects, annotations gone.
+      harness.replaceNodes([makeNode('step-a')]);
+      harness.rerender({ workflowIsEnabled: true, liveExecution: null });
+
+      await waitFor(() => {
+        expect(annotations().__health).toBeDefined();
+        expect(annotations().__stats).toBeDefined();
+      });
+      // Same node ids → same query key → served from cache, no extra request.
+      expect(mockApiGet.mock.calls.length).toBe(requestsBefore);
+    });
+
+    it('returns the original node array when nothing changed (no render loop from the nodes dep)', async () => {
+      mockApiGet.mockImplementation((url: string) => {
+        if (url.includes('/step-health')) return Promise.resolve({ 'step-a': [{ status: 'Succeeded', startedAt: '2026-04-26T12:00:00Z' }] });
+        if (url.includes('/step-stats')) return Promise.resolve({ 'step-a': { totalRuns: 1, failedRuns: 0, failureRate: 0, avgDurationMs: 5, p95DurationMs: 5, lastDurationMs: 5 } });
+        return Promise.resolve({});
+      });
+
+      const harness = setup({ initialNodes: [makeNode('step-a')] });
+      await waitFor(() => {
+        expect((harness.getCurrentNodes()[0].data as Record<string, unknown>).__stats).toBeDefined();
+      });
+
+      // Re-render with unchanged inputs: the effects run again (nodes is in their deps) but must
+      // hand back the identical array, otherwise nodes → effect → setNodes → nodes loops forever.
+      const settled = harness.getCurrentNodes();
+      harness.rerender({ workflowIsEnabled: true, liveExecution: null });
+      harness.rerender({ workflowIsEnabled: true, liveExecution: null });
+      expect(harness.getCurrentNodes()).toBe(settled);
+    });
   });
 
   describe('__workflowEnabled annotation', () => {
