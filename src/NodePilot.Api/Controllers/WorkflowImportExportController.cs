@@ -237,6 +237,12 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 Version = 1,
                 IsEnabled = enabled,
                 FolderId = targetFolderId,
+                // Import establishes runtime authority the same way Publish does: the importing
+                // user becomes the effective principal. Without this every automated trigger
+                // (schedule, webhook, file-watcher, database, event-log) is rejected at dispatch
+                // with "missing_effective_principal", and cross-folder sub-workflow calls fail —
+                // an imported-and-enabled workflow would otherwise be broken by construction.
+                PublishedByUserId = this.GetCurrentUserId(),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
             };
@@ -389,6 +395,9 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 Version = 1,
                 IsEnabled = false,
                 FolderId = targetFolderId,
+                // Same as the workflow-import path: the importing user becomes the effective
+                // principal, so automated triggers work once the operator enables the workflow.
+                PublishedByUserId = this.GetCurrentUserId(),
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
             };
