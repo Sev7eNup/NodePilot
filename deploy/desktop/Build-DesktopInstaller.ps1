@@ -103,6 +103,26 @@ Invoke-Tool {
         -p:UseAppHost=true -p:DebugType=embedded -o (Join-Path $Stage 'app')
 } 'dotnet publish failed.'
 
+# --- 1b. PowerShell built-in modules -> <app>\Modules ----------------------------------------
+# Microsoft.PowerShell.SDK ships its built-in modules (Utility, Management, CimCmdlets, ...) under
+# runtimes\win\lib\<tfm>\Modules, but the hosted runspace looks for them at $PSHOME\Modules, where
+# $PSHOME is the directory holding System.Management.Automation.dll (the app root). Without this
+# copy every script fails with "the module could not be loaded ... compatible with the 'Core'
+# edition" unless PowerShell 7 happens to be installed system-wide -- which the desktop package
+# must not depend on (offline, zero prerequisites).
+Write-Step 'Staging PowerShell built-in modules'
+$appStage = Join-Path $Stage 'app'
+$psModuleSource = Get-ChildItem -Path (Join-Path $appStage 'runtimes\win\lib') -Directory -ErrorAction SilentlyContinue |
+    ForEach-Object { Join-Path $_.FullName 'Modules' } |
+    Where-Object { Test-Path -LiteralPath $_ } |
+    Select-Object -First 1
+if (-not $psModuleSource) { throw "PowerShell built-in modules not found under $appStage\runtimes\win\lib\*\Modules." }
+Copy-Item -Path $psModuleSource -Destination (Join-Path $appStage 'Modules') -Recurse -Force
+if (-not (Test-Path -LiteralPath (Join-Path $appStage 'Modules\Microsoft.PowerShell.Utility'))) {
+    throw 'Module staging failed: Microsoft.PowerShell.Utility missing under app\Modules.'
+}
+Write-Host ("    " + ((Get-ChildItem (Join-Path $appStage 'Modules') -Directory | Select-Object -ExpandProperty Name) -join ', '))
+
 # --- 2. SPA -> wwwroot -----------------------------------------------------------------------
 if (-not $SkipSpaBuild) {
     Write-Step 'Building SPA'
