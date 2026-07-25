@@ -824,8 +824,8 @@ const AREA_SERIES = [
 function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: HourBucket[]; windowHours: number; tokens: ThemeTokens }>) {
   const { t } = useTranslation(['dashboard']);
   const axisColor = tokens.onSurfaceVariant || '#9ca3af';
-  const tipBg = tokens.surfaceHigh || '#1f1b16';
-  const tipText = tokens.onSurface || '#ece7e1';
+  const tipBg = tokens.surfaceHigh || '#212328';
+  const tipText = tokens.onSurface || '#e9ebef';
 
   const option = useMemo<EChartsOption>(() => {
     // Hourly windows label "HH:00"; multi-day windows label the date "MM-DD". The backend
@@ -900,9 +900,9 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
 
 function RunStatusDonut({ counts, tokens, onSelect }: Readonly<{ counts: ExecutionCounts; tokens: ThemeTokens; onSelect: (status: string | null) => void }>) {
   const { t } = useTranslation(['dashboard']);
-  const tipBg = tokens.surfaceHigh || '#1f1b16';
-  const tipText = tokens.onSurface || '#ece7e1';
-  const border = tokens.surfaceHigh || '#1f1b16';
+  const tipBg = tokens.surfaceHigh || '#212328';
+  const tipText = tokens.onSurface || '#e9ebef';
+  const border = tokens.surfaceHigh || '#212328';
 
   const segments = useMemo(() => {
     const other = Math.max(0, counts.total - counts.succeeded - counts.failed - counts.cancelled - counts.running);
@@ -980,8 +980,8 @@ function RunStatusDonut({ counts, tokens, onSelect }: Readonly<{ counts: Executi
 function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: HourBucket[]; windowHours: number; tokens: ThemeTokens }>) {
   const { t } = useTranslation(['dashboard']);
   const axisColor = tokens.onSurfaceVariant || '#9ca3af';
-  const tipBg = tokens.surfaceHigh || '#1f1b16';
-  const tipText = tokens.onSurface || '#ece7e1';
+  const tipBg = tokens.surfaceHigh || '#212328';
+  const tipText = tokens.onSurface || '#e9ebef';
   const multiDay = windowHours > 24;
 
   const points = useMemo(() => buckets.map((b) => {
@@ -1062,12 +1062,12 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
 function P95WorkflowBars({ items, tokens }: Readonly<{ items: TopWorkflow[]; tokens: ThemeTokens }>) {
   const { t } = useTranslation(['dashboard']);
   const axisColor = tokens.onSurfaceVariant || '#9ca3af';
-  const tipBg = tokens.surfaceHigh || '#1f1b16';
-  const tipText = tokens.onSurface || '#ece7e1';
+  const tipBg = tokens.surfaceHigh || '#212328';
+  const tipText = tokens.onSurface || '#e9ebef';
   // Accent gradient stops follow the active skin (orange / lilac / blue); fall back to
   // the dark-orange literals so the bars still render under jsdom where tokens are empty.
-  const barFrom = tokens.primaryContainer || '#c5620b';
-  const barTo = tokens.primary || '#fc8861';
+  const barFrom = tokens.primaryContainer || '#2467d9';
+  const barTo = tokens.primary || '#6da8ff';
 
   const top = useMemo(() => items
     .filter((w) => w.p95DurationMs != null)

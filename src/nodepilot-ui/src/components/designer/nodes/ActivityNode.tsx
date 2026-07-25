@@ -248,7 +248,9 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   // Thicker border in dark mode: 1.5px renders "frayed" at zoom-out levels; 2px stays crisp.
   const baseBorderPx   = premiumCanvas && isDark && isIdle ? 2 : 1.5;
   const premiumRadius  = premiumCanvas ? Math.min(Math.round(scale.iconBox * 0.37), 16) : undefined;
-  const premiumBg      = premiumCanvas && isIdle && isDark ? 'rgba(13,17,22,.92)' : undefined;
+  // Skin-adjustable: `--np-node-bg` is declared per dark skin in index.css. It used to
+  // be a literal here, which meant a value tuned for one dark skin repainted all of them.
+  const premiumBg      = premiumCanvas && isIdle && isDark ? 'var(--np-node-bg)' : undefined;
   const premiumBgImage = premiumCanvas && isIdle
     ? isDark
       ? 'linear-gradient(180deg, rgba(255,255,255,.13) 0%, rgba(255,255,255,.04) 50%, transparent 100%)'

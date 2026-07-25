@@ -1852,9 +1852,9 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 1. Öffne App
 2. Setting-Menu → Theme
 3. Optionen: `System` + 7 Skins — hell: `Light`, `Light Grey`, `Light Bank`; dunkel: `Dark`, `Dark Lilac`, `Dark Bank`, `Nebula`
-4. Wähle `Dark` → UI wechselt sofort zu dunklem Theme
+4. Wähle `Dark` → „Azur": kühles Graphit (Hue 220, ~5 % Sättigung) mit azurblauem Akzent. Erhabene Flächen tragen eine helle Oberkante, eine beschattete Unterkante und eine harte Kontaktlinie; Eingabefelder sind umgekehrt beleuchtet (versenkt), Buttons sinken beim Drücken ein. Anders als die übrigen Dark-Skins reicht der Akzent bis in den React-Flow-Canvas (Auswahl-Ringe, Handles, Zoom-Controls)
 5. Wähle `Light` → UI wechselt zurück
-6. Wähle `System` → folgt OS-Präferenz
+6. Wähle `System` → folgt OS-Präferenz (dunkles OS ⇒ `Dark`)
 7. Wähle `Nebula` → futuristischer Cyan-Deep-Space-Skin (Glas-Cards, Cyan-Glow, Mesh-Backdrop); Canvas-Nodes bleiben neutral
 
 **Prüfpunkte:**
@@ -1863,6 +1863,8 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 - [ ] Canvas-Hintergrund, Nodes, Edges folgen dem Theme
 - [ ] Properties-Panel ebenfalls
 - [ ] Kontraste in Dark Mode sind ausreichend
+- [ ] `Dark`: Der Primär-Button ist ein Verlauf mit weißer Beschriftung (nicht flach), Karten heben sich sichtbar von der Seitenfläche ab, die Sidebar hat eine schwach leuchtende rechte Kante
+- [ ] Ein Wechsel `Dark` → `Dark Lilac` / `Dark Bank` / `Nebula` und zurück verändert die drei anderen Skins **nicht** (sie haben eigene, gepinnte Werte)
 
 **Erwartung:** Theme-Switching ist seamless
 

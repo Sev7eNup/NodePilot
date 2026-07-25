@@ -206,52 +206,71 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     test.info().annotations.push({ type: 'skip-note', description: 'HTML5 drag-drop onto RF canvas needs real DnD; click-add covers node creation' });
   });
 
-  test('17.5 — dark revamp: dark-orange accent is scoped to the app shell, the designer is untouched', async ({ page }) => {
+  test('17.5 — default dark skin "Azur": azure accent on cool graphite, reaching into the canvas', async ({ page }) => {
     // Boot in dark mode (themeStore reads this before first paint).
     await page.addInitScript(() =>
       localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'dark' }, version: 0 })),
     );
 
     // App shell (Workflows list): the `.np-shell` scope is present and the primary
-    // "New Workflow" button (a hardcoded bg-blue-600) is remapped to the dark orange.
+    // "New Workflow" button (a hardcoded bg-blue-600) carries the skin's azure fill.
     await page.goto('/workflows');
     await expect(page.locator('.np-shell')).toHaveCount(1, { timeout: 15_000 });
     const newBtn = page.getByRole('button', { name: /new workflow|neuer workflow/i });
     await expect(newBtn).toBeVisible();
-    const shellBtnRgb = await newBtn.evaluate((el) => getComputedStyle(el).backgroundColor);
-    const [sr, , sb] = shellBtnRgb.match(/\d+/g)!.map(Number);
-    expect(sr).toBeGreaterThan(150); // orange = high red …
-    expect(sb).toBeLessThan(70);     // … and low blue (blue-600 would be ~235)
+    const btn = await newBtn.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { bg: cs.backgroundColor, bgImage: cs.backgroundImage, color: cs.color };
+    });
+    const [br, , bb] = btn.bg.match(/\d+/g)!.map(Number);
+    expect(bb).toBeGreaterThan(150); // azure = high blue …
+    expect(br).toBeLessThan(120);    // … and low red (the old orange was the reverse)
+    // The depth layer paints it as a two-stop gradient with a white label, so the
+    // hardcoded `text-white` in the components stays above 4.5:1 over the whole height.
+    expect(btn.bgImage).toContain('linear-gradient');
+    expect(btn.color).toBe('rgb(255, 255, 255)');
     const darkActiveNav = await page.locator('a.np-nav[aria-current="page"]').evaluate((el) => getComputedStyle(el).color);
     expect(darkActiveNav).not.toBe('rgb(255, 104, 117)'); // Bank Hell's coral remains skin-local
 
-    // `on-primary-fixed` (text on the subtle accent surface) is explicitly warm here —
-    // without the override it would inherit the base html.dark blue-tinted #dae2ff.
-    const onFixed = await page.evaluate(() =>
-      getComputedStyle(document.querySelector('.np-shell')!).getPropertyValue('--color-on-primary-fixed').trim().toLowerCase(),
-    );
-    expect(onFixed).toBe('#ffe6d4');
+    // `on-primary-fixed` (text on the subtle accent surface) is explicit here — without
+    // the override it would inherit the base html.dark #dae2ff.
+    const shellTokens = await page.evaluate(() => {
+      const cs = getComputedStyle(document.querySelector('.np-shell')!);
+      return {
+        onFixed: cs.getPropertyValue('--color-on-primary-fixed').trim().toLowerCase(),
+        fixed: cs.getPropertyValue('--color-primary-fixed').trim().toLowerCase(),
+        fixedDim: cs.getPropertyValue('--color-primary-fixed-dim').trim().toLowerCase(),
+      };
+    });
+    expect(shellTokens.onFixed).toBe('#cfe1ff');
+    // `-fixed-dim` is the hover surface for `-fixed`, so it must be DARKER. Guarding the
+    // relation rather than the literal keeps the intent pinned if the palette is retuned.
+    const lum = (hex: string) => parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16);
+    expect(lum(shellTokens.fixedDim)).toBeLessThan(lum(shellTokens.fixed));
 
     // Designer route (/workflows/:id): rendered OUTSIDE the shell (no `.np-shell`). The
-    // <html> base accent token stays blue — the React Flow canvas reads it via the shield,
-    // so nodes/edges/selection are untouched. The designer CHROME, however, now carries its
-    // own dark-orange accent scoped to `.np-designer`. Assert both.
+    // <html> base accent token stays at the historical blue — the other dark skins read it
+    // through the canvas shield. This skin, however, re-asserts its own accent INSIDE
+    // `.react-flow`, because its reach deliberately includes the canvas.
     await openEditor(page);
     await expect(page.locator('.np-shell')).toHaveCount(0);
     const htmlPrimary = await page.evaluate(() =>
       getComputedStyle(document.documentElement).getPropertyValue('--color-primary').trim().toLowerCase(),
     );
-    expect(htmlPrimary).toBe('#aac7ff'); // base dark blue (canvas accent), untouched
+    expect(htmlPrimary).toBe('#aac7ff'); // shared base, untouched
     const designer = await page.evaluate(() => {
       const el = document.querySelector('.np-designer')!;
       const cs = getComputedStyle(el);
+      const flow = document.querySelector('.np-designer .react-flow');
       return {
         primary: cs.getPropertyValue('--color-primary').trim().toLowerCase(),
         surface: cs.getPropertyValue('--color-surface').trim().toLowerCase(),
+        canvasPrimary: flow ? getComputedStyle(flow).getPropertyValue('--color-primary').trim().toLowerCase() : null,
       };
     });
-    expect(designer.primary).toBe('#fc8861'); // designer chrome accent = dark orange
-    expect(designer.surface).toBe('#14110e'); // designer AREA backgrounds follow the skin (warm charcoal)
+    expect(designer.primary).toBe('#6da8ff'); // designer chrome accent = azure
+    expect(designer.surface).toBe('#121419'); // canvas floor, just under the shell's surface-low
+    expect(designer.canvasPrimary).toBe('#6da8ff'); // the shield does NOT apply to this skin
   });
 
   test('17.6 — dark-lila skin: applies data-skin + lilac accent and persists', async ({ page }) => {
@@ -462,12 +481,18 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
       return {
         primary: cs.getPropertyValue('--color-primary').trim().toLowerCase(),
         onFixed: cs.getPropertyValue('--color-on-primary-fixed').trim().toLowerCase(),
-        glow: cs.getPropertyValue('--np-glow').trim().toLowerCase(),
+        glow: cs.getPropertyValue('--np-nb-glow-color').trim().toLowerCase(),
+        // `--np-glow` is the toolbar-bloom INTENSITY scalar (0..1) written per frame by
+        // ToolbarGlow.tsx. Nebula used to declare a colour under that same name, which made
+        // `calc(var(--np-glow) * .6)` invalid-at-computed-value and pinned the bloom to full
+        // brightness. The colour now lives in its own namespace; assert the clash is gone.
+        bloomScalar: cs.getPropertyValue('--np-glow').trim(),
       };
     });
     expect(shellTokens.primary).toBe('#4de4f7');
     expect(shellTokens.onFixed).toBe('#b8f4ff'); // cyan-tinted, not the base #dae2ff blue
     expect(shellTokens.glow).toBe('#22d3ee');     // the depth-layer glow token is live
+    expect(shellTokens.bloomScalar).toBe('');     // no colour squatting on the scalar
 
     // The sidebar rail uses the deep blue-black nebula gradient (#10192b → rgb(16, 25, 43)),
     // not the dark-orange warm brown (#241e18 → 36, 30, 24) nor the lila grey (42, 42, 42).

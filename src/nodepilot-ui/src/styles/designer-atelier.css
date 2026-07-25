@@ -71,38 +71,41 @@ html .np-designer.wd-atelier {
   --wd-outline-variant: #d8d4ca;
 }
 
-/* ── B. Palette — base DARK (default dark skin adapted: ember orange on warm
-       graphite, mirroring the app's orange dark scheme) ─────────────────────── */
+/* ── B. Palette — base DARK (default dark skin "Azur" adapted: azure accent on
+       cool graphite, mirroring the app's dark scheme).
+       NOTE: the two shadow vars are the only entries the per-skin blocks below do
+       NOT redeclare, so they are shared by dark-lila / dark-sparkasse /
+       dark-nebula. They are achromatic; keep them that way. ────────────────── */
 html.dark.wd-atelier-on,
 html.dark .np-designer.wd-atelier {
   --wd-shadow-panel: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px -14px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.04);
   --wd-shadow-float: 0 2px 8px -2px rgba(0, 0, 0, 0.45), 0 20px 48px -18px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 
-  --wd-accent:             #fc8861;
-  --wd-accent-deep:        #c5620b;
-  --wd-accent-surface:     #6a2b09;
-  --wd-accent-surface-dim: #7d340c;
-  --wd-accent-on:          #1c0c03;
-  --wd-accent-on-deep:     #ffe6d4;
-  --wd-accent-on-surface:  #ffe6d4;
-  --wd-accent-inverse:     #c5620b;
+  --wd-accent:             #6da8ff;
+  --wd-accent-deep:        #2467d9;
+  --wd-accent-surface:     #15305c;
+  --wd-accent-surface-dim: #0d2245;
+  --wd-accent-on:          #031430;
+  --wd-accent-on-deep:     #ffffff;
+  --wd-accent-on-surface:  #cfe1ff;
+  --wd-accent-inverse:     #2467d9;
 
-  --wd-canvas:     #17140f;
-  --wd-panel:      #1e1a14;
-  --wd-hairline:   rgba(236, 231, 225, 0.09);
+  --wd-canvas:     #121419;
+  --wd-panel:      #1a1c21;
+  --wd-hairline:   rgba(233, 235, 239, 0.09);
 
-  --wd-s-dim:      #0f0d0a;
-  --wd-s-bright:   #383025;
-  --wd-s-lowest:   #1e1a14;
-  --wd-s-low:      #221d16;
-  --wd-s-container:#262119;
-  --wd-s-high:     #2c261d;
-  --wd-s-highest:  #322b21;
-  --wd-s-variant:  #3e362a;
-  --wd-ink:        #ece7e1;
-  --wd-ink-muted:  #b3aca2;
-  --wd-outline:    #6f7781;
-  --wd-outline-variant: #37302a;
+  --wd-s-dim:      #08090b;
+  --wd-s-bright:   #3c3f47;
+  --wd-s-lowest:   #16181d;
+  --wd-s-low:      #191b20;
+  --wd-s-container:#1d2026;
+  --wd-s-high:     #22252b;
+  --wd-s-highest:  #292c33;
+  --wd-s-variant:  #35383f;
+  --wd-ink:        #e9ebef;
+  --wd-ink-muted:  #a6abb5;
+  --wd-outline:    #878b94;
+  --wd-outline-variant: #2e3138;
 }
 
 /* ── C. Per-skin palettes — same Atelier structure, skin voice ─────────────── */
