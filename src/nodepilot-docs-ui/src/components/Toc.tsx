@@ -55,7 +55,8 @@ export default function Toc({
           .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)
         if (visible[0]) setActive(visible[0].target.id)
       },
-      { rootMargin: '-80px 0px -70% 0px', threshold: [0, 1] },
+      // Top inset clears the 48px sticky TopBar plus a little air.
+      { rootMargin: '-64px 0px -70% 0px', threshold: [0, 1] },
     )
     observerRef.current = obs
     headings.forEach((h) => {
@@ -68,11 +69,16 @@ export default function Toc({
   if (headings.length === 0) return null
 
   return (
-    <aside className="sticky top-20 hidden h-[calc(100vh-6rem)] w-64 shrink-0 overflow-y-auto pr-6 pt-8 xl:block">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[var(--color-on-surface-variant)]">
+    // A <nav> landmark, not an <aside>: it *is* navigation, and it keeps the sidebar's
+    // `aside`-scoped rail styling from ever reaching this rail.
+    <nav
+      aria-label="Auf dieser Seite"
+      className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 overflow-y-auto pr-6 pt-8 xl:block"
+    >
+      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
         Auf dieser Seite
       </p>
-      <ul className="border-l border-[var(--color-outline-variant)] text-sm">
+      <ul className="border-l border-outline-variant text-sm">
         {headings.map((h) => (
           <li key={h.id} className="-ml-px">
             <button
@@ -85,7 +91,7 @@ export default function Toc({
               } ${
                 active === h.id
                   ? 'border-[var(--np-accent)] text-[var(--np-accent-text)]'
-                  : 'border-transparent text-[var(--color-on-surface-variant)] hover:text-[var(--color-on-surface)]'
+                  : 'border-transparent text-on-surface-variant hover:text-on-surface'
               }`}
             >
               {h.text}
@@ -93,6 +99,6 @@ export default function Toc({
           </li>
         ))}
       </ul>
-    </aside>
+    </nav>
   )
 }

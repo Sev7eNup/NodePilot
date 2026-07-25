@@ -1,31 +1,31 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { ArrowLeft, ArrowRight } from '@carbon/icons-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSlug from 'rehype-slug'
 import rehypeHighlight from 'rehype-highlight'
 import type { Components } from 'react-markdown'
 import { getContent } from '../lib/content'
-import { neighbors, pageByPath } from '../data/nav'
-import { ArrowLeftIcon, ArrowRightIcon } from '../lib/icons'
+import { neighbors } from '../data/nav'
 import Toc from './Toc'
 
 export default function DocPage({ path }: { path: string }) {
   const markdown = getContent(path)
-  const scrollRef = useRef<HTMLDivElement>(null)
   const articleRef = useRef<HTMLElement>(null)
 
-  // Reset scroll on navigation.
+  // Reset scroll on navigation. The document is the scroller (the app's inner-scroller
+  // model would break `scroll-padding-top` for TOC jumps and deep links).
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: 0 })
+    window.scrollTo({ top: 0, behavior: 'instant' })
   }, [path])
 
   if (!markdown) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-16 text-center">
         <h1 className="text-2xl font-bold">Seite nicht gefunden</h1>
-        <p className="mt-2 text-[var(--color-on-surface-variant)]">
-          Inhalt für <code className="rounded bg-[var(--color-surface-container)] px-1">{path}</code> ist nicht verfügbar.
+        <p className="mt-2 text-on-surface-variant">
+          Inhalt für <code className="rounded bg-surface-container px-1">{path}</code> ist nicht verfügbar.
         </p>
         <Link to="/" className="mt-6 inline-block font-medium text-[var(--np-accent-text)] hover:underline">
           ← Zur Startseite
@@ -34,19 +34,13 @@ export default function DocPage({ path }: { path: string }) {
     )
   }
 
-  const meta = pageByPath(path)
   const { prev, next } = neighbors(path)
 
   return (
     <div className="flex w-full">
       {/* Main content column */}
-      <div ref={scrollRef} className="np-scroll mx-auto flex min-w-0 max-w-3xl flex-1 px-6 py-8 lg:px-10">
+      <div className="mx-auto flex min-w-0 max-w-3xl flex-1 px-6 py-8 lg:px-10">
         <article ref={articleRef} className="np-prose min-w-0 flex-1">
-          {meta && (
-            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-[var(--color-on-surface-variant)]">
-              {breadcrumb(path)}
-            </p>
-          )}
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeSlug, rehypeHighlight]}
@@ -74,21 +68,6 @@ export default function DocPage({ path }: { path: string }) {
   )
 }
 
-function breadcrumb(path: string): string {
-  const seg = path.split('/')[0]
-  const group = ({
-    'getting-started': 'Erste Schritte',
-    concepts: 'Konzepte',
-    designer: 'Workflow-Designer',
-    api: 'Referenz',
-    security: 'Security',
-    enterprise: 'Enterprise',
-    configuration: 'Konfiguration',
-    deployment: 'Deployment & Mehr',
-  } as Record<string, string>)[seg]
-  return group ?? 'Referenz'
-}
-
 function FooterLink({
   kind,
   path,
@@ -101,22 +80,26 @@ function FooterLink({
   return (
     <Link
       to={`/${path}`}
-      className={`group flex flex-col gap-1 rounded-lg border border-[var(--color-outline-variant)] px-4 py-3 transition-colors hover:border-[var(--np-accent-ring)] hover:bg-[var(--np-accent-soft)] ${
+      className={`np-card np-doc-nav group flex flex-col gap-1 px-4 py-3 ${
         kind === 'next' ? 'sm:text-right' : ''
       }`}
     >
-      <span className="flex items-center gap-1 text-xs text-[var(--color-on-surface-variant)]">
+      <span
+        className={`flex items-center gap-1 text-xs text-on-surface-variant ${
+          kind === 'next' ? 'sm:justify-end' : ''
+        }`}
+      >
         {kind === 'prev' ? (
           <>
-            <ArrowLeftIcon className="h-3.5 w-3.5" /> Vorherige
+            <ArrowLeft size={14} /> Vorherige
           </>
         ) : (
           <>
-            Weiter <ArrowRightIcon className="h-3.5 w-3.5" />
+            Weiter <ArrowRight size={14} />
           </>
         )}
       </span>
-      <span className="font-medium text-[var(--color-on-surface)] group-hover:text-[var(--np-accent-text)]">
+      <span className="font-medium text-on-surface group-hover:text-[var(--np-accent-text)]">
         {title}
       </span>
     </Link>
