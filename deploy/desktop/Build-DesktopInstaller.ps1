@@ -160,10 +160,23 @@ if (Test-Path -LiteralPath $nested) {
 }
 
 # --- 4. Postgres binaries --------------------------------------------------------------------
-Write-Step 'Staging PostgreSQL binaries'
-Copy-Item -Path $PgBinariesPath -Destination (Join-Path $Stage 'pgsql') -Recurse -Force
-$stagedPg = Join-Path $Stage 'pgsql\NodePilot-win32-x64'   # guard against accidental nesting
-if (Test-Path -LiteralPath $stagedPg) { throw 'Unexpected pgsql nesting.' }
+# Only the server runtime is shipped: bin (postgres/initdb/pg_ctl/psql/pg_dump...), lib (extension
+# libraries) and share (postgres.bki, timezone data, SQL bootstrap scripts -- initdb fails without
+# it). A stock EDB distribution also carries pgAdmin 4 (~630 MB, a GUI with its own Chromium), doc,
+# include and StackBuilder, none of which NodePilot uses -- excluding them cuts the installer by
+# roughly two thirds.
+Write-Step 'Staging PostgreSQL binaries (server runtime only)'
+$pgStage = Join-Path $Stage 'pgsql'
+New-Item -ItemType Directory -Force -Path $pgStage | Out-Null
+foreach ($part in @('bin', 'lib', 'share')) {
+    $srcPart = Join-Path $PgBinariesPath $part
+    if (-not (Test-Path -LiteralPath $srcPart)) { throw "PostgreSQL distribution is missing '$part': $srcPart" }
+    Copy-Item -Path $srcPart -Destination (Join-Path $pgStage $part) -Recurse -Force
+}
+foreach ($required in @('bin\postgres.exe', 'bin\initdb.exe', 'bin\pg_ctl.exe', 'bin\psql.exe', 'bin\pg_dump.exe', 'share\postgres.bki')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $pgStage $required))) { throw "PostgreSQL staging incomplete: $required missing." }
+}
+Write-Host ("    {0:N0} MB gestaged" -f ((Get-ChildItem $pgStage -Recurse -File | Measure-Object Length -Sum).Sum / 1MB))
 
 # --- 5. deploy scripts -----------------------------------------------------------------------
 Write-Step 'Staging deploy scripts'
