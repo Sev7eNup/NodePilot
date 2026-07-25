@@ -131,6 +131,59 @@ public sealed class DatabaseTlsBootValidatorTests
             ["ConnectionStrings:DefaultConnection"] = "Server=db;Encrypt=Strict;TrustServerCertificate=False;Trust Server Certificate=True",
         }).Should().ContainSingle(i => i.Severity == BootValidationSeverity.Error);
 
+    // --- Deployment:Mode=Desktop posture (loopback-only insecure DB TLS, hardened otherwise) ---
+
+    [Fact]
+    public void DesktopPosture_LoopbackInsecureOverride_ProducesVisibleWarning()
+        => Validate(new()
+        {
+            ["Deployment:Mode"] = "Desktop",
+            ["Database:Provider"] = "postgres",
+            ["Database:AllowInsecureTls"] = "true",
+            // No ASPNETCORE_ENVIRONMENT → resolves to Production; Desktop still permits loopback.
+            ["ConnectionStrings:Postgres"] = "Host=127.0.0.1;Database=np",
+        }).Should().ContainSingle(i => i.Severity == BootValidationSeverity.Warning);
+
+    [Fact]
+    public void DesktopPosture_SqlServerLoopbackInsecureOverride_ProducesWarning()
+        => Validate(new()
+        {
+            ["Deployment:Mode"] = "Desktop",
+            ["Database:Provider"] = "sqlserver",
+            ["Database:AllowInsecureTls"] = "true",
+            ["ConnectionStrings:DefaultConnection"] = "Server=localhost;Database=np",
+        }).Should().ContainSingle(i => i.Severity == BootValidationSeverity.Warning);
+
+    [Fact]
+    public void DesktopPosture_RemoteInsecureOverride_Fails()
+        => Validate(new()
+        {
+            ["Deployment:Mode"] = "Desktop",
+            ["Database:Provider"] = "postgres",
+            ["Database:AllowInsecureTls"] = "true",
+            ["ConnectionStrings:Postgres"] = "Host=db.remote.example;Database=np",
+        }).Should().ContainSingle(i => i.Severity == BootValidationSeverity.Error);
+
+    [Fact]
+    public void DesktopPosture_WithoutInsecureOverride_StillRequiresVerifyFull()
+        => Validate(new()
+        {
+            ["Deployment:Mode"] = "Desktop",
+            ["Database:Provider"] = "postgres",
+            ["ConnectionStrings:Postgres"] = "Host=127.0.0.1;Database=np",
+        }).Should().ContainSingle(i => i.Severity == BootValidationSeverity.Error);
+
+    [Fact]
+    public void ServerPosture_LoopbackInsecureOverride_OutsideDevelopment_Fails()
+        => Validate(new()
+        {
+            ["Deployment:Mode"] = "Server",
+            ["Database:Provider"] = "postgres",
+            ["Database:AllowInsecureTls"] = "true",
+            ["ASPNETCORE_ENVIRONMENT"] = "Production",
+            ["ConnectionStrings:Postgres"] = "Host=127.0.0.1;Database=np",
+        }).Should().ContainSingle(i => i.Severity == BootValidationSeverity.Error);
+
     private static List<BootValidationIssue> Validate(Dictionary<string, string?> values)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();

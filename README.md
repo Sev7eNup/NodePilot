@@ -54,6 +54,7 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 
 - [Why NodePilot](#why-nodepilot)
 - [Quick Start](#quick-start)
+- [Desktop app (one-click local install)](#desktop-app-one-click-local-install)
 - [Workflow Designer (Frontend)](#workflow-designer-frontend)
   - [Editor toolbar — seven clusters at a glance](#editor-toolbar--seven-clusters-at-a-glance)
   - [Canvas](#canvas)
@@ -183,6 +184,24 @@ Import it via the **Workflows** page → *Import* (or `POST /api/import`). It ex
 every shape you'll meet in production — schedule trigger, `runScript`, `log`, `junction`
 (waitAll), `decision`, `emailNotification`, `returnData`, plus three phase sticky-notes —
 laid out to fill the canvas width and run top-to-bottom.
+
+---
+
+## Desktop app (one-click local install)
+
+Besides the server rollout, NodePilot ships as a **local desktop application** for Windows 11 x64:
+a single signed `.exe` that bundles the app, a self-contained .NET 10 runtime, and a **local
+PostgreSQL** server, installs everything as background Windows services, and opens a native
+**Electron** window on top — fully **offline**, no runtime prerequisites, no external database.
+
+The backend runs as an always-on service (so scheduled/webhook triggers keep firing when the window
+is closed) under the new `Deployment:Mode=Desktop` posture — `Production`-hardened, but loopback-only
+Kestrel and a bundled 127.0.0.1 Postgres. The Electron shell is a thin, hardened viewer that pins the
+loopback certificate by SHA-256 (no system root CA). Build and internals: [`deploy/desktop/README.md`](deploy/desktop/README.md).
+
+```powershell
+deploy/desktop/Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\path\to\pgsql' -Version 1.0.0
+```
 
 ---
 
@@ -1164,4 +1183,5 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). You are free to u
 - **[docs/backlog.md](docs/backlog.md)** — designer-feature ideas explored and consciously deferred.
 - **[docs/easter-eggs.md](docs/easter-eggs.md)** — yes, there are easter eggs. No, we won't tell you which.
 - **[grafana/README.md](grafana/README.md)** — Prometheus + Grafana stack walk-through.
-- **[deploy/README.md](deploy/README.md)** — production deployment operator manual.
+- **[deploy/README.md](deploy/README.md)** — production deployment operator manual (Windows Service, external DB).
+- **[deploy/desktop/README.md](deploy/desktop/README.md)** — desktop app: offline one-click installer with bundled PostgreSQL, plus the fast dev loop for iterating without rebuilding the installer.

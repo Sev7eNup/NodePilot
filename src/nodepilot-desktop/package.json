@@ -1,0 +1,24 @@
+{
+  "name": "nodepilot-desktop",
+  "productName": "NodePilot",
+  "version": "1.0.0",
+  "description": "NodePilot desktop shell — a thin Electron viewer for the locally-hosted NodePilot backend.",
+  "private": true,
+  "license": "Apache-2.0",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc && node scripts/copy-static.mjs",
+    "typecheck": "tsc --noEmit",
+    "start": "npm run build && electron .",
+    "package": "npm run build && electron-forge package",
+    "make": "npm run build && electron-forge make"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@electron-forge/cli": "^7.10.0",
+    "@electron-forge/maker-zip": "^7.10.0",
+    "@types/node": "^22.10.0",
+    "electron": "43.2.0",
+    "typescript": "^5.7.2"
+  }
+}

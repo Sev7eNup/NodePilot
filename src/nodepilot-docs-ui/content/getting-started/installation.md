@@ -139,4 +139,6 @@ Danach stehen die Rollen **Admin / Operator / Viewer** zur Verfügung. Für eine
 
 ## Produktivbetrieb
 
+Das obige Setup ist **eine von drei Betriebsarten** — der Dev-Pfad. Für den produktiven Einsatz gibt es zwei weitere: das **Server-Deployment** (Windows-Dienst, externe DB, Team-Zugriff) und die **Desktop-App** (ein `.exe`-Installer, der Datenbank und Laufzeit mitbringt, aber nur auf der eigenen Maschine erreichbar ist). Welche wofür taugt und was im Alltag konkret anders ist, steht unter [Deployment → Betriebsarten im Überblick](../deployment/overview).
+
 Das obige Setup ist der Dev/Quick-Path. Für einen produktiven Rollout als Windows-Service (gMSA oder LocalSystem, Kestrel-HTTPS, ACLs, Firewall, Zertifikate) liegen fertige Installer-Skripte unter `deploy\` (`Build-Artifact.ps1`, `Install-NodePilot.ps1`, `Update-NodePilot.ps1`, `Uninstall-NodePilot.ps1`). Der Installer braucht zwingend mehrere Parameter (Artifact-Pfad, Zertifikat-Thumbprint, DB-Host/User/Passwort als SecureString) — die komplette Aufrufsyntax, Parameterliste und Stolperfallen stehen in [Deployment → Produktions-Rollout](../deployment/production) sowie in `deploy\README.md`. Fürs Dev-Setup brauchst du diese Skripte **nicht**.

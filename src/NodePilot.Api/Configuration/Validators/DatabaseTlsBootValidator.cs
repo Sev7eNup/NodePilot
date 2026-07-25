@@ -37,7 +37,7 @@ public sealed class DatabaseTlsBootValidator : IBootValidator
 
             if (allowInsecure)
             {
-                ValidateDevelopmentOverride(
+                ValidateInsecureTlsOverride(
                     configuration,
                     IsLoopbackSqlServerHost(builder.DataSource)
                     && (string.IsNullOrWhiteSpace(builder.FailoverPartner)
@@ -69,7 +69,7 @@ public sealed class DatabaseTlsBootValidator : IBootValidator
 
             if (allowInsecure)
             {
-                ValidateDevelopmentOverride(
+                ValidateInsecureTlsOverride(
                     configuration,
                     builder.Host.Split(',', StringSplitOptions.TrimEntries)
                         .All(IsLoopbackDatabaseHost),
@@ -102,7 +102,7 @@ public sealed class DatabaseTlsBootValidator : IBootValidator
             $"Database connection string cannot be parsed: {exception.Message}"));
     }
 
-    private static void ValidateDevelopmentOverride(
+    private static void ValidateInsecureTlsOverride(
         IConfiguration configuration,
         bool loopbackOnly,
         IList<BootValidationIssue> issues)
@@ -114,18 +114,25 @@ public sealed class DatabaseTlsBootValidator : IBootValidator
                           ?? configuration["ASPNETCORE_ENVIRONMENT"]
                           ?? configuration["DOTNET_ENVIRONMENT"]
                           ?? "Production";
-        if (!string.Equals(environment, Environments.Development, StringComparison.OrdinalIgnoreCase)
-            || !loopbackOnly)
+        var isDevelopment = string.Equals(environment, Environments.Development, StringComparison.OrdinalIgnoreCase);
+        // Deployment:Mode=Desktop is the single-machine package: a bundled Postgres on 127.0.0.1
+        // with no PKI. A loopback connection that never leaves the host has no meaningful TLS
+        // identity to verify, so we accept the same escape hatch the Development environment gets
+        // — but ONLY for loopback hosts, and the rest of the production hardening stays on.
+        var isDesktop = DeploymentModeReader.IsDesktop(configuration);
+
+        if (!loopbackOnly || (!isDevelopment && !isDesktop))
         {
             issues.Add(new BootValidationIssue(
                 "DatabaseTls", BootValidationSeverity.Error, "Database:AllowInsecureTls",
-                "Database:AllowInsecureTls=true is accepted only in the Development environment and only for loopback database hosts. Production and remote database connections must verify TLS identity."));
+                "Database:AllowInsecureTls=true is accepted only for loopback database hosts, and only in the Development environment or under Deployment:Mode=Desktop. Production/server and remote database connections must verify TLS identity."));
             return;
         }
 
+        var posture = isDesktop ? "Deployment:Mode=Desktop" : "Development";
         issues.Add(new BootValidationIssue(
             "DatabaseTls", BootValidationSeverity.Warning, "Database:AllowInsecureTls",
-            "Database TLS identity verification is disabled for a loopback-only Development database."));
+            $"Database TLS identity verification is disabled for a loopback-only database ({posture})."));
     }
 
     private static bool IsLoopbackSqlServerHost(string configuredHost)

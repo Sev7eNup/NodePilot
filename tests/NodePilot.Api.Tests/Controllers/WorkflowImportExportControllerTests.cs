@@ -184,6 +184,27 @@ public class WorkflowImportExportControllerTests
     }
 
     [Fact]
+    public async Task Import_SetsPublishedByUserId_ToImportingUser()
+    {
+        var db = CreateContext();
+        var importer = Guid.Parse("00000000-0000-0000-0000-0000000000aa");
+        var h = WorkflowControllerHarnessFactory.Build(db, role: "Admin", userId: importer);
+
+        var result = await h.ImportExport.Import(
+            EnvelopeWithSingle("Principal-Check", """{"nodes":[],"edges":[]}"""),
+            null, CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+
+        var saved = await db.Workflows.AsNoTracking().FirstAsync();
+        // Import establishes runtime authority like Publish does. Without it every automated
+        // trigger (schedule/webhook/file-watcher/database/event-log) is cancelled at dispatch with
+        // "missing_effective_principal", and cross-folder sub-workflow calls are refused.
+        saved.PublishedByUserId.Should().Be(importer,
+            "automated triggers resolve their effective principal from Workflow.PublishedByUserId");
+    }
+
+    [Fact]
     public async Task Import_EnvelopeWithIsEnabledTrue_RespectsFlag()
     {
         var db = CreateContext();

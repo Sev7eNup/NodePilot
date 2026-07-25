@@ -2,6 +2,8 @@
 
 Turnkey installer für NodePilot als Windows-Service auf einem domain-joined Windows Server 2022/2025. TLS wird direkt von Kestrel terminiert (Cert aus `LocalMachine\My`), die Datenbank läuft auf **SQL Server 2022 (Trusted Connection)** oder **PostgreSQL 16+** (user/password) — umschaltbar per `-DbProvider`.
 
+> **Nur eine Maschine, kein Team-Zugriff nötig?** Dann ist die **Desktop-App** der deutlich schnellere Weg: ein `.exe`-Installer, der PostgreSQL und .NET-Laufzeit mitbringt, ohne Zertifikat, Datenbank oder AD-Vorarbeit — siehe [`desktop/README.md`](desktop/README.md). Sie bindet dafür ausschließlich Loopback: **kein Netzwerkzugriff, keine eingehenden Webhooks, kein SSO, keine HA**.
+
 Der Dienst läuft wahlweise unter:
 
 - **LocalSystem** (`-UseLocalSystem`) — kein gMSA nötig. Im Netzwerk authentifiziert sich der Dienst dann als **Computer-Konto** `DOMAIN\<host>$`: SQL-Server-Trusted-Connection und integriertes WinRM nutzen dieses Konto. Einfachste Variante für Einzelserver.
