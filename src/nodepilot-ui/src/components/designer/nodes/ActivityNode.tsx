@@ -264,7 +264,13 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const varFlowRole = data.__varFlowRole as 'producer' | 'consumer' | undefined;
 
   const health = data.__health as Array<{ status: string }> | undefined;
-  const showSparkline = !!health?.length && !liveStatus && !simulated;
+  // Deliberately NOT gated on liveStatus: the sparkline is a second information layer (how did
+  // the last runs of this step go?), not part of the live signal. A pinned run survives the 30 s
+  // SignalR TTL on purpose, so gating it away meant the dots stayed gone after every test run
+  // until the status pill was dismissed. Live/replay status keeps its border+fill colouring.
+  // The dry-run simulation stays an exception — there the sequential reveal animation is the
+  // node's only statement, and historical dots would compete with it.
+  const showSparkline = !!health?.length && !simulated;
 
   // Coverage Heatmap (Feature 5): tint inactive nodes faintly so the user can spot
   // unreached logic at a glance. `never` = full grey-out; `rare` = subtle amber tint.

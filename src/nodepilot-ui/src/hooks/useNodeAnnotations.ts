@@ -119,20 +119,31 @@ export function useNodeAnnotations({
     staleTime: 30_000,
   });
 
+  // `nodes` belongs in the deps: after save/publish/lock the editor rebuilds `nodes` from
+  // `definitionJson`, which drops __health — without re-running here the dots would stay gone
+  // until the next 60 s refetch. The stable-ref pattern (return the original array when nothing
+  // changed) is what keeps that from turning into a render loop. Same reasoning as the
+  // __workflowEnabled effect below; don't "clean up" the deps.
   useEffect(() => {
     if (!stepHealth) return;
-    setNodes((nds: Node[]) => nds.map((n) => {
-      const health = stepHealth[n.id];
-      if (!health && !('__health' in (n.data as Record<string, unknown>))) return n;
-      if (!health) {
-        const { __health: _h, ...rest } = n.data as Record<string, unknown>;
-        void _h;
-        return { ...n, data: rest };
-      }
-      if ((n.data as Record<string, unknown>).__health === health) return n;
-      return { ...n, data: { ...n.data, __health: health } };
-    }));
-  }, [stepHealth, setNodes]);
+    setNodes((nds: Node[]) => {
+      let mutated = false;
+      const next = nds.map((n) => {
+        const health = stepHealth[n.id];
+        if (!health && !('__health' in (n.data as Record<string, unknown>))) return n;
+        if (!health) {
+          const { __health: _h, ...rest } = n.data as Record<string, unknown>;
+          void _h;
+          mutated = true;
+          return { ...n, data: rest };
+        }
+        if ((n.data as Record<string, unknown>).__health === health) return n;
+        mutated = true;
+        return { ...n, data: { ...n.data, __health: health } };
+      });
+      return mutated ? next : nds;
+    });
+  }, [stepHealth, nodes, setNodes]);
 
   // ---- __stats: avg/p95/failureRate (used by perf annotations + failure heatmap) ----
   const { data: stepStats } = useQuery({
@@ -146,21 +157,29 @@ export function useNodeAnnotations({
     staleTime: 60_000,
   });
 
+  // `nodes` in the deps + stable-ref pattern, for the same reason as __health above (a node
+  // rebuild from `definitionJson` would otherwise strip __stats for up to 5 minutes).
   useEffect(() => {
     if (!stepStats) return;
-    setNodes((nds: Node[]) => nds.map((n) => {
-      const stats = stepStats[n.id];
-      const had = '__stats' in (n.data as Record<string, unknown>);
-      if (!stats && !had) return n;
-      if (!stats) {
-        const { __stats: _s, ...rest } = n.data as Record<string, unknown>;
-        void _s;
-        return { ...n, data: rest };
-      }
-      if ((n.data as Record<string, unknown>).__stats === stats) return n;
-      return { ...n, data: { ...n.data, __stats: stats } };
-    }));
-  }, [stepStats, setNodes]);
+    setNodes((nds: Node[]) => {
+      let mutated = false;
+      const next = nds.map((n) => {
+        const stats = stepStats[n.id];
+        const had = '__stats' in (n.data as Record<string, unknown>);
+        if (!stats && !had) return n;
+        if (!stats) {
+          const { __stats: _s, ...rest } = n.data as Record<string, unknown>;
+          void _s;
+          mutated = true;
+          return { ...n, data: rest };
+        }
+        if ((n.data as Record<string, unknown>).__stats === stats) return n;
+        mutated = true;
+        return { ...n, data: { ...n.data, __stats: stats } };
+      });
+      return mutated ? next : nds;
+    });
+  }, [stepStats, nodes, setNodes]);
 
   // ---- __workflowEnabled: false marks the workflow disabled — custom nodes pause their
   // live-ticking indicators (e.g. the scheduleTrigger countdown) based on this flag. Enabled
