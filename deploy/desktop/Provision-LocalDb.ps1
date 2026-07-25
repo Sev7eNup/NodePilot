@@ -398,21 +398,29 @@ Start-Sleep -Seconds 3
 Write-Step 'Waiting for readiness'
 $ready = $false
 $origin = "https://localhost:$HttpsPort"
+# Windows PowerShell 5.1 defaults to legacy TLS and negotiates poorly against Kestrel's HTTPS
+# endpoint, so Invoke-WebRequest can fail against a perfectly healthy API. Force TLS 1.2 and fall
+# back to curl.exe (ships with Windows 10+) before concluding the API is down.
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = { param($s,$certArg,$chain,$errs) $certArg.Thumbprint -eq $certThumbprint }
+$curlExe = Join-Path $env:SystemRoot 'System32\curl.exe'
 for ($i = 0; $i -lt 90; $i++) {
     try {
         $resp = Invoke-WebRequest -Uri "$origin/healthz/ready" -UseBasicParsing -TimeoutSec 3
         if ($resp.StatusCode -eq 200) { $ready = $true; break }
-    } catch { Start-Sleep -Seconds 2 }
+    } catch { }
+    if (Test-Path -LiteralPath $curlExe) {
+        $code = (& $curlExe -sk --http1.1 -o NUL -w '%{http_code}' "$origin/healthz/ready" 2>$null)
+        if ("$code".Trim() -eq '200') { $ready = $true; break }
+    }
+    Start-Sleep -Seconds 2
 }
 [System.Net.ServicePointManager]::ServerCertificateValidationCallback = $null
 
-if (-not $ready) {
-    Write-Warning "API did not report /healthz/ready within the timeout. Check $LogsDir and the '$ApiServiceName' service."
-    exit 1
-}
-
 # --- 10. admin bootstrap handoff (first run only) --------------------------------------------
+# NOTE: this runs even when the readiness probe failed. The handoff is what lets the Electron
+# shell show the first-run "create administrator" page; skipping it strands the user on the normal
+# login form, which cannot send the required X-Setup-Token header.
 # The API wrote a SYSTEM-owned one-shot setup token under DataPath during first boot. Copy it
 # into the installing user's profile so the user-context Electron shell (started next) can read
 # it and drive first-run admin creation. ACL-restricted to the installing user + SYSTEM. No-op
@@ -420,10 +428,24 @@ if (-not $ready) {
 Write-Step 'Writing admin setup handoff'
 $tokenPath = Join-Path $DataPath 'admin-setup.token'
 if (Test-Path -LiteralPath $tokenPath) {
+    # The API (LocalSystem) creates the token with an owner-only ACL: an elevated Administrator can
+    # neither read it nor change its DACL. Take ownership for BUILTIN\Administrators (takeown /a),
+    # then grant that group read. Both the new owner and every remaining ACE stay inside the
+    # backend's trusted set (RestrictedFileWriter.BuildTrustedSids = SYSTEM, Administrators,
+    # TrustedInstaller, CreatorOwner) and the ACL stays protected, so the token still passes
+    # AdminBootstrap.Validate afterwards.
+    & takeown.exe /f $tokenPath /a | Out-Null
+    & icacls.exe $tokenPath /grant '*S-1-5-32-544:(R)' | Out-Null
+
     $handoffDir = Join-Path $env:LOCALAPPDATA 'NodePilot'
     New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
     $handoffPath = Join-Path $handoffDir 'admin-setup.handoff'
     $tokenValue = [System.IO.File]::ReadAllText($tokenPath)
+    # Never leave an empty handoff behind: the shell would show the setup page and then fail with
+    # "setup token is empty" instead of falling back to the normal login.
+    if ([string]::IsNullOrWhiteSpace($tokenValue)) {
+        throw "Bootstrap token at $tokenPath could not be read (empty). First-run setup cannot be prepared."
+    }
     $userSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User
     if (Test-Path -LiteralPath $handoffPath) { Remove-Item -LiteralPath $handoffPath -Force }
     New-Item -ItemType File -Path $handoffPath | Out-Null
@@ -439,6 +461,11 @@ if (Test-Path -LiteralPath $tokenPath) {
     Set-Acl -LiteralPath $handoffPath -AclObject $hacl
     [System.IO.File]::WriteAllText($handoffPath, $tokenValue, (New-Object System.Text.UTF8Encoding($false)))
     Write-Host "    First-run handoff written to $handoffPath"
+}
+
+if (-not $ready) {
+    Write-Warning "API did not report /healthz/ready within the timeout. Check $LogsDir and the '$ApiServiceName' service."
+    exit 1
 }
 
 Write-Host "NodePilot desktop runtime provisioned. Origin: $origin" -ForegroundColor Green
