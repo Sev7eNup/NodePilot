@@ -362,3 +362,54 @@ that lifts the transitive graph. The audit suppression was removed.
 - [Directory.Packages.props](../Directory.Packages.props) — `SQLitePCLRaw.bundle_e_sqlite3` 3.0.3 + rationale
 - Direct `PackageReference` in every project referencing a `*Sqlite` package:
   `NodePilot.{Data,Engine,Scheduler}`, `NodePilot.{Api,Data,Engine}.Tests`, `NodePilot.TestCommons`
+
+## Dependency Advisories (npm)
+
+Resolution of `npm audit --audit-level=moderate` HIGH advisories in `src/nodepilot-ui` and
+`src/nodepilot-docs-ui`. Both are gated in CI; re-run the command in each package after any
+bump to keep this section honest. All three below turned the pipeline red on 2026-07-22
+without any code change — the advisories were published against already-pinned versions.
+
+### DEP-4 — postcss HIGH (GHSA-r28c-9q8g-f849) — FIXED
+Path traversal in the previous-source-map auto-loader (`sourceMappingURL`) allows disclosure
+of arbitrary `.map` files. Vulnerable `<= 8.5.17`, patched 8.5.18. Purely transitive through
+`vite` in both packages, and vite's own `^8.5.15` range already covered the fix — a lockfile
+refresh (`npm update postcss` → 8.5.23) was sufficient. No manifest change.
+
+### DEP-5 — brace-expansion HIGH (GHSA-mh99-v99m-4gvg) — FIXED
+Unbounded expansion length causes an OOM crash. The advisory range is `<= 5.0.7` with 5.0.8
+as the only patched release — unbounded below, so every 1.x/2.x/3.x release counts as
+vulnerable too. Dev-only in both packages (eslint's glob chain).
+
+- `docs-ui` was already on eslint 10 → `minimatch@10` → `brace-expansion@5.0.7`, in-range
+  fixable by a lockfile bump to 5.0.8.
+- `nodepilot-ui` sat on eslint 9 → `minimatch@3` → `brace-expansion@1.1.16`, where the 1.x
+  line has no fix at all. Only route out was **eslint 9 → 10**, which in turn requires
+  `eslint-plugin-react-hooks` ≥ 7.1 (7.0.1 refuses to resolve against eslint 10).
+
+That plugin bump promoted three React Compiler diagnostics to errors and surfaced two more
+`incompatible-library` warnings. The six error sites were reviewed and none is a runtime
+defect — they report what the compiler could not memoize, plus ref writes inside inline JSX
+event handlers that the compiler attributes to render scope. The three rules are disabled in
+[eslint.config.js](../src/nodepilot-ui/eslint.config.js) with the affected files named,
+matching the pre-existing `react-hooks/set-state-in-effect` suppression. Warning cap moved
+11 → 13 with the same rationale recorded in [ci.yml](../.github/workflows/ci.yml).
+
+### DEP-6 — react-router HIGH (GHSA-qwww-vcr4-c8h2) — FIXED
+RSC-mode CSRF bypass: an action can execute before the 400 response. Vulnerable
+`>= 7.12.0, < 8.3.0`, patched 8.3.0.
+
+Not exploitable here — both apps are SPAs with no RSC/server request handler
+(`createBrowserRouter` in declarative mode, and a `HashRouter` in docs-ui; no `@react-router/*`
+packages in either lockfile). Fixed forward anyway rather than risk-accepted, because the v7
+line has no patched release: `react-router-dom` stops at 7.18.1 and pins `react-router`
+exactly, so neither an `overrides` entry nor a caret bump can reach 8.3.0. npm's own
+suggestion was a **downgrade** to 7.11.0 — rejected as a dead end that the next advisory
+would reopen.
+
+Migrated both packages to `react-router` 8.x, which dissolved the `react-router-dom` package:
+general APIs now import from `react-router`, DOM-specific ones from `react-router/dom` (in
+this repo only `RouterProvider`, in [App.tsx](../src/nodepilot-ui/src/App.tsx)). 55 files
+touched, plus four `vi.mock('react-router-dom')` call sites. v8 also raises the floors to
+node ≥ 22.22 and react ≥ 19.2.7 — hence the CI runner bump from Node 20 to 22 across all
+three frontend jobs and the react/react-dom bump in both packages.

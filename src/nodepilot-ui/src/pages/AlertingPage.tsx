@@ -1,6 +1,6 @@
 import { Add, ChevronDown, ChevronUp, Edit, History, Power, Search, TrashCan } from '@carbon/icons-react';
 import { useCallback, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { alertingApi, type NotificationRule } from '../api/alerting';

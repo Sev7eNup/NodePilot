@@ -1,7 +1,7 @@
 import { DocumentBlank, Search, Time } from '@carbon/icons-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
 import type { Workflow } from '../../../types/api';

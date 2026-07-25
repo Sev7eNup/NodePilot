@@ -23,7 +23,7 @@ import {
 } from '@carbon/icons-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import type { EChartsOption } from 'echarts';
 import { api } from '../api/client';

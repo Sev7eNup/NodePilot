@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WorkflowQuickSwitcher } from '../../../../components/designer/overlays/WorkflowQuickSwitcher';
 import { api } from '../../../../api/client';

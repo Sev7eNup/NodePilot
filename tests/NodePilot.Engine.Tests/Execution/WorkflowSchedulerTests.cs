@@ -9,6 +9,13 @@ using Xunit;
 
 namespace NodePilot.Engine.Tests.Execution;
 
+// WorkflowScheduler's step gate is a process-global static semaphore, and several tests here
+// call Configure(1) to shrink it to a single slot. Without this attribute the class runs in
+// parallel with every other collection in the assembly — including the WorkflowEngine tests that
+// drive RunAsync through that same gate (WorkflowEngineCapacityTests even runs a 10-way parallel
+// execution). They then contend for the one slot we installed, which skews the timing this file
+// depends on. Join the collection those engine tests already share so the gate has one owner.
+[Collection("SerialEngineTests")]
 public class WorkflowSchedulerTests
 {
     private static WorkflowNode Node(string id, string type = "runScript", string config = "{}")
@@ -333,6 +340,7 @@ public class WorkflowSchedulerTests
         {
             var fast = Node("fast");
             var queuedNodes = Enumerable.Range(0, 5).Select(i => Node($"q{i}")).ToList();
+            var queuedIds = queuedNodes.Select(n => n.Id).ToHashSet();
             var join = Node("join", "junction", """{"mode":"waitAny"}""");
             var final = Node("final");
             var roots = new List<WorkflowNode> { fast };
@@ -383,16 +391,31 @@ public class WorkflowSchedulerTests
                 skipped,
                 async (node, ct) =>
                 {
-                    // fast holds the gate for 50ms — long enough for all five queued
-                    // siblings to be parked in gate.WaitAsync. After fast completes,
-                    // the scheduler's junction-race cancels every queued sibling's CTS
-                    // while four of them are still inside WaitAsync.
+                    // The five queued siblings block until cancelled — that is what makes this
+                    // test deterministic. Releasing the gate and cancelling the race losers are
+                    // concurrent, unordered events: there is no happens-before edge between
+                    // fast's `finally { gate.Release(); }` and the scheduler continuation that
+                    // cancels the siblings. With a finite sibling delay, a loaded runner (CI also
+                    // pays for XPlat coverage instrumentation) lets the 1-slot gate hand off
+                    // several siblings that run to completion and legitimately land in
+                    // `completed` — correct engine behaviour, but it breaks the assertion below.
+                    // Blocking forever removes the race: whichever sibling grabs the slot can
+                    // never finish on its own, so the remaining four stay parked in
+                    // gate.WaitAsync and all five end up cancelled. The regression path under
+                    // test (OCE thrown out of gate.WaitAsync) is still covered by those four.
+                    // join and final must NOT block — they run after the race is decided and the
+                    // workflow has to reach its end for the assertions to mean anything.
                     if (node.Id == "fast") await Task.Delay(50, ct);
+                    else if (queuedIds.Contains(node.Id)) await Task.Delay(Timeout.Infinite, ct);
                     else await Task.Delay(5, ct);
                     return new ActivityResult { Success = true, Output = node.Id };
                 },
                 NullLogger.Instance,
-                CancellationToken.None);
+                CancellationToken.None)
+                // Safety net: the queued siblings only ever end via cancellation, so a regression
+                // that stops cancelling them would hang this test — and with it the CI job —
+                // instead of failing. Fail loudly after 30s rather than blocking the runner.
+                .WaitAsync(TimeSpan.FromSeconds(30));
 
             // Workflow must complete cleanly — no OCE escaping the scheduler.
             completed.Should().Contain(new[] { "fast", "join", "final" });

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useTranslation, Trans } from 'react-i18next';
 import { api, downloadFromApi } from '../api/client';
 import type { Workflow, LastExecutionInfo } from '../types/api';

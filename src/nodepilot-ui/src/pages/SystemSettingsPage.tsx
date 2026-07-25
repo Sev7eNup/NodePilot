@@ -10,7 +10,7 @@ import {
   TrashCan,
 } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { RestartBanner } from '../components/admin-settings/RestartBanner';
 import { IntegrationsSection } from '../components/admin-settings/IntegrationsSection';
 import { RetentionSection } from '../components/admin-settings/RetentionSection';
