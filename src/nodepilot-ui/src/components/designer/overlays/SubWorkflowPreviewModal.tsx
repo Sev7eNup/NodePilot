@@ -50,15 +50,20 @@ export function SubWorkflowPreviewModal({ workflowNameOrId, onClose, onOpenInEdi
     return () => globalThis.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  // Read into a local first: the guarded `workflow.definitionJson` access inside the body made
+  // the compiler infer the whole `workflow` object as the dependency while the source listed
+  // only the one property, which cost this component its auto-memoization
+  // (react-hooks/preserve-manual-memoization).
+  const definitionJson = workflow?.definitionJson;
   const definition = useMemo(() => {
-    if (!workflow?.definitionJson) return null;
+    if (!definitionJson) return null;
     try {
-      const parsed = JSON.parse(workflow.definitionJson) as { nodes?: Node[]; edges?: Edge[] };
+      const parsed = JSON.parse(definitionJson) as { nodes?: Node[]; edges?: Edge[] };
       return { nodes: parsed.nodes ?? [], edges: parsed.edges ?? [] };
     } catch {
       return null;
     }
-  }, [workflow?.definitionJson]);
+  }, [definitionJson]);
 
   // Mark every node as non-selectable + non-draggable up front so the rendered ActivityNodes
   // visually match the read-only intent. Without this, reactFlow defaults still allow click

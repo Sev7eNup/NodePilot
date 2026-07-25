@@ -924,12 +924,18 @@ function WorkflowEditorInner() {
   const triggerDebug = useCallback(() => {
     if (roleCanWrite && liveExecution?.status !== 'Running') run(true);
   }, [roleCanWrite, liveExecution?.status, run]);
+  // Both values are read into locals first so the dependency list is a list of simple
+  // expressions. Reading `liveExecution.executionId` inside the body made the compiler infer
+  // the whole `liveExecution` object as the dependency while the source listed the two
+  // properties — a mismatch that cost this component its auto-memoization
+  // (react-hooks/preserve-manual-memoization).
+  const liveExecutionStatus = liveExecution?.status;
+  const liveExecutionId = liveExecution?.executionId;
   const triggerCancel = useCallback(() => {
-    if (liveExecution?.status === 'Running' && liveExecution.executionId) {
-      api.post(`/executions/${liveExecution.executionId}/cancel`, {}).catch(() => { /* ignore */ });
+    if (liveExecutionStatus === 'Running' && liveExecutionId) {
+      api.post(`/executions/${liveExecutionId}/cancel`, {}).catch(() => { /* ignore */ });
     }
-   
-  }, [liveExecution?.status, liveExecution?.executionId]);
+  }, [liveExecutionStatus, liveExecutionId]);
   const triggerTidy = useCallback(() => {
     if (canWrite && !isTidying) tidyLayout();
   }, [canWrite, isTidying, tidyLayout]);
@@ -1092,6 +1098,15 @@ function WorkflowEditorInner() {
     () => ({ updateGroupNode }),
     [updateGroupNode],
   );
+
+  // Resolved here rather than inside an IIFE in the JSX below. The `(() => { ... })()` form
+  // executes during render, so the React Compiler treated the context-menu callbacks created
+  // inside it as render-phase code and rejected their (indirect) ref access
+  // (react-hooks/refs). Plain conditional rendering keeps the callbacks out of that path.
+  const contextMenuNode = contextMenu
+    ? nodes.find((n) => n.id === contextMenu.nodeId)
+    : undefined;
+  const contextMenuData = (contextMenuNode?.data ?? {}) as Record<string, unknown>;
 
   return (
     <SubWorkflowPreviewContext.Provider value={subWorkflowPreviewContextValue}>
@@ -1474,24 +1489,19 @@ function WorkflowEditorInner() {
               onClose={() => setInsertAt(null)}
             />
           )}
-          {contextMenu && (() => {
-            const node = nodes.find((n) => n.id === contextMenu.nodeId);
-            if (!node) return null;
-            const d = node.data as Record<string, unknown>;
-            return (
-              <NodeContextMenu
-                x={contextMenu.x}
-                y={contextMenu.y}
-                isDisabled={!!(d.disabled)}
-                hasBreakpoint={!!(d.breakpoint)}
-                onDuplicate={() => duplicateNode(contextMenu.nodeId)}
-                onToggleDisabled={() => handleNodeDataUpdate(contextMenu.nodeId, { disabled: !d.disabled })}
-                onToggleBreakpoint={() => handleNodeDataUpdate(contextMenu.nodeId, { breakpoint: !d.breakpoint })}
-                onDelete={() => deleteNodeById(contextMenu.nodeId)}
-                onClose={() => setContextMenu(null)}
-              />
-            );
-          })()}
+          {contextMenu && contextMenuNode && (
+            <NodeContextMenu
+              x={contextMenu.x}
+              y={contextMenu.y}
+              isDisabled={!!(contextMenuData.disabled)}
+              hasBreakpoint={!!(contextMenuData.breakpoint)}
+              onDuplicate={() => duplicateNode(contextMenu.nodeId)}
+              onToggleDisabled={() => handleNodeDataUpdate(contextMenu.nodeId, { disabled: !contextMenuData.disabled })}
+              onToggleBreakpoint={() => handleNodeDataUpdate(contextMenu.nodeId, { breakpoint: !contextMenuData.breakpoint })}
+              onDelete={() => deleteNodeById(contextMenu.nodeId)}
+              onClose={() => setContextMenu(null)}
+            />
+          )}
           {edgeContextMenu && (() => {
             const edge = edges.find((e) => e.id === edgeContextMenu.edgeId);
             if (!edge) return null;

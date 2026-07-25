@@ -1,6 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+// Static Serilog: the key resolves during service registration, before the host (and with it
+// DI-provided ILogger) exists. Log.Logger is already configured at that point (Program.cs) and
+// the same pre-Build logging path is used elsewhere in startup.
+using Serilog;
 
 namespace NodePilot.Api.Security;
 
@@ -55,7 +59,27 @@ public static class JwtKeyResolver
                 // helper deletes the file on ACL failure so a retry never re-uses a
                 // partially-secured key.
                 key = GenerateKey();
-                RestrictedFileWriter.WriteText(keyFile, key, failClosed: true);
+
+                // failClosed MUST mirror the pre-check above. WriteText re-runs the identical
+                // ValidateParentDirectory internally and has no environment awareness, so a
+                // hardcoded `true` threw straight through the Development escape hatch on line
+                // 43 and made it dead code: dev machines and CI runners whose workspace grants
+                // write access to Users could not boot at all. Same contract as
+                // AdminBootstrap.EnsureBootstrapTokenIfNeeded — Development is best-effort,
+                // every other environment fails closed.
+                if (!RestrictedFileWriter.WriteText(keyFile, key, failClosed: !env.IsDevelopment()))
+                {
+                    // Development only. The writer deleted its partial file, so nothing
+                    // insecure is left on disk — we simply keep the generated key in memory.
+                    // It is a full-strength random key; the only cost is that it is not
+                    // persisted, so tokens minted now stop validating after a restart.
+                    Log.Warning(
+                        "JWT signing key could not be persisted to '{Path}' with owner-only ACLs: {Reason}. " +
+                        "Continuing with an in-memory key because the host environment is Development — " +
+                        "issued tokens will not survive a restart. Set Jwt:Key or Jwt:KeyPath to a location " +
+                        "whose directory chain is not writable by untrusted principals to make this stable.",
+                        keyFile, parentSecurity.Reason ?? "parent directory validation failed");
+                }
             }
             else
             {
