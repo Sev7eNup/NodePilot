@@ -13,7 +13,7 @@ Installiere diese drei Dinge einmalig (je ein Befehl, oder per grafischem Instal
 | Komponente | Winget-Aufruf (PowerShell/CMD) | Check danach |
 |---|---|---|
 | .NET 10 SDK | `winget install Microsoft.DotNet.SDK.10` | `dotnet --version` |
-| Node.js 20+ | `winget install OpenJS.NodeJS.LTS` | `node -v` |
+| Node.js 22.22+ | `winget install OpenJS.NodeJS.LTS` | `node -v` |
 | PostgreSQL 16+ | `winget install PostgreSQL.PostgreSQL` | `"C:\Program Files\PostgreSQL\16\bin\pg_ctl.exe" --version` |
 
 > Paket-IDs können sich ändern — notfalls per `winget search dotnet` / `winget search node` / `winget search postgres` die aktuelle ID suchen. Alternativ die Installer von <https://dotnet.microsoft.com/download>, <https://nodejs.org> und <https://www.postgresql.org/download/windows> holen.
