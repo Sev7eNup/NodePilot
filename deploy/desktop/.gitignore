@@ -1,0 +1,4 @@
+# Build output of Build-DesktopInstaller.ps1. The root .gitignore only covers "out/", but
+# -OutputRoot is a parameter, so any out2/, out3/, out-test/ ... would otherwise be commit-ready
+# — each one holding a ~180 MB installer plus the full staged payload (API + Electron + Postgres).
+out*/

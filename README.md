@@ -54,6 +54,7 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 
 - [Why NodePilot](#why-nodepilot)
 - [Quick Start](#quick-start)
+- [Desktop app (one-click local install)](#desktop-app-one-click-local-install)
 - [Workflow Designer (Frontend)](#workflow-designer-frontend)
   - [Editor toolbar — seven clusters at a glance](#editor-toolbar--seven-clusters-at-a-glance)
   - [Canvas](#canvas)
@@ -1182,4 +1183,5 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). You are free to u
 - **[docs/backlog.md](docs/backlog.md)** — designer-feature ideas explored and consciously deferred.
 - **[docs/easter-eggs.md](docs/easter-eggs.md)** — yes, there are easter eggs. No, we won't tell you which.
 - **[grafana/README.md](grafana/README.md)** — Prometheus + Grafana stack walk-through.
-- **[deploy/README.md](deploy/README.md)** — production deployment operator manual.
+- **[deploy/README.md](deploy/README.md)** — production deployment operator manual (Windows Service, external DB).
+- **[deploy/desktop/README.md](deploy/desktop/README.md)** — desktop app: offline one-click installer with bundled PostgreSQL, plus the fast dev loop for iterating without rebuilding the installer.

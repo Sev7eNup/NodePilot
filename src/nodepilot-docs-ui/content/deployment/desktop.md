@@ -2,7 +2,7 @@
 
 NodePilot als **lokale Desktop-App** für **Windows 11 x64**: ein signierter `.exe`-Installer, der App, gebündelte .NET-10-Runtime und einen **lokalen PostgreSQL**-Server mitbringt und alles als Hintergrund-Dienste betreibt — **offline**, ohne Prerequisites. Vollständige Doku im Repo unter `deploy/desktop/README.md`; die `deploy/`-Skripte werden im Dev-Mode **nicht** ausgeführt.
 
-Abgrenzung zum Server-Rollout (`deploy/README.md`): dort domain-joined Windows **Server** als Dienst hinter Kestrel-TLS mit **externer** DB. Hier eine Maschine-mit-sich-selbst.
+Abgrenzung zum Server-Rollout (`deploy/README.md`): dort domain-joined Windows **Server** als Dienst hinter Kestrel-TLS mit **externer** DB. Hier eine Maschine-mit-sich-selbst. Der direkte Vergleich aller drei Betriebsarten steht unter [Betriebsarten im Überblick](./overview) — dort auch die Alltags-Konsequenzen (kein Team-Zugriff, keine eingehenden Webhooks, SYSTEM-Rechte für lokale Skripte).
 
 ## Topologie
 

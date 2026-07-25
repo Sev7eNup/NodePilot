@@ -63,38 +63,85 @@ if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -F
 New-Item -ItemType Directory -Force -Path $Stage, $OutputRoot | Out-Null
 
 # --- icons -----------------------------------------------------------------------------------
-Write-Step 'Generating application icons'
+# Derived from the tracked brand asset so the installer, Start-Menu entry, taskbar and tray all
+# show the real NodePilot logo. The generated files stay out of git (assets/.gitignore); the
+# SOURCE is versioned, which is why a clean clone can always rebuild them.
+Write-Step 'Generating application icons from the brand asset'
 New-Item -ItemType Directory -Force -Path $AssetsDir | Out-Null
 Add-Type -AssemblyName System.Drawing
-function New-AppBitmap([int] $size) {
-    $bmp = New-Object System.Drawing.Bitmap($size, $size)
+
+$brandIcon = Join-Path $UiDir 'public\appicon.png'
+if (-not (Test-Path -LiteralPath $brandIcon)) {
+    throw "Brand icon not found: $brandIcon. The desktop package must not ship a placeholder icon."
+}
+$brandBitmap = [System.Drawing.Image]::FromFile($brandIcon)
+
+function New-ScaledBitmap([System.Drawing.Image] $source, [int] $size) {
+    # 32bpp ARGB + HighQualityBicubic keeps the logo's transparency and edges intact when the
+    # 635x635 source is reduced to icon sizes.
+    $bmp = New-Object System.Drawing.Bitmap($size, $size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     $g = [System.Drawing.Graphics]::FromImage($bmp)
-    $g.SmoothingMode = 'AntiAlias'
-    $g.Clear([System.Drawing.Color]::FromArgb(11, 16, 32))
-    $accent = [System.Drawing.Color]::FromArgb(79, 124, 255)
-    $pen = New-Object System.Drawing.Pen($accent, [Math]::Max(2, $size / 8))
-    $pen.StartCap = 'Round'; $pen.EndCap = 'Round'; $pen.LineJoin = 'Round'
-    # A simple upward chevron ("pilot / navigate").
-    $p1 = New-Object System.Drawing.Point([int]($size * 0.25), [int]($size * 0.62))
-    $p2 = New-Object System.Drawing.Point([int]($size * 0.50), [int]($size * 0.38))
-    $p3 = New-Object System.Drawing.Point([int]($size * 0.75), [int]($size * 0.62))
-    $g.DrawLines($pen, @($p1, $p2, $p3))
+    $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode   = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $g.SmoothingMode     = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $g.Clear([System.Drawing.Color]::Transparent)
+    $g.DrawImage($source, (New-Object System.Drawing.Rectangle(0, 0, $size, $size)))
     $g.Dispose()
     return $bmp
 }
+
+# Multi-resolution ICO, written by hand: System.Drawing's Icon.Save(GetHicon()) emits a single
+# resolution, which Windows then rescales badly in Explorer and the taskbar. The ICO container is
+# a 6-byte header + one 16-byte directory entry per image + the PNG payloads (PNG-compressed
+# entries are valid since Vista and keep the file small).
+function Write-MultiSizeIco([System.Drawing.Image] $source, [int[]] $sizes, [string] $path) {
+    $payloads = foreach ($s in $sizes) {
+        $bmp = New-ScaledBitmap $source $s
+        $ms = New-Object System.IO.MemoryStream
+        $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png)
+        $bmp.Dispose()
+        [pscustomobject]@{ Size = $s; Bytes = $ms.ToArray() }
+        $ms.Dispose()
+    }
+
+    $fs = [System.IO.File]::Create($path)
+    $bw = New-Object System.IO.BinaryWriter($fs)
+    try {
+        $bw.Write([uint16]0)                    # reserved
+        $bw.Write([uint16]1)                    # type: icon
+        $bw.Write([uint16]$payloads.Count)
+        $offset = 6 + (16 * $payloads.Count)    # header + directory
+        foreach ($p in $payloads) {
+            # 256 is encoded as 0 in the single-byte width/height fields.
+            $dim = if ($p.Size -ge 256) { 0 } else { $p.Size }
+            $bw.Write([byte]$dim); $bw.Write([byte]$dim)
+            $bw.Write([byte]0)                  # palette colours (0 = truecolour)
+            $bw.Write([byte]0)                  # reserved
+            $bw.Write([uint16]1)                # colour planes
+            $bw.Write([uint16]32)               # bits per pixel
+            $bw.Write([uint32]$p.Bytes.Length)
+            $bw.Write([uint32]$offset)
+            $offset += $p.Bytes.Length
+        }
+        foreach ($p in $payloads) { $bw.Write($p.Bytes) }
+    } finally { $bw.Dispose(); $fs.Dispose() }
+}
+
 $icoPngPath = Join-Path $AssetsDir 'icon.png'
 $trayPath   = Join-Path $AssetsDir 'tray.png'
 $setupIco   = Join-Path $Stage 'setup-icon.ico'
 $appIco     = Join-Path $AssetsDir 'icon.ico'
 
-$big = New-AppBitmap 256
+$big = New-ScaledBitmap $brandBitmap 256
 $big.Save($icoPngPath, [System.Drawing.Imaging.ImageFormat]::Png)
-(New-AppBitmap 16).Save($trayPath, [System.Drawing.Imaging.ImageFormat]::Png)
-# .ico for Forge (app/exe icon) and the installer.
-$hicon = $big.GetHicon()
-$icon = [System.Drawing.Icon]::FromHandle($hicon)
-$fs = [System.IO.File]::Create($appIco); $icon.Save($fs); $fs.Close()
+$big.Dispose()
+# Tray sits in the notification area at 16px (Windows picks 20/24 on high DPI, hence 32 as source).
+(New-ScaledBitmap $brandBitmap 32).Save($trayPath, [System.Drawing.Imaging.ImageFormat]::Png)
+Write-MultiSizeIco -source $brandBitmap -sizes @(16, 32, 48, 256) -path $appIco
+$brandBitmap.Dispose()
 Copy-Item -LiteralPath $appIco -Destination $setupIco -Force
+Write-Host ("    icon.ico {0:N0} KB (16/32/48/256), tray.png, icon.png" -f ((Get-Item $appIco).Length / 1KB))
 
 # --- 1. API (self-contained) -----------------------------------------------------------------
 Write-Step 'Publishing API (self-contained win-x64)'
