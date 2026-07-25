@@ -5,6 +5,7 @@ import { MemoryRouter, Route, Routes } from 'react-router';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { buildMetricsChartOption, MetricsPage } from '../../pages/MetricsPage';
+import { DEFAULT_CHART_TOKENS } from '../../lib/chartTheme';
 import type { MetricsWidget } from '../../types/api';
 
 vi.mock('../../components/common/EChart', () => ({ EChart: ({ ariaLabel }: { ariaLabel?: string }) => <div role="img" aria-label={ariaLabel} /> }));
@@ -55,5 +56,47 @@ describe('MetricsPage', () => {
     };
     const option = buildMetricsChartOption(widget) as { series?: Array<{ data?: unknown[] }> };
     expect(option.series?.[0]?.data).toEqual([]);
+  });
+
+  it('paintsAxesLegendAndSeriesFromTheSuppliedThemeTokens', () => {
+    // The page used to hardcode #94a3b8 for every axis and legend and a fixed
+    // 8-colour series list, so it looked identical in every skin — including light.
+    const widget: MetricsWidget = {
+      id: 100, title: 'Latency', description: null, type: 'timeseries', unit: 'ms',
+      grid: { x: 0, y: 0, width: 12, height: 8 }, error: null,
+      data: [
+        { label: 'p50', labels: {}, points: [{ timestamp: 1, value: 10 }] },
+        { label: 'p95', labels: {}, points: [{ timestamp: 1, value: 20 }] },
+      ],
+    };
+    const tokens = { ...DEFAULT_CHART_TOKENS, axis: '#123456', grid: '#654321', series: ['#aaaaaa', '#bbbbbb'] };
+    const option = buildMetricsChartOption(widget, tokens) as {
+      legend?: { textStyle?: { color?: string } };
+      xAxis?: { axisLabel?: { color?: string } };
+      yAxis?: { axisLabel?: { color?: string }; splitLine?: { lineStyle?: { color?: string } } };
+      series?: Array<{ itemStyle?: { color?: string } }>;
+    };
+    expect(option.legend?.textStyle?.color).toBe('#123456');
+    expect(option.xAxis?.axisLabel?.color).toBe('#123456');
+    expect(option.yAxis?.splitLine?.lineStyle?.color).toBe('#654321');
+    // Colour follows the entity by slot order, so filtering a series out must not
+    // repaint the survivors.
+    expect(option.series?.map((s) => s.itemStyle?.color)).toEqual(['#aaaaaa', '#bbbbbb']);
+  });
+
+  it('assignsSeriesColoursBySlotOrderWithoutCycling', () => {
+    const widget: MetricsWidget = {
+      id: 101, title: 'Two series', description: null, type: 'timeseries', unit: 'short',
+      grid: { x: 0, y: 0, width: 12, height: 8 }, error: null,
+      data: [
+        { label: 'a', labels: {}, points: [{ timestamp: 1, value: 1 }] },
+        { label: 'b', labels: {}, points: [{ timestamp: 1, value: 2 }] },
+      ],
+    };
+    const first = buildMetricsChartOption(widget) as { series?: Array<{ itemStyle?: { color?: string } }> };
+    const [slot1, slot2] = first.series!.map((s) => s.itemStyle?.color);
+    expect(slot1).toBe(DEFAULT_CHART_TOKENS.series[0]);
+    expect(slot2).toBe(DEFAULT_CHART_TOKENS.series[1]);
+    expect(slot1).not.toBe(slot2);
   });
 });

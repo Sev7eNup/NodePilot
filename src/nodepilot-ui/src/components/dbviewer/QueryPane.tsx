@@ -6,6 +6,7 @@ import CodeMirror, { type ReactCodeMirrorRef } from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { standardSQL } from '@codemirror/legacy-modes/mode/sql';
 import { keymap } from '@codemirror/view';
+import { nodePilotCodeMirrorTheme } from '../../lib/codeMirrorTheme';
 import { dbAdminApi, type DbAdminQueryResponse } from '../../api/dbadmin';
 import { useThemeStore, resolveTheme } from '../../stores/themeStore';
 import { ResizeHandle, useResizableColumns, type ResizableColumn } from './useResizableColumns';
@@ -202,7 +203,7 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
             ref={editorRef}
             value={sql}
             onChange={(v) => setSql(v)}
-            theme={isDark ? 'dark' : 'light'}
+            theme={nodePilotCodeMirrorTheme(isDark)}
             extensions={cmExtensions}
             placeholder={t('database:query.placeholder')}
             basicSetup={{

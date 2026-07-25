@@ -8,6 +8,7 @@ import { standardSQL } from '@codemirror/legacy-modes/mode/sql';
 import { javascript as legacyJavascript } from '@codemirror/legacy-modes/mode/javascript';
 import { xml as legacyXml } from '@codemirror/legacy-modes/mode/xml';
 import { EditorView, keymap } from '@codemirror/view';
+import { nodePilotCodeMirrorTheme } from '../../../lib/codeMirrorTheme';
 import { autocompletion, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { openSearchPanel } from '@codemirror/search';
 import { useThemeStore, resolveTheme } from '../../../stores/themeStore';
@@ -528,7 +529,7 @@ export function CodeField({
         <CodeMirror
           value={value}
           onChange={onChange}
-          theme={isDark ? 'dark' : 'light'}
+          theme={nodePilotCodeMirrorTheme(isDark)}
           extensions={extensions}
           placeholder={placeholder}
           basicSetup={{
