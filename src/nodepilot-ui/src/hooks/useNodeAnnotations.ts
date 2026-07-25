@@ -211,6 +211,13 @@ export function useNodeAnnotations({
 
   // ---- __machineColorIdx: stable color index per unique target machine ----
   const machineColoringEnabled = useDesignStore((s) => s.machineColoringEnabled);
+  // Value-based cache key: recompute only when the assigned machines actually change, not on
+  // every new `nodes` array identity (which the designer produces on any drag). Hoisted into a
+  // local because the dependency list has to be a list of simple expressions
+  // (react-hooks/use-memo) — an inline `.map().join()` in the array is rejected.
+  const targetMachineIdKey = nodes
+    .map((n) => (n.data as Record<string, unknown>).targetMachineId)
+    .join(',');
   const sortedMachineIds = useMemo(
     () => [...new Set(
       nodes
@@ -218,8 +225,10 @@ export function useNodeAnnotations({
         .map((n) => (n.data as Record<string, unknown>).targetMachineId as string | null)
         .filter((id): id is string => !!id && !id.startsWith('{{'))
     )].sort((a, b) => a.localeCompare(b)),
+    // Intentionally keyed on the derived string rather than `nodes` — that is the point of the
+    // memo. Depending on `nodes` would defeat it entirely.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes.map((n) => (n.data as Record<string, unknown>).targetMachineId).join(',')],
+    [targetMachineIdKey],
   );
 
   const legendMachines = useMemo(() => {

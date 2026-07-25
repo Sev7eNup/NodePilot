@@ -121,7 +121,11 @@ export function EdgeReshapeHandles({
     };
   }, [draggingHandle]);
 
-  const onHandlePointerDown = (handle: HandleId) => (e: React.PointerEvent<HTMLDivElement>) => {
+  // Takes the handle as a plain argument instead of being curried. The previous
+  // `(handle) => (e) => ...` form had to be *called* during render to produce the prop, which
+  // put the ref write below on a render-reachable path as far as the React Compiler is
+  // concerned (react-hooks/refs). The JSX now passes an inline arrow instead.
+  const onHandlePointerDown = (handle: HandleId, e: React.PointerEvent<HTMLDivElement>) => {
     if (!canWrite) return;
     e.stopPropagation();
     e.preventDefault();
@@ -174,13 +178,13 @@ export function EdgeReshapeHandles({
           testId={`edge-reshape-cp1-${edgeId}`}
           x={effective.cp1x} y={effective.cp1y}
           cursor={cursor}
-          onPointerDown={onHandlePointerDown('cp1')}
+          onPointerDown={(e) => onHandlePointerDown('cp1', e)}
         />
         <ReshapeHandleDiv
           testId={`edge-reshape-cp2-${edgeId}`}
           x={effective.cp2x} y={effective.cp2y}
           cursor={cursor}
-          onPointerDown={onHandlePointerDown('cp2')}
+          onPointerDown={(e) => onHandlePointerDown('cp2', e)}
         />
       </EdgeLabelRenderer>
     </>

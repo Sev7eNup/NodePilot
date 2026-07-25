@@ -388,12 +388,27 @@ vulnerable too. Dev-only in both packages (eslint's glob chain).
   `eslint-plugin-react-hooks` ≥ 7.1 (7.0.1 refuses to resolve against eslint 10).
 
 That plugin bump promoted three React Compiler diagnostics to errors and surfaced two more
-`incompatible-library` warnings. The six error sites were reviewed and none is a runtime
-defect — they report what the compiler could not memoize, plus ref writes inside inline JSX
-event handlers that the compiler attributes to render scope. The three rules are disabled in
-[eslint.config.js](../src/nodepilot-ui/eslint.config.js) with the affected files named,
-matching the pre-existing `react-hooks/set-state-in-effect` suppression. Warning cap moved
-11 → 13 with the same rationale recorded in [ci.yml](../.github/workflows/ci.yml).
+`incompatible-library` warnings. The rules were briefly suppressed to unblock CI, then the four
+sites behind the six errors were fixed and all three rules re-enabled:
+
+- `react-hooks/refs` — `EdgeReshapeHandles` had a curried `(handle) => (e) => …` pointer-down
+  handler that had to be *called* during render to produce the prop, and `WorkflowEditorPage`
+  built its node-context-menu callbacks inside a `(() => { … })()` IIFE in JSX. Both put ref
+  access on a render-reachable path. Fixed by un-currying the handler and replacing the IIFE
+  with plain conditional rendering.
+- `react-hooks/preserve-manual-memoization` — `WorkflowEditorPage.triggerCancel` and
+  `SubWorkflowPreviewModal.definition` read a guarded sub-property inside the hook body, so the
+  compiler inferred the whole object as the dependency while the source listed the properties.
+  Both components lost auto-memoization as a result. Fixed by reading the values into locals
+  first.
+- `react-hooks/use-memo` — `useNodeAnnotations` keyed a memo on an inline
+  `nodes.map(…).join(',')`. The derived key is deliberate (recompute only when the assigned
+  machines change, not on every drag), so it was hoisted into a local; the dependency list is
+  now a simple expression and the intent is unchanged.
+
+Warning cap moved 11 → 13 — the newer compiler pass recognises two more TanStack
+`useVirtualizer` call sites as unmemoizable. Rationale recorded in
+[ci.yml](../.github/workflows/ci.yml).
 
 ### DEP-6 — react-router HIGH (GHSA-qwww-vcr4-c8h2) — FIXED
 RSC-mode CSRF bypass: an action can execute before the 400 response. Vulnerable

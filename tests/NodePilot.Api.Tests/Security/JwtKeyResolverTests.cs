@@ -311,4 +311,79 @@ public class JwtKeyResolverTests
             try { Directory.Delete(root, true); } catch { }
         }
     }
+
+    /// <summary>
+    /// Grants Everyone Modify on <paramref name="root"/> so ValidateParentDirectory reports the
+    /// directory as insecure — the shape a GitHub Actions workspace has, where the build account
+    /// group holds create/write on the checkout.
+    /// </summary>
+    private static void MakeWorldWritable(string root)
+    {
+        var acl = new DirectoryInfo(root).GetAccessControl();
+        acl.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+            FileSystemRights.Modify,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+            PropagationFlags.None,
+            AccessControlType.Allow));
+        new DirectoryInfo(root).SetAccessControl(acl);
+    }
+
+    [Fact]
+    public void Resolve_DevelopmentInsecureParent_KeepsKeyInMemoryInsteadOfThrowing()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        // Regression guard: the Development escape hatch on the write path used to be dead code.
+        // Resolve checked `!env.IsDevelopment()` and then called WriteText with a hardcoded
+        // failClosed:true, which re-ran the same parent-directory check without any environment
+        // awareness and threw anyway. Any dev machine or CI runner whose workspace grants write
+        // access to a broad group could not boot.
+        var root = CreateSecureTestRoot();
+        var path = Path.Combine(root, "jwt.key");
+        try
+        {
+            MakeWorldWritable(root);
+
+            var key = JwtKeyResolver.Resolve(
+                CfgWithKeyPath(path),
+                Env(root, Environments.Development));
+
+            key.Should().NotBeNullOrWhiteSpace();
+            System.Text.Encoding.UTF8.GetByteCount(key)
+                .Should().BeGreaterThanOrEqualTo(JwtKeyResolver.MinKeyBytes);
+            File.Exists(path).Should().BeFalse(
+                "the writer deletes its partial file, so an insecure directory must never keep a key on disk");
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Resolve_NonDevelopmentInsecureParent_FailsClosedWithoutWritingKey()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        // The other half of the contract: relaxing Development must not relax anything else.
+        var root = CreateSecureTestRoot();
+        var path = Path.Combine(root, "jwt.key");
+        try
+        {
+            MakeWorldWritable(root);
+
+            Action act = () => JwtKeyResolver.Resolve(
+                CfgWithKeyPath(path),
+                Env(root, Environments.Production));
+
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage("*parent security validation failed*");
+            File.Exists(path).Should().BeFalse("nothing may be written once the pre-check fails");
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
 }

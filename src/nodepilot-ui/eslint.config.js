@@ -31,23 +31,6 @@ export default defineConfig([
       // Keep the rest of react-hooks recommended rules active while avoiding noisy false
       // positives in existing editor controls.
       'react-hooks/set-state-in-effect': 'off',
-      // eslint-plugin-react-hooks 7.1 promoted three more React Compiler diagnostics to
-      // errors. All six hits in this codebase were reviewed and none is a runtime defect —
-      // they report what the compiler could not optimize, not incorrect code:
-      //   refs                        — EdgeReshapeHandles.tsx:132, WorkflowEditorPage.tsx:1488.
-      //                                 Ref writes inside pointer/context-menu callbacks that
-      //                                 the compiler attributes to render scope because the
-      //                                 handler is declared inline in JSX.
-      //   preserve-manual-memoization — SubWorkflowPreviewModal.tsx:53, WorkflowEditorPage.tsx:927.
-      //                                 "Existing memoization could not be preserved" on a
-      //                                 hand-written useMemo/useCallback.
-      //   use-memo                    — useNodeAnnotations.ts:222. Rejects the deliberate
-      //                                 computed dependency key that already carries an
-      //                                 exhaustive-deps disable.
-      // Same rationale as set-state-in-effect above. Revisit if these sites are refactored.
-      'react-hooks/refs': 'off',
-      'react-hooks/preserve-manual-memoization': 'off',
-      'react-hooks/use-memo': 'off',
       // Underscore-prefix is the project convention for "intentionally unused" — args kept
       // for stable callback signatures, destructure-discards, etc. Match the standard
       // tseslint pattern so we don't have to scatter eslint-disable comments.
