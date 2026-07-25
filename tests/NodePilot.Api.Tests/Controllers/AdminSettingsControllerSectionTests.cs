@@ -680,6 +680,34 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     }
 
     [Fact]
+    public async Task PutSection_OpenTelemetry_EmptyGrafanaBaseUrl_IsAccepted()
+    {
+        // GrafanaBaseUrl is an optional drill-down link; empty is the canonical "not
+        // configured" value and the admin UI posts it on every save. A [Url] attribute here
+        // rejected the empty string and made the whole section unsavable on a fresh install.
+        var (controller, writer, audit, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("OpenTelemetry");
+
+        var body = JsonDocument.Parse(@"{
+            ""Enabled"": true,
+            ""ServiceName"": ""np-test"",
+            ""Environment"": ""prod"",
+            ""RedactHostnames"": true,
+            ""MetricExportIntervalSeconds"": 60,
+            ""Otlp"": { ""Endpoint"": ""https://otlp.example.com:4317"", ""Protocol"": ""grpc"", ""Headers"": """", ""BrowserEndpoint"": """" },
+            ""Sampling"": { ""Mode"": ""ParentBasedTraceIdRatio"", ""Ratio"": 0.5 },
+            ""Exporters"": { ""Traces"": true, ""Metrics"": true, ""Logs"": false, ""PrometheusScrape"": false, ""PrometheusScrapeAllowAnonymous"": false },
+            ""TraceUi"": { ""UrlTemplate"": """", ""BackendName"": ""Tempo"" },
+            ""Prometheus"": { ""QueryEndpoint"": """", ""Username"": """", ""TimeoutSeconds"": 10 },
+            ""GrafanaBaseUrl"": """"
+        }").RootElement;
+
+        var result = await controller.PutSection("OpenTelemetry", body, CancellationToken.None);
+        result.Should().BeOfType<OkObjectResult>();
+        audit.Calls.Should().ContainSingle(c => c.Action == "SETTINGS_OPENTELEMETRY_UPDATED");
+    }
+
+    [Fact]
     public async Task PutSection_Stats_HappyPath_PersistsBothFields()
     {
         var (controller, writer, audit, _) = NewController();

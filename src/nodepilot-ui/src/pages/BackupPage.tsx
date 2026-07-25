@@ -2,7 +2,7 @@ import { Archive, Certificate, Download, SecurityServices, Upload, WarningAltFil
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import {
   backupApi, type BackupPreviewResult, type BackupRestoreResult, type RestorePolicy,
 } from '../api/backup';

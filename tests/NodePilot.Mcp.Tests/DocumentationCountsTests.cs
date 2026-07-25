@@ -29,7 +29,10 @@ public class DocumentationCountsTests
 
         // (relative doc path, regex with one capturing group, expected value, what it is)
         yield return Row("CLAUDE.md", @"über (\d+) Tools", toolTotal, "MCP tools (CLAUDE.md overview)");
-        yield return Row("CLAUDE.md", @"\((\d+) Tools, \d+ Resources\)", toolTotal, "MCP tools (CLAUDE.md MCP section)");
+        // Trailing [,)] rather than a hard \): the parenthetical carries a transport note in
+        // some phrasings ("(99 Tools, 3 Resources, stdio)"). Stay anchored to the group without
+        // pinning the guard to whatever else is listed inside it.
+        yield return Row("CLAUDE.md", @"\((\d+) Tools, \d+ Resources[,)]", toolTotal, "MCP tools (CLAUDE.md MCP section)");
         yield return Row("README.md", @"— (\d+) tools over", toolTotal, "MCP tools (README)");
         yield return Row("README.md", @"with (\d+) activity types", activities, "activity types (README highlights)");
         yield return Row("README.md", @"Beyond the (\d+) executable Activity", activities, "activity types (README annotation nodes)");

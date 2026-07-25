@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Routes, Route, useParams, Navigate, useLocation } from 'react-router-dom'
+import { Routes, Route, useParams, Navigate, useLocation } from 'react-router'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import DocPage from './components/DocPage'

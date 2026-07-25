@@ -1,6 +1,9 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
+import { createBrowserRouter, Navigate } from 'react-router';
+// react-router v8 dissolved react-router-dom: general APIs live in 'react-router', the
+// DOM-specific ones (RouterProvider) in 'react-router/dom'.
+import { RouterProvider } from 'react-router/dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from './components/layout/AppLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';

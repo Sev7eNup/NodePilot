@@ -1,6 +1,6 @@
 import { CircleDash, Launch, Meter, Pause, Play, Renew, WarningAltFilled } from '@carbon/icons-react';
 import { useMemo, useState } from 'react';
-import { Link, NavLink, useParams } from 'react-router-dom';
+import { Link, NavLink, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import type { EChartsOption } from 'echarts';
 import { EChart } from '../components/common/EChart';

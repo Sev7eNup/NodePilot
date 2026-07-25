@@ -115,7 +115,7 @@ NodePilot is a **drop-in modern alternative** for organizations stuck on legacy 
 
 - **OS:** Windows 10 / 11 or Windows Server 2019+ (WinRM and DPAPI are Windows-specific)
 - **.NET 10 SDK** — [download](https://dotnet.microsoft.com/download)
-- **Node.js 20+** — [download](https://nodejs.org/)
+- **Node.js 22.22+** — [download](https://nodejs.org/) (react-router 8 sets the floor)
 - **PostgreSQL 16+** *(default)* — or **SQL Server 2022** if you set `Database:Provider: sqlserver`
 
 > NodePilot is **Windows-only by design** — the engine drives PowerShell remoting via WinRM and protects credentials with DPAPI.

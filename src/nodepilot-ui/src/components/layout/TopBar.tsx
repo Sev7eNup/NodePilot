@@ -1,6 +1,6 @@
 import { BareMetalServer, ChevronRight, Menu, Plug } from '@carbon/icons-react';
 import { useMemo } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { systemApi } from '../../api/system';

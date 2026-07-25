@@ -12,7 +12,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import type { Node } from '@xyflow/react';
 import { api } from '../../api/client';
 import type { WorkflowExecution, Workflow } from '../../types/api';
