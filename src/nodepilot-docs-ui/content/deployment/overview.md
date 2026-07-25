@@ -24,13 +24,42 @@ Beide sind Produktivbetrieb mit denselben Härtungs-Defaults. Die Desktop-Varian
 
 ### Erreichbarkeit — der wichtigste Unterschied
 
-Im Desktop-Modus bindet Kestrel **ausschließlich Loopback** (`ListenLocalhost`). Das ist nicht abschaltbar, es gibt keine Firewall-Regel, und es hat drei konkrete Folgen:
+> **Merksatz:** Alles, was NodePilot **selbst anstößt**, funktioniert. Alles, was NodePilot **von außen anstoßen soll**, nicht.
 
-- **Kollegen können die Oberfläche nicht öffnen.** Die Adresse ist von anderen Rechnern aus schlicht nicht erreichbar.
-- **Eingehende Webhooks funktionieren nicht.** Ein `webhookTrigger` ist zwar konfigurierbar, aber kein Fremdsystem (Monitoring, Ticket-Tool, GitHub) kann ihn zustellen.
-- **Die externe Trigger-API ist aus.** `POST /api/trigger/{name}` ist zusätzlich per leerem `ExternalTrigger:ApiKey` deaktiviert.
+Im Desktop-Modus bindet Kestrel **ausschließlich Loopback** (`ListenLocalhost` statt `ListenAnyIP`). Das ist fest verdrahtet, nicht per Konfiguration abschaltbar, und der Installer legt keine Firewall-Regel an.
 
-Wer Workflows von außen anstoßen lassen will, braucht das Server-Deployment.
+**Wichtig — betroffen ist der komplette Listener, nicht einzelne Endpunkte.** Es ist *nicht* so, dass die Trigger-Route gesperrt wäre und der Rest der API weiterhin aus dem Netz erreichbar bliebe: Es lauscht schlicht nichts auf der Netzwerkkarte. Gleichermaßen nur lokal erreichbar sind damit:
+
+- die Oberfläche (SPA)
+- **`/api/*` — jeder REST-Endpunkt**, nicht nur Trigger
+- `/hubs/execution` (SignalR)
+- `/api/webhooks/*`
+- `/healthz`
+
+Zusätzlich stehen `AllowedHosts: "localhost;127.0.0.1"` und Host-Filtering davor. Dass sich keine Kollegen anmelden können, folgt also nicht aus Auth oder Lizenz, sondern aus genau dieser einen Ursache.
+
+#### Was das für Trigger bedeutet
+
+| Trigger | Desktop | Warum |
+|---|---|---|
+| `scheduleTrigger` | ✅ | läuft im Dienst, braucht niemanden von außen |
+| `fileWatcherTrigger` | ✅ | lokales Dateisystem |
+| `databaseTrigger` | ✅ | NodePilot pollt die DB selbst |
+| `eventLogTrigger` | ✅ | lokales Windows-Eventlog |
+| `manualTrigger` | ✅ | aus der App heraus |
+| `webhookTrigger` | ❌ | konfigurierbar, aber kein Fremdsystem kann zustellen |
+| `POST /api/trigger/{name}` | ❌ | nicht erreichbar **und** per leerem `ExternalTrigger:ApiKey` deaktiviert |
+
+#### Was ausgehend unverändert funktioniert
+
+Die Richtungsbeschränkung gilt nur für eingehende Verbindungen. NodePilot kann aus der Desktop-Variante heraus die ganze Umgebung steuern — hier gibt es **keinen** Unterschied zum Server-Deployment:
+
+- **Remote-Maschinen per WinRM** automatisieren (mit hinterlegten Credentials pro Maschine)
+- **REST-APIs aufrufen** (`restApi`, `waitForCondition`)
+- **Datenbanken abfragen** (`sql`)
+- **E-Mails und Alerting-Webhooks versenden**
+
+Wer Workflows von außen anstoßen lassen will oder Team-Zugriff braucht, braucht das Server-Deployment.
 
 ### Weitere Unterschiede
 
@@ -55,10 +84,15 @@ Wer Workflows von außen anstoßen lassen will, braucht das Server-Deployment.
 
 ### Nachteile der Desktop-App
 
-- **Einzelplatz**: kein Team-Zugriff, keine eingehenden Webhooks, keine externe Trigger-API.
-- **Höhere lokale Rechte**: lokale Skripte laufen als SYSTEM.
-- **Kein SSO**, keine Hochverfügbarkeit.
-- **Browserzugriff warnt** — die Electron-App ist der vorgesehene Weg.
+Es sind genau fünf — die Workflow-Engine selbst ist funktional identisch (gleiche Activities, gleiche Datenbank, gleiche Härtung):
+
+1. **Nur Loopback** — kein Team-Zugriff, keine eingehenden Webhooks, keine externe Trigger-API.
+2. **Nur lokales Login** — kein LDAP, kein Windows-SSO, kein OIDC/SCIM.
+3. **Lokale Skripte laufen als SYSTEM** — der einzige Punkt, der die *Sicherheitslage* verändert und nicht bloß den Funktionsumfang.
+4. **Kein Cluster** — keine Hochverfügbarkeit, kein Failover.
+5. **Kleineres Tuning** — 32 statt 600 parallele Steps.
+
+Dazu zwei Punkte, die eher Bedienung als Funktion betreffen: **Browserzugriff warnt** (die Electron-App ist der vorgesehene Weg), und **Daten sind maschinengebunden** (siehe unten).
 - **Daten hängen an der Maschine**: Credentials sind per DPAPI maschinengebunden. Ein Umzug auf einen anderen Rechner geht nur über das [System-Backup](../import-export), nicht durch Kopieren des Datenverzeichnisses.
 
 ## Wechsel zwischen den Betriebsarten

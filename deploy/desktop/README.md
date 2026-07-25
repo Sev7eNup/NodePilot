@@ -54,6 +54,15 @@ service-environment value.
 
 ## Security model
 
+- **Loopback binds the whole listener, not individual routes.** `Deployment:Mode=Desktop` forces
+  `ListenLocalhost`, so the SPA, *every* `/api/*` endpoint, `/hubs/*`, `/healthz` and
+  `/api/webhooks/*` are reachable from that machine only — nothing listens on a network interface
+  and no firewall rule is created. A common misreading is that only the trigger route is blocked
+  while the rest of the API stays reachable; it is not.
+  The practical rule: **anything NodePilot initiates works, anything that must reach in does not.**
+  Schedule/file-watcher/database/event-log triggers and all outbound automation (WinRM, `restApi`,
+  `sql`, SMTP, alerting webhooks) are unaffected; inbound webhooks and the external trigger API
+  (also disabled via an empty `ExternalTrigger:ApiKey`) are unusable.
 - **API runs as LocalSystem** (zero-config). Consequence: loopback `runScript` activities run with
   **SYSTEM** rights. This is an explicit v1 decision for a single-user local orchestrator.
 - **Postgres runs as NetworkService**, bound to 127.0.0.1 only.

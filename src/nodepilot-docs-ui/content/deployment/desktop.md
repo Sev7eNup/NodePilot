@@ -17,10 +17,12 @@ Weil NodePilot ein **Orchestrator** ist (Schedule-/FileWatcher-/Webhook-Trigger)
 Die Desktop-App läuft mit `ASPNETCORE_ENVIRONMENT=Production` (volle Härtung: Security-Header, Swagger aus, Inline-Password-Guard) plus der neuen Posture `Deployment:Mode=Desktop`. Desktop relaxiert **nur** das Maschine-mit-sich-selbst-Sinnvolle:
 
 - `Database:AllowInsecureTls=true` wird **nur** bei Loopback-DB **und** Desktop akzeptiert (127.0.0.1-Postgres ohne PKI). Remote-Hosts bleiben fail-closed.
-- Kestrel bindet **nur Loopback** (`ListenLocalhost`).
+- Kestrel bindet **nur Loopback** (`ListenLocalhost`) — betrifft den **kompletten Listener**, also Oberfläche, `/api/*`, `/hubs/*` und `/healthz` gleichermaßen. Nicht abschaltbar.
 - Vor dem Migration-Bootstrap wartet die API bis zu **120 s** auf Postgres-Konnektivität (nur Erreichbarkeit wird retried).
 
 Default ist `Server`; ein unbekannter Wert ist ein Boot-Fehler.
+
+Daraus folgt die zentrale Alltagsregel: **Alles, was NodePilot selbst anstößt, funktioniert — alles, was es von außen anstoßen soll, nicht.** Zeitplan-, Datei-, Datenbank- und Eventlog-Trigger laufen also normal, ebenso jede ausgehende Automatisierung (WinRM, `restApi`, `sql`, E-Mail). Eingehende Webhooks und die externe Trigger-API sind dagegen unbrauchbar. Details und die vollständige Gegenüberstellung: [Betriebsarten im Überblick](./overview).
 
 ## Handoff: desktop.json
 
