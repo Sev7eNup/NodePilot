@@ -1360,7 +1360,7 @@ function WorkflowEditorInner() {
                 variant={BackgroundVariant.Dots}
                 gap={24}
                 size={1.6}
-                color={isDark ? 'rgba(255,255,255,.22)' : 'rgba(0,0,0,.42)'}
+                color={isDark ? 'var(--np-canvas-dot)' : 'rgba(0,0,0,.42)'}
               />
             )}
             {machineColoringEnabled && legendMachines.length > 0 && (
@@ -1384,8 +1384,8 @@ function WorkflowEditorInner() {
               zoomable
               nodeStrokeWidth={3}
               maskColor={isAtelier
-                ? (isDark ? 'rgba(14,16,19,0.62)' : 'rgba(234,231,224,0.65)')
-                : (isDark ? 'rgba(17,18,20,0.55)' : 'rgba(220,222,230,0.6)')}
+                ? (isDark ? 'var(--np-minimap-mask-atelier)' : 'rgba(234,231,224,0.65)')
+                : (isDark ? 'var(--np-minimap-mask)' : 'rgba(220,222,230,0.6)')}
               // Node-Farbe im Mini-Map spiegelt den Activity-Typ grob via `borderColor` —
               // sonst sieht der MiniMap für große Graphen aus wie ein grauer Fleck und man
               // kann seinen Target-Node nicht ausfindig machen. Farben aus den semantischen

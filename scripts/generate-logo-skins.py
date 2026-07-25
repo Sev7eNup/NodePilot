@@ -32,7 +32,7 @@ MAX_SIZE = 384
 # accent family. `dark` = 25 reproduces the previously-approved orange appicon.png.
 SKIN_HUE = {
     "light": 210,           # blue    (#004ac6 / #2563eb)
-    "dark": 25,             # orange  (#fc8861 / #c5620b)
+    "dark": 216,            # azure   (#6da8ff / #2467d9)
     "dark-lila": 254,       # lilac   (#9b7dff / #7c5cfc)
     "light-grey": 262,      # violet  (#7c3aed / #7c5cfc)
     "dark-sparkasse": 0,    # red     (#ff5a5a / #ee0000)

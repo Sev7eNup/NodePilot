@@ -259,6 +259,18 @@ html.dark {
   --np-port-fill: #9aa0ac;
   --color-inverse-on-surface: #2f3033;
 
+  /* Canvas literals that used to live in TSX as `isDark ? '…' : '…'` ternaries.
+     They were gated on the light/dark BASE, not on the skin, so hardcoding a new
+     value for the default dark skin would silently repaint dark-lila,
+     dark-sparkasse and dark-nebula too. As custom properties each skin can move
+     them independently; these are the historical shared-dark values.
+     Consumers: WorkflowEditorPage.tsx (<Background color>, <MiniMap maskColor>)
+     and ActivityNode.tsx (premium node fill). */
+  --np-canvas-dot:          rgba(255, 255, 255, 0.22);
+  --np-minimap-mask:        rgba(17, 18, 20, 0.55);
+  --np-minimap-mask-atelier: rgba(14, 16, 19, 0.62);
+  --np-node-bg:             rgba(13, 17, 22, 0.92);
+
   /* Status-Tokens — dark (Skins überschreiben nicht, s. @theme-Kommentar). */
   --color-success: #4ade80;
   --color-success-container: #14532d;
@@ -301,77 +313,100 @@ html.dark {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   DARK-MODE REVAMP — "fancy" warm-charcoal base + dark-orange accent.
-   Scoped to `.np-shell` (the authenticated app shell + the login screen) so it
-   NEVER touches the workflow designer: AppLayout renders the designer route as a
-   bare <Outlet/> with no `.np-shell` ancestor, so it keeps the plain `html.dark`
-   tokens above unchanged. Everything here only redefines CSS custom properties
-   on the scope (cascades to children) plus a handful of dark-only utility
-   remaps — no component files needed.
+   DEFAULT DARK SKIN "AZUR" — cool graphite ground + a single azure accent.
+   This is the skin `system` resolves to on a dark OS, i.e. what most first-time
+   users see. It is ALSO the base layer `dark-lila` / `dark-sparkasse` /
+   `dark-nebula` inherit from — those three redeclare every token below in their
+   own `[data-skin]` blocks, and the handful they historically inherited from the
+   old warm-orange values are now pinned explicitly in their own blocks (search
+   "PIN:" below). Do not add a token here without checking those three.
+
+   Scoped to `.np-shell` (authenticated app shell + login screen). The designer
+   route renders as a bare <Outlet/> with no `.np-shell` ancestor, so it needs the
+   duplicate `.np-designer` block further down. Everything here only redefines
+   custom properties on the scope — no component files needed.
+
+   Ground: hue 220 at ~5% saturation. Not neutral grey and not blue — just enough
+   chroma that the near-blacks read as chosen rather than desaturated, which is
+   what separates a designed dark theme from a dimmed one. The azure accent sits
+   ~5° off the ground hue: same family, so it never clashes, but far more chromatic,
+   so it is the only vivid thing on screen.
    ──────────────────────────────────────────────────────────────────────────── */
 html.dark .np-shell {
-  /* Warm-neutral charcoal ramp (was cold blue-grey) — deeper + a hair of warmth
-     so the orange accent feels native instead of bolted on. Order preserved:
-     lowest = darkest (cards) … highest = lightest. */
-  --color-surface:          #14110e;
-  --color-surface-dim:      #050403;
-  --color-surface-bright:   #2f2820;
-  --color-surface-lowest:   #0c0a08;
-  --color-surface-low:      #181410;
-  --color-surface-container: #1e1914;
-  --color-surface-high:     #251f19;
-  --color-surface-highest:  #2d261e;
-  --color-surface-variant:  #383028;
+  /* Cool graphite ramp. Order preserved: lowest = darkest (wells) … highest =
+     lightest. Deliberately a step brighter than the old warm ramp (#0c0a08 →
+     #0e0f12) and with a wider spread, so the elevation steps are actually
+     legible instead of collapsing into one black. */
+  --color-surface:          #111216;
+  --color-surface-dim:      #08090b;
+  --color-surface-bright:   #3c3f47;
+  --color-surface-lowest:   #0e0f12;
+  --color-surface-low:      #141619;
+  --color-surface-container: #1a1c21;
+  --color-surface-high:     #212328;
+  --color-surface-highest:  #292c32;
+  --color-surface-variant:  #35383f;
 
-  /* Accent → dark orange. `primary` is the readable accent (text/icon/active-nav
-     text); `primary-fixed` is the subtle accent surface (active nav bg, badges,
-     avatar). `primary-container` is the deep fill for the rare bg-primary button. */
-  --color-surface-tint:        #c5620b;
-  --color-primary:             #fc8861;
-  --color-primary-container:   #c5620b;
-  --color-primary-fixed:       #6a2b09;
-  --color-primary-fixed-dim:   #7d340c;
-  --color-on-primary:          #1c0c03;
-  --color-on-primary-container:#ffe6d4;
-  /* Text on the subtle accent surface (primary-fixed = deep brown). Without this the
-     base html.dark value (#dae2ff, blue-tinted) leaks through on selected folders/tags. */
-  --color-on-primary-fixed:    #ffe6d4;
-  --color-inverse-primary:     #c5620b;
+  /* Accent → azure. `primary` is the readable accent (text/icon/active-nav text);
+     `primary-fixed` is the subtle accent surface (active nav bg, badges, avatar);
+     `primary-container` is the fill for bg-primary buttons.
+     Chosen deliberately more chromatic than the pale blues that already live on
+     the canvas (--act-runScript #93c5fd, --act-sql #7dd3fc, --np-controlflow-accent
+     #a5b4fc) so the accent reads as accent and not as another activity colour. */
+  --color-surface-tint:        #3372e0;
+  --color-primary:             #6da8ff;  /* 7.06:1 on surface-container */
+  --color-primary-container:   #2467d9;  /* carries #ffffff at 5.23:1 */
+  --color-primary-fixed:       #15305c;
+  /* `-fixed-dim` is the HOVER surface for `-fixed` (DecisionConfig/ForEachConfig/
+     StartWorkflowConfig use `bg-primary-fixed hover:bg-primary-fixed-dim` while
+     keeping `text-primary`), so it must be DARKER, not lighter. The old warm value
+     was lighter and dropped that hover state to 3.5:1. */
+  --color-primary-fixed-dim:   #0d2245;  /* primary on it: 6.53:1 */
+  --color-on-primary:          #031430;  /* label on --color-primary: 7.59:1 */
+  /* Always paired with `bg-primary-container`. The old light value was already
+     failing at 3.42:1 on the orange fill; white on azure is 5.23:1. */
+  --color-on-primary-container:#ffffff;
+  /* Text on the subtle accent surface (primary-fixed). Without this the base
+     html.dark value (#dae2ff) leaks through on selected folders/tags. */
+  --color-on-primary-fixed:    #cfe1ff;  /* 9.81:1 on primary-fixed */
+  --color-inverse-primary:     #2467d9;
 
-  --color-secondary:           #6f7781;
-  --color-secondary-container: #2b3037;
-  --color-secondary-fixed:     #6a2b09;
-  --color-on-secondary:        #15191d;
-  --color-on-secondary-container: #dde2e7;
+  --color-secondary:           #949aa6;  /* 6.03:1 on surface-container */
+  --color-secondary-container: #2a2e36;
+  --color-secondary-fixed:     #15305c;
+  --color-on-secondary:        #14161a;
+  --color-on-secondary-container: #dde0e6;
 
-  /* Warm off-white text; the palette's slate (#6F7781) as the outline gives cool
-     dividers a deliberate contrast against the warm near-black surfaces. */
-  --color-on-surface:          #ece7e1;
-  --color-on-surface-variant:  #c0b9b0;
-  --color-on-background:        #ece7e1;
-  --color-outline:             #6f7781;
-  --color-outline-variant:     #322b24;
+  /* Cool off-white ink. `outline` is the floor of the whole design at 4.99:1 —
+     ScriptEditorDialog.readVar() pipes it straight into the Monaco comment/gutter
+     colour where it renders at body size, so it may not go below #838790. */
+  --color-on-surface:          #e9ebef;  /* 15.19:1 on surface-low */
+  --color-on-surface-variant:  #a6abb5;  /* 7.40:1 on surface-container */
+  --color-on-background:       #e9ebef;
+  --color-outline:             #878b94;  /* 4.99:1 on surface-container */
+  --color-outline-variant:     #2e3138;
 
-  /* Helper vars for the blue→orange utility remaps below. */
-  --np-accent:        #c5620b;  /* primary button fill — palette orange */
-  --np-accent-hover:  #6a2b09;  /* button hover — palette deep brown-orange */
-  --np-accent-ring:   #fc8861;  /* focus ring — palette peach */
-  --np-accent-text:   #fc8861;  /* accent text / icons / links — palette peach */
-  --np-accent-soft:   color-mix(in srgb, #fc8861 15%, transparent); /* subtle hover bg */
-  --np-accent-badge:  #6a2b09;  /* info-badge bg — palette deep brown */
-  --np-toggle-on:     #c5620b;  /* "on" toggle fill — palette orange */
+  /* Helper vars for the hardcoded-Tailwind-blue remaps below. */
+  --np-accent:        #2467d9;  /* primary button fill */
+  --np-accent-hover:  #1b52b4;  /* button hover */
+  --np-accent-ring:   #6da8ff;  /* focus ring */
+  --np-accent-text:   #6da8ff;  /* accent text / icons / links */
+  --np-accent-soft:   color-mix(in srgb, #6da8ff 14%, transparent); /* subtle hover bg */
+  --np-accent-badge:  #15305c;  /* info-badge bg */
+  --np-toggle-on:     #3372e0;  /* "on" toggle fill */
 }
 
-/* Content backdrop: a faint warm depth-glow at the top instead of a flat fill. */
+/* Content backdrop: a faint accent depth-glow at the top instead of a flat fill.
+   Reads var(--np-accent), so every skin gets its own tint for free. */
 html.dark .np-shell main {
   background:
-    radial-gradient(110% 70% at 50% -8%, color-mix(in srgb, var(--np-accent) 6%, transparent) 0%, transparent 55%),
+    radial-gradient(110% 70% at 50% -8%, color-mix(in srgb, var(--np-accent) 8%, transparent) 0%, transparent 55%),
     var(--color-surface-low);
 }
-/* Login screen: same warm glow over the base surface. */
+/* Login screen: same glow over the base surface. */
 html.dark .np-shell.np-login {
   background:
-    radial-gradient(90% 60% at 50% 0%, color-mix(in srgb, var(--np-accent) 4%, transparent) 0%, transparent 55%),
+    radial-gradient(90% 60% at 50% 0%, color-mix(in srgb, var(--np-accent) 5%, transparent) 0%, transparent 55%),
     var(--color-surface);
 }
 
@@ -463,15 +498,29 @@ html:not(.dark) .np-login-card {
   .np-login-aurora::before, .np-login-aurora::after { animation: none; }
 }
 
-/* Sidebar gets a subtle vertical gradient + a warm hairline edge for depth.
-   Lifted lighter than the original (#181410 → #0b0907) for a warmer, less near-black rail. */
+/* Sidebar rail: a vertical gradient plus a lit accent edge on its right side.
+   The edge is painted as a BACKGROUND LAYER, not a ::after pseudo-element. That is
+   deliberate — Sidebar.tsx puts `np-sidebar` and the mobile drawer's
+   `fixed inset-y-0 -translate-x-full` on the SAME <aside>, so giving this element
+   `position: relative` (which a positioned ::after would require) drops the
+   off-canvas drawer back into the document flow and breaks it on mobile.
+   A skin that overrides `background` here replaces the edge with it — intended. */
 html.dark .np-shell aside {
-  background: linear-gradient(180deg, #241e18 0%, #16120e 100%);
+  background:
+    linear-gradient(180deg, transparent 6%, var(--np-accent) 50%, transparent 94%) right / 1px 100% no-repeat,
+    linear-gradient(180deg, #171a1f 0%, #0b0c0e 100%);
 }
-/* dark-lila is neutral grey, not warm — override the brown rail with a grey gradient
-   keyed to its own surface ramp (top ≈ surface-low, bottom ≈ surface-dim). */
+/* dark-lila is neutral grey — override the rail with a grey gradient keyed to its
+   own surface ramp (top ≈ surface-low, bottom ≈ surface-dim). */
 html.dark[data-skin="dark-lila"] .np-shell aside {
   background: linear-gradient(180deg, #2a2a2a 0%, #161616 100%);
+}
+/* PIN: dark-sparkasse never declared its own rail and silently inherited the old
+   warm-brown one from the default dark skin. Kept byte-identical here so the Azur
+   rewrite above leaves that skin untouched. (Whether a brown rail belongs on a
+   red/grey bank skin is a separate question — not decided in this change.) */
+html.dark[data-skin="dark-sparkasse"] .np-shell aside {
+  background: linear-gradient(180deg, #241e18 0%, #16120e 100%);
 }
 /* Logo gets a faint accent halo so the brand mark reads as lit, not pasted on. */
 html.dark .np-shell aside img[alt="NodePilot logo"] {
@@ -535,60 +584,54 @@ html.dark .np-shell .shadow-lg { box-shadow: 0 10px 24px -6px rgba(0,0,0,0.6), i
 html.dark .np-shell .shadow-xl { box-shadow: 0 18px 40px -10px rgba(0,0,0,0.65), inset 0 0 0 1px rgba(255,255,255,0.06); }
 
 /* ════════════════════════════════════════════════════════════════════════════
-   DARK-MODE DESIGNER ACCENT — flip the blue app-accent to dark-orange in the
-   workflow designer's CHROME (toolbar, banners, sidebar, execution/properties
-   panels) so it matches the `.np-shell` orange scheme. The designer route renders
-   as a bare <Outlet/> (no `.np-shell` ancestor), so it would otherwise keep the
-   cold-blue base `html.dark` accent.
+   DEFAULT DARK SKIN — DESIGNER SCOPE. The designer route renders as a bare
+   <Outlet/> with no `.np-shell` ancestor, so the whole token block has to be
+   repeated here. Values are identical to `.np-shell` above except the canvas
+   ground, which drops one step so nodes read as objects lying on a floor rather
+   than tiles set into a wall.
 
-   Mechanism mirrors `.np-shell`: redefine ONLY the `primary` accent family on the
-   `.np-designer` root (the editor container) → every `*-primary*` token usage
-   (~130 spots: publish button, tabs, History pills, links, selected-workflow
-   highlight, focus rings, machine-coloring toggle, variable tags, CodeMirror)
-   turns orange. Surfaces/secondary are left untouched on purpose — the ask was
-   "blue → orange", not "warm the charcoal".
+   CANVAS SHIELD: `.react-flow` below re-asserts an accent for the graph subtree
+   (nodes, edges, handles, selection rings, edge labels). It exists because the
+   other dark skins deliberately keep a neutral canvas while re-accenting their
+   chrome. This skin's accent IS the canvas accent, so it re-asserts its own
+   values there instead of the historical base blue — see the `[data-skin="dark"]`
+   rule after it. Leave the unqualified shield in place: dark-lila,
+   dark-sparkasse and dark-nebula all depend on it.
 
-   CANVAS SHIELD: the `.react-flow` subtree (nodes, edges, handles, selection
-   rings, edge labels) re-asserts the base-blue accent so the graph stays exactly
-   as-is — the user explicitly wants nodes/activities/canvas untouched. Hardcoded
-   blue/indigo INSIDE the canvas (ActivityNode rings, LabeledEdge strokes) is left
-   alone in the components, so nothing leaks in here.
-
-   Dark-only by construction (scoped to `html.dark`) → light mode is byte-identical
-   and the dark/light toggle in Settings keeps working. */
+   Dark-only by construction (scoped to `html.dark`) → light mode is byte-identical. */
 html.dark .np-designer {
-  /* Warm-charcoal surfaces (mirror the orange `.np-shell`) so the designer AREA
-     backgrounds — canvas backdrop, exec/properties panels, sidebar, toolbar,
-     minimap/controls — match the skin. `--act-*` node colors are separate → untouched. */
-  --color-surface:          #14110e;
-  --color-surface-dim:      #050403;
-  --color-surface-bright:   #2f2820;
-  --color-surface-lowest:   #0c0a08;
-  --color-surface-low:      #181410;
-  --color-surface-container:#1e1914;
-  --color-surface-high:     #251f19;
-  --color-surface-highest:  #2d261e;
-  --color-surface-variant:  #383028;
-  --color-secondary:           #6f7781;
-  --color-secondary-container: #2b3037;
-  --color-on-surface:          #ece7e1;
-  --color-on-surface-variant:  #c0b9b0;
-  --color-on-background:        #ece7e1;
-  --color-outline:             #6f7781;
-  --color-outline-variant:     #322b24;
+  /* Cool graphite surfaces (mirror `.np-shell`) so the designer AREA backgrounds —
+     canvas backdrop, exec/properties panels, sidebar, toolbar, minimap/controls —
+     match the skin. `--act-*` node colours are separate → untouched. */
+  --color-surface:          #121419;  /* canvas floor — sits just under the shell's surface-low */
+  --color-surface-dim:      #08090b;
+  --color-surface-bright:   #3c3f47;
+  --color-surface-lowest:   #0e0f12;
+  --color-surface-low:      #141619;
+  --color-surface-container:#1a1c21;
+  --color-surface-high:     #212328;
+  --color-surface-highest:  #292c32;
+  --color-surface-variant:  #35383f;
+  --color-secondary:           #949aa6;
+  --color-secondary-container: #2a2e36;
+  --color-on-surface:          #e9ebef;
+  --color-on-surface-variant:  #a6abb5;
+  --color-on-background:       #e9ebef;
+  --color-outline:             #878b94;
+  --color-outline-variant:     #2e3138;
 
-  --color-surface-tint:        #c5620b;
-  --color-primary:             #fc8861;
-  --color-primary-container:   #c5620b;
-  --color-primary-fixed:       #6a2b09;
-  --color-primary-fixed-dim:   #7d340c;
-  --color-on-primary:          #1c0c03;
-  --color-on-primary-container:#ffe6d4;
-  --color-on-primary-fixed:    #ffe6d4;
-  --color-inverse-primary:     #c5620b;
-  /* Controls-Akzent (Hover-Tint der React-Flow-Controls): Chrome-Orange als Literal, damit
-     es der `.react-flow`-Blau-Shield unten NICHT auf Canvas-Blau zurücksetzt. */
-  --np-controls-accent:        #fc8861;
+  --color-surface-tint:        #3372e0;
+  --color-primary:             #6da8ff;
+  --color-primary-container:   #2467d9;
+  --color-primary-fixed:       #15305c;
+  --color-primary-fixed-dim:   #0d2245;
+  --color-on-primary:          #031430;
+  --color-on-primary-container:#ffffff;
+  --color-on-primary-fixed:    #cfe1ff;
+  --color-inverse-primary:     #2467d9;
+  /* Controls accent (React-Flow zoom controls hover tint): a literal, so the
+     `.react-flow` shield below cannot reset it. */
+  --np-controls-accent:        #6da8ff;
 }
 /* Shield the graph canvas ACCENT only: restore the base dark (blue) accent so React
    Flow selection rings / edge-select stay neutral. Surfaces are intentionally NOT
@@ -602,6 +645,23 @@ html.dark .np-designer .react-flow {
   --color-on-primary:          #00286a;
   --color-on-primary-container:#dae2ff;
   --color-inverse-primary:     #004ac6;
+}
+/* The default dark skin does NOT want the canvas shielded — its accent is the
+   canvas accent. Re-assert Azur inside the graph so selection rings, handles and
+   edge-select match the rest of the product. (0,4,1) beats the shield's (0,3,1).
+   The idle-edge/grid colour is lifted here too: --color-outline-variant #2e3138 is
+   correct as a 1px divider on panels but disappears as a 2px polyline on the
+   canvas floor. */
+html.dark[data-skin="dark"] .np-designer .react-flow {
+  --color-surface-tint:        #3372e0;
+  --color-primary:             #6da8ff;
+  --color-primary-container:   #2467d9;
+  --color-primary-fixed:       #15305c;
+  --color-primary-fixed-dim:   #0d2245;
+  --color-on-primary:          #031430;
+  --color-on-primary-container:#ffffff;
+  --color-inverse-primary:     #2467d9;
+  --color-outline-variant:     #434750;
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
@@ -641,6 +701,12 @@ html.dark[data-skin="dark-lila"] .np-shell {
 
   --color-secondary:           #a99fc0;
   --color-secondary-container: #322c50;
+  /* PIN: these three were never declared here and silently inherited the default
+     dark skin's values. Pinned so the Azur rewrite of that base leaves dark-lila
+     unchanged. (`-fixed` has no consumer today; kept for family coherence.) */
+  --color-secondary-fixed:        #6a2b09;
+  --color-on-secondary:           #15191d;
+  --color-on-secondary-container: #dde2e7;
 
   --color-on-surface:          #e8e8e8;
   --color-on-surface-variant:  #a6a6a6;
@@ -731,6 +797,9 @@ html.dark[data-skin="dark-sparkasse"] .np-shell {
   --color-secondary-container: #2a2a2a;
   --color-on-secondary:        #1a1a1a;
   --color-on-secondary-container:#b8b8b8;
+  /* PIN: never declared here, silently inherited from the default dark skin.
+     Pinned so the Azur rewrite of that base leaves this skin unchanged. */
+  --color-secondary-fixed:     #6a2b09;
 
   --color-on-surface:          #ffffff;
   --color-on-surface-variant:  #b8b8b8;
@@ -749,11 +818,18 @@ html.dark[data-skin="dark-sparkasse"] .np-shell {
   --np-toolbar-accent:        #FF0002;
 }
 
-/* Designer: gleiche Surfaces + Accent, aber OHNE Secondary-Tokens — damit erbt
-   .react-flow den neutralen base-dark --color-secondary-container und Badges
-   bleiben grau-blau statt rotbraun. Der shared html.dark .np-designer .react-flow
-   Shield übernimmt Primary-Token-Reset automatisch. */
+/* Designer: gleiche Surfaces + Accent. Die Secondary-Tokens sollen NICHT rot sein,
+   damit REST-Methoden-Badges im Canvas grau-blau bleiben statt rotbraun.
+   KORREKTUR: der frühere Kommentar behauptete, sie fielen auf das base-dark
+   `html.dark` durch — das stimmt nicht. `html.dark .np-designer` (0,2,1) schlägt
+   `html.dark` (0,1,1), also erbte dieser Skin faktisch die Werte des Default-Dark.
+   Sie sind deshalb jetzt hier explizit gepinnt (PIN), damit der Azur-Umbau des
+   Default-Skins diesen hier nicht verändert.
+   Der shared html.dark .np-designer .react-flow Shield übernimmt den
+   Primary-Token-Reset weiterhin automatisch. */
 html.dark[data-skin="dark-sparkasse"] .np-designer {
+  --color-secondary:           #6f7781;  /* PIN */
+  --color-secondary-container: #2b3037;  /* PIN */
   --color-surface:          #1f1f1f;
   --color-surface-dim:      #161616;
   --color-surface-bright:   #303030;
@@ -805,6 +881,9 @@ html.dark[data-skin="dark-sparkasse"] .np-execution-panel {
    palette/nebula-palette.json. These blocks only OVERRIDE the orange dark default,
    so every other scheme stays byte-identical. */
 html.dark[data-skin="dark-nebula"] .np-shell {
+  /* PIN: never declared here, silently inherited from the default dark skin.
+     Pinned so the Azur rewrite of that base leaves Nebula unchanged. */
+  --color-secondary-fixed:     #6a2b09;
   /* Cool, faintly blue-tinted near-black ramp (dark → light). */
   --color-surface:          #0c1220;
   --color-surface-dim:      #05080f;
@@ -854,11 +933,17 @@ html.dark[data-skin="dark-nebula"] .np-shell {
   --np-toolbar-accent:        #4de4f7;
 }
 
-/* Designer: same cool surfaces + cyan accent (override the orange `.np-designer`).
-   Secondary tokens are deliberately NOT set here (like dark-sparkasse) so the violet
-   never leaks into React-Flow node/method badges; the shared `.react-flow` blue shield
-   resets the canvas accent, `--np-controls-accent` (cyan literal) survives it. */
+/* Designer: same cool surfaces + cyan accent (override the default `.np-designer`).
+   The secondary tokens must stay neutral so the violet never leaks into React-Flow
+   node/method badges. CORRECTION: the previous comment claimed they fell through to
+   base-dark `html.dark` — they did not. `html.dark .np-designer` (0,2,1) outranks
+   `html.dark` (0,1,1), so this skin actually inherited the default skin's values.
+   They are pinned explicitly now (PIN) so the Azur rewrite cannot move them.
+   The shared `.react-flow` shield still resets the canvas accent, and
+   `--np-controls-accent` (cyan literal) survives it. */
 html.dark[data-skin="dark-nebula"] .np-designer {
+  --color-secondary:           #6f7781;  /* PIN */
+  --color-secondary-container: #2b3037;  /* PIN */
   --color-surface:          #0c1220;
   --color-surface-dim:      #05080f;
   --color-surface-bright:   #2a3852;
@@ -1120,10 +1205,10 @@ html[data-skin="light-sparkasse"] .np-designer .react-flow {
    (surface-lowest, on-surface, on-surface-variant, outline-variant). The default
    light skin needs nothing: the portal already inherits the matching :root tokens. */
 html.dark .np-tooltip-portal {
-  --color-surface-lowest:     #0c0a08;
-  --color-on-surface:         #ece7e1;
-  --color-on-surface-variant: #c0b9b0;
-  --color-outline-variant:    #322b24;
+  --color-surface-lowest:     #0e0f12;
+  --color-on-surface:         #e9ebef;
+  --color-on-surface-variant: #a6abb5;
+  --color-outline-variant:    #2e3138;
 }
 html.dark[data-skin="dark-lila"] .np-tooltip-portal {
   --color-surface-lowest:     #171717;
@@ -1305,7 +1390,9 @@ textarea.input-field {
 /* Dedicated vivid orange for the lifecycle section — the activity-palette oranges read too
    close to the run section's red. Declared per theme so dark mode stays correct. */
 :root { --np-toolbar-accent: #f97316; }
-html.dark { --np-toolbar-accent: #fb923c; }
+/* Dark base = the default skin's accent. dark-lila, dark-sparkasse and dark-nebula
+   each redeclare this in their own blocks, so editing it here only affects `dark`. */
+html.dark { --np-toolbar-accent: #6da8ff; }
 
 .np-toolbar-section {
   position: relative;
@@ -2753,7 +2840,7 @@ html[data-skin="light-sparkasse"] .np-login-card {
    edge + nav pill, and a cyan/violet radial glow + faint blueprint grid in the
    content backdrop. Everything is scoped to `html.dark[data-skin="dark-nebula"]`,
    so no other skin changes. All depth knobs live in the private token block below —
-   tune `--np-glass-blur` / `--np-nb-shadow-*` / `--np-glow` to dial the effect.
+   tune `--np-glass-blur` / `--np-nb-shadow-*` / `--np-nb-glow-color` to dial the effect.
    ──────────────────────────────────────────────────────────────────────────── */
 html.dark[data-skin="dark-nebula"] .np-shell,
 html.dark[data-skin="dark-nebula"] .np-designer {
@@ -2762,7 +2849,7 @@ html.dark[data-skin="dark-nebula"] .np-designer {
   --np-glass-border: color-mix(in srgb, #4de4f7 16%, color-mix(in srgb, #ffffff 6%, transparent));
   --np-sheen:        inset 0 1px 0 0 color-mix(in srgb, #ffffff 8%, transparent);
   --np-grid:         color-mix(in srgb, #4de4f7 6%, transparent);
-  --np-glow:         #22d3ee;
+  --np-nb-glow-color:         #22d3ee;
   --np-glow-violet:  #7c5cfc;
   --np-nb-shadow-xs: 0 1px 2px rgba(2, 6, 14, 0.55);
   --np-nb-shadow-sm: 0 6px 18px -6px rgba(2, 6, 14, 0.70);
@@ -2776,7 +2863,7 @@ html.dark[data-skin="dark-nebula"] .np-designer {
 html.dark[data-skin="dark-nebula"] .np-shell > main {
   background-color: var(--color-surface-low);
   background-image:
-    radial-gradient(120% 82% at 50% -12%, color-mix(in srgb, var(--np-glow) 12%, transparent) 0%, transparent 55%),
+    radial-gradient(120% 82% at 50% -12%, color-mix(in srgb, var(--np-nb-glow-color) 12%, transparent) 0%, transparent 55%),
     radial-gradient(72% 60% at 100% -6%, color-mix(in srgb, var(--np-glow-violet) 10%, transparent) 0%, transparent 52%),
     linear-gradient(to right, var(--np-grid) 1px, transparent 1px),
     linear-gradient(to bottom, var(--np-grid) 1px, transparent 1px);
@@ -2786,16 +2873,16 @@ html.dark[data-skin="dark-nebula"] .np-shell > main {
 html.dark[data-skin="dark-nebula"] .np-shell.np-login {
   background-color: var(--color-surface);
   background-image:
-    radial-gradient(90% 62% at 50% 0%, color-mix(in srgb, var(--np-glow) 4%, transparent) 0%, transparent 55%),
+    radial-gradient(90% 62% at 50% 0%, color-mix(in srgb, var(--np-nb-glow-color) 4%, transparent) 0%, transparent 55%),
     radial-gradient(70% 60% at 100% 100%, color-mix(in srgb, var(--np-glow-violet) 2%, transparent) 0%, transparent 55%);
 }
 
 /* Elevation utilities → cool nebula ramp + a faint inner cyan sheen. */
-html.dark[data-skin="dark-nebula"] .np-shell .shadow    { box-shadow: var(--np-nb-shadow-xs), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 6%, transparent); }
-html.dark[data-skin="dark-nebula"] .np-shell .shadow-sm { box-shadow: var(--np-nb-shadow-sm), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 7%, transparent); }
-html.dark[data-skin="dark-nebula"] .np-shell .shadow-md { box-shadow: var(--np-nb-shadow-md), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 8%, transparent); }
-html.dark[data-skin="dark-nebula"] .np-shell .shadow-lg { box-shadow: var(--np-nb-shadow-lg), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 9%, transparent); }
-html.dark[data-skin="dark-nebula"] .np-shell .shadow-xl { box-shadow: 0 34px 74px -22px rgba(2, 6, 14, 0.85), inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 10%, transparent); }
+html.dark[data-skin="dark-nebula"] .np-shell .shadow    { box-shadow: var(--np-nb-shadow-xs), inset 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 6%, transparent); }
+html.dark[data-skin="dark-nebula"] .np-shell .shadow-sm { box-shadow: var(--np-nb-shadow-sm), inset 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 7%, transparent); }
+html.dark[data-skin="dark-nebula"] .np-shell .shadow-md { box-shadow: var(--np-nb-shadow-md), inset 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 8%, transparent); }
+html.dark[data-skin="dark-nebula"] .np-shell .shadow-lg { box-shadow: var(--np-nb-shadow-lg), inset 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 9%, transparent); }
+html.dark[data-skin="dark-nebula"] .np-shell .shadow-xl { box-shadow: 0 34px 74px -22px rgba(2, 6, 14, 0.85), inset 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 10%, transparent); }
 
 /* Glass cards: translucent fill + backdrop blur + cyan hairline + top sheen. */
 html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card {
@@ -2811,16 +2898,16 @@ html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card {
 html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card-hero {
   -webkit-backdrop-filter: blur(var(--np-glass-blur)) saturate(1.3);
           backdrop-filter: blur(var(--np-glass-blur)) saturate(1.3);
-  border: 1px solid color-mix(in srgb, var(--np-glow) 40%, var(--np-glass-border));
+  border: 1px solid color-mix(in srgb, var(--np-nb-glow-color) 40%, var(--np-glass-border));
   background-color: var(--np-glass-fill);
   background-image:
-    radial-gradient(120% 100% at 100% 0%, color-mix(in srgb, var(--np-glow) 14%, transparent) 0%, transparent 55%),
+    radial-gradient(120% 100% at 100% 0%, color-mix(in srgb, var(--np-nb-glow-color) 14%, transparent) 0%, transparent 55%),
     linear-gradient(157deg, color-mix(in srgb, var(--color-surface-high) 55%, transparent) 0%, transparent 60%);
   box-shadow:
     var(--np-sheen),
-    0 0 0 1px color-mix(in srgb, var(--np-glow) 20%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 20%, transparent),
     var(--np-nb-shadow-md),
-    0 22px 48px -30px color-mix(in srgb, var(--np-glow) 55%, transparent);
+    0 22px 48px -30px color-mix(in srgb, var(--np-nb-glow-color) 55%, transparent);
 }
 
 /* Interactive cards/rows: neon-rim lift on hover. */
@@ -2832,19 +2919,19 @@ html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row {
 @media (hover: hover) and (pointer: fine) {
   html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card[role="button"]:hover,
   html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card.cursor-pointer:hover {
-    border-color: color-mix(in srgb, var(--np-glow) 50%, transparent);
+    border-color: color-mix(in srgb, var(--np-nb-glow-color) 50%, transparent);
     box-shadow: var(--np-sheen), var(--np-nb-glow);
     transform: translateY(-4px);
   }
   html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row:hover {
-    background-color: color-mix(in srgb, var(--np-glow) 8%, transparent);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--np-glow) 22%, transparent);
+    background-color: color-mix(in srgb, var(--np-nb-glow-color) 8%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 22%, transparent);
     transform: translateY(-2px);
   }
 }
 html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-card[role="button"]:focus-visible,
 html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--np-glow) 70%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--np-nb-glow-color) 70%, transparent);
   outline-offset: 2px;
 }
 
@@ -2861,7 +2948,7 @@ html.dark[data-skin="dark-nebula"] .np-shell .bg-blue-600 {
 @media (hover: hover) and (pointer: fine) {
   html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-btn-primary:hover:not(:disabled),
   html.dark[data-skin="dark-nebula"] .np-shell .bg-blue-600:hover {
-    box-shadow: 0 8px 28px -6px color-mix(in srgb, var(--np-glow) 60%, transparent), inset 0 1px 0 0 color-mix(in srgb, #ffffff 30%, transparent);
+    box-shadow: 0 8px 28px -6px color-mix(in srgb, var(--np-nb-glow-color) 60%, transparent), inset 0 1px 0 0 color-mix(in srgb, #ffffff 30%, transparent);
   }
 }
 
@@ -2870,21 +2957,21 @@ html.dark[data-skin="dark-nebula"] .np-shell aside {
   background: linear-gradient(180deg, #10192b 0%, #070b14 100%);
 }
 html.dark[data-skin="dark-nebula"] .np-shell .np-sidebar::after {
-  background: linear-gradient(180deg, var(--np-glow), var(--np-glow-violet));
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--np-glow) 55%, transparent));
+  background: linear-gradient(180deg, var(--np-nb-glow-color), var(--np-glow-violet));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--np-nb-glow-color) 55%, transparent));
   opacity: 0.5;
 }
 
 /* Active nav item: glass plate + glowing cyan left accent bar. */
 html.dark[data-skin="dark-nebula"] .np-shell aside a.np-nav[aria-current="page"] {
   background: linear-gradient(90deg,
-    color-mix(in srgb, var(--np-glow) 16%, transparent),
-    color-mix(in srgb, var(--np-glow) 5%, transparent) 62%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--np-glow) 14%, transparent);
+    color-mix(in srgb, var(--np-nb-glow-color) 16%, transparent),
+    color-mix(in srgb, var(--np-nb-glow-color) 5%, transparent) 62%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--np-nb-glow-color) 14%, transparent);
 }
 html.dark[data-skin="dark-nebula"] .np-shell aside a.np-nav[aria-current="page"]::before {
-  background: linear-gradient(180deg, var(--np-glow), var(--np-glow-violet));
-  box-shadow: 0 0 8px color-mix(in srgb, var(--np-glow) 55%, transparent);
+  background: linear-gradient(180deg, var(--np-nb-glow-color), var(--np-glow-violet));
+  box-shadow: 0 0 8px color-mix(in srgb, var(--np-nb-glow-color) 55%, transparent);
 }
 
 /* Reduced motion: drop the skin's hover transforms. */
@@ -2899,4 +2986,190 @@ html.dark[data-skin="dark-nebula"] .np-shell aside a.np-nav[aria-current="page"]
   html.dark[data-skin="dark-nebula"] :is(.np-shell, .np-designer) .np-row:hover {
     transform: none;
   }
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
+   DEPTH LAYER — default dark skin "Azur"
+   ────────────────────────────────────────────────────────────────────────────
+   Everything here is scoped to `html.dark[data-skin="dark"]`, so dark-lila,
+   dark-sparkasse and dark-nebula are provably untouched by it.
+
+   The material is LIT, not glass. Each raised plane gets four things:
+     1. a lit rim on top           (border-top-color, light)
+     2. a face gradient            (light at the top, shading toward the bottom)
+     3. a shaded lip at the bottom (border-bottom-color, dark)
+     4. a hard 0-blur contact line + a soft form shadow
+   Recessed elements (inputs) invert 1 and 3 and pull the shadow inside.
+
+   Deliberately NO `backdrop-filter` anywhere: this is the skin every user sees,
+   and a blur per card costs a full-viewport GPU readback each. Nebula can afford
+   that as an opt-in skin; the default cannot. The face gradient carries the same
+   read at zero cost.
+
+   Private namespace `--np-az-*`. Never declare `--np-glow` here — that name is a
+   0..1 intensity scalar written per frame by ToolbarGlow.tsx and consumed as
+   `calc(var(--np-glow, 0) * .6)`; assigning a colour to it breaks the calc.
+   ──────────────────────────────────────────────────────────────────────────── */
+html.dark[data-skin="dark"] .np-shell,
+html.dark[data-skin="dark"] .np-designer {
+  --np-az-rim-top:    rgba(255, 255, 255, 0.10);
+  --np-az-rim-side:   rgba(255, 255, 255, 0.045);
+  --np-az-rim-bottom: rgba(0, 0, 0, 0.55);
+  --np-az-face: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.065) 0%,
+    rgba(255, 255, 255, 0.018) 42%,
+    rgba(0, 0, 0, 0.14) 100%);
+  --np-az-sheen: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  /* Every step opens with a hard contact line — that is what makes a plate read
+     as resting on the page instead of floating above it, and it is the one depth
+     cue that survives on a cheap panel at 100% zoom. */
+  --np-az-shadow-sm: 0 1px 0 0 rgba(0,0,0,.60), 0 2px 4px rgba(0,0,0,.45), 0 6px 16px -6px rgba(0,0,0,.70);
+  --np-az-shadow-md: 0 1px 0 0 rgba(0,0,0,.65), 0 4px 8px -2px rgba(0,0,0,.50), 0 16px 36px -12px rgba(0,0,0,.78);
+  --np-az-shadow-lg: 0 1px 0 0 rgba(0,0,0,.70), 0 8px 16px -6px rgba(0,0,0,.55), 0 30px 64px -20px rgba(0,0,0,.82);
+  --np-az-shadow-xl: 0 1px 0 0 rgba(0,0,0,.75), 0 12px 24px -8px rgba(0,0,0,.60), 0 44px 88px -28px rgba(0,0,0,.85);
+  --np-az-btn-top: #3372e0;
+  --np-az-btn-bot: #2467d9;
+}
+
+/* Elevation ramp. `.shadow-2xl` is included because ModalShell panels, the drawer
+   and the designer overlays use it and would otherwise keep Tailwind's flat default. */
+html.dark[data-skin="dark"] .np-shell .shadow     { box-shadow: var(--np-az-shadow-sm); }
+html.dark[data-skin="dark"] .np-shell .shadow-sm  { box-shadow: var(--np-az-shadow-sm); }
+html.dark[data-skin="dark"] .np-shell .shadow-md  { box-shadow: var(--np-az-shadow-md); }
+html.dark[data-skin="dark"] .np-shell .shadow-lg  { box-shadow: var(--np-az-shadow-lg); }
+html.dark[data-skin="dark"] .np-shell .shadow-xl  { box-shadow: var(--np-az-shadow-xl); }
+html.dark[data-skin="dark"] .np-shell .shadow-2xl { box-shadow: var(--np-az-shadow-xl); }
+
+/* ── Cards ─────────────────────────────────────────────────────────────────── */
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .np-card {
+  border: 1px solid transparent;
+  border-top-color: var(--np-az-rim-top);
+  border-left-color: var(--np-az-rim-side);
+  border-right-color: var(--np-az-rim-side);
+  border-bottom-color: var(--np-az-rim-bottom);
+  background-color: var(--color-surface-container);
+  background-image: var(--np-az-face);
+  box-shadow: var(--np-az-sheen), var(--np-az-shadow-lg);
+}
+/* Shared-folders box: a lighter, evenly-lit plate — the standard face gradient
+   reads heavy on a tall resizable panel. */
+html.dark[data-skin="dark"] .np-shell .np-card.np-folder-card {
+  background-color: var(--color-surface-highest);
+  background-image: linear-gradient(180deg, rgba(255,255,255,.06) 0%, rgba(255,255,255,.015) 70%, transparent 100%);
+}
+/* Hero card: the accent arrives as LIGHT falling on the plane from the top right,
+   never as a surface tint. */
+html.dark[data-skin="dark"] .np-shell .np-card-hero {
+  border-top-color: color-mix(in srgb, var(--np-accent-text) 40%, var(--np-az-rim-top));
+  border-left-color: color-mix(in srgb, var(--np-accent-text) 22%, transparent);
+  border-right-color: color-mix(in srgb, var(--np-accent-text) 22%, transparent);
+  background-image:
+    radial-gradient(120% 100% at 100% 0%, color-mix(in srgb, var(--np-accent-text) 13%, transparent) 0%, transparent 55%),
+    var(--np-az-face);
+  box-shadow:
+    var(--np-az-sheen),
+    var(--np-az-shadow-lg),
+    0 26px 60px -34px color-mix(in srgb, var(--np-accent) 55%, transparent);
+}
+
+/* ── List rows: an inset accent edge instead of a lift ──────────────────────
+   No transform and no layout shift, so a 500-row audit-log page stays smooth. */
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .np-row:hover {
+  background-color: color-mix(in srgb, var(--color-on-surface) 5%, transparent);
+  box-shadow: inset 3px 0 0 0 var(--np-accent), var(--np-az-sheen);
+}
+
+/* ── Buttons: raised plates that sink when pressed ─────────────────────────── */
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .np-btn {
+  border-color: transparent;
+  border-top-color: var(--np-az-rim-top);
+  border-left-color: var(--np-az-rim-side);
+  border-right-color: var(--np-az-rim-side);
+  border-bottom-color: var(--np-az-rim-bottom);
+  background-color: var(--color-surface-high);
+  background-image: var(--np-az-face);
+  box-shadow: var(--np-az-sheen), var(--np-az-shadow-sm);
+}
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .np-btn:hover:not(:disabled) {
+  background-color: var(--color-surface-highest);
+  border-top-color: color-mix(in srgb, var(--np-accent-text) 30%, var(--np-az-rim-top));
+}
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .np-btn:active:not(:disabled) {
+  border-top-color: var(--np-az-rim-bottom);
+  border-bottom-color: var(--np-az-rim-side);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.55);
+}
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .np-btn-ghost {
+  border-color: transparent;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+}
+/* Primary plus every remapped Tailwind-blue fill: a fixed two-stop gradient rather
+   than a flat colour, so the plate has a lit top edge. Both stops are literals, not
+   color-mix lightenings, so the white label holds >= 4.5:1 over the whole height
+   (4.54:1 at the top stop, 5.23:1 at the bottom). */
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .np-btn-primary,
+html.dark[data-skin="dark"].np-accent-remap .np-shell .bg-blue-600 {
+  border-color: transparent;
+  border-bottom-color: rgba(0, 0, 0, 0.45);
+  background-color: var(--np-az-btn-bot);
+  background-image: linear-gradient(180deg, var(--np-az-btn-top) 0%, var(--np-az-btn-bot) 100%);
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.28), var(--np-az-shadow-sm);
+}
+@media (hover: hover) and (pointer: fine) {
+  html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .np-btn-primary:hover:not(:disabled),
+  html.dark[data-skin="dark"].np-accent-remap .np-shell .bg-blue-600:hover {
+    background-image: linear-gradient(180deg, var(--np-az-btn-bot) 0%, var(--np-accent-hover) 100%);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.32),
+                0 8px 26px -8px color-mix(in srgb, var(--np-accent) 60%, transparent);
+  }
+}
+
+/* ── Inputs: recessed, so they read as the opposite of a button ────────────── */
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .input-field {
+  border-color: transparent;
+  border-top-color: var(--np-az-rim-bottom);
+  border-left-color: var(--color-outline-variant);
+  border-right-color: var(--color-outline-variant);
+  border-bottom-color: var(--np-az-rim-side);
+  background-color: var(--color-surface-lowest);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45);
+}
+html.dark[data-skin="dark"] :is(.np-shell, .np-designer) .input-field:focus {
+  background-color: var(--color-surface);
+  border-color: color-mix(in srgb, var(--np-accent-text) 55%, transparent);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.45),
+              0 0 0 3px color-mix(in srgb, var(--np-accent) 20%, transparent);
+}
+
+/* ── Sidebar ───────────────────────────────────────────────────────────────── */
+html.dark[data-skin="dark"] .np-sidebar {
+  /* Section labels sat at 64% of an already-muted ink, which put them under the
+     4.5:1 bar on the darker rail. */
+  --np-sb-heading: color-mix(in srgb, var(--color-on-surface-variant) 72%, transparent);
+}
+
+/* ── Canvas ────────────────────────────────────────────────────────────────── */
+/* The edge-label pill blurred per label, under the React-Flow viewport transform —
+   the one blur on the canvas that genuinely costs frames. An opaque fill plus the
+   contact line reads the same over a dense node cluster. */
+html.dark[data-skin="dark"] .np-premium .react-flow__edgelabel-renderer .np-edge-label-pill {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background-color: color-mix(in srgb, var(--color-surface-container) 94%, transparent);
+  box-shadow: 0 1px 0 0 rgba(0,0,0,.55), 0 6px 18px rgba(0,0,0,.38);
+}
+
+/* Canvas literals, Azur values. Declared at root level so the whole document —
+   including body-portaled overlays — resolves them consistently. */
+html.dark[data-skin="dark"] {
+  /* Lifting the canvas floor eats into the dot grid's contrast, so the alpha goes
+     up with it — the grid has to stay clearly countable, it is the scale reference
+     for the whole graph. */
+  --np-canvas-dot:           rgba(190, 210, 255, 0.30);
+  --np-minimap-mask:         rgba(13, 14, 17, 0.58);
+  --np-minimap-mask-atelier: rgba(11, 12, 15, 0.64);
+  --np-node-bg:              rgba(22, 24, 29, 0.94);
 }
