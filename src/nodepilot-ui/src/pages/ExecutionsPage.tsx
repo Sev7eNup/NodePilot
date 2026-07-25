@@ -16,7 +16,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { api } from '../api/client';
 import type { WorkflowExecution, StepExecution, Workflow } from '../types/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { buildTraceUrl, useObservabilityConfig } from '../api/observability';
 import { formatDate, formatDuration, formatRelative } from '../lib/format';

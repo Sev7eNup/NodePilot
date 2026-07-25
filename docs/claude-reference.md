@@ -258,7 +258,8 @@ Audit-Fehler brechen normale Mutationen nicht ab. Die einzige bewusst fail-close
 
 ## Production Deployment — Referenz
 
-Vollständige Operator-Doku: [deploy/README.md](deploy/README.md).
+Vollständige Operator-Doku: [deploy/README.md](deploy/README.md). Zweites Shipping-Ziel ist die
+**Desktop-App** — siehe [Desktop-Deployment — Referenz](#desktop-deployment--referenz) weiter unten.
 
 ### Ziel-Topologie
 
@@ -298,6 +299,47 @@ Installer-Template setzt `LocalMachine` ([appsettings.Production.json.template](
 - **Em-Dashes (`—`) in PS-Scripts**: bricht PS 5.1 Parsing wenn Datei ohne BOM gespeichert. In Deploy-Skripten nur ASCII-Punctuation verwenden
 - **`Set-StrictMode -Version Latest`** + `& npm ...`-Shim triggert `PropertyNotFoundStrict` auf `.Statement`. In Deploy-Skripten `Version 3.0` verwenden
 - **`New-Service` unterstützt keine gMSA** (verlangt Passwort). `sc.exe create ... obj= DOMAIN\acct$ password= ""` ist der Workaround
+
+---
+
+## Desktop-Deployment — Referenz
+
+Operator-Doku: [deploy/desktop/README.md](deploy/desktop/README.md). Nutzerseitiger Vergleich aller
+drei Betriebsarten: docs-ui `deployment/overview.md`.
+
+Zweites Shipping-Ziel: maschinenweiter, **offline** Win-11-x64-`.exe`-Installer (Inno Setup) mit
+gebündeltem PostgreSQL 16 (nur `bin`/`lib`/`share`) + self-contained .NET, beides als
+Boot-Start-Dienste (`NodePilot` = LocalSystem, `NodePilotDb` = NetworkService, `depend=`), plus
+Electron als dünner Viewer.
+
+**Posture `Deployment:Mode`** (`Server` default | `Desktop`, [DeploymentMode.cs](src/NodePilot.Api/Configuration/DeploymentMode.cs); unbekannter Wert = Boot-Error). Desktop relaxiert **nur** drei Dinge:
+- `DatabaseTlsBootValidator`: `AllowInsecureTls` wird bei **Loopback-DB** zur Warning statt Error
+- `KestrelHttpsConfigurator`: `ListenLocalhost` statt `ListenAnyIP` (`LoopbackOnly`, nicht abschaltbar)
+- `DatabaseReadinessGate`: ≤120 s Warten auf Postgres vor dem Migration-Bootstrap (nur Erreichbarkeit, keine Migrationsfehler)
+
+**Konsequenzen (nicht offensichtlich):** Der Loopback-Bind trifft den **kompletten Listener** — SPA,
+`/api/*`, `/hubs/*`, `/healthz`, `/api/webhooks/*`. Es ist **nicht** so, dass einzelne Routen gesperrt
+wären und der Rest der API aus dem Netz erreichbar bliebe (häufiges Missverständnis). Daraus:
+**eingehende Webhooks und die externe Trigger-API unbrauchbar** (letztere zusätzlich per leerem
+`ExternalTrigger:ApiKey` aus), kein Team-Zugriff; nur lokales Login (`LocalLoginMode=Enabled`);
+lokale `runScript` laufen als **SYSTEM**; Remote-WinRM braucht hinterlegte Credentials;
+**HA unmöglich** (Cluster+DPAPI = Boot-Error, kein `Jwt:Key`).
+
+**Was unverändert bleibt:** alle nicht-eingehenden Trigger (`schedule`/`fileWatcher`/`database`/
+`eventLog`/`manual`) und jede ausgehende Automatisierung (WinRM, `restApi`, `sql`, SMTP,
+Alerting-Webhooks). Merksatz: *ausgehend alles, eingehend nichts.*
+
+**Windows-/PS-5.1-Stolperfallen im Provisionierer** (alle real aufgetreten):
+- `RandomNumberGenerator.Fill` und `GetCertHashString(HashAlgorithmName)` sind .NET-Core-/4.8-APIs — unter PS 5.1 nicht vorhanden
+- **PostgreSQL re-execed unter Restricted-Token** (droppt Administrators) → `pgdata`/pwfile brauchen den **User-SID**
+- `sc.exe create binPath=` bricht bei Leerzeichen-Pfad (`C:\Program Files\…`) **still** ab → `New-Service`
+- `admin-setup.token` ist owner-only (SYSTEM): elevierter Admin darf weder lesen noch DACL ändern → `takeown /a` + `icacls`-Lesegrant (Owner/ACEs bleiben im trusted-Set von `RestrictedFileWriter`)
+- `Invoke-WebRequest` scheitert unter PS 5.1 an Kestrels Loopback-TLS trotz gesunder API → `curl.exe`-Fallback
+- **`$PSHOME\Modules` muss mitgeliefert werden**, sonst schlägt jedes `runScript` fehl (Modul-Staging im Build)
+- Deploy-Skripte **ASCII-only** halten (UTF-8-no-BOM wird als ANSI gelesen)
+
+**Dev-Loop:** `Sync-DesktopApp.ps1` (~1 Min) statt Installer-Rebuild; Electron-Shell via `npm start`
+direkt aus dem Quellcode gegen die installierte Backend-Instanz.
 
 ---
 

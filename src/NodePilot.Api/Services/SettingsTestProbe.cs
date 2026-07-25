@@ -190,7 +190,7 @@ public sealed class SettingsTestProbe
                     using var connection = new LdapConnection(identifier)
                     {
                         AuthType = AuthType.Basic,
-                        Timeout = TimeSpan.FromSeconds(Math.Clamp(settings.BindTimeoutSeconds, 1, 60)),
+                        Timeout = TimeSpan.FromSeconds(Math.Clamp(settings.BindTimeoutSeconds, 1, 5)),
                     };
                     connection.SessionOptions.ProtocolVersion = 3;
                     connection.SessionOptions.SecureSocketLayer = true;

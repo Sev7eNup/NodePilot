@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { useTheme } from '../lib/useTheme'
 import { SunIcon, MoonIcon, SearchIcon, MenuIcon } from '../lib/icons'
 import logoLight from '../assets/logo-light.png'

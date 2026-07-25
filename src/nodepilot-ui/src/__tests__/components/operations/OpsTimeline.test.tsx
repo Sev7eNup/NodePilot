@@ -58,6 +58,22 @@ describe('OpsTimeline', () => {
     expect(screen.getByText('(done-1)')).toBeInTheDocument();
   });
 
+  it('renders each overlapping run as its own labeled row instead of a ×N badge', () => {
+    // Two concurrent runs of the same workflow stack into two sub-rows; each sub-row gets
+    // its own full-name label + job-id chip, and no ×2 multiplier is shown.
+    renderTimeline({
+      running: [
+        { executionId: 'run-a', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null },
+        { executionId: 'run-b', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 3 * MIN).toISOString(), parentExecutionId: null },
+      ],
+      recent: [],
+    });
+    expect(screen.getAllByText('Nightly Backup')).toHaveLength(2);
+    expect(screen.queryByText(/×2/)).not.toBeInTheDocument();
+    expect(screen.getByText('(run-a)')).toBeInTheDocument();
+    expect(screen.getByText('(run-b)')).toBeInTheDocument();
+  });
+
   it('marks the selected bar', () => {
     renderTimeline({ selectedExecutionId: 'run-1' });
     expect(screen.getByTitle(/Nightly Backup · Running/)).toHaveAttribute('aria-pressed', 'true');

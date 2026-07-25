@@ -125,6 +125,20 @@ public class CsrfMiddlewareTests
     }
 
     [Fact]
+    public async Task PostToWindowsSsoEndpoint_Skipped()
+    {
+        // /api/auth/windows is a cookie-bootstrap endpoint like login: it is Negotiate-gated
+        // and mints a fresh np_auth + np_csrf pair on success. A stale np_auth cookie without
+        // a matching np_csrf must not 403 the SSO handshake before it runs.
+        var ctx = NewCtx("POST", path: "/api/auth/windows", csrfHeader: null);
+        var (mw, called) = Build();
+
+        await mw.InvokeAsync(ctx);
+
+        called().Should().BeTrue();
+    }
+
+    [Fact]
     public async Task PostWithMatchingCsrf_PassesThrough()
     {
         var ctx = NewCtx("POST");

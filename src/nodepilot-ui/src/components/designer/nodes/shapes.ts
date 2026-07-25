@@ -26,7 +26,7 @@ import type { EdgePortSide } from '../../../lib/edgePorts';
  * Selection/live-pulse rings can't use CSS `ring-*` (it doesn't follow clip-path); instead we
  * use a layering trick: an extra div with the same clip-path and a negative inset.
  *
- * The 21 action polygons were generated and visually validated via `scratchpad/gen-shapes.mjs`
+ * The 22 action polygons were generated and visually validated via `scratchpad/gen-shapes.mjs`
  * (Bézier/vertex lists + a Playwright preview) — make geometry changes there.
  */
 
@@ -36,7 +36,7 @@ export const NODE_SHAPES = [
   // per-activity control-flow shapes (rendered with the shared indigo frame)
   'diamond', 'hexLong', 'reel', 'tagLeft',
   // per-activity action shapes
-  'hexPointy', 'hexFlat', 'octagon', 'chamferedSquare', 'stopwatch', 'starburst',
+  'hexPointy', 'hexFlat', 'octagon', 'chamferedSquare', 'stopwatch', 'power',
   'house', 'shield', 'blockArrow', 'chevronLeft', 'cylinder', 'pillH',
   'banner', 'plaque', 'kite', 'gem', 'pentagonUp', 'pentagonDown',
   'trapezoidUp', 'trapezoidDown', 'circle', 'speechBubble',
@@ -66,6 +66,11 @@ export type HandleInset = Partial<Record<EdgePortSide, number>>;
 export interface ShapeDef {
   /** clip-path polygon; `undefined` for `square` → normal (non-clipped) render path. */
   clip?: string;
+  /** Optional SOLID body silhouette rendered BEHIND `clip`. When set, the border/fill/halo layers
+   *  clip to THIS shape (an opaque body), and `clip` is drawn on top as a coloured accent outline.
+   *  Used by `power`, whose `clip` is a hollow ring: the backing disc makes the node opaque while
+   *  the ring stays the visible silhouette. `undefined` for every normal (single-layer) shape. */
+  backingClip?: string;
   /** Multiplier on `scale.iconBox` (NODE_SCALES). */
   size: number;
   /** Multiplier on `scale.iconFont` in the special-shape render path. */
@@ -150,12 +155,10 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   reel: control('polygon(0% 0%, 42% 0%, 50% 13%, 58% 0%, 100% 0%, 100% 100%, 58% 100%, 50% 87%, 42% 100%, 0% 100%)', 1.20, 1.0, { top: 0.13, bottom: 0.13 }), // forEach (loop/reel)
   tagLeft: control('polygon(15% 0%, 100% 0%, 100% 100%, 15% 100%, 0% 50%)', 1.24),                  // startWorkflow (launch tag)
 
-  // 21 per-activity action shapes (polygons generated via scratchpad/gen-shapes.mjs). `size` is
+  // 22 per-activity action shapes (polygons generated via scratchpad/gen-shapes.mjs). `size` is
   // area-compensated (1/sqrt(visible-fill), capped at 1.25) so every silhouette reads equal;
-  // `iconScale` 1.0 → inside-icon matches square. Two deliberate per-shape overrides: `starburst`
-  // is REDUCED (its pointed center can't hold a full-size icon at a calm footprint — equalizing
-  // it fully would balloon the node +30–55 %), and `stopwatch` is ENLARGED so the clock icon fills
-  // the round watch face (a standard icon looks lost on a dial).
+  // `iconScale` 1.0 → inside-icon matches square. One deliberate per-shape override: `stopwatch`
+  // is ENLARGED so the clock icon fills the round watch face (a standard icon looks lost on a dial).
   hexPointy: blob('polygon(50.0% 0.0%, 100.0% 25.0%, 100.0% 75.0%, 50.0% 100.0%, 0.0% 75.0%, 0.0% 25.0%)', 1.10),
   hexFlat: blob('polygon(25.0% 0.0%, 75.0% 0.0%, 100.0% 50.0%, 75.0% 100.0%, 25.0% 100.0%, 0.0% 50.0%)', 1.10),
   octagon: blob('polygon(30.0% 0.0%, 70.0% 0.0%, 100.0% 30.0%, 100.0% 70.0%, 70.0% 100.0%, 30.0% 100.0%, 0.0% 70.0%, 0.0% 30.0%)', 1.10),
@@ -171,7 +174,20 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   // the side ports onto the silhouette; top port lands on the center crown, bottom port on the
   // circle's tangent.
   stopwatch: blob('polygon(6% 56%, 6.4% 62.1%, 7.7% 68.1%, 9.8% 73.9%, 12.7% 79.3%, 16.3% 84.3%, 20.6% 88.7%, 25.4% 92.5%, 30.7% 95.5%, 36.4% 97.8%, 42.4% 99.3%, 48.5% 100%, 54.6% 99.8%, 60.6% 98.7%, 66.5% 96.8%, 72% 94.1%, 77.1% 90.7%, 81.7% 86.6%, 85.6% 81.9%, 88.8% 76.7%, 91.3% 71%, 93% 65.1%, 93.9% 59.1%, 94% 56%, 93.6% 49.9%, 92.3% 43.9%, 90.2% 38.1%, 87.3% 32.7%, 83.7% 27.7%, 79.4% 23.3%, 78.3% 22.3%, 87.3% 14.3%, 79.7% 9.2%, 70.7% 17.2%, 65% 14.7%, 59.1% 13%, 56.1% 12.4%, 56.1% 0%, 43.9% 0%, 43.9% 12.4%, 37.9% 13.7%, 32.1% 15.8%, 29.3% 17.2%, 20.3% 9.2%, 12.7% 14.3%, 21.7% 22.3%, 17.3% 26.6%, 13.5% 31.4%, 10.5% 36.7%, 8.2% 42.4%, 6.7% 48.4%, 6% 54.5%)', 1.23, 1.25, { left: 0.06, right: 0.06 }, 0.06),
-  starburst: blob('polygon(50.0% 0.0%, 62.0% 38.0%, 100.0% 50.0%, 62.0% 62.0%, 50.0% 100.0%, 38.0% 62.0%, 0.0% 50.0%, 38.0% 38.0%)', 1.25, 0.88),
+  // powerManagement — "ring on a filled disc": the visible silhouette (`clip`) is the IEC power
+  // glyph — a HOLLOW ring broken at the top with a bar in the gap — drawn as a coloured accent on
+  // top of a solid backing disc (`backingClip`, concentric, same 0.44 radius) so the node reads as
+  // an opaque round body AND as a power symbol. Both centre on y=56 %; the disc's widest span sits
+  // below the y=50 % port line → handleInset pulls the side ports (~6.4 %) onto the disc, the top
+  // port onto the bar. iconScale 0.9 keeps the (kept) activity glyph large inside the ring's hole;
+  // iconOffsetY +0.06 seats it on the disc's centre. The ring polygon: outer arc + inner arc walked
+  // back (one closed C-contour), then the bar as a second loop via a zero-width bridge (evenodd).
+  power: {
+    clip: 'polygon(evenodd, 65.8% 14.9%, 70.6% 17.1%, 75.1% 19.9%, 79.3% 23.2%, 83.0% 26.9%, 86.3% 31.1%, 89.0% 35.7%, 91.2% 40.5%, 92.7% 45.6%, 93.7% 50.8%, 94.0% 56.1%, 93.7% 61.4%, 92.7% 66.6%, 91.1% 71.7%, 88.9% 76.5%, 86.2% 81.0%, 82.9% 85.2%, 79.1% 89.0%, 75.0% 92.2%, 70.4% 95.0%, 65.6% 97.1%, 60.5% 98.7%, 55.3% 99.7%, 50.0% 100.0%, 44.7% 99.7%, 39.5% 98.7%, 34.4% 97.1%, 29.6% 95.0%, 25.0% 92.2%, 20.9% 89.0%, 17.1% 85.2%, 13.8% 81.0%, 11.1% 76.5%, 8.9% 71.7%, 7.3% 66.6%, 6.3% 61.4%, 6.0% 56.1%, 6.3% 50.8%, 7.3% 45.6%, 8.8% 40.5%, 11.0% 35.7%, 13.7% 31.1%, 17.0% 26.9%, 20.7% 23.2%, 24.9% 19.9%, 29.4% 17.1%, 34.2% 14.9%, 39.2% 28.0%, 36.0% 29.5%, 32.9% 31.4%, 30.0% 33.6%, 27.5% 36.2%, 25.3% 39.0%, 23.4% 42.1%, 21.9% 45.4%, 20.9% 48.9%, 20.2% 52.5%, 20.0% 56.1%, 20.2% 59.7%, 20.9% 63.2%, 22.0% 66.7%, 23.5% 70.0%, 25.3% 73.1%, 27.6% 75.9%, 30.1% 78.5%, 33.0% 80.7%, 36.1% 82.6%, 39.4% 84.1%, 42.8% 85.1%, 46.4% 85.8%, 50.0% 86.0%, 53.6% 85.8%, 57.2% 85.1%, 60.6% 84.1%, 63.9% 82.6%, 67.0% 80.7%, 69.9% 78.5%, 72.4% 75.9%, 74.7% 73.1%, 76.5% 70.0%, 78.0% 66.7%, 79.1% 63.2%, 79.8% 59.7%, 80.0% 56.1%, 79.8% 52.5%, 79.1% 48.9%, 78.1% 45.4%, 76.6% 42.1%, 74.7% 39.0%, 72.5% 36.2%, 70.0% 33.6%, 67.1% 31.4%, 64.0% 29.5%, 60.8% 28.0%, 44.2% 8.0%, 47.2% 5.0%, 52.8% 5.0%, 55.8% 8.0%, 55.8% 55.5%, 52.8% 58.5%, 47.2% 58.5%, 44.2% 55.5%, 44.2% 8.0%, 60.8% 28.0%)',
+    backingClip: 'polygon(50.0% 12.0%, 56.9% 12.5%, 63.6% 14.2%, 70.0% 16.8%, 75.9% 20.4%, 81.1% 24.9%, 85.6% 30.1%, 89.2% 36.0%, 91.8% 42.4%, 93.5% 49.1%, 94.0% 56.0%, 93.5% 62.9%, 91.8% 69.6%, 89.2% 76.0%, 85.6% 81.9%, 81.1% 87.1%, 75.9% 91.6%, 70.0% 95.2%, 63.6% 97.8%, 56.9% 99.5%, 50.0% 100.0%, 43.1% 99.5%, 36.4% 97.8%, 30.0% 95.2%, 24.1% 91.6%, 18.9% 87.1%, 14.4% 81.9%, 10.8% 76.0%, 8.2% 69.6%, 6.5% 62.9%, 6.0% 56.0%, 6.5% 49.1%, 8.2% 42.4%, 10.8% 36.0%, 14.4% 30.1%, 18.9% 24.9%, 24.1% 20.4%, 30.0% 16.8%, 36.4% 14.2%, 43.1% 12.5%)',
+    size: 1.13, iconScale: 0.9, badges: BLOB_BADGES,
+    handleInset: { left: 0.064, right: 0.064, top: 0.05 }, iconOffsetY: 0.06,
+  },
   house: blob('polygon(50.0% 0.0%, 100.0% 34.0%, 100.0% 100.0%, 0.0% 100.0%, 0.0% 34.0%)', 1.12, 1.0, { top: 0.34 }),
   // iconOffsetY: the shield tapers to a point at the bottom (50% 100%) → its visual center is
   // at ~40% y, so an icon placed at the bbox center (50%) sits too low; shift it up ~10% so it
@@ -194,7 +210,7 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   trapezoidDown: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 72.0% 100.0%, 28.0% 100.0%)', 1.24, 1.0, { left: 0.13, right: 0.13, bottom: 0 }),
   circle: blob('polygon(50.0% 0.0%, 59.8% 1.0%, 69.1% 3.8%, 77.8% 8.4%, 85.4% 14.6%, 91.6% 22.2%, 96.2% 30.9%, 99.0% 40.2%, 100.0% 50.0%, 99.0% 59.8%, 96.2% 69.1%, 91.6% 77.8%, 85.4% 85.4%, 77.8% 91.6%, 69.1% 96.2%, 59.8% 99.0%, 50.0% 100.0%, 40.2% 99.0%, 30.9% 96.2%, 22.2% 91.6%, 14.6% 85.4%, 8.4% 77.8%, 3.8% 69.1%, 1.0% 59.8%, 0.0% 50.0%, 1.0% 40.2%, 3.8% 30.9%, 8.4% 22.2%, 14.6% 14.6%, 22.2% 8.4%, 30.9% 3.8%, 40.2% 1.0%)', 1.13),
   // llmQuery — chat/speech bubble with a tail (body fills the upper 75%; left+right edges reach the
-  // vertical mid so ReactFlow ports dock cleanly). Distinct from the 8-point `starburst`.
+  // vertical mid so ReactFlow ports dock cleanly).
   // iconOffsetY: Body center sits at 37.5% of the bbox (upper 75% body + lower-25% tail), but the
   // icon container centers at 50% → shift the icon up so it reads as centered in the bubble body.
   speechBubble: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 75.0%, 42.0% 75.0%, 26.0% 100.0%, 26.0% 75.0%, 0.0% 75.0%)', 1.15, 1.0, { bottom: 0.25 }, -0.12),
@@ -204,6 +220,10 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
 export const SHAPE_CLIP_PATHS = Object.fromEntries(
   NODE_SHAPES.map((s) => [s, SHAPE_DEFS[s].clip]),
 ) as Record<NodeShape, string | undefined>;
+
+/** Optional solid-body clip drawn BEHIND the silhouette (only `power` today). `undefined` → the
+ *  shape renders as a single layer clipped to `SHAPE_CLIP_PATHS[shape]`. */
+export const getBackingClip = (shape: NodeShape): string | undefined => SHAPE_DEFS[shape].backingClip;
 
 // --- Mapping (checked at compile time) -----------------------------------
 /** Exactly the activities that get their own shape (20 `action` types + `log` + `delay`). */
@@ -218,7 +238,7 @@ const ACTION_SHAPE = {
   runScript: 'hexPointy', fileOperation: 'plaque', folderOperation: 'trapezoidUp', fileHash: 'gem',
   zipOperation: 'chamferedSquare', serviceManagement: 'hexFlat', scheduledTask: 'pentagonUp',
   registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'blockArrow',
-  powerManagement: 'starburst', waitForCondition: 'circle', restApi: 'chevronLeft', sql: 'cylinder',
+  powerManagement: 'power', waitForCondition: 'circle', restApi: 'chevronLeft', sql: 'cylinder',
   xmlQuery: 'kite', jsonQuery: 'trapezoidDown', emailNotification: 'banner', textFileEdit: 'house',
   generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
 } as const satisfies Record<ShapedActivityType, NodeShape>;

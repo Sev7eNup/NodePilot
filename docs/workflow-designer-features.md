@@ -80,7 +80,7 @@ Vollständige Auflistung sämtlicher Features des NodePilot-Workflow-Designers (
 - **Live-Status-Overlay:** Running (Amber, pulsierender Ring), Succeeded (Grün), Failed (Rot), Skipped (Grau, gestrichelt), Paused (Dunkelorange, pulsierend).
 - **Heatmaps & Pfade:** Failure-Tint (rot, skaliert nach Fehlerrate), Critical-Path-Glow (orange) + Slack-Badge, Coverage-Ausgrauung (never/rare).
 - **Schedule-Preview:** Für `scheduleTrigger` Anzeige des nächsten Fire-Zeitpunkts (client-seitig via cron-parser), „⏸ Paused" wenn Workflow disabled.
-- **Health-Sparkline / Stats:** Letzte bis zu 8 Outcomes als Dots; Performance-Stats (Runs, Fehlerrate, avg/p95-Dauer) im Hover-Tooltip (400 ms Delay).
+- **Health-Sparkline / Stats:** Letzte bis zu 8 Outcomes als Dots — bleiben auch während eines laufenden bzw. auf dem Canvas gepinnten Runs sichtbar (nur die Dry-Run-Simulation blendet sie aus); Performance-Stats (Runs, Fehlerrate, avg/p95-Dauer) im Hover-Tooltip (400 ms Delay).
 - **Output-Variable & Beschreibung:** Im Tooltip `→ {{var.output}}`; Beschreibungs-Indikator unten rechts.
 - **Variable-Flow-Highlight:** Producer/Consumer-Ringe beim Hover über Variablen.
 

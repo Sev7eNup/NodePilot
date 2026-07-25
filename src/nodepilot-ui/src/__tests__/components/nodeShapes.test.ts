@@ -45,7 +45,7 @@ const ACTION_MAP: Record<string, NodeShape> = {
   runScript: 'hexPointy', fileOperation: 'plaque', folderOperation: 'trapezoidUp', fileHash: 'gem',
   zipOperation: 'chamferedSquare', serviceManagement: 'hexFlat', scheduledTask: 'pentagonUp',
   registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'blockArrow',
-  powerManagement: 'starburst', waitForCondition: 'circle', restApi: 'chevronLeft', sql: 'cylinder',
+  powerManagement: 'power', waitForCondition: 'circle', restApi: 'chevronLeft', sql: 'cylinder',
   xmlQuery: 'kite', jsonQuery: 'trapezoidDown', emailNotification: 'banner', textFileEdit: 'house',
   generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
 };

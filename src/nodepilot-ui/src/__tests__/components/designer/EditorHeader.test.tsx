@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { MemoryRouter, useLocation } from 'react-router-dom';
+import { MemoryRouter, useLocation } from 'react-router';
 import { EditorHeader } from '../../../components/designer/EditorHeader';
 import type { Workflow } from '../../../types/api';
 import { useDesignStore } from '../../../stores/designStore';

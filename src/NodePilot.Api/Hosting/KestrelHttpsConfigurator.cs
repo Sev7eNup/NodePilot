@@ -1,6 +1,7 @@
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
+using NodePilot.Api.Configuration;
 
 namespace NodePilot.Api.Hosting;
 
@@ -23,6 +24,13 @@ public static class KestrelHttpsConfigurator
         public string CertificateLocation { get; init; } = "LocalMachine";
         public string? CertificateThumbprint { get; init; }
         public bool RedirectHttpToHttps { get; init; } = true;
+
+        /// <summary>
+        /// When true, Kestrel binds to loopback (127.0.0.1 / ::1) only instead of every
+        /// interface. Set from <c>Deployment:Mode=Desktop</c>: the desktop package is a
+        /// single-machine install whose API must never be reachable from the network.
+        /// </summary>
+        public bool LoopbackOnly { get; init; }
     }
 
     public static Options ReadOptions(IConfiguration config)
@@ -40,6 +48,8 @@ public static class KestrelHttpsConfigurator
                 ? "LocalMachine" : section["CertificateLocation"]!,
             CertificateThumbprint = section["CertificateThumbprint"],
             RedirectHttpToHttps = section.GetValue<bool?>("RedirectHttpToHttps") ?? true,
+            // Desktop posture forces loopback binding regardless of the Kestrel section.
+            LoopbackOnly = DeploymentModeReader.IsDesktop(config),
         };
     }
 
@@ -72,6 +82,16 @@ public static class KestrelHttpsConfigurator
             ? name
             : throw new InvalidOperationException(
                 $"Kestrel:Https:CertificateStore '{value}' is not a valid StoreName (e.g. My, Root, CA).");
+
+    /// <summary>
+    /// Windows Integrated Authentication (Negotiate/Kerberos) is connection-oriented and is a
+    /// known-problematic case over HTTP/2. When Windows SSO is enabled we therefore pin the
+    /// direct-Kestrel HTTPS listener to HTTP/1.1 (the shipped HAProxy template already forces
+    /// <c>alpn http/1.1</c> for the proxied topology). When SSO is off we keep Kestrel's default
+    /// <c>Http1AndHttp2</c> so ordinary deployments still get HTTP/2.
+    /// </summary>
+    public static HttpProtocols ResolveHttpsProtocols(bool windowsAuthEnabled) =>
+        windowsAuthEnabled ? HttpProtocols.Http1 : HttpProtocols.Http1AndHttp2;
 
     internal static X509Certificate2 LoadCertificate(Options opts)
     {
@@ -123,14 +143,25 @@ public static class KestrelHttpsConfigurator
                 "Kestrel:Https:Enabled=true requires Windows — cert-store lookup is unsupported on non-Windows hosts.");
 
         var cert = LoadCertificate(opts);
+        var windowsAuthEnabled = builder.Configuration.GetValue<bool>("Authentication:Windows:Enabled");
+        var httpsProtocols = ResolveHttpsProtocols(windowsAuthEnabled);
         builder.WebHost.ConfigureKestrel(kestrel =>
         {
+            // Desktop mode binds loopback only (single-machine install, never network-reachable);
+            // server mode binds every interface behind the TLS terminator, as before.
+            void Bind(int port, Action<ListenOptions> configure)
+            {
+                if (opts.LoopbackOnly) kestrel.ListenLocalhost(port, configure);
+                else kestrel.ListenAnyIP(port, configure);
+            }
+
             if (opts.BindHttp)
             {
-                kestrel.ListenAnyIP(opts.HttpPort);
+                Bind(opts.HttpPort, _ => { });
             }
-            kestrel.ListenAnyIP(opts.HttpsPort, listen =>
+            Bind(opts.HttpsPort, listen =>
             {
+                listen.Protocols = httpsProtocols;
                 listen.UseHttps(cert);
             });
         });

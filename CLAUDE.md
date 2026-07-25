@@ -32,44 +32,16 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 ## Tech-Stack
 
 - **Backend:** ASP.NET Core Web API, .NET 10, Windows-only (`net10.0-windows`)
-- **Frontend:** React 19, TypeScript, Tailwind CSS 4, Vite 8, @xyflow/react (React Flow v12)
 - **Datenbank:** PostgreSQL (default) / SQL Server (`Database:Provider` = `postgres` | `sqlserver`). SQLite nur als Test-In-Memory-Backend.
 - **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` muss per `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1` quittiert werden, sonst Boot-Abbruch)
 - **Real-time:** SignalR (`/hubs/execution`)
-- **Auth:** JWT Bearer + BCrypt, Rollen: Admin / Operator / Viewer
-- **Scheduling:** Quartz.NET + `TriggerOrchestrator` in `NodePilot.Scheduler`
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
-- **Observability:** OpenTelemetry opt-in. Prometheus-Scrape via Config.
-- **Hosting:** Windows Service via `Microsoft.Extensions.Hosting.WindowsServices`
 - **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 99 Tools, HTTP-only gegen die REST-API
 - **Enterprise (opt-in):** Active/Passive HA (`Cluster:Enabled`), pluggable Secret-Provider (`Secrets:Provider` = `Dpapi`|`AesGcm`), LDAP/Windows-SSO, ECS-JSON-SIEM, Folder-RBAC
 
 ## Solution-Struktur
 
-```
-src/
-  NodePilot.Core/       # Domain Models, Interfaces, Enums (keine Abhaengigkeiten)
-  NodePilot.Ai/         # LLM-Stack: ILlmClient/OpenAI-Transport + SSRF-Guard + LlmClientFactory, Prompt-Katalog, Script-/Workflow-Gen + Chat-Assistent-Services (nur Core-Abh.; von Api UND Engine genutzt)
-  NodePilot.Data/       # EF Core DbContext, CredentialStore, MigrationBootstrapper
-  NodePilot.Remote/     # WinRM Session Factory + Session, NoOp-Factory
-  NodePilot.Engine/     # WorkflowEngine, ActivityRegistry, Activities, Trigger
-  NodePilot.Scheduler/  # TriggerOrchestrator + ITriggerSource-Impl.
-  NodePilot.Telemetry/  # OTel-Setup, Constants, Options, PrometheusClient
-  NodePilot.Api/        # ASP.NET Core Host, Controller, SignalR Hub, DTOs
-  NodePilot.Cli/        # `np` CLI — dotnet global tool, Spectre.Console.Cli
-  NodePilot.Mcp/        # `nodepilot-mcp` MCP-Server — dotnet global tool, HTTP-only
-  nodepilot-ui/         # React SPA (Vite + Tailwind + React Flow)
-  nodepilot-docs-ui/    # Doku-Website (Vite + React SPA) — EIGENER Markdown-Korpus unter content/ (kuratiertes Rewrite, KEIN Render von docs/)
-tests/
-  NodePilot.Engine.Tests/   # xUnit
-  NodePilot.Ai.Tests/       # xUnit (LLM-Client-Factory, Endpoint-Guard, Secret-Redactor)
-  NodePilot.Data.Tests/     # xUnit
-  NodePilot.Api.Tests/      # xUnit
-  NodePilot.Cli.Tests/      # xUnit + WireMock.Net
-  NodePilot.Mcp.Tests/      # xUnit + WireMock.Net + stdio-Prozess-MCP-Smoke
-  NodePilot.LoadTests/      # eigenes Last-Harness
-  NodePilot.TestCommons/    # geteilte Test-Infrastruktur
-```
+Projekt-Layout unter `src/` + `tests/` — nicht hier gespiegelt, direkt nachsehen. Bindend ist die Abhaengigkeitsrichtung:
 
 **Dep-Graph:** `Api -> Ai, Engine, Scheduler, Data, Remote, Core, Telemetry` | `Engine -> Ai, Data, Remote, Core, Telemetry` | `Ai -> Core` (LLM-Stack, sitzt unter Engine, damit Api+Engine ihn teilen) | `Data -> Core` | `Remote -> Core` | `Telemetry -> Core` | `Cli -> Core` (HTTP-only) | `Mcp -> Core` (HTTP-only, MCP-Server)
 
@@ -103,49 +75,13 @@ Zwei Provider, umschaltbar über `Database:Provider`:
 - **Neue Migration:** `dotnet ef migrations add <Name> --project src/NodePilot.Data --startup-project src/NodePilot.Api --context NodePilotDbContext`. **Pflicht-Postprocessing:** alle `type: "..."`-Annotations entfernen.
 - Schema-Änderungen IMMER per EF-Migration. Kein DDL-Hotpatching.
 - Credentials mit DPAPI verschlüsselt (`Credentials:DpapiScope`).
-- **DB-TLS strikt (default):** `DatabaseTlsBootValidator` bricht den Boot ab, wenn die Connection den Server nicht verifiziert (`Encrypt=Strict`/`TrustServerCertificate=False` bzw. `SSL Mode=VerifyFull`). Dev-only-Escape: `Database:AllowInsecureTls=true` (nur Loopback).
+- **DB-TLS strikt (default):** `DatabaseTlsBootValidator` bricht den Boot ab, wenn die Connection den Server nicht verifiziert (`Encrypt=Strict`/`TrustServerCertificate=False` bzw. `SSL Mode=VerifyFull`). Escape `Database:AllowInsecureTls=true` nur bei Loopback-Host **und** entweder Development-Env **oder** `Deployment:Mode=Desktop` (Desktop-Posture, siehe Production Deployment).
 
 Retention-Services im Scheduler: Execution (30d), AuditLog (365d), WorkflowVersions (50/Workflow), SupportEvents (90d), Notifications (90d) — opt-out via `Retention:*:Enabled: false`. IdempotencyKeys (24h, fixe TTL) läuft immer.
 
 ## API Endpoints
 
-| Bereich | Endpoints |
-|---|---|
-| Workflows | `GET/POST/PUT/DELETE /api/workflows`, `POST /{id}/execute\|duplicate\|enable\|disable\|cancel-all\|lock\|unlock\|publish\|force-unlock` |
-| Versionen | `GET /{id}/versions`, `GET /{id}/versions/{v}`, `POST /{id}/rollback/{v}` |
-| Contract | `GET /{id}/contract`, `GET /by-name/{name}/contract` |
-| Step-Test | `POST /{id}/steps/{stepId}/test`, `GET .../test-context`, `GET .../test-context/runs` |
-| Import/Export | `GET /export`, `GET /{id}/export`, `POST /import`, `POST /import-scorch` |
-| Executions | `GET /api/executions`, `GET /{id}`, `GET /{id}/steps`, `POST /{id}/cancel\|retry\|resume` |
-| Coverage / Step-Telemetrie | `GET /{id}/coverage?windowDays=N`, `GET /{id}/step-health`, `GET /{id}/step-stats?windowDays=N` |
-| Machines | `GET/POST/PUT/DELETE /api/machines`, `POST /{id}/test` |
-| Credentials | `GET/POST/PUT/DELETE /api/credentials` |
-| Global Variables | `GET /api/global-variables` (Admin/Op), `POST/PUT/DELETE` + `POST /{id}/move-folder` (Admin); optionales `folderId` auf Create/Update |
-| Global-Variable-Ordner | `GET /api/global-variable-folders` (Admin/Op), `POST` + `PUT/DELETE /{id}` + `POST /{id}/move` (Admin) — Baum ohne RBAC, rein organisatorisch |
-| Auth | `POST /api/auth/login\|logout\|windows`, `GET /api/auth/me\|methods` |
-| Audit | `GET /api/audit` (Admin, Cursor-Pagination), `GET /api/audit/export?format=csv|ndjson` |
-| Trigger | `POST /api/trigger/{workflowNameOrId}` (`X-Api-Key`) |
-| Webhooks | `POST\|GET\|PUT\|DELETE /api/webhooks/{workflow}/{path}` (Verb muss `webhookTrigger.method` matchen) |
-| Observability | `GET /api/observability/config\|query\|query_range\|summary` |
-| Backup | `GET /api/backup/manifest`, `POST /api/backup/export`, `POST /{preview\|restore}` (Admin, multipart für preview/restore) |
-| Users | `GET/POST /api/users`, `PUT/DELETE /api/users/{id}` (Admin) |
-| Maintenance Windows | `GET /api/maintenance-windows` + `GET /{id}` + `GET /affecting/{workflowId}` (Admin/Op), `POST`, `PUT/DELETE /{id}` (Admin) |
-| Alerting (Custom) | `GET /rules` + `GET /rules/{id}` + `GET /deliveries` (Admin/Op), `POST/PUT/DELETE /rules[/{id}]` + `POST /rules/{id}/enable\|disable\|test-fire` (Admin), `POST /preview-filter` (Admin/Op) — nur `Kind=Custom`, Basis `/api/alerting` |
-| Alerting (System-Policies, ADR 0008) | `GET /api/alerting/system/catalog` + `GET /policies[/{id}]` (Admin/Op), `POST/PUT/DELETE /policies[/{id}]` + `POST /policies/{id}/enable\|disable\|test-fire` (Admin), `POST /preview` (Admin/Op) — nur `Kind=System` |
-| Shared Folders | `GET/POST /api/shared-workflow-folders`, `PUT/DELETE /{id}`, `POST /{id}/move`, `POST /api/workflows/{workflowId}/move-folder` |
-| Folder-Permissions | `GET/POST /api/shared-workflow-folders/{folderId}/permissions`, `PUT/DELETE /{permissionId}` |
-| Settings | `GET /api/admin/settings` + `GET\|PUT /{section}`, `GET /status\|system-info`, `POST /test/smtp\|test/llm` (Admin) |
-| Dashboard | `GET /api/stats/dashboard` |
-| Operations (Live-Ops Mission Control) | `GET /api/operations/graph` (alle Rollen, RBAC-folder-scoped; Snapshot = Nodes/Edges/Running/Recent; Live-Deltas via SignalR `ops-feed`-Gruppe) |
-| DB-Admin | `GET /api/dbadmin/tables`, `GET\|PATCH\|DELETE /tables/{name}/rows`, `GET /info`, `POST /query` (Admin) |
-| Diagnostics | `GET /api/diagnostics/support-log\|support-log/download\|support-events\|support-events/export` (Admin) |
-| Activity-Catalog | `GET /api/activity-catalog` (Designer-Palette, statische Built-ins) |
-| Custom Activities | `GET /api/custom-activities` (alle Rollen; `?includeDisabled=true` Admin/Op), CRUD + `POST /{id}/rollback/{v}` (Admin/Op; enabled nur Admin), `POST /{id}/enable\|disable` (Admin), `GET /export` + `POST /import` (Admin/Op) |
-| Scheduler | `GET /api/triggers/schedule/next-fires` |
-| System | `GET /api/system/host-info` (alle Rollen — Host-Identität des API-Hosts, prozess-gecacht) |
-| AI | `POST /api/ai/generate-script\|generate-workflow` (Admin/Op), `POST /api/ai/chat` (alle Rollen), `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` (Admin/Op), `POST /api/ai/knowledge/ask` (alle Rollen) + `GET /api/ai/knowledge/capabilities` — opt-in, siehe KI-Features |
-| Secrets | `POST /api/secrets/reencrypt` (Admin) |
-| Health | `GET /healthz/live`, `GET /healthz/ready`, `GET /healthz/leader` (HA-Leader-Probe, fail-closed) (AllowAnonymous) |
+Routen + Rollen-Gating stehen an den Controllern in `src/NodePilot.Api/Controllers/` (`[Route]`/`[Authorize]`) — dort nachsehen statt hier spiegeln. Die Rollen-Matrix der sicherheitsrelevanten Endpoints steht unter `## Autorisierung`; Semantik der nicht offensichtlichen Endpoints unter `## Workflow-Kontrollfluss` und in `docs/claude-reference.md`.
 
 ## Workflow-Kontrollfluss
 
@@ -204,11 +140,9 @@ User-definierte Regeln, die bei passenden Ereignissen über Kanäle (SMTP / Gene
 
 ## Architektur-Konventionen
 
-- **Neue Activity:** Klasse in `Engine/Activities/`, `IActivityExecutor` implementieren — Auto-Discovery via `AddNodePilotActivities()` (scannt `NodePilot.Engine`), **keine** DI-Verdrahtung in `Program.cs` nötig. UI: Eintrag in `library/activityCategories.ts` (`buildActivityCategories`) + `*Config`-Komponente unter `properties/activities|triggers/` + Registrierung in `properties/activityConfigMap.ts` (eine Zeile — `PropertiesPanel.tsx` wird **nicht** editiert). Frontend-Katalog-Spiegel `lib/activityCatalog.generated.ts` ergänzen: Mirror von `NodePilot.Core.Activities.ActivityCatalog`, **kein** Codegen-Skript (von Hand pflegen) — `isRemote`/Timeout-Flags speisen die abgeleiteten `REMOTE_ACTIVITY_TYPES`/`TIMEOUT_ACTIVITY_TYPES`; `ActivityCatalogFrontendSyncTests` erzwingt Gleichstand mit dem Backend-Katalog. Downstream-Outputs in `describeNodeOutputs` in `lib/upstreamVariables.ts`.
-- **Neuer API Controller:** In `Api/Controllers/`, DTOs in `Api/Dtos/`. Parallel CLI-Command anlegen (siehe unten).
-- **Neue Frontend-Seite:** In `nodepilot-ui/src/pages/`, Route in `App.tsx`
-- **Neuer Custom Node:** In `nodepilot-ui/src/components/designer/nodes/`, in `nodeTypes` Map
-- **Frontend-Stack:** UI-Strings über `react-i18next` (Namespaces je `src/i18n/locales/{de,en}/`, Default DE) — neue sichtbare Strings in **beide** Sprachen. Client-State via Zustand-Stores (`src/stores/`), Server-State via TanStack React Query (`refetchOnWindowFocus:false`, SignalR invalidiert Caches).
+- **Neue Activity:** Klasse in `Engine/Activities/`, `IActivityExecutor` implementieren — Auto-Discovery via `AddNodePilotActivities()` (scannt `NodePilot.Engine`), **keine** DI-Verdrahtung in `Program.cs` nötig. Die UI-Seite (Palette-Eintrag, `*Config`-Komponente, handgepflegter Katalog-Spiegel) ist Pflichtteil derselben Änderung — Mechanik in `src/nodepilot-ui/CLAUDE.md`.
+- **Neuer API Controller:** In `Api/Controllers/`, DTOs in `Api/Dtos/`. **Immer parallel** CLI-Command *und* MCP-Tool anlegen — Mechanik in `src/NodePilot.Cli/CLAUDE.md` bzw. `src/NodePilot.Mcp/CLAUDE.md`.
+- **Frontend:** Seiten/Nodes/i18n/State-Konventionen in `src/nodepilot-ui/CLAUDE.md`.
 - **Models/Interfaces:** Immer in `NodePilot.Core`
 - **Doc-Sync:** Feature-Änderungen halten alle Doku-Flächen synchron — README, `docs/*.md`, `E2ETests.md` + `e2e/README.md` und die Doku-Website `src/nodepilot-docs-ui/content/` (eigener kuratierter Korpus, kein Render von `docs/`).
 
@@ -295,17 +229,7 @@ Contract-Derivation: `GET /{id}/contract` liefert Inputs aus `manualTrigger.para
 
 ## Build & Test
 
-```bash
-dotnet build                                    # Backend (Central Package Management, siehe Directory.Packages.props)
-cd src/nodepilot-ui && npm run build            # Frontend
-dotnet test                                     # Alle Backend-Tests
-dotnet test tests/NodePilot.Engine.Tests        # Einzelnes Projekt
-cd src/nodepilot-ui && npm test                 # Frontend (watch)
-cd src/nodepilot-ui && npm run test:run         # Frontend (CI)
-cd src/nodepilot-ui && npm run test:coverage    # Frontend (Coverage-Gate, vitest.config.ts)
-cd src/nodepilot-ui && npm run lint             # Frontend (ESLint)
-cd src/nodepilot-ui && npm run test:e2e         # E2E (Playwright, baut SPA + vite preview)
-```
+Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.json`-Scripts). Backend nutzt Central Package Management (`Directory.Packages.props`).
 
 **Konventionen:**
 - **Tests sind Pflicht.** Jeder relevante Code-Change braucht passenden Test-Code in derselben Änderung.
@@ -314,21 +238,15 @@ cd src/nodepilot-ui && npm run test:e2e         # E2E (Playwright, baut SPA + vi
 - Remote-Layer (WinRM) IMMER gemockt.
 - DB-Tests: SQLite in-memory.
 
-**E2E (Playwright):** Hermetische Specs in `src/nodepilot-ui/e2e/` — alle APIs via `page.route` gemockt (kein Backend/Postgres nötig; Predicate-Catch-All in `e2e/fixtures/mockApi.ts`). **Vor neuen Specs: `src/nodepilot-ui/e2e/README.md` lesen.** Fast-Iteration gegen laufenden Dev-Server (kein Build): `npx playwright test <spec> --config=playwright.dev.config.ts`.
+**E2E (Playwright):** hermetische Specs in `src/nodepilot-ui/e2e/`, alle APIs gemockt (kein Backend/Postgres nötig). Konventionen: `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`.
 
 **Nightly:** Windows-Task `NodePilot Nightly Tests` (täglich 22:00) fährt via `scripts/nightly-tests.ps1` alle drei Suiten (je 1× Retry bei Flake), Report nach `C:\temp\nodepilot-nightly\` (+ `latest.md`). Das Skript gibt vorm Rebuild Port 5000 frei + killt verwaiste `testhost`-Prozesse. Manuell: `powershell -File scripts/nightly-tests.ps1`; Zeit ändern: `scripts/register-nightly-task.ps1 -Time HH:mm`.
 
-## CLI (`np`)
+## Clients (`np` CLI + `nodepilot-mcp`)
 
-Reiner HTTP-Client gegen REST-Endpoints. `dotnet global tool`. Befehlsbereiche: `auth`, `workflow`, `exec`, `machine`, `credential`, `globals`, `user`, `shared-folder`, `maintenance`, `alerting`, `system-alert`, `audit`, `backup`, `db`, `cron`, `health`, `dashboard`, `operations`, `observability`, `settings`, `secrets`, `config`. Details: `docs/claude-reference.md`.
+Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad, beide `dotnet global tool`. Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (99 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI (`np auth login`).
 
-**Architektur-Konvention:** Neuer API-Endpoint → parallel CLI-Methode in `NodePilotApiClient.cs` + Command anlegen. DTOs in `Cli/Api/Dtos/` duplizieren (kein ProjectReference).
-
-## MCP-Server (`nodepilot-mcp`)
-
-Reiner HTTP-Client gegen die REST-API (wie die CLI) + In-Proc-Analyse gegen `NodePilot.Core` — **kein** neuer Backend-Pfad (99 Tools, 3 Resources), Transport stdio; reused die DPAPI-Session der CLI (`np auth login`). Destruktive Tools (`delete_*`, `force_unlock_workflow`, `cancel_all_executions`, `test_step`) werden nur bei `NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true` registriert; Workflow-Definitionen werden vor Tool-Output secret-redigiert, bei publish/patch werden echte Secrets aus der gespeicherten Version wiederhergestellt. Volle Doku: `docs/mcp-server.md`.
-
-**Architektur-Konvention:** Neuer API-Endpoint → Methode in `NodePilot.Mcp/Api/NodePilotApiClient.cs` (DTOs in `Mcp/Api/Dtos/` dupliziert) + `[McpServerTool]`-Methode in der passenden `Tools/*Tools.cs` (destruktiv → `DestructiveTools` + `get_safety_status`-Liste pflegen), ggf. Klasse in `Program.cs` via `WithTools<T>()` registrieren (**nie** `WithToolsFromAssembly`), WireMock-Test ergänzen. Frontend-Databus-/Lint-Logik wird in `Mcp/Analysis/` gespiegelt (`upstreamVariables.ts`, `activityConfigFacts.ts`, `workflowLint.ts`).
+**Jeder neue API-Endpoint braucht beide Clients.** Mechanik, Befehlsbereiche und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`, `docs/claude-reference.md`.
 
 ## Autorisierung
 
@@ -402,3 +320,5 @@ Getrennt vom Workflow-Export: voller DR-Snapshot der Konfiguration (Workflows+Fo
 ## Production Deployment
 
 Produktiv-Rollout über `deploy/`-Skripte — Claude führt sie **nicht** aus. Vollständige Doku: `deploy/README.md`. Architektur (gMSA, Kestrel-HTTPS, Install-Dir-Split, Config-Keys, Stolperfallen): siehe `docs/claude-reference.md`.
+
+**Desktop-App (Electron, `deploy/desktop/`):** zweites Shipping-Ziel — offline Win-11-x64-Installer, alles als Boot-Start-Dienste. Posture `Deployment:Mode` (`Server`|`Desktop`, default `Server`): Desktop relaxiert **nur** loopback-DB-TLS + Kestrel-`ListenLocalhost` + 120s-Postgres-Wait vor dem Migration-Bootstrap; Rest bleibt Production-gehärtet. Volle Doku (Architektur, Dienste-Identitäten, First-Run-Admin-Handoff): `deploy/desktop/README.md`.

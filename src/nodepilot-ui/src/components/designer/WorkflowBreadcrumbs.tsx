@@ -1,7 +1,7 @@
 import { ChevronRight, FlowModeler, WarningAltFilled } from '@carbon/icons-react';
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import type { Node } from '@xyflow/react';
 import { api } from '../../api/client';

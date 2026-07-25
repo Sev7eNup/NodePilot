@@ -13,7 +13,7 @@ Installiere diese drei Dinge einmalig (je ein Befehl, oder per grafischem Instal
 | Komponente | Winget-Aufruf (PowerShell/CMD) | Check danach |
 |---|---|---|
 | .NET 10 SDK | `winget install Microsoft.DotNet.SDK.10` | `dotnet --version` |
-| Node.js 20+ | `winget install OpenJS.NodeJS.LTS` | `node -v` |
+| Node.js 22.22+ | `winget install OpenJS.NodeJS.LTS` | `node -v` |
 | PostgreSQL 16+ | `winget install PostgreSQL.PostgreSQL` | `"C:\Program Files\PostgreSQL\16\bin\pg_ctl.exe" --version` |
 
 > Paket-IDs können sich ändern — notfalls per `winget search dotnet` / `winget search node` / `winget search postgres` die aktuelle ID suchen. Alternativ die Installer von <https://dotnet.microsoft.com/download>, <https://nodejs.org> und <https://www.postgresql.org/download/windows> holen.
@@ -138,5 +138,7 @@ Danach stehen die Rollen **Admin / Operator / Viewer** zur Verfügung. Für eine
 | Port 5173 belegt / Frontend startet nicht | Meist fehlendes `npm install`. Wenn kaputt: `node_modules` löschen und erneut `npm install`. Alternativer Port wird von Vite automatisch gewählt (Meldung im Terminal beachten). |
 
 ## Produktivbetrieb
+
+Das obige Setup ist **eine von drei Betriebsarten** — der Dev-Pfad. Für den produktiven Einsatz gibt es zwei weitere: das **Server-Deployment** (Windows-Dienst, externe DB, Team-Zugriff) und die **Desktop-App** (ein `.exe`-Installer, der Datenbank und Laufzeit mitbringt, aber nur auf der eigenen Maschine erreichbar ist). Welche wofür taugt und was im Alltag konkret anders ist, steht unter [Deployment → Betriebsarten im Überblick](../deployment/overview).
 
 Das obige Setup ist der Dev/Quick-Path. Für einen produktiven Rollout als Windows-Service (gMSA oder LocalSystem, Kestrel-HTTPS, ACLs, Firewall, Zertifikate) liegen fertige Installer-Skripte unter `deploy\` (`Build-Artifact.ps1`, `Install-NodePilot.ps1`, `Update-NodePilot.ps1`, `Uninstall-NodePilot.ps1`). Der Installer braucht zwingend mehrere Parameter (Artifact-Pfad, Zertifikat-Thumbprint, DB-Host/User/Passwort als SecureString) — die komplette Aufrufsyntax, Parameterliste und Stolperfallen stehen in [Deployment → Produktions-Rollout](../deployment/production) sowie in `deploy\README.md`. Fürs Dev-Setup brauchst du diese Skripte **nicht**.

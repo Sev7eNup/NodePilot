@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { allPages } from '../data/nav'
 import { contentMap } from '../lib/content'
 import { SearchIcon, CloseIcon, ArrowRightIcon } from '../lib/icons'

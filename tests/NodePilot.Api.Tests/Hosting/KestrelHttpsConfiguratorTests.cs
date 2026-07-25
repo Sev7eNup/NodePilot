@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using NodePilot.Api.Hosting;
 using Xunit;
@@ -63,6 +64,18 @@ public class KestrelHttpsConfiguratorTests
         opts.RedirectHttpToHttps.Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData("Desktop", true)]
+    [InlineData("desktop", true)]
+    [InlineData("Server", false)]
+    [InlineData(null, false)]
+    public void ReadOptions_LoopbackOnly_TracksDeploymentMode(string? mode, bool expected)
+    {
+        var kv = new Dictionary<string, string?> { ["Kestrel:Https:Enabled"] = "true" };
+        if (mode is not null) kv["Deployment:Mode"] = mode;
+        KestrelHttpsConfigurator.ReadOptions(Build(kv)).LoopbackOnly.Should().Be(expected);
+    }
+
     [Fact]
     public void ParseStoreLocation_UnknownValue_Throws()
     {
@@ -90,5 +103,17 @@ public class KestrelHttpsConfiguratorTests
         // flow instead: ConfigureKestrelFromWindowsCertStore calls LoadCertificate.
         // Simpler: just assert that NormalizeThumbprint rejects it consistently.
         KestrelHttpsConfigurator.NormalizeThumbprint(opts.CertificateThumbprint).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(true, HttpProtocols.Http1)]
+    [InlineData(false, HttpProtocols.Http1AndHttp2)]
+    public void ResolveHttpsProtocols_PinsHttp1OnlyWhenWindowsAuthEnabled(
+        bool windowsAuthEnabled, HttpProtocols expected)
+    {
+        // Negotiate/Kerberos is connection-oriented and unreliable over HTTP/2, so the direct
+        // Kestrel HTTPS listener must fall back to HTTP/1.1 when Windows SSO is on — but keep
+        // HTTP/2 for the common no-SSO deployment.
+        KestrelHttpsConfigurator.ResolveHttpsProtocols(windowsAuthEnabled).Should().Be(expected);
     }
 }

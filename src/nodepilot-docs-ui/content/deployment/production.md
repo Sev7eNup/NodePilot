@@ -1,6 +1,6 @@
 # Produktions-Rollout
 
-Vollständige Doku im Repo unter `deploy/README.md`. Die `deploy/`-Skripte werden im Dev-Mode **nicht** ausgeführt — diese Seite gibt den Architektur-Überblick.
+Vollständige Doku im Repo unter `deploy/README.md`. Die `deploy/`-Skripte werden im Dev-Mode **nicht** ausgeführt — diese Seite gibt den Architektur-Überblick. Für die Einordnung gegenüber Dev-Setup und Desktop-App siehe [Betriebsarten im Überblick](./overview).
 
 ## Ziel-Topologie
 

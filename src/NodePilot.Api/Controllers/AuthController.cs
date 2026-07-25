@@ -601,6 +601,19 @@ public class AuthController : ControllerBase
         var opts = _activeDirectoryAuthentication?.Ldap ?? _ldapOptions.CurrentValue;
         if (!_activeAuthentication.LdapEnabled || !opts.Enabled) return null;
 
+        // Bootstrap window: while no user exists yet, a presented X-Setup-Token signals intent
+        // to create the local break-glass Admin. Skip LDAP so that path stays reachable — the
+        // LDAP-first bind would otherwise intercept the bootstrap login (an unknown username
+        // → 401 InvalidCredentials, or 503 during a DC outage) and an instance with LDAP already
+        // enabled could never be initialised. Gated on an empty Users table so a stray header
+        // can never bypass LDAP once real accounts exist. The local path still validates the
+        // token against the on-disk file.
+        if (Request.Headers.ContainsKey(NodePilot.Api.Security.AdminBootstrap.TokenHeader)
+            && !await _db.Users.AnyAsync(ct))
+        {
+            return null;
+        }
+
         string canonicalUpn;
         try
         {

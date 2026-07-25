@@ -10,7 +10,7 @@ import { TRIGGER_ACTIVITY_TYPES } from '../../../lib/activityCatalog.generated';
 import { ACTIVITY_ICON_COMPONENTS, FALLBACK_ACTIVITY_ICON } from '../../../lib/activityIcons';
 import { previewSchedule, relativeFromNow } from '../../../lib/cronPreview';
 import { EDGE_PORT_SIDES, portToPosition, type EdgePortSide } from '../../../lib/edgePorts';
-import { getNodeShape, getNodeSizeMultiplier, getIconScaleMultiplier, getBadgePositions, getHandleInset, getIconOffsetX, getIconOffsetY, isControlFlowShape, SHAPE_CLIP_PATHS, type NodeShape, type BadgePosition } from './shapes';
+import { getNodeShape, getNodeSizeMultiplier, getIconScaleMultiplier, getBadgePositions, getHandleInset, getIconOffsetX, getIconOffsetY, getBackingClip, isControlFlowShape, SHAPE_CLIP_PATHS, type NodeShape, type BadgePosition } from './shapes';
 import { NodeScaleOverrideContext } from '../nodeScaleContext';
 
 import { getActivityVisual } from './activityConfig';
@@ -107,7 +107,14 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const effectiveLabelWidth = Math.round(scale.labelWidth * Math.max(1, sizeMultiplier * 0.92));
   const badgePos = getBadgePositions(shape);
   const isShaped = shape !== 'square';
-  const shapeClipPath = SHAPE_CLIP_PATHS[shape];
+  // "Ring on a filled disc" shapes (power): the silhouette is a hollow outline drawn as an accent
+  // ON TOP of a solid backing body. When a backingClip exists, the body/border/fill/halo layers
+  // clip to the DISC (so the node is opaque + ports/halos hug the round body) and the outline is
+  // painted on top via `accentClip`. Every normal shape has no backing → shapeClipPath is the
+  // silhouette itself and accentClip is undefined (single-layer render, unchanged).
+  const backingClip = getBackingClip(shape);
+  const shapeClipPath = backingClip ?? SHAPE_CLIP_PATHS[shape];
+  const accentClip = backingClip ? SHAPE_CLIP_PATHS[shape] : undefined;
   // Classic "icon view": render the bare palette glyph (large, accent-coloured, no silhouette)
   // instead of the clip-path shape. Toggle lives in the toolbar; card mode is unaffected.
   const useGlyphIcon = nodeStyle === 'classic' && nodeIconStyle === 'glyph';
@@ -257,7 +264,13 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const varFlowRole = data.__varFlowRole as 'producer' | 'consumer' | undefined;
 
   const health = data.__health as Array<{ status: string }> | undefined;
-  const showSparkline = !!health?.length && !liveStatus && !simulated;
+  // Deliberately NOT gated on liveStatus: the sparkline is a second information layer (how did
+  // the last runs of this step go?), not part of the live signal. A pinned run survives the 30 s
+  // SignalR TTL on purpose, so gating it away meant the dots stayed gone after every test run
+  // until the status pill was dismissed. Live/replay status keeps its border+fill colouring.
+  // The dry-run simulation stays an exception — there the sequential reveal animation is the
+  // node's only statement, and historical dots would compete with it.
+  const showSparkline = !!health?.length && !simulated;
 
   // Coverage Heatmap (Feature 5): tint inactive nodes faintly so the user can spot
   // unreached logic at a glance. `never` = full grey-out; `rare` = subtle amber tint.
@@ -561,6 +574,23 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
                 }}
               />
             )}
+            {/* Accent silhouette (power): the hollow power-ring outline drawn ON TOP of the solid
+                backing disc. Border layer paints the ring in the (status-aware) border colour, then
+                a bg-coloured inset re-hollows the middle → the ring reads as a coloured outline on
+                the opaque body, with the icon sitting in the hole. Only present when accentClip. */}
+            {accentClip && !isDisabled && (
+              <>
+                <div
+                  data-testid="shape-accent"
+                  className="absolute pointer-events-none"
+                  style={{ inset: `${outerFramePx}px`, clipPath: accentClip, backgroundColor: effectiveBorder }}
+                />
+                <div
+                  className="absolute pointer-events-none"
+                  style={{ inset: `${baseBorderPx + outerFramePx}px`, clipPath: accentClip, backgroundColor: premiumBg ?? effectiveBg }}
+                />
+              </>
+            )}
             {/* Icon (centered) — not clipped so it always renders fully even at small scales.
                 Sized to `iconFont × iconScale` (iconScale 1.0 = same px as a square node's icon,
                 so inside-icons read equal across all shapes), plus the per-shape X/Y offset so
@@ -749,7 +779,8 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
             style={{ width: 26, height: 26 }}
             title={label}
           >
-            {/* Shape-silhouette layer (border color; control nodes get the indigo group accent) */}
+            {/* Shape-silhouette layer (border color; control nodes get the indigo group accent).
+                For backing shapes (power) this is the solid disc body. */}
             <div
               className="absolute inset-0 pointer-events-none"
               style={{ clipPath: shapeClipPath, backgroundColor: isControl ? 'var(--np-controlflow-accent)' : (showEntryMarker ? entryAccentColor : ac.borderColor) }}
@@ -759,6 +790,13 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
               className="absolute pointer-events-none"
               style={{ inset: 1, clipPath: shapeClipPath, backgroundColor: ac.bgColor }}
             />
+            {/* Accent silhouette (power ring) on top of the backing disc — ring outline + hollow middle */}
+            {accentClip && (
+              <>
+                <div className="absolute inset-0 pointer-events-none" style={{ clipPath: accentClip, backgroundColor: ac.borderColor }} />
+                <div className="absolute pointer-events-none" style={{ inset: 1, clipPath: accentClip, backgroundColor: ac.bgColor }} />
+              </>
+            )}
             <IconComp
               size={15}
               className="relative"

@@ -29,8 +29,9 @@ NodePilot ist konfigurationsgetrieben. Die meisten Verhaltensaspekte sind über 
 | `Authentication:SessionAbsoluteLifetimeHours` | `8` | 1–168; Refresh verlängert die absolute Grenze nicht |
 | `Authentication:MaxAuthorizationStalenessMinutes` | `15` | 1–15; stale externe Snapshots werden abgewiesen |
 | `Authentication:Ldap:Enabled` | `false` | bei `true`: LDAPS-Endpunkt, Base-DN, UPN-Suffix, Service-Bind und Allowlist erforderlich |
-| `Authentication:Ldap:Endpoints` | `[]` | geordnete DC-Liste für Failover, z. B. `ldaps://dc01:636` |
+| `Authentication:Ldap:Endpoints` | `[]` | geordnete DC-Liste, z. B. `ldaps://dc01:636`; Bind versucht sie der Reihe nach, der Lookup danach verlangt aber **All-DC-Konsens** (kein Login-Failover — ein DC-Ausfall ⇒ 503) |
 | `Authentication:Ldap:UseSsl` | `true` | bei aktiviertem LDAP verpflichtend; Zertifikatsprüfung bleibt an |
+| `Authentication:Ldap:BindTimeoutSeconds` | `5` | 1–5 (Boot-Validierung erzwingt diese Grenze) |
 | `Authentication:Ldap:AllowedGroupSids` | `[]` | mindestens eine AD-Gruppen-SID für LDAP oder Windows-SSO |
 | `Authentication:Ldap:DirectorySyncIntervalMinutes` | `5` | 1–5 |
 | `Authentication:Ldap:DirectorySyncMaxConcurrency` | `16` | 1–32 parallele Service-Bind-Lookups pro Sync-Pass |

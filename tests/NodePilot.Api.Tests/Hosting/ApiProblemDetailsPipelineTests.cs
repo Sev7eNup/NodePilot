@@ -50,12 +50,25 @@ public sealed class ApiProblemDetailsPipelineTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Development");
+
+            // Jwt:Key MUST come in via UseSetting, not ConfigureAppConfiguration. Program.cs
+            // resolves the signing key during AddNodePilotAuthentication — long before
+            // builder.Build() — but WebApplicationFactory replays ConfigureAppConfiguration
+            // delegates only inside Build(). An in-memory Jwt:Key is therefore invisible at that
+            // point, and JwtKeyResolver silently falls back to generating {ContentRoot}/
+            // jwt-secret.key. That passes locally (the gitignored file already exists, so the
+            // read path is taken) and fails on a fresh CI checkout, where the write path hits
+            // RestrictedFileWriter's parent-directory ACL check and the runner workspace grants
+            // write access to Users. UseSetting is surfaced to the entry point as a command-line
+            // arg, so it IS visible pre-Build — same visibility asymmetry that
+            // DatabaseTlsBootValidator documents for HostDefaults.EnvironmentKey.
+            builder.UseSetting("Jwt:Key", "NodePilot-Test-Jwt-Key-For-Pipeline-Smoke-32-Bytes");
+
             builder.ConfigureAppConfiguration((_, config) =>
             {
                 Directory.CreateDirectory(_tempDir);
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["Jwt:Key"] = "NodePilot-Test-Jwt-Key-For-Pipeline-Smoke-32-Bytes",
                     ["Security:AdminSetupTokenPath"] = Path.Combine(_tempDir, "admin-setup.token"),
                     ["Logging:SupportLog:Enabled"] = "false",
                     ["Logging:SupportLog:DbProjectionEnabled"] = "false",

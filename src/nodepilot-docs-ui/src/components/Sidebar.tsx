@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink } from 'react-router'
 import { navGroups } from '../data/nav'
 import { ChevronRightIcon } from '../lib/icons'
 

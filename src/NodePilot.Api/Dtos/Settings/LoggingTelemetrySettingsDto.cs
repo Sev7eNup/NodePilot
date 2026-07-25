@@ -130,7 +130,15 @@ public sealed class OpenTelemetrySettingsDto : IValidatableObject
     [Required] public TraceUiSettingsDto TraceUi { get; set; } = new();
     [Required] public PrometheusSettingsDto Prometheus { get; set; } = new();
 
-    [Url]
+    /// <summary>
+    /// Optional public Grafana base URL for dashboard drill-down links. Empty means "not
+    /// configured" — deliberately NOT <c>[Url]</c>: UrlAttribute rejects the empty string, which
+    /// made every OpenTelemetry save fail with 400 whenever the operator left the field blank
+    /// (the admin UI always posts it, empty or not). Matches the convention used by the other
+    /// optional endpoints in this file. Format is enforced where it is consumed —
+    /// <c>ObservabilityController.NormalizeHttpUrl</c> degrades anything that is not an absolute
+    /// http(s) URI to null.
+    /// </summary>
     [StringLength(2048)]
     public string GrafanaBaseUrl { get; set; } = "";
 

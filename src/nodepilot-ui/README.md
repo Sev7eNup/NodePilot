@@ -6,7 +6,7 @@ The NodePilot single-page app: workflow designer (React Flow), execution monitor
 
 ## Prerequisites
 
-- Node.js LTS (18+).
+- Node.js 22.22+ (floor set by react-router 8).
 - For full local use, the **NodePilot API on `http://localhost:5000`** (see the repo root `CLAUDE.md` → "Projekt starten": start Postgres, then `dotnet run`). The dev server proxies to it.
 
 ## Develop
