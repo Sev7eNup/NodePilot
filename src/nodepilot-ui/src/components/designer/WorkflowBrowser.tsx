@@ -16,10 +16,11 @@ const GROUP_ORDER = [
   '__none__'
 ];
 
-// In folder view the flat workflow list is sized to show exactly 10 rows; any extra rows
-// scroll. Rows are pinned to a fixed 20px (h-5) so the math is exact:
-// 10 rows × 20px + 9 gaps × 2px (space-y-0.5) + 16px list padding (py-2) = 234px.
-export const WORKFLOW_LIST_HEIGHT_PX = 10 * 20 + 9 * 2 + 16;
+// In folder view the tree sizes itself to its content and only starts scrolling past this
+// cap, so a flat "\" root with two folders no longer reserves half the sidebar. The workflow
+// list below takes whatever is left (flex-1), which keeps both blocks pinned to the top.
+// Cap = 10 tree rows × 26px (icon row + py-1) + 8px list padding = 268px.
+export const FOLDER_TREE_MAX_HEIGHT_PX = 10 * 26 + 8;
 
 interface Props {
   /** id of the currently-open workflow — excluded from the list to avoid recursive selection */
@@ -156,9 +157,14 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
           />
         </div>
       </div>
-      {/* Shared folder tree — grows to take the space freed by the fixed-height list */}
+      {/* Shared folder tree — hugs its content (scrolls past the cap) so a shallow tree
+          doesn't push the workflow list into the middle of the panel. */}
       {viewMode === 'folder' && (
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div
+          data-testid="workflow-folder-tree"
+          className="shrink-0 overflow-y-auto"
+          style={{ maxHeight: FOLDER_TREE_MAX_HEIGHT_PX }}
+        >
           <SharedFolderTree
             selectedFolderId={selectedFolderId}
             onFolderSelected={setSelectedFolderId}
@@ -167,12 +173,11 @@ export function WorkflowBrowser({ currentWorkflowId, onOpen, canEmbed, onEmbed }
           />
         </div>
       )}
-      {/* Flat workflow list. Folder view: fixed height for exactly 10 rows (rest scroll), so
-          the freed space goes to the folder tree above. Trigger view (no tree): flex-fill. */}
+      {/* Flat workflow list — takes all space left over by the tree above in both view modes,
+          so rows always start directly under the tree instead of floating mid-panel. */}
       <div
         data-testid="workflow-list"
-        className={`overflow-y-auto px-3 py-2 space-y-0.5 ${viewMode === 'folder' ? 'shrink-0' : 'flex-1 min-h-0'}`}
-        style={viewMode === 'folder' ? { height: WORKFLOW_LIST_HEIGHT_PX } : undefined}
+        className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-0.5"
       >
         {isLoading && (
           <div className="text-[11px] font-label text-on-surface-variant px-2">Loading…</div>

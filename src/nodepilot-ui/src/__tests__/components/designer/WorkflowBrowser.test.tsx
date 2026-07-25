@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { WorkflowBrowser, WORKFLOW_LIST_HEIGHT_PX } from '../../../components/designer/WorkflowBrowser';
+import { WorkflowBrowser, FOLDER_TREE_MAX_HEIGHT_PX } from '../../../components/designer/WorkflowBrowser';
 import { useWorkflowBrowserStore } from '../../../stores/workflowBrowserStore';
 import { api } from '../../../api/client';
 import type { Workflow } from '../../../types/api';
@@ -77,13 +77,28 @@ describe('WorkflowBrowser info card', () => {
     expect(within(card).getByText('Beta')).toBeInTheDocument();
   });
 
-  it('folderView_listSizedForExactly10Rows', () => {
-    // In folder view the list has a fixed height for exactly 10 rows; the folder tree above
-    // absorbs the remaining space.
+  it('folderView_treeHugsContent_listTakesRemainingSpace', () => {
+    // Regression: the tree used to be flex-1 and the list a fixed 234px, which floated a
+    // handful of workflows in the middle of the sidebar. Now the tree is capped/shrink-0 and
+    // the list flex-fills, so both blocks stay pinned to the top.
     mockedGet.mockImplementation((url: string) =>
       Promise.resolve(url === '/workflows' ? [wf('wf-A', 'Alpha')] : []));
     useWorkflowBrowserStore.setState({ viewMode: 'folder', collapsedFolders: {}, infoCardHeight: 320 });
     renderBrowser('wf-A');
-    expect(screen.getByTestId('workflow-list')).toHaveStyle({ height: `${WORKFLOW_LIST_HEIGHT_PX}px` });
+
+    const tree = screen.getByTestId('workflow-folder-tree');
+    expect(tree).toHaveStyle({ maxHeight: `${FOLDER_TREE_MAX_HEIGHT_PX}px` });
+    expect(tree.className).toContain('shrink-0');
+
+    const list = screen.getByTestId('workflow-list');
+    expect(list.className).toContain('flex-1');
+    expect(list.style.height).toBe('');
+  });
+
+  it('triggerView_listStillFlexFills', () => {
+    mockedGet.mockResolvedValue([wf('wf-A', 'Alpha')]);
+    renderBrowser('wf-A');
+    expect(screen.queryByTestId('workflow-folder-tree')).not.toBeInTheDocument();
+    expect(screen.getByTestId('workflow-list').className).toContain('flex-1');
   });
 });
