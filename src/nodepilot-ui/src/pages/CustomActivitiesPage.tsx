@@ -20,6 +20,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { StreamLanguage } from '@codemirror/language';
 import { powerShell } from '@codemirror/legacy-modes/mode/powershell';
 import { EditorView } from '@codemirror/view';
+import { nodePilotCodeMirrorTheme } from '../lib/codeMirrorTheme';
 import { api } from '../api/client';
 import { ModalShell } from '../components/common/ModalShell';
 import { useRole } from '../lib/rbac';
@@ -479,7 +480,7 @@ function ScriptTemplateEditor({ value, onChange }: Readonly<{ value: string; onC
       <CodeMirror
         value={value}
         onChange={onChange}
-        theme={isDark ? 'dark' : 'light'}
+        theme={nodePilotCodeMirrorTheme(isDark)}
         extensions={SCRIPT_EDITOR_EXTENSIONS}
         basicSetup={{
           lineNumbers: true,

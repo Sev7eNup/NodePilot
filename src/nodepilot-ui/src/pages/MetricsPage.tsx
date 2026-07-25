@@ -7,9 +7,9 @@ import { EChart } from '../components/common/EChart';
 import { buildGrafanaDashboardUrl, useMetricsDashboard, useObservabilityConfig } from '../api/observability';
 import type { MetricsDataSeries, MetricsWidget } from '../types/api';
 import { metricsSections } from '../lib/navigation';
+import { DEFAULT_CHART_TOKENS, useChartTokens, type ChartTokens } from '../lib/chartTheme';
 const HOURS = [1, 24, 168, 720] as const;
 const HOUR_LABEL: Record<number, string> = { 1: '1 h', 24: '24 h', 168: '7 d', 720: '30 d' };
-const COLORS = ['#7c3aed', '#06b6d4', '#22c55e', '#f59e0b', '#ef4444', '#3b82f6', '#ec4899', '#84cc16'];
 
 export function MetricsPage() {
   const { t } = useTranslation('metrics');
@@ -45,16 +45,23 @@ export function MetricsPage() {
 }
 
 function DashboardContent({ widgets }: { widgets: MetricsWidget[] }) {
-  return <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12">{widgets.map((widget) => <Widget key={widget.id} widget={widget} />)}</div>;
+  // One probe + one observer for the whole grid rather than one per widget.
+  const { probeRef, tokens } = useChartTokens();
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12">
+      <div ref={probeRef} aria-hidden="true" className="hidden" />
+      {widgets.map((widget) => <Widget key={widget.id} widget={widget} tokens={tokens} />)}
+    </div>
+  );
 }
 
-function Widget({ widget }: { widget: MetricsWidget }) {
+function Widget({ widget, tokens }: { widget: MetricsWidget; tokens: ChartTokens }) {
   const span = widget.grid.width <= 3 ? 'xl:col-span-3' : widget.grid.width <= 4 ? 'xl:col-span-4' : widget.grid.width <= 6 ? 'xl:col-span-6' : widget.grid.width <= 8 ? 'xl:col-span-8' : widget.grid.width <= 12 ? 'xl:col-span-12' : 'xl:col-span-12';
   const compact = widget.type === 'stat';
   return (
     <article className={`np-card col-span-1 p-4 sm:col-span-2 ${span}`} title={widget.description ?? undefined}>
       <div className="mb-3 flex items-start justify-between gap-2"><div><h3 className="font-semibold text-on-surface">{widget.title}</h3>{widget.description && !compact && <p className="mt-0.5 line-clamp-2 text-xs text-on-surface-variant">{widget.description}</p>}</div>{widget.error && <WarningAltFilled size={15} className="shrink-0 text-amber-500" aria-label={widget.error} />}</div>
-      {widget.type === 'stat' ? <StatWidget widget={widget} /> : widget.type === 'table' ? <TableWidget widget={widget} /> : <ChartWidget widget={widget} />}
+      {widget.type === 'stat' ? <StatWidget widget={widget} /> : widget.type === 'table' ? <TableWidget widget={widget} /> : <ChartWidget widget={widget} tokens={tokens} />}
     </article>
   );
 }
@@ -64,35 +71,58 @@ function StatWidget({ widget }: { widget: MetricsWidget }) {
   return <div className="flex flex-wrap gap-x-6 gap-y-2">{widget.data.map((series, index) => <div key={`${series.label}-${index}`}><p className="text-2xl font-semibold tabular-nums text-on-surface">{formatValue(last(series), widget.unit)}</p>{widget.data.length > 1 && <p className="mt-1 text-xs text-on-surface-variant">{series.label}</p>}</div>)}</div>;
 }
 
-function ChartWidget({ widget }: { widget: MetricsWidget }) {
-  const option = useMemo<EChartsOption>(() => buildMetricsChartOption(widget), [widget]);
+function ChartWidget({ widget, tokens }: { widget: MetricsWidget; tokens: ChartTokens }) {
+  const option = useMemo<EChartsOption>(() => buildMetricsChartOption(widget, tokens), [widget, tokens]);
   return widget.data.length ? <EChart option={option} style={{ height: Math.max(220, widget.grid.height * 28) }} ariaLabel={widget.title} /> : <Empty />;
 }
 
-export function buildMetricsChartOption(widget: MetricsWidget): EChartsOption {
-  const base = { tooltip: { trigger: 'axis' as const }, legend: { type: 'scroll' as const, bottom: 0, textStyle: { color: '#94a3b8' } }, grid: { left: 12, right: 16, top: 16, bottom: 42, containLabel: true } };
+/**
+ * Builds the ECharts option for one metrics widget.
+ *
+ * `tokens` carries the live design tokens plus the categorical series palette; it
+ * defaults so the builder stays a pure function that is callable without a probe.
+ * Every chart here keeps its text legend — that is what carries series identity
+ * for readers who cannot separate the hues, and it is also the "relief" the three
+ * lower-contrast light-mode slots require.
+ */
+export function buildMetricsChartOption(widget: MetricsWidget, tokens: ChartTokens = DEFAULT_CHART_TOKENS): EChartsOption {
+  const { series: palette, axis, grid: gridLine, surfaceHigh, onSurface } = tokens;
+  const seriesColor = (index: number) => palette[index % palette.length];
+  const axisLabel = { color: axis };
+  const tooltipStyle = {
+    backgroundColor: surfaceHigh,
+    borderColor: gridLine,
+    textStyle: { color: onSurface },
+  };
+  const base = {
+    tooltip: { trigger: 'axis' as const, ...tooltipStyle },
+    legend: { type: 'scroll' as const, bottom: 0, textStyle: { color: axis } },
+    grid: { left: 12, right: 16, top: 16, bottom: 42, containLabel: true },
+  };
   if (widget.type === 'piechart') {
     const finite = widget.data.flatMap((series, index) => {
       const value = last(series);
-      return value == null ? [] : [{ name: series.label, value, itemStyle: { color: COLORS[index % COLORS.length] } }];
+      return value == null ? [] : [{ name: series.label, value, itemStyle: { color: seriesColor(index) } }];
     });
-    return { tooltip: { trigger: 'item' }, legend: base.legend, series: [{ type: 'pie', radius: ['38%', '70%'], data: finite }] };
+    return { tooltip: { trigger: 'item', ...tooltipStyle }, legend: base.legend, series: [{ type: 'pie', radius: ['38%', '70%'], data: finite }] };
   }
   if (widget.type === 'bargauge') {
     const finite = widget.data.flatMap((series, index) => {
       const value = last(series);
-      return value == null ? [] : [{ label: series.label, value, color: COLORS[index % COLORS.length] }];
+      return value == null ? [] : [{ label: series.label, value, color: seriesColor(index) }];
     });
-    return { ...base, xAxis: { type: 'value', axisLabel: { color: '#94a3b8' } }, yAxis: { type: 'category', data: finite.map((item) => item.label), axisLabel: { color: '#94a3b8', width: 180, overflow: 'truncate' } }, series: [{ type: 'bar', data: finite.map((item) => ({ value: item.value, itemStyle: { color: item.color } })) }] };
+    return { ...base, xAxis: { type: 'value', axisLabel }, yAxis: { type: 'category', data: finite.map((item) => item.label), axisLabel: { ...axisLabel, width: 180, overflow: 'truncate' } }, series: [{ type: 'bar', data: finite.map((item) => ({ value: item.value, itemStyle: { color: item.color } })) }] };
   }
   if (widget.type === 'heatmap') {
     const timestamps = [...new Set(widget.data.flatMap((series) => series.points.map((point) => point.timestamp)))].sort();
     const buckets = widget.data.map((series) => series.label);
     const values = widget.data.flatMap((series, y) => series.points.flatMap((point) => point.value == null ? [] : [[timestamps.indexOf(point.timestamp), y, point.value]]));
     const max = Math.max(1, ...values.map((value) => Number(value[2])));
-    return { tooltip: {}, grid: base.grid, xAxis: { type: 'category', data: timestamps.map((timestamp) => new Date(timestamp * 1000).toLocaleTimeString()), axisLabel: { color: '#94a3b8' } }, yAxis: { type: 'category', data: buckets, axisLabel: { color: '#94a3b8' } }, visualMap: { min: 0, max, calculable: true, orient: 'horizontal', left: 'center', bottom: 0 }, series: [{ type: 'heatmap', data: values }] };
+    // A heatmap encodes magnitude, so it takes a single-hue sequential ramp keyed to
+    // the skin accent — never the categorical palette and never a rainbow.
+    return { tooltip: tooltipStyle, grid: base.grid, xAxis: { type: 'category', data: timestamps.map((timestamp) => new Date(timestamp * 1000).toLocaleTimeString()), axisLabel }, yAxis: { type: 'category', data: buckets, axisLabel }, visualMap: { min: 0, max, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, textStyle: { color: axis }, inRange: { color: [surfaceHigh, tokens.primaryContainer, tokens.primary] } }, series: [{ type: 'heatmap', data: values }] };
   }
-  return { ...base, xAxis: { type: 'time', axisLabel: { color: '#94a3b8' } }, yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: 'rgba(148,163,184,.16)' } } }, series: widget.data.map((series, index) => ({ name: series.label, type: 'line', smooth: true, showSymbol: false, lineStyle: { width: 2 }, areaStyle: { opacity: widget.data.length === 1 ? .12 : 0 }, itemStyle: { color: COLORS[index % COLORS.length] }, data: series.points.filter((point) => point.value != null).map((point) => [point.timestamp * 1000, point.value]) })) };
+  return { ...base, xAxis: { type: 'time', axisLabel }, yAxis: { type: 'value', axisLabel, splitLine: { lineStyle: { color: gridLine } } }, series: widget.data.map((series, index) => ({ name: series.label, type: 'line', smooth: true, showSymbol: false, lineStyle: { width: 2 }, areaStyle: { opacity: widget.data.length === 1 ? .12 : 0 }, itemStyle: { color: seriesColor(index) }, data: series.points.filter((point) => point.value != null).map((point) => [point.timestamp * 1000, point.value]) })) };
 }
 
 function TableWidget({ widget }: { widget: MetricsWidget }) {

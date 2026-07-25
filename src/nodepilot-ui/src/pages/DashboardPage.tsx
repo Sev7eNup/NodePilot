@@ -21,7 +21,7 @@ import {
   Time,
   WarningAltFilled,
 } from '@carbon/icons-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -36,6 +36,7 @@ import { DashboardQuickActions } from '../components/dashboard/DashboardQuickAct
 import { StatusBadge } from '../components/common/StatusBadge';
 import { formatDate, formatDuration, formatNumber, formatRelative, formatRelativeFuture } from '../lib/format';
 import { TRIGGER_BADGE_META as TRIGGER_META } from '../lib/triggerBadgeMeta';
+import { useChartTokens, type ChartTokens } from '../lib/chartTheme';
 
 interface DashboardStats {
   workflowsTotal: number;
@@ -129,51 +130,11 @@ function healthColor(rate: number | null): string {
   return HEALTH.bad;
 }
 
-/** Reads the live, np-shell-scoped design tokens so ECharts matches the theme
- *  (and re-reads on light/dark toggle). Returns empty strings under jsdom — every
- *  chart builder falls back to literals, so charts never depend on this resolving. */
-interface ThemeTokens {
-  onSurfaceVariant: string; outlineVariant: string; surfaceHigh: string; onSurface: string;
-  // Accent gradient stops (primary-container → primary) so accent-coloured charts
-  // recolour with the active skin instead of hardcoding the dark-orange ramp.
-  primaryContainer: string; primary: string;
-}
-function useThemeTokens(): { probeRef: React.RefObject<HTMLDivElement | null>; tokens: ThemeTokens } {
-  const probeRef = useRef<HTMLDivElement>(null);
-  const [tokens, setTokens] = useState<ThemeTokens>({
-    onSurfaceVariant: '', outlineVariant: '', surfaceHigh: '', onSurface: '',
-    primaryContainer: '', primary: '',
-  });
-  useEffect(() => {
-    const read = () => {
-      const el = probeRef.current;
-      if (!el) return;
-      const cs = getComputedStyle(el);
-      const g = (v: string) => cs.getPropertyValue(v).trim();
-      setTokens({
-        onSurfaceVariant: g('--color-on-surface-variant'),
-        outlineVariant: g('--color-outline-variant'),
-        surfaceHigh: g('--color-surface-high'),
-        onSurface: g('--color-on-surface'),
-        primaryContainer: g('--color-primary-container'),
-        primary: g('--color-primary'),
-      });
-    };
-    read();
-    const mo = new MutationObserver(read);
-    // Watch `data-skin` too: switching e.g. dark → dark-lila keeps the same `class`
-    // (both are `dark`/`np-accent-remap`) and only flips `data-skin`, so a class-only
-    // filter would miss it and the charts would keep the old skin until a reload.
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-skin'] });
-    return () => mo.disconnect();
-  }, []);
-  return { probeRef, tokens };
-}
 
 export function DashboardPage() {
   const { t } = useTranslation(['dashboard', 'executions', 'common']);
   const navigate = useNavigate();
-  const { probeRef, tokens } = useThemeTokens();
+  const { probeRef, tokens } = useChartTokens();
   // Caller-selected time window for the hero/area/donut/success-trend charts. Top/failing
   // stay on a fixed 7 d window by backend design (recent-failure hotspots), so they don't
   // empty out at windowHours=1.
@@ -382,11 +343,11 @@ function HeroGauge({
   successRate, succeeded, failed, running, windowLabel, tokens,
 }: Readonly<{
   successRate: number | null; succeeded: number; failed: number; running: number;
-  windowLabel: string; tokens: ThemeTokens;
+  windowLabel: string; tokens: ChartTokens;
 }>) {
   const { t } = useTranslation(['dashboard']);
   const color = healthColor(successRate);
-  const track = tokens.outlineVariant || 'rgba(255,255,255,0.10)';
+  const track = tokens.grid;
   const option = useMemo<EChartsOption>(() => ({
     series: [{
       type: 'gauge',
@@ -821,11 +782,11 @@ const AREA_SERIES = [
   { key: 'cancelled' as const, line: '#9ca3af', top: 'rgba(156,163,175,0.35)', mid: 'rgba(156,163,175,0.12)', bot: 'rgba(156,163,175,0.02)', shadow: null, labelKey: 'dashboard:cancelled' },
 ];
 
-function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: HourBucket[]; windowHours: number; tokens: ThemeTokens }>) {
+function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: HourBucket[]; windowHours: number; tokens: ChartTokens }>) {
   const { t } = useTranslation(['dashboard']);
-  const axisColor = tokens.onSurfaceVariant || '#9ca3af';
-  const tipBg = tokens.surfaceHigh || '#212328';
-  const tipText = tokens.onSurface || '#e9ebef';
+  const axisColor = tokens.axis;
+  const tipBg = tokens.surfaceHigh;
+  const tipText = tokens.onSurface;
 
   const option = useMemo<EChartsOption>(() => {
     // Hourly windows label "HH:00"; multi-day windows label the date "MM-DD". The backend
@@ -898,11 +859,11 @@ function HourlyAreaChart({ buckets, windowHours, tokens }: Readonly<{ buckets: H
 // into an "Other" slice → the slices always sum to the centre total.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function RunStatusDonut({ counts, tokens, onSelect }: Readonly<{ counts: ExecutionCounts; tokens: ThemeTokens; onSelect: (status: string | null) => void }>) {
+function RunStatusDonut({ counts, tokens, onSelect }: Readonly<{ counts: ExecutionCounts; tokens: ChartTokens; onSelect: (status: string | null) => void }>) {
   const { t } = useTranslation(['dashboard']);
-  const tipBg = tokens.surfaceHigh || '#212328';
-  const tipText = tokens.onSurface || '#e9ebef';
-  const border = tokens.surfaceHigh || '#212328';
+  const tipBg = tokens.surfaceHigh;
+  const tipText = tokens.onSurface;
+  const border = tokens.surfaceHigh;
 
   const segments = useMemo(() => {
     const other = Math.max(0, counts.total - counts.succeeded - counts.failed - counts.cancelled - counts.running);
@@ -977,11 +938,11 @@ function RunStatusDonut({ counts, tokens, onSelect }: Readonly<{ counts: Executi
 // reads sensibly rather than alarmingly.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: HourBucket[]; windowHours: number; tokens: ThemeTokens }>) {
+function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: HourBucket[]; windowHours: number; tokens: ChartTokens }>) {
   const { t } = useTranslation(['dashboard']);
-  const axisColor = tokens.onSurfaceVariant || '#9ca3af';
-  const tipBg = tokens.surfaceHigh || '#212328';
-  const tipText = tokens.onSurface || '#e9ebef';
+  const axisColor = tokens.axis;
+  const tipBg = tokens.surfaceHigh;
+  const tipText = tokens.onSurface;
   const multiDay = windowHours > 24;
 
   const points = useMemo(() => buckets.map((b) => {
@@ -1059,15 +1020,15 @@ function SuccessRateTrend({ buckets, windowHours, tokens }: Readonly<{ buckets: 
 // "slowest" ranking (the backend selects by run count).
 // ─────────────────────────────────────────────────────────────────────────────
 
-function P95WorkflowBars({ items, tokens }: Readonly<{ items: TopWorkflow[]; tokens: ThemeTokens }>) {
+function P95WorkflowBars({ items, tokens }: Readonly<{ items: TopWorkflow[]; tokens: ChartTokens }>) {
   const { t } = useTranslation(['dashboard']);
-  const axisColor = tokens.onSurfaceVariant || '#9ca3af';
-  const tipBg = tokens.surfaceHigh || '#212328';
-  const tipText = tokens.onSurface || '#e9ebef';
+  const axisColor = tokens.axis;
+  const tipBg = tokens.surfaceHigh;
+  const tipText = tokens.onSurface;
   // Accent gradient stops follow the active skin (orange / lilac / blue); fall back to
   // the dark-orange literals so the bars still render under jsdom where tokens are empty.
-  const barFrom = tokens.primaryContainer || '#2467d9';
-  const barTo = tokens.primary || '#6da8ff';
+  const barFrom = tokens.primaryContainer;
+  const barTo = tokens.primary;
 
   const top = useMemo(() => items
     .filter((w) => w.p95DurationMs != null)

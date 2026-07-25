@@ -2769,29 +2769,51 @@ html[data-skin="light-sparkasse"] :is(.np-shell, .np-designer) :is(button, a, [r
    keeps the app surface tokens (bg-surface-high). Light default + html.dark overrides
    (themeStore toggles `html.dark`). Mirrors the docs SPA palette for consistency.
    ────────────────────────────────────────────────────────────────────────── */
-.hljs-comment, .hljs-quote { color: #6e7781; font-style: italic; }
-.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: #cf222e; }
-.hljs-string, .hljs-attr { color: #0a7d33; }
-.hljs-number, .hljs-literal { color: #0550ae; }
-.hljs-title, .hljs-section, .hljs-function .hljs-title { color: #8250df; }
-.hljs-type, .hljs-class .hljs-title { color: #953800; }
-.hljs-variable, .hljs-template-variable { color: #b35900; }
-.hljs-attribute { color: #0550ae; }
-.hljs-meta { color: #6e7781; }
-.hljs-deletion { color: #cf222e; }
-.hljs-addition { color: #0a7d33; }
+/* One syntax palette, two consumers: these `.hljs-*` rules (AI-chat code blocks,
+   rendered by rehype-highlight) and the CodeMirror editors, which build their
+   highlight style from the same custom properties in `lib/codeMirrorTheme.ts`.
+   Declare a colour once here and both surfaces move together. */
+:root {
+  --np-code-comment:   #6e7781;
+  --np-code-keyword:   #cf222e;
+  --np-code-string:    #0a7d33;
+  --np-code-number:    #0550ae;
+  --np-code-function:  #8250df;
+  --np-code-type:      #953800;
+  --np-code-variable:  #b35900;
+  --np-code-attribute: #0550ae;
+  --np-code-meta:      #6e7781;
+  --np-code-deletion:  #cf222e;
+  --np-code-addition:  #0a7d33;
+}
+html.dark {
+  --np-code-comment:   #7b8794;
+  /* Was #ff9b6e — a warm orange inherited from the retired dark skin, which now
+     reads as a stray accent on the graphite ground. Fuchsia keeps it clear of the
+     violet type colour and the rose variable colour. */
+  --np-code-keyword:   #e879f9;
+  --np-code-string:    #a3e635;
+  --np-code-number:    #fcd34d;
+  --np-code-function:  #7dd3fc;
+  --np-code-type:      #c4b5fd;
+  --np-code-variable:  #fda4af;
+  --np-code-attribute: #fbbf24;
+  --np-code-meta:      #94a3b8;
+  --np-code-deletion:  #fca5a5;
+  --np-code-addition:  #a3e635;
+}
 
-html.dark .hljs-comment, html.dark .hljs-quote { color: #7b8794; }
-html.dark .hljs-keyword, html.dark .hljs-selector-tag, html.dark .hljs-built_in { color: #ff9b6e; }
-html.dark .hljs-string, html.dark .hljs-attr { color: #a3e635; }
-html.dark .hljs-number, html.dark .hljs-literal { color: #fcd34d; }
-html.dark .hljs-title, html.dark .hljs-section, html.dark .hljs-function .hljs-title { color: #7dd3fc; }
-html.dark .hljs-type, html.dark .hljs-class .hljs-title { color: #c4b5fd; }
-html.dark .hljs-variable, html.dark .hljs-template-variable { color: #fda4af; }
-html.dark .hljs-attribute { color: #fbbf24; }
-html.dark .hljs-meta { color: #94a3b8; }
-html.dark .hljs-deletion { color: #fca5a5; }
-html.dark .hljs-addition { color: #a3e635; }
+.hljs-comment, .hljs-quote { color: var(--np-code-comment); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-built_in { color: var(--np-code-keyword); }
+.hljs-string, .hljs-attr { color: var(--np-code-string); }
+.hljs-number, .hljs-literal { color: var(--np-code-number); }
+.hljs-title, .hljs-section, .hljs-function .hljs-title { color: var(--np-code-function); }
+.hljs-type, .hljs-class .hljs-title { color: var(--np-code-type); }
+.hljs-variable, .hljs-template-variable { color: var(--np-code-variable); }
+.hljs-attribute { color: var(--np-code-attribute); }
+.hljs-meta { color: var(--np-code-meta); }
+.hljs-deletion { color: var(--np-code-deletion); }
+.hljs-addition { color: var(--np-code-addition); }
 
 /* Login remains the same composition, with the strongest card depth in the skin. */
 html[data-skin="light-sparkasse"] .np-shell.np-login {
