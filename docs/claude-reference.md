@@ -145,6 +145,29 @@ Implementierung: [StepTestContextProvider.cs](src/NodePilot.Engine/StepTester.cs
 
 ---
 
+## `WorkflowExecution.ErrorMessage` — Triage-Summary
+
+Beim Übergang in einen terminalen Zustand befüllt die Engine `ErrorMessage` mit einer kompakten
+Zusammenfassung statt sie (wie früher) auf `null` zu lassen. Format:
+
+```
+Activity "<label>" failed[: <error>][ (+N more failed activities)]
+```
+
+- **`<label>`** = `StepExecution.StepName`, Fallback `StepId` wenn leer.
+- **`<error>`** = `StepExecution.ErrorOutput` der ersten fehlgeschlagenen Step; fehlt der Teil komplett, wenn `ErrorOutput` leer ist.
+- **`(+N …)`** erscheint nur bei mehr als einem fehlgeschlagenen Step.
+- **Auswahl der „ersten" Failure:** `OrderBy(StartedAt).ThenBy(Id)` — deterministisch auch wenn parallele Branches gleichzeitig scheitern.
+- **Redaction + Cap:** wie `InputParametersJson`/`ReturnData` durch `RedactAndCap(…, 32 KiB)` — Secrets maskiert, Überlänge mit `... [truncated]` abgeschnitten.
+- **Nur bei `Failed`.** Ein Lauf, der crasht statt sauber zu terminieren, trägt weiterhin die redigierte Exception-Message.
+
+**Autoritativ bleibt `StepExecution.ErrorOutput`.** `ErrorMessage` ist reine Triage-Oberfläche für
+Execution-Listen, Alerting-Notifications und `startWorkflow`-Parent-Läufe — nie als Fehler-Parsing-Quelle verwenden.
+
+Impl: [WorkflowEngine.cs](src/NodePilot.Engine/WorkflowEngine.cs) (`failureSummary`).
+
+---
+
 ## Coverage Heatmap — Details
 
 `GET /api/workflows/{id}/coverage?windowDays=N` aggregiert pro Step die letzten N Tage Executions (default 30, capped 365). Pro Step: `executedCount` (Succeeded + Failed), `failedCount`, `skippedCount` (Skipped + Cancelled — letzteres = junction-race), plus `lastExecutedAt`/`lastSucceededAt`/`lastFailedAt`. Cap auf die letzten 900 Executions im Window. Response trägt `oldestExecutionInWindow`.
