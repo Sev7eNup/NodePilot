@@ -223,9 +223,9 @@ public static class WorkflowAnalyzer
 
     private static readonly HostedIncompatiblePattern[] StartJobHostedIncompatible =
     [
-        new(new Regex(@"(^|[\s|;&])Start-Job\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Start-Job"),
-        new(new Regex(@"\bGet-WindowsUpdateLog\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Get-WindowsUpdateLog (uses Start-Job internally)"),
-        new(new Regex(@"\bInvoke-Command\b[^\r\n]*-AsJob\b", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Invoke-Command -AsJob"),
+        new(new Regex(@"(^|[\s|;&])Start-Job\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "Start-Job"),
+        new(new Regex(@"\bGet-WindowsUpdateLog\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "Get-WindowsUpdateLog (uses Start-Job internally)"),
+        new(new Regex(@"\bInvoke-Command\b[^\r\n]*-AsJob\b", RegexOptions.IgnoreCase | RegexOptions.Compiled, TimeSpan.FromSeconds(1)), "Invoke-Command -AsJob"),
     ];
 
     private static bool IsAnnotation(string type)

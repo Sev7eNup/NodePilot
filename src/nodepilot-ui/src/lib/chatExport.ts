@@ -31,6 +31,22 @@ export function buildChatMarkdown(title: string, messages: ChatMessage[], labels
   return `${lines.join('\n').trimEnd()}\n`;
 }
 
+/**
+ * Turns a chat title into a filename-safe slug.
+ *
+ * The dash trimming runs as an explicit scan rather than `/^-+|-+$/`: that pattern is
+ * super-linear on a long run of dashes that is not at the string end, because the engine
+ * retries the greedy `-+` from every position.
+ */
+export function chatFilenameSlug(title: string): string {
+  const collapsed = title.replace(/[^\w.-]+/g, '-');
+  let start = 0;
+  let end = collapsed.length;
+  while (start < end && collapsed[start] === '-') start++;
+  while (end > start && collapsed[end - 1] === '-') end--;
+  return collapsed.slice(start, end).toLowerCase() || 'chat';
+}
+
 /** Triggers a browser download for plain text content (no API round-trip). */
 export function downloadTextFile(filename: string, content: string, mime = 'text/markdown'): void {
   const blob = new Blob([content], { type: `${mime};charset=utf-8` });

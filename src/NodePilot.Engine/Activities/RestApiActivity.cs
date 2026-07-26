@@ -218,7 +218,7 @@ public class RestApiActivity : IActivityExecutor
             total += read;
             if (total > MaxResponseBytes)
                 return ("", true);
-            ms.Write(buf, 0, read);
+            await ms.WriteAsync(buf.AsMemory(0, read), ct);
         }
         return (System.Text.Encoding.UTF8.GetString(ms.ToArray()), false);
     }

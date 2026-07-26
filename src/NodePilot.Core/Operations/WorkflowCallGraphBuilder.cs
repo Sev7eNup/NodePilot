@@ -54,7 +54,7 @@ public static class WorkflowCallGraphBuilder
 {
     private static readonly Regex GuidPattern = new(
         "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
-        RegexOptions.Compiled);
+        RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     // activityType -> the config key that carries the child-workflow reference.
     private static readonly (string Type, string ConfigKey)[] CallSites =

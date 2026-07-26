@@ -87,7 +87,7 @@ export function aiChatFullKey(scope: string, threadId: string): string {
 }
 
 function makeThreadId(): string {
-  return `t-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `t-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}`;
 }
 
 function makeThread(name: string): ChatThreadMeta {

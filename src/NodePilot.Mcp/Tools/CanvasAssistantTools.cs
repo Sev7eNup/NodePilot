@@ -20,7 +20,7 @@ namespace NodePilot.Mcp.Tools;
 [McpServerToolType]
 public sealed class CanvasAssistantTools
 {
-    private static readonly Regex TemplateRx = new(@"\{\{\s*(.*?)\s*\}\}", RegexOptions.Compiled);
+    private static readonly Regex TemplateRx = new(@"\{\{\s*(.*?)\s*\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
     private static readonly HashSet<string> BinaryOps = new(StringComparer.Ordinal)
         { "==", "!=", "<", ">", "<=", ">=", "contains", "startsWith", "endsWith", "matches" };
     private static readonly HashSet<string> UnaryOps = new(StringComparer.Ordinal)

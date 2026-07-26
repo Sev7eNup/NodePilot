@@ -142,7 +142,7 @@ public sealed class GlobalsFolderDeleteCommand : BaseCommand<GlobalsFolderDelete
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"Ordner [red]{settings.Id}[/] wirklich löschen? (muss leer sein)", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"Ordner [red]{settings.Id}[/] wirklich löschen? (muss leer sein)", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);

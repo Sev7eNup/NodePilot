@@ -1,5 +1,6 @@
 using NodePilot.Core.Enums;
 
+using System.Text.Json.Serialization;
 namespace NodePilot.Api.Dtos;
 
 public record SharedFolderResponse(
@@ -42,7 +43,7 @@ public record SharedFolderPermissionResponse(
 public record GrantSharedFolderPermissionRequest(
     FolderPrincipalType PrincipalType,
     string PrincipalKey,
-    SharedFolderRole Role)
+    [property: JsonRequired] SharedFolderRole Role)
 {
     public string? PrincipalAuthority { get; init; }
 }

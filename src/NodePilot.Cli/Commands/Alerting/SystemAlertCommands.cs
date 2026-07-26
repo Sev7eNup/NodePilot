@@ -97,7 +97,7 @@ public sealed class SystemAlertDeleteCommand : BaseCommand<SystemAlertIdSettings
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"System-alert policy [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"System-alert policy [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);

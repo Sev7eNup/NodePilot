@@ -11,17 +11,18 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 
+using System.Text.Json.Serialization;
 namespace NodePilot.Api.Controllers;
 
 public sealed record ResolveAdIdentityConflictRequest(
     string CanonicalSid,
     string LegacyLdapObjectGuid,
-    Guid WinnerUserId);
+    [property: JsonRequired] Guid WinnerUserId);
 
 public sealed record ResolveUpgradeIdentityConflictRequest(
-    AuthProvider Provider,
+    [property: JsonRequired] AuthProvider Provider,
     string ConflictExternalId,
-    Guid WinnerUserId,
+    [property: JsonRequired] Guid WinnerUserId,
     IReadOnlyCollection<Guid> LoserUserIds);
 
 public sealed record UpgradeIdentityConflictCandidate(

@@ -106,7 +106,7 @@ public sealed class WorkflowDeleteCommand : BaseCommand<WorkflowGetSettings>
         // Destructive — confirm unless stdin is non-interactive (script context).
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"Workflow [red]{Markup.Escape(w.Name)}[/] wirklich löschen?", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"Workflow [red]{Markup.Escape(w.Name)}[/] wirklich löschen?", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
 
@@ -198,7 +198,7 @@ public sealed class WorkflowForceUnlockCommand : BaseCommand<WorkflowGetSettings
         if (!Console.IsInputRedirected)
         {
             var owner = w.CheckedOutByUserName ?? "?";
-            var ok = AnsiConsole.Confirm(
+            var ok = await AnsiConsole.ConfirmAsync(
                 $"Workflow [yellow]{Markup.Escape(w.Name)}[/] ist gelockt von [yellow]{Markup.Escape(owner)}[/]. Wirklich force-unlocken?",
                 defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }

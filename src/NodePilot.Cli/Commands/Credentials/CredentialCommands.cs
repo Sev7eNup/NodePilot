@@ -163,7 +163,7 @@ public sealed class CredentialDeleteCommand : BaseCommand<CredentialIdSettings>
         var c = await api.GetCredentialAsync(settings.Id, ct);
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"Credential [red]{Markup.Escape(c.Name)}[/] ({Markup.Escape(c.Username)}) wirklich löschen?", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"Credential [red]{Markup.Escape(c.Name)}[/] ({Markup.Escape(c.Username)}) wirklich löschen?", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
         await api.DeleteCredentialAsync(settings.Id, ct);

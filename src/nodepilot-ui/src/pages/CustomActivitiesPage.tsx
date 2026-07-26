@@ -327,8 +327,8 @@ export function CustomActivitiesPage() {
                       {canAdmin && (
                         <button onClick={() => enableMutation.mutate({ id: e.id, enable: !e.isEnabled })}
                           title={e.isEnabled ? t('customActivities:actions.disable') : t('customActivities:actions.enable')}
-                          className="p-1.5 text-on-surface-variant hover:bg-surface-container rounded-lg">
-                          {e.isEnabled ? <Power size={16} /> : <Power size={16} />}
+                          className={`p-1.5 rounded-lg ${e.isEnabled ? 'text-emerald-600 hover:bg-emerald-500/15' : 'text-outline hover:bg-surface-low'}`}>
+                          <Power size={16} />
                         </button>
                       )}
                       {canWrite && (

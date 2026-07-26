@@ -56,7 +56,7 @@ function DashboardContent({ widgets }: { widgets: MetricsWidget[] }) {
 }
 
 function Widget({ widget, tokens }: { widget: MetricsWidget; tokens: ChartTokens }) {
-  const span = widget.grid.width <= 3 ? 'xl:col-span-3' : widget.grid.width <= 4 ? 'xl:col-span-4' : widget.grid.width <= 6 ? 'xl:col-span-6' : widget.grid.width <= 8 ? 'xl:col-span-8' : widget.grid.width <= 12 ? 'xl:col-span-12' : 'xl:col-span-12';
+  const span = widget.grid.width <= 3 ? 'xl:col-span-3' : widget.grid.width <= 4 ? 'xl:col-span-4' : widget.grid.width <= 6 ? 'xl:col-span-6' : widget.grid.width <= 8 ? 'xl:col-span-8' : 'xl:col-span-12';
   const compact = widget.type === 'stat';
   return (
     <article className={`np-card col-span-1 p-4 sm:col-span-2 ${span}`} title={widget.description ?? undefined}>
@@ -114,7 +114,7 @@ export function buildMetricsChartOption(widget: MetricsWidget, tokens: ChartToke
     return { ...base, xAxis: { type: 'value', axisLabel }, yAxis: { type: 'category', data: finite.map((item) => item.label), axisLabel: { ...axisLabel, width: 180, overflow: 'truncate' } }, series: [{ type: 'bar', data: finite.map((item) => ({ value: item.value, itemStyle: { color: item.color } })) }] };
   }
   if (widget.type === 'heatmap') {
-    const timestamps = [...new Set(widget.data.flatMap((series) => series.points.map((point) => point.timestamp)))].sort();
+    const timestamps = [...new Set(widget.data.flatMap((series) => series.points.map((point) => point.timestamp)))].sort((a, b) => a - b);
     const buckets = widget.data.map((series) => series.label);
     const values = widget.data.flatMap((series, y) => series.points.flatMap((point) => point.value == null ? [] : [[timestamps.indexOf(point.timestamp), y, point.value]]));
     const max = Math.max(1, ...values.map((value) => Number(value[2])));

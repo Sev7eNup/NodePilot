@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace NodePilot.Api.Dtos;
 
 /// <summary>
@@ -31,13 +33,13 @@ public record MaintenanceWindowResponse(
 public record CreateMaintenanceWindowRequest(
     string Name,
     string? Description,
-    bool IsEnabled,
+    [property: JsonRequired] bool IsEnabled,
     string Mode,
     string ScopeKind,
     string Recurrence,
     DateTime? OneTimeStartUtc,
     DateTime? OneTimeEndUtc,
-    int WeeklyDaysMask,
+    [property: JsonRequired] int WeeklyDaysMask,
     int? WeeklyStartMinuteOfDay,
     int? WeeklyEndMinuteOfDay,
     string? CronExpression,
@@ -48,13 +50,13 @@ public record CreateMaintenanceWindowRequest(
 public record UpdateMaintenanceWindowRequest(
     string Name,
     string? Description,
-    bool IsEnabled,
+    [property: JsonRequired] bool IsEnabled,
     string Mode,
     string ScopeKind,
     string Recurrence,
     DateTime? OneTimeStartUtc,
     DateTime? OneTimeEndUtc,
-    int WeeklyDaysMask,
+    [property: JsonRequired] int WeeklyDaysMask,
     int? WeeklyStartMinuteOfDay,
     int? WeeklyEndMinuteOfDay,
     string? CronExpression,

@@ -78,7 +78,7 @@ public sealed class DbQueryCommand : BaseCommand<DbQuerySettings>
             // shaped for a CLI. Non-interactive shells (CI, piped stdin) skip this and rely
             // on `--yes` being passed explicitly.
             AnsiConsole.MarkupLine("[yellow]Write mode rewrites database state. Continue?[/]");
-            if (!AnsiConsole.Confirm("Run the statement?", defaultValue: false))
+            if (!await AnsiConsole.ConfirmAsync("Run the statement?", defaultValue: false))
             {
                 writer.Error("Aborted.");
                 return ExitCodes.Error;

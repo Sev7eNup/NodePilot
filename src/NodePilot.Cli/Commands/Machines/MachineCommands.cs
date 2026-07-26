@@ -138,7 +138,7 @@ public sealed class MachineDeleteCommand : BaseCommand<MachineIdSettings>
         var m = await api.GetMachineAsync(settings.Id, ct);
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"Machine [red]{Markup.Escape(m.Name)}[/] ({m.Hostname}) wirklich löschen?", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"Machine [red]{Markup.Escape(m.Name)}[/] ({m.Hostname}) wirklich löschen?", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
         await api.DeleteMachineAsync(settings.Id, ct);

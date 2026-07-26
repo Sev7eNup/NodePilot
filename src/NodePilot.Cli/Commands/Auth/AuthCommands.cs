@@ -57,14 +57,14 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
             return ExitCodes.Error;
         }
 
-        var username = settings.Username ?? AnsiConsole.Ask<string>("Username:");
+        var username = settings.Username ?? await AnsiConsole.AskAsync<string>("Username:");
         string password;
         if (settings.PasswordStdin)
             password = ((await Console.In.ReadLineAsync()) ?? "").Trim();
         else if (!string.IsNullOrEmpty(settings.Password))
             password = settings.Password;
         else
-            password = AnsiConsole.Prompt(new TextPrompt<string>("Password:").Secret());
+            password = await AnsiConsole.PromptAsync(new TextPrompt<string>("Password:").Secret());
 
         try
         {

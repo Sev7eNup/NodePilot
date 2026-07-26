@@ -4,6 +4,7 @@ using NodePilot.Api.Security;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.Api.Security.Oidc;
 
+using System.Text.Json.Serialization;
 namespace NodePilot.Api.Dtos.Settings;
 
 /// <summary>
@@ -45,7 +46,7 @@ public sealed class AuthenticationSettingsDto : IValidatableObject
         // Cross-field guard: enabling LDAP requires the four connection essentials.
         // Catching this here surfaces a clean 400 instead of a runtime auth failure
         // on the first login attempt.
-        if (Ldap.Enabled || Windows.Enabled)
+        if (Ldap.Enabled == true || Windows.Enabled)
         {
             if (Ldap.Endpoints.All(string.IsNullOrWhiteSpace) && string.IsNullOrWhiteSpace(Ldap.Server))
                 yield return new ValidationResult("At least one LDAPS endpoint is required for LDAP or Windows SSO.", new[] { "Ldap.Endpoints" });
@@ -84,7 +85,7 @@ public sealed class AuthenticationSettingsDto : IValidatableObject
             }
         }
 
-        if (Ldap.Enabled && string.IsNullOrWhiteSpace(Ldap.UpnSuffix))
+        if (Ldap.Enabled == true && string.IsNullOrWhiteSpace(Ldap.UpnSuffix))
             yield return new ValidationResult("Ldap.UpnSuffix is required when Ldap.Enabled=true.", new[] { "Ldap.UpnSuffix" });
 
         if (Windows.Enabled)
@@ -163,7 +164,7 @@ public sealed class AuthenticationSettingsDto : IValidatableObject
 
 public sealed class LdapAuthenticationDto
 {
-    public bool Enabled { get; set; }
+    public bool? Enabled { get; set; }
 
     [StringLength(255)]
     public string? Server { get; set; }

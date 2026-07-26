@@ -126,7 +126,7 @@ public sealed class SharedFolderDeleteCommand : BaseCommand<SharedFolderIdSettin
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"Shared folder [red]{settings.Id}[/] wirklich löschen? (muss leer sein — keine Workflows, keine Sub-Folders)", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"Shared folder [red]{settings.Id}[/] wirklich löschen? (muss leer sein — keine Workflows, keine Sub-Folders)", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);

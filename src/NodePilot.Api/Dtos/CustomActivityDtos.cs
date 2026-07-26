@@ -1,5 +1,6 @@
 using NodePilot.Core.Activities;
 
+using System.Text.Json.Serialization;
 namespace NodePilot.Api.Dtos;
 
 /// <summary>Full custom-activity detail incl. the script — returned to authors (Admin/Operator) for editing.</summary>
@@ -23,16 +24,16 @@ public sealed record CustomActivityCatalogEntry(
 
 public sealed record CreateCustomActivityRequest(
     string Key, string Name, string? Description, string? Icon, string? Color,
-    string ScriptTemplate, string? Engine, bool RunsRemote, bool Isolated, int? MemoryLimitMb,
+    string ScriptTemplate, string? Engine, [property: JsonRequired] bool RunsRemote, [property: JsonRequired] bool Isolated, int? MemoryLimitMb,
     int? MaxProcesses, int? DefaultTimeoutSeconds, string? SuccessExitCodes,
     IReadOnlyList<CustomActivityInputParameter>? Inputs, IReadOnlyList<CustomActivityOutputParameter>? Outputs);
 
 public sealed record UpdateCustomActivityRequest(
     string Name, string? Description, string? Icon, string? Color,
-    string ScriptTemplate, string? Engine, bool RunsRemote, bool Isolated, int? MemoryLimitMb,
+    string ScriptTemplate, string? Engine, [property: JsonRequired] bool RunsRemote, [property: JsonRequired] bool Isolated, int? MemoryLimitMb,
     int? MaxProcesses, int? DefaultTimeoutSeconds, string? SuccessExitCodes,
     IReadOnlyList<CustomActivityInputParameter>? Inputs, IReadOnlyList<CustomActivityOutputParameter>? Outputs,
-    Guid ConcurrencyToken, string? ChangeNote);
+    [property: JsonRequired] Guid ConcurrencyToken, string? ChangeNote);
 
 public sealed record CustomActivityVersionResponse(
     int Version, string Name, string? Description, string Icon, string? Color, string ScriptTemplate,
@@ -54,4 +55,4 @@ public sealed record CustomActivityExportItem(
     IReadOnlyList<CustomActivityInputParameter> Inputs, IReadOnlyList<CustomActivityOutputParameter> Outputs);
 
 public sealed record CustomActivityExportEnvelope(
-    string Schema, int ExportVersion, DateTime ExportedAt, IReadOnlyList<CustomActivityExportItem> Items);
+    string Schema, [property: JsonRequired] int ExportVersion, [property: JsonRequired] DateTime ExportedAt, IReadOnlyList<CustomActivityExportItem> Items);
