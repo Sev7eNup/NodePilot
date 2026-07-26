@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.DirectoryServices.Protocols;
 using System.Net;
 using System.Security.Principal;
@@ -22,6 +23,12 @@ namespace NodePilot.Api.Security.Ldap;
 /// </list>
 /// </para>
 /// </summary>
+// Coverage: this type IS the seam over System.DirectoryServices.Protocols — every method body
+// is a call into LdapConnection against a live directory server. Faking it here would only
+// assert that the mock was called, so the adapter stays untested by design and the interface
+// ILdapConnectionAdapter carries the tested logic instead. Verified against a real Samba DC
+// (scripts/ldap-testdc), see docs/ldap-windows-sso.md.
+[ExcludeFromCodeCoverage(Justification = "Thin adapter over System.DirectoryServices; needs a live directory server.")]
 internal sealed class SystemLdapConnectionAdapter : ILdapConnectionAdapter
 {
     private readonly IOptionsMonitor<LdapOptions> _options;

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -49,3 +50,8 @@ if (McpServerConfig.IsDestructiveAllowed())
     mcp.WithTools<DestructiveTools>();
 
 await builder.Build().RunAsync();
+
+// Coverage: process entry point — DI + MCP tool registration. The tools themselves are
+// covered in NodePilot.Mcp.Tests; registration is asserted by the tool-catalog tests.
+[ExcludeFromCodeCoverage(Justification = "Process entry point.")]
+internal partial class Program;

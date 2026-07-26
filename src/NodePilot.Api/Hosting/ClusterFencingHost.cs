@@ -1,5 +1,6 @@
 using NodePilot.Engine;
 using NodePilot.Scheduler.Cluster;
+using System.Diagnostics.CodeAnalysis;
 
 namespace NodePilot.Api.Hosting;
 
@@ -14,6 +15,9 @@ namespace NodePilot.Api.Hosting;
 /// Only registered in cluster mode; single-node mode never fires <c>OnLeadershipLost</c>.
 /// </para>
 /// </summary>
+// Coverage: same reasoning as ClusterFailoverRecoveryHost — cluster-mode only, fires on real
+// leadership loss. The cancellation it triggers is covered through WorkflowEngine.
+[ExcludeFromCodeCoverage(Justification = "Active/passive HA; fires on real cluster leadership loss.")]
 public sealed class ClusterFencingHost : IHostedService
 {
     private readonly ClusterLeaderService _leader;
