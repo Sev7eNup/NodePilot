@@ -8,7 +8,6 @@ using System.Text.Json;
 using NodePilot.Ai;
 using NodePilot.Ai.Knowledge;
 using NodePilot.Api.Ai;
-using NodePilot.Api.Audit;
 using NodePilot.Api.Security;
 using NodePilot.Api.Telemetry;
 using NodePilot.Core.Audit;

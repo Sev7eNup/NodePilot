@@ -2,12 +2,9 @@
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using NodePilot.Api.Audit;
-using NodePilot.Core.Audit;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
-using NodePilot.Api.Tests.Controllers;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.TestCommons;

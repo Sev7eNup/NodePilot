@@ -2,16 +2,11 @@ using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Principal;
-using System.Text;
-using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
-using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
@@ -51,7 +46,6 @@ public class AuthController : ControllerBase
     private readonly NodePilotDbContext _db;
     private readonly IConfiguration _config;
     private readonly IAuditWriter _audit;
-    private readonly NodePilot.Api.Security.IJwtKeyProvider _keyProvider;
     private readonly NodePilot.Api.Security.IAuthSessionIssuer _sessionIssuer;
     // L-1a: optional IHostEnvironment so cookie Secure-flag matches the set-path. Null in
     // tests that don't supply it — the builder falls back to Request.IsHttps which matches
@@ -64,13 +58,11 @@ public class AuthController : ControllerBase
     private readonly IOptionsMonitor<LdapOptions>? _ldapOptions;
     private readonly IOptionsMonitor<WindowsAuthOptions>? _windowsOptions;
     private readonly ActiveAuthenticationConfiguration _activeAuthentication;
-    private readonly AuthenticationPolicyOptions _authenticationPolicy;
     private readonly ExternalLoginThrottle _externalLoginThrottle;
     private readonly ActiveDirectoryAuthenticationConfiguration? _activeDirectoryAuthentication;
     private readonly ILdapConnectionAdapter? _directoryAdapter;
 
     public AuthController(NodePilotDbContext db, IConfiguration config, IAuditWriter audit,
-        NodePilot.Api.Security.IJwtKeyProvider keyProvider,
         NodePilot.Api.Security.IAuthSessionIssuer sessionIssuer,
         LdapAuthenticator? ldapAuthenticator = null,
         ExternalUserMapper? externalUserMapper = null,
@@ -78,7 +70,6 @@ public class AuthController : ControllerBase
         IOptionsMonitor<WindowsAuthOptions>? windowsOptions = null,
         IHostEnvironment? environment = null,
         ActiveAuthenticationConfiguration? activeAuthentication = null,
-        IOptions<AuthenticationPolicyOptions>? authenticationPolicy = null,
         ExternalLoginThrottle? externalLoginThrottle = null,
         ActiveDirectoryAuthenticationConfiguration? activeDirectoryAuthentication = null,
         ILdapConnectionAdapter? directoryAdapter = null)
@@ -86,14 +77,12 @@ public class AuthController : ControllerBase
         _db = db;
         _config = config;
         _audit = audit;
-        _keyProvider = keyProvider;
         _sessionIssuer = sessionIssuer;
         _ldapAuthenticator = ldapAuthenticator;
         _externalUserMapper = externalUserMapper;
         _ldapOptions = ldapOptions;
         _windowsOptions = windowsOptions;
         _environment = environment;
-        _authenticationPolicy = authenticationPolicy?.Value ?? new AuthenticationPolicyOptions();
         // Production always injects the immutable startup snapshot. Direct unit-test
         // construction predates that service; preserve its explicit option monitors and
         // legacy local-enabled intent without weakening the hosted path.
@@ -1087,8 +1076,7 @@ public class AuthController : ControllerBase
             return NoContent();
         }
 
-        long expSec = 0;
-        long.TryParse(expClaim, out expSec);
+        long.TryParse(expClaim, out var expSec);
         var expiresAt = expSec > 0
             ? DateTimeOffset.FromUnixTimeSeconds(expSec).UtcDateTime
             : DateTime.UtcNow.Add(TokenLifetime);
@@ -1180,7 +1168,7 @@ public class AuthController : ControllerBase
         var expClaim = User.FindFirstValue("exp");
         if (!string.IsNullOrEmpty(presentedJti))
         {
-            long expSec = 0; long.TryParse(expClaim, out expSec);
+            long.TryParse(expClaim, out var expSec);
             var expiresAt = expSec > 0
                 ? DateTimeOffset.FromUnixTimeSeconds(expSec).UtcDateTime
                 : DateTime.UtcNow.Add(TokenLifetime);

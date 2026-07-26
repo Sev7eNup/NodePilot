@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.SignalR.Client;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Auth;
 using NodePilot.Cli.Output;
-using Spectre.Console;
 
 namespace NodePilot.Cli.Commands.Exec;
 
@@ -24,7 +23,6 @@ internal static class ExecWatcher
         SessionContext session,
         Guid executionId,
         OutputWriter writer,
-        bool followAfterTerminal,
         CancellationToken ct,
         bool forcePolling = false)
     {

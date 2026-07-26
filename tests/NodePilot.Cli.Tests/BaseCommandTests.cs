@@ -1,6 +1,5 @@
 using System.Net;
 using FluentAssertions;
-using NodePilot.Cli;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Auth;
 using NodePilot.Cli.Commands;

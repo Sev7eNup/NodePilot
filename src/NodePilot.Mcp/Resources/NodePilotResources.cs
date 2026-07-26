@@ -1,7 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
 using ModelContextProtocol.Server;
-using NodePilot.Core.Activities;
 
 namespace NodePilot.Mcp.Resources;
 

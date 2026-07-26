@@ -1,6 +1,5 @@
 #pragma warning disable CA1416 // Windows-only API
 using System.Diagnostics;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;

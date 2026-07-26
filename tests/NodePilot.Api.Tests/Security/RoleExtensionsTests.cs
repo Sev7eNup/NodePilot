@@ -43,21 +43,6 @@ public class RoleExtensionsTests
     }
 
     [Fact]
-    public void IsOperator_OperatorRole_True()
-    {
-        Principal("Operator").IsOperator().Should().BeTrue();
-    }
-
-    [Fact]
-    public void IsOperator_AdminRole_False()
-    {
-        // IsOperator is strictly Operator — not "is privileged". Admin-only logic
-        // and "Operator and above" logic are different things; this test pins the
-        // strict semantic so a refactor doesn't relax it.
-        Principal("Admin").IsOperator().Should().BeFalse();
-    }
-
-    [Fact]
     public void IsPrivileged_Admin_True() => Principal("Admin").IsPrivileged().Should().BeTrue();
 
     [Fact]

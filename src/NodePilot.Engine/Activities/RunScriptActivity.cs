@@ -3,7 +3,6 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
-using NodePilot.Engine.Execution;
 using NodePilot.Engine.PowerShell;
 
 namespace NodePilot.Engine.Activities;

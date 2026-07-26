@@ -77,7 +77,7 @@ public sealed class AuthControllerExtraTests : IDisposable
     private AuthController NewController(NodePilotDbContext db, IConfiguration? cfg = null)
     {
         var resolvedCfg = cfg ?? CreateConfig();
-        return new AuthController(db, resolvedCfg, NoopAuditWriter.Instance, new TestJwtKeyProvider(),
+        return new AuthController(db, resolvedCfg, NoopAuditWriter.Instance,
             new NodePilot.Api.Security.AuthSessionIssuer(resolvedCfg, new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx() },
@@ -235,7 +235,7 @@ public sealed class AuthControllerExtraTests : IDisposable
         File.WriteAllText(Path.Combine(_contentRoot, AdminBootstrap.TokenFileName), "tok");
         var cfg = CreateConfig(new() { ["NodePilot:BootstrapAdminUsername"] = "rightful-admin" });
 
-        var controller = new AuthController(db, cfg, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var controller = new AuthController(db, cfg, NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(setupToken: "tok") },
         };
@@ -265,7 +265,7 @@ public sealed class AuthControllerExtraTests : IDisposable
             new Claim("exp", exp),
         }, "test"));
 
-        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(user: principal) },
         };
@@ -290,7 +290,7 @@ public sealed class AuthControllerExtraTests : IDisposable
             new Claim(ClaimTypes.NameIdentifier, Guid.NewGuid().ToString()),
         }, "test"));
 
-        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(user: principal) },
         };
@@ -315,7 +315,7 @@ public sealed class AuthControllerExtraTests : IDisposable
             new Claim("exp", exp),
         }, "test"));
 
-        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(user: principal) },
         };

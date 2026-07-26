@@ -1,5 +1,4 @@
 using Microsoft.Extensions.DependencyInjection;
-using NodePilot.Cli;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Auth;
 using NodePilot.Cli.Settings;

@@ -5,7 +5,6 @@ using Moq;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
-using NodePilot.Engine;
 using NodePilot.Engine.Tests.Helpers;
 using Xunit;
 
@@ -42,7 +41,7 @@ public class WorkflowEngineRunningNotificationTests
         ]);
         var (db, sp, _) = TestDbContext.CreateWithScopedServices(registry);
         var notifier = new Mock<IExecutionNotifier>();
-        var engine = new WorkflowEngine(db, registry, NullLogger<WorkflowEngine>.Instance, sp, notifier.Object);
+        var engine = new WorkflowEngine(db, NullLogger<WorkflowEngine>.Instance, sp, notifier.Object);
 
         var workflow = new Workflow
         {

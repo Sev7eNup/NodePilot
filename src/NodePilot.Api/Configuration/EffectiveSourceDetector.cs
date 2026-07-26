@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration.CommandLine;
 using Microsoft.Extensions.Configuration.EnvironmentVariables;
 using Microsoft.Extensions.Configuration.Json;
-using Microsoft.Extensions.Configuration.UserSecrets;
 
 namespace NodePilot.Api.Configuration;
 

@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using NodePilot.Api.Controllers;
 
 namespace NodePilot.Api.Security;

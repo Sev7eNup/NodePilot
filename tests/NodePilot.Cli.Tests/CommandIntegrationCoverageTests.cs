@@ -1,5 +1,4 @@
 using FluentAssertions;
-using NodePilot.Cli;
 using NodePilot.Cli.Tests.Infra;
 using Spectre.Console;
 using Spectre.Console.Testing;

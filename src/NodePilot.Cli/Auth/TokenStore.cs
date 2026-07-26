@@ -84,7 +84,4 @@ public sealed class StoredSession
     public Guid UserId { get; set; }
     public string Role { get; set; } = "";
     public DateTime ExpiresAt { get; set; }
-
-    public bool IsExpired(TimeSpan? skew = null)
-        => DateTime.UtcNow >= ExpiresAt - (skew ?? TimeSpan.FromMinutes(1));
 }

@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net;
-using System.Net.Http;
 using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;

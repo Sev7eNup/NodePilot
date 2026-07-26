@@ -1,5 +1,4 @@
 using System.Data.Common;
-using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;

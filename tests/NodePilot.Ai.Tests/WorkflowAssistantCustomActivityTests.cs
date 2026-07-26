@@ -1,7 +1,5 @@
-using NodePilot.Ai;
 using System.Text.Json;
 using FluentAssertions;
-using Microsoft.Extensions.Options;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
 using NodePilot.TestCommons;

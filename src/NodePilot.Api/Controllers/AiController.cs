@@ -4,9 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using NodePilot.Api.Ai;
 using NodePilot.Ai;
-using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
-using NodePilot.Api.Dtos;
 using NodePilot.Api.Telemetry;
 using NodePilot.Core.Telemetry;
 

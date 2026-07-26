@@ -1,8 +1,6 @@
 using System.Text;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using NodePilot.Core.Models;
-using NodePilot.Data;
 using NodePilot.TestCommons;
 using Xunit;
 

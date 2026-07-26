@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using NodePilot.Data;
 using Xunit;
 
 namespace NodePilot.Data.Tests;

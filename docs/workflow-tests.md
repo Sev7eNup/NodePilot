@@ -68,7 +68,7 @@ JSON-Quellen: [scripts/test-runbooks/](../scripts/test-runbooks/). Live-Installa
 ## Coverage-Matrix
 
 ### Activities (24/24)
-Alle in [TriggerActivityTypes.cs](../src/NodePilot.Core/Constants/TriggerActivityTypes.cs)+`IActivityExecutor`-Implementations registrierten Activities sind abgedeckt:
+Alle in [ActivityCatalog.cs](../src/NodePilot.Core/Activities/ActivityCatalog.cs)+`IActivityExecutor`-Implementations registrierten Activities sind abgedeckt:
 
 `runScript` · `fileOperation` · `folderOperation` · `fileHash` · `zipOperation` · `serviceManagement` · `registryOperation` · `wmiQuery` · `startProgram` · `powerManagement` · `scheduledTask` · `waitForCondition` · `restApi` · `sql` · `emailNotification` · `delay` · `junction` · `forEach` · `startWorkflow` · `returnData` · `xmlQuery` · `jsonQuery` · `log` · `decision`
 

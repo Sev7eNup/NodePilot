@@ -9,7 +9,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
@@ -144,7 +143,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
         var cfg = NewConfig();
         var key = new TestJwtKeyProvider();
         var issuer = new AuthSessionIssuer(cfg, key, NoopAuditWriter.Instance);
-        var controller = new AuthController(_db, cfg, NoopAuditWriter.Instance, key, issuer);
+        var controller = new AuthController(_db, cfg, NoopAuditWriter.Instance, issuer);
 
         // Build a ClaimsPrincipal as if this caller already has a valid token; the refresh
         // endpoint reads NameIdentifier from User to find the row.
@@ -191,7 +190,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
         var cfg = NewConfig();
         var key = new TestJwtKeyProvider();
         var issuer = new AuthSessionIssuer(cfg, key, NoopAuditWriter.Instance);
-        var controller = new AuthController(_db, cfg, NoopAuditWriter.Instance, key, issuer);
+        var controller = new AuthController(_db, cfg, NoopAuditWriter.Instance, issuer);
 
         var refreshClaims = new ClaimsPrincipal(new ClaimsIdentity(new[]
         {
@@ -235,7 +234,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
             new Claim(ClaimTypes.Name, @"FIRMA\alice"),
         }, authenticationType: "NTLM", ClaimTypes.Name, ClaimTypes.Role));
 
-        var controller = new AuthController(_db, cfg, audit, key, issuer,
+        var controller = new AuthController(_db, cfg, audit, issuer,
             ldapAuthenticator: null, externalUserMapper: mapper,
             ldapOptions: ldapMonitor, windowsOptions: winMonitor)
         {
@@ -271,7 +270,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
             new Claim(ClaimTypes.Name, @"FIRMA\alice"),
         }, authenticationType: "NTLM", ClaimTypes.Name, ClaimTypes.Role));
 
-        var controller = new AuthController(_db, cfg, audit, key, issuer,
+        var controller = new AuthController(_db, cfg, audit, issuer,
             ldapAuthenticator: null, externalUserMapper: mapper,
             ldapOptions: ldapMonitor, windowsOptions: winMonitor)
         {
@@ -316,7 +315,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
                 ["S-1-5-21-1-1-1-9999"]),
         };
 
-        var controller = new AuthController(_db, cfg, audit, key, issuer,
+        var controller = new AuthController(_db, cfg, audit, issuer,
             ldapAuthenticator: null, externalUserMapper: mapper,
             ldapOptions: ldapMonitor, windowsOptions: winMonitor,
             directoryAdapter: directory)
@@ -374,7 +373,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
         var mapper = new ExternalUserMapper(_db, ldapMonitor, audit,
             new MemoryCache(new MemoryCacheOptions()), NullLogger<ExternalUserMapper>.Instance);
 
-        var controller = new AuthController(_db, cfg, audit, key, issuer,
+        var controller = new AuthController(_db, cfg, audit, issuer,
             ldapAuthenticator: ldapAuth, externalUserMapper: mapper, ldapOptions: ldapMonitor)
         {
             ControllerContext = new ControllerContext { HttpContext = NewHttpContext() },
@@ -423,7 +422,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
         var mapper = new ExternalUserMapper(_db, ldapMonitor, audit,
             new MemoryCache(new MemoryCacheOptions()), NullLogger<ExternalUserMapper>.Instance);
 
-        var controller = new AuthController(_db, cfg, audit, key, issuer,
+        var controller = new AuthController(_db, cfg, audit, issuer,
             ldapAuthenticator: ldapAuth, externalUserMapper: mapper, ldapOptions: ldapMonitor)
         {
             ControllerContext = new ControllerContext { HttpContext = NewHttpContext() },
@@ -457,7 +456,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
         var mapper = new ExternalUserMapper(_db, monitor, audit,
             new MemoryCache(new MemoryCacheOptions()), NullLogger<ExternalUserMapper>.Instance);
         var throttle = new ExternalLoginThrottle(_db);
-        var controller = new AuthController(_db, cfg, audit, key, issuer,
+        var controller = new AuthController(_db, cfg, audit, issuer,
             ldapAuthenticator: authenticator,
             externalUserMapper: mapper,
             ldapOptions: monitor,
@@ -523,7 +522,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
         var mapper = new ExternalUserMapper(_db, ldapMonitor, audit,
             new MemoryCache(new MemoryCacheOptions()), NullLogger<ExternalUserMapper>.Instance);
 
-        var controller = new AuthController(_db, cfg, audit, key, issuer,
+        var controller = new AuthController(_db, cfg, audit, issuer,
             ldapAuthenticator: ldapAuth, externalUserMapper: mapper, ldapOptions: ldapMonitor)
         {
             ControllerContext = new ControllerContext { HttpContext = NewHttpContext() },

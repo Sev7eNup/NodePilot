@@ -1,9 +1,7 @@
-using NodePilot.Ai;
 using NodePilot.TestCommons;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
-using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace NodePilot.Ai.Tests;

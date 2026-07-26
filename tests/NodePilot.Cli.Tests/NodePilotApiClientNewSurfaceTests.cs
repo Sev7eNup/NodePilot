@@ -1,4 +1,3 @@
-using System.Net;
 using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Cli.Api;

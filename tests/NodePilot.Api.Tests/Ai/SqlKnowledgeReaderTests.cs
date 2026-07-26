@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NodePilot.Api.Ai;
 using NodePilot.Api.Services.DbAdmin;
-using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Security;
@@ -27,8 +26,7 @@ public class SqlKnowledgeReaderTests
         public IServiceScope CreateScope() => new Scope(_db);
         private sealed class Scope : IServiceScope
         {
-            private readonly NodePilotDbContext _db;
-            public Scope(NodePilotDbContext db) { _db = db; ServiceProvider = new Provider(db); }
+            public Scope(NodePilotDbContext db) => ServiceProvider = new Provider(db);
             public IServiceProvider ServiceProvider { get; }
             public void Dispose() { }
         }

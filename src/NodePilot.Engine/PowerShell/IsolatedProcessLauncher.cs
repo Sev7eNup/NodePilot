@@ -42,7 +42,6 @@ internal static partial class IsolatedProcessLauncher
     private const uint CREATE_NO_WINDOW = 0x08000000;
     private const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
     private const uint STARTF_USESTDHANDLES = 0x00000100;
-    private const uint HANDLE_FLAG_INHERIT = 0x00000001;
 
     // --- CreateFile ---
     private const uint GENERIC_READ = 0x80000000;
@@ -282,10 +281,6 @@ internal static partial class IsolatedProcessLauncher
         uint dwCreationDisposition,
         uint dwFlagsAndAttributes,
         IntPtr hTemplateFile);
-
-    [LibraryImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool SetHandleInformation(IntPtr hObject, uint dwMask, uint dwFlags);
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

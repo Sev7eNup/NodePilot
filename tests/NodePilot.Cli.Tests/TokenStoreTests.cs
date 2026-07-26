@@ -70,12 +70,4 @@ public sealed class TokenStoreTests : IDisposable
         store.Delete("dev");
         File.Exists(store.PathFor("dev")).Should().BeFalse();
     }
-
-    [Fact]
-    public void IsExpired_RespectsSkew()
-    {
-        var session = new StoredSession { ExpiresAt = DateTime.UtcNow.AddSeconds(30) };
-        session.IsExpired(skew: TimeSpan.FromSeconds(10)).Should().BeFalse();
-        session.IsExpired(skew: TimeSpan.FromSeconds(60)).Should().BeTrue();
-    }
 }

@@ -82,7 +82,7 @@ public class RevokedTokensCleanupServiceTests
     [Fact]
     public async Task SweepOnceAsync_EmptyTable_ReturnsZero()
     {
-        var (db, factory, conn) = CreateEnv();
+        var (_, factory, conn) = CreateEnv();
         try
         {
             var deleted = await NewService(factory).SweepOnceAsync(CancellationToken.None);

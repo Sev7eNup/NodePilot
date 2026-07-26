@@ -1,6 +1,4 @@
-using System.Linq;
 using FluentAssertions;
-using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using NodePilot.Mcp.Tests.Infra;
 using WireMock.RequestBuilders;

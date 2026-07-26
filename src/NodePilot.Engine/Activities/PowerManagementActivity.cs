@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using NodePilot.Core.Interfaces;
-using NodePilot.Core.Models;
 using NodePilot.Engine.PowerShell;
 using NodePilot.Engine.Security;
 

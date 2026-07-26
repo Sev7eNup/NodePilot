@@ -100,13 +100,4 @@ public class PowerShellEngineFactory
         throw new InvalidOperationException(
             "Process-isolated execution requested but no PowerShell host (pwsh.exe / powershell.exe) is available.");
     }
-
-    public IReadOnlyList<string> GetAvailableEngines()
-    {
-        var engines = new List<string> { "auto" };
-        if (_pwsh.IsAvailable) engines.Add("pwsh");
-        if (_windowsPowerShell.IsAvailable) engines.Add("powershell");
-        engines.Add("runspace");
-        return engines;
-    }
 }

@@ -1,7 +1,6 @@
 using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Core.Interfaces;
-using NodePilot.Core.Models;
 using NodePilot.Engine.Execution;
 using Xunit;
 

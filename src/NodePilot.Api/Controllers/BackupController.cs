@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using NodePilot.Api.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Services.Backup;
 using NodePilot.Core.Audit;

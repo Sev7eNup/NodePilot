@@ -2,7 +2,6 @@ using FluentAssertions;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
-using NodePilot.Data;
 using NodePilot.TestCommons;
 using Xunit;
 

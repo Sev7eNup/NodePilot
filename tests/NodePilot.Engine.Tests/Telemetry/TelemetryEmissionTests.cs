@@ -6,7 +6,6 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
-using NodePilot.Engine;
 using NodePilot.Engine.Tests.Helpers;
 using Xunit;
 using NodePilot.Core.Telemetry;
@@ -57,7 +56,7 @@ public class TelemetryEmissionTests
         (_db, var sp, _) = TestDbContext.CreateWithScopedServices(_registry);
         var logger = NullLogger<WorkflowEngine>.Instance;
         var notifier = new Mock<IExecutionNotifier>();
-        _engine = new WorkflowEngine(_db, _registry, logger, sp, notifier.Object);
+        _engine = new WorkflowEngine(_db, logger, sp, notifier.Object);
     }
 
     private static Workflow CreateWorkflow(string definitionJson) => new()

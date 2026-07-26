@@ -130,13 +130,21 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
             "missing section must produce a deterministic 'no value' ETag distinct from any real section");
     }
 
+    /// <summary>Seeds restart-marker / last-save meta through the live save path.</summary>
+    private static void SaveSection(
+        RuntimeOverridesWriter writer, string section, DateTimeOffset now,
+        string savedBy = "admin", string[]? restartFor = null)
+        => writer.TryUpdateSectionAtomic(
+            section, writer.ComputeSectionEtag(section), new JsonObject(),
+            restartFor, savedBy, now);
+
     [Fact]
-    public void MarkRestartRequired_AccumulatesSections()
+    public void TryUpdateSectionAtomic_AccumulatesRestartSections()
     {
         var writer = NewWriter();
         var t0 = DateTimeOffset.UtcNow;
-        writer.MarkRestartRequired(new[] { "Smtp" }, t0);
-        writer.MarkRestartRequired(new[] { "Llm", "Smtp" /* duplicate */ }, t0.AddMinutes(5));
+        SaveSection(writer, "Smtp", t0, restartFor: new[] { "Smtp" });
+        SaveSection(writer, "Llm", t0.AddMinutes(5), restartFor: new[] { "Llm", "Smtp" /* duplicate */ });
 
         var status = writer.ReadStatus();
         status.RestartRequired.Should().BeTrue();
@@ -149,7 +157,7 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
     public void ClearRestartMarker_RemovesPendingState()
     {
         var writer = NewWriter();
-        writer.MarkRestartRequired(new[] { "Smtp" }, DateTimeOffset.UtcNow);
+        SaveSection(writer, "Smtp", DateTimeOffset.UtcNow, restartFor: new[] { "Smtp" });
         writer.ReadStatus().RestartRequired.Should().BeTrue();
 
         writer.ClearRestartMarker();
@@ -187,7 +195,7 @@ public sealed class RuntimeOverridesWriterTests : IDisposable
     public void ReadStatus_RecordsLastSaveMetadata()
     {
         var writer = NewWriter();
-        writer.RecordLastSave("admin@example.com", DateTimeOffset.UtcNow);
+        SaveSection(writer, "Smtp", DateTimeOffset.UtcNow, savedBy: "admin@example.com");
         var status = writer.ReadStatus();
         status.LastSavedBy.Should().Be("admin@example.com");
         status.LastSavedAt.Should().NotBeNull();
