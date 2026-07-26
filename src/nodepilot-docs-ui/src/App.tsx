@@ -5,7 +5,6 @@ import TopBar from './components/TopBar'
 import DocPage from './components/DocPage'
 import SearchModal from './components/SearchModal'
 import { availablePages } from './lib/content'
-import { CloseIcon } from './lib/icons'
 
 /** Reads the catch-all route segment (React Router's `*` "splat") and turns it into a
  *  single lookup key, e.g. `getting-started/introduction` or `cli`. */
@@ -46,38 +45,26 @@ export default function App() {
   const home = availablePages[0]?.path ?? 'getting-started/introduction'
 
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--color-surface)] text-[var(--color-on-surface)]">
-      <TopBar onOpenSearch={openSearch} onOpenMenu={() => setMenuOpen(true)} />
+    <div className="np-shell flex min-h-screen text-on-surface">
+      <Sidebar
+        current={current}
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        onOpenSearch={openSearch}
+      />
 
-      <div className="mx-auto flex w-full max-w-[1400px] flex-1">
-        {/* Desktop sidebar */}
-        <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-64 shrink-0 border-r border-[var(--color-outline-variant)] bg-[var(--color-surface-low)] px-3 py-4 lg:block">
-          <Sidebar current={current} />
-        </aside>
+      {/* Drawer backdrop — below the rail (z-40), above the sticky TopBar (z-20). */}
+      {menuOpen && (
+        <button
+          type="button"
+          aria-label="Navigation schließen"
+          onClick={() => setMenuOpen(false)}
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm lg:hidden"
+        />
+      )}
 
-        {/* Mobile drawer */}
-        {menuOpen && (
-          <div className="fixed inset-0 z-40 lg:hidden">
-            <div
-              className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-              onClick={() => setMenuOpen(false)}
-            />
-            <div className="absolute left-0 top-0 h-full w-80 max-w-[85vw] overflow-y-auto bg-[var(--color-surface-low)] p-4 shadow-xl">
-              <div className="mb-3 flex items-center justify-between">
-                <span className="text-sm font-semibold">Navigation</span>
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen(false)}
-                  className="grid h-8 w-8 place-items-center rounded-lg text-[var(--color-on-surface-variant)] hover:bg-[var(--color-surface-container)]"
-                  aria-label="Schließen"
-                >
-                  <CloseIcon />
-                </button>
-              </div>
-              <Sidebar current={current} onNavigate={() => setMenuOpen(false)} />
-            </div>
-          </div>
-        )}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <TopBar current={current} onOpenMenu={() => setMenuOpen(true)} />
 
         <main className="min-w-0 flex-1">
           <Routes>
@@ -85,13 +72,13 @@ export default function App() {
             <Route path="*" element={<Page />} />
           </Routes>
         </main>
+
+        <footer className="border-t border-outline-variant/60 px-6 py-5 text-center text-xs text-on-surface-variant">
+          NodePilot · agentless Workflow-Orchestrierung für Windows · {new Date().getFullYear()}
+        </footer>
       </div>
 
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
-
-      <footer className="border-t border-[var(--color-outline-variant)] bg-[var(--color-surface-low)] px-6 py-5 text-center text-xs text-[var(--color-on-surface-variant)]">
-        NodePilot · agentless Workflow-Orchestrierung für Windows · {new Date().getFullYear()}
-      </footer>
     </div>
   )
 }

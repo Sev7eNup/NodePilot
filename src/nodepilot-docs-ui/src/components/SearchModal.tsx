@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { allPages } from '../data/nav'
 import { contentMap } from '../lib/content'
-import { SearchIcon, CloseIcon, ArrowRightIcon } from '../lib/icons'
+import { ArrowRight, Close, Search } from '@carbon/icons-react'
 
 interface SearchModalProps {
   open: boolean
@@ -82,12 +82,14 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
       role="dialog"
       aria-label="Suche"
     >
+      {/* `np-card` carries the lit-plate treatment (and its own shadow in dark) — adding
+          a `shadow-2xl` utility here would be a second unlayered rule fighting it. */}
       <div
-        className="flex h-fit max-h-[60vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl border border-[var(--color-outline-variant)] bg-[var(--color-surface-lowest)] shadow-2xl"
+        className="np-card flex h-fit max-h-[60vh] w-full max-w-xl flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-3 border-b border-[var(--color-outline-variant)] px-4">
-          <SearchIcon className="h-5 w-5 text-[var(--color-on-surface-variant)]" />
+        <div className="flex items-center gap-3 border-b border-outline-variant px-4">
+          <Search size={20} className="shrink-0 text-on-surface-variant" />
           <input
             ref={inputRef}
             value={query}
@@ -105,21 +107,21 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
               }
             }}
             placeholder="Dokumentation durchsuchen…"
-            className="h-12 flex-1 bg-transparent text-base outline-none placeholder:text-[var(--color-on-surface-variant)]"
+            className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-on-surface-variant"
           />
           <button
             type="button"
             onClick={onClose}
-            className="grid h-7 w-7 place-items-center rounded-md text-[var(--color-on-surface-variant)] hover:bg-[var(--color-surface-container)]"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
             aria-label="Schließen"
           >
-            <CloseIcon className="h-4 w-4" />
+            <Close size={16} />
           </button>
         </div>
 
-        <ul className="np-scroll overflow-y-auto py-2">
+        <ul className="overflow-y-auto py-2">
           {results.length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-[var(--color-on-surface-variant)]">
+            <li className="px-4 py-6 text-center text-sm text-on-surface-variant">
               Keine Treffer für „{query}“.
             </li>
           )}
@@ -130,22 +132,22 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
                 onMouseEnter={() => setCursor(i)}
                 onClick={() => go(hit.path)}
                 className={`flex w-full items-start gap-3 px-4 py-2.5 text-left ${
-                  i === cursor ? 'bg-[var(--np-accent-soft)]' : 'hover:bg-[var(--color-surface-container)]'
+                  i === cursor ? 'bg-[var(--np-accent-soft)]' : 'hover:bg-surface-container'
                 }`}
               >
                 <div className="min-w-0 flex-1">
                   <div
                     className={`truncate text-sm font-medium ${
-                      i === cursor ? 'text-[var(--np-accent-text)]' : 'text-[var(--color-on-surface)]'
+                      i === cursor ? 'text-[var(--np-accent-text)]' : 'text-on-surface'
                     }`}
                   >
                     {hit.title}
                   </div>
-                  <div className="truncate text-xs text-[var(--color-on-surface-variant)]">
+                  <div className="truncate text-xs text-on-surface-variant">
                     {hit.snippet}
                   </div>
                 </div>
-                <ArrowRightIcon className="mt-1 h-3.5 w-3.5 shrink-0 text-[var(--color-on-surface-variant)]" />
+                <ArrowRight size={14} className="mt-1 shrink-0 text-on-surface-variant" />
               </button>
             </li>
           ))}

@@ -2,17 +2,19 @@ import { useEffect, useState } from 'react'
 
 type Theme = 'light' | 'dark'
 
+/**
+ * Light/dark toggle. The initial resolution (stored preference → OS preference) happens
+ * in the inline pre-hydration script in `index.html`, which has already stamped
+ * `html.dark` before first paint; seeding from that class here keeps one resolution rule
+ * instead of two that can drift.
+ */
 export function useTheme() {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === 'undefined') return 'light'
-    const stored = localStorage.getItem('np-docs-theme') as Theme | null
-    if (stored) return stored
-    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  })
+  const [theme, setTheme] = useState<Theme>(() =>
+    document.documentElement.classList.contains('dark') ? 'dark' : 'light',
+  )
 
   useEffect(() => {
-    const root = document.documentElement
-    root.classList.toggle('dark', theme === 'dark')
+    document.documentElement.classList.toggle('dark', theme === 'dark')
     localStorage.setItem('np-docs-theme', theme)
   }, [theme])
 

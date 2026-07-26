@@ -4,9 +4,24 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="./favicon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#c5620b" />
+    <meta name="theme-color" content="#f8f9fb" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111216" media="(prefers-color-scheme: dark)" />
     <title>NodePilot Docs</title>
     <meta name="description" content="Agentless Workflow-Orchestrierung für Windows-Umgebungen via WinRM." />
+    <!-- Resolve the theme BEFORE first paint, otherwise dark-mode users get a white flash.
+         Must stay a classic (non-module) inline script — a module would be deferred and
+         the flash would return. `useTheme` seeds its state from the class this sets, so
+         this is the single resolution point. -->
+    <script>
+      try {
+        var t =
+          localStorage.getItem('np-docs-theme') ||
+          (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.classList.toggle('dark', t === 'dark');
+      } catch (e) {
+        /* private mode / storage disabled — fall through to the light default */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

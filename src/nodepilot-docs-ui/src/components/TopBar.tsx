@@ -1,94 +1,51 @@
-import { Link } from 'react-router'
-import { useTheme } from '../lib/useTheme'
-import { SunIcon, MoonIcon, SearchIcon, MenuIcon } from '../lib/icons'
-import logoLight from '../assets/logo-light.png'
-import logoDark from '../assets/logo-dark.png'
+import { ChevronRight, Menu } from '@carbon/icons-react'
+import { groupOf, pageByPath } from '../data/nav'
 
 interface TopBarProps {
-  onOpenSearch: () => void
+  /** Active content path, e.g. "getting-started/introduction". */
+  current: string
   onOpenMenu: () => void
 }
 
-export default function TopBar({ onOpenSearch, onOpenMenu }: TopBarProps) {
-  const { theme, toggle } = useTheme()
+/**
+ * Slim chrome over the content column. Brand, search, theme and repo link all live in
+ * the sidebar (as in the app shell), so this only carries the mobile menu trigger and
+ * the breadcrumb.
+ */
+export default function TopBar({ current, onOpenMenu }: TopBarProps) {
+  const page = pageByPath(current)
+  const group = groupOf(current)
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-[var(--color-outline-variant)] bg-[var(--color-surface)]/85 px-4 backdrop-blur-md">
+    <header className="sticky top-0 z-20 flex h-12 shrink-0 items-center gap-2 border-b border-outline-variant/40 bg-surface-low/60 px-3 backdrop-blur-sm sm:px-4 lg:px-6">
       <button
         type="button"
         onClick={onOpenMenu}
-        className="grid h-9 w-9 place-items-center rounded-lg text-[var(--color-on-surface-variant)] hover:bg-[var(--color-surface-container)] lg:hidden"
+        className="-ml-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-on-surface-variant transition-colors hover:bg-surface-highest hover:text-on-surface lg:hidden"
         aria-label="Navigation öffnen"
       >
-        <MenuIcon />
+        <Menu size={18} />
       </button>
 
-      <Link to="/" className="flex items-center gap-2.5">
-        <Logo theme={theme} />
-        <span className="text-base font-bold tracking-tight">NodePilot</span>
-        <span className="hidden text-xs font-normal text-[var(--color-on-surface-variant)] sm:inline">
-          · Docs
-        </span>
-      </Link>
-
-      <div className="flex-1" />
-
-      <button
-        type="button"
-        onClick={onOpenSearch}
-        className="flex h-9 items-center gap-2 rounded-lg border border-[var(--color-outline-variant)] bg-[var(--color-surface-lowest)] px-3 text-sm text-[var(--color-on-surface-variant)] transition-colors hover:border-[var(--np-accent-ring)] hover:text-[var(--color-on-surface)] sm:w-64 sm:justify-between"
-      >
-        <span className="flex items-center gap-2">
-          <SearchIcon className="h-4 w-4" />
-          <span className="hidden sm:inline">Suchen…</span>
-        </span>
-        <kbd className="hidden rounded border border-[var(--color-outline-variant)] bg-[var(--color-surface-container)] px-1.5 py-0.5 font-mono text-[0.65rem] sm:inline">
-          Strg K
-        </kbd>
-      </button>
-
-      <button
-        type="button"
-        onClick={toggle}
-        className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--color-outline-variant)] text-[var(--color-on-surface-variant)] transition-colors hover:border-[var(--np-accent-ring)] hover:text-[var(--color-on-surface)]"
-        aria-label={theme === 'dark' ? 'Light-Modus' : 'Dark-Modus'}
-        title={theme === 'dark' ? 'Light-Modus' : 'Dark-Modus'}
-      >
-        {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
-      </button>
-
-      <a
-        href="https://github.com/Sev7eNup/NodePilot"
-        target="_blank"
-        rel="noreferrer"
-        className="hidden h-9 w-9 place-items-center rounded-lg border border-[var(--color-outline-variant)] text-[var(--color-on-surface-variant)] transition-colors hover:border-[var(--np-accent-ring)] hover:text-[var(--color-on-surface)] sm:grid"
-        aria-label="GitHub-Repository"
-        title="GitHub"
-      >
-        <GithubGlyph />
-      </a>
+      <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-sm">
+        <span className="shrink-0 text-on-surface-variant">Docs</span>
+        {group && (
+          // The group crumb is dropped whole on phones — the page title matters more there.
+          <span className="hidden shrink-0 items-center gap-1.5 sm:flex">
+            <ChevronRight size={13} className="shrink-0 text-outline/70" />
+            <span className="text-on-surface-variant">{group}</span>
+          </span>
+        )}
+        {page && (
+          <>
+            <ChevronRight size={13} className="shrink-0 text-outline/70" />
+            {/* Not an <h1>: the rendered article already carries the page's markdown H1. */}
+            <span aria-current="page" className="truncate font-semibold text-on-surface">
+              {page.title}
+            </span>
+          </>
+        )}
+      </nav>
     </header>
-  )
-}
-
-function Logo({ theme }: Readonly<{ theme: 'light' | 'dark' }>) {
-  // NodePilot brand mark — the workflow-graph app icon, matched to the docs accent
-  // like the main app's BrandLogo: blue in light mode, orange in dark mode.
-  return (
-    <img
-      src={theme === 'dark' ? logoDark : logoLight}
-      alt=""
-      aria-hidden="true"
-      className="h-7 w-7 select-none"
-      draggable={false}
-    />
-  )
-}
-
-function GithubGlyph() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden="true">
-      <path d="M12 .5C5.37.5 0 5.78 0 12.29c0 5.21 3.44 9.62 8.21 11.18.6.11.82-.25.82-.56v-2.02c-3.34.71-4.04-1.59-4.04-1.59-.55-1.37-1.34-1.74-1.34-1.74-1.09-.73.08-.72.08-.72 1.21.08 1.85 1.22 1.85 1.22 1.07 1.8 2.81 1.28 3.5.98.11-.76.42-1.28.76-1.58-2.67-.3-5.47-1.31-5.47-5.83 0-1.29.47-2.34 1.23-3.17-.12-.3-.53-1.51.12-3.15 0 0 1.01-.32 3.3 1.21a11.6 11.6 0 0 1 6 0c2.29-1.53 3.3-1.21 3.3-1.21.65 1.64.24 2.85.12 3.15.77.83 1.23 1.88 1.23 3.17 0 4.53-2.81 5.53-5.49 5.82.43.37.81 1.1.81 2.22v3.29c0 .31.22.68.83.56A12.04 12.04 0 0 0 24 12.29C24 5.78 18.63.5 12 .5z" />
-    </svg>
   )
 }
