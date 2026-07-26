@@ -16,7 +16,7 @@ NodePilot lässt sich auf drei Arten betreiben. Sie unterscheiden sich nicht im 
 
 - **Dev** — nur zum Entwickeln. Hot-Reload im Frontend, Backend auf Port 5000, SPA auf 5173. Kein Dienst, kein Autostart.
 - **Server-Deployment** — sobald **mehrere Personen** damit arbeiten, Workflows **von außen** angestoßen werden (Webhooks, Fremdsysteme) oder Ausfallsicherheit zählt.
-- **Desktop-App** — wenn **eine Person auf einer Maschine** automatisieren will und man weder Datenbank noch Zertifikate administrieren möchte.
+- **Desktop-App** — wenn **eine Person auf einer Maschine** automatisieren will und man weder eine Datenbank bereitstellen noch PKI verwalten möchte. Beides *gibt* es trotzdem: gebündeltes PostgreSQL 16 und ein self-signed Loopback-Zertifikat, beide vom Installer erzeugt und nie von Hand gepflegt. Der Preis dafür: kein systemweiter Trust, ein normaler Browser **darf** auf der URL warnen — unterstützter Zugang ist die Electron-Shell (siehe [Desktop-App](./desktop)).
 
 ## Server vs. Desktop — was im Alltag wirklich anders ist
 
