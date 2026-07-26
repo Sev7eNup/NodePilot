@@ -60,7 +60,7 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
 - **Gated destructive:** `test_step` (führt eine echte Activity aus; Config-Override zusätzlich nur mit Edit + eigenem Lock), delete/force-unlock/cancel-all
 - **Executions:** list/get/steps/paused-steps, `execute_workflow`, cancel/retry/resume, `trigger_external_workflow`
 - **Telemetrie:** dashboard, coverage/step-health/step-stats, `query_audit_log` (Admin), `get_support_diagnostics` (Admin)
-- **DB / text2sql (Admin, nur lesend):** `list_db_tables` (Schema-Katalog; Secret-Spalten hidden, `GlobalVariable.Value` maskiert), `get_db_info` (Provider + Row-/Timeout-Limits), `run_readonly_sql` (ein Read-Only-Statement, Server erzwingt Keyword-Whitelist + Rollback; kein Write-Tool). NL→SQL macht der Agent.
+- **DB / text2sql (Admin, nur lesend):** `list_db_tables` (Schema-Katalog; Secret-Spalten hidden, `GlobalVariable.Value` maskiert), `get_db_info` (Provider + Row-/Timeout-Limits), `run_readonly_sql` (ein Read-Only-Statement, Server erzwingt Keyword-Whitelist + Rollback; kein Write-Tool). Secret-Spalten sind auch über Raw-SQL unerreichbar: wer eine nennt, bekommt `protected_column`; ein `SELECT *` liefert sie als `***`. NL→SQL macht der Agent.
 - **Supporting:** Machines, Credentials, Globals (Secrets nie ausgegeben)
 - **Alerting:** `list/get/create/update/test_fire_alerting_rule` + `list_alerting_deliveries` (Ledger) (+ gated `delete_alerting_rule`; Route-Secrets nie ausgegeben)
 - **System-Alerts (ADR 0008):** `get_system_alert_catalog` + `list/get/create/update/enable/disable/test_fire_system_alert_policy` (+ gated `delete_system_alert_policy`)

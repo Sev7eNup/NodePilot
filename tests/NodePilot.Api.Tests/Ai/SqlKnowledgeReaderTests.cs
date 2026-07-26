@@ -45,7 +45,7 @@ public class SqlKnowledgeReaderTests
         var metadata = new DbAdminMetadataService(new FakeScopeFactory(db));
         var executor = new DbAdminQueryExecutor(db, new StaticOptionsMonitor<DbAdminOptions>(new DbAdminOptions()));
         var redactor = new OutputRedactor(null);
-        return new SqlKnowledgeReader(metadata, executor, redactor);
+        return new SqlKnowledgeReader(metadata, executor, redactor, new DbAdminSecretColumns(metadata));
     }
 
     [Fact]

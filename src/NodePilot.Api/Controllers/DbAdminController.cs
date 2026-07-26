@@ -26,6 +26,9 @@ namespace NodePilot.Api.Controllers;
 /// - Entity-level capabilities (canUpdate, canDelete) are enforced server-side.
 /// - Hidden columns (PasswordHash, EncryptedPassword) are never returned.
 /// - Masked columns (GlobalVariable.Value for secrets) are returned as "***".
+/// - Raw SQL cannot circumvent either: <see cref="DbAdminSecretColumns"/> refuses read statements
+///   that name a protected column and masks protected result columns, so the row browser, the
+///   query pane, the CLI and the MCP <c>run_readonly_sql</c> tool all enforce one contract.
 /// - PK columns and read-only columns reject PATCH.
 /// - User entity enforces last-admin guard and self-demote block.
 /// - Audit entries are committed in the SAME SaveChangesAsync as the mutation (atomic).
@@ -43,18 +46,21 @@ public class DbAdminController : ControllerBase
     private readonly NodePilotDbContext _db;
     private readonly DbAdminMetadataService _meta;
     private readonly DbAdminQueryExecutor _executor;
+    private readonly DbAdminSecretColumns _secretColumns;
     private readonly IAuditStager _stager;
     private readonly IMemoryCache _userStateCache;
     private readonly ILogger<DbAdminController> _logger;
 
     public DbAdminController(NodePilotDbContext db, DbAdminMetadataService meta,
         DbAdminQueryExecutor executor,
+        DbAdminSecretColumns secretColumns,
         IAuditStager stager,
         IMemoryCache userStateCache, ILogger<DbAdminController> logger)
     {
         _db = db;
         _meta = meta;
         _executor = executor;
+        _secretColumns = secretColumns;
         _stager = stager;
         _userStateCache = userStateCache;
         _logger = logger;
@@ -469,6 +475,16 @@ public class DbAdminController : ControllerBase
             return BadRequest(new DbAdminQueryError("multiple_statements_not_allowed",
                 "Read mode accepts exactly one SQL statement. Switch to write mode to execute batches.", null));
 
+        // Naming a hidden column defeats the result-column mask below (aliases and expressions lose
+        // lineage), so those reads are refused outright — the same contract the row browser and the
+        // text2sql reader enforce. Write mode stays open: rotating a PasswordHash is a legitimate
+        // admin recovery action, and it is already gated by config flag + confirmation header +
+        // fail-closed audit.
+        if (mode == "read" && _secretColumns.ReferencesProtectedColumn(req.Sql))
+            return BadRequest(new DbAdminQueryError("protected_column",
+                "Query references a protected column. Secret columns (password hashes, encrypted "
+                + "credentials, global-variable values) cannot be read through raw SQL.", null));
+
         if (mode == "write")
         {
             if (!_executor.Options.AllowWriteQueries)
@@ -566,6 +582,9 @@ public class DbAdminController : ControllerBase
             rowsAffected: result.RowsAffected,
             reason: null,
             ct);
+
+        // Second layer: a wildcard select names no protected identifier but still returns one.
+        _secretColumns.MaskRows(result.Columns.Select(c => c.Name).ToList(), result.Rows);
 
         return Ok(new DbAdminQueryResponse(
             Columns: result.Columns,

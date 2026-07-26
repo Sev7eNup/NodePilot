@@ -765,12 +765,13 @@ NodePilot ships two **opt-in** AI helpers that work against **OpenAI-compatible 
 
 ### Recommended local models
 
-| Model | Size | Strength | Min RAM |
-|---|---|---|---|
-| **Gemma 4 31B** | 19 GB | Best all-round code + reasoning quality in class | 32 GB |
-| Gemma 4 26B A4B | 15 GB | MoE (4B active) — fast inference, high throughput at low compute | 24 GB |
-| Qwen 3.6 27B | 16 GB | Excellent structured / JSON output + reliable tool-calling | 32 GB |
-| Qwen 3.6 35B A3B | 20 GB | MoE (3B active) — largest total params, top JSON/tool-calling at low active cost | 32 GB |
+| Model | Ollama tag | Size | Strength | Min RAM |
+|---|---|---|---|---|
+| **Gemma 4 31B** | `gemma4:31b` | 20 GB | Best all-round code + reasoning quality in class | 32 GB |
+| Gemma 4 26B | `gemma4:26b` | 18 GB | MoE (4B active) — fast inference, high throughput at low compute | 24 GB |
+| Qwen 3.6 27B | `qwen3.6:27b` | 17 GB | Excellent structured / JSON output + reliable tool-calling | 32 GB |
+| Qwen 3.6 35B | `qwen3.6:35b` | 24 GB | Largest total params, top JSON/tool-calling | 32 GB |
+| Gemma 4 E4B | `gemma4:e4b` | 9.6 GB | Edge-sized — the shipped `appsettings.json` default | 16 GB |
 
 ### Configuration
 
@@ -780,7 +781,7 @@ NodePilot ships two **opt-in** AI helpers that work against **OpenAI-compatible 
     "Enabled": false,
     "BaseUrl": "http://localhost:11434/v1",   // Ollama default
     "ApiKey": null,                           // env var Llm__ApiKey recommended
-    "Model": "qwen3.6-coder:27b",
+    "Model": "qwen3.6:27b",
     "MaxTokens": 4096,
     "TimeoutSeconds": 90,
     "EnableToolCalling": false,              // enable chat read-only tool-calling

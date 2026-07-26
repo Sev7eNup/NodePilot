@@ -11,7 +11,11 @@ internal static class DbAdminReadOnlySqlGuard
 {
     private static readonly HashSet<string> DangerousKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
-        "INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT", "REPLACE",
+        // REPLACE is deliberately absent: it is a standard string function on every supported
+        // backend (`SELECT REPLACE(Name,'a','b')`). The MySQL `REPLACE INTO` write form it would
+        // guard against is not a supported backend, is already blocked by the INTO token below,
+        // and could never pass FirstKeyword/IsReadOnlyKeyword as a leading keyword either.
+        "INSERT", "UPDATE", "DELETE", "MERGE", "UPSERT",
         "CREATE", "ALTER", "DROP", "TRUNCATE", "RENAME",
         "GRANT", "REVOKE", "DENY",
         "EXEC", "EXECUTE", "CALL", "DO",

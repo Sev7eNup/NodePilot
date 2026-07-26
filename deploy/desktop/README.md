@@ -168,13 +168,19 @@ mirrors over `app\Modules` or `app\wwwroot`, so the PowerShell modules and SPA s
 
 Honest inventory so nobody assumes more coverage than exists:
 
-- **No automated tests for the Electron module.** Certificate pinning, the setup-token IPC guard and
-  the navigation/download/permission blocking in `src/nodepilot-desktop` are verified only by hand.
-  The backend half of the feature *is* unit-tested (`DeploymentModeTests`,
+- **The Electron module's pure logic is unit-tested; its Electron-runtime behaviour is not.**
+  `npm run test:run` in `src/nodepilot-desktop` (vitest, node environment) covers `config.ts`
+  (desktop.json handoff validation — origin, fingerprint, serviceName injection barrier) and
+  `security.ts` (certificate-pin match/mismatch/parse-failure, non-loopback rejection, permission
+  and download blocking, navigation containment). What still needs a real Electron process — the
+  setup-token IPC guard, the elevated `restartBackend` path, window lifecycle — is verified only by
+  hand. The backend half of the feature *is* unit-tested (`DeploymentModeTests`,
   `DatabaseTlsBootValidatorTests`, `DatabaseReadinessGateTests`, `KestrelHttpsConfiguratorTests`).
-- **No CI coverage** for `src/nodepilot-desktop` or `deploy/desktop/*`. A `typecheck` script exists
-  but nothing invokes it; there is no lint config. `Test-DeploymentTemplates.ps1` validates the
-  server templates only — `appsettings.Desktop.json.template` is never parsed by any check.
+- **No CI coverage for `deploy/desktop/*`.** The `desktop` CI job runs typecheck + vitest for
+  `src/nodepilot-desktop`, and the nightly script adds a `desktop-vitest` suite; there is still no
+  lint config, and `Test-DeploymentTemplates.ps1` validates the server templates only —
+  `appsettings.Desktop.json.template` is never parsed by any check. The `desktop` job also carries
+  no `npm audit` gate: the @electron-forge dev tree currently has 31 open advisories.
 - **The installer is unsigned.** SmartScreen warns on first launch until an Authenticode certificate
   is wired into the build.
 - **Not exercised end-to-end:** upgrade with a forced health failure (the rollback path),

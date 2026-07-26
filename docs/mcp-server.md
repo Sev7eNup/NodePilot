@@ -123,8 +123,10 @@ secrets protected, validate-before-save) · `create_workflow` · `duplicate_work
 `list_db_tables` · `get_db_info` · `run_readonly_sql`. Schema discovery + single read-only SQL
 statement against the NodePilot App-DB (the agent does the NL→SQL translation). Read keyword
 whitelist + rollback enforced server-side; no write tool. `list_db_tables` hides secret columns
-(`PasswordHash`/`EncryptedPassword`), masks `GlobalVariable.Value`; `run_readonly_sql` runs raw
-SQL, so do NOT select those secret columns.
+(`PasswordHash`/`EncryptedPassword`), masks `GlobalVariable.Value`. `run_readonly_sql` cannot reach
+them either: naming a protected column rejects the statement (`protected_column`), and a wildcard
+select returns those columns as `***` — the same `DbAdminSecretColumns` contract the row browser
+and the in-app text2sql reader enforce, so no secret ever lands in the agent's context.
 
 ### Supporting resources (secrets never surfaced)
 `list_machines` · `get_machine` · `create_machine` · `update_machine` · `test_machine` ·

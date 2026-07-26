@@ -1,15 +1,16 @@
 <#
 .SYNOPSIS
-  NodePilot nightly test run: backend (dotnet test), frontend units (vitest), E2E (Playwright).
+  NodePilot nightly test run: backend (dotnet test), frontend units (vitest), desktop-shell
+  units (vitest), E2E (Playwright).
 
 .DESCRIPTION
-  Runs all three automated suites against the *currently checked-out* working tree and writes
+  Runs all four automated suites against the *currently checked-out* working tree and writes
   a timestamped report plus per-suite logs. Exits non-zero if any suite fails, so the Windows
   Task Scheduler "Last Run Result" reflects the outcome.
 
-  All three suites are HERMETIC — they need no running NodePilot stack:
+  All four suites are HERMETIC — they need no running NodePilot stack:
     - dotnet test       : in-memory SQLite + mocked WinRM
-    - npm run test:run  : vitest under jsdom
+    - npm run test:run  : vitest under jsdom (nodepilot-ui) / node (nodepilot-desktop)
     - npm run test:e2e  : builds the SPA, serves it via `vite preview`, mocks every /api call
                           with page.route(); no backend, no Postgres.
   So this script does NOT start Postgres / the API / the dev server.
@@ -35,6 +36,7 @@ param(
 
 $ErrorActionPreference = 'Continue'
 $uiDir = Join-Path $RepoRoot 'src\nodepilot-ui'
+$desktopDir = Join-Path $RepoRoot 'src\nodepilot-desktop'
 $stamp = Get-Date -Format 'yyyy-MM-dd_HHmmss'
 $runDir = Join-Path $OutputDir $stamp
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
@@ -112,7 +114,13 @@ $results += Invoke-Suite -Name 'frontend-vitest' -WorkDir $uiDir -Action {
   npm run test:run
 }
 
-# 3) E2E — Playwright. CI=true forces a fresh build + vite preview (reuseExistingServer off);
+# 3) Desktop shell unit tests — vitest over the Electron shell's pure logic (desktop.json
+#    handoff validation + certificate pinning / navigation guards). Node environment, no Electron.
+$results += Invoke-Suite -Name 'desktop-vitest' -WorkDir $desktopDir -Action {
+  npm run test:run
+}
+
+# 4) E2E — Playwright. CI=true forces a fresh build + vite preview (reuseExistingServer off);
 #    --reporter=line avoids the HTML/GitHub reporters (the HTML one trips EPERM writing
 #    playwright-report\ on this box, and the GitHub reporter is for Actions only).
 #    Free port 4173 first in case a previous preview lingered.
@@ -136,7 +144,7 @@ foreach ($r in $results) {
                  ForEach-Object { [int]$_.Groups[1].Value } | Measure-Object -Sum).Sum
       $r | Add-Member Detail "passed=$passed failed=$failed" -PassThru | Out-Null
     }
-    'frontend-vitest' {
+    { $_ -in 'frontend-vitest', 'desktop-vitest' } {
       $r | Add-Member Detail ("Tests " + (Get-Count $t 'Tests\s+(\d+)\s+passed') + " passed") -PassThru | Out-Null
     }
     'frontend-e2e'    {

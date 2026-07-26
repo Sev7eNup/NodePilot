@@ -65,12 +65,15 @@ NodePilot bevorzugt lokale Modelle: keine Daten verlassen das Netzwerk, kein API
 keine Rate-Limit-Sorgen. Der OpenAI-kompatible Transport läuft gegen Ollama, LM Studio,
 vLLM, LocalAI und llama.cpp-Server.
 
-| Modell | Größe | Stärke | Mindest-RAM | `BaseUrl` (Beispiel Ollama) |
+Alle `BaseUrl`-Beispiele unten gehen von Ollama unter `http://localhost:11434/v1` aus.
+
+| Modell | Ollama-Tag | Größe | Stärke | Mindest-RAM |
 |---|---|---|---|---|
-| **Gemma 4 31B** | 19 GB | Beste Allround-Code- + Reasoning-Qualität in der Klasse | 32 GB | `http://localhost:11434/v1` |
-| Gemma 4 26B A4B | 15 GB | MoE (4B active) — schnelle Inferenz, hoher Durchsatz bei geringer Rechenlast | 24 GB | `http://localhost:11434/v1` |
-| Qwen 3.6 27B | 16 GB | Ausgezeichneter strukturierter / JSON-Output + zuverlässiges Tool-Calling | 32 GB | `http://localhost:11434/v1` |
-| Qwen 3.6 35B A3B | 20 GB | MoE (3B active) — größte Gesamt-Param-Anzahl, Top-JSON/Tool-Calling bei geringen Active-Kosten | 32 GB | `http://localhost:11434/v1` |
+| **Gemma 4 31B** | `gemma4:31b` | 20 GB | Beste Allround-Code- + Reasoning-Qualität in der Klasse | 32 GB |
+| Gemma 4 26B | `gemma4:26b` | 18 GB | MoE (4B active) — schnelle Inferenz, hoher Durchsatz bei geringer Rechenlast | 24 GB |
+| Qwen 3.6 27B | `qwen3.6:27b` | 17 GB | Ausgezeichneter strukturierter / JSON-Output + zuverlässiges Tool-Calling | 32 GB |
+| Qwen 3.6 35B | `qwen3.6:35b` | 24 GB | Größte Gesamt-Param-Anzahl, Top-JSON/Tool-Calling | 32 GB |
+| Gemma 4 E4B | `gemma4:e4b` | 9,6 GB | Edge-Größe — der ausgelieferte `appsettings.json`-Default | 16 GB |
 
 **Tipp**: Workflow-Generierung profitiert von größeren Context-Windows
 (`workflow-example.json` als Few-Shot frisst ~1k Token). Modelle mit ≥ 16k Context bevorzugt.
@@ -80,7 +83,7 @@ vLLM, LocalAI und llama.cpp-Server.
 
 ```bash
 ollama serve
-ollama pull qwen3.6-coder:27b
+ollama pull qwen3.6:27b
 ```
 
 `appsettings.json`:
@@ -90,7 +93,7 @@ ollama pull qwen3.6-coder:27b
   "Llm": {
     "Enabled": true,
     "BaseUrl": "http://localhost:11434/v1",
-    "Model": "qwen3.6-coder:27b",
+    "Model": "qwen3.6:27b",
     "MaxTokens": 16384,
     "TimeoutSeconds": 360
   }

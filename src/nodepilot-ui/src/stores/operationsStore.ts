@@ -17,24 +17,12 @@ const TOMBSTONE_TTL_MS = 24 * 60 * 60 * 1000;
 // confirms them via recent[]; 3 min is a generous upper bound before they expire on their own.
 const LOCAL_SETTLED_TTL_MS = 3 * 60_000;
 
-// Ring-buffer cap for the live event ticker.
-const TICKER_CAP = 50;
-
 /** A live execution entry: id + its most recent active status (Running|Pending). */
 export interface LiveExec {
   id: string;
   status: string;
   /** Start time (from the snapshot, or first-seen time for SignalR-discovered runs). */
   startedAtMs: number;
-}
-
-/** One row of the live event ticker (an ExecutionStatusChanged delta as received). */
-export interface TickerEvent {
-  executionId: string;
-  workflowId: string;
-  status: string;
-  /** Client receive time. */
-  atMs: number;
 }
 
 /**
@@ -57,8 +45,6 @@ export interface OpsState {
   /** executionId -> terminal-at-ms tombstone. Prevents a stale snapshot / late active event from
    *  resurrecting a terminated run. GUIDs are never reused, so a tombstoned id is gone for good. */
   terminalTombstones: Record<string, number>;
-  /** Newest-first live event feed (capped). */
-  tickerEvents: TickerEvent[];
   /** executionId -> locally-settled overlay entry (TTL-pruned, superseded by snapshot recent[]). */
   locallySettled: Record<string, LocalSettled>;
 
@@ -111,18 +97,10 @@ function pruneSettled(
   return changed ? out : settled;
 }
 
-function pushTicker(events: TickerEvent[], evt: TickerEvent): TickerEvent[] {
-  // Dedupe repeated deliveries of the same transition (at-least-once SignalR semantics).
-  const newest = events[0];
-  if (newest && newest.executionId === evt.executionId && newest.status === evt.status) return events;
-  return [evt, ...events].slice(0, TICKER_CAP);
-}
-
 export const useOperationsStore = create<OpsState>((set) => ({
   runningExecsByWorkflow: {},
   liveStatusByWorkflow: {},
   terminalTombstones: {},
-  tickerEvents: [],
   locallySettled: {},
 
   seedRunning: (running, lastStatusByWf, recentIds) =>
@@ -181,7 +159,6 @@ export const useOperationsStore = create<OpsState>((set) => ({
           runningExecsByWorkflow,
           liveStatusByWorkflow: { ...state.liveStatusByWorkflow, [workflowId]: status },
           terminalTombstones: { ...tombs, [executionId]: now },
-          tickerEvents: pushTicker(state.tickerEvents, { executionId, workflowId, status, atMs: now }),
           locallySettled: {
             ...pruneSettled(state.locallySettled),
             [executionId]: {
@@ -205,7 +182,6 @@ export const useOperationsStore = create<OpsState>((set) => ({
         return {
           runningExecsByWorkflow: { ...state.runningExecsByWorkflow, [workflowId]: next },
           terminalTombstones: tombs,
-          tickerEvents: pushTicker(state.tickerEvents, { executionId, workflowId, status, atMs: now }),
         };
       }
 
@@ -217,7 +193,6 @@ export const useOperationsStore = create<OpsState>((set) => ({
     runningExecsByWorkflow: {},
     liveStatusByWorkflow: {},
     terminalTombstones: {},
-    tickerEvents: [],
     locallySettled: {},
   }),
 }));
