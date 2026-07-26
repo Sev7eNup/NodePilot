@@ -36,7 +36,7 @@ public sealed class WorkflowResolverTests : IDisposable
         var w = await WorkflowResolver.ResolveAsync(_client, id.ToString(), CancellationToken.None);
         w.Id.Should().Be(id);
         // List endpoint must NOT have been called.
-        _server.LogEntries.Should().NotContain(e => e.RequestMessage.AbsolutePath == "/api/workflows" && e.RequestMessage.Method == "GET");
+        _server.LogEntries.Should().NotContain(e => e.RequestMessage!.AbsolutePath == "/api/workflows" && e.RequestMessage!.Method == "GET");
     }
 
     [Fact]

@@ -29,7 +29,7 @@ public class CommandIntegrationCoverageTests
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("--file");
         h.Server.LogEntries.Should().NotContain(e =>
-            e.RequestMessage.AbsolutePath == "/api/admin/settings/test/smtp");
+            e.RequestMessage!.AbsolutePath == "/api/admin/settings/test/smtp");
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class CommandIntegrationCoverageTests
             result.ExitCode.Should().Be(ExitCodes.Error);
             result.StdErr.Should().Contain("JSON");
             h.Server.LogEntries.Should().NotContain(e =>
-                e.RequestMessage.AbsolutePath == "/api/admin/settings/test/smtp");
+                e.RequestMessage!.AbsolutePath == "/api/admin/settings/test/smtp");
         }
         finally { Del(file); }
     }
@@ -143,7 +143,7 @@ public class CommandIntegrationCoverageTests
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("key=value");
         h.Server.LogEntries.Should().NotContain(e =>
-            e.RequestMessage.AbsolutePath.EndsWith("/test"));
+            e.RequestMessage!.AbsolutePath.EndsWith("/test"));
     }
 
     [Fact]
@@ -324,7 +324,7 @@ public class CommandIntegrationCoverageTests
             result.ExitCode.Should().Be(ExitCodes.Error);
             result.StdErr.Should().Contain("--yes");
             h.Server.LogEntries.Should().NotContain(e =>
-                e.RequestMessage.AbsolutePath == "/api/backup/restore");
+                e.RequestMessage!.AbsolutePath == "/api/backup/restore");
         }
         finally { Del(pwFile); Del(file); }
     }
@@ -349,7 +349,7 @@ public class CommandIntegrationCoverageTests
             exit.Should().Be(ExitCodes.Success);
             output.Should().Contain("workflows");
             h.Server.LogEntries.Should().Contain(e =>
-                e.RequestMessage.AbsolutePath == "/api/backup/restore");
+                e.RequestMessage!.AbsolutePath == "/api/backup/restore");
         }
         finally { Del(pwFile); Del(file); }
     }

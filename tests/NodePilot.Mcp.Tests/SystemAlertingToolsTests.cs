@@ -101,7 +101,7 @@ public sealed class SystemAlertingToolsTests
             sustainForSeconds: 60, emails: "ops@x", webhooks: "https://hook"));
 
         json.Should().Contain(id.ToString()).And.Contain("\"created\":true");
-        var body = api.Server.LogEntries.Last().RequestMessage.Body!;
+        var body = api.Server.LogEntries.Last().RequestMessage!.Body!;
         body.Should().Contain("backlog").And.Contain("threshold").And.Contain("GenericWebhook").And.Contain("https://hook");
     }
 
@@ -118,8 +118,8 @@ public sealed class SystemAlertingToolsTests
         var tools = new SystemAlertingTools(api.Client());
         await tools.UpdateSystemAlertPolicy(id.ToString(), name: "Renamed");
 
-        var put = api.Server.LogEntries.Last(e => e.RequestMessage.Method == "PUT");
-        put.RequestMessage.Body.Should().Contain("Renamed").And.Contain("\"cooldownMinutes\":10").And.Contain("backlog");
+        var put = api.Server.LogEntries.Last(e => e.RequestMessage!.Method == "PUT");
+        put.RequestMessage!.Body.Should().Contain("Renamed").And.Contain("\"cooldownMinutes\":10").And.Contain("backlog");
     }
 
     [Fact]
@@ -134,7 +134,7 @@ public sealed class SystemAlertingToolsTests
         var json = JsonSerializer.Serialize(await tools.EnableSystemAlertPolicy(id.ToString()));
         json.Should().Contain("\"enabled\":true");
         api.Server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.AbsolutePath == $"/api/alerting/system/policies/{id}/enable" && e.RequestMessage.Method == "POST");
+            e.RequestMessage!.AbsolutePath == $"/api/alerting/system/policies/{id}/enable" && e.RequestMessage!.Method == "POST");
     }
 
     [Fact]
@@ -149,7 +149,7 @@ public sealed class SystemAlertingToolsTests
         var json = JsonSerializer.Serialize(await tools.DisableSystemAlertPolicy(id.ToString()));
         json.Should().Contain("\"disabled\":true");
         api.Server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.AbsolutePath == $"/api/alerting/system/policies/{id}/disable" && e.RequestMessage.Method == "POST");
+            e.RequestMessage!.AbsolutePath == $"/api/alerting/system/policies/{id}/disable" && e.RequestMessage!.Method == "POST");
     }
 
     [Fact]
@@ -181,6 +181,6 @@ public sealed class SystemAlertingToolsTests
         var json = JsonSerializer.Serialize(await tools.DeleteSystemAlertPolicy(id.ToString()));
         json.Should().Contain("\"deleted\":true");
         api.Server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.AbsolutePath == $"/api/alerting/system/policies/{id}" && e.RequestMessage.Method == "DELETE");
+            e.RequestMessage!.AbsolutePath == $"/api/alerting/system/policies/{id}" && e.RequestMessage!.Method == "DELETE");
     }
 }

@@ -40,7 +40,7 @@ public sealed class SupportingAndTelemetryToolsTests
         json.Should().Contain(id.ToString());
         json.Should().NotContain("hunter2pw"); // password not echoed back to the agent
         // ...but it WAS sent to the API.
-        api.Server.LogEntries.Last().RequestMessage.Body.Should().Contain("hunter2pw");
+        api.Server.LogEntries.Last().RequestMessage!.Body.Should().Contain("hunter2pw");
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public sealed class SupportingAndTelemetryToolsTests
         var tools = new SupportingDataTools(api.Client());
         await tools.CreateCredential("Svc", "svc", "hunter2pw", expiresAt: new DateTime(2026, 12, 31, 0, 0, 0, DateTimeKind.Utc));
 
-        api.Server.LogEntries.Last().RequestMessage.Body.Should().Contain("2026-12-31");
+        api.Server.LogEntries.Last().RequestMessage!.Body.Should().Contain("2026-12-31");
     }
 
     [Fact]
@@ -71,15 +71,15 @@ public sealed class SupportingAndTelemetryToolsTests
 
         // Omitted expiresAt keeps the stored one (read-modify-write).
         await tools.UpdateCredential(id.ToString(), name: "Svc-2");
-        api.Server.LogEntries.Last().RequestMessage.Body.Should().Contain("2026-12-31");
+        api.Server.LogEntries.Last().RequestMessage!.Body.Should().Contain("2026-12-31");
 
         // clearExpiresAt wins over the stored value.
         await tools.UpdateCredential(id.ToString(), clearExpiresAt: true);
-        api.Server.LogEntries.Last().RequestMessage.Body.Should().Contain("\"expiresAt\":null");
+        api.Server.LogEntries.Last().RequestMessage!.Body.Should().Contain("\"expiresAt\":null");
 
         // Explicit expiresAt replaces the stored one.
         await tools.UpdateCredential(id.ToString(), expiresAt: new DateTime(2027, 6, 1, 0, 0, 0, DateTimeKind.Utc));
-        api.Server.LogEntries.Last().RequestMessage.Body.Should().Contain("2027-06-01");
+        api.Server.LogEntries.Last().RequestMessage!.Body.Should().Contain("2027-06-01");
     }
 
     [Fact]
@@ -244,7 +244,7 @@ public sealed class SupportingAndTelemetryToolsTests
         // Change only the value; do NOT pass isSecret → must stay secret.
         await tools.UpdateGlobalVariable(id.ToString(), value: "new-token-value");
 
-        var body = api.Server.LogEntries.Last(e => e.RequestMessage.Method == "PUT").RequestMessage.Body ?? "";
+        var body = api.Server.LogEntries.Last(e => e.RequestMessage!.Method == "PUT").RequestMessage!.Body ?? "";
         body.Should().MatchRegex("\"[iI]sSecret\":true");   // secret flag preserved
         body.Should().Contain("new-token-value");
         body.Should().Contain("API_TOKEN");                 // name backfilled from current
@@ -270,7 +270,7 @@ public sealed class SupportingAndTelemetryToolsTests
         // Rename only — everything else must be preserved (not blanked).
         await tools.UpdateMachine(id.ToString(), name: "WEB01-renamed");
 
-        var body = api.Server.LogEntries.Last(e => e.RequestMessage.Method == "PUT").RequestMessage.Body ?? "";
+        var body = api.Server.LogEntries.Last(e => e.RequestMessage!.Method == "PUT").RequestMessage!.Body ?? "";
         body.Should().Contain("WEB01-renamed");
         body.Should().Contain("web01.corp");      // hostname preserved
         body.Should().Contain(cred.ToString());    // credential preserved

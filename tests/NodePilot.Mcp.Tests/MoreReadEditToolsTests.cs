@@ -137,7 +137,7 @@ public sealed class MoreReadEditToolsTests
         var res = J(await tools.CreateWorkflow("New", E(def)));
         res.Should().Contain("\"created\":true");
 
-        var body = api.Server.LogEntries.Last(e => e.RequestMessage.Method == "POST").RequestMessage.Body ?? "";
+        var body = api.Server.LogEntries.Last(e => e.RequestMessage!.Method == "POST").RequestMessage!.Body ?? "";
         body.Should().NotContain("invented");
         body.Should().Contain("***");
 
@@ -218,7 +218,7 @@ public sealed class MoreReadEditToolsTests
         json.Should().Contain("n2");                 // new node in the merged preview
         json.Should().Contain("\"isValid\":true");
         json.Should().NotContain("real");            // existing secret redacted in the preview
-        api.Server.LogEntries.Any(e => e.RequestMessage.Method is "PUT" or "POST").Should().BeFalse();
+        api.Server.LogEntries.Any(e => e.RequestMessage!.Method is "PUT" or "POST").Should().BeFalse();
     }
 
     [Fact]

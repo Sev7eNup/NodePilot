@@ -49,7 +49,7 @@ public class CommandIntegrationNewSurfaceTests
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("API-Key");
         h.Server.LogEntries.Should().NotContain(e =>
-            e.RequestMessage.AbsolutePath.StartsWith("/api/trigger/"));
+            e.RequestMessage!.AbsolutePath.StartsWith("/api/trigger/"));
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public class CommandIntegrationNewSurfaceTests
         // The fire-before-pre-check bug would have left the trigger endpoint hit once;
         // we assert it was NOT.
         h.Server.LogEntries.Should().NotContain(e =>
-            e.RequestMessage.AbsolutePath == "/api/trigger/Deploy");
+            e.RequestMessage!.AbsolutePath == "/api/trigger/Deploy");
     }
 
     [Fact]
@@ -267,8 +267,8 @@ public class CommandIntegrationNewSurfaceTests
             result.ExitCode.Should().Be(ExitCodes.Error);
             result.StdErr.Should().Contain("--etag");
             h.Server.LogEntries.Should().NotContain(e =>
-                e.RequestMessage.AbsolutePath == "/api/admin/settings/Smtp"
-                && e.RequestMessage.Method == "PUT");
+                e.RequestMessage!.AbsolutePath == "/api/admin/settings/Smtp"
+                && e.RequestMessage!.Method == "PUT");
         }
         finally { try { File.Delete(file); } catch { } }
     }

@@ -25,14 +25,14 @@ public abstract class BaseCommand<TSettings> : AsyncCommand<TSettings>
         ClientFactory = clientFactory;
     }
 
-    public override async Task<int> ExecuteAsync(CommandContext context, TSettings settings)
+    protected override async Task<int> ExecuteAsync(CommandContext context, TSettings settings, CancellationToken ct)
     {
         var format = OutputFormatParser.Resolve(settings.Output);
         var writer = new OutputWriter(format, settings.NoColor || Console.IsOutputRedirected);
         try
         {
             var session = Sessions.Resolve(settings);
-            return await RunAsync(context, settings, session, writer, CancellationToken.None);
+            return await RunAsync(context, settings, session, writer, ct);
         }
         catch (NotAuthenticatedException ex)
         {

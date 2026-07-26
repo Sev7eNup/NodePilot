@@ -59,7 +59,7 @@ public class CommandIntegrationAlertingTests
 
         result.ExitCode.Should().Be(ExitCodes.Success);
         result.StdErr.Should().Contain("Prod-Fail");
-        var body = h.Server.LogEntries.Last().RequestMessage.Body!;
+        var body = h.Server.LogEntries.Last().RequestMessage!.Body!;
         body.Should().Contain("ExecutionFailed").And.Contain("ExecutionCancelled");
         body.Should().Contain("GenericWebhook").And.Contain("https://hook");
         body.Should().Contain("\"cooldownMinutes\":30");
@@ -73,7 +73,7 @@ public class CommandIntegrationAlertingTests
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("--name");
         h.Server.LogEntries.Should().NotContain(e =>
-            e.RequestMessage.AbsolutePath == "/api/alerting/rules" && e.RequestMessage.Method == "POST");
+            e.RequestMessage!.AbsolutePath == "/api/alerting/rules" && e.RequestMessage!.Method == "POST");
     }
 
     [Fact]
@@ -98,9 +98,9 @@ public class CommandIntegrationAlertingTests
         var result = h.Run("alerting", "update", id.ToString(), "--name", "Renamed");
 
         result.ExitCode.Should().Be(ExitCodes.Success);
-        var put = h.Server.LogEntries.Last(e => e.RequestMessage.Method == "PUT");
-        put.RequestMessage.Body.Should().Contain("Renamed");
-        put.RequestMessage.Body.Should().Contain("\"cooldownMinutes\":15"); // carried over
+        var put = h.Server.LogEntries.Last(e => e.RequestMessage!.Method == "PUT");
+        put.RequestMessage!.Body.Should().Contain("Renamed");
+        put.RequestMessage!.Body.Should().Contain("\"cooldownMinutes\":15"); // carried over
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public class CommandIntegrationAlertingTests
         var result = h.Run("alerting", "delete", id.ToString());
         result.ExitCode.Should().Be(ExitCodes.Success);
         h.Server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.AbsolutePath == $"/api/alerting/rules/{id}" && e.RequestMessage.Method == "DELETE");
+            e.RequestMessage!.AbsolutePath == $"/api/alerting/rules/{id}" && e.RequestMessage!.Method == "DELETE");
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class CommandIntegrationAlertingTests
         var result = h.Run("alerting", "deliveries", "--status", "Failed");
         result.ExitCode.Should().Be(ExitCodes.Success);
         result.Output.Should().Contain("Prod-Fail").And.Contain("smtp down");
-        h.Server.LogEntries.Last().RequestMessage.AbsoluteUrl.Should().Contain("status=Failed");
+        h.Server.LogEntries.Last().RequestMessage!.AbsoluteUrl.Should().Contain("status=Failed");
     }
 
     [Fact]

@@ -23,105 +23,111 @@
 
   <!-- ASP.NET Core / hosting / auth -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.5" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.Negotiate" Version="10.0.10" />
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.5" />
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore" Version="10.0.10" />
     <PackageVersion Include="System.DirectoryServices.Protocols" Version="10.0.10" />
-    <PackageVersion Include="System.Diagnostics.EventLog" Version="10.0.5" />
-    <PackageVersion Include="BCrypt.Net-Next" Version="4.1.0" />
+    <PackageVersion Include="System.Diagnostics.EventLog" Version="10.0.10" />
+    <PackageVersion Include="BCrypt.Net-Next" Version="4.2.0" />
   </ItemGroup>
 
-  <!-- Microsoft.Extensions.* (unified to 10.0.5; was split 10.0.0 / 10.0.5 across projects) -->
+  <!-- Microsoft.Extensions.* (unified to 10.0.10 — the whole 10.0.x surface moves as one band) -->
   <ItemGroup>
-    <!-- 10.0.5, not 10.0.0: Microsoft.Extensions.Http 10.0.5 transitively floors
-         Microsoft.Extensions.DependencyInjection at >= 10.0.5 (NU1605 otherwise). -->
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.5" />
+    <!-- Keep every Microsoft.Extensions.* entry on the SAME servicing patch: Http 10.0.10
+         transitively floors DependencyInjection at >= 10.0.10, and a mixed set trips NU1605. -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.10" />
     <!-- GetValue<T>() lives in the Binder package; WinRmSessionPool needs it to compile. -->
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.CommandLine" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.5" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.CommandLine" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration.EnvironmentVariables" Version="10.0.10" />
   </ItemGroup>
 
   <!-- Entity Framework Core / database drivers -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.5" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.5" />
-    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.1" />
-    <PackageVersion Include="Npgsql" Version="10.0.2" />
-    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.0" />
-    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.5" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.10" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageVersion Include="Npgsql" Version="10.0.3" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="7.0.2" />
+    <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.10" />
     <!-- Direct pin: Microsoft.Data.Sqlite 10.x still floors SQLitePCLRaw at 2.1.11, whose
          lib.e_sqlite3 bundles SQLite < 3.50.2 (GHSA-2m69-gcr7-jv3q / CVE-2025-6965, HIGH).
          The 3.x line ships SQLite 3.50.4+ (via SourceGear.sqlite3) and closes the CVE —
          referenced directly by every project that references a *Sqlite package so the
          transitive graph resolves to the fixed native build. -->
-    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
   </ItemGroup>
 
   <!-- Remote execution / scheduling -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.PowerShell.SDK" Version="7.6.0" />
-    <PackageVersion Include="System.Management.Automation" Version="7.6.0" />
+    <!-- SDK and System.Management.Automation are one release train — never split them. -->
+    <PackageVersion Include="Microsoft.PowerShell.SDK" Version="7.6.4" />
+    <PackageVersion Include="System.Management.Automation" Version="7.6.4" />
     <!-- Quartz + Quartz.Extensions.Hosting pinned to the same version so the Cron evaluator
          (Data, maintenance windows) and the scheduler host (Scheduler) never drift. -->
-    <PackageVersion Include="Quartz" Version="3.17.1" />
-    <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.17.1" />
+    <PackageVersion Include="Quartz" Version="3.19.0" />
+    <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.19.0" />
   </ItemGroup>
 
   <!-- Serilog logging -->
   <ItemGroup>
-    <PackageVersion Include="Serilog" Version="4.2.0" />
+    <PackageVersion Include="Serilog" Version="4.4.0" />
+    <!-- AspNetCore / Extensions.Hosting / Settings.Configuration are one family and were split
+         across 9.x / 10.0.0 until now; they move together so the host builder extension methods
+         and the configuration reader agree on the same Serilog.Extensions.* surface. -->
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
-    <PackageVersion Include="Serilog.Extensions.Hosting" Version="9.0.0" />
-    <PackageVersion Include="Serilog.Settings.Configuration" Version="9.0.0" />
+    <PackageVersion Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageVersion Include="Serilog.Settings.Configuration" Version="10.0.1" />
     <PackageVersion Include="Serilog.Formatting.Compact" Version="3.0.0" />
     <PackageVersion Include="Serilog.Sinks.Async" Version="2.1.0" />
-    <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
+    <PackageVersion Include="Serilog.Sinks.Console" Version="6.1.1" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
-    <PackageVersion Include="Serilog.Sinks.OpenTelemetry" Version="4.1.1" />
+    <PackageVersion Include="Serilog.Sinks.OpenTelemetry" Version="4.2.0" />
   </ItemGroup>
 
   <!--
-    OpenTelemetry — bumped from 1.10.x → 1.15.3 to clear GHSA-8785-wc3w-h8q6 (moderate,
-    OpenTelemetry.Api 1.10.0), pull a newer System.Security.Cryptography.Xml that resolves
-    GHSA-37gx-xxp4-5rgx / GHSA-w3x6-4m5h-cxqf, and clear GHSA-g94r-2vxg-569j (Api) +
-    GHSA-mr8r-92fq-pj8p (OtlpExporter), both fixed in 1.15.3.
+    OpenTelemetry — the whole stack tracks one release, currently 1.17.0. The earlier jump to
+    1.15.3 was security-motivated (GHSA-8785-wc3w-h8q6 / GHSA-g94r-2vxg-569j on Api,
+    GHSA-mr8r-92fq-pj8p on OtlpExporter, plus a newer System.Security.Cryptography.Xml that
+    cleared GHSA-37gx-xxp4-5rgx / GHSA-w3x6-4m5h-cxqf); 1.17.0 keeps all of those closed and
+    pulls the instrumentation packages, which had lagged at 1.12.0, back onto the same number.
 
-    The three -beta.1 packages have NO stable 1.x release as of 2026-05-08 — the maintainer
-    keeps Prometheus / Process / EntityFrameworkCore instrumentation on the beta channel even
-    at 1.15. Pinned to the latest beta for accumulated bug + telemetry-shape fixes. The EF
+    The three prerelease packages still have NO stable 1.x — the maintainer keeps Prometheus /
+    Process / EntityFrameworkCore instrumentation off the stable channel even at 1.17. Pinned to
+    the matching prerelease of the same release; note Process moved beta → rc for 1.17. The EF
     tracer's SetDbStatementForText is FALSE (OpenTelemetryExtensions.cs) so SQL command text
     never lands in a span — only operation type / db.system / db.name.
   -->
   <ItemGroup>
-    <PackageVersion Include="OpenTelemetry" Version="1.15.3" />
-    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.15.3" />
-    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.15.3" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.12.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.12.0" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.12.0" />
-    <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.15.3-beta.1" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.Process" Version="1.15.1-beta.1" />
-    <PackageVersion Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.15.1-beta.1" />
+    <PackageVersion Include="OpenTelemetry" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.17.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Prometheus.AspNetCore" Version="1.17.0-beta.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.Process" Version="1.17.0-rc.1" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.EntityFrameworkCore" Version="1.17.0-beta.1" />
   </ItemGroup>
 
   <!-- OpenAPI / API tooling -->
   <ItemGroup>
-    <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.1.7" />
-    <!-- Pin Microsoft.OpenApi above Swashbuckle 10.1.7's transitive 2.4.1
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+    <!-- Pin Microsoft.OpenApi above Swashbuckle 10.2.3's transitive 2.7.5
          (GHSA-v5pm-xwqc-g5wc, HIGH, uncontrolled-recursion DoS via circular schema refs).
-         2.9.0 is still 2.x so Swashbuckle's Models namespace stays compatible.
+         2.9.0 is still 2.x so Swashbuckle's Models namespace stays compatible — do NOT take
+         Microsoft.OpenApi 3.x while Swashbuckle 10.x asks for the 2.x surface.
          Also forced in Api.Tests over WireMock.Net.OpenApiParser's 2.4.1. -->
     <PackageVersion Include="Microsoft.OpenApi" Version="2.9.0" />
   </ItemGroup>
@@ -133,34 +139,40 @@
          (GHSA-cvvh-rhrc-wg4q / -g8r8-53c2-pm3f / -23rf-6693-g89p / -8q5v-6pqq-x66h) is only
          cleared in 10.0.10. Force it. -->
     <PackageVersion Include="System.Security.Cryptography.Xml" Version="10.0.10" />
-    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.5" />
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.10" />
   </ItemGroup>
 
   <!-- CLI / MCP / misc -->
   <ItemGroup>
-    <PackageVersion Include="Spectre.Console" Version="0.49.1" />
-    <PackageVersion Include="Spectre.Console.Cli" Version="0.49.1" />
-    <PackageVersion Include="Spectre.Console.Json" Version="0.49.1" />
-    <PackageVersion Include="Spectre.Console.Testing" Version="0.49.1" />
-    <PackageVersion Include="ModelContextProtocol" Version="1.4.0" />
+    <!-- Spectre held at 0.55.0 as a family, NOT at Spectre.Console's newer 0.57.2: the CLI
+         package's stable line stops at 0.55.0 (everything after is a 1.0.0-alpha prerelease)
+         and it pins Spectre.Console to its own version. Splitting the two would pair a 0.57
+         core with a CLI built against 0.55 — on a 0.x library that is a real risk, so the
+         whole family moves together and waits for Spectre.Console.Cli 1.0. -->
+    <PackageVersion Include="Spectre.Console" Version="0.55.0" />
+    <PackageVersion Include="Spectre.Console.Cli" Version="0.55.0" />
+    <PackageVersion Include="Spectre.Console.Json" Version="0.55.0" />
+    <PackageVersion Include="Spectre.Console.Testing" Version="0.55.0" />
+    <!-- CommandAppTester left Spectre.Console.Testing when the CLI split into its own
+         package; the test harness needs this alongside the plain console test helpers. -->
+    <PackageVersion Include="Spectre.Console.Cli.Testing" Version="0.55.0" />
+    <PackageVersion Include="ModelContextProtocol" Version="1.4.1" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
   </ItemGroup>
 
   <!-- Test tooling (floating minors are intentional "latest-in-band" pins) -->
   <ItemGroup>
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.*" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.*" />
     <PackageVersion Include="xunit" Version="2.*" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.*" />
-    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="coverlet.collector" Version="10.*" />
     <PackageVersion Include="Moq" Version="4.*" />
     <PackageVersion Include="FluentAssertions" Version="8.*" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.5" />
-    <!-- WireMock.Net unified to 1.8.0 (was 1.7.5 in Api.Tests/Cli.Tests → cleared the NU1603
-         "1.7.5 requested but 1.8.0 resolved" restore warning). -->
-    <PackageVersion Include="WireMock.Net" Version="1.8.0" />
-    <!-- Force patched floor over WireMock.Net's transitive Scriban.Signed 5.5.0
-         (GHSA-24c8-4792-22hx, HIGH, array.insert_at OOM DoS). Test-only. -->
-    <PackageVersion Include="Scriban.Signed" Version="7.2.5" />
+    <!-- 2.x asks for Scriban.Signed 7.2.5 itself, so the forced floor that used to sit here
+         for GHSA-24c8-4792-22hx is gone — keeping it would only cap a future Scriban bump
+         that WireMock wants. The Microsoft.OpenApi floor above is still load-bearing. -->
+    <PackageVersion Include="WireMock.Net" Version="2.13.0" />
     <PackageVersion Include="NBomber" Version="6.*" />
     <PackageVersion Include="NBomber.Http" Version="6.*" />
   </ItemGroup>

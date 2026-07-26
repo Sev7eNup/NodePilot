@@ -43,7 +43,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
         _factory = factory;
     }
 
-    public override async Task<int> ExecuteAsync(CommandContext context, LoginSettings settings)
+    protected override async Task<int> ExecuteAsync(CommandContext context, LoginSettings settings, CancellationToken ct)
     {
         var format = OutputFormatParser.Resolve(settings.Output);
         var writer = new OutputWriter(format, settings.NoColor);
@@ -69,7 +69,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
         try
         {
             var api = _factory.CreateAnonymous(server, settings.AllowInsecureLoopback);
-            var response = await api.LoginAsync(new LoginRequest(username, password), settings.SetupToken, CancellationToken.None);
+            var response = await api.LoginAsync(new LoginRequest(username, password), settings.SetupToken, ct);
 
             // Persist server URL into the active profile so subsequent calls don't need --server.
             cfg.Profiles[profile] = new ProfileEntry { Server = server };
@@ -154,7 +154,7 @@ public sealed class AuthMethodsCommand : AsyncCommand<GlobalSettings>
         _factory = factory;
     }
 
-    public override async Task<int> ExecuteAsync(CommandContext context, GlobalSettings settings)
+    protected override async Task<int> ExecuteAsync(CommandContext context, GlobalSettings settings, CancellationToken ct)
     {
         var format = OutputFormatParser.Resolve(settings.Output);
         var writer = new OutputWriter(format, settings.NoColor || Console.IsOutputRedirected);
@@ -171,7 +171,7 @@ public sealed class AuthMethodsCommand : AsyncCommand<GlobalSettings>
         try
         {
             var api = _factory.CreateAnonymous(server, settings.AllowInsecureLoopback);
-            var methods = await api.GetAuthMethodsAsync(CancellationToken.None);
+            var methods = await api.GetAuthMethodsAsync(ct);
             writer.WriteData(methods, (console, value) =>
             {
                 var grid = new Grid().AddColumn().AddColumn();

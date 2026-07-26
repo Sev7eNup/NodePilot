@@ -84,7 +84,7 @@ public sealed class MoreToolsCoverageTests
 
         // Rename only — domain "CORP" must be preserved (read-modify-write).
         await tools.UpdateCredential(cid.ToString(), name: "Svc2");
-        var body = api.Server.LogEntries.Last(e => e.RequestMessage.Method == "PUT").RequestMessage.Body ?? "";
+        var body = api.Server.LogEntries.Last(e => e.RequestMessage!.Method == "PUT").RequestMessage!.Body ?? "";
         body.Should().Contain("Svc2").And.Contain("CORP");
     }
 

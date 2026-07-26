@@ -81,7 +81,7 @@ public sealed class ExecutionControlToolsTests
 
         // Regression guard: an earlier version of this tool dropped stepId before sending the
         // request — assert it actually reaches the wire.
-        var body = api.Server.LogEntries.Last().RequestMessage.Body ?? "";
+        var body = api.Server.LogEntries.Last().RequestMessage!.Body ?? "";
         body.Should().Contain("step-7");
         body.Should().Contain("continue");
     }

@@ -58,7 +58,7 @@ public sealed class WorkflowEditToolsTests
         var tools = new WorkflowEditTools(api.Client());
         await tools.PublishWorkflow(id.ToString(), Json(proposed));
 
-        var body = api.Server.LogEntries.Last(e => e.RequestMessage.Path.EndsWith("/publish")).RequestMessage.Body ?? "";
+        var body = api.Server.LogEntries.Last(e => e.RequestMessage!.Path.EndsWith("/publish")).RequestMessage!.Body ?? "";
         body.Should().Contain("real-secret-value");   // restored from the current version
         body.Should().NotContain("\"***\"");            // the mask was NOT written over the real secret
     }
@@ -84,7 +84,7 @@ public sealed class WorkflowEditToolsTests
         var tools = new WorkflowEditTools(api.Client());
         await tools.ApplyWorkflowPatch(id.ToString(), Json(ops), publish: true);
 
-        var body = api.Server.LogEntries.Last(e => e.RequestMessage.Path.EndsWith("/publish")).RequestMessage.Body ?? "";
+        var body = api.Server.LogEntries.Last(e => e.RequestMessage!.Path.EndsWith("/publish")).RequestMessage!.Body ?? "";
         body.Should().Contain("new");          // n1 edit applied
         body.Should().Contain("real-key");      // n2 secret preserved on the wire
         body.Should().Contain("https://x");     // n2 untouched
@@ -108,7 +108,7 @@ public sealed class WorkflowEditToolsTests
         await act.Should().ThrowAsync<Exception>();
 
         // Nothing was published.
-        api.Server.LogEntries.Any(e => e.RequestMessage.Path.EndsWith("/publish")).Should().BeFalse();
+        api.Server.LogEntries.Any(e => e.RequestMessage!.Path.EndsWith("/publish")).Should().BeFalse();
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public sealed class WorkflowEditToolsTests
         var act = async () => await tools.PublishWorkflow(id.ToString(), Json("{}"));
         (await act.Should().ThrowAsync<Exception>()).Which.Message.Should().Contain("nodes");
 
-        api.Server.LogEntries.Any(e => e.RequestMessage.Path.EndsWith("/publish")).Should().BeFalse();
+        api.Server.LogEntries.Any(e => e.RequestMessage!.Path.EndsWith("/publish")).Should().BeFalse();
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public sealed class WorkflowEditToolsTests
         json.Should().Contain("\"dryRun\":true");
         json.Should().Contain("\"isValid\":false");
         json.Should().Contain("ghost");
-        api.Server.LogEntries.Any(e => e.RequestMessage.Path.EndsWith("/publish")).Should().BeFalse();
+        api.Server.LogEntries.Any(e => e.RequestMessage!.Path.EndsWith("/publish")).Should().BeFalse();
     }
 
     [Fact]
