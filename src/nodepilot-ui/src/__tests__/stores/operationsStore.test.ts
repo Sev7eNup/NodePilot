@@ -116,32 +116,6 @@ describe('operationsStore', () => {
     expect(useOperationsStore.getState().liveStatusByWorkflow.w1).toBeUndefined();
   });
 
-  // --- ticker events ---
-
-  it('applyStatus records ticker events newest-first and dedupes repeated deliveries', () => {
-    const { applyStatus } = useOperationsStore.getState();
-    applyStatus('e1', 'w1', 'Running');
-    applyStatus('e1', 'w1', 'Running'); // duplicate delivery â€” deduped
-    applyStatus('e1', 'w1', 'Succeeded');
-    const events = useOperationsStore.getState().tickerEvents;
-    expect(events).toHaveLength(2);
-    expect(events[0].status).toBe('Succeeded');
-    expect(events[1].status).toBe('Running');
-  });
-
-  it('ticker is capped at 50 entries', () => {
-    const { applyStatus } = useOperationsStore.getState();
-    for (let n = 0; n < 60; n++) applyStatus(`e${n}`, 'w1', 'Running');
-    const events = useOperationsStore.getState().tickerEvents;
-    expect(events).toHaveLength(50);
-    expect(events[0].executionId).toBe('e59'); // newest first
-  });
-
-  it('unrecognized statuses do not produce ticker events', () => {
-    useOperationsStore.getState().applyStatus('e1', 'w1', 'SomethingWeird');
-    expect(useOperationsStore.getState().tickerEvents).toHaveLength(0);
-  });
-
   // --- locally-settled overlay ---
 
   it('terminal transition records a locally-settled entry carrying the observed start time', () => {
@@ -179,15 +153,16 @@ describe('operationsStore', () => {
     expect(settled.e2).toBeDefined();
   });
 
-  it('reset clears ticker and locally-settled state', () => {
+  it('reset clears locally-settled and live state', () => {
     const { applyStatus } = useOperationsStore.getState();
     applyStatus('e1', 'w1', 'Running');
     applyStatus('e1', 'w1', 'Succeeded');
     useOperationsStore.getState().reset();
     const s = useOperationsStore.getState();
-    expect(s.tickerEvents).toHaveLength(0);
     expect(s.locallySettled).toEqual({});
     expect(s.runningExecsByWorkflow).toEqual({});
+    expect(s.liveStatusByWorkflow).toEqual({});
+    expect(s.terminalTombstones).toEqual({});
   });
 
   // --- effectiveStatusFor (Pending-sensitive cascade) ---
