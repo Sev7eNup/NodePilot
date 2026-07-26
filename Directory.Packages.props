@@ -168,7 +168,7 @@
     <PackageVersion Include="coverlet.collector" Version="10.*" />
     <PackageVersion Include="Moq" Version="4.*" />
     <PackageVersion Include="FluentAssertions" Version="8.*" />
-    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.5" />
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.10" />
     <!-- 2.x asks for Scriban.Signed 7.2.5 itself, so the forced floor that used to sit here
          for GHSA-24c8-4792-22hx is gone — keeping it would only cap a future Scriban bump
          that WireMock wants. The Microsoft.OpenApi floor above is still load-bearing. -->
