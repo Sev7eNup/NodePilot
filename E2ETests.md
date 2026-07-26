@@ -4283,6 +4283,104 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ---
 
+## Teil 80: Globaler AI-Chat (`/ai-chat`)
+
+> Voraussetzung: `Llm:Enabled=true` + `Llm:EnableToolCalling=true`; Wissensquellen in den Admin-Settings
+> (Sektion `AiKnowledge`) aktiviert. Siehe `docs/ai-features.md`. Read-only, canvas-frei.
+
+### Test 80.1 — Quellen-Badges & Empty-State
+1. Als Admin `/ai-chat` öffnen.
+2. Kopfbereich prüfen: Badges für **Dokumentation**, **Betrieb**, **Quellcode**, **Datenbank**.
+- [ ] Alle vier Badges bei voll aktivierten Capabilities sichtbar; Empty-State-Titel wird gerendert.
+
+### Test 80.2 — SSE-Streaming + Usage-Footer
+1. Frage stellen (z. B. „Welche Trigger-Typen gibt es?") → Absenden.
+2. Antwort erscheint token-weise (nicht in einem Block).
+- [ ] Antwort streamt inkrementell; nach Abschluss steht der Usage-Footer (Token-Zahlen) darunter; Composer ist wieder freigegeben.
+
+### Test 80.3 — Tool-Call-Indikator
+1. Frage stellen, die eine Datenquelle braucht (z. B. „Wie viele Workflows gibt es?").
+2. Während des Streams erscheint ein Tool-Indikator mit dem Tool-Namen.
+- [ ] Indikator nennt das Tool; nach dem Tool-Ergebnis wechselt er auf den abgehakten Zustand.
+
+### Test 80.4 — Deaktivierter Zustand
+1. `Llm:Enabled=false` setzen → `/ai-chat` neu laden.
+- [ ] Deaktiviert-Karte statt Chat; **kein** Composer gerendert.
+
+### Test 80.5 — Fehlerpfad
+1. Ask-Endpoint antwortet `503` (z. B. LLM-Backend nicht erreichbar).
+- [ ] Fehler-Alert mit **Erneut versuchen**-Button; ein Klick setzt die Frage erneut ab.
+
+### Test 80.6 — Threads & Persistenz
+1. Neuen Thread anlegen, Frage stellen, zurück auf den vorherigen Thread wechseln.
+2. Seite neu laden.
+- [ ] Beide Threads bleiben erhalten; Nachrichten überleben den Reload (clientseitige Persistenz).
+
+### Test 80.7 — Markdown-Export
+1. In einem Thread mit Verlauf **Exportieren** klicken.
+- [ ] Markdown-Datei wird heruntergeladen und enthält Fragen + Antworten.
+
+### Test 80.8 — Regenerate
+1. Nach einer Antwort **Neu generieren** klicken.
+- [ ] Die letzte Nutzerfrage geht erneut an den Ask-Endpoint; die Antwort wird ersetzt.
+
+### Test 80.9 — Rollen-Gating der Quellen
+1. Als **Viewer** `/ai-chat` öffnen.
+- [ ] Badges **Quellcode** und **Datenbank** fehlen (Admin/Operator-gated); Docs/Betrieb bleiben, Composer funktioniert.
+
+> Automatisiert: `e2e/ai-chat.spec.ts` (80.1–80.9, hermetisch — SSE via `page.route`).
+
+---
+
+## Teil 81: Custom Activities (`/custom-activities`)
+
+> Voraussetzung: Login als Admin bzw. Operator. Siehe `docs/custom-activities.md`.
+> Governance: Create/Edit/Delete nur solange **Draft** (disabled) — Admin+Operator; Enable/Disable
+> und jede Mutation an einer aktivierten Definition sind **Admin-only**.
+
+### Test 81.1 — Liste
+1. `/custom-activities` öffnen.
+- [ ] Live- und Draft-Zeilen mit Versionsnummern; Status pro Zeile erkennbar.
+
+### Test 81.2 — Anlegen
+1. **Neue Custom Node** → Key, Name, PowerShell-Script, einen Input-Parameter und ein Icon setzen.
+2. Speichern.
+- [ ] Definition wird angelegt und erscheint als **Draft**; Script + Parameter + Icon persistiert.
+
+### Test 81.3 — Bearbeiten
+1. Draft-Definition öffnen → Name ändern, speichern.
+- [ ] Key-Feld ist gesperrt (nicht umbenennbar); der neue Name wird gespeichert.
+
+### Test 81.4 — Enable/Disable & Rollen-Gating
+1. Als **Admin**: Power-Button auf einer Draft-Zeile → Definition wird Live.
+2. Als **Operator**: Seite neu laden.
+- [ ] Operator sieht keinen Power-Button; **Bearbeiten** ist auf Draft-Zeilen aktiv, auf Live-Zeilen deaktiviert.
+
+### Test 81.5 — Versionshistorie
+1. Definition mit mehreren Versionen öffnen → **Versionen**.
+- [ ] Modal listet frühere Snapshots; die aktuelle Version ist kein Rollback-Ziel.
+
+### Test 81.6 — Rollback
+1. In der Historie eine ältere Version wählen → Rollback bestätigen.
+- [ ] Rollback wird ausgeführt; Erfolgs-Toast; die Definition trägt danach den alten Stand als neue Version.
+
+### Test 81.7 — Export/Import
+1. Definition **exportieren** → Envelope-Datei wird heruntergeladen.
+2. Datei über **Importieren** wieder einspielen.
+- [ ] Export lädt herunter; Import legt an und toastet Erfolg.
+
+### Test 81.8 — Viewer
+1. Als **Viewer** öffnen.
+- [ ] Keine Schreib-Controls; der Papierkorb-Button wird gerendert, ist aber deaktiviert.
+
+### Test 81.9 — Lint-Gate
+1. Script mit Lint-Warnungen speichern wollen.
+- [ ] Amber Warning-Block; das Modal bleibt offen, bis die Warnungen adressiert/bestätigt sind.
+
+> Automatisiert: `e2e/custom-activities.spec.ts` (81.1–81.9, hermetisch).
+
+---
+
 ## Checkliste für vollständigen E2E-Test-Run
 
 ```
@@ -4363,7 +4461,10 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 [ ] Teil 75: Quick-Interaktionen im Designer (75.1 — 75.4)
 [ ] Teil 76: Admin Settings UI — SettingsPage Sektionen (76.1 — 76.5)
 [ ] Teil 77: KI-Workflow-Assistent + Streaming (77.1 — 77.9)
-[ ] Teil 78: Alerting (78.1 — 78.7)
+[ ] Teil 78: Alerting (78.1 — 78.8)
+[ ] Teil 79: Toolbar-Layout-Umschalter (79.1 — 79.4)
+[ ] Teil 80: Globaler AI-Chat (80.1 — 80.9)
+[ ] Teil 81: Custom Activities (81.1 — 81.9)
 ```
 
 ---

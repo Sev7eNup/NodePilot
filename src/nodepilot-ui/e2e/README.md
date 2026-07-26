@@ -115,8 +115,8 @@ alongside `dotnet test` and `npm run test:run`.
 | 78 | Alerting rules (list/create/test-fire/secret-redaction/role-gating/gauge-scope-gate/deliveries-modal/cancelledBy-filter) | `alerting.spec.ts` |
 | 79 | Toolbar-layout toggle: compact ⇄ classic toolbar, persisted in designStore, toggle reachable from both layouts | `toolbar-layout.spec.ts` |
 | — (new) | Atelier-Designsprache: Scope-Klassen + Token-Adaption, Skin-Adaption, Header-Umschalter (role=switch), Persistenz über Reload, Classic-Suite-Pin | `designer-atelier.spec.ts` |
-| — (new) | Global AI Chat (`/ai-chat`) — SSE Q&A over docs, operational context, source code, DB/text2sql; tool-call indicators, thread persistence, export-to-Markdown, regenerate, role-gated source badges (DB/source Admin/Operator only) | `ai-chat.spec.ts` |
-| — (new) | Custom Activities (`/custom-activities`) — CRUD lifecycle: create/edit/delete (Admin+Operator while disabled), enable/disable (Admin only), export/import, rollback; draft-state enforcement, role-gating | `custom-activities.spec.ts` |
+| 80 | Global AI Chat (`/ai-chat`) — SSE Q&A over docs, operational context, source code, DB/text2sql; tool-call indicators, thread persistence, export-to-Markdown, regenerate, role-gated source badges (DB/source Admin/Operator only) | `ai-chat.spec.ts` |
+| 81 | Custom Activities (`/custom-activities`) — CRUD lifecycle: create/edit/delete (Admin+Operator while disabled), enable/disable (Admin only), export/import, rollback; draft-state enforcement, role-gating | `custom-activities.spec.ts` |
 | — (new) | Maintenance windows CRUD (Blackout / AllowOnly, weekly schedule, create/edit/delete, Admin-only gate) | `maintenance-windows.spec.ts` |
 | — (new) | Editor-header stacking-context regression: header popovers above canvas-local breadcrumb overlay | `designer-header-layering.spec.ts` |
 | — (new) | SPA smoke: unauthenticated redirect → /login, authenticated landing → dashboard | `smoke.spec.ts` |
