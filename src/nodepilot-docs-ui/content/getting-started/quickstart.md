@@ -25,7 +25,11 @@ Abgesichert ist das über einen Einmal-Token, den das Backend beim ersten Start 
 
 ## 2. Ersten Workflow bauen
 
-Im **Designer** einen neuen Workflow anlegen. Für den ersten Lauf reichen zwei Nodes:
+Der Weg in den Designer führt über die Workflow-Liste. In der **Seitenleiste** links unter **Arbeitsbereich** auf **Workflows** klicken, dann oben rechts auf **Neuer Workflow**. Es klappt ein Feld auf: Namen eintippen, mit **Anlegen** bestätigen — und NodePilot legt den leeren Workflow an und öffnet ihn direkt im Designer. Einen bestehenden Workflow öffnest du genauso, per Klick auf seine Zeile in der Liste.
+
+> Den Button **Neuer Workflow** sehen nur **Admin** und **Operator** — als Viewer hast du ausschließlich Leserechte. Hast du links einen **Ordner** ausgewählt, landet der neue Workflow darin. Der Button **Neuer KI-Workflow** daneben erzeugt stattdessen einen fertigen Entwurf aus einem Prompt (siehe [KI-Features](../ai-features)).
+
+Für den ersten Lauf reichen zwei Nodes:
 
 1. Ein **Manual-Trigger**. Jeder Workflow braucht einen Trigger als Startpunkt — ohne aktiven Trigger findet die Engine keinen Einstieg und der Lauf schlägt sofort mit einer entsprechenden Meldung fehl.
 2. Eine **`runScript`**-Activity, per Edge mit dem Trigger verbunden. Als Skript genügt `$env:COMPUTERNAME`.
@@ -76,11 +80,13 @@ NodePilot setzt `{{hostInfo.output}}` automatisch als einfach-gequoteten String 
 
 Sobald ein Schritt nicht mehr lokal, sondern **auf einem anderen Windows-Host** laufen soll:
 
-- **Machine** anlegen — das WinRM-Ziel.
-- **Credential** anlegen — die Zugangsdaten dazu, DPAPI-verschlüsselt gespeichert.
-- Beides am Node auswählen.
+- **Machine** anlegen — das WinRM-Ziel. Seitenleiste **Infrastruktur → Maschinen**, Button **Maschine hinzufügen**.
+- **Credential** anlegen — die Zugangsdaten dazu, DPAPI-verschlüsselt gespeichert. Die liegen nicht bei den Maschinen, sondern unter **Administration → Einstellungen**, Abschnitt **Credentials**.
+- Beides am Node auswählen. Das Credential ist dabei optional: ohne eines nutzt WinRM die Prozess-Identität von NodePilot.
 
-In der Oberfläche unter den jeweiligen Bereichen, oder über `POST /api/machines` und `POST /api/credentials`.
+Über die API geht dasselbe mit `POST /api/machines` und `POST /api/credentials`.
+
+Reine Remote-Activities — `fileOperation`, `serviceManagement`, `registryOperation`, `wmiQuery` und Verwandte — brauchen **immer** eine Maschine und brechen ohne sie mit `No target machine specified` ab. Auf die lokale Ausführung zurück fallen nur die hybriden: `runScript`, `waitForCondition` und die daraus abgeleiteten Custom Nodes.
 
 ## 7. Automatisch starten lassen
 
