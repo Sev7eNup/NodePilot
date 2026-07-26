@@ -163,8 +163,14 @@
   <!-- Test tooling (floating minors are intentional "latest-in-band" pins) -->
   <ItemGroup>
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.*" />
-    <PackageVersion Include="xunit" Version="2.*" />
-    <PackageVersion Include="xunit.runner.visualstudio" Version="2.*" />
+    <!-- xunit.v3, not the `xunit` package: the 2.x line ended at 2.9.3 and NuGet marks it
+         deprecated (Legacy) with xunit.v3 as the successor. v3 ships under a NEW package id,
+         so no version bump can ever reach it. v3 test projects must be executables — the
+         package's own targets hard-error otherwise — and it generates the entry point itself.
+         xunit.runner.visualstudio stays on the matching major so `dotnet test` keeps running
+         through VSTest, which is what the coverage collector in CI hooks into. -->
+    <PackageVersion Include="xunit.v3" Version="3.*" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.*" />
     <PackageVersion Include="coverlet.collector" Version="10.*" />
     <PackageVersion Include="Moq" Version="4.*" />
     <PackageVersion Include="FluentAssertions" Version="8.*" />
