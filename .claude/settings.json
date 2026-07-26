@@ -331,7 +331,22 @@
       "Bash(awk -F: '$1>2780')",
       "Bash(grep -ohE \"\\\\b\\(bg|text|border|ring\\)-\\(slate|gray|red|amber|green|emerald|blue|indigo|violet|purple|yellow|orange|rose|sky|teal|cyan\\)-[0-9]{2,3}\\(/[0-9]+\\)?\" pages/WorkflowsPage.tsx)",
       "Bash(grep -ohE \"\\\\b\\(bg|text|border|ring\\)-\\(slate|gray|red|amber|green|emerald|blue|indigo|violet|purple|yellow|orange|rose|sky|teal|cyan\\)-[0-9]{2,3}\\(/[0-9]+\\)?\" pages/UsersPage.tsx)",
-      "Bash(grep -ohE \"\\\\b\\(bg|text|border|ring\\)-\\(slate|gray|red|amber|green|emerald|blue|indigo|violet|purple|yellow|orange|rose|sky|teal|cyan\\)-[0-9]{2,3}\\(/[0-9]+\\)?\" pages/MachinesPage.tsx)"
+      "Bash(grep -ohE \"\\\\b\\(bg|text|border|ring\\)-\\(slate|gray|red|amber|green|emerald|blue|indigo|violet|purple|yellow|orange|rose|sky|teal|cyan\\)-[0-9]{2,3}\\(/[0-9]+\\)?\" pages/MachinesPage.tsx)",
+      "Bash(grep -iE '\\(^|/\\)\\(\\\\.npmrc|\\\\.nvmrc|dependabot\\\\.\\(yml|yaml\\)|renovate.*|\\\\.github/.*\\)$')",
+      "Bash(gh run *)",
+      "Bash(dotnet list *)",
+      "Bash(npm outdated *)",
+      "Bash(npm audit *)",
+      "Bash(node -e \"let s='';process.stdin.on\\('data',d=>s+=d\\).on\\('end',\\(\\)=>{const j=JSON.parse\\(s\\);const v=j.vulnerabilities;const rows=Object.values\\(v\\).filter\\(x=>x.isDirect||x.severity==='critical'\\);for\\(const r of Object.values\\(v\\)\\){console.log\\(r.severity.padEnd\\(9\\),r.name.padEnd\\(35\\),'direct='+r.isDirect,'fix='+\\(r.fixAvailable?JSON.stringify\\(r.fixAvailable\\):'none'\\)\\)}}\\)\")",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/opentelemetry.exporter.prometheus.aspnetcore/index.json\")",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/opentelemetry.instrumentation.process/index.json\")",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/opentelemetry.instrumentation.entityframeworkcore/index.json\")",
+      "Bash(curl -s \"https://api.nuget.org/v3/registration5-gz-semver2/swashbuckle.aspnetcore/10.2.3.json\" --compressed)",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/swashbuckle.aspnetcore/10.2.3/swashbuckle.aspnetcore.nuspec\")",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/swashbuckle.aspnetcore.swaggergen/10.2.3/swashbuckle.aspnetcore.swaggergen.nuspec\")",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/swashbuckle.aspnetcore.swaggergen/10.1.7/swashbuckle.aspnetcore.swaggergen.nuspec\")",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/bcrypt.net-next/4.2.0/bcrypt.net-next.nuspec\")",
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/quartz/3.19.0/quartz.nuspec\")"
     ],
     "additionalDirectories": [
       "e:\\NodePilot",
