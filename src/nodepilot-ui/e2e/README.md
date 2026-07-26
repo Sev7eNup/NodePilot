@@ -85,6 +85,7 @@ alongside `dotnet test` and `npm run test:run`.
 | 41 | Rollback with reason | `rollback.spec.ts` |
 | 45 | Shared-folder permissions | `folder-permissions.spec.ts` |
 | 48 | Output redaction (viewer) | `redaction-viewer.spec.ts` |
+| 49 (partial) | Execution retry: retry button UI on ExecutionsPage (49.5); 49.1–49.4 retry contract + cancel-all are API-only | `execution-retry.spec.ts` |
 | 50 | Duplicate / export | `workflow-duplicate-export.spec.ts` |
 | 51 | Step stats / health | `step-stats.spec.ts` |
 | 53 | Schedule preview + AI generate | `schedule-ai.spec.ts` |
@@ -112,9 +113,13 @@ alongside `dotnet test` and `npm run test:run`.
 | 9 (DR) | System-config Backup & Restore (export validation + restore preview/run) | `backup.spec.ts` |
 | — (new) | Live-Ops Mission Control: real-time execution timeline (running + recently-finished bars), bar drill-down + cancel, next-fires departure board, folder scoping | `operations.spec.ts` |
 | 78 | Alerting rules (list/create/test-fire/secret-redaction/role-gating/gauge-scope-gate/deliveries-modal/cancelledBy-filter) | `alerting.spec.ts` |
+| 79 | Toolbar-layout toggle: compact ⇄ classic toolbar, persisted in designStore, toggle reachable from both layouts | `toolbar-layout.spec.ts` |
 | — (new) | Atelier-Designsprache: Scope-Klassen + Token-Adaption, Skin-Adaption, Header-Umschalter (role=switch), Persistenz über Reload, Classic-Suite-Pin | `designer-atelier.spec.ts` |
 | — (new) | Global AI Chat (`/ai-chat`) — SSE Q&A over docs, operational context, source code, DB/text2sql; tool-call indicators, thread persistence, export-to-Markdown, regenerate, role-gated source badges (DB/source Admin/Operator only) | `ai-chat.spec.ts` |
 | — (new) | Custom Activities (`/custom-activities`) — CRUD lifecycle: create/edit/delete (Admin+Operator while disabled), enable/disable (Admin only), export/import, rollback; draft-state enforcement, role-gating | `custom-activities.spec.ts` |
+| — (new) | Maintenance windows CRUD (Blackout / AllowOnly, weekly schedule, create/edit/delete, Admin-only gate) | `maintenance-windows.spec.ts` |
+| — (new) | Editor-header stacking-context regression: header popovers above canvas-local breadcrumb overlay | `designer-header-layering.spec.ts` |
+| — (new) | SPA smoke: unauthenticated redirect → /login, authenticated landing → dashboard | `smoke.spec.ts` |
 
 ## Not covered as UI e2e (by design)
 
@@ -123,7 +128,7 @@ Teil 22 (SCOrch XML import parsing), 23 (external trigger API & idempotency), 29
 contracts), 34 (migration drift / backend smoke — explicitly backend-only), 35 (secrets
 re-encryption), 40 (force-unlock audit write — the UI force-unlock itself is in `rbac` /
 `status-banner`), 44 (rate-limit headers), 46 (unresolved-template engine behaviour), 47
-(idempotency-key TTL), 49 (execution retry / cancel-all — no rendered UI surface).
+(idempotency-key TTL), 49.1–49.4 (retry contract + cancel-all — API-only; Teil 49.5 retry button UI is in `execution-retry.spec.ts`).
 
 **Environment-bound — not hermetically reproducible:**
 Teil 24 & 66 (real-time SignalR / connection status — WebSocket upgrade), 32 (LLM features —
