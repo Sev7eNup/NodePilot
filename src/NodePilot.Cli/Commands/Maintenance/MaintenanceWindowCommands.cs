@@ -192,7 +192,7 @@ public sealed class MaintenanceDeleteCommand : BaseCommand<MaintenanceIdSettings
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"Maintenance window [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"Maintenance window [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);

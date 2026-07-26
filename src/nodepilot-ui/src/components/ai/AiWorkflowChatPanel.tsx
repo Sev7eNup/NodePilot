@@ -27,7 +27,7 @@ import { Markdown } from '../common/Markdown';
 import { CopyButton } from '../common/CopyButton';
 import { useAiChatStore, aiChatScopeKey, aiChatFullKey, type ChatMessage, type ChatThreadMeta } from '../../stores/aiChatStore';
 import { useAuthStore } from '../../stores/authStore';
-import { buildChatMarkdown, downloadTextFile } from '../../lib/chatExport';
+import { buildChatMarkdown, chatFilenameSlug, downloadTextFile } from '../../lib/chatExport';
 
 const EMPTY_THREAD: ChatMessage[] = [];
 const EMPTY_THREADS: ChatThreadMeta[] = [];
@@ -346,7 +346,7 @@ export function AiWorkflowChatPanel({
       assistant: t('ai:chat.exportAssistant'),
       proposal: t('ai:chat.proposalTitle'),
     });
-    const slug = title.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'chat';
+    const slug = chatFilenameSlug(title);
     const date = new Date().toISOString().slice(0, 10);
     downloadTextFile(`ai-chat-${slug}-${date}.md`, md);
   }, [messages, threads, threadId, t]);

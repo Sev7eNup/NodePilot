@@ -14,8 +14,8 @@ namespace NodePilot.Mcp.Analysis;
 /// </summary>
 public static class VariableResolver
 {
-    private static readonly Regex TemplateRx = new(@"\{\{\s*(.*?)\s*\}\}", RegexOptions.Compiled);
-    private static readonly Regex PsAssignRx = new(@"\$([A-Za-z_][A-Za-z0-9_]*)\s*=", RegexOptions.Compiled);
+    private static readonly Regex TemplateRx = new(@"\{\{\s*(.*?)\s*\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+    private static readonly Regex PsAssignRx = new(@"\$([A-Za-z_][A-Za-z0-9_]*)\s*=", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     public sealed record AvailableVariables(string NodeId, IReadOnlyList<string> Upstream, IReadOnlyList<string> RunLevel);
 

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
+using System.Text.Json.Serialization;
 namespace NodePilot.Api.Dtos.Settings;
 
 /// <summary>
@@ -47,7 +48,7 @@ public sealed class LlmSettingsDto
     /// Opt-in: lets the workflow chat assistant call read-only analysis tools (function-calling).
     /// Default <c>false</c>; requires a model that reliably supports tool-calling.
     /// </summary>
-    public bool EnableToolCalling { get; set; }
+    public bool? EnableToolCalling { get; set; }
 
     /// <summary>Max LLM rounds with tool calls per chat turn (loop guard). 1–10.</summary>
     [Range(1, 10)]

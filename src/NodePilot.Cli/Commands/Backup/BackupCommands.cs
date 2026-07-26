@@ -209,7 +209,7 @@ public sealed class BackupRestoreCommand : BaseCommand<BackupRestoreSettings>
                 writer.Error("Restore ist destruktiv — in nicht-interaktiven Läufen mit --yes bestätigen.");
                 return ExitCodes.Error;
             }
-            if (!AnsiConsole.Confirm("Restore überschreibt/erzeugt System-Konfiguration. Fortfahren?", defaultValue: false))
+            if (!await AnsiConsole.ConfirmAsync("Restore überschreibt/erzeugt System-Konfiguration. Fortfahren?", defaultValue: false))
                 return ExitCodes.Success;
         }
 

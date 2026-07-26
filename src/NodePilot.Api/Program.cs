@@ -426,7 +426,7 @@ using (var scope = app.Services.CreateScope())
     // first login must present. Without this the first HTTP caller of /api/auth/login
     // would auto-become Admin — trivial takeover on a freshly deployed instance.
     var bootstrapLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    var usersExist = db.Users.Any();
+    var usersExist = await db.Users.AnyAsync();
     await NodePilot.Api.Security.EnterpriseRecoveryInvariant.EnsureAsync(
         db, builder.Configuration);
     NodePilot.Api.Security.AdminBootstrap.EnsureBootstrapTokenIfNeeded(

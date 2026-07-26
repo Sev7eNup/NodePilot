@@ -18,9 +18,13 @@ export function WorkflowNameField({ name, onRename, canWrite, placeholder }: Rea
   const [focused, setFocused] = useState(false);
 
   // Split off a leading version-like token ("2.07.05.01 Foo" → "2.07.05.01" + "Foo").
-  const match = /^(\S+)\s+(.+)$/.exec(name);
-  const versionPrefix = match && /^[\d][\d.]*$/.test(match[1]) ? match[1] : null;
-  const rest = versionPrefix ? match![2] : name;
+  // Done as an index scan rather than /^(\S+)\s+(.+)$/, whose greedy \S+ backtracks over the
+  // whole name on every whitespace-free input.
+  const wsIndex = name.search(/\s/);
+  const head = wsIndex > 0 ? name.slice(0, wsIndex) : '';
+  const tail = wsIndex > 0 ? name.slice(wsIndex).replace(/^\s+/, '') : '';
+  const versionPrefix = head && tail && /^[\d][\d.]*$/.test(head) ? head : null;
+  const rest = versionPrefix ? tail : name;
 
   return (
     // inline-grid with both layers in the same cell: the styled layer is IN-FLOW so it sizes

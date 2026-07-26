@@ -138,7 +138,7 @@ public sealed class GlobalsDeleteCommand : BaseCommand<GlobalsUpdateSettings>
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"Global Variable [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"Global Variable [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace NodePilot.Api.Dtos;
 
 /// <summary>
@@ -68,19 +70,19 @@ public sealed record SystemAlertPolicyResponse(
 public sealed record SaveSystemAlertPolicyRequest(
     string Name,
     string? Description,
-    bool IsEnabled,
+    [property: JsonRequired] bool IsEnabled,
     string SourceId,
     string? PresetId,
     IReadOnlyDictionary<string, object?>? SourceParameters,
     string? ConditionJson,
-    int SustainForSeconds,
+    [property: JsonRequired] int SustainForSeconds,
     string? SeverityOverride,
     string ScopeKind,
     IReadOnlyList<NotificationRuleTargetDto>? Targets,
     IReadOnlyList<NotificationRouteDto>? Routes,
-    int CooldownMinutes,
-    int MinOccurrences,
-    int OccurrenceWindowMinutes);
+    [property: JsonRequired] int CooldownMinutes,
+    [property: JsonRequired] int MinOccurrences,
+    [property: JsonRequired] int OccurrenceWindowMinutes);
 
 /// <summary>Stateless preview: sample the source now and report which current instances match the condition.</summary>
 public sealed record SystemAlertPreviewRequest(

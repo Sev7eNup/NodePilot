@@ -1,7 +1,9 @@
+using System.Text.Json.Serialization;
+
 namespace NodePilot.Api.Dtos;
 
 public record CreateMachineRequest(string Name, string Hostname, int WinRmPort = 5985, bool UseSsl = false, Guid? DefaultCredentialId = null, string? Tags = null);
-public record UpdateMachineRequest(string Name, string Hostname, int WinRmPort, bool UseSsl, Guid? DefaultCredentialId, string? Tags);
+public record UpdateMachineRequest(string Name, string Hostname, [property: JsonRequired] int WinRmPort, [property: JsonRequired] bool UseSsl, Guid? DefaultCredentialId, string? Tags);
 public record TestConnectionRequest(Guid? CredentialId);
 
 public record MachineResponse(

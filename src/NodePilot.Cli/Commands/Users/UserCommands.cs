@@ -111,7 +111,7 @@ public sealed class UserDeleteCommand : BaseCommand<UserIdSettings>
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"User [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"User [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);

@@ -31,7 +31,7 @@ public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettin
     {
         if (!settings.Yes && !Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm(
+            var ok = await AnsiConsole.ConfirmAsync(
                 "Re-encrypt sweep über alle Credentials + Global-Secrets ausführen?\n  " +
                 "[grey](Empfohlen nur direkt nach AES-GCM-Key-Rotation oder Provider-Migration.)[/]",
                 defaultValue: false);

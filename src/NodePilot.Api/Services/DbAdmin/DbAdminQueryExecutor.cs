@@ -254,7 +254,7 @@ public sealed class DbAdminQueryExecutor
                     var row = new List<object?>(reader.FieldCount);
                     for (var c = 0; c < reader.FieldCount; c++)
                     {
-                        var value = reader.IsDBNull(c) ? null : reader.GetValue(c);
+                        var value = await reader.IsDBNullAsync(c, ct) ? null : reader.GetValue(c);
                         row.Add(NormaliseValue(value));
                     }
                     rows.Add(row);

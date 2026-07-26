@@ -388,7 +388,7 @@ public static class SettingsSectionAdapters
             ["Model"] = dto.Model,
             ["MaxTokens"] = dto.MaxTokens,
             ["TimeoutSeconds"] = dto.TimeoutSeconds,
-            ["EnableToolCalling"] = dto.EnableToolCalling,
+            ["EnableToolCalling"] = dto.EnableToolCalling ?? false,
             ["ToolCallMaxDepth"] = dto.ToolCallMaxDepth,
         };
         WriteSecretField(section, "ApiKey", dto.ApiKey, previousSection ?? new JsonObject(), protector);
@@ -648,7 +648,7 @@ public static class SettingsSectionAdapters
     {
         var ldap = new JsonObject
         {
-            ["Enabled"] = dto.Ldap.Enabled,
+            ["Enabled"] = dto.Ldap.Enabled ?? false,
             ["Port"] = dto.Ldap.Port,
             ["UseSsl"] = dto.Ldap.UseSsl,
             ["BindTimeoutSeconds"] = dto.Ldap.BindTimeoutSeconds,

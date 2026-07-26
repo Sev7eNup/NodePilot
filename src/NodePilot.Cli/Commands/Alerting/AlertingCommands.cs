@@ -170,7 +170,7 @@ public sealed class AlertingDeleteCommand : BaseCommand<AlertingIdSettings>
     {
         if (!Console.IsInputRedirected)
         {
-            var ok = AnsiConsole.Confirm($"Alerting rule [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
+            var ok = await AnsiConsole.ConfirmAsync($"Alerting rule [red]{settings.Id}[/] wirklich löschen?", defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
         var api = ClientFactory.Create(session);

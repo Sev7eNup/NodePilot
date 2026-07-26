@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace NodePilot.Api.Dtos;
 
 /// <summary>
@@ -31,13 +33,13 @@ public record NotificationRuleResponse(
 public record CreateNotificationRuleRequest(
     string Name,
     string? Description,
-    bool IsEnabled,
+    [property: JsonRequired] bool IsEnabled,
     IReadOnlyList<string> EventTypes,
     string? FilterExpressionJson,
     string ScopeKind,
-    int CooldownMinutes,
-    int MinOccurrences,
-    int OccurrenceWindowMinutes,
+    [property: JsonRequired] int CooldownMinutes,
+    [property: JsonRequired] int MinOccurrences,
+    [property: JsonRequired] int OccurrenceWindowMinutes,
     IReadOnlyList<NotificationRouteDto>? Routes,
     IReadOnlyList<NotificationRuleTargetDto>? Targets,
     string? DedupKeyTemplate = null);
@@ -45,13 +47,13 @@ public record CreateNotificationRuleRequest(
 public record UpdateNotificationRuleRequest(
     string Name,
     string? Description,
-    bool IsEnabled,
+    [property: JsonRequired] bool IsEnabled,
     IReadOnlyList<string> EventTypes,
     string? FilterExpressionJson,
     string ScopeKind,
-    int CooldownMinutes,
-    int MinOccurrences,
-    int OccurrenceWindowMinutes,
+    [property: JsonRequired] int CooldownMinutes,
+    [property: JsonRequired] int MinOccurrences,
+    [property: JsonRequired] int OccurrenceWindowMinutes,
     IReadOnlyList<NotificationRouteDto>? Routes,
     IReadOnlyList<NotificationRuleTargetDto>? Targets,
     string? DedupKeyTemplate = null);

@@ -16,7 +16,7 @@ import {
   type ChatMessage, type ChatThreadMeta,
 } from '../stores/aiChatStore';
 import { useAuthStore } from '../stores/authStore';
-import { buildChatMarkdown, downloadTextFile } from '../lib/chatExport';
+import { buildChatMarkdown, chatFilenameSlug, downloadTextFile } from '../lib/chatExport';
 
 // A non-`__new__` sentinel workflowId so the store's `isPersistableScope` KEEPS this page's
 // threads across reloads (unlike an unsaved canvas). One shared scope per user.
@@ -247,7 +247,7 @@ export function AiChatPage() {
       assistant: t('ai:knowledge.roleAssistant'),
       proposal: t('ai:knowledge.roleAssistant'),
     });
-    const slug = title.replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '').toLowerCase() || 'chat';
+    const slug = chatFilenameSlug(title);
     const date = new Date().toISOString().slice(0, 10);
     downloadTextFile(`nodepilot-ai-chat-${slug}-${date}.md`, md);
   }, [messages, threads, threadId, t]);
