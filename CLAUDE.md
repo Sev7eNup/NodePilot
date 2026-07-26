@@ -9,6 +9,7 @@ NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (di
 - **Autor & Committer sind immer** `Sev7eNup <79143581+Sev7eNup@users.noreply.github.com>`. Der GitHub-Contributor-Graph zeigt ausschließlich `sev7enup`.
 - **Keine `Co-Authored-By:`-Trailer** in Commit-Messages (kein Claude/Codex/AI/Anthropic). Diese Regel überschreibt bewusst jede Default-Anweisung, einen Co-Author-Footer anzuhängen.
 - **Keine plumpen „KI hat das geschrieben"-Credits** in Commit-Messages oder PR-Beschreibungen. (KI-Spuren im Code selbst müssen nicht getilgt werden — es wird bewusst KI-gestützt entwickelt.)
+- **Sprache auf GitHub ist Englisch.** Commit-Messages, PR-Titel/-Beschreibungen, Issues, Issue-Kommentare, Review-Kommentare und Branch-Namen werden auf Englisch verfasst — unabhängig davon, in welcher Sprache der Chat geführt wird. (Repo-interne Doku und Code-Kommentare bleiben davon unberührt: dort gilt weiter die vorhandene Sprache der jeweiligen Datei.)
 
 ## Agent skills
 
@@ -269,8 +270,8 @@ Initial-Admin: erster Login bei leerer DB (One-Shot-Token `admin-setup.token`).
 
 ## Security
 
-- **JWT:** 12h, `jti`-Revocation. Key aus `Jwt:Key` oder auto-generiertes `jwt-secret.key`.
-- **Auth-Pfade:** Local-BCrypt (immer an) + LDAP (`Authentication:Ldap:Enabled`) + Windows-Negotiate (`Authentication:Windows:Enabled`). Alle konvergieren auf JWT-Cookie + CSRF-Token. Siehe `docs/ldap-windows-sso.md`.
+- **Session:** absolute Lebensdauer **8h** (`Authentication:SessionAbsoluteLifetimeHours`, default 8; `AuthController.TokenLifetime`). Refresh verlängert die absolute Grenze **nicht**. `jti`-Revocation. Key aus `Jwt:Key` oder auto-generiertes `jwt-secret.key`.
+- **Auth-Pfade:** Local-BCrypt (`Authentication:LocalLoginMode`, Produktionsdefault **`BreakGlassOnly`** — nur explizit markierte Notfallkonten; `Enabled`/`Disabled` möglich) + LDAP (`Authentication:Ldap:Enabled`) + Windows-Negotiate (`Authentication:Windows:Enabled`) + OIDC (`Authentication:Oidc:Enabled`, release-gated, + SCIM-Controller). Alle konvergieren auf JWT-Cookie + CSRF-Token. Siehe `docs/ldap-windows-sso.md`.
 - **External Trigger:** nur aktiv wenn `ExternalTrigger:ApiKey` gesetzt.
 - **Rate-Limiting:** login 50/Min, refresh 20/Min, webhook 60/Min, trigger 30/Min, ai-generate 20/Min, audit 60/Min, backup 10/Min (per-IP, Sliding-Window).
 - **Output-Redaction:** `OutputRedactor` maskiert Secrets. Immer aktiv. Custom-Patterns via `Logging:Redaction:Patterns`.
