@@ -198,10 +198,11 @@ jobs:
       - name: Install
         run: npm ci
 
-      # No `npm audit` gate here (unlike the frontend/docs-ui jobs): the @electron-forge
-      # packaging toolchain currently carries 31 advisories in its own transitive dev tree
-      # (incl. a critical `tar`). None of it ships — Forge is build-time only — but the gate
-      # would go red on day one. Tracked separately; add the step once Forge's tree is clean.
+      - name: Reject vulnerable npm dependencies
+        # Clean only because package.json pins three overrides into Forge's own tree — see the
+        # "//overrides" note there. If this goes red after a Forge bump, re-check whether an
+        # override became redundant (drop it) or a new advisory appeared (add one).
+        run: npm audit --audit-level=moderate
 
       - name: Type check
         run: npm run typecheck
