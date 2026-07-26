@@ -68,6 +68,9 @@ test.db
 /logs-frontend-dev.err.log
 /logs-frontend-dev.out.log
 /logs-test/
+# Ad-hoc dev-server logs from dotted-name launches (`.frontend.err.log` & friends)
+/.frontend.*.log
+/.backend.*.log
 
 # Coverage reports — locally-generated HTML/text from
 # `dotnet test --collect:"XPlat Code Coverage"` + reportgenerator (Backend)
