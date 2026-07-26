@@ -533,9 +533,6 @@ public sealed class OidcIdentityMapper(
         }));
     }
 
-    internal static HashSet<string> ReadGroups(ClaimsPrincipal principal, string? claimType)
-        => ReadGroupSnapshot(principal, claimType).Groups;
-
     private static GroupSnapshot ReadGroupSnapshot(
         ClaimsPrincipal principal,
         string? claimType)

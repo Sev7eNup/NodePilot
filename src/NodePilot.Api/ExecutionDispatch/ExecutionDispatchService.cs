@@ -1,8 +1,6 @@
 using System.Text.Json;
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;

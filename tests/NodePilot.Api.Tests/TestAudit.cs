@@ -1,4 +1,3 @@
-using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 
 namespace NodePilot.Api.Tests;

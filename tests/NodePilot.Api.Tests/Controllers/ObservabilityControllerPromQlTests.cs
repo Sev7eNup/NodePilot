@@ -1,7 +1,5 @@
 using System.Net;
-using System.Net.Http;
 using FluentAssertions;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Controllers;

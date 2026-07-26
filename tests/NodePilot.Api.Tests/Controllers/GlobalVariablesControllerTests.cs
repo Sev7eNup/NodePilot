@@ -2,8 +2,6 @@ using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using NodePilot.Api.Audit;
-using NodePilot.Core.Audit;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Models;

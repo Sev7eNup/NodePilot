@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
-using NodePilot.Data;
 using Xunit;
 
 namespace NodePilot.Data.Tests.Rbac;

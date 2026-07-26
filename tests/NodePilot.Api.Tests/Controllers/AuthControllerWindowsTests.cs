@@ -9,7 +9,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
@@ -135,7 +134,7 @@ public sealed class AuthControllerWindowsTests : IDisposable
         };
 
         var ctx = NewHttpContextWithIdentity(principal);
-        var controller = new AuthController(_db, cfg, audit, key, issuer,
+        var controller = new AuthController(_db, cfg, audit, issuer,
             ldapAuthenticator: null,
             externalUserMapper: mapper,
             ldapOptions: optsMonitor,

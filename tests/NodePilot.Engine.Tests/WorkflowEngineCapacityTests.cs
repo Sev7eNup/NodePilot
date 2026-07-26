@@ -131,7 +131,7 @@ public sealed class WorkflowEngineCapacityTests : IDisposable
 
         var db = new NodePilotDbContext(new DbContextOptionsBuilder<NodePilotDbContext>()
             .UseSqlite(_dataSource).Options);
-        return new WorkflowEngine(db, _registry,
+        return new WorkflowEngine(db,
             NullLogger<WorkflowEngine>.Instance, sp, _notifier.Object, _config);
     }
 

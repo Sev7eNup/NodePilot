@@ -3,8 +3,6 @@ using Microsoft.AspNetCore.Mvc;
 using NodePilot.Api.Dtos;
 using NodePilot.Telemetry;
 using NodePilot.Api.Services.Observability;
-using System.Globalization;
-using System.Text.Json;
 
 namespace NodePilot.Api.Controllers;
 
@@ -250,100 +248,6 @@ public class ObservabilityController : ControllerBase
         if (!_prom.IsConfigured)
             return Ok(new MetricsDashboardResponse(false, key, MetricsDashboardCatalog.Title(key), [], [], [], []));
         return Ok(await MetricsDashboardCatalog.ExecuteAsync(key, hours, _prom, _logger, ct));
-    }
-
-    private async Task<MetricsSeries> RunSeriesAsync(MetricsSeriesDefinition definition, long start, long end, int hours, CancellationToken ct)
-    {
-        try
-        {
-            var step = hours <= 24 ? "60" : hours <= 168 ? "300" : "1800";
-            var response = await _prom.RangeAsync(definition.Query, start, end, step, ct);
-            return new MetricsSeries(definition.Key, definition.Title, definition.Unit,
-                response.IsSuccess ? ParseRange(response.Body) : []);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Prometheus series '{Key}' failed", definition.Key);
-            return new MetricsSeries(definition.Key, definition.Title, definition.Unit, []);
-        }
-    }
-
-    private async Task<MetricsTable> RunTableAsync(MetricsTableDefinition definition, CancellationToken ct)
-    {
-        try
-        {
-            var response = await _prom.InstantAsync(definition.Query, null, ct);
-            return new MetricsTable(definition.Key, definition.Title, definition.Unit,
-                response.IsSuccess ? ParseVector(response.Body).Take(10).ToList() : []);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Prometheus table '{Key}' failed", definition.Key);
-            return new MetricsTable(definition.Key, definition.Title, definition.Unit, []);
-        }
-    }
-
-    private static List<MetricsSeriesLine> ParseRange(string body)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(body);
-            var result = doc.RootElement.GetProperty("data").GetProperty("result");
-            return result.EnumerateArray().Select(item => new MetricsSeriesLine(
-                SeriesLabel(item),
-                item.GetProperty("values").EnumerateArray().Select(v => new MetricsPoint(
-                    (long)v[0].GetDouble(), ParseNumber(v[1].GetString()))).ToList())).ToList();
-        }
-        catch { return []; }
-    }
-
-    private static List<MetricsTableRow> ParseVector(string body)
-    {
-        try
-        {
-            using var doc = JsonDocument.Parse(body);
-            return doc.RootElement.GetProperty("data").GetProperty("result").EnumerateArray()
-                .Select(item => new MetricsTableRow(SeriesLabel(item), ParseNumber(item.GetProperty("value")[1].GetString())))
-                .OrderByDescending(r => r.Value).ToList();
-        }
-        catch { return []; }
-    }
-
-    private static string SeriesLabel(JsonElement item)
-    {
-        if (!item.TryGetProperty("metric", out var metric)) return "Value";
-        foreach (var key in new[] { "workflow_name", "activity_type", "trigger_type", "http_route", "operation", "result", "status", "nodepilot_llm_kind" })
-            if (metric.TryGetProperty(key, out var value) && !string.IsNullOrWhiteSpace(value.GetString())) return value.GetString()!;
-        return "Total";
-    }
-
-    private static double ParseNumber(string? raw) => double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) ? value : 0;
-
-    private sealed record MetricDefinition(string Key, string Title, string Query, string Unit);
-    private sealed record MetricsSeriesDefinition(string Key, string Title, string Query, string Unit);
-    private sealed record MetricsTableDefinition(string Key, string Title, string Query, string Unit);
-    private sealed record MetricsDashboardDefinition(string Key, string Title, MetricDefinition[] Panels, MetricsSeriesDefinition[] Series, MetricsTableDefinition[] Tables);
-
-    private static readonly IReadOnlyDictionary<string, MetricsDashboardDefinition> MetricsDashboards = new Dictionary<string, MetricsDashboardDefinition>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["mission-control"] = D("mission-control", "Mission Control", "Active executions|sum(nodepilot_executions_active) or vector(0)|count", "Executions / min|sum(rate(nodepilot_executions_started_total[5m])) * 60 or vector(0)|per_min", "Success rate|sum(rate(nodepilot_executions_completed_total{status=\"Succeeded\"}[1h])) / clamp_min(sum(rate(nodepilot_executions_completed_total[1h])), .0001)|ratio", "Execution throughput|sum(rate(nodepilot_executions_started_total[5m])) * 60|per_min", "Top failing workflows|topk(10, sum by (workflow_name) (increase(nodepilot_executions_completed_total{status=\"Failed\"}[1h])))|count"),
-        ["workflows"] = D("workflows", "Workflows", "Started|sum(increase(nodepilot_executions_started_total[24h])) or vector(0)|count", "Failed|sum(increase(nodepilot_executions_completed_total{status=\"Failed\"}[24h])) or vector(0)|count", "p95 duration|histogram_quantile(.95, sum(rate(nodepilot_execution_duration_milliseconds_bucket[5m])) by (le)) or vector(0)|ms", "Workflow executions|sum by (status) (rate(nodepilot_executions_completed_total[5m]))|per_min", "Most active workflows|topk(10, sum by (workflow_name) (increase(nodepilot_executions_started_total[24h])))|count"),
-        ["activities"] = D("activities", "Activities", "Steps|sum(increase(nodepilot_steps_executed_total[24h])) or vector(0)|count", "Retries|sum(increase(nodepilot_step_retry_attempts_total[24h])) or vector(0)|count", "p95 duration|histogram_quantile(.95, sum(rate(nodepilot_step_duration_milliseconds_bucket[5m])) by (le)) or vector(0)|ms", "Steps by type|sum by (activity_type) (rate(nodepilot_steps_executed_total[5m]))|per_min", "Most used activities|topk(10, sum by (activity_type) (increase(nodepilot_steps_executed_total[24h])))|count"),
-        ["winrm"] = D("winrm", "WinRM", "Active sessions|sum(nodepilot_winrm_sessions_active) or vector(0)|count", "Auth failures / min|sum(rate(nodepilot_winrm_auth_failures_total[5m])) * 60 or vector(0)|per_min", "Connect p95|histogram_quantile(.95, sum(rate(nodepilot_winrm_session_open_duration_milliseconds_bucket[5m])) by (le)) or vector(0)|ms", "Sessions opened|sum(rate(nodepilot_winrm_sessions_opened_total[5m])) * 60|per_min", "Results|sum by (result) (increase(nodepilot_winrm_sessions_opened_total[24h]))|count"),
-        ["triggers"] = D("triggers", "Triggers & Scheduler", "Fires / min|sum(rate(nodepilot_triggers_fired_total[5m])) * 60 or vector(0)|per_min", "Sync failures|sum(increase(nodepilot_trigger_orchestrator_sync_failures_total[1h])) or vector(0)|count", "Webhooks|sum(increase(nodepilot_webhook_requests_total[1h])) or vector(0)|count", "Trigger fires|sum by (trigger_type) (rate(nodepilot_triggers_fired_total[5m])) * 60|per_min", "Trigger types|sum by (trigger_type) (increase(nodepilot_triggers_fired_total[24h]))|count"),
-        ["api"] = D("api", "API & HTTP", "Requests / s|sum(rate(http_server_request_duration_seconds_count[1m])) or vector(0)|rps", "5xx / s|sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m])) or vector(0)|rps", "p95 latency|histogram_quantile(.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le)) or vector(0)|seconds", "Requests by route|sum by (http_route) (rate(http_server_request_duration_seconds_count[5m]))|rps", "Slowest routes|topk(10, sum by (http_route) (rate(http_server_request_duration_seconds_sum[5m])) / sum by (http_route) (rate(http_server_request_duration_seconds_count[5m])))|seconds"),
-        ["runtime"] = D("runtime", "Runtime", "CPU|100 * (sum(rate(process_cpu_time_seconds_total[1m])) / on() group_left() avg(process_cpu_count))|percent", "Memory|process_memory_usage_bytes|bytes", "Exceptions / s|sum(rate(dotnet_exceptions_total[2m])) or vector(0)|rps", "CPU|100 * (sum(rate(process_cpu_time_seconds_total[1m])) / on() group_left() avg(process_cpu_count))|percent", "Runtime signals|sum by (reason) (increase(dotnet_exceptions_total[24h]))|count"),
-        ["security"] = D("security", "Security & Audit", "Failed login rate|sum(rate(nodepilot_auth_login_attempts_total{result=\"failure\"}[5m])) / clamp_min(sum(rate(nodepilot_auth_login_attempts_total[5m])), .0001)|ratio", "Lockouts|sum(increase(nodepilot_auth_lockouts_total[1h])) or vector(0)|count", "Rate limit rejections|sum(increase(nodepilot_rate_limit_rejections_total[1h])) or vector(0)|count", "Login attempts|sum by (result) (rate(nodepilot_auth_login_attempts_total[5m]))|per_min", "Login results|sum by (result) (increase(nodepilot_auth_login_attempts_total[24h]))|count"),
-        ["ai"] = D("ai", "AI / LLM", "Calls|sum(increase(nodepilot_llm_calls_total[24h])) or vector(0)|count", "Success rate|sum(increase(nodepilot_llm_calls_total{result=\"success\"}[24h])) / clamp_min(sum(increase(nodepilot_llm_calls_total[24h])), .0001)|ratio", "Tokens|sum(increase(nodepilot_llm_tokens_total[24h])) or vector(0)|count", "Calls by kind|sum by (nodepilot_llm_kind, result) (rate(nodepilot_llm_calls_total[5m]))|per_min", "Token use|topk(10, sum by (nodepilot_llm_kind) (increase(nodepilot_llm_tokens_total[24h])))|count"),
-        ["database"] = D("database", "Database", "Saves / s|sum(rate(nodepilot_db_save_changes_total[1m])) or vector(0)|rps", "Save p95|histogram_quantile(.95, sum(rate(nodepilot_db_save_changes_duration_milliseconds_bucket[5m])) by (le)) or vector(0)|ms", "Failures|sum(rate(nodepilot_db_save_changes_total{status=\"failure\"}[5m])) or vector(0)|rps", "Saves by operation|sum by (operation) (rate(nodepilot_db_save_changes_total[5m]))|rps", "Rows by operation|topk(10, sum by (operation) (rate(nodepilot_db_save_changes_rows_sum[5m])))|count"),
-    };
-
-    private static MetricsDashboardDefinition D(string key, string title, string p1, string p2, string p3, string series, string table)
-    {
-        static MetricDefinition Panel(string raw) { var p = raw.Split('|'); return new(p[0], p[0], p[1], p[2]); }
-        static MetricsSeriesDefinition Series(string raw) { var p = raw.Split('|'); return new(p[0], p[0], p[1], p[2]); }
-        static MetricsTableDefinition Table(string raw) { var p = raw.Split('|'); return new(p[0], p[0], p[1], p[2]); }
-        return new(key, title, [Panel(p1), Panel(p2), Panel(p3)], [Series(series)], [Table(table)]);
     }
 
     private async Task<TelemetryPanel> RunInstantAsync(string key, string title, string query, string unit, CancellationToken ct)

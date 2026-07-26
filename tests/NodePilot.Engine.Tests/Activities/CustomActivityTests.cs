@@ -4,7 +4,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Activities;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
-using NodePilot.Engine;
 using NodePilot.Engine.Activities;
 using NodePilot.Engine.PowerShell;
 using NodePilot.TestCommons;
@@ -50,9 +49,6 @@ public class CustomActivityTypeAndValidationTests
     [InlineData("custom", false)]
     public void IsCustomType_RecognizesPrefix(string type, bool expected)
         => CustomActivityType.IsCustomType(type).Should().Be(expected);
-
-    [Fact]
-    public void KeyOf_ExtractsSlug() => CustomActivityType.KeyOf("custom:disk_check").Should().Be("disk_check");
 
     [Theory]
     [InlineData("custom:disk_check", true)]

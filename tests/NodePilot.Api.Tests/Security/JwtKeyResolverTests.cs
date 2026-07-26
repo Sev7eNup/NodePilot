@@ -266,12 +266,13 @@ public class JwtKeyResolverTests
             rotated.Should().NotBe(oldKey);
             JwtKeyResolver.Validate(rotated);
 
-            var validateMethod = typeof(JwtKeyResolver).Assembly
+            var readMethod = typeof(JwtKeyResolver).Assembly
                 .GetType("NodePilot.Api.Security.RestrictedFileWriter", throwOnError: true)!
-                .GetMethod("ValidateExisting", System.Reflection.BindingFlags.Static |
+                .GetMethod("ReadValidatedText", System.Reflection.BindingFlags.Static |
                     System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)!;
-            var result = validateMethod.Invoke(null, new object[] { path });
-            result!.GetType().GetProperty("IsSecure")!.GetValue(result).Should().Be(true);
+            var result = readMethod.Invoke(null, new object[] { path });
+            var security = result!.GetType().GetProperty("Security")!.GetValue(result);
+            security!.GetType().GetProperty("IsSecure")!.GetValue(security).Should().Be(true);
         }
         finally
         {

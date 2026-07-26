@@ -8,7 +8,6 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Execution;
-using NodePilot.Core.Telemetry;
 
 namespace NodePilot.Engine.Activities;
 

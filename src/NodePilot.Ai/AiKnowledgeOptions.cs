@@ -15,12 +15,6 @@ public class AiKnowledgeOptions
 {
     public const string SectionName = "AiKnowledge";
 
-    /// <summary>
-    /// Max characters of a single file/snippet returned by a knowledge tool. A const because it's a
-    /// token-budget tuning value, not an operator knob.
-    /// </summary>
-    public const int MaxSnippetChars = 1_600;
-
     /// <summary>Max total characters a single tool result may return to the LLM (truncated beyond).</summary>
     public const int MaxToolResultChars = 24_000;
 

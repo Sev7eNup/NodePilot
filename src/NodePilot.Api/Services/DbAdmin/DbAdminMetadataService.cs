@@ -94,8 +94,6 @@ public sealed class DbAdminMetadataService
         _tables = map;
     }
 
-    public IEnumerable<string> TableNames => _tables.Keys;
-
     public TableMeta? GetTable(string name)
         => _tables.TryGetValue(name, out var t) ? t : null;
 

@@ -2,14 +2,12 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
-using NodePilot.Engine;
 using NodePilot.Engine.Tests.Helpers;
 using Xunit;
 
@@ -52,7 +50,7 @@ public class WorkflowEngineTests
 
         var logger = NullLogger<WorkflowEngine>.Instance;
         var notifier = new Mock<IExecutionNotifier>();
-        _engine = new WorkflowEngine(_db, _registry, logger, _serviceProvider, notifier.Object);
+        _engine = new WorkflowEngine(_db, logger, _serviceProvider, notifier.Object);
     }
 
     private static Workflow CreateWorkflow(string definitionJson) => new Workflow
@@ -395,7 +393,6 @@ public class WorkflowEngineTests
         await using var serviceProvider = services.BuildServiceProvider();
         var engine = new WorkflowEngine(
             _db,
-            _registry,
             NullLogger<WorkflowEngine>.Instance,
             serviceProvider,
             new Mock<IExecutionNotifier>().Object);
@@ -465,7 +462,6 @@ public class WorkflowEngineTests
         await using var serviceProvider = services.BuildServiceProvider();
         var engine = new WorkflowEngine(
             _db,
-            _registry,
             NullLogger<WorkflowEngine>.Instance,
             serviceProvider,
             new Mock<IExecutionNotifier>().Object);
@@ -1075,7 +1071,7 @@ public class WorkflowEngineTests
         var registry = new ActivityRegistry(new[] { _mockExecutor.Object, mockJunction.Object });
         var sp = TestDbContext.BuildScopeProviderOnSameConnection(_connection, registry);
         var notifier = new Mock<IExecutionNotifier>();
-        var engine = new WorkflowEngine(_db, registry, NullLogger<WorkflowEngine>.Instance,
+        var engine = new WorkflowEngine(_db, NullLogger<WorkflowEngine>.Instance,
             sp, notifier.Object);
 
         var def = """

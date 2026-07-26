@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 
@@ -42,7 +41,6 @@ namespace NodePilot.Remote;
 public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<WinRmSessionPool>? _logger;
     private readonly TimeSpan _idleTtl;
     private readonly int _maxIdlePerKey;
     private readonly int _maxConcurrentPerMachine;
@@ -54,11 +52,9 @@ public sealed class WinRmSessionPool : IRemoteSessionFactory, IAsyncDisposable
 
     public WinRmSessionPool(
         IServiceScopeFactory scopeFactory,
-        IConfiguration configuration,
-        ILogger<WinRmSessionPool>? logger = null)
+        IConfiguration configuration)
     {
         _scopeFactory = scopeFactory;
-        _logger = logger;
         // Opt-out (default ON) — pooling is a pure optimization with no semantic change.
         // Deployments that need every step to run on a guaranteed-fresh session (e.g. because a
         // target app expects a new login per runspace) set Remote:Pool:Enabled=false. Note: this

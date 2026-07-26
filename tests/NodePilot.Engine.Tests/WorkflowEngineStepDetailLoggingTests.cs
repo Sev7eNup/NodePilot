@@ -9,7 +9,6 @@ using Moq;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
-using NodePilot.Engine;
 using Xunit;
 
 namespace NodePilot.Engine.Tests;
@@ -74,7 +73,7 @@ public sealed class WorkflowEngineStepDetailLoggingTests : IDisposable
                 ["Logging:StepDetail:MaxOutputChars"] = maxChars.ToString(),
             })
             .Build();
-        return new WorkflowEngine(_db, _registry, _logger.Object,
+        return new WorkflowEngine(_db, _logger.Object,
             _serviceProvider, new Mock<IExecutionNotifier>().Object, config);
     }
 

@@ -1,6 +1,5 @@
 using NodePilot.Ai;
 using System.Net;
-using System.Net.Http;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -10,8 +9,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using NodePilot.Api.Ai;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos.Settings;
@@ -558,7 +555,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         // (e.g. because the form re-sends the whole section payload), the server must
         // drop that key before write. Otherwise the runtime file accumulates stale
         // shadow values that re-activate if the env var is later unset.
-        var (controller, writer, _, cfg) = NewController();
+        var (_, writer, _, cfg) = NewController();
 
         // Layer an env-source provider over the in-memory config so the EffectiveSource
         // detector classifies Smtp:Host as "env" — without doing this the detector

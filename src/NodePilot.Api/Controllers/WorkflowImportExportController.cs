@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Audit;

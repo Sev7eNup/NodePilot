@@ -183,6 +183,6 @@ public sealed class ExecWatchCommand : BaseCommand<ExecWatchSettings>
     protected override Task<int> RunAsync(CommandContext _, ExecWatchSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
         var api = ClientFactory.Create(session);
-        return ExecWatcher.RunAsync(api, session, settings.Id, writer, followAfterTerminal: false, ct, forcePolling: settings.NoSignalR);
+        return ExecWatcher.RunAsync(api, session, settings.Id, writer, ct, forcePolling: settings.NoSignalR);
     }
 }

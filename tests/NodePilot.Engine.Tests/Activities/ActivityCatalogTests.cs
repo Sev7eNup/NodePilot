@@ -26,13 +26,6 @@ public class ActivityCatalogTests
             "every executable activity/trigger must have exactly one descriptor in ActivityCatalog");
     }
 
-    [Fact]
-    public void ExternalTriggers_AreSubsetOfTriggerTypes()
-    {
-        ActivityCatalog.ExternalTriggerTypes.Should().BeSubsetOf(ActivityCatalog.TriggerTypes);
-        ActivityCatalog.ExternalTriggerTypes.Should().NotContain("manualTrigger");
-    }
-
     private static HashSet<string> ExtractEngineActivityTypes(string repoRoot)
     {
         var engineRoot = Path.Combine(repoRoot, "src", "NodePilot.Engine");

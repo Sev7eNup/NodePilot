@@ -1,5 +1,3 @@
-using Microsoft.Extensions.Hosting;
-
 namespace NodePilot.Api.Security;
 
 /// <summary>

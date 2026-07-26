@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Diagnostics.Metrics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;

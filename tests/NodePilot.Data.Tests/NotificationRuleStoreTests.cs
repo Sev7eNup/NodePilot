@@ -3,7 +3,6 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
-using NodePilot.Data;
 using NodePilot.Data.Security;
 using NodePilot.TestCommons;
 using Xunit;

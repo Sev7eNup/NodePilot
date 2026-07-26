@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Rbac;

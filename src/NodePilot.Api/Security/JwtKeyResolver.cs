@@ -1,6 +1,3 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 // Static Serilog: the key resolves during service registration, before the host (and with it
 // DI-provided ILogger) exists. Log.Logger is already configured at that point (Program.cs) and
 // the same pre-Build logging path is used elsewhere in startup.
@@ -208,16 +205,4 @@ public sealed class JwtKeyProvider : IJwtKeyProvider
     {
         Key = JwtKeyResolver.Resolve(config, env);
     }
-}
-
-/// <summary>
-/// DI registration helper for <see cref="IJwtKeyProvider"/>. Program.cs must call
-/// <c>builder.Services.AddJwtKeyProvider()</c> before anything that injects the interface
-/// (AuthController, JwtBearer options wiring). Required because the Program.cs edit lives
-/// in a separate change-set.
-/// </summary>
-public static class JwtKeyProviderExtensions
-{
-    public static IServiceCollection AddJwtKeyProvider(this IServiceCollection services)
-        => services.AddSingleton<IJwtKeyProvider, JwtKeyProvider>();
 }

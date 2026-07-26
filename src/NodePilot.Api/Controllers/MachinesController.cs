@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Telemetry;

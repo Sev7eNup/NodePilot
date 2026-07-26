@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using NodePilot.Api.Audit;
 using NodePilot.Api.Security.Oidc;
 using NodePilot.Core.Audit;
 using NodePilot.Data;

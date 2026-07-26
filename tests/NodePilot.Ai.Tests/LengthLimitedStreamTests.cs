@@ -1,6 +1,5 @@
 using System.Text;
 using FluentAssertions;
-using NodePilot.Ai;
 using Xunit;
 
 // CA2022: the wrapper is always fed a MemoryStream in these tests, which returns the full

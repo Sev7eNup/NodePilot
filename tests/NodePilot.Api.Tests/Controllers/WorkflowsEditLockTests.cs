@@ -2,16 +2,12 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Moq;
-using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
-using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
-using NodePilot.Engine;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;

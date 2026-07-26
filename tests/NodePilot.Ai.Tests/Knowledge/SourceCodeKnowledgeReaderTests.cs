@@ -1,5 +1,4 @@
 using FluentAssertions;
-using NodePilot.Ai;
 using NodePilot.Ai.Knowledge;
 using NodePilot.TestCommons;
 using Xunit;

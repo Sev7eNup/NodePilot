@@ -1,7 +1,6 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Models;
@@ -157,7 +156,7 @@ public class WorkflowVersionsRetentionServiceTests
     [Fact]
     public async Task PurgeOnceAsync_EmptyDb_ReturnsZero()
     {
-        var (db, factory, conn) = CreateEnvironment();
+        var (_, factory, conn) = CreateEnvironment();
         try
         {
             var service = new WorkflowVersionsRetentionService(factory,

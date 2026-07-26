@@ -49,7 +49,7 @@ public sealed class AuthControllerMethodsTests : IDisposable
         var issuer = new AuthSessionIssuer(cfg, key, NoopAuditWriter.Instance);
         IOptionsMonitor<LdapOptions>? ldapMonitor = ldap is null ? null : new StaticOptionsMonitor<LdapOptions>(ldap);
         IOptionsMonitor<WindowsAuthOptions>? winMonitor = windows is null ? null : new StaticOptionsMonitor<WindowsAuthOptions>(windows);
-        return new AuthController(_db, cfg, NoopAuditWriter.Instance, key, issuer,
+        return new AuthController(_db, cfg, NoopAuditWriter.Instance, issuer,
             ldapAuthenticator: null,
             externalUserMapper: null,
             ldapOptions: ldapMonitor,

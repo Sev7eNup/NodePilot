@@ -98,14 +98,6 @@ internal static class RestrictedFileWriter
     }
 
     /// <summary>
-    /// Validates a pre-existing secret before a caller reads it. A key on a filesystem that
-    /// cannot persist ACLs, behind a reparse point, or readable by an untrusted principal is
-    /// equivalent to a disclosed key and must not be used by a production process.
-    /// </summary>
-    public static ExistingSecretFileSecurity ValidateExisting(string path)
-        => InspectExisting(path, readContent: false).Security;
-
-    /// <summary>
     /// Validates and reads a pre-existing secret while one non-delete-sharing handle remains
     /// open for the entire operation. This binds the ACL decision to the bytes returned to the
     /// caller instead of validating a pathname and reopening it after an attacker-controlled

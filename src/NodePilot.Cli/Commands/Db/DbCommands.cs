@@ -1,9 +1,7 @@
 using System.ComponentModel;
-using System.IO;
 using System.Runtime.Versioning;
 using System.Text.Json;
 using NodePilot.Cli.Api;
-using NodePilot.Cli.Api.Dtos;
 using NodePilot.Cli.Auth;
 using NodePilot.Cli.Output;
 using NodePilot.Cli.Settings;

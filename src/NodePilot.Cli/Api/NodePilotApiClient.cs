@@ -896,13 +896,6 @@ public sealed class NodePilotApiClient
         return await ParseAsync<SharedFolderPermissionResponse>(res, ct);
     }
 
-    public async Task UpdateSharedFolderPermissionAsync(
-        Guid folderId, Guid permissionId, UpdateSharedFolderPermissionRequest req, CancellationToken ct)
-    {
-        using var res = await _http.PutAsJsonAsync($"api/shared-workflow-folders/{folderId}/permissions/{permissionId}", req, JsonOptions, ct);
-        await EnsureSuccessAsync(res, ct);
-    }
-
     public async Task RevokeSharedFolderPermissionAsync(Guid folderId, Guid permissionId, CancellationToken ct)
     {
         using var res = await _http.DeleteAsync($"api/shared-workflow-folders/{folderId}/permissions/{permissionId}", ct);

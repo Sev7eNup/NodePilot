@@ -5,7 +5,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using NodePilot.Core.Constants;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
@@ -19,7 +18,6 @@ namespace NodePilot.Engine;
 public class WorkflowEngine : IWorkflowEngine
 {
     private readonly NodePilotDbContext _db;
-    private readonly ActivityRegistry _registry;
     private readonly ILogger<WorkflowEngine> _logger;
     private readonly IServiceProvider _serviceProvider;
     private readonly IExecutionNotifier _notifier;
@@ -89,14 +87,12 @@ public class WorkflowEngine : IWorkflowEngine
 
     public WorkflowEngine(
         NodePilotDbContext db,
-        ActivityRegistry registry,
         ILogger<WorkflowEngine> logger,
         IServiceProvider serviceProvider,
         IExecutionNotifier notifier,
         IConfiguration? configuration = null)
     {
         _db = db;
-        _registry = registry;
         _logger = logger;
         _serviceProvider = serviceProvider;
         _notifier = notifier;
@@ -495,7 +491,7 @@ public class WorkflowEngine : IWorkflowEngine
         // when the workflow definition contains no `{{globals.` reference.
         var globalsResult = await ResolveGlobalVariablesAsync(workflow.DefinitionJson, execution.Id, ct);
 
-        if (await FailIfUnresolvableGlobalsAsync(run, globalsResult.Unresolvable, ct))
+        if (await FailIfUnresolvableGlobalsAsync(run, globalsResult.Unresolvable))
             return execution;
 
         var debug = CreateDebugHandle(debugEnabled, timeoutSeconds);
@@ -588,7 +584,7 @@ public class WorkflowEngine : IWorkflowEngine
     /// failed and persisted (caller returns the execution as-is).
     /// </summary>
     private async Task<bool> FailIfUnresolvableGlobalsAsync(
-        ExecutionRun run, IReadOnlySet<string> unresolvable, CancellationToken ct)
+        ExecutionRun run, IReadOnlySet<string> unresolvable)
     {
         var brokenRefError = FindUnresolvableGlobalReferences(run.Workflow.DefinitionJson, unresolvable);
         if (brokenRefError is null) return false;
@@ -1211,7 +1207,7 @@ public class WorkflowEngine : IWorkflowEngine
     /// caller (singleton hosted service) doesn't need a scoped engine instance to fence.
     /// </para>
     /// </summary>
-    public static Task<int> CancelAllLocalAsync(CancellationToken ct = default)
+    public static Task<int> CancelAllLocalAsync()
     {
         var snapshot = _runningExecutions.ToArray();
         var count = 0;

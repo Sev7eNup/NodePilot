@@ -1,9 +1,7 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
-using NodePilot.Data;
 using NodePilot.TestCommons;
 using Xunit;
 

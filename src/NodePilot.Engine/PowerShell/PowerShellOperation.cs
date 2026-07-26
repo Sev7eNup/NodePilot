@@ -137,21 +137,6 @@ internal static class PowerShellOperation
         JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
         _ => value.GetRawText(),
     };
-
-    public static string ExtractLastIntegerLine(string? output, string fallback = "0")
-    {
-        if (string.IsNullOrWhiteSpace(output)) return fallback;
-
-        var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        for (var i = lines.Length - 1; i >= 0; i--)
-        {
-            var trimmed = lines[i].Trim();
-            if (long.TryParse(trimmed, out _))
-                return trimmed;
-        }
-
-        return fallback;
-    }
 }
 
 internal readonly record struct PowerShellOperationMarkers(string Start, string End)

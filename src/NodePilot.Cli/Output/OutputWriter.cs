@@ -35,7 +35,6 @@ public sealed class OutputWriter
     }
 
     public IAnsiConsole Out => _stdout;
-    public IAnsiConsole Err => _stderr;
 
     public void WriteData<T>(T value, Action<IAnsiConsole, T> renderTable)
     {

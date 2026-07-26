@@ -2,7 +2,6 @@ using NodePilot.Telemetry;
 using NodePilot.Api.Diagnostics;
 using NodePilot.Api.Logging;
 using Serilog;
-using Serilog.Configuration;
 using NodePilot.Core.Telemetry;
 
 namespace NodePilot.Api.Hosting;

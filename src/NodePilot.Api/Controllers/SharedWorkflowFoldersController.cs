@@ -4,8 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
-using NodePilot.Api.Security;
-using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;

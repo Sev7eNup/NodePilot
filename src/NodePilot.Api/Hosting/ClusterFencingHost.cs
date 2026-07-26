@@ -1,4 +1,3 @@
-using NodePilot.Core.Interfaces;
 using NodePilot.Engine;
 using NodePilot.Scheduler.Cluster;
 
@@ -48,7 +47,7 @@ public sealed class ClusterFencingHost : IHostedService
         {
             try
             {
-                var cancelled = await WorkflowEngine.CancelAllLocalAsync(CancellationToken.None);
+                var cancelled = await WorkflowEngine.CancelAllLocalAsync();
                 _logger.LogWarning(
                     "Lost cluster leadership — fenced {Count} local execution(s) by cancellation. " +
                     "The new leader will adopt them on its next recovery sweep.",
