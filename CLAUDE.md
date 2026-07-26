@@ -235,7 +235,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 **Konventionen:**
 - **Tests sind Pflicht.** Jeder relevante Code-Change braucht passenden Test-Code in derselben Änderung.
-- Coverage-Gates: Backend >= 45% Line-Coverage, Frontend siehe `vitest.config.ts`.
+- Coverage-Gates: Backend >= 88% Line-Coverage (Ratsche — nur anheben, nie senken), Frontend siehe `vitest.config.ts`. Messverfahren + Assembly-Filter: `docs/claude-reference.md`. Genuin untestbare Infrastruktur trägt `[ExcludeFromCodeCoverage]` **mit Begründungskommentar** am Typ bzw. an der Methode; `coverage.runsettings` zieht das Attribut aus dem Nenner.
 - Naming: `MethodName_Scenario_ExpectedResult`
 - Remote-Layer (WinRM) IMMER gemockt.
 - DB-Tests: SQLite in-memory.

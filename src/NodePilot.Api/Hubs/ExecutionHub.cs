@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
@@ -17,6 +18,11 @@ namespace NodePilot.Api.Hubs;
 // surface area here is bounded, but we still cap how many groups a single connection
 // can join to prevent a misbehaving (or compromised) client from hoovering up every
 // execution stream at once.
+// Coverage: the static registry below (group bookkeeping, ops-feed scope, auth map) is
+// ordinary logic and is covered through the *ForTest seams. The instance hub methods further
+// down are not: they only run inside a live SignalR connection, where Context, Groups and
+// Clients are supplied by the hub pipeline. Those carry [ExcludeFromCodeCoverage] one by one
+// rather than the whole type, so excluding them cannot quietly hide the tested parts.
 [Authorize]
 public class ExecutionHub : Hub
 {
@@ -231,6 +237,7 @@ public class ExecutionHub : Hub
         }
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public async Task<object> JoinExecution(string executionId)
     {
         // Validate shape — executionId is used as a SignalR group name. Reject anything that
@@ -266,6 +273,7 @@ public class ExecutionHub : Hub
         return new { executionId = group };
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public async Task LeaveExecution(string executionId)
     {
         if (!Guid.TryParse(executionId, out var parsed)) return;
@@ -275,6 +283,7 @@ public class ExecutionHub : Hub
     }
 
     /// <summary>Join a workflow channel to receive all execution updates for that workflow.</summary>
+    [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public async Task<object> JoinWorkflow(string workflowId)
     {
         if (!Guid.TryParse(workflowId, out var parsed))
@@ -306,6 +315,7 @@ public class ExecutionHub : Hub
         return new { workflowId = parsed.ToString() };
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public async Task LeaveWorkflow(string workflowId)
     {
         if (!Guid.TryParse(workflowId, out var parsed)) return;
@@ -321,6 +331,7 @@ public class ExecutionHub : Hub
     /// flat group, so an event for a workflow outside the caller's folders never reaches them.
     /// A caller with zero accessible folders is rejected (they would receive nothing anyway).
     /// </summary>
+    [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public async Task<object> JoinOperationsFeed()
     {
         if (Context.User is null) throw new HubException("not authenticated");
@@ -332,12 +343,14 @@ public class ExecutionHub : Hub
         return new { subscribed = true };
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public Task LeaveOperationsFeed()
     {
         _opsFeed.TryRemove(Context.ConnectionId, out _);
         return Task.CompletedTask;
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public override Task OnConnectedAsync()
     {
         ApiMetrics.SignalRConnectionsActive.Add(1);
@@ -363,6 +376,7 @@ public class ExecutionHub : Hub
         return base.OnConnectedAsync();
     }
 
+    [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public override Task OnDisconnectedAsync(Exception? exception)
     {
         ApiMetrics.SignalRConnectionsActive.Add(-1);

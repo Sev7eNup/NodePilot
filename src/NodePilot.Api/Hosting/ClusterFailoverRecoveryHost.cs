@@ -1,6 +1,7 @@
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
 using NodePilot.Engine.Execution;
+using System.Diagnostics.CodeAnalysis;
 
 namespace NodePilot.Api.Hosting;
 
@@ -11,6 +12,10 @@ namespace NodePilot.Api.Hosting;
 /// cluster events and DB recovery". Single-node mode never wires this — the boot-time
 /// recovery path in Program.cs covers single-node restarts.
 /// </summary>
+// Coverage: only wired in cluster mode and driven entirely by real leadership transitions of
+// the lease holder. A test would have to fake the transition, which reduces to asserting that
+// the recovery sweep it delegates to was invoked — and that sweep is covered on its own.
+[ExcludeFromCodeCoverage(Justification = "Active/passive HA; driven by real cluster leadership transitions.")]
 public sealed class ClusterFailoverRecoveryHost : IHostedService
 {
     private readonly IServiceScopeFactory _scopeFactory;

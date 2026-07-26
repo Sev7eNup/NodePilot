@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using NodePilot.Cli;
@@ -44,3 +45,8 @@ catch (Exception ex)
     await Console.Error.WriteLineAsync($"Error: {ex.Message}");
     return ExitCodes.Error;
 }
+
+// Coverage: process entry point — Spectre command-app wiring plus the top-level try/catch.
+// The commands it registers are covered individually in NodePilot.Cli.Tests.
+[ExcludeFromCodeCoverage(Justification = "Process entry point.")]
+internal partial class Program;

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Primitives;
+using System.Diagnostics.CodeAnalysis;
 
 namespace NodePilot.Api.Hosting;
 
@@ -18,6 +19,10 @@ namespace NodePilot.Api.Hosting;
 /// <see cref="IConfigurationRoot"/> (tests), only the one-shot start apply runs.
 /// </para>
 /// </summary>
+// Coverage: every effect of this service is a process-global ThreadPool.SetMinThreads call.
+// Asserting it in-process would mutate the ThreadPool for the whole test run and make other
+// tests order-dependent, so the observable behaviour is deliberately left unasserted.
+[ExcludeFromCodeCoverage(Justification = "Mutates process-global ThreadPool state; unsafe to assert in-process.")]
 internal sealed class ThreadPoolTuningService : IHostedService, IDisposable
 {
     private readonly IConfiguration _configuration;
