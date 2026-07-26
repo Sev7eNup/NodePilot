@@ -468,7 +468,9 @@ function WorkflowEditorInner() {
   // changes, so re-renders stay rare even though onNodeDrag fires on every move.
   const [dropTargetGroupId, setDropTargetGroupId] = useState<string | null>(null);
 
-  const onNodeDrag = useCallback((_e: React.MouseEvent, node: Node) => {
+  // The drag callbacks hand back the native event (React Flow 12.11 widened OnNodeDrag from
+  // React.MouseEvent to MouseEvent | TouchEvent), not a synthetic one. We only need the node.
+  const onNodeDrag = useCallback((_e: MouseEvent | TouchEvent, node: Node) => {
     if (node.type === 'group') { setDropTargetGroupId(null); return; }
     const over = findDropTargetGroupId(nodes, node);
     // Highlight only when dropping there would change the parent (skip the node's current group).
@@ -480,7 +482,7 @@ function WorkflowEditorInner() {
   // becomes that group's child (and one dragged out is detached). History is already committed by
   // onNodeDragStart('Move nodes'), so the reparent rides the same undo step; the move itself
   // already marked the workflow dirty. The third arg carries every node of a multi-select drag.
-  const onNodeDragStop = useCallback((_e: React.MouseEvent, node: Node, draggedNodes: Node[]) => {
+  const onNodeDragStop = useCallback((_e: MouseEvent | TouchEvent, node: Node, draggedNodes: Node[]) => {
     setDropTargetGroupId(null);
     const ids = (draggedNodes.length > 0 ? draggedNodes : [node]).map((n) => n.id);
     markDirty();
