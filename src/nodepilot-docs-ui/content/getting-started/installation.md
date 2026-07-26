@@ -1,6 +1,8 @@
 # Installation
 
-Diese Anleitung führt dich in ca. 10 Minuten zu einem laufenden NodePilot. Du brauchst nur eine Windows-Maschine und Admin-Rechte zum Installieren der Voraussetzungen.
+Diese Anleitung richtet das **Dev-Setup** ein: PostgreSQL, Backend und Frontend einzeln, aus dem Quellcode. Das ist der Weg, wenn du **am Produkt selbst entwickelst**. Rechne mit ca. 10 Minuten; du brauchst eine Windows-Maschine und Admin-Rechte für die Voraussetzungen.
+
+> **Du willst NodePilot nur benutzen, nicht daran entwickeln?** Dann ist die **Desktop-App** der schnellere Weg — ein `.exe`-Installer, der PostgreSQL und die .NET-Laufzeit mitbringt und alles als Dienste einrichtet, ohne dass du hier irgendetwas installierst. Siehe [Desktop-App](../deployment/desktop). Für Team-Betrieb mit Zugriff aus dem Netz: [Produktions-Rollout](../deployment/production). Der Vergleich aller drei: [Betriebsarten im Überblick](../deployment/overview).
 
 NodePilot ist **Windows-only** (.NET 10, `net10.0-windows`) und besteht aus drei Komponenten: **PostgreSQL** (Datenbank), **Backend** (ASP.NET Core API, Port 5000) und **Frontend** (React SPA, Port 5173).
 
@@ -125,7 +127,9 @@ npm run dev
 
 Im Browser **http://localhost:5173** öffnen. Bei leerer Datenbank führt die UI dich durch die Einrichtung des ersten Admin-Accounts. Den dazu nötigen One-Shot-Token legt das Backend beim ersten Start in `src\NodePilot.Api\admin-setup.token` ab — die UI nutzt ihn automatisch, du musst ihn nicht von Hand eintragen.
 
-Danach stehen die Rollen **Admin / Operator / Viewer** zur Verfügung. Für eine schnelle Dev-Übung kannst du als Admin `admin` / `admin123` verwenden (falls du dieses Passwort beim Setup vergibst).
+Benutzername und Passwort legst **du** in diesem Schritt fest; es gibt kein voreingestelltes Konto. Danach stehen die Rollen **Admin / Operator / Viewer** zur Verfügung.
+
+Weiter geht es im [Quickstart](./quickstart) — erster Workflow, erster Lauf.
 
 ## Häufige Probleme
 
@@ -139,6 +143,9 @@ Danach stehen die Rollen **Admin / Operator / Viewer** zur Verfügung. Für eine
 
 ## Produktivbetrieb
 
-Das obige Setup ist **eine von drei Betriebsarten** — der Dev-Pfad. Für den produktiven Einsatz gibt es zwei weitere: das **Server-Deployment** (Windows-Dienst, externe DB, Team-Zugriff) und die **Desktop-App** (ein `.exe`-Installer, der Datenbank und Laufzeit mitbringt, aber nur auf der eigenen Maschine erreichbar ist). Welche wofür taugt und was im Alltag konkret anders ist, steht unter [Deployment → Betriebsarten im Überblick](../deployment/overview).
+Das obige Setup ist der **Dev-Pfad** — eine von drei Betriebsarten. Für den produktiven Einsatz gibt es zwei weitere:
 
-Das obige Setup ist der Dev/Quick-Path. Für einen produktiven Rollout als Windows-Service (gMSA oder LocalSystem, Kestrel-HTTPS, ACLs, Firewall, Zertifikate) liegen fertige Installer-Skripte unter `deploy\` (`Build-Artifact.ps1`, `Install-NodePilot.ps1`, `Update-NodePilot.ps1`, `Uninstall-NodePilot.ps1`). Der Installer braucht zwingend mehrere Parameter (Artifact-Pfad, Zertifikat-Thumbprint, DB-Host/User/Passwort als SecureString) — die komplette Aufrufsyntax, Parameterliste und Stolperfallen stehen in [Deployment → Produktions-Rollout](../deployment/production) sowie in `deploy\README.md`. Fürs Dev-Setup brauchst du diese Skripte **nicht**.
+- **Desktop-App** — ein `.exe`-Installer, der Datenbank und Laufzeit mitbringt; erreichbar nur auf der eigenen Maschine. Siehe [Desktop-App](../deployment/desktop).
+- **Server-Deployment** — Windows-Dienst mit externer DB und Team-Zugriff. Die fertigen Skripte liegen unter `deploy\` (`Build-Artifact.ps1`, `Install-NodePilot.ps1`, `Update-NodePilot.ps1`, `Uninstall-NodePilot.ps1`). Der Installer braucht zwingend mehrere Parameter — Artifact-Pfad, Zertifikat-Thumbprint, DB-Host/User/Passwort als SecureString. Aufrufsyntax, Parameterliste und Stolperfallen: [Produktions-Rollout](../deployment/production) sowie `deploy\README.md`.
+
+Fürs Dev-Setup brauchst du diese Skripte **nicht**. Welche Betriebsart wofür taugt und was im Alltag konkret anders ist: [Betriebsarten im Überblick](../deployment/overview).
