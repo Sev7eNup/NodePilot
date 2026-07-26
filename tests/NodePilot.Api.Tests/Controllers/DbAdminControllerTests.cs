@@ -36,7 +36,8 @@ public class DbAdminControllerTests
         var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
         var meta = new DbAdminMetadataService(scopeFactory);
         var executor = new DbAdminQueryExecutor(db, new TestOptionsMonitor<DbAdminOptions>(options ?? new DbAdminOptions()));
-        var controller = new DbAdminController(db, meta, executor, new AuditStager(),
+        var controller = new DbAdminController(db, meta, executor, new DbAdminSecretColumns(meta),
+            new AuditStager(),
             new MemoryCache(new MemoryCacheOptions()), NullLogger<DbAdminController>.Instance);
 
         var id = callerId ?? Guid.NewGuid();
@@ -793,6 +794,80 @@ public class DbAdminControllerTests
         resp.Rows.Should().HaveCount(2);
         resp.Truncated.Should().BeFalse();
         resp.RowsAffected.Should().BeNull();
+    }
+
+    // ── Secret-column containment (mirrors SqlKnowledgeReader; keeps the MCP run_readonly_sql
+    //    tool and the UI query pane from pulling secrets out of the DB) ──────────────────────
+
+    [Theory]
+    [InlineData("SELECT Username, PasswordHash FROM Users")]
+    [InlineData("SELECT PasswordHash AS p FROM Users")]
+    [InlineData("SELECT substr(PasswordHash, 1, 4) FROM Users")]
+    [InlineData("SELECT \"PasswordHash\" FROM Users")]
+    [InlineData("SELECT EncryptedPassword FROM Credentials")]
+    public async Task ExecuteQuery_ReadMode_RejectsProtectedColumnReference(string sql)
+    {
+        var (ctrl, db) = NewController();
+        db.Users.Add(AdminUser());
+        await db.SaveChangesAsync();
+
+        var result = await ctrl.ExecuteQuery(new DbAdminQueryRequest(sql, null), CancellationToken.None);
+
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        bad.Value.Should().BeOfType<DbAdminQueryError>().Subject.Code.Should().Be("protected_column");
+    }
+
+    [Fact]
+    public async Task ExecuteQuery_ReadMode_MasksProtectedColumnsOfWildcardSelect()
+    {
+        // A wildcard select names no protected identifier, so it survives the rejection above —
+        // the result mask is what keeps the hash out of the response.
+        var (ctrl, db) = NewController();
+        db.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "admin",
+            PasswordHash = "SUPER_SECRET_HASH",
+            Role = UserRole.Admin,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            PasswordChangedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        var result = await ctrl.ExecuteQuery(
+            new DbAdminQueryRequest("SELECT * FROM Users", null), CancellationToken.None);
+
+        var resp = ((result as OkObjectResult)!.Value as DbAdminQueryResponse)!;
+        var hashIndex = resp.Columns.FindIndex(c => c.Name == "PasswordHash");
+        hashIndex.Should().BeGreaterThanOrEqualTo(0, "the wildcard select does return the column");
+        resp.Rows.Should().OnlyContain(row => (string)row[hashIndex]! == "***");
+        resp.Rows.SelectMany(r => r).Should().NotContain("SUPER_SECRET_HASH");
+    }
+
+    [Fact]
+    public async Task ExecuteQuery_ReadMode_AllowsNonSecretColumnNamedValue()
+    {
+        // "Value" is only protected in combination with the GlobalVariable table — blocking it
+        // outright would break ordinary reads elsewhere.
+        var (ctrl, _) = NewController();
+
+        var result = await ctrl.ExecuteQuery(
+            new DbAdminQueryRequest("SELECT 1 AS Value", null), CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    [Fact]
+    public async Task ExecuteQuery_ReadMode_RejectsGlobalVariableValue()
+    {
+        var (ctrl, _) = NewController();
+
+        var result = await ctrl.ExecuteQuery(
+            new DbAdminQueryRequest("SELECT Value FROM GlobalVariables", null), CancellationToken.None);
+
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        bad.Value.Should().BeOfType<DbAdminQueryError>().Subject.Code.Should().Be("protected_column");
     }
 
     [Fact]

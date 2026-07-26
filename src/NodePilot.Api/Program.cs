@@ -204,6 +204,8 @@ builder.Services.AddScoped<NodePilot.Api.Configuration.ISettingsSectionAdapterRe
 // DB-Admin viewer: schema metadata is stable for the lifetime of the process (migrations only
 // run at startup), so a singleton is correct and avoids re-reflecting on every request.
 builder.Services.AddSingleton<NodePilot.Api.Services.DbAdmin.DbAdminMetadataService>();
+// Derived from that metadata, so equally stable: the one set of columns raw SQL must never surface.
+builder.Services.AddSingleton<NodePilot.Api.Services.DbAdmin.DbAdminSecretColumns>();
 builder.Services.Configure<NodePilot.Api.Services.DbAdmin.DbAdminOptions>(
     builder.Configuration.GetSection(NodePilot.Api.Services.DbAdmin.DbAdminOptions.SectionName));
 // Query executor is scoped because it pulls the request's DbContext and uses its connection.

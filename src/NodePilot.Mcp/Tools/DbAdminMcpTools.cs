@@ -18,9 +18,9 @@ namespace NodePilot.Mcp.Tools;
 ///   (read-only) transaction, and caps rows + timeout.
 /// - Hidden secret columns (PasswordHash, EncryptedPassword, byte[]) never appear in list_db_tables;
 ///   GlobalVariable.Value is masked as "***".
-/// - Raw SQL via run_readonly_sql CAN select those secret columns (the read executor returns raw
-///   rows) — this matches the existing Admin-only DB-Admin UI. Do NOT select secret columns; rely on
-///   list_db_tables for the safe schema. (OutputRedactor wiring for /query is a tracked follow-up.)
+/// - Raw SQL cannot reach them either: /api/dbadmin/query rejects a read statement that names a
+///   protected column and masks protected result columns of a wildcard select as "***", so secrets
+///   never enter the agent's context. Use list_db_tables for the safe schema.
 /// </summary>
 [McpServerToolType]
 public sealed class DbAdminMcpTools
@@ -85,7 +85,7 @@ public sealed class DbAdminMcpTools
     }
 
     [McpServerTool(Name = "run_readonly_sql", ReadOnly = true)]
-    [Description("Run a single read-only SQL statement against the NodePilot App-DB and return columns + rows. Only SELECT/WITH/EXPLAIN/SHOW/VALUES/TABLE first-keyword statements are accepted (server-enforced); the transaction is read-only and rolled back. Use list_db_tables first for the schema. Do NOT select secret columns (PasswordHash, EncryptedPassword) — they are hidden in list_db_tables but reachable via raw SQL. Results are capped (max 200 rows / 4 KB). Admin-only.")]
+    [Description("Run a single read-only SQL statement against the NodePilot App-DB and return columns + rows. Only SELECT/WITH/EXPLAIN/SHOW/VALUES/TABLE first-keyword statements are accepted (server-enforced); the transaction is read-only and rolled back. Use list_db_tables first for the schema. Secret columns (PasswordHash, EncryptedPassword, GlobalVariable.Value) are unreachable: naming one rejects the query, and a wildcard select returns them as \"***\". Results are capped (max 200 rows / 4 KB). Admin-only.")]
     public async Task<object> RunReadonlySql(
         [Description("A single read-only SQL statement (SELECT/WITH/EXPLAIN/SHOW/VALUES/TABLE).")] string sql,
         CancellationToken cancellationToken = default)
