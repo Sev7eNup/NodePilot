@@ -179,6 +179,38 @@ jobs:
       - name: Type check + build
         run: npm run build
 
+  desktop:
+    name: Desktop shell typecheck + tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src/nodepilot-desktop
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/nodepilot-desktop/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # No `npm audit` gate here (unlike the frontend/docs-ui jobs): the @electron-forge
+      # packaging toolchain currently carries 31 advisories in its own transitive dev tree
+      # (incl. a critical `tar`). None of it ships — Forge is build-time only — but the gate
+      # would go red on day one. Tracked separately; add the step once Forge's tree is clean.
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Tests
+        # Pure-logic units only (desktop.json handoff validation, certificate pinning,
+        # navigation containment). No Electron runtime — hence ubuntu, not windows.
+        run: npm run test:run
+
   e2e:
     name: Frontend E2E (Playwright)
     runs-on: ubuntu-latest

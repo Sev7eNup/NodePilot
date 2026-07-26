@@ -241,7 +241,9 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 **E2E (Playwright):** hermetische Specs in `src/nodepilot-ui/e2e/`, alle APIs gemockt (kein Backend/Postgres nötig). Konventionen: `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`.
 
-**Nightly:** Windows-Task `NodePilot Nightly Tests` (täglich 22:00) fährt via `scripts/nightly-tests.ps1` alle drei Suiten (je 1× Retry bei Flake), Report nach `C:\temp\nodepilot-nightly\` (+ `latest.md`). Das Skript gibt vorm Rebuild Port 5000 frei + killt verwaiste `testhost`-Prozesse. Manuell: `powershell -File scripts/nightly-tests.ps1`; Zeit ändern: `scripts/register-nightly-task.ps1 -Time HH:mm`.
+**Desktop-Shell:** `src/nodepilot-desktop` hat eine eigene vitest-Suite (node-Env) für die reine Logik — `config.ts` (desktop.json-Handoff-Validierung) + `security.ts` (Cert-Pinning, Navigations-Containment). `npm run test:run`; eigener CI-Job `desktop`.
+
+**Nightly:** Windows-Task `NodePilot Nightly Tests` (täglich 22:00) fährt via `scripts/nightly-tests.ps1` alle vier Suiten (je 1× Retry bei Flake), Report nach `C:\temp\nodepilot-nightly\` (+ `latest.md`). Das Skript gibt vorm Rebuild Port 5000 frei + killt verwaiste `testhost`-Prozesse. Manuell: `powershell -File scripts/nightly-tests.ps1`; Zeit ändern: `scripts/register-nightly-task.ps1 -Time HH:mm`.
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 
