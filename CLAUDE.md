@@ -28,6 +28,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen
+- `docs/ai-feature-ideas.md` — **Ideen-Backlog, keine Spezifikation.** Nur lesen, um nicht Vorhandenes neu zu erfinden; nichts daraus ohne Produktentscheidung umsetzen.
 
 ## Tech-Stack
 
