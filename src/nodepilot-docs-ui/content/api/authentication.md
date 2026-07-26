@@ -118,17 +118,9 @@ HSTS, CSP, `X-Frame-Options=DENY`, `nosniff`, `Referrer-Policy`.
 
 ## Rate-Limiting
 
-Per-IP, Sliding-Window:
+Für die Auth-Endpoints gilt per-IP im Sliding-Window: **login 50/Min**, **refresh 20/Min**.
 
-| Bereich | Limit |
-|---|---|
-| login | 50/Min |
-| refresh | 20/Min |
-| webhook | 60/Min |
-| trigger | 30/Min |
-| ai-generate | 20/Min |
-| audit | 60/Min |
-| backup | 10/Min |
+Die vollständige Tabelle über alle Bereiche steht — als einzige Quelle — unter [Hardening-Flags](../security/hardening).
 
 ## External Trigger
 

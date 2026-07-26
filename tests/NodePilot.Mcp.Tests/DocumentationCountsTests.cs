@@ -19,6 +19,11 @@ public class DocumentationCountsTests
     private static int ActivityTypes() =>
         CountMatches(new[] { RepoPath("src", "NodePilot.Core", "Activities", "ActivityCatalog.cs") },
             @"(?:Action|Logic|ControlFlow)\(""");
+    // Colour skins offered by the theme switcher, counted from the THEMES registry. `system`
+    // is not a skin — it resolves to one — so the doc phrasing says "N Skins + system".
+    private static int Skins() =>
+        CountMatches(new[] { RepoPath("src", "nodepilot-ui", "src", "stores", "themeStore.ts") },
+            @"id: '[a-z-]+'");
 
     public static IEnumerable<object[]> DocClaims()
     {
@@ -26,6 +31,7 @@ public class DocumentationCountsTests
         var destructive = McpDestructiveTools();
         var defaultTools = toolTotal - destructive;
         var activities = ActivityTypes();
+        var skins = Skins();
 
         // (relative doc path, regex with one capturing group, expected value, what it is)
         yield return Row("CLAUDE.md", @"über (\d+) Tools", toolTotal, "MCP tools (CLAUDE.md overview)");
@@ -40,6 +46,13 @@ public class DocumentationCountsTests
         yield return Row("docs/mcp-server.md", @"(\d+) gated destructive tools", destructive, "destructive MCP tools (docs)");
         yield return Row("docs/mcp-server.md", @"\((\d+) total\)", toolTotal, "total MCP tools (docs)");
         yield return Row("src/nodepilot-docs-ui/content/mcp-server.md", @"(\d+) Tools über", toolTotal, "MCP tools (doc site)");
+        // The doc site carried its own stale counts that no guard covered: "26+ Activity-Typen"
+        // (the very number this test was written to retire) and "8 Skins" against a 7-entry
+        // registry. Both are now derived from code like every row above.
+        yield return Row("src/nodepilot-docs-ui/content/concepts/workflows.md",
+            @"aller (\d+) Activity-Typen", activities, "activity types (doc site)");
+        yield return Row("src/nodepilot-docs-ui/content/designer/overview.md",
+            @"Popover mit (\d+) Skins", skins, "colour skins (doc site)");
     }
 
     [Theory]

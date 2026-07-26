@@ -1,43 +1,49 @@
 # Einführung
 
-**NodePilot** ist ein moderner, schlanker Ersatz für Microsoft System Center Orchestrator (SCOrch). Es orchestriert Workflows in Windows-Umgebungen **agentless** via WinRM — auf den Zielmaschinen muss keine Software installiert werden.
+**NodePilot** ist ein schlanker Ersatz für Microsoft System Center Orchestrator (SCOrch). Du baust Abläufe grafisch aus Bausteinen zusammen, NodePilot führt sie aus — auf Windows-Maschinen im Netz, **agentless** über WinRM. Auf den Zielmaschinen muss nichts installiert werden.
 
-## Was NodePilot macht
+## Was ein Workflow ist
 
-NodePilot lässt sich als **grafischer Workflow-Designer** plus **event-driven Execution-Engine** plus **REST/SignalR-API** plus **`np`-CLI** zusammenfassen:
+Ein Workflow ist ein Ablaufplan auf einer Canvas. **Nodes** sind die Arbeitsschritte — ein PowerShell-Skript ausführen, einen Dienst neu starten, eine REST-API aufrufen, eine Mail verschicken. **Edges** verbinden sie und entscheiden, wie es weitergeht, etwa „nur wenn der Schritt davor erfolgreich war".
 
-- **Designer** (React SPA): Workflows werden auf einer Canvas aus Nodes und Edges gebaut — pro Activity ein eigener Node-Typ mit Shape, Icon und Properties-Panel.
-- **Engine** (.NET 10): Führt Workflows event-driven aus — Queue + inFlight-Dict, parallele Steps, per-Step DI-Scope, Retry, Timeout, Step-Debugger mit Breakpoints.
-- **Scheduler**: `TriggerOrchestrator` scannt alle 5 s alle Trigger-Quellen (Schedule, FileWatcher, Database, EventLog, Webhook, Manual).
-- **API**: ASP.NET Core Web API + SignalR für Realtime-Updates (`/hubs/execution`).
-- **CLI `np`**: `dotnet global tool`, reiner HTTP-Client gegen die REST-Endpoints.
+Ein typisches Beispiel: *jede Nacht um 2 Uhr auf zwölf Servern den freien Platz auf `C:` prüfen und bei unter 10 % eine Mail ans Team schicken.* Ein Trigger startet den Lauf, ein Schritt sammelt die Werte, eine Bedingung an der Edge entscheidet, ob der Mail-Schritt überhaupt läuft.
 
-## Activity-Scopes
+## Die vier Teile
 
-Jede Activity läuft in einem von drei Scopes:
+- **Designer** — die Oberfläche, in der du Workflows baust. Jede Activity hat ihren eigenen Node-Typ mit Icon und Eigenschaften-Panel.
+- **Engine** — führt die Workflows aus: mehrere Schritte parallel, Wiederholung bei Fehlern, Timeouts und ein Debugger mit Breakpoints.
+- **Trigger** — starten Läufe von selbst: Zeitplan, neue Datei, Datenbankzeile, Windows-Eventlog, eingehender HTTP-Aufruf. Oder du drückst auf Start.
+- **API & CLI** — alles, was die Oberfläche kann, geht auch über die REST-API oder das Kommandozeilen-Tool `np`.
 
-| Scope | Bedeutung |
-|---|---|
-| **Remote** | Ausführung auf der Zielmaschine via `targetMachineId` / WinRM |
-| **Engine-local** | Ausführung im API-Prozess (z. B. REST, SQL, E-Mail, Control-Flow) |
-| **Hybrid** | Beides — `runScript` und `waitForCondition` |
+## Wo ein Schritt läuft
 
-## Datenfluss
+Jeder Schritt läuft entweder **auf einer Zielmaschine** (über WinRM — Dienste steuern, Registry lesen, Dateien anfassen) oder **im NodePilot-Prozess selbst** (REST-Aufrufe, SQL, E-Mail, Verzweigungen). Zwei Activities können beides, je nach Konfiguration. Welche wohin gehört: [Activity-Typen & Scopes](../concepts/activities).
 
-Steps produzieren Outputs, die im **Datenbus** landen und downstream per Template aufgelöst werden:
+## Wie Daten weiterfließen
+
+Jeder Schritt legt sein Ergebnis im **Datenbus** ab. Spätere Schritte greifen per Platzhalter darauf zu:
 
 ```
-{{varName.output}}      # Stdout
-{{varName.error}}       # Stderr
-{{varName.success}}     # "true" / "false"
-{{varName.param.xxx}}   # deklarierter OutputParameter
-{{globals.NAME}}        # Globale Variable
+{{hostInfo.output}}    # Ausgabe des Schritts "hostInfo"
+{{hostInfo.success}}   # "true" / "false"
+{{globals.NAME}}       # globale Variable
 ```
 
-Edges steuern den Kontrollfluss über **Conditions** (`stepId.success`, `stepId.failed`, strukturierte Vergleichs-Ausdrücke, AND/OR/NOT-Gruppen).
+Mehr dazu: [Datenbus & Variablen](../concepts/data-bus).
+
+## Wie du NodePilot betreibst
+
+Drei Betriebsarten — die Engine kann in allen dasselbe, der Unterschied ist, **wer zugreifen kann** und **wie viel du selbst installierst**:
+
+- **Desktop-App** — ein `.exe`-Installer bringt Datenbank und Laufzeit mit und richtet alles als Dienste ein. Erreichbar nur auf dieser einen Maschine. Der schnellste Weg zu einem produktiven Einzelplatz.
+- **Server-Deployment** — Windows-Dienst mit externer Datenbank, erreichbar fürs ganze Team, eingehende Webhooks funktionieren.
+- **Dev-Setup** — Backend und Frontend von Hand starten. Zum Entwickeln am Produkt selbst.
+
+Der vollständige Vergleich mit allen Alltags-Konsequenzen: [Betriebsarten im Überblick](../deployment/overview).
 
 ## Wo es weitergeht
 
-- [Installation](./installation) — Postgres starten, Backend + Frontend hochfahren.
-- [Quickstart](./quickstart) — Ersten Login, ersten Workflow, ersten Run.
-- [Konzepte](../concepts/workflows) — Workflows, Activities, Trigger, Datenbus im Detail.
+- [Quickstart](./quickstart) — in wenigen Minuten zum ersten laufenden Workflow.
+- [Installation](./installation) — das Dev-Setup Schritt für Schritt.
+- [Architektur](./architecture) — Solution-Struktur, Dep-Graph, Execution-Modell.
+- [Konzepte](../concepts/workflows) — Workflows, Activities, Trigger und Datenbus im Detail.

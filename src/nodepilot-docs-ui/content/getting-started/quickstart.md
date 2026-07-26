@@ -1,122 +1,97 @@
 # Quickstart
 
-Voraussetzung: Backend und Frontend laufen (siehe [Installation](./installation)).
+Ziel dieser Seite: **ein Workflow, der wirklich läuft** — ohne dass du vorher eine Zielmaschine oder Zugangsdaten anlegen musst.
+
+## Voraussetzung: eine laufende Instanz
+
+Zwei Wege führen dorthin:
+
+| | **Desktop-Installer** | **Dev-Setup** |
+|---|---|---|
+| Was du tust | eine `.exe` ausführen | PostgreSQL, Backend und Frontend einzeln starten |
+| Bringt mit | PostgreSQL, .NET-Laufzeit, alles als Windows-Dienste | nichts — Voraussetzungen installierst du selbst |
+| Wofür | produktiver Einzelplatz, schnellster Weg | Entwickeln am Produkt |
+| Anleitung | [Desktop-App](../deployment/desktop) | [Installation](./installation) |
+
+> **Zur Verfügbarkeit des Installers:** Die `.exe` ist ein **Build-Ziel**, kein fertiger Download — am GitHub-Release hängt derzeit kein signiertes Artefakt. Wer sie einsetzen möchte, baut sie mit `deploy\desktop\Build-DesktopInstaller.ps1` und signiert sie vor der Verteilung per Authenticode. Voraussetzungen für den Build und die vollständige Aufrufsyntax: [Desktop-App](../deployment/desktop).
+
+Danach ist NodePilot erreichbar — beim Dev-Setup unter `http://localhost:5173`, bei der Desktop-App im Electron-Fenster.
 
 ## 1. Erster Login
 
-Im Frontend (`http://localhost:5173`) mit dem Initial-Admin einloggen. Bei leerer DB wird beim ersten Login der Admin-Account erstellt. Dev-Default: `admin` / `admin123`.
+Bei leerer Datenbank führt dich die Oberfläche durch die Einrichtung des **ersten Admin-Accounts**. Benutzername und Passwort legst **du** dabei fest; es gibt kein voreingestelltes Konto.
 
-## 2. Maschine & Credential anlegen (optional)
+Abgesichert ist das über einen Einmal-Token, den das Backend beim ersten Start schreibt (`admin-setup.token`). Die Oberfläche liest ihn automatisch, du musst nichts abtippen; nach dem Anlegen wird er gelöscht. Danach stehen die Rollen **Admin / Operator / Viewer** zur Verfügung.
 
-> **Diesen Schritt kannst du überspringen.** Für den Quickstart-Workflow in Schritt 3 brauchst du weder eine Maschine noch ein Credential: Lässt du bei einem `runScript`-Step das Feld *Maschine* leer, führt NodePilot das Skript **lokal im API-Prozess** aus — kein WinRM, kein Login. Genau richtig für den ersten Test.
+## 2. Ersten Workflow bauen
 
-Nötig wird beides erst, wenn ein Step **auf einem anderen Windows-Host** laufen soll — also sobald du `runScript` auf eine Zielmaschine legst oder eine der reinen Remote-Activities (`fileOperation`, `serviceManagement`, `registryOperation`, `wmiQuery`, …) verwendest. Ohne Maschine bricht so ein Step mit `No target machine specified` ab.
+Der Weg in den Designer führt über die Workflow-Liste. In der **Seitenleiste** links unter **Arbeitsbereich** auf **Workflows** klicken, dann oben rechts auf **Neuer Workflow**. Es klappt ein Feld auf: Namen eintippen, mit **Anlegen** bestätigen — und NodePilot legt den leeren Workflow an und öffnet ihn direkt im Designer. Einen bestehenden Workflow öffnest du genauso, per Klick auf seine Zeile in der Liste.
 
-- **Machine** — das WinRM-Ziel (`targetMachineId`). Anlegen unter **Infrastruktur → Maschinen**, Button **Maschine hinzufügen**.
-- **Credential** — der DPAPI-verschlüsselte Login-Datensatz. Anlegen unter **Administration → Einstellungen**, Abschnitt **Credentials**, Button **Credential hinzufügen**. Am Node ist es optional: ohne Credential nutzt WinRM die Prozess-Identität von NodePilot.
+> Den Button **Neuer Workflow** sehen nur **Admin** und **Operator** — als Viewer hast du ausschließlich Leserechte. Hast du links einen **Ordner** ausgewählt, landet der neue Workflow darin. Der Button **Neuer KI-Workflow** daneben erzeugt stattdessen einen fertigen Entwurf aus einem Prompt (siehe [KI-Features](../ai-features)).
 
-Beides geht auch über die API:
+Für den ersten Lauf reichen zwei Nodes:
 
-```http
-POST /api/machines
-POST /api/credentials
-```
+1. Ein **Manual-Trigger**. Jeder Workflow braucht einen Trigger als Startpunkt — ohne aktiven Trigger findet die Engine keinen Einstieg und der Lauf schlägt sofort mit einer entsprechenden Meldung fehl.
+2. Eine **`runScript`**-Activity, per Edge mit dem Trigger verbunden. Als Skript genügt `$env:COMPUTERNAME`.
 
-Für lokale Prozess-Ausführung ohne Credential gibt es zusätzlich den Localhost-Bypass (siehe [Security](../security/overview)).
+Trag bei der Activity unter `outputVariable` einen Namen ein, zum Beispiel `hostInfo` — darüber kommst du später an das Ergebnis.
 
-## 3. Workflow bauen
+> **Ohne Zielmaschine läuft der Schritt lokal.** Lässt du das Feld *Maschine* leer, führt NodePilot das Skript im eigenen Prozess aus — kein WinRM, keine Credential nötig. Genau richtig für den ersten Test.
 
-### So kommst du in den Designer
+Wie das Ganze als JSON aussieht (das schreibt normalerweise der Designer für dich): [Workflow-JSON](../concepts/workflow-json).
 
-1. In der **Seitenleiste** links die Gruppe **Arbeitsbereich** → Eintrag **Workflows** (Route `/workflows`).
-2. Oben rechts auf **Neuer Workflow**. Der Button ist nur für **Admin** und **Operator** sichtbar — als Viewer hast du nur Leserechte.
-3. Es klappt ein Feld auf: **Namen eingeben** und mit **Anlegen** bestätigen (oder Enter drücken).
-4. NodePilot legt den leeren Workflow an und springt **direkt in den Designer** (`/workflows/{id}`). Ein bestehender Workflow öffnet sich genauso — per Klick auf seine Zeile in der Liste.
+## 3. Veröffentlichen
 
-> Hast du links einen **Ordner** ausgewählt, wird der neue Workflow darin angelegt. Alternativ erzeugt der Button **Neuer KI-Workflow** daneben einen Entwurf per Prompt (siehe [KI-Features](../ai-features)).
+Workflows sind beim Bearbeiten gesperrt und deaktiviert — der SCOrch-artige **Edit-Lock**:
 
-Was dich im Designer erwartet — Canvas, Palette, Properties-Panel: [Designer](../designer/overview).
+1. **Edit** — sperrt den Workflow für dich und schaltet ihn ab.
+2. **Save** — sichert einen Zwischenstand, die Sperre bleibt.
+3. **Publish** — speichert, aktiviert und gibt die Sperre frei. Erst jetzt ist der Workflow produktiv.
 
-### Der erste Workflow
+Hält jemand anderes die Sperre, sind die Schaltflächen für dich deaktiviert. Details: [Workflow-Kontrollfluss](../api/workflow-control).
 
-Im Designer ziehst du zwei Nodes auf die Fläche und verbindest sie mit einer Edge:
+## 4. Ausführen und zuschauen
 
-1. Einen **Manual-Trigger** — jeder Workflow braucht einen Trigger als Startpunkt. Ohne aktiven Trigger findet die Engine keinen Einstieg und der Lauf schlägt sofort fehl.
-2. Eine **`runScript`**-Activity mit dem Skript `$env:COMPUTERNAME`. Das Feld *Maschine* bleibt leer (siehe Schritt 2), unter *Output-Variable* trägst du `hostInfo` ein.
+Auf **Run** klicken. Der Lauf startet asynchron, der Fortschritt erscheint live — die Schritte färben sich, während sie laufen. Das läuft über SignalR, du musst nichts neu laden.
 
-Als JSON — das schreibt normalerweise der Designer für dich:
-
-```json
-{
-  "nodes": [
-    {
-      "id": "trigger-1",
-      "type": "activity",
-      "position": { "x": 200, "y": 80 },
-      "data": {
-        "label": "Manuell starten",
-        "activityType": "manualTrigger",
-        "config": { "parameters": [] }
-      }
-    },
-    {
-      "id": "step-1",
-      "type": "activity",
-      "position": { "x": 200, "y": 220 },
-      "data": {
-        "label": "Host auslesen",
-        "activityType": "runScript",
-        "outputVariable": "hostInfo",
-        "config": { "script": "$env:COMPUTERNAME", "timeoutSeconds": 30 }
-      }
-    }
-  ],
-  "edges": [
-    {
-      "id": "e-trigger-step",
-      "source": "trigger-1",
-      "target": "step-1",
-      "type": "labeled",
-      "data": { "label": "Always" }
-    }
-  ]
-}
-```
-
-Details zum JSON-Format: [Workflow-JSON](../concepts/workflow-json).
-
-## 4. Edit-Lifecycle
-
-Workflows haben einen SCOrch-style **Edit-Lock**:
-
-1. **Edit** → sperrt den Workflow (`lock`) und deaktiviert ihn.
-2. Änderungen vornehmen → **Save** (Zwischenstand).
-3. **Publish** → atomar Save + Enable + Unlock. Workflow ist produktiv.
-
-`canWrite = role !== 'Viewer' && checkedOutByUserId === currentUserId`. Siehe [Workflow-Kontrollfluss](../api/workflow-control).
-
-## 5. Ausführen
+Dasselbe über die API:
 
 ```http
 POST /api/workflows/{id}/execute
 Content-Type: application/json
 
-{ "parameters": {}, "timeoutSeconds": 120, "debug": false }
+{ "parameters": {}, "timeoutSeconds": 120 }
 ```
 
-Antwort: `202` + `ExecutionId`. Fortschritt landet via **SignalR** auf `/hubs/execution`.
+Antwort: `202` plus die `ExecutionId`.
 
-## 6. Ergebnis & Variablen
+## 5. Ergebnis weiterverwenden
 
-Der Step-Output ist im Datenbus verfügbar:
+Unter **Executions** siehst du den Lauf und die Ausgabe jedes Schritts. Ein nachfolgender Schritt greift per Platzhalter darauf zu:
 
 ```
-{{hostInfo.output}}   # Stdout: der Computername
-{{hostInfo.success}}  # "true" / "false"
+{{hostInfo.output}}    # Stdout — hier der Computername
+{{hostInfo.success}}   # "true" / "false"
 ```
 
-Ein downstream-Step kann den Wert per Template referenzieren — NodePilot auto-quotet `{{hostInfo.output}}` als Single-Quoted String. Siehe [Datenbus & Variablen](../concepts/data-bus).
+NodePilot setzt `{{hostInfo.output}}` automatisch als einfach-gequoteten String ein. Im Skript schreibst du also `$x = {{hostInfo.output}}` und **nicht** `$x = '{{hostInfo.output}}'`. Mehr: [Datenbus & Variablen](../concepts/data-bus).
 
-## 7. Trigger setzen (optional)
+## 6. Auf echte Maschinen zugreifen
 
-Einen `scheduleTrigger` (Quartz cron), `fileWatcherTrigger`, `databaseTrigger`, `eventLogTrigger` oder `webhookTrigger` als Root-Node ergänzen. Trigger-Daten landen als `{{manual.<name>}}` im Run. Siehe [Trigger](../triggers).
+Sobald ein Schritt nicht mehr lokal, sondern **auf einem anderen Windows-Host** laufen soll:
+
+- **Machine** anlegen — das WinRM-Ziel. Seitenleiste **Infrastruktur → Maschinen**, Button **Maschine hinzufügen**.
+- **Credential** anlegen — die Zugangsdaten dazu, DPAPI-verschlüsselt gespeichert. Die liegen nicht bei den Maschinen, sondern unter **Administration → Einstellungen**, Abschnitt **Credentials**.
+- Beides am Node auswählen. Das Credential ist dabei optional: ohne eines nutzt WinRM die Prozess-Identität von NodePilot.
+
+Über die API geht dasselbe mit `POST /api/machines` und `POST /api/credentials`.
+
+Reine Remote-Activities — `fileOperation`, `serviceManagement`, `registryOperation`, `wmiQuery` und Verwandte — brauchen **immer** eine Maschine und brechen ohne sie mit `No target machine specified` ab. Auf die lokale Ausführung zurück fallen nur die hybriden: `runScript`, `waitForCondition` und die daraus abgeleiteten Custom Nodes.
+
+## 7. Automatisch starten lassen
+
+Den Manual-Trigger durch einen echten ersetzen oder ergänzen: Zeitplan (`scheduleTrigger`, Quartz-Cron), neue Datei (`fileWatcherTrigger`), Datenbankzeile (`databaseTrigger`), Windows-Eventlog (`eventLogTrigger`) oder eingehender HTTP-Aufruf (`webhookTrigger`).
+
+Was der Trigger mitbringt, steht im Lauf als `{{manual.<name>}}` zur Verfügung. Details: [Trigger](../triggers).
+
+> Im Desktop-Betrieb funktionieren **eingehende** Webhooks nicht — dort lauscht NodePilot ausschließlich auf Loopback. Zeitplan-, Datei-, Datenbank- und Eventlog-Trigger laufen normal, ebenso jede ausgehende Automatisierung. Siehe [Betriebsarten im Überblick](../deployment/overview).

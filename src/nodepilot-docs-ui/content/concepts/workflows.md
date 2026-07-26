@@ -17,7 +17,7 @@ Ein **Workflow** ist ein gerichteter Graph aus **Nodes** (Activities + Trigger) 
 | **Hybrid** | Beides (`runScript`, `waitForCondition`) |
 | **ControlFlow** | Engine-local, Kategorie `ControlFlow` im `ActivityCatalog` (Palette-Achse, unabhängig vom Scope) |
 
-Die vollständige Liste aller 26+ Activity-Typen mit Config-Keys und Output-Semantik: [Activity-Referenz](../activities-reference).
+Die vollständige Liste aller 27 Activity-Typen mit Config-Keys und Output-Semantik: [Activity-Referenz](../activities-reference).
 
 ## Execution-Lifecycle
 
