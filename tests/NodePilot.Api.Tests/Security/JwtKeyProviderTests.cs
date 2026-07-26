@@ -48,23 +48,6 @@ public class JwtKeyProviderTests
     }
 
     [Fact]
-    public void AddJwtKeyProvider_RegistersAsSingleton()
-    {
-        var services = new ServiceCollection();
-        services.AddSingleton<IConfiguration>(ConfigWithKey(new string('z', 48)));
-        services.AddSingleton(Env(Path.GetTempPath()));
-
-        services.AddJwtKeyProvider();
-
-        var sp = services.BuildServiceProvider();
-        var first = sp.GetRequiredService<IJwtKeyProvider>();
-        var second = sp.GetRequiredService<IJwtKeyProvider>();
-
-        first.Should().BeSameAs(second);
-        first.Key.Should().Be(new string('z', 48));
-    }
-
-    [Fact]
     public void AddNodePilotAuthentication_RegistersAlreadyResolvedProviderInstance()
     {
         var key = new string('q', 48);

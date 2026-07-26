@@ -4,7 +4,6 @@ using NodePilot.Cli.Api;
 using NodePilot.Cli.Api.Dtos;
 using NodePilot.Cli.Auth;
 using NodePilot.Cli.Output;
-using NodePilot.Cli.Settings;
 using Spectre.Console.Cli;
 
 namespace NodePilot.Cli.Commands.Workflow;
@@ -63,7 +62,7 @@ public sealed class WorkflowRunCommand : BaseCommand<WorkflowRunSettings>
         }
 
         if (settings.Follow)
-            return await Exec.ExecWatcher.RunAsync(api, session, execution.Id, writer, followAfterTerminal: false, ct);
+            return await Exec.ExecWatcher.RunAsync(api, session, execution.Id, writer, ct);
 
         // --wait → simple polling.
         return await PollUntilTerminalAsync(api, execution.Id, writer, ct);

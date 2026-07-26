@@ -2,7 +2,6 @@ using System.Security.Claims;
 using FluentAssertions;
 using NodePilot.Api.Security;
 using NodePilot.Core.Enums;
-using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.TestCommons;

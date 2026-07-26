@@ -7,13 +7,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NodePilot.Api.Ai;
 using NodePilot.Ai;
-using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Api.Telemetry;
 using NodePilot.Core.Interfaces;
-using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Core.Telemetry;
 

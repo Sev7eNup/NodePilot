@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using NodePilot.Ai;
-using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Dtos.Settings;

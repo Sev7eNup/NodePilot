@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.Http;
 using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;

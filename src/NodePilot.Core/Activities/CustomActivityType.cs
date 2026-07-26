@@ -34,8 +34,4 @@ public static partial class CustomActivityType
     public static bool IsValidKey(string? key) => key is not null && KeyRegex().IsMatch(key);
 
     public static string ForKey(string key) => Prefix + key;
-
-    /// <summary>Returns the key portion of a <c>custom:&lt;key&gt;</c> type, or null if not a custom type.</summary>
-    public static string? KeyOf(string? type) =>
-        IsCustomType(type) ? type![Prefix.Length..] : null;
 }

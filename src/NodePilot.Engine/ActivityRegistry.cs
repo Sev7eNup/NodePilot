@@ -114,7 +114,4 @@ public class ActivityRegistry
         }
         return GetExecutor(activityType);
     }
-
-    public IReadOnlyList<string> GetRegisteredTypes() =>
-        _typeMap?.Keys.ToList() ?? _instances!.Keys.ToList();
 }

@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using NodePilot.Api.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Interfaces;

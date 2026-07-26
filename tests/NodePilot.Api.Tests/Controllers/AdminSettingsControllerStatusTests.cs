@@ -1,12 +1,9 @@
 using NodePilot.Ai;
-using System.Net.Http;
 using System.Text;
 using FluentAssertions;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using NodePilot.Api.Ai;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos.Settings;
@@ -87,6 +84,14 @@ public sealed class AdminSettingsControllerStatusTests : IDisposable
         return (controller, writer);
     }
 
+    /// <summary>Seeds restart-marker / last-save meta through the live save path.</summary>
+    private static void SaveSection(
+        RuntimeOverridesWriter writer, string section, DateTimeOffset now,
+        string savedBy = "admin", string[]? restartFor = null)
+        => writer.TryUpdateSectionAtomic(
+            section, writer.ComputeSectionEtag(section), new System.Text.Json.Nodes.JsonObject(),
+            restartFor, savedBy, now);
+
     [Fact]
     public void GetStatus_FileMissing_ReturnsCleanState()
     {
@@ -109,7 +114,7 @@ public sealed class AdminSettingsControllerStatusTests : IDisposable
     {
         var (controller, writer) = NewController();
         var t = DateTimeOffset.UtcNow;
-        writer.MarkRestartRequired(new[] { "Smtp", "Llm" }, t);
+        SaveSection(writer, "Smtp", t, restartFor: new[] { "Smtp", "Llm" });
 
         var result = controller.GetStatus();
         var body = ((OkObjectResult)result.Result!).Value as SettingsStatusResponse;
@@ -122,7 +127,7 @@ public sealed class AdminSettingsControllerStatusTests : IDisposable
     public void GetStatus_AfterClear_BannerGone()
     {
         var (controller, writer) = NewController();
-        writer.MarkRestartRequired(new[] { "Smtp" }, DateTimeOffset.UtcNow);
+        SaveSection(writer, "Smtp", DateTimeOffset.UtcNow, restartFor: new[] { "Smtp" });
         writer.ClearRestartMarker();
 
         var body = ((OkObjectResult)controller.GetStatus().Result!).Value as SettingsStatusResponse;
@@ -134,7 +139,7 @@ public sealed class AdminSettingsControllerStatusTests : IDisposable
     public void GetStatus_SurfacesLastSaveMetadata()
     {
         var (controller, writer) = NewController();
-        writer.RecordLastSave("admin@example.com", DateTimeOffset.UtcNow);
+        SaveSection(writer, "Smtp", DateTimeOffset.UtcNow, savedBy: "admin@example.com");
 
         var body = ((OkObjectResult)controller.GetStatus().Result!).Value as SettingsStatusResponse;
         body!.LastSavedBy.Should().Be("admin@example.com");

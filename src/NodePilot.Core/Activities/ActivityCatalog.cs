@@ -344,9 +344,6 @@ public static class ActivityCatalog
     public static IReadOnlySet<string> TriggerTypes { get; } =
         _all.Where(a => a.IsTrigger).Select(a => a.Type).ToHashSet(StringComparer.Ordinal);
 
-    public static IReadOnlySet<string> ExternalTriggerTypes { get; } =
-        _all.Where(a => a.IsExternalTrigger).Select(a => a.Type).ToHashSet(StringComparer.Ordinal);
-
     public static IReadOnlySet<string> RemoteTypes { get; } =
         _all.Where(a => a.IsRemote).Select(a => a.Type).ToHashSet(StringComparer.Ordinal);
 
@@ -360,11 +357,6 @@ public static class ActivityCatalog
 
         return _byType.TryGetValue(activityType, out descriptor);
     }
-
-    public static ActivityDescriptor GetRequired(string activityType) =>
-        _byType.TryGetValue(activityType, out var descriptor)
-            ? descriptor
-            : throw new KeyNotFoundException($"Unknown activity type '{activityType}'.");
 
     private static ActivityOutputParameterDescriptor Output(string name, string type) => new(name, type);
 

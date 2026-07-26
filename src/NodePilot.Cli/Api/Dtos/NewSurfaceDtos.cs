@@ -92,8 +92,6 @@ public sealed record GrantSharedFolderPermissionRequest(
     string PrincipalKey,
     string Role);
 
-public sealed record UpdateSharedFolderPermissionRequest(string Role);
-
 // ---- Admin Settings ---------------------------------------------------------
 
 public sealed record SettingsStatusResponse(
@@ -184,4 +182,3 @@ public sealed record DbAdminQueryResponseDto(
     bool Truncated,
     string Mode);
 
-public sealed record DbAdminQueryErrorDto(string Code, string Message, string? CorrelationId);

@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;

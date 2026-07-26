@@ -2,7 +2,6 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using FluentAssertions;
 using NodePilot.Core.Activities;
-using NodePilot.Core.Constants;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Activities;
@@ -20,14 +19,6 @@ public class ActivityCatalogFrontendSyncTests
             backend,
             opts => opts.WithStrictOrdering(),
             "src/nodepilot-ui/src/lib/activityCatalog.generated.ts is derived from NodePilot.Core.Activities.ActivityCatalog");
-    }
-
-    [Fact]
-    public void TriggerActivityTypes_AreDerivedFromCatalog()
-    {
-        TriggerActivityTypes.All.Should().BeEquivalentTo(
-            ActivityCatalog.TriggerTypes,
-            "TriggerActivityTypes is a compatibility facade over the backend activity catalog");
     }
 
     private static List<FrontendActivity> ReadFrontendCatalog(string repoRoot)

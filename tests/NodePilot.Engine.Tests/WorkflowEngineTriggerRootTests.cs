@@ -7,7 +7,6 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
-using NodePilot.Engine;
 using NodePilot.Engine.Tests.Helpers;
 using Xunit;
 
@@ -24,7 +23,6 @@ public class WorkflowEngineTriggerRootTests
 {
     private readonly NodePilotDbContext _db;
     private readonly IServiceProvider _serviceProvider;
-    private readonly Microsoft.Data.Sqlite.SqliteConnection _connection;
     private readonly Mock<IActivityExecutor> _runScriptExecutor;
     private readonly Mock<IActivityExecutor> _manualTriggerExecutor;
     private readonly Mock<IActivityExecutor> _scheduleTriggerExecutor;
@@ -59,11 +57,11 @@ public class WorkflowEngineTriggerRootTests
             .ReturnsAsync(new ActivityResult { Success = true, Output = "{}" });
 
         var registry = new ActivityRegistry(new[] { _runScriptExecutor.Object, _manualTriggerExecutor.Object, _scheduleTriggerExecutor.Object });
-        (_db, var sp, _connection) = TestDbContext.CreateWithScopedServices(registry);
+        (_db, var sp, _) = TestDbContext.CreateWithScopedServices(registry);
         _serviceProvider = sp;
 
         var notifier = new Mock<IExecutionNotifier>();
-        _engine = new WorkflowEngine(_db, registry, NullLogger<WorkflowEngine>.Instance, _serviceProvider, notifier.Object);
+        _engine = new WorkflowEngine(_db, NullLogger<WorkflowEngine>.Instance, _serviceProvider, notifier.Object);
     }
 
     private static Workflow CreateWorkflow(string definitionJson) => new()

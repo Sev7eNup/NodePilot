@@ -171,7 +171,7 @@ public sealed class BackupRestoreService(
             results.Clear();
             var ctx = new RestoreState(reader, protector, policies);
             await LoadExistingAsync(ctx, ct);
-            await ValidateReferencesAsync(ctx, ct); // K12 — abort before any write
+            ValidateReferences(ctx); // K12 — abort before any write
 
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             if (restoresUsers)
@@ -218,7 +218,7 @@ public sealed class BackupRestoreService(
         // K8 — settings are file-based (RuntimeOverridesWriter), not part of the DB transaction.
         SettingsRestoreResult? settings = null;
         if (reader.Sections[BackupSections.Settings] is not null)
-            settings = RestoreSettings(reader, protector, warnings);
+            settings = RestoreSettings(reader, protector);
 
         return new BackupRestoreResult(results, settings, warnings);
     }
@@ -1005,7 +1005,7 @@ public sealed class BackupRestoreService(
         return new SectionRestoreResult("folderGrants", created, overwritten, skipped, 0);
     }
 
-    private SettingsRestoreResult RestoreSettings(BackupFileReader reader, PassphraseSecretProtector protector, List<string> warnings)
+    private SettingsRestoreResult RestoreSettings(BackupFileReader reader, PassphraseSecretProtector protector)
     {
         try
         {
@@ -1039,9 +1039,8 @@ public sealed class BackupRestoreService(
 
     // ---- validation: confirm every referenced id resolves before any write happens (K12) ----
 
-    private async Task ValidateReferencesAsync(RestoreState s, CancellationToken ct)
+    private void ValidateReferences(RestoreState s)
     {
-        await Task.CompletedTask;
         var unresolved = new List<string>();
 
         // machines → credentials

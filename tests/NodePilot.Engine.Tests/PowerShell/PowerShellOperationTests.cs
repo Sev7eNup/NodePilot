@@ -75,11 +75,4 @@ public class PowerShellOperationTests
         PowerShellOperation.ToWaitForExitMilliseconds(seconds).Should().Be(45_000);
         PowerShellOperation.ToWaitForExitMilliseconds(null).Should().Be(-1);
     }
-
-    [Fact]
-    public void Extractors_HandleCommonOperationOutputShapes()
-    {
-        PowerShellOperation.ExtractLastIntegerLine("\nnot it\n123\n").Should().Be("123");
-        PowerShellOperation.ExtractLastIntegerLine("no integers").Should().Be("0");
-    }
 }

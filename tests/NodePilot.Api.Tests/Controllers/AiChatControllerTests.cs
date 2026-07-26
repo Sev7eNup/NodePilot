@@ -5,8 +5,6 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using NodePilot.Api.Ai;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;

@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Serilog;
-using Serilog.Configuration;
 using Serilog.Sinks.OpenTelemetry;
 using NodePilot.Core.Telemetry;
 

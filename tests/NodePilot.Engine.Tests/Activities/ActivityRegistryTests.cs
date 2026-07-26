@@ -2,7 +2,6 @@ using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NodePilot.Core.Interfaces;
-using NodePilot.Engine;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Activities;
@@ -37,22 +36,6 @@ public class ActivityRegistryTests
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*nonExistent*");
-    }
-
-    [Fact]
-    public void GetRegisteredTypes_ReturnsAllRegisteredTypes()
-    {
-        var exec1 = CreateMockExecutor("runScript");
-        var exec2 = CreateMockExecutor("restApi");
-        var exec3 = CreateMockExecutor("email");
-        var registry = new ActivityRegistry(new[] { exec1.Object, exec2.Object, exec3.Object });
-
-        var types = registry.GetRegisteredTypes();
-
-        types.Should().HaveCount(3);
-        types.Should().Contain("runScript");
-        types.Should().Contain("restApi");
-        types.Should().Contain("email");
     }
 
     [Fact]
@@ -104,7 +87,7 @@ public class ActivityRegistryTests
 
         var registry = new ActivityRegistry(rootProvider);
 
-        registry.GetRegisteredTypes().Should().Contain("test");
+        registry.GetExecutor("TEST").Should().BeOfType<TestExecutor>();
     }
 
     private sealed class TestExecutor : IActivityExecutor

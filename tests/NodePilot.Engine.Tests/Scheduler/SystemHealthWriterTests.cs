@@ -1,5 +1,4 @@
 using FluentAssertions;
-using NodePilot.Data;
 using NodePilot.Scheduler;
 using NodePilot.TestCommons;
 using Xunit;

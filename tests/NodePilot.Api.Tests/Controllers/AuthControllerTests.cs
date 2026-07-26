@@ -87,7 +87,7 @@ public sealed class AuthControllerTests : IDisposable
         var db = CreateContext();
         var config = CreateConfig();
         WriteBootstrapToken("correct-token");
-        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(setupToken: "correct-token", tokenInBody: true) },
         };
@@ -128,13 +128,11 @@ public sealed class AuthControllerTests : IDisposable
         {
             await using var db = new NodePilotDbContext(options);
             var config = CreateConfig();
-            var key = new TestJwtKeyProvider();
             var controller = new AuthController(
                 db,
                 config,
                 NoopAuditWriter.Instance,
-                key,
-                new AuthSessionIssuer(config, key, NoopAuditWriter.Instance))
+                new AuthSessionIssuer(config, new TestJwtKeyProvider(), NoopAuditWriter.Instance))
             {
                 ControllerContext = new ControllerContext
                 {
@@ -169,7 +167,7 @@ public sealed class AuthControllerTests : IDisposable
         var config = CreateConfig();
         WriteBootstrapToken("correct-token");
         var audit = new CapturingAuditWriter();
-        var controller = new AuthController(db, config, audit, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var controller = new AuthController(db, config, audit, new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(setupToken: null) },
         };
@@ -192,7 +190,7 @@ public sealed class AuthControllerTests : IDisposable
         var config = CreateConfig();
         WriteBootstrapToken("correct-token");
         var audit = new CapturingAuditWriter();
-        var controller = new AuthController(db, config, audit, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var controller = new AuthController(db, config, audit, new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(setupToken: "wrong") },
         };
@@ -222,7 +220,7 @@ public sealed class AuthControllerTests : IDisposable
         var config = CreateConfig();
         var issuer = new AuthSessionIssuer(config, new TestJwtKeyProvider(), NoopAuditWriter.Instance);
         var controller = new AuthController(
-            db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), issuer,
+            db, config, NoopAuditWriter.Instance, issuer,
             activeAuthentication: new ActiveAuthenticationConfiguration(
                 LocalLoginMode.Disabled, false, false, false, "Single Sign-On"))
         {
@@ -256,7 +254,7 @@ public sealed class AuthControllerTests : IDisposable
             LocalLoginMode.BreakGlassOnly, false, false, false, "Single Sign-On");
 
         AuthController Controller() => new(
-            db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(),
+            db, config, NoopAuditWriter.Instance,
             new AuthSessionIssuer(config, new TestJwtKeyProvider(), NoopAuditWriter.Instance),
             activeAuthentication: active)
         {
@@ -286,7 +284,7 @@ public sealed class AuthControllerTests : IDisposable
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             // Programmatic caller (CLI-style) — opts in to the JWT in the body.
             ControllerContext = new ControllerContext { HttpContext = HttpCtx(tokenInBody: true) },
@@ -321,7 +319,7 @@ public sealed class AuthControllerTests : IDisposable
         });
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
+        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance))
         {
             ControllerContext = new ControllerContext { HttpContext = HttpCtx() },
         };
@@ -352,7 +350,7 @@ public sealed class AuthControllerTests : IDisposable
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
+        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         var request = new LoginRequest("testuser", "wrongpassword");
 
         // Act
@@ -378,7 +376,7 @@ public sealed class AuthControllerTests : IDisposable
         db.Users.Add(existingUser);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
+        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         var request = new LoginRequest("unknown", "password");
 
         // Act
@@ -405,7 +403,7 @@ public sealed class AuthControllerTests : IDisposable
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
+        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
@@ -433,7 +431,7 @@ public sealed class AuthControllerTests : IDisposable
         // Arrange
         var db = CreateContext();
         var config = CreateConfig();
-        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
+        var controller = new AuthController(db, config, NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(config ?? CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
@@ -463,7 +461,7 @@ public sealed class AuthControllerTests : IDisposable
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
+        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
@@ -505,7 +503,7 @@ public sealed class AuthControllerTests : IDisposable
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
+        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
@@ -545,7 +543,7 @@ public sealed class AuthControllerTests : IDisposable
         db.Users.Add(user);
         await db.SaveChangesAsync();
 
-        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
+        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
@@ -575,7 +573,7 @@ public sealed class AuthControllerTests : IDisposable
         var ghostId = Guid.NewGuid();
         // no user row inserted â€” simulates a token from a now-deleted account
 
-        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
+        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext
@@ -596,7 +594,7 @@ public sealed class AuthControllerTests : IDisposable
     public async Task Refresh_NoClaims_ReturnsUnauthorized()
     {
         var db = CreateContext();
-        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new TestJwtKeyProvider(), new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
+        var controller = new AuthController(db, CreateConfig(), NoopAuditWriter.Instance, new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), NoopAuditWriter.Instance));
         controller.ControllerContext = new ControllerContext
         {
             HttpContext = new DefaultHttpContext { User = new ClaimsPrincipal(new ClaimsIdentity()) },
@@ -628,7 +626,7 @@ public sealed class AuthControllerTests : IDisposable
         await db.SaveChangesAsync();
 
         var audit = new CapturingAuditWriter();
-        var controller = new AuthController(db, CreateConfig(), audit, new TestJwtKeyProvider(),
+        var controller = new AuthController(db, CreateConfig(), audit,
             new NodePilot.Api.Security.AuthSessionIssuer(CreateConfig(), new TestJwtKeyProvider(), audit));
         controller.ControllerContext = new ControllerContext
         {

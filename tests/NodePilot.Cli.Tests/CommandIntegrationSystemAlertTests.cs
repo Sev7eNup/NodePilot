@@ -1,6 +1,5 @@
 using System.Text.Json;
 using FluentAssertions;
-using NodePilot.Cli;
 using NodePilot.Cli.Tests.Infra;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;

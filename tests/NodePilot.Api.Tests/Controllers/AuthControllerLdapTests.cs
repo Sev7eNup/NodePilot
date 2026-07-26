@@ -9,7 +9,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
@@ -153,7 +152,7 @@ public sealed class AuthControllerLdapTests : IDisposable
         var mapper = new ExternalUserMapper(_db, optsMonitor, auditWriter,
             new MemoryCache(new MemoryCacheOptions()), NullLogger<ExternalUserMapper>.Instance);
 
-        var controller = new AuthController(_db, cfg, auditWriter, key, issuer,
+        var controller = new AuthController(_db, cfg, auditWriter, issuer,
             ldapAuthenticator: ldapAuth,
             externalUserMapper: mapper,
             ldapOptions: optsMonitor)
@@ -381,7 +380,7 @@ public sealed class AuthControllerLdapTests : IDisposable
                 monitor, adapter, new LdapCircuitBreaker(), NullLogger<LdapAuthenticator>.Instance);
             var mapper = new ExternalUserMapper(db, monitor, NoopAuditWriter.Instance,
                 new MemoryCache(new MemoryCacheOptions()), NullLogger<ExternalUserMapper>.Instance);
-            var controller = new AuthController(db, cfg, NoopAuditWriter.Instance, key, issuer,
+            var controller = new AuthController(db, cfg, NoopAuditWriter.Instance, issuer,
                 ldapAuthenticator: authenticator,
                 externalUserMapper: mapper,
                 ldapOptions: monitor)

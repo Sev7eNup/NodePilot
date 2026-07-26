@@ -1,5 +1,4 @@
 using FluentAssertions;
-using NodePilot.Cli;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Commands.Exec;
 using NodePilot.Cli.Commands.Workflow;

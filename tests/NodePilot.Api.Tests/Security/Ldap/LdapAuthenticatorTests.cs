@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 using NodePilot.Api.Security.Ldap;
 using Xunit;
 using NodePilot.TestCommons;

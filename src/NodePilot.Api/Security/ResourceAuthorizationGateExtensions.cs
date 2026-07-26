@@ -1,4 +1,3 @@
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;

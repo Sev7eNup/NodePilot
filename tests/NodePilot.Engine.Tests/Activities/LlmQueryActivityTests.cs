@@ -1,6 +1,5 @@
 using System.Text.Json;
 using FluentAssertions;
-using Microsoft.Extensions.Options;
 using NodePilot.Ai;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Activities;

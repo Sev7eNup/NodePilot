@@ -176,11 +176,17 @@ Honest inventory so nobody assumes more coverage than exists:
   setup-token IPC guard, the elevated `restartBackend` path, window lifecycle — is verified only by
   hand. The backend half of the feature *is* unit-tested (`DeploymentModeTests`,
   `DatabaseTlsBootValidatorTests`, `DatabaseReadinessGateTests`, `KestrelHttpsConfiguratorTests`).
-- **No CI coverage for `deploy/desktop/*`.** The `desktop` CI job runs typecheck + vitest for
-  `src/nodepilot-desktop`, and the nightly script adds a `desktop-vitest` suite; there is still no
-  lint config, and `Test-DeploymentTemplates.ps1` validates the server templates only —
-  `appsettings.Desktop.json.template` is never parsed by any check. The `desktop` job also carries
-  no `npm audit` gate: the @electron-forge dev tree currently has 31 open advisories.
+- **No CI coverage for `deploy/desktop/*`.** The `desktop` CI job runs `npm audit`, typecheck and
+  vitest for `src/nodepilot-desktop`, and the nightly script adds a `desktop-vitest` suite; there is
+  still no lint config, and `Test-DeploymentTemplates.ps1` validates the server templates only —
+  `appsettings.Desktop.json.template` is never parsed by any check.
+- **Forge's dependency tree is held clean by pinned overrides, not by Forge.** Three packages in
+  Electron Forge's own tree (`tar`, `brace-expansion`, `tmp`) only have patched releases in a newer
+  major line than Forge asks for, so npm cannot resolve them by itself and `npm audit fix` proposes
+  downgrading Forge. `package.json` pins them via `overrides` — see the `"//overrides"` note there
+  for what each one is. Nothing ships from this: Forge is build-time only and `dependencies` is
+  empty. Re-check the list whenever Forge is bumped; an override that Forge has caught up with is
+  dead weight.
 - **The installer is unsigned.** SmartScreen warns on first launch until an Authenticode certificate
   is wired into the build.
 - **Not exercised end-to-end:** upgrade with a forced health failure (the rollback path),

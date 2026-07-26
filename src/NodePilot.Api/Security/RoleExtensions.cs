@@ -11,8 +11,6 @@ internal static class RoleExtensions
 {
     public static bool IsAdmin(this ClaimsPrincipal user) => user.IsInRole("Admin");
 
-    public static bool IsOperator(this ClaimsPrincipal user) => user.IsInRole("Operator");
-
     /// <summary>Admin or Operator — i.e. can mutate / see raw secrets.</summary>
     public static bool IsPrivileged(this ClaimsPrincipal user)
         => user.IsInRole("Admin") || user.IsInRole("Operator");

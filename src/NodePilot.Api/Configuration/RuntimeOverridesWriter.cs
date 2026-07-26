@@ -117,38 +117,6 @@ public sealed class RuntimeOverridesWriter
     }
 
     /// <summary>
-    /// Mark one or more sections as needing a service restart to take effect. Idempotent;
-    /// the meta-block accumulates section names until a restart clears it.
-    /// </summary>
-    public void MarkRestartRequired(IEnumerable<string> sections, DateTimeOffset now)
-    {
-        ArgumentNullException.ThrowIfNull(sections);
-        var sectionList = sections.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList();
-        if (sectionList.Count == 0) return;
-
-        MutateAndWrite(root =>
-        {
-            if (root[MetaSectionKey] is not JsonObject meta)
-            {
-                meta = new JsonObject();
-                root[MetaSectionKey] = meta;
-            }
-            // Preserve oldest restartRequiredSince — the banner reflects how long the
-            // operator has been overdue on a restart, not the most recent edit.
-            if (meta[MetaRestartRequiredSinceKey] is null)
-                meta[MetaRestartRequiredSinceKey] = now.UtcDateTime.ToString("O");
-
-            var existing = (meta[MetaRestartRequiredForKey] as JsonArray) ?? new JsonArray();
-            var combined = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var n in existing) if (n is JsonValue v && v.TryGetValue(out string? s) && s is not null) combined.Add(s);
-            foreach (var s in sectionList) combined.Add(s);
-            var ordered = new JsonArray();
-            foreach (var s in combined.OrderBy(x => x, StringComparer.Ordinal)) ordered.Add(s);
-            meta[MetaRestartRequiredForKey] = ordered;
-        });
-    }
-
-    /// <summary>
     /// Result of an atomic section-update attempt. <see cref="Success"/> is true exactly when
     /// the ETag matched and the file was written; on a mismatch, <see cref="CurrentSection"/>
     /// carries the up-to-date server snapshot so the caller can return it to the client as a
@@ -334,29 +302,10 @@ public sealed class RuntimeOverridesWriter
             LastSavedBy: lastSavedBy);
     }
 
-    /// <summary>
-    /// Write a transient "lastSavedAt"/"lastSavedBy" pair into the meta-block. Called by
-    /// the controller after a successful section save so the status endpoint can surface
-    /// who-saved-when without needing to peek at the audit log.
-    /// </summary>
-    public void RecordLastSave(string username, DateTimeOffset now)
-    {
-        MutateAndWrite(root =>
-        {
-            if (root[MetaSectionKey] is not JsonObject meta)
-            {
-                meta = new JsonObject();
-                root[MetaSectionKey] = meta;
-            }
-            meta["lastSavedAt"] = now.UtcDateTime.ToString("O");
-            meta["lastSavedBy"] = username;
-        });
-    }
-
     private Mutex AcquireMutex()
     {
         var mutex = new Mutex(initiallyOwned: false, _mutexName);
-        var acquired = false;
+        bool acquired;
         try
         {
             acquired = mutex.WaitOne(MutexAcquireTimeoutMs);

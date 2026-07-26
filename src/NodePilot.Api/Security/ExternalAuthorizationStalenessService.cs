@@ -1,7 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
-using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;

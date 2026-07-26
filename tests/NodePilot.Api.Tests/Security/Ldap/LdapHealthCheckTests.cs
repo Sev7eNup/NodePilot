@@ -1,6 +1,5 @@
 using FluentAssertions;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Options;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.TestCommons;
 using Xunit;

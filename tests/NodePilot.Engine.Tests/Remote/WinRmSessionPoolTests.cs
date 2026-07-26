@@ -1,10 +1,8 @@
-using System.Collections.Concurrent;
 using System.Management.Automation.Runspaces;
 using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
@@ -50,8 +48,7 @@ public class WinRmSessionPoolTests
         var sp = services.BuildServiceProvider();
         var pool = new WinRmSessionPool(
             sp.GetRequiredService<IServiceScopeFactory>(),
-            config ?? new ConfigurationBuilder().AddInMemoryCollection().Build(),
-            NullLogger<WinRmSessionPool>.Instance);
+            config ?? new ConfigurationBuilder().AddInMemoryCollection().Build());
         return (pool, factory);
     }
 
@@ -138,7 +135,7 @@ public class WinRmSessionPoolTests
         {
             ["Remote:Pool:MaxConcurrentPerMachine"] = "1",
         }).Build();
-        await using var pool = new WinRmSessionPool(sp.GetRequiredService<IServiceScopeFactory>(), config, NullLogger<WinRmSessionPool>.Instance);
+        await using var pool = new WinRmSessionPool(sp.GetRequiredService<IServiceScopeFactory>(), config);
 
         var machine = Machine();
 

@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Models;
-using NodePilot.Data;
 using NodePilot.Data.Security;
 using NodePilot.TestCommons;
 using Xunit;

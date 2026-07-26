@@ -7,7 +7,6 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
-using NodePilot.Engine;
 using NodePilot.Engine.Tests.Helpers;
 using Xunit;
 
@@ -24,7 +23,6 @@ public class WorkflowEngineDebugTests
 {
     private readonly NodePilotDbContext _db;
     private readonly IServiceProvider _serviceProvider;
-    private readonly Microsoft.Data.Sqlite.SqliteConnection _connection;
     private readonly Mock<IActivityExecutor> _mockExecutor;
     private readonly Mock<IExecutionNotifier> _notifier;
     private Dictionary<string, string>? _capturedVariables;
@@ -57,10 +55,10 @@ public class WorkflowEngineDebugTests
             .ReturnsAsync(new ActivityResult { Success = true, Output = "{}" });
 
         var registry = new ActivityRegistry(new[] { _mockExecutor.Object, manualTriggerExecutor.Object });
-        (_db, var sp, _connection) = TestDbContext.CreateWithScopedServices(registry);
+        (_db, var sp, _) = TestDbContext.CreateWithScopedServices(registry);
         _serviceProvider = sp;
         _notifier = new Mock<IExecutionNotifier>();
-        _engine = new WorkflowEngine(_db, registry, NullLogger<WorkflowEngine>.Instance, _serviceProvider, _notifier.Object);
+        _engine = new WorkflowEngine(_db, NullLogger<WorkflowEngine>.Instance, _serviceProvider, _notifier.Object);
     }
 
     /// <summary>Builds a two-node workflow with a breakpoint on the second step. The engine

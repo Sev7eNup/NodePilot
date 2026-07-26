@@ -3,7 +3,6 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;

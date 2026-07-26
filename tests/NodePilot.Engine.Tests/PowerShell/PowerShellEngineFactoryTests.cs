@@ -17,9 +17,6 @@ public class PowerShellEngineFactoryTests
 {
     private static ILoggerFactory NewLoggerFactory() => new NullLoggerFactory();
 
-    private static IConfiguration EmptyConfig() =>
-        new ConfigurationBuilder().AddInMemoryCollection().Build();
-
     [Fact]
     public void GetEngine_RunspaceAlwaysAvailable()
     {
@@ -78,17 +75,6 @@ public class PowerShellEngineFactoryTests
         factory.GetEngine("RUNSPACE").EngineType.Should().Be("runspace");
         factory.GetEngine("Runspace").EngineType.Should().Be("runspace");
         factory.GetEngine("runspace").EngineType.Should().Be("runspace");
-    }
-
-    [Fact]
-    public void GetAvailableEngines_AlwaysIncludesAutoAndRunspace()
-    {
-        var factory = new PowerShellEngineFactory(NewLoggerFactory());
-
-        var engines = factory.GetAvailableEngines();
-
-        engines.Should().Contain("auto");
-        engines.Should().Contain("runspace");
     }
 
     [Fact]

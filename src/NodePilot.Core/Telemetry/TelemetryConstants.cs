@@ -32,14 +32,11 @@ public static class TelemetryConstants
     {
         public const string WorkflowId = "nodepilot.workflow.id";
         public const string WorkflowName = "nodepilot.workflow.name";
-        public const string WorkflowNodeCount = "nodepilot.workflow.node.count";
-        public const string WorkflowEdgeCount = "nodepilot.workflow.edge.count";
         public const string WorkflowCallDepth = "nodepilot.workflow.call_depth";
         public const string WorkflowParentExecutionId = "nodepilot.workflow.parent_execution_id";
 
         public const string ExecutionId = "nodepilot.execution.id";
         public const string ExecutionTrigger = "nodepilot.execution.trigger";
-        public const string ExecutionInitiator = "nodepilot.execution.initiator";
         public const string ExecutionStatus = "nodepilot.execution.status";
 
         public const string DatabaseProvider = "nodepilot.db.provider";
@@ -55,17 +52,6 @@ public static class TelemetryConstants
         public const string StepHasCredential = "nodepilot.step.has_credential";
         public const string StepOutputVariable = "nodepilot.step.output_variable";
         public const string StepStatus = "nodepilot.step.status";
-        public const string StepExitCode = "nodepilot.step.exit_code";
-
-        public const string RemoteTarget = "nodepilot.remote.target";
-        public const string RemoteTransport = "nodepilot.remote.transport";
-        public const string RemoteAuth = "nodepilot.remote.auth";
-        public const string RemoteScriptBytes = "nodepilot.remote.script.bytes";
-        public const string RemoteTimeoutSec = "nodepilot.remote.timeout_sec";
-        public const string RemoteStdoutBytes = "nodepilot.remote.stdout.bytes";
-        public const string RemoteStderrBytes = "nodepilot.remote.stderr.bytes";
-
-        public const string TriggerType = "nodepilot.trigger.type";
 
         // AI/LLM
         public const string LlmModel = "nodepilot.llm.model";
@@ -75,24 +61,10 @@ public static class TelemetryConstants
         // Rate limiting
         public const string RateLimitPolicy = "nodepilot.rate_limit.policy";
 
-        // Credential DPAPI
-        public const string CredentialOperation = "nodepilot.credential.operation";
-        public const string CredentialResult = "nodepilot.credential.result";
-
-        // Retention
-        public const string RetentionService = "nodepilot.retention.service";
-
         // Workflow lifecycle
         public const string WorkflowOperation = "nodepilot.workflow.operation";
 
         // Import/export
         public const string ImportExportOperation = "nodepilot.import_export.operation";
-        public const string ImportExportResult = "nodepilot.import_export.result";
-
-        // Machine test
-        public const string MachineTestResult = "nodepilot.machine.test.result";
-
-        // Dispatch
-        public const string DispatchResult = "nodepilot.dispatch.result";
     }
 }

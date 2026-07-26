@@ -9,7 +9,6 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
-using NodePilot.Engine;
 using NodePilot.Engine.Tests.Helpers;
 using Xunit;
 
@@ -70,7 +69,7 @@ public class GlobalVariableResolutionTests
             db.Workflows.Add(workflow);
             await db.SaveChangesAsync();
 
-            var engine = new WorkflowEngine(db, registry, NullLogger<WorkflowEngine>.Instance, sp2, Mock.Of<IExecutionNotifier>());
+            var engine = new WorkflowEngine(db, NullLogger<WorkflowEngine>.Instance, sp2, Mock.Of<IExecutionNotifier>());
 
             // Act
             var execution = await engine.ExecuteAsync(workflow, "test", CancellationToken.None);
@@ -134,7 +133,7 @@ public class GlobalVariableResolutionTests
             db.Workflows.Add(workflow);
             await db.SaveChangesAsync();
 
-            var engine = new WorkflowEngine(db, registry, NullLogger<WorkflowEngine>.Instance, sp2, Mock.Of<IExecutionNotifier>());
+            var engine = new WorkflowEngine(db, NullLogger<WorkflowEngine>.Instance, sp2, Mock.Of<IExecutionNotifier>());
             var execution = await engine.ExecuteAsync(workflow, "test", CancellationToken.None);
 
             execution.Status.Should().Be(ExecutionStatus.Failed,

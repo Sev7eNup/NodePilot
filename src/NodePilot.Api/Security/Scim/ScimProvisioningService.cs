@@ -4,7 +4,6 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
-using NodePilot.Api.Security;
 using NodePilot.Api.Security.Oidc;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;

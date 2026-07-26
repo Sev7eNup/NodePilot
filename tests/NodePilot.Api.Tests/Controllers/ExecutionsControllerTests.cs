@@ -6,7 +6,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;

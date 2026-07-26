@@ -1,6 +1,5 @@
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
-using Microsoft.Extensions.Configuration;
 using NodePilot.Api.Configuration;
 
 namespace NodePilot.Api.Hosting;
