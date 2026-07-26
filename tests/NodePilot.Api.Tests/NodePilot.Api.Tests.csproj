@@ -3,6 +3,8 @@
   <PropertyGroup>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Required by xunit.v3: its targets hard-error on a non-Exe test project. -->
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
@@ -11,7 +13,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -23,10 +25,8 @@
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="WireMock.Net" />
-    <!-- Force patched floors over WireMock.Net's vulnerable transitives (test-only):
-         Scriban.Signed 5.5.0 → GHSA-24c8-4792-22hx (HIGH, array.insert_at OOM DoS),
-         Microsoft.OpenApi 2.4.1 (via WireMock.Net.OpenApiParser) → GHSA-v5pm-xwqc-g5wc. -->
-    <PackageReference Include="Scriban.Signed" />
+    <!-- Force a patched floor over WireMock.Net.OpenApiParser's transitive Microsoft.OpenApi
+         (GHSA-v5pm-xwqc-g5wc, HIGH). Version central in Directory.Packages.props. -->
     <PackageReference Include="Microsoft.OpenApi" />
   </ItemGroup>
 

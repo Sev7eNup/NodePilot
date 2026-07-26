@@ -55,7 +55,7 @@ public sealed class AlertingToolsTests
             await tools.CreateAlertingRule("NewRule", "ExecutionFailed,ExecutionCancelled", emails: "ops@x", webhooks: "https://hook"));
 
         json.Should().Contain(id.ToString()).And.Contain("\"created\":true");
-        var body = api.Server.LogEntries.Last().RequestMessage.Body!;
+        var body = api.Server.LogEntries.Last().RequestMessage!.Body!;
         body.Should().Contain("ExecutionCancelled").And.Contain("GenericWebhook").And.Contain("https://hook");
     }
 
@@ -72,8 +72,8 @@ public sealed class AlertingToolsTests
         var tools = new AlertingTools(api.Client());
         await tools.UpdateAlertingRule(id.ToString(), name: "Renamed");
 
-        var put = api.Server.LogEntries.Last(e => e.RequestMessage.Method == "PUT");
-        put.RequestMessage.Body.Should().Contain("Renamed").And.Contain("\"cooldownMinutes\":10");
+        var put = api.Server.LogEntries.Last(e => e.RequestMessage!.Method == "PUT");
+        put.RequestMessage!.Body.Should().Contain("Renamed").And.Contain("\"cooldownMinutes\":10");
     }
 
     [Fact]
@@ -96,7 +96,7 @@ public sealed class AlertingToolsTests
         var tools = new AlertingTools(api.Client());
         var json = JsonSerializer.Serialize(await tools.ListAlertingDeliveries(status: "Failed"));
         json.Should().Contain("Prod-Fail").And.Contain("smtp down").And.Contain("\"count\":1");
-        api.Server.LogEntries.Last().RequestMessage.AbsoluteUrl.Should().Contain("status=Failed");
+        api.Server.LogEntries.Last().RequestMessage!.AbsoluteUrl.Should().Contain("status=Failed");
     }
 
     [Fact]
@@ -128,6 +128,6 @@ public sealed class AlertingToolsTests
         var json = JsonSerializer.Serialize(await tools.DeleteAlertingRule(id.ToString()));
         json.Should().Contain("\"deleted\":true");
         api.Server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.AbsolutePath == $"/api/alerting/rules/{id}" && e.RequestMessage.Method == "DELETE");
+            e.RequestMessage!.AbsolutePath == $"/api/alerting/rules/{id}" && e.RequestMessage!.Method == "DELETE");
     }
 }

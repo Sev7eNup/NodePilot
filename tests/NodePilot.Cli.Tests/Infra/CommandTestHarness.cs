@@ -3,6 +3,7 @@ using NodePilot.Cli.Api;
 using NodePilot.Cli.Auth;
 using NodePilot.Cli.Settings;
 using Spectre.Console.Cli;
+using Spectre.Console.Cli.Testing;
 using Spectre.Console.Testing;
 using WireMock.Server;
 

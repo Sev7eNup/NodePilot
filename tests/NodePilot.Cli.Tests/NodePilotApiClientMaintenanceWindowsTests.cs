@@ -91,8 +91,8 @@ public sealed class NodePilotApiClientMaintenanceWindowsTests : IDisposable
 
         // The serialized request body must carry the fields the backend expects.
         var captured = _server.LogEntries.Last();
-        captured.RequestMessage.Method.Should().Be("POST");
-        captured.RequestMessage.Body.Should().Contain("Nightly").And.Contain("Blackout");
+        captured.RequestMessage!.Method.Should().Be("POST");
+        captured.RequestMessage!.Body.Should().Contain("Nightly").And.Contain("Blackout");
     }
 
     [Fact]
@@ -124,8 +124,8 @@ public sealed class NodePilotApiClientMaintenanceWindowsTests : IDisposable
         await _client.UpdateMaintenanceWindowAsync(id, req, CancellationToken.None);
 
         var captured = _server.LogEntries.Last();
-        captured.RequestMessage.Method.Should().Be("PUT");
-        captured.RequestMessage.Body.Should().Contain("Renamed").And.Contain("AllowOnly");
+        captured.RequestMessage!.Method.Should().Be("PUT");
+        captured.RequestMessage!.Body.Should().Contain("Renamed").And.Contain("AllowOnly");
     }
 
     [Fact]
@@ -153,6 +153,6 @@ public sealed class NodePilotApiClientMaintenanceWindowsTests : IDisposable
 
         await _client.DeleteMaintenanceWindowAsync(id, CancellationToken.None);
 
-        _server.LogEntries.Last().RequestMessage.Method.Should().Be("DELETE");
+        _server.LogEntries.Last().RequestMessage!.Method.Should().Be("DELETE");
     }
 }

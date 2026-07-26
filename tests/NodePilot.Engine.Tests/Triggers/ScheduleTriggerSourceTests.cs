@@ -98,14 +98,24 @@ public class ScheduleTriggerSourceTests
             NullLogger<ScheduleTriggerSource>.Instance,
             ConfigWith(("Trigger:Schedule:MinIntervalSeconds", "1")));
 
-        // The factory returns null from Mock.Of, which surfaces a NullReferenceException
-        // from inside Quartz. The point is: we got past the min-interval check.
-        var act = () => src.StartAsync(Ctx("""{"cronExpression":"* * * * * ?"}"""), CancellationToken.None);
+        try
+        {
+            // The factory returns null from Mock.Of, which surfaces a NullReferenceException
+            // from inside Quartz. The point is: we got past the min-interval check.
+            var act = () => src.StartAsync(Ctx("""{"cronExpression":"* * * * * ?"}"""), CancellationToken.None);
 
-        // FluentAssertions' Where/predicate builds an expression tree which forbids 'is not'
-        // pattern-matching, so use a method-call predicate instead.
-        await act.Should().ThrowAsync<Exception>()
-            .Where(ex => !IsBelowMinIntervalMessage(ex));
+            // FluentAssertions' Where/predicate builds an expression tree which forbids 'is not'
+            // pattern-matching, so use a method-call predicate instead.
+            await act.Should().ThrowAsync<Exception>()
+                .Where(ex => !IsBelowMinIntervalMessage(ex));
+        }
+        finally
+        {
+            // Getting past the min-interval check means we also got past the cap check, so
+            // this source took an active-job slot before failing. Release it, or the
+            // process-static counter stays inflated for every later test in the process.
+            await src.DisposeAsync();
+        }
     }
 
     private static bool IsBelowMinIntervalMessage(Exception ex)
@@ -150,5 +160,52 @@ public class ScheduleTriggerSourceTests
             EmptyConfig());
 
         await src.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task DisposeAsync_ReleasesTheJobSlotExactlyOnce_AcrossRepeatedCalls()
+    {
+        // Regression: the decrement used to hang off _jobKey, which is set once and never
+        // cleared, so every extra DisposeAsync decremented the process-static active-job
+        // counter again. The orchestrator has four teardown paths that can overlap, and a
+        // counter driven below zero makes the MaxActiveJobs cap accept everything from then
+        // on. Asserted behaviourally: start a source under a cap of 1 (consuming the only
+        // slot), dispose it repeatedly, then verify a fresh source still hits the cap —
+        // which only holds if the extra disposes were no-ops.
+        var scheduler = new Mock<IScheduler>();
+        var factory = new Mock<ISchedulerFactory>();
+        factory.Setup(f => f.GetScheduler(It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
+        factory.Setup(f => f.GetScheduler(It.IsAny<string>(), It.IsAny<CancellationToken>())).ReturnsAsync(scheduler.Object);
+
+        var cap1 = ConfigWith(("Trigger:Schedule:MaxActiveJobs", "1"));
+        var first = new ScheduleTriggerSource(
+            factory.Object, NullLogger<ScheduleTriggerSource>.Instance, cap1);
+        await first.StartAsync(Ctx("""{"cronExpression":"0 0 * * * ?"}"""), CancellationToken.None);
+
+        // One real release, then two that must do nothing.
+        await first.DisposeAsync();
+        await first.DisposeAsync();
+        await first.DisposeAsync();
+
+        // The counter is back to its pre-test value, so one more source fits and a second
+        // one does not. A leaked-negative counter would let both through.
+        var fits = new ScheduleTriggerSource(
+            factory.Object, NullLogger<ScheduleTriggerSource>.Instance, cap1);
+        var overflows = new ScheduleTriggerSource(
+            factory.Object, NullLogger<ScheduleTriggerSource>.Instance, cap1);
+        try
+        {
+            await fits.StartAsync(Ctx("""{"cronExpression":"0 0 * * * ?"}"""), CancellationToken.None);
+
+            var act = () => overflows.StartAsync(
+                Ctx("""{"cronExpression":"0 0 * * * ?"}"""), CancellationToken.None);
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*maximum number of active cron jobs (1)*");
+        }
+        finally
+        {
+            await fits.DisposeAsync();
+            await overflows.DisposeAsync();
+        }
     }
 }

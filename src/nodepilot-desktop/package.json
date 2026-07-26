@@ -16,6 +16,11 @@
     "make": "npm run build && electron-forge make"
   },
   "dependencies": {},
+  "//types-node": [
+    "@types/node tracks the Node that Electron actually bundles (43.2.0 -> Node 24.18.0),",
+    "not the newest release line. Bumping it past the runtime would type-check against",
+    "APIs the shipped Electron does not have."
+  ],
   "//overrides": [
     "Electron Forge's own dependency tree pulls three packages whose only patched",
     "releases sit in a newer major line than the one Forge asks for, so npm cannot",
@@ -35,9 +40,9 @@
   "devDependencies": {
     "@electron-forge/cli": "^7.10.0",
     "@electron-forge/maker-zip": "^7.10.0",
-    "@types/node": "^22.10.0",
+    "@types/node": "^24.13.3",
     "electron": "43.2.0",
-    "typescript": "^5.7.2",
+    "typescript": "~6.0.2",
     "vitest": "^4.1.4"
   }
 }

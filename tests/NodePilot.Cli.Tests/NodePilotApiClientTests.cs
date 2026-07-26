@@ -101,7 +101,7 @@ public sealed class NodePilotApiClientTests : IDisposable
                .RespondWith(Response.Create().WithStatusCode(204));
 
         await _client.LogoutAsync(CancellationToken.None);
-        _server.LogEntries.Should().Contain(e => e.RequestMessage.AbsolutePath == "/api/auth/logout");
+        _server.LogEntries.Should().Contain(e => e.RequestMessage!.AbsolutePath == "/api/auth/logout");
     }
 
     [Fact]
@@ -497,8 +497,8 @@ public sealed class NodePilotApiClientTests : IDisposable
         page.Items.Should().BeEmpty();
         page.NextCursor.Should().BeNull();
 
-        var entry = _server.LogEntries.Should().ContainSingle(e => e.RequestMessage.AbsolutePath == "/api/audit").Subject;
-        entry.RequestMessage.RawQuery.Should().Contain("since=").And.Contain("until=");
+        var entry = _server.LogEntries.Should().ContainSingle(e => e.RequestMessage!.AbsolutePath == "/api/audit").Subject;
+        entry.RequestMessage!.RawQuery.Should().Contain("since=").And.Contain("until=");
     }
 
     [Fact]
@@ -540,8 +540,8 @@ public sealed class NodePilotApiClientTests : IDisposable
         var page = await _client.AuditAsync(null, null, null, null, null, null, null, afterTs, afterId, null, CancellationToken.None);
         page.Items.Should().BeEmpty();
 
-        var entry = _server.LogEntries.Should().ContainSingle(e => e.RequestMessage.AbsolutePath == "/api/audit").Subject;
-        entry.RequestMessage.RawQuery.Should().Contain("afterTs=").And.Contain($"afterId={afterId}");
+        var entry = _server.LogEntries.Should().ContainSingle(e => e.RequestMessage!.AbsolutePath == "/api/audit").Subject;
+        entry.RequestMessage!.RawQuery.Should().Contain("afterTs=").And.Contain($"afterId={afterId}");
     }
 
     [Fact]

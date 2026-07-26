@@ -49,7 +49,7 @@ public sealed class McpServerSmokeTests
         result.IsError.Should().BeTrue();
         var text = string.Concat(result.Content.OfType<TextContentBlock>().Select(b => b.Text));
         text.Should().Contain("whoami");
-        api.Server.LogEntries.Should().NotContain(entry => entry.RequestMessage.Path == "/api/auth/me");
+        api.Server.LogEntries.Should().NotContain(entry => entry.RequestMessage!.Path == "/api/auth/me");
 
         // resources/list — all three explicitly registered resources are served.
         var resources = await client.ListResourcesAsync(cancellationToken: cts.Token);

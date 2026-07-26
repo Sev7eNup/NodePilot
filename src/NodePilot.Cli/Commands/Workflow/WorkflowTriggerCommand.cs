@@ -63,11 +63,10 @@ public sealed class WorkflowTriggerCommand : AsyncCommand<WorkflowTriggerSetting
         _factory = factory;
     }
 
-    public override async Task<int> ExecuteAsync(CommandContext context, WorkflowTriggerSettings settings)
+    protected override async Task<int> ExecuteAsync(CommandContext context, WorkflowTriggerSettings settings, CancellationToken ct)
     {
         var format = OutputFormatParser.Resolve(settings.Output);
         var writer = new OutputWriter(format, settings.NoColor || Console.IsOutputRedirected);
-        var ct = CancellationToken.None;
 
         var session = _sessions.Resolve(settings);
         if (!session.HasServer)

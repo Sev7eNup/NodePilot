@@ -98,7 +98,7 @@ public class CommandIntegrationMaintenanceTests
         result.StdErr.Should().Contain("Nightly");
 
         // Mon-Fri == bits 1..5 == 0b0111110 == 62; 22:00 == 1320; 23:30 == 1410.
-        var body = h.Server.LogEntries.Last().RequestMessage.Body!;
+        var body = h.Server.LogEntries.Last().RequestMessage!.Body!;
         body.Should().Contain("\"weeklyDaysMask\":62");
         body.Should().Contain("\"weeklyStartMinuteOfDay\":1320");
         body.Should().Contain("\"weeklyEndMinuteOfDay\":1410");
@@ -117,7 +117,7 @@ public class CommandIntegrationMaintenanceTests
 
         result.ExitCode.Should().Be(ExitCodes.Success);
 
-        var body = h.Server.LogEntries.Last().RequestMessage.Body!;
+        var body = h.Server.LogEntries.Last().RequestMessage!.Body!;
         body.Should().Contain("\"recurrence\":\"Cron\"");
         body.Should().Contain("\"cronExpression\":\"0 0 3 ? * SAT\"");
         body.Should().Contain("\"durationMinutes\":90");
@@ -140,10 +140,10 @@ public class CommandIntegrationMaintenanceTests
             "--recurrence", "Cron", "--cron", "0 30 1 * * ?", "--duration-minutes", "45");
 
         result.ExitCode.Should().Be(ExitCodes.Success);
-        var put = h.Server.LogEntries.Last(e => e.RequestMessage.Method == "PUT");
-        put.RequestMessage.Body.Should().Contain("\"recurrence\":\"Cron\"");
-        put.RequestMessage.Body.Should().Contain("\"cronExpression\":\"0 30 1 * * ?\"");
-        put.RequestMessage.Body.Should().Contain("\"durationMinutes\":45");
+        var put = h.Server.LogEntries.Last(e => e.RequestMessage!.Method == "PUT");
+        put.RequestMessage!.Body.Should().Contain("\"recurrence\":\"Cron\"");
+        put.RequestMessage!.Body.Should().Contain("\"cronExpression\":\"0 30 1 * * ?\"");
+        put.RequestMessage!.Body.Should().Contain("\"durationMinutes\":45");
     }
 
     [Fact]
@@ -155,8 +155,8 @@ public class CommandIntegrationMaintenanceTests
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("--name");
         h.Server.LogEntries.Should().NotContain(e =>
-            e.RequestMessage.AbsolutePath == "/api/maintenance-windows"
-            && e.RequestMessage.Method == "POST");
+            e.RequestMessage!.AbsolutePath == "/api/maintenance-windows"
+            && e.RequestMessage!.Method == "POST");
     }
 
     [Fact]
@@ -168,8 +168,8 @@ public class CommandIntegrationMaintenanceTests
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("Ungültige Zeit");
         h.Server.LogEntries.Should().NotContain(e =>
-            e.RequestMessage.AbsolutePath == "/api/maintenance-windows"
-            && e.RequestMessage.Method == "POST");
+            e.RequestMessage!.AbsolutePath == "/api/maintenance-windows"
+            && e.RequestMessage!.Method == "POST");
     }
 
     [Fact]
@@ -192,9 +192,9 @@ public class CommandIntegrationMaintenanceTests
         result.StdErr.Should().Contain("Renamed");
 
         // Only --name and --mode were passed; everything else must be carried over from current.
-        var put = h.Server.LogEntries.Last(e => e.RequestMessage.Method == "PUT");
-        put.RequestMessage.Body.Should().Contain("Renamed").And.Contain("AllowOnly");
-        put.RequestMessage.Body.Should().Contain("\"timeZoneId\":\"UTC\"");
+        var put = h.Server.LogEntries.Last(e => e.RequestMessage!.Method == "PUT");
+        put.RequestMessage!.Body.Should().Contain("Renamed").And.Contain("AllowOnly");
+        put.RequestMessage!.Body.Should().Contain("\"timeZoneId\":\"UTC\"");
     }
 
     [Fact]
@@ -223,7 +223,7 @@ public class CommandIntegrationMaintenanceTests
         var result = h.Run("maintenance", "delete", id.ToString());
         result.ExitCode.Should().Be(ExitCodes.Success);
         h.Server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.AbsolutePath == $"/api/maintenance-windows/{id}"
-            && e.RequestMessage.Method == "DELETE");
+            e.RequestMessage!.AbsolutePath == $"/api/maintenance-windows/{id}"
+            && e.RequestMessage!.Method == "DELETE");
     }
 }

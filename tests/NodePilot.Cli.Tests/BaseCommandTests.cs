@@ -42,7 +42,7 @@ public sealed class BaseCommandTests : IDisposable
     {
         var cmd = new ThrowingCommand(_sessions, _factory, body);
         var ctx = new CommandContext(Array.Empty<string>(), DummyRemainingArgs.Instance, "test", null);
-        return await cmd.ExecuteAsync(ctx, new GlobalSettings { Server = "https://np.local" });
+        return await cmd.InvokeAsync(ctx, new GlobalSettings { Server = "https://np.local" }, CancellationToken.None);
     }
 
     [Fact]
@@ -107,6 +107,12 @@ public sealed class BaseCommandTests : IDisposable
         public ThrowingCommand(SessionResolver s, ApiClientFactory f, Func<Task<int>> body) : base(s, f) => _body = body;
         protected override Task<int> RunAsync(CommandContext context, GlobalSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
             => _body();
+
+        // Spectre made AsyncCommand.ExecuteAsync protected in 0.55; re-expose it so these
+        // tests can drive BaseCommand's catch-block mapping directly instead of standing up
+        // a whole CommandApp just to observe an exit code.
+        public Task<int> InvokeAsync(CommandContext context, GlobalSettings settings, CancellationToken ct)
+            => ExecuteAsync(context, settings, ct);
     }
 
     private sealed class DummyRemainingArgs : IRemainingArguments

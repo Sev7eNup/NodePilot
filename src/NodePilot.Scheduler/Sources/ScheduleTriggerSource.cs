@@ -29,6 +29,15 @@ public class ScheduleTriggerSource : ITriggerSource
     // over-the-cap racers won't hurt, and the cap is a safety net, not a quota.
     private static int _activeJobCount;
 
+    // Guards the decrement so it pairs with the increment in StartAsync exactly once (0/1,
+    // flipped via Interlocked so a concurrent double-dispose can't double-decrement).
+    // Keying the decrement off _jobKey instead got this wrong in both directions: a second
+    // DisposeAsync decremented again, and a StartAsync that failed between the increment and
+    // the _jobKey assignment never decremented at all. Either way _activeJobCount drifts off
+    // the real number of jobs, and once it drifts negative the MaxActiveJobs cap silently
+    // stops rejecting anything.
+    private int _holdsJobSlot;
+
     public ScheduleTriggerSource(ISchedulerFactory schedulerFactory, ILogger<ScheduleTriggerSource> logger, IConfiguration config)
     {
         _schedulerFactory = schedulerFactory;
@@ -73,6 +82,9 @@ public class ScheduleTriggerSource : ITriggerSource
                 "Disable unused schedule triggers or raise Trigger:Schedule:MaxActiveJobs.");
         }
 
+        // The increment above is now this instance's to release, whatever happens below.
+        _holdsJobSlot = 1;
+
         var scheduler = await _schedulerFactory.GetScheduler(ct);
         _jobKey = new JobKey($"wf-{context.WorkflowId}-{context.NodeId}", "nodepilot");
         _triggerKey = new TriggerKey($"trg-{context.WorkflowId}-{context.NodeId}", "nodepilot");
@@ -105,14 +117,24 @@ public class ScheduleTriggerSource : ITriggerSource
 
     public async ValueTask DisposeAsync()
     {
-        if (_jobKey is null) return;
+        // No slot held → nothing to release. Covers "never started" and every dispose after
+        // the first, so the orchestrator's several teardown paths can overlap harmlessly.
+        if (Interlocked.Exchange(ref _holdsJobSlot, 0) == 0) return;
+
+        var jobKey = _jobKey;
+        _jobKey = null;
         try
         {
-            var scheduler = await _schedulerFactory.GetScheduler();
-            await scheduler.DeleteJob(_jobKey);
-            ScheduleJob.Unregister(_jobKey.ToString()!);
+            // jobKey is null when StartAsync failed after taking the slot but before
+            // scheduling — there is nothing to unschedule, but the slot still must go back.
+            if (jobKey is not null)
+            {
+                var scheduler = await _schedulerFactory.GetScheduler();
+                await scheduler.DeleteJob(jobKey);
+                ScheduleJob.Unregister(jobKey.ToString()!);
+            }
         }
-        catch (Exception ex) { _logger.LogWarning(ex, "Failed to unschedule {Job}", _jobKey); }
+        catch (Exception ex) { _logger.LogWarning(ex, "Failed to unschedule {Job}", jobKey); }
         finally { Interlocked.Decrement(ref _activeJobCount); }
     }
 }

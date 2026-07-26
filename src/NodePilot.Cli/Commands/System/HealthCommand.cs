@@ -13,7 +13,7 @@ public sealed class HealthCommand : BaseCommand<GlobalSettings>
 {
     public HealthCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
 
-    public override async Task<int> ExecuteAsync(CommandContext context, GlobalSettings settings)
+    protected override async Task<int> ExecuteAsync(CommandContext context, GlobalSettings settings, CancellationToken ct)
     {
         // Health works without authentication — bypass BaseCommand's "session required" check.
         var format = OutputFormatParser.Resolve(settings.Output);
@@ -27,7 +27,7 @@ public sealed class HealthCommand : BaseCommand<GlobalSettings>
                 return ExitCodes.Error;
             }
             var api = ClientFactory.Create(session, requireAuth: false);
-            var (live, ready, detail, leaderStatus) = await api.HealthAsync(CancellationToken.None);
+            var (live, ready, detail, leaderStatus) = await api.HealthAsync(ct);
 
             writer.WriteData(new { Live = live, Ready = ready, Detail = detail, Leader = leaderStatus }, (console, v) =>
             {

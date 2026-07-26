@@ -1,8 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    // node16, not the deprecated node10: package.json declares no "type", so this still
+    // emits CommonJS for the Electron main process, but resolution now honours the
+    // "exports" maps that modern dependencies ship.
+    "module": "node16",
+    "moduleResolution": "node16",
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,

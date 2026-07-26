@@ -104,7 +104,7 @@ public class CommandIntegrationSystemAlertTests
         var result = h.Run("system-alert", "enable", id.ToString());
         result.ExitCode.Should().Be(ExitCodes.Success);
         h.Server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.AbsolutePath == $"/api/alerting/system/policies/{id}/enable" && e.RequestMessage.Method == "POST");
+            e.RequestMessage!.AbsolutePath == $"/api/alerting/system/policies/{id}/enable" && e.RequestMessage!.Method == "POST");
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class CommandIntegrationSystemAlertTests
         var result = h.Run("system-alert", "disable", id.ToString());
         result.ExitCode.Should().Be(ExitCodes.Success);
         h.Server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.AbsolutePath == $"/api/alerting/system/policies/{id}/disable" && e.RequestMessage.Method == "POST");
+            e.RequestMessage!.AbsolutePath == $"/api/alerting/system/policies/{id}/disable" && e.RequestMessage!.Method == "POST");
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public class CommandIntegrationSystemAlertTests
         var result = h.Run("system-alert", "delete", id.ToString());
         result.ExitCode.Should().Be(ExitCodes.Success);
         h.Server.LogEntries.Should().Contain(e =>
-            e.RequestMessage.AbsolutePath == $"/api/alerting/system/policies/{id}" && e.RequestMessage.Method == "DELETE");
+            e.RequestMessage!.AbsolutePath == $"/api/alerting/system/policies/{id}" && e.RequestMessage!.Method == "DELETE");
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public class CommandIntegrationSystemAlertTests
         var result = h.Run("system-alert", "create", "--file", file);
         result.ExitCode.Should().Be(ExitCodes.Success);
         result.StdErr.Should().Contain("Stale-Service");
-        var sent = h.Server.LogEntries.Last().RequestMessage.Body!;
+        var sent = h.Server.LogEntries.Last().RequestMessage!.Body!;
         sent.Should().Contain("service.stale");
         sent.Should().Contain("\"cooldownMinutes\":30");
     }
@@ -179,7 +179,7 @@ public class CommandIntegrationSystemAlertTests
         result.ExitCode.Should().Be(ExitCodes.Error);
         result.StdErr.Should().Contain("nicht gefunden");
         h.Server.LogEntries.Should().NotContain(e =>
-            e.RequestMessage.AbsolutePath == "/api/alerting/system/policies" && e.RequestMessage.Method == "POST");
+            e.RequestMessage!.AbsolutePath == "/api/alerting/system/policies" && e.RequestMessage!.Method == "POST");
     }
 
     [Fact]

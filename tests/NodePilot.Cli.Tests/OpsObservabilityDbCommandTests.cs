@@ -164,7 +164,7 @@ public class OpsObservabilityDbCommandTests
 
         result.ExitCode.Should().Be(ExitCodes.Success);
         result.Output.Should().Contain("no result set");
-        h.Server.LogEntries.Should().Contain(e => e.RequestMessage.AbsolutePath == "/api/dbadmin/query");
+        h.Server.LogEntries.Should().Contain(e => e.RequestMessage!.AbsolutePath == "/api/dbadmin/query");
     }
 
     [Fact]

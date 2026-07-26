@@ -612,6 +612,11 @@ describe('WorkflowEditorPage — Mutations', () => {
     renderPage();
     await waitFor(() => expect(screen.getByRole('button', { name: /^Publish$/ })).toBeInTheDocument());
 
+    // Wait for the definition to actually reach the canvas, not just for the toolbar to
+    // render. The pre-publish lint runs over `nodes`; clicking while that is still empty
+    // yields a clean result and publishes straight through, which is what this case is
+    // meant to rule out.
+    await waitFor(() => expect(screen.getByText('Delete file')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /^Publish$/ }));
 
     // Modal opens with the missing-target-machine error

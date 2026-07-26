@@ -426,7 +426,7 @@ public sealed class NodePilotApiClientResourcesTests : IDisposable
         resp.Workflows[0].Name.Should().Be("Migrated");
 
         var entry = _server.LogEntries.Should().ContainSingle().Subject;
-        entry.RequestMessage.Headers!["Content-Type"].Should().ContainMatch("application/xml*");
+        entry.RequestMessage!.Headers!["Content-Type"].Should().ContainMatch("application/xml*");
     }
 
     [Fact]

@@ -115,6 +115,6 @@ public sealed class TokenRefreshHandlerTests : IDisposable
         var ex = await act.Should().ThrowAsync<ApiException>();
         ex.Which.IsUnauthorized.Should().BeTrue();
         _server.LogEntries.Should().NotContain(entry =>
-            entry.RequestMessage.AbsolutePath == "/api/auth/refresh");
+            entry.RequestMessage!.AbsolutePath == "/api/auth/refresh");
     }
 }

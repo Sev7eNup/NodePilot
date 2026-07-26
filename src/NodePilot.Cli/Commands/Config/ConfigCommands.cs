@@ -24,7 +24,7 @@ public sealed class ConfigSetCommand : AsyncCommand<ConfigSetSettings>
     private readonly ConfigStore _config;
     public ConfigSetCommand(ConfigStore config) => _config = config;
 
-    public override Task<int> ExecuteAsync(CommandContext context, ConfigSetSettings settings)
+    protected override Task<int> ExecuteAsync(CommandContext context, ConfigSetSettings settings, CancellationToken ct)
     {
         var format = OutputFormatParser.Resolve(settings.Output);
         var writer = new OutputWriter(format, settings.NoColor);
@@ -58,7 +58,7 @@ public sealed class ConfigGetCommand : AsyncCommand<GlobalSettings>
     private readonly ConfigStore _config;
     public ConfigGetCommand(ConfigStore config) => _config = config;
 
-    public override Task<int> ExecuteAsync(CommandContext context, GlobalSettings settings)
+    protected override Task<int> ExecuteAsync(CommandContext context, GlobalSettings settings, CancellationToken ct)
     {
         var format = OutputFormatParser.Resolve(settings.Output);
         var writer = new OutputWriter(format, settings.NoColor || Console.IsOutputRedirected);

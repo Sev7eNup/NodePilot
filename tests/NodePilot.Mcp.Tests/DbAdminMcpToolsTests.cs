@@ -114,7 +114,7 @@ public sealed class DbAdminMcpToolsTests
         var json = JsonSerializer.Serialize(await tools.RunReadonlySql("SELECT 1 AS x"));
 
         // The body sent to the API forced mode=read.
-        var body = api.Server.LogEntries.Last().RequestMessage.Body;
+        var body = api.Server.LogEntries.Last().RequestMessage!.Body;
         body.Should().Contain("\"mode\":\"read\"");
         body.Should().Contain("SELECT 1 AS x");
 

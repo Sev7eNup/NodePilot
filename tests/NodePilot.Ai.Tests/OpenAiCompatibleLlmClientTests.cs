@@ -187,7 +187,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
 
         resp.Content.Should().Be("recovered");
         _server.LogEntries.Should().HaveCount(2);
-        var retryBody = _server.LogEntries.Last().RequestMessage.Body!;
+        var retryBody = _server.LogEntries.Last().RequestMessage!.Body!;
         retryBody.Should().Contain("max_completion_tokens");
         retryBody.Should().NotContain("\"max_tokens\"");
 
@@ -197,7 +197,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
             new LlmRequest("sys", "user"), CancellationToken.None);
         second.Content.Should().Be("recovered");
         _server.LogEntries.Should().HaveCount(3);
-        _server.LogEntries.Last().RequestMessage.Body.Should().Contain("max_completion_tokens");
+        _server.LogEntries.Last().RequestMessage!.Body.Should().Contain("max_completion_tokens");
     }
 
     [Fact]
@@ -226,8 +226,8 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
 
         response.Content.Should().Be("fallback ok");
         _server.LogEntries.Should().HaveCount(2);
-        _server.LogEntries.First().RequestMessage.Body.Should().Contain("\"strict\":true");
-        _server.LogEntries.Last().RequestMessage.Body.Should().NotContain("\"strict\":true");
+        _server.LogEntries.First().RequestMessage!.Body.Should().Contain("\"strict\":true");
+        _server.LogEntries.Last().RequestMessage!.Body.Should().NotContain("\"strict\":true");
     }
 
     [Fact]
@@ -250,7 +250,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
             }),
             CancellationToken.None);
 
-        var body = _server.LogEntries.Single().RequestMessage.Body!;
+        var body = _server.LogEntries.Single().RequestMessage!.Body!;
         using var doc = System.Text.Json.JsonDocument.Parse(body);
         var messages = doc.RootElement.GetProperty("messages");
 
@@ -395,7 +395,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
             new LlmRequest("sys", "user", Tools: new[] { Tool("analyze_workflow") }, ToolChoice: "auto"),
             CancellationToken.None);
 
-        var body = _server.LogEntries.Single().RequestMessage.Body!;
+        var body = _server.LogEntries.Single().RequestMessage!.Body!;
         using var doc = System.Text.Json.JsonDocument.Parse(body);
         var tools = doc.RootElement.GetProperty("tools");
         tools.GetArrayLength().Should().Be(1);
@@ -456,7 +456,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
             }),
             CancellationToken.None);
 
-        var body = _server.LogEntries.Single().RequestMessage.Body!;
+        var body = _server.LogEntries.Single().RequestMessage!.Body!;
         using var doc = System.Text.Json.JsonDocument.Parse(body);
         var messages = doc.RootElement.GetProperty("messages");
         messages.GetArrayLength().Should().Be(4); // system + 3 turns

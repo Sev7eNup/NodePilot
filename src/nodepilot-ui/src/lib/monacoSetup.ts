@@ -4,9 +4,14 @@
 // resolve through monaco-editor's `"./*"` export wildcard but TS bundler-mode
 // resolution doesn't pick up the adjacent .d.ts files; the ambient declaration
 // in `src/lib/monacoTypes.d.ts` re-exports the public types onto these paths.
-import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
-import 'monaco-editor/esm/vs/basic-languages/powershell/powershell.contribution';
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
+//
+// 0.56 added an exports map that already points the wildcard at `./esm/vs/*.js`,
+// so the old `esm/vs/` prefix would resolve twice and must be dropped. The same
+// release moved the per-language side-effect registration from
+// `basic-languages/<lang>/<lang>.contribution` to `languages/definitions/<lang>/register`.
+import * as monaco from 'monaco-editor/editor/editor.api';
+import 'monaco-editor/languages/definitions/powershell/register';
+import EditorWorker from 'monaco-editor/editor/editor.worker?worker';
 import { loader } from '@monaco-editor/react';
 
 self.MonacoEnvironment = {

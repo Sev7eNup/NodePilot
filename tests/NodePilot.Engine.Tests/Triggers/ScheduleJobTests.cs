@@ -86,7 +86,7 @@ public class ScheduleJobTests
     private static IJobExecutionContext BuildContext(string callbackKey, DateTime fireTime, DateTime? nextFire)
     {
         var jobDataMap = new JobDataMap();
-        jobDataMap.Put("callbackKey", callbackKey);
+        jobDataMap["callbackKey"] = callbackKey;
 
         var jobDetail = new Mock<IJobDetail>();
         jobDetail.SetupGet(d => d.JobDataMap).Returns(jobDataMap);

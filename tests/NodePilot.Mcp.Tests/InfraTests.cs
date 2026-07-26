@@ -224,7 +224,7 @@ public sealed class InfraTests
 
             await act.Should().ThrowAsync<ApiException>();
             server.LogEntries.Should().NotContain(entry =>
-                entry.RequestMessage.AbsolutePath == "/api/auth/refresh");
+                entry.RequestMessage!.AbsolutePath == "/api/auth/refresh");
         }
         finally { TryDelete(dir); }
     }

@@ -448,8 +448,8 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
         resp.Rows.Should().HaveCount(1);
 
         var captured = _server.LogEntries.Last();
-        captured.RequestMessage.Headers.Should().NotContainKey("X-Confirm-Write");
-        captured.RequestMessage.Body.Should().Contain("\"read\"");
+        captured.RequestMessage!.Headers.Should().NotContainKey("X-Confirm-Write");
+        captured.RequestMessage!.Body.Should().Contain("\"read\"");
     }
 
     [Fact]
@@ -472,8 +472,8 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
         resp.RowsAffected.Should().Be(1);
 
         var captured = _server.LogEntries.Last();
-        captured.RequestMessage.Headers!["X-Confirm-Write"].Should().ContainSingle().Which.Should().Be("ALLOW");
-        captured.RequestMessage.Body.Should().Contain("\"write\"");
+        captured.RequestMessage!.Headers!["X-Confirm-Write"].Should().ContainSingle().Which.Should().Be("ALLOW");
+        captured.RequestMessage!.Body.Should().Contain("\"write\"");
     }
 
     // ---- Operations / NOC graph --------------------------------------------
