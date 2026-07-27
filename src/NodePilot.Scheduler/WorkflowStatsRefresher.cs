@@ -28,6 +28,14 @@ namespace NodePilot.Scheduler;
 /// </summary>
 public class WorkflowStatsRefresher : BackgroundService
 {
+    /// <summary>
+    /// Newest successful runs sampled per workflow for avg/p50/p95. A percentile over a
+    /// thousand sorted samples is precise enough for a dashboard refreshed every few minutes,
+    /// and the cap is what keeps the pass bounded on an instance with a large execution table.
+    /// Override via <c>Stats:DurationSampleCap</c>.
+    /// </summary>
+    private const int DefaultDurationSampleCap = 1000;
+
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IConfiguration _config;
     private readonly NodePilot.Core.Interfaces.IClusterStateProvider _cluster;
@@ -92,7 +100,12 @@ public class WorkflowStatsRefresher : BackgroundService
     /// <summary>
     /// Performs one full refresh pass: upserts a <see cref="WorkflowStats"/> row for every
     /// workflow. Returns the number of workflows whose stats were written.
-    /// Uses 4 aggregation queries instead of N+1 per workflow.
+    ///
+    /// <para>Counts and timestamps come from three server-side aggregations rather than N+1
+    /// per-workflow round-trips. Duration samples are the exception: they cannot be aggregated
+    /// into a percentile provider-agnostically, so they are fetched per workflow with a hard
+    /// row cap (<c>Stats:DurationSampleCap</c>) off the covering index — bounded work, instead
+    /// of materialising every successful run in the window.</para>
     /// </summary>
     internal async Task<int> RefreshOnceAsync(int windowDays, CancellationToken ct)
     {
@@ -127,18 +140,55 @@ public class WorkflowStatsRefresher : BackgroundService
             .ToListAsync(ct))
             .ToDictionary(r => (r.WorkflowId, r.Status));
 
-        // Query 4: succeeded duration samples in window for percentile calculation
-        var durationsByWorkflow = (await db.WorkflowExecutions.AsNoTracking()
-            .Where(e => e.StartedAt >= windowStart
-                        && e.Status == ExecutionStatus.Succeeded
-                        && e.CompletedAt != null)
-            .Select(e => new { e.WorkflowId, e.StartedAt, CompletedAt = e.CompletedAt!.Value })
-            .ToListAsync(ct))
-            .GroupBy(r => r.WorkflowId)
-            .ToDictionary(g => g.Key, g => g
+        // Query 4..N: duration samples per workflow for avg/p50/p95.
+        //
+        // Deliberately NOT one bulk query. The bulk form materialised one row per succeeded
+        // execution in the whole window with no cap — at 30-day retention and a busy instance
+        // that is every successful run of the last 7 days in memory, every 5 minutes, just to
+        // compute three numbers. These per-workflow queries are each served entirely from the
+        // (WorkflowId, StartedAt DESC) INCLUDE (Status, CompletedAt) covering index and return
+        // at most DurationSampleCap rows, so the pass is bounded regardless of table size.
+        //
+        // Only workflows that actually succeeded inside the window are queried — the counts
+        // needed for that are already in hand from query 2.
+        var sampleCap = Math.Max(1, _config.GetValue("Stats:DurationSampleCap", DefaultDurationSampleCap));
+        var durationsByWorkflow = new Dictionary<Guid, List<double>>();
+        var cappedWorkflows = 0;
+
+        foreach (var wfId in workflowIds)
+        {
+            if (!windowByWorkflow.TryGetValue(wfId, out var counts)) continue;
+            var succeededInWindow = counts.FirstOrDefault(r => r.Status == ExecutionStatus.Succeeded)?.Count ?? 0;
+            if (succeededInWindow == 0) continue;
+
+            // Newest first, so a capped sample describes current behaviour rather than a
+            // week-old baseline.
+            var samples = await db.WorkflowExecutions.AsNoTracking()
+                .Where(e => e.WorkflowId == wfId
+                            && e.StartedAt >= windowStart
+                            && e.Status == ExecutionStatus.Succeeded
+                            && e.CompletedAt != null)
+                .OrderByDescending(e => e.StartedAt)
+                .Take(sampleCap)
+                .Select(e => new { e.StartedAt, CompletedAt = e.CompletedAt!.Value })
+                .ToListAsync(ct);
+
+            if (succeededInWindow > sampleCap) cappedWorkflows++;
+
+            durationsByWorkflow[wfId] = samples
                 .Select(r => (r.CompletedAt - r.StartedAt).TotalMilliseconds)
                 .OrderBy(d => d)
-                .ToList());
+                .ToList();
+        }
+
+        if (cappedWorkflows > 0)
+        {
+            // Never let a cap silently change what the dashboard means.
+            _logger.LogDebug(
+                "Stats refresh sampled the newest {Cap} successful runs for {Count} workflow(s) " +
+                "that exceeded the cap; avg/p50/p95 describe that sample.",
+                sampleCap, cappedWorkflows);
+        }
 
         int processed = 0;
         foreach (var wfId in workflowIds)

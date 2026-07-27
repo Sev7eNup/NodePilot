@@ -1,6 +1,6 @@
 # Retention-Services
 
-Retention-Services trimmen historische Daten. Alle sind opt-out via `Retention:*:Enabled: false`. **Idempotency-Keys** (24 h, fixe TTL) laufen **immer** — nicht abschaltbar.
+Retention-Services löschen oder archivieren historische Daten nach einer Aufbewahrungsfrist. Einzelne Services lassen sich mit `Retention:*:Enabled=false` deaktivieren. Idempotency-Keys besitzen immer eine feste Lebensdauer von 24 Stunden.
 
 ## Übersicht
 

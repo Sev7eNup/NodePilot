@@ -680,6 +680,8 @@ $freeGb   = [math]::Round((Get-PSDrive C).Free / 1GB, 2)
 
 **RunScript auto-quoting:** `{{step.output}}` is interpolated as a single-quoted PowerShell string. Inside a script, write `$x = {{step.output}}` — **not** `$x = '{{step.output}}'`.
 
+**Visibility — predecessors only:** a step can read results from its own graph ancestors, never from a parallel branch. Given `Start → B` alongside `Start → C → D`, the step `D` cannot resolve `{{B.output}}`: no path leads from `B` to `D`. The reference fails every time, naming the node and suggesting the fix (draw an edge, or move the reference downstream of both). Without that rule the outcome depended on timing — if `B` happened to finish first the run went green, otherwise it failed, so the same workflow was reliable on a fast machine and flaky under load. For `runScript` the old behaviour was worse than a failure: the unresolved `{{…}}` stayed in the script and PowerShell executed it, so `$x = {{other.output}}` produced the literal `{other.output}` and the step reported **success** with a placeholder in place of the value. Cross-branch references are therefore fatal for `runScript` and custom activities too — typos and genuine PowerShell braces stay tolerated there.
+
 ---
 
 ## Sub-Workflows & Loops

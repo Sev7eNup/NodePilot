@@ -1,6 +1,12 @@
 # Activity-Typen & Scopes
 
-"Remote" = `targetMachineId` / WinRM. "Engine-local" = im API-Prozess. `runScript` / `waitForCondition` = hybrid. `(controlFlow)` = Kategorie `ControlFlow` im Backend-`ActivityCatalog` (Palette-Achse, unabhängig vom Scope).
+Eine Activity ist ein ausführbarer Arbeitsschritt. Der Scope legt den Ausführungsort fest:
+
+- **Remote:** Ausführung auf `targetMachineId` über WinRM.
+- **Engine-local:** Ausführung im NodePilot-API-Prozess.
+- **Hybrid:** Ausführungsort hängt von der Konfiguration ab.
+
+`runScript` und `waitForCondition` sind hybrid. `ControlFlow` ist eine fachliche Kategorie im Activity-Katalog und kein Ausführungsort.
 
 | Type | Scope |
 |---|---|
@@ -31,15 +37,3 @@
 | `generateText` | Engine-local |
 | `llmQuery` | Engine-local |
 | `waitForCondition` | Hybrid |
-
-## Neue Activity hinzufügen
-
-Eine neue Activity ist ein reines Backend-+Frontend-Paar, ohne zentrale DI-Verdrahtung:
-
-1. **Backend:** Klasse in `Engine/Activities/`, `IActivityExecutor` implementieren. Auto-Discovery via `AddNodePilotActivities()` scannt `NodePilot.Engine` — **keine** DI-Registrierung in `Program.cs`.
-2. **Frontend-Katalog:** Eintrag in `library/activityCategories.ts` (`buildActivityCategories`).
-3. **Properties-Komponente:** `*Config`-Komponente unter `properties/activities|triggers/` + Registrierung in `properties/activityConfigMap.ts` (eine Zeile — `PropertiesPanel.tsx` wird **nicht** editiert).
-4. **Katalog-Spiegel:** `lib/activityCatalog.generated.ts` ergänzen (Mirror von `NodePilot.Core.Activities.ActivityCatalog`, von Hand gepflegt — kein Codegen). `isRemote`/Timeout-Flags speisen `REMOTE_ACTIVITY_TYPES` / `TIMEOUT_ACTIVITY_TYPES`. `ActivityCatalogFrontendSyncTests` erzwingt Gleichstand mit dem Backend-Katalog.
-5. **Downstream-Outputs** in `describeNodeOutputs` in `lib/upstreamVariables.ts`.
-
-Die volle Config-Keys- und Output-Referenz pro Activity: [Activity-Referenz](../activities-reference).

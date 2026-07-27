@@ -881,6 +881,13 @@ public class WorkflowEngine : IWorkflowEngine
         var activeEdgeByEndpoints = compiledDefinition.ActiveEdgeByEndpoints;
         var rootNodes = compiledDefinition.RootNodes;
 
+        // Databus scoping: a step may only read results from its own graph ancestors. The
+        // scheduler's result map is shared across all branches, so without this a step could
+        // resolve a template from an unrelated parallel branch — and only when that branch
+        // happened to finish first, which made the same definition succeed or fail depending on
+        // timing. Computed once per run from the compiled reverse adjacency.
+        var ancestorsByNode = AncestorIndex.Build(reverseAdjacency);
+
         // Root selection and disabled-node/edge semantics are owned by
         // WorkflowDefinitionDocument. The engine only handles the execution-specific
         // failure mode when the compiled graph has no entry point.
@@ -932,7 +939,8 @@ public class WorkflowEngine : IWorkflowEngine
         await WorkflowScheduler.RunAsync(rootNodes, nodesById, adjacency, reverseAdjacency,
             incomingEdgesByTarget, activeEdgeByEndpoints, outputVariableToStepId,
             results, completed, skipped,
-            (node, stepCt) => _stepRunner.ExecuteAsync(execution, workflow.Name, node, results,
+            (node, stepCt) => _stepRunner.ExecuteAsync(execution, workflow.Name, node,
+                ScopeResultsToAncestors(results, ancestorsByNode, node.Id),
                 outputNameByStepId, outputVariableToStepId,
                 inputParameters, globalVariables, compiledDefinition.RetryPolicies, debug, cts, stepCt),
             _logger,
@@ -1250,6 +1258,23 @@ public class WorkflowEngine : IWorkflowEngine
         => _debugHandles.TryGetValue(executionId, out var debug)
             ? debug.PendingSteps.ToList()
             : Array.Empty<string>();
+    /// <summary>
+    /// Restricts the run's shared result map to the graph ancestors of <paramref name="nodeId"/>.
+    /// A node missing from the index (should not happen — the index covers every compiled node)
+    /// falls back to an empty scope rather than to the unrestricted map: failing closed keeps the
+    /// determinism guarantee, and the unresolved-template diagnostic then names the step.
+    /// </summary>
+    private static IReadOnlyDictionary<string, ActivityResult> ScopeResultsToAncestors(
+        IReadOnlyDictionary<string, ActivityResult> results,
+        IReadOnlyDictionary<string, IReadOnlySet<string>> ancestorsByNode,
+        string nodeId)
+    {
+        var ancestors = ancestorsByNode.TryGetValue(nodeId, out var set)
+            ? set
+            : new HashSet<string>(StringComparer.Ordinal);
+        return new AncestorScopedResults(results, ancestors);
+    }
+
     private static string? SerializeInputParameters(Dictionary<string, string>? inputParameters)
     {
         if (inputParameters is null || inputParameters.Count == 0) return null;

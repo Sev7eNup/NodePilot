@@ -226,45 +226,57 @@ public class ExternalTriggerController : ControllerBase
 
         if (!string.IsNullOrEmpty(idempotencyKey))
         {
+            (WorkflowExecution? Replayed, WorkflowExecution? Fresh) outcome;
             try
             {
-                await using var tx = await _db.Database.BeginTransactionAsync(ct);
-                var now = DateTime.UtcNow;
-                var existingKey = await _db.IdempotencyKeys
-                    .FirstOrDefaultAsync(k => k.Key == idempotencyKey && k.WorkflowId == workflow.Id, ct);
-                if (existingKey is not null && existingKey.ExpiresAt > now)
+                // The configured providers both enable EnableRetryOnFailure (see
+                // DbContextSetup), and a retrying execution strategy refuses user-initiated
+                // transactions unless the whole unit runs inside strategy.ExecuteAsync —
+                // otherwise EF throws InvalidOperationException before the first query. That
+                // exception is not a DbUpdateException, so the catch below would not have
+                // absorbed it and every keyed call returned 500. Tests run on SQLite, which
+                // has no retrying strategy, so the suite could never observe it; the guard
+                // test in ExternalTriggerTransactionGuardTests covers the shape instead.
+                var strategy = _db.Database.CreateExecutionStrategy();
+                outcome = await strategy.ExecuteAsync(async () =>
                 {
-                    var replay = await _db.WorkflowExecutions.AsNoTracking()
-                        .FirstOrDefaultAsync(e => e.Id == existingKey.ExecutionId, ct);
-                    if (replay is not null)
+                    // A retried attempt must not inherit the previous attempt's staged
+                    // execution + key rows, which would insert two of each on commit.
+                    // Only reads happened before this point, so nothing else is lost.
+                    _db.ChangeTracker.Clear();
+
+                    await using var tx = await _db.Database.BeginTransactionAsync(ct);
+                    var now = DateTime.UtcNow;
+                    var existingKey = await _db.IdempotencyKeys
+                        .FirstOrDefaultAsync(k => k.Key == idempotencyKey && k.WorkflowId == workflow.Id, ct);
+                    if (existingKey is not null && existingKey.ExpiresAt > now)
                     {
-                        Response.Headers["Idempotent-Replayed"] = "true";
-                        NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,
-                            new KeyValuePair<string, object?>("result", "cached"));
-                        return Ok(ToResponse(replay));
+                        var cached = await _db.WorkflowExecutions.AsNoTracking()
+                            .FirstOrDefaultAsync(e => e.Id == existingKey.ExecutionId, ct);
+                        if (cached is not null)
+                            return (cached, null);
+
+                        _db.IdempotencyKeys.Remove(existingKey);
+                    }
+                    else if (existingKey is not null)
+                    {
+                        _db.IdempotencyKeys.Remove(existingKey);
                     }
 
-                    _db.IdempotencyKeys.Remove(existingKey);
-                }
-                else if (existingKey is not null)
-                {
-                    _db.IdempotencyKeys.Remove(existingKey);
-                }
-
-                pending = _executionDispatch.AddPendingExecution(dispatchIntent);
-                _db.IdempotencyKeys.Add(new IdempotencyKey
-                {
-                    Id = Guid.NewGuid(),
-                    Key = idempotencyKey,
-                    WorkflowId = workflow.Id,
-                    ExecutionId = pending.Id,
-                    FirstSeenAt = now,
-                    ExpiresAt = now.AddHours(24),
+                    var created = _executionDispatch.AddPendingExecution(dispatchIntent);
+                    _db.IdempotencyKeys.Add(new IdempotencyKey
+                    {
+                        Id = Guid.NewGuid(),
+                        Key = idempotencyKey,
+                        WorkflowId = workflow.Id,
+                        ExecutionId = created.Id,
+                        FirstSeenAt = now,
+                        ExpiresAt = now.AddHours(24),
+                    });
+                    await _db.SaveChangesAsync(ct);
+                    await tx.CommitAsync(ct);
+                    return ((WorkflowExecution?)null, (WorkflowExecution?)created);
                 });
-                await _db.SaveChangesAsync(ct);
-                await tx.CommitAsync(ct);
-                NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,
-                    new KeyValuePair<string, object?>("result", "fresh"));
             }
             catch (DbUpdateException)
             {
@@ -280,6 +292,20 @@ public class ExternalTriggerController : ControllerBase
 
                 return Conflict(new { message = "Idempotency-Key is currently being processed; retry with the same key." });
             }
+
+            // Replay is decided inside the transaction but answered out here: an early return
+            // from within strategy.ExecuteAsync would escape the retry unit.
+            if (outcome.Replayed is not null)
+            {
+                Response.Headers["Idempotent-Replayed"] = "true";
+                NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,
+                    new KeyValuePair<string, object?>("result", "cached"));
+                return Ok(ToResponse(outcome.Replayed));
+            }
+
+            pending = outcome.Fresh!;
+            NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,
+                new KeyValuePair<string, object?>("result", "fresh"));
 
             try
             {

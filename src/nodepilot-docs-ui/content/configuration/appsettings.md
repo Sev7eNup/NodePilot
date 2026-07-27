@@ -1,6 +1,8 @@
 # appsettings-Übersicht
 
-NodePilot ist konfigurationsgetrieben. Die meisten Verhaltensaspekte sind über `appsettings.json` (bzw. `appsettings.Production.json`) steuerbar. Umgebungsspezifische Overrides via Umgebungsvariablen (Doppelter Unterstrich `__` = `:`).
+NodePilot liest Konfiguration aus `appsettings.json`, umgebungsspezifischen Dateien und Umgebungsvariablen. Spätere Quellen überschreiben frühere Quellen. In Umgebungsvariablen ersetzt ein doppelter Unterstrich `__` den Doppelpunkt einer Konfigurationshierarchie.
+
+Beispiel: `ConnectionStrings__Postgres` entspricht `ConnectionStrings:Postgres`.
 
 ## Provider
 

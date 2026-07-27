@@ -1,6 +1,6 @@
 # CLI (`np`)
 
-Operations-CLI für Operatoren — `dotnet global tool` (`ToolCommandName=np`). Reiner HTTP-Client gegen die REST-Endpoints: keine eigene API-Surface, kein DB-Zugriff.
+`np` ist das Kommandozeilenwerkzeug für Administration und Betrieb. Es wird als .NET Global Tool installiert und greift ausschließlich über die REST-API auf NodePilot zu. Ein direkter Datenbankzugriff findet nicht statt.
 
 > **Konventionen in den Beispielen:** `<ARG>` = erforderlich, `[ARG]` = optional. `<ID-OR-NAME>` nimmt eine Workflow-GUID **oder** den Workflow-Namen (exakte Schreibweise gewinnt, sonst case-insensitive; mehrdeutige Namen → Fehler mit GUID-Hinweis). Destruktive Befehle (`delete`, `force-unlock`, `restore`, `reencrypt`, `db --write`) fragen interaktiv nach — in CI/Pipes `--yes` setzen oder stdin umleiten. `--file -` liest überall von stdin.
 
@@ -16,7 +16,7 @@ Operations-CLI für Operatoren — `dotnet global tool` (`ToolCommandName=np`). 
 | `shared-folder` | org RBAC: list/create/rename/move/delete/permissions/grant/revoke |
 | `maintenance` | Maintenance Windows: list/get/create/update/delete |
 | `audit` | `audit list` |
-| `alerting` | list/get/create/update/delete/test-fire/deliveries (Create/Edit/Delete/Test-Fire Admin-only — siehe [Alerting](../alerting)) |
+| `alerting` | list/get/create/update/delete/test-fire/deliveries (Create/Edit/Delete/Test-Fire nur für Admins — siehe [Alerting](alerting)) |
 | `system-alert` | catalog/list/get/create/update/enable/disable/delete/test-fire — System-Alert-Policies (ADR 0008); create/update lesen eine `SaveSystemAlertPolicyRequest`-JSON via `--file` |
 | `health` | Health-Check (live/ready/leader) |
 | `cron` | `cron next` |

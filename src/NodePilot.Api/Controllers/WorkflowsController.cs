@@ -642,13 +642,13 @@ public class WorkflowsController : WorkflowsControllerBase
         }) { StatusCode = StatusCodes.Status423Locked };
     }
 
+    /// <summary>
+    /// Delegates to the shared classifier, which reads the provider's error code instead of
+    /// substring-matching the message. The old text match depended on the server's message
+    /// locale and would also have fired on unrelated errors containing "duplicate".
+    /// </summary>
     private static bool IsUniqueConstraintViolation(DbUpdateException ex)
-    {
-        var message = ex.InnerException?.Message ?? ex.Message;
-        return message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
-               || message.Contains("IX_WorkflowVersions", StringComparison.OrdinalIgnoreCase);
-    }
+        => NodePilot.Data.DbErrorClassifier.IsUniqueConstraintViolation(ex);
 
     [HttpPost("{id:guid}/duplicate")]
     [Authorize(Roles = "Admin,Operator")]

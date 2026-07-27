@@ -26,9 +26,9 @@ const EXPECTED_CONTROL: Record<string, NodeShape> = {
 const EXPECTED_ACTION: Record<string, NodeShape> = {
   runScript: 'hexPointy', fileOperation: 'plaque', folderOperation: 'trapezoidUp', fileHash: 'gem',
   zipOperation: 'chamferedSquare', serviceManagement: 'hexFlat', scheduledTask: 'pentagonUp',
-  registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'blockArrow',
-  powerManagement: 'power', waitForCondition: 'circle', restApi: 'chevronLeft', sql: 'cylinder',
-  xmlQuery: 'kite', jsonQuery: 'trapezoidDown', emailNotification: 'banner', textFileEdit: 'house',
+  registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'launchSlant',
+  powerManagement: 'power', waitForCondition: 'circle', restApi: 'browser', sql: 'cylinder',
+  xmlQuery: 'kite', jsonQuery: 'braces', emailNotification: 'banner', textFileEdit: 'house',
   generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
 };
 

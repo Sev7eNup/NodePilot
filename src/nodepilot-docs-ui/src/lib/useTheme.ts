@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import faviconDark from '../assets/logo-dark.png'
+import faviconLight from '../assets/logo-light.png'
 
 type Theme = 'light' | 'dark'
 
@@ -16,6 +18,9 @@ export function useTheme() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')
     localStorage.setItem('np-docs-theme', theme)
+
+    const favicon = document.querySelector<HTMLLinkElement>('#docs-favicon')
+    if (favicon) favicon.href = theme === 'dark' ? faviconDark : faviconLight
   }, [theme])
 
   return { theme, toggle: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')) }

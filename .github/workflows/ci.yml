@@ -70,21 +70,35 @@ jobs:
         if: always()
         run: dotnet reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:"Html;Cobertura;TextSummary"
 
-      - name: Enforce minimum line coverage
+      - name: Enforce minimum coverage
         shell: pwsh
         run: |
-          # Floor chosen ~5pp below the 49.6% baseline measured 2026-04-26 — leaves room
-          # for normal churn while still catching a step-change regression. Raise this as
-          # the suite grows; do not lower it without a written reason.
-          $minLineCoverage = 45
+          # Floors sit ~5pp below the values measured on 2026-07-27 (line 89.0%, branch 74.1%)
+          # so the gate tolerates normal churn but fails on a step-change regression. Raise
+          # them as the suite grows; do not lower without a written reason.
+          #
+          # The line floor was 45 until 2026-07-27 — the 2026-04-26 baseline, by then 44pp
+          # below reality. At that distance the gate could not fail on anything short of
+          # deleting most of the suite, which is the one thing it exists to catch.
+          # Branch coverage is gated too: it is the more informative of the two, and a
+          # regression usually shows there first.
+          $minLineCoverage = 85
+          $minBranchCoverage = 70
           [xml]$cov = Get-Content coverage-report/Cobertura.xml
-          $rate = [double]$cov.coverage.'line-rate'
-          $pct = [math]::Round($rate * 100, 2)
-          Write-Host "Backend line coverage: $pct% (required minimum: $minLineCoverage%)"
-          if ($pct -lt $minLineCoverage) {
-            Write-Error "Backend line coverage $pct% is below the required minimum of $minLineCoverage%."
-            exit 1
+          $linePct = [math]::Round([double]$cov.coverage.'line-rate' * 100, 2)
+          $branchPct = [math]::Round([double]$cov.coverage.'branch-rate' * 100, 2)
+          Write-Host "Backend line coverage:   $linePct% (required minimum: $minLineCoverage%)"
+          Write-Host "Backend branch coverage: $branchPct% (required minimum: $minBranchCoverage%)"
+          $failed = $false
+          if ($linePct -lt $minLineCoverage) {
+            Write-Error "Backend line coverage $linePct% is below the required minimum of $minLineCoverage%."
+            $failed = $true
           }
+          if ($branchPct -lt $minBranchCoverage) {
+            Write-Error "Backend branch coverage $branchPct% is below the required minimum of $minBranchCoverage%."
+            $failed = $true
+          }
+          if ($failed) { exit 1 }
 
       - name: Upload test results
         if: always()

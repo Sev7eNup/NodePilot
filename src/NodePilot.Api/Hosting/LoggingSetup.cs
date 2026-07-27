@@ -2,6 +2,7 @@ using NodePilot.Telemetry;
 using NodePilot.Api.Diagnostics;
 using NodePilot.Api.Logging;
 using Serilog;
+using Serilog.Events;
 using NodePilot.Core.Telemetry;
 
 namespace NodePilot.Api.Hosting;
@@ -95,6 +96,78 @@ internal static class LoggingSetup
     }
 
     /// <summary>
+    /// Source-of-truth dampening for the noisy framework categories. Applied when the
+    /// operator has not overridden the category in <c>Logging:LogLevel</c>. Without these,
+    /// per-request EF SQL dumps push CMTrace output past its ~4 KB parse limit and blank out
+    /// the column view.
+    /// </summary>
+    private static readonly (string Category, LogEventLevel Level)[] DefaultCategoryLevels =
+    [
+        ("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning),
+        ("Microsoft.EntityFrameworkCore.Database.Connection", LogEventLevel.Warning),
+        ("Microsoft.EntityFrameworkCore.Infrastructure", LogEventLevel.Warning),
+        ("Microsoft.AspNetCore", LogEventLevel.Warning),
+    ];
+
+    /// <summary>
+    /// Translates the <c>Logging:LogLevel:*</c> section into Serilog minimum levels:
+    /// <c>Default</c> becomes <c>MinimumLevel.Is</c>, every other key becomes a category
+    /// override. Categories from <see cref="DefaultCategoryLevels"/> that the operator did not
+    /// configure keep their dampened default, so removing a key from appsettings cannot
+    /// silently flood the log.
+    ///
+    /// <para>Unparsable values are ignored rather than fatal — a typo in a log level must not
+    /// stop the host from booting, and the surviving level is the safe (quieter) default.</para>
+    /// </summary>
+    internal static void ApplyConfiguredLevels(LoggerConfiguration cfg, IConfiguration configuration)
+    {
+        var section = configuration.GetSection("Logging:LogLevel");
+
+        if (TryParseLevel(section["Default"], out var defaultLevel))
+            cfg.MinimumLevel.Is(defaultLevel);
+
+        var configured = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var child in section.GetChildren())
+        {
+            if (string.Equals(child.Key, "Default", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!TryParseLevel(child.Value, out var level)) continue;
+            configured.Add(child.Key);
+            cfg.MinimumLevel.Override(child.Key, level);
+        }
+
+        foreach (var (category, level) in DefaultCategoryLevels)
+        {
+            if (!configured.Contains(category))
+                cfg.MinimumLevel.Override(category, level);
+        }
+    }
+
+    /// <summary>
+    /// Accepts Serilog level names and the Microsoft.Extensions.Logging spellings that appear
+    /// in <c>Logging:LogLevel</c> (<c>Trace</c> → Verbose, <c>Critical</c> → Fatal,
+    /// <c>None</c> → off).
+    /// </summary>
+    private static bool TryParseLevel(string? value, out LogEventLevel level)
+    {
+        level = LogEventLevel.Information;
+        if (string.IsNullOrWhiteSpace(value)) return false;
+
+        switch (value.Trim().ToLowerInvariant())
+        {
+            case "trace": case "verbose": level = LogEventLevel.Verbose; return true;
+            case "debug": level = LogEventLevel.Debug; return true;
+            case "information": case "info": level = LogEventLevel.Information; return true;
+            case "warning": case "warn": level = LogEventLevel.Warning; return true;
+            case "error": level = LogEventLevel.Error; return true;
+            case "critical": case "fatal": level = LogEventLevel.Fatal; return true;
+            // "None" disables the category entirely. Serilog has no Off level, so use the
+            // highest level plus one, which no event can reach.
+            case "none": level = (LogEventLevel)(LogEventLevel.Fatal + 1); return true;
+            default: return false;
+        }
+    }
+
+    /// <summary>
     /// Allow the production installer to point writable-log files at a separate ProgramData
     /// directory without needing write access to the Install-Dir. Relative paths resolve
     /// against <paramref name="rootFolder"/> so dev behaviour is unchanged.
@@ -157,17 +230,16 @@ internal static class LoggingSetup
             var supportChannel = services.GetService<SupportEventChannel>();
             cfg
                 .ReadFrom.Configuration(ctx.Configuration)
-                .ReadFrom.Services(services)
-                // The Microsoft.Extensions.Logging `Logging:LogLevel:*` overrides are NOT honoured
-                // by Serilog when we replace the host logger via UseSerilog + ReadFrom.Configuration
-                // (Serilog reads only its own `Serilog:*` section). Apply the EF Core dampening
-                // directly so the rolling file sink doesn't drown in per-request SQL dumps — these
-                // were the lines that pushed the CMTrace output past its ~4 KB parse limit and
-                // knocked out the column view.
-                .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", Serilog.Events.LogEventLevel.Warning)
-                .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Connection", Serilog.Events.LogEventLevel.Warning)
-                .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Infrastructure", Serilog.Events.LogEventLevel.Warning)
-                .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+                .ReadFrom.Services(services);
+
+            // Serilog reads only its own `Serilog:*` section, so the Microsoft.Extensions.Logging
+            // `Logging:LogLevel:*` keys are not honoured by ReadFrom.Configuration. They are
+            // nonetheless exposed in appsettings.json AND editable through Admin → Settings
+            // (SettingsSections.LogLevel), which used to mean an operator could change a level,
+            // get a success response, and see no effect. Translate them explicitly instead.
+            ApplyConfiguredLevels(cfg, ctx.Configuration);
+
+            cfg
                 .Enrich.FromLogContext()
                 .Enrich.With<OtelTagEnricher>()
                 .Enrich.WithProperty("service.name", ctx.Configuration["OpenTelemetry:ServiceName"] ?? TelemetryConstants.ServiceName)

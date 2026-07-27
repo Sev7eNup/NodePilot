@@ -252,6 +252,29 @@ cannot enumerate workflow names by probing.
 
 - [ExternalTriggerController.cs:133](../src/NodePilot.Api/Controllers/ExternalTriggerController.cs#L133)
 
+### M-30 — Whole-Row Projection Bypass of the Secret-Column Mask
+The two original `DbAdminSecretColumns` layers both key on **names**: layer 1 rejects a statement
+that *names* a protected column, layer 2 masks a *result column* whose name matches one. A row
+serializer defeats both simultaneously — `SELECT to_json(u) FROM "Users" u` never mentions
+`PasswordHash` and returns it inside a column called `to_json`. Same for `u::text` (PostgreSQL
+whole-row cast) and `SELECT * FROM Users FOR JSON AUTO` (SQL Server). The leaked values are
+BCrypt hashes, credential ciphertext and `GlobalVariable.Value`.
+
+Reachable through `/api/dbadmin/query` (Admin) and — the reason this is not merely cosmetic —
+through the AI-Chat tool `execute_readonly_sql`, whose gate is `DbEnabled && IsPrivileged`, and
+`IsPrivileged` is Admin **or Operator**. The knowledge-assistant path also audits only a SQL
+fingerprint, never the statement, so the read left no reconstructable trace.
+
+Layer 3 refuses any statement that combines a table carrying a masked column with a whole-row
+serializer. Deliberately blunt (it also fires on `SELECT "Id"::text FROM "Users"`) and, being a
+blocklist, not exhaustive against every provider extension — the authoritative fix is a
+least-privilege DB login without `SELECT` on the secret columns, which is still open.
+
+- [DbAdminSecretColumns.cs](../src/NodePilot.Api/Services/DbAdmin/DbAdminSecretColumns.cs) — `ReferencesProtectedRowProjection` + the protected-table set
+- [DbAdminReadOnlySqlGuard.cs](../src/NodePilot.Api/Services/DbAdmin/DbAdminReadOnlySqlGuard.cs) — `::` emitted as a token, `ReferencesIdentifierPair` for `FOR JSON` / `FOR XML`
+- [DbAdminController.cs](../src/NodePilot.Api/Controllers/DbAdminController.cs) — `protected_row_projection` on the read path
+- [SqlKnowledgeReader.cs](../src/NodePilot.Api/Ai/SqlKnowledgeReader.cs) — same refusal for the text2sql tool
+
 ## Low
 
 ### L-2 — Resume-Override Size Caps

@@ -1,6 +1,6 @@
 # Remote-Execution
 
-Agentless via WinRM. `Remote:Provider`: `winrm` (default) | `noop`.
+Remote-Activities werden ohne zusätzlichen Agent über WinRM ausgeführt. `Remote:Provider` wählt den Provider.
 
 ## Provider
 

@@ -127,9 +127,6 @@ public class NotificationRuleStore : INotificationRuleStore
         existing.UpdatedAt = DateTime.UtcNow;
         existing.UpdatedBy = updatedBy;
 
-        if (systemStateInvalidated)
-            await _db.SystemAlertPolicyStates.Where(s => s.NotificationRuleId == id).ExecuteDeleteAsync(ct);
-
         // Diff routes: update matched-by-id in place, add new, remove dropped. (Remove+re-add with
         // the same id would throw a duplicate-key tracking error — that's the whole point.)
         var existingList = existing.Routes.ToList();
@@ -175,7 +172,34 @@ public class NotificationRuleStore : INotificationRuleStore
         _db.NotificationRuleTargets.RemoveRange(existing.Targets);
         _db.NotificationRuleTargets.AddRange(NormalizeTargets(draft, existing.Id));
 
-        await _db.SaveChangesAsync(ct);
+        // ExecuteDeleteAsync bypasses the change tracker and hits the database immediately, so it
+        // is not part of the SaveChangesAsync unit. Both have to land together: dropping the
+        // policy state without persisting the new definition leaves the evaluator restarting a
+        // state machine for a rule that never changed, and persisting the definition without
+        // dropping the state leaves the old episode running against new parameters.
+        await RunInTransactionAsync(async token =>
+        {
+            if (systemStateInvalidated)
+                await _db.SystemAlertPolicyStates.Where(s => s.NotificationRuleId == id).ExecuteDeleteAsync(token);
+            await _db.SaveChangesAsync(token);
+        }, ct);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="work"/> inside one database transaction, wrapped in the provider's
+    /// execution strategy so it stays compatible with <c>EnableRetryOnFailure</c> (see
+    /// <c>DbContextSetup</c>). Needed wherever a set-based <c>ExecuteDelete/UpdateAsync</c> has
+    /// to commit together with tracked changes.
+    /// </summary>
+    private async Task RunInTransactionAsync(Func<CancellationToken, Task> work, CancellationToken ct)
+    {
+        var strategy = _db.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            await work(ct);
+            await tx.CommitAsync(ct);
+        });
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct)
@@ -195,13 +219,21 @@ public class NotificationRuleStore : INotificationRuleStore
             .Where(a => a.NotificationRuleId == id).ToListAsync(ct);
         _db.NotificationDeliveryAttempts.RemoveRange(attempts);
 
-        // System policies also carry per-instance evaluator state (no rule FK either) — clear it so a
-        // deleted policy leaves no orphan match/episode rows behind.
-        if (existing.Kind == NotificationRuleKind.System)
-            await _db.SystemAlertPolicyStates.Where(s => s.NotificationRuleId == id).ExecuteDeleteAsync(ct);
-
         _db.NotificationRules.Remove(existing); // routes + targets cascade
-        await _db.SaveChangesAsync(ct);
+
+        // Same split as UpdateAsync: the set-based delete of the policy state runs outside the
+        // change tracker, so it needs the surrounding transaction to commit or roll back with
+        // the rule removal. Otherwise a failed SaveChanges leaves a live rule whose evaluator
+        // state has already been wiped.
+        await RunInTransactionAsync(async token =>
+        {
+            // System policies also carry per-instance evaluator state (no rule FK either) — clear it so a
+            // deleted policy leaves no orphan match/episode rows behind.
+            if (existing.Kind == NotificationRuleKind.System)
+                await _db.SystemAlertPolicyStates.Where(s => s.NotificationRuleId == id).ExecuteDeleteAsync(token);
+
+            await _db.SaveChangesAsync(token);
+        }, ct);
     }
 
     public async Task<string?> GetRouteSecretAsync(Guid routeId, CancellationToken ct)

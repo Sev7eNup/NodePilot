@@ -64,8 +64,15 @@ public class DashboardController : ControllerBase
             execQuery = execQuery.Where(e => accessible.FolderIds.Contains(e.Workflow.FolderId));
         }
 
+        // TriggerTypesJson, not DefinitionJson. The definition is unbounded text holding the whole
+        // graph including every inline script (21-42 KB in the repo's own samples), and this
+        // endpoint only ever needed the trigger metadata that the denormalized column already
+        // carries — maintained on every write path via WorkflowMetadata.PopulateComputedColumns
+        // and backfilled at boot. Loading the definitions here cost megabytes per call, and the
+        // call is not rare: the sidebar badge polls it once a minute from every open browser
+        // (useSidebarBadges), not just from the dashboard page.
         var workflows = await workflowQuery
-            .Select(w => new { w.Id, w.Name, w.IsEnabled, w.DefinitionJson, w.CheckedOutByUserId, w.CheckedOutAt })
+            .Select(w => new { w.Id, w.Name, w.IsEnabled, w.TriggerTypesJson, w.CheckedOutByUserId, w.CheckedOutAt })
             .ToListAsync(ct);
 
         var machines = await _db.ManagedMachines.AsNoTracking()
@@ -194,24 +201,63 @@ public class DashboardController : ControllerBase
                 : null,
             e.TriggeredBy)).ToList();
 
-        // "Armed" = enabled workflow whose definition contains at least one non-manual
-        // trigger node. For each armed workflow, derive a NextFireUtc (cron-only) plus
-        // a NextFireKind tag so the UI can render "in 5m", "Poll 30s", or "event-driven".
-        var armedTriggers = workflows
+        // "Armed" = enabled workflow with at least one non-manual trigger. The trigger TYPES come
+        // from the denormalized column; only the two kinds whose detail lives inside the graph
+        // (cron expression, poll interval) need the definition, so only those get loaded.
+        // Everything else — webhook, fileWatcher, eventLog — is "event-driven" and fully
+        // described by its type.
+        //
+        // A null TriggerTypesJson means the row predates the backfill; fall back to loading its
+        // definition rather than silently dropping the workflow from the list.
+        var armedCandidates = workflows
             .Where(w => w.IsEnabled)
             .Select(w =>
             {
-                if (!WorkflowDefinitionDocument.TryParse(w.DefinitionJson, out var definition) || definition is null)
-                    return null;
+                var unknownTriggers = w.TriggerTypesJson is null;
+                var nonManual = unknownTriggers
+                    ? []
+                    : ParseNonManualTriggerTypes(w.TriggerTypesJson);
+                return new
+                {
+                    w.Id,
+                    w.Name,
+                    NonManual = nonManual,
+                    NeedsDefinition = unknownTriggers
+                                      || nonManual.Any(t => t is "scheduleTrigger" or "databaseTrigger"),
+                    UnknownTriggers = unknownTriggers,
+                };
+            })
+            .Where(w => w.UnknownTriggers || w.NonManual.Count > 0)
+            .ToList();
 
-                var externalDescriptors = definition.TriggerDescriptors
-                    .Where(t => !t.IsManual)
-                    .ToList();
-                var nonManual = externalDescriptors
-                    .Select(t => t.ActivityType)
-                    .Distinct(StringComparer.Ordinal)
-                    .OrderBy(t => t, StringComparer.Ordinal)
-                    .ToList();
+        var definitionIds = armedCandidates.Where(w => w.NeedsDefinition).Select(w => w.Id).ToList();
+        var definitionsById = definitionIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : await _db.Workflows.AsNoTracking()
+                .Where(w => definitionIds.Contains(w.Id))
+                .Select(w => new { w.Id, w.DefinitionJson })
+                .ToDictionaryAsync(w => w.Id, w => w.DefinitionJson, ct);
+
+        var armedTriggers = armedCandidates
+            .Select(w =>
+            {
+                var nonManual = w.NonManual;
+                List<WorkflowTriggerDescriptor> externalDescriptors = [];
+
+                if (definitionsById.TryGetValue(w.Id, out var definitionJson)
+                    && WorkflowDefinitionDocument.TryParse(definitionJson, out var definition)
+                    && definition is not null)
+                {
+                    externalDescriptors = definition.TriggerDescriptors.Where(t => !t.IsManual).ToList();
+                    // Authoritative for a row whose denormalized column was missing.
+                    if (nonManual.Count == 0)
+                        nonManual = externalDescriptors
+                            .Select(t => t.ActivityType)
+                            .Distinct(StringComparer.Ordinal)
+                            .OrderBy(t => t, StringComparer.Ordinal)
+                            .ToList();
+                }
+
                 if (nonManual.Count == 0) return null;
 
                 DateTime? nextFire = null;
@@ -398,6 +444,33 @@ public class DashboardController : ControllerBase
     /// via Quartz and returns the next-fire UTCs. Malformed cron expressions are silently
     /// skipped — the workflow simply appears without a NextFireUtc on the dashboard.
     /// </summary>
+    /// <summary>
+    /// Reads the denormalized <see cref="Workflow.TriggerTypesJson"/> column and drops the manual
+    /// trigger, yielding the same set the definition-based path derived from
+    /// <c>TriggerDescriptors.Where(t =&gt; !t.IsManual)</c>: both are built from non-disabled
+    /// trigger nodes, and <c>IsManual</c> is exactly <c>Type == "manualTrigger"</c>.
+    /// Returns an empty list for malformed JSON rather than throwing — a broken column must not
+    /// take the whole dashboard down.
+    /// </summary>
+    private static List<string> ParseNonManualTriggerTypes(string? triggerTypesJson)
+    {
+        if (string.IsNullOrWhiteSpace(triggerTypesJson)) return [];
+        try
+        {
+            var types = JsonSerializer.Deserialize<List<string>>(triggerTypesJson);
+            if (types is null) return [];
+            return types
+                .Where(t => !string.Equals(t, "manualTrigger", StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(t => t, StringComparer.Ordinal)
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     private static List<DateTime> ExtractScheduleNextFires(IEnumerable<WorkflowTriggerDescriptor> descriptors, DateTime nowUtc)
     {
         var result = new List<DateTime>();

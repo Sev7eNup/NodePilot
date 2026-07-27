@@ -1,6 +1,6 @@
 # Logging
 
-Serilog. Format via `Logging:Format`:
+NodePilot schreibt Anwendungslogs über Serilog. `Logging:Format` bestimmt das Ausgabeformat:
 
 | Wert | Format | Use Case |
 |---|---|---|

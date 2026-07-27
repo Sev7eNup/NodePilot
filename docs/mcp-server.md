@@ -124,9 +124,19 @@ secrets protected, validate-before-save) · `create_workflow` · `duplicate_work
 statement against the NodePilot App-DB (the agent does the NL→SQL translation). Read keyword
 whitelist + rollback enforced server-side; no write tool. `list_db_tables` hides secret columns
 (`PasswordHash`/`EncryptedPassword`), masks `GlobalVariable.Value`. `run_readonly_sql` cannot reach
-them either: naming a protected column rejects the statement (`protected_column`), and a wildcard
-select returns those columns as `***` — the same `DbAdminSecretColumns` contract the row browser
-and the in-app text2sql reader enforce, so no secret ever lands in the agent's context.
+them either — drei Schichten, alle im `DbAdminSecretColumns`-Contract, den auch der Row-Browser und
+der In-App-text2sql-Reader fahren:
+
+1. Nennt das Statement eine geschützte Spalte → Ablehnung (`protected_column`).
+2. Wildcard-Select → die geschützten Ergebnis-Spalten kommen als `***` zurück.
+3. Serialisiert das Statement eine **ganze Zeile** einer Tabelle mit Secret-Spalte
+   (`to_json`/`row_to_json`/`to_jsonb`/`json_agg`/`::text`/`FOR JSON`/`FOR XML`) → Ablehnung
+   (`protected_row_projection`). Schicht 1 und 2 arbeiten beide über **Namen**; eine Row-
+   Serialisierung nennt die Spalte nie und liefert sie unter einem harmlosen Ergebnis-Spaltennamen
+   aus — sie umging damit beide auf einen Schlag (Security-Audit 2026-07-26).
+
+So landet kein Secret im Kontext des Agents. Schicht 3 ist bewusst grob und greift auch bei
+harmlosen Casts auf diesen Tabellen; explizit benannte Spalten funktionieren immer.
 
 ### Supporting resources (secrets never surfaced)
 `list_machines` · `get_machine` · `create_machine` · `update_machine` · `test_machine` ·

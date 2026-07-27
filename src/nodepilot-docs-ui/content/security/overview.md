@@ -1,6 +1,6 @@
 # Sicherheitsmodell
 
-NodePilot ist **hardened by default** — Schutzmechanismen sind an, `appsettings.Development.json` relaxt sie für lokale Iteration auf `false`.
+NodePilot aktiviert Sicherheitsprüfungen standardmäßig. `appsettings.Development.json` lockert ausgewählte Prüfungen ausschließlich für die lokale Entwicklung.
 
 ## Auth & Session
 

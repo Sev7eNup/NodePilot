@@ -99,12 +99,14 @@ public class FileWatcherTriggerSource : ITriggerSource
                         _lastFirePerPath.TryRemove(kv.Key, out _);
             }
 
-            _ = _ctx!.OnFire(new Dictionary<string, string>
-            {
-                ["fileAction"] = action,
-                ["filePath"] = path,
-                ["fileName"] = Path.GetFileName(path),
-            });
+            TriggerFireObserver.Observe(
+                _ctx!.OnFire(new Dictionary<string, string>
+                {
+                    ["fileAction"] = action,
+                    ["filePath"] = path,
+                    ["fileName"] = Path.GetFileName(path),
+                }),
+                _logger, ActivityType, _ctx.WorkflowId, _ctx.NodeId);
         }
 
         if (watchType is "created" or "any") _watcher.Created += (_, e) => HandleEvent("created", e.FullPath);

@@ -1,5 +1,7 @@
 # Observability
 
+NodePilot stellt Metriken, Traces und eine Observability-API bereit. OpenTelemetry ist standardmäßig deaktiviert und muss explizit konfiguriert werden.
+
 ## OpenTelemetry (opt-in)
 
 OpenTelemetry ist opt-in. Setup in `NodePilot.Telemetry` — Constants, Options, `PrometheusClient`.
@@ -21,11 +23,11 @@ CLI: `np observability summary|query|query-range`.
 
 ## SIEM-Logging
 
-Für strukturierte Log-Ingestion ins SIEM (Elastic/Sentinel/Splunk) `Logging:Format=ecs-json` setzen — siehe [SIEM-Logging](../enterprise/siem-logging).
+Für strukturierte Log-Aufnahme in Elastic, Sentinel oder Splunk ist `Logging:Format=ecs-json` zu setzen. Details: [SIEM-Logging](enterprise/siem-logging).
 
 ## Support-Diagnostics
 
-Für Operator/Ticket-Diagnose: `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` (Admin). Siehe [Logging](../configuration/logging).
+Für Betriebs- und Ticketdiagnose stehen `GET /api/diagnostics/support-log|support-log/download|support-events|support-events/export` für Admins bereit. Details: [Logging](configuration/logging).
 
 ## Metrics (Auszug)
 

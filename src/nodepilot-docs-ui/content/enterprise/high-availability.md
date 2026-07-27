@@ -1,8 +1,8 @@
 # High Availability (Active/Passive)
 
-Zwei (oder mehr) NodePilot-Instanzen teilen sich **eine** Datenbank. Exakt eine ist **Leader** und akzeptiert mutierende API-Calls + führt Workflows aus; alle anderen sind **Followers** und antworten auf mutierende Endpoints mit `503` + `Retry-After: 30`.
+Im Active/Passive-Betrieb teilen mindestens zwei NodePilot-Instanzen eine Datenbank. Genau eine Instanz ist Leader. Nur der Leader führt Workflows aus und akzeptiert mutierende API-Aufrufe. Follower antworten auf mutierende Endpunkte mit HTTP `503` und `Retry-After: 30`.
 
-Default: **Single-Node (off)**. Aktivierung via `Cluster:Enabled=true`.
+Die Standardkonfiguration ist Single-Node. `Cluster:Enabled=true` aktiviert den Clusterbetrieb.
 
 ## Was es liefert
 

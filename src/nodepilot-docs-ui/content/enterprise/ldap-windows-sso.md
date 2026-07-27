@@ -2,6 +2,8 @@
 
 > **Status: Preview.** LDAP/LDAPS und Windows Negotiate sind implementiert, gelten aber erst nach realen AD-, Kerberos-, LDAPS- und NTLM-Ablehnungstests über die Produktions-Topologie als Enterprise-ready. OIDC und SCIM haben ein separates Release-Gate.
 
+Diese Seite beschreibt zentrale Anmeldung und Provisionierung. Alle externen Anmeldewege sind standardmäßig deaktiviert. Ein lokales Break-Glass-Admin-Konto bleibt für Notfälle erforderlich.
+
 ## Anmeldewege
 
 | Pfad | Endpoint | Default | Zweck |

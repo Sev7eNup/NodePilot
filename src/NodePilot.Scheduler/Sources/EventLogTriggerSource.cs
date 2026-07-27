@@ -124,14 +124,16 @@ public class EventLogTriggerSource : ITriggerSource
             }
         }
 
-        _ = _ctx!.OnFire(new Dictionary<string, string>
-        {
-            ["eventSource"] = entry.Source,
-            ["eventEntryType"] = entry.EntryType.ToString(),
-            ["eventId"] = entry.InstanceId.ToString(),
-            ["eventMessage"] = entry.Message ?? "",
-            ["eventTimeWritten"] = entry.TimeWritten.ToString("O"),
-        });
+        TriggerFireObserver.Observe(
+            _ctx!.OnFire(new Dictionary<string, string>
+            {
+                ["eventSource"] = entry.Source,
+                ["eventEntryType"] = entry.EntryType.ToString(),
+                ["eventId"] = entry.InstanceId.ToString(),
+                ["eventMessage"] = entry.Message ?? "",
+                ["eventTimeWritten"] = entry.TimeWritten.ToString("O"),
+            }),
+            _logger, ActivityType, _ctx.WorkflowId, _ctx.NodeId);
     }
 
     public ValueTask DisposeAsync()

@@ -1,147 +1,193 @@
-# Properties, Modi & Shortcuts
+# Eigenschaften, Modi und Tastenkürzel
 
-## Properties-Panel
+Das Eigenschaften-Panel enthält die Einstellungen des ausgewählten Nodes oder der ausgewählten Verbindung. Änderungen sind nur mit Schreibrecht und aktivem Bearbeitungs-Lock möglich.
 
-Kontextsensitiv pro selektiertem Node/Edge. Sektionen: Execution Context, Input Variables, Configuration, Timeout, Test & Debug (kollabierbar).
+## Eigenschaften bearbeiten
 
-**Common Node-Fields:**
-- **Label** + **Output Variable** (Fallback Step-ID; downstream `{{var.output}}`).
-- **Description** (lazy "+ Add description").
-- **Target Machine & Credential** (Remote-Activities) als `DynamicTargetField` — GUID/Variable/Literal, mit aufgelöstem Label und Test-Connection-Button.
-- **Timeout** (`config.timeoutSeconds`, nur für Timeout-fähige Typen).
-- **Disable Toggle** und **Breakpoint** (+ optionale Bedingung, Expert).
+Nach Auswahl eines Nodes zeigt das Panel die für diesen Activity-Typ verfügbaren Felder. Häufig verwendete Einstellungen sind:
 
-Ohne Schreibrechte ist das gesamte Fieldset deaktiviert (Read-Only).
+- **Bezeichnung:** sichtbarer Name des Schritts
+- **Ausgabevariable:** Name für den Zugriff auf das Ergebnis in nachfolgenden Schritten
+- **Beschreibung:** optionale Erläuterung zum Schritt
+- **Zielmaschine und Zugangsdaten:** Ausführungsziel für Remote-Activities
+- **Timeout:** maximale Laufzeit des Schritts
+- **Deaktiviert:** überspringt den Schritt bei der Ausführung
+- **Breakpoint:** pausiert einen Debug-Lauf vor diesem Schritt; nur im Expertenmodus
 
-**Clone-Config (Expert):** übernimmt Config von einem Step desselben Typs — vollständig oder nur Machine+Credential.
+Pflichtfelder sind im Panel gekennzeichnet. Die verfügbaren Felder unterscheiden sich je nach Activity. Eine vollständige Übersicht enthält die [Activity-Referenz](../activities-reference).
 
-## Variablen-System & Autocomplete
+Nach Auswahl einer Verbindung können unter anderem Bezeichnung, Bedingung und Darstellung geändert werden. Weitere Informationen enthält [Edge-Bedingungen](../concepts/edge-conditions).
 
-- **Inline-Autocomplete:** `{{` öffnet ein Dropdown (`useVariableAutocomplete`); ↑/↓-Navigation, Enter/Tab select, Esc close. Per-Field via Zap-Toggle.
-- **Variable Sources:** Upstream-Outputs aller Vorgänger-Steps, Globals (`{{globals.NAME}}`), Manual/Trigger-Daten (`{{manual.NAME}}`).
-- **Tail Types:** `.output`, `.error`, `.success`, `.param.X`.
-- **Derived Outputs (`describeNodeOutputs`):** jeder Step liefert `.output`; zusätzliche `.param.*` pro Typ — `runScript` via Regex aus `$var = …`, `returnData` aus Data-Keys, `decision` → `param.case`, `wmiQuery` aus `captureProperties` (+ `param.count`), `manualTrigger` aus definierten Parametern.
-- **VariableInsertField:** Unified Input mit Picker-Tray (Variable/Global/Options), Drag & Drop in Textareas, Template-Validation, SQL-Injection-Warnung bei dynamischen Queries.
-- **Live Preview Tooltip:** Hover über Variable zeigt letzten Runtime-Wert (250 ms Delay, "[Truncated]"-Badge).
-- **JsonPathTree:** interaktive JSONPath-Selection aus letztem Step-Output (bis Tiefe 7).
-- **ContractMappingTable:** typisiertes Mapping für Sub-Workflows mit bekanntem Contract (Inputs typisiert, Outputs read-only).
+## Standard- und Expertenmodus
 
-## Activity-Konfigurationen
+Der **Standardmodus** enthält die Funktionen zum Erstellen, Konfigurieren, Testen und Veröffentlichen von Workflows.
 
-Jeder Activity-Typ hat eine eigene Config-Komponente (`properties/activities/`, registriert in `activityConfigMap.ts`). Viele Felder sind **conditional** — sie erscheinen je nach gewählter Operation/Action. Required-Fields kommen aus `lib/activityConfigFacts.ts` (speist auch die `missing-required-config`-Lint-Regel).
+Der **Expertenmodus** ergänzt Funktionen für umfangreiche Workflows:
 
-Inline-Code-Felder nutzen **CodeMirror** (powershell/sql/json/xml/plain) mit `{{`-Autocomplete; nur der **Fullscreen-Script-Editor** ist Monaco (eigenes Theme, AI Generate, Step Test).
+- Breakpoints und Debug-Läufe
+- Simulation und Versionsvergleich
+- Suchen und Ersetzen
+- Gruppierung und genaue Positionierung von Nodes
+- zusätzliche Ansichts- und Darstellungsoptionen
+- JSON-Export und erweiterte Navigation
 
-Die vollständige Config-Keys-Referenz: [Activity-Referenz](../activities-reference).
+Der Modus kann im Designer umgeschaltet werden. Bestehende Workflow-Daten werden dadurch nicht verändert.
 
-## Trigger-Konfigurationen
+## Variablen einsetzen
 
-| Trigger | Key-Fields |
+Variablen übertragen Werte zwischen Triggern und Activities. Die Eingabe von `{{` öffnet die Variablenauswahl.
+
+| Eingabe | Funktion |
 |---|---|
-| `manualTrigger` | Title, Description, Input-Parameter (name + type string/number/boolean/select + required + default) |
-| `scheduleTrigger` | `cronExpression` + 4 Presets, Live-Vorschau der nächsten 5 Feeds (Quartz→cron-parser), Description |
-| `webhookTrigger` | HTTP-Methode (POST/PUT/GET), Webhook-Path (template-fähig), optionales Secret (HMAC) |
-| `fileWatcherTrigger` | `directory`, `fileFilter` (default `*.*`), `watchType` (created/changed/deleted/renamed/any), `includeSubdirectories` |
-| `databaseTrigger` | `connectionRef`, `pollingIntervalSeconds` (default 60, min 5), `query` |
-| `eventLogTrigger` | `logName` (Default-Allow: `Application`/`System`; `Security`/`Setup`/andere nur via `Trigger:EventLog:AllowedLogs`), `entryType`, `source`, `eventId`, `lookbackMinutes` (default 5) |
+| `↑` / `↓` | Eintrag auswählen |
+| `Enter` / `Tab` | Auswahl übernehmen |
+| `Esc` | Auswahl schließen |
 
-## Execution aus dem Designer
+Verfügbare Werte stammen aus:
 
-- **Test Run** `Ctrl+Enter` — sofort oder Parameter-Dialog bei `manualTrigger`.
-- **Debug Run** (Expert) `Ctrl+Shift+Enter` — `debug: true`, Breakpoints aktiv.
-- **Auto-Save vor Run:** ungespeicherte Änderungen werden vorher gespeichert.
-- **Cancel Run** `Ctrl+Shift+X`.
-- **Canvas Pinning:** gestartete Execution wird gepinnt → Live-Coloring; via Snapshot auch nach 30 s SignalR-TTL erhalten.
+- Ausgaben vorheriger Schritte, zum Beispiel `{{script.output}}`
+- globalen Variablen, zum Beispiel `{{globals.API_URL}}`
+- Eingaben eines manuellen Triggers, zum Beispiel `{{manual.customerId}}`
 
-## Step Test & Simulation
+Ein Feld kann einen festen Wert, eine Variable oder eine Kombination aus beidem enthalten. Welche Werte an einer Stelle verfügbar sind, beschreibt [Datenbus und Variablen](../concepts/data-bus).
 
-- **Step Test Panel:** einzelnen Step isoliert testen (`POST /workflows/{id}/steps/{stepId}/test` mit `configOverride`). Modi (Expert): Empty / Last Run / Pick Run / Manual Mocks.
-- **Expression Tester (Expert):** Template-Expressions ad-hoc mit Mock-Variablen testen.
-- **Simulation / Dry-Run (Expert)** `Ctrl+Shift+R` — topologische Pfad-Analyse über aktive Edges (nur Control-Flow, keine echte Ausführung); zeigt Reihenfolge, erreichbare und übersprungene Nodes.
+## Trigger konfigurieren
 
-## Lint & Pre-Publish
+Auch Trigger werden über das Eigenschaften-Panel eingerichtet.
 
-- **Lint Panel** `Ctrl+Shift+L` — alle Errors/Warnings mit Code, Target-Node/Edge, Click-to-Jump. Lint läuft live bei jeder Graph-Änderung.
-- **Errors (block Publish):** `no-trigger`, `isolated-node`, `dup-output-variable`, `duplicate-edge`, `missing-required-config`, `missing-target-machine`.
-- **Warnings:** `orphan-root`, `unreachable-node`, `unknown-template-ref`, `startjob-in-runspace`, `unknown-workflow-ref`, `edge-to-disabled`, `disabled-with-downstream`, `edge-occluded`, `edge-crowded`.
-- **Pre-Publish Checklist:** bei Errors Publish blockiert, bei Warnings "Publish anyway", bei Clean direkt.
-
-## Live Monitoring
-
-Live Execution Panel mit Tabs: **Live**, **History**, **Output**, **Watch** (Expert) — via SignalR (`/hubs/execution`, Events: StepStarted, StepCompleted, StepPaused, StepResumed, ExecutionStatusChanged, LiveEventsBatch).
-
-- **Live Tab:** virtualisierte Liste aktiver Runs + Step-Inspector (Config, Output/Error/Transcript, Timing).
-- **Live Console:** chronologischer Stream (stdout/stderr/transcript), bis 1000 Lines, Filter, "Errors only", Auto-Scroll.
-- **Timeline & Gantt:** Step-Balken nach Status, wachsende Running-Balken (250 ms Ticker), Scrubber für Replay.
-- **History Tab:** virtualisierte, sortierbare Tabelle (Status, ID, Trigger, User, Steps, Failed-Step, Timing, Error), Scope-Toggle (aktueller Workflow vs. alle).
-- **Output Tab:** Datenbus-Browser, gruppiert (trigger/global/step-outputs/other), Badges (OUT/ERR/PAR/TRG/GLB).
-- **Watch Tab (Expert):** beliebige `{{expression}}` mit Live-Auflösung, persistiert per Workflow in localStorage.
-
-## Step-Debugger
-
-- **Breakpoints:** `B` (Expert) oder Kontextmenü; optional conditional.
-- **Auto-Pause Detection:** bei pausiertem Step öffnet sich der Live-Tab automatisch.
-- **Paused Variables Inspector:** fullscreen — drei Resume-Modi **Continue** / **Step Over** / **Stop** → `POST /executions/{id}/resume`. Variable-Inspection & Override (Globals/Manual/Step/Other).
-
-## Persistenz & Export
-
-- **Dirty State:** jede strukturelle/property-Änderung markiert "dirty".
-- **Auto-Save:** 5 s Debounce; Runtime-Fields werden vor dem Serialisieren entfernt.
-- **Manual Save** `Ctrl+S`.
-- **Dirty Protection:** `beforeunload`-Warnung + Navigation-Blocker.
-- **Version History:** Update/Rollback snapshotten die vorherige Definition.
-- **Export:** **JSON** `Ctrl+Shift+J` und **PNG** `Ctrl+Alt+P` (WYSIWYG, DPI ≥ 2).
-
-## Mobile View
-
-`MobileWorkflowView` — read-only-Graph für Smartphones/Portrait-Tablets: reused Node/Edge-Typen, `draggable:false`/`selectable:false`, Live-Status via SignalR, vergrößerter Node-Scale, Zoom 0.7–1.6, Pan/Pinch-Zoom statt Edit.
-
-## Tastenkürzel (Referenz)
-
-### Global / Standard
-
-| Key | Action |
+| Trigger | Wichtige Einstellungen |
 |---|---|
-| `?` | Help / Shortcut-Referenz |
-| `Esc` | Overlays schließen |
-| `Home` | Fit all |
-| `F11` | Fullscreen |
-| `Ctrl+P` | Quick Switcher |
-| `Ctrl+Shift+P` | Command Palette |
-| `Ctrl+S` | Save |
-| `Ctrl+Shift+S` | Publish / Enable / Disable |
-| `Ctrl+F` | Search |
-| `Ctrl+C` / `Ctrl+V` | Copy / Paste |
-| `Ctrl+D` | Duplicate |
-| `Ctrl+Z` / `Ctrl+Y` / `Ctrl+Shift+Z` | Undo / Redo |
-| `Ctrl+A` | Select All |
-| `Ctrl+E` / `Ctrl+U` | Lock / Unlock |
-| `Ctrl+Enter` / `Ctrl+Shift+Enter` | Test Run / Debug Run |
-| `Delete` / `Backspace` | Delete |
+| Manueller Trigger | Titel, Beschreibung und Eingabeparameter |
+| Zeitplan | Cron-Ausdruck oder Vorlage und Beschreibung |
+| Webhook | HTTP-Methode, Pfad und optionales Secret |
+| Dateiüberwachung | Verzeichnis, Dateifilter, Ereignistyp und Unterverzeichnisse |
+| Datenbank | Verbindung, Prüfintervall und Abfrage |
+| Windows-Ereignisprotokoll | Protokoll, Ereignistyp, Quelle, Ereignis-ID und Suchzeitraum |
 
-### Expert-Modus (zusätzlich)
+## Prüfen und ausführen
 
-| Key | Action |
+Für die Prüfung eines Workflows stehen mehrere Ebenen zur Verfügung:
+
+- **Step Test:** führt nur den ausgewählten Schritt mit Testdaten aus.
+- **Test Run:** führt den Workflow als Test aus. Parameter eines manuellen Triggers werden vor dem Start abgefragt.
+- **Debug Run:** führt den Workflow mit Breakpoints aus; nur im Expertenmodus.
+- **Simulation:** zeigt den möglichen Ablauf, ohne Activities auszuführen; nur im Expertenmodus.
+- **Lint:** zeigt fehlende Pflichtangaben, nicht erreichbare Nodes und weitere Probleme.
+
+Fehler aus der Lint-Prüfung verhindern die Veröffentlichung. Warnungen müssen vor der Veröffentlichung bestätigt werden.
+
+Ungespeicherte Änderungen werden vor einem Test- oder Debug-Lauf gespeichert. Ein laufender Test kann abgebrochen werden.
+
+## Lauf überwachen
+
+Das Ausführungs-Panel enthält:
+
+- **Live:** aktueller Status und Ausgaben der laufenden Schritte
+- **History:** vergangene Ausführungen
+- **Output:** verfügbare Trigger-, Variablen- und Schrittdaten
+- **Watch:** beobachtete Ausdrücke; nur im Expertenmodus
+
+Bei einem Breakpoint pausiert der Debug-Lauf vor dem betroffenen Schritt. Danach stehen folgende Aktionen zur Verfügung:
+
+- **Continue:** Ausführung bis zum nächsten Breakpoint fortsetzen
+- **Step Over:** genau einen Schritt ausführen und erneut pausieren
+- **Stop:** Ausführung beenden
+
+## Speichern, veröffentlichen und exportieren
+
+Änderungen werden nach einer kurzen Bearbeitungspause automatisch als Entwurf gespeichert. `Ctrl+S` speichert den Entwurf sofort.
+
+**Veröffentlichen** übernimmt den aktuellen Entwurf als ausführbare Version. Abhängig vom Workflow-Status kann dieselbe Aktion den Workflow aktivieren oder deaktivieren. Frühere Versionen bleiben über den Versionsverlauf verfügbar.
+
+Der Workflow kann als JSON exportiert werden. Eine PNG-Datei bildet die aktuelle Canvas-Ansicht ab.
+
+## Tastenkürzel
+
+`Ctrl` entspricht unter macOS `Cmd`. Die integrierte Kurzübersicht öffnet sich mit `?`.
+
+### Standardmodus
+
+| Tastenkürzel | Funktion |
 |---|---|
-| `A` / `R` / `M` / `H` / `C` / `G` | Edge-Animation / Routing / Machine-Coloring / Heatmap / Critical Path / Snap-Grid |
-| `D` / `B` | Disabled / Breakpoint der Selektion toggeln |
-| `Tab` / `Shift+Tab` | Next/previous verbundener Node |
-| Arrow keys (`+Shift`) | Nudge (10 px / 1 px) |
-| `Ctrl+G` | Group |
-| `Ctrl+H` | Find & Replace |
-| `Ctrl+Shift+E` | Zoom to Selection |
-| `Ctrl+Shift+U` | Force-Unlock (Admin) |
-| `Ctrl+Shift+X` | Cancel Run |
-| `Ctrl+Shift+T` / `Ctrl+Shift+O` | Tidy / Restore Layout |
-| `Ctrl+Shift+L` | Lint Panel |
-| `Ctrl+Shift+D` | Diff |
-| `Ctrl+Shift+R` | Simulation |
-| `Ctrl+Shift+N` | Node-Style (Classic/Card) |
-| `Ctrl+Alt+X` | Activity-Type-Filter löschen |
-| `Ctrl+]` / `Ctrl+[` | Edge-Breite +/− |
-| `Ctrl+Shift+>` / `Ctrl+Shift+<` | Node-Größe +/− |
-| `Ctrl+Alt+.` / `Ctrl+Alt+,` | Label-Font +/− |
-| `Ctrl+Shift+J` / `Ctrl+Alt+P` | Export JSON / PNG |
-| `Ctrl+Shift+1…5` | Navigate: Workflows / Executions / Machines / Globals / Audit |
+| `?` | Kurzübersicht ein- oder ausblenden |
+| `Esc` | geöffnetes Fenster oder Overlay schließen |
+| `Home` | gesamten Workflow in die Ansicht einpassen |
+| `F11` | Designer-Vollbild ein- oder ausschalten |
+| `Ctrl+P` | Workflow-Schnellwechsel öffnen |
+| `Ctrl+Shift+P` | Befehlspalette öffnen |
+| `Ctrl+F` | Nodes suchen |
+| `Ctrl+S` | Entwurf speichern |
+| `Ctrl+Shift+S` | veröffentlichen, aktivieren oder deaktivieren |
+| `Ctrl+E` | Bearbeitungs-Lock anfordern |
+| `Ctrl+U` | Bearbeitungs-Lock freigeben |
+| `Ctrl+Enter` | Testlauf starten |
+| `Ctrl+Shift+X` | laufende Ausführung abbrechen |
+| `Ctrl+Z` | Änderung rückgängig machen |
+| `Ctrl+Y` / `Ctrl+Shift+Z` | Änderung wiederholen |
+| `Ctrl+A` | alle Elemente auswählen |
+| `Ctrl+C` | Auswahl kopieren |
+| `Ctrl+V` | kopierte Elemente einfügen |
+| `Ctrl+D` | Auswahl duplizieren |
+| `Delete` / `Backspace` | Auswahl löschen |
+| `Ctrl+Shift+T` | Workflow automatisch anordnen |
+| `Ctrl+Shift+L` | Lint-Panel ein- oder ausblenden |
+| `Ctrl+Alt+P` | Canvas als PNG exportieren |
 
-**Canvas-Gesten:** Left-drag = Marquee-Selektion · middle/right-drag = Pan · `Shift+Click` = Selektion erweitern.
+### Expertenmodus
+
+Die folgenden Kürzel ergänzen die Kürzel des Standardmodus.
+
+| Tastenkürzel | Funktion |
+|---|---|
+| `Ctrl+Shift+Enter` | Debug-Lauf starten |
+| `Ctrl+Shift+U` | fremden Bearbeitungs-Lock aufheben; Administratorrecht erforderlich |
+| `Ctrl+G` | ausgewählte Nodes gruppieren |
+| `Ctrl+H` | Suchen und Ersetzen öffnen |
+| `Tab` / `Shift+Tab` | nächsten oder vorherigen verbundenen Node auswählen |
+| `Pfeiltasten` | ausgewählte Nodes um 10 Pixel verschieben |
+| `Shift+Pfeiltasten` | ausgewählte Nodes um 1 Pixel verschieben |
+| `Ctrl+Shift+E` | Auswahl in die Ansicht einpassen |
+| `Ctrl+Shift+O` | ursprüngliche Anordnung wiederherstellen |
+| `Ctrl+Shift+D` | Vergleich mit einer Version öffnen |
+| `Ctrl+Shift+R` | Simulation starten oder zurücksetzen |
+| `Ctrl+Alt+X` | Activity-Filter zurücksetzen |
+| `A` | Edge-Animation ein- oder ausschalten |
+| `R` | Edge-Verlauf wechseln |
+| `M` | Nodes nach Maschine einfärben |
+| `H` | Fehler-Heatmap ein- oder ausschalten |
+| `C` | kritischen Pfad ein- oder ausblenden |
+| `G` | Ausrichtung am Raster ein- oder ausschalten |
+| `D` | ausgewählten Node aktivieren oder deaktivieren |
+| `B` | Breakpoint am ausgewählten Node ein- oder ausschalten |
+| `Ctrl+Shift+N` | Node-Darstellung wechseln |
+| `Ctrl+]` / `Ctrl+[` | Edge-Breite erhöhen oder verringern |
+| `Ctrl+Shift+>` / `Ctrl+Shift+<` | Node-Größe erhöhen oder verringern |
+| `Ctrl+Alt+.` / `Ctrl+Alt+,` | Schriftgröße der Bezeichnung erhöhen oder verringern |
+| `Ctrl+Shift+J` | Workflow als JSON exportieren |
+| `Ctrl+Shift+1` | Workflows öffnen |
+| `Ctrl+Shift+2` | Ausführungen öffnen |
+| `Ctrl+Shift+3` | Maschinen öffnen |
+| `Ctrl+Shift+4` | globale Variablen öffnen |
+| `Ctrl+Shift+5` | Audit öffnen |
+
+### Script-Editor
+
+Diese Kürzel gelten im geöffneten Script-Editor.
+
+| Tastenkürzel | Funktion |
+|---|---|
+| `Ctrl+S` | aktuellen Inhalt übernehmen |
+| `Ctrl+F` | Text suchen |
+| `Ctrl+H` | Text suchen und ersetzen |
+| `Ctrl+G` | zu einer Zeile wechseln |
+| `Ctrl+/` | Zeile kommentieren oder Kommentar entfernen |
+| `Ctrl+Space` | Autovervollständigung öffnen |
+| `Esc` | Script-Editor schließen |
+
+### Canvas-Gesten
+
+| Geste | Funktion |
+|---|---|
+| Ziehen auf einer freien Fläche mit linker Maustaste | Auswahlrahmen aufziehen |
+| Ziehen mit mittlerer oder rechter Maustaste | Canvas verschieben |
+| `Shift` + Klick | Element zur Auswahl hinzufügen oder daraus entfernen |

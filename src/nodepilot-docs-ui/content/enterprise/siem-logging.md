@@ -1,6 +1,6 @@
 # SIEM-Logging (ECS-JSON)
 
-NodePilot shippt einen Elastic Common Schema 1.x JSON-Formatter für Elastic Filebeat, Splunk HEC, Microsoft Sentinel oder jedes andere SIEM, das strukturierte Logs ingestet. Application-Logs und Audit-Events fließen durch dieselbe Serilog-Pipeline — ein Filebeat-Sidecar deckt beides.
+NodePilot kann Anwendungslogs und Audit-Ereignisse als Elastic Common Schema 1.x ausgeben. Das ECS-JSON-Format eignet sich für Elastic Filebeat, Splunk HEC, Microsoft Sentinel und andere SIEM-Systeme mit strukturierter JSON-Aufnahme. Beide Ereignisarten verwenden dieselbe Serilog-Pipeline.
 
 ## Aktivieren
 

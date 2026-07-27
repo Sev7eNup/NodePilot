@@ -1,13 +1,13 @@
 # Datenbank-Provider
 
-Zwei Provider, umschaltbar über `Database:Provider`:
+NodePilot unterstützt PostgreSQL und SQL Server. `Database:Provider` wählt den aktiven Provider beim Start aus.
 
 | Provider | Wert | ConnectionString-Key |
 |---|---|---|
 | PostgreSQL (Default) | `"postgres"` | `ConnectionStrings:Postgres` |
 | SQL Server | `"sqlserver"` | `ConnectionStrings:DefaultConnection` |
 
-SQLite nur als Test-In-Memory-Backend.
+SQLite wird ausschließlich als In-Memory-Backend in Tests verwendet.
 
 ## Migrationen
 

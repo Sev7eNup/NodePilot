@@ -1942,6 +1942,7 @@ namespace NodePilot.Data.Migrations
                 {
                     b.Navigation("Steps");
                 });
+            MigrationModelPortability.UseActiveProviderStoreTypes(modelBuilder);
 #pragma warning restore 612, 618
         }
     }

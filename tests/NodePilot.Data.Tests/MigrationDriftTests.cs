@@ -190,6 +190,49 @@ public class MigrationDriftTests
     }
 
     /// <summary>
+    /// Second half of the mandatory post-processing after <c>dotnet ef migrations add</c>
+    /// (see the "Datenbank" section of CLAUDE.md). EF scaffolds each
+    /// <c>*.Designer.cs</c> with the store types of whichever provider was active at
+    /// generation time — <c>HasColumnType("uuid")</c>, <c>HasColumnType("timestamp with
+    /// time zone")</c>, … Those persisted names must not override the active provider's
+    /// CLR type mapping when EF rebuilds a migration target model, so every designer
+    /// closes its <c>BuildTargetModel</c> with a call to
+    /// <see cref="MigrationModelPortability.UseActiveProviderStoreTypes"/>.
+    ///
+    /// <para>The step is manual and was silently skipped once already
+    /// (AddWorkflowExecutionCompletedAtIndex, 2026-07-14) — nothing caught it, because
+    /// the sibling <c>type: "…"</c> scan deliberately excludes designer files. This test
+    /// closes that gap.</para>
+    ///
+    /// <para><c>NodePilotDbContextModelSnapshot.cs</c> is intentionally NOT covered: it is
+    /// the design-time diff base for the next <c>migrations add</c>, not a migration
+    /// target model, and it has never carried the call.</para>
+    /// </summary>
+    [Fact]
+    public void EveryMigrationDesigner_AppliesProviderStoreTypePortability()
+    {
+        var migrationsDir = ResolveMigrationsDirectory();
+        var designers = Directory.GetFiles(migrationsDir, "*.Designer.cs", SearchOption.TopDirectoryOnly);
+
+        designers.Should().NotBeEmpty($"expected designer files in {migrationsDir}");
+
+        var missing = designers
+            .Where(f => !File.ReadAllText(f).Contains(
+                "MigrationModelPortability.UseActiveProviderStoreTypes",
+                StringComparison.Ordinal))
+            .Select(Path.GetFileName)
+            .OrderBy(n => n, StringComparer.Ordinal)
+            .ToList();
+
+        missing.Should().BeEmpty(
+            "jede *.Designer.cs muss BuildTargetModel mit " +
+            "`MigrationModelPortability.UseActiveProviderStoreTypes(modelBuilder);` abschließen " +
+            "(Pflicht-Postprocessing, CLAUDE.md). Ohne den Aufruf trägt das Zielmodell die " +
+            "Store-Typen des Generierungs-Providers und überschreibt das CLR-Type-Mapping des " +
+            "aktiven Providers. Fehlt in:\n" + string.Join("\n", missing));
+    }
+
+    /// <summary>
     /// Guards against someone renaming or moving the migrations folder without
     /// updating these tests — otherwise the drift scan would silently find nothing
     /// and always stay green.

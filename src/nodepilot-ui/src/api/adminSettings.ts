@@ -3,25 +3,16 @@
 // distinct from the generic api.* client — those status codes are part of the contract
 // here rather than "unexpected error".
 
+import { csrfHeaders } from './csrf';
+
 const BASE_URL = '/api';
-
-const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-function readCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = /(?:^|;\s*)np_csrf=([^;]+)/.exec(document.cookie);
-  return match ? decodeURIComponent(match[1]) : '';
-}
 
 async function adminFetch(path: string, options?: RequestInit): Promise<Response> {
   const method = (options?.method ?? 'GET').toUpperCase();
   const headers: Record<string, string> = {
     ...(options?.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    ...csrfHeaders(method),
   };
-  if (MUTATING_METHODS.has(method)) {
-    const csrf = readCsrfToken();
-    if (csrf) headers['X-CSRF-Token'] = csrf;
-  }
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,
     credentials: 'include',

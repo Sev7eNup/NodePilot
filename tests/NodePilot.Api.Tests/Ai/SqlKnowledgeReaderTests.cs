@@ -111,6 +111,71 @@ public class SqlKnowledgeReaderTests
         result.Rows.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// Security audit 2026-07-26: both older layers key on NAMES, so a whole-row serializer slipped
+    /// past both at once — <c>to_json(u)</c> never mentions <c>PasswordHash</c> and returns it in a
+    /// column called <c>to_json</c>. Rejection happens before execution, which is what lets this
+    /// test assert the contract against SQLite (which has no <c>to_json</c> at all).
+    /// </summary>
+    [Theory]
+    [InlineData("SELECT to_json(u) FROM Users u")]
+    [InlineData("SELECT row_to_json(u) FROM \"Users\" u")]
+    [InlineData("SELECT to_jsonb(u) FROM Users u")]
+    [InlineData("SELECT u::text FROM Users u")]
+    [InlineData("SELECT json_agg(u) FROM Users u")]
+    [InlineData("SELECT to_json(c) FROM Credentials c")]
+    [InlineData("SELECT to_json(g) FROM GlobalVariables g")]
+    [InlineData("SELECT * FROM Users FOR JSON AUTO")]
+    [InlineData("SELECT * FROM Users FOR XML AUTO")]
+    [InlineData("WITH x AS (SELECT * FROM Users) SELECT to_json(x) FROM x")]
+    public async Task ExecuteRead_RejectsWholeRowProjectionOverProtectedTable(string sql)
+    {
+        using var db = TestDbFactory.Create();
+        db.Users.Add(new User { Username = "admin", PasswordHash = "SUPER_SECRET_HASH" });
+        await db.SaveChangesAsync();
+
+        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
+
+        result.Error.Should().Contain("serializes a whole row");
+        result.Rows.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// The row-projection guard is blunt by design, so it must stay scoped to tables that actually
+    /// hold a masked column — otherwise it would break ordinary analysis on the ~34 tables that
+    /// hold no secret.
+    /// </summary>
+    [Theory]
+    [InlineData("SELECT to_json(w) FROM Workflows w")]
+    [InlineData("SELECT w::text FROM Workflows w")]
+    public async Task ExecuteRead_AllowsRowProjectionOverTableWithoutSecrets(string sql)
+    {
+        using var db = TestDbFactory.Create();
+
+        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
+
+        // SQLite has neither to_json nor ::, so the statement still fails — but it must fail at the
+        // database, not at the guard. Anything else would mean the guard fires on tables that hold
+        // no secret at all.
+        result.Error.Should().NotBeNull();
+        result.Error.Should().NotContain("serializes a whole row");
+    }
+
+    [Fact]
+    public async Task ExecuteRead_AllowsExplicitColumnListOnProtectedTable()
+    {
+        using var db = TestDbFactory.Create();
+        db.Users.Add(new User { Username = "admin", PasswordHash = "SUPER_SECRET_HASH" });
+        await db.SaveChangesAsync();
+
+        var result = await NewReader(db).ExecuteReadAsync(
+            "SELECT Username FROM Users", CancellationToken.None);
+
+        result.Error.Should().BeNull();
+        result.Rows.Should().ContainSingle();
+        result.Rows[0][0].Should().Be("admin");
+    }
+
     [Fact]
     public async Task ExecuteRead_BadSql_SurfacesErrorWithoutThrowing()
     {

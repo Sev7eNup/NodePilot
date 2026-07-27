@@ -1,8 +1,14 @@
 # Activity-Referenz
 
-Config-Keys und Output-Semantik pro Activity-Typ. Scope-Legende: **Remote** = `targetMachineId`/WinRM, **Engine-local** = im API-Prozess, **Hybrid** = beides.
+Diese Referenz beschreibt Konfiguration und Ausgaben jedes Activity-Typs.
 
-Pro Step: `config.retry` (`maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayMs`) und `config.timeoutSeconds`. Execution-Timeout zusätzlich im Execute-Body.
+| Scope | Ausführungsort |
+|---|---|
+| **Remote** | Windows-Zielsystem über `targetMachineId` und WinRM |
+| **Engine-local** | NodePilot-API-Prozess |
+| **Hybrid** | Abhängig von der Konfiguration remote oder engine-local |
+
+Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDelayMs` und `maxDelayMs`. `config.timeoutSeconds` begrenzt einen Step. Der Execute-Request kann zusätzlich die gesamte Execution begrenzen.
 
 ---
 
@@ -13,7 +19,7 @@ Pro Step: `config.retry` (`maxAttempts`, `backoff`, `initialDelayMs`, `maxDelayM
 - **Config:** `script`, `engine` (`auto`/`pwsh`/`powershell`), `timeoutSeconds`, `isolated` (bool, nur lokal — eigener Prozess im Windows Job Object: Crash-/Leak-Containment, keine verwaisten Prozesse) + optionale Caps `memoryLimitMb` (lässt Allokationen fehlschlagen, terminiert nicht) / `maxProcesses`, `successExitCodes` (komma-separiert, opt-in Exit-Code-Gate)
 - **Isolation-Robustheit:** Isolierte Läufe können nicht mehr in `Running` hängen bleiben. NodePilot serialisiert inheritable-handle-Spawns und begrenzt den stdout/stderr-Drain nach Prozess-Exit auf `Engine:IsolatedDrainGraceSeconds` (default 5 s), damit ein in einen Fremdprozess geleaktes Pipe-Handle den Step nicht dauerhaft blockiert.
 - **Outputs:** `output`, `error`, `param.exitCode` (immer), `param.*` (auto-captured deklarierte Variablen)
-- **Erfolg (fehler-basiert):** Ein Step scheitert **nur** bei einem terminierenden PowerShell-Fehler (`throw` / `Write-Error` unter `Stop`). Ein `exit N` macht den Step **nicht** rot. Wer das will, setzt `successExitCodes` (z. B. `"0"`). `successExitCodes`/`param.exitCode` greifen für Native-Command-Codes (`$LASTEXITCODE`) in allen Engines; ein script-eigenes `exit N` ist nur im Prozess/isoliert-Modus als Wert sichtbar (Runspace sieht `exit` nicht).
+- **Erfolg (fehler-basiert):** Ein Step scheitert **nur** bei einem terminierenden PowerShell-Fehler (`throw` / `Write-Error` unter `Stop`). Ein `exit N` markiert den Step nicht automatisch als fehlgeschlagen. Für exit-code-basierte Bewertung ist `successExitCodes` zu setzen, zum Beispiel `"0"`. `successExitCodes`/`param.exitCode` greifen für Native-Command-Codes (`$LASTEXITCODE`) in allen Engines; ein script-eigenes `exit N` ist nur im Prozess/isoliert-Modus als Wert sichtbar (Runspace sieht `exit` nicht).
 - **Notes:** Deklarierte Variablen werden zu `param.*` (`$hostName = …` → `{{step.param.hostName}}`). Auto-Quoting: `{{step.output}}` wird als Single-Quoted String eingesetzt — `$x = {{step.output}}` schreiben, nicht `$x = '{{step.output}}'`.
 
 ## `fileOperation`

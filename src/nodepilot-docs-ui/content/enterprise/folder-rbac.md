@@ -1,15 +1,21 @@
 # Folder-RBAC (Stage A)
 
-Workflows leben in **Shared Folders** (Baum, default max Tiefe 5). Pro Folder können Permissions an Benutzer oder Directory-Gruppen vergeben werden — vier Rollen, additiv: `FolderViewer < FolderOperator < FolderEditor < FolderAdmin`.
+Folder-RBAC begrenzt den Zugriff auf Workflows anhand ihrer Shared Folder. Die Ordner bilden einen Baum mit einer standardmäßigen Maximaltiefe von fünf Ebenen. Berechtigungen werden Benutzern oder Verzeichnisgruppen zugewiesen.
 
-Default: **aktiv** (alle existierenden User auf Root). Eine reine Single-Node-Installation verhält sich unverändert.
+Die vier Folder-Rollen bauen aufeinander auf:
+
+```text
+FolderViewer < FolderOperator < FolderEditor < FolderAdmin
+```
+
+Folder-RBAC ist standardmäßig aktiv. Bestehende Benutzer erhalten beim Upgrade eine Berechtigung auf dem Root-Ordner.
 
 ## Regeln
 
 - **Permissions vererben nach unten:** `FolderEditor` auf `/Finance` gilt für `/Finance/Reports` und tiefer ohne weitere Grants.
 - **Highest-Role-Wins:** explizite Grants auf Subord-Ordnern **override** nicht — Editor auf `/Finance` + Viewer auf `/Finance/Reports` → Editor gilt überall.
 - **Global Admin** bypassed alles; globale Operator/Viewer werden durch ihre `UserRole` **gecappt** — ein Viewer mit FolderAdmin bekommt keine Run/Edit/Admin-Rechte.
-- **Existence Hiding:** wer einen Workflow nicht lesen darf, bekommt `404` (nicht `403`) — sonst leakt die Existenz.
+- **Existence Hiding:** Nicht lesbare Workflows liefern `404` statt `403`, damit ihre Existenz nicht offengelegt wird.
 - **Capabilities pro Workflow** (`canRead`, `canRun`, `canEdit`, `canAdmin`) in List/Detail-Responses — die UI zeigt Buttons nur, wo der User sie nutzen kann.
 - **Sub-Workflow-Authorization zur Laufzeit:** wenn Workflow A Workflow B startet, prüft die Engine die Read-Permission des effektiven Principals auf B's Folder.
 - **SignalR-Group-Routing:** Execution-Events landen nur in Hub-Groups von Usern, die den Workflow lesen dürfen.

@@ -1,8 +1,8 @@
 # API-Endpoints
 
-ASP.NET Core Web API, Port 5000 (Dev). Realtime via SignalR `/hubs/execution`. Alle mutierenden Endpunkte (außer `disable`) liefern `423 Locked`, wenn der Caller nicht Lock-Owner ist.
+Die REST-API verwaltet Workflows, Executions, Infrastruktur und Administration. In der lokalen Entwicklungsumgebung läuft sie auf Port 5000. Live-Status wird über SignalR unter `/hubs/execution` übertragen. Mutierende Workflow-Endpunkte liefern `423 Locked`, wenn der aufrufende Benutzer nicht den Edit-Lock besitzt; `disable` ist davon ausgenommen.
 
-> **Wire-Format:** JSON-Property-Keys sind **camelCase** (ASP.NET Core Web-Default, in `Program.cs` nicht überschrieben). Enum-Werte werden als .NET-Name (PascalCase-String) serialisiert — z.B. `"role":"Admin"`, `"status":"Succeeded"`. Auth läuft über das httpOnly `np_auth`-Cookie — `curl` braucht `-c cookie.jar -b cookie.jar` (siehe [Authentifizierung](./authentication)). Examples unten nutzen `$NP` = `http://localhost:5000`. Request-Bodies sind case-insensitiv, aber die gezeigten Shapes spiegeln das echte Wire-Format.
+> **JSON-Format:** Property-Namen verwenden `camelCase`. Enum-Werte werden als .NET-Name in PascalCase serialisiert, zum Beispiel `"role":"Admin"` und `"status":"Succeeded"`. Die Anmeldung verwendet standardmäßig das httpOnly-Cookie `np_auth`. `curl` speichert und sendet es mit `-c cookie.jar -b cookie.jar`. Die Beispiele verwenden `$NP = "http://localhost:5000"`.
 
 ## Workflows
 
@@ -191,7 +191,7 @@ curl -s -c cookie.jar -X POST "$NP/api/auth/login" \
   -d '{ "username":"admin", "password":"s3cret-pass" }'
 # Ohne Header → { "userId":"...", "username":"admin", "role":"Admin" }  (Token nur im Cookie)
 
-# Wer bin ich? Welche Auth-Pfade hat der Server?
+# Aktuelle Identität und verfügbare Authentifizierungspfade
 curl -s -b cookie.jar "$NP/api/auth/me"        # {"id":"...","username":"admin","role":"Admin"}
 curl -s            "$NP/api/auth/methods"      # {"local":true,"ldap":false,"windows":false,"windowsEndpoint":null,"oidc":false,"oidcEndpoint":null,"oidcDisplayName":null}
 ```

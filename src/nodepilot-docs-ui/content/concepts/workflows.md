@@ -1,10 +1,10 @@
 # Workflows & Activities
 
-Ein **Workflow** ist ein gerichteter Graph aus **Nodes** (Activities + Trigger) und **Edges** (mit Bedingungen). Die Engine führt ihn event-driven aus.
+Ein Workflow ist ein gerichteter Ablauf. Nodes stellen Trigger und Activities dar. Edges verbinden Nodes und können Bedingungen enthalten. Die Engine startet am Trigger und aktiviert anschließend alle erreichbaren Pfade.
 
 ## Aufbau
 
-- **Trigger-Nodes** sind die Roots eines Laufs (`manualTrigger`, `scheduleTrigger`, …). Sie injizieren Event-Daten als `{{manual.*}}`-Variablen.
+- **Trigger-Nodes** sind die Roots eines Laufs (`manualTrigger`, `scheduleTrigger`, …) und injizieren Event-Daten als `{{manual.*}}`-Variablen.
 - **Activity-Nodes** sind die Arbeitsschritte. Jede Activity hat einen `activityType`, optional ein `targetMachineId` (Remote) und ein `config`-Objekt.
 - **Edges** verbinden Nodes und tragen **Conditions**, die entscheiden, ob der Target-Node ausgeführt wird.
 

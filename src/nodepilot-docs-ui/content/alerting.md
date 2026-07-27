@@ -1,114 +1,145 @@
 # Alerting
 
-Benutzerdefinierte **Notification-Rules**, die bei passenden Ereignissen über einen oder mehrere
-Kanäle benachrichtigen. **Opt-in per Daten** — der Dispatcher ist immer registriert, tut aber nichts,
-bis mindestens eine Regel existiert. Deckt Execution-Events, Live-Zustände (läuft lange / wartet lange),
-globale Signale (Service, Maschine, Backlog, Pending, Abbruch-Rate) und workflow-bezogene Signale
-(Zeitplan verpasst, kein aktueller Erfolg) ab, zugestellt über die Kanäle **E-Mail** + **Generic-Webhook**.
+Alerting sendet Benachrichtigungen zu Workflow-Ereignissen und Systemzuständen. Ohne aktive Policy oder aktive Regel erfolgt keine Zustellung.
 
-## Eine Regel besteht aus
+Die Seite **Alerting** enthält zwei Bereiche:
 
-| Teil | Bedeutung |
+| Bereich | Verwendung |
 |---|---|
-| **Ereignistypen** | Grober Vorfilter: z. B. `ExecutionFailed`, `ExecutionSucceeded`, `ExecutionCancelled`, `ExecutionRunningLong`, `ExecutionQueuedLong`, `ScheduleMissed`, `WorkflowNoRecentSuccess`, `CredentialFailure`, `ServiceStale`, `MachineUnreachable`, `BacklogHigh`, `PendingHigh`, `CancelRateHigh`, `CredentialExpiring`. |
-| **Geltungsbereich** | `Global` (alle Workflows), `Ordner` oder `Workflows` (explizite Ziele). |
-| **Filter** *(optional)* | Composable AND/OR/NOT-Ausdruck über Event-Felder — **derselbe** Condition-Builder wie für Edge-Bedingungen, Operanden mit Quelle `event`. Leer = jedes Ereignis der gewählten Typen im Bereich. |
-| **Gruppierung** *(optional)* | Dedup-Template für Cooldown/Flap, z. B. `{{eventType}}:{{workflowId}}`; leer nutzt die Standard-Gruppierung pro Workflow bzw. Signalquelle. |
-| **Kanäle (Routes)** | Je ein Ziel: Kanal (`E-Mail` / `Webhook`) + Ziel (Empfänger / URL) + optionales verschlüsseltes Secret (Webhook-HMAC). Jeder Kanal kann zusätzlich eine eigene Event-Feld-Bedingung haben. |
-| **Throttle** | `Cooldown` (Rate-Limit pro Dedup-Schlüssel), `Min. Vorkommen` + `Zeitfenster` (Flap-Suppression). |
+| **System-Alarme** | Überwachung bekannter Systemwerte wie Backlog, Erreichbarkeit oder Credential-Ablauf |
+| **Benutzerdefinierte Regeln** | Benachrichtigung bei ausgewählten Workflow- und Betriebsereignissen |
 
-## Wie es funktioniert
+Für neue Überwachungen sind System-Alarme die einfachere Wahl. Benutzerdefinierte Regeln eignen sich für eigene Kombinationen aus Ereignistyp, Geltungsbereich und Filtern.
 
-Ein **leader-gated Dispatcher** (Hintergrunddienst, ~30 s) scannt terminale Executions ab einem
-persistierten Watermark (beim ersten Lauf auf „jetzt" geseedet → **keine** Historie wird
-nachalarmiert), matcht sie gegen aktivierte Regeln (Typ-Vorfilter → Scope → Filter → Kanal-Filter), wendet
-Cooldown/Flap-Suppression an, persistiert **vor jedem Versand** einen Pending-Zustellversuch pro
-Kanal (idempotent), schiebt das Watermark vor und sendet dann. Ein Absturz zwischen Persistieren und
-Senden hinterlässt einen wiederholbaren Eintrag → mindestens-einmal-Zustellung, genau-einmal pro
-(Regel, Kanal, Vorkommen).
+## Benachrichtigungskanäle
 
-Die **Sinks** sind self-isolating (ein Fehler wird als fehlgeschlagenes Ergebnis zurückgegeben, nie
-geworfen). E-Mail nutzt die SMTP-Konfiguration (TLS-default-on, Einzelempfänger,
-Header-Injection-Schutz); der Webhook-Sink postet durch den SSRF-gehärteten HTTP-Client und signiert
-den Body optional per HMAC-SHA256 (`X-NodePilot-Signature`).
+Eine Policy oder Regel kann mehrere Kanäle enthalten.
 
-## Gauge-Events (Infra-Signale)
+| Kanal | Ziel | Voraussetzung |
+|---|---|---|
+| **E-Mail** | einzelne Empfängeradresse | eingerichtete SMTP-Verbindung |
+| **Webhook** | HTTP(S)-Endpunkt | erreichbare und zulässige Zieladresse; HTTPS wird empfohlen |
 
-Neben Execution-Events alarmiert ein zweiter Collector auf **Zustands-Übergänge** der Infrastruktur:
+Die SMTP-Verbindung wird unter **Einstellungen → Integrationen** mit Host, Port, Absender, TLS und optionalen Zugangsdaten konfiguriert. Dort steht auch ein Verbindungstest zur Verfügung.
 
-- **Service veraltet** — der Heartbeat eines Hintergrunddienstes ist älter als das 3-fache seines
-  erwarteten Intervalls (dieselbe Formel wie im Dashboard).
-- **Backlog hoch** — die Zahl laufender/wartender Executions (`Pending + Running`) übersteigt
-  `Alerting:Gauge:BacklogThreshold` (Default 500).
-- **Pending-Backlog hoch** — nur **wartende** Executions (`Pending`, laufende ausgenommen) übersteigen
-  `Alerting:Gauge:PendingThreshold` (Default 40).
-- **Abbruch-Rate hoch** — abgebrochene Executions **über alle Workflows** im Trailing-Fenster
-  (`Alerting:Gauge:CancelRateWindowMinutes`, Default 10) übersteigen `Alerting:Gauge:CancelRateThreshold`
-  (Default 10) — die globale Rate, die die pro-Workflow-Flap-Unterdrückung nicht ausdrücken kann.
-- **Maschine nicht erreichbar** — der letzte gespeicherte Connectivity-Check einer Maschine ist fehlgeschlagen.
-- **Credential läuft ab** (`CredentialExpiring`) — ein Credential mit optionalem `ExpiresAt` liegt im
-  Warnfenster `Alerting:Gauge:CredentialExpiryWarnDays` (Default 14) oder ist bereits abgelaufen (dann
-  Critical). `signalValue` = Tage bis Ablauf (negativ nach Ablauf). Alarmiert beim ersten ungesunden
-  Zustand **sofort** (Operator hat das Ablaufdatum selbst gepflegt → `AlertOnFirstUnhealthy`).
-  Credentials ohne `ExpiresAt` werden nicht getrackt. Global-only.
-- **Zeitplan verpasst** — ein `scheduleTrigger` hätte feuern müssen, aber es wurde keine schedule-Ausführung angelegt.
-- **Kein aktueller Workflow-Erfolg** — ein aktivierter geplanter Workflow hatte innerhalb des konfigurierten Fensters keinen erfolgreichen Lauf.
+Ein Webhook erhält eine JSON-Nachricht mit Ereignistyp, Schweregrad, Workflow, Status, Fehler und Zeitpunkt. Ein optionales Secret signiert die Nachricht per HMAC-SHA256 im Header `X-NodePilot-Signature`.
 
-Pro **ungesunder Episode** wird jede Regel **höchstens einmal** alarmiert (der Übergang gesund→ungesund
-eröffnet die Episode). Der Filter wird dabei in jedem Durchlauf neu geprüft — eine Regel mit z. B.
-`Messwert > 1000` feuert also auch dann noch, wenn der Wert die Schwelle erst später überschreitet
-(der Provider wird z. B. schon ab Backlog > 500 ungesund), statt für immer verschluckt zu werden. Die
-Erholung wird still getrackt (keine „wieder ok"-Meldung), und ein bereits beim ersten Blick ungesunder
-Zustand wird standardmäßig stumm geseedet (kein Nachalarmieren); Maschinen-/Schedule-/Workflow-Health
-dürfen beim ersten ungesunden Zustand sofort alarmieren. Globale Signale gelten **global** (kein
-Ordner-/Workflow-Scope). `Zeitplan verpasst` und `Kein aktueller Workflow-Erfolg` tragen Workflow-Kontext
-und dürfen daher auch Ordner-/Workflow-Scope verwenden. Das numerische Filterfeld `Messwert`
-(signalValue) erlaubt Verfeinerungen wie `Messwert > 50`.
+## Schnelle Einrichtung
 
-## Live-Langläufer & manueller Abbruch
+1. Unter **Alerting** den passenden Bereich öffnen.
+2. Eine Systemquelle auswählen oder eine benutzerdefinierte Regel anlegen.
+3. Bedingung, Geltungsbereich und mindestens einen Kanal festlegen.
+4. Mit **Preview** beziehungsweise **Aktuelle Werte prüfen** die Auswahl kontrollieren.
+5. Speichern und eine **Testbenachrichtigung** senden.
+6. Policy oder Regel aktivieren.
 
-- **Ausführung läuft lange** (`ExecutionRunningLong`) — alarmiert **live**, während eine Execution schon
-  länger als `Alerting:LongRunningSeconds` (Default 600) läuft (nicht erst nachträglich über `durationMs`).
-  Jede Execution alarmiert **genau einmal**. Anders als Gauge-Events ist dies **execution-scoped** —
-  eine Regel darf Global, Ordner- oder Workflow-Scope haben.
-- **Ausführung wartet lange** (`ExecutionQueuedLong`) — alarmiert **live**, wenn eine Execution länger als
-  `Alerting:QueuedLongSeconds` (Default 300) im Status `Pending` hängt.
-- **Credential-Fehler** (`CredentialFailure`) — wird zusätzlich zu `ExecutionFailed` erzeugt, wenn die
-  Fehlermeldung nach Authentifizierungs-/Credential-Problem aussieht (z. B. Access denied, Unauthorized,
-  Logon failure, invalid password).
-- **Manueller Abbruch** — das Event-Feld `Abgebrochen von` (`cancelledBy`) unterscheidet, wer einen Lauf
-  abgebrochen hat: `user` (manueller Einzel-Abbruch), `cancelAll`, `failover`, `reconciler`, `dispatch`
-  oder `system` (Timeout/Shutdown). Eine Regel auf `Ausführung abgebrochen` mit Filter
-  `Abgebrochen von = user` alarmiert nur bei von Hand beendeten Jobs.
+Die Vorschau versendet keine Nachricht. Eine Testbenachrichtigung prüft die gespeicherten Kanäle tatsächlich.
 
-## Bedienung
+## System-Alarme
 
-- **UI:** Seite **Alerting** (`/alerts`) — Regel-Liste + Ein-Seiten-Editor mit Live-**Test-Fire**.
-  Der Filter nutzt den wiederverwendeten Condition-Builder im Event-Feld-Modus. Der Button
-  **Zustellungen** öffnet das `DeliveriesModal` — das Zustell-Ledger mit letzten Versuchen und Status-Filter.
-- **Rollen:** Lesen Admin/Operator; Anlegen/Ändern/Löschen/Test-Fire **Admin-only**.
-- **CLI:** `np alerting list|get|create|update|delete|test-fire|deliveries` (Routen via `--email`/`--webhook`; `deliveries` filtert per `--rule`/`--status`/`--limit`).
-- **MCP:** `list/get/create/update/test_fire_alerting_rule` + `list_alerting_deliveries` (+ `delete_alerting_rule`, gated). Route-Secrets werden nie ausgegeben.
+System-Alarme überwachen von NodePilot bereitgestellte Messwerte. Für eine Quelle können mehrere Policies mit unterschiedlichen Schwellen, Empfängern oder Geltungsbereichen angelegt werden.
 
-## Zustell-Ledger & Aufbewahrung
+### Verfügbare Quellen
 
-Jeder Sendeversuch schreibt einen `NotificationDeliveryAttempt`-Eintrag — gleichzeitig
-Idempotenz-Guard (genau-einmal-Zustellung pro Regel/Kanal/Ereignis) und Audit-Protokoll. Schlägt
-ein Versand fehl, bleibt der Eintrag `Pending` und wird in folgenden Durchläufen wiederholt
-(max. 5 Versuche, danach `Failed`). Gelesen wird das Ledger über `GET /api/alerting/deliveries`
-(UI-**Zustellungen**-Modal, `np alerting deliveries`, MCP `list_alerting_deliveries`). Damit die
-Tabelle nicht unbegrenzt wächst, löscht `NotificationRetentionService` (leader-gated,
-`Retention:Notifications:*`, Default 90 Tage / alle 6 h, per `Enabled:false` abschaltbar) terminale
-Einträge sowie veraltete Suppression-States.
+| Kategorie | Quelle | Zweck |
+|---|---|---|
+| Ausführung | Ausführungs-Ergebnis | erfolgreiche, fehlgeschlagene oder abgebrochene Läufe |
+| Ausführung | Hängende Ausführung | ungewöhnlich lange laufende Ausführungen |
+| Ausführung | Workflow-Gesundheit | Fehlerrate und Laufzeitentwicklung eines Workflows |
+| Warteschlange | Execution-Backlog | Summe aus wartenden und laufenden Ausführungen |
+| Warteschlange | Warteschlangen-Tiefe | Anzahl ausschließlich wartender Ausführungen |
+| Warteschlange | Abbruch-Rate | Anzahl abgebrochener Ausführungen in einem Zeitfenster |
+| Systemzustand | Maschine nicht erreichbar | fehlgeschlagener gespeicherter Verbindungstest |
+| Systemzustand | Dienst-Heartbeat veraltet | ausbleibender Status eines Hintergrunddienstes |
+| Systemzustand | Alarm-Zustellung fehlgeschlagen | wiederholte Fehler beim E-Mail- oder Webhook-Versand |
+| Zeitplan | Zeitplan verpasst | erwarteter geplanter Start ohne passende Ausführung |
+| Zeitplan | Kein aktueller Workflow-Erfolg | geplanter Workflow ohne aktuellen erfolgreichen Lauf |
+| Credentials | Credential läuft ab | bevorstehendes oder bereits erreichtes Ablaufdatum |
 
-## Sicherheit
+Eine Quelle kann als **Nicht verfügbar** erscheinen, wenn die benötigten Daten fehlen. Beispiele:
 
-Route-Secrets sind at-rest verschlüsselt und in API-Antworten **redigiert** (Sentinel, nie Cipher).
-Webhook-URLs sind SSRF-gefiltert, E-Mail ist Einzelempfänger + Header-Injection-geschützt. Audit:
-`ALERT_RULE_CREATED/UPDATED/DELETED/TEST_FIRED`.
+- Maschinen ohne bisherigen Verbindungstest werden nicht als nicht erreichbar bewertet.
+- Credentials ohne gepflegtes Ablaufdatum werden nicht überwacht.
+- Workflow-bezogene Quellen benötigen vorhandene Ausführungs- oder Zeitplandaten.
 
-## Ausblick
+### Policy konfigurieren
 
-Optionale „wieder ok"-Recovery-Meldungen, Eskalationsstufen sowie weitere Kanäle
-(PagerDuty / Opsgenie). Ein automatischer WinRM-Reachability-Poller, der `MachineUnreachable`
-füttert, ist ebenfalls geplant (heute wird `IsReachable` nur vom manuellen Maschinen-Test geschrieben).
+| Einstellung | Bedeutung |
+|---|---|
+| **Vorlage** | trägt eine sinnvolle Ausgangskonfiguration ein |
+| **Bedingung** | legt fest, bei welchem Wert alarmiert wird |
+| **Quellen-Parameter** | bestimmt beispielsweise das betrachtete Zeitfenster |
+| **Dauer bis Alarm** | Bedingung muss für diese Zeit durchgehend erfüllt sein |
+| **Schweregrad** | `Info`, `Warning` oder `Critical` |
+| **Geltungsbereich** | global, Ordner oder einzelne Workflows; abhängig von der Quelle |
+| **Cooldown** | Mindestabstand zwischen wiederholten Meldungen |
+| **Routen** | E-Mail- und Webhook-Ziele |
+
+**Aktuelle Werte prüfen** zeigt, welche vorhandenen Werte die Policy momentan erfüllen. Eine Vorlage füllt den Editor nur aus und aktiviert die Policy nicht automatisch.
+
+## Benutzerdefinierte Regeln
+
+Benutzerdefinierte Regeln reagieren auf Ereignisse. Eine Regel besteht aus Ereignistypen, optionalen Filtern, einem Geltungsbereich und mindestens einem Kanal.
+
+### Ereignistypen
+
+| Gruppe | Ereignisse |
+|---|---|
+| Ausführungen | fehlgeschlagen, erfolgreich, abgebrochen, läuft lange, wartet lange |
+| Zugangsdaten | Credential-Fehler, Credential läuft ab |
+| Betrieb | Service veraltet, Maschine nicht erreichbar, Backlog hoch, Pending-Backlog hoch, Abbruch-Rate hoch |
+| Zeitpläne | Zeitplan verpasst, kein aktueller Workflow-Erfolg |
+| System | System-Alarm |
+
+Für einen manuellen Abbruch kann das Feld **Abgebrochen von** gefiltert werden. Der Wert `user` begrenzt die Regel auf einzeln durch eine Person abgebrochene Ausführungen.
+
+### Regel konfigurieren
+
+| Einstellung | Bedeutung |
+|---|---|
+| **Ereignistypen** | Ereignisse, auf die die Regel reagiert |
+| **Geltungsbereich** | alle Workflows, ausgewählte Ordner oder ausgewählte Workflows |
+| **Filter** | zusätzliche Bedingungen, beispielsweise Status, Workflow-Name, Dauer oder Zielmaschine |
+| **Gruppieren nach** | fasst gleichartige Ereignisse für die Wiederholungssteuerung zusammen |
+| **Kanäle** | E-Mail- oder Webhook-Ziele |
+| **Kanalbedingung** | versendet einen bestimmten Kanal nur bei passender Zusatzbedingung |
+| **Cooldown** | verhindert zu häufige Wiederholungen derselben Meldung |
+| **Min. Vorkommen und Zeitfenster** | alarmiert erst, wenn ein Ereignis innerhalb des Zeitfensters mehrfach auftritt |
+
+Ein leerer Filter lässt jedes gewählte Ereignis im festgelegten Geltungsbereich zu. Eine leere Gruppierung verwendet die Standardgruppierung des Ereignisses.
+
+Beispiel: Eine Regel für **Ausführung fehlgeschlagen** kann global gelten, E-Mail nur bei `Critical` senden und einen Webhook ausschließlich für einen bestimmten Ordner auslösen.
+
+## Vorschau und Test
+
+Die beiden Prüfungen haben unterschiedliche Aufgaben:
+
+| Prüfung | Ergebnis |
+|---|---|
+| **Preview** | prüft Regel, Filter, Gruppierung und Kanalbedingungen anhand eines Beispielereignisses |
+| **Aktuelle Werte prüfen** | wertet eine System-Policy gegen momentan verfügbare Messwerte aus |
+| **Testbenachrichtigung** | sendet eine echte Nachricht an alle gespeicherten Kanäle |
+
+Eine neue Konfiguration sollte zunächst deaktiviert gespeichert, getestet und anschließend aktiviert werden.
+
+## Zustellungsverlauf
+
+Die Aktion **Zustellungen** öffnet den Verlauf der Versandversuche. Angezeigt werden:
+
+- Zeitpunkt und Regel
+- Kanal und Ziel
+- Status `Ausstehend`, `Gesendet` oder `Fehlgeschlagen`
+- Nummer des Versandversuchs
+- Fehlermeldung
+
+Fehlgeschlagene Zustellungen werden erneut versucht und nach fünf erfolglosen Versuchen als fehlgeschlagen markiert. Die Aufbewahrungsdauer richtet sich nach der Notification-Retention; standardmäßig werden abgeschlossene Einträge 90 Tage gespeichert.
+
+## Berechtigungen und Sicherheit
+
+- Admin und Operator dürfen Regeln und Zustellungen lesen.
+- Nur Admins dürfen Policies und Regeln anlegen, ändern, löschen, testen oder aktivieren.
+- Webhook-Secrets werden verschlüsselt gespeichert und nicht wieder angezeigt.
+- Webhook-Ziele unterliegen den konfigurierten Regeln für ausgehende Verbindungen.
+- Änderungen und Testauslösungen werden im Audit-Log erfasst.
+
+Alerting versendet derzeit keine automatische Entwarnung, wenn ein Zustand wieder normal ist.

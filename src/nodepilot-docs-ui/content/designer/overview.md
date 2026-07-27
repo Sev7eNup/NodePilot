@@ -1,13 +1,13 @@
 # Designer — Überblick
 
-Der NodePilot Workflow-Designer ist eine React-SPA (`src/nodepilot-ui`), gebaut auf @xyflow/react (React Flow v12). Workflows werden auf einer Canvas aus Nodes und Edges visuell zusammengesetzt.
+Der Workflow-Designer stellt Trigger und Activities als Nodes auf einer Arbeitsfläche dar. Edges verbinden die Nodes und bestimmen den Ausführungspfad. Die Implementierung befindet sich in `src/nodepilot-ui` und verwendet React Flow.
 
 ## Zwei Modi
 
 | Modus | Fokus |
 |---|---|
-| **Standard** | Reduzierter Feature-Set, einsteigerfreundlich. LR-Auto-Layout, wesentliche Toolbar. |
-| **Expert** | Volle Toolbar, alle Overlays, Single-Key-Shortcuts. Aktivierbar über `designerMode` im `designStore`. |
+| **Standard** | Grundfunktionen, automatisches Links-nach-rechts-Layout und reduzierte Toolbar |
+| **Expert** | Vollständige Toolbar, Overlays und zusätzliche Tastenkürzel |
 
 Features, die nur im Expert-Modus sichtbar sind, sind in den folgenden Seiten mit **(Expert)** markiert.
 

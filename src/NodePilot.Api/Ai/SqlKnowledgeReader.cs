@@ -12,10 +12,12 @@ namespace NodePilot.Api.Ai;
 /// then redacts every cell before it leaves the reader. Scoped, matching
 /// <see cref="SettingsKnowledgeReader"/>.
 ///
-/// <para><b>Redaction (two layers):</b> first, <see cref="DbAdminSecretColumns"/> refuses statements
-/// that name a protected column and replaces protected result columns with <c>"***"</c>; second,
-/// every remaining cell is stringified and run through <see cref="IAuditDetailsRedactor"/>. Result
-/// rows are capped (token budget) and cells truncated. Only <c>string?</c> ever leaves this reader.</para>
+/// <para><b>Redaction (three layers):</b> first, <see cref="DbAdminSecretColumns"/> refuses statements
+/// that name a protected column and replaces protected result columns with <c>"***"</c>; second, it
+/// refuses whole-row serializers over those tables, which would otherwise carry the secret past the
+/// name-based mask; third, every remaining cell is stringified and run through
+/// <see cref="IAuditDetailsRedactor"/>. Result rows are capped (token budget) and cells truncated.
+/// Only <c>string?</c> ever leaves this reader.</para>
 ///
 /// <para>This closes the secret-leak gap that raw SQL otherwise opens. The same
 /// <see cref="DbAdminSecretColumns"/> guard runs on the <c>/api/dbadmin/query</c> endpoint, so the
@@ -87,6 +89,17 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
             return new SqlQueryKnowledgeResult(
                 Array.Empty<string>(), Array.Empty<IReadOnlyList<string?>>(), false,
                 sw.ElapsedMilliseconds, "Query references a protected column.");
+        }
+
+        // Same refusal for whole-row serializers, which carry the secret past the column mask
+        // without ever naming it. The error text doubles as the correction hint the model acts on.
+        if (_secretColumns.ReferencesProtectedRowProjection(sql))
+        {
+            return new SqlQueryKnowledgeResult(
+                Array.Empty<string>(), Array.Empty<IReadOnlyList<string?>>(), false,
+                sw.ElapsedMilliseconds,
+                "Query serializes a whole row of a table that holds secret columns "
+                + "(to_json/row_to_json/::text/FOR JSON). List the columns you need explicitly.");
         }
 
         DbAdminQueryResult result;

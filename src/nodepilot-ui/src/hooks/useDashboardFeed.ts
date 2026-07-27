@@ -1,12 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as signalR from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
-
-function readCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = /(?:^|;\s*)np_csrf=([^;]+)/.exec(document.cookie);
-  return match ? decodeURIComponent(match[1]) : '';
-}
+import { readCsrfToken } from '../api/csrf';
 
 // A LiveEventsBatch item is { Type|type, Event|evt }. We only care about
 // ExecutionStatusChanged — it is the only event that changes dashboard aggregates

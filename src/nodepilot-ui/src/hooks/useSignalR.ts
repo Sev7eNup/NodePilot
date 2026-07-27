@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue } f
 import * as signalR from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { readCsrfToken } from '../api/csrf';
 import {
   applyLiveEvents,
   buildDatabusFromHydratedSteps,
@@ -39,11 +40,7 @@ export { COMPLETED_EXECUTION_TTL_MS, MAX_ACTIVE_DISPLAYED, MAX_AUTO_HYDRATE } fr
  * SignalR negotiate handshake via the `headers` option so the server-side CSRF guard
  * accepts the mutating POST even though the request is browser-originated.
  */
-function readCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = /(?:^|;\s*)np_csrf=([^;]+)/.exec(document.cookie);
-  return match ? decodeURIComponent(match[1]) : '';
-}
+// Implementation shared with every other API caller — see api/csrf.ts.
 
 /**
  * Module-scoped semaphore that caps how many step-list backfill fetches the live view

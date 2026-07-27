@@ -1,56 +1,216 @@
-# Desktop-App (Electron)
+# Desktop-App
 
-NodePilot als **lokale Desktop-App** für **Windows 11 x64**: ein signierter `.exe`-Installer, der App, gebündelte .NET-10-Runtime und einen **lokalen PostgreSQL**-Server mitbringt und alles als Hintergrund-Dienste betreibt — **offline**, ohne Prerequisites. Vollständige Doku im Repo unter `deploy/desktop/README.md`; die `deploy/`-Skripte werden im Dev-Mode **nicht** ausgeführt.
+Die Desktop-App ist ein lokales NodePilot-Paket für Windows 11 x64. Ein Installer richtet API, Produktoberfläche, Electron-Shell und PostgreSQL ein. Externe Laufzeiten, eine externe Datenbank und Internetzugriff sind während der Installation nicht erforderlich.
 
-Abgrenzung zum Server-Rollout (`deploy/README.md`): dort domain-joined Windows **Server** als Dienst hinter Kestrel-TLS mit **externer** DB. Hier eine Maschine-mit-sich-selbst. Der direkte Vergleich aller drei Betriebsarten steht unter [Betriebsarten im Überblick](./overview) — dort auch die Alltags-Konsequenzen (kein Team-Zugriff, keine eingehenden Webhooks, SYSTEM-Rechte für lokale Skripte).
+## Einsatzbereich
 
-## Topologie
+Geeignet für:
 
-- **Dienst `NodePilotDb`** — gebündeltes PostgreSQL 16 als **NetworkService**, gebunden an `127.0.0.1`, Boot-Start.
-- **Dienst `NodePilot`** — self-contained `NodePilot.Api.exe` als **LocalSystem**, `https://127.0.0.1:<port>`, Boot-Start, `depend= NodePilotDb`.
-- **Electron-Shell** (Chromium + Node, in voller Größe gebündelt, kein WebView2) — dünner Viewer, lädt die vom Backend **same-origin** ausgelieferte SPA. Kein Auto-Update; Updates laufen über einen neuen signierten Installer.
+- produktive Automatisierung auf einem einzelnen Windows-System
+- lokale Zeitplan-, Datei-, Datenbank- und Eventlog-Trigger
+- ausgehende WinRM-, REST-, SQL-, SMTP- und Alerting-Verbindungen
+- Offline-Installation
 
-Weil NodePilot ein **Orchestrator** ist (Schedule-/FileWatcher-/Webhook-Trigger), laufen die Dienste im Hintergrund weiter, auch wenn das Fenster geschlossen ist.
+Nicht geeignet für:
 
-## `Deployment:Mode=Desktop`
+- Zugriff von anderen Systemen
+- eingehende Webhooks
+- externe REST- oder Trigger-API
+- LDAP, Windows SSO, OIDC oder SCIM
+- Hochverfügbarkeit
 
-Die Desktop-App läuft mit `ASPNETCORE_ENVIRONMENT=Production` (volle Härtung: Security-Header, Swagger aus, Inline-Password-Guard) plus der neuen Posture `Deployment:Mode=Desktop`. Desktop relaxiert **nur** das Maschine-mit-sich-selbst-Sinnvolle:
+## Laufzeitarchitektur
 
-- `Database:AllowInsecureTls=true` wird **nur** bei Loopback-DB **und** Desktop akzeptiert (127.0.0.1-Postgres ohne PKI). Remote-Hosts bleiben fail-closed.
-- Kestrel bindet **nur Loopback** (`ListenLocalhost`) — betrifft den **kompletten Listener**, also Oberfläche, `/api/*`, `/hubs/*` und `/healthz` gleichermaßen. Nicht abschaltbar.
-- Vor dem Migration-Bootstrap wartet die API bis zu **120 s** auf Postgres-Konnektivität (nur Erreichbarkeit wird retried).
-
-Default ist `Server`; ein unbekannter Wert ist ein Boot-Fehler.
-
-Daraus folgt die zentrale Alltagsregel: **Alles, was NodePilot selbst anstößt, funktioniert — alles, was es von außen anstoßen soll, nicht.** Zeitplan-, Datei-, Datenbank- und Eventlog-Trigger laufen also normal, ebenso jede ausgehende Automatisierung (WinRM, `restApi`, `sql`, E-Mail). Eingehende Webhooks und die externe Trigger-API sind dagegen unbrauchbar. Details und die vollständige Gegenüberstellung: [Betriebsarten im Überblick](./overview).
-
-## Handoff: desktop.json
-
-`%ProgramData%\NodePilot\desktop.json` (kein Secret) sagt der Shell, was zu laden/vertrauen ist:
-
-```json
-{ "schemaVersion": 1, "origin": "https://localhost:47000",
-  "certificateSha256": "<hex>", "serviceName": "NodePilot" }
+```text
+Electron-Shell
+      |
+      | HTTPS auf localhost, Zertifikat gepinnt
+      v
+Windows-Dienst "NodePilot"       LocalSystem
+      |
+      v
+Windows-Dienst "NodePilotDb"     NetworkService
+      |
+      v
+PostgreSQL 16 auf 127.0.0.1
 ```
 
-Das DB-Passwort steht ausschließlich im ACL-geschützten Service-Env `ConnectionStrings__Postgres`.
+Die Dienste starten beim Systemstart. Das Schließen des Electron-Fensters beendet keine Workflows oder Trigger.
 
-## Sicherheit
+## Installierte Pfade
 
-- **API als LocalSystem** → lokale (`localhost`) `runScript`-Activities laufen mit **SYSTEM**-Rechten (bewusste v1-Entscheidung).
-- **Loopback-TLS per Pinning statt Root-CA:** self-signed `localhost`-Cert in `LocalMachine\My`, von der Electron-Session per SHA-256 gepinnt. Kein systemweiter Trust — normaler Browserzugriff **darf warnen**; Electron ist der unterstützte Zugang.
-- **Electron-Härtung:** SPA-Fenster mit `contextIsolation`/`sandbox`/`webSecurity`, ohne `nodeIntegration`, **ohne Preload/IPC**; Navigation off-origin, Popups, Downloads und Berechtigungen blockiert.
-- **Erststart-Token nie im Renderer:** der elevierte Installer legt den One-Shot-Token als ACL-geschützte Handoff-Datei ins Profil des installierenden Users; die Setupseite hat nur `completeAdminSetup({username,password})`, der Main-Prozess sendet den Token als `X-Setup-Token` an `/api/auth/login`, teilt die Cookies und löscht beide Token-Kopien.
+| Pfad | Inhalt |
+|---|---|
+| `C:\Program Files\NodePilot\app` | Self-contained API und Produktoberfläche |
+| `C:\Program Files\NodePilot\desktop` | Electron-Shell |
+| `C:\Program Files\NodePilot\pgsql` | PostgreSQL-Serverruntime |
+| `C:\ProgramData\NodePilot\pgdata` | PostgreSQL-Daten |
+| `C:\ProgramData\NodePilot\logs` | Anwendungslogs |
+| `C:\ProgramData\NodePilot\backups` | Update-Backups |
+| `C:\ProgramData\NodePilot\desktop.json` | Verbindung zwischen Shell und Backend |
 
-## Build / Install / Update / Uninstall
+## Sicherheitsmodell
+
+`Deployment:Mode=Desktop` setzt folgende Regeln:
+
+- Kestrel bindet ausschließlich an Loopback.
+- Es wird keine eingehende Firewallregel angelegt.
+- PostgreSQL bindet ausschließlich an `127.0.0.1`.
+- Ein self-signed Zertifikat schützt die lokale HTTPS-Verbindung.
+- Electron prüft den SHA-256-Fingerprint des Zertifikats.
+- Das Zertifikat wird nicht als globale Root-CA installiert.
+- Electron verwendet `contextIsolation`, `sandbox` und `webSecurity`.
+- Node-Integration, Preload-Bridge, externe Navigation, Pop-ups, Downloads und Berechtigungsanfragen sind deaktiviert.
+
+Ein normaler Browser kann für die lokale URL eine Zertifikatswarnung anzeigen. Der unterstützte Zugriff erfolgt über die Electron-Shell.
+
+## Rechte lokaler und entfernter Ausführung
+
+Die API läuft als LocalSystem. Daraus folgen zwei unterschiedliche Fälle:
+
+| Activity-Ziel | Identität |
+|---|---|
+| Lokale `runScript`-Activity ohne Machine | `NT AUTHORITY\SYSTEM` |
+| Remote-Ausführung mit Machine | Hinterlegtes Credential |
+
+Credential-lose Kerberos-Delegation ist im Desktop-Modus nicht vorgesehen.
+
+## Installer-Verfügbarkeit
+
+Der Installer ist ein Build-Ziel des Repositorys. Ein signiertes Release-Artefakt muss vor der Verteilung durch den jeweiligen Release-Prozess erzeugt werden.
+
+## Installer bauen
+
+### Voraussetzungen auf dem Build-System
+
+- .NET 10 SDK
+- Node.js und npm
+- Inno Setup 6 mit `ISCC.exe`
+- PostgreSQL-16-Binärverzeichnis `pgsql`
+- Authenticode-Zertifikat für die Verteilung
+
+Build aus `deploy\desktop`:
 
 ```powershell
-./Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\pfad\pgsql' -Version 1.0.0
-# -> out\NodePilot-Desktop-Setup-1.0.0.exe  (vor Verteilung Authenticode-signieren)
+Set-Location deploy\desktop
+.\Build-DesktopInstaller.ps1 `
+  -PgBinariesPath "C:\Packages\pgsql" `
+  -Version 1.0.0
 ```
 
-- **Install:** `.exe` als lokaler Admin (UAC) → Dateien + `Provision-LocalDb.ps1` (Cluster/Dienste/Cert/Config/Handoff) + Shell-Start.
-- **Update:** neuer Installer → ACL-geschütztes `pg_dump`, Binär-Swap, idempotentes Re-Provision; `Update-Desktop.ps1` bietet zusätzlich ein voll-transaktionales Update mit Rollback (Binaries + Config + DB). Keine PG-Major-Upgrades in v1.
-- **Uninstall:** Dienste + Cert weg; **ProgramData/`pgdata` bleiben** (außer `-PurgeData`).
+Ergebnis:
 
-Voraussetzungen für den Build: .NET-10-SDK, Node/npm, Inno Setup 6, ein PostgreSQL-16-`pgsql`-Verzeichnis.
+```text
+out\NodePilot-Desktop-Setup-1.0.0.exe
+```
+
+Der Build:
+
+1. veröffentlicht die API self-contained für `win-x64`,
+2. baut die React-Oberfläche,
+3. kopiert erforderliche PowerShell-Module,
+4. paketiert die Electron-Shell,
+5. übernimmt den benötigten PostgreSQL-Teil,
+6. erzeugt den Inno-Setup-Installer.
+
+Der erzeugte Installer muss vor der Verteilung mit Authenticode signiert werden.
+
+## Installation
+
+1. Signierten Installer auf das Windows-11-Zielsystem übertragen.
+2. Installer mit UAC-Bestätigung starten.
+3. Provisionierung vollständig abschließen lassen.
+4. Electron-Shell starten.
+5. Lokalen Admin-Account im Setup-Dialog anlegen.
+
+Der Installer:
+
+- installiert Dateien,
+- initialisiert PostgreSQL,
+- registriert `NodePilotDb` und `NodePilot`,
+- erzeugt das Loopback-Zertifikat,
+- schreibt die Produktionskonfiguration,
+- setzt ACLs,
+- erstellt `desktop.json`,
+- übergibt den einmaligen Setup-Token geschützt an die Electron-Shell.
+
+## Installation prüfen
+
+```powershell
+Get-Service NodePilotDb, NodePilot
+Get-Content "$env:ProgramData\NodePilot\desktop.json"
+```
+
+Erwartete Ergebnisse:
+
+| Prüfung | Erwartung |
+|---|---|
+| `NodePilotDb` | `Running` |
+| `NodePilot` | `Running` |
+| Electron-Shell | Produktoberfläche ohne Zertifikatsdialog |
+| Admin-Setup | Lokales Konto kann angelegt werden |
+| Neustart | Beide Dienste starten automatisch |
+
+Der Origin aus `desktop.json` kann lokal geprüft werden:
+
+```powershell
+$desktop = Get-Content "$env:ProgramData\NodePilot\desktop.json" | ConvertFrom-Json
+Invoke-WebRequest "$($desktop.origin)/healthz/ready" -SkipCertificateCheck
+```
+
+`-SkipCertificateCheck` steht in PowerShell 7 zur Verfügung und ist hier nur für die lokale Diagnose des self-signed, durch Electron gepinnten Zertifikats vorgesehen.
+
+## Update
+
+Ein neuer signierter Installer kann über die bestehende Installation ausgeführt werden.
+
+Update-Ablauf:
+
+1. ACL-geschütztes `pg_dump` erstellen.
+2. Dienste stoppen.
+3. Binaries ersetzen.
+4. Vorhandenes PostgreSQL-Datenverzeichnis weiterverwenden.
+5. Dienste neu provisionieren.
+6. Health-Endpunkt prüfen.
+
+`Update-Desktop.ps1` bietet zusätzlich ein gestuftes Update mit Rollback für Binaries, Konfiguration und Datenbank.
+
+PostgreSQL-Major-Upgrades und Electron-Auto-Update sind nicht Bestandteil der aktuellen Desktop-Version.
+
+## Deinstallation
+
+Die normale Deinstallation entfernt:
+
+- beide Windows-Dienste,
+- Loopback-Zertifikat,
+- Dateien unter `C:\Program Files\NodePilot`.
+
+Die Daten unter `C:\ProgramData\NodePilot`, einschließlich `pgdata`, bleiben standardmäßig erhalten.
+
+Vollständige Entfernung:
+
+```powershell
+.\Uninstall-Desktop.ps1 -PurgeData
+```
+
+`-PurgeData` löscht die lokale Datenbank und ist nicht rückgängig zu machen. Vorher ist ein Backup erforderlich.
+
+## Backup und Systemwechsel
+
+Für den Schutz der Konfiguration:
+
+1. System-Configuration-Backup in NodePilot erstellen.
+2. Backup-Datei und Passphrase getrennt sichern.
+3. Für vollständige Historie zusätzlich PostgreSQL sichern.
+
+Ein Kopieren von `pgdata` auf einen anderen Rechner ist kein unterstützter Migrationsweg. Credentials sind bei DPAPI-Nutzung an die Maschine gebunden. Der unterstützte Wechsel verwendet das System-Configuration-Backup, damit Secrets im Zielsystem neu verschlüsselt werden.
+
+## Bekannte Grenzen
+
+- Installer muss im Release-Prozess signiert werden.
+- PostgreSQL-Major-Upgrades sind nicht automatisiert.
+- Electron besitzt keinen Auto-Updater.
+- Installation und Rollback benötigen einen Test auf einer sauberen Windows-11-VM.
+- Desktop-Modus ist absichtlich auf einen lokalen Einzelplatz begrenzt.
+
+Die vollständigen Build- und Validierungsdetails stehen in `deploy\desktop\README.md`.

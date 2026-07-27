@@ -1,73 +1,324 @@
-# Produktions-Rollout
+# Windows-Server-Deployment
 
-Vollständige Doku im Repo unter `deploy/README.md`. Die `deploy/`-Skripte werden im Dev-Mode **nicht** ausgeführt — diese Seite gibt den Architektur-Überblick. Für die Einordnung gegenüber Dev-Setup und Desktop-App siehe [Betriebsarten im Überblick](./overview).
+Diese Betriebsart installiert NodePilot als Windows-Dienst für den produktiven Netzwerkbetrieb. Die mitgelieferten Skripte befinden sich unter `deploy\`. Die vollständige Parameterreferenz steht zusätzlich in `deploy\README.md`.
 
-## Ziel-Topologie
+## Zielzustand
 
-- **Windows Service** unter einer **gMSA** (`DOMAIN\svc-nodepilot$`, `sc.exe create` mit leerem Passwort — `New-Service` kann keine gMSA), delayed auto-start, Recovery-Actions.
-- **Kestrel bindet HTTPS direkt** auf den Ports aus `Kestrel:Https:HttpsPort|HttpPort`, Zertifikat per Thumbprint aus `LocalMachine\My`. Single-Node läuft ohne IIS; HA nutzt die gehärtete HAProxy-Vorlage. SPA und API bleiben auf **einem Origin**.
-- **Externer SQL Server 2022** (trusted connection) oder **PostgreSQL 16+** (User/Password). Das gMSA-Login / die Postgres-Role braucht DDL-Rechte.
-- **gMSA-Identity als WinRM-Auth:** `NegotiateWithImplicitCredential` erlaubt Kerberos zu Zielmaschinen ohne gespeicherte Credentials (resource-based constrained delegation vorausgesetzt).
+```text
+Browser / API-Client
+        |
+        | HTTPS
+        v
+Kestrel im Windows-Dienst "NodePilot"
+        |
+        +--> SQL Server 2022
+        |    oder
+        +--> PostgreSQL 16+
+        |
+        +--> Windows-Zielsysteme über WinRM
+```
 
-## Install-Dir / Data-Dir-Split
+Single-Node-Installationen verwenden Kestrel direkt. Active/Passive-Installationen verwenden die mitgelieferte HAProxy-Vorlage.
 
-| Pfad | Inhalt | Service-ACL |
+## Unterstützte Varianten
+
+### Dienstidentität
+
+| Variante | Einsatz |
+|---|---|
+| **LocalSystem** | Einfacher Einzelserver; Netzwerkzugriffe erfolgen als Computerkonto `DOMAIN\HOST$` |
+| **gMSA** | Least-Privilege, gemeinsame Identität und empfohlener HA-Pfad |
+
+### Datenbank
+
+| Provider | Authentifizierung | Produktions-TLS |
 |---|---|---|
-| `C:\Program Files\NodePilot\` | `NodePilot.Api.exe`, DLLs, `wwwroot/` | Read |
-| `C:\Program Files\NodePilot\appsettings.Production.json` | Config + Secrets | Read (inheritance off) |
-| `C:\ProgramData\NodePilot\` | JWT-Key, Setup-Token, Logs, Install-Report | Modify (inheritance off) |
+| SQL Server 2022 | Windows Integrated Security | `Encrypt=Strict;TrustServerCertificate=False` |
+| PostgreSQL 16+ | Benutzername und Passwort | `SSL Mode=VerifyFull` mit Root-CA |
 
-Produktionsartefakte bestehen aus ZIP, signiertem SHA-256-Manifest und detached CMS-Signatur. Installer und Updater verlangen einen explizit gepinnten Code-Signing-Thumbprint und prüfen Signatur, Zertifikatskette, Dateiname, Länge und Hash, bevor sie Dienst oder Installationsverzeichnis verändern. Update-Backups enthalten keine `appsettings.Production.json`.
+## Voraussetzungen
 
-## Config-Keys
+### Zielserver
 
-| Key | Zweck | Fallback |
+- Windows Server 2022 oder 2025
+- Domain-Mitgliedschaft
+- PowerShell 5.1 oder PowerShell 7
+- .NET 10 ASP.NET Core Hosting Bundle
+- Netzwerkzugriff zur Datenbank
+- TLS-Zertifikat mit privatem Schlüssel in `LocalMachine\My`
+- Lokale Administratorrechte für die Installation
+
+### Build-Host
+
+- .NET 10 SDK
+- Node.js LTS und npm
+- Code-Signing-Zertifikat für Artefaktmanifest und Verteilung
+
+### Datenbank
+
+Die Datenbank muss vor der Installation existieren. Die NodePilot-Identität benötigt DDL-Rechte, damit EF-Migrationen beim Start angewendet werden können.
+
+## 1. Dienstidentität vorbereiten
+
+### Variante A: LocalSystem
+
+Keine Dienstkontoanlage ist erforderlich. Für SQL Server muss das Computerkonto des NodePilot-Hosts als Login vorhanden sein:
+
+```sql
+USE master;
+CREATE LOGIN [CONTOSO\NPSRV01$] FROM WINDOWS;
+
+CREATE DATABASE NodePilot;
+USE NodePilot;
+CREATE USER [CONTOSO\NPSRV01$] FOR LOGIN [CONTOSO\NPSRV01$];
+ALTER ROLE db_owner ADD MEMBER [CONTOSO\NPSRV01$];
+```
+
+### Variante B: gMSA
+
+Das gMSA wird in Active Directory angelegt, für den Zielserver freigegeben und anschließend auf dem Zielserver installiert:
+
+```powershell
+Install-ADServiceAccount -Identity svc-nodepilot
+Test-ADServiceAccount -Identity svc-nodepilot
+```
+
+Das erwartete Testergebnis ist `True`. Für SQL Server wird das gMSA analog zum Computerkonto als Login und Datenbankbenutzer mit `db_owner` angelegt.
+
+## 2. Datenbank vorbereiten
+
+### SQL Server
+
+Zusätzlich zur NodePilot-Datenbank sollte Read-Committed-Snapshot-Isolation aktiviert sein:
+
+```sql
+ALTER DATABASE [NodePilot]
+SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;
+```
+
+Der Installer versucht diese Einstellung automatisch zu setzen. Ohne ausreichende Rechte gibt der Preflight die erforderliche SQL-Anweisung aus.
+
+### PostgreSQL
+
+```sql
+CREATE ROLE nodepilot WITH LOGIN PASSWORD '<strong-secret>';
+CREATE DATABASE nodepilot OWNER nodepilot;
+```
+
+Der PostgreSQL-Server muss ein Zertifikat präsentieren, dessen Hostname und Vertrauenskette geprüft werden können. Die Root-CA wird dem Installer als PEM-Datei übergeben.
+
+## 3. HTTPS-Zertifikat importieren
+
+```powershell
+$certificatePassword = Read-Host -AsSecureString "PFX password"
+Import-PfxCertificate `
+  -FilePath C:\Certs\nodepilot.pfx `
+  -CertStoreLocation Cert:\LocalMachine\My `
+  -Password $certificatePassword
+```
+
+Thumbprint ermitteln:
+
+```powershell
+Get-ChildItem Cert:\LocalMachine\My |
+  Where-Object Subject -Like "*nodepilot*" |
+  Select-Object Subject, Thumbprint, NotAfter
+```
+
+Der Zertifikatsname muss zum öffentlichen Hostnamen passen.
+
+## 4. Produktionsartefakt bauen
+
+Im Repository auf dem Build-Host:
+
+```powershell
+$releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
+.\deploy\Build-Artifact.ps1 `
+  -Version 2026.07.27 `
+  -SigningCertificateThumbprint $releaseSigner
+```
+
+Ergebnis:
+
+```text
+out\NodePilot-2026.07.27.zip
+out\NodePilot-2026.07.27.zip.manifest.json
+out\NodePilot-2026.07.27.zip.manifest.json.p7s
+```
+
+Installer und Updater prüfen Signatur, Zertifikatskette, Dateiname, Länge und SHA-256-Hash vor jeder Änderung.
+
+## 5. NodePilot installieren
+
+Die Installationsbefehle laufen als lokaler Administrator auf dem Zielserver.
+
+### SQL Server mit LocalSystem
+
+```powershell
+$releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
+.\deploy\Install-NodePilot.ps1 `
+  -ArtifactPath C:\Packages\NodePilot-2026.07.27.zip `
+  -TrustedArtifactSignerThumbprint $releaseSigner `
+  -UseLocalSystem `
+  -SqlServer "sql01.contoso.local" `
+  -SqlDatabase "NodePilot" `
+  -CertThumbprint "A1B2C3D4E5F6..." `
+  -PublicHostname "nodepilot.contoso.local"
+```
+
+### SQL Server mit gMSA
+
+```powershell
+$releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
+.\deploy\Install-NodePilot.ps1 `
+  -ArtifactPath C:\Packages\NodePilot-2026.07.27.zip `
+  -TrustedArtifactSignerThumbprint $releaseSigner `
+  -ServiceAccount "CONTOSO\svc-nodepilot$" `
+  -SqlServer "sql01.contoso.local" `
+  -SqlDatabase "NodePilot" `
+  -CertThumbprint "A1B2C3D4E5F6..." `
+  -PublicHostname "nodepilot.contoso.local"
+```
+
+### PostgreSQL mit gMSA
+
+```powershell
+$releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
+$postgresPassword = Read-Host -AsSecureString "PostgreSQL password"
+
+.\deploy\Install-NodePilot.ps1 `
+  -ArtifactPath C:\Packages\NodePilot-2026.07.27.zip `
+  -TrustedArtifactSignerThumbprint $releaseSigner `
+  -ServiceAccount "CONTOSO\svc-nodepilot$" `
+  -DbProvider postgres `
+  -PostgresHost "pg01.contoso.local" `
+  -PostgresDatabase "nodepilot" `
+  -PostgresUser "nodepilot" `
+  -PostgresPassword $postgresPassword `
+  -PostgresRootCertificate C:\PKI\postgres-root-ca.pem `
+  -CertThumbprint "A1B2C3D4E5F6..." `
+  -PublicHostname "nodepilot.contoso.local"
+```
+
+Für PostgreSQL mit LocalSystem ersetzt `-UseLocalSystem` den Parameter `-ServiceAccount`.
+
+## 6. Installationswirkung
+
+Der Installer führt folgende Schritte aus:
+
+1. Voraussetzungen, Signatur, Zertifikat, Dienstkonto und Datenbankzugriff prüfen.
+2. Vorhandenen NodePilot-Dienst kontrolliert stoppen.
+3. Binaries nach `C:\Program Files\NodePilot` installieren.
+4. Betriebsdaten unter `C:\ProgramData\NodePilot` anlegen.
+5. Produktionskonfiguration rendern.
+6. Dateisystem- und Zertifikats-ACLs setzen.
+7. HTTPS-Firewallregel anlegen.
+8. Windows-Dienst mit Delayed Auto Start und Recovery Actions registrieren.
+9. Dienst starten und Readiness prüfen.
+10. Admin-Setup-Token und External-Trigger-API-Key ausgeben.
+
+Der PostgreSQL-Connection-String wird nicht in die JSON-Datei geschrieben. Er liegt im ACL-geschützten Service-Environment.
+
+## 7. Installation prüfen
+
+```powershell
+Get-Service NodePilot
+Invoke-WebRequest https://nodepilot.contoso.local/healthz/live
+Invoke-WebRequest https://nodepilot.contoso.local/healthz/ready
+```
+
+Erwartete Ergebnisse:
+
+| Prüfung | Erwartung |
+|---|---|
+| Dienststatus | `Running` |
+| `/healthz/live` | HTTP 200 |
+| `/healthz/ready` | HTTP 200 und erreichbare Datenbank |
+| Browserzugriff | Login- oder Setup-Seite ohne Zertifikatswarnung |
+
+Bei aktivierter Verzeichnisanbindung ist `/healthz/directory` separat zu prüfen. Die allgemeine Readiness bleibt absichtlich auf die Datenbank beschränkt.
+
+## 8. Ersten Admin-Account anlegen
+
+Der Installer zeigt den einmaligen Setup-Token aus `C:\ProgramData\NodePilot\admin-setup.token` an. Der Setup-Dialog verwendet diesen Token zum Anlegen des ersten lokalen Admin-Kontos. Nach erfolgreichem Setup wird der Token gelöscht.
+
+Der External-Trigger-API-Key wird nur einmal angezeigt und muss in einem Secret-Management-System gespeichert werden.
+
+## Verzeichnis- und Dateiaufteilung
+
+| Pfad | Inhalt | Dienstzugriff |
 |---|---|---|
-| `Jwt:KeyPath` | Absoluter Pfad für `jwt-secret.key` | `{ContentRoot}/jwt-secret.key` |
-| `Security:AdminSetupTokenPath` | Absoluter Pfad für `admin-setup.token` | `{ContentRoot}/admin-setup.token` |
-| `Logging:File:Path` | Absoluter Pfad für Serilog-Rolling-File | `{ContentRoot}/logs/nodepilot-.log` |
-| `Kestrel:Https:*` | Kestrel-Direct-HTTPS aus Windows Cert Store | Default-Binding |
-| `Authentication:*` | Loginwege, Session-, Directory- und Provisioning-Policy | boot-fest; Änderungen benötigen Neustart |
-| `DataProtection:KeyRingPath` | persistente Correlation-/Nonce-/Ticket-Keys | bei HA+OIDC gemeinsamer Pfad auf allen Nodes |
-| `DataProtection:CertificateThumbprint` | schützt den Data-Protection-Keyring | bei HA+OIDC gemeinsames Zertifikat mit Private Key in `LocalMachine\My` |
-| `DataProtection:SharedKeyRing` | Operator-Attestation für Shared Storage | bei HA+OIDC `true` |
-| `Database:AllowInsecureTls` | Expliziter Development-Override für DB-Zertifikatsprüfung | `false`; in Produktion verboten |
+| `C:\Program Files\NodePilot\` | API, DLLs und `wwwroot` | Lesen |
+| `C:\Program Files\NodePilot\appsettings.Production.json` | Produktionskonfiguration | Lesen |
+| `C:\ProgramData\NodePilot\` | Schlüssel, Setup-Token, Logs und Betriebsdaten | Ändern |
 
-`Credentials:DpapiScope` in Produktion auf `LocalMachine` (sonst Break bei Service-Account-Wechsel). Im Cluster AES-GCM verwenden — siehe [Secret-Provider](../enterprise/secrets-providers).
+## Update und automatischer Rollback
 
-## Gotchas (aus erstem Lab-Rollout)
+```powershell
+$releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
+.\deploy\Update-NodePilot.ps1 `
+  -ArtifactPath C:\Packages\NodePilot-2026.08.10.zip `
+  -TrustedArtifactSignerThumbprint $releaseSigner
+```
 
-- **PS 5.1-Kompat:** `RandomNumberGenerator.Fill()` ist .NET-Core-only — `RNGCryptoServiceProvider.GetBytes()` verwenden. Deploy-Skripte müssen auf PS 5.1 **und** PS 7 laufen.
-- **Em-Dashes (`—`) in PS-Skripten** brechen PS 5.1-Parsing, wenn die Datei ohne BOM gespeichert wird. ASCII-Punctuation in Deploy-Skripten.
-- **`Set-StrictMode -Version Latest`** + `& npm ...`-Shim triggert `PropertyNotFoundStrict` auf `.Statement`. `Version 3.0` in Deploy-Skripten.
-- **`New-Service` unterstützt keine gMSA** (verlangt Passwort). Workaround: `sc.exe create ... obj= DOMAIN\acct$ password= ""`.
+Der Updater:
 
-## HA in Produktion
+- prüft das neue Artefakt,
+- sichert die vorhandenen Binaries,
+- erhält Datenbank, Dienstkonto und Produktionskonfiguration,
+- startet den Dienst neu,
+- prüft den Health-Endpunkt,
+- stellt bei einem fehlgeschlagenen Health-Check die vorherigen Binaries wieder her.
 
-Für Active/Passive-Betrieb siehe [High Availability](../enterprise/high-availability). Wichtig: `Jwt:Key`+`Issuer`+`Audience` müssen auf allen Nodes identisch sein; `jwt-secret.key` auf Disk wird im Cluster **nicht** verwendet.
+Das Binärbackup enthält keine secret-haltige `appsettings.Production.json`.
 
-## Rollout-Empfehlung (Enterprise-Features)
+## Deinstallation
 
-1. **SIEM-Logging** zuerst aktivieren, damit alle folgenden Auth- und Offboarding-Ereignisse zentral sichtbar sind.
-2. **Secret-Provider und HA** einrichten; alle Nodes brauchen identische JWT-Parameter und Authentication-Config. Mit OIDC benötigen sie zusätzlich dasselbe persistente, zertifikatgeschützte Data-Protection-Keyring.
-3. Mindestens ein lokales Konto explizit als **Break-Glass** markieren und den Modus `BreakGlassOnly` verifizieren.
-4. Für **AD SSO Preview** vertrauenswürdige LDAPS-Zertifikate, mindestens zwei DC-Endpunkte, Service-Bind, Gruppen-Allowlist, 5-Minuten-Sync und `DirectorySyncMaxConcurrency` (Default 16, Bereich 1–32) konfigurieren. Den LDAP-Entwurf vor dem Save testen.
-5. Service neu starten und `/healthz/ready` sowie `/healthz/directory` getrennt prüfen. Readiness bleibt absichtlich DB-only.
-6. Für Windows-SSO HTTP-SPN, Browser-Intranet-Policy, Kerberos-taugliches HAProxy und eine Host-/Domain-Policy gegen NTLM einrichten. `AllowNtlmFallback` bleibt `false`; jeder Login muss zusätzlich den autoritativen LDAPS-Snapshot erreichen können.
-7. OIDC und SCIM erst nach ihrem separaten Provider-/Offboarding-Release-Gate aktivieren. SAML ist nicht vorgesehen.
+```powershell
+.\deploy\Uninstall-NodePilot.ps1
+```
 
-Im Cluster ist die Authentication-Sektion Config-as-Code. Der Admin-Settings-PUT antwortet mit `409 CLUSTER_CONFIG_AS_CODE_REQUIRED`; Konfiguration und Secrets werden außerhalb der UI identisch auf alle Nodes verteilt und durch einen Cluster-Neustart aktiviert.
+Logs und Konfiguration bleiben erhalten. Vollständige Entfernung der lokalen Betriebsdaten:
 
-## Offenes Feldtest-Gate
+```powershell
+.\deploy\Uninstall-NodePilot.ps1 -PurgeData
+```
 
-Bis diese Tests in der realen Zielumgebung bestanden sind, lautet der Status **AD SSO Preview**, nicht Enterprise-ready:
+Die externe Datenbank wird nie automatisch gelöscht.
 
-- LDAP und Windows mappen dieselbe AD-SID auf denselben NodePilot-Benutzer;
-- Windows ignoriert PAC-Gruppen und übernimmt Gruppen ausschließlich aus dem aktuellen LDAPS-Snapshot;
-- LDAPS akzeptiert nur die vollständige vertrauenswürdige Zertifikatskette und fällt auf einen zweiten DC um;
-- Kerberos funktioniert über HAProxy mit persistentem HTTP/1.1 und `http-reuse never`;
-- ein NTLM-Handshake wird abgelehnt;
-- Gruppenentzug oder AD-Deaktivierung stoppt Sessions, geplante Jobs und Trigger innerhalb von 15 Minuten;
-- OIDC-Tokengruppen werden abgelehnt, wenn `iat` fehlt oder älter als 15 Minuten ist;
-- SCIM `externalId` entspricht exakt dem OIDC-`sub`, und vollständige Membership-Snapshots beziehungsweise Heartbeats erneuern jede relevante Membership mindestens alle 15 Minuten;
-- OIDC-Failover funktioniert mit gemeinsamem Data-Protection-Keyring und Zertifikat über verschiedene Nodes.
+## Backup und Wiederherstellung
+
+Für eine vollständige Sicherung sind zwei Backups erforderlich:
+
+1. **System-Configuration-Backup:** Workflows, Maschinen, Credentials, Benutzer und Runtime-Einstellungen.
+2. **Datenbank-Backup:** Ausführungshistorie, Audit-Log, Statistiken und vollständiger Datenbestand.
+
+PostgreSQL verwendet beispielsweise `pg_dump`; SQL Server verwendet die native SQL-Server-Sicherung. Details enthält [Import, Export und Backup](../import-export).
+
+## Hochverfügbarkeit
+
+Active/Passive-Betrieb erfordert:
+
+- mindestens zwei NodePilot-Nodes,
+- gemeinsame externe Datenbank,
+- identische JWT-Parameter,
+- `Cluster:Enabled=true`,
+- AES-GCM als Secret-Provider,
+- HAProxy mit Leader-Probe auf `/healthz/leader`,
+- bei OIDC einen gemeinsamen, zertifikatgeschützten Data-Protection-Keyring.
+
+Die vollständige Einrichtung steht unter [High Availability](../enterprise/high-availability).
+
+## Enterprise-Funktionen aktivieren
+
+Empfohlene Reihenfolge:
+
+1. SIEM-Logging aktivieren.
+2. Secret-Provider und gegebenenfalls HA konfigurieren.
+3. Lokales Break-Glass-Admin-Konto prüfen.
+4. LDAP- oder Windows-Konfiguration gegen echte Domain Controller testen.
+5. Dienst neu starten.
+6. `/healthz/ready` und `/healthz/directory` prüfen.
+7. OIDC und SCIM erst nach abgeschlossenem Provider- und Offboarding-Test aktivieren.
+
+LDAP, Windows SSO, OIDC und SCIM bleiben bis zum bestandenen Feldtest als Preview einzuordnen. Details enthält [AD SSO Preview](../enterprise/ldap-windows-sso).
