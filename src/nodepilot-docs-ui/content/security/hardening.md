@@ -1,6 +1,6 @@
 # Hardening-Flags
 
-Guard-Flags sind **hardened by default**: `appsettings.json` shipped sie als `true`, und ein **fehlender** Key liest ebenfalls als `true`. `appsettings.Development.json` relaxt sie auf `false` für lokale Iteration.
+Hardening-Flags sind in `appsettings.json` standardmäßig `true`. Ein fehlender Schlüssel wird ebenfalls als `true` behandelt. `appsettings.Development.json` setzt ausgewählte Flags für lokale Entwicklung auf `false`.
 
 Ausnahme: `PrometheusScrapeAllowAnonymous` ist eine Relaxation und defaultet auf `false`.
 

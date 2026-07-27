@@ -1,6 +1,8 @@
 # Secret-Provider
 
-NodePilot routet alle Verschlüsselung von Secrets at-rest (Machine-Credentials, secret-flagged Globals) durch eine `ISecretProtector`-Abstraktion. Zwei Implementierungen shippen heute; eine dritte (HashiCorp Vault Transit) ist Roadmap.
+NodePilot verschlüsselt gespeicherte Machine-Credentials und als Secret markierte globale Variablen über `ISecretProtector`. Der aktive Provider bestimmt, ob verschlüsselte Werte auf eine Maschine begrenzt oder zwischen Cluster-Nodes übertragbar sind.
+
+Aktuell stehen DPAPI und AES-GCM zur Verfügung. HashiCorp Vault Transit ist als zukünftiger Provider vorgesehen.
 
 ## Provider-Matrix
 

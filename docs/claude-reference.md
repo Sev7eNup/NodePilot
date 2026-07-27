@@ -63,6 +63,8 @@ in den Kontext-Window geladen werden müssen, aber bei Bedarf nachschlagbar sind
 
 Trigger-Sources seeden ihre Event-Daten als `manual.*`-Variablen in den Run (`VariableResolver` schreibt `manual.<key>`), referenzierbar als `{{manual.<name>}}`. Jeder Trigger-Node spiegelt dieselben Keys zusätzlich als eigene `param.*`-Outputs (`{{<triggerVar>.param.<name>}}`). Es gibt **kein** `trigger.*`-Namespace — ein `{{trigger.file.path}}` bleibt unaufgelöstes Literal.
 
+> **Häufigster Autorenfehler:** `{{trigger.doctorEmail}}` statt `{{trigger.param.doctorEmail}}`. Das `param.` fehlt, damit ist der Tail keiner der vier gültigen — die Referenz bleibt wörtlich stehen und wandert unbemerkt in die Config (z.B. als E-Mail-Empfänger). Im Muster-Workflow-Set steckten 9 solcher Referenzen in 3 Workflows.
+
 | Trigger | Injected Keys |
 |---|---|
 | `manualTrigger` | user-deklarierte Parameter-Namen → `{{manual.<name>}}` |
@@ -472,8 +474,13 @@ Dashboard + Workflow-Listen lesen ein **vorberechnetes** `WorkflowStats`-Aggrega
 |---|---|---|
 | `Stats:RefreshIntervalMinutes` | `5` | Refresh-Intervall des Aggregats |
 | `Stats:WindowDays` | `7` | Zeitfenster der aggregierten KPIs |
+| `Stats:DurationSampleCap` | `1000` | Max. Dauer-Samples je Workflow für avg/p50/p95 (neueste zuerst) |
 
 `GET /api/stats/dashboard` liefert daher den letzten Refresh-Stand, nicht Live-Zahlen. Mutationen am Setting schreiben `SETTINGS_STATS_UPDATED` ins AuditLog. `RefreshIntervalMinutes`/`WindowDays` sind hot-reloadable — der Refresher liest sie pro Pass aus der Live-Config (kein Neustart nötig).
+
+**Warum der Sample-Cap:** Zähler und Zeitstempel aggregiert die DB serverseitig, Perzentile lassen sich aber nicht provider-agnostisch in LINQ ausdrücken. Die Dauer-Samples werden deshalb pro Workflow über den deckenden Index `(WorkflowId, StartedAt DESC)` geholt und hart gedeckelt — vorher materialisierte ein Pass **jeden** Erfolgslauf des Fensters im Speicher, alle 5 Minuten, für drei Kennzahlen.
+
+**Dashboard-Query lädt keine Workflow-Definitionen.** Der Endpoint braucht nur Trigger-Metadaten und liest sie aus der denormalisierten Spalte `TriggerTypesJson`; die volle `DefinitionJson` wird ausschließlich für Workflows mit `scheduleTrigger`/`databaseTrigger` nachgeladen (Cron-Ausdruck bzw. Poll-Intervall stehen nur im Graphen). Definitionen sind unbegrenzter Text inklusive aller Inline-Skripte — im Repo-Beispielset 21–42 KB pro Workflow — und der Endpoint ist nicht selten: `useSidebarBadges` pollt ihn **minütlich aus jedem offenen Browser**, auf jeder Seite. Eine `NULL`-Spalte (Zeile älter als der Boot-Backfill) fällt auf die Definition zurück, damit kein Workflow still aus der Armed-Liste fällt.
 
 ## Support-Log & SupportEvents
 

@@ -1,151 +1,204 @@
 # Installation
 
-Diese Anleitung richtet das **Dev-Setup** ein: PostgreSQL, Backend und Frontend einzeln, aus dem Quellcode. Das ist der Weg, wenn du **am Produkt selbst entwickelst**. Rechne mit ca. 10 Minuten; du brauchst eine Windows-Maschine und Admin-Rechte für die Voraussetzungen.
+NodePilot kann als Desktop-App, als Windows-Server-Dienst oder direkt aus dem Quellcode installiert werden. Die Auswahl hängt davon ab, ob ein lokaler Einzelplatz, ein zentraler Team-Server oder eine Entwicklungsumgebung benötigt wird.
 
-> **Du willst NodePilot nur benutzen, nicht daran entwickeln?** Dann ist die **Desktop-App** der schnellere Weg — ein `.exe`-Installer, der PostgreSQL und die .NET-Laufzeit mitbringt und alles als Dienste einrichtet, ohne dass du hier irgendetwas installierst. Siehe [Desktop-App](../deployment/desktop). Für Team-Betrieb mit Zugriff aus dem Netz: [Produktions-Rollout](../deployment/production). Der Vergleich aller drei: [Betriebsarten im Überblick](../deployment/overview).
+## Installationsart auswählen
 
-NodePilot ist **Windows-only** (.NET 10, `net10.0-windows`) und besteht aus drei Komponenten: **PostgreSQL** (Datenbank), **Backend** (ASP.NET Core API, Port 5000) und **Frontend** (React SPA, Port 5173).
-
-> **Reihenfolge zählt:** Erst PostgreSQL starten, **dann** das Backend. Das Backend bricht beim Boot ab, wenn die Datenbank nicht erreichbar ist.
-
-## Voraussetzungen
-
-Installiere diese drei Dinge einmalig (je ein Befehl, oder per grafischem Installer von den Hersteller-Seiten):
-
-| Komponente | Winget-Aufruf (PowerShell/CMD) | Check danach |
+| Anforderung | Installation | Ergebnis |
 |---|---|---|
-| .NET 10 SDK | `winget install Microsoft.DotNet.SDK.10` | `dotnet --version` |
-| Node.js 22.22+ | `winget install OpenJS.NodeJS.LTS` | `node -v` |
-| PostgreSQL 16+ | `winget install PostgreSQL.PostgreSQL` | `"C:\Program Files\PostgreSQL\16\bin\pg_ctl.exe" --version` |
+| NodePilot lokal auf einem Windows-11-System verwenden | **Desktop-App** | Electron-App mit eigener PostgreSQL-Datenbank und Hintergrunddiensten |
+| NodePilot zentral für mehrere Personen betreiben | **Windows-Server** | Windows-Dienst mit HTTPS und externer Datenbank |
+| NodePilot entwickeln oder aus dem Quellcode testen | **Installation aus Quellcode** | PostgreSQL, API und React-Oberfläche als getrennte Entwicklungsprozesse |
 
-> Paket-IDs können sich ändern — notfalls per `winget search dotnet` / `winget search node` / `winget search postgres` die aktuelle ID suchen. Alternativ die Installer von <https://dotnet.microsoft.com/download>, <https://nodejs.org> und <https://www.postgresql.org/download/windows> holen.
+Für den schnellsten lokalen Einstieg ist die Desktop-App vorgesehen. Für Netzwerkzugriff, Webhooks, zentrale Anmeldung oder Hochverfügbarkeit ist das Windows-Server-Deployment erforderlich.
 
-Lade das NodePilot-Repo auf die Maschine und entpacke es, falls noch nicht geschehen:
+## Variante 1: Desktop-App
+
+Die Desktop-App richtet alle benötigten Komponenten auf einem Windows-11-x64-System ein:
+
+- NodePilot API als Windows-Dienst
+- PostgreSQL 16 als lokaler Windows-Dienst
+- Produktoberfläche in einer Electron-Shell
+- lokale HTTPS-Verbindung mit Zertifikat-Pinning
+
+Der Zugriff ist ausschließlich auf dem installierten System möglich. Eingehende Webhooks, externe API-Clients, zentrale Anmeldung und Hochverfügbarkeit stehen in dieser Betriebsart nicht zur Verfügung.
+
+### Installer beziehen
+
+Der Desktop-Installer ist derzeit ein Build-Ziel des Repositorys und kein vorgefertigter signierter Download. Für die Bereitstellung sind zwei Schritte erforderlich:
+
+1. Installer mit `deploy\desktop\Build-DesktopInstaller.ps1` bauen.
+2. Erzeugte `.exe` vor der Verteilung mit Authenticode signieren.
+
+Build-Voraussetzungen, vollständiger Befehl, Installation, Update und Deinstallation stehen unter [Desktop-App](../deployment/desktop).
+
+## Variante 2: Windows-Server
+
+Das Windows-Server-Deployment ist für den zentralen Produktivbetrieb vorgesehen.
+
+Unterstützte Kombinationen:
+
+- SQL Server 2022 oder PostgreSQL 16+
+- LocalSystem oder gMSA als Dienstidentität
+- Single-Node oder Active/Passive-Cluster
+- Kestrel-HTTPS mit Zertifikat aus `LocalMachine\My`
+
+Das Repository erzeugt ein signiertes ZIP-Artefakt. `deploy\Install-NodePilot.ps1` installiert daraus den Windows-Dienst, setzt ACLs und Firewallregeln und prüft den Health-Endpunkt.
+
+Voraussetzungen und vollständige Installationsbefehle stehen unter [Windows-Server-Deployment](../deployment/production).
+
+## Variante 3: Installation aus Quellcode
+
+Diese Variante startet Datenbank, Backend und Produktoberfläche getrennt und dient der Entwicklung sowie technischen Tests. Für den dauerhaften Produktivbetrieb sind Desktop-App oder Windows-Server vorgesehen.
+
+### Ergebnis
+
+Nach Abschluss laufen folgende Komponenten:
+
+| Komponente | Adresse |
+|---|---|
+| PostgreSQL | `127.0.0.1:5432` |
+| NodePilot API | `http://localhost:5000` |
+| Produktoberfläche | `http://localhost:5173` |
+
+Die Produktoberfläche leitet API-, Health- und SignalR-Aufrufe an Port 5000 weiter.
+
+### Voraussetzungen
+
+- Windows
+- Git
+- .NET 10 SDK
+- Node.js 22.22 oder neuer
+- PostgreSQL 16 oder neuer
+- Lokale Administratorrechte für die Installation der Voraussetzungen
+
+Beispielinstallation mit `winget`:
+
+```powershell
+winget install Microsoft.DotNet.SDK.10
+winget install OpenJS.NodeJS.LTS
+winget install PostgreSQL.PostgreSQL
+```
+
+Prüfung:
+
+```powershell
+git --version
+dotnet --version
+node --version
+npm --version
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" --version
+```
+
+Falls eine Paket-ID nicht verfügbar ist, kann `winget search <name>` die aktuelle ID ermitteln. Alternativ stehen die Installationspakete bei den jeweiligen Herstellern bereit.
+
+### 1. Repository bereitstellen
 
 ```powershell
 git clone https://github.com/Sev7eNup/NodePilot.git
-cd NodePilot
+Set-Location NodePilot
 ```
 
-(ab hier laufen alle Befehle aus dem Repo-Root, also dem Ordner, in dem `src\` liegt)
+Alle weiteren Befehle verwenden den Repository-Root als Ausgangspunkt.
 
-## 1. PostgreSQL starten & anlegen
+### 2. PostgreSQL-Datenbank anlegen
 
-Wenn du PostgreSQL gerade frisch installiert hast, existieren noch keine NodePilot-Datenbank und kein Benutzer. Lege beides einmalig an — mit der `psql`-Konsole, die mit PostgreSQL mitkommt:
-
-**PowerShell**
+Ein Entwicklungsbenutzer und eine leere Datenbank werden einmalig angelegt:
 
 ```powershell
-$pg = "C:\Program Files\PostgreSQL\16\bin\psql.exe"
-& $pg -U postgres -c "CREATE ROLE nodepilot WITH LOGIN PASSWORD 'ChangeMe!';"
-& $pg -U postgres -c "CREATE DATABASE nodepilot OWNER nodepilot;"
+$pgClient = "C:\Program Files\PostgreSQL\16\bin\psql.exe"
+& $pgClient -U postgres -c "CREATE ROLE nodepilot WITH LOGIN PASSWORD 'ChangeMe!';"
+& $pgClient -U postgres -c "CREATE DATABASE nodepilot OWNER nodepilot;"
 ```
 
-**CMD**
+`ChangeMe!` ist ausschließlich ein lokaler Beispielwert. Für gemeinsam genutzte oder erreichbare Datenbanken ist ein eigenes starkes Passwort erforderlich.
 
-```cmd
-set PG="C:\Program Files\PostgreSQL\16\bin\psql.exe"
-%PG% -U postgres -c "CREATE ROLE nodepilot WITH LOGIN PASSWORD 'ChangeMe!';"
-%PG% -U postgres -c "CREATE DATABASE nodepilot OWNER nodepilot;"
-```
-
-> `ChangeMe!` ist dein DB-Passwort — notiere es, du brauchst es im nächsten Schritt. Falls `psql` nach einem Passwort für `postgres` fragt, gib das Passwort an, das du während der PostgreSQL-Installation vergeben hast.
-
-PostgreSQL läuft nach der Installation i.d.R. bereits als Windows-Dienst. Wer ein lokales Dev-Cluster von Hand startet (Beispielpfad aus dem Repo):
+PostgreSQL läuft nach der Standardinstallation als Windows-Dienst. Der Dienststatus lässt sich wie folgt prüfen:
 
 ```powershell
-& 'C:\NodePilot-Postgres\pgsql\bin\pg_ctl.exe' start -D 'C:\NodePilot-Postgres\data' -l 'C:\NodePilot-Postgres\data\postgres.log' -w
+Get-Service -Name "postgresql*"
 ```
 
-## 2. Verbindung konfigurieren
+### 3. Datenbankverbindung konfigurieren
 
-Das Backend braucht die Verbindungszeichenkette zur Datenbank. Am einfachsten als Umgebungsvariable im selben Shell-Fenster, bevor du das Backend startest (so musst du keine Config-Datei anfassen):
-
-**PowerShell**
+Die Verbindungszeichenkette wird im Terminal gesetzt, in dem anschließend das Backend startet:
 
 ```powershell
 $env:ConnectionStrings__Postgres = "Host=127.0.0.1;Port=5432;Database=nodepilot;Username=nodepilot;Password=ChangeMe!"
 ```
 
-**CMD**
+Der doppelte Unterstrich bildet die .NET-Konfiguration `ConnectionStrings:Postgres` ab. Die Umgebungsvariable gilt nur für das aktuelle Terminal und vermeidet ein Passwort in einer Repository-Datei.
 
-```cmd
-set ConnectionStrings__Postgres=Host=127.0.0.1;Port=5432;Database=nodepilot;Username=nodepilot;Password=ChangeMe!
-```
+### 4. Backend starten
 
-> `__` (Doppel-Unterstrich) trennt Config-Sektionen in Umgebungsvariablen — `ConnectionStrings__Postgres` mappt auf `ConnectionStrings:Postgres`. Wer es lieber fest einträgt: in `src\NodePilot.Api\appsettings.json` den `Postgres`-Wert setzen (Passwort dann zwingend ergänzen).
-
-## 3. Backend starten
-
-Aus dem Repo-Root, im selben Fenster, in dem du die Umgebungsvariable gesetzt hast:
-
-**PowerShell**
+Im selben Terminal:
 
 ```powershell
-cd src\NodePilot.Api
+Set-Location src\NodePilot.Api
 dotnet run --urls "http://localhost:5000"
 ```
 
-**CMD**
+Der erste Start führt Paket-Restore, Build und Datenbankmigrationen aus. Die API ist bereit, sobald folgende Meldung erscheint:
 
-```cmd
-cd src\NodePilot.Api
-dotnet run --urls "http://localhost:5000"
+```text
+Now listening on: http://localhost:5000
 ```
 
-Der erste Start dauert länger (Restore + Build). Wenn `Now listening on: http://localhost:5000` erscheint, läuft die API. Das Datenbankschema wird beim ersten Start automatisch per EF-Migration angelegt — du musst nichts weiter tun.
-
-Test:
+Health-Prüfung in einem zweiten Terminal:
 
 ```powershell
-curl http://localhost:5000/healthz/live   # → Healthy
+Invoke-RestMethod http://localhost:5000/healthz/live
+Invoke-RestMethod http://localhost:5000/healthz/ready
 ```
 
-## 4. Frontend starten
+`live` bestätigt den laufenden Prozess. `ready` bestätigt zusätzlich die erreichbare Datenbank.
 
-Öffne ein **zweites** Terminal-Fenster (das Backend-Fenster muss offen bleiben), im Repo-Root:
+### 5. Produktoberfläche starten
 
-**PowerShell**
+In einem zweiten Terminal aus dem Repository-Root:
 
 ```powershell
-cd src\nodepilot-ui
+Set-Location src\nodepilot-ui
 npm install
 npm run dev
 ```
 
-**CMD**
+`npm install` ist nach Änderungen an `package-lock.json` erneut erforderlich. Vite startet standardmäßig unter `http://localhost:5173`.
 
-```cmd
-cd src\nodepilot-ui
-npm install
-npm run dev
-```
+### 6. Ersten Admin-Account anlegen
 
-`npm install` einmalig; danach reicht `npm run dev`. Vite startet auf **http://localhost:5173** und leitet API-Aufrufe ans Backend auf `localhost:5000` weiter.
+1. `http://localhost:5173` im Browser öffnen.
+2. Im Setup-Dialog einen lokalen Admin-Benutzernamen und ein Passwort festlegen.
+3. Setup abschließen.
 
-## 5. Erster Login
+Bei einer leeren Datenbank erzeugt das Backend `src\NodePilot.Api\admin-setup.token`. Die lokale Oberfläche verwendet diesen einmaligen Token automatisch. Nach erfolgreichem Setup wird der Token gelöscht. Es existiert kein voreingestelltes Konto.
 
-Im Browser **http://localhost:5173** öffnen. Bei leerer Datenbank führt die UI dich durch die Einrichtung des ersten Admin-Accounts. Den dazu nötigen One-Shot-Token legt das Backend beim ersten Start in `src\NodePilot.Api\admin-setup.token` ab — die UI nutzt ihn automatisch, du musst ihn nicht von Hand eintragen.
+Der nächste Schritt ist der [Schnelleinstieg](./quickstart).
 
-Benutzername und Passwort legst **du** in diesem Schritt fest; es gibt kein voreingestelltes Konto. Danach stehen die Rollen **Admin / Operator / Viewer** zur Verfügung.
+### Stoppen und erneut starten
 
-Weiter geht es im [Quickstart](./quickstart) — erster Workflow, erster Lauf.
+- Frontend: `Ctrl+C` im Vite-Terminal
+- Backend: `Ctrl+C` im API-Terminal
+- Neustart: zuerst PostgreSQL prüfen, danach Backend und Frontend starten
 
-## Häufige Probleme
+Die Daten bleiben in PostgreSQL erhalten.
 
-| Symptom | Ursache & Lösung |
-|---|---|
-| Backend bricht sofort beim Boot ab | PostgreSQL nicht erreichbar. Erst DB starten/prüfen (`curl` auf `/healthz/live` schlägt fehl, solange die API nicht läuft), dann Backend neu starten. |
-| `Authenticating to ... failed` im Backend-Log | Falsches DB-Passwort. `ConnectionStrings__Postgres` erneut setzen (achte auf `ChangeMe!`) und Backend neu starten. |
-| Port 5000 ist bereits belegt | Anderer Prozess horcht auf 5000. PID finden und beenden: `Get-NetTCPConnection -LocalPort 5000` (PowerShell) → `Stop-Process -Id <PID>`, dann neu `dotnet run`. |
-| `MSB3027`/Datei gesperrt beim Rebuild | DLL-Lock durch die laufende API. Ist normal — API stoppen, neu bauen, neu starten. |
-| Port 5173 belegt / Frontend startet nicht | Meist fehlendes `npm install`. Wenn kaputt: `node_modules` löschen und erneut `npm install`. Alternativer Port wird von Vite automatisch gewählt (Meldung im Terminal beachten). |
+### Fehlerdiagnose
 
-## Produktivbetrieb
+| Symptom | Prüfung | Lösung |
+|---|---|---|
+| Backend beendet sich beim Start | `/healthz/live` ist nicht erreichbar; Log enthält Datenbankfehler | PostgreSQL-Dienst und Verbindungszeichenkette prüfen |
+| `password authentication failed` | Passwort in `ConnectionStrings__Postgres` stimmt nicht mit der Rolle überein | Passwort korrigieren oder Rolle in PostgreSQL ändern |
+| Port 5000 ist belegt | `Get-NetTCPConnection -LocalPort 5000` | Belegenden Prozess beenden oder anderen API-Port konfigurieren |
+| `MSB3027` beim Build | Laufender API-Prozess hält eine DLL geöffnet | API stoppen, Build erneut ausführen |
+| Port 5173 ist belegt | `Get-NetTCPConnection -LocalPort 5173` | Prozess beenden oder den von Vite gemeldeten Ersatzport verwenden |
+| Frontend-Abhängigkeiten fehlen | `npm run dev` meldet fehlende Module | `npm install` erneut ausführen |
 
-Das obige Setup ist der **Dev-Pfad** — eine von drei Betriebsarten. Für den produktiven Einsatz gibt es zwei weitere:
+### Grenzen der Quellcode-Installation
 
-- **Desktop-App** — ein `.exe`-Installer, der Datenbank und Laufzeit mitbringt; erreichbar nur auf der eigenen Maschine. Siehe [Desktop-App](../deployment/desktop).
-- **Server-Deployment** — Windows-Dienst mit externer DB und Team-Zugriff. Die fertigen Skripte liegen unter `deploy\` (`Build-Artifact.ps1`, `Install-NodePilot.ps1`, `Update-NodePilot.ps1`, `Uninstall-NodePilot.ps1`). Der Installer braucht zwingend mehrere Parameter — Artifact-Pfad, Zertifikat-Thumbprint, DB-Host/User/Passwort als SecureString. Aufrufsyntax, Parameterliste und Stolperfallen: [Produktions-Rollout](../deployment/production) sowie `deploy\README.md`.
+Die Quellcode-Installation besitzt keinen Windows-Dienst, keinen Autostart und keine produktive TLS-Konfiguration. Für produktive Systeme stehen die beiden oben beschriebenen Installationsvarianten bereit:
 
-Fürs Dev-Setup brauchst du diese Skripte **nicht**. Welche Betriebsart wofür taugt und was im Alltag konkret anders ist: [Betriebsarten im Überblick](../deployment/overview).
+- [Windows-Server-Deployment](../deployment/production) für Teamzugriff, APIs, Webhooks und Hochverfügbarkeit
+- [Desktop-App](../deployment/desktop) für einen lokalen Einzelplatz
+
+Der Vergleich steht unter [Betriebsarten](../deployment/overview).

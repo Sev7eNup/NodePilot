@@ -1,14 +1,132 @@
 # AI-Features
 
-Opt-in (`Llm:Enabled=false` default). OpenAI-kompatibel. Rate-Limit 20/Min/IP. Generierung `[Authorize(Roles = "Admin,Operator")]`, der Chat-Assistent `[Authorize]` (alle Rollen, Änderungen nur Admin/Operator).
+NodePilot bindet ein OpenAI-kompatibles Sprachmodell ein. Unterstützt werden Cloud-Dienste und lokale Endpunkte wie Ollama, LM Studio, vLLM, LocalAI oder llama.cpp.
 
-## Drei Helper
+Die AI-Funktionen sind standardmäßig deaktiviert. Generierte Inhalte werden nie automatisch veröffentlicht oder ausgeführt.
 
-1. **AI Script Generation** — Sparkles-Button im Fullscreen-Editor der `runScript`-Activity. Prompt → der Prompt-Dialog schließt sofort, das generierte PowerShell **tippt sich live** in den Editor (am Cursor oder „komplett ersetzen"). Das **aktuelle Skript** wird als Refactor-Basis mitgeschickt, damit „refactor/fix das Skript" auf dem Bestehenden aufsetzt statt etwas Neues zu erfinden.
-2. **AI Workflow Generation** — "KI generieren"-Button auf der Workflow-Übersicht. Prompt → JSON-Preview mit Stats → User bestätigt → neuer Workflow + Editor öffnet sich.
-3. **AI Workflow Assistant** — lila Button neben dem Standard/Experte-Toggle im Designer öffnet ein angedocktes Chat-Panel. Multi-Turn: erklärt den **aktuellen** Workflow (Markdown) und schlägt auf Wunsch komplette Umbauten vor. Alle Rollen dürfen fragen; nur Admin/Operator können einen Vorschlag übernehmen. Secrets werden vor dem LLM-Call redigiert; Vorschläge werden per Node-ID aufs Original zurückgemergt (Layout/Secrets/Felder bleiben erhalten), als Proposal-Karte gezeigt und auf den Canvas übernommen (gespeichert über den normalen Edit-Lock/Publish-Flow). Stale-Schutz blockt das Übernehmen, wenn sich der Canvas seit der Frage geändert hat. **Auf leerem Canvas** (keine Activities, nur Trigger) schaltet der Assistent in einen From-Scratch-Design-Mode und bekommt dasselbe verzweigte Referenzbeispiel wie die Workflow-Generation — so kommt auch beim ersten Erstellen ein **verzweigter** Workflow statt einer linearen Kette. Chat-Komfort: **Kopieren** (Antwort + Code-Blöcke), **Regenerieren/Retry**, **@Node-Mentions**, **Starter-Vorschläge** im leeren Zustand, ein **Usage-Footer** (Model · Dauer · Tokens · tok/s), **benannte Threads** je Workflow (wechseln / umbenennen / löschen), **reload-persistenter Verlauf** (localStorage, Snapshots/Proposal-JSON gestrippt, nie bei ungespeicherten Workflows, Logout leert), **Markdown-Export** des Threads und eine workflow-scoped **AI-Aktivitäts-Ansicht** (`GET /api/ai/chat/activity/{workflowId}`, Admin/Op, Folder-RBAC). Vorschlags-Komfort: ein **strukturiertes Changelog** (hinzugefügt/entfernt/geändert, reine Layout-Verschiebungen separat markiert), **selektives Übernehmen** (Checkbox je Änderung; Kanten ohne Endpunkt werden übersprungen), **Verfeinern** (den Vorschlag als Basis weiter anpassen), **Rückgängig** + **Layout aufräumen** nach dem Übernehmen sowie **Auswahl-Scoping** (Frage auf markierte Canvas-Nodes beziehen).
+## Einsatzbereiche
 
-## LLM-Konfiguration
+| Bereich | Zweck | Kann Änderungen erzeugen? |
+|---|---|---|
+| **Script-Editor** | PowerShell für eine `runScript`-Activity erstellen oder überarbeiten | Ja, nach manueller Übernahme in den Editor |
+| **Workflow-Designer** | neue Workflows erstellen sowie geöffnete Workflows erklären, prüfen und ändern | Ja, nach Prüfung und Bestätigung |
+| **AI-Chat** | Fragen zu NodePilot, Dokumentation und freigegebenen Betriebsdaten beantworten | Nein, ausschließlich lesend |
+
+## Script-Editor
+
+**Ort:** `runScript`-Activity öffnen, Script-Editor maximieren und die AI-Funktion über das Sparkles-Symbol starten.
+
+**Geeignet für:**
+
+- neues PowerShell-Script aus einer kurzen Aufgabenbeschreibung
+- Ergänzung eines bestehenden Scripts
+- Fehlerkorrektur oder Vereinfachung
+- Anpassung an verfügbare Workflow-Variablen
+
+Ein vorhandenes Script und verfügbare Variablen werden als Kontext berücksichtigt. Das Ergebnis kann am Cursor eingefügt oder als vollständiger Ersatz übernommen werden.
+
+Die Übernahme ändert nur den Inhalt im Editor. Vor dem Speichern und Ausführen ist eine Prüfung auf Befehle, Pfade, Berechtigungen und verwendete Variablen erforderlich.
+
+## Workflow-Designer
+
+Im Workflow-Bereich stehen zwei Funktionen zur Verfügung.
+
+### Neuen Workflow erzeugen
+
+**Ort:** Workflow-Übersicht, Aktion **KI generieren**.
+
+Aus einer Beschreibung erstellt NodePilot einen vollständigen Workflow-Entwurf mit Triggern, Activities und Verbindungen. Vor dem Anlegen erscheinen eine Vorschau, die erzeugte Definition und die Anzahl der Nodes und Edges. Erst die Bestätigung legt den Workflow an.
+
+Geeignet für:
+
+- einen ersten ausführbaren Entwurf
+- typische lineare oder verzweigte Abläufe
+- eine Ausgangsbasis für die weitere Bearbeitung im Designer
+
+Maschinen, Zugangsdaten, Zielpfade und fachliche Bedingungen müssen anschließend geprüft und vervollständigt werden.
+
+### Geöffneten Workflow bearbeiten
+
+**Ort:** Workflow-Designer, Schaltfläche **KI-Assistent**.
+
+Der Assistent kennt den aktuell geöffneten Workflow. Mögliche Aufgaben sind:
+
+- Aufbau und Ablauf erklären
+- mögliche Fehlerstellen beschreiben
+- Ausführungshistorie und fehlgeschlagene Schritte analysieren
+- Error-Handling oder zusätzliche Schritte vorschlagen
+- ausgewählte Nodes über `@` oder die aktuelle Canvas-Auswahl gezielt einbeziehen
+- Layout aufräumen
+
+Änderungen erscheinen zuerst als Vorschlag. Einzelne Nodes und Edges können ausgewählt, übernommen oder verworfen werden. Eine übernommene Änderung kann unmittelbar rückgängig gemacht werden.
+
+Ändert sich der Canvas nach der Erstellung eines Vorschlags, wird der veraltete Vorschlag nicht mehr übernommen. Dadurch werden zwischenzeitliche Bearbeitungen geschützt.
+
+Der workflowbezogene Chat unterstützt mehrere benannte Threads, erneute Generierung, Markdown-Export und eine Ansicht der bisherigen AI-Aktivität.
+
+## Globaler AI-Chat
+
+**Ort:** Navigation, Seite **AI Chat**.
+
+Der globale AI-Chat ist nicht an einen geöffneten Workflow gebunden. Er dient als lesender Assistent für Fragen wie:
+
+- Einrichtung eines Triggers oder Deployments
+- Erklärung vorhandener Workflows
+- Suche nach fehlgeschlagenen oder geplanten Ausführungen
+- Informationen zu Maschinen und Betrieb
+- Fragen zum Quellcode, sofern diese Quelle freigegeben ist
+
+Der Chat kann keine Workflow-Änderungen vorschlagen oder übernehmen. Antworten richten sich nach den administrativ aktivierten Wissensquellen:
+
+| Wissensquelle | Inhalt | Zugriff |
+|---|---|---|
+| **Dokumentation** | Inhalte der NodePilot-Dokumentation | alle authentifizierten Rollen |
+| **Workflows und Betrieb** | freigegebene Workflow-Definitionen, Analyse und Zeitpläne | entsprechend Folder-RBAC |
+| **Quellcode** | bereitgestellter NodePilot-Quellcode | Admin und Operator |
+| **Datenbank** | lesende Fragen zu Betriebsdaten | Admin und Operator |
+
+Die Datenbankquelle führt ausschließlich lesende Abfragen aus. Schreiboperationen werden blockiert. Geschützte Spalten und erkannte Secrets werden nicht an das Modell ausgegeben.
+
+## Abgrenzung
+
+| Aufgabe | Passende Funktion |
+|---|---|
+| PowerShell für einen einzelnen Schritt erstellen | Script-Editor |
+| neuen Workflow aus einer Beschreibung anlegen | KI-Generierung in der Workflow-Übersicht |
+| aktuellen Workflow erklären oder verändern | KI-Assistent im Workflow-Designer |
+| allgemeine Fragen zu NodePilot oder zum Betrieb stellen | globaler AI-Chat |
+| während eines Workflow-Laufs ein Modell aufrufen | `llmQuery`-Activity |
+
+## `llmQuery`-Activity
+
+`llmQuery` ist keine Bedienhilfe, sondern eine Activity innerhalb eines Workflows. Während der Ausführung sendet die Activity einen Prompt an das konfigurierte Modell und gibt den Antworttext an nachfolgende Schritte weiter.
+
+Konfigurierbar sind unter anderem:
+
+- Prompt und optionaler System-Prompt
+- Modell und Endpunkt
+- maximale Antwortlänge und Temperatur
+- Text- oder JSON-Ausgabe
+- Timeout
+
+Standardmäßig verwendet die Activity die globale `Llm`-Konfiguration. Abweichende Einstellungen können am Node gesetzt werden. `Llm:Enabled=false` deaktiviert auch diese Activity.
+
+Weitere Felder und Ausgaben enthält die [`llmQuery`-Referenz](activities-reference).
+
+## Berechtigungen und Sicherheit
+
+- Script- und Workflow-Generierung erfordern die Rolle Admin oder Operator.
+- Lesende Fragen im workflowbezogenen und globalen Chat sind für authentifizierte Rollen möglich.
+- Workflow-Vorschläge dürfen nur mit Bearbeitungsrecht und aktivem Bearbeitungs-Lock übernommen werden.
+- Quellcode- und Datenbankwissen im globalen Chat ist auf Admin und Operator beschränkt.
+- Folder-RBAC begrenzt den Zugriff auf Workflow-Daten.
+- Secrets werden vor Modellanfragen redigiert.
+- Generierte Scripts und Workflow-Änderungen erfordern immer eine fachliche Prüfung.
+- AI-Aktionen und übernommene Vorschläge werden im Audit-Log erfasst.
+
+## LLM konfigurieren
+
+Die Basiskonfiguration gilt für alle AI-Funktionen:
 
 ```json
 {
@@ -25,72 +143,47 @@ Opt-in (`Llm:Enabled=false` default). OpenAI-kompatibel. Rate-Limit 20/Min/IP. G
 }
 ```
 
-| Key | Default | Erklärung |
-|---|---|---|
-| `Enabled` | `false` | Master-Switch. Off → alle AI-Endpoints antworten `503 LLM_DISABLED`. |
-| `BaseUrl` | OpenAI Cloud | OpenAI-kompatibler Chat-Completions-Root. |
-| `ApiKey` | `null` | Cloud braucht Key; lokale Endpoints meist nicht. Empfohlen: env var `Llm__ApiKey` — Plaintext in Settings triggert Startup-Hardening-Warning. |
-| `Model` | `gpt-4o-mini` | Für beide Generierungen. |
-| `MaxTokens` | `4096` | Cap der LLM-Response. |
-| `TimeoutSeconds` | `90` | HTTP-Timeout. |
-| `EnableToolCalling` | `false` | Opt-in. Lässt den Chat (`POST /api/ai/chat`) read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. Aus → keine `tools` gesendet. |
-| `ToolCallMaxDepth` | `6` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Letzte Runde droppt `tools` → erzwingt Text-Antwort. |
+| Einstellung | Bedeutung |
+|---|---|
+| `Enabled` | aktiviert oder deaktiviert sämtliche AI-Funktionen |
+| `BaseUrl` | Basisadresse eines OpenAI-kompatiblen Chat-Completions-Endpunkts |
+| `ApiKey` | API-Schlüssel; für lokale Modelle häufig nicht erforderlich |
+| `Model` | verwendeter Modellname |
+| `MaxTokens` | maximale Länge einer Modellantwort |
+| `TimeoutSeconds` | maximale Wartezeit auf den Modell-Endpunkt |
+| `EnableToolCalling` | erlaubt den Chats, freigegebene lesende Analyse- und Wissensquellen zu verwenden |
+| `ToolCallMaxDepth` | maximale Anzahl aufeinanderfolgender Tool-Aufrufe pro Frage |
 
-**Sofort wirksam (Hot-Reload):** `Llm` ist eine der hot-reloadablen Settings-Sektionen — `ILlmClientFactory` und die Controller-Gates lesen `IOptionsMonitor<LlmOptions>.CurrentValue` pro Verwendung. Ein Save (inkl. des `Llm:Enabled`-Kill-Switches) wirkt ohne Dienst-Neustart.
+Der API-Schlüssel sollte über die Umgebungsvariable `Llm__ApiKey` oder einen Secret-Provider gesetzt werden. Ein Klartextwert in der Konfigurationsdatei erzeugt eine Sicherheitswarnung.
 
-## Endpoints
+Tool-Calling setzt ein Modell mit zuverlässiger Function-Calling-Unterstützung voraus. Es ist außerdem erforderlich, damit der globale AI-Chat die aktivierten Wissensquellen abfragen kann.
 
-| Endpoint | Zweck | Transport |
-|---|---|---|
-| `POST /api/ai/generate-script` | PowerShell aus Prompt (tippt live in Monaco) | SSE (`text/event-stream`) |
-| `POST /api/ai/chat` | Workflow-Assistent (erklären + Änderungen vorschlagen) | SSE (`text/event-stream`) |
-| `POST /api/ai/generate-workflow` | Workflow-JSON aus Prompt | JSON |
-| `POST /api/ai/chat/applied` | Audit `AI_PROPOSAL_APPLIED` beim Übernehmen eines Vorschlags (Admin/Op, Folder-RBAC Edit) | JSON |
-| `GET /api/ai/chat/activity/{workflowId}` | KI-Audit-Einträge eines Workflows, neueste zuerst (Admin/Op, Folder-RBAC Read) | JSON |
+Die LLM-Verbindung kann in den administrativen Einstellungen getestet werden. Änderungen an der `Llm`-Sektion werden ohne Dienstneustart wirksam.
 
-## llmQuery-Activity
+## Globalen AI-Chat konfigurieren
 
-Neben den drei UI-Helpern gibt es eine **LLM-Activity für Workflows**: [`llmQuery`](../activities-reference) ist eine engine-lokale Activity, die einen OpenAI-kompatiblen Prompt→Text-Call aus einem Step heraus ausführt.
+Der globale AI-Chat besitzt einen eigenen Schalter und eigene Wissensquellen:
 
-- Nutzt per Default die globale `Llm:*`-Config; pro Node überschreibbar: `baseUrl`, `model`, `apiKey` (Secret, auto-redigiert) + `maxTokens`, `temperature` (nur pro Node — kein globaler Knopf), `timeoutSeconds`, `jsonMode`, `systemPrompt`.
-- **Gated durch `Llm:Enabled`** — der zentrale Kill-Switch greift auch bei einem Node-eigenen Endpunkt.
-- Teilt Transport + SSRF-Guard mit dem Assistenten über denselben `ILlmClientFactory` (einziger Per-Node-Override-Einstieg).
-- Outputs: `{{step.output}}` = Antworttext; `param.model`, `param.promptTokens`, `param.completionTokens`, `param.totalTokens`, `param.finishReason` (Token-Keys immer gesetzt, `""` wenn der Server keine `usage` liefert).
-- Prompt-excluded — `llmQuery` taucht nicht in der Workflow-Auto-Generierung auf.
+```json
+{
+  "AiKnowledge": {
+    "Enabled": false,
+    "DocsEnabled": true,
+    "OperationalEnabled": true,
+    "SourceCodeEnabled": false,
+    "DbEnabled": false
+  }
+}
+```
 
-## Streaming
+Für einen funktionsfähigen globalen AI-Chat müssen folgende Einstellungen aktiv sein:
 
-`chat` und `generate-script` streamen als **Server-Sent-Events** — die Ausgabe ist ab dem ersten Token sichtbar. Events: `delta` (Text-Token), `building` (chat: Start der Definitions-Bauphase — UI zeigt „Generiere Workflow-Änderung…"), `proposal` (chat: fertiger Vorschlag, am Ende), `done` (Model + Dauer), `error`. Der Stop-Button bzw. das Schließen des Dialogs bricht den Stream sauber ab (kein Fehler, partielle Ausgabe bleibt; Audit `cancelled=true`). Voraussetzung: der LLM-Endpoint unterstützt `stream:true` (alle OpenAI-kompatiblen Server; `stream_options` hat einen Fallback, und der `max_tokens`→`max_completion_tokens`-Quirk neuerer OpenAI-Modelle wird automatisch per Retry abgefangen). `generate-workflow` bleibt non-streaming (JSON-Envelope + Stats-Preview).
+```text
+Llm:Enabled = true
+Llm:EnableToolCalling = true
+AiKnowledge:Enabled = true
+```
 
-Ist `Llm:EnableToolCalling=true`, kann der Chat zusätzlich eine **opt-in read-only Tool-Calling-Schleife** fahren (`tool_choice: auto`): das Modell ruft Analyse-Tools (`analyze_workflow`, `list_activity_types`) auf der secret-redigierten Definition auf sowie **Execution-Log-Tools** (`list_recent_executions`, `get_execution_steps`, `get_failure_context`), mit denen der Assistent vergangene Läufe und Fehlschläge des geöffneten Workflows analysiert — letztere nur bei gespeichertem Workflow und Folder-Read-Recht des Callers; die Outputs sind secret-redigiert und gekürzt. Der Stream erhält dann `tool_call`- und `tool_result`-Events. Begrenzt durch `Llm:ToolCallMaxDepth` (Default `6`); die letzte Runde droppt `tools` und erzwingt eine Text-Antwort.
+Die einzelnen Quellen können unter **Einstellungen → AI-Wissen** unabhängig aktiviert werden. Dokumentation sowie Workflows und Betrieb sind standardmäßig als Quellen vorgesehen. Quellcode und Datenbank sind aus Sicherheitsgründen standardmäßig deaktiviert.
 
-## Globaler Wissens-Chat (`/ai-chat`)
-
-Vom workflow-spezifischen Chat getrennt: ein seitenweiter, **canvas-freier** read-only Q&A-Assistent
-(`POST /api/ai/knowledge/ask`, SSE; Capabilities `GET /api/ai/knowledge/capabilities`). Opt-in via
-`AiKnowledge:Enabled` (zusätzlich zu `Llm:Enabled`), hot-reloadbar. **Vier admin-toggelbare
-Wissensquellen** (Sektion `AiKnowledge`): Docs (`DocsEnabled`), Workflows & Betrieb
-(`OperationalEnabled`, RBAC-folder-scoped — liefert nur die Workflow-Definition, die statische
-Analyse und die Cron-Voraussage; reine Listen wie Workflows/Läufe/Maschinen werden über die
-DB-Quelle per text2sql beantwortet), Quellcode (`SourceCodeEnabled`, Admin/Op) und
-**DB / text2sql** (`DbEnabled`, Admin/Op) — letzteres default aus. Zudem `read_settings` (Admin/Op).
-
-**text2sql**: das LLM übersetzt die Frage in provider-spezifisches SQL. `list_db_tables` liefert Dialekt
-und Schema, `get_db_table` zusätzlich Foreign Keys. `execute_readonly_sql` akzeptiert genau ein Statement
-bis 64 KiB; ein zentraler Executor-Guard erzwingt die Read-only-Whitelist und blockiert mutierende Keywords,
-gefährliche Routinen und `EXPLAIN ANALYZE`. Geschützte Spalten werden im Schema verborgen und bereits bei
-jeder SQL-Referenz abgelehnt (auch Alias-/Ausdrucksvarianten); Result-Masking und der Redactor bleiben als
-zweite Schicht. Row-Cap 200; große Resultate bleiben valides JSON mit Truncation-Hinweis. DB-Tools verwenden
-Strict Function Schemas mit automatischem Best-Effort-Fallback für inkompatible lokale Endpoints. Die
-Capability erscheint nur bei aktivem `Llm:EnableToolCalling`.
-
-## Hardening
-
-- SSRF-Block, `UseProxy=false`, Klartext-ApiKey-Warning.
-- **Prompt-Injection-Mitigation:** Schema-only, User-reviewed Insert; der Chat behandelt Workflow-JSON/Configs/Scripts als untrusted Daten (eigener Context-Block in der User-Message) und **redigiert Secrets** vor jedem LLM-Call.
-- **Kein DB-Write durch die KI:** Chat-Vorschläge werden serverseitig per Node-ID aufs Original gemergt und nur auf den Canvas übernommen — Persistenz läuft über den lock-gegateten `PUT`.
-- **Drift-Schutz:** `PromptCatalogDriftTest.cs`.
-
-## Audit
-
-`AI_SCRIPT_GENERATED`, `AI_WORKFLOW_GENERATED`, `AI_WORKFLOW_EXPLAINED`, `AI_PROPOSAL_APPLIED` (mit Node-/Edge-Counts beim Übernehmen eines Vorschlags).
+Optional lassen sich eigene Wurzelverzeichnisse für Dokumentation und Quellcode sowie Grenzen für Dateigröße und Trefferzahl setzen. Ohne eigene Pfade verwendet NodePilot die mit der Installation ausgelieferten Wissensverzeichnisse.

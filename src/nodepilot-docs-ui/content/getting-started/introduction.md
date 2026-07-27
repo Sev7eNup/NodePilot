@@ -1,49 +1,66 @@
 # Einführung
 
-**NodePilot** ist ein schlanker Ersatz für Microsoft System Center Orchestrator (SCOrch). Du baust Abläufe grafisch aus Bausteinen zusammen, NodePilot führt sie aus — auf Windows-Maschinen im Netz, **agentless** über WinRM. Auf den Zielmaschinen muss nichts installiert werden.
+NodePilot ist eine Workflow-Orchestrierung für Windows-Umgebungen. Arbeitsabläufe werden grafisch modelliert und automatisch ausgeführt. Für die Ausführung auf entfernten Windows-Systemen verwendet NodePilot WinRM. Auf den Zielsystemen ist kein zusätzlicher Agent erforderlich.
 
-## Was ein Workflow ist
+## Grundbegriffe
 
-Ein Workflow ist ein Ablaufplan auf einer Canvas. **Nodes** sind die Arbeitsschritte — ein PowerShell-Skript ausführen, einen Dienst neu starten, eine REST-API aufrufen, eine Mail verschicken. **Edges** verbinden sie und entscheiden, wie es weitergeht, etwa „nur wenn der Schritt davor erfolgreich war".
+| Begriff | Bedeutung |
+|---|---|
+| **Workflow** | Vollständiger Ablauf aus Startpunkt, Arbeitsschritten und Verbindungen |
+| **Trigger** | Startpunkt eines Workflows, zum Beispiel ein Zeitplan oder ein manueller Start |
+| **Activity** | Einzelner Arbeitsschritt, zum Beispiel ein PowerShell-Skript oder ein REST-Aufruf |
+| **Node** | Darstellung eines Triggers oder einer Activity im Designer |
+| **Edge** | Verbindung zwischen zwei Nodes; kann eine Bedingung enthalten |
+| **Execution** | Ein einzelner Lauf eines Workflows |
 
-Ein typisches Beispiel: *jede Nacht um 2 Uhr auf zwölf Servern den freien Platz auf `C:` prüfen und bei unter 10 % eine Mail ans Team schicken.* Ein Trigger startet den Lauf, ein Schritt sammelt die Werte, eine Bedingung an der Edge entscheidet, ob der Mail-Schritt überhaupt läuft.
+Beispiel: Ein Workflow prüft jede Nacht den freien Speicherplatz auf mehreren Servern. Ein Zeitplan startet den Lauf. Eine Activity liest den Speicherplatz. Eine Edge-Bedingung leitet nur kritische Ergebnisse an eine E-Mail-Activity weiter.
 
-## Die vier Teile
+## Hauptkomponenten
 
-- **Designer** — die Oberfläche, in der du Workflows baust. Jede Activity hat ihren eigenen Node-Typ mit Icon und Eigenschaften-Panel.
-- **Engine** — führt die Workflows aus: mehrere Schritte parallel, Wiederholung bei Fehlern, Timeouts und ein Debugger mit Breakpoints.
-- **Trigger** — starten Läufe von selbst: Zeitplan, neue Datei, Datenbankzeile, Windows-Eventlog, eingehender HTTP-Aufruf. Oder du drückst auf Start.
-- **API & CLI** — alles, was die Oberfläche kann, geht auch über die REST-API oder das Kommandozeilen-Tool `np`.
+- **Designer:** Grafische Erstellung und Bearbeitung von Workflows.
+- **Engine:** Ausführung von Activities, parallelen Pfaden, Wiederholungen, Timeouts und Sub-Workflows.
+- **Trigger-System:** Automatischer Start durch Zeitplan, Dateiänderung, Datenbankabfrage, Windows-Eventlog oder HTTP-Aufruf.
+- **API und CLI:** Automatisierung der Verwaltungs- und Ausführungsfunktionen über REST oder das Kommandozeilenwerkzeug `np`.
+- **Datenbank:** Speicherung von Workflows, Konfiguration, Ausführungen und Audit-Daten.
 
-## Wo ein Schritt läuft
+## Ausführungsorte
 
-Jeder Schritt läuft entweder **auf einer Zielmaschine** (über WinRM — Dienste steuern, Registry lesen, Dateien anfassen) oder **im NodePilot-Prozess selbst** (REST-Aufrufe, SQL, E-Mail, Verzweigungen). Zwei Activities können beides, je nach Konfiguration. Welche wohin gehört: [Activity-Typen & Scopes](../concepts/activities).
+Eine Activity läuft an einem von zwei Orten:
 
-## Wie Daten weiterfließen
+| Ausführungsort | Beispiele |
+|---|---|
+| **NodePilot-Host** | REST, SQL, E-Mail, Bedingungen, lokale PowerShell-Ausführung |
+| **Remote-Windows-System** | Dienste, Registry, Dateien, WMI und PowerShell über WinRM |
 
-Jeder Schritt legt sein Ergebnis im **Datenbus** ab. Spätere Schritte greifen per Platzhalter darauf zu:
+Einige Activities unterstützen beide Ausführungsorte. Die Zuordnung aller Typen steht unter [Activity-Typen und Scopes](../concepts/activities).
 
-```
-{{hostInfo.output}}    # Ausgabe des Schritts "hostInfo"
-{{hostInfo.success}}   # "true" / "false"
+## Daten zwischen Schritten
+
+Jede Activity kann ein Ergebnis im Datenbus ablegen. Spätere Activities greifen über Variablen darauf zu:
+
+```text
+{{hostInfo.output}}    # Ausgabe der Activity mit outputVariable "hostInfo"
+{{hostInfo.success}}   # Ausführungsstatus als "true" oder "false"
 {{globals.NAME}}       # globale Variable
 ```
 
-Mehr dazu: [Datenbus & Variablen](../concepts/data-bus).
+Weitere Regeln und Beispiele enthält [Datenbus und Variablen](../concepts/data-bus).
 
-## Wie du NodePilot betreibst
+## Unterstützte Betriebsarten
 
-Drei Betriebsarten — die Engine kann in allen dasselbe, der Unterschied ist, **wer zugreifen kann** und **wie viel du selbst installierst**:
+NodePilot besitzt drei unterstützte Betriebsarten:
 
-- **Desktop-App** — ein `.exe`-Installer bringt Datenbank und Laufzeit mit und richtet alles als Dienste ein. Erreichbar nur auf dieser einen Maschine. Der schnellste Weg zu einem produktiven Einzelplatz.
-- **Server-Deployment** — Windows-Dienst mit externer Datenbank, erreichbar fürs ganze Team, eingehende Webhooks funktionieren.
-- **Dev-Setup** — Backend und Frontend von Hand starten. Zum Entwickeln am Produkt selbst.
+| Betriebsart | Zweck |
+|---|---|
+| **Installation aus Quellcode** | Entwicklung und Test aus dem Repository |
+| **Windows-Server-Deployment** | Produktivbetrieb für Teams, APIs, Webhooks und optional Hochverfügbarkeit |
+| **Desktop-App** | Produktiver Einzelplatz auf Windows 11, ausschließlich lokal erreichbar |
 
-Der vollständige Vergleich mit allen Alltags-Konsequenzen: [Betriebsarten im Überblick](../deployment/overview).
+Die Workflow-Engine ist in allen Betriebsarten gleich. Unterschiede bestehen bei Installation, Netzwerkzugriff, Dienstkonto, Datenbank, Authentifizierung und Hochverfügbarkeit. Der vollständige Vergleich steht unter [Betriebsarten](../deployment/overview).
 
-## Wo es weitergeht
+## Empfohlener Einstieg
 
-- [Quickstart](./quickstart) — in wenigen Minuten zum ersten laufenden Workflow.
-- [Installation](./installation) — das Dev-Setup Schritt für Schritt.
-- [Architektur](./architecture) — Solution-Struktur, Dep-Graph, Execution-Modell.
-- [Konzepte](../concepts/workflows) — Workflows, Activities, Trigger und Datenbus im Detail.
+1. [Betriebsart auswählen](../deployment/overview).
+2. [Installation](./installation) öffnen und die passende Variante ausführen.
+3. [Ersten Workflow ausführen](./quickstart).
+4. [Architektur](./architecture) und [Konzepte](../concepts/workflows) nach Bedarf vertiefen.

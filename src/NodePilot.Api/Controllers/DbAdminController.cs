@@ -482,6 +482,15 @@ public class DbAdminController : ControllerBase
                 "Query references a protected column. Secret columns (password hashes, encrypted "
                 + "credentials, global-variable values) cannot be read through raw SQL.", null));
 
+        // A row serializer defeats BOTH name-based layers at once: it never names the hidden column
+        // and it hands the whole row back under a result-column name the mask does not know.
+        if (mode == "read" && _secretColumns.ReferencesProtectedRowProjection(req.Sql))
+            return BadRequest(new DbAdminQueryError("protected_row_projection",
+                "Query serializes a whole row of a table that holds secret columns (to_json/"
+                + "row_to_json/::text/FOR JSON and friends). That would return password hashes or "
+                + "encrypted credentials past the column mask. List the columns you actually need "
+                + "explicitly instead.", null));
+
         if (mode == "write")
         {
             if (!_executor.Options.AllowWriteQueries)

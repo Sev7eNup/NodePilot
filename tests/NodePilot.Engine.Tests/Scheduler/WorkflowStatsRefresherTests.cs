@@ -57,9 +57,17 @@ public class WorkflowStatsRefresherTests
     }
 
     private static WorkflowStatsRefresher CreateService(IServiceScopeFactory factory) =>
-        new(factory, EmptyConfig(),
+        CreateService(factory, EmptyConfig());
+
+    private static WorkflowStatsRefresher CreateService(IServiceScopeFactory factory, IConfiguration config) =>
+        new(factory, config,
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             NullLogger<WorkflowStatsRefresher>.Instance);
+
+    private static IConfiguration ConfigWith(params (string Key, string Value)[] values) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(values.ToDictionary(v => v.Key, v => (string?)v.Value))
+            .Build();
 
 
     [Fact]
@@ -236,6 +244,103 @@ public class WorkflowStatsRefresherTests
             rowB.TotalExecutions.Should().Be(1);
             rowB.SucceededWindow.Should().Be(0);
             rowB.FailedWindow.Should().Be(1);
+        }
+        finally { conn.Dispose(); }
+    }
+
+    /// <summary>
+    /// Duration samples are capped so the pass stays bounded on a large execution table. The
+    /// cap must take the NEWEST runs — a sample of week-old runs would describe a baseline the
+    /// workflow has already moved away from. Counts must stay exact regardless: they come from
+    /// a server-side aggregation, not from the sample.
+    /// </summary>
+    [Fact]
+    public async Task RefreshOnceAsync_SampleCap_UsesNewestRunsAndKeepsCountsExact()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var wf = Wf("Busy");
+            db.Workflows.Add(wf);
+            await db.SaveChangesAsync();
+
+            // 10 old slow runs (5000 ms), then 3 recent fast ones (10 ms). A cap of 3 must see
+            // only the fast ones.
+            var baseTime = DateTime.UtcNow.AddDays(-3);
+            for (var i = 0; i < 10; i++)
+                db.WorkflowExecutions.Add(Exec(wf.Id, ExecutionStatus.Succeeded, baseTime.AddMinutes(i), 5000));
+            for (var i = 0; i < 3; i++)
+                db.WorkflowExecutions.Add(Exec(wf.Id, ExecutionStatus.Succeeded, DateTime.UtcNow.AddMinutes(-i - 1), 10));
+            await db.SaveChangesAsync();
+
+            await CreateService(factory, ConfigWith(("Stats:DurationSampleCap", "3")))
+                .RefreshOnceAsync(7, CancellationToken.None);
+
+            var row = await db.WorkflowStats.AsNoTracking().FirstAsync(r => r.WorkflowId == wf.Id);
+            row.SucceededWindow.Should().Be(13, "counts are aggregated server-side, never sampled");
+            row.TotalExecutions.Should().Be(13);
+            row.AvgDurationMsWindow.Should().BeApproximately(10, 0.5,
+                "only the three newest runs are sampled at a cap of 3");
+            row.P95DurationMsWindow.Should().BeLessThan(100,
+                "the old 5000 ms runs must not leak into the capped sample");
+        }
+        finally { conn.Dispose(); }
+    }
+
+    /// <summary>
+    /// Below the cap nothing changes — every run in the window contributes, so the percentile
+    /// still spans the full spread.
+    /// </summary>
+    [Fact]
+    public async Task RefreshOnceAsync_BelowSampleCap_UsesEveryRunInTheWindow()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var wf = Wf("Quiet");
+            db.Workflows.Add(wf);
+            await db.SaveChangesAsync();
+
+            var when = DateTime.UtcNow.AddHours(-2);
+            db.WorkflowExecutions.AddRange(
+                Exec(wf.Id, ExecutionStatus.Succeeded, when, 100),
+                Exec(wf.Id, ExecutionStatus.Succeeded, when.AddMinutes(1), 200),
+                Exec(wf.Id, ExecutionStatus.Succeeded, when.AddMinutes(2), 300));
+            await db.SaveChangesAsync();
+
+            await CreateService(factory, ConfigWith(("Stats:DurationSampleCap", "1000")))
+                .RefreshOnceAsync(7, CancellationToken.None);
+
+            var row = await db.WorkflowStats.AsNoTracking().FirstAsync(r => r.WorkflowId == wf.Id);
+            row.AvgDurationMsWindow.Should().BeApproximately(200, 0.5);
+            row.P50DurationMsWindow.Should().BeApproximately(200, 0.5);
+        }
+        finally { conn.Dispose(); }
+    }
+
+    /// <summary>
+    /// A workflow with runs in the window but none of them successful must not get a duration
+    /// sample — and must still get its counts. This is the branch the per-workflow query skips.
+    /// </summary>
+    [Fact]
+    public async Task RefreshOnceAsync_OnlyFailedRuns_LeavesDurationsNullButKeepsCounts()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var wf = Wf("AlwaysFails");
+            db.Workflows.Add(wf);
+            await db.SaveChangesAsync();
+
+            db.WorkflowExecutions.Add(Exec(wf.Id, ExecutionStatus.Failed, DateTime.UtcNow.AddHours(-1), 42));
+            await db.SaveChangesAsync();
+
+            await CreateService(factory).RefreshOnceAsync(7, CancellationToken.None);
+
+            var row = await db.WorkflowStats.AsNoTracking().FirstAsync(r => r.WorkflowId == wf.Id);
+            row.FailedWindow.Should().Be(1);
+            row.AvgDurationMsWindow.Should().BeNull();
+            row.P95DurationMsWindow.Should().BeNull();
         }
         finally { conn.Dispose(); }
     }

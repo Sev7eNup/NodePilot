@@ -84,6 +84,18 @@ internal static class PowerShellActivitySupport
         public int Length => Match.Length;
     }
 
+    /// <summary>
+    /// Collects every template extent in the script from both patterns, ordered by position.
+    ///
+    /// <para>The two patterns are not disjoint: a global variable may legitimately be named
+    /// <c>output</c>, <c>error</c> or <c>success</c>, and <c>{{globals.output}}</c> then matches
+    /// GlobalsPattern (name = "output") AND StepPattern (step = "globals", tail = "output") over
+    /// the exact same span. Both would land in the list, and the right-to-left replacement loop
+    /// would then cut the span twice — the second cut from a buffer the first had already
+    /// rewritten, shredding the surrounding script text. Overlaps are therefore dropped here,
+    /// with the global interpretation winning, which is also the precedence
+    /// <see cref="VariableResolver"/> applies by replacing globals before step outputs.</para>
+    /// </summary>
     private static List<TemplateExpression> FindTemplateExpressions(string script)
     {
         var expressions = new List<TemplateExpression>();
@@ -93,8 +105,22 @@ internal static class PowerShellActivitySupport
         expressions.AddRange(VariableResolver.StepPattern.Matches(script)
             .Cast<Match>()
             .Select(match => new TemplateExpression(match, IsGlobal: false)));
-        expressions.Sort(static (left, right) => left.Index.CompareTo(right.Index));
-        return expressions;
+
+        // Position first; at equal position the global wins, so it is the one kept below.
+        expressions.Sort(static (left, right) => left.Index != right.Index
+            ? left.Index.CompareTo(right.Index)
+            : right.IsGlobal.CompareTo(left.IsGlobal));
+
+        var deduped = new List<TemplateExpression>(expressions.Count);
+        var nextFreeIndex = 0;
+        foreach (var expression in expressions)
+        {
+            if (expression.Index < nextFreeIndex) continue;
+            deduped.Add(expression);
+            nextFreeIndex = expression.Index + expression.Length;
+        }
+
+        return deduped;
     }
 
     private static TemplateContext[] AnalyzeTemplateContexts(

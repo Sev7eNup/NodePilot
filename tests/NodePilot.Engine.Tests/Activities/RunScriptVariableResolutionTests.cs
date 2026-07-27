@@ -80,6 +80,24 @@ public class RunScriptVariableResolutionTests
         result.Output.Should().Contain("production");
     }
 
+    /// <summary>
+    /// End-to-end companion to <c>TemplateExpressionOverlapTests</c>: a global named like a
+    /// step tail must reach the script as its value. The exact-text assertions live over there,
+    /// because a corrupted script still runs and still prints a superstring of the value.
+    /// </summary>
+    [Fact]
+    public async Task GlobalNamedOutput_ReachesTheScriptAsItsValue()
+    {
+        var vars = new Dictionary<string, string> { ["globals.output"] = "payload-value" };
+        var result = await _activity.ExecuteAsync(
+            Ctx(vars),
+            Script("Write-Output {{globals.output}}"),
+            CancellationToken.None);
+
+        result.Success.Should().BeTrue();
+        result.Output.Should().Contain("payload-value");
+    }
+
     [Fact]
     public async Task ApostropheInValue_EscapedAsSingleQuotePair()
     {

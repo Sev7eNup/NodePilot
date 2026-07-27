@@ -1,6 +1,9 @@
 # Import / Export & Backup
 
-NodePilot hat zwei getrennte Artefakte: **Workflow-Export** (Teilen) und **System-Configuration-Backup** (DR).
+NodePilot verwendet zwei getrennte Exportformate:
+
+- **Workflow-Export:** Austausch einzelner oder mehrerer Workflow-Definitionen.
+- **System-Configuration-Backup:** Wiederherstellung einer vollständigen Konfiguration im Disaster-Recovery-Fall.
 
 ## Workflow Import/Export
 

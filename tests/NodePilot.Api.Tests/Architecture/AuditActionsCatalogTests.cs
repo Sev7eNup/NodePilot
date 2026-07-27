@@ -306,17 +306,7 @@ public class AuditActionsCatalogTests
             .Where(f => f is { IsLiteral: true, IsInitOnly: false } && f.FieldType == typeof(string))
             .ToDictionary(f => f.Name, f => (string)f.GetRawConstantValue()!, StringComparer.Ordinal);
 
-    private static IEnumerable<string> ProductionSourceFiles()
-    {
-        var srcDir = Path.Combine(FindRepoRoot(), "src");
-        Directory.Exists(srcDir).Should().BeTrue($"production source directory must exist at {srcDir}");
-        return Directory.EnumerateFiles(srcDir, "*.cs", SearchOption.AllDirectories)
-            .Where(p => !HasPathSegment(p, "obj") && !HasPathSegment(p, "bin"));
-    }
-
-    private static bool HasPathSegment(string path, string segment) =>
-        path.Contains($"{Path.DirectorySeparatorChar}{segment}{Path.DirectorySeparatorChar}",
-            StringComparison.OrdinalIgnoreCase);
+    private static IEnumerable<string> ProductionSourceFiles() => ProductionSources.CSharpFiles();
 
     private static string FindRepoRoot()
     {

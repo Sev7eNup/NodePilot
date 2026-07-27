@@ -210,7 +210,7 @@ describe('ActivityNode', () => {
     // surfaces here instead of only live.
     it.each([
       ['sql', 'cylinder'],
-      ['restApi', 'chevronLeft'],
+      ['restApi', 'browser'],
       ['runScript', 'hexPointy'],
       ['generateText', 'pillH'],
       ['delay', 'stopwatch'],

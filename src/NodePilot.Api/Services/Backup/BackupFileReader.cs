@@ -15,6 +15,15 @@ public sealed class BackupFormatException(string message) : Exception(message);
 /// </summary>
 public sealed class BackupFileReader
 {
+    /// <summary>
+    /// Accepted range for the file-supplied PBKDF2 iteration count. The floor stays below
+    /// <see cref="PassphraseSecretProtector.DefaultIterations"/> so backups written by older
+    /// builds keep restoring, but high enough to remain a real work factor; the ceiling bounds
+    /// how much CPU one uploaded file can demand before its MAC has been verified.
+    /// </summary>
+    internal const int MinKdfIterations = 100_000;
+    internal const int MaxKdfIterations = 2_000_000;
+
     public JsonObject Envelope { get; }
     public JsonObject Sections { get; }
     public string Schema { get; }
@@ -75,6 +84,15 @@ public sealed class BackupFileReader
         {
             throw new BackupFormatException("Backup 'crypto' header is malformed.");
         }
+
+        // The iteration count steers a PBKDF2 run over attacker-supplied input, and it is read
+        // before the file's MAC can be checked (the MAC key is itself derived from it). Without
+        // a ceiling, a single uploaded file can pin a core for minutes; without a floor, a
+        // hand-crafted file downgrades the KDF that protects the secrets it carries. Exports
+        // always write PassphraseSecretProtector.DefaultIterations.
+        if (iterations is < MinKdfIterations or > MaxKdfIterations)
+            throw new BackupFormatException(
+                $"Backup 'crypto.iterations' must be between {MinKdfIterations} and {MaxKdfIterations}.");
 
         return new BackupFileReader(env, sections, salt, iterations, verifier, mac);
     }

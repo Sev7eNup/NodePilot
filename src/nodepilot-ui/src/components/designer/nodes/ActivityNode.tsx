@@ -1,6 +1,6 @@
 import { Chat, FolderTree, PauseFilled, PlayFilledAlt, Time, Timer, ViewOff } from '@carbon/icons-react';
 import { Handle, type NodeProps } from '@xyflow/react';
-import { useState, useRef, memo, createContext, useContext, useCallback } from 'react';
+import { useState, useRef, memo, createContext, useContext, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import { useDesignStore, NODE_SCALES, LABEL_FONT_OFFSETS, MACHINE_COLORS } from '../../../stores/designStore';
@@ -62,6 +62,9 @@ function resolveLiveStyle(status: string | undefined):
  */
 const FAILED_GLOW_SHADOW = '0 0 14px color-mix(in srgb, var(--color-error) 55%, transparent)';
 
+/** Stable identity for config-less nodes — a fresh `{}` would defeat the config-keyed memos. */
+const EMPTY_CONFIG: Record<string, unknown> = Object.freeze({});
+
 function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, positionAbsoluteY, width, height }: NodeProps) {
   const { t } = useTranslation('designer');
   const nodeStyle = useDesignStore((s) => s.nodeStyle);
@@ -80,9 +83,15 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const effectiveLabelFont = Math.max(6, scale.labelFont + labelOffset);
   const activityType = (data.activityType as string) || 'runScript';
   const label = (data.label as string) || activityType;
-  const config = (data.config as Record<string, unknown>) || {};
+  // Shared frozen fallback rather than a fresh {} per render, so the memos below actually hit
+  // for nodes that carry no config at all.
+  const config = (data.config as Record<string, unknown>) || EMPTY_CONFIG;
   const ac = getActivityVisual(activityType);
-  const summary = summarizeActivityConfig(activityType, config);
+  // memo() only shields this component from *other* nodes' updates — dragging this node, or
+  // flipping any subscribed design-store value, still re-renders it. Both derivations below are
+  // pure functions of data that does not change during a drag, and previewSchedule runs a cron
+  // parser, so they are memoised on their real inputs instead of on every frame.
+  const summary = useMemo(() => summarizeActivityConfig(activityType, config), [activityType, config]);
   const isEntryTrigger = TRIGGER_ACTIVITY_TYPES.has(activityType);
 
   // Shape system: trigger nodes become left-pointing pentagons (a mirrored bookend to
@@ -164,19 +173,17 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   // the countdown — the Quartz job is actually deleted (see TriggerOrchestrator). The old
   // "still running" display was just a client-side cron calculation with no real status check.
   const workflowDisabled = (data as Record<string, unknown>).__workflowEnabled === false;
+  const cronExpression = (config.cronExpression as string) || '';
   const schedulePreview: { paused: true } | { paused: false; relative: string; absolute: string } | null
-    = activityType === 'scheduleTrigger'
-      ? (workflowDisabled
-          ? { paused: true }
-          : (() => {
-              const cronStr = (config.cronExpression as string) || '';
-              if (!cronStr.trim()) return null;
-              const p = previewSchedule(cronStr, 1);
-              if (p.error || p.fireTimes.length === 0) return null;
-              const next = p.fireTimes[0];
-              return { paused: false as const, relative: relativeFromNow(next), absolute: next.toLocaleString(undefined, { hour12: false }) };
-            })())
-      : null;
+    = useMemo(() => {
+      if (activityType !== 'scheduleTrigger') return null;
+      if (workflowDisabled) return { paused: true as const };
+      if (!cronExpression.trim()) return null;
+      const p = previewSchedule(cronExpression, 1);
+      if (p.error || p.fireTimes.length === 0) return null;
+      const next = p.fireTimes[0];
+      return { paused: false as const, relative: relativeFromNow(next), absolute: next.toLocaleString(undefined, { hour12: false }) };
+    }, [activityType, workflowDisabled, cronExpression]);
   // Author-disabled: the engine treats this node as "skipped" (see WorkflowEngine.ExecuteAsync
   // → disabledNodeIds). We signal that visually with dimmed opacity, a dashed border, and an
   // EyeOff badge; the node stays selectable and editable so the author can re-enable it later.

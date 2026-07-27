@@ -1,5 +1,7 @@
 # Authentifizierung & Rollen
 
+NodePilot verwaltet widerrufbare serverseitige Sessions. Eine erfolgreiche Anmeldung erzeugt ein JWT-Cookie und einen CSRF-Token. Rollen und Folder-RBAC bestimmen die verfügbaren Aktionen.
+
 ## Session, JWT und BCrypt
 
 - Jeder Login erzeugt eine serverseitig gespeicherte, widerrufbare Session. Die absolute Lebensdauer beträgt standardmäßig acht Stunden; Refresh verlängert diese Grenze nicht.
@@ -53,7 +55,7 @@ Deaktivierte Methoden melden `false` und `null`. `local` ist nur bei `LocalLogin
 
 ## Beispiele
 
-Login setzt das httpOnly `np_auth`-Cookie + ein `np_csrf`-Cookie. Browser-Caller bekommen nur die Identität zurück; der Token **in** der Response-Body fehlt bewusst. Wer den Token als Bearer braucht (CLI, Skripte ohne Cookie-Jar), setzt den Header `X-Auth-Token-Response: true`.
+Login setzt das httpOnly `np_auth`-Cookie und ein `np_csrf`-Cookie. Browser-Clients erhalten nur die Identität; die Response enthält bewusst keinen Token. CLI-Aufrufe und Skripte ohne Cookie-Jar fordern einen Bearer-Token mit dem Header `X-Auth-Token-Response: true` an.
 
 ```bash
 NP=http://localhost:5000

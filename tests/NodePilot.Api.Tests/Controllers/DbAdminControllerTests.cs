@@ -817,6 +817,30 @@ public class DbAdminControllerTests
         bad.Value.Should().BeOfType<DbAdminQueryError>().Subject.Code.Should().Be("protected_column");
     }
 
+    /// <summary>
+    /// Security audit 2026-07-26: a whole-row serializer names no protected column (so the check
+    /// above stays quiet) and returns the row under a harmless result-column name (so the wildcard
+    /// mask below finds nothing to replace). Both name-based layers miss it; this is the third.
+    /// </summary>
+    [Theory]
+    [InlineData("SELECT to_json(u) FROM Users u")]
+    [InlineData("SELECT u::text FROM Users u")]
+    [InlineData("SELECT row_to_json(c) FROM Credentials c")]
+    [InlineData("SELECT to_json(g) FROM GlobalVariables g")]
+    [InlineData("SELECT * FROM Users FOR JSON AUTO")]
+    public async Task ExecuteQuery_ReadMode_RejectsWholeRowProjectionOverProtectedTable(string sql)
+    {
+        var (ctrl, db) = NewController();
+        db.Users.Add(AdminUser());
+        await db.SaveChangesAsync();
+
+        var result = await ctrl.ExecuteQuery(new DbAdminQueryRequest(sql, null), CancellationToken.None);
+
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        bad.Value.Should().BeOfType<DbAdminQueryError>().Subject.Code
+            .Should().Be("protected_row_projection");
+    }
+
     [Fact]
     public async Task ExecuteQuery_ReadMode_MasksProtectedColumnsOfWildcardSelect()
     {

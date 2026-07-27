@@ -9,6 +9,9 @@ namespace NodePilot.Api.Services.DbAdmin;
 /// </summary>
 internal static class DbAdminReadOnlySqlGuard
 {
+    /// <summary>Pseudo-token emitted by the tokenizer for PostgreSQL's <c>::</c> cast operator.</summary>
+    public const string CastOperator = "::";
+
     private static readonly HashSet<string> DangerousKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
         // REPLACE is deliberately absent: it is a standard string function on every supported
@@ -70,6 +73,29 @@ internal static class DbAdminReadOnlySqlGuard
     public static bool ReferencesAnyIdentifier(string sql, IReadOnlySet<string> identifiers)
         => Tokenize(sql).Any(token => identifiers.Contains(token.Value));
 
+    /// <summary>
+    /// True when <paramref name="second"/> follows <paramref name="first"/> as consecutive unquoted
+    /// tokens — the shape needed to spot multi-word constructs such as SQL Server's
+    /// <c>FOR JSON</c>. A quoted identifier breaks the chain so <c>"FOR" JSON</c> (two identifiers
+    /// that merely look like the keyword pair) does not match.
+    /// </summary>
+    public static bool ReferencesIdentifierPair(string sql, string first, string second)
+    {
+        string? previous = null;
+        foreach (var token in Tokenize(sql))
+        {
+            if (previous is not null
+                && !token.Quoted
+                && previous.Equals(first, StringComparison.OrdinalIgnoreCase)
+                && token.Value.Equals(second, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            previous = token.Quoted ? null : token.Value;
+        }
+        return false;
+    }
+
     private static IEnumerable<SqlToken> Tokenize(string sql)
     {
         for (var i = 0; i < sql.Length;)
@@ -111,6 +137,17 @@ internal static class DbAdminReadOnlySqlGuard
             if (sql[i] == '\'')
             {
                 SkipQuotedLiteral(sql, ref i, '\'');
+                continue;
+            }
+
+            // PostgreSQL's cast operator, emitted as its own token. `SELECT u::text FROM "Users" u`
+            // casts a whole ROW to text and therefore returns every column — including the hidden
+            // ones — under a harmless result-column name. The row-projection guard needs to see it;
+            // it is not a keyword, so Validate's keyword/routine checks ignore it.
+            if (sql[i] == ':' && i + 1 < sql.Length && sql[i + 1] == ':')
+            {
+                i += 2;
+                yield return new SqlToken(CastOperator, Quoted: false);
                 continue;
             }
 

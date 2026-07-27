@@ -111,6 +111,9 @@ Bewährte Gruppierung (aus [test-master-all-activities.json](../scripts/test-mas
 | `==` / `!=` | Numerisch wenn BEIDE parseable, sonst String-Compare | `"80" == 80` → numerisch gleich ✓ |
 | Node-Skip | `data.disabled: true` auf dem Node → Step wird als `Skipped` markiert, Downstream-Nodes ohne andere aktive Quellen kaskadieren auf `Skipped` | Nicht mit Edge-Disable verwechseln — letzteres skippt nur die eine Kante, nicht den Node |
 | Breakpoint | `data.breakpoint: true` → bei `POST /execute` mit `{"debug": true}` pausiert die Engine vor dem Step. Resume via `POST /executions/{id}/resume` | Außerhalb des Debug-Modus wird das Flag ignoriert |
+| **Databus-Sichtbarkeit** | Ein Step liest nur Ergebnisse seiner **Graph-Vorgänger**. Wer `{{X.output}}` referenziert, braucht einen Pfad von `X` zum lesenden Knoten | Referenz auf einen **Parallelzweig** schlägt immer fehl — auch wenn der Zweig schneller ist. Bei `runScript` blieb das früher als Literal im Skript stehen und der Step wurde **grün mit Platzhalter** |
+| **Trigger-Parameter** | `{{<triggerNodeId>.param.<name>}}` — z.B. `{{trg.param.filePath}}`, alternativ `{{manual.<name>}}` | `{{trigger.doctorEmail}}` ohne `param.` — kein gültiger Tail, bleibt Literal und landet z.B. als E-Mail-Adresse in der Config |
+| **Verwaiste Knoten** | Jeder Nicht-Trigger-Knoten braucht mindestens **eine aktive eingehende Kante** | Ohne eingehende Kante läuft der Knoten nie (`Skipped`) — und eine `waitAll`-Junction, die auf ihn wartet, skippt mit, samt allem dahinter. Der Lauf meldet trotzdem **`Succeeded`**, weil Skipped kein Fehler ist |
 
 ## 7 — JSON-Schema-Erweiterungen seit Initial-Version
 
@@ -222,5 +225,8 @@ Bevor du einen hand-gebauten Workflow via `POST /api/workflows/import` oder `POS
 - [ ] Trigger-Params (falls `manualTrigger`) alle `type: "string"` mit String-Defaults
 - [ ] `waitNofM`-Junctions nutzen `requiredCount`, nicht `n`
 - [ ] Keine Edge referenziert einen nicht-existierenden Source/Target (Dangling-Check)
+- [ ] **Jedes `{{X.…}}` zeigt auf einen Vorgänger** des lesenden Knotens (Pfad von `X` dorthin) — Referenzen quer über Parallelzweige schlagen fehl
+- [ ] **Kein Nicht-Trigger-Knoten ohne aktive eingehende Kante** — er liefe nie und würde eine wartende `waitAll`-Junction mit blockieren
+- [ ] Trigger-Parameter als `{{<triggerNodeId>.param.<name>}}` geschrieben, **nicht** `{{trigger.<name>}}`
 - [ ] Referenzen in `startWorkflow.workflowNameOrId` zeigen auf existierende Workflow-Namen (Child zuerst posten!)
 - [ ] StickyNotes haben `data.disabled: true` (Schutz vor versehentlichen Edges)

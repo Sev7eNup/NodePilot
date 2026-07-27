@@ -6,6 +6,7 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Engine.Execution;
 
 namespace NodePilot.Engine.Activities;
 
@@ -113,7 +114,14 @@ public class ForEachActivity : IActivityExecutor
                 : Math.Min(parsed.MaxParallelism, MaxParallelismHardCap),
             StepId: context.StepId);
 
-        var results = await RunIterationsAsync(runCtx, ct);
+        // Release the global step-gate slot for the duration of the iterations, exactly like
+        // StartWorkflowActivity does for a synchronous child. Both wait on child executions
+        // whose own steps draw from the same gate, so a parent that keeps its slot while
+        // waiting can starve the children it is waiting for — with enough concurrent forEach
+        // steps that is a hard deadlock, not just slow. See the deadlock note on
+        // WorkflowScheduler._stepSemaphore.
+        var results = await WorkflowScheduler.RunWithCurrentStepGateReleasedAsync(
+            () => RunIterationsAsync(runCtx, ct), ct);
         return BuildAggregateResult(runCtx, results, sw);
     }
 

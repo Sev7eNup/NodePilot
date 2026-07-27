@@ -194,16 +194,31 @@ internal sealed class StepRunner
             // T-7.1: Fail the step early when step-pattern placeholders survive resolution
             // unsubstituted. This surfaces typos, deleted-step references, and wrong
             // outputVariable names as a clear error instead of silently passing the literal
-            // {{...}} string to the activity. runScript resolves its own variables inside
-            // the executor (different quoting semantics), so it is exempt from this check.
-            if (!string.Equals(node.Type, "runScript", StringComparison.OrdinalIgnoreCase)
-                && !CustomActivityType.IsCustomType(node.Type))
+            // {{...}} string to the activity.
+            //
+            // runScript and custom activities resolve their own variables inside the executor
+            // (PowerShell-specific quoting), so they stay exempt from the general check — a
+            // leftover {{...}} there may be legitimate script text. They are NOT exempt from the
+            // out-of-scope case: a reference to a step that ran in THIS execution but off the
+            // predecessor path is never legitimate script text, and letting it through is the
+            // worst outcome available. The literal reaches PowerShell as code, the step
+            // succeeds, and the run reports green having written a placeholder string wherever
+            // the real value belonged — measured end to end as "Ergebnis: {sibling.output}".
+            var unresolved = FindUnresolvedStepReferences(node.Type, configForExecution);
+            if (unresolved.Count > 0)
             {
-                var unresolved = FindUnresolvedStepReferences(node.Type, configForExecution);
-                if (unresolved.Count > 0)
+                var resolvesItsOwnTemplates =
+                    string.Equals(node.Type, "runScript", StringComparison.OrdinalIgnoreCase)
+                    || CustomActivityType.IsCustomType(node.Type);
+
+                var fatal = resolvesItsOwnTemplates
+                    ? FindOutOfScopeReferences(unresolved, previousResults, outputVariableToStepId)
+                    : unresolved;
+
+                if (fatal.Count > 0)
                 {
                     throw new InvalidOperationException(
-                        FormatUnresolvedDiagnostic(unresolved, previousResults, outputVariableToStepId));
+                        FormatUnresolvedDiagnostic(fatal, previousResults, outputVariableToStepId));
                 }
             }
 
@@ -503,6 +518,34 @@ internal sealed class StepRunner
     /// Fields listed in <see cref="FieldsNotToResolve"/> for this activity type are skipped \u2014
     /// their raw SQL / query text is intentionally left unresolved and validated by the executor.
     /// </summary>
+    /// <summary>
+    /// Narrows a set of unresolved template tokens to those that point at a step which DID run in
+    /// this execution but is not on the referencing step's predecessor path. Those are the ones
+    /// the databus deliberately hid — never legitimate leftover text, and therefore fatal even
+    /// for the activities that otherwise tolerate unresolved placeholders.
+    /// </summary>
+    internal static List<string> FindOutOfScopeReferences(
+        IEnumerable<string> unresolved,
+        IReadOnlyDictionary<string, ActivityResult> previousResults,
+        IReadOnlyDictionary<string, string> outputVariableToStepId)
+    {
+        if (previousResults is not AncestorScopedResults scoped) return [];
+
+        var outOfScope = new List<string>();
+        foreach (var token in unresolved)
+        {
+            var match = VariableResolver.StepPattern.Match(token);
+            if (!match.Success) continue;
+
+            var name = match.Groups[1].Value;
+            var stepId = outputVariableToStepId.TryGetValue(name, out var mapped) ? mapped : name;
+            if (scoped.IsHiddenNonAncestor(stepId))
+                outOfScope.Add(token);
+        }
+
+        return outOfScope;
+    }
+
     internal static List<string> FindUnresolvedStepReferences(string? activityType, JsonElement config)
     {
         FieldsNotToResolve.TryGetValue(activityType ?? string.Empty, out var protectedFields);
@@ -562,6 +605,7 @@ internal sealed class StepRunner
                 nameToResult[alias] = res;
 
         var stepMissing = new List<string>();
+        var outOfScope = new List<(string token, string step)>();
         var paramMissing = new List<(string token, string step, string param)>();
         var valueEmpty = new List<(string token, string step, string tail)>();
 
@@ -581,7 +625,16 @@ internal sealed class StepRunner
 
             if (!nameToResult.TryGetValue(stepName, out var result))
             {
-                stepMissing.Add(token);
+                // Distinguish "hidden because it is not a predecessor" from "genuinely absent".
+                // Both look identical from the scoped view, but they send the author to
+                // completely different places: one is a wiring problem, the other a typo.
+                var referencedStepId = outputVariableToStepId.TryGetValue(stepName, out var mapped)
+                    ? mapped
+                    : stepName;
+                if (previousResults is AncestorScopedResults scoped && scoped.IsHiddenNonAncestor(referencedStepId))
+                    outOfScope.Add((token, stepName));
+                else
+                    stepMissing.Add(token);
                 continue;
             }
 
@@ -611,6 +664,17 @@ internal sealed class StepRunner
             sb.Append(" Missing step(s) \u2014 reference points to a step that has not run or does not exist: ")
               .Append(string.Join(", ", stepMissing))
               .Append('.');
+        }
+
+        if (outOfScope.Count > 0)
+        {
+            var names = string.Join(", ", outOfScope.Select(o => $"'{o.step}'").Distinct(StringComparer.Ordinal));
+            sb.Append(" Out-of-scope reference(s) \u2014 ")
+              .Append(string.Join(", ", outOfScope.Select(o => o.token)))
+              .Append(": ").Append(names)
+              .Append(" ran in this execution but is not on a predecessor path of this step. A step can only read ")
+              .Append("outputs from steps it depends on \u2014 connect the branches with an edge, or move the reference ")
+              .Append("to a step downstream of both.");
         }
 
         if (paramMissing.Count > 0)

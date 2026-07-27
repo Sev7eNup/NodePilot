@@ -1,5 +1,7 @@
 # Workflow-Kontrollfluss & Edit-Lifecycle
 
+Workflow-Ausführung und Workflow-Bearbeitung sind getrennte Abläufe. Executions laufen asynchron. Änderungen an einer Workflow-Definition erfordern einen Edit-Lock.
+
 ## Execution
 
 `POST /api/workflows/{id}/execute` — asynchron, `202` + `ExecutionId`. Body:
@@ -103,7 +105,7 @@ Fortschritt via SignalR (`/hubs/execution`). `parameters`-Keys mit `__`-Prefix �
 ### Edit-Lock-Lifecycle
 
 ```bash
-# Lock holen — atomar IsEnabled=false + Lock-Fields. 409 wenn schon von jemand anderem.
+# Lock anfordern — atomar IsEnabled=false + Lock-Fields. 409 bei vorhandenem fremdem Lock.
 curl -s -b cookie.jar -X POST "$NP/api/workflows/21f1c0d4-.../lock"
 # 200 → WorkflowResponse (Locked-by-Me, Disabled)
 

@@ -140,11 +140,13 @@ public class DatabaseTriggerSource : ITriggerSource
                 var sentinel = result?.ToString() ?? "";
                 if (lastSentinel is not null && sentinel != lastSentinel)
                 {
-                    _ = _ctx!.OnFire(new Dictionary<string, string>
-                    {
-                        ["dbSentinel"] = sentinel,
-                        ["dbPrevious"] = lastSentinel,
-                    });
+                    TriggerFireObserver.Observe(
+                        _ctx!.OnFire(new Dictionary<string, string>
+                        {
+                            ["dbSentinel"] = sentinel,
+                            ["dbPrevious"] = lastSentinel,
+                        }),
+                        _logger, ActivityType, _ctx.WorkflowId, _ctx.NodeId);
                 }
                 lastSentinel = sentinel;
             }

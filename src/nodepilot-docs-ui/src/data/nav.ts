@@ -29,7 +29,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { path: 'getting-started/introduction', title: 'Einführung', icon: Idea },
       { path: 'getting-started/installation', title: 'Installation', icon: Download },
-      { path: 'getting-started/quickstart', title: 'Quickstart', icon: Rocket },
+      { path: 'getting-started/quickstart', title: 'Schnelleinstieg', icon: Rocket },
       { path: 'getting-started/architecture', title: 'Architektur', icon: Layers },
     ],
   },
@@ -95,9 +95,9 @@ export const navGroups: NavGroup[] = [
   {
     label: 'Deployment & Mehr',
     items: [
-      { path: 'deployment/overview', title: 'Betriebsarten im Überblick', icon: Deploy },
-      { path: 'deployment/production', title: 'Produktions-Rollout', icon: BareMetalServer },
-      { path: 'deployment/desktop', title: 'Desktop-App (Electron)', icon: Laptop },
+      { path: 'deployment/overview', title: 'Betriebsarten', icon: Deploy },
+      { path: 'deployment/production', title: 'Windows-Server', icon: BareMetalServer },
+      { path: 'deployment/desktop', title: 'Desktop-App', icon: Laptop },
       { path: 'ai-features', title: 'AI-Features', icon: Chat },
       { path: 'alerting', title: 'Alerting', icon: Notification },
       { path: 'observability', title: 'Observability', icon: ChartLine },

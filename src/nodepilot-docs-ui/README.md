@@ -12,7 +12,7 @@ Dokumentations-Website für NodePilot — eine React 19 SPA (Vite + Tailwind CSS
 ```powershell
 cd src\nodepilot-docs-ui
 npm install
-npm run dev      # http://localhost:5173
+npm run dev      # http://localhost:5174
 ```
 
 ## Build
@@ -38,6 +38,19 @@ Die Sidebar ist ein einziges `<aside>` für beide Layouts: ab `lg` eine sticky 2
 Inhalte in Markdown, gegliedert nach `getting-started/`, `concepts/`, `designer/`, `api/`, `security/`, `enterprise/`, `configuration/`, `deployment/` plus Top-Level-Referenzseiten (`activities-reference`, `triggers`, `cli`, `ai-features`, `observability`, `import-export`).
 
 Inhaltliche Quelle: `CLAUDE.md` + `docs/` im Repo-Root.
+
+## Schreibstil der Inhalte
+
+Die Seiten unter `content/` sind technische Dokumentation:
+
+- keine direkte Anrede mit „du“, „Sie“ oder besitzanzeigenden Anredeformen;
+- neutrale Handlungsformen wie „Öffnen“, „Ausführen“, „Eintragen“ und „Prüfen“;
+- Zweck, Ergebnis und Voraussetzungen vor einer Schrittfolge;
+- Begriffe beim ersten Auftreten erklären;
+- kurze Sätze und jeweils eine technische Aussage pro Absatz;
+- Befehle immer mit Ausführungsort und erwartbarem Ergebnis dokumentieren;
+- Einschränkungen und nicht unterstützte Betriebsformen ausdrücklich nennen;
+- sicherheitsrelevante Beispielwerte als Beispiele kennzeichnen.
 
 ## Routing
 

@@ -74,7 +74,11 @@ Zwei Provider, umschaltbar über `Database:Provider`:
 | SQL Server | `"sqlserver"` | `ConnectionStrings:DefaultConnection` |
 
 - **Ein gemeinsames Migration-Set**, provider-agnostisch (ohne `type:`-Strings). Bootstrap via `db.Database.Migrate()`.
-- **Neue Migration:** `dotnet ef migrations add <Name> --project src/NodePilot.Data --startup-project src/NodePilot.Api --context NodePilotDbContext`. **Pflicht-Postprocessing:** alle `type: "..."`-Annotations entfernen.
+- **Neue Migration:** `dotnet ef migrations add <Name> --project src/NodePilot.Data --startup-project src/NodePilot.Api --context NodePilotDbContext`. **Pflicht-Postprocessing — zwei Schritte:**
+  1. In der Migration (`<Name>.cs`): alle `type: "..."`-Annotations entfernen.
+  2. In der Designer-Datei (`<Name>.Designer.cs`): `MigrationModelPortability.UseActiveProviderStoreTypes(modelBuilder);` als letzte Zeile vor `#pragma warning restore 612, 618` in `BuildTargetModel` ergänzen. Der `ModelSnapshot` bekommt den Aufruf bewusst **nicht** (Diff-Basis, kein Migration-Target-Model).
+
+  Beide Schritte sind durch `MigrationDriftTests` abgesichert — laufen lassen statt sich erinnern.
 - Schema-Änderungen IMMER per EF-Migration. Kein DDL-Hotpatching.
 - Credentials mit DPAPI verschlüsselt (`Credentials:DpapiScope`).
 - **DB-TLS strikt (default):** `DatabaseTlsBootValidator` bricht den Boot ab, wenn die Connection den Server nicht verifiziert (`Encrypt=Strict`/`TrustServerCertificate=False` bzw. `SSL Mode=VerifyFull`). Escape `Database:AllowInsecureTls=true` nur bei Loopback-Host **und** entweder Development-Env **oder** `Deployment:Mode=Desktop` (Desktop-Posture, siehe Production Deployment).
@@ -188,6 +192,10 @@ Layout-Styleguide für Workflow-JSONs: **zuerst** `docs/workflow-styleguide.md` 
 
 **Contract-Garantie:** Nur diese vier Tails (`output`, `error`, `success`, `param.X`) werden aufgelöst — andere Tails bleiben als Literal. Unresolved → granulare Diagnostik (StepRunner T-7.1).
 
+**Sichtbarkeits-Scope (Ahnen-only):** Ein Step sieht **ausschließlich** Ergebnisse seiner Graph-Vorgänger (`AncestorIndex` + `AncestorScopedResults`, einmal pro Lauf aus `ReverseAdjacency`). Eine Referenz auf einen Knoten aus einem **parallelen Zweig** löst nie auf — auch dann nicht, wenn dieser Zweig zufällig schon fertig ist. Vorher entschied das Timing darüber, ob derselbe Workflow lief oder mit „Unresolved template variable" scheiterte. Designer-Variablenpicker, Step-Tester und MCP-Analyzer scopen ohnehin schon auf Ahnen; die Engine zieht damit nach. **Ein Ahne ohne Ergebnis bleibt unauflösbar** — das ist bei `junction`/waitAny (der unterlegene Zweig läuft nicht) und bei übersprungenen Knoten korrekt so.
+
+**Out-of-Scope-Gate gilt auch für `runScript`/Custom Activities.** Beide sind von der allgemeinen T-7.1-Prüfung ausgenommen (sie lösen ihre Templates selbst mit PS-Quoting auf, ein übriges `{{...}}` kann legitimer Skripttext sein) — **nicht** aber vom Cross-Branch-Fall: eine Referenz auf einen Step, der im selben Lauf lief, aber nicht auf dem Vorgängerpfad liegt, ist nie legitimer Skripttext. Ohne dieses Gate lief `$wert = {{sibling.output}}` als Literal in PowerShell, der Step meldete **Erfolg** und schrieb `Ergebnis: {sibling.output}` — grün mit Platzhalter statt Wert. Tippfehler/unbekannte Steps bleiben bei `runScript` weiterhin tolerant.
+
 **Strukturierter Output:** `runScript` captured automatisch deklarierte Variablen als `param.*`. `$hostName = ...` → `{{step.param.hostName}}`.
 
 **RunScript Auto-Quoting:** `{{step.output}}` wird als Single-Quoted String eingesetzt. Im Script `$x = {{step.output}}` schreiben, NICHT `$x = '{{step.output}}'`.
@@ -284,7 +292,7 @@ Hardening-Flags: `Remote:RequireWinRmSsl`, `RestApi:BlockPrivateNetworks`, `Rest
 
 ## Admin-Settings Hot-Reload
 
-Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker (UI: emerald `HotReloadHint` vs. oranger `RestartBanner`). 11 Sektionen sind hot-reloadable, 8 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed. **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — nie `IOptions<T>.Value`-Snapshot. Vollständige Matrix + Mixed-Section-Limits: `docs/claude-reference.md`.
+Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker (UI: emerald `HotReloadHint` vs. oranger `RestartBanner`). 12 Sektionen sind hot-reloadable, 8 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed. **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — nie `IOptions<T>.Value`-Snapshot. Vollständige Matrix + Mixed-Section-Limits: `docs/claude-reference.md`.
 
 ## AuditLog
 

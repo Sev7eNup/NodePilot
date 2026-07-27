@@ -1,0 +1,63 @@
+name: CodeQL
+
+# Static security analysis for the two languages that carry the attack surface: the C#
+# backend (auth, crypto, remote execution, raw SQL) and the TypeScript frontend. The CI
+# workflow only audits *dependencies* (dotnet list --vulnerable / npm audit); nothing looked
+# at first-party code until now, which is a gap worth closing on a public repository.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  schedule:
+    # Weekly, so newly published queries reach an unchanged main branch too.
+    - cron: '17 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    # C# needs the Windows toolchain: the projects target net10.0-windows and do not build
+    # on ubuntu. JS/TS has no build step for CodeQL, so it takes the cheaper runner.
+    runs-on: ${{ matrix.language == 'csharp' && 'windows-latest' || 'ubuntu-latest' }}
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Setup .NET 10
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f443b600d91635bebf5b0d9ebc620189c0d6fba5 # v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-and-quality
+
+      - name: Build
+        if: matrix.language == 'csharp'
+        run: dotnet build NodePilot.slnx --configuration Release
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@f443b600d91635bebf5b0d9ebc620189c0d6fba5 # v3
+        with:
+          category: "/language:${{ matrix.language }}"

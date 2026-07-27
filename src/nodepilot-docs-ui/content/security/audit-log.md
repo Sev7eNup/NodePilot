@@ -1,6 +1,6 @@
 # Audit-Log
 
-Jede sicherheitsrelevante Aktion wird auditiert. Codes folgen dem Muster `VERB_NOMEN`. Passwörter/Secrets werden **nie** in Details geschrieben.
+Das Audit-Log speichert sicherheitsrelevante Aktionen. Aktionscodes folgen dem Muster `VERB_NOMEN`. Passwörter und Secrets dürfen nicht in Audit-Details erscheinen.
 
 ## Schreiben
 

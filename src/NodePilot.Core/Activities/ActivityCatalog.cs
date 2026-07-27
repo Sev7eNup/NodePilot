@@ -135,7 +135,7 @@ public static class ActivityCatalog
             telemetry: ["state", "lastTaskResult", "action"],
             prompt: ActivityPromptDescriptor.Excluded(
                 "Niche Windows Task Scheduler operations; defer until prompt has dedicated examples.")),
-        Action("registryOperation", "registryOperation", "database",
+        Action("registryOperation", "registryOperation", "account_tree",
             isRemote: true,
             timeout: ActivityTimeoutKind.Always,
             telemetry: ["operation", "exists", "count", "created", "type"]),
@@ -177,7 +177,7 @@ public static class ActivityCatalog
             ],
             prompt: ActivityPromptDescriptor.Excluded(
                 "Polling semantics need dedicated examples before LLM generation is reliable.")),
-        Action("restApi", "restApi", "language",
+        Action("restApi", "restApi", "web_globe",
             timeout: ActivityTimeoutKind.Always,
             outputs:
             [
@@ -199,7 +199,7 @@ public static class ActivityCatalog
                 Output("count", "number"),
             ],
             telemetry: ["count"]),
-        Action("jsonQuery", "jsonQuery", "data_object",
+        Action("jsonQuery", "jsonQuery", "code",
             outputs:
             [
                 Output("result", "string"),

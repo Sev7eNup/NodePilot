@@ -15,6 +15,12 @@ namespace NodePilot.Api.Services.DbAdmin;
 ///   <item><b>Result masking</b> (<see cref="BuildColumnMask"/>) — a wildcard select
 ///   (<c>SELECT * FROM Users</c>) names no secret identifier but still returns one, so every
 ///   result column whose name matches a protected column is replaced with <c>"***"</c>.</item>
+///   <item><b>Row-projection rejection</b> (<see cref="ReferencesProtectedRowProjection"/>) —
+///   both layers above are NAME-based, and a row serializer defeats both at once:
+///   <c>SELECT to_json(u) FROM "Users" u</c> never mentions <c>PasswordHash</c> (so layer 1 stays
+///   quiet) and returns it inside a column called <c>to_json</c> (so layer 2 finds nothing to
+///   mask). Statements that combine a protected table with a whole-row serializer are therefore
+///   refused outright.</item>
 /// </list>
 ///
 /// <para>Registered as a singleton alongside <see cref="DbAdminMetadataService"/> — the EF model,
@@ -36,31 +42,62 @@ public sealed class DbAdminSecretColumns
     private static readonly HashSet<string> GlobalVariableValueIdentifier =
         new(["Value"], StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Constructs that return a whole row under one result column. Neither the statement text nor
+    /// the result-column name mentions the protected column, so both name-based layers miss them.
+    /// <c>::</c> is the PostgreSQL cast operator (<c>u::text</c> serializes the entire row);
+    /// SQL Server's <c>FOR JSON</c> is matched separately as a token pair.
+    /// </summary>
+    private static readonly HashSet<string> RowProjectionIdentifiers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "to_json", "row_to_json", "to_jsonb", "json_agg", "jsonb_agg",
+        "json_build_object", "jsonb_build_object", "json_object", "jsonb_object",
+        "row_to_xml", "table_to_xml", "query_to_xml", "hstore",
+        DbAdminReadOnlySqlGuard.CastOperator,
+    };
+
     /// <summary>Result-column names that get masked: every hidden column plus GlobalVariable.Value.</summary>
     private readonly HashSet<string> _maskedColumnNames;
 
     /// <summary>Identifiers whose mere mention in a statement makes it unexecutable.</summary>
     private readonly HashSet<string> _blockedIdentifiers;
 
+    /// <summary>
+    /// Entity and DB-table names of every table that carries a masked column. Only these tables
+    /// need the row-projection guard, which keeps the (necessarily blunt) rejection away from the
+    /// ~34 tables that hold no secret at all.
+    /// </summary>
+    private readonly HashSet<string> _protectedTableIdentifiers;
+
     public DbAdminSecretColumns(DbAdminMetadataService metadata)
     {
         _maskedColumnNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         _blockedIdentifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        _protectedTableIdentifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var table in metadata.GetAllTables())
         {
+            var tableHasSecret = false;
             foreach (var column in table.Columns)
             {
                 if (column.IsHidden)
                 {
                     _maskedColumnNames.Add(column.Name);
                     _blockedIdentifiers.Add(column.Name);
+                    tableHasSecret = true;
                 }
                 else if (table.Name == "GlobalVariable" && column.Name == "Value")
                 {
                     _maskedColumnNames.Add(column.Name);
+                    tableHasSecret = true;
                 }
             }
+
+            if (!tableHasSecret) continue;
+            // Both spellings: SQL addresses the DB table ("Users"), error messages and the
+            // row browser use the entity name ("User"), and an LLM may reach for either.
+            _protectedTableIdentifiers.Add(table.Name);
+            _protectedTableIdentifiers.Add(table.DbTableName);
         }
     }
 
@@ -72,6 +109,25 @@ public sealed class DbAdminSecretColumns
         => DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, _blockedIdentifiers)
            || (DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, GlobalVariableTableIdentifiers)
                && DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, GlobalVariableValueIdentifier));
+
+    /// <summary>
+    /// True when <paramref name="sql"/> serializes a whole row of a table that carries a masked
+    /// column — <c>SELECT to_json(u) FROM "Users" u</c>, <c>SELECT u::text FROM "Users" u</c>,
+    /// <c>SELECT * FROM Users FOR JSON AUTO</c>. Callers must refuse to execute such a statement:
+    /// the projection carries the secret past both name-based layers.
+    ///
+    /// <para>Deliberately blunt — it fires on any combination of a protected table and a row
+    /// serializer, including harmless ones such as <c>SELECT "Id"::text FROM "Users"</c>. Naming
+    /// the wanted columns explicitly always works, and the error message says so. Being a
+    /// blocklist it also cannot be exhaustive against every provider extension; the authoritative
+    /// fix is a least-privilege DB login without SELECT on the secret columns (tracked in
+    /// docs/security-findings.md).</para>
+    /// </summary>
+    public bool ReferencesProtectedRowProjection(string sql)
+        => DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, _protectedTableIdentifiers)
+           && (DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, RowProjectionIdentifiers)
+               || DbAdminReadOnlySqlGuard.ReferencesIdentifierPair(sql, "FOR", "JSON")
+               || DbAdminReadOnlySqlGuard.ReferencesIdentifierPair(sql, "FOR", "XML"));
 
     /// <summary>
     /// Per-result-column flags: <c>true</c> where the cell must be replaced with <see cref="Mask"/>.

@@ -19,4 +19,31 @@
     <Version>1.0.0</Version>
   </PropertyGroup>
 
+  <!--
+    Dependency audit, shifted left. CI already refuses vulnerable packages in its own step
+    ("Reject vulnerable NuGet dependencies" in .github/workflows/ci.yml, which runs
+    `dotnet list package` with the vulnerable + transitive switches and throws on any hit), so
+    this is NOT the gate — it is the same verdict, one step earlier, on every local restore.
+    Without it a developer only learns about a fresh advisory after pushing, because NuGetAudit
+    defaults to direct-only findings emitted as warnings that scroll past in the build log.
+
+      AuditMode=all      also walks transitive packages, which is where every security pin in
+                         Directory.Packages.props came from (SQLitePCLRaw via Microsoft.Data.Sqlite,
+                         Microsoft.OpenApi via Swashbuckle, System.Security.Cryptography.Xml via
+                         the PowerShell SDK). Direct-only would have caught none of them.
+      AuditLevel=low     report everything, matching what the CI step reports.
+
+    NOTE: keep NU1901..NU1904 as warnings here. Promoting them via WarningsAsErrors in this file
+    is tempting but wrong: CI is the enforcing gate, and a local hard failure would block work on
+    an unrelated branch the moment an advisory lands. Escalate in CI, surface locally.
+
+    Suppressing a specific finding is a deliberate act: add its code to NoWarn in the affected
+    project WITH a comment stating why the advisory does not apply, exactly like the version pins.
+  -->
+  <PropertyGroup>
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+  </PropertyGroup>
+
 </Project>

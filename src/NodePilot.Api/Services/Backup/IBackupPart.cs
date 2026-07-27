@@ -23,6 +23,21 @@ public static class BackupSections
     /// the delivery ledger / suppression / policy-state are deliberately NOT captured (transient).</summary>
     public const string Alerting = "alerting";
 
+    /// <summary>
+    /// Every restorable section. Single source of truth for anything that has to enumerate
+    /// sections — notably the restore conflict-policy parser, which used to keep its own
+    /// hand-written array. That copy was missing <see cref="GlobalVariableFolders"/>,
+    /// <see cref="CustomActivities"/> and <see cref="Alerting"/>, so a global <c>overwrite</c>
+    /// never reached them and <c>RestoreState.Policy</c> silently fell back to <c>Skip</c> —
+    /// a DR restore that reported success but left alerting rules and custom activities
+    /// untouched.
+    /// </summary>
+    public static readonly string[] All =
+    [
+        Folders, Users, Credentials, Machines, GlobalVariableFolders,
+        GlobalVariables, CustomActivities, Workflows, Settings, Alerting,
+    ];
+
     /// <summary>Original envelope schema (pre-alerting). Still importable. Also the stable KDF label the
     /// passphrase verifier token is derived from — kept fixed across versions so both v1 and v2 backups
     /// verify with the same passphrase machinery.</summary>

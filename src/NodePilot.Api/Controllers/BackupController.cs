@@ -185,12 +185,10 @@ public sealed class BackupController : ControllerBase
         var result = new Dictionary<string, RestoreConflictPolicy>(StringComparer.Ordinal);
         if (string.IsNullOrWhiteSpace(policy)) return result;
 
-        var allSections = new[]
-        {
-            BackupSections.Folders, BackupSections.Users, BackupSections.Credentials,
-            BackupSections.Machines, BackupSections.GlobalVariables, BackupSections.Workflows,
-            BackupSections.Settings,
-        };
+        // BackupSections.All, not a local copy: the previous hand-written list was missing
+        // globalVariableFolders, customActivities and alerting, so a global "overwrite" never
+        // reached those three and RestoreState.Policy fell back to Skip without telling anyone.
+        var allSections = BackupSections.All;
         foreach (var token in policy.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var eq = token.IndexOf('=');

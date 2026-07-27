@@ -44,9 +44,9 @@ function mirrorX(clip: string): string {
 const ACTION_MAP: Record<string, NodeShape> = {
   runScript: 'hexPointy', fileOperation: 'plaque', folderOperation: 'trapezoidUp', fileHash: 'gem',
   zipOperation: 'chamferedSquare', serviceManagement: 'hexFlat', scheduledTask: 'pentagonUp',
-  registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'blockArrow',
-  powerManagement: 'power', waitForCondition: 'circle', restApi: 'chevronLeft', sql: 'cylinder',
-  xmlQuery: 'kite', jsonQuery: 'trapezoidDown', emailNotification: 'banner', textFileEdit: 'house',
+  registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'launchSlant',
+  powerManagement: 'power', waitForCondition: 'circle', restApi: 'browser', sql: 'cylinder',
+  xmlQuery: 'kite', jsonQuery: 'braces', emailNotification: 'banner', textFileEdit: 'house',
   generateText: 'pillH', llmQuery: 'speechBubble', log: 'shield', delay: 'stopwatch',
 };
 
@@ -183,5 +183,21 @@ describe('node shape registry — completeness', () => {
     expect(pos.topLeft).toBeDefined();
     expect(pos.topMiddle).toBeDefined();
     expect(pos.bottomRight).toBeDefined();
+  });
+
+  it('keeps the requested compact nodes optically enlarged together with their glyphs', () => {
+    expect(getNodeSizeMultiplier('gem')).toBeGreaterThan(1.25);
+    expect(getIconScaleMultiplier('gem')).toBeGreaterThan(1);
+    expect(getNodeSizeMultiplier('kite')).toBeGreaterThan(1.25);
+    expect(getIconScaleMultiplier('kite')).toBeGreaterThan(1);
+    expect(getNodeSizeMultiplier('pillH')).toBeGreaterThan(1.08);
+    expect(getIconScaleMultiplier('pillH')).toBeGreaterThan(1);
+  });
+
+  it('keeps startProgram visually distinct from startWorkflow with a prominent glyph', () => {
+    expect(getNodeShape('startProgram')).toBe('launchSlant');
+    expect(getNodeShape('startProgram')).not.toBe(getNodeShape('startWorkflow'));
+    expect(getNodeSizeMultiplier('launchSlant')).toBeGreaterThan(1.1);
+    expect(getIconScaleMultiplier('launchSlant')).toBeGreaterThan(1.1);
   });
 });

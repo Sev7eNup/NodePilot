@@ -1,9 +1,12 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using System.Collections.Concurrent;
+using NodePilot.Engine.Activities;
 using NodePilot.Engine.Execution;
 using Xunit;
 
@@ -485,5 +488,129 @@ public class WorkflowSchedulerTests
         {
             WorkflowScheduler.ResetForTests();
         }
+    }
+
+    /// <summary>
+    /// Regression: <see cref="ForEachActivity"/> waits on child executions whose own steps draw
+    /// from the same global step gate. It must therefore release its slot while waiting, exactly
+    /// as <c>StartWorkflowActivity</c> does — otherwise a parent starves the children it is
+    /// waiting for and the run deadlocks rather than merely running slowly.
+    ///
+    /// <para>The setup reproduces the deadlock at the smallest scale that can express it: one
+    /// gate slot, a forEach step and a sibling step, where the forEach child cannot finish until
+    /// the sibling has run. Without the release this times out; with it, both complete.</para>
+    /// </summary>
+    [Fact]
+    public async Task ForEach_ReleasesTheStepGate_WhileWaitingOnChildExecutions()
+    {
+        WorkflowScheduler.ResetForTests();
+        WorkflowScheduler.Configure(1);
+        using var db = Helpers.TestDbContext.Create();
+        try
+        {
+            var child = new Workflow
+            {
+                Id = Guid.NewGuid(),
+                Name = "GateChild",
+                DefinitionJson = "{}",
+                IsEnabled = true,
+            };
+            db.Workflows.Add(child);
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+
+            var siblingRan = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            var services = new ServiceCollection();
+            services.AddSingleton<IWorkflowEngine>(new GateProbeEngine(siblingRan.Task));
+            var forEach = new ForEachActivity(
+                services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
+                db,
+                new InMemorySubWorkflowGate());
+
+            var config = JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                ["childWorkflowNameOrId"] = child.Id.ToString(),
+                ["items"] = "only-item",
+                ["itemsFormat"] = "lines",
+            });
+
+            var roots = new[] { Node("foreach", "forEach", config), Node("sibling") };
+            var nodesById = roots.ToDictionary(n => n.Id);
+            var adjacency = roots.ToDictionary(n => n.Id, _ => new List<string>());
+            var reverseAdjacency = roots.ToDictionary(n => n.Id, _ => new List<string>());
+            var incomingEdgesByTarget = roots.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+            var activeEdgeByEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+            var results = new ConcurrentDictionary<string, ActivityResult>();
+            var completed = new HashSet<string>();
+            var skipped = new HashSet<string>();
+
+            await WorkflowScheduler.RunAsync(
+                roots, nodesById, adjacency, reverseAdjacency,
+                incomingEdgesByTarget, activeEdgeByEndpoints,
+                new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                results, completed, skipped,
+                async (node, ct) =>
+                {
+                    if (node.Id == "foreach")
+                    {
+                        return await forEach.ExecuteAsync(
+                            new StepExecutionContext { WorkflowExecutionId = Guid.NewGuid(), StepId = "foreach" },
+                            node.Data!.Config,
+                            ct);
+                    }
+
+                    siblingRan.TrySetResult();
+                    return new ActivityResult { Success = true, Output = "sibling" };
+                },
+                NullLogger.Instance,
+                CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(10));
+
+            completed.Should().BeEquivalentTo("foreach", "sibling");
+            results["foreach"].Success.Should().BeTrue(
+                "the child execution completes once the sibling got its gate slot");
+        }
+        finally
+        {
+            WorkflowScheduler.ResetForTests();
+        }
+    }
+
+    /// <summary>
+    /// Child engine for <see cref="ForEach_ReleasesTheStepGate_WhileWaitingOnChildExecutions"/>:
+    /// the child execution only finishes after the sibling step has run, which can only happen
+    /// if forEach gave up its gate slot.
+    /// </summary>
+    private sealed class GateProbeEngine(Task siblingRan) : IWorkflowEngine
+    {
+        public async Task<WorkflowExecution> ExecuteAsync(
+            Workflow workflow, string triggeredBy, CancellationToken ct,
+            Dictionary<string, string>? inputParameters = null,
+            int? timeoutSeconds = null,
+            bool debugEnabled = false,
+            Guid? startedByUserId = null,
+            Guid? parentExecutionId = null,
+            int callDepth = 0,
+            Guid? executionIdOverride = null,
+            bool interactiveRun = false)
+        {
+            await siblingRan.WaitAsync(TimeSpan.FromSeconds(8), ct);
+            return new WorkflowExecution
+            {
+                Id = Guid.NewGuid(),
+                WorkflowId = workflow.Id,
+                Status = ExecutionStatus.Succeeded,
+                StartedAt = DateTime.UtcNow,
+                CompletedAt = DateTime.UtcNow,
+            };
+        }
+
+        public Task<bool> CancelAsync(Guid executionId, string? cancelledBy = null, CancellationToken ct = default)
+            => Task.FromResult(false);
+
+        public bool Resume(Guid executionId, string stepId, DebugResumeCommand command,
+            IReadOnlyDictionary<string, string>? overrides = null)
+            => false;
+
+        public IReadOnlyCollection<string> GetPausedSteps(Guid executionId) => [];
     }
 }

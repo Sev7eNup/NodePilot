@@ -2,7 +2,7 @@ import type { CarbonIconType } from '@carbon/icons-react';
 import {
   Activity, Analytics, Api, Application, Apps, Archive, BareMetalServer, Bot, Chip,
   Cloud, Code, DataBase, DataStructured, Debug, DnsServices, Document, DocumentAdd,
-  Edit, Email, Events, Flash, Folder, FolderDetails, FolderOpen, Fork, Help, Hourglass,
+  Earth, Edit, Email, Events, Flash, Folder, FolderDetails, FolderOpen, Fork, Help, Hourglass,
   Http, HybridNetworking, Locked, MagicWand, Merge, Network_3, Notebook, Notification,
   Password, PlayFilledAlt, Power, Renew, Repeat, Reply, Restart, Rocket, Screen,
   Security, Settings, Tag, TaskView, Terminal, Time, Tools, Touch_1, TreeView, Webhook,
@@ -31,6 +31,7 @@ export const ACTIVITY_ICON_COMPONENTS: Record<string, CarbonIconType> = {
   power_settings_new: Power,
   hourglass_top: Hourglass,
   language: Api,
+  web_globe: Earth,
   storage: DataBase,
   code: Code,
   data_object: DataStructured,

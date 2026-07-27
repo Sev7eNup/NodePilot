@@ -1,79 +1,92 @@
 # Canvas, Nodes & Edges
 
-## Canvas & Viewport
+Die Canvas ist die Arbeitsfläche des Workflow-Designers. Nodes stellen Trigger und Activities dar. Edges verbinden die Nodes und bestimmen den Ausführungspfad.
 
-- **Pan & Zoom:** Pan mittlere/rechte Maustaste; Zoom bis `0.15×`. Mouse-Wheel-Zoom via React Flow.
-- **Fit-View:** `Home` passt alle Nodes mit 15% Padding (300 ms Animation); Auto-Fit beim ersten Load.
-- **Zoom to Selection (Expert):** `Ctrl+Shift+E` (20% Padding).
-- **MiniMap:** Pan/zoombar, Node-Farbe nach Live-Status (Running=Amber, Paused=Orange, Succeeded=Green, Failed=Red, Skipped=Gray).
-- **Background:** Classic-Dot-Grid (20 px) oder **Premium Canvas** (zweistufiges Crosshatch 80/16 px); Snap-Grid-Variante.
-- **Snap-to-Grid (Expert):** `G` toggelt Grid-Snapping (default 20 px, konfigurierbar).
-- **Node Scaling:** 8 Größen (XS…4XL); `Ctrl+Shift+>`/`Ctrl+Shift+<` (Expert) Node-Größe, `Ctrl+Alt+.`/`Ctrl+Alt+,` Label-Font.
-- **Fullscreen:** `F11` versteckt Sidebar/Panels/Banner.
-- **Viewport-Virtualization:** nur sichtbare Elements werden gerendert — ab ~50 Nodes spürbar.
+Für Änderungen muss der Workflow mit **Edit** gesperrt sein.
 
-## Node-Operationen
+## Canvas bedienen
 
-- **Add:** Drag & Drop aus der Library (MIME `application/nodepilot-activity`) an der Cursor-Position mit Smart Defaults (zuletzt genutzte Machine/Credential desselben Typs). Quick-Connect: Edge in leeren Raum ziehen öffnet Activity-Picker. Double-Click / Command Palette / Toolbar.
-- **Move:** Drag (nur mit Schreibrechten); Arrow-Key-Nudge (Expert): 10 px, mit `Shift` 1 px.
-- **Multi-Select:** `Shift/Ctrl+Click` + Marquee; `Ctrl+A` alles.
-- **Duplicate:** `Ctrl+D`, Offset +40/+40 px, frische IDs.
-- **Delete:** `Delete`/`Backspace`; Group-Children werden reparented.
-- **Group (Expert):** `Ctrl+G` wraps Selektion in einen Group-Node. Reparenting per Drag.
-- **Clipboard:** `Ctrl+C`/`Ctrl+V` via `sessionStorage` — **workflow-übergreifend**; IDs werden neu vergeben, Edges/Parents remapped.
-- **Auto-Layout / Tidy:** `Ctrl+Shift+T`. Standard immer LR; Expert zyklisch LR → TB → Compact → ELK. **Restore Original Layout** (Expert) `Ctrl+Shift+O`.
-- **Undo/Redo:** `Ctrl+Z`/`Ctrl+Y` (auch `Ctrl+Shift+Z`). History-Tiefe 50, 800 ms Debounce bei Property-Edits.
-- **Bulk-Edit:** Bei ≥2 selektierten Nodes erscheint das Bulk-Edit-Panel (Machine, Enable/Disable, Timeout, Retry).
+| Aktion | Bedienung |
+|---|---|
+| Ausschnitt verschieben | Mittlere oder rechte Maustaste gedrückt halten und ziehen |
+| Zoomen | Mausrad |
+| Gesamten Workflow anzeigen | `Home` |
+| Vollbild ein- oder ausschalten | `F11` |
+| Auswahl verschieben | Nodes mit der Maus ziehen |
 
-## Node-Typen
+Die MiniMap zeigt die aktuelle Position im Workflow. **Auto-Layout** ordnet die Nodes automatisch an.
 
-### Activity-Node
-- **Shapes nach Kategorie:** Pentagon-Bookend-Paar (Trigger `◁` + returnData `▷`, gespiegelt); **jede Action-Activity eine eigene Clip-Path-Silhouette** (Icon zentriert/unclipped); Control-Flow je eigene Form (decision=Raute, junction=hexLong, forEach=reel, startWorkflow=tagLeft) mit **indigo Group-Frame** — via Clip-Path.
-- **Darstellungs-Stile:** **Classic** (kompakt, Icon-zentriert) und **Card/MD3** (Header + Config-Summary). Umschaltbar mit `Ctrl+Shift+N`.
-- **Farben & Icon:** Pro Activity-Typ aus CSS-Variablen + Material-Symbol.
-- **Handles/Ports:** Standard Links (In) / Rechts (Out); im Flexible-Ports-Modus alle vier Seiten bidirektional.
-- **Status-Badges:** Disabled, Breakpoint (rot/amber), Fan-In (junction-Mode), Lint (Fehler/Warnung), Simulation.
-- **Live-Status-Overlay:** Running (Amber, pulsierend), Succeeded (Green), Failed (Red), Skipped (Gray, dashed), Paused (Dark Orange, pulsierend).
-- **Heatmaps & Pfade:** Failure-Tint, Critical-Path-Glow + Slack-Badge, Coverage-Gray-Out.
+## Node hinzufügen
 
-### Group-Node
-Visuelle Gruppierung (keine Execution). Resize, 5 Farben, Collapse/Expand mit Child-Count-Badge, Inline-Label-Edit, Drop-Target-Highlight.
+1. Gewünschten Trigger oder Activity-Typ in der Node Library auswählen.
+2. Eintrag auf die Canvas ziehen.
+3. Node auswählen.
+4. Einstellungen im Properties-Panel eintragen.
 
-### Sticky-Note-Node
-Reine Annotation (keine Handles, übersprungen). Resize, Inline-Edit, 5 Font-Größen, leicht rotiertes Sticky-Look.
+Die wichtigsten Node-Typen:
 
-## Edges / Connections
+| Node-Typ | Zweck |
+|---|---|
+| **Trigger** | Startet den Workflow |
+| **Activity** | Führt einen Arbeitsschritt aus |
+| **Group** | Gruppiert Nodes nur visuell |
+| **Sticky Note** | Fügt eine Notiz hinzu und wird nicht ausgeführt |
 
-- **Edge-Typ:** Custom `LabeledEdge` mit Pfeil-Marker.
-- **Semantische Farben (Status-Tokens):** Success=Green, Failed=Red, Custom-Condition=Indigo (Stroke, Pfeil und Label-Pill in derselben Farbe), Always=Gray, Disabled=dashed/dimmed — idle Kanten sind solid, der Fluss-Dash läuft nur bei Live-Executions.
-- **Labels:** Manual (bis 60 chars) oder Auto-Label aus Condition ("On Success"/"On Failure"/"Always"); kanonische Labels syncen automatisch.
-- **Routing-Modi:** `smart` (Bezier 0.25), `curved` (0.5), `straight` (Step mit Radius). `R` (Expert) zyklisch.
-- **Manuelles Bending:** Zwei draggable Bezier-Kontrollpunkte (nur selektiert + Schreibrechte); "Reset Shape" stellt Auto-Routing wieder her.
-- **Backward Edges:** Automatisches U-Shape unter Nodes für Right→Left-Flow.
-- **Edge Width/Animation:** `Ctrl+]`/`Ctrl+[` (Breite), `A` (Expert, Flow-Animation).
-- **Inline Insert:** ⊕-Button auf Edge fügt Node zwischen A→B ein.
-- **Data-Flow-Overlay:** Chips zeigen, welche Variablen über eine Edge fließen.
-- **Kontextmenü (Rechtsklick):** Enable/Disable, Swap Source↔Target (Expert), Reset Shape (Expert), Delete.
-- **Validation:** Doppel-Connections werden verhindert (Toast-Hinweis).
+## Nodes bearbeiten
 
-## Overlays & Display-Optionen
+- Node auswählen, um die Einstellungen zu öffnen.
+- Mehrere Nodes mit `Ctrl` oder `Shift` auswählen.
+- `Ctrl+D` dupliziert die Auswahl.
+- `Delete` oder `Backspace` löscht die Auswahl.
+- `Ctrl+C` und `Ctrl+V` kopieren Nodes auch zwischen Workflows.
+- Bei mehreren ausgewählten Nodes können gemeinsame Werte wie Machine, Timeout oder Aktivstatus zusammen geändert werden.
 
-Alle Display-Settings leben im **`designStore`** (Zustand + persist, Key `nodepilot-design`) und gelten editorweit:
+## Nodes verbinden
 
-| Setting | Default | Werte |
-|---|---|---|
-| `designerMode` | `standard` | standard / expert |
-| `nodeStyle` | `classic` | classic / card |
-| `nodeScaleIndex` | 0 | 0–7 (XS…4XL) |
-| `edgeRouting` | `smart` | smart / curved / straight |
-| `flexiblePortsEnabled` | false | bool |
-| `snapToGrid` | false | bool |
-| `layoutMode` | `LR` | LR / TB / Compact / ELK |
-| `machineColoringEnabled` | false | bool — Node-Farbe nach Machine (`M`) |
-| `failureHeatmapEnabled` | false | bool — rote Tint nach Failure-Rate (`H`) |
-| `coverageHeatmapEnabled` | false | bool — Gray-Out nie/selten gelaufener Nodes |
-| `criticalPathEnabled` | false | bool — Critical Path + Slack-Badges (`C`) |
-| `dataFlowOverlayEnabled` | false | bool — Variablen-Flow auf Edges |
-| `premiumCanvas` | true | bool — Depth-Shadows, Glas-Effekt, Glow |
+1. Vom Ausgangsport eines Nodes ziehen.
+2. Verbindung am Eingangsport des Ziel-Nodes ablegen.
+3. Edge auswählen, um Beschriftung oder Bedingung festzulegen.
 
-**Critical Path:** echte CPM-Berechnung (topologische Kahn-Sortierung + Forward/Backward-Pass) gewichtet mit `p95DurationMs`; ignoriert disabled Nodes/Edges. **Coverage-Heatmap** liest `GET /workflows/{id}/coverage?windowDays=N`.
+Die Pfeilrichtung zeigt die Ausführungsrichtung. Eine Edge kann immer, nur bei Erfolg, nur bei Fehler oder anhand einer eigenen Bedingung ausgeführt werden. Details enthält [Edge-Bedingungen](../concepts/edge-conditions).
+
+Über das Plus-Symbol einer Edge kann eine neue Activity zwischen zwei vorhandenen Nodes eingefügt werden.
+
+## Status während einer Ausführung
+
+| Status | Darstellung |
+|---|---|
+| Läuft | animierte Hervorhebung |
+| Erfolgreich | grün |
+| Fehlgeschlagen | rot |
+| Übersprungen | grau und gestrichelt |
+| Pausiert | orange |
+
+Deaktivierte Nodes und Edges werden abgeschwächt dargestellt und bei der Ausführung nicht verwendet.
+
+## Ansicht anpassen
+
+Über die Ansichtsoptionen stehen bei Bedarf folgende Hilfen zur Verfügung:
+
+- Raster und Snap-to-Grid
+- unterschiedliche Node-Darstellungen und Größen
+- automatische Layout-Richtungen
+- Machine-Farben
+- Fehler- und Ausführungsabdeckung
+- kritischer Pfad
+- Datenfluss auf Edges
+
+Diese Optionen ändern nicht die Ausführungslogik. Auto-Layout verschiebt jedoch die gespeicherten Node-Positionen.
+
+## Wichtige Tastenkürzel
+
+| Tastenkürzel | Aktion |
+|---|---|
+| `Ctrl+Z` | Rückgängig |
+| `Ctrl+Y` | Wiederholen |
+| `Ctrl+A` | Alle Nodes auswählen |
+| `Ctrl+C` / `Ctrl+V` | Kopieren / Einfügen |
+| `Ctrl+D` | Duplizieren |
+| `Delete` | Löschen |
+| `Home` | Workflow vollständig anzeigen |
+
+Weitere Einstellungen und Testfunktionen stehen unter [Properties, Modi & Shortcuts](./properties-modes).

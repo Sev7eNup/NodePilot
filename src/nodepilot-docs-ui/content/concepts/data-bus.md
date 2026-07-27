@@ -1,58 +1,38 @@
 # Datenbus & Variablen
 
-Steps produzieren Outputs, die im **Datenbus** landen. Downstream-Steps referenzieren sie per `{{…}}`-Template, das der `VariableResolver` vor der Ausführung auflöst.
+Activities können Ergebnisse für nachfolgende Activities bereitstellen. Ein Zugriff erfolgt mit `{{…}}`.
 
-## Die vier Tails
+## Verfügbare Werte
 
-| Template | Bedeutung |
+| Vorlage | Bedeutung |
 |---|---|
-| `{{varName.output}}` | Stdout |
-| `{{varName.error}}` | Stderr |
-| `{{varName.success}}` | Step-Erfolg (`"true"` / `"false"`) |
-| `{{varName.param.xxx}}` | OutputParameter |
+| `{{hostInfo.output}}` | Standardausgabe |
+| `{{hostInfo.error}}` | Fehlerausgabe |
+| `{{hostInfo.success}}` | Erfolg als `true` oder `false` |
+| `{{hostInfo.param.name}}` | Benannter Ausgabewert |
+| `{{globals.NAME}}` | Globale Variable |
+| `{{manual.NAME}}` | Eingabe eines Triggers |
 
-Dazu kommen **Globale Variablen**:
+`hostInfo` ist die **Output Variable** der vorherigen Activity. Ohne Output Variable wird die Node-ID verwendet.
 
-| Template | Bedeutung |
-|---|---|
-| `{{globals.NAME}}` | Globale Variable (Admin/Op lesen, Admin schreibt) |
+## Sichtbarkeit: nur Vorgänger
 
-## Variablenname
+Eine Activity kann nur Ergebnisse von Vorgängern verwenden. Zwischen dem erzeugenden Node und der verwendenden Activity muss ein Pfad bestehen.
 
-Das `varName` ist der `outputVariable`-Wert des referenzierten Steps. Ist kein `outputVariable` gesetzt, wird die Step-ID verwendet:
-
+```text
+        ┌──► B  ("Hole Benutzername")
+Start ──┤
+        └──► C ──► D  ("Schreibe {{B.output}}")
 ```
-{{step-123.output}}
-```
 
-## Contract-Garantie
+`D` kann `B` nicht lesen, weil kein Pfad von `B` zu `D` führt. Für den Zugriff müssen die Zweige vor `D` zusammengeführt werden, zum Beispiel mit einer Junction.
 
-**Nur diese vier Tails** (`output`, `error`, `success`, `param.X`) werden aufgelöst — andere Tails bleiben als Literal stehen. Unresolved Templates liefern granulare Diagnostik (StepRunner T-7.1) statt eines stillen Fehlers.
+## Verwendung in PowerShell
 
-## Strukturierter Output (`runScript`)
-
-`runScript` captured automatisch deklarierte Variablen als `param.*`:
+Variablen werden direkt in das Skript eingesetzt:
 
 ```powershell
-$hostName = $env:COMPUTERNAME
+$computerName = {{hostInfo.output}}
 ```
 
-→ downstream verfügbar als `{{step.param.hostName}}`.
-
-## Auto-Quoting
-
-`{{step.output}}` wird als **Single-Quoted String** in das Script eingesetzt. Daher im Script direkt schreiben:
-
-```powershell
-$x = {{step.output}}
-```
-
-**nicht**
-
-```powershell
-$x = '{{step.output}}'   # falsch — doppelte Quoting
-```
-
-## Trigger-Variablen
-
-Trigger-Daten landen als `{{manual.<name>}}` im Run und zusätzlich als `param.*` des Trigger-Nodes (`{{<triggerVar>.param.<name>}}`). Es gibt **kein** `trigger.*`-Namespace — `{{trigger.file.path}}` bleibt ein unresolvetes Literal. Details: [Trigger](../triggers).
+Zusätzliche Anführungszeichen sind nicht erforderlich. Eine nicht verfügbare Variable führt zu einem Fehler und nennt die betroffene Referenz.

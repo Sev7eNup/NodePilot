@@ -1,10 +1,10 @@
 # Sub-Workflows & Contract
 
-`startWorkflow` ruft einen Child-Workflow in einem **frischen DI-Scope** auf. Das ermöglicht Wiederverwendung und Komposition von Workflows.
+Die Activity `startWorkflow` startet einen anderen Workflow. Der aufrufende Workflow ist der Parent, der gestartete Workflow der Child. Der Child erhält einen eigenen Dependency-Injection-Scope.
 
 ## Modus
 
-- `waitForCompletion: true` (default) → Parent blockiert, bis der Child fertig ist. Child-`returnData` wird als `param.*` in den Parent gespiegelt.
+- `waitForCompletion: true` (Standard) → Parent wartet auf den Child. Child-`returnData` wird als `param.*` in den Parent gespiegelt.
 - `waitForCompletion: false` → fire-and-forget. Parent erhält `param.workflowId` / `param.workflowName` / `param.waited`.
 
 **Max Call-Depth: 10.** `forEach` teilt sich das `ISubWorkflowGate` mit `startWorkflow`.

@@ -1,18 +1,6 @@
+import { csrfHeaders } from './csrf';
+
 const BASE_URL = '/api';
-
-const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-/**
- * Reads the CSRF token from the JS-readable `np_csrf` cookie. The backend sets this
- * cookie on every login/refresh; the server-side CsrfMiddleware requires the header
- * value to match the cookie on any mutating request, defeating cross-origin form
- * submission attacks against the httpOnly auth cookie.
- */
-function readCsrfToken(): string {
-  if (typeof document === 'undefined') return '';
-  const match = /(?:^|;\s*)np_csrf=([^;]+)/.exec(document.cookie);
-  return match ? decodeURIComponent(match[1]) : '';
-}
 
 /**
  * Shared auth + error-handling shell for every API call (introduced by a security-audit
@@ -31,11 +19,8 @@ async function authedFetch(path: string, options?: RequestInit): Promise<Respons
     ...(options?.body !== undefined && !(options.body instanceof FormData)
       ? { 'Content-Type': 'application/json' }
       : {}),
+    ...csrfHeaders(method),
   };
-  if (MUTATING_METHODS.has(method)) {
-    const csrf = readCsrfToken();
-    if (csrf) headers['X-CSRF-Token'] = csrf;
-  }
 
   const response = await fetch(`${BASE_URL}${path}`, {
     ...options,

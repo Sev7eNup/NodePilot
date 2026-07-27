@@ -86,6 +86,85 @@ public class DashboardControllerExtendedTests
         trig.PollIntervalSeconds.Should().BeNull();
     }
 
+    /// <summary>
+    /// The armed-trigger list is derived from the denormalized <c>TriggerTypesJson</c> column so
+    /// the endpoint no longer has to load every workflow's full definition. A row whose column is
+    /// still null (written before the boot backfill ran) must fall back to the definition rather
+    /// than silently disappearing from the list.
+    /// </summary>
+    [Fact]
+    public async Task Get_WithNullTriggerTypesJson_FallsBackToTheDefinition()
+    {
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "NotBackfilledYet",
+            IsEnabled = true,
+            UpdatedAt = DateTime.UtcNow,
+            DefinitionJson = """{"nodes":[{"id":"t","data":{"activityType":"databaseTrigger","config":{"intervalSeconds":45}}}]}""",
+            TriggerTypesJson = null,
+        });
+        await db.SaveChangesAsync();
+
+        var stats = Unwrap(await NewController(db).Get(CancellationToken.None));
+
+        var trig = stats.ArmedTriggers.Single();
+        trig.TriggerTypes.Should().ContainSingle().Which.Should().Be("databaseTrigger");
+        trig.NextFireKind.Should().Be("polling");
+        trig.PollIntervalSeconds.Should().Be(45);
+    }
+
+    /// <summary>
+    /// The manual trigger is excluded by the column-based path exactly as it was by the
+    /// definition-based one — <c>IsManual</c> is precisely <c>Type == "manualTrigger"</c>, so a
+    /// manual-only workflow is not armed even though it does carry a trigger type.
+    /// </summary>
+    [Fact]
+    public async Task Get_ManualTriggerInColumn_IsNotArmed()
+    {
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "ManualOnly",
+            IsEnabled = true,
+            UpdatedAt = DateTime.UtcNow,
+            DefinitionJson = """{"nodes":[{"id":"t","data":{"activityType":"manualTrigger"}}]}""",
+            TriggerTypesJson = """["manualTrigger"]""",
+        });
+        await db.SaveChangesAsync();
+
+        var stats = Unwrap(await NewController(db).Get(CancellationToken.None));
+
+        stats.ArmedTriggers.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A malformed column must degrade to "not armed" instead of taking the whole dashboard
+    /// down — the endpoint also backs the sidebar badge on every page.
+    /// </summary>
+    [Fact]
+    public async Task Get_WithMalformedTriggerTypesJson_DoesNotThrow()
+    {
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "Broken",
+            IsEnabled = true,
+            UpdatedAt = DateTime.UtcNow,
+            DefinitionJson = """{"nodes":[]}""",
+            TriggerTypesJson = "not-json-at-all",
+        });
+        await db.SaveChangesAsync();
+
+        var stats = Unwrap(await NewController(db).Get(CancellationToken.None));
+
+        stats.ArmedTriggers.Should().BeEmpty();
+        stats.WorkflowsTotal.Should().Be(1);
+    }
+
     [Fact]
     public async Task Get_WithDatabaseTrigger_ReturnsPollingWithIntervalSeconds()
     {

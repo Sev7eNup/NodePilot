@@ -1,63 +1,40 @@
 # Edge-Bedingungen
 
-Edges steuern, ob der Target-Node ausgeführt wird. Die Bedingung lebt in `edge.data`.
+Eine Edge verbindet zwei Nodes. Eine Bedingung legt fest, wann der Ziel-Node ausgeführt wird.
 
-## Shortcut-Conditions
+## Bedingung festlegen
 
-| `condition` | Bedeutung |
+1. Edge auf der Canvas auswählen.
+2. Im Properties-Panel die Bedingung auswählen.
+3. Workflow speichern und veröffentlichen.
+
+## Grundbedingungen
+
+| Bedingung | Wirkung |
 |---|---|
-| `stepId.success` | Nur wenn der Source-Step erfolgreich war |
-| `stepId.failed` | Nur wenn der Source-Step fehlgeschlagen ist |
-| `null` / leer | Immer (unconditional) |
-| `disabled: true` | Edge wird übersprungen — Target-Node wird nicht zum Root |
+| **Always** | Ziel-Node immer ausführen |
+| **On Success** | Nur nach erfolgreichem Ausgangs-Node ausführen |
+| **On Failure** | Nur nach fehlgeschlagenem Ausgangs-Node ausführen |
+| **Custom** | Werte mit eigenen Regeln vergleichen |
 
-## Strukturierte Conditions (`conditionExpression`)
+## Eigene Bedingung
 
-Für komplexe Bedingungen dient ein AST mit drei Node-Typen. Der Diskriminator für den Node-Typ heißt **`type`**, der für den Operanden-Typ heißt **`kind`**:
+Eine eigene Bedingung besteht aus:
 
-| `type` | Form |
-|---|---|
-| `comparison` | `{ "type": "comparison", "left": OPERAND, "op": OP, "right": OPERAND? }` |
-| `group` | `{ "type": "group", "op": "AND"\|"OR", "children": [...] }` |
-| `not` | `{ "type": "not", "child": {...} }` |
+- einem Wert aus einer vorherigen Activity, einem Trigger oder einer globalen Variable,
+- einem Vergleich wie `gleich`, `ungleich`, `größer`, `kleiner`, `enthält` oder `ist leer`,
+- einem Vergleichswert.
 
-> Achtung: Der Operator steht immer im Feld **`op`** (nicht `operator`/`logic`), der Operand-Typ in **`kind`** (nicht `type`). Falsche Feldnamen werden vom Evaluator ignoriert und still mit Defaults belegt — ein `operator: ">"` wird z. B. als `==` ausgewertet, ein `type: "variable"` als leerer Literal. Die Bedingung scheint gültig, evaluiert aber falsch.
+Mehrere Vergleiche lassen sich mit **UND**, **ODER** und **NICHT** kombinieren.
 
-### Vergleichs-Operatoren (`op`)
+Beispiel:
 
-`==`, `!=`, `<`, `>`, `<=`, `>=` (numerisch wenn beide Seiten als Zahl parsebar, sonst String), `contains`, `startsWith`, `endsWith`, `matches` (Regex), sowie unär `isEmpty`, `isNotEmpty`, `isTrue`, `isFalse` (dann ohne `right`).
-
-### Operanden
-
-Jeder Operand ist `{ "kind": "variable" | "literal", … }`:
-
-- **`literal`** — `{ "kind": "literal", "value": "5" }`. Ein Inline-Wert; `value` darf `{{globals.X}}`/`{{manual.X}}`/`{{step.output}}`-Templates enthalten, die vor dem Vergleich aufgelöst werden.
-- **`variable`** — referenziert einen Datenbus-Pfad **strukturiert**, nicht als `{{...}}`-String:
-  `{ "kind": "variable", "stepId": "diskCheck", "field": "param", "paramName": "freeGb" }`.
-  `field` ist `output` / `error` / `success` / `param`; `paramName` nur bei `field: "param"`. `stepId` darf auch der `outputVariable`-Name des Steps sein.
-  Optional `source: "global" | "manual"` (statt `stepId`/`field`) mit flachem `name`: referenziert `{{globals.NAME}}` bzw. `{{manual.NAME}}`.
-
-> Safe-fail: Unauflösbare Variablen werden zum leeren String; Vergleiche dagegen liefern `false` (außer `!=` und `isEmpty`/`isNotEmpty`).
-
-## Beispiel
-
-```json
-{
-  "type": "group",
-  "op": "AND",
-  "children": [
-    { "type": "comparison", "op": ">",
-      "left":  { "kind": "variable", "stepId": "diskCheck", "field": "param", "paramName": "freeGb" },
-      "right": { "kind": "literal",  "value": "5" } },
-    { "type": "not",
-      "child": { "type": "comparison", "op": "isEmpty",
-                 "left": { "kind": "variable", "stepId": "diskCheck", "field": "param", "paramName": "drive" } } }
-  ]
-}
+```text
+{{diskCheck.param.freeGb}} ist kleiner als 5
 ```
 
-Liest als: „freier Speicher > 5 **und** Laufwerksname nicht leer."
+Der nachfolgende Node läuft nur, wenn weniger als 5 GB frei sind.
 
-## Node-Level `disabled`
+## Deaktivierte Verbindungen
 
-`data.disabled: true` auf einem Node → Node wird `Skipped`; Downstream ohne andere Quellen ebenfalls. Alle eingehenden Edges disabled → Target-Node wird `Skipped`.
+Eine deaktivierte Edge wird nicht berücksichtigt. Besitzt ein Node danach keinen erreichbaren eingehenden Pfad, wird er übersprungen.

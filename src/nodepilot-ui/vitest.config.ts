@@ -35,18 +35,19 @@ export default defineConfig({
         '**/*.test.{ts,tsx}',
         '**/*.spec.{ts,tsx}',
       ],
-      // Floors set ~2pp below the 2026-04-26 baseline (lines 33% / branches 24% /
-      // statements 30% / functions 23%) so the gate fails on a step-change regression
-      // but tolerates normal day-to-day churn. Raise these in lockstep as P1.6
-      // property-config tests expand; never lower without a written reason in the PR.
-      // 2026-05-08: tightened by +1pp across all four metrics (was 30/21/27/20). Next
-      // increase wants a fresh measurement and ideally new tests in the designer-canvas
-      // hot-path (WorkflowEditorPage, ExecutionPanel) — see docs/testing/e2e-tests.md.
+      // Ratchet: ~3pp below the measured value, so the gate fails on a real regression while
+      // tolerating day-to-day churn. Never lower without a written reason in the PR.
+      //
+      // Re-measured 2026-07-27 (184 files / 2354 tests): lines 76.50, statements 73.71,
+      // branches 62.01, functions 60.65. The previous floors (31/28/22/21) were the
+      // 2026-04-26 baseline and had drifted ~45pp below reality — at that distance the gate
+      // could not fail on anything short of deleting most of the suite, which is the one
+      // thing a coverage gate exists to catch.
       thresholds: {
-        lines: 31,
-        branches: 22,
-        statements: 28,
-        functions: 21,
+        lines: 73,
+        branches: 58,
+        statements: 70,
+        functions: 57,
       },
     },
   },
