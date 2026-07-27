@@ -204,7 +204,7 @@ Drei opt-in Helfer (Default `Llm:Enabled=false`):
 
 **Transport**: OpenAI-kompatible HTTP-API über raw `HttpClient` — läuft gegen OpenAI Cloud, Ollama, LM Studio, vLLM, LocalAI, llama.cpp. Lokale Endpoints bevorzugt. Konfigurations-Keys + Modell-Empfehlungen siehe [docs/ai-features.md](docs/ai-features.md). Für Chat-Edits an großen Workflows ggf. `Llm:MaxTokens` erhöhen.
 
-**Auth/Rate-Limit**: generate-Endpoints `[Authorize(Roles = "Admin,Operator")]`, chat `[Authorize]` (alle Rollen); alle drei `[EnableRateLimiting("ai-generate")]` (20/min/IP, hardcoded in [RateLimitingSetup.cs](src/NodePilot.Api/Hosting/RateLimitingSetup.cs)).
+**Auth/Rate-Limit**: generate-Endpoints `[Authorize(Roles = "Admin,Operator")]`, chat `[Authorize]` (alle Rollen); `[EnableRateLimiting("ai-generate")]` (20/min/IP, hardcoded in [RateLimitingSetup.cs](src/NodePilot.Api/Hosting/RateLimitingSetup.cs)) sitzt auf allen drei AI-Controllern — `AiController`, `AiChatController` **und** `AiKnowledgeController` —, gilt also auch für `/api/ai/knowledge/ask`.
 
 **Disabled-Antwort**: Wenn `Llm:Enabled=false` → 503 mit `code: LLM_DISABLED`. Andere Fehlerklassen siehe `LlmErrorKind` in [LlmException.cs](src/NodePilot.Ai/LlmException.cs).
 

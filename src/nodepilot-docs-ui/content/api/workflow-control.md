@@ -15,7 +15,7 @@ Fortschritt via SignalR. Mit `debug: true` → Breakpoints, `StepPaused`, Resume
 | Endpoint | Semantik |
 |---|---|
 | `POST /execute` | Startet Lauf |
-| `POST /enable` / `/disable` | Kill-Switch. `enable` erfordert kein Lock (423 sonst). `disable` ignoriert Locks. |
+| `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen **lock-freien** Workflow — ein bestehender Lock (auch der eigene) liefert `423`; aus dem Edit-Modus heraus wird stattdessen publiziert. `disable` ignoriert Locks. |
 | `POST /cancel-all` | Cancelt alle Running-Executions des Workflows |
 | `POST /executions/{id}/cancel|retry|resume` | Einzelner Lauf |
 

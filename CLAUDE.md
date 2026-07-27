@@ -94,7 +94,7 @@ Routen + Rollen-Gating stehen an den Controllern in `src/NodePilot.Api/Controlle
 | Endpoint | Semantik |
 |---|---|
 | `POST /execute` | Startet Lauf. Body: `{"parameters": {}, "timeoutSeconds": N, "debug": bool}`. 202 + ExecutionId. |
-| `POST /enable` / `/disable` | Kill-Switch. `enable` erfordert kein Lock (423 sonst). `disable` ignoriert Locks. |
+| `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen lock-freien Workflow — jeder bestehende Lock (auch der eigene) → 423. `disable` ignoriert Locks. |
 | `POST /cancel-all` | Cancelt alle Running-Executions des Workflows. |
 | `POST /executions/{id}/cancel\|retry\|resume` | Einzelner Lauf. Resume-Body: `{"mode": "continue"\|"stepOver"\|"stop", "overrides": {}}`. |
 
