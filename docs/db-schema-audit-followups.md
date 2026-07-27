@@ -1,5 +1,8 @@
 # DB-Schema-Audit — offene Follow-ups
 
+> Die drei Findings unten sind als trigger-gated Posten in [`roadmap.md`](roadmap.md) geführt.
+> Diese Datei hält die Tiefe: Messquery je Provider, Schwellenwert, Fix und Wiederaufnahmebedingung.
+
 Ergebnis des DB-Schema-Audits vom **2026-07-14**. Die umgesetzten Findings **F1** (CompletedAt-Index),
 **F2** (committete Secrets entfernt), **F4** (Orphan-Tabellen-Cleanup-Migration) und **F6** (bounded
 Startup-Recovery) sind über **PR #153** auf `main`. Dieses Dokument hält die **nicht validierten,

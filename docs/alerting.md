@@ -264,11 +264,10 @@ destructive migration).
 
 ## Follow-ups
 
-- Channels: PagerDuty / Opsgenie.
-- Optional "resolved" recovery notifications for signal events.
-- Escalation policies; per-rule custom dedup-key templates.
-- `sourceKey` event field populated for execution events (`targetMachine` is populated since v1c —
-  joined from the last-failing step).
+Tracked in [`roadmap.md`](roadmap.md) (PagerDuty/Opsgenie sinks, "resolved" recovery notifications,
+escalation policies, per-rule dedup-key templates, `sourceKey` for execution events — `targetMachine`
+is already populated since v1c, joined from the last-failing step). The routing of a matched alert
+into a **workflow** is a committed roadmap item, not a follow-up.
 
 ## Delivery ledger & retention
 

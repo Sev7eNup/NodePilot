@@ -1,22 +1,19 @@
 # AI-Feature-Ideen
 
-> **Status:** Ideen-Backlog für spätere Produktentscheidungen. Dieses Dokument ist keine
-> verbindliche Umsetzungsspezifikation und legt weder Reihenfolge noch konkrete Interfaces fest.
+> **Status:** Beschreibungstiefe zu den KI-Ideen — Nutzerproblem, vorgeschlagene Funktion, geeignete
+> Stelle, Sicherheitsgrenzen. Dieses Dokument ist keine verbindliche Umsetzungsspezifikation und legt
+> keine konkreten Interfaces fest.
+>
+> **Priorisierung und Status stehen ausschließlich in [`roadmap.md`](roadmap.md)** — Ideen 1, 2 und die
+> AI-Chat-Run-Card sind dort gesetzt, der Rest ist trigger-gated. Wenn dieses Dokument und die Roadmap
+> sich widersprechen, gilt die Roadmap.
 
 NodePilot besitzt bereits Script- und Workflow-Generierung, den Workflow-Assistenten, den globalen
 Wissens-Chat und die `llmQuery`-Activity. Der größte zusätzliche Nutzen entsteht deshalb durch
 kontextuelle AI-Aktionen in bestehenden Arbeitsabläufen und nicht durch einen weiteren allgemeinen
 Chat.
 
-## Empfohlene erste Ausbaustufe
-
-Die Ideen 1 und 2 bilden gemeinsam die empfohlene erste Ausbaustufe. Sie adressieren akute
-Nutzerprobleme und können große Teile der vorhandenen Execution-Analyse, Secret-Redaktion,
-Folder-RBAC sowie des sicheren Proposal-, Diff- und Apply-Flows wiederverwenden.
-
 ## 1. Execution Incident Copilot
-
-**Priorität:** Sehr hoch — empfohlene erste Ausbaustufe
 
 - **Nutzerproblem:** Bei einer fehlgeschlagenen Workflow Execution müssen Nutzer ErrorOutput,
   Activity-Verlauf und Workflow Definition heute selbst zusammenführen.
@@ -32,8 +29,6 @@ Folder-RBAC sowie des sicheren Proposal-, Diff- und Apply-Flows wiederverwenden.
 
 ## 2. KI-Reparatur für Lint und Publish
 
-**Priorität:** Sehr hoch — empfohlene erste Ausbaustufe
-
 - **Nutzerproblem:** Lint- und Pre-Publish-Findings zeigen ein Problem und dessen Ort, helfen aber
   nicht bei der konkreten Reparatur.
 - **Vorgeschlagene Funktion:** „Mit KI beheben“ übergibt ausgewählte deterministische Findings an
@@ -45,8 +40,6 @@ Folder-RBAC sowie des sicheren Proposal-, Diff- und Apply-Flows wiederverwenden.
   Edit-Lock; Stale-Hash-Schutz, Secret-Merge und normaler Save-/Publish-Flow bleiben verbindlich.
 
 ## 3. Activity-Konfigurations-Copilot
-
-**Priorität:** Hoch
 
 - **Nutzerproblem:** Komplexe Activity-Konfigurationen wie Decision-Bäume, Cron-Ausdrücke, REST,
   SQL, JSONPath/XPath, Mappings und Retry-Regeln sind fehleranfällig und erfordern Detailwissen.
@@ -60,8 +53,6 @@ Folder-RBAC sowie des sicheren Proposal-, Diff- und Apply-Flows wiederverwenden.
 
 ## 4. Workflow Generator v2
 
-**Priorität:** Hoch
-
 - **Nutzerproblem:** Die bestehende Workflow-Generierung ist ein One-shot-Flow mit Statistik- und
   JSON-Vorschau; Unklarheiten lassen sich vor dem Erstellen nur durch einen neuen Versuch beheben.
 - **Vorgeschlagene Funktion:** Ein geführter Entwurfsprozess stellt Rückfragen, zeigt eine echte
@@ -73,8 +64,6 @@ Folder-RBAC sowie des sicheren Proposal-, Diff- und Apply-Flows wiederverwenden.
   behoben werden.
 
 ## 5. Reliability- und Optimierungs-Review
-
-**Priorität:** Mittel bis hoch
 
 - **Nutzerproblem:** Coverage, Critical Path, Laufzeiten, Retries und Failure-Heatmap sind einzeln
   sichtbar, müssen für eine Optimierung aber manuell zusammengeführt werden.
@@ -88,8 +77,6 @@ Folder-RBAC sowie des sicheren Proposal-, Diff- und Apply-Flows wiederverwenden.
 
 ## 6. Custom-Activity-Copilot
 
-**Priorität:** Mittel
-
 - **Nutzerproblem:** Das Erstellen einer Custom Activity erfordert gleichzeitig PowerShell-,
   Contract- und NodePilot-Kenntnisse.
 - **Vorgeschlagene Funktion:** Aus einer Beschreibung entsteht ein Draft mit Name, Key,
@@ -100,8 +87,6 @@ Folder-RBAC sowie des sicheren Proposal-, Diff- und Apply-Flows wiederverwenden.
   Aktivierung werden automatisch gestartet.
 
 ## 7. AI-Testfall- und Mock-Generator
-
-**Priorität:** Mittel
 
 - **Nutzerproblem:** Aussagekräftige positive, negative und Grenzfall-Inputs für einen Workflow
   oder eine einzelne Activity zu erstellen ist zeitaufwendig.
@@ -115,8 +100,6 @@ Folder-RBAC sowie des sicheren Proposal-, Diff- und Apply-Flows wiederverwenden.
   Activities erhalten eine deutliche Warnung und werden nie automatisch gestartet.
 
 ## 8. Kontextueller Operator-Copilot und Schichtbriefing
-
-**Priorität:** Mittel
 
 - **Nutzerproblem:** Der globale Wissens-Chat kann Betriebsfragen beantworten, kennt beim Wechsel
   aus einer Fachansicht aber nicht automatisch die gerade ausgewählten Workflows, Executions,
