@@ -257,7 +257,7 @@ Globale Flags: `--server`, `--profile`, `-o table|json|yaml`, `--no-color`, `-v`
 - `WEBHOOK_TRIGGERED` | `EXTERNAL_TRIGGER_FIRED` (nur erfolgreiche Fires)
 - `TRIGGER_FIRE_SUPPRESSED`
 - `WORKFLOW_IMPORTED_SCORCH` | `WORKFLOW_EXPORTED` | `WORKFLOW_EXPORTED_BULK` | `WORKFLOW_IMPORTED` | `CUSTOM_ACTIVITY_EXPORTED`
-- `AI_SCRIPT_GENERATED|AI_WORKFLOW_GENERATED|AI_WORKFLOW_EXPLAINED|AI_PROPOSAL_APPLIED` (Chat-Assistent; Details: nur Counts model/durationMs/modifyProposed/nodeCount/turnCount bzw. Node-/Edge-Counts bei Applied — kein Prompt-/JSON-Text)
+- `AI_SCRIPT_GENERATED|AI_WORKFLOW_GENERATED|AI_WORKFLOW_EXPLAINED|AI_PROPOSAL_APPLIED` (Chat-Assistent; Details: nur Counts model/durationMs/modifyProposed/nodeCount/turnCount bzw. Node-/Edge-Counts bei Applied — kein Prompt-/JSON-Text) | `AI_KNOWLEDGE_ASKED` (Globaler Wissens-Assistent `/ai-chat`; Details: model/durationMs/toolCallCount/sourceCount — kein Prompt-Text)
 - `DBADMIN_ROWS_VIEWED` | `DBADMIN_ROW_UPDATED` | `DBADMIN_ROW_DELETED`
 - `DBADMIN_SQL_EXECUTED` | `DBADMIN_SQL_WRITE_ATTEMPTED` | `DBADMIN_SQL_WRITE` (Admin SQL-Konsole; Preview, SHA-256, Byte- und Statement-Anzahl in Details; direkter Zugriff auf `AuditLog` ist blockiert)
 - `SECRETS_REENCRYPTED` (Passphrase-Rewrap aller Secrets)

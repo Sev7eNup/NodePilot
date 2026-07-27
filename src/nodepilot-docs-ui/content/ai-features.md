@@ -93,4 +93,4 @@ Capability erscheint nur bei aktivem `Llm:EnableToolCalling`.
 
 ## Audit
 
-`AI_SCRIPT_GENERATED`, `AI_WORKFLOW_GENERATED`, `AI_WORKFLOW_EXPLAINED`, `AI_PROPOSAL_APPLIED` (mit Node-/Edge-Counts beim Übernehmen eines Vorschlags).
+`AI_SCRIPT_GENERATED`, `AI_WORKFLOW_GENERATED`, `AI_WORKFLOW_EXPLAINED`, `AI_PROPOSAL_APPLIED` (mit Node-/Edge-Counts beim Übernehmen eines Vorschlags), `AI_KNOWLEDGE_ASKED` (Globaler Wissens-Assistent).
