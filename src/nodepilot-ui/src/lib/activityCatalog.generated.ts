@@ -252,7 +252,7 @@ export const ACTIVITY_CATALOG = [
     "type": "jsonQuery",
     "category": "action",
     "labelKey": "jsonQuery",
-    "icon": "code",
+    "icon": "curly_braces",
     "isRemote": false,
     "isExternalTrigger": false,
     "timeout": "none",

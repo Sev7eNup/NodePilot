@@ -199,7 +199,7 @@ public static class ActivityCatalog
                 Output("count", "number"),
             ],
             telemetry: ["count"]),
-        Action("jsonQuery", "jsonQuery", "code",
+        Action("jsonQuery", "jsonQuery", "curly_braces",
             outputs:
             [
                 Output("result", "string"),

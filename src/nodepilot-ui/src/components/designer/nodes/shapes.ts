@@ -38,8 +38,8 @@ export const NODE_SHAPES = [
   // per-activity action shapes
   'hexPointy', 'hexFlat', 'octagon', 'chamferedSquare', 'stopwatch', 'power',
   'house', 'shield', 'launchSlant', 'browser', 'cylinder', 'pillH',
-  'banner', 'plaque', 'kite', 'gem', 'pentagonUp', 'pentagonDown',
-  'trapezoidUp', 'braces', 'circle', 'speechBubble',
+  'banner', 'documentFold', 'kite', 'gem', 'pentagonUp', 'pentagonDown',
+  'folder', 'braces', 'circle', 'speechBubble',
 ] as const;
 export type NodeShape = typeof NODE_SHAPES[number];
 
@@ -208,7 +208,9 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   cylinder: blob('polygon(0.0% 14.0%, 1.7% 10.9%, 6.7% 8.0%, 14.6% 5.5%, 25.0% 3.6%, 37.1% 2.4%, 50.0% 2.0%, 62.9% 2.4%, 75.0% 3.6%, 85.4% 5.5%, 93.3% 8.0%, 98.3% 10.9%, 100.0% 14.0%, 100.0% 14.0%, 100.0% 86.0%, 100.0% 86.0%, 98.3% 89.1%, 93.3% 92.0%, 85.4% 94.5%, 75.0% 96.4%, 62.9% 97.6%, 50.0% 98.0%, 37.1% 97.6%, 25.0% 96.4%, 14.6% 94.5%, 6.7% 92.0%, 1.7% 89.1%, 0.0% 86.0%, 0.0% 86.0%, 0.0% 14.0%)', 1.08, 1.0, { top: 0.14, bottom: 0.14 }),
   pillH: blob('polygon(12.0% 4.0%, 88.0% 4.0%, 91.1% 5.6%, 94.0% 10.2%, 96.5% 17.4%, 98.4% 26.7%, 99.6% 37.6%, 100.0% 50.0%, 99.6% 62.4%, 98.4% 73.3%, 96.5% 82.6%, 94.0% 89.8%, 91.1% 94.4%, 88.0% 96.0%, 12.0% 96.0%, 8.9% 94.4%, 6.0% 89.8%, 3.5% 82.6%, 1.6% 73.3%, 0.4% 62.4%, 0.0% 50.0%, 0.4% 37.6%, 1.6% 26.7%, 3.5% 17.4%, 6.0% 10.2%, 8.9% 5.6%)', 1.16, 1.12, { top: 0.04, bottom: 0.04 }),
   banner: blob('polygon(0.0% 0.0%, 100.0% 0.0%, 100.0% 100.0%, 50.0% 82.0%, 0.0% 100.0%)', 1.20, 1.0, { bottom: 0.18 }),
-  plaque: blob('polygon(16.0% 0.0%, 100.0% 0.0%, 100.0% 84.0%, 84.0% 100.0%, 0.0% 100.0%, 0.0% 16.0%)', 1.04),
+  // fileOperation — document silhouette matching Carbon's `Document` glyph: a straight page
+  // body with the characteristic folded corner at the upper right.
+  documentFold: blob('polygon(0.0% 0.0%, 72.0% 0.0%, 100.0% 28.0%, 100.0% 100.0%, 0.0% 100.0%)', 1.08),
   kite: blob('polygon(50.0% 4.0%, 100.0% 50.0%, 50.0% 100.0%, 0.0% 50.0%)', 1.30, 1.08, { top: 0.04 }),
   gem: blob('polygon(28.0% 12.0%, 72.0% 12.0%, 100.0% 50.0%, 72.0% 88.0%, 28.0% 88.0%, 0.0% 50.0%)', 1.28, 1.12, { top: 0.12, bottom: 0.12 }),
   pentagonUp: blob('polygon(50.0% 0.0%, 100.0% 50.0%, 82.0% 100.0%, 18.0% 100.0%, 0.0% 50.0%)', 1.20, 1.0, { top: 0 }),
@@ -216,10 +218,19 @@ export const SHAPE_DEFS: Record<NodeShape, ShapeDef> = {
   // at ~42% y, so an icon at the bbox center (50%) sits too low; shift it up ~8% (same idea as
   // shield/speechBubble).
   pentagonDown: blob('polygon(18.0% 0.0%, 82.0% 0.0%, 100.0% 50.0%, 50.0% 100.0%, 0.0% 50.0%)', 1.20, 1.0, { bottom: 0 }, -0.08),
-  trapezoidUp: blob('polygon(28.0% 0.0%, 72.0% 0.0%, 100.0% 100.0%, 0.0% 100.0%)', 1.24, 1.0, { left: 0.13, right: 0.13, top: 0 }),
-  // jsonQuery — mirrored curly-brace silhouette: the stepped shoulders and centre tips suggest
-  // an enclosing JSON object (`{ … }`) without duplicating the angle-bracket glyph inside.
-  // The centre tips deliberately reach both horizontal edge midpoints for clean ReactFlow ports.
+  // folderOperation — familiar Windows-style folder silhouette: a raised tab on the upper left,
+  // followed by the angled shoulder into the full-width folder body. The icon is seated slightly
+  // lower in the body, while the top handle follows the shoulder instead of floating above it.
+  folder: blob(
+    'polygon(0.0% 14.0%, 8.0% 14.0%, 8.0% 4.0%, 42.0% 4.0%, 54.0% 18.0%, 100.0% 18.0%, 100.0% 100.0%, 0.0% 100.0%)',
+    1.10,
+    1.0,
+    { top: 0.14 },
+    0.06,
+  ),
+  // jsonQuery — mirrored curly-brace silhouette: the stepped shoulders and centre tips reinforce
+  // the `{ … }` glyph inside. The centre tips deliberately reach both horizontal edge midpoints
+  // for clean ReactFlow ports.
   braces: blob('polygon(18.0% 0.0%, 82.0% 0.0%, 82.0% 14.0%, 94.0% 14.0%, 94.0% 38.0%, 100.0% 50.0%, 94.0% 62.0%, 94.0% 86.0%, 82.0% 86.0%, 82.0% 100.0%, 18.0% 100.0%, 18.0% 86.0%, 6.0% 86.0%, 6.0% 62.0%, 0.0% 50.0%, 6.0% 38.0%, 6.0% 14.0%, 18.0% 14.0%)', 1.18, 1.05),
   circle: blob('polygon(50.0% 0.0%, 59.8% 1.0%, 69.1% 3.8%, 77.8% 8.4%, 85.4% 14.6%, 91.6% 22.2%, 96.2% 30.9%, 99.0% 40.2%, 100.0% 50.0%, 99.0% 59.8%, 96.2% 69.1%, 91.6% 77.8%, 85.4% 85.4%, 77.8% 91.6%, 69.1% 96.2%, 59.8% 99.0%, 50.0% 100.0%, 40.2% 99.0%, 30.9% 96.2%, 22.2% 91.6%, 14.6% 85.4%, 8.4% 77.8%, 3.8% 69.1%, 1.0% 59.8%, 0.0% 50.0%, 1.0% 40.2%, 3.8% 30.9%, 8.4% 22.2%, 14.6% 14.6%, 22.2% 8.4%, 30.9% 3.8%, 40.2% 1.0%)', 1.13),
   // llmQuery — chat/speech bubble with a tail (body fills the upper 75%; left+right edges reach the
@@ -248,7 +259,7 @@ type ShapedActivityType =
 
 /** `satisfies` enforces that every ShapedActivityType is mapped and every value is a NodeShape. */
 const ACTION_SHAPE = {
-  runScript: 'hexPointy', fileOperation: 'plaque', folderOperation: 'trapezoidUp', fileHash: 'gem',
+  runScript: 'hexPointy', fileOperation: 'documentFold', folderOperation: 'folder', fileHash: 'gem',
   zipOperation: 'chamferedSquare', serviceManagement: 'hexFlat', scheduledTask: 'pentagonUp',
   registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'launchSlant',
   powerManagement: 'power', waitForCondition: 'circle', restApi: 'browser', sql: 'cylinder',

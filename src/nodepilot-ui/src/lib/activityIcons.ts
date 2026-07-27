@@ -7,6 +7,7 @@ import {
   Password, PlayFilledAlt, Power, Renew, Repeat, Reply, Restart, Rocket, Screen,
   Security, Settings, Tag, TaskView, Terminal, Time, Tools, Touch_1, TreeView, Webhook,
 } from '@carbon/icons-react';
+import { CurlyBracesIcon } from './CurlyBracesIcon';
 
 /**
  * Material-Symbols glyph token -> Carbon icon component.
@@ -34,6 +35,7 @@ export const ACTIVITY_ICON_COMPONENTS: Record<string, CarbonIconType> = {
   web_globe: Earth,
   storage: DataBase,
   code: Code,
+  curly_braces: CurlyBracesIcon,
   data_object: DataStructured,
   mail: Email,
   edit_note: Edit,

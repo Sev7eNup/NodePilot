@@ -24,7 +24,7 @@ const EXPECTED_CONTROL: Record<string, NodeShape> = {
 
 // Expected per-activity action mapping (mirror of ACTION_SHAPE in shapes.ts).
 const EXPECTED_ACTION: Record<string, NodeShape> = {
-  runScript: 'hexPointy', fileOperation: 'plaque', folderOperation: 'trapezoidUp', fileHash: 'gem',
+  runScript: 'hexPointy', fileOperation: 'documentFold', folderOperation: 'folder', fileHash: 'gem',
   zipOperation: 'chamferedSquare', serviceManagement: 'hexFlat', scheduledTask: 'pentagonUp',
   registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'launchSlant',
   powerManagement: 'power', waitForCondition: 'circle', restApi: 'browser', sql: 'cylinder',
