@@ -324,9 +324,22 @@ public class TriggerOrchestrator : BackgroundService
     private static bool IsHandledHere(string activityType) => activityType is
         "scheduleTrigger" or "fileWatcherTrigger" or "databaseTrigger" or "eventLogTrigger";
 
+    /// <summary>
+    /// Builds a fresh source per (workflow, trigger-node) pair. Every source is constructed with
+    /// <c>new</c> from root-resolved <b>singletons</b> — deliberately NOT resolved from the
+    /// container. <see cref="ITriggerSource"/> is <see cref="IAsyncDisposable"/>, and a transient
+    /// disposable resolved from the root provider is tracked by that provider for the whole
+    /// process lifetime: every source this loop ever created would stay referenced (growing with
+    /// each trigger add/update and each backoff retry) and would be disposed a second time at
+    /// shutdown. The orchestrator owns each source's lifetime and disposes it in
+    /// <see cref="SyncInnerAsync"/> / <see cref="ExecuteAsync"/>; the container must stay out of it.
+    /// </summary>
     private ITriggerSource? CreateSource(string activityType) => activityType switch
     {
-        "scheduleTrigger" => _rootServices.GetService<Sources.ScheduleTriggerSource>(),
+        "scheduleTrigger" => new Sources.ScheduleTriggerSource(
+            _rootServices.GetRequiredService<Quartz.ISchedulerFactory>(),
+            _rootServices.GetRequiredService<ILogger<Sources.ScheduleTriggerSource>>(),
+            _rootServices.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()),
         "fileWatcherTrigger" => new Sources.FileWatcherTriggerSource(
             _rootServices.GetRequiredService<ILogger<Sources.FileWatcherTriggerSource>>(),
             _rootServices.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()),

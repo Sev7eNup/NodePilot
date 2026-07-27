@@ -12,10 +12,13 @@ public static class BackgroundServicesSetup
 {
     public static IServiceCollection AddNodePilotBackgroundServices(this IServiceCollection services)
     {
-        // Trigger infrastructure: Quartz (for scheduleTrigger) + orchestrator + per-type sources
+        // Trigger infrastructure: Quartz (for scheduleTrigger) + orchestrator. The per-type
+        // ITriggerSource instances are NOT registered here — the orchestrator constructs them
+        // itself (see TriggerOrchestrator.CreateSource). They are IAsyncDisposable with an
+        // orchestrator-owned lifetime, and a transient disposable resolved from the root
+        // provider would be retained by the container until process exit.
         services.AddQuartz();
         services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
-        services.AddTransient<NodePilot.Scheduler.Sources.ScheduleTriggerSource>();
         services.AddHostedService<NodePilot.Scheduler.TriggerOrchestrator>();
         services.AddHostedService<NodePilot.Api.ExecutionDispatch.ExecutionDispatchWorker>();
 
@@ -28,12 +31,13 @@ public static class BackgroundServicesSetup
         // node must evaluate windows for the API/webhook traffic it serves.
         services.AddHostedService<NodePilot.Scheduler.MaintenanceWindowSnapshotService>();
 
-        // Execution-history retention: opt-in via Retention:Executions:Enabled=true. No-op when off.
+        // Execution-history retention: on by default, opt-out via Retention:Executions:Enabled=false
+        // (see RetentionOptions — a silent default-off would grow the table into the millions).
         services.AddHostedService<NodePilot.Scheduler.ExecutionRetentionService>();
 
-        // Audit-log retention: opt-in via Retention:AuditLog:Enabled=true. Default 365-day
-        // window — audit typically needs longer retention than execution history for
-        // compliance.
+        // Audit-log retention: on by default, opt-out via Retention:AuditLog:Enabled=false.
+        // Default 365-day window — audit typically needs longer retention than execution
+        // history for compliance.
         services.AddHostedService<NodePilot.Scheduler.AuditLogRetentionService>();
 
         // WorkflowVersions history trimmer — count-based per workflow (keep latest N).
