@@ -19,6 +19,13 @@ describe('activityIcons', () => {
     expect(unmapped).toEqual([]);
   });
 
+  it('uses dedicated curly braces for JSON while XML keeps the Carbon Code icon', () => {
+    expect(ACTIVITY_ICONS.jsonQuery).toBe('curly_braces');
+    expect(ACTIVITY_ICONS.xmlQuery).toBe('code');
+    expect(ACTIVITY_ICON_COMPONENTS.curly_braces).toBeDefined();
+    expect(ACTIVITY_ICON_COMPONENTS.curly_braces).not.toBe(ACTIVITY_ICON_COMPONENTS.code);
+  });
+
   it('falls back for unknown / legacy tokens', () => {
     expect(ACTIVITY_ICON_COMPONENTS['not-a-real-token']).toBeUndefined();
     expect(FALLBACK_ACTIVITY_ICON).toBeDefined();

@@ -18,7 +18,7 @@ Envelope: `nodepilot-workflow-export/v1`. **Secrets werden hier redigiert** (`**
 
 ## System-Configuration Backup (ADR 0001)
 
-Voller DR-Snapshot der Konfiguration: Workflows + Folders/Sharing, Machines, Credentials, Globals + Global-Variable-Ordner, Custom Activities, Users, Settings. **Nicht enthalten:** Execution-History, Audit, Stats. Admin-only. Envelope `nodepilot-system-backup/v1` (`.npbackup`).
+Voller DR-Snapshot der Konfiguration: Workflows + Folders/Sharing, Machines, Credentials, Globals + Global-Variable-Ordner, Custom Activities, Alerting, Users, Settings. **Nicht enthalten:** Execution-History, Audit, Stats. Admin-only. Envelope `nodepilot-system-backup/v2` (`.npbackup`) — v2 ergänzt die `alerting`-Sektion; der Reader akzeptiert v1 **und** v2, geschrieben wird ausschließlich v2.
 
 ### Secret-Handling
 

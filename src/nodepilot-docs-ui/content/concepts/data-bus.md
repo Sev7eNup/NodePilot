@@ -35,4 +35,11 @@ Variablen werden direkt in das Skript eingesetzt:
 $computerName = {{hostInfo.output}}
 ```
 
-Zusätzliche Anführungszeichen sind nicht erforderlich. Eine nicht verfügbare Variable führt zu einem Fehler und nennt die betroffene Referenz.
+Zusätzliche Anführungszeichen sind nicht erforderlich.
+
+Für die Fehlerbehandlung gibt es einen Unterschied zwischen `runScript` und allen anderen Activities:
+
+- **Andere Activities:** Eine nicht auflösbare Variable bricht den Schritt ab und nennt die betroffene Referenz.
+- **`runScript` und Custom Activities:** Diese lösen ihre Vorlagen selbst auf, weil ein `{{…}}` auch gewollter Skripttext sein kann. Ein Tippfehler oder ein unbekannter Schritt bleibt deshalb als Text im Skript stehen und lässt den Schritt **nicht** fehlschlagen. Abgebrochen wird nur die Referenz auf einen Schritt außerhalb des eigenen Vorgängerpfads.
+
+Ein Schritt, der grün ist, aber `{{…}}` in der Ausgabe zeigt, ist deshalb fast immer ein Schreibfehler im Variablennamen.

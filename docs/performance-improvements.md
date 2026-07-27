@@ -182,7 +182,7 @@ Kein Timeout auf dem globalen Wait innerhalb von ForEach (anders als bei `startW
 
 ## Noch offen
 
-Aktuelle Restbestand-Sektion siehe weiter unten ("Offene Backend-Items" + "Offene Frontend-Items"). Die Auto-Mode-Iteration vom 2026-05-06 hat zusätzlich verifiziert, dass die verbleibenden klassischen Engine-Tuning-Hebel (DB-Pool weiter aufbohren, `MaxConcurrentSteps`/`Runspace` >600 ziehen, `ChildSemaphore` >128) **aktiv schädlich** sind — Details in der gleichnamigen Session-Sektion am Ende dieser Datei.
+Der Restbestand wird in [`roadmap.md`](roadmap.md) geführt, nicht hier. Die Auto-Mode-Iteration vom 2026-05-06 hat zusätzlich verifiziert, dass die verbleibenden klassischen Engine-Tuning-Hebel (DB-Pool weiter aufbohren, `MaxConcurrentSteps`/`Runspace` >600 ziehen, `ChildSemaphore` >128) **aktiv schädlich** sind — Details in der gleichnamigen Session-Sektion am Ende dieser Datei. Diese Datei ist die Beweislage dafür; der Sperrvermerk in der Roadmap verweist hierher.
 
 ---
 
@@ -461,17 +461,11 @@ Auf 20-Core / Postgres `max_connections=600` / Pool=480 nach allen Patches:
 2. POST /execute Burst-Backpressure (Dispatcher-Worker absorbiert, kein Drop)
 3. CPU + DB-Connections + Hot-Endpoints sind nicht der Engpass
 
-### Offene Frontend-Items
+### Offene Items
 
-- F2: Route-Level `React.lazy` (Main-Bundle 1.79 MB → ~700 KB) + `manualChunks` + Material-Symbols-Font-Subset (1.1 MB eager)
-- WorkflowEditorPage 1661-Zeilen-Refactor (Code-Health, kein Perf)
-
-### Offene Backend-Items (alle Größe S–M)
-
-- `ExecutionRetentionService`: `ExecuteDeleteAsync` statt Load+RemoveRange wenn Archive disabled
-- 6 Stellen `new JsonSerializerOptions` → shared static (DatabaseTrigger, ReturnData/ForEach/Junction/Xml)
-- `StepRunner` Logger-Scope: `LoggerMessage.DefineScope` statt `new Dictionary` (3× pro Step)
-- `HubRevocationSweeper` inkrementell statt Full-Sweep alle 30s
+Die verbliebenen Backend-Items (Größe S–M) und das Frontend-Bundle-Splitting stehen als
+trigger-gated Posten in [`roadmap.md`](roadmap.md) unter „Daten & Performance" — jeweils mit
+Auslösebedingung, damit sie nicht spekulativ angefasst werden.
 
 (`GetStepHealth` war in einer früheren Version dieser Liste — inzwischen mit `Take(20)` + schmaler `(StepId, Status, StartedAt)`-Projektion ausreichend schlank, [`ExecutionsController.cs:237`](../src/NodePilot.Api/Controllers/ExecutionsController.cs#L237).)
 
@@ -579,6 +573,6 @@ Die 132×-Verlangsamung von `collect-host` ist die **dominante Engine-Decke** f�
 
 Δ ist innerhalb der Mess-Varianz. Die 9 % gegenüber der vom User berichteten 179-s-Initial-Baseline kommen wahrscheinlich primär vom Server-Restart selbst (90-Min-warm-laufender Server hatte mehr GC-Pressure / LOH-Fragmentierung als ein frisch gestarteter), nicht von den Code-Änderungen. **Die Code-Änderungen sind defensiv-billig, nicht durchschlagend.**
 
-### Memory-Pointer
+### Sperrvermerk
 
-Detail-Findings (Tabellen, Iter-Logs) liegen zusätzlich in der Auto-Memory unter [`project_throughput_iterate_2026_05_06.md`](#) — primär für künftige Auto-Mode-Sessions, damit dieselben Hebel (`MaxConcurrentSteps` 1500, `ChildSemaphore` 600, DB-Pool 1500, VACUUM ANALYZE) nicht erneut probiert werden.
+Die vier Hebel dieser Session (`MaxConcurrentSteps` 1500, `ChildSemaphore` 600, DB-Pool 1500, `VACUUM ANALYZE`) sind gemessen widerlegt und stehen als solche im Anhang von [`roadmap.md`](roadmap.md). Diese Sektion ist die Beweislage — wer sie erneut vorschlägt, misst zuerst mit dem hier dokumentierten 500-Parallel-Test.

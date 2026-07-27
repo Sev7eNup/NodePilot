@@ -1182,12 +1182,12 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). You are free to u
 - **[docs/workflow-styleguide.md](docs/workflow-styleguide.md)** — layout rules, edge-label conventions, and engine gotchas for hand-built workflow JSON.
 - **[docs/ai-features.md](docs/ai-features.md)** — LLM configuration, recommended models, security model, error taxonomy.
 - **[docs/performance-improvements.md](docs/performance-improvements.md)** — capacity tuning playbook (parallel workflow targets, runspace pools, DB pool sizing).
-- **[docs/security-findings.md](docs/security-findings.md)** — security backlog with severity tags.
+- **[docs/security-findings.md](docs/security-findings.md)** — register of resolved security findings with fix and test, by severity.
 - **[docs/enterprise-features.md](docs/enterprise-features.md)** — enterprise features, configuration switches and release gates, including the current AD SSO Preview.
 - **[docs/ha-active-passive.md](docs/ha-active-passive.md)** — Active/Passive HA setup, lease/fencing model, failover RTO.
 - **[docs/secrets-providers.md](docs/secrets-providers.md)** — secret-provider operator runbook (DPAPI ↔ AES-GCM migration).
 - **[docs/ldap-windows-sso.md](docs/ldap-windows-sso.md)** — LDAPS, Windows Negotiate/Kerberos, OIDC and SCIM setup and field-test checklist.
-- **[docs/backlog.md](docs/backlog.md)** — designer-feature ideas explored and consciously deferred.
+- **[docs/roadmap.md](docs/roadmap.md)** — the roadmap: what is committed, what is trigger-gated, what was deliberately ruled out and why.
 - **[docs/easter-eggs.md](docs/easter-eggs.md)** — yes, there are easter eggs. No, we won't tell you which.
 - **[grafana/README.md](grafana/README.md)** — Prometheus + Grafana stack walk-through.
 - **[deploy/README.md](deploy/README.md)** — production deployment operator manual (Windows Service, external DB).

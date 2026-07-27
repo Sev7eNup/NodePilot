@@ -42,7 +42,7 @@ function mirrorX(clip: string): string {
 
 /** The per-activity action mapping (must mirror ACTION_SHAPE in shapes.ts). */
 const ACTION_MAP: Record<string, NodeShape> = {
-  runScript: 'hexPointy', fileOperation: 'plaque', folderOperation: 'trapezoidUp', fileHash: 'gem',
+  runScript: 'hexPointy', fileOperation: 'documentFold', folderOperation: 'folder', fileHash: 'gem',
   zipOperation: 'chamferedSquare', serviceManagement: 'hexFlat', scheduledTask: 'pentagonUp',
   registryOperation: 'octagon', wmiQuery: 'pentagonDown', startProgram: 'launchSlant',
   powerManagement: 'power', waitForCondition: 'circle', restApi: 'browser', sql: 'cylinder',
@@ -199,5 +199,19 @@ describe('node shape registry — completeness', () => {
     expect(getNodeShape('startProgram')).not.toBe(getNodeShape('startWorkflow'));
     expect(getNodeSizeMultiplier('launchSlant')).toBeGreaterThan(1.1);
     expect(getIconScaleMultiplier('launchSlant')).toBeGreaterThan(1.1);
+  });
+
+  it('renders folderOperation as a recognizable folder silhouette', () => {
+    expect(getNodeShape('folderOperation')).toBe('folder');
+    expect(SHAPE_CLIP_PATHS.folder).toContain('8.0% 4.0%');
+    expect(SHAPE_CLIP_PATHS.folder).toContain('54.0% 18.0%');
+    expect(SHAPE_DEFS.folder.handleInset?.top).toBeGreaterThan(0);
+    expect(SHAPE_DEFS.folder.iconOffsetY).toBeGreaterThan(0);
+  });
+
+  it('renders fileOperation as a document with a folded upper-right corner', () => {
+    expect(getNodeShape('fileOperation')).toBe('documentFold');
+    expect(SHAPE_CLIP_PATHS.documentFold).toContain('72.0% 0.0%');
+    expect(SHAPE_CLIP_PATHS.documentFold).toContain('100.0% 28.0%');
   });
 });

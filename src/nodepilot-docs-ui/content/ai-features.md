@@ -81,7 +81,7 @@ Der Chat kann keine Workflow-Änderungen vorschlagen oder übernehmen. Antworten
 | Wissensquelle | Inhalt | Zugriff |
 |---|---|---|
 | **Dokumentation** | Inhalte der NodePilot-Dokumentation | alle authentifizierten Rollen |
-| **Workflows und Betrieb** | freigegebene Workflow-Definitionen, Analyse und Zeitpläne | entsprechend Folder-RBAC |
+| **Workflows und Betrieb** | Workflow-Definition und statische Analyse (Admin und Operator, zusätzlich Folder-RBAC); geplante Ausführungszeitpunkte für alle Rollen | siehe Inhalt |
 | **Quellcode** | bereitgestellter NodePilot-Quellcode | Admin und Operator |
 | **Datenbank** | lesende Fragen zu Betriebsdaten | Admin und Operator |
 
@@ -118,7 +118,7 @@ Weitere Felder und Ausgaben enthält die [`llmQuery`-Referenz](activities-refere
 - Script- und Workflow-Generierung erfordern die Rolle Admin oder Operator.
 - Lesende Fragen im workflowbezogenen und globalen Chat sind für authentifizierte Rollen möglich.
 - Workflow-Vorschläge dürfen nur mit Bearbeitungsrecht und aktivem Bearbeitungs-Lock übernommen werden.
-- Quellcode- und Datenbankwissen im globalen Chat ist auf Admin und Operator beschränkt.
+- Quellcode- und Datenbankwissen im globalen Chat ist auf Admin und Operator beschränkt. Dasselbe gilt für Workflow-Definitionen und die statische Workflow-Analyse; ein Viewer erhält aus der Betriebsquelle nur die geplanten Ausführungszeitpunkte.
 - Folder-RBAC begrenzt den Zugriff auf Workflow-Daten.
 - Secrets werden vor Modellanfragen redigiert.
 - Generierte Scripts und Workflow-Änderungen erfordern immer eine fachliche Prüfung.

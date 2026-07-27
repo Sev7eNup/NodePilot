@@ -21,6 +21,7 @@ NodePilot ist ein Single-Contributor-Projekt. KI darf beim Entwickeln helfen (di
 
 Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 
+- `docs/roadmap.md` — **führendes Dokument für „was wird gebaut".** Gesetzte Posten (R1), trigger-gated Posten (R2), offene Entscheidungen (E) und ein Sperrvermerk-Anhang mit den bewusst verworfenen bzw. gemessen widerlegten Ideen. Was dort nicht steht, ist kein Vorhaben.
 - `docs/claude-reference.md` — Overflow-Referenz: Activity-Config-Keys/Outputs, Trigger-Params, Edit-Lock-UX, Audit-Codes, Hot-Reload-Matrix, Backup-Details, Background-Services, Deployment
 - `docs/alerting.md` — Alerting: Notification-Rules + System-Policies (ADR 0008), Dispatcher, Sinks, Ledger
 - `docs/custom-activities.md` — Custom Activities (Plugin-System)
@@ -29,7 +30,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen
-- `docs/ai-feature-ideas.md` — **Ideen-Backlog, keine Spezifikation.** Nur lesen, um nicht Vorhandenes neu zu erfinden; nichts daraus ohne Produktentscheidung umsetzen.
+- `docs/ai-feature-ideas.md` — Beschreibungstiefe zu den KI-Ideen (Nutzerproblem, Funktion, Sicherheitsgrenzen), **keine Spezifikation**. Priorisierung und Status stehen in `docs/roadmap.md`.
 
 ## Tech-Stack
 
@@ -94,7 +95,7 @@ Routen + Rollen-Gating stehen an den Controllern in `src/NodePilot.Api/Controlle
 | Endpoint | Semantik |
 |---|---|
 | `POST /execute` | Startet Lauf. Body: `{"parameters": {}, "timeoutSeconds": N, "debug": bool}`. 202 + ExecutionId. |
-| `POST /enable` / `/disable` | Kill-Switch. `enable` erfordert kein Lock (423 sonst). `disable` ignoriert Locks. |
+| `POST /enable` / `/disable` | Kill-Switch. `enable` verlangt einen lock-freien Workflow — jeder bestehende Lock (auch der eigene) → 423. `disable` ignoriert Locks. |
 | `POST /cancel-all` | Cancelt alle Running-Executions des Workflows. |
 | `POST /executions/{id}/cancel\|retry\|resume` | Einzelner Lauf. Resume-Body: `{"mode": "continue"\|"stepOver"\|"stop", "overrides": {}}`. |
 

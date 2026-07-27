@@ -18,13 +18,15 @@ using Xunit;
 namespace NodePilot.Engine.Tests.Triggers;
 
 /// <summary>
-/// Reconcile-loop coverage for <see cref="TriggerOrchestrator"/>. We use the only
-/// DI-resolvable source (<see cref="ScheduleTriggerSource"/>) and stub Quartz with a
-/// Moq-based <see cref="ISchedulerFactory"/>; ScheduleJob/DeleteJob call counts are the
-/// observable signal that the orchestrator did or did not register/dispose a source.
-/// The other source types (file/db/eventLog) are constructed with `new` inside the
-/// orchestrator, so they cannot be substituted from a test without refactoring -
-/// dedicated unit tests for those live alongside the source classes themselves.
+/// Reconcile-loop coverage for <see cref="TriggerOrchestrator"/>. We drive it through
+/// <see cref="ScheduleTriggerSource"/> and stub Quartz with a Moq-based
+/// <see cref="ISchedulerFactory"/>; ScheduleJob/DeleteJob call counts are the observable
+/// signal that the orchestrator did or did not register/dispose a source. Every source type
+/// (schedule/file/db/eventLog) is constructed with `new` inside the orchestrator from
+/// root-resolved singletons, so none can be substituted from a test without refactoring —
+/// dedicated unit tests for those live alongside the source classes themselves. Note that
+/// the container below deliberately has NO ScheduleTriggerSource registration: the
+/// orchestrator must not depend on one (see CreateSource).
 /// </summary>
 public class TriggerOrchestratorReconcileTests : IAsyncDisposable
 {
@@ -63,7 +65,6 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
         services.AddDbContext<NodePilotDbContext>(opts => opts.UseSqlite(_connection));
         services.AddSingleton(_schedulerFactory.Object);
         services.AddSingleton<IConfiguration>(config);
-        services.AddTransient<ScheduleTriggerSource>();
         services.AddSingleton<IWorkflowExecutionDispatcher, NoopWorkflowExecutionDispatcher>();
         // FireAsync resolves IWorkflowEngine from the per-tick scope. We never want a real
         // engine touched in these tests - reconcile tests stop before fire, suppression tests
@@ -146,6 +147,26 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
     [Fact]
     public async Task SyncAsync_RegistersSource_ForEnabledScheduleTrigger()
     {
+        await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
+
+        await _orchestrator.SyncAsync(CancellationToken.None);
+
+        _scheduler.Verify(s => s.ScheduleJob(It.IsAny<IJobDetail>(), It.IsAny<ITrigger>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    /// <summary>
+    /// The orchestrator must build its trigger sources itself instead of resolving them from the
+    /// container: <see cref="ITriggerSource"/> is IAsyncDisposable, and a transient disposable
+    /// pulled from the root provider stays tracked (= referenced, and disposed a second time at
+    /// shutdown) for the entire process lifetime. This container has no ScheduleTriggerSource
+    /// registration at all — registering the trigger still has to work.
+    /// </summary>
+    [Fact]
+    public async Task SyncAsync_RegistersScheduleTrigger_WithoutContainerRegistration()
+    {
+        _services.GetService<ScheduleTriggerSource>().Should().BeNull(
+            "the orchestrator must not depend on a container registration for its sources");
         await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
 
         await _orchestrator.SyncAsync(CancellationToken.None);
