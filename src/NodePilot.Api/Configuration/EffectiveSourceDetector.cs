@@ -59,6 +59,33 @@ public static class EffectiveSourceDetector
     }
 
     /// <summary>
+    /// Source token of the first provider <b>other than</b> the runtime-overrides file that supplies
+    /// any of <paramref name="keys"/> — or <c>null</c> when only the runtime file (or nothing) does.
+    ///
+    /// <para>Needed wherever "can the Settings UI make this disappear?" is the question.
+    /// <see cref="Detect"/> can't answer it: the runtime file sits above the base config, so once a
+    /// value has been saved through the UI it reports <c>runtime</c> even though the underlying
+    /// <c>appsettings.json</c> entry would resurface the moment the runtime entry is dropped.</para>
+    /// </summary>
+    public static string? DetectNonRuntimeSource(IConfigurationRoot root, IEnumerable<string> keys)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(keys);
+
+        var keyList = keys as IReadOnlyList<string> ?? keys.ToList();
+        foreach (var provider in root.Providers.Reverse())
+        {
+            var source = Classify(provider);
+            if (source == SourceRuntime) continue;
+            foreach (var key in keyList)
+            {
+                if (provider.TryGet(key, out _)) return source;
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Detect sources for a set of keys in one pass.
     /// </summary>
     public static IReadOnlyDictionary<string, string> DetectMany(IConfigurationRoot root, IEnumerable<string> keys)

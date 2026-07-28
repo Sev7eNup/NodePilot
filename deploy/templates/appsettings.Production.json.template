@@ -130,11 +130,8 @@
   },
   "Llm": {
     "Enabled": false,
-    "BaseUrl": "",
-    "ApiKey": "",
-    "Model": "",
-    "MaxTokens": 128000,
-    "TimeoutSeconds": 720
+    "ActiveProfileId": "",
+    "Profiles": {}
   },
   "Credentials": {
     "DpapiScope": "LocalMachine"

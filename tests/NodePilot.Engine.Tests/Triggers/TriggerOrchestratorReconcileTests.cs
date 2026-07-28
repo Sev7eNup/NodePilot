@@ -28,6 +28,7 @@ namespace NodePilot.Engine.Tests.Triggers;
 /// the container below deliberately has NO ScheduleTriggerSource registration: the
 /// orchestrator must not depend on one (see CreateSource).
 /// </summary>
+[Collection(ScheduleJobSlotCollection.Name)]
 public class TriggerOrchestratorReconcileTests : IAsyncDisposable
 {
     private readonly SqliteConnection _connection;
@@ -104,6 +105,12 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        // The orchestrator's own teardown lives in the BackgroundService loop, which these tests
+        // never start — they drive SyncAsync directly. Every source a sync registered is still in
+        // _active, holding a slot in ScheduleTriggerSource's process-static MaxActiveJobs counter.
+        // Leaking those makes the cap-based assertions in ScheduleTriggerSourceTests fail or pass
+        // purely by class order, which is why that flake never reproduced on demand.
+        await _orchestrator.DisposeActiveSourcesAsync();
         _db.Dispose();
         await _services.DisposeAsync();
         _connection.Dispose();

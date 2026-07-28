@@ -1,16 +1,25 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace NodePilot.Ai;
 
 /// <summary>
-/// Configuration for the LLM endpoint behind the AI features (script and workflow generation).
-/// Deliberately kept flat — eight operator knobs in <c>appsettings.json</c>; everything else is a
-/// const in code (variable cap, JSON retry count) because those are token-budget tuning values
-/// that no operator should ever need to touch.
+/// Configuration for the AI features. Holds a set of named connections
+/// (<see cref="Profiles"/>, keyed by a stable id) plus the two knobs that are genuinely global:
+/// the <see cref="Enabled"/> kill-switch and <see cref="ActiveProfileId"/>, which picks the one
+/// profile every AI feature uses. Everything connection-shaped lives on
+/// <see cref="LlmProfileOptions"/>.
 ///
 /// <para>
 /// The transport is OpenAI-compatible (chat completions), so the same code works against OpenAI
 /// Cloud, Ollama, LM Studio, vLLM, LocalAI, and llama.cpp servers. Local endpoints are the
-/// preferred use case — the default <c>BaseUrl</c> happens to point at OpenAI, but this whole
-/// feature is opt-in (<c>Enabled=false</c> by default).
+/// preferred use case — this whole feature is opt-in (<c>Enabled=false</c> by default).
+/// </para>
+///
+/// <para>
+/// The dictionary key (the profile id) is what everything else references — the secret-preserving
+/// settings save, the <c>Llm__Profiles__{id}__ApiKey</c> environment override, and
+/// <see cref="ActiveProfileId"/>. It is immutable once created; <see cref="LlmProfileOptions.Name"/>
+/// is the renameable label.
 /// </para>
 /// </summary>
 public class LlmOptions
@@ -32,41 +41,40 @@ public class LlmOptions
     /// </summary>
     public const int MaxJsonRetries = 1;
 
-    /// <summary>Master switch. Default <c>false</c> — operator opt-in. When off, both AI endpoints respond with 503.</summary>
+    /// <summary>Master switch. Default <c>false</c> — operator opt-in. When off, every AI endpoint responds with 503.</summary>
     public bool Enabled { get; set; }
 
-    /// <summary>OpenAI-compatible chat-completions root. For Ollama, e.g. <c>http://localhost:11434/v1</c>.</summary>
-    public string BaseUrl { get; set; } = "https://api.openai.com/v1";
+    /// <summary>
+    /// Id of the profile every AI feature uses. Must name an entry in <see cref="Profiles"/>;
+    /// there is deliberately no "fall back to the first one" rule, because silently talking to a
+    /// different endpoint than the operator selected is worse than a clear 503.
+    /// </summary>
+    public string ActiveProfileId { get; set; } = "";
 
     /// <summary>
-    /// API key. OpenAI Cloud requires one; most local endpoints don't. Recommended way to set it:
-    /// the <c>Llm__ApiKey</c> environment variable — a plaintext value in the settings file
-    /// triggers a startup hardening warning (same as <c>Smtp:Password</c>).
+    /// The stored connections, keyed by immutable profile id. Empty by default — a fresh install
+    /// ships no profile at all, so an operator's first profile is fully owned by the runtime
+    /// overrides file and stays deletable through the Settings UI.
     /// </summary>
-    public string? ApiKey { get; set; }
-
-    /// <summary>Model name. Both modes (script and workflow generation) use the same model.</summary>
-    public string Model { get; set; } = "gpt-4o-mini";
+    public Dictionary<string, LlmProfileOptions> Profiles { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Cap on the LLM response length. The default of 4096 is conservative and, combined with the
-    /// workflow-generation input (~5-6k tokens), still fits inside the typical 8k context window
-    /// of local models. Operators with more capable models (32k+ context) can raise it — but
-    /// higher values can trigger an upstream HTTP 400 "context_length_exceeded" on smaller models.
+    /// Resolves <see cref="ActiveProfileId"/> against <see cref="Profiles"/>. Returns false when no
+    /// profile is configured or the active id doesn't exist — callers turn that into a 503
+    /// (<c>LLM_NO_ACTIVE_PROFILE</c>) rather than guessing a connection.
     /// </summary>
-    public int MaxTokens { get; set; } = 4096;
-
-    /// <summary>HTTP timeout in seconds. Generous enough for local models, but short enough to not hang forever.</summary>
-    public int TimeoutSeconds { get; set; } = 90;
+    public bool TryResolveActiveProfile([NotNullWhen(true)] out LlmProfileOptions? profile)
+    {
+        profile = null;
+        if (string.IsNullOrWhiteSpace(ActiveProfileId)) return false;
+        return Profiles.TryGetValue(ActiveProfileId.Trim(), out profile) && profile is not null;
+    }
 
     /// <summary>
-    /// Opt-in: lets the chat assistant call read-only MCP/analysis tools (OpenAI function calling,
-    /// <c>tool_choice: auto</c>). Default <c>false</c> — the model needs to support tool calling
-    /// reliably, and many small local models don't. When <c>false</c>, the chat behaves exactly as
-    /// before (no <c>tools</c> in the request).
+    /// <see cref="Enabled"/> AND a resolvable active profile — the condition every AI feature gates
+    /// on. Split from <see cref="TryResolveActiveProfile"/> so callers can tell the two failure
+    /// modes apart (<c>LLM_DISABLED</c> vs. <c>LLM_NO_ACTIVE_PROFILE</c>).
     /// </summary>
-    public bool EnableToolCalling { get; set; }
-
-    /// <summary>Max. LLM rounds with tool calls per chat turn (guards against infinite loops). Default 6.</summary>
-    public int ToolCallMaxDepth { get; set; } = 6;
+    public bool IsUsable => Enabled && TryResolveActiveProfile(out _);
 }

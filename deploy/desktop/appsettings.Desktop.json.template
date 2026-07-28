@@ -97,7 +97,7 @@
   },
   "Stats": { "RefreshIntervalMinutes": 5, "WindowDays": 7 },
   "Smtp": { "Host": "localhost", "Port": 25, "From": "nodepilot@localhost", "Username": null, "Password": null },
-  "Llm": { "Enabled": false, "BaseUrl": "", "ApiKey": "", "Model": "", "MaxTokens": 128000, "TimeoutSeconds": 720 },
+  "Llm": { "Enabled": false, "ActiveProfileId": "", "Profiles": {} },
   "RestApi": {
     "BlockPrivateNetworks": true,
     "AllowedHosts": [],

@@ -31,9 +31,9 @@ public sealed class NodePilotResources
     }
 
     [McpServerResource(UriTemplate = "nodepilot://activity-config-reference", Name = "activity-config-reference", MimeType = "application/json")]
-    [Description("Curated per-activity config-key reference (key/type/required/description + example) — the CONFIG-key schema the backend catalog does not carry. Use it to author valid node config objects.")]
+    [Description("Curated per-activity config-key reference (key/type/required/description + prompt notes) — the CONFIG-key schema the backend catalog does not carry. Use it to author valid node config objects.")]
     public static string ActivityConfigReference()
-        => EmbeddedResources.Read(EmbeddedResources.ActivityConfigReference);
+        => NodePilot.Core.Activities.ActivityConfigReference.RawJson;
 
     [McpServerResource(UriTemplate = "nodepilot://styleguide", Name = "workflow-styleguide", MimeType = "text/markdown")]
     [Description("The NodePilot workflow layout/naming styleguide (docs/workflow-styleguide.md), embedded into the tool. Read this before generating or restructuring a workflow graph.")]

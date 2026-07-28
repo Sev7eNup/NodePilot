@@ -55,47 +55,7 @@ keep it simple, prefer the `condition` shortcut where possible. `sourceHandle` /
 `targetHandle` pin which port an edge attaches to — preserve them on edges you are
 not re-routing. `data.disabled: true` skips an edge.
 
-## Activity catalog (use only these `activityType` values)
-
-**Triggers**
-- `manualTrigger` — entry point, optional `parameters: [{name, type:"string", required, default}]`
-- `scheduleTrigger` — `cronExpression` (7-field Quartz cron)
-- `webhookTrigger` — `path`, `method`, optional `secret`
-- `fileWatcherTrigger` — `directory`, `filter`, `watchType`, `includeSubdirectories`
-- `databaseTrigger` — `connectionRef`, `provider`, `query`, `intervalSeconds`; raw `connectionString` is dev/legacy only and blocked in hardened deployments
-- `eventLogTrigger` — `logName`, `source`, `entryType`, `messagePattern`
-
-**Run Script (local by default, remote when targeted)**
-- `runScript` — `script` (PowerShell), `engine`, `timeoutSeconds`, and (local execution only) `isolated` (boolean — run in a separate process inside a Windows Job Object for crash/leak containment and no orphaned processes), with optional caps `memoryLimitMb` and `maxProcesses`. **Step success is error-based:** only a terminating PowerShell error (`throw`, or `Write-Error` under the wrapper's `Stop` preference) fails the step — an explicit `exit N` does NOT fail it. To make a non-zero exit fail the step, set `successExitCodes` (comma-separated, e.g. `"0"` or `"0,1"`). The exit code is always exposed as `{{step.param.exitCode}}`. Omit `targetMachineId` when the script should run on the NodePilot host. Set a non-local `targetMachineId` when NodePilot should execute the script through its WinRM wrapper on that target. A local runScript may still use PowerShell remoting itself (`Invoke-Command`, `New-PSSession`, etc.).
-
-**Remote (WinRM, requires `targetMachineId`)**
-- `fileOperation` — `operation` (copy/move/delete/exists/create/rename), `path` (file path), `destination` (copy/move), `newName` (rename). Operates on files only — destructive ops assert `-PathType Leaf` so a folder typed by mistake fails fast. `create` makes an empty file (truncates with `-Force` if it exists; refuses if a folder occupies the path).
-- `folderOperation` — `operation` (copy/move/delete/exists/list/create/rename), `path` (folder path), `destination` (copy/move), `newName` (rename). Operates on folders only — destructive ops assert `-PathType Container`. Use `create` to make a new directory, `list` to enumerate immediate children.
-- `serviceManagement` — `serviceName`, `action` (start/stop/restart/status/create/delete/setStartType). For `create`: `binaryPath` (required), `displayName`, `description`, `startupType`. For `setStartType`: `startupType` (Automatic/AutomaticDelayedStart/Manual/Disabled).
-- `registryOperation` — `operation` (one of `read`/`write`/`deleteValue`/`deleteKey`/`createKey`/`exists`/`listSubKeys`/`listValues`), `keyPath`, `valueName` (required for `write`/`deleteValue`; optional for `read`/`exists`), `value` (write), `valueType` (`String`/`ExpandString`/`Binary`/`DWord`/`MultiString`/`QWord` — write only, default `String`). Outputs depending on op: single `read`/`exists` → `param.value`+`param.type` / `param.exists`; `read` without valueName / `listValues` → `param.values`+`param.count`; `listSubKeys` → `param.subKeys`+`param.count`; `createKey` → `param.created`. `deleteKey` removes the key recursively.
-- `wmiQuery` — `mode` (`query` | `wql` | `invokeMethod`, default `query`), `namespace`. Per mode: `query` → `className` + optional `filter` (WHERE clause); `wql` → `query` (raw `SELECT … FROM …`); `invokeMethod` → `className`, `methodName`, optional `arguments` (JSON object → PS hashtable; keys must be valid identifiers), optional `filter` (scopes to instance methods, otherwise treated as a static call).
-- `startProgram` — `filePath`, `arguments`, `waitForExit`, `timeoutSeconds`
-- `powerManagement` — `action` (shutdown/restart/logoff/abort/hibernate), `delaySeconds`, `force`
-- `textFileEdit` — `operation` (`append`/`prepend`/`insert`/`replaceLine`/`delete`/`replace`), `path` (file path). Per-op keys: `content` (append/prepend/insert/replaceLine — multi-line via `\n`), `lineNumber` (insert/replaceLine, 1-based), `lineRange: [from, to]` OR `matchPattern` OR `lineNumber` for `delete` (exactly one), `matchPattern`+`replace` for `replace` (plus optional `useRegex`, `ignoreCase`, `occurrences`: `all`/`first`). Common: `encoding` (`auto`/`utf8`/`utf8-bom`/`utf16le`/`utf16be`/`ascii`), `lineEnding` (`preserve`/`crlf`/`lf`), `createIfMissing` (append/prepend only), `backupSuffix` (e.g. `.bak`), `dryRun`, `maxFileSizeMB`. Append also supports `appendIfMissing` for idempotent edits (e.g. /etc/hosts entries).
-
-**Engine-local**
-- `restApi` — `url`, `method`, `body`, `headers`, `timeoutSeconds`
-- `sql` — `provider` (sqlserver/sqlite/postgres), `query`. Connection: use named `connectionRef` for DB credentials in hardened deployments. Builder fields without credentials are allowed for integrated SQL Server auth or SQLite file paths; raw `connectionString` and builder credentials are dev/legacy only and may be blocked.
-- `emailNotification` — `to`, `subject`, `body`, `isHtml`
-- `delay` — `seconds`
-- `generateText` — random string for ids/tokens/guids/password charsets. `mode` (alphanumeric/alphabetic/numeric/hex/guid/password/custom), `length`, `customCharset` (mode=custom), `excludeAmbiguous`. Note: `password` is only a charset (letters+digits+symbols); it does NOT guarantee password-policy complexity.
-- `junction` — `mode` (waitAll/waitAny/waitNofM), `requiredCount` (note: NOT `n`)
-- `startWorkflow` — `workflowNameOrId`, `parameters`, `waitForCompletion`
-- `returnData` — `data` (object with `{{template}}` values)
-- `xmlQuery` — `source`, `path`/`content`, `xpath`, `namespaces`
-- `jsonQuery` — `source`, `path`/`content`, `jsonPath`
-- `log` — `level` (info/warning/error), `message`
-
-Some workflows also contain control-flow / niche activity types not listed above
-(for example loop, decision, wait-for-condition, file-hash, zip and
-scheduled-task activities). When such a node is present, its concrete metadata is
-supplied separately in the per-node context block — explain it from that plus its
-`config`.
+<!--ACTIVITY_CATALOG-->
 
 ## Variable substitution
 

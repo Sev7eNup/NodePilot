@@ -3,4 +3,11 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Shared by NodePilot.Ai (renders the AI prompt's activity catalog) and NodePilot.Mcp
+         (serves it as a resource/tool). Lives here so both can reach it without either
+         depending on the other. -->
+    <EmbeddedResource Include="Activities\Embedded\activity-config-reference.json" />
+  </ItemGroup>
+
 </Project>

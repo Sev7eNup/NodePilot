@@ -44,20 +44,22 @@ public sealed class WorkflowAssistantService
         + "wenn der User nach Fehlschlaegen oder dem Verhalten vergangener Ausfuehrungen fragt - rate nicht. "
         + "Outputs sind redigiert und gekuerzt.";
 
-    private readonly ILlmClient _llm;
+    // The factory, not a pre-built client: Create() resolves the active LLM profile and throws
+    // when none is configured, so it has to run inside the call — after the controller's gate.
+    private readonly ILlmClientFactory _llmFactory;
     private readonly PromptCatalog _prompts;
     private readonly IChatToolRegistry _tools;
-    // Hot-reload: hold the live monitor (not a cached snapshot) so a config edit of Llm:EnableToolCalling
-    // / Llm:ToolCallMaxDepth takes effect on the next chat turn without a restart.
+    // Hot-reload: hold the live monitor (not a cached snapshot) so a config edit of the active
+    // profile's EnableToolCalling / ToolCallMaxDepth takes effect on the next chat turn.
     private readonly IOptionsMonitor<LlmOptions> _options;
     private readonly ICustomActivityDefinitionStore? _customStore;
     private readonly IExecutionLogReader? _executionLogs;
 
-    public WorkflowAssistantService(ILlmClient llm, PromptCatalog prompts, IChatToolRegistry tools,
+    public WorkflowAssistantService(ILlmClientFactory llmFactory, PromptCatalog prompts, IChatToolRegistry tools,
         IOptionsMonitor<LlmOptions> options, ICustomActivityDefinitionStore? customStore = null,
         IExecutionLogReader? executionLogs = null)
     {
-        _llm = llm;
+        _llmFactory = llmFactory;
         _prompts = prompts;
         _tools = tools;
         _options = options;
@@ -92,13 +94,19 @@ public sealed class WorkflowAssistantService
         var conversation = new List<LlmMessage>(BuildConversation(request, redactedJson));
 
         // Tool-calling only when opted in. Off → Tools=null → the model never calls one → exactly
-        // one round → identical to the pre-tool-calling behavior. Read live so the setting takes
-        // effect immediately on the next chat turn.
-        var opts = _options.CurrentValue;
-        var maxDepth = Math.Max(1, opts.ToolCallMaxDepth);
+        // one round → identical to the pre-tool-calling behavior. Read live from the ACTIVE
+        // profile so the setting takes effect immediately on the next chat turn — and so that
+        // switching to a model without reliable function-calling takes the capability with it.
+        var llm = _llmFactory.Create(); // throws unless an active profile resolves
+        // Re-read rather than reuse: a config reload between the two calls would otherwise NRE.
+        // The tool-calling defaults of a fresh profile (off) are the safe answer for that window.
+        var profile = _options.CurrentValue.TryResolveActiveProfile(out var active)
+            ? active
+            : new LlmProfileOptions();
+        var maxDepth = Math.Max(1, profile.ToolCallMaxDepth);
         IReadOnlyList<LlmToolDefinition>? tools = null;
         ChatToolContext? toolContext = null;
-        if (opts.EnableToolCalling)
+        if (profile.EnableToolCalling)
         {
             // Tools operate on the REDACTED definition — the same view the LLM has — so that even
             // read-only tools can't leak secrets out of the original definition.
@@ -151,7 +159,7 @@ public sealed class WorkflowAssistantService
             var assistantText = new StringBuilder(); // prose from THIS round (for the conversation turn)
             IReadOnlyList<LlmToolCall>? toolCalls = null;
 
-            await foreach (var evt in _llm.StreamAsync(llmRequest, ct))
+            await foreach (var evt in llm.StreamAsync(llmRequest, ct))
             {
                 if (evt.Done)
                 {
@@ -264,6 +272,15 @@ public sealed class WorkflowAssistantService
         sb.Append(_prompts.AssistantSystemPrompt);
         sb.Append("\n\n## Activity & definition reference\n\n");
         sb.Append(_prompts.ActivityReference);
+
+        // Every enabled custom activity, not just the ones already on the canvas — otherwise the
+        // assistant can explain a custom node but never propose one the user does not have yet.
+        var customSection = ActivityCatalogPromptRenderer.RenderCustomActivities(customFacts.Values.ToList());
+        if (customSection.Length > 0)
+        {
+            sb.Append("\n\n");
+            sb.Append(customSection);
+        }
 
         var metadata = BuildActivityMetadata(original, customFacts);
         if (metadata.Length > 0)

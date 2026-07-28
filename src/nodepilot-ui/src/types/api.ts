@@ -360,6 +360,14 @@ export interface OpsNode {
   runningCount: number;
   lastStatus: string | null;
   callFrequency: number | null;
+  /**
+   * Caller may cancel / retry / cancel-all on THIS workflow (folder ResourceOp.Run, already
+   * ANDed with the global role server-side). Per-node, not snapshot-wide: a global Operator
+   * with only folder-Viewer rights must not be offered a button the endpoint then 403s.
+   */
+  canRun: boolean;
+  /** Caller may disable / quarantine THIS workflow (folder ResourceOp.Edit — stricter than canRun). */
+  canEdit: boolean;
 }
 
 export interface OpsEdge {
@@ -380,6 +388,17 @@ export interface OpsRunningExecution {
   startedAt: string;
   /** Parent run for sub-workflow executions — drives the timeline call connectors. */
   parentExecutionId: string | null;
+  /**
+   * Observed step ACTIVITY, not progress — there is deliberately no percentage, because every
+   * available denominator is wrong (trigger nodes, skipped rows, loop re-runs). All four fields
+   * are null when the run was not enriched (beyond the server's cap); null means "unknown",
+   * never "nothing happened", so the UI renders nothing rather than a zero.
+   */
+  stepsFinished: number | null;
+  lastCompletedStepName: string | null;
+  /** When the last step finished — the real answer to "working or hung?". */
+  lastProgressAt: string | null;
+  activeStepCount: number | null;
 }
 
 /** Terminal execution completed within the recent window (30 min, newest 200). */
@@ -393,8 +412,25 @@ export interface OpsRecentExecution {
   parentExecutionId: string | null;
 }
 
-export interface OpsCapabilities {
-  canCancel: boolean;
+export interface OpsSnapshotMeta {
+  /**
+   * A Running execution older than this is overdue. Comes from Alerting:LongRunningSeconds
+   * with the identical Math.max(1, …) floor the alerting collector applies, so the console
+   * highlights a run at exactly the moment the alert would fire.
+   */
+  overdueSeconds: number;
+  /** Window this snapshot was built for, after the server's clamp (20 | 60 | 240). */
+  windowMinutes: number;
+  /** Left edge the client ASKED for (now - windowMinutes). */
+  recentSinceUtc: string;
+  /**
+   * Completion time of the oldest settled run actually returned; null when none. Anchor for
+   * the "no history" band — NOT recentSinceUtc, which after truncation marks exactly the
+   * stretch that was not lost.
+   */
+  oldestReturnedCompletedAt: string | null;
+  /** More settled runs existed in the window than the cap returns. */
+  recentTruncated: boolean;
 }
 
 export interface OperationsGraph {
@@ -402,6 +438,6 @@ export interface OperationsGraph {
   edges: OpsEdge[];
   running: OpsRunningExecution[];
   recent: OpsRecentExecution[];
-  capabilities: OpsCapabilities;
+  meta: OpsSnapshotMeta;
 }
 

@@ -145,7 +145,10 @@ public class SecurityHardeningWarningsTests
             ["Jwt:Issuer"] = "NodePilot",
             ["Jwt:Audience"] = "NodePilot",
             ["Smtp:Password"] = "p4ss",
-            ["Llm:ApiKey"] = "sk-secret",
+            ["Llm:Profiles:openai:Name"] = "OpenAI",
+            ["Llm:Profiles:openai:ApiKey"] = "sk-secret",
+            ["Llm:Profiles:local:ApiKey"] = "EMPTY", // the placeholder must not warn
+            ["Llm:Profiles:nokey:BaseUrl"] = "http://localhost:11434/v1", // no key at all
             ["Authentication:Ldap:Enabled"] = "true",
             ["Authentication:Ldap:UseSsl"] = "false",
             ["Credentials:DpapiScope"] = "CurrentUser",

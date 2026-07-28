@@ -11,7 +11,8 @@ public static class EmbeddedResources
 {
     private static readonly Assembly Asm = typeof(EmbeddedResources).Assembly;
 
-    public const string ActivityConfigReference = "NodePilot.Mcp.Resources.Embedded.activity-config-reference.json";
+    // The activity config reference is NOT here: it lives in NodePilot.Core
+    // (ActivityConfigReference) because NodePilot.Ai renders the AI prompts from the same data.
     public const string WorkflowStyleguide = "NodePilot.Mcp.Resources.Embedded.workflow-styleguide.md";
 
     public static string Read(string manifestName)

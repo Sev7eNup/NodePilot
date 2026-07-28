@@ -178,7 +178,7 @@ Eigene Config-Komponente je Activity-Typ (`properties/activities/`, registriert 
 | `textFileEdit` | **operation** (append/prepend/insert/replaceLine/delete/replace), **path**, **content**, **lineNumber**, Delete-Sub-Modus (line/range/pattern), matchPattern, replace, useRegex, ignoreCase, occurrences (all/first), encoding (auto/utf8/utf8-bom/utf16le/utf16be/ascii), lineEnding (preserve/crlf/lf), backupSuffix, createIfMissing, dryRun |
 | `delay` | **seconds** (Number, min 1) |
 | `generateText` | **Zufallstext-Generator** — **mode** (alphanumeric/alphabetic/numeric/hex/guid/password/custom), **length** (außer guid), **customCharset** (bei custom), **excludeAmbiguous** |
-| `llmQuery` | **LLM-Abfrage** — OpenAI-kompatibler Endpunkt (Prompt→Text). **prompt** (Pflicht, `{{templates}}`), **systemPrompt**, **jsonMode**; Override-Abschnitt: **baseUrl**, **model**, **apiKey** (Secret), **maxTokens**, **temperature** (0–2), Timeout-Feld auto. Leer → globale `Llm:*`-Config; braucht `Llm:Enabled=true` |
+| `llmQuery` | **LLM-Abfrage** — OpenAI-kompatibler Endpunkt (Prompt→Text). **prompt** (Pflicht, `{{templates}}`), **systemPrompt**, **jsonMode**; Override-Abschnitt: **baseUrl**, **model**, **apiKey** (Secret), **maxTokens**, **temperature** (0–2), Timeout-Feld auto. Leer → das aktive LLM-Profil; braucht `Llm:Enabled=true` + ein auflösbares aktives Profil |
 | `xmlQuery` | **source** (inline/file), content (XML-CodeField) bzw. path, **xpath**, **resultMode** (single/all), **namespaces** (JSON-Mapping) |
 | `jsonQuery` | **source** (inline/file), content (JSON-CodeField) bzw. path, **jsonPath** + JSONPath-Picker, **resultMode** (single/all) |
 | `log` | **level** (info/warning/error), **message** (multiline) |

@@ -25,14 +25,18 @@ public sealed class NodePilotResourcesTests
     }
 
     [Fact]
-    public void ActivityConfigReference_CoversEveryCoreActivityType()
+    public void ActivityConfigReference_IsServedFromTheSharedCoreSource()
     {
+        // The document moved to NodePilot.Core so NodePilot.Ai can render the AI prompts from the
+        // same data. The MCP contract (URI, body) must be unchanged by that move. Coverage and
+        // key-correctness are guarded in NodePilot.Engine.Tests/Activities/ActivityConfigReferenceTests.
+        NodePilotResources.ActivityConfigReference()
+            .Should().Be(NodePilot.Core.Activities.ActivityConfigReference.RawJson);
+
         using var doc = JsonDocument.Parse(NodePilotResources.ActivityConfigReference());
         var documented = doc.RootElement.GetProperty("activities")
             .EnumerateObject().Select(p => p.Name).ToHashSet(StringComparer.Ordinal);
 
-        // Drift guard: every type in the backend catalog must have a curated config reference,
-        // otherwise get_activity_config_reference / validate_activity_config silently degrade for it.
         var missing = ActivityCatalog.All.Select(a => a.Type).Where(t => !documented.Contains(t)).ToList();
         missing.Should().BeEmpty($"these Core activity types lack a config-reference entry: {string.Join(", ", missing)}");
     }

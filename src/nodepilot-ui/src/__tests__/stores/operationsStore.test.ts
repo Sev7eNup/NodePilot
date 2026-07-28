@@ -16,9 +16,9 @@ describe('operationsStore', () => {
   it('seedRunning groups execution ids by workflow and parses startedAt', () => {
     useOperationsStore.getState().seedRunning(
       [
-        { executionId: 'e1', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '2026-07-19T10:00:00Z' },
-        { executionId: 'e2', workflowId: 'w1', status: 'Pending', parentExecutionId: null, startedAt: '2026-07-19T10:01:00Z' },
-        { executionId: 'e3', workflowId: 'w2', status: 'Running', parentExecutionId: null, startedAt: '2026-07-19T10:02:00Z' },
+        { executionId: 'e1', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '2026-07-19T10:00:00Z' , stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null},
+        { executionId: 'e2', workflowId: 'w1', status: 'Pending', parentExecutionId: null, startedAt: '2026-07-19T10:01:00Z' , stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null},
+        { executionId: 'e3', workflowId: 'w2', status: 'Running', parentExecutionId: null, startedAt: '2026-07-19T10:02:00Z' , stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null},
       ],
       { w1: null, w2: null },
       NO_RECENT,
@@ -67,7 +67,7 @@ describe('operationsStore', () => {
 
     // A stale snapshot still lists e1 as running. seedRunning must NOT resurrect it.
     seedRunning(
-      [{ executionId: 'e1', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '' }],
+      [{ executionId: 'e1', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '' , stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null}],
       { w1: 'Failed' },
       NO_RECENT,
     );
@@ -101,7 +101,7 @@ describe('operationsStore', () => {
     applyStatus('a', 'w1', 'Running');
     applyStatus('a', 'w1', 'Succeeded'); // previous run succeeded (overlay)
     applyStatus('b', 'w1', 'Running');   // current run active
-    seedRunning([{ executionId: 'b', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '' }], { w1: 'Succeeded' }, NO_RECENT);
+    seedRunning([{ executionId: 'b', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '' , stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null}], { w1: 'Succeeded' }, NO_RECENT);
     // Active â†’ overlay preserved (effectiveStatus reports Running anyway); lastStatus not forced.
     expect(useOperationsStore.getState().liveStatusByWorkflow.w1).toBe('Succeeded');
     expect(runningCount('w1')).toBe(1);
@@ -121,7 +121,7 @@ describe('operationsStore', () => {
   it('terminal transition records a locally-settled entry carrying the observed start time', () => {
     const { seedRunning, applyStatus } = useOperationsStore.getState();
     seedRunning(
-      [{ executionId: 'e1', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '2026-07-19T10:00:00Z' }],
+      [{ executionId: 'e1', workflowId: 'w1', status: 'Running', parentExecutionId: null, startedAt: '2026-07-19T10:00:00Z' , stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null}],
       { w1: null },
       NO_RECENT,
     );

@@ -79,18 +79,15 @@ public sealed class DiscoveryTools
     public object GetActivityConfigReference(
         [Description("The activity type, e.g. 'runScript', 'restApi', 'sql'.")] string activityType)
     {
-        var json = EmbeddedResources.Read(EmbeddedResources.ActivityConfigReference);
-        using var doc = JsonDocument.Parse(json);
-        var activities = doc.RootElement.GetProperty("activities");
-        if (activities.TryGetProperty(activityType, out var entry))
-            return new { activityType, config = entry.Clone() };
+        if (NodePilot.Core.Activities.ActivityConfigReference.TryGet(activityType) is { } entry)
+            return new { activityType, config = entry };
 
         return new
         {
             activityType,
             found = false,
             note = "No curated config reference for this type yet. Use list_activity_types for outputs, and the styleguide resource.",
-            documentedTypes = activities.EnumerateObject().Select(p => p.Name).ToArray(),
+            documentedTypes = NodePilot.Core.Activities.ActivityConfigReference.ByType.Keys.ToArray(),
         };
     }
 

@@ -1,5 +1,5 @@
 {
-  "_comment": "NodePilot Master Test Workflow — definitive few-shot example for AI workflow generation. Covers all 25 activity types (scheduleTrigger, runScript, log, delay, fileOperation, folderOperation, fileHash, zipOperation, serviceManagement, registryOperation, wmiQuery, startProgram, scheduledTask, jsonQuery, xmlQuery, sql, restApi, decision, junction (waitAll/waitAny/waitNofM), waitForCondition, forEach, startWorkflow, emailNotification, powerManagement, returnData), all 14 edge condition operators + AND/OR/NOT, retry policies, node-level disabled and breakpoint flags, disabled edges, legacy condition shortcuts (.success/.failed). LTR layout: x-step 300, y-lane 180, main lane y=600. 45 nodes, 54 edges, ~7900x1320 px. Schedule: every 5 min (cron: 0 0/5 * * * ? *).",
+  "_comment": "NodePilot Master Test Workflow - definitive few-shot example for AI workflow generation. Covers the trigger, remote, engine-local and control-flow activity families (scheduleTrigger, runScript, log, delay, fileOperation, folderOperation, fileHash, zipOperation, serviceManagement, registryOperation, wmiQuery, startProgram, scheduledTask, jsonQuery, xmlQuery, sql, restApi, llmQuery, decision, junction (waitAll/waitAny/waitNofM), waitForCondition, forEach, startWorkflow, emailNotification, powerManagement, returnData), all 14 edge condition operators + AND/OR/NOT, retry policies, node-level disabled and breakpoint flags, disabled edges, legacy condition shortcuts (.success/.failed). It is a STRUCTURAL reference, not an exhaustive catalogue - the authoritative list of activity types is the activity catalog in the system prompt. LTR layout: x-step 300, y-lane 180, main lane y=600.",
   "nodes": [
     {
       "id": "trig",
@@ -402,6 +402,25 @@
           "dataSource": ":memory:",
           "query": "SELECT 1 AS val, 'NodePilot-Test' AS msg",
           "timeoutSeconds": 10
+        }
+      }
+    },
+    {
+      "id": "llm_summarize",
+      "type": "activity",
+      "position": {
+        "x": 3280,
+        "y": 600
+      },
+      "data": {
+        "label": "llmQuery: summarise SQL result",
+        "activityType": "llmQuery",
+        "outputVariable": "llm_summarize",
+        "config": {
+          "prompt": "Summarise this query result in one sentence and state whether it looks healthy:\n{{sql_q.output}}",
+          "systemPrompt": "You are a terse operations assistant. Answer in one sentence.",
+          "maxTokens": 200,
+          "timeoutSeconds": 60
         }
       }
     },
@@ -1357,6 +1376,16 @@
     {
       "id": "e_sql_any",
       "source": "sql_q",
+      "target": "llm_summarize",
+      "type": "labeled",
+      "data": {
+        "label": "On Success",
+        "condition": "sql_q.success"
+      }
+    },
+    {
+      "id": "e_llm_any",
+      "source": "llm_summarize",
       "target": "junction_any",
       "type": "labeled",
       "data": {

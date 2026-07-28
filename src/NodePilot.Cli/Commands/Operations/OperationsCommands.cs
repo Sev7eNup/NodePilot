@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.Versioning;
 using NodePilot.Cli.Api;
 using NodePilot.Cli.Api.Dtos;
@@ -12,15 +13,22 @@ namespace NodePilot.Cli.Commands.Operations;
 // `np operations graph` — the live-ops / NOC graph as an RBAC-scoped snapshot: workflow nodes,
 // their call edges (startWorkflow/forEach), and currently-running executions. Read-only.
 
+public sealed class OperationsGraphSettings : GlobalSettings
+{
+    [CommandOption("--window <MINUTES>")]
+    [Description("Look-back window for finished runs: 20 (default), 60 or 240. Other values clamp to 20 server-side.")]
+    public int WindowMinutes { get; init; } = 20;
+}
+
 [SupportedOSPlatform("windows")]
-public sealed class OperationsGraphCommand : BaseCommand<GlobalSettings>
+public sealed class OperationsGraphCommand : BaseCommand<OperationsGraphSettings>
 {
     public OperationsGraphCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
 
-    protected override async Task<int> RunAsync(CommandContext _, GlobalSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
+    protected override async Task<int> RunAsync(CommandContext _, OperationsGraphSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
         var api = ClientFactory.Create(session);
-        var graph = await api.GetOperationsGraphAsync(ct);
+        var graph = await api.GetOperationsGraphAsync(ct, settings.WindowMinutes);
         writer.WriteData(graph, Render);
         return ExitCodes.Success;
     }
@@ -28,7 +36,9 @@ public sealed class OperationsGraphCommand : BaseCommand<GlobalSettings>
     private static void Render(IAnsiConsole console, OperationsGraphResponse graph)
     {
         var runningTotal = graph.Nodes.Sum(n => n.RunningCount);
-        console.MarkupLine($"[bold]Workflows:[/] {graph.Nodes.Count}   [bold]Edges:[/] {graph.Edges.Count}   [bold]Running:[/] {runningTotal}   [bold]Recent:[/] {graph.Recent.Count}");
+        console.MarkupLine($"[bold]Workflows:[/] {graph.Nodes.Count}   [bold]Edges:[/] {graph.Edges.Count}   [bold]Running:[/] {runningTotal}   [bold]Recent:[/] {graph.Recent.Count} (last {graph.Meta.WindowMinutes} min)");
+        if (graph.Meta.RecentTruncated)
+            console.MarkupLine("[yellow]Note:[/] more finished runs exist in this window than were returned — older ones are omitted.");
 
         var nodes = new Table().Border(TableBorder.Rounded)
             .AddColumn("Workflow").AddColumn("Folder").AddColumn("Enabled").AddColumn("Running").AddColumn("Last");

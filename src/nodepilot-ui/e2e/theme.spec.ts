@@ -520,4 +520,37 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     expect(designerPrimary).toBe('#4de4f7'); // designer chrome accent = cyan
   });
 
+  test('17.11 — IBM Plex Sans/Mono are self-hosted and actually applied', async ({ page }) => {
+    // Der Unit-Test daneben (fontTokens.test.ts) prüft die Deklarationen im Quelltext.
+    // Hier geht es um das, was er nicht sehen kann: ob die Dateien im Browser wirklich
+    // ankommen und ob die Tokens bis auf die Elemente durchschlagen. Ein zerschossener
+    // Import-Pfad oder eine CSP, die den Font blockt, sähe im Quelltext einwandfrei aus.
+    await page.goto('/settings');
+    await expect(page.getByRole('heading', { name: /appearance/i })).toBeVisible({ timeout: 15_000 });
+
+    const typography = await page.evaluate(async () => {
+      await document.fonts.ready;
+      // Mono wird über eine eingehängte Sonde gemessen statt über zufälligen
+      // Seiteninhalt — der Test soll die Token-Auflösung prüfen, nicht davon abhängen,
+      // dass /settings gerade irgendwo `font-mono` rendert.
+      const probe = document.createElement('span');
+      probe.className = 'font-mono';
+      probe.textContent = 'probe';
+      document.body.appendChild(probe);
+      const mono = getComputedStyle(probe).fontFamily;
+      probe.remove();
+      return {
+        body: getComputedStyle(document.body).fontFamily,
+        mono,
+        sansLoaded: document.fonts.check('400 12px "IBM Plex Sans Variable"'),
+      };
+    });
+
+    expect(typography.body).toContain('IBM Plex Sans Variable');
+    expect(typography.mono).toContain('IBM Plex Mono');
+    // Schlägt fehl, wenn die woff2 nicht geladen wurde — dann greift zwar der
+    // Fallback im Stack, aber die Umstellung wäre faktisch wirkungslos.
+    expect(typography.sansLoaded).toBe(true);
+  });
+
 });

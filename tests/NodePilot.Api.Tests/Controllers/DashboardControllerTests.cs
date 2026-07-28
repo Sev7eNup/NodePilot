@@ -6,7 +6,9 @@ using Microsoft.Extensions.Options;
 using NodePilot.Ai;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Enums;
+using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.TestCommons;
 using Xunit;
@@ -16,9 +18,11 @@ namespace NodePilot.Api.Tests.Controllers;
 public class DashboardControllerTests
 {
     private static DashboardController NewController(NodePilot.Data.NodePilotDbContext db, string role = "Admin",
-        IOptionsMonitor<LlmOptions>? llmOptions = null)
+        IOptionsMonitor<LlmOptions>? llmOptions = null,
+        NodePilot.Core.Interfaces.IMaintenanceWindowEvaluator? maintenance = null)
     {
-        var controller = new DashboardController(db, new AlwaysAllowAuthorizationService(), llmOptions: llmOptions);
+        var controller = new DashboardController(db, new AlwaysAllowAuthorizationService(),
+            llmOptions: llmOptions, maintenance: maintenance);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             new[] { new Claim(ClaimTypes.Role, role) }, "TestAuth"));
         controller.ControllerContext = new ControllerContext
@@ -64,17 +68,31 @@ public class DashboardControllerTests
     {
         var db = TestDbFactory.Create();
 
-        // Enabled monitor → banner surfaces "AI activated".
-        var enabled = new StaticOptionsMonitor<LlmOptions>(new LlmOptions { Enabled = true });
+        // Enabled monitor with a resolvable active profile → banner surfaces "AI activated".
+        var enabled = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile());
         var statsEnabled = (await NewController(db, llmOptions: enabled).Get(CancellationToken.None))
             .Result.As<OkObjectResult>().Value.As<DashboardStats>();
         statsEnabled.LlmEnabled.Should().BeTrue();
 
         // Disabled monitor → "AI disabled".
-        var disabled = new StaticOptionsMonitor<LlmOptions>(new LlmOptions { Enabled = false });
+        var disabled = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(enabled: false));
         var statsDisabled = (await NewController(db, llmOptions: disabled).Get(CancellationToken.None))
             .Result.As<OkObjectResult>().Value.As<DashboardStats>();
         statsDisabled.LlmEnabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Get_LlmEnabled_IsFalseWhenNoActiveProfileResolves()
+    {
+        // The switch alone isn't enough: without an active profile every AI endpoint answers 503,
+        // so the banner must not claim the feature is on.
+        var db = TestDbFactory.Create();
+        var monitor = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.EnabledWithoutProfile());
+
+        var stats = (await NewController(db, llmOptions: monitor).Get(CancellationToken.None))
+            .Result.As<OkObjectResult>().Value.As<DashboardStats>();
+
+        stats.LlmEnabled.Should().BeFalse();
     }
 
     [Fact]
@@ -319,5 +337,175 @@ public class DashboardControllerTests
         statsDefault.Last24h.Total.Should().Be(0);
         stats7d.Last24h.Total.Should().Be(1);
         stats7d.Last24h.Succeeded.Should().Be(1);
+    }
+
+    // ---- Maintenance windows on the departure board ---------------------------------------
+    //
+    // The board must not promise a start that an active window will swallow. Crucially the
+    // verdict is asked at the PREDICTED FIRE TIME, not at "now" — that is the same moment
+    // TriggerOrchestrator evaluates, so a window active now but closed by the fire time must
+    // NOT flag the row, and vice versa.
+
+    /// <summary>An always-armed workflow: hourly cron, so NextFireUtc is within the next hour.</summary>
+    private static Workflow ArmedCronWorkflow(string name = "Nightly Backup")
+        => new()
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            IsEnabled = true,
+            UpdatedAt = DateTime.UtcNow,
+            TriggerTypesJson = """["scheduleTrigger"]""",
+            DefinitionJson = """
+            {"nodes":[{"id":"t1","type":"scheduleTrigger","position":{"x":0,"y":0},
+              "data":{"label":"Hourly","activityType":"scheduleTrigger",
+              "config":{"cronExpression":"0 0 * * * ?"}}}],"edges":[]}
+            """,
+        };
+
+    [Fact]
+    public async Task Get_ArmedTrigger_NoEvaluatorWired_BlockedByWindowNameIsNull()
+    {
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(ArmedCronWorkflow());
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db).Get(CancellationToken.None);
+
+        var stats = result.Result.As<OkObjectResult>().Value.As<DashboardStats>();
+        stats.ArmedTriggers.Should().ContainSingle().Which.BlockedByWindowName.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Get_ArmedTrigger_NoWindowBlocks_BlockedByWindowNameIsNull()
+    {
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(ArmedCronWorkflow());
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db, maintenance: StubMaintenanceWindowEvaluator.AllowAll)
+            .Get(CancellationToken.None);
+
+        var stats = result.Result.As<OkObjectResult>().Value.As<DashboardStats>();
+        stats.ArmedTriggers.Should().ContainSingle().Which.BlockedByWindowName.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Get_ArmedTrigger_BlackoutActiveAtFireTimeButNotNow_IsFlagged()
+    {
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(ArmedCronWorkflow());
+        await db.SaveChangesAsync();
+
+        // Blocks only from 30 s out — i.e. not "now", but by the time the cron fires.
+        var cutoff = DateTime.UtcNow.AddSeconds(30);
+        var evaluator = new StubMaintenanceWindowEvaluator
+        {
+            VerdictAt = at => at >= cutoff
+                ? new MaintenanceEvaluation(true, Guid.NewGuid(), "Weekend Freeze", null, MaintenanceMode.Blackout)
+                : MaintenanceEvaluation.Allowed,
+        };
+
+        var result = await NewController(db, maintenance: evaluator).Get(CancellationToken.None);
+
+        var stats = result.Result.As<OkObjectResult>().Value.As<DashboardStats>();
+        stats.ArmedTriggers.Should().ContainSingle().Which.BlockedByWindowName.Should().Be("Weekend Freeze");
+    }
+
+    [Fact]
+    public async Task Get_ArmedTrigger_BlackoutActiveNowButClosedByFireTime_IsNotFlagged()
+    {
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(ArmedCronWorkflow());
+        await db.SaveChangesAsync();
+
+        // The honest inverse: evaluating at "now" would have flagged this row wrongly.
+        var cutoff = DateTime.UtcNow.AddSeconds(30);
+        var evaluator = new StubMaintenanceWindowEvaluator
+        {
+            VerdictAt = at => at < cutoff
+                ? new MaintenanceEvaluation(true, Guid.NewGuid(), "Ends Soon", null, MaintenanceMode.Blackout)
+                : MaintenanceEvaluation.Allowed,
+        };
+
+        var result = await NewController(db, maintenance: evaluator).Get(CancellationToken.None);
+
+        var stats = result.Result.As<OkObjectResult>().Value.As<DashboardStats>();
+        var armed = stats.ArmedTriggers.Should().ContainSingle().Subject;
+        armed.NextFireUtc.Should().NotBeNull();
+        armed.BlockedByWindowName.Should().BeNull();
+        evaluator.Calls.Should().ContainSingle()
+            .Which.NowUtc.Should().Be(armed.NextFireUtc!.Value);
+    }
+
+    [Fact]
+    public async Task Get_ArmedTrigger_EventDriven_HasNoPrediction_IsEvaluatedAtNow()
+    {
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Webhook Job", IsEnabled = true, UpdatedAt = DateTime.UtcNow,
+            TriggerTypesJson = """["webhookTrigger"]""",
+            DefinitionJson = "{}",
+        });
+        await db.SaveChangesAsync();
+
+        var before = DateTime.UtcNow;
+        var evaluator = StubMaintenanceWindowEvaluator.Blocking("Global Freeze");
+        var result = await NewController(db, maintenance: evaluator).Get(CancellationToken.None);
+
+        var stats = result.Result.As<OkObjectResult>().Value.As<DashboardStats>();
+        var armed = stats.ArmedTriggers.Should().ContainSingle().Subject;
+        armed.NextFireUtc.Should().BeNull();
+        armed.BlockedByWindowName.Should().Be("Global Freeze");
+        // No prediction to aim at → the only honest question is "is it blocked right now".
+        evaluator.Calls.Should().ContainSingle().Which.NowUtc.Should().BeOnOrAfter(before);
+    }
+
+    [Fact]
+    public async Task Get_ArmedTrigger_AllowOnlyBlock_IsFlagged()
+    {
+        // GetWindowsAffecting cannot express "outside the allow-only window"; Evaluate can.
+        // This test pins that the controller uses the latter.
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(ArmedCronWorkflow());
+        await db.SaveChangesAsync();
+
+        var evaluator = new StubMaintenanceWindowEvaluator
+        {
+            Verdict = new MaintenanceEvaluation(true, Guid.NewGuid(), "Business Hours Only", null, MaintenanceMode.AllowOnly),
+        };
+
+        var result = await NewController(db, maintenance: evaluator).Get(CancellationToken.None);
+
+        var stats = result.Result.As<OkObjectResult>().Value.As<DashboardStats>();
+        stats.ArmedTriggers.Should().ContainSingle().Which.BlockedByWindowName.Should().Be("Business Hours Only");
+    }
+
+    [Fact]
+    public async Task Get_ArmedTrigger_EvaluatedWithTheWorkflowsOwnFolderId()
+    {
+        // Windows target a workflow directly or via folder ancestry — passing the wrong folder
+        // would silently mis-evaluate every scoped window.
+        var db = TestDbFactory.Create();
+        var folderId = Guid.NewGuid();
+        db.SharedWorkflowFolders.Add(new SharedWorkflowFolder
+        {
+            Id = folderId,
+            ParentFolderId = SharedWorkflowFolder.RootFolderId,
+            Name = "Prod",
+            Path = "/Prod",
+            Depth = 1,
+        });
+        var wf = ArmedCronWorkflow();
+        wf.FolderId = folderId;
+        db.Workflows.Add(wf);
+        await db.SaveChangesAsync();
+
+        var evaluator = StubMaintenanceWindowEvaluator.AllowAll;
+        await NewController(db, maintenance: evaluator).Get(CancellationToken.None);
+
+        var call = evaluator.Calls.Should().ContainSingle().Subject;
+        call.WorkflowId.Should().Be(wf.Id);
+        call.FolderId.Should().Be(folderId);
     }
 }

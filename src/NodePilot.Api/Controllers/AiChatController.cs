@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using NodePilot.Api.Ai;
 using NodePilot.Ai;
+using NodePilot.Api.Configuration;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
@@ -86,6 +87,9 @@ public sealed class AiChatController : ControllerBase
             return ServiceUnavailable("LLM_DISABLED",
                 "AI assistant is disabled. Set Llm:Enabled=true in configuration.");
 
+        if (LlmAvailability.IsMissingActiveProfile(_options.CurrentValue))
+            return ServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
+
         if (string.IsNullOrWhiteSpace(request.Question))
             return BadRequest(new { code = "PROMPT_EMPTY", message = "Question must not be empty." });
         if (request.Question.Length > MaxQuestionChars)
@@ -126,7 +130,9 @@ public sealed class AiChatController : ControllerBase
             // masked, no 404/403 differential). Deliberately NOT using RequireWorkflowAccessAsync
             // here — the chat request itself must never fail because of this check.
             var allowExecutionTools = false;
-            if (_options.CurrentValue.EnableToolCalling && request.WorkflowId is { } wfId && wfId != Guid.Empty)
+            var toolCallingEnabled = _options.CurrentValue.TryResolveActiveProfile(out var activeProfile)
+                                     && activeProfile.EnableToolCalling;
+            if (toolCallingEnabled && request.WorkflowId is { } wfId && wfId != Guid.Empty)
             {
                 var workflow = await _db.Workflows.AsNoTracking().FirstOrDefaultAsync(w => w.Id == wfId, ct);
                 allowExecutionTools = workflow is not null

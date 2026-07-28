@@ -6,12 +6,26 @@ import type { LocalSettled } from '../stores/operationsStore';
 // unit-testable — the rendering layer only maps the returned pixel values onto absolutely
 // positioned divs.
 
-/** Visible time span of the timeline. */
+/** Visible time span of the timeline (default window). */
 export const OPS_WINDOW_MS = 20 * 60_000;
 /** Horizontal fraction of the track where the NOW line sits (right gutter = growing-bar room). */
 export const OPS_NOW_FRACTION = 0.92;
-/** Axis tick spacing. */
+/** Axis tick spacing at the default window. */
 export const OPS_TICK_STEP_MS = 5 * 60_000;
+
+/** Selectable windows, in minutes — must match the server's clamp list. */
+export const OPS_WINDOW_MINUTES = [20, 60, 240] as const;
+export type OpsWindowMinutes = (typeof OPS_WINDOW_MINUTES)[number];
+
+/**
+ * Tick spacing that keeps roughly four labels on the axis at any window. Keeping the 5-minute
+ * step at 4 h would draw 48 of them.
+ */
+export function tickStepFor(windowMs: number): number {
+  if (windowMs <= 20 * 60_000) return 5 * 60_000;
+  if (windowMs <= 60 * 60_000) return 15 * 60_000;
+  return 60 * 60_000;
+}
 
 export interface TimelineWindow {
   /** Timestamp rendered at x=0. */
@@ -31,6 +45,13 @@ export interface TimelineBarInput {
   completedAtMs: number | null;
   /** Parent run for sub-workflow executions (call connector source), if any. */
   parentExecutionId: string | null;
+  /**
+   * Observed step activity — only ever set for live bars from the snapshot's `running` list.
+   * Settled and locally-settled bars carry null: they show a terminal glyph, not activity.
+   */
+  stepsFinished: number | null;
+  lastCompletedStepName: string | null;
+  lastProgressAtMs: number | null;
 }
 
 export interface PlacedBar extends TimelineBarInput {
@@ -107,6 +128,9 @@ export function buildTimelineBars(
       startedAtMs: Date.parse(r.startedAt),
       completedAtMs,
       parentExecutionId: r.parentExecutionId,
+      stepsFinished: null,
+      lastCompletedStepName: null,
+      lastProgressAtMs: null,
     });
   }
 
@@ -120,6 +144,11 @@ export function buildTimelineBars(
       startedAtMs: Date.parse(r.startedAt),
       completedAtMs: null,
       parentExecutionId: r.parentExecutionId,
+      stepsFinished: r.stepsFinished ?? null,
+      lastCompletedStepName: r.lastCompletedStepName ?? null,
+      // Falsy check, not `=== null`: an absent field would otherwise reach Date.parse(undefined)
+      // and render as "NaN:NaN". Unknown must degrade to null, never to a bogus number.
+      lastProgressAtMs: r.lastProgressAt ? Date.parse(r.lastProgressAt) : null,
     });
   }
 
@@ -135,6 +164,9 @@ export function buildTimelineBars(
       startedAtMs: s.startedAtMs,
       completedAtMs: s.settledAtMs,
       parentExecutionId: null, // SignalR deltas carry no parent link; the snapshot fills it in
+      stepsFinished: null,
+      lastCompletedStepName: null,
+      lastProgressAtMs: null,
     });
   }
 
@@ -273,6 +305,24 @@ export function isActiveBarStatus(status: string): boolean {
 }
 
 /**
+ * A run that has been going longer than the operator-configured long-running threshold
+ * (`meta.overdueSeconds`, from `Alerting:LongRunningSeconds`).
+ *
+ * Deliberately `Running` only, not "any unfinished bar" — the alerting collector that owns the
+ * threshold looks at Running alone. `Pending` (queued, not started) and `Paused` (sitting on a
+ * breakpoint) are different conditions and would be dishonest to flag as "stuck" using a
+ * threshold that was never meant for them.
+ */
+export function isOverdue(
+  bar: Pick<TimelineBarInput, 'status' | 'startedAtMs' | 'completedAtMs'>,
+  nowMs: number,
+  overdueMs: number,
+): boolean {
+  if (bar.status !== 'Running' || bar.completedAtMs !== null) return false;
+  return nowMs - bar.startedAtMs >= overdueMs;
+}
+
+/**
  * Pairs sub-workflow bars with their parent bar for the call connectors (trace-waterfall
  * lines from parent lane to child bar start). Children whose parent is not visible in the
  * current window/scope are skipped.
@@ -309,4 +359,23 @@ export function axisTicks(
     ticks.push({ xPx: timeToX(t, w), atMs: t });
   }
   return ticks;
+}
+
+/**
+ * A live run whose most recent step finished longer ago than `stalledMs` — i.e. it is sitting on
+ * one step, not making its way through many. This, not a percentage, is the honest answer to
+ * "is it working or is it hung?": under Engine:DeferRunningStateWrite an in-flight step has no
+ * row at all, so the only trustworthy signal is when something last FINISHED.
+ *
+ * Returns false when the activity data is absent (run not enriched, or nothing finished yet) —
+ * unknown must never render as stalled.
+ */
+export function isStalled(
+  bar: Pick<TimelineBarInput, 'status' | 'completedAtMs' | 'lastProgressAtMs'>,
+  nowMs: number,
+  stalledMs: number,
+): boolean {
+  if (bar.status !== 'Running' || bar.completedAtMs !== null) return false;
+  if (bar.lastProgressAtMs === null) return false;
+  return nowMs - bar.lastProgressAtMs >= stalledMs;
 }

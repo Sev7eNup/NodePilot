@@ -29,7 +29,11 @@ function chrome(isDark: boolean) {
         backgroundColor: 'var(--color-surface-lowest)',
         color: 'var(--color-on-surface)',
       },
-      '.cm-content': { caretColor: 'var(--color-primary)' },
+      // Ohne das lief CodeMirror auf seinem eingebauten `monospace`, also auf der
+      // Default-Monospace des jeweiligen Browsers — der einzige Ort in der App, an
+      // dem Code nicht in der App-Schrift stand. Wie die Farben oben löst auch das
+      // hier zur Paint-Zeit auf und folgt damit Skin- und Theme-Wechseln von selbst.
+      '.cm-content': { caretColor: 'var(--color-primary)', fontFamily: 'var(--font-mono)' },
       '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--color-primary)' },
       '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
         backgroundColor: 'color-mix(in srgb, var(--color-primary) 26%, transparent)',
@@ -38,6 +42,9 @@ function chrome(isDark: boolean) {
         backgroundColor: 'var(--color-surface-lowest)',
         color: 'var(--color-on-surface-variant)',
         borderRight: '1px solid var(--color-outline-variant)',
+        // Die Gutter erben nicht von `.cm-content` — ohne das würden Zeilennummern
+        // in einer anderen Schrift stehen als der Code daneben.
+        fontFamily: 'var(--font-mono)',
       },
       '.cm-activeLineGutter': { backgroundColor: 'transparent' },
       '.cm-lineNumbers .cm-gutterElement': { color: 'var(--np-code-meta)' },

@@ -11,8 +11,8 @@
     Skip the build step (still runs tests and restarts processes).
 #>
 param(
-    [switch]$SkipTests,
-    [switch]$SkipBuild
+    [switch]$SkipTests = $true,
+    [switch]$SkipBuild = $true
 )
 
 Set-StrictMode -Version 3.0

@@ -90,19 +90,15 @@ public static class LlmServiceCollectionExtensions
         services.Configure<LlmOptions>(configuration.GetSection(LlmOptions.SectionName));
         services.Configure<AiKnowledgeOptions>(configuration.GetSection(AiKnowledgeOptions.SectionName));
 
-        // Fail fast when the configured BaseUrl points at a known cloud-metadata IP.
+        // Fail fast when a configured profile BaseUrl points at a known cloud-metadata IP.
         // Only applies when Llm:Enabled=true — a default/unused config block must never block
         // startup, otherwise operators who never touched the AI settings couldn't boot their
-        // instance at all.
+        // instance at all. Same helper the settings boot-validator uses, so an accepted save can
+        // never produce a config that refuses to boot.
         var enabled = configuration.GetValue<bool>($"{LlmOptions.SectionName}:Enabled");
-        var baseUrl = configuration.GetValue<string>($"{LlmOptions.SectionName}:BaseUrl");
-        if (enabled && !string.IsNullOrWhiteSpace(baseUrl) && LlmEndpointGuard.IsCloudMetadataEndpoint(baseUrl))
-        {
-            throw new InvalidOperationException(
-                $"SECURITY: Llm:BaseUrl ('{baseUrl}') points at a cloud-metadata endpoint. " +
-                "This range (169.254.0.0/16, metadata.google.internal, metadata.azure.com, etc.) " +
-                "is always blocked. Choose a real LLM endpoint or disable Llm:Enabled.");
-        }
+        var endpointIssues = LlmProfileValidation.ValidateProfileEndpoints(configuration);
+        if (endpointIssues.Count > 0)
+            throw new InvalidOperationException(string.Join(" ", endpointIssues.Select(i => i.Message)));
 
         services.AddHttpClient(LlmHttpClient.Name, client =>
             {
@@ -131,10 +127,11 @@ public static class LlmServiceCollectionExtensions
 
         services.AddSingleton<PromptCatalog>();
         services.AddSingleton<IChatToolRegistry, WorkflowChatToolRegistry>(); // read-only, stateless
+        // Deliberately no scoped ILlmClient registration: Create() throws when no active profile
+        // is configured, and a container-level registration would resolve during controller
+        // construction — i.e. BEFORE the action's Enabled/active-profile gate, turning a clean 503
+        // into a DI failure. Every consumer injects the factory and calls Create() at use time.
         services.AddSingleton<ILlmClientFactory, LlmClientFactory>();
-        // The global ILlmClient is just the factory's default (global Llm:* config). Per-node
-        // overrides (the llmQuery activity) go through ILlmClientFactory.Create(overrides) instead.
-        services.AddScoped<ILlmClient>(sp => sp.GetRequiredService<ILlmClientFactory>().Create(null));
         services.AddScoped<ScriptGenerationService>();
         services.AddScoped<WorkflowGenerationService>();
         services.AddScoped<WorkflowAssistantService>();
@@ -149,8 +146,23 @@ public static class LlmServiceCollectionExtensions
 
         if (enabled)
         {
-            Log.Information("AI assistant: Llm:Enabled=true, BaseUrl={BaseUrl}, Model={Model}.",
-                baseUrl, configuration.GetValue<string>($"{LlmOptions.SectionName}:Model"));
+            var profileCount = configuration.GetSection(LlmProfileValidation.ProfilesKey).GetChildren().Count();
+            var activeId = configuration[$"{LlmOptions.SectionName}:ActiveProfileId"];
+            if (LlmProfileValidation.HasResolvableActiveProfile(configuration))
+            {
+                Log.Information(
+                    "AI assistant: Llm:Enabled=true, {ProfileCount} profile(s), active={ActiveProfileId}, BaseUrl={BaseUrl}, Model={Model}.",
+                    profileCount, activeId,
+                    configuration[$"{LlmProfileValidation.ProfilesKey}:{activeId}:BaseUrl"],
+                    configuration[$"{LlmProfileValidation.ProfilesKey}:{activeId}:Model"]);
+            }
+            else
+            {
+                Log.Warning(
+                    "AI assistant: Llm:Enabled=true but no active profile resolves ({ProfileCount} profile(s) configured, Llm:ActiveProfileId='{ActiveProfileId}'). "
+                    + "AI endpoints will answer 503 LLM_NO_ACTIVE_PROFILE until a profile is selected under Settings.",
+                    profileCount, activeId);
+            }
         }
 
         return services;

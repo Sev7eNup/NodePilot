@@ -8,7 +8,7 @@ namespace NodePilot.Ai.Tests;
 public class ScriptGenerationServiceTests
 {
     private static ScriptGenerationService NewService(FakeLlmClient client)
-        => new(client, new PromptCatalog());
+        => new(new FakeLlmClientFactory(client), new PromptCatalog());
 
     private static GenerateScriptRequest NewRequest(
         string prompt = "list all stopped services",

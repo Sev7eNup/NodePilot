@@ -24,8 +24,8 @@ public class WorkflowAssistantCustomActivityTests
         await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
 
         var fake = new FakeLlmClient().EnqueueStream("ok");
-        var svc = new WorkflowAssistantService(fake, new PromptCatalog(), new WorkflowChatToolRegistry(),
-            new StaticOptionsMonitor<LlmOptions>(new LlmOptions()), store);
+        var svc = new WorkflowAssistantService(new FakeLlmClientFactory(fake), new PromptCatalog(), new WorkflowChatToolRegistry(),
+            new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile()), store);
 
         var workflowJson = "{\"nodes\":[{\"id\":\"s1\",\"type\":\"activity\",\"position\":{\"x\":0,\"y\":0},"
             + "\"data\":{\"label\":\"Disk\",\"activityType\":\"custom:disk_check\","

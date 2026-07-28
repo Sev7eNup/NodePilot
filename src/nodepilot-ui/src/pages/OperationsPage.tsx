@@ -2,8 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { WarningAltFilled } from '@carbon/icons-react';
-import { getOperationsGraph, getOpsDashboardStats, cancelExecution } from '../api/operations';
+import { WarningAltFilled, Pause, Play } from '@carbon/icons-react';
+import { STATUS_BADGE_CLASS } from '../lib/statusTokens';
+import { OPS_WINDOW_MINUTES, type OpsWindowMinutes } from '../lib/opsTimeline';
+import {
+  getOperationsGraph, getOpsDashboardStats, cancelExecution,
+  retryExecution, cancelAllForWorkflow, quarantineWorkflow,
+} from '../api/operations';
+import { confirmDialog } from '../stores/confirmStore';
+import { toast } from '../stores/toastStore';
 import { useOperationsFeed } from '../hooks/useOperationsFeed';
 import { useOpsClock } from '../hooks/useOpsClock';
 import { useOperationsStore } from '../stores/operationsStore';
@@ -23,12 +30,19 @@ export function OperationsPage() {
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
-  const nowMs = useOpsClock();
+  // Window + freeze are view-local on purpose. A freeze that survived navigation would be a
+  // footgun: come back an hour later and stare at an hour-old board believing it is live.
+  const [windowMinutes, setWindowMinutes] = useState<OpsWindowMinutes>(20);
+  const [frozen, setFrozen] = useState(false);
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['operations-graph'],
-    queryFn: getOperationsGraph,
-    refetchInterval: 5_000,
+  const liveNowMs = useOpsClock(1000, frozen);
+
+  const { data: liveData, isLoading, isError } = useQuery({
+    // Window is part of the key: switching creates a separate cache entry and the old query
+    // loses its only observer, so it stops polling on its own.
+    queryKey: ['operations-graph', windowMinutes],
+    queryFn: () => getOperationsGraph(windowMinutes),
+    refetchInterval: frozen ? false : 5_000,
     refetchOnWindowFocus: false,
   });
 
@@ -40,20 +54,42 @@ export function OperationsPage() {
     refetchOnWindowFocus: false,
   });
 
+  // NEVER conditional: the feed must keep writing terminal tombstones while frozen. Cutting it
+  // would open a reconcile gap — a refetch after unfreezing could resurrect runs that finished
+  // during the freeze, because the tombstone that prevents exactly that was never written.
   useOperationsFeed();
   const seedRunning = useOperationsStore((s) => s.seedRunning);
   const runningMap = useOperationsStore((s) => s.runningExecsByWorkflow);
-  const locallySettled = useOperationsStore((s) => s.locallySettled);
+  const liveLocallySettled = useOperationsStore((s) => s.locallySettled);
+
+  // ---- Display freeze ------------------------------------------------------------------------
+  // This freezes the RENDER INPUTS, not the data pipeline: the SignalR feed stays connected, the
+  // store keeps reconciling, and background invalidations may still fire requests. Only what the
+  // user looks at is held still — hence "view frozen", not "paused".
+  const [frozenView, setFrozenView] = useState<
+    { data: typeof liveData; locallySettled: typeof liveLocallySettled; nowMs: number } | null
+  >(null);
+
+  const toggleFreeze = () => {
+    if (frozen) { setFrozenView(null); setFrozen(false); return; }
+    setFrozenView({ data: liveData, locallySettled: liveLocallySettled, nowMs: liveNowMs });
+    setFrozen(true);
+  };
+
+  const data = frozen && frozenView ? frozenView.data : liveData;
+  const locallySettled = frozen && frozenView ? frozenView.locallySettled : liveLocallySettled;
+  const nowMs = frozen && frozenView ? frozenView.nowMs : liveNowMs;
 
   // Seed the live store from the authoritative snapshot. `lastStatusByWf` drives the
   // race-safe reconcile of the terminal overlay; recent ids supersede the locally-settled
-  // overlay entries (see operationsStore.seedRunning).
+  // overlay entries (see operationsStore.seedRunning). Fed from liveData, never the frozen
+  // copy — the store must stay current even while the view is held.
   useEffect(() => {
-    if (!data) return;
+    if (!liveData) return;
     const lastStatusByWf: Record<string, string | null> = {};
-    for (const n of data.nodes) lastStatusByWf[n.workflowId] = n.lastStatus;
-    seedRunning(data.running, lastStatusByWf, new Set(data.recent.map((r) => r.executionId)));
-  }, [data, seedRunning]);
+    for (const n of liveData.nodes) lastStatusByWf[n.workflowId] = n.lastStatus;
+    seedRunning(liveData.running, lastStatusByWf, new Set(liveData.recent.map((r) => r.executionId)));
+  }, [liveData, seedRunning]);
 
   // Folder options derived from the snapshot (unique folderId → folderPath).
   const folderOptions = useMemo(() => {
@@ -101,10 +137,61 @@ export function OperationsPage() {
     return best;
   }, [scopedTriggers, nowMs]);
 
+  // ---- Incident actions --------------------------------------------------------------------
+  // Cancel / Retry / Cancel-all / Quarantine. All four reuse existing endpoints; the gating
+  // comes from the per-node canRun/canEdit flags in the snapshot, never from the global role.
+  const invalidateGraph = () => queryClient.invalidateQueries({ queryKey: ['operations-graph'] }); // prefix match: all windows
+
   const cancel = useMutation({
     mutationFn: (executionId: string) => cancelExecution(executionId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['operations-graph'] }),
+    onSuccess: invalidateGraph,
+    onError: () => toast.error(t('operations:drilldown.actionFailed')),
   });
+
+  const retry = useMutation({
+    mutationFn: (executionId: string) => retryExecution(executionId),
+    onSuccess: (_data, executionId) => {
+      invalidateGraph();
+      queryClient.invalidateQueries({ queryKey: ['ops-execution', executionId] });
+      toast.success(t('operations:drilldown.retryStarted'));
+    },
+    onError: () => toast.error(t('operations:drilldown.actionFailed')),
+  });
+
+  const cancelAll = useMutation({
+    mutationFn: (workflowId: string) => cancelAllForWorkflow(workflowId),
+    onSuccess: (result) => {
+      invalidateGraph();
+      toast.success(t('operations:drilldown.cancelAllDone', { count: result.total }));
+    },
+    onError: () => toast.error(t('operations:drilldown.actionFailed')),
+  });
+
+  const quarantine = useMutation({
+    mutationFn: (workflowId: string) => quarantineWorkflow(workflowId),
+    onSuccess: (outcome) => {
+      invalidateGraph();
+      // The departure board is fed by /stats/dashboard, whose armedTriggers filter on
+      // IsEnabled. Without this the board keeps promising a start for a workflow that was
+      // just quarantined — for a full 30 s poll cycle.
+      queryClient.invalidateQueries({ queryKey: ['ops-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['workflows'] });
+      if (outcome.cancelled === null) {
+        // Partial: the workflow is safely off but its runs are still going. Its own message,
+        // because "failed" would be wrong and "done" would be a lie.
+        toast.error(t('operations:drilldown.quarantinePartial'));
+      } else {
+        toast.success(t('operations:drilldown.quarantined', { count: outcome.cancelled.total }));
+      }
+    },
+    onError: () => toast.error(t('operations:drilldown.actionFailed')),
+  });
+
+  const pendingAction = cancel.isPending ? 'cancel'
+    : retry.isPending ? 'retry'
+    : cancelAll.isPending ? 'cancelAll'
+    : quarantine.isPending ? 'quarantine'
+    : null;
 
   // ---- Drilldown context: resolve the selected execution from live store > recent list. ----
   // Deliberately not memoized: the page re-renders once per clock tick anyway and this is a
@@ -128,6 +215,20 @@ export function OperationsPage() {
     }
     return null;
   })();
+
+  // Step activity of the selected run. Only the snapshot's `running` list carries it — the live
+  // store holds no step data — so a run that has already settled resolves to null, which is
+  // correct: activity is a live-run concept.
+  const selectedActivity = useMemo(() => {
+    if (!selected) return null;
+    const row = (data?.running ?? []).find((r) => r.executionId === selected);
+    if (!row) return null;
+    return {
+      stepsFinished: row.stepsFinished,
+      lastCompletedStepName: row.lastCompletedStepName,
+      lastProgressAtMs: row.lastProgressAt === null ? null : Date.parse(row.lastProgressAt),
+    };
+  }, [selected, data]);
 
   // Close the drilldown when the selected execution leaves the current scope/window.
   useEffect(() => {
@@ -164,11 +265,46 @@ export function OperationsPage() {
           <h1 className="text-xl font-headline font-semibold text-on-surface">{t('operations:title')}</h1>
           <p className="text-sm text-on-surface-variant">{t('operations:subtitle')}</p>
         </div>
-        <label className="flex items-center gap-2 text-xs text-on-surface-variant">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* A frozen board must never pass for a dead system — loud badge, not a subtle hint. */}
+          {frozen && (
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_BADGE_CLASS.warning}`}
+              data-testid="ops-frozen-badge"
+            >
+              {t('operations:freeze.badge', {
+                time: new Date(nowMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+              })}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={toggleFreeze}
+            aria-pressed={frozen}
+            className="flex items-center gap-1.5 rounded-lg border border-outline-variant px-2 py-1 text-xs text-on-surface hover:bg-surface-high"
+          >
+            {frozen ? <Play size={13} /> : <Pause size={13} />}
+            {frozen ? t('operations:freeze.off') : t('operations:freeze.on')}
+          </button>
+          <label className="flex items-center gap-2 text-xs text-on-surface-variant">
+            <span className="font-medium uppercase tracking-wide">{t('operations:window.label')}</span>
+            <select
+              value={windowMinutes}
+              onChange={(e) => setWindowMinutes(Number(e.target.value) as OpsWindowMinutes)}
+              aria-label={t('operations:window.label')}
+              className="rounded-lg border border-outline-variant bg-surface-container px-2 py-1 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              {OPS_WINDOW_MINUTES.map((m) => (
+                <option key={m} value={m}>{t(`operations:window.option.${m}`)}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-xs text-on-surface-variant">
           <span className="font-medium uppercase tracking-wide">{t('operations:folderFilter.label')}</span>
           <select
             value={folderFilter ?? ''}
             onChange={(e) => setFolderFilter(e.target.value || null)}
+            aria-label={t('operations:folderFilter.label')}
             className="max-w-[220px] rounded-lg border border-outline-variant bg-surface-container px-2 py-1 text-xs text-on-surface focus:outline-none focus:ring-1 focus:ring-primary"
           >
             <option value="">{t('operations:folderFilter.all')}</option>
@@ -176,7 +312,8 @@ export function OperationsPage() {
               <option key={f.folderId} value={f.folderId}>{f.folderPath}</option>
             ))}
           </select>
-        </label>
+          </label>
+        </div>
       </header>
 
       {/* Main stage: timeline + drilldown overlay */}
@@ -200,6 +337,10 @@ export function OperationsPage() {
             nodesById={nodesById}
             selectedExecutionId={selected}
             nextStart={nextStart}
+            overdueMs={(data.meta?.overdueSeconds ?? 600) * 1000}
+            windowMs={windowMinutes * 60_000}
+            historyFromMs={data.meta?.oldestReturnedCompletedAt ? Date.parse(data.meta.oldestReturnedCompletedAt) : null}
+            recentTruncated={data.meta?.recentTruncated ?? false}
             onSelect={setSelected}
           />
         )}
@@ -214,9 +355,26 @@ export function OperationsPage() {
             startedAtMs={selectedContext.startedAtMs}
             completedAtMs={selectedContext.completedAtMs}
             nowMs={nowMs}
-            canCancel={data?.capabilities.canCancel ?? false}
-            cancelPending={cancel.isPending}
+            canRun={selectedNode.canRun}
+            canEdit={selectedNode.canEdit}
+            workflowEnabled={selectedNode.isEnabled}
+            runningCount={selectedNode.runningCount}
+            activity={selectedActivity}
+            pendingAction={pendingAction}
             onCancel={(id) => cancel.mutate(id)}
+            onRetry={(id) => retry.mutate(id)}
+            onCancelAll={async () => {
+              if (await confirmDialog({
+                message: t('operations:drilldown.cancelAllConfirm', { name: selectedNode.name, count: selectedNode.runningCount }),
+                danger: true,
+              })) cancelAll.mutate(selectedContext.workflowId);
+            }}
+            onQuarantine={async () => {
+              if (await confirmDialog({
+                message: t('operations:drilldown.quarantineConfirm', { name: selectedNode.name }),
+                danger: true,
+              })) quarantine.mutate(selectedContext.workflowId);
+            }}
             onOpenEditor={() => navigate(`/workflows/${selectedContext.workflowId}`)}
             onSelectExecution={setSelected}
             onClose={() => setSelected(null)}

@@ -91,6 +91,28 @@ export async function installDefaultMocks(page: Page) {
   await page.route('**/api/executions', (route) => emptyArray(route));
   await page.route('**/api/audit', (route) => emptyArray(route));
 
+  // Dashboard aggregate — the ONE endpoint the landing page ('/') is built from, and the source
+  // of the sidebar nav badges. It must be an object: the catch-all's `[]` is truthy, so the page
+  // gets past its `!stats` guard and then dies on `stats.last24h.total` inside the router's error
+  // boundary. Any spec that merely passes through '/' was racing that crash and only stayed green
+  // by asserting fast enough. Empty-but-valid, like the list mocks above; specs wanting real
+  // numbers override this after install (Playwright resolves the most-recently-added route first).
+  await page.route('**/api/stats/dashboard**', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        workflowsTotal: 0, workflowsEnabled: 0, machinesTotal: 0, machinesReachable: 0,
+        executionsTotal: 0,
+        last24h: { total: 0, succeeded: 0, failed: 0, running: 0, cancelled: 0 },
+        last24hBuckets: [], topWorkflows: [], running: [], recent: [], armedTriggers: [],
+        pendingCount: 0, runningCount: 0, longRunningCount: 0,
+        failingWorkflows: [], editLocks: [], healthHeartbeats: [],
+        databaseProvider: 'postgres', clusterRole: null, recentAudit: null, llmEnabled: false,
+      }),
+    }),
+  );
+
   // SignalR negotiation — return a 404 so the client falls back to long-polling
   // and immediately gives up. Without this the editor sits in a perpetual
   // "connecting..." state and breaks the redirect-after-mount expectations.

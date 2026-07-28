@@ -241,7 +241,7 @@ public static class CommandRegistration
             {
                 t.SetDescription("Probe SMTP / LLM connectivity from a candidate section payload.");
                 t.AddCommand<SettingsTestSmtpCommand>("smtp").WithDescription("Probe SMTP (body shape: { settings: SmtpSettingsDto, toAddress?: string }).");
-                t.AddCommand<SettingsTestLlmCommand>("llm").WithDescription("Probe LLM (body shape: { settings: LlmSettingsDto }).");
+                t.AddCommand<SettingsTestLlmCommand>("llm").WithDescription("Probe LLM (body shape: { profileId?: string, settings: { baseUrl, apiKey?, timeoutSeconds } }).");
             });
         });
 

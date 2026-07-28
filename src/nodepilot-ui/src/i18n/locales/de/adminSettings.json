@@ -256,7 +256,19 @@
     "apiKey": "API-Schlüssel",
     "enableToolCalling": "Tool-Calling im KI-Chat",
     "enableToolCallingHint": "Lässt den Workflow-Chat-Assistenten read-only Analyse-Tools aufrufen. Erfordert ein Modell mit zuverlässigem Function-Calling.",
-    "toolCallMaxDepth": "Max. Tool-Runden"
+    "toolCallMaxDepth": "Max. Tool-Runden",
+    "baseUrl": "Base URL",
+    "profiles": "Profile",
+    "activeProfile": "Aktives Profil",
+    "activeProfileHint": "Alle KI-Features nutzen dieses Profil.",
+    "addProfile": "Profil hinzufügen",
+    "deleteProfile": "Profil löschen",
+    "profileName": "Name",
+    "profileActive": "aktiv",
+    "profileNotDeletable": "In \"{{source}}\" definiert — hier editierbar, entfernen lässt es sich nur in dieser Konfigurationsquelle.",
+    "noProfiles": "Noch kein LLM-Profil. Lege eines an und wähle es aus, um die KI-Features zu nutzen.",
+    "newProfileName": "Neues Profil",
+    "activeProfileRequired": "Wähle ein aktives Profil oder deaktiviere die LLM-Integration."
   },
   "retention": {
     "auditLogCardTitle": "Audit-Log",

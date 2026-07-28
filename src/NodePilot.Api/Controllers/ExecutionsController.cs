@@ -244,12 +244,37 @@ public class ExecutionsController : ControllerBase
                 .FirstOrDefaultAsync(ct);
         }
 
+        // Step triage, same semantics as the list endpoint but for a single run: one indexed
+        // range scan on (WorkflowExecutionId, StartedAt) with a narrow projection, aggregated
+        // in C#. Cheaper than three round-trips for one execution, and the row count per run
+        // is bounded by the workflow's node count.
+        //
+        // Ordering is (StartedAt, Id): parallel branches can fail within the same tick, and
+        // StartedAt alone is not a deterministic sort key there.
+        var steps = await _db.StepExecutions.AsNoTracking()
+            .Where(s => s.WorkflowExecutionId == id)
+            .OrderBy(s => s.StartedAt).ThenBy(s => s.Id)
+            .Select(s => new { s.StepId, s.StepName, s.Status })
+            .ToListAsync(ct);
+
+        var stepsTotal = steps.Count;
+        var stepsCompleted = stepsTotal - steps.Count(s => s.Status == ExecutionStatus.Skipped);
+        var failedSteps = steps.Any(s => s.Status == ExecutionStatus.Failed)
+            ? (IReadOnlyList<FailedStepRef>)steps
+                .Where(s => s.Status == ExecutionStatus.Failed)
+                .Select(s => new FailedStepRef(s.StepId, s.StepName))
+                .ToList()
+            : null;
+
         return Ok(new ExecutionResponse(
             e.Id, e.WorkflowId, e.Status.ToString(), e.StartedAt, e.CompletedAt,
             e.TriggeredBy, Scrub(e.ErrorMessage), e.TraceId, e.SpanId,
             Scrub(e.ReturnData), Scrub(e.InputParametersJson),
             ParentExecutionId: e.ParentExecutionId,
-            ParentWorkflowName: parentName));
+            ParentWorkflowName: parentName,
+            StepsTotal: stepsTotal,
+            StepsCompleted: stepsCompleted,
+            FailedSteps: failedSteps));
     }
 
     [HttpGet("{id:guid}/steps")]

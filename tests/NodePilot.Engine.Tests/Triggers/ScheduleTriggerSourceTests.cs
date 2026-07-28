@@ -16,6 +16,7 @@ namespace NodePilot.Engine.Tests.Triggers;
 /// never resolves is enough — we don't want to spin up a real Quartz scheduler in unit
 /// tests. The actual cron-fire integration is owned by the Quartz library itself.
 /// </summary>
+[Collection(ScheduleJobSlotCollection.Name)]
 public class ScheduleTriggerSourceTests
 {
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement.Clone();

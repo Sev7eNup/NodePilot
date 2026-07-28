@@ -22,16 +22,19 @@ public class DashboardController : ControllerBase
     private readonly IResourceAuthorizationService _authz;
     private readonly IClusterStateProvider? _cluster;
     private readonly IOptionsMonitor<LlmOptions>? _llmOptions;
+    private readonly IMaintenanceWindowEvaluator? _maintenance;
 
     public DashboardController(NodePilotDbContext db,
         IResourceAuthorizationService authz,
         IClusterStateProvider? cluster = null,
-        IOptionsMonitor<LlmOptions>? llmOptions = null)
+        IOptionsMonitor<LlmOptions>? llmOptions = null,
+        IMaintenanceWindowEvaluator? maintenance = null)
     {
         _db = db;
         _authz = authz;
         _cluster = cluster;
         _llmOptions = llmOptions;
+        _maintenance = maintenance;
     }
 
     [HttpGet("dashboard")]
@@ -71,8 +74,11 @@ public class DashboardController : ControllerBase
         // and backfilled at boot. Loading the definitions here cost megabytes per call, and the
         // call is not rare: the sidebar badge polls it once a minute from every open browser
         // (useSidebarBadges), not just from the dashboard page.
+        // FolderId is needed by the maintenance-window evaluator below (windows target a workflow
+        // directly or via folder ancestry). One uuid column — the "no DefinitionJson" reasoning
+        // above is unaffected.
         var workflows = await workflowQuery
-            .Select(w => new { w.Id, w.Name, w.IsEnabled, w.TriggerTypesJson, w.CheckedOutByUserId, w.CheckedOutAt })
+            .Select(w => new { w.Id, w.Name, w.FolderId, w.IsEnabled, w.TriggerTypesJson, w.CheckedOutByUserId, w.CheckedOutAt })
             .ToListAsync(ct);
 
         var machines = await _db.ManagedMachines.AsNoTracking()
@@ -221,6 +227,7 @@ public class DashboardController : ControllerBase
                 {
                     w.Id,
                     w.Name,
+                    w.FolderId,
                     NonManual = nonManual,
                     NeedsDefinition = unknownTriggers
                                       || nonManual.Any(t => t is "scheduleTrigger" or "databaseTrigger"),
@@ -284,7 +291,23 @@ public class DashboardController : ControllerBase
                     kind = "event-driven";
                 }
 
-                return new ArmedTriggerInfo(w.Id, w.Name, nonManual, nextFire, kind, pollInterval);
+                // Evaluate the maintenance windows at the PREDICTED FIRE TIME, not at "now" —
+                // TriggerOrchestrator applies this exact predicate at the moment it fires, so
+                // this is the same question the scheduler will ask, not an approximation.
+                // Rows without a prediction (event-driven / polling) fall back to now, which is
+                // the only honest answer for them.
+                //
+                // Evaluate() rather than GetWindowsAffecting(): only the former expresses the
+                // AllowOnly-outside-window block and applies deny-wins precedence.
+                //
+                // Inherent limitation: judged against the window snapshot as of THIS response.
+                // A window created or edited between now and the fire time is not reflected
+                // until the next poll.
+                var blockedBy = _maintenance?.Evaluate(w.Id, w.FolderId, nextFire ?? now) is { Blocked: true } v
+                    ? v.WindowName
+                    : null;
+
+                return new ArmedTriggerInfo(w.Id, w.Name, nonManual, nextFire, kind, pollInterval, blockedBy);
             })
             .Where(x => x is not null)
             .Select(x => x!)
@@ -433,11 +456,12 @@ public class DashboardController : ControllerBase
     }
 
     /// <summary>
-    /// Whether the AI features are enabled (<c>Llm:Enabled</c>). Shown on the system-status
-    /// banner as "AI activated" — this only reports whether the switch is on, not whether a
-    /// working endpoint is actually configured.
+    /// Whether the AI features are actually usable: <c>Llm:Enabled</c> AND an active profile that
+    /// resolves. Shown on the system-status banner as "AI activated" — with the switch on but no
+    /// profile selected, every AI endpoint answers 503, so reporting "activated" would be wrong.
+    /// It still says nothing about whether that endpoint is reachable.
     /// </summary>
-    private bool GetLlmEnabled() => _llmOptions?.CurrentValue.Enabled ?? false;
+    private bool GetLlmEnabled() => _llmOptions?.CurrentValue.IsUsable ?? false;
 
     /// <summary>
     /// Scans a workflow definition for scheduleTrigger nodes, parses their cron expressions

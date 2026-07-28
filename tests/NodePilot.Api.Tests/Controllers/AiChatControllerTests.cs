@@ -30,20 +30,14 @@ public class AiChatControllerTests
     private static (AiChatController controller, CapturingAuditWriter audit, FakeLlmClient llm, MemoryStream body, NodePilotDbContext db)
         Build(bool enabled = true, string role = "Operator", bool aborted = false, bool enableToolCalling = false)
     {
-        var options = new StaticOptionsMonitor<LlmOptions>(new LlmOptions
-        {
-            Enabled = enabled,
-            BaseUrl = "http://localhost/v1",
-            Model = "test-model",
-            MaxTokens = 100,
-            TimeoutSeconds = 30,
-            EnableToolCalling = enableToolCalling,
-        });
+        var options = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(
+            enabled: enabled, baseUrl: "http://localhost/v1", model: "test-model", maxTokens: 100,
+            timeoutSeconds: 30, enableToolCalling: enableToolCalling));
         var llm = new FakeLlmClient();
         var db = TestDbFactory.Create();
         // Real reader backed by the test DB: the gating tests observe which tools get advertised
         // (llm.Calls[..].Tools) — the controller decides whether the reader's tools make it into the context.
-        var assistant = new WorkflowAssistantService(llm, new PromptCatalog(), new WorkflowChatToolRegistry(), options,
+        var assistant = new WorkflowAssistantService(new FakeLlmClientFactory(llm), new PromptCatalog(), new WorkflowChatToolRegistry(), options,
             customStore: null, executionLogs: new ExecutionLogReader(db, new StubAuditDetailsRedactor()));
         var audit = new CapturingAuditWriter();
         var authz = new ResourceAuthorizationService(db);
@@ -379,17 +373,11 @@ public class AiChatControllerTests
     [Fact]
     public async Task Chat_DisabledGate_FlipsLiveAfterConfigReload()
     {
-        var monitor = new MutableOptionsMonitor<LlmOptions>(new LlmOptions
-        {
-            Enabled = false,
-            BaseUrl = "http://localhost/v1",
-            Model = "test-model",
-            MaxTokens = 100,
-            TimeoutSeconds = 30,
-        });
+        var monitor = new MutableOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(
+            enabled: false, baseUrl: "http://localhost/v1", model: "test-model", maxTokens: 100, timeoutSeconds: 30));
         var llm = new FakeLlmClient();
         var db = TestDbFactory.Create();
-        var assistant = new WorkflowAssistantService(llm, new PromptCatalog(), new WorkflowChatToolRegistry(), monitor,
+        var assistant = new WorkflowAssistantService(new FakeLlmClientFactory(llm), new PromptCatalog(), new WorkflowChatToolRegistry(), monitor,
             customStore: null, executionLogs: new ExecutionLogReader(db, new StubAuditDetailsRedactor()));
         var audit = new CapturingAuditWriter();
         var authz = new ResourceAuthorizationService(db);
@@ -406,14 +394,8 @@ public class AiChatControllerTests
             .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
 
         // Operator enables LLM in the Settings UI → config reload.
-        monitor.Set(new LlmOptions
-        {
-            Enabled = true,
-            BaseUrl = "http://localhost/v1",
-            Model = "test-model",
-            MaxTokens = 100,
-            TimeoutSeconds = 30,
-        });
+        monitor.Set(LlmTestOptions.WithProfile(
+            baseUrl: "http://localhost/v1", model: "test-model", maxTokens: 100, timeoutSeconds: 30));
         llm.EnqueueStream("Der Workflow ", "startet manuell.");
 
         // Same controller + assistant instance: the next request now streams (no 503).

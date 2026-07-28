@@ -256,7 +256,19 @@
     "apiKey": "API key",
     "enableToolCalling": "Tool-calling in AI chat",
     "enableToolCallingHint": "Lets the workflow chat assistant call read-only analysis tools. Requires a model with reliable function-calling.",
-    "toolCallMaxDepth": "Max tool rounds"
+    "toolCallMaxDepth": "Max tool rounds",
+    "baseUrl": "Base URL",
+    "profiles": "Profiles",
+    "activeProfile": "Active profile",
+    "activeProfileHint": "Every AI feature uses this profile.",
+    "addProfile": "Add profile",
+    "deleteProfile": "Delete profile",
+    "profileName": "Name",
+    "profileActive": "active",
+    "profileNotDeletable": "Defined in \"{{source}}\" — editable here, but it can only be removed in that configuration source.",
+    "noProfiles": "No LLM profile yet. Add one and select it to use the AI features.",
+    "newProfileName": "New profile",
+    "activeProfileRequired": "Select an active profile, or turn the LLM integration off."
   },
   "retention": {
     "auditLogCardTitle": "Audit Log",

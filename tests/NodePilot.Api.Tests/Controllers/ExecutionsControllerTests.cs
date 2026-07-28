@@ -1140,4 +1140,155 @@ public class ExecutionsControllerTests
         row.StepsTotal.Should().Be(1);
         row.StepsCompleted.Should().Be(1);
     }
+
+    // ---- GetById step triage ---------------------------------------------------------------
+    //
+    // The Live-Ops drilldown fetches GetById, so the step columns have to be populated there
+    // too — the list endpoint alone is not enough. Note these counts are only meaningful for a
+    // TERMINAL run: Engine:DeferRunningStateWrite defaults to true, so an in-flight step has no
+    // row at all and StepsTotal would read as "everything finished".
+
+    private static StepExecution Step(Guid execId, string stepId, ExecutionStatus status,
+        DateTime startedAt, string? stepName = null)
+        => new()
+        {
+            Id = Guid.NewGuid(), WorkflowExecutionId = execId, StepId = stepId,
+            StepName = stepName, StepType = "runScript", Status = status, StartedAt = startedAt,
+        };
+
+    private async Task<(NodePilot.Data.NodePilotDbContext Db, WorkflowExecution Exec)> SeedTerminalRun(
+        params (string StepId, ExecutionStatus Status, string? Name)[] steps)
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        db.Workflows.Add(workflow);
+        var start = DateTime.UtcNow.AddMinutes(-5);
+        var exec = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Failed,
+            StartedAt = start, CompletedAt = DateTime.UtcNow,
+        };
+        db.WorkflowExecutions.Add(exec);
+        for (var i = 0; i < steps.Length; i++)
+            db.StepExecutions.Add(Step(exec.Id, steps[i].StepId, steps[i].Status, start.AddSeconds(i), steps[i].Name));
+        await db.SaveChangesAsync();
+        return (db, exec);
+    }
+
+    [Fact]
+    public async Task GetById_PopulatesStepCountsAndFailedSteps()
+    {
+        var (db, exec) = await SeedTerminalRun(
+            ("s1", ExecutionStatus.Succeeded, "Fetch"),
+            ("s2", ExecutionStatus.Failed, "Check Disk"));
+
+        var result = await NewController(db, new Mock<IWorkflowEngine>().Object)
+            .GetById(exec.Id, CancellationToken.None);
+
+        var row = result.Result.Should().BeOfType<OkObjectResult>().Subject
+            .Value.Should().BeAssignableTo<ExecutionResponse>().Subject;
+        row.StepsTotal.Should().Be(2);
+        row.StepsCompleted.Should().Be(2);
+        row.FailedSteps.Should().ContainSingle().Which.Should().BeEquivalentTo(new FailedStepRef("s2", "Check Disk"));
+    }
+
+    [Fact]
+    public async Task GetById_StepsCompleted_ExcludesSkippedSteps()
+    {
+        // A Skipped step is a control-flow branch that never ran — it counts toward the total
+        // but must not read as "completed".
+        var (db, exec) = await SeedTerminalRun(
+            ("s1", ExecutionStatus.Succeeded, "A"),
+            ("s2", ExecutionStatus.Skipped, "B"),
+            ("s3", ExecutionStatus.Skipped, "C"));
+
+        var result = await NewController(db, new Mock<IWorkflowEngine>().Object)
+            .GetById(exec.Id, CancellationToken.None);
+
+        var row = result.Result.As<OkObjectResult>().Value.As<ExecutionResponse>();
+        row.StepsTotal.Should().Be(3);
+        row.StepsCompleted.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetById_FailedSteps_ParallelBranches_AreAllListedInStartOrder()
+    {
+        var (db, exec) = await SeedTerminalRun(
+            ("s1", ExecutionStatus.Succeeded, "Root"),
+            ("s2", ExecutionStatus.Failed, "Branch A"),
+            ("s3", ExecutionStatus.Failed, "Branch B"));
+
+        var result = await NewController(db, new Mock<IWorkflowEngine>().Object)
+            .GetById(exec.Id, CancellationToken.None);
+
+        var row = result.Result.As<OkObjectResult>().Value.As<ExecutionResponse>();
+        row.FailedSteps.Should().HaveCount(2);
+        row.FailedSteps!.Select(s => s.StepId).Should().ContainInOrder("s2", "s3");
+    }
+
+    [Fact]
+    public async Task GetById_FailedSteps_SameStartedAt_IsDeterministicallyOrdered()
+    {
+        // Parallel branches can fail within the same tick; StartedAt alone is not a stable
+        // sort key, so the query tie-breaks on Id. Two calls must agree.
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        db.Workflows.Add(workflow);
+        var at = DateTime.UtcNow.AddMinutes(-1);
+        var exec = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Failed,
+            StartedAt = at, CompletedAt = DateTime.UtcNow,
+        };
+        db.WorkflowExecutions.Add(exec);
+        foreach (var id in new[] { "p1", "p2", "p3" })
+            db.StepExecutions.Add(Step(exec.Id, id, ExecutionStatus.Failed, at, id));
+        await db.SaveChangesAsync();
+
+        var controller = NewController(db, new Mock<IWorkflowEngine>().Object);
+        var first = (await controller.GetById(exec.Id, CancellationToken.None))
+            .Result.As<OkObjectResult>().Value.As<ExecutionResponse>();
+        var second = (await controller.GetById(exec.Id, CancellationToken.None))
+            .Result.As<OkObjectResult>().Value.As<ExecutionResponse>();
+
+        first.FailedSteps.Should().HaveCount(3);
+        first.FailedSteps!.Select(s => s.StepId).Should().Equal(second.FailedSteps!.Select(s => s.StepId));
+    }
+
+    [Fact]
+    public async Task GetById_NoStepRows_ReturnsZeroCountsAndNullFailedSteps()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        db.Workflows.Add(workflow);
+        var exec = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Pending,
+            StartedAt = DateTime.UtcNow,
+        };
+        db.WorkflowExecutions.Add(exec);
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db, new Mock<IWorkflowEngine>().Object)
+            .GetById(exec.Id, CancellationToken.None);
+
+        var row = result.Result.As<OkObjectResult>().Value.As<ExecutionResponse>();
+        row.StepsTotal.Should().Be(0);
+        row.StepsCompleted.Should().Be(0);
+        row.FailedSteps.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetById_FailedStepWithoutLabel_KeepsNullNameForClientFallback()
+    {
+        var (db, exec) = await SeedTerminalRun(("s1", ExecutionStatus.Failed, null));
+
+        var result = await NewController(db, new Mock<IWorkflowEngine>().Object)
+            .GetById(exec.Id, CancellationToken.None);
+
+        var row = result.Result.As<OkObjectResult>().Value.As<ExecutionResponse>();
+        var failed = row.FailedSteps.Should().ContainSingle().Subject;
+        failed.StepId.Should().Be("s1");
+        failed.StepName.Should().BeNull();
+    }
 }

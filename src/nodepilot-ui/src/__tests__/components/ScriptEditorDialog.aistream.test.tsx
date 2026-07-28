@@ -99,6 +99,10 @@ vi.mock('@monaco-editor/react', async () => {
 // This Range mock must actually STORE its coordinates (the global setup.ts mock discards them) —
 // otherwise the position-tracking fake model above has nothing to resolve the insert location from.
 vi.mock('../../lib/monacoSetup', () => ({
+  // Muss mit dem echten Modul mitwachsen: ScriptEditorDialog importiert die Konstante,
+  // und ein fehlender Export im Mock ist in ESM ein harter Fehler, kein `undefined`.
+  MONO_FONT_STACK:
+    "'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace",
   monaco: {
     editor: { defineTheme: () => {}, setModelMarkers: () => {} },
     languages: {

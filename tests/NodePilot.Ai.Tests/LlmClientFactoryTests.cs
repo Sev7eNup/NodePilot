@@ -12,21 +12,31 @@ public sealed class LlmClientFactoryTests
         public HttpClient CreateClient(string name) => new();
     }
 
-    private static LlmClientFactory Build(LlmOptions? global = null)
+    private static LlmOptions OptionsWith(
+        string baseUrl = "https://api.openai.com/v1",
+        string model = "gpt-4o-mini",
+        string activeProfileId = "default",
+        string profileId = "default") => new()
+    {
+        Enabled = true,
+        ActiveProfileId = activeProfileId,
+        Profiles = new Dictionary<string, LlmProfileOptions>(StringComparer.OrdinalIgnoreCase)
+        {
+            [profileId] = new()
+            {
+                Name = "Test", BaseUrl = baseUrl, Model = model, MaxTokens = 4096, TimeoutSeconds = 90,
+            },
+        },
+    };
+
+    private static LlmClientFactory Build(LlmOptions? options = null)
         => new(
             new StubHttpClientFactory(),
-            new StaticOptionsMonitor<LlmOptions>(global ?? new LlmOptions
-            {
-                Enabled = true,
-                BaseUrl = "https://api.openai.com/v1",
-                Model = "gpt-4o-mini",
-                MaxTokens = 4096,
-                TimeoutSeconds = 90,
-            }),
+            new StaticOptionsMonitor<LlmOptions>(options ?? OptionsWith()),
             NullLoggerFactory.Instance);
 
     [Fact]
-    public void Create_GlobalDefault_ReturnsClient()
+    public void Create_ActiveProfile_ReturnsClient()
     {
         Build().Create(null).Should().NotBeNull();
     }
@@ -53,35 +63,90 @@ public sealed class LlmClientFactoryTests
     }
 
     [Fact]
-    public void Create_GlobalBaseUrlMetadata_Throws()
+    public void Create_ActiveProfileBaseUrlMetadata_Throws()
     {
-        var factory = Build(new LlmOptions { Enabled = true, BaseUrl = "http://169.254.169.254/v1", Model = "m" });
+        var factory = Build(OptionsWith(baseUrl: "http://169.254.169.254/v1"));
         var act = () => factory.Create(null);
         act.Should().Throw<LlmException>();
     }
 
     [Fact]
-    public void Create_GlobalBaseUrl_FlipsLiveAfterConfigReload()
+    public void Create_NoProfilesConfigured_Throws()
+    {
+        var factory = Build(new LlmOptions { Enabled = true, ActiveProfileId = "default" });
+        var act = () => factory.Create(null);
+        act.Should().Throw<LlmException>().Where(e => e.Message.Contains("No active LLM profile"));
+    }
+
+    [Fact]
+    public void Create_ActiveProfileIdUnknown_Throws()
+    {
+        // Deliberately no "just take the first one" fallback: silently talking to a different
+        // endpoint than the operator selected is worse than a clear failure.
+        var factory = Build(OptionsWith(activeProfileId: "gone", profileId: "default"));
+        var act = () => factory.Create(null);
+        act.Should().Throw<LlmException>().Where(e => e.Message.Contains("No active LLM profile"));
+    }
+
+    [Fact]
+    public void Create_ActiveProfileIdEmpty_Throws()
+    {
+        var factory = Build(OptionsWith(activeProfileId: ""));
+        var act = () => factory.Create(null);
+        act.Should().Throw<LlmException>();
+    }
+
+    [Fact]
+    public void Create_ActiveProfileIdIsCaseInsensitive()
+    {
+        Build(OptionsWith(activeProfileId: "DEFAULT", profileId: "default")).Create(null).Should().NotBeNull();
+    }
+
+    [Fact]
+    public void Create_OverridesWinOverActiveProfile()
+    {
+        // The override path must not be blocked by an unusable profile value — but it also must not
+        // bypass the guard, which the metadata test above covers.
+        var factory = Build(OptionsWith(baseUrl: "https://api.openai.com/v1"));
+        factory.Create(new LlmConnection(BaseUrl: "http://localhost:1234/v1")).Should().NotBeNull();
+    }
+
+    [Fact]
+    public void Create_SwitchingActiveProfile_TakesEffectWithoutRestart()
     {
         // Hot-reload: LlmClientFactory reads IOptionsMonitor<LlmOptions>.CurrentValue per Create(),
-        // so changing Llm:BaseUrl in the Settings UI takes effect without a restart. Start with a
-        // safe global endpoint, mutate the monitor to a cloud-metadata URL (SSRF-guarded) and
-        // assert the very next Create() reflects the new value — no factory re-construction.
+        // so switching Llm:ActiveProfileId in the Settings UI takes effect without a restart. Start
+        // on a safe profile, flip the active id to one with a cloud-metadata URL (SSRF-guarded) and
+        // assert the very next Create() reflects it — no factory re-construction.
+        var profiles = new Dictionary<string, LlmProfileOptions>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["cloud"] = new() { Name = "Cloud", BaseUrl = "https://api.openai.com/v1", Model = "gpt-4o-mini" },
+            ["evil"] = new() { Name = "Evil", BaseUrl = "http://169.254.169.254/v1", Model = "gpt-4o-mini" },
+        };
         var monitor = new MutableOptionsMonitor<LlmOptions>(new LlmOptions
         {
-            Enabled = true,
-            BaseUrl = "https://api.openai.com/v1",
-            Model = "gpt-4o-mini",
+            Enabled = true, ActiveProfileId = "cloud", Profiles = profiles,
         });
         var factory = new LlmClientFactory(new StubHttpClientFactory(), monitor, NullLoggerFactory.Instance);
 
-        // Baseline: global endpoint is fine.
         factory.Create(null).Should().NotBeNull();
 
-        // Operator rewrites Llm:BaseUrl to a metadata IP in the Settings UI → config reload.
-        monitor.Set(new LlmOptions { Enabled = true, BaseUrl = "http://169.254.169.254/v1", Model = "gpt-4o-mini" });
+        monitor.Set(new LlmOptions { Enabled = true, ActiveProfileId = "evil", Profiles = profiles });
 
-        // Same factory instance: the next Create() now hits the SSRF guard with the live BaseUrl.
+        var act = () => factory.Create(null);
+        act.Should().Throw<LlmException>().Where(e => e.Message.Contains("cloud-metadata"));
+    }
+
+    [Fact]
+    public void Create_ProfileEdit_TakesEffectWithoutRestart()
+    {
+        var monitor = new MutableOptionsMonitor<LlmOptions>(OptionsWith());
+        var factory = new LlmClientFactory(new StubHttpClientFactory(), monitor, NullLoggerFactory.Instance);
+
+        factory.Create(null).Should().NotBeNull();
+
+        monitor.Set(OptionsWith(baseUrl: "http://169.254.169.254/v1"));
+
         var act = () => factory.Create(null);
         act.Should().Throw<LlmException>().Where(e => e.Message.Contains("cloud-metadata"));
     }

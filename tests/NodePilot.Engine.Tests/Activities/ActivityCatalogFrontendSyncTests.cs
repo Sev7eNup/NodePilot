@@ -61,12 +61,9 @@ public class ActivityCatalogFrontendSyncTests
         bool IsExternalTrigger,
         string Timeout,
         IReadOnlyList<FrontendOutputParameter> OutputParameters,
-        IReadOnlyList<string> TelemetryParameters,
-        FrontendPrompt Prompt);
+        IReadOnlyList<string> TelemetryParameters);
 
     private sealed record FrontendOutputParameter(string Name, string Type);
-
-    private sealed record FrontendPrompt(bool Included, string? ExclusionReason);
 
     private sealed record ComparableActivity(
         string Type,
@@ -77,8 +74,7 @@ public class ActivityCatalogFrontendSyncTests
         bool IsExternalTrigger,
         string Timeout,
         IReadOnlyList<FrontendOutputParameter> OutputParameters,
-        IReadOnlyList<string> TelemetryParameters,
-        FrontendPrompt Prompt)
+        IReadOnlyList<string> TelemetryParameters)
     {
         public static ComparableActivity FromBackend(ActivityDescriptor descriptor) =>
             new(
@@ -90,8 +86,7 @@ public class ActivityCatalogFrontendSyncTests
                 descriptor.IsExternalTrigger,
                 ToFrontendTimeout(descriptor.Timeout),
                 descriptor.OutputParameters.Select(p => new FrontendOutputParameter(p.Name, p.Type)).ToArray(),
-                descriptor.TelemetryParameters.ToArray(),
-                new FrontendPrompt(descriptor.Prompt.IsIncluded, descriptor.Prompt.ExclusionReason));
+                descriptor.TelemetryParameters.ToArray());
 
         public static ComparableActivity FromFrontend(FrontendActivity descriptor) =>
             new(
@@ -103,8 +98,7 @@ public class ActivityCatalogFrontendSyncTests
                 descriptor.IsExternalTrigger,
                 descriptor.Timeout,
                 descriptor.OutputParameters,
-                descriptor.TelemetryParameters,
-                descriptor.Prompt);
+                descriptor.TelemetryParameters);
     }
 
     private static string ToFrontendCategory(ActivityCategory category) => category switch

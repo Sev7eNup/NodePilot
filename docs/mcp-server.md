@@ -171,7 +171,7 @@ harmlosen Casts auf diesen Tabellen; explizit benannte Spalten funktionieren imm
 | URI | Content |
 |---|---|
 | `nodepilot://activity-catalog` | All activity/trigger types with categories, isTrigger/isRemote flags and output params (in-process). |
-| `nodepilot://activity-config-reference` | Curated per-activity **config-key** schema (key/type/required/description) — the schema the backend catalog does not carry. Embedded. |
+| `nodepilot://activity-config-reference` | Curated per-activity purpose + **config-key** schema (key/type/required/description, plus `promptNotes`) — the schema the backend catalog does not carry. Served from `NodePilot.Core` (`Activities/Embedded/activity-config-reference.json`), which is also what the AI prompts render their activity catalog from. |
 | `nodepilot://styleguide` | The workflow layout/naming styleguide (`docs/workflow-styleguide.md`), embedded. |
 
 The config-reference is also exposed as the `get_activity_config_reference` tool (client resource

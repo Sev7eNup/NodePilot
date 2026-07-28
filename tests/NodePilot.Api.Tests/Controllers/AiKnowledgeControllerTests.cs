@@ -21,11 +21,9 @@ public class AiKnowledgeControllerTests
         Build(bool llmEnabled = true, bool knowledgeEnabled = true, bool docs = true, bool op = true, bool src = false,
               string role = "Operator", bool enableToolCalling = false, bool db = false)
     {
-        var llmOptions = new StaticOptionsMonitor<LlmOptions>(new LlmOptions
-        {
-            Enabled = llmEnabled, BaseUrl = "http://localhost/v1", Model = "test-model",
-            MaxTokens = 100, TimeoutSeconds = 30, EnableToolCalling = enableToolCalling,
-        });
+        var llmOptions = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(
+            enabled: llmEnabled, baseUrl: "http://localhost/v1", model: "test-model",
+            maxTokens: 100, timeoutSeconds: 30, enableToolCalling: enableToolCalling));
         var kOptions = new StaticOptionsMonitor<AiKnowledgeOptions>(new AiKnowledgeOptions
         {
             Enabled = knowledgeEnabled, DocsEnabled = docs, OperationalEnabled = op, SourceCodeEnabled = src, DbEnabled = db,
@@ -34,7 +32,7 @@ public class AiKnowledgeControllerTests
         var dbContext = TestDbFactory.Create();
         var registry = new KnowledgeChatToolRegistry(new DocsKnowledgeReader(kOptions), new SourceCodeKnowledgeReader(kOptions));
         var operational = new OperationalKnowledgeReader(dbContext, new StubAuditDetailsRedactor());
-        var assistant = new KnowledgeAssistantService(llm, new PromptCatalog(), registry, llmOptions, kOptions, operational, new StubSettingsKnowledgeReader(), new StubSqlKnowledgeReader());
+        var assistant = new KnowledgeAssistantService(new FakeLlmClientFactory(llm), new PromptCatalog(), registry, llmOptions, kOptions, operational, new StubSettingsKnowledgeReader(), new StubSqlKnowledgeReader());
         var audit = new CapturingAuditWriter();
         var authz = new ResourceAuthorizationService(dbContext);
         var controller = new AiKnowledgeController(llmOptions, kOptions, assistant, authz, audit, NullLogger<AiKnowledgeController>.Instance);

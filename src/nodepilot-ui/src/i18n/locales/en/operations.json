@@ -11,7 +11,29 @@
     "now": "Now",
     "idle": "Nothing is running right now.",
     "idleHint": "As soon as a workflow starts, its bar grows here live.",
-    "nextStart": "Next start {{time}} — {{name}}"
+    "nextStart": "Next start {{time}} — {{name}}",
+    "historyGap": "No finished runs returned before {{time}}",
+    "recentTruncated": "Too many finished runs in this window — older ones are not shown."
+  },
+  "window": {
+    "label": "Window",
+    "option": {
+      "20": "20 min",
+      "60": "1 h",
+      "240": "4 h"
+    }
+  },
+  "freeze": {
+    "on": "Freeze view",
+    "off": "Go live",
+    "badge": "View frozen at {{time}}"
+  },
+  "stuck": {
+    "title": "Stuck / long-running",
+    "since": "running for {{value}}",
+    "startedAt": "since {{value}}",
+    "lastProgress": "last step {{value}} ago: {{step}}",
+    "more": "+{{count}} more"
   },
   "board": {
     "title": "Next starts",
@@ -21,7 +43,9 @@
     "trigger": "Trigger",
     "tMinus": "T-minus",
     "in": "in {{value}}",
-    "overdue": "overdue"
+    "overdue": "overdue",
+    "blackout": "maintenance",
+    "blockedBy": "Suppressed by maintenance window “{{name}}”"
   },
   "drilldown": {
     "title": "Execution details",
@@ -33,9 +57,25 @@
     "duration": "Duration",
     "triggeredBy": "Triggered by",
     "error": "Error message",
+    "steps": "Steps",
+    "stepsFinished": "Steps finished",
+    "lastProgress": "Last progress",
+    "lastProgressValue": "{{value}} ago · {{step}}",
+    "failedSteps": "Failed steps",
     "parent": "Called by",
     "calls": "Calls",
     "cancel": "Cancel",
+    "retry": "Retry run",
+    "retryStarted": "Retry started.",
+    "retryDisabledWorkflow": "The workflow is disabled — re-enable it to retry.",
+    "cancelAll": "Cancel all runs ({{count}})",
+    "cancelAllConfirm": "Cancel all {{count}} running executions of “{{name}}”?",
+    "cancelAllDone": "{{count}} executions cancelled.",
+    "quarantine": "Quarantine",
+    "quarantineConfirm": "Quarantine “{{name}}”? This disables the workflow so no trigger can start it again, and cancels every running execution.",
+    "quarantined": "Workflow quarantined — disabled, {{count}} executions cancelled.",
+    "quarantinePartial": "Workflow disabled, but the running executions could not be cancelled. Use “Cancel all runs” to retry that step.",
+    "actionFailed": "The action failed.",
     "openEditor": "Open in editor",
     "loadFailed": "Failed to load details."
   }

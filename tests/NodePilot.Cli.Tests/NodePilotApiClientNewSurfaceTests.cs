@@ -253,8 +253,8 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
                {
                    ok = false, message = "401", durationMs = 12.0, errorKind = "Unauthorized",
                }));
-        using var doc = JsonDocument.Parse("""{"enabled":true,"baseUrl":"http://x","model":"m","maxTokens":4096,"timeoutSeconds":30}""");
-        var result = await _client.TestLlmAsync(new LlmTestProbeRequest(doc.RootElement), CancellationToken.None);
+        using var doc = JsonDocument.Parse("""{"baseUrl":"http://x","apiKey":null,"timeoutSeconds":30}""");
+        var result = await _client.TestLlmAsync(new LlmTestProbeRequest("default", doc.RootElement), CancellationToken.None);
         result.Ok.Should().BeFalse();
         result.ErrorKind.Should().Be("Unauthorized");
     }
@@ -479,7 +479,7 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
     // ---- Operations / NOC graph --------------------------------------------
 
     [Fact]
-    public async Task GetOperationsGraphAsync_ParsesNodesEdgesRunningAndCapabilities()
+    public async Task GetOperationsGraphAsync_ParsesNodesEdgesRunningAndPerNodeCapabilities()
     {
         var parent = Guid.NewGuid();
         var child = Guid.NewGuid();
@@ -489,8 +489,8 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
                {
                    nodes = new[]
                    {
-                       new { workflowId = parent, name = "Parent", folderId = Guid.Empty, folderPath = "/", isEnabled = true, runningCount = 1, lastStatus = (string?)"Running", callFrequency = (int?)7 },
-                       new { workflowId = child, name = "Child", folderId = Guid.Empty, folderPath = "/", isEnabled = true, runningCount = 0, lastStatus = (string?)null, callFrequency = (int?)null },
+                       new { workflowId = parent, name = "Parent", folderId = Guid.Empty, folderPath = "/", isEnabled = true, runningCount = 1, lastStatus = (string?)"Running", callFrequency = (int?)7, canRun = true, canEdit = true },
+                       new { workflowId = child, name = "Child", folderId = Guid.Empty, folderPath = "/", isEnabled = true, runningCount = 0, lastStatus = (string?)null, callFrequency = (int?)null, canRun = true, canEdit = false },
                    },
                    edges = new[]
                    {
@@ -504,7 +504,6 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
                    {
                        new { executionId = Guid.NewGuid(), workflowId = child, status = "Succeeded", startedAt = DateTime.UtcNow.AddMinutes(-7), completedAt = DateTime.UtcNow.AddMinutes(-5), parentExecutionId = (Guid?)exec },
                    },
-                   capabilities = new { canCancel = true },
                }));
 
         var graph = await _client.GetOperationsGraphAsync(CancellationToken.None);
@@ -516,6 +515,11 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
         graph.Running.Should().ContainSingle().Which.ExecutionId.Should().Be(exec);
         graph.Recent.Should().ContainSingle().Which.Status.Should().Be("Succeeded");
         graph.Recent[0].ParentExecutionId.Should().Be(exec);
-        graph.Capabilities.CanCancel.Should().BeTrue();
+        // Action rights ride per node now, not once per snapshot: the child is runnable but
+        // not editable, which a single snapshot-wide flag could not express.
+        graph.Nodes[0].CanRun.Should().BeTrue();
+        graph.Nodes[0].CanEdit.Should().BeTrue();
+        graph.Nodes[1].CanRun.Should().BeTrue();
+        graph.Nodes[1].CanEdit.Should().BeFalse();
     }
 }

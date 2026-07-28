@@ -11,8 +11,9 @@ public class WorkflowAssistantServiceTests
     private static WorkflowAssistantService NewService(
         FakeLlmClient client, IChatToolRegistry? tools = null, bool enableToolCalling = false, int maxDepth = 4,
         NodePilot.Core.Interfaces.IExecutionLogReader? executionLogs = null)
-        => new(client, new PromptCatalog(), tools ?? new WorkflowChatToolRegistry(),
-            new StaticOptionsMonitor<LlmOptions>(new LlmOptions { EnableToolCalling = enableToolCalling, ToolCallMaxDepth = maxDepth }),
+        => new(new FakeLlmClientFactory(client), new PromptCatalog(), tools ?? new WorkflowChatToolRegistry(),
+            new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(
+                enableToolCalling: enableToolCalling, toolCallMaxDepth: maxDepth)),
             customStore: null, executionLogs: executionLogs);
 
     private const string SampleWorkflow = """

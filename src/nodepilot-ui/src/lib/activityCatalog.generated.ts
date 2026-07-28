@@ -21,8 +21,7 @@ export const ACTIVITY_CATALOG = [
     "outputParameters": [
       { "name": "exitCode", "type": "number" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "fileOperation",
@@ -42,8 +41,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "fullName", "type": "string" },
       { "name": "creationTime", "type": "string" }
     ],
-    "telemetryParameters": ["operation", "exists"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["operation", "exists"]
   },
   {
     "type": "folderOperation",
@@ -66,8 +64,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "count", "type": "number" },
       { "name": "truncated", "type": "boolean" }
     ],
-    "telemetryParameters": ["operation", "exists", "count"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["operation", "exists", "count"]
   },
   {
     "type": "fileHash",
@@ -82,8 +79,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "algorithm", "type": "string" },
       { "name": "match", "type": "boolean" }
     ],
-    "telemetryParameters": ["algorithm", "match"],
-    "prompt": { "included": false, "exclusionReason": "Niche file comparison activity; prompt examples are needed before LLM generation is reliable." }
+    "telemetryParameters": ["algorithm", "match"]
   },
   {
     "type": "zipOperation",
@@ -97,8 +93,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "destination", "type": "string" },
       { "name": "sizeBytes", "type": "number" }
     ],
-    "telemetryParameters": ["sizeBytes", "operation"],
-    "prompt": { "included": false, "exclusionReason": "Archive operations have a comparatively complex config surface; defer until prompt examples exist." }
+    "telemetryParameters": ["sizeBytes", "operation"]
   },
   {
     "type": "serviceManagement",
@@ -113,8 +108,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "status", "type": "string" },
       { "name": "startType", "type": "string" }
     ],
-    "telemetryParameters": ["action", "status"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["action", "status"]
   },
   {
     "type": "scheduledTask",
@@ -131,8 +125,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "lastTaskResult", "type": "number" },
       { "name": "nextRunTime", "type": "string" }
     ],
-    "telemetryParameters": ["state", "lastTaskResult", "action"],
-    "prompt": { "included": false, "exclusionReason": "Niche Windows Task Scheduler operations; defer until prompt has dedicated examples." }
+    "telemetryParameters": ["state", "lastTaskResult", "action"]
   },
   {
     "type": "registryOperation",
@@ -143,8 +136,7 @@ export const ACTIVITY_CATALOG = [
     "isExternalTrigger": false,
     "timeout": "always",
     "outputParameters": [],
-    "telemetryParameters": ["operation", "exists", "count", "created", "type"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["operation", "exists", "count", "created", "type"]
   },
   {
     "type": "wmiQuery",
@@ -155,8 +147,7 @@ export const ACTIVITY_CATALOG = [
     "isExternalTrigger": false,
     "timeout": "always",
     "outputParameters": [],
-    "telemetryParameters": ["count"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["count"]
   },
   {
     "type": "startProgram",
@@ -173,8 +164,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "stderr", "type": "string" },
       { "name": "waited", "type": "boolean" }
     ],
-    "telemetryParameters": ["exitCode", "processId"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["exitCode", "processId"]
   },
   {
     "type": "powerManagement",
@@ -185,8 +175,7 @@ export const ACTIVITY_CATALOG = [
     "isExternalTrigger": false,
     "timeout": "always",
     "outputParameters": [],
-    "telemetryParameters": ["action"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["action"]
   },
   {
     "type": "waitForCondition",
@@ -201,8 +190,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "elapsedSeconds", "type": "number" },
       { "name": "lastResult", "type": "boolean" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": false, "exclusionReason": "Polling semantics need dedicated examples before LLM generation is reliable." }
+    "telemetryParameters": []
   },
   {
     "type": "restApi",
@@ -215,8 +203,7 @@ export const ACTIVITY_CATALOG = [
     "outputParameters": [
       { "name": "statusCode", "type": "number" }
     ],
-    "telemetryParameters": ["status", "statusCode", "method", "proxyMode"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["status", "statusCode", "method", "proxyMode"]
   },
   {
     "type": "sql",
@@ -230,8 +217,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "rowCount", "type": "number" },
       { "name": "rowsAffected", "type": "number" }
     ],
-    "telemetryParameters": ["rowCount", "rowsAffected", "provider"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["rowCount", "rowsAffected", "provider"]
   },
   {
     "type": "xmlQuery",
@@ -245,8 +231,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "result", "type": "string" },
       { "name": "count", "type": "number" }
     ],
-    "telemetryParameters": ["count"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["count"]
   },
   {
     "type": "jsonQuery",
@@ -260,8 +245,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "result", "type": "string" },
       { "name": "count", "type": "number" }
     ],
-    "telemetryParameters": ["count"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["count"]
   },
   {
     "type": "emailNotification",
@@ -272,8 +256,7 @@ export const ACTIVITY_CATALOG = [
     "isExternalTrigger": false,
     "timeout": "always",
     "outputParameters": [],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "textFileEdit",
@@ -294,8 +277,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "backupPath", "type": "string" },
       { "name": "dryRun", "type": "boolean" }
     ],
-    "telemetryParameters": ["operation", "linesChanged", "dryRun"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["operation", "linesChanged", "dryRun"]
   },
   {
     "type": "generateText",
@@ -309,8 +291,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "text", "type": "string" },
       { "name": "length", "type": "number" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "llmQuery",
@@ -327,8 +308,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "totalTokens", "type": "number" },
       { "name": "finishReason", "type": "string" }
     ],
-    "telemetryParameters": ["model"],
-    "prompt": { "included": false, "exclusionReason": "LLM-Aufruf-Activity – nicht für Workflow-Auto-Generierung vorgesehen." }
+    "telemetryParameters": ["model"]
   },
   {
     "type": "log",
@@ -342,8 +322,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "level", "type": "string" },
       { "name": "message", "type": "string" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "delay",
@@ -354,8 +333,7 @@ export const ACTIVITY_CATALOG = [
     "isExternalTrigger": false,
     "timeout": "none",
     "outputParameters": [],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "junction",
@@ -366,8 +344,7 @@ export const ACTIVITY_CATALOG = [
     "isExternalTrigger": false,
     "timeout": "none",
     "outputParameters": [],
-    "telemetryParameters": ["mode", "satisfied"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["mode", "satisfied"]
   },
   {
     "type": "startWorkflow",
@@ -383,8 +360,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "__workflowId", "type": "string" },
       { "name": "__workflowName", "type": "string" }
     ],
-    "telemetryParameters": ["waited", "__status"],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": ["waited", "__status"]
   },
   {
     "type": "forEach",
@@ -402,8 +378,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "results", "type": "array" },
       { "name": "firstError", "type": "string" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": false, "exclusionReason": "Loop construct; prompt examples are needed before LLM generation is reliable." }
+    "telemetryParameters": []
   },
   {
     "type": "decision",
@@ -418,8 +393,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "matched", "type": "boolean" },
       { "name": "reason", "type": "string" }
     ],
-    "telemetryParameters": ["case", "matched", "reason"],
-    "prompt": { "included": false, "exclusionReason": "Edge conditions already cover branch routing in the prompt; decision nodes are withheld for now." }
+    "telemetryParameters": ["case", "matched", "reason"]
   },
   {
     "type": "returnData",
@@ -430,8 +404,7 @@ export const ACTIVITY_CATALOG = [
     "isExternalTrigger": false,
     "timeout": "none",
     "outputParameters": [],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "manualTrigger",
@@ -442,8 +415,7 @@ export const ACTIVITY_CATALOG = [
     "isExternalTrigger": false,
     "timeout": "none",
     "outputParameters": [],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "scheduleTrigger",
@@ -457,8 +429,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "firedAt", "type": "string" },
       { "name": "nextFireAt", "type": "string" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "webhookTrigger",
@@ -473,8 +444,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "webhookMethod", "type": "string" },
       { "name": "webhookPath", "type": "string" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "fileWatcherTrigger",
@@ -489,8 +459,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "filePath", "type": "string" },
       { "name": "fileName", "type": "string" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "databaseTrigger",
@@ -504,8 +473,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "dbSentinel", "type": "string" },
       { "name": "dbPrevious", "type": "string" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   },
   {
     "type": "eventLogTrigger",
@@ -522,8 +490,7 @@ export const ACTIVITY_CATALOG = [
       { "name": "eventMessage", "type": "string" },
       { "name": "eventTimeWritten", "type": "string" }
     ],
-    "telemetryParameters": [],
-    "prompt": { "included": true, "exclusionReason": null }
+    "telemetryParameters": []
   }
 ] as const;
 

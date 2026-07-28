@@ -58,6 +58,11 @@ vi.mock('@monaco-editor/react', () => {
 });
 
 vi.mock('../lib/monacoSetup', () => ({
+  // Reiner String ohne Monaco-Bezug, hier nur damit der Mock die gleiche Oberfläche
+  // hat wie das echte Modul. Der Drift-Guard gegen `--font-mono` liest die echte
+  // Datei als Quelltext (fontTokens.test.ts) und sieht diesen Wert bewusst nicht.
+  MONO_FONT_STACK:
+    "'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace",
   monaco: {
     editor: { defineTheme: () => {}, setModelMarkers: () => {} },
     languages: {

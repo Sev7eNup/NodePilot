@@ -294,18 +294,10 @@ public sealed class CanvasAssistantTools
 
     private static List<ConfigKey>? ConfigReferenceKeys(string activityType)
     {
-        var json = EmbeddedResources.Read(EmbeddedResources.ActivityConfigReference);
-        using var doc = JsonDocument.Parse(json);
-        if (!doc.RootElement.GetProperty("activities").TryGetProperty(activityType, out var entry)
-            || !entry.TryGetProperty("configKeys", out var keys) || keys.ValueKind != JsonValueKind.Array)
+        if (NodePilot.Core.Activities.ActivityConfigReference.TryGet(activityType) is not { } entry)
             return null;
 
-        return keys.EnumerateArray()
-            .Where(k => k.ValueKind == JsonValueKind.Object && k.TryGetProperty("key", out _))
-            .Select(k => new ConfigKey(
-                k.GetProperty("key").GetString()!,
-                k.TryGetProperty("required", out var r) && r.ValueKind == JsonValueKind.True))
-            .ToList();
+        return entry.ConfigKeys.Select(k => new ConfigKey(k.Key, k.Required)).ToList();
     }
 
     private static object StyleguideCheck(JsonElement definition)

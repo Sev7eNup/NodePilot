@@ -18,9 +18,15 @@ const smtpSnapshot = {
   effectiveSource: { 'Smtp:Host': 'runtime', 'Smtp:Port': 'runtime', 'Smtp:Password': 'env', 'Smtp:From': 'runtime', 'Smtp:Username': 'default', 'Smtp:EnableSsl': 'runtime' },
 };
 
+const llmProfile = (over: Record<string, unknown> = {}) => ({
+  id: 'openai', name: 'OpenAI', baseUrl: 'http://127.0.0.1:1234/v1', apiKey: null, model: 'gpt',
+  maxTokens: 4096, timeoutSeconds: 60, enableToolCalling: false, toolCallMaxDepth: 4, managedBy: null,
+  ...over,
+});
+
 const llmSnapshot = {
   sectionPath: 'Llm',
-  payload: { enabled: false, baseUrl: 'http://127.0.0.1:1234/v1', apiKey: null, model: 'gpt', maxTokens: 4096, timeoutSeconds: 60, enableToolCalling: false, toolCallMaxDepth: 4 },
+  payload: { enabled: false, activeProfileId: 'openai', profiles: [llmProfile()] },
   etag: '"llm-1"',
   isHotReloadable: true,
   effectiveSource: {},
@@ -40,6 +46,12 @@ function renderSection() {
       <IntegrationsSection />
     </QueryClientProvider>,
   );
+}
+
+/** The LLM card's Save is the last one on the page (SMTP renders first). */
+function clickLlmSave() {
+  const buttons = screen.getAllByRole('button', { name: /speichern|save/i });
+  fireEvent.click(buttons[buttons.length - 1]);
 }
 
 beforeEach(() => wireSectionEndpoints());
@@ -81,7 +93,7 @@ describe('IntegrationsSection — SMTP card', () => {
 
     await waitFor(() => {
       // The save body must echo "__unchanged__" for the masked password — operators didn't retype it.
-       
+
       const body = putBody as any;
       expect(body?.Host).toBe('new-host');
       expect(body?.Password).toBe('__unchanged__');
@@ -101,15 +113,14 @@ describe('IntegrationsSection — SMTP card', () => {
     // EnableSsl is the only checkbox in the SMTP card. Saved with the default-true
     // snapshot it must be checked. After toggling it off and saving, the PUT body
     // must carry EnableSsl=false.
-    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
-    const smtpEnableSsl = checkboxes[0];
+    const smtpEnableSsl = screen.getAllByRole('checkbox')[0] as HTMLInputElement;
     expect(smtpEnableSsl.checked).toBe(true);
 
     fireEvent.click(smtpEnableSsl);
     fireEvent.click(screen.getAllByRole('button', { name: /speichern|save/i })[0]);
 
     await waitFor(() => {
-       
+
       const body = putBody as any;
       expect(body?.EnableSsl).toBe(false);
     });
@@ -148,13 +159,16 @@ describe('IntegrationsSection — SMTP card', () => {
 });
 
 describe('IntegrationsSection — LLM card', () => {
-  it('renders the LLM card with Enabled checkbox + model + base url', async () => {
+  it('renders the active-profile picker plus the selected profile form', async () => {
     renderSection();
     await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
     expect(screen.getByDisplayValue('gpt')).toBeInTheDocument();
+    expect((screen.getByLabelText(/^Name$/) as HTMLInputElement).value).toBe('OpenAI');
+    const picker = screen.getByLabelText(/Aktives Profil|Active profile/i) as HTMLSelectElement;
+    expect(picker.value).toBe('openai');
   });
 
-  it('Save serialises Enabled flag + sends __unchanged__ for the API key when keep mode applies', async () => {
+  it('Save serialises Enabled + the profile list, sending null for an unset API key', async () => {
     let putBody: unknown = null;
     server.use(http.put('/api/admin/settings/Llm', async ({ request }) => {
       putBody = await request.json();
@@ -164,29 +178,49 @@ describe('IntegrationsSection — LLM card', () => {
     renderSection();
     await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
 
-    // Checkbox order on the page: [0] SMTP EnableSsl, [1] LLM Enabled, [2] LLM EnableToolCalling.
-    // The LLM card's Enabled is the second checkbox overall.
-    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
-    const enabled = checkboxes[1];
-    fireEvent.click(enabled);
-
-    // Save (the LLM card has its own Save button — pick the second on the page).
-    const saveButtons = screen.getAllByRole('button', { name: /speichern|save/i });
-    fireEvent.click(saveButtons[saveButtons.length - 1]);
+    fireEvent.click(screen.getByRole('checkbox', { name: /^(Aktiviert|Enabled)$/i }));
+    clickLlmSave();
 
     await waitFor(() => {
-       
+
       const body = putBody as any;
       expect(body?.Enabled).toBe(true);
+      expect(body?.ActiveProfileId).toBe('openai');
+      expect(body?.Profiles).toHaveLength(1);
+      expect(body.Profiles[0].Id).toBe('openai');
+      expect(body.Profiles[0].Model).toBe('gpt');
       // apiKey was null in the snapshot → keep-mode doesn't apply → null sent unchanged.
-      expect(body?.ApiKey).toBeNull();
-      // Tool-calling fields round-trip even when untouched (default off, depth 4).
-      expect(body?.EnableToolCalling).toBe(false);
-      expect(body?.ToolCallMaxDepth).toBe(4);
+      expect(body.Profiles[0].ApiKey).toBeNull();
+      expect(body.Profiles[0].EnableToolCalling).toBe(false);
+      expect(body.Profiles[0].ToolCallMaxDepth).toBe(4);
     });
   });
 
-  it('toggles tool-calling on, reveals the depth input, and round-trips both on Save', async () => {
+  it('sends __unchanged__ for a stored API key the operator did not retype', async () => {
+    let putBody: unknown = null;
+    server.use(
+      http.get('/api/admin/settings/Llm', () => HttpResponse.json({
+        ...llmSnapshot,
+        payload: { ...llmSnapshot.payload, profiles: [llmProfile({ apiKey: '********' })] },
+      })),
+      http.put('/api/admin/settings/Llm', async ({ request }) => {
+        putBody = await request.json();
+        return HttpResponse.json({ ...llmSnapshot, etag: '"llm-2"' });
+      }),
+    );
+
+    renderSection();
+    await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
+    clickLlmSave();
+
+    await waitFor(() => {
+
+      const body = putBody as any;
+      expect(body.Profiles[0].ApiKey).toBe('__unchanged__');
+    });
+  });
+
+  it('toggles tool-calling per profile, reveals the depth input, and round-trips both', async () => {
     let putBody: unknown = null;
     server.use(http.put('/api/admin/settings/Llm', async ({ request }) => {
       putBody = await request.json();
@@ -196,23 +230,107 @@ describe('IntegrationsSection — LLM card', () => {
     renderSection();
     await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
 
-    // EnableToolCalling is the last checkbox; toggling it on reveals the depth number input.
-    const checkboxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
-    const toolCalling = checkboxes[checkboxes.length - 1];
+    const toolCalling = screen.getByRole('checkbox', { name: /Tool-Calling|Tool-calling/i }) as HTMLInputElement;
     expect(toolCalling.checked).toBe(false);
     fireEvent.click(toolCalling);
 
-    // The depth input (value 4) is now visible — bump it to 6.
     const depth = await screen.findByDisplayValue('4');
     fireEvent.change(depth, { target: { value: '6' } });
 
-    const saveButtons = screen.getAllByRole('button', { name: /speichern|save/i });
-    fireEvent.click(saveButtons[saveButtons.length - 1]);
+    clickLlmSave();
 
     await waitFor(() => {
-      const body = putBody as { EnableToolCalling?: boolean; ToolCallMaxDepth?: number } | null;
-      expect(body?.EnableToolCalling).toBe(true);
-      expect(body?.ToolCallMaxDepth).toBe(6);
+
+      const body = putBody as any;
+      expect(body.Profiles[0].EnableToolCalling).toBe(true);
+      expect(body.Profiles[0].ToolCallMaxDepth).toBe(6);
     });
+  });
+
+  it('adds a second profile, slugs its id, and keeps the first one intact', async () => {
+    let putBody: unknown = null;
+    server.use(http.put('/api/admin/settings/Llm', async ({ request }) => {
+      putBody = await request.json();
+      return HttpResponse.json({ ...llmSnapshot, etag: '"llm-2"' });
+    }));
+
+    renderSection();
+    await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /Profil hinzufügen|Add profile/i }));
+
+    // The new profile becomes the selected one; rename it.
+    const nameInput = await screen.findByDisplayValue(/Neues Profil|New profile/i);
+    fireEvent.change(nameInput, { target: { value: 'Local Ollama' } });
+
+    clickLlmSave();
+
+    await waitFor(() => {
+
+      const body = putBody as any;
+      expect(body.Profiles).toHaveLength(2);
+      expect(body.Profiles.map((p: { Id: string }) => p.Id)).toContain('openai');
+      // The id is slugged from the name at creation and stays put through the later rename.
+      const added = body.Profiles.find((p: { Id: string }) => p.Id !== 'openai');
+      expect(added.Id).toMatch(/^[a-z0-9][a-z0-9-]*$/);
+      expect(added.Name).toBe('Local Ollama');
+    });
+  });
+
+  it('deletes a runtime-owned profile and falls the active selection back to the survivor', async () => {
+    let putBody: unknown = null;
+    server.use(
+      http.get('/api/admin/settings/Llm', () => HttpResponse.json({
+        ...llmSnapshot,
+        payload: {
+          enabled: true,
+          activeProfileId: 'openai',
+          profiles: [llmProfile(), llmProfile({ id: 'ollama', name: 'Ollama', baseUrl: 'http://localhost:11434/v1' })],
+        },
+      })),
+      http.put('/api/admin/settings/Llm', async ({ request }) => {
+        putBody = await request.json();
+        return HttpResponse.json({ ...llmSnapshot, etag: '"llm-2"' });
+      }),
+    );
+
+    renderSection();
+    await screen.findByRole('button', { name: /Profil löschen|Delete profile/i });
+
+    fireEvent.click(screen.getByRole('button', { name: /Profil löschen|Delete profile/i }));
+    clickLlmSave();
+
+    await waitFor(() => {
+
+      const body = putBody as any;
+      expect(body.Profiles).toHaveLength(1);
+      expect(body.Profiles[0].Id).toBe('ollama');
+      expect(body.ActiveProfileId).toBe('ollama');
+    });
+  });
+
+  it('disables Delete for a profile owned by another configuration source', async () => {
+    server.use(http.get('/api/admin/settings/Llm', () => HttpResponse.json({
+      ...llmSnapshot,
+      payload: { ...llmSnapshot.payload, profiles: [llmProfile({ managedBy: 'appsettings' })] },
+    })));
+
+    renderSection();
+    await screen.findByRole('button', { name: /Profil löschen|Delete profile/i });
+
+    expect(screen.getByRole('button', { name: /Profil löschen|Delete profile/i })).toBeDisabled();
+    expect(screen.getByText(/appsettings/)).toBeInTheDocument();
+  });
+
+  it('surfaces an inline error when enabled without an active profile', async () => {
+    server.use(http.get('/api/admin/settings/Llm', () => HttpResponse.json({
+      ...llmSnapshot,
+      payload: { enabled: true, activeProfileId: '', profiles: [] },
+    })));
+
+    renderSection();
+    await waitFor(() => expect(screen.getByText(/Noch kein LLM-Profil|No LLM profile yet/i)).toBeInTheDocument());
+
+    expect(screen.getByText(/Wähle ein aktives Profil|Select an active profile/i)).toBeInTheDocument();
   });
 });

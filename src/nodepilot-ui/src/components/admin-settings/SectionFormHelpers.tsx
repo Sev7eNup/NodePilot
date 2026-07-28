@@ -114,7 +114,7 @@ export function ErrorsAndSave({ errors, onSave }: Readonly<{ errors: string[] | 
   return (
     <div className="mt-4 space-y-3">
       {errors && errors.length > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-3 text-red-900 text-sm">
+        <div className="bg-error-container/30 border border-error/30 rounded-md p-3 text-on-error-container text-sm">
           <p className="font-semibold mb-1">{t('adminSettings:validationErrorsTitle')}</p>
           <ul className="list-disc list-inside space-y-0.5">{errors.map((e, i) => <li key={i}>{e}</li>)}</ul>
         </div>

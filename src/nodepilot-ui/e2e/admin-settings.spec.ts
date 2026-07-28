@@ -40,7 +40,17 @@ function sectionResponse(sectionPath: string, payload: unknown, etag = '"etag-v1
 }
 
 const SMTP_PAYLOAD = { host: 'mail.example.com', port: 587, username: 'svc', password: '***', from: 'no-reply@example.com', enableSsl: true };
-const LLM_PAYLOAD = { enabled: false, baseUrl: 'https://api.example.com/v1', apiKey: null, model: 'gpt-4o-mini', maxTokens: 4096, timeoutSeconds: 90 };
+const LLM_PAYLOAD = {
+  enabled: false,
+  activeProfileId: 'cloud',
+  profiles: [
+    {
+      id: 'cloud', name: 'Cloud', baseUrl: 'https://api.example.com/v1', apiKey: null,
+      model: 'gpt-4o-mini', maxTokens: 4096, timeoutSeconds: 90,
+      enableToolCalling: false, toolCallMaxDepth: 6, managedBy: null,
+    },
+  ],
+};
 const RETENTION_PAYLOAD = {
   executions: { enabled: true, maxAgeDays: 30, intervalMinutes: 60, batchSize: 500, archivePath: null },
   auditLog: { enabled: true, maxAgeDays: 365, intervalMinutes: 720, batchSize: 1000, archivePath: null },
@@ -176,13 +186,63 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
     await openSystemTab(page);
     await expect(page.getByRole('heading', { name: /llm/i })).toBeVisible({ timeout: 15_000 });
 
-    // The LLM card is the second card; its Test button is the second on the page.
-    await page.getByRole('button', { name: /^test$|^testen$/i }).nth(1).click();
+    // The LLM card's Test button lives inside the selected profile's form.
+    await page.getByRole('button', { name: /^test$|^testen$/i }).last().click();
     await page.getByRole('button', { name: /run test|test ausführen|test starten/i }).click();
 
     await expect.poll(() => probeHit, { timeout: 10_000 }).toBe(true);
     await expect(page.getByText(/success|erfolg/i).first()).toBeVisible();
     await expect(page.getByText(/model reachable/i)).toBeVisible();
+  });
+
+  test('76.6 — LLM profiles: add a second profile, switch the active one, save both', async ({ page }) => {
+    let putBody: Record<string, unknown> | null = null;
+    await page.route('**/api/admin/settings/Llm', (route) => {
+      const req = route.request();
+      if (req.method() === 'PUT') {
+        putBody = JSON.parse(req.postData() ?? '{}');
+        return route.fulfill({ status: 200, contentType: 'application/json', body: sectionResponse('Llm', LLM_PAYLOAD) });
+      }
+      return route.fulfill({ status: 200, contentType: 'application/json', body: sectionResponse('Llm', LLM_PAYLOAD) });
+    });
+
+    await openSystemTab(page);
+    await expect(page.getByRole('heading', { name: /llm/i })).toBeVisible({ timeout: 15_000 });
+
+    await page.getByRole('button', { name: /add profile|profil hinzufügen/i }).click();
+
+    // Two profile chips now; the newly added one is selected and editable.
+    await expect(page.getByRole('tab')).toHaveCount(2);
+    const nameField = page.getByLabel(/^name$/i);
+    await nameField.fill('Local Ollama');
+
+    // Point the active-profile picker at the new one, then save.
+    const picker = page.getByLabel(/active profile|aktives profil/i);
+    await picker.selectOption({ label: 'Local Ollama' });
+    await page.getByRole('button', { name: /^save$|^speichern$/i }).last().click();
+
+    await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
+    const body = putBody as unknown as { ActiveProfileId: string; Profiles: { Id: string; Name: string }[] };
+    expect(body.Profiles).toHaveLength(2);
+    expect(body.Profiles.map((p) => p.Id)).toContain('cloud');
+    expect(body.ActiveProfileId).not.toBe('cloud');
+    expect(body.Profiles.find((p) => p.Id === body.ActiveProfileId)?.Name).toBe('Local Ollama');
+  });
+
+  test('76.7 — an LLM profile owned by another config source cannot be deleted', async ({ page }) => {
+    const managed = {
+      ...LLM_PAYLOAD,
+      profiles: [{ ...LLM_PAYLOAD.profiles[0], managedBy: 'appsettings' }],
+    };
+    await page.route('**/api/admin/settings/Llm', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: sectionResponse('Llm', managed) }),
+    );
+
+    await openSystemTab(page);
+    await expect(page.getByRole('heading', { name: /llm/i })).toBeVisible({ timeout: 15_000 });
+
+    await expect(page.getByRole('button', { name: /delete profile|profil löschen/i })).toBeDisabled();
+    await expect(page.getByText(/appsettings/).first()).toBeVisible();
   });
 
   test('76.3a — Retention (hot-reloadable) save issues an If-Match PUT and shows the Hot-Reload hint', async ({ page }) => {

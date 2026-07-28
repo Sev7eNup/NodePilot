@@ -2,6 +2,7 @@ using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Enums;
@@ -17,12 +18,18 @@ public class OperationsControllerTests
     private static readonly Guid FolderA = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001");
     private static readonly Guid FolderB = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002");
 
+    private static IConfiguration Config(params (string Key, string Value)[] pairs)
+        => new ConfigurationBuilder()
+            .AddInMemoryCollection(pairs.Select(p => new KeyValuePair<string, string?>(p.Key, p.Value)))
+            .Build();
+
     private static OperationsController NewController(
         NodePilot.Data.NodePilotDbContext db,
         IResourceAuthorizationService? authz = null,
-        string role = "Admin")
+        string role = "Admin",
+        IConfiguration? configuration = null)
     {
-        var controller = new OperationsController(db, authz ?? new AlwaysAllowAuthorizationService());
+        var controller = new OperationsController(db, authz ?? new AlwaysAllowAuthorizationService(), configuration);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(ClaimTypes.Role, role)], "TestAuth"));
         controller.ControllerContext = new ControllerContext
@@ -32,12 +39,18 @@ public class OperationsControllerTests
         return controller;
     }
 
-    private static async Task<OperationsGraphDto> GetGraph(OperationsController c)
+    private static async Task<OperationsGraphDto> GetGraph(OperationsController c, int windowMinutes = 20)
     {
-        var result = await c.GetGraph(CancellationToken.None);
+        var result = await c.GetGraph(CancellationToken.None, windowMinutes);
         return result.Result.Should().BeOfType<OkObjectResult>().Subject
             .Value.Should().BeAssignableTo<OperationsGraphDto>().Subject;
     }
+
+    /// <summary>Seeds FolderA + FolderB — Workflow.FolderId is FK-constrained.</summary>
+    private static void SeedFolders(NodePilot.Data.NodePilotDbContext db)
+        => db.SharedWorkflowFolders.AddRange(
+            new SharedWorkflowFolder { Id = FolderA, Name = "A", Path = "/A", Depth = 1, ParentFolderId = SharedWorkflowFolder.RootFolderId },
+            new SharedWorkflowFolder { Id = FolderB, Name = "B", Path = "/B", Depth = 1, ParentFolderId = SharedWorkflowFolder.RootFolderId });
 
     private static Workflow Wf(Guid id, string name, string def, Guid? folderId = null, bool enabled = true) => new()
     {
@@ -103,9 +116,7 @@ public class OperationsControllerTests
     public async Task GetGraph_FolderScoped_ExcludesOutOfScope_AndCrossScopeRefIsUnresolved()
     {
         var db = TestDbFactory.Create();
-        db.SharedWorkflowFolders.AddRange(
-            new SharedWorkflowFolder { Id = FolderA, Name = "A", Path = "/A", Depth = 1, ParentFolderId = SharedWorkflowFolder.RootFolderId },
-            new SharedWorkflowFolder { Id = FolderB, Name = "B", Path = "/B", Depth = 1, ParentFolderId = SharedWorkflowFolder.RootFolderId });
+        SeedFolders(db);
         var parent = Guid.NewGuid();
         var child = Guid.NewGuid();
         db.Workflows.AddRange(
@@ -230,9 +241,7 @@ public class OperationsControllerTests
     public async Task GetGraph_Recent_FolderScoped()
     {
         var db = TestDbFactory.Create();
-        db.SharedWorkflowFolders.AddRange(
-            new SharedWorkflowFolder { Id = FolderA, Name = "A", Path = "/A", Depth = 1, ParentFolderId = SharedWorkflowFolder.RootFolderId },
-            new SharedWorkflowFolder { Id = FolderB, Name = "B", Path = "/B", Depth = 1, ParentFolderId = SharedWorkflowFolder.RootFolderId });
+        SeedFolders(db);
         var visible = Guid.NewGuid();
         var hidden = Guid.NewGuid();
         var now = DateTime.UtcNow;
@@ -250,21 +259,407 @@ public class OperationsControllerTests
         graph.Recent.Should().ContainSingle().Which.WorkflowId.Should().Be(visible);
     }
 
-    [Theory]
-    [InlineData("Admin", true)]
-    [InlineData("Operator", true)]
-    [InlineData("Viewer", false)]
-    public async Task GetGraph_Capabilities_CanCancelReflectsRole(string role, bool expected)
+    // ---- Per-node action capabilities -------------------------------------------------------
+    //
+    // These replace the old snapshot-wide OpsCapabilities.CanCancel, which was derived from the
+    // GLOBAL role only. Cancel/retry need folder ResourceOp.Run and disable needs Edit, so a
+    // global Operator holding just folder-Viewer used to be offered buttons the endpoints then
+    // 403'd. The flags are now per node and come straight from GetWorkflowCapabilitiesAsync,
+    // which already ANDs the folder role with the global one.
+
+    [Fact]
+    public async Task GetGraph_GlobalAdmin_NodeCarriesRunAndEdit()
     {
         var db = TestDbFactory.Create();
-        var graph = await GetGraph(NewController(db, role: role));
-        graph.Capabilities.CanCancel.Should().Be(expected);
+        db.Workflows.Add(Wf(Guid.NewGuid(), "W", "{}"));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db, role: "Admin"));
+
+        var node = graph.Nodes.Should().ContainSingle().Subject;
+        node.CanRun.Should().BeTrue();
+        node.CanEdit.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetGraph_FolderRunOnly_AllowsRunButNotEdit()
+    {
+        // The exact case the old flag got wrong: may cancel, must not be offered quarantine.
+        var db = TestDbFactory.Create();
+        SeedFolders(db);
+        db.Workflows.Add(Wf(Guid.NewGuid(), "W", "{}", folderId: FolderA));
+        await db.SaveChangesAsync();
+
+        var scoped = new ScopedAuthz(new AccessibleFolderSet { IsUnrestricted = false, FolderIds = [FolderA] })
+        {
+            Capabilities = new ResourceCapabilities(CanRead: true, CanRun: true, CanEdit: false, CanDelete: false, CanAdmin: false),
+        };
+        var graph = await GetGraph(NewController(db, scoped, role: "Operator"));
+
+        var node = graph.Nodes.Should().ContainSingle().Subject;
+        node.CanRun.Should().BeTrue();
+        node.CanEdit.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetGraph_FolderReadOnly_OffersNeitherRunNorEdit()
+    {
+        // A global Operator with only folder-Viewer rights. Previously CanCancel was true here
+        // purely because of the global role, and every action button 403'd on click.
+        var db = TestDbFactory.Create();
+        SeedFolders(db);
+        db.Workflows.Add(Wf(Guid.NewGuid(), "W", "{}", folderId: FolderA));
+        await db.SaveChangesAsync();
+
+        var scoped = new ScopedAuthz(new AccessibleFolderSet { IsUnrestricted = false, FolderIds = [FolderA] })
+        {
+            Capabilities = new ResourceCapabilities(CanRead: true, CanRun: false, CanEdit: false, CanDelete: false, CanAdmin: false),
+        };
+        var graph = await GetGraph(NewController(db, scoped, role: "Operator"));
+
+        var node = graph.Nodes.Should().ContainSingle().Subject;
+        node.CanRun.Should().BeFalse();
+        node.CanEdit.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetGraph_Capabilities_ResolvedOncePerDistinctFolder()
+    {
+        // Three workflows across two folders → two lookups, not three. Guards the dedup that
+        // keeps the 5 s poll cheap on a large snapshot.
+        var db = TestDbFactory.Create();
+        SeedFolders(db);
+        db.Workflows.AddRange(
+            Wf(Guid.NewGuid(), "A1", "{}", folderId: FolderA),
+            Wf(Guid.NewGuid(), "A2", "{}", folderId: FolderA),
+            Wf(Guid.NewGuid(), "B1", "{}", folderId: FolderB));
+        await db.SaveChangesAsync();
+
+        var scoped = new ScopedAuthz(new AccessibleFolderSet { IsUnrestricted = false, FolderIds = [FolderA, FolderB] });
+        var graph = await GetGraph(NewController(db, scoped, role: "Operator"));
+
+        graph.Nodes.Should().HaveCount(3);
+        scoped.CapabilityLookups.Should().BeEquivalentTo([FolderA, FolderB]);
+    }
+
+    // ---- Snapshot meta: the overdue threshold ------------------------------------------------
+    //
+    // Must match LongRunningExecutionCollector byte for byte (same key, same 600 default, same
+    // Math.Max(1, …) floor). If these drift, the console highlights a run at a different moment
+    // than the alerting rule fires for it — two contradicting definitions of "long-running".
+
+    [Fact]
+    public async Task GetGraph_Meta_OverdueSeconds_ComesFromAlertingConfig()
+    {
+        var db = TestDbFactory.Create();
+        var graph = await GetGraph(NewController(db, configuration: Config(("Alerting:LongRunningSeconds", "1800"))));
+        graph.Meta.OverdueSeconds.Should().Be(1800);
+    }
+
+    [Fact]
+    public async Task GetGraph_Meta_OverdueSeconds_DefaultsTo600()
+    {
+        var db = TestDbFactory.Create();
+        var graph = await GetGraph(NewController(db, configuration: Config()));
+        graph.Meta.OverdueSeconds.Should().Be(600);
+    }
+
+    [Fact]
+    public async Task GetGraph_Meta_OverdueSeconds_NoConfigurationWired_DefaultsTo600()
+    {
+        var db = TestDbFactory.Create();
+        var graph = await GetGraph(NewController(db));
+        graph.Meta.OverdueSeconds.Should().Be(600);
+    }
+
+    [Theory]
+    [InlineData("0", 1)]
+    [InlineData("-5", 1)]
+    [InlineData("1", 1)]
+    public async Task GetGraph_Meta_OverdueSeconds_FlooredAtOne_LikeTheAlertingCollector(string configured, int expected)
+    {
+        var db = TestDbFactory.Create();
+        var graph = await GetGraph(NewController(db, configuration: Config(("Alerting:LongRunningSeconds", configured))));
+        graph.Meta.OverdueSeconds.Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task GetGraph_ZeroFolderAccess_StillCarriesMeta()
+    {
+        // The early-return path must not ship a null meta — the console reads it unconditionally.
+        var db = TestDbFactory.Create();
+        var scoped = new ScopedAuthz(AccessibleFolderSet.None);
+        var graph = await GetGraph(NewController(db, scoped, role: "Viewer",
+            configuration: Config(("Alerting:LongRunningSeconds", "900"))));
+
+        graph.Nodes.Should().BeEmpty();
+        graph.Meta.OverdueSeconds.Should().Be(900);
+    }
+
+    // ---- Window + truncation honesty ---------------------------------------------------------
+
+    private static WorkflowExecution Settled(Guid wfId, DateTime completedAt)
+        => new()
+        {
+            Id = Guid.NewGuid(), WorkflowId = wfId, Status = ExecutionStatus.Succeeded,
+            StartedAt = completedAt.AddMinutes(-1), CompletedAt = completedAt,
+        };
+
+    [Theory]
+    [InlineData(20)]
+    [InlineData(60)]
+    [InlineData(240)]
+    public async Task GetGraph_AllowedWindow_IsEchoedInMeta(int windowMinutes)
+    {
+        var db = TestDbFactory.Create();
+        var graph = await GetGraph(NewController(db), windowMinutes);
+        graph.Meta.WindowMinutes.Should().Be(windowMinutes);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(7)]
+    [InlineData(1440)]
+    [InlineData(-30)]
+    public async Task GetGraph_UnsupportedWindow_ClampsToTwenty(int windowMinutes)
+    {
+        var db = TestDbFactory.Create();
+        var graph = await GetGraph(NewController(db), windowMinutes);
+        graph.Meta.WindowMinutes.Should().Be(20);
+    }
+
+    [Fact]
+    public async Task GetGraph_WiderWindow_IncludesRunsOlderThanTheDefaultWindow()
+    {
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        db.WorkflowExecutions.Add(Settled(wf, DateTime.UtcNow.AddMinutes(-45)));
+        await db.SaveChangesAsync();
+
+        var narrow = await GetGraph(NewController(db), 20);
+        var wide = await GetGraph(NewController(db), 60);
+
+        narrow.Recent.Should().BeEmpty();
+        wide.Recent.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task GetGraph_RunningExecution_IsReturnedRegardlessOfWindow()
+    {
+        // The stuck-run case: a job started six hours ago must never age out of the snapshot,
+        // whatever look-back the caller picked for finished runs.
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        db.WorkflowExecutions.Add(new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = wf, Status = ExecutionStatus.Running,
+            StartedAt = DateTime.UtcNow.AddHours(-6),
+        });
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db), 20);
+
+        graph.Running.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task GetGraph_UntruncatedWindow_ReportsOldestReturnedAndNoTruncation()
+    {
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        var oldest = DateTime.UtcNow.AddMinutes(-10);
+        db.WorkflowExecutions.AddRange(Settled(wf, oldest), Settled(wf, DateTime.UtcNow.AddMinutes(-2)));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        graph.Meta.RecentTruncated.Should().BeFalse();
+        graph.Meta.OldestReturnedCompletedAt.Should().BeCloseTo(oldest, TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task GetGraph_NoSettledRuns_OldestReturnedIsNull()
+    {
+        var db = TestDbFactory.Create();
+        var graph = await GetGraph(NewController(db));
+        graph.Recent.Should().BeEmpty();
+        graph.Meta.OldestReturnedCompletedAt.Should().BeNull();
+        graph.Meta.RecentTruncated.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetGraph_MoreSettledRunsThanTheCap_FlagsTruncationAndCapsTheList()
+    {
+        // Silent trimming would punch a hole into the timeline that reads as "nothing ran".
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < 505; i++)
+            db.WorkflowExecutions.Add(Settled(wf, now.AddSeconds(-i)));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        graph.Recent.Should().HaveCount(500);
+        graph.Meta.RecentTruncated.Should().BeTrue();
+        // The honest left edge sits INSIDE the window, right of what the caller asked for.
+        graph.Meta.OldestReturnedCompletedAt.Should().NotBeNull();
+        graph.Meta.OldestReturnedCompletedAt!.Value.Should().BeAfter(graph.Meta.RecentSinceUtc);
+    }
+
+    // ---- Step activity on live runs ----------------------------------------------------------
+
+    private static StepExecution StepRow(Guid execId, string stepId, ExecutionStatus status,
+        DateTime startedAt, DateTime? completedAt, string? stepName = null)
+        => new()
+        {
+            Id = Guid.NewGuid(), WorkflowExecutionId = execId, StepId = stepId, StepName = stepName,
+            StepType = "runScript", Status = status, StartedAt = startedAt, CompletedAt = completedAt,
+        };
+
+    [Fact]
+    public async Task GetGraph_RunningExecution_ReportsFinishedStepsAndLastProgress()
+    {
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        var exec = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        var t0 = DateTime.UtcNow.AddMinutes(-10);
+        db.WorkflowExecutions.Add(new WorkflowExecution
+        {
+            Id = exec, WorkflowId = wf, Status = ExecutionStatus.Running, StartedAt = t0,
+        });
+        // Only terminal rows exist under the default DeferRunningStateWrite — mirrored here.
+        db.StepExecutions.AddRange(
+            StepRow(exec, "s1", ExecutionStatus.Succeeded, t0, t0.AddMinutes(1), "Fetch"),
+            StepRow(exec, "s2", ExecutionStatus.Succeeded, t0.AddMinutes(1), t0.AddMinutes(3), "Copy files"),
+            StepRow(exec, "s3", ExecutionStatus.Skipped, t0.AddMinutes(3), t0.AddMinutes(3)));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        var run = graph.Running.Should().ContainSingle().Subject;
+        // All three reached a terminal state…
+        run.StepsFinished.Should().Be(3);
+        // …but the Skipped branch is not progress: it never ran, so it must neither name the
+        // last step nor reset the stagnation clock.
+        run.LastCompletedStepName.Should().Be("Copy files");
+        run.LastProgressAt.Should().BeCloseTo(t0.AddMinutes(3), TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task GetGraph_RunningExecution_SkippedBranchDoesNotCountAsProgress()
+    {
+        // A branch skipped AFTER the last real step would otherwise silently reset the
+        // stagnation clock — the run would look busy while sitting on one step.
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        var exec = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        var t0 = DateTime.UtcNow.AddMinutes(-20);
+        db.WorkflowExecutions.Add(new WorkflowExecution { Id = exec, WorkflowId = wf, Status = ExecutionStatus.Running, StartedAt = t0 });
+        db.StepExecutions.AddRange(
+            StepRow(exec, "s1", ExecutionStatus.Succeeded, t0, t0.AddMinutes(1), "Real work"),
+            StepRow(exec, "s2", ExecutionStatus.Skipped, t0.AddMinutes(15), t0.AddMinutes(15), "Dead branch"));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        var run = graph.Running.Should().ContainSingle().Subject;
+        run.LastCompletedStepName.Should().Be("Real work");
+        run.LastProgressAt.Should().BeCloseTo(t0.AddMinutes(1), TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public async Task GetGraph_RunningExecution_LastCompletedStepFallsBackToStepId()
+    {
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        var exec = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        var t0 = DateTime.UtcNow.AddMinutes(-5);
+        db.WorkflowExecutions.Add(new WorkflowExecution { Id = exec, WorkflowId = wf, Status = ExecutionStatus.Running, StartedAt = t0 });
+        db.StepExecutions.Add(StepRow(exec, "step-42", ExecutionStatus.Succeeded, t0, t0.AddMinutes(1)));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        graph.Running.Should().ContainSingle().Which.LastCompletedStepName.Should().Be("step-42");
+    }
+
+    [Fact]
+    public async Task GetGraph_RunningExecution_WithNoFinishedSteps_ReportsZeroAndNullProgress()
+    {
+        // Freshly started run: enriched (so not null), but nothing has finished yet.
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        db.WorkflowExecutions.Add(new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = wf, Status = ExecutionStatus.Running, StartedAt = DateTime.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        var run = graph.Running.Should().ContainSingle().Subject;
+        run.StepsFinished.Should().BeNull(); // no step rows at all → no aggregate row → unknown
+        run.LastProgressAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetGraph_StepActivity_DoesNotBleedBetweenConcurrentRuns()
+    {
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        var t0 = DateTime.UtcNow.AddMinutes(-5);
+        db.WorkflowExecutions.AddRange(
+            new WorkflowExecution { Id = a, WorkflowId = wf, Status = ExecutionStatus.Running, StartedAt = t0 },
+            new WorkflowExecution { Id = b, WorkflowId = wf, Status = ExecutionStatus.Running, StartedAt = t0 });
+        db.StepExecutions.AddRange(
+            StepRow(a, "a1", ExecutionStatus.Succeeded, t0, t0.AddMinutes(1), "A one"),
+            StepRow(a, "a2", ExecutionStatus.Succeeded, t0, t0.AddMinutes(2), "A two"),
+            StepRow(b, "b1", ExecutionStatus.Succeeded, t0, t0.AddMinutes(1), "B one"));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        graph.Running.Single(r => r.ExecutionId == a).StepsFinished.Should().Be(2);
+        graph.Running.Single(r => r.ExecutionId == b).StepsFinished.Should().Be(1);
+        graph.Running.Single(r => r.ExecutionId == b).LastCompletedStepName.Should().Be("B one");
+    }
+
+    [Fact]
+    public async Task GetGraph_NoRunningExecutions_SkipsTheActivityQueriesEntirely()
+    {
+        // An idle system must pay nothing for the enrichment; also guards the Contains([])
+        // translation on an empty StepExecutions table.
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(Wf(Guid.NewGuid(), "W", "{}"));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        graph.Running.Should().BeEmpty();
     }
 
     private sealed class ScopedAuthz : IResourceAuthorizationService
     {
         private readonly AccessibleFolderSet _set;
         public ScopedAuthz(AccessibleFolderSet set) => _set = set;
+
+        /// <summary>What <see cref="GetWorkflowCapabilitiesAsync"/> hands back. Defaults to full.</summary>
+        public ResourceCapabilities Capabilities { get; set; } = ResourceCapabilities.All;
+
+        /// <summary>Every folder the subject asked about — asserts the per-folder dedup.</summary>
+        public List<Guid> CapabilityLookups { get; } = [];
 
         public Task<AccessibleFolderSet> GetAccessibleFolderIdsAsync(ClaimsPrincipal user, CancellationToken ct = default)
             => Task.FromResult(_set);
@@ -274,9 +669,12 @@ public class OperationsControllerTests
         public Task<bool> CanAccessFolderAsync(ClaimsPrincipal user, Guid folderId, ResourceOp op, CancellationToken ct = default)
             => CanAccessWorkflowAsync(user, folderId, op, ct);
         public Task<ResourceCapabilities> GetWorkflowCapabilitiesAsync(ClaimsPrincipal user, Guid folderId, CancellationToken ct = default)
-            => Task.FromResult(ResourceCapabilities.All);
+        {
+            CapabilityLookups.Add(folderId);
+            return Task.FromResult(Capabilities);
+        }
         public Task<ResourceCapabilities> GetFolderCapabilitiesAsync(ClaimsPrincipal user, Guid folderId, CancellationToken ct = default)
-            => Task.FromResult(ResourceCapabilities.All);
+            => Task.FromResult(Capabilities);
         public Task<SharedFolderRole?> GetEffectiveFolderRoleAsync(ClaimsPrincipal user, Guid folderId, CancellationToken ct = default)
             => Task.FromResult<SharedFolderRole?>(SharedFolderRole.FolderViewer);
         public void InvalidateAll() { }

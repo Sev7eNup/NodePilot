@@ -67,7 +67,7 @@ alongside `dotnet test` and `npm run test:run`.
 | 14 | Trigger config UIs | `triggers.spec.ts` |
 | 15 | Users / admin | `users.spec.ts` |
 | 16 / 64 | Audit log + pagination/filter | `audit-log.spec.ts` |
-| 17 | Theme / minimap | `theme.spec.ts` |
+| 17 | Theme / minimap / typography | `theme.spec.ts` |
 | 18 / 52 | Folders / move | `workflow-organisation.spec.ts` |
 | 19 | Version diff | `version-diff.spec.ts` |
 | 20 | Machines & credentials | `machines-credentials.spec.ts` |
@@ -80,7 +80,7 @@ alongside `dotnet test` and `npm run test:run`.
 | 31 | DB-Admin viewer | `db-admin.spec.ts` |
 | 36 | Activity catalog | `activity-catalog.spec.ts` |
 | 37 | Diagnostics / support-log | `diagnostics.spec.ts` |
-| 38 / 76 | Admin settings (all sections + probes) | `admin-settings.spec.ts` |
+| 38 / 76 | Admin settings (all sections + probes, LLM profile management) | `admin-settings.spec.ts` |
 | 39 | Debug variable overrides | `debug-overrides.spec.ts` |
 | 41 | Rollback with reason | `rollback.spec.ts` |
 | 45 | Shared-folder permissions | `folder-permissions.spec.ts` |
@@ -111,7 +111,7 @@ alongside `dotnet test` and `npm run test:run`.
 | 75 | Quick-interactions | `quick-interactions.spec.ts` |
 | 77 | AI workflow assistant + SSE streaming (explain + propose, role-gated apply, stale-guard; chat/script SSE mocked via `text/event-stream` body) | `ai-assistant.spec.ts` |
 | 9 (DR) | System-config Backup & Restore (export validation + restore preview/run) | `backup.spec.ts` |
-| — (new) | Live-Ops Mission Control: real-time execution timeline (running + recently-finished bars), bar drill-down + cancel, next-fires departure board, folder scoping | `operations.spec.ts` |
+| — (new) | Live-Ops Mission Control: real-time execution timeline (running + recently-finished bars), bar drill-down with failed-step names and the incident actions (cancel / retry / cancel-all / quarantine incl. disable-before-cancel ordering and per-node RBAC gating), stuck strip + overdue bar treatment for long-running runs, step-activity (finished count / last progress, no percentage), window selector 20 m–4 h with display freeze and truncation honesty, next-fires departure board incl. maintenance-window blackout marking, folder scoping | `operations.spec.ts` |
 | 78 | Alerting rules (list/create/test-fire/secret-redaction/role-gating/gauge-scope-gate/deliveries-modal/cancelledBy-filter) | `alerting.spec.ts` |
 | 79 | Toolbar-layout toggle: compact ⇄ classic toolbar, persisted in designStore, toggle reachable from both layouts | `toolbar-layout.spec.ts` |
 | — (new) | Atelier-Designsprache: Scope-Klassen + Token-Adaption, Skin-Adaption, Header-Umschalter (role=switch), Persistenz über Reload, Classic-Suite-Pin | `designer-atelier.spec.ts` |
