@@ -42,9 +42,11 @@ public sealed class TelemetryTools
     }
 
     [McpServerTool(Name = "get_operations_graph", ReadOnly = true)]
-    [Description("Live-ops Mission-Control snapshot (RBAC-scoped): workflow nodes (name, folder, enabled, live runningCount, lastStatus), call edges between workflows (startWorkflow/forEach, with refStatus Resolved|Dynamic|Unresolved|Ambiguous), currently-running executions, and recently finished executions (last 30 min). Answers 'what is running right now, what just finished, and how do workflows call each other?'.")]
-    public async Task<object> GetOperationsGraph(CancellationToken cancellationToken = default)
-        => await ApiErrorMapper.Guard(() => _api.GetOperationsGraphAsync(cancellationToken));
+    [Description("Live-ops Mission-Control snapshot (RBAC-scoped): workflow nodes (name, folder, enabled, live runningCount, lastStatus, per-node canRun/canEdit), call edges between workflows (startWorkflow/forEach, with refStatus Resolved|Dynamic|Unresolved|Ambiguous), currently-running executions, and recently finished executions within the selected window. 'meta' carries the overdue threshold plus recentTruncated/oldestReturnedCompletedAt so an empty stretch is never mistaken for 'nothing ran'. Answers 'what is running right now, what just finished, and how do workflows call each other?'.")]
+    public async Task<object> GetOperationsGraph(
+        [Description("Look-back window for finished runs, in minutes: 20 (default), 60 or 240. Other values clamp to 20. Running executions are always returned in full.")] int windowMinutes = 20,
+        CancellationToken cancellationToken = default)
+        => await ApiErrorMapper.Guard(() => _api.GetOperationsGraphAsync(cancellationToken, windowMinutes));
 
     [McpServerTool(Name = "get_workflow_coverage", ReadOnly = true)]
     [Description("Per-node coverage for a workflow over the last windowDays: how often each node executed/failed/was skipped, and when it last ran. Answers 'what logic actually runs in production?'.")]

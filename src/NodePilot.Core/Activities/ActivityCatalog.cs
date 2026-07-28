@@ -18,13 +18,6 @@ public enum ActivityTimeoutKind
 
 public sealed record ActivityOutputParameterDescriptor(string Name, string Type);
 
-public sealed record ActivityPromptDescriptor(bool IsIncluded, string? ExclusionReason)
-{
-    public static readonly ActivityPromptDescriptor Included = new(true, null);
-
-    public static ActivityPromptDescriptor Excluded(string reason) => new(false, reason);
-}
-
 public sealed record ActivityDescriptor(string Type, ActivityCategory Category, string LabelKey, string Icon)
 {
     public bool IsTrigger => Category == ActivityCategory.Trigger;
@@ -33,7 +26,6 @@ public sealed record ActivityDescriptor(string Type, ActivityCategory Category, 
     public ActivityTimeoutKind Timeout { get; init; } = ActivityTimeoutKind.None;
     public IReadOnlyList<ActivityOutputParameterDescriptor> OutputParameters { get; init; } = [];
     public IReadOnlyList<string> TelemetryParameters { get; init; } = [];
-    public ActivityPromptDescriptor Prompt { get; init; } = ActivityPromptDescriptor.Included;
 }
 
 /// <summary>
@@ -97,9 +89,7 @@ public static class ActivityCatalog
                 Output("algorithm", "string"),
                 Output("match", "boolean"),
             ],
-            telemetry: ["algorithm", "match"],
-            prompt: ActivityPromptDescriptor.Excluded(
-                "Niche file comparison activity; prompt examples are needed before LLM generation is reliable.")),
+            telemetry: ["algorithm", "match"]),
         Action("zipOperation", "zipOperation", "archive",
             isRemote: true,
             timeout: ActivityTimeoutKind.Always,
@@ -108,9 +98,7 @@ public static class ActivityCatalog
                 Output("destination", "string"),
                 Output("sizeBytes", "number"),
             ],
-            telemetry: ["sizeBytes", "operation"],
-            prompt: ActivityPromptDescriptor.Excluded(
-                "Archive operations have a comparatively complex config surface; defer until prompt examples exist.")),
+            telemetry: ["sizeBytes", "operation"]),
         Action("serviceManagement", "serviceManagement", "settings",
             isRemote: true,
             timeout: ActivityTimeoutKind.Always,
@@ -132,9 +120,7 @@ public static class ActivityCatalog
                 Output("lastTaskResult", "number"),
                 Output("nextRunTime", "string"),
             ],
-            telemetry: ["state", "lastTaskResult", "action"],
-            prompt: ActivityPromptDescriptor.Excluded(
-                "Niche Windows Task Scheduler operations; defer until prompt has dedicated examples.")),
+            telemetry: ["state", "lastTaskResult", "action"]),
         Action("registryOperation", "registryOperation", "account_tree",
             isRemote: true,
             timeout: ActivityTimeoutKind.Always,
@@ -174,9 +160,7 @@ public static class ActivityCatalog
                 Output("attempts", "number"),
                 Output("elapsedSeconds", "number"),
                 Output("lastResult", "boolean"),
-            ],
-            prompt: ActivityPromptDescriptor.Excluded(
-                "Polling semantics need dedicated examples before LLM generation is reliable.")),
+            ]),
         Action("restApi", "restApi", "web_globe",
             timeout: ActivityTimeoutKind.Always,
             outputs:
@@ -243,9 +227,7 @@ public static class ActivityCatalog
                 Output("finishReason", "string"),
             ],
             // Telemetry: model only — never the prompt/baseUrl/apiKey.
-            telemetry: ["model"],
-            prompt: ActivityPromptDescriptor.Excluded(
-                "LLM-Aufruf-Activity – nicht für Workflow-Auto-Generierung vorgesehen.")),
+            telemetry: ["model"]),
 
         Logic("log", "log", "note_add",
             outputs:
@@ -276,9 +258,7 @@ public static class ActivityCatalog
                 Output("skipped", "number"),
                 Output("results", "array"),
                 Output("firstError", "string"),
-            ],
-            prompt: ActivityPromptDescriptor.Excluded(
-                "Loop construct; prompt examples are needed before LLM generation is reliable.")),
+            ]),
         ControlFlow("decision", "decision", "call_split",
             outputs:
             [
@@ -286,9 +266,7 @@ public static class ActivityCatalog
                 Output("matched", "boolean"),
                 Output("reason", "string"),
             ],
-            telemetry: ["case", "matched", "reason"],
-            prompt: ActivityPromptDescriptor.Excluded(
-                "Edge conditions already cover branch routing in the prompt; decision nodes are withheld for now.")),
+            telemetry: ["case", "matched", "reason"]),
         ControlFlow("returnData", "returnData", "reply"),
 
         Trigger("manualTrigger", "manualTrigger", "touch_app"),
@@ -379,15 +357,13 @@ public static class ActivityCatalog
         bool isRemote = false,
         ActivityTimeoutKind timeout = ActivityTimeoutKind.None,
         IReadOnlyList<ActivityOutputParameterDescriptor>? outputs = null,
-        IReadOnlyList<string>? telemetry = null,
-        ActivityPromptDescriptor? prompt = null) =>
+        IReadOnlyList<string>? telemetry = null) =>
         new(type, ActivityCategory.Action, labelKey, icon)
         {
             IsRemote = isRemote,
             Timeout = timeout,
             OutputParameters = outputs ?? [],
             TelemetryParameters = telemetry ?? [],
-            Prompt = prompt ?? ActivityPromptDescriptor.Included,
         };
 
     private static ActivityDescriptor Logic(
@@ -406,13 +382,11 @@ public static class ActivityCatalog
         string icon,
         ActivityTimeoutKind timeout = ActivityTimeoutKind.None,
         IReadOnlyList<ActivityOutputParameterDescriptor>? outputs = null,
-        IReadOnlyList<string>? telemetry = null,
-        ActivityPromptDescriptor? prompt = null) =>
+        IReadOnlyList<string>? telemetry = null) =>
         new(type, ActivityCategory.ControlFlow, labelKey, icon)
         {
             Timeout = timeout,
             OutputParameters = outputs ?? [],
             TelemetryParameters = telemetry ?? [],
-            Prompt = prompt ?? ActivityPromptDescriptor.Included,
         };
 }

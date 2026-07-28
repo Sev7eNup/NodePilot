@@ -7,7 +7,7 @@ const NOW = Date.parse('2026-07-19T12:00:00Z');
 const MIN = 60_000;
 
 function node(workflowId: string, name: string): OpsNode {
-  return { workflowId, name, folderId: 'f1', folderPath: '/ops', isEnabled: true, runningCount: 0, lastStatus: null, callFrequency: null };
+  return { workflowId, name, folderId: 'f1', folderPath: '/ops', isEnabled: true, runningCount: 0, lastStatus: null, callFrequency: null, canRun: true, canEdit: true };
 }
 
 const NODES = new Map([['w1', node('w1', 'Nightly Backup')], ['w2', node('w2', 'Report Gen')]]);
@@ -17,13 +17,17 @@ function renderTimeline(overrides: Partial<Parameters<typeof OpsTimeline>[0]> = 
   render(
     <OpsTimeline
       nowMs={NOW}
-      running={[{ executionId: 'run-1', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null }]}
+      running={[{ executionId: 'run-1', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }]}
       recent={[{ executionId: 'done-1', workflowId: 'w2', status: 'Failed', startedAt: new Date(NOW - 10 * MIN).toISOString(), completedAt: new Date(NOW - 8 * MIN).toISOString(), parentExecutionId: null }]}
       locallySettled={{}}
       scopedWorkflowIds={new Set(['w1', 'w2'])}
       nodesById={NODES}
       selectedExecutionId={null}
       nextStart={null}
+      overdueMs={10 * MIN}
+      windowMs={20 * MIN}
+      historyFromMs={null}
+      recentTruncated={false}
       onSelect={onSelect}
       {...overrides}
     />,
@@ -63,8 +67,8 @@ describe('OpsTimeline', () => {
     // its own full-name label + job-id chip, and no ×2 multiplier is shown.
     renderTimeline({
       running: [
-        { executionId: 'run-a', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null },
-        { executionId: 'run-b', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 3 * MIN).toISOString(), parentExecutionId: null },
+        { executionId: 'run-a', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null },
+        { executionId: 'run-b', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 3 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null },
       ],
       recent: [],
     });
@@ -103,8 +107,8 @@ describe('OpsTimeline', () => {
   it('draws a call connector between a parent bar and its sub-workflow bar', () => {
     renderTimeline({
       running: [
-        { executionId: 'parent-1', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 5 * MIN).toISOString(), parentExecutionId: null },
-        { executionId: 'child-1', workflowId: 'w2', status: 'Running', startedAt: new Date(NOW - 3 * MIN).toISOString(), parentExecutionId: 'parent-1' },
+        { executionId: 'parent-1', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 5 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null },
+        { executionId: 'child-1', workflowId: 'w2', status: 'Running', startedAt: new Date(NOW - 3 * MIN).toISOString(), parentExecutionId: 'parent-1', stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null },
       ],
       recent: [],
     });
@@ -120,5 +124,80 @@ describe('OpsTimeline', () => {
     renderTimeline({ scopedWorkflowIds: new Set(['w2']) });
     expect(screen.queryByTitle(/Nightly Backup/)).not.toBeInTheDocument();
     expect(screen.getByTitle(/Report Gen · Failed/)).toBeInTheDocument();
+  });
+});
+
+describe('OpsTimeline — overdue runs', () => {
+  it('marks a Running bar past the threshold and lifts it into the stuck strip', () => {
+    renderTimeline({
+      running: [{ executionId: 'run-old', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 3 * 60 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
+      recent: [],
+    });
+    const bar = screen.getByTitle(/Nightly Backup · Running/);
+    expect(bar.className).toContain('np-ops-bar--overdue');
+    // The strip is the point: a 3-hour hang is clamped to the window edge and otherwise
+    // looks identical to a 21-minute run.
+    expect(screen.getByLabelText('Stuck / long-running')).toBeInTheDocument();
+  });
+
+  it('leaves a young run unmarked and renders no strip', () => {
+    renderTimeline();
+    const bar = screen.getByTitle(/Nightly Backup · Running/);
+    expect(bar.className).not.toContain('np-ops-bar--overdue');
+    expect(screen.queryByLabelText('Stuck / long-running')).not.toBeInTheDocument();
+  });
+
+  it('states the real start time on a bar clipped at the window edge', () => {
+    renderTimeline({
+      running: [{ executionId: 'run-old', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 3 * 60 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
+      recent: [],
+    });
+    expect(screen.getByTitle(/Nightly Backup · Running/).textContent).toMatch(/‹ \d{2}:\d{2}/);
+  });
+
+  it('does not mark a long-queued Pending run as overdue', () => {
+    renderTimeline({
+      running: [{ executionId: 'run-pending', workflowId: 'w1', status: 'Pending', startedAt: new Date(NOW - 3 * 60 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
+      recent: [],
+    });
+    expect(screen.queryByLabelText('Stuck / long-running')).not.toBeInTheDocument();
+  });
+});
+
+describe('OpsTimeline — duration stays comparable at wide windows', () => {
+  // Regression: the bar-width floor used to be 6 px. At 1 h a 2-minute run renders ~9 px and a
+  // 20-second one ~3 px, so the floor flattened both to the same length — every bar in the
+  // 1 h / 4 h views looked identical and "which run took longer?" was unanswerable.
+  const wideRuns = {
+    running: [],
+    recent: [
+      { executionId: 'long', workflowId: 'w1', status: 'Succeeded',
+        startedAt: new Date(NOW - 12 * MIN).toISOString(),
+        completedAt: new Date(NOW - 10 * MIN).toISOString(), parentExecutionId: null },
+      { executionId: 'short', workflowId: 'w2', status: 'Succeeded',
+        startedAt: new Date(NOW - 6 * MIN).toISOString(),
+        completedAt: new Date(NOW - 6 * MIN + 20_000).toISOString(), parentExecutionId: null },
+    ],
+  };
+
+  it('writes the duration beside bars too narrow to hold it', () => {
+    renderTimeline({ ...wideRuns, windowMs: 240 * MIN });
+    // Both runs are sub-pixel-ish at 4 h, so neither can carry an inside label — the text
+    // beside the bar is what keeps them distinguishable.
+    expect(screen.getByText('2:00')).toBeInTheDocument();
+    expect(screen.getByText('0:20')).toBeInTheDocument();
+  });
+
+  it('does not duplicate the duration when it already fits inside the bar', () => {
+    renderTimeline({
+      running: [],
+      recent: [{
+        executionId: 'wide', workflowId: 'w1', status: 'Succeeded',
+        startedAt: new Date(NOW - 12 * MIN).toISOString(),
+        completedAt: new Date(NOW - 2 * MIN).toISOString(), parentExecutionId: null,
+      }],
+      windowMs: 20 * MIN,
+    });
+    expect(screen.getAllByText('10:00')).toHaveLength(1);
   });
 });

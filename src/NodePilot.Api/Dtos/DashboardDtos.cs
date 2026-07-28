@@ -10,9 +10,16 @@ public record RecentExecutionInfo(
     Guid Id, Guid WorkflowId, string WorkflowName, string Status,
     DateTime StartedAt, DateTime? CompletedAt, long? DurationMs, string? TriggeredBy);
 
+/// <param name="BlockedByWindowName">
+/// Name of the maintenance window that will suppress the fire shown in <c>NextFireUtc</c> (or,
+/// when that is null, a fire right now); null when nothing blocks it. Evaluated against the
+/// window snapshot as of this response — a window created or edited between now and the fire
+/// time is not reflected until the next poll.
+/// </param>
 public record ArmedTriggerInfo(
     Guid WorkflowId, string WorkflowName, List<string> TriggerTypes,
-    DateTime? NextFireUtc, string? NextFireKind, int? PollIntervalSeconds);
+    DateTime? NextFireUtc, string? NextFireKind, int? PollIntervalSeconds,
+    string? BlockedByWindowName);
 
 public record FailingWorkflow(
     Guid Id, string Name, int FailCount, int RunCount, DateTime? LastFailureAt,

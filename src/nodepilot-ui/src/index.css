@@ -5,7 +5,18 @@
    store toggles `.dark` only on `<html>` — so in light mode no descendant
    selector can match, and `dark:` utilities are guaranteed to stay off. */
 @custom-variant dark (html.dark &);
-@import '@fontsource-variable/inter';
+/* Type-System: IBM Plex Sans (UI) + IBM Plex Mono (Code/Daten). Beide self-hosted
+   über fontsource — die Prod-CSP kennt kein `font-src` und fällt auf `default-src
+   'self'`, ein CDN-Font wäre also in Produktion hart geblockt.
+   Sans kommt als Variable-Font (eine Datei, wght 100–700). Mono gibt es NICHT als
+   Variable-Paket, daher zwei statische Schnitte: 400 trägt praktisch alles, 600
+   deckt die `font-mono`+`font-semibold`-Stellen ab (`font-medium`/`font-bold`
+   snappen per CSS-Matching auf den nächstgelegenen davon).
+   Alle Subsets werden importiert wie zuvor bei Inter — `unicode-range` sorgt dafür,
+   dass der Browser nur die tatsächlich benutzten Dateien lädt. */
+@import '@fontsource-variable/ibm-plex-sans';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/600.css';
 
 @theme {
   --color-surface: #f8f9fb;
@@ -101,9 +112,16 @@
   --color-custom-container: #ffedd5;
   --color-on-custom-container: #9a3412;
 
-  --font-headline: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-body: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-label: 'Inter Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-headline: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-label: 'IBM Plex Sans Variable', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Mono war bis hierher NIE deklariert — die ~750 `font-mono`-Stellen (Skripte,
+     GUIDs, Logs, JSON, DB-Viewer) fielen auf Tailwinds Default und damit auf das,
+     was das jeweilige OS gerade hergibt: Consolas auf Windows, SF Mono auf macOS,
+     DejaVu auf Linux. Ein expliziter Stack beendet diese Lotterie. Der Fallback
+     bleibt bewusst breit, damit Zeichen ausserhalb der geladenen Plex-Subsets
+     (Glyph-weises CSS-Fallback) weiterhin monospace rendern statt zu tofu-en. */
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace;
 
   /* Slow ping for the simulation "revealing" badge (ActivityNode) — the class
      `animate-ping-slow` was referenced but never defined before. */
@@ -1325,6 +1343,29 @@ body {
   font-family: var(--font-body);
   color: var(--color-on-surface);
   background: var(--color-surface);
+  /* Dichte-Ausgleich, EIN Knopf für die ganze App.
+     IBM Plex Sans hat eine kleinere x-Höhe als das zuvor genutzte Inter (~0.516
+     vs. ~0.545 vom em). Bei einer UI, die fast durchgehend auf `text-xs` (12px)
+     und `text-sm` (14px) steht, liest sich derselbe Text dadurch eine Stufe
+     kleiner und leichter. `font-size-adjust` normalisiert die x-Höhe auf Inters
+     früheren Wert, ohne einen einzigen Grössen- oder Line-Height-Token anzufassen:
+     die Zeilenboxen bleiben exakt wie vorher, nur die Glyphen wachsen auf die
+     gewohnte optische Grösse.
+     Wenn das irgendwo fixed-width-Chrome sprengt (Node-Labels, Badges, Tabellen-
+     köpfe), ist der Rückweg genau diese eine Zeile auf `none`. */
+  font-size-adjust: 0.545;
+}
+
+/* Code behält seine native Plex-Mono-Metrik: der x-Höhen-Ausgleich oben gilt für
+   Fliesstext, nicht für Monospace. Sonst würden Code-Blöcke, Log-Ausgaben und die
+   Editor-Gutter gegenüber heute wachsen und die Spaltenbündigkeit gegen die
+   Editoren verlieren, die ihre Zeichenbreite selbst ausmessen. */
+code,
+kbd,
+pre,
+samp,
+.font-mono {
+  font-size-adjust: none;
 }
 
 /* React Flow MiniMap: override default white background in dark mode */
@@ -2187,6 +2228,29 @@ input[type="range"] {
   accent-color: var(--color-primary);
 }
 
+/* A <select> with a transparent background makes Chromium paint the OPTION POPUP
+   with that same transparent background — it falls back to the light system menu
+   while the option text still inherits the theme's light-on-dark colour, so the
+   open dropdown reads pale-grey-on-pale-grey. Text inputs get away with being
+   transparent (they only ever paint over the card); a select does not, because the
+   popup is a separate surface. Give both the select and its options a real surface
+   so the popup follows the theme.
+
+   Element selectors on purpose (specificity 0,0,1): any component that sets its own
+   `bg-*` utility still wins, and the higher-specificity skin overrides further down
+   (e.g. light-sparkasse's input treatment) are untouched. */
+select {
+  background-color: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+}
+select option {
+  background-color: var(--color-surface-lowest);
+  color: var(--color-on-surface);
+}
+select:disabled {
+  color: var(--color-on-surface-variant);
+}
+
 /* ═══════════════════════════════════════════════════════════════
    CANVAS PREMIUM REDESIGN — v2
    All premium selectors scoped to .np-premium (set on the canvas
@@ -2433,6 +2497,29 @@ html:not(.dark) .np-ops-bar--running {
   from { background-position: 220% 0, 0 0; }
   to   { background-position: -120% 0, 0 0; }
 }
+/* Overdue: a Running bar past Alerting:LongRunningSeconds. Declared AFTER --running so its
+   animation shorthand wins — and it must re-list npOpsSheen, otherwise flagging a bar as
+   overdue would silently kill the "this is alive" sheen. */
+.np-ops-bar--overdue {
+  border-color: var(--color-warning);
+  box-shadow:
+    0 0 0 1px var(--color-warning),
+    0 0 14px color-mix(in srgb, var(--color-warning) 45%, transparent);
+  animation: npOpsSheen 2.6s linear infinite, npOpsOverdue 2s ease-in-out infinite alternate;
+}
+@keyframes npOpsOverdue {
+  from { border-color: var(--color-warning); }
+  to   { border-color: color-mix(in srgb, var(--color-warning) 35%, transparent); }
+}
+/* Stalled: running, but no step has FINISHED for a while — sitting on one step. Distinct from
+   --overdue (total age) on purpose; a long run that keeps completing steps is healthy. */
+.np-ops-bar--stalled {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--color-warning) 35%, transparent) 0 5px,
+    transparent 5px 10px
+  );
+}
 .np-ops-bar--clipped {
   mask-image: linear-gradient(to right, transparent, black 16px);
 }
@@ -2442,6 +2529,67 @@ html:not(.dark) .np-ops-bar--running {
   font-weight: 600;
   white-space: nowrap;
   color: var(--color-on-surface);
+}
+/* Duration drawn beside a bar that is too narrow to hold it. Purely informational — never a
+   hit target, so it must not swallow clicks meant for the bars underneath. */
+.np-ops-bar-outside {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-on-surface-variant);
+  opacity: 0.8;
+}
+
+/* Start-time prefix on a left-clipped bar ("‹ 09:14"). */
+.np-ops-bar-since {
+  opacity: 0.75;
+  font-weight: 500;
+}
+
+/* Left band marking "no settled history returned before here" — distinct from empty track. */
+.np-ops-nohistory {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    -45deg,
+    color-mix(in srgb, var(--color-on-surface) 6%, transparent) 0 6px,
+    transparent 6px 12px
+  );
+  border-right: 1px dashed color-mix(in srgb, var(--color-outline) 60%, transparent);
+}
+
+/* --- Stuck strip: overdue runs lifted out of the timeline ------------------- */
+.np-ops-stuck {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  background: color-mix(in srgb, var(--color-warning) 8%, transparent);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+.np-ops-stuck-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, transparent);
+  background: var(--color-surface);
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.np-ops-stuck-item:hover {
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-surface));
 }
 
 /* --- Lane zebra: groups parallel sub-rows under their lane label ------------ */
@@ -2480,6 +2628,7 @@ html:not(.dark) .np-ops-bar--running {
 @media (prefers-reduced-motion: reduce) {
   .np-ops-bar { transition: none; }
   .np-ops-bar--running { animation: none; }
+  .np-ops-bar--overdue { animation: none; }
   .np-ops-flap { animation: none; }
 }
 

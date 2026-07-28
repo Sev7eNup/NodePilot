@@ -18,12 +18,14 @@ public sealed class ScriptGenerationService
     private const int TailHold = 8;                   // holds back the tail so a closing fence can still be stripped
 
     private static readonly JsonSerializerOptions IndentedOptions = new() { WriteIndented = true };
-    private readonly ILlmClient _llm;
+    private readonly ILlmClientFactory _llmFactory;
     private readonly PromptCatalog _prompts;
 
-    public ScriptGenerationService(ILlmClient llm, PromptCatalog prompts)
+    // The factory, not a pre-built client: Create() resolves the active LLM profile and throws
+    // when none is configured, so it has to run inside the call — after the controller's gate.
+    public ScriptGenerationService(ILlmClientFactory llmFactory, PromptCatalog prompts)
     {
-        _llm = llm;
+        _llmFactory = llmFactory;
         _prompts = prompts;
     }
 
@@ -49,7 +51,8 @@ public sealed class ScriptGenerationService
         string? model = null;
         int? promptTokens = null, completionTokens = null;
 
-        await foreach (var evt in _llm.StreamAsync(
+        var llm = _llmFactory.Create();
+        await foreach (var evt in llm.StreamAsync(
             new LlmRequest(_prompts.ScriptSystemPrompt, userPrompt), ct))
         {
             if (evt.Done)

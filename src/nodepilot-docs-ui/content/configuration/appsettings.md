@@ -60,7 +60,7 @@ Details: [AD SSO Preview](../enterprise/ldap-windows-sso), [Authentifizierung](.
 
 ## KI
 
-`Llm:Enabled` (default `false`). Details: [AI-Features](../ai-features).
+`Llm:Enabled` (default `false`) plus mindestens ein Profil unter `Llm:Profiles` und ein `Llm:ActiveProfileId`, das darauf zeigt. Details: [AI-Features](../ai-features).
 
 ## Observability
 

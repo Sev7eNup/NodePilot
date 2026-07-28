@@ -8,7 +8,7 @@ namespace NodePilot.Ai.Tests;
 public class WorkflowGenerationServiceTests
 {
     private static WorkflowGenerationService NewService(FakeLlmClient client)
-        => new(client, new PromptCatalog());
+        => new(new FakeLlmClientFactory(client), new PromptCatalog());
 
     private const string MinimalEnvelope = """
         {

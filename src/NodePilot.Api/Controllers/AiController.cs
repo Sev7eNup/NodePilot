@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
 using NodePilot.Api.Ai;
 using NodePilot.Ai;
+using NodePilot.Api.Configuration;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Telemetry;
 using NodePilot.Core.Telemetry;
@@ -54,6 +55,9 @@ public sealed class AiController : ControllerBase
         if (!_options.CurrentValue.Enabled)
             return ServiceUnavailable("LLM_DISABLED",
                 "AI assistant is disabled. Set Llm:Enabled=true in configuration.");
+
+        if (LlmAvailability.IsMissingActiveProfile(_options.CurrentValue))
+            return ServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
 
         if (string.IsNullOrWhiteSpace(request.Prompt))
             return BadRequest(new { code = "PROMPT_EMPTY", message = "Prompt must not be empty." });
@@ -178,6 +182,9 @@ public sealed class AiController : ControllerBase
         if (!_options.CurrentValue.Enabled)
             return ServiceUnavailable("LLM_DISABLED",
                 "AI assistant is disabled. Set Llm:Enabled=true in configuration.");
+
+        if (LlmAvailability.IsMissingActiveProfile(_options.CurrentValue))
+            return ServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
 
         if (string.IsNullOrWhiteSpace(request.Prompt))
             return BadRequest(new { code = "PROMPT_EMPTY", message = "Prompt must not be empty." });

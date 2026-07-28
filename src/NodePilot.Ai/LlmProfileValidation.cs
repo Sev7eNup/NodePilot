@@ -1,0 +1,68 @@
+using Microsoft.Extensions.Configuration;
+
+namespace NodePilot.Ai;
+
+/// <summary>
+/// The single place that decides whether a <c>Llm:*</c> configuration block is acceptable. Both
+/// entry points share it so a save can never be accepted that would block the next boot:
+/// <see cref="LlmServiceCollectionExtensions.AddNodePilotAi"/> runs it at startup, and the API's
+/// <c>LlmConfigBootValidator</c> runs it against the simulated merged config on every settings PUT.
+///
+/// <para><b>Scope rule for the metadata check:</b> when <c>Llm:Enabled=true</c>, <i>every</i>
+/// profile's BaseUrl must pass — not just the active one. Switching the active profile is a plain
+/// settings save with no restart, so a parked profile pointing at a metadata endpoint would be a
+/// loaded gun that only fires on the switch. With <c>Enabled=false</c> nothing is checked, so an
+/// untouched default block can never keep an instance from booting.</para>
+/// </summary>
+public static class LlmProfileValidation
+{
+    /// <summary>A rejected profile endpoint: the offending configuration key plus a ready-to-show message.</summary>
+    public sealed record ProfileIssue(string ConfigKey, string Message);
+
+    /// <summary>Configuration path of the profile dictionary (<c>Llm:Profiles</c>).</summary>
+    public const string ProfilesKey = $"{LlmOptions.SectionName}:Profiles";
+
+    /// <summary>
+    /// Cloud-metadata check across all configured profiles. Returns an empty list when
+    /// <c>Llm:Enabled=false</c>.
+    /// </summary>
+    public static IReadOnlyList<ProfileIssue> ValidateProfileEndpoints(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var issues = new List<ProfileIssue>();
+        if (!configuration.GetValue<bool>($"{LlmOptions.SectionName}:Enabled"))
+            return issues;
+
+        foreach (var profile in configuration.GetSection(ProfilesKey).GetChildren())
+        {
+            var baseUrl = profile["BaseUrl"];
+            if (string.IsNullOrWhiteSpace(baseUrl)) continue;
+            if (!LlmEndpointGuard.IsCloudMetadataEndpoint(baseUrl)) continue;
+
+            var name = string.IsNullOrWhiteSpace(profile["Name"]) ? profile.Key : profile["Name"];
+            issues.Add(new ProfileIssue(
+                $"{ProfilesKey}:{profile.Key}:BaseUrl",
+                $"SECURITY: LLM profile '{name}' has a BaseUrl ('{baseUrl}') that points at a cloud-metadata "
+                + "endpoint. This range (169.254.0.0/16, metadata.google.internal, metadata.azure.com) is "
+                + "always blocked. Choose a real LLM endpoint, delete the profile, or disable Llm:Enabled."));
+        }
+
+        return issues;
+    }
+
+    /// <summary>
+    /// True when <c>Llm:ActiveProfileId</c> names an existing profile. Read straight from
+    /// configuration so it works on a simulated merged config (settings PUT) as well as at boot.
+    /// </summary>
+    public static bool HasResolvableActiveProfile(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var activeId = configuration[$"{LlmOptions.SectionName}:ActiveProfileId"];
+        if (string.IsNullOrWhiteSpace(activeId)) return false;
+
+        return configuration.GetSection(ProfilesKey).GetChildren()
+            .Any(p => string.Equals(p.Key, activeId.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+}

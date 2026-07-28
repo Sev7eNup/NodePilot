@@ -15,17 +15,23 @@ public record ExecutionResponse(
     DateTime? CompletedAt, string? TriggeredBy, string? ErrorMessage,
     string? TraceId = null, string? SpanId = null, string? ReturnData = null,
     string? InputParametersJson = null,
-    // Triage columns for the history/list view. Only GET /api/executions (the list endpoint)
-    // populates these; single-resource endpoints (Execute/Retry/GetById) leave the defaults
-    // (null/0) in place because a freshly created Pending row has no steps or parent info yet.
+    // Triage columns for the history/list view and the live-ops drilldown. GET /api/executions
+    // (the list endpoint) and GET /api/executions/{id} populate these; Execute/Retry leave the
+    // defaults (null/0) in place because a freshly created Pending row has no steps yet.
     // What each field means per row:
     //   StartedByUsername — the username behind StartedByUserId; null for trigger-initiated runs.
     //   ParentExecutionId / ParentWorkflowName — marks this as a sub-workflow run; null for top-level runs.
     //   StepsTotal — count of all StepExecution rows for this run.
     //   StepsCompleted — StepsTotal minus Skipped (a skipped step is a control-flow branch that
     //     never actually ran, so it shouldn't count as "completed").
-    //   FailedSteps — every failed step of the run, in the order it started. Multiple parallel
-    //     branches can fail at the same time; the grid joins their names with commas.
+    //   FailedSteps — every failed step of the run, ordered by (StartedAt, Id). Multiple parallel
+    //     branches can fail within the same tick, so StartedAt alone is not a stable sort key.
+    //
+    // NOT a progress denominator for a RUNNING execution. Engine:DeferRunningStateWrite defaults
+    // to true (WorkflowEngine.cs), so a step's row is written once, at its terminal state — an
+    // in-flight step has no row at all. For a live run StepsTotal therefore counts only steps
+    // that have already FINISHED, and StepsTotal/StepsCompleted would read as "100 %" throughout.
+    // The live-ops view deliberately shows finished-step counts and staleness, not a percentage.
     string? StartedByUsername = null,
     Guid? ParentExecutionId = null,
     string? ParentWorkflowName = null,

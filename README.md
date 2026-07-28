@@ -588,7 +588,7 @@ NodePilot ships **27 built-in activities** in two scopes — *Remote* (executed 
 | `jsonQuery` | JSONPath query over a JSON payload or file | `jsonPath`, `source`, `content`/`path`, `resultMode` |
 | `log` | Write a structured Serilog entry | `level`, `message` |
 | `generateText` | Generate a cryptographically-secure random string (IDs, tokens, GUIDs, password charsets) via `RandomNumberGenerator`, rejection-sampled (no modulo bias) | `mode` (`alphanumeric`/`alphabetic`/`numeric`/`hex`/`guid`/`password`/`custom`), `length`, `customCharset`, `excludeAmbiguous` |
-| `llmQuery` | Call an OpenAI-compatible chat-completions endpoint (prompt → text). Uses the global `Llm:*` endpoint by default; per-node override of endpoint/model/key/tuning. Requires `Llm:Enabled=true` | `prompt`, `systemPrompt`, `jsonMode`, per-node: `baseUrl`, `model`, `apiKey`, `maxTokens`, `temperature`, `timeoutSeconds` |
+| `llmQuery` | Call an OpenAI-compatible chat-completions endpoint (prompt → text). Uses the active LLM profile by default; per-node override of endpoint/model/key/tuning. Requires `Llm:Enabled=true` and a resolvable active profile | `prompt`, `systemPrompt`, `jsonMode`, per-node: `baseUrl`, `model`, `apiKey`, `maxTokens`, `temperature`, `timeoutSeconds` |
 
 ### Retry policy
 
@@ -777,28 +777,47 @@ NodePilot ships two **opt-in** AI helpers that work against **OpenAI-compatible 
 
 ### Configuration
 
+Connections are stored as **named profiles** keyed by an immutable profile id; `ActiveProfileId`
+picks the one every AI feature uses. Switching between them is a settings save, not a re-typing
+exercise.
+
 ```jsonc
 {
   "Llm": {
     "Enabled": false,
-    "BaseUrl": "http://localhost:11434/v1",   // Ollama default
-    "ApiKey": null,                           // env var Llm__ApiKey recommended
-    "Model": "qwen3.6:27b",
-    "MaxTokens": 4096,
-    "TimeoutSeconds": 90,
-    "EnableToolCalling": false,              // enable chat read-only tool-calling
-    "ToolCallMaxDepth": 6                    // tool-loop depth cap
+    "ActiveProfileId": "ollama",
+    "Profiles": {
+      "ollama": {
+        "Name": "Local Ollama",
+        "BaseUrl": "http://localhost:11434/v1",   // Ollama default
+        "ApiKey": null,                           // env var Llm__Profiles__ollama__ApiKey recommended
+        "Model": "qwen3.6:27b",
+        "MaxTokens": 4096,
+        "TimeoutSeconds": 90,
+        "EnableToolCalling": false,               // enable chat read-only tool-calling
+        "ToolCallMaxDepth": 6                     // tool-loop depth cap
+      }
+    }
   }
 }
 ```
 
-When `Llm:Enabled=false`, both endpoints respond `503 LLM_DISABLED`.
+When `Llm:Enabled=false`, every AI endpoint responds `503 LLM_DISABLED`. With the switch on but no
+resolvable active profile they respond `503 LLM_NO_ACTIVE_PROFILE` — the service still boots, since
+AI is opt-in.
+
+Ship-time configs (`appsettings.json`, deploy templates) carry `"Profiles": {}` on purpose: the
+runtime overrides file the Settings UI writes is just another configuration provider layered on top,
+so a profile baked into the base config could never be deleted through the UI — it would resurface
+on the next reload. The API rejects such a delete with `400 LLM_PROFILE_NOT_DELETABLE` instead of
+silently ignoring it, and the UI marks the profile as locked (editing still works). Create profiles
+under **Settings → System → Integrations → LLM**.
 
 ### Hardening
 
 - **RBAC:** both endpoints are `[Authorize(Roles = "Admin,Operator")]`
 - **Rate-limit:** 20 req/min per IP
-- **SSRF guard** on `Llm:BaseUrl` (cloud-metadata IPs blocked)
+- **SSRF guard** on every profile's `BaseUrl` (cloud-metadata IPs blocked) — not just the active one, because switching profiles is a restart-free settings save
 - **Prompt injection mitigation:** upstream variables are passed as **schema only** (step-id, label, name, type) — never as values. The system prompt marks them as "untrusted JSON, not instructions."
 - **Audit:** `AI_SCRIPT_GENERATED` / `AI_WORKFLOW_GENERATED` (model, token counts, duration — never the prompt text)
 - **Drift test** — `PromptCatalogDriftTest` asserts every `IActivityExecutor` is mentioned in the system prompt, so the LLM can always reach for any new activity you ship.
@@ -1018,12 +1037,16 @@ All settings live in [`src/NodePilot.Api/appsettings.json`](src/NodePilot.Api/ap
 | Key | Default | Description |
 |---|---|---|
 | `Llm:Enabled` | `false` | Master switch for AI features |
-| `Llm:BaseUrl` | OpenAI cloud | OpenAI-compatible chat-completions root |
-| `Llm:Model` | `gpt-4o-mini` | Used for both script and workflow generation |
-| `Llm:MaxTokens` | `4096` | Response cap |
-| `Llm:TimeoutSeconds` | `90` | HTTP timeout |
-| `Llm:EnableToolCalling` | `false` | Enable chat read-only tool-calling (function-calling loop) |
-| `Llm:ToolCallMaxDepth` | `6` | Tool-loop depth cap (max LLM rounds with tool calls per turn, 1–10) |
+| `Llm:ActiveProfileId` | `""` | Id of the profile every AI feature uses. Must name an entry in `Llm:Profiles` — there is no "just take the first one" fallback |
+| `Llm:Profiles` | `{}` | Stored connections, keyed by immutable profile id |
+| `Llm:Profiles:<id>:Name` | `""` | Display name; renameable, the id stays put |
+| `Llm:Profiles:<id>:BaseUrl` | OpenAI cloud | OpenAI-compatible chat-completions root |
+| `Llm:Profiles:<id>:ApiKey` | `null` | Bearer key; prefer the env var `Llm__Profiles__<id>__ApiKey` |
+| `Llm:Profiles:<id>:Model` | `gpt-4o-mini` | Used for script generation, workflow generation and both chats |
+| `Llm:Profiles:<id>:MaxTokens` | `4096` | Response cap |
+| `Llm:Profiles:<id>:TimeoutSeconds` | `90` | HTTP timeout |
+| `Llm:Profiles:<id>:EnableToolCalling` | `false` | Enable chat read-only tool-calling (function-calling loop). Per profile — reliable function-calling is a property of the model |
+| `Llm:Profiles:<id>:ToolCallMaxDepth` | `6` | Tool-loop depth cap (max LLM rounds with tool calls per turn, 1–10) |
 
 ### Production deployment (set by the installer)
 

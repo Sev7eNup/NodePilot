@@ -45,6 +45,8 @@ Geeignet für:
 
 Maschinen, Zugangsdaten, Zielpfade und fachliche Bedingungen müssen anschließend geprüft und vervollständigt werden.
 
+Generierung und Assistent kennen alle Activity-Typen — auch die `llmQuery`-Activity, Schleifen und Verzweigungen. Zusätzlich kennen sie die auf dieser Installation aktivierten Custom Nodes und schlagen sie vor, statt deren Funktion aus einzelnen Skript-Schritten nachzubauen.
+
 ### Geöffneten Workflow bearbeiten
 
 **Ort:** Workflow-Designer, Schaltfläche **KI-Assistent**.
@@ -109,7 +111,7 @@ Konfigurierbar sind unter anderem:
 - Text- oder JSON-Ausgabe
 - Timeout
 
-Standardmäßig verwendet die Activity die globale `Llm`-Konfiguration. Abweichende Einstellungen können am Node gesetzt werden. `Llm:Enabled=false` deaktiviert auch diese Activity.
+Standardmäßig verwendet die Activity das aktive LLM-Profil. Abweichende Einstellungen können am Node gesetzt werden. `Llm:Enabled=false` deaktiviert auch diese Activity, ebenso ein fehlendes aktives Profil.
 
 Weitere Felder und Ausgaben enthält die [`llmQuery`-Referenz](activities-reference).
 
@@ -126,19 +128,25 @@ Weitere Felder und Ausgaben enthält die [`llmQuery`-Referenz](activities-refere
 
 ## LLM konfigurieren
 
-Die Basiskonfiguration gilt für alle AI-Funktionen:
+NodePilot speichert beliebig viele **LLM-Profile**. Ein Profil beschreibt genau eine Verbindung — Endpunkt, Modell, Schlüssel und Grenzwerte. Genau ein Profil ist aktiv und wird von allen AI-Funktionen verwendet; der Wechsel zwischen Profilen ist ein Speichervorgang in den Einstellungen und erfordert kein erneutes Eintragen der Verbindungsdaten.
 
 ```json
 {
   "Llm": {
     "Enabled": false,
-    "BaseUrl": "https://api.openai.com/v1",
-    "ApiKey": null,
-    "Model": "gpt-4o-mini",
-    "MaxTokens": 4096,
-    "TimeoutSeconds": 90,
-    "EnableToolCalling": false,
-    "ToolCallMaxDepth": 6
+    "ActiveProfileId": "openai",
+    "Profiles": {
+      "openai": {
+        "Name": "OpenAI Cloud",
+        "BaseUrl": "https://api.openai.com/v1",
+        "ApiKey": null,
+        "Model": "gpt-4o-mini",
+        "MaxTokens": 4096,
+        "TimeoutSeconds": 90,
+        "EnableToolCalling": false,
+        "ToolCallMaxDepth": 6
+      }
+    }
   }
 }
 ```
@@ -146,6 +154,14 @@ Die Basiskonfiguration gilt für alle AI-Funktionen:
 | Einstellung | Bedeutung |
 |---|---|
 | `Enabled` | aktiviert oder deaktiviert sämtliche AI-Funktionen |
+| `ActiveProfileId` | Kennung des Profils, das alle AI-Funktionen verwenden; muss auf ein vorhandenes Profil zeigen |
+| `Profiles` | die gespeicherten Verbindungen, nach unveränderlicher Profil-Kennung abgelegt |
+
+Je Profil:
+
+| Einstellung | Bedeutung |
+|---|---|
+| `Name` | Anzeigename; frei änderbar, die Kennung bleibt bestehen |
 | `BaseUrl` | Basisadresse eines OpenAI-kompatiblen Chat-Completions-Endpunkts |
 | `ApiKey` | API-Schlüssel; für lokale Modelle häufig nicht erforderlich |
 | `Model` | verwendeter Modellname |
@@ -154,11 +170,13 @@ Die Basiskonfiguration gilt für alle AI-Funktionen:
 | `EnableToolCalling` | erlaubt den Chats, freigegebene lesende Analyse- und Wissensquellen zu verwenden |
 | `ToolCallMaxDepth` | maximale Anzahl aufeinanderfolgender Tool-Aufrufe pro Frage |
 
-Der API-Schlüssel sollte über die Umgebungsvariable `Llm__ApiKey` oder einen Secret-Provider gesetzt werden. Ein Klartextwert in der Konfigurationsdatei erzeugt eine Sicherheitswarnung.
+Profile werden am besten unter **Einstellungen → System → Integrationen → LLM** angelegt. Dort angelegte Profile lassen sich vollständig verwalten. Ein Profil, das zusätzlich in einer Basis-Konfigurationsdatei oder in Umgebungsvariablen definiert ist, kann in der Oberfläche zwar bearbeitet, aber nicht gelöscht werden — es würde beim nächsten Neuladen der Konfiguration wieder erscheinen. Solche Profile sind in der Oberfläche entsprechend gekennzeichnet.
 
-Tool-Calling setzt ein Modell mit zuverlässiger Function-Calling-Unterstützung voraus. Es ist außerdem erforderlich, damit der globale AI-Chat die aktivierten Wissensquellen abfragen kann.
+Der API-Schlüssel sollte über die Umgebungsvariable `Llm__Profiles__<Kennung>__ApiKey` oder einen Secret-Provider gesetzt werden. Ein Klartextwert in der Konfigurationsdatei erzeugt eine Sicherheitswarnung.
 
-Die LLM-Verbindung kann in den administrativen Einstellungen getestet werden. Änderungen an der `Llm`-Sektion werden ohne Dienstneustart wirksam.
+Tool-Calling ist eine Eigenschaft des Modells und wird deshalb je Profil eingestellt. Es setzt ein Modell mit zuverlässiger Function-Calling-Unterstützung voraus und ist erforderlich, damit der globale AI-Chat die aktivierten Wissensquellen abfragen kann.
+
+Die LLM-Verbindung kann je Profil in den administrativen Einstellungen getestet werden. Änderungen an der `Llm`-Sektion werden ohne Dienstneustart wirksam. Ist die AI aktiviert, aber kein Profil ausgewählt, antworten alle AI-Endpunkte mit `503 LLM_NO_ACTIVE_PROFILE`; der Dienst startet trotzdem normal.
 
 ## Globalen AI-Chat konfigurieren
 
@@ -180,7 +198,8 @@ Für einen funktionsfähigen globalen AI-Chat müssen folgende Einstellungen akt
 
 ```text
 Llm:Enabled = true
-Llm:EnableToolCalling = true
+Llm:ActiveProfileId = <Kennung eines vorhandenen Profils>
+Llm:Profiles:<Kennung>:EnableToolCalling = true
 AiKnowledge:Enabled = true
 ```
 

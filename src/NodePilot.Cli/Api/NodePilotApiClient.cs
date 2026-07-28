@@ -611,9 +611,9 @@ public sealed class NodePilotApiClient
         return await ParseAsync<TelemetrySummaryResponse>(res, ct);
     }
 
-    public async Task<OperationsGraphResponse> GetOperationsGraphAsync(CancellationToken ct)
+    public async Task<OperationsGraphResponse> GetOperationsGraphAsync(CancellationToken ct, int windowMinutes = 20)
     {
-        using var res = await _http.GetAsync("api/operations/graph", ct);
+        using var res = await _http.GetAsync($"api/operations/graph?windowMinutes={windowMinutes}", ct);
         return await ParseAsync<OperationsGraphResponse>(res, ct);
     }
 

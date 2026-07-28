@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using NodePilot.Core.Interfaces;
 using NodePilot.Core.WorkflowDefinitions;
 
 namespace NodePilot.Ai;
@@ -16,13 +17,22 @@ public sealed class WorkflowGenerationService
 {
     private const long MaxDefinitionBytes = 5L * 1024 * 1024;
 
-    private readonly ILlmClient _llm;
+    private readonly ILlmClientFactory _llmFactory;
     private readonly PromptCatalog _prompts;
+    // Optional on purpose: AddNodePilotAi does not register the store (it comes from the API host),
+    // so requiring it would turn a missing host registration into a resolve-time crash.
+    private readonly ICustomActivityDefinitionStore? _customStore;
 
-    public WorkflowGenerationService(ILlmClient llm, PromptCatalog prompts)
+    // The factory, not a pre-built client: Create() resolves the active LLM profile and throws
+    // when none is configured, so it has to run inside the call — after the controller's gate.
+    public WorkflowGenerationService(
+        ILlmClientFactory llmFactory,
+        PromptCatalog prompts,
+        ICustomActivityDefinitionStore? customStore = null)
     {
-        _llm = llm;
+        _llmFactory = llmFactory;
         _prompts = prompts;
+        _customStore = customStore;
     }
 
     public async Task<GenerateWorkflowResponse> GenerateAsync(
@@ -31,6 +41,7 @@ public sealed class WorkflowGenerationService
         var sw = Stopwatch.StartNew();
 
         var systemPrompt = _prompts.WorkflowSystemPrompt
+                           + await BuildCustomActivitySectionAsync(ct)
                            + "\n\n## Reference example workflow (mimic this structure)\n\n```json\n"
                            + _prompts.WorkflowExampleJson
                            + "\n```\n\n## Output envelope\n\n"
@@ -82,6 +93,7 @@ public sealed class WorkflowGenerationService
         Exception? lastParseError = null;
         string? lastRawResponse = null;
         int? accPrompt = null, accCompletion = null, accTotal = null;
+        var llm = _llmFactory.Create();
 
         for (var attempt = 0; attempt <= LlmOptions.MaxJsonRetries; attempt++)
         {
@@ -89,7 +101,7 @@ public sealed class WorkflowGenerationService
                 ? userPrompt
                 : BuildUserPrompt(originalUserPrompt, retryReason: lastRawResponse);
 
-            var resp = await _llm.CompleteAsync(
+            var resp = await llm.CompleteAsync(
                 new LlmRequest(systemPrompt, promptForThisCall, JsonMode: true), ct);
 
             lastRawResponse = resp.Content;
@@ -116,6 +128,29 @@ public sealed class WorkflowGenerationService
         throw new LlmException(LlmErrorKind.MalformedResponse,
             $"LLM did not return valid workflow JSON after {LlmOptions.MaxJsonRetries + 1} attempt(s).",
             inner: lastParseError);
+    }
+
+    /// <summary>
+    /// Lists the installation's enabled custom activities so generation can propose them. Without
+    /// this the model only ever knows the built-in catalog and silently ignores user-authored nodes.
+    /// A store failure must not sink the generation call — the built-in catalog still works.
+    /// </summary>
+    private async Task<string> BuildCustomActivitySectionAsync(CancellationToken ct)
+    {
+        if (_customStore is null) return string.Empty;
+
+        IReadOnlyList<Core.Models.CustomActivityDefinition> enabled;
+        try
+        {
+            enabled = await _customStore.GetAllAsync(includeDisabled: false, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return string.Empty;
+        }
+
+        var section = ActivityCatalogPromptRenderer.RenderCustomActivities(enabled);
+        return section.Length == 0 ? string.Empty : "\n\n" + section;
     }
 
     private static string BuildUserPrompt(string userPrompt, string? retryReason)

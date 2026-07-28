@@ -251,7 +251,13 @@ public sealed class SettingsTestProbe
 }
 
 public sealed record SmtpTestProbeRequest(SmtpSettingsDto Settings, string? ToAddress);
-public sealed record LlmTestProbeRequest(LlmSettingsDto Settings);
+/// <summary>
+/// <paramref name="ProfileId"/> is only ever used to look up a stored API key when
+/// <paramref name="Settings"/> sends the unchanged-secret marker; the connection under test comes
+/// entirely from <paramref name="Settings"/>. Keeping the id out of the settings DTO means the two
+/// can't disagree.
+/// </summary>
+public sealed record LlmTestProbeRequest(string? ProfileId, LlmProfileProbeDto Settings);
 public sealed record LdapTestProbeRequest(LdapAuthenticationDto Settings);
 
 public sealed record SettingsTestProbeResult(bool Ok, string Message, double DurationMs, string? ErrorKind)

@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using NodePilot.Ai;
+using NodePilot.Api.Configuration;
 using NodePilot.Ai.Knowledge;
 using NodePilot.Api.Ai;
 using NodePilot.Api.Security;
@@ -68,8 +69,12 @@ public sealed class AiKnowledgeController : ControllerBase
     public ActionResult<KnowledgeCapabilitiesDto> Capabilities()
     {
         var k = _knowledgeOptions.CurrentValue;
-        var enabled = _llmOptions.CurrentValue.Enabled && k.Enabled;
-        var toolSourcesEnabled = enabled && _llmOptions.CurrentValue.EnableToolCalling;
+        // "Usable" = kill-switch on AND an active profile resolves — without one every call would
+        // 503 anyway, so reporting the sources as available would be a lie.
+        var enabled = _llmOptions.CurrentValue.IsUsable && k.Enabled;
+        var toolSourcesEnabled = enabled
+                                 && _llmOptions.CurrentValue.TryResolveActiveProfile(out var activeProfile)
+                                 && activeProfile.EnableToolCalling;
         return Ok(new KnowledgeCapabilitiesDto(
             Enabled: enabled,
             Docs: toolSourcesEnabled && k.DocsEnabled,
@@ -84,6 +89,8 @@ public sealed class AiKnowledgeController : ControllerBase
     {
         if (!_llmOptions.CurrentValue.Enabled)
             return ServiceUnavailable("LLM_DISABLED", "AI ist deaktiviert. Setze Llm:Enabled=true in der Konfiguration.");
+        if (LlmAvailability.IsMissingActiveProfile(_llmOptions.CurrentValue))
+            return ServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
         var k = _knowledgeOptions.CurrentValue;
         if (!k.Enabled)
             return ServiceUnavailable("KNOWLEDGE_DISABLED", "Der KI-Chat ist deaktiviert. Aktiviere ihn in den Admin-Einstellungen (AI-Wissen).");

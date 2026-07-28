@@ -81,10 +81,19 @@ public static class SecurityHardeningWarnings
             Log.Warning("SECURITY: Smtp:EnableSsl=false and Smtp:Username is set. SMTP credentials and message bodies will travel " +
                         "in plaintext. Set Smtp:EnableSsl=true unless this is a localhost-only relay.");
 
-        if (!string.IsNullOrWhiteSpace(configuration["Llm:ApiKey"])
-            && !string.Equals(configuration["Llm:ApiKey"], "EMPTY", StringComparison.OrdinalIgnoreCase))
-            Log.Warning("SECURITY: Llm:ApiKey appears to be set in configuration. Prefer environment variable (Llm__ApiKey) " +
-                        "or a secrets manager. Plaintext API keys end up in appsettings.json backups and Git history.");
+        // One warning per profile — each carries its own key, and naming the profile is what makes
+        // the warning actionable when several are configured.
+        foreach (var profile in configuration.GetSection("Llm:Profiles").GetChildren())
+        {
+            var apiKey = profile["ApiKey"];
+            if (string.IsNullOrWhiteSpace(apiKey)) continue;
+            if (string.Equals(apiKey, "EMPTY", StringComparison.OrdinalIgnoreCase)) continue;
+
+            var name = string.IsNullOrWhiteSpace(profile["Name"]) ? profile.Key : profile["Name"];
+            Log.Warning("SECURITY: The API key of LLM profile '{ProfileName}' appears to be set in configuration. Prefer the " +
+                        "environment variable (Llm__Profiles__{ProfileId}__ApiKey) or a secrets manager. Plaintext API keys " +
+                        "end up in appsettings.json backups and Git history.", name, profile.Key);
+        }
 
         // LDAP plaintext bind is operator error: the boot validator rejects UseSsl=false for
         // enabled deployments and the adapter refuses the bind unconditionally. Warn anyway so

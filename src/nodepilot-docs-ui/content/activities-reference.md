@@ -193,7 +193,7 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 ## `llmQuery`
 
-**Engine-local.** Ruft einen OpenAI-kompatiblen Chat-Completions-Endpunkt auf (Prompt → Text). Nutzt per Default die globale `Llm:*`-Config; per-Node überschreibbar. **Braucht `Llm:Enabled=true`** (zentraler Kill-Switch — gilt auch bei Node-eigenem Endpunkt). Teilt Transport + SSRF-Guard mit dem KI-Assistenten (`LlmEndpointGuard` validiert jede `baseUrl`, Cloud-Metadata-Endpoints sind blockiert).
+**Engine-local.** Ruft einen OpenAI-kompatiblen Chat-Completions-Endpunkt auf (Prompt → Text). Nutzt per Default das aktive LLM-Profil (`Llm:ActiveProfileId` → `Llm:Profiles:<id>`); per-Node überschreibbar. **Braucht `Llm:Enabled=true` und ein auflösbares aktives Profil** (zentraler Kill-Switch — gilt auch bei Node-eigenem Endpunkt). Teilt Transport + SSRF-Guard mit dem KI-Assistenten (`LlmEndpointGuard` validiert jede `baseUrl`, Cloud-Metadata-Endpoints sind blockiert).
 
 - **Config:** `prompt` (required; `{{templates}}` erlaubt), `systemPrompt` (optional; leer = Passthrough), `jsonMode` (bool → `response_format:json_object`, Antwort wird **nicht** validiert). Per-Node-Overrides (leer → global): `baseUrl` (absolute http/https), `model`, `apiKey` (Secret, auto-redigiert), `maxTokens` (>0), `temperature` (0–2, per-Node-only), `timeoutSeconds` (>0).
 - **Outputs:** `output` (Antworttext), `param.model`, `param.promptTokens`, `param.completionTokens`, `param.totalTokens`, `param.finishReason` (Token-Keys immer gesetzt; `""` wenn der Server keine `usage` liefert).

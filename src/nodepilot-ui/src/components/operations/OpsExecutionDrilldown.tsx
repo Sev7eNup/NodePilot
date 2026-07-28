@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Edit, Misuse, Close, ArrowUpLeft, TreeView } from '@carbon/icons-react';
+import { Edit, Misuse, Close, ArrowUpLeft, TreeView, Restart, StopFilledAlt, WarningAltFilled } from '@carbon/icons-react';
 import { getExecution } from '../../api/operations';
 import { npStatusFromExecution, rawStatusLabelKey, STATUS_BADGE_CLASS } from '../../lib/statusTokens';
 import { formatDuration } from '../../lib/opsTimeline';
@@ -12,7 +12,11 @@ import { CopyButton } from '../common/CopyButton';
 
 const ACTIVE = new Set(['Running', 'Pending', 'Paused']);
 
-export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, callees, status, startedAtMs, completedAtMs, nowMs, canCancel, cancelPending, onCancel, onOpenEditor, onSelectExecution, onClose }: Readonly<{
+// Retry mirrors the server's own guard (ExecutionsController.Retry): only these three terminal
+// states are accepted. TimedOut is deliberately absent — the endpoint 400s on it.
+const RETRYABLE = new Set(['Succeeded', 'Failed', 'Cancelled']);
+
+export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, callees, status, startedAtMs, completedAtMs, nowMs, canRun, canEdit, workflowEnabled, runningCount, activity, pendingAction, onCancel, onRetry, onCancelAll, onQuarantine, onOpenEditor, onSelectExecution, onClose }: Readonly<{
   executionId: string;
   workflowName: string;
   folderPath: string;
@@ -23,9 +27,23 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
   startedAtMs: number | null;
   completedAtMs: number | null;
   nowMs: number;
-  canCancel: boolean;
-  cancelPending: boolean;
+  /** Per-workflow folder-Run right (cancel / retry / cancel-all). */
+  canRun: boolean;
+  /** Per-workflow folder-Edit right (disable / quarantine) — stricter than canRun. */
+  canEdit: boolean;
+  workflowEnabled: boolean;
+  runningCount: number;
+  /**
+   * Observed step activity for a LIVE run (null for settled runs or when not enriched).
+   * Never rendered as a percentage — see OpsRunningExecution for why no honest total exists.
+   */
+  activity: { stepsFinished: number | null; lastCompletedStepName: string | null; lastProgressAtMs: number | null } | null;
+  /** Which action is in flight, so only that button shows a pending state. */
+  pendingAction: 'cancel' | 'retry' | 'cancelAll' | 'quarantine' | null;
   onCancel: (executionId: string) => void;
+  onRetry: (executionId: string) => void;
+  onCancelAll: () => void;
+  onQuarantine: () => void;
   onOpenEditor: () => void;
   onSelectExecution: (executionId: string) => void;
   onClose: () => void;
@@ -93,6 +111,32 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
               <dd className="tabular-nums text-on-surface">{formatDuration(durationMs)}</dd>
             </div>
           )}
+          {/* Live run: steps FINISHED plus when the last one finished. No "n of m" and no
+              percentage — DeferRunningStateWrite means no honest total exists mid-run. */}
+          {active && activity?.stepsFinished !== null && activity !== null && (
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-on-surface-variant">{t('operations:drilldown.stepsFinished')}</dt>
+              <dd className="tabular-nums text-on-surface">{activity.stepsFinished}</dd>
+            </div>
+          )}
+          {active && activity?.lastProgressAtMs != null && (
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-on-surface-variant">{t('operations:drilldown.lastProgress')}</dt>
+              <dd className="min-w-0 truncate text-right text-on-surface" title={activity.lastCompletedStepName ?? undefined}>
+                {t('operations:drilldown.lastProgressValue', {
+                  value: formatDuration(nowMs - activity.lastProgressAtMs),
+                  step: activity.lastCompletedStepName ?? '—',
+                })}
+              </dd>
+            </div>
+          )}
+          {/* Terminal run: the counts are complete and meaningful here. */}
+          {!active && (detail?.stepsTotal ?? 0) > 0 && (
+            <div className="flex items-center justify-between gap-2">
+              <dt className="text-on-surface-variant">{t('operations:drilldown.steps')}</dt>
+              <dd className="tabular-nums text-on-surface">{detail!.stepsCompleted} / {detail!.stepsTotal}</dd>
+            </div>
+          )}
           {detail?.triggeredBy && (
             <div className="flex items-center justify-between gap-2">
               <dt className="text-on-surface-variant">{t('operations:drilldown.triggeredBy')}</dt>
@@ -129,6 +173,27 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
           </div>
         )}
 
+        {/* Which step actually broke — the error message alone rarely says. Ordered by
+            (StartedAt, Id) server-side; parallel branches can contribute several entries. */}
+        {(detail?.failedSteps?.length ?? 0) > 0 && (
+          <div>
+            <div className="mb-1.5 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-error">
+              <Misuse size={13} aria-hidden="true" />
+              {t('operations:drilldown.failedSteps')}
+            </div>
+            <ul className="flex flex-wrap gap-1.5">
+              {detail!.failedSteps!.map((s) => {
+                const label = s.stepName ?? s.stepId;
+                return (
+                  <li key={s.stepId} className={`rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE_CLASS.failed}`} title={label}>
+                    {label}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {detail?.errorMessage && (
           <div>
             <div className="mb-1 text-xs font-medium uppercase tracking-wide text-error">{t('operations:drilldown.error')}</div>
@@ -140,15 +205,51 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
       </div>
 
       <div className="space-y-2 border-t border-outline-variant p-4">
-        {canCancel && active && (
+        {canRun && active && (
           <button
             onClick={() => onCancel(executionId)}
-            disabled={cancelPending}
+            disabled={pendingAction !== null}
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-error/40 px-3 py-2 text-sm font-label text-error hover:bg-error/10 disabled:opacity-50"
           >
             <Misuse size={15} />{t('operations:drilldown.cancel')}
           </button>
         )}
+
+        {/* Retry stays visible but disabled on a quarantined workflow — the endpoint 400s
+            there, and an explained disabled button beats a button that vanishes. */}
+        {canRun && RETRYABLE.has(status) && (
+          <button
+            onClick={() => onRetry(executionId)}
+            disabled={pendingAction !== null || !workflowEnabled}
+            title={workflowEnabled ? undefined : t('operations:drilldown.retryDisabledWorkflow')}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-outline-variant px-3 py-2 text-sm font-label text-on-surface hover:bg-surface-high disabled:opacity-50"
+          >
+            <Restart size={15} />{t('operations:drilldown.retry')}
+          </button>
+        )}
+
+        {canRun && runningCount > 0 && (
+          <button
+            onClick={onCancelAll}
+            disabled={pendingAction !== null}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-error/40 px-3 py-2 text-sm font-label text-error hover:bg-error/10 disabled:opacity-50"
+          >
+            <StopFilledAlt size={15} />{t('operations:drilldown.cancelAll', { count: runningCount })}
+          </button>
+        )}
+
+        {/* The biggest hammer on the page: disable + cancel-all. Separated visually and
+            gated on folder-Edit, which disable requires and cancel does not. */}
+        {canEdit && (workflowEnabled || runningCount > 0) && (
+          <button
+            onClick={onQuarantine}
+            disabled={pendingAction !== null}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-error bg-error/5 px-3 py-2 text-sm font-label font-medium text-error hover:bg-error/15 disabled:opacity-50"
+          >
+            <WarningAltFilled size={15} />{t('operations:drilldown.quarantine')}
+          </button>
+        )}
+
         <button
           onClick={onOpenEditor}
           className="flex w-full items-center justify-center gap-2 rounded-lg bg-surface-highest px-3 py-2 text-sm font-label text-on-surface hover:bg-surface-highest/80"

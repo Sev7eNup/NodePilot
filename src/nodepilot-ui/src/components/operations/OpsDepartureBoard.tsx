@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plane } from '@carbon/icons-react';
+import { Plane, Tools } from '@carbon/icons-react';
 import type { OpsArmedTrigger } from '../../api/operations';
 import { formatDuration } from '../../lib/opsTimeline';
+import { STATUS_TEXT_CLASS } from '../../lib/statusTokens';
 
 // Next-fires "departure board": upcoming scheduled starts, soonest first, split-flap style.
 // Rows are keyed by workflow+nextFire so a changed fire time remounts the row and replays
@@ -48,9 +49,14 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
             {rows.map((trigger) => {
               const fireMs = trigger.nextFireUtc ? Date.parse(trigger.nextFireUtc) : null;
               const overdue = fireMs !== null && fireMs < nowMs;
+              // A blocked row keeps its sort position and stays visible on purpose: the whole
+              // point is that the operator reads "14:30 — Nightly Backup — blocked by X"
+              // instead of a start that silently never happens.
+              const blocked = trigger.blockedByWindowName;
+              const blockedTitle = blocked ? t('operations:board.blockedBy', { name: blocked }) : undefined;
               return (
-                <tr key={`${trigger.workflowId}-${trigger.nextFireUtc ?? 'none'}`} className="np-ops-flap text-on-surface">
-                  <td className="py-0.5 pr-4 tabular-nums text-primary">
+                <tr key={`${trigger.workflowId}-${trigger.nextFireUtc ?? 'none'}`} className="np-ops-flap text-on-surface" title={blockedTitle}>
+                  <td className={`py-0.5 pr-4 tabular-nums ${blocked ? `${STATUS_TEXT_CLASS.warning} line-through decoration-2` : 'text-primary'}`}>
                     {fireMs !== null
                       ? new Date(fireMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                       : '—'}
@@ -61,8 +67,13 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
                   <td className="hidden py-0.5 pr-4 text-on-surface-variant sm:table-cell">
                     {trigger.triggerTypes.join(', ')}
                   </td>
-                  <td className="py-0.5 text-right tabular-nums text-on-surface-variant">
-                    {fireMs === null
+                  <td className={`py-0.5 text-right tabular-nums ${blocked ? STATUS_TEXT_CLASS.warning : 'text-on-surface-variant'}`}>
+                    {blocked ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Tools size={12} aria-hidden="true" />
+                        {t('operations:board.blackout')}
+                      </span>
+                    ) : fireMs === null
                       ? '—'
                       : overdue
                         ? t('operations:board.overdue')

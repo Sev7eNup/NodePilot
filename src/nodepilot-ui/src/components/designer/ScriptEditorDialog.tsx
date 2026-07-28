@@ -23,7 +23,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Editor, { type OnMount } from '@monaco-editor/react';
 import { useTranslation } from 'react-i18next';
-import { monaco } from '../../lib/monacoSetup';
+import { monaco, MONO_FONT_STACK } from '../../lib/monacoSetup';
 import { useThemeStore, resolveTheme } from '../../stores/themeStore';
 import { AiPromptDialog } from '../ai/AiPromptDialog';
 import type { StepTestResult } from '../../types/api';
@@ -734,6 +734,7 @@ export function ScriptEditorDialog({
                 height="100%"
                 options={{
                   fontSize,
+                  fontFamily: MONO_FONT_STACK,
                   wordWrap: wordWrap ? 'on' : 'off',
                   lineNumbers: 'on',
                   folding: true,

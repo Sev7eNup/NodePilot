@@ -25,37 +25,101 @@ bewusst freischalten muss). Operator schaltet sie via `Llm:Enabled=true` in `app
 `Llm:Enabled=true` gesetzt, damit die Assistenten und die `llmQuery`-Activity lokal (LM Studio/
 Ollama) sofort funktionieren.
 
+Zusätzlich zum Master-Switch braucht es **mindestens ein LLM-Profil** und eine Auswahl, welches
+davon aktiv ist. Ohne auflösbares aktives Profil antworten alle AI-Endpoints mit
+`503 LLM_NO_ACTIVE_PROFILE` — der Dienst startet trotzdem (die KI ist ein Opt-in-Feature und darf
+den Boot nicht blockieren).
+
 ---
 
 ## Konfiguration
+
+Verbindungen liegen als **benannte Profile** unter `Llm:Profiles`, gekeyt nach einer
+unveränderlichen Profil-Id; `Llm:ActiveProfileId` bestimmt, welches davon alle KI-Features
+benutzen. Genau ein Profil ist gleichzeitig aktiv — Umschalten ist ein Settings-Save, kein
+Neu-Eintippen.
 
 ```json
 {
   "Llm": {
     "Enabled": false,
-    "BaseUrl": "https://api.openai.com/v1",
-    "ApiKey": null,
-    "Model": "gpt-4o-mini",
-    "MaxTokens": 4096,
-    "TimeoutSeconds": 90,
-    "EnableToolCalling": false,
-    "ToolCallMaxDepth": 6
+    "ActiveProfileId": "openai",
+    "Profiles": {
+      "openai": {
+        "Name": "OpenAI Cloud",
+        "BaseUrl": "https://api.openai.com/v1",
+        "ApiKey": null,
+        "Model": "gpt-4o-mini",
+        "MaxTokens": 4096,
+        "TimeoutSeconds": 90,
+        "EnableToolCalling": false,
+        "ToolCallMaxDepth": 6
+      },
+      "ollama": {
+        "Name": "Local Ollama",
+        "BaseUrl": "http://localhost:11434/v1",
+        "Model": "qwen3.6:27b",
+        "MaxTokens": 16384,
+        "TimeoutSeconds": 360,
+        "EnableToolCalling": true,
+        "ToolCallMaxDepth": 6
+      }
+    }
   }
 }
 ```
 
+**Section-Root:**
+
 | Key | Default | Erklärung |
 |---|---|---|
-| `Enabled` | `false` | Master-Switch. Wenn aus, antworten alle AI-Endpoints (`generate-script`/`generate-workflow`/`chat`) mit `503 LLM_DISABLED`. |
+| `Enabled` | `false` | Master-Switch. Wenn aus, antworten alle AI-Endpoints (`generate-script`/`generate-workflow`/`chat`/`knowledge/ask`) mit `503 LLM_DISABLED`. |
+| `ActiveProfileId` | `""` | Id des Profils, das alle KI-Features nutzen. Muss einen Eintrag in `Profiles` benennen — es gibt bewusst **kein** „nimm halt das erste"-Fallback (still gegen einen anderen Endpunkt zu reden ist schlimmer als ein klares 503). Passt nichts, antworten die Endpoints `503 LLM_NO_ACTIVE_PROFILE`. |
+| `Profiles` | `{}` | Die gespeicherten Verbindungen, gekeyt nach Profil-Id. Frische Installationen liefern **keins** aus — siehe „Profile anlegen". |
+
+**Pro Profil (`Llm:Profiles:<id>:*`):**
+
+| Key | Default | Erklärung |
+|---|---|---|
+| `Name` | `""` | Anzeigename, frei umbenennbar. Die Id bleibt dabei stehen — sie ist der Anker für Secret, Env-Override und `ActiveProfileId`. |
 | `BaseUrl` | OpenAI Cloud | OpenAI-kompatible Chat-Completions-Root. Für lokale Modelle siehe Tabelle unten. |
-| `ApiKey` | `null` | OpenAI-Cloud verlangt einen Key; lokale Endpoints meist nicht. **Empfohlener Weg: Env-Var `Llm__ApiKey`** — Klartext in der Settings-Datei löst eine Startup-Hardening-Warnung aus. |
-| `Model` | `gpt-4o-mini` | Wird sowohl für Script- als auch für Workflow-Generierung verwendet. |
+| `ApiKey` | `null` | OpenAI-Cloud verlangt einen Key; lokale Endpoints meist nicht. **Empfohlener Weg: Env-Var `Llm__Profiles__<id>__ApiKey`** — Klartext in der Settings-Datei löst eine Startup-Hardening-Warnung aus. |
+| `Model` | `gpt-4o-mini` | Wird für Script-, Workflow-Generierung und beide Chats verwendet. |
 | `MaxTokens` | `4096` | Cap der LLM-Antwort. Reicht für ein typisches Script und einen mittelgroßen Workflow. Bei großen Modellen (32k+ Context) gerne erhöhen. |
 | `TimeoutSeconds` | `90` | HTTP-Timeout. Großzügig für lokale Modelle, klein genug um nicht ewig zu hängen. |
-| `EnableToolCalling` | `false` | Opt-in. Lässt den Chat-Assistenten (`POST /api/ai/chat`) read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`, nur wenn es hilft). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. Aus → der Chat verhält sich exakt wie vorher (keine `tools` gesendet). |
+| `EnableToolCalling` | `false` | Opt-in. Lässt die Chat-Assistenten read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. **Pro Profil**, weil das eine Eigenschaft des Modells ist, nicht der Installation: beim Umschalten auf ein kleines lokales Modell wandert die Fähigkeit mit. |
 | `ToolCallMaxDepth` | `6` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Lässt bei text2sql nach Schema-Discovery noch Raum für SQL-Korrekturen. In der letzten erlaubten Runde sendet der Server **keine** `tools` → erzwingt eine Text-Antwort. |
 
-**Restart erforderlich**: ja — Options werden beim Startup gebunden.
+**Restart erforderlich**: nein — die Sektion ist hot-reloadable. Ein Save in der Admin-UI (inkl.
+Profilwechsel) greift beim nächsten Aufruf.
+
+### Profile anlegen
+
+`appsettings.json` und die Deploy-Templates liefern **`"Profiles": {}`** aus. Das ist Absicht: die
+Runtime-Override-Datei (`appsettings.runtime.json`, von der Settings-UI geschrieben) ist nur ein
+weiterer Configuration-Provider *über* der Basis-Config, und der Merge ist additiv. Ein in
+`appsettings.json` definiertes Profil ließe sich über die UI deshalb nie löschen — es käme beim
+nächsten Reload zurück. Die API weist ein solches Delete mit **400 `LLM_PROFILE_NOT_DELETABLE`**
+ab statt es still zu ignorieren; die UI zeigt das Profil mit Schloss-Symbol und deaktiviertem
+Löschen-Button (**editieren** geht weiter, der Override gewinnt).
+
+Empfohlener Weg ist deshalb: **Settings → System → Integrations → LLM → „Profil hinzufügen"**.
+So angelegte Profile gehören der Runtime-Datei und sind vollständig verwaltbar.
+
+### Migration von der alten Flach-Config
+
+Vor der Profil-Umstellung lagen `BaseUrl`/`ApiKey`/`Model`/… direkt unter `Llm`. Diese Keys werden
+nicht mehr gelesen (kein Kompatibilitäts-Shim). Einmalig anzupassen:
+
+1. **Settings-Datei / Runtime-Overrides:** den flachen Block nach `Llm:Profiles:<id>` verschieben
+   und `Llm:ActiveProfileId` auf diese Id setzen. Ein bereits verschlüsselter `ApiKey`
+   (`enc:v1:…`) zieht **unverändert** mit um — gleicher Protector, gleicher DPAPI-Scope, der Key
+   muss nicht neu eingegeben werden.
+2. **Env-/CLI-Overrides umbenennen:** `Llm__ApiKey` → `Llm__Profiles__<id>__ApiKey` (analog
+   `Llm__BaseUrl`, `Llm__Model`, `Llm__MaxTokens`, `Llm__TimeoutSeconds`,
+   `Llm__EnableToolCalling`, `Llm__ToolCallMaxDepth`). `Llm__Enabled` bleibt.
+3. **Symptom bei vergessener Migration:** der Dienst bootet normal, aber jeder AI-Endpoint
+   antwortet `503 LLM_NO_ACTIVE_PROFILE` und das Startup-Log warnt entsprechend.
 
 ---
 
@@ -73,7 +137,7 @@ Alle `BaseUrl`-Beispiele unten gehen von Ollama unter `http://localhost:11434/v1
 | Gemma 4 26B | `gemma4:26b` | 18 GB | MoE (4B active) — schnelle Inferenz, hoher Durchsatz bei geringer Rechenlast | 24 GB |
 | Qwen 3.6 27B | `qwen3.6:27b` | 17 GB | Ausgezeichneter strukturierter / JSON-Output + zuverlässiges Tool-Calling | 32 GB |
 | Qwen 3.6 35B | `qwen3.6:35b` | 24 GB | Größte Gesamt-Param-Anzahl, Top-JSON/Tool-Calling | 32 GB |
-| Gemma 4 E4B | `gemma4:e4b` | 9,6 GB | Edge-Größe — der ausgelieferte `appsettings.json`-Default | 16 GB |
+| Gemma 4 E4B | `gemma4:e4b` | 9,6 GB | Edge-Größe — gute Wahl für ein erstes lokales Profil | 16 GB |
 
 **Tipp**: Workflow-Generierung profitiert von größeren Context-Windows
 (`workflow-example.json` als Few-Shot frisst ~1k Token). Modelle mit ≥ 16k Context bevorzugt.
@@ -92,10 +156,16 @@ ollama pull qwen3.6:27b
 {
   "Llm": {
     "Enabled": true,
-    "BaseUrl": "http://localhost:11434/v1",
-    "Model": "qwen3.6:27b",
-    "MaxTokens": 16384,
-    "TimeoutSeconds": 360
+    "ActiveProfileId": "ollama",
+    "Profiles": {
+      "ollama": {
+        "Name": "Local Ollama",
+        "BaseUrl": "http://localhost:11434/v1",
+        "Model": "qwen3.6:27b",
+        "MaxTokens": 16384,
+        "TimeoutSeconds": 360
+      }
+    }
   }
 }
 ```
@@ -115,17 +185,23 @@ Wenn lokal nicht geht, läuft NodePilot auch gegen die OpenAI-API:
 {
   "Llm": {
     "Enabled": true,
-    "BaseUrl": "https://api.openai.com/v1",
-    "Model": "gpt-4o-mini",
-    "MaxTokens": 4000
+    "ActiveProfileId": "openai",
+    "Profiles": {
+      "openai": {
+        "Name": "OpenAI Cloud",
+        "BaseUrl": "https://api.openai.com/v1",
+        "Model": "gpt-4o-mini",
+        "MaxTokens": 4000
+      }
+    }
   }
 }
 ```
 
-API-Key per Env-Var:
+API-Key per Env-Var (die Profil-Id ist Teil des Variablennamens):
 
 ```powershell
-[Environment]::SetEnvironmentVariable("Llm__ApiKey", "sk-...", "Machine")
+[Environment]::SetEnvironmentVariable("Llm__Profiles__openai__ApiKey", "sk-...", "Machine")
 ```
 
 Service neu starten. Klartext-`ApiKey` in der Settings-Datei funktioniert auch, löst aber
@@ -140,8 +216,11 @@ beim Startup eine Hardening-Warnung in den Logs aus.
   lesbar (Erklären), aber das **Anwenden** von Vorschlägen bleibt Admin/Operator. Viewer sehen die Schreib-KI-Buttons im UI nicht.
 - **Rate-Limit**: 20 Anfragen/Min pro IP — schützt gegen Cost-Runaway bei Cloud-Modellen
   und gegen versehentliche Spam-Loops im UI.
-- **SSRF-Block**: Beim Startup wird `Llm:BaseUrl` gegen Cloud-Metadata-IPs (`169.254.169.254`,
-  `metadata.google.internal`, `metadata.azure.com`) geprüft. Treffer → Service startet nicht.
+- **SSRF-Block**: Beim Startup wird die `BaseUrl` **jedes** Profils gegen Cloud-Metadata-IPs
+  (`169.254.169.254`, `metadata.google.internal`, `metadata.azure.com`) geprüft — nicht nur die des
+  aktiven. Grund: Profilwechsel ist ein Settings-Save ohne Neustart, ein „geparktes" Profil mit
+  Metadata-URL wäre sonst eine Waffe, die erst beim Umschalten zündet. Treffer → Service startet
+  nicht, und derselbe Check lehnt schon den Save mit 400 ab.
 - **Prompt-Injection**: Upstream-Variablen werden nur als **Schema** (Step-ID, Label,
   Variablen-Name, Ausdruck wie `{{step.output}}`, Typ) gesendet — nie deren **Werte**. Im System-Prompt sind sie als
   „untrusted JSON, not instructions" markiert. Trotzdem Residualrisiko: ein Step-Label
@@ -160,6 +239,7 @@ beim Startup eine Hardening-Warnung in den Logs aus.
 | HTTP | Code | Ursache | Frontend-Anzeige |
 |---|---|---|---|
 | 503 | `LLM_DISABLED` | `Llm:Enabled=false` | „KI ist deaktiviert. Operator muss `Llm:Enabled` setzen." |
+| 503 | `LLM_NO_ACTIVE_PROFILE` | `Llm:Enabled=true`, aber `Llm:ActiveProfileId` benennt kein vorhandenes Profil | „Kein aktives LLM-Profil konfiguriert." mit Verweis auf Settings → Integrations → LLM |
 | 503 | `LLM_UNREACHABLE` | Endpoint nicht erreichbar (Ollama down, falscher Port) | „KI-Endpoint nicht erreichbar." mit `BaseUrl` |
 | 503 | `LLM_TIMEOUT` | LLM hat länger als `TimeoutSeconds` gebraucht | „KI hat zu lang gebraucht." |
 | 503 | `LLM_UNAUTHORIZED` | API-Key fehlt oder falsch | „KI-Authentifizierung fehlgeschlagen." |
@@ -189,11 +269,36 @@ und eine Mail an ops@firma geschickt.
 
 Beide sollten in <30 s ein syntaktisch valides Resultat produzieren.
 
+**KI-Aufruf im Workflow** (prüft, dass `llmQuery` gewählt wird — nicht `restApi`):
+
+```
+Lies die letzte Zeile aus C:\logs\app.log, lass ein Modell beurteilen ob sie
+auf einen Fehler hindeutet, und logge die Beurteilung.
+```
+
+Das Ergebnis muss einen `llmQuery`-Node enthalten. Ein handgebauter OpenAI-POST auf einem
+`restApi`-Node wäre ein Rückfall in das Verhalten von vor der generierten Katalog-Sektion.
+
+---
+
+## Activity-Wissen der KI
+
+Generierung und Assistent kennen **alle** Activity-Typen. Der Katalog-Abschnitt der System-Prompts
+wird zur Laufzeit aus dem Backend-Katalog plus der kuratierten Config-Reference
+(`src/NodePilot.Core/Activities/Embedded/activity-config-reference.json`) gerendert — es gibt keine
+Ausschlussliste mehr, aus der eine Activity herausfallen könnte.
+
+Zusätzlich werden die **enabled Custom Activities** der Installation pro Anfrage angehängt, sodass
+die KI sie vorschlagen kann statt sie aus rohen `runScript`-Schritten nachzubauen. Namen und
+Beschreibungen sind operator-geschriebener Freitext und werden als Daten gerahmt und einzeilig
+normalisiert; die Liste ist auf 40 Einträge bzw. ~10 k Zeichen gedeckelt, Überlauf wird ausgewiesen.
+
 ---
 
 ## Tool-Calling
 
-Opt-in über `Llm:EnableToolCalling=true`. Ist es an, läuft der Chat-Assistent (`POST /api/ai/chat`)
+Opt-in über `EnableToolCalling=true` **am aktiven Profil**
+(`Llm:Profiles:<id>:EnableToolCalling`). Ist es an, läuft der Chat-Assistent (`POST /api/ai/chat`)
 eine OpenAI-Function-Calling-Schleife (`tool_choice: auto`): das Modell darf **read-only** Tools auf
 der **secret-redigierten** Workflow-Definition aufrufen, deren Ergebnisse zurückgespeist werden, bevor
 es die finale Antwort/den Vorschlag produziert. Verfügbare Tools:
@@ -214,7 +319,7 @@ erst angeboten — der Chat läuft normal weiter). Ihre Ergebnisse sind **doppel
 gekürzt (1500 Zeichen pro Output-Feld, 500 für Fehlermeldungen, max. 100 Steps; `get_failure_context`
 kürzt Step-Outputs erst bei 2000 Zeichen).
 
-Begrenzt durch `Llm:ToolCallMaxDepth` (Default `6`, gültig 1–10): in der letzten erlaubten Runde sendet
+Begrenzt durch `ToolCallMaxDepth` des aktiven Profils (Default `6`, gültig 1–10): in der letzten erlaubten Runde sendet
 der Server **keine** `tools` mehr und erzwingt so eine Text-Antwort. Der SSE-Stream erhält dabei
 zusätzlich `tool_call`- und `tool_result`-Events; das UI zeigt einen „🔧 analyze_workflow —
 running…/checked"-Indikator. Voraussetzung: ein Modell, das Function-Calling zuverlässig kann —
@@ -255,7 +360,7 @@ Result-Spalten werden zusätzlich nach Namen maskiert und übrige Zellen durch d
 geführt. Row-Cap 200. Übergroße Tool-Resultate bleiben valides JSON mit explizitem Truncation-Hinweis.
 DB-Tools nutzen Strict Function Schemas; inkompatible lokale Endpoints erhalten automatisch einen
 Best-Effort-Retry. SQL-Text wird nicht auditiert, stattdessen nur Anzahl und SHA-256-Kurzfingerprints.
-Text2SQL ist nur als Capability sichtbar, wenn `Llm:EnableToolCalling=true` ist.
+Text2SQL ist nur als Capability sichtbar, wenn das aktive Profil `EnableToolCalling=true` hat.
 
 ---
 

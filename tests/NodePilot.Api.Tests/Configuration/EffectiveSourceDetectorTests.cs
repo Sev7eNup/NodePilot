@@ -120,4 +120,55 @@ public sealed class EffectiveSourceDetectorTests : IDisposable
             Environment.SetEnvironmentVariable(envKey1, null);
         }
     }
+
+    // ---- DetectNonRuntimeSource -------------------------------------------------
+
+    [Fact]
+    public void DetectNonRuntimeSource_OnlyInRuntimeFile_ReturnsNull()
+    {
+        // The Settings UI fully owns this key ⇒ dropping it there actually removes it.
+        var runtime = WriteJson("appsettings.runtime.json", "{\"Llm\":{\"Profiles\":{\"a\":{\"BaseUrl\":\"http://a/v1\"}}}}");
+        var root = (IConfigurationRoot)new ConfigurationBuilder().AddJsonFile(runtime).Build();
+
+        EffectiveSourceDetector.DetectNonRuntimeSource(root, new[] { "Llm:Profiles:a:BaseUrl" })
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void DetectNonRuntimeSource_ShadowedByTheRuntimeFile_StillReportsTheBaseSource()
+    {
+        // The whole point of this method: Detect() reports "runtime" here because the runtime file
+        // sits on top, but the appsettings.json entry would resurface the moment the runtime entry
+        // is dropped — so the profile must NOT be reported as deletable.
+        var basePath = WriteJson("appsettings.json", "{\"Llm\":{\"Profiles\":{\"a\":{\"BaseUrl\":\"http://base/v1\"}}}}");
+        var runtime = WriteJson("appsettings.runtime.json", "{\"Llm\":{\"Profiles\":{\"a\":{\"BaseUrl\":\"http://override/v1\"}}}}");
+        var root = (IConfigurationRoot)new ConfigurationBuilder()
+            .AddJsonFile(basePath).AddJsonFile(runtime).Build();
+
+        EffectiveSourceDetector.Detect(root, "Llm:Profiles:a:BaseUrl")
+            .Should().Be(EffectiveSourceDetector.SourceRuntime);
+        EffectiveSourceDetector.DetectNonRuntimeSource(root, new[] { "Llm:Profiles:a:BaseUrl" })
+            .Should().Be(EffectiveSourceDetector.SourceAppsettings);
+    }
+
+    [Fact]
+    public void DetectNonRuntimeSource_AnyOfTheKeysCounts()
+    {
+        // A partially-defined profile (only Model in the base config) is enough to pin it.
+        var basePath = WriteJson("appsettings.json", "{\"Llm\":{\"Profiles\":{\"a\":{\"Model\":\"m\"}}}}");
+        var root = (IConfigurationRoot)new ConfigurationBuilder().AddJsonFile(basePath).Build();
+
+        EffectiveSourceDetector.DetectNonRuntimeSource(root,
+            new[] { "Llm:Profiles:a:BaseUrl", "Llm:Profiles:a:Model" })
+            .Should().Be(EffectiveSourceDetector.SourceAppsettings);
+    }
+
+    [Fact]
+    public void DetectNonRuntimeSource_NoProviderHasAnyKey_ReturnsNull()
+    {
+        var root = (IConfigurationRoot)new ConfigurationBuilder().Build();
+
+        EffectiveSourceDetector.DetectNonRuntimeSource(root, new[] { "Llm:Profiles:ghost:BaseUrl" })
+            .Should().BeNull();
+    }
 }

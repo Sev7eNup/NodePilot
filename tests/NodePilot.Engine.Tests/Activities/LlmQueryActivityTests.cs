@@ -49,14 +49,7 @@ public sealed class LlmQueryActivityTests
         ILlmClient client, bool enabled = true)
     {
         var factory = new StubFactory(client);
-        var options = new StaticOptionsMonitor<LlmOptions>(new LlmOptions
-        {
-            Enabled = enabled,
-            BaseUrl = "https://api.openai.com/v1",
-            Model = "gpt-4o-mini",
-            MaxTokens = 4096,
-            TimeoutSeconds = 90,
-        });
+        var options = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(enabled: enabled));
         return (new LlmQueryActivity(factory, options), factory);
     }
 
@@ -225,12 +218,7 @@ public sealed class LlmQueryActivityTests
         // between two acts and assert the gate flips.
         var client = new StubLlmClient(_ => Task.FromResult(new LlmResponse("live", "m")));
         var factory = new StubFactory(client);
-        var monitor = new MutableOptionsMonitor<LlmOptions>(new LlmOptions
-        {
-            Enabled = false,
-            BaseUrl = "https://api.openai.com/v1",
-            Model = "gpt-4o-mini",
-        });
+        var monitor = new MutableOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(enabled: false));
         var activity = new LlmQueryActivity(factory, monitor);
 
         // Disabled: gate rejects before the client is touched.
@@ -239,16 +227,34 @@ public sealed class LlmQueryActivityTests
         blocked.ErrorOutput.Should().Contain("Llm:Enabled=false");
 
         // Simulate the operator enabling LLM in the Settings UI → config reload.
-        monitor.Set(new LlmOptions
-        {
-            Enabled = true,
-            BaseUrl = "https://api.openai.com/v1",
-            Model = "gpt-4o-mini",
-        });
+        monitor.Set(LlmTestOptions.WithProfile(enabled: true));
 
         // Same activity instance, no re-creation → next execution succeeds.
         var allowed = await activity.ExecuteAsync(Ctx(), Cfg(new { prompt = "hi" }), CancellationToken.None);
         allowed.Success.Should().BeTrue();
         allowed.Output.Should().Be("live");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_NoActiveProfile_FailsWithActionableMessage()
+    {
+        // The activity layers its per-node overrides on top of the ACTIVE profile, so without one
+        // there is nothing to layer onto. The factory throws, the activity turns it into a step
+        // failure rather than an unhandled exception.
+        var factory = new NodePilot.Ai.LlmClientFactory(
+            new StubHttpClientFactory(),
+            new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.EnabledWithoutProfile()),
+            Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance);
+        var activity = new LlmQueryActivity(factory, new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.EnabledWithoutProfile()));
+
+        var result = await activity.ExecuteAsync(Ctx(), Cfg(new { prompt = "hi" }), CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("No active LLM profile");
+    }
+
+    private sealed class StubHttpClientFactory : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new();
     }
 }

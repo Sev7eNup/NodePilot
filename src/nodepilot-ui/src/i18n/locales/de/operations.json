@@ -11,7 +11,29 @@
     "now": "Jetzt",
     "idle": "Gerade läuft nichts.",
     "idleHint": "Sobald ein Workflow startet, wächst hier live sein Balken.",
-    "nextStart": "Nächster Start {{time}} — {{name}}"
+    "nextStart": "Nächster Start {{time}} — {{name}}",
+    "historyGap": "Keine beendeten Läufe vor {{time}} geliefert",
+    "recentTruncated": "Zu viele beendete Läufe in diesem Fenster — ältere werden nicht angezeigt."
+  },
+  "window": {
+    "label": "Zeitfenster",
+    "option": {
+      "20": "20 Min",
+      "60": "1 Std",
+      "240": "4 Std"
+    }
+  },
+  "freeze": {
+    "on": "Ansicht einfrieren",
+    "off": "Live",
+    "badge": "Ansicht eingefroren um {{time}}"
+  },
+  "stuck": {
+    "title": "Hängend / Langläufer",
+    "since": "läuft seit {{value}}",
+    "startedAt": "seit {{value}}",
+    "lastProgress": "letzter Schritt vor {{value}}: {{step}}",
+    "more": "+{{count}} weitere"
   },
   "board": {
     "title": "Nächste Starts",
@@ -21,7 +43,9 @@
     "trigger": "Trigger",
     "tMinus": "T-minus",
     "in": "in {{value}}",
-    "overdue": "überfällig"
+    "overdue": "überfällig",
+    "blackout": "Wartungsfenster",
+    "blockedBy": "Unterdrückt durch Wartungsfenster „{{name}}“"
   },
   "drilldown": {
     "title": "Ausführungsdetails",
@@ -33,9 +57,25 @@
     "duration": "Dauer",
     "triggeredBy": "Ausgelöst durch",
     "error": "Fehlermeldung",
+    "steps": "Schritte",
+    "stepsFinished": "Schritte fertig",
+    "lastProgress": "Letzter Fortschritt",
+    "lastProgressValue": "vor {{value}} · {{step}}",
+    "failedSteps": "Fehlgeschlagene Schritte",
     "parent": "Aufgerufen von",
     "calls": "Ruft auf",
     "cancel": "Abbrechen",
+    "retry": "Erneut ausführen",
+    "retryStarted": "Erneute Ausführung gestartet.",
+    "retryDisabledWorkflow": "Der Workflow ist deaktiviert — zum erneuten Ausführen erst wieder aktivieren.",
+    "cancelAll": "Alle Läufe abbrechen ({{count}})",
+    "cancelAllConfirm": "Alle {{count}} laufenden Ausführungen von „{{name}}“ abbrechen?",
+    "cancelAllDone": "{{count}} Ausführungen abgebrochen.",
+    "quarantine": "Quarantäne",
+    "quarantineConfirm": "„{{name}}“ unter Quarantäne stellen? Der Workflow wird deaktiviert, damit ihn kein Trigger erneut startet, und alle laufenden Ausführungen werden abgebrochen.",
+    "quarantined": "Workflow in Quarantäne — deaktiviert, {{count}} Ausführungen abgebrochen.",
+    "quarantinePartial": "Workflow deaktiviert, aber die laufenden Ausführungen konnten nicht abgebrochen werden. Über „Alle Läufe abbrechen“ erneut versuchen.",
+    "actionFailed": "Die Aktion ist fehlgeschlagen.",
     "openEditor": "Im Editor öffnen",
     "loadFailed": "Details konnten nicht geladen werden."
   }

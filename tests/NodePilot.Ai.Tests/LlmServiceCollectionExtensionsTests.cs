@@ -55,11 +55,12 @@ public class LlmServiceCollectionExtensionsTests
         var services = NewServices(new Dictionary<string, string?>
         {
             ["Llm:Enabled"] = "false",
-            ["Llm:BaseUrl"] = "http://localhost:11434/v1",
+            ["Llm:Profiles:default:BaseUrl"] = "http://localhost:11434/v1",
         });
 
-        // Smoke check: all three service bindings are registered.
-        services.Should().Contain(d => d.ServiceType == typeof(ILlmClient));
+        // Smoke check: the service bindings are registered. ILlmClient is deliberately NOT among
+        // them — see AddNodePilotAi_DoesNotRegisterLlmClient.
+        services.Should().Contain(d => d.ServiceType == typeof(ILlmClientFactory));
         services.Should().Contain(d => d.ServiceType == typeof(ScriptGenerationService));
         services.Should().Contain(d => d.ServiceType == typeof(WorkflowGenerationService));
         services.Should().Contain(d => d.ServiceType == typeof(PromptCatalog));
@@ -71,8 +72,8 @@ public class LlmServiceCollectionExtensionsTests
         var services = NewServices(new Dictionary<string, string?>
         {
             ["Llm:Enabled"] = "false",
-            ["Llm:BaseUrl"] = "http://localhost:11434/v1",
-            ["Llm:Model"] = "test-model",
+            ["Llm:Profiles:default:BaseUrl"] = "http://localhost:11434/v1",
+            ["Llm:Profiles:default:Model"] = "test-model",
         });
 
         using var sp = services.BuildServiceProvider();
@@ -80,7 +81,7 @@ public class LlmServiceCollectionExtensionsTests
 
         // If the DI graph doesn't wire up correctly (e.g. a missing registration),
         // resolving here throws — this catches wiring mistakes in AddNodePilotAi during a refactor.
-        scope.ServiceProvider.GetRequiredService<ILlmClient>().Should().NotBeNull();
+        scope.ServiceProvider.GetRequiredService<ILlmClientFactory>().Should().NotBeNull();
         scope.ServiceProvider.GetRequiredService<ScriptGenerationService>().Should().NotBeNull();
         scope.ServiceProvider.GetRequiredService<WorkflowGenerationService>().Should().NotBeNull();
         scope.ServiceProvider.GetRequiredService<PromptCatalog>().Should().NotBeNull();
@@ -98,7 +99,7 @@ public class LlmServiceCollectionExtensionsTests
         var services = NewServices(new Dictionary<string, string?>
         {
             ["Llm:Enabled"] = "false",
-            ["Llm:BaseUrl"] = "http://127.0.0.1:1234/v1",
+            ["Llm:Profiles:default:BaseUrl"] = "http://127.0.0.1:1234/v1",
         });
         using var sp = services.BuildServiceProvider();
 
@@ -113,7 +114,8 @@ public class LlmServiceCollectionExtensionsTests
         var act = () => NewServices(new Dictionary<string, string?>
         {
             ["Llm:Enabled"] = "true",
-            ["Llm:BaseUrl"] = "http://169.254.169.254/v1",
+            ["Llm:ActiveProfileId"] = "default",
+            ["Llm:Profiles:default:BaseUrl"] = "http://169.254.169.254/v1",
         });
 
         act.Should().Throw<InvalidOperationException>()
@@ -129,8 +131,46 @@ public class LlmServiceCollectionExtensionsTests
         var act = () => NewServices(new Dictionary<string, string?>
         {
             ["Llm:Enabled"] = "false",
-            ["Llm:BaseUrl"] = "http://169.254.169.254/v1",
+            ["Llm:Profiles:default:BaseUrl"] = "http://169.254.169.254/v1",
         });
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void AddNodePilotAi_EnabledWithMetadataEndpointInInactiveProfile_FailsFast()
+    {
+        // Every profile is checked, not just the active one: switching the active profile is a
+        // plain settings save with no restart, so a parked metadata endpoint would otherwise only
+        // detonate on the switch.
+        var act = () => NewServices(new Dictionary<string, string?>
+        {
+            ["Llm:Enabled"] = "true",
+            ["Llm:ActiveProfileId"] = "good",
+            ["Llm:Profiles:good:BaseUrl"] = "http://localhost:11434/v1",
+            ["Llm:Profiles:parked:BaseUrl"] = "http://169.254.169.254/v1",
+        });
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*cloud-metadata*");
+    }
+
+    [Fact]
+    public void AddNodePilotAi_DoesNotRegisterLlmClient()
+    {
+        // Regression guard: a container-level ILlmClient would be constructed when the controller
+        // is constructed — i.e. BEFORE the action's active-profile gate — turning a clean
+        // 503 LLM_NO_ACTIVE_PROFILE into a DI failure. Consumers take ILlmClientFactory instead.
+        var services = NewServices(new Dictionary<string, string?> { ["Llm:Enabled"] = "false" });
+
+        services.Should().NotContain(d => d.ServiceType == typeof(ILlmClient));
+    }
+
+    [Fact]
+    public void AddNodePilotAi_EnabledWithoutAnyProfile_DoesNotThrow()
+    {
+        // A half-finished profile setup must not keep the service from booting; the AI endpoints
+        // answer 503 LLM_NO_ACTIVE_PROFILE instead.
+        var act = () => NewServices(new Dictionary<string, string?> { ["Llm:Enabled"] = "true" });
 
         act.Should().NotThrow();
     }

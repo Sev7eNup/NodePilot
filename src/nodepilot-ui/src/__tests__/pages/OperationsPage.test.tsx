@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { http, HttpResponse } from 'msw';
@@ -7,6 +7,8 @@ import { setupServer } from 'msw/node';
 import { OperationsPage } from '../../pages/OperationsPage';
 import { useAuthStore } from '../../stores/authStore';
 import { useOperationsStore } from '../../stores/operationsStore';
+import { useConfirmStore } from '../../stores/confirmStore';
+import { useToastStore } from '../../stores/toastStore';
 import type { OperationsGraph, OpsNode } from '../../types/api';
 
 const BASE = 'http://localhost';
@@ -26,7 +28,8 @@ function patchFetch() {
 function node(p: Partial<OpsNode>): OpsNode {
   return {
     workflowId: 'wf', name: 'WF', folderId: 'f', folderPath: '/', isEnabled: true,
-    runningCount: 0, lastStatus: null, callFrequency: null, ...p,
+    runningCount: 0, lastStatus: null, callFrequency: null,
+    canRun: true, canEdit: true, ...p,
   };
 }
 
@@ -37,9 +40,9 @@ const GRAPH: OperationsGraph = {
     node({ workflowId: 'wf-3', name: 'Health Check', folderId: 'staging', folderPath: '/Staging', lastStatus: 'Succeeded', callFrequency: 1 }),
   ],
   edges: [],
-  running: [{ executionId: 'ex-1', workflowId: 'wf-1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null }],
+  running: [{ executionId: 'ex-1', workflowId: 'wf-1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
+  meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false },
   recent: [{ executionId: 'ex-2', workflowId: 'wf-2', status: 'Failed', startedAt: new Date(NOW - 10 * MIN).toISOString(), completedAt: new Date(NOW - 8 * MIN).toISOString(), parentExecutionId: null }],
-  capabilities: { canCancel: true },
 };
 
 const STATS = {
@@ -48,8 +51,8 @@ const STATS = {
   clusterRole: null,
   healthHeartbeats: [{ serviceName: 'Scheduler', lastHeartbeatAt: new Date(NOW).toISOString(), expectedIntervalSeconds: 60, status: null, isStale: false }],
   armedTriggers: [
-    { workflowId: 'wf-1', workflowName: 'Nightly Backup', triggerTypes: ['scheduleTrigger'], nextFireUtc: new Date(NOW + 30 * MIN).toISOString(), nextFireKind: 'cron', pollIntervalSeconds: null },
-    { workflowId: 'wf-3', workflowName: 'Health Check', triggerTypes: ['scheduleTrigger'], nextFireUtc: new Date(NOW + 10 * MIN).toISOString(), nextFireKind: 'cron', pollIntervalSeconds: null },
+    { workflowId: 'wf-1', workflowName: 'Nightly Backup', triggerTypes: ['scheduleTrigger'], nextFireUtc: new Date(NOW + 30 * MIN).toISOString(), nextFireKind: 'cron', pollIntervalSeconds: null, blockedByWindowName: null },
+    { workflowId: 'wf-3', workflowName: 'Health Check', triggerTypes: ['scheduleTrigger'], nextFireUtc: new Date(NOW + 10 * MIN).toISOString(), nextFireKind: 'cron', pollIntervalSeconds: null, blockedByWindowName: null },
   ],
 };
 
@@ -65,7 +68,11 @@ const server = setupServer(
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
-beforeEach(() => useOperationsStore.getState().reset());
+beforeEach(() => {
+  useOperationsStore.getState().reset();
+  useConfirmStore.setState({ pending: null });
+  useToastStore.setState({ toasts: [] });
+});
 afterEach(() => { server.resetHandlers(); vi.restoreAllMocks(); });
 afterAll(() => server.close());
 
@@ -104,13 +111,170 @@ describe('OperationsPage', () => {
     fireEvent.click(await screen.findByTitle(/Nightly Backup · Running/));
 
     expect(await screen.findByRole('button', { name: 'Open in editor' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Cancel/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(cancelHit).toBe(true));
+  });
+
+  // ---- Incident actions --------------------------------------------------------------------
+
+  it('hides the action buttons when the node carries no folder rights', async () => {
+    // Regression for the bug this PR fixes: capability used to come from the GLOBAL role, so a
+    // global Operator with folder-Viewer rights was offered buttons that then 403'd.
+    server.use(http.get(`${BASE}/api/operations/graph`, () => HttpResponse.json({
+      ...GRAPH,
+      nodes: GRAPH.nodes.map((n) => ({ ...n, canRun: false, canEdit: false })),
+    })));
+    renderPage();
+    fireEvent.click(await screen.findByTitle(/Nightly Backup · Running/));
+
+    expect(await screen.findByRole('button', { name: 'Open in editor' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Cancel all runs/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Quarantine' })).not.toBeInTheDocument();
+  });
+
+  it('cancel-all runs only after the confirm dialog is accepted', async () => {
+    let hits = 0;
+    server.use(http.post(`${BASE}/api/workflows/wf-1/cancel-all`, () => {
+      hits++; return HttpResponse.json({ total: 2, signalled: 1 });
+    }));
+    renderPage();
+    fireEvent.click(await screen.findByTitle(/Nightly Backup · Running/));
+    fireEvent.click(await screen.findByRole('button', { name: /Cancel all runs/ }));
+
+    // Declining must not fire the request.
+    useConfirmStore.getState().settle(false);
+    await waitFor(() => expect(useConfirmStore.getState().pending).toBeNull());
+    expect(hits).toBe(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /Cancel all runs/ }));
+    await waitFor(() => expect(useConfirmStore.getState().pending).not.toBeNull());
+    useConfirmStore.getState().settle(true);
+    await waitFor(() => expect(hits).toBe(1));
+  });
+
+  it('quarantine disables BEFORE cancel-all, so re-armed triggers cannot restart the runs', async () => {
+    const order: string[] = [];
+    server.use(
+      http.post(`${BASE}/api/workflows/wf-1/disable`, () => { order.push('disable'); return new HttpResponse(null, { status: 204 }); }),
+      http.post(`${BASE}/api/workflows/wf-1/cancel-all`, () => { order.push('cancel-all'); return HttpResponse.json({ total: 2, signalled: 2 }); }),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByTitle(/Nightly Backup · Running/));
+    fireEvent.click(await screen.findByRole('button', { name: 'Quarantine' }));
+    await waitFor(() => expect(useConfirmStore.getState().pending).not.toBeNull());
+    useConfirmStore.getState().settle(true);
+
+    await waitFor(() => expect(order).toEqual(['disable', 'cancel-all']));
+    // total (2), not signalled — force-cancelled zombies count too.
+    await waitFor(() => expect(
+      useToastStore.getState().toasts.some((t) => t.message.includes('2')),
+    ).toBe(true));
+  });
+
+  it('reports the partial state when disable succeeded but cancel-all failed', async () => {
+    server.use(
+      http.post(`${BASE}/api/workflows/wf-1/disable`, () => new HttpResponse(null, { status: 204 })),
+      http.post(`${BASE}/api/workflows/wf-1/cancel-all`, () => new HttpResponse(null, { status: 500 })),
+    );
+    renderPage();
+    fireEvent.click(await screen.findByTitle(/Nightly Backup · Running/));
+    fireEvent.click(await screen.findByRole('button', { name: 'Quarantine' }));
+    await waitFor(() => expect(useConfirmStore.getState().pending).not.toBeNull());
+    useConfirmStore.getState().settle(true);
+
+    // Neither "done" nor a generic failure — the workflow IS off, only the runs survived.
+    await waitFor(() => expect(
+      useToastStore.getState().toasts.some((t) => t.kind === 'error' && t.message.includes('Cancel all runs')),
+    ).toBe(true));
+  });
+
+  it('quarantine refreshes the departure board so it stops promising a suppressed start', async () => {
+    server.use(
+      http.post(`${BASE}/api/workflows/wf-1/disable`, () => new HttpResponse(null, { status: 204 })),
+      http.post(`${BASE}/api/workflows/wf-1/cancel-all`, () => HttpResponse.json({ total: 0, signalled: 0 })),
+    );
+    const { qc } = renderPage();
+    const spy = vi.spyOn(qc, 'invalidateQueries');
+    fireEvent.click(await screen.findByTitle(/Nightly Backup · Running/));
+    fireEvent.click(await screen.findByRole('button', { name: 'Quarantine' }));
+    await waitFor(() => expect(useConfirmStore.getState().pending).not.toBeNull());
+    useConfirmStore.getState().settle(true);
+
+    // armedTriggers filters on IsEnabled server-side, so the board is stale until this fires.
+    await waitFor(() => expect(spy).toHaveBeenCalledWith({ queryKey: ['ops-dashboard'] }));
+  });
+
+  // ---- Window selector + display freeze ------------------------------------------------------
+
+  it('requests the selected window from the server', async () => {
+    const urls: string[] = [];
+    server.use(http.get(`${BASE}/api/operations/graph`, ({ request }) => {
+      urls.push(request.url);
+      return HttpResponse.json(GRAPH);
+    }));
+    renderPage();
+    await screen.findByTitle(/Nightly Backup · Running/);
+    expect(urls.at(-1)).toContain('windowMinutes=20');
+
+    fireEvent.change(screen.getByLabelText('Window'), { target: { value: '240' } });
+    await waitFor(() => expect(urls.at(-1)).toContain('windowMinutes=240'));
+  });
+
+  it('freeze stops the polling and shows a badge naming the freeze time', async () => {
+    let hits = 0;
+    server.use(http.get(`${BASE}/api/operations/graph`, () => { hits++; return HttpResponse.json(GRAPH); }));
+    renderPage();
+    await screen.findByTitle(/Nightly Backup · Running/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Freeze view' }));
+    expect(await screen.findByTestId('ops-frozen-badge')).toBeInTheDocument();
+
+    const atFreeze = hits;
+    await new Promise((r) => setTimeout(r, 120));
+    expect(hits).toBe(atFreeze);
+
+    // Unfreezing restores the live label.
+    fireEvent.click(screen.getByRole('button', { name: 'Go live' }));
+    await waitFor(() => expect(screen.queryByTestId('ops-frozen-badge')).not.toBeInTheDocument());
+  });
+
+  it('freeze holds the VIEW but never the store — tombstones keep being written', async () => {
+    // The invariant that keeps unfreezing safe: if the feed stopped writing terminal
+    // tombstones, a refetch afterwards could resurrect a run that finished during the freeze.
+    const { qc } = renderPage();
+    await screen.findByTitle(/Nightly Backup · Running/);
+    fireEvent.click(screen.getByRole('button', { name: 'Freeze view' }));
+
+    act(() => { useOperationsStore.getState().applyStatus('ex-1', 'wf-1', 'Failed'); });
+
+    // Rendered bar unchanged…
+    expect(screen.getByTitle(/Nightly Backup · Running/)).toBeInTheDocument();
+    // …but the store recorded the terminal event, so a later snapshot cannot resurrect it.
+    expect(useOperationsStore.getState().terminalTombstones['ex-1']).toBeDefined();
+
+    // The run has genuinely settled by the time we go live again.
+    server.use(http.get(`${BASE}/api/operations/graph`, () => HttpResponse.json({
+      ...GRAPH,
+      running: [],
+      recent: [{
+        executionId: 'ex-1', workflowId: 'wf-1', status: 'Failed',
+        startedAt: new Date(NOW - 4 * MIN).toISOString(),
+        completedAt: new Date(NOW - 1 * MIN).toISOString(),
+        parentExecutionId: null,
+      }],
+    })));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go live' }));
+    await qc.invalidateQueries({ queryKey: ['operations-graph'] });
+
+    // View follows live data again.
+    await waitFor(() => expect(screen.getByTitle(/Nightly Backup · Failed/)).toBeInTheDocument());
   });
 
   it('shows the empty state when no accessible workflows', async () => {
     server.use(http.get(`${BASE}/api/operations/graph`, () =>
-      HttpResponse.json({ nodes: [], edges: [], running: [], recent: [], capabilities: { canCancel: false } })));
+      HttpResponse.json({ nodes: [], edges: [], running: [], recent: [], meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false } })));
     renderPage();
     expect(await screen.findByText('No accessible workflows.')).toBeInTheDocument();
   });
@@ -118,7 +282,7 @@ describe('OperationsPage', () => {
   it('shows the idle hero when workflows exist but nothing ran recently', async () => {
     server.use(http.get(`${BASE}/api/operations/graph`, () => HttpResponse.json({
       nodes: [node({ workflowId: 'wf-a', name: 'Alpha', folderId: 'f', folderPath: '/', lastStatus: 'Succeeded' })],
-      edges: [], running: [], recent: [], capabilities: { canCancel: true },
+      edges: [], running: [], recent: [], meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false },
     })));
     renderPage();
     expect(await screen.findByText('Nothing is running right now.')).toBeInTheDocument();
@@ -127,7 +291,7 @@ describe('OperationsPage', () => {
   it('folder filter scopes timeline bars and departure board together', async () => {
     renderPage();
     await screen.findByTitle(/Nightly Backup · Running/);
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    const select = screen.getByLabelText('Folder') as HTMLSelectElement;
 
     // Scope to /Staging: no bars (idle), board only Health Check.
     fireEvent.change(select, { target: { value: 'staging' } });
@@ -145,14 +309,14 @@ describe('OperationsPage', () => {
   it('resets the folder filter to All when the chosen folder vanishes from the snapshot', async () => {
     const { qc } = renderPage();
     await screen.findByTitle(/Nightly Backup · Running/);
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    const select = screen.getByLabelText('Folder') as HTMLSelectElement;
     fireEvent.change(select, { target: { value: 'prod' } });
     expect(select.value).toBe('prod');
 
     // Next snapshot no longer exposes the /Prod folder (RBAC / scope change).
     server.use(http.get(`${BASE}/api/operations/graph`, () => HttpResponse.json({
       nodes: [node({ workflowId: 'wf-3', name: 'Health Check', folderId: 'staging', folderPath: '/Staging', lastStatus: 'Succeeded' })],
-      edges: [], running: [], recent: [], capabilities: { canCancel: true },
+      edges: [], running: [], recent: [], meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false },
     })));
     await qc.invalidateQueries({ queryKey: ['operations-graph'] });
 
@@ -165,10 +329,10 @@ describe('OperationsPage', () => {
       nodes: folders.map((folderId, i) => node({
         workflowId: `wf-${i}`, name: `WF ${i}`, folderId, folderPath: `/${folderId}`, lastStatus: 'Succeeded',
       })),
-      edges: [], running: [], recent: [], capabilities: { canCancel: false },
+      edges: [], running: [], recent: [], meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false },
     })));
     renderPage();
-    const select = await screen.findByRole('combobox') as HTMLSelectElement;
+    const select = await screen.findByLabelText('Folder') as HTMLSelectElement;
     await waitFor(() => expect(select.options).toHaveLength(6));
     expect(select.options[0].textContent).toBe('All folders');
   });

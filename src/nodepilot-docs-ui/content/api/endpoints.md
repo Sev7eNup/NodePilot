@@ -316,7 +316,7 @@ Maintenance-Window-Create-Body:
 
 ## AI (opt-in)
 
-`Llm:Enabled=false` default. 503 `{"code":"LLM_DISABLED",...}` wenn deaktiviert.
+`Llm:Enabled=false` default. 503 `{"code":"LLM_DISABLED",...}` wenn deaktiviert, 503 `{"code":"LLM_NO_ACTIVE_PROFILE",...}` wenn aktiviert, aber kein LLM-Profil ausgewählt ist.
 
 ```bash
 # Script generieren (mit Upstream-Variablen-Kontext)

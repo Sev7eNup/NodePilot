@@ -23,12 +23,15 @@ public sealed record KnowledgeAskRequest(
 /// <see cref="WorkflowAssistantService"/> but <b>canvas-free</b>: no workflow JSON, no
 /// redact/merge, no proposal — a read-only Q&amp;A over docs / operational data / source code via the
 /// source-gated <see cref="IKnowledgeToolRegistry"/>. Reuses the same bounded tool-loop mechanics
-/// (final round offers no tools; reads <c>Llm:*</c> and <c>AiKnowledge:*</c> live via
+/// (final round offers no tools; reads the active LLM profile and <c>AiKnowledge:*</c> live via
 /// <see cref="IOptionsMonitor{T}"/>). Emits <c>Delta</c> / <c>ToolCall</c> / <c>ToolResult</c> and a
 /// closing <c>Done</c>.
+///
+/// <para>Takes <see cref="ILlmClientFactory"/> rather than a pre-built client: resolving the active
+/// profile can fail, and that has to surface as the controller's 503 — not as a DI error.</para>
 /// </summary>
 public sealed class KnowledgeAssistantService(
-    ILlmClient llm,
+    ILlmClientFactory llmFactory,
     PromptCatalog prompts,
     IKnowledgeToolRegistry tools,
     IOptionsMonitor<LlmOptions> llmOptions,
@@ -55,13 +58,18 @@ public sealed class KnowledgeAssistantService(
             + KnowledgeTimeContext.Build(DateTimeOffset.UtcNow, request.TimeZone, request.UtcOffsetMinutes);
         var conversation = new List<LlmMessage>(BuildConversation(request));
 
-        var llmOpts = llmOptions.CurrentValue;
+        var llm = llmFactory.Create(); // throws unless an active profile resolves
+        // Re-read rather than reuse: a config reload between the two calls would otherwise NRE.
+        // The tool-calling defaults of a fresh profile (off) are the safe answer for that window.
+        var profile = llmOptions.CurrentValue.TryResolveActiveProfile(out var active)
+            ? active
+            : new LlmProfileOptions();
         var kOpts = knowledgeOptions.CurrentValue;
-        var maxDepth = Math.Max(1, llmOpts.ToolCallMaxDepth);
+        var maxDepth = Math.Max(1, profile.ToolCallMaxDepth);
 
         IReadOnlyList<LlmToolDefinition>? toolDefs = null;
         KnowledgeToolContext? toolContext = null;
-        if (llmOpts.EnableToolCalling)
+        if (profile.EnableToolCalling)
         {
             // The operational reader only goes into the context when operational data is enabled —
             // otherwise its tools are neither offered nor executable. The settings reader is present

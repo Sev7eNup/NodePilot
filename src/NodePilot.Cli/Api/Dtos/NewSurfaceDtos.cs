@@ -123,10 +123,13 @@ public sealed record SettingsTestProbeResult(
 // Test-probe wrappers carry the section DTO + extras. The CLI does not parse the
 // inner DTO — it forwards raw JSON from the user — so we model these as JsonElement
 // envelopes to mirror the SmtpTestProbeRequest(SmtpSettingsDto Settings, string? ToAddress)
-// + LlmTestProbeRequest(LlmSettingsDto Settings) shapes without duplicating every
-// SmtpSettingsDto/LlmSettingsDto field.
+// + LlmTestProbeRequest(string? ProfileId, LlmProfileProbeDto Settings) shapes without
+// duplicating every SmtpSettingsDto/LlmProfileProbeDto field.
 public sealed record SmtpTestProbeRequest(JsonElement Settings, string? ToAddress);
-public sealed record LlmTestProbeRequest(JsonElement Settings);
+
+// ProfileId is only needed when Settings.apiKey is the "__unchanged__" marker — it names the
+// stored profile whose key should be used.
+public sealed record LlmTestProbeRequest(string? ProfileId, JsonElement Settings);
 
 // ---- Step Test --------------------------------------------------------------
 // ConfigOverride is executable unsaved editor state; the API requires Edit + the caller's lock.

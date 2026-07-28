@@ -69,22 +69,27 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var ldap = initialLdap ?? new LdapOptions();
         var windows = initialWindows ?? new WindowsAuthOptions();
 
-        var cfg = new ConfigurationBuilder()
-            .AddInMemoryCollection(new Dictionary<string, string?>
+        var configValues = new Dictionary<string, string?>
             {
                 ["Smtp:Host"]     = initial.Host,
                 ["Smtp:Port"]     = initial.Port.ToString(),
                 ["Smtp:From"]     = initial.From,
                 ["Smtp:Username"] = initial.Username,
                 ["Smtp:Password"] = initial.Password,
-                ["Llm:Enabled"]   = llm.Enabled.ToString(),
-                ["Llm:BaseUrl"]   = llm.BaseUrl,
-                ["Llm:ApiKey"]    = llm.ApiKey,
-                ["Llm:Model"]     = llm.Model,
+                ["Llm:Enabled"]         = llm.Enabled.ToString(),
+                ["Llm:ActiveProfileId"] = llm.ActiveProfileId,
                 ["Retention:Executions:MaxAgeDays"] = ret.Executions.MaxAgeDays.ToString(),
                 ["Retention:AuditLog:MaxAgeDays"]   = ret.AuditLog.MaxAgeDays.ToString(),
-            })
-            .Build();
+            };
+        // Profiles are operator-defined keys, so they can't be listed literally like the rest.
+        foreach (var (id, p) in llm.Profiles)
+        {
+            configValues[$"Llm:Profiles:{id}:Name"] = p.Name;
+            configValues[$"Llm:Profiles:{id}:BaseUrl"] = p.BaseUrl;
+            configValues[$"Llm:Profiles:{id}:ApiKey"] = p.ApiKey;
+            configValues[$"Llm:Profiles:{id}:Model"] = p.Model;
+        }
+        var cfg = new ConfigurationBuilder().AddInMemoryCollection(configValues).Build();
         var audit = new CapturingAuditWriter();
         var probe = new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpFactory());
 
@@ -132,16 +137,19 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     [Fact]
     public void GetSection_Llm_MasksApiKey_WhenSet()
     {
-        var (controller, _, _, _) = NewController(initialLlm: new LlmOptions
-        {
-            Enabled = true, BaseUrl = "http://localhost:1234/v1", Model = "gpt", ApiKey = "real-api-key",
-        });
+        var (controller, _, _, _) = NewController(initialLlm: LlmTestOptions.WithProfile(
+            baseUrl: "http://localhost:1234/v1", model: "gpt", apiKey: "real-api-key"));
         var result = controller.GetSection("Llm") as OkObjectResult;
         result.Should().NotBeNull();
         var payload = result!.Value!.GetType().GetProperty("Payload")!.GetValue(result.Value) as LlmSettingsDto;
-        payload!.ApiKey.Should().Be("********");
-        payload.Enabled.Should().BeTrue();
-        payload.Model.Should().Be("gpt");
+        payload!.Enabled.Should().BeTrue();
+        payload.ActiveProfileId.Should().Be("default");
+        payload.Profiles.Should().ContainSingle();
+        payload.Profiles[0].ApiKey.Should().Be("********");
+        payload.Profiles[0].Model.Should().Be("gpt");
+        // The profile lives only in the in-memory config here, which classifies as "unknown" —
+        // any non-runtime source means "not deletable through the API".
+        payload.Profiles[0].ManagedBy.Should().NotBeNull();
     }
 
     [Fact]
@@ -218,6 +226,35 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             "validation must fail before any file is written, otherwise a partially-saved override file could survive");
     }
 
+    /// <summary>A single-profile LLM PUT body. <paramref name="apiKey"/> is raw JSON (so a caller can pass null, a string, or the sentinel).</summary>
+    private static string LlmBody(
+        string baseUrl = "http://localhost:1234/v1",
+        string model = "gpt",
+        string apiKey = "null",
+        bool enableToolCalling = false,
+        int toolCallMaxDepth = 6,
+        string profileId = "p1",
+        string activeProfileId = "p1")
+        => $$"""
+            {
+              "Enabled": true,
+              "ActiveProfileId": "{{activeProfileId}}",
+              "Profiles": [
+                {
+                  "Id": "{{profileId}}",
+                  "Name": "Profile {{profileId}}",
+                  "BaseUrl": "{{baseUrl}}",
+                  "Model": "{{model}}",
+                  "MaxTokens": 4096,
+                  "TimeoutSeconds": 60,
+                  "EnableToolCalling": {{(enableToolCalling ? "true" : "false")}},
+                  "ToolCallMaxDepth": {{toolCallMaxDepth}},
+                  "ApiKey": {{apiKey}}
+                }
+              ]
+            }
+            """;
+
     [Fact]
     public async Task PutSection_Llm_CloudMetadataBaseUrl_Returns400_NoFileWrite()
     {
@@ -228,9 +265,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var (controller, writer, _, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
 
-        var body = JsonDocument.Parse(
-            "{\"Enabled\":true,\"BaseUrl\":\"http://169.254.169.254/v1\",\"Model\":\"gpt\",\"MaxTokens\":4096,\"TimeoutSeconds\":60,\"ApiKey\":null}"
-        ).RootElement;
+        var body = JsonDocument.Parse(LlmBody(baseUrl: "http://169.254.169.254/v1")).RootElement;
         var result = await controller.PutSection("Llm", body, CancellationToken.None);
 
         result.Should().BeOfType<BadRequestObjectResult>();
@@ -246,16 +281,13 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var (controller, writer, _, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
 
-        var body = JsonDocument.Parse(
-            "{\"Enabled\":true,\"BaseUrl\":\"http://localhost:1234/v1\",\"Model\":\"gpt\",\"MaxTokens\":4096,"
-            + "\"TimeoutSeconds\":60,\"EnableToolCalling\":true,\"ToolCallMaxDepth\":6,\"ApiKey\":null}"
-        ).RootElement;
+        var body = JsonDocument.Parse(LlmBody(enableToolCalling: true, toolCallMaxDepth: 6)).RootElement;
         var result = await controller.PutSection("Llm", body, CancellationToken.None);
 
         result.Should().BeOfType<OkObjectResult>();
-        var llm = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!.AsObject();
-        llm["EnableToolCalling"]!.GetValue<bool>().Should().BeTrue();
-        llm["ToolCallMaxDepth"]!.GetValue<int>().Should().Be(6);
+        var profile = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!["p1"]!.AsObject();
+        profile["EnableToolCalling"]!.GetValue<bool>().Should().BeTrue();
+        profile["ToolCallMaxDepth"]!.GetValue<int>().Should().Be(6);
     }
 
     [Fact]
@@ -264,10 +296,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var (controller, writer, _, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
 
-        var body = JsonDocument.Parse(
-            "{\"Enabled\":true,\"BaseUrl\":\"http://localhost:1234/v1\",\"Model\":\"gpt\",\"MaxTokens\":4096,"
-            + "\"TimeoutSeconds\":60,\"EnableToolCalling\":true,\"ToolCallMaxDepth\":99,\"ApiKey\":null}" // > [Range(1,10)]
-        ).RootElement;
+        // ToolCallMaxDepth 99 > [Range(1,10)] — and it sits on a NESTED profile object, which
+        // Validator.TryValidateObject does not reach on its own (LlmSettingsDto.Validate does).
+        var body = JsonDocument.Parse(LlmBody(enableToolCalling: true, toolCallMaxDepth: 99)).RootElement;
         var result = await controller.PutSection("Llm", body, CancellationToken.None);
 
         result.Should().BeOfType<BadRequestObjectResult>();
@@ -390,9 +421,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var (controller, writer, audit, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
 
-        var body = JsonDocument.Parse(
-            "{\"Enabled\":true,\"BaseUrl\":\"http://127.0.0.1:1234/v1\",\"Model\":\"gpt-4o-mini\",\"MaxTokens\":4096,\"TimeoutSeconds\":60,\"ApiKey\":\"sk-real-secret\"}"
-        ).RootElement;
+        var body = JsonDocument.Parse(LlmBody(apiKey: "\"sk-real-secret\"")).RootElement;
         var result = await controller.PutSection("Llm", body, CancellationToken.None);
 
         result.Should().BeOfType<OkObjectResult>();
@@ -401,6 +430,331 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         fileContent.Should().NotContain("sk-real-secret",
             "API keys persisted to the override file must always go through the secret protector");
         audit.Calls.Should().ContainSingle(c => c.Action == "SETTINGS_LLM_UPDATED");
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_TwoProfiles_PersistsBothKeyedById()
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse("""
+            {
+              "Enabled": true,
+              "ActiveProfileId": "ollama",
+              "Profiles": [
+                { "Id": "openai", "Name": "OpenAI", "BaseUrl": "https://api.openai.com/v1", "Model": "gpt-4o-mini",
+                  "MaxTokens": 4096, "TimeoutSeconds": 60, "EnableToolCalling": true, "ToolCallMaxDepth": 4, "ApiKey": "sk-one" },
+                { "Id": "ollama", "Name": "Local Ollama", "BaseUrl": "http://localhost:11434/v1", "Model": "llama3",
+                  "MaxTokens": 8192, "TimeoutSeconds": 600, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null }
+              ]
+            }
+            """).RootElement;
+
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        var llm = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!.AsObject();
+        llm["ActiveProfileId"]!.GetValue<string>().Should().Be("ollama");
+        var profiles = llm["Profiles"]!.AsObject();
+        profiles.Count.Should().Be(2);
+        profiles["openai"]!["Model"]!.GetValue<string>().Should().Be("gpt-4o-mini");
+        profiles["openai"]!["EnableToolCalling"]!.GetValue<bool>().Should().BeTrue();
+        profiles["ollama"]!["TimeoutSeconds"]!.GetValue<int>().Should().Be(600);
+        // Tool-calling is per profile: the second one keeps its own answer.
+        profiles["ollama"]!["EnableToolCalling"]!.GetValue<bool>().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_RenamedProfile_KeepsItsApiKey()
+    {
+        // The id is what the secret is matched by. Renaming (Name changes, Id doesn't) with the
+        // unchanged-sentinel must preserve the stored ciphertext.
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        await controller.PutSection("Llm", JsonDocument.Parse(LlmBody(apiKey: "\"sk-original\"")).RootElement, CancellationToken.None);
+        var persistedKey = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!["p1"]!["ApiKey"]!.GetValue<string>();
+
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        var renamed = JsonDocument.Parse("""
+            {
+              "Enabled": true,
+              "ActiveProfileId": "p1",
+              "Profiles": [
+                { "Id": "p1", "Name": "Renamed", "BaseUrl": "http://localhost:1234/v1", "Model": "gpt",
+                  "MaxTokens": 4096, "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6,
+                  "ApiKey": "__unchanged__" }
+              ]
+            }
+            """).RootElement;
+
+        var result = await controller.PutSection("Llm", renamed, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        var profile = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!["p1"]!.AsObject();
+        profile["Name"]!.GetValue<string>().Should().Be("Renamed");
+        profile["ApiKey"]!.GetValue<string>().Should().Be(persistedKey, "the sentinel keeps the stored key across a rename");
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_ReorderedProfiles_DoNotSwapApiKeys()
+    {
+        // Regression guard for the reason profiles are keyed by id rather than by array index:
+        // with index matching, dropping/reordering an entry would hand a profile someone else's key.
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        await controller.PutSection("Llm", JsonDocument.Parse("""
+            {
+              "Enabled": true, "ActiveProfileId": "a",
+              "Profiles": [
+                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "key-a" },
+                { "Id": "b", "Name": "B", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "key-b" }
+              ]
+            }
+            """).RootElement, CancellationToken.None);
+        var before = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!.AsObject();
+        var keyA = before["a"]!["ApiKey"]!.GetValue<string>();
+        var keyB = before["b"]!["ApiKey"]!.GetValue<string>();
+        keyA.Should().NotBe(keyB);
+
+        // Same profiles, opposite order, both with the sentinel.
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        await controller.PutSection("Llm", JsonDocument.Parse("""
+            {
+              "Enabled": true, "ActiveProfileId": "a",
+              "Profiles": [
+                { "Id": "b", "Name": "B", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "__unchanged__" },
+                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "__unchanged__" }
+              ]
+            }
+            """).RootElement, CancellationToken.None);
+
+        var after = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!.AsObject();
+        after["a"]!["ApiKey"]!.GetValue<string>().Should().Be(keyA);
+        after["b"]!["ApiKey"]!.GetValue<string>().Should().Be(keyB);
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_MaskLiteralAsApiKey_KeepsStoredKey_DoesNotPersistTheMask()
+    {
+        // A client that PUTs back what GET returned sends "********". Encrypting that literal as
+        // the new key would silently destroy the real one — it must read as "unchanged" instead.
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        await controller.PutSection("Llm", JsonDocument.Parse(LlmBody(apiKey: "\"sk-real-secret\"")).RootElement, CancellationToken.None);
+        var persistedKey = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!["p1"]!["ApiKey"]!.GetValue<string>();
+
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        var result = await controller.PutSection("Llm", JsonDocument.Parse(LlmBody(apiKey: "\"********\"")).RootElement, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        var stored = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!["p1"]!["ApiKey"]!.GetValue<string>();
+        stored.Should().Be(persistedKey);
+        // The passthrough protector would have produced "ENC:********" had the mask been treated as a value.
+        File.ReadAllText(writer.OverridesPath).Should().NotContain("ENC:********");
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_ClearingApiKey_PersistsNull()
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        await controller.PutSection("Llm", JsonDocument.Parse(LlmBody(apiKey: "\"sk-real-secret\"")).RootElement, CancellationToken.None);
+
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        await controller.PutSection("Llm", JsonDocument.Parse(LlmBody(apiKey: "null")).RootElement, CancellationToken.None);
+
+        JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!["p1"]!["ApiKey"]
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_AuditDiff_RedactsEveryProfileApiKey()
+    {
+        var (controller, writer, audit, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse("""
+            {
+              "Enabled": true, "ActiveProfileId": "a",
+              "Profiles": [
+                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "sk-alpha" },
+                { "Id": "b", "Name": "B", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "sk-beta" }
+              ]
+            }
+            """).RootElement;
+        await controller.PutSection("Llm", body, CancellationToken.None);
+
+        var details = audit.Calls.Single(c => c.Action == "SETTINGS_LLM_UPDATED").Details!;
+        details.Should().NotContain("sk-alpha").And.NotContain("sk-beta");
+        var after = JsonNode.Parse(details)!["after"]!["Profiles"]!.AsObject();
+        after["a"]!["ApiKey"]!.GetValue<string>().Should().Be("***");
+        after["b"]!["ApiKey"]!.GetValue<string>().Should().Be("***");
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_DroppingABaseConfigProfile_Returns400_NotDeletable()
+    {
+        // The runtime overrides file is one configuration provider among several and the merge is
+        // additive: a profile defined in appsettings.json would reappear on the next reload. Saying
+        // so is the honest answer; silently accepting a delete that doesn't delete is not.
+        var (controller, writer, _, _) = NewController(initialLlm: LlmTestOptions.WithProfile(id: "baked"));
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        // The payload omits "baked" entirely.
+        var result = await controller.PutSection("Llm", JsonDocument.Parse(LlmBody()).RootElement, CancellationToken.None);
+
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        bad.Value!.GetType().GetProperty("code")!.GetValue(bad.Value).Should().Be("LLM_PROFILE_NOT_DELETABLE");
+        File.Exists(writer.OverridesPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_DroppingARuntimeOwnedProfile_Succeeds()
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        await controller.PutSection("Llm", JsonDocument.Parse("""
+            {
+              "Enabled": true, "ActiveProfileId": "a",
+              "Profiles": [
+                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null },
+                { "Id": "b", "Name": "B", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null }
+              ]
+            }
+            """).RootElement, CancellationToken.None);
+
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        var result = await controller.PutSection("Llm", JsonDocument.Parse("""
+            {
+              "Enabled": true, "ActiveProfileId": "a",
+              "Profiles": [
+                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "__unchanged__" }
+              ]
+            }
+            """).RootElement, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        var remaining = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!.AsObject();
+        remaining.Count.Should().Be(1);
+        remaining.ContainsKey("a").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_InvalidBaseUrlOnSecondProfile_ReportsIndexedFieldName()
+    {
+        // Validator.TryValidateObject does not recurse into collection elements — without the
+        // explicit per-profile pass in LlmSettingsDto.Validate, [Url] here would be dead metadata.
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse("""
+            {
+              "Enabled": true, "ActiveProfileId": "a",
+              "Profiles": [
+                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null },
+                { "Id": "b", "Name": "B", "BaseUrl": "not-a-url", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null }
+              ]
+            }
+            """).RootElement;
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        var bad = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(bad.Value).Should().Contain("Profiles[1].BaseUrl");
+        File.Exists(writer.OverridesPath).Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData("Not A Slug")]   // spaces/uppercase aren't valid config key segments
+    [InlineData("-leading")]
+    [InlineData("")]
+    public async Task PutSection_Llm_InvalidProfileId_Returns400(string profileId)
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse(LlmBody(profileId: profileId, activeProfileId: profileId)).RootElement;
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        File.Exists(writer.OverridesPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_DuplicateProfileName_Returns400()
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse("""
+            {
+              "Enabled": true, "ActiveProfileId": "a",
+              "Profiles": [
+                { "Id": "a", "Name": "Same", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null },
+                { "Id": "b", "Name": "same", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                  "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null }
+              ]
+            }
+            """).RootElement;
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_EnabledWithUnknownActiveProfile_Returns400()
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse(LlmBody(profileId: "p1", activeProfileId: "gone")).RootElement;
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        File.Exists(writer.OverridesPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_DisabledWithNoProfiles_Succeeds()
+    {
+        // Turning the integration off must always be possible, even from a broken profile state.
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse("""{ "Enabled": false, "ActiveProfileId": "", "Profiles": [] }""").RootElement;
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Enabled"]!.GetValue<bool>().Should().BeFalse();
+    }
+
+    [Fact]
+    public void GetSection_Llm_ConfigKeysCoverEveryProfile()
+    {
+        // The key set is recomputed per request — it's what feeds the UI's per-field env badges.
+        var llm = LlmTestOptions.WithProfile(id: "alpha");
+        llm.Profiles["beta"] = new LlmProfileOptions { Name = "Beta", BaseUrl = "http://b/v1", Model = "m" };
+        var (controller, _, _, _) = NewController(initialLlm: llm);
+
+        var result = controller.GetSection("Llm") as OkObjectResult;
+        var sources = result!.Value!.GetType().GetProperty("EffectiveSource")!
+            .GetValue(result.Value) as IReadOnlyDictionary<string, string>;
+
+        sources.Should().ContainKey("Llm:ActiveProfileId");
+        sources.Should().ContainKey("Llm:Profiles:alpha:BaseUrl");
+        sources.Should().ContainKey("Llm:Profiles:beta:ApiKey");
     }
 
     [Fact]

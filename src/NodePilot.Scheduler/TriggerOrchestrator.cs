@@ -103,10 +103,22 @@ public class TriggerOrchestrator : BackgroundService
         }
 
         // Tear down all active sources on shutdown
+        await DisposeActiveSourcesAsync();
+        _logger.LogInformation("TriggerOrchestrator stopped");
+    }
+
+    /// <summary>
+    /// Disposes every registered trigger source and empties the registry. A source can hold
+    /// process-global state — <see cref="Sources.ScheduleTriggerSource"/> occupies a slot in the
+    /// static <c>MaxActiveJobs</c> counter — so every teardown path has to run this. Internal
+    /// rather than private because tests drive <see cref="SyncAsync"/> directly and never start
+    /// the BackgroundService loop that owns the shutdown path above.
+    /// </summary>
+    internal async Task DisposeActiveSourcesAsync()
+    {
         foreach (var (_, entry) in _active)
             try { await entry.source.DisposeAsync(); } catch { /* best effort */ }
         _active.Clear();
-        _logger.LogInformation("TriggerOrchestrator stopped");
     }
 
     internal async Task SyncAsync(CancellationToken ct)
@@ -159,9 +171,7 @@ public class TriggerOrchestrator : BackgroundService
             if (!_active.IsEmpty)
             {
                 _logger.LogInformation("Lost leadership — disposing {N} active trigger sources", _active.Count);
-                foreach (var (_, entry) in _active)
-                    try { await entry.source.DisposeAsync(); } catch { /* best-effort */ }
-                _active.Clear();
+                await DisposeActiveSourcesAsync();
                 _parseCache.Clear();
                 _backoff.Clear();
             }

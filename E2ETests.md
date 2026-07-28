@@ -1930,6 +1930,28 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 ---
 
+### Test 17.5 — Typografie (IBM Plex Sans / IBM Plex Mono)
+
+**Schritte:**
+1. Beliebige Seite öffnen, DevTools → Network auf `Font` filtern, neu laden
+2. Dichte Listen durchgehen: Workflows, Executions, Machines, Audit-Log
+3. Designer öffnen: Node-Labels, Properties-Panel, Activity-Bibliothek
+4. Script-Editor (Monaco) und DB-Viewer-Query-Pane (CodeMirror) öffnen
+5. Skins durchschalten: Atelier-Designer und `light-sparkasse`
+
+**Prüfpunkte:**
+- [ ] Geladene Fonts kommen ausschliesslich von der eigenen Origin (`/assets/*.woff2`) — kein Google-Fonts- oder CDN-Request
+- [ ] Fliesstext steht in IBM Plex Sans, Code/IDs/Logs in IBM Plex Mono
+- [ ] Dichte Tabellen (`text-xs`) sind unverändert gut lesbar — der `font-size-adjust`-Ausgleich in `index.css` greift
+- [ ] Kein Text-Overflow in fixed-width-Chrome: Node-Labels, Badges, Tabellenköpfe
+- [ ] Zahlen-Spalten mit `tabular-nums` bleiben bündig untereinander
+- [ ] Monaco und CodeMirror zeigen IBM Plex Mono inkl. bündiger Zeilennummern-Gutter
+- [ ] `light-sparkasse`: Sidebar steht weiterhin in Segoe UI (bewusste Corporate-Fidelity)
+
+**Erwartung:** Ein durchgehendes Type-System ohne externe Requests; Dichte wie vor der Umstellung
+
+---
+
 ## Teil 18: Workflow-Organisation
 
 ### Test 18.1 — Workflow-Ordner (Folder Hierarchy)
@@ -2878,7 +2900,7 @@ Pflicht-Lese: CLAUDE.md "KI-Features", `docs/ai-features.md`.
 
 ### Test 32.1 — Generate-Script (Sparkles-Button)
 
-**Setup:** `Llm:Enabled: true`, `Llm:BaseUrl: http://127.0.0.1:11434/v1` (lokales Ollama oder LM Studio).
+**Setup:** `Llm:Enabled: true` plus ein Profil (Settings -> System -> Integrations -> LLM) mit `BaseUrl: http://127.0.0.1:11434/v1` (lokales Ollama oder LM Studio), als aktives Profil gewaehlt.
 
 **Schritte:**
 1. runScript-Node selektieren → Properties.
@@ -2927,7 +2949,7 @@ Pflicht-Lese: CLAUDE.md "KI-Features", `docs/ai-features.md`.
 
 ### Test 32.5 — SSRF-Block bei Cloud-Metadata-IP
 
-**Setup:** `Llm:BaseUrl: http://169.254.169.254/v1` in appsettings.
+**Setup:** `Llm:Enabled: true` und `Llm:Profiles:test:BaseUrl: http://169.254.169.254/v1` in appsettings.
 
 **Schritte:** Backend starten.
 
@@ -2939,7 +2961,7 @@ Pflicht-Lese: CLAUDE.md "KI-Features", `docs/ai-features.md`.
 
 ### Test 32.6 — Plaintext-API-Key Warning
 
-**Setup:** `Llm:ApiKey: "sk-…"` als Klartext in appsettings.
+**Setup:** `Llm:Profiles:test:ApiKey: "sk-…"` als Klartext in appsettings.
 
 **Schritte:** Backend starten.
 
@@ -4188,9 +4210,9 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ---
 
-### Test 77.9 — Tool-Calling-Anzeige (opt-in `Llm:EnableToolCalling=true`)
+### Test 77.9 — Tool-Calling-Anzeige (opt-in, pro LLM-Profil)
 
-**Voraussetzung:** `Llm:EnableToolCalling=true` in den Admin-Einstellungen.
+**Voraussetzung:** Tool-Calling am **aktiven** LLM-Profil eingeschaltet (Admin-Einstellungen -> Integrations -> LLM -> Profil -> „Tool-Calling im KI-Chat“).
 
 **Schritte:** Frage stellen, die Tool-Calling auslöst → SSE-Stream sendet `building` → `tool_call` → `tool_result` → `delta` → `done`.
 
@@ -4198,7 +4220,8 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 - [ ] `building`-Event → UI zeigt „Generiere Workflow-Änderung…" (oder ähnliche Status-Meldung).
 - [ ] `tool_call`-Event → „analyze_workflow — running…"-Anzeige erscheint im Panel.
 - [ ] `tool_result`-Event → die Anzeige wechselt zu „checked".
-- [ ] Ist `Llm:EnableToolCalling=false` (Default), wird die Tool-Calling-Schleife nicht ausgeführt (keine `tool_call`/`tool_result`-Events).
+- [ ] Ist Tool-Calling am aktiven Profil aus (Default), wird die Schleife nicht ausgeführt (keine `tool_call`/`tool_result`-Events).
+- [ ] Umschalten auf ein Profil **ohne** Tool-Calling schaltet die Schleife ab, ohne dass sonst etwas geändert werden muss — die Fähigkeit hängt am Modell, nicht an der Installation.
 
 ---
 
@@ -4285,7 +4308,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ## Teil 80: Globaler AI-Chat (`/ai-chat`)
 
-> Voraussetzung: `Llm:Enabled=true` + `Llm:EnableToolCalling=true`; Wissensquellen in den Admin-Settings
+> Voraussetzung: `Llm:Enabled=true`, ein ausgewähltes aktives LLM-Profil mit eingeschaltetem Tool-Calling; Wissensquellen in den Admin-Settings
 > (Sektion `AiKnowledge`) aktiviert. Siehe `docs/ai-features.md`. Read-only, canvas-frei.
 
 ### Test 80.1 — Quellen-Badges & Empty-State
@@ -4400,7 +4423,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 [ ] Teil 14: Alle Trigger-Typen (14.1 — 14.5)
 [ ] Teil 15: Admin & User-Management (15.1 — 15.4)
 [ ] Teil 16: Audit Log (16.1 — 16.3)
-[ ] Teil 17: Theme & UX (17.1 — 17.4)
+[ ] Teil 17: Theme & UX (17.1 — 17.5)
 [ ] Teil 18: Workflow-Organisation (18.1 — 18.3)
 [ ] Teil 19: Workflow-Diff / Version-Compare (19.1 — 19.3)
 [ ] Teil 20: Machines & Credentials (20.1 — 20.3)

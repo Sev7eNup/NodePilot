@@ -14,6 +14,12 @@ using NodePilot.Telemetry;
 
 namespace NodePilot.Api.Configuration;
 
+/// <summary>
+/// A section-specific reason to refuse a write that isn't a field-validation problem. Surfaces as
+/// a 400 with this <paramref name="Code"/> so clients can branch on it.
+/// </summary>
+public sealed record SettingsSectionWriteRejection(string Code, string Message);
+
 public interface ISettingsSectionAdapter
 {
     SettingsSectionDescriptor Descriptor { get; }
@@ -22,6 +28,13 @@ public interface ISettingsSectionAdapter
     object BuildPayloadFromJson(JsonObject? section);
     object Deserialize(JsonElement payload, JsonSerializerOptions options);
     IReadOnlyList<ValidationResult> Validate(object payload);
+
+    /// <summary>
+    /// Section-specific gate that runs after field validation and before anything is written.
+    /// Returns null when the write may proceed. Default: no extra rules.
+    /// </summary>
+    SettingsSectionWriteRejection? CheckWriteAllowed(object payload) => null;
+
     JsonObject BuildSectionObject(object payload, JsonObject? previousSection);
 }
 
@@ -71,10 +84,11 @@ public static class SettingsSectionAdapters
 
             new DelegateSettingsSectionAdapter<LlmSettingsDto>(
                 Descriptor("Llm"),
-                ["Llm:Enabled", "Llm:BaseUrl", "Llm:ApiKey", "Llm:Model", "Llm:MaxTokens", "Llm:TimeoutSeconds", "Llm:EnableToolCalling", "Llm:ToolCallMaxDepth"],
-                () => BuildLlmDto(llmOptions.CurrentValue),
-                BuildLlmDtoFromJson,
-                (dto, previous) => BuildLlmSectionObject(dto, previous, protector)),
+                () => LlmConfigKeys(llmOptions.CurrentValue),
+                () => BuildLlmDto(llmOptions.CurrentValue, configRoot),
+                section => BuildLlmDtoFromJson(section, configRoot),
+                (dto, previous) => BuildLlmSectionObject(dto, previous, protector),
+                dto => CheckLlmProfileDeletions(dto, configRoot)),
 
             new DelegateSettingsSectionAdapter<AiKnowledgeSettingsDto>(
                 Descriptor("AiKnowledge"),
@@ -262,9 +276,11 @@ public static class SettingsSectionAdapters
     private sealed class DelegateSettingsSectionAdapter<TDto> : ISettingsSectionAdapter
         where TDto : class
     {
+        private readonly Func<IReadOnlyList<string>> _configKeys;
         private readonly Func<TDto> _buildCurrentPayload;
         private readonly Func<JsonObject?, TDto> _buildPayloadFromJson;
         private readonly Func<TDto, JsonObject?, JsonObject> _buildSectionObject;
+        private readonly Func<TDto, SettingsSectionWriteRejection?>? _checkWriteAllowed;
 
         public DelegateSettingsSectionAdapter(
             SettingsSectionDescriptor descriptor,
@@ -272,16 +288,35 @@ public static class SettingsSectionAdapters
             Func<TDto> buildCurrentPayload,
             Func<JsonObject?, TDto> buildPayloadFromJson,
             Func<TDto, JsonObject?, JsonObject> buildSectionObject)
+            : this(descriptor, () => configKeys, buildCurrentPayload, buildPayloadFromJson, buildSectionObject)
+        {
+        }
+
+        /// <summary>
+        /// Overload for sections whose key set isn't fixed — the LLM section's keys depend on the
+        /// operator-defined profile ids, so they have to be recomputed per request.
+        /// </summary>
+        public DelegateSettingsSectionAdapter(
+            SettingsSectionDescriptor descriptor,
+            Func<IReadOnlyList<string>> configKeys,
+            Func<TDto> buildCurrentPayload,
+            Func<JsonObject?, TDto> buildPayloadFromJson,
+            Func<TDto, JsonObject?, JsonObject> buildSectionObject,
+            Func<TDto, SettingsSectionWriteRejection?>? checkWriteAllowed = null)
         {
             Descriptor = descriptor;
-            ConfigKeys = configKeys;
+            _configKeys = configKeys;
             _buildCurrentPayload = buildCurrentPayload;
             _buildPayloadFromJson = buildPayloadFromJson;
             _buildSectionObject = buildSectionObject;
+            _checkWriteAllowed = checkWriteAllowed;
         }
 
         public SettingsSectionDescriptor Descriptor { get; }
-        public IReadOnlyList<string> ConfigKeys { get; }
+        public IReadOnlyList<string> ConfigKeys => _configKeys();
+
+        public SettingsSectionWriteRejection? CheckWriteAllowed(object payload)
+            => _checkWriteAllowed?.Invoke((TDto)payload);
 
         public object BuildCurrentPayload() => _buildCurrentPayload();
         public object BuildPayloadFromJson(JsonObject? section) => _buildPayloadFromJson(section);
@@ -348,31 +383,90 @@ public static class SettingsSectionAdapters
         return section;
     }
 
-    private static LlmSettingsDto BuildLlmDto(LlmOptions s) => new()
+    /// <summary>The per-profile field names, in the order they are persisted.</summary>
+    private static readonly string[] LlmProfileFieldNames =
+    [
+        "Name", "BaseUrl", "ApiKey", "Model", "MaxTokens", "TimeoutSeconds",
+        "EnableToolCalling", "ToolCallMaxDepth",
+    ];
+
+    /// <summary>
+    /// Recomputed per request: the LLM section's key set depends on the operator-defined profile
+    /// ids, which is what feeds the UI's per-field env-override badges.
+    /// </summary>
+    private static IReadOnlyList<string> LlmConfigKeys(LlmOptions s)
+    {
+        var keys = new List<string> { "Llm:Enabled", "Llm:ActiveProfileId" };
+        foreach (var id in s.Profiles.Keys.OrderBy(k => k, StringComparer.Ordinal))
+        {
+            foreach (var field in LlmProfileFieldNames)
+                keys.Add($"Llm:Profiles:{id}:{field}");
+        }
+        return keys;
+    }
+
+    /// <summary>
+    /// Which configuration source owns a profile besides the runtime overrides file — see
+    /// <see cref="LlmProfileSettingsDto.ManagedBy"/>. Null ⇒ the Settings UI can delete it.
+    /// </summary>
+    private static string? LlmProfileManagedBy(IConfigurationRoot configRoot, string profileId)
+        => EffectiveSourceDetector.DetectNonRuntimeSource(
+            configRoot,
+            LlmProfileFieldNames.Select(f => $"Llm:Profiles:{profileId}:{f}"));
+
+    private static LlmSettingsDto BuildLlmDto(LlmOptions s, IConfigurationRoot configRoot) => new()
     {
         Enabled = s.Enabled,
-        BaseUrl = s.BaseUrl,
-        ApiKey = string.IsNullOrEmpty(s.ApiKey) ? null : "********",
-        Model = s.Model,
-        MaxTokens = s.MaxTokens,
-        TimeoutSeconds = s.TimeoutSeconds,
-        EnableToolCalling = s.EnableToolCalling,
-        ToolCallMaxDepth = s.ToolCallMaxDepth,
+        ActiveProfileId = s.ActiveProfileId,
+        // Ordered by id so the UI list is stable across saves — a Dictionary's own order isn't.
+        Profiles = s.Profiles
+            .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv => new LlmProfileSettingsDto
+            {
+                Id = kv.Key,
+                Name = kv.Value.Name,
+                BaseUrl = kv.Value.BaseUrl,
+                ApiKey = string.IsNullOrEmpty(kv.Value.ApiKey) ? null : SettingsSchema.MaskedSecretDisplay,
+                Model = kv.Value.Model,
+                MaxTokens = kv.Value.MaxTokens,
+                TimeoutSeconds = kv.Value.TimeoutSeconds,
+                EnableToolCalling = kv.Value.EnableToolCalling,
+                ToolCallMaxDepth = kv.Value.ToolCallMaxDepth,
+                ManagedBy = LlmProfileManagedBy(configRoot, kv.Key),
+            })
+            .ToList(),
     };
 
-    private static LlmSettingsDto BuildLlmDtoFromJson(JsonObject? section)
+    private static LlmSettingsDto BuildLlmDtoFromJson(JsonObject? section, IConfigurationRoot configRoot)
     {
         section ??= new JsonObject();
+        var profiles = new List<LlmProfileSettingsDto>();
+        if (section["Profiles"] is JsonObject profileObj)
+        {
+            foreach (var (id, node) in profileObj.OrderBy(kv => kv.Key, StringComparer.Ordinal))
+            {
+                if (node is not JsonObject p) continue;
+                profiles.Add(new LlmProfileSettingsDto
+                {
+                    Id = id,
+                    Name = p["Name"]?.GetValue<string>() ?? "",
+                    BaseUrl = p["BaseUrl"]?.GetValue<string>() ?? "",
+                    ApiKey = HasNonNullValue(p, "ApiKey") ? SettingsSchema.MaskedSecretDisplay : null,
+                    Model = p["Model"]?.GetValue<string>() ?? "",
+                    MaxTokens = p["MaxTokens"]?.GetValue<int>() ?? 4096,
+                    TimeoutSeconds = p["TimeoutSeconds"]?.GetValue<int>() ?? 90,
+                    EnableToolCalling = p["EnableToolCalling"]?.GetValue<bool>() ?? false,
+                    ToolCallMaxDepth = p["ToolCallMaxDepth"]?.GetValue<int>() ?? 6,
+                    ManagedBy = LlmProfileManagedBy(configRoot, id),
+                });
+            }
+        }
+
         return new LlmSettingsDto
         {
             Enabled = section["Enabled"]?.GetValue<bool>() ?? false,
-            BaseUrl = section["BaseUrl"]?.GetValue<string>() ?? "",
-            ApiKey = HasNonNullValue(section, "ApiKey") ? "********" : null,
-            Model = section["Model"]?.GetValue<string>() ?? "",
-            MaxTokens = section["MaxTokens"]?.GetValue<int>() ?? 4096,
-            TimeoutSeconds = section["TimeoutSeconds"]?.GetValue<int>() ?? 90,
-            EnableToolCalling = section["EnableToolCalling"]?.GetValue<bool>() ?? false,
-            ToolCallMaxDepth = section["ToolCallMaxDepth"]?.GetValue<int>() ?? 6,
+            ActiveProfileId = section["ActiveProfileId"]?.GetValue<string>() ?? "",
+            Profiles = profiles,
         };
     }
 
@@ -381,18 +475,66 @@ public static class SettingsSectionAdapters
         JsonObject? previousSection,
         ISecretProtector protector)
     {
-        var section = new JsonObject
+        var previousProfiles = (previousSection?["Profiles"] as JsonObject) ?? new JsonObject();
+        var profiles = new JsonObject();
+        foreach (var p in dto.Profiles.OrderBy(p => p.Id, StringComparer.Ordinal))
+        {
+            var id = p.Id.Trim();
+            var profile = new JsonObject
+            {
+                ["Name"] = p.Name.Trim(),
+                ["BaseUrl"] = p.BaseUrl,
+                ["Model"] = p.Model,
+                ["MaxTokens"] = p.MaxTokens,
+                ["TimeoutSeconds"] = p.TimeoutSeconds,
+                ["EnableToolCalling"] = p.EnableToolCalling,
+                ["ToolCallMaxDepth"] = p.ToolCallMaxDepth,
+            };
+            // Match the previous secret BY ID, never by position: ids are immutable, so a rename or
+            // a deletion elsewhere in the list can't hand this profile someone else's API key.
+            var previousProfile = previousProfiles[id] as JsonObject ?? new JsonObject();
+            WriteSecretField(profile, "ApiKey", p.ApiKey, previousProfile, protector);
+            profiles[id] = profile;
+        }
+
+        return new JsonObject
         {
             ["Enabled"] = dto.Enabled,
-            ["BaseUrl"] = dto.BaseUrl,
-            ["Model"] = dto.Model,
-            ["MaxTokens"] = dto.MaxTokens,
-            ["TimeoutSeconds"] = dto.TimeoutSeconds,
-            ["EnableToolCalling"] = dto.EnableToolCalling ?? false,
-            ["ToolCallMaxDepth"] = dto.ToolCallMaxDepth,
+            ["ActiveProfileId"] = dto.ActiveProfileId.Trim(),
+            ["Profiles"] = profiles,
         };
-        WriteSecretField(section, "ApiKey", dto.ApiKey, previousSection ?? new JsonObject(), protector);
-        return section;
+    }
+
+    /// <summary>
+    /// Refuses a save that drops a profile the runtime overrides file doesn't own.
+    ///
+    /// <para>The runtime file is one configuration provider among several, and the merge is
+    /// additive — omitting a profile defined in <c>appsettings.json</c> or in an environment
+    /// variable would make it reappear on the next reload. Rejecting is the honest answer; silently
+    /// accepting a delete that doesn't delete is not.</para>
+    /// </summary>
+    private static SettingsSectionWriteRejection? CheckLlmProfileDeletions(
+        LlmSettingsDto dto, IConfigurationRoot configRoot)
+    {
+        var incoming = dto.Profiles
+            .Select(p => p.Id?.Trim() ?? "")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var existing in configRoot.GetSection(LlmProfileValidation.ProfilesKey).GetChildren())
+        {
+            if (incoming.Contains(existing.Key)) continue;
+
+            var managedBy = LlmProfileManagedBy(configRoot, existing.Key);
+            if (managedBy is null) continue;
+
+            return new SettingsSectionWriteRejection(
+                "LLM_PROFILE_NOT_DELETABLE",
+                $"LLM profile '{existing.Key}' is defined in configuration source '{managedBy}' and cannot be "
+                + "deleted through the Settings API — it would reappear on the next configuration reload. "
+                + $"Remove it there instead, or keep it in the payload. (Editing it here still works.)");
+        }
+
+        return null;
     }
 
     private static AiKnowledgeSettingsDto BuildAiKnowledgeDto(AiKnowledgeOptions s) => new()
@@ -1468,7 +1610,10 @@ public static class SettingsSectionAdapters
         JsonObject previousSection,
         ISecretProtector protector)
     {
-        if (string.Equals(incoming, SettingsSchema.UnchangedSecretSentinel, StringComparison.Ordinal))
+        // Both the explicit sentinel and the display mask mean "keep it". Without the mask case a
+        // client that PUTs back what GET returned would encrypt and persist the literal
+        // "********" as the new secret — silently destroying the real one.
+        if (SettingsSchema.IsUnchangedSecretValue(incoming))
         {
             if (previousSection[key] is JsonValue prev && prev.TryGetValue(out string? prevStr))
                 section[key] = prevStr;

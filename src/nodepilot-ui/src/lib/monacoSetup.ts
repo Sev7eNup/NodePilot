@@ -20,4 +20,19 @@ self.MonacoEnvironment = {
 
 loader.config({ monaco });
 
+/**
+ * Der Mono-Stack als ausgeschriebener String — die einzige bewusste Doppelung zu
+ * `--font-mono` in index.css.
+ *
+ * Monaco kann hier KEINE CSS-Variable verwerten: es misst Zeichenbreiten selbst in
+ * JS (für Cursor-Position, Selektion, Spaltenrechnung) und schickt den Wert vorher
+ * durch seine eigene Sanitisierung — ein `var(--font-mono)` überlebt das nicht.
+ * CodeMirror hat die Einschränkung nicht und referenziert das Token direkt.
+ *
+ * `fontTokens.test.ts` hält beide Seiten deckungsgleich, damit die Doppelung nicht
+ * still auseinanderläuft.
+ */
+export const MONO_FONT_STACK =
+  "'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, 'SFMono-Regular', Menlo, monospace";
+
 export { monaco };

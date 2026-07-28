@@ -30,9 +30,9 @@ public class OpsObservabilityDbCommandTests
                 nodes = new object[]
                 {
                     new { workflowId = wfA, name = "Deploy App", folderId = Guid.NewGuid(), folderPath = "/ops",
-                          isEnabled = true, runningCount = 2, lastStatus = "Running", callFrequency = (int?)null },
+                          isEnabled = true, runningCount = 2, lastStatus = "Running", callFrequency = (int?)null, canRun = true, canEdit = true },
                     new { workflowId = wfB, name = "Cleanup", folderId = Guid.NewGuid(), folderPath = "/ops",
-                          isEnabled = false, runningCount = 0, lastStatus = (string?)null, callFrequency = (int?)null },
+                          isEnabled = false, runningCount = 0, lastStatus = (string?)null, callFrequency = (int?)null, canRun = true, canEdit = false },
                 },
                 edges = new object[]
                 {
@@ -43,7 +43,12 @@ public class OpsObservabilityDbCommandTests
                 },
                 running = Array.Empty<object>(),
                 recent = Array.Empty<object>(),
-                capabilities = new { canCancel = true },
+                meta = new
+                {
+                    overdueSeconds = 600, windowMinutes = 20,
+                    recentSinceUtc = DateTime.UtcNow.AddMinutes(-20),
+                    oldestReturnedCompletedAt = (DateTime?)null, recentTruncated = false,
+                },
             }));
 
         var result = h.Run("operations", "graph", "-o", "table");
@@ -52,6 +57,7 @@ public class OpsObservabilityDbCommandTests
         result.Output.Should().Contain("Deploy App").And.Contain("Cleanup");
         result.Output.Should().Contain("Workflows:");
         result.Output.Should().Contain("missing: Ghost");
+        result.Output.Should().Contain("last 20 min");
     }
 
     // ---- observability query ------------------------------------------------

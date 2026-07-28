@@ -30,18 +30,13 @@ public class AiControllerTests
     private static (AiController controller, CapturingAuditWriter audit, FakeLlmClient llm, MemoryStream body)
         NewController(bool enabled = true, string role = "Operator")
     {
-        var options = new StaticOptionsMonitor<LlmOptions>(new LlmOptions
-        {
-            Enabled = enabled,
-            BaseUrl = "http://localhost/v1",
-            Model = "test-model",
-            MaxTokens = 100,
-            TimeoutSeconds = 30,
-        });
+        var options = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(
+            enabled: enabled, baseUrl: "http://localhost/v1", model: "test-model", maxTokens: 100, timeoutSeconds: 30));
         var prompts = new PromptCatalog();
         var llm = new FakeLlmClient();
-        var scriptGen = new ScriptGenerationService(llm, prompts);
-        var workflowGen = new WorkflowGenerationService(llm, prompts);
+        var factory = new FakeLlmClientFactory(llm);
+        var scriptGen = new ScriptGenerationService(factory, prompts);
+        var workflowGen = new WorkflowGenerationService(factory, prompts);
         var audit = new CapturingAuditWriter();
         var controller = new AiController(options, scriptGen, workflowGen, audit, NullLogger<AiController>.Instance);
 
@@ -188,18 +183,13 @@ public class AiControllerTests
     [Fact]
     public async Task GenerateScript_DisabledGate_FlipsLiveAfterConfigReload()
     {
-        var monitor = new MutableOptionsMonitor<LlmOptions>(new LlmOptions
-        {
-            Enabled = false,
-            BaseUrl = "http://localhost/v1",
-            Model = "test-model",
-            MaxTokens = 100,
-            TimeoutSeconds = 30,
-        });
+        var monitor = new MutableOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(
+            enabled: false, baseUrl: "http://localhost/v1", model: "test-model", maxTokens: 100, timeoutSeconds: 30));
         var prompts = new PromptCatalog();
         var llm = new FakeLlmClient();
-        var scriptGen = new ScriptGenerationService(llm, prompts);
-        var workflowGen = new WorkflowGenerationService(llm, prompts);
+        var factory = new FakeLlmClientFactory(llm);
+        var scriptGen = new ScriptGenerationService(factory, prompts);
+        var workflowGen = new WorkflowGenerationService(factory, prompts);
         var audit = new CapturingAuditWriter();
         var controller = new AiController(monitor, scriptGen, workflowGen, audit, NullLogger<AiController>.Instance);
 
@@ -214,14 +204,8 @@ public class AiControllerTests
             .Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
 
         // Operator enables LLM in the Settings UI → config reload.
-        monitor.Set(new LlmOptions
-        {
-            Enabled = true,
-            BaseUrl = "http://localhost/v1",
-            Model = "test-model",
-            MaxTokens = 100,
-            TimeoutSeconds = 30,
-        });
+        monitor.Set(LlmTestOptions.WithProfile(
+            baseUrl: "http://localhost/v1", model: "test-model", maxTokens: 100, timeoutSeconds: 30));
         llm.EnqueueStream("Get-Service ", "-Name Spooler");
 
         // Same controller instance: the next request now streams (no 503).

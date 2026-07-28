@@ -26,7 +26,6 @@ public class ActivityCatalogDtosTests
                 new ActivityOutputParameterDescriptor("stdout", "string"),
             },
             TelemetryParameters = new[] { "exitCode" },
-            Prompt = ActivityPromptDescriptor.Included,
         };
 
         var dto = ActivityCatalogEntryResponse.From(descriptor);
@@ -44,8 +43,6 @@ public class ActivityCatalogDtosTests
         dto.OutputParameters[0].Type.Should().Be("number");
         dto.OutputParameters[1].Name.Should().Be("stdout");
         dto.TelemetryParameters.Should().ContainSingle().Which.Should().Be("exitCode");
-        dto.Prompt.Included.Should().BeTrue();
-        dto.Prompt.ExclusionReason.Should().BeNull();
     }
 
     [Fact]
@@ -64,20 +61,6 @@ public class ActivityCatalogDtosTests
         dto.IsExternalTrigger.Should().BeTrue();
         dto.IsRemote.Should().BeFalse();
         dto.Timeout.Should().Be("none");
-    }
-
-    [Fact]
-    public void From_ExcludedPrompt_CarriesExclusionReason()
-    {
-        var descriptor = new ActivityDescriptor("fileHash", ActivityCategory.Action, "fileHash.label", "tag")
-        {
-            Prompt = ActivityPromptDescriptor.Excluded("niche activity"),
-        };
-
-        var dto = ActivityCatalogEntryResponse.From(descriptor);
-
-        dto.Prompt.Included.Should().BeFalse();
-        dto.Prompt.ExclusionReason.Should().Be("niche activity");
     }
 
     [Theory]
@@ -140,14 +123,5 @@ public class ActivityCatalogDtosTests
         var dto = ActivityOutputParameterResponse.From(new ActivityOutputParameterDescriptor("count", "number"));
         dto.Name.Should().Be("count");
         dto.Type.Should().Be("number");
-    }
-
-    [Fact]
-    public void ActivityPromptResponse_From_MapsIncludedAndReason()
-    {
-        ActivityPromptResponse.From(ActivityPromptDescriptor.Included).Should()
-            .BeEquivalentTo(new ActivityPromptResponse(true, null));
-        ActivityPromptResponse.From(ActivityPromptDescriptor.Excluded("why")).Should()
-            .BeEquivalentTo(new ActivityPromptResponse(false, "why"));
     }
 }

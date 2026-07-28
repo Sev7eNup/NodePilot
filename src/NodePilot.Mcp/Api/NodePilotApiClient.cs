@@ -352,10 +352,10 @@ public sealed class NodePilotApiClient
         return await ParseAsync<JsonElement>(res, ct);
     }
 
-    public async Task<JsonElement> GetOperationsGraphAsync(CancellationToken ct)
+    public async Task<JsonElement> GetOperationsGraphAsync(CancellationToken ct, int windowMinutes = 20)
     {
         EnsureReady();
-        using var res = await _http.GetAsync("api/operations/graph", ct);
+        using var res = await _http.GetAsync($"api/operations/graph?windowMinutes={windowMinutes}", ct);
         return await ParseAsync<JsonElement>(res, ct);
     }
 

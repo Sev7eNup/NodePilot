@@ -159,6 +159,9 @@ public sealed class AdminSettingsController : ControllerBase
             });
         }
 
+        if (adapter.CheckWriteAllowed(dto) is { } rejection)
+            return BadRequest(new { code = rejection.Code, message = rejection.Message });
+
         var oldSnapshot = ReadCurrentSectionObject(descriptor);
         var newSection = adapter.BuildSectionObject(dto, oldSnapshot);
 
@@ -255,7 +258,7 @@ public sealed class AdminSettingsController : ControllerBase
     {
         if (request?.Settings is null) return BadRequest(new { code = "SETTINGS_BODY_INVALID" });
 
-        if (string.Equals(request.Settings.Password, SettingsSchema.UnchangedSecretSentinel, StringComparison.Ordinal))
+        if (SettingsSchema.IsUnchangedSecretValue(request.Settings.Password))
         {
             request = new SmtpTestProbeRequest(
                 new SmtpSettingsDto
@@ -282,22 +285,35 @@ public sealed class AdminSettingsController : ControllerBase
     {
         if (request?.Settings is null) return BadRequest(new { code = "SETTINGS_BODY_INVALID" });
 
-        if (string.Equals(request.Settings.ApiKey, SettingsSchema.UnchangedSecretSentinel, StringComparison.Ordinal))
+        // "Use the stored key" needs a stored key to point at: ProfileId is the single authoritative
+        // id here (the probe DTO deliberately carries none), and it must name an existing profile.
+        if (SettingsSchema.IsUnchangedSecretValue(request.Settings.ApiKey))
         {
-            request = new LlmTestProbeRequest(new LlmSettingsDto
+            if (string.IsNullOrWhiteSpace(request.ProfileId)
+                || !_llmOptions.CurrentValue.Profiles.TryGetValue(request.ProfileId.Trim(), out var stored))
             {
-                Enabled = request.Settings.Enabled,
-                BaseUrl = request.Settings.BaseUrl,
-                ApiKey = _llmOptions.CurrentValue.ApiKey,
-                Model = request.Settings.Model,
-                MaxTokens = request.Settings.MaxTokens,
-                TimeoutSeconds = request.Settings.TimeoutSeconds,
-            });
+                return BadRequest(new
+                {
+                    code = "LLM_PROFILE_UNKNOWN",
+                    message = "Testing with the stored API key requires an existing profile id. "
+                              + "Send the plaintext key instead when testing an unsaved profile.",
+                });
+            }
+
+            request = request with
+            {
+                Settings = new LlmProfileProbeDto
+                {
+                    BaseUrl = request.Settings.BaseUrl,
+                    ApiKey = stored.ApiKey,
+                    TimeoutSeconds = request.Settings.TimeoutSeconds,
+                },
+            };
         }
 
         var result = await _testProbe.TestLlmAsync(request, ct);
         await _audit.LogAsync(AuditActions.SettingsLlmTested, "Settings", null,
-            AuditDetails.Json(("success", result.Ok), ("baseUrl", request.Settings.BaseUrl), ("model", request.Settings.Model)),
+            AuditDetails.Json(("success", result.Ok), ("profileId", request.ProfileId), ("baseUrl", request.Settings.BaseUrl)),
             ct);
         return Ok(result);
     }
@@ -444,12 +460,33 @@ public sealed class AdminSettingsController : ControllerBase
         foreach (var path in secretPaths)
         {
             var parts = path.Split('.', StringSplitOptions.RemoveEmptyEntries);
-            JsonObject? parent = copy;
-            for (var i = 0; i < parts.Length - 1 && parent is not null; i++)
-                parent = parent[parts[i]] as JsonObject;
+            if (parts.Length == 0)
+            {
+                if (copy[path] is not null) copy[path] = "***";
+                continue;
+            }
 
-            var leaf = parts.Length == 0 ? path : parts[^1];
-            if (parent?[leaf] is not null) parent[leaf] = "***";
+            // A '*' segment stands for "every child object here" — needed for sections whose keys
+            // are operator-defined (e.g. Llm's Profiles.*.ApiKey), where no literal path exists.
+            var parents = new List<JsonObject> { copy };
+            for (var i = 0; i < parts.Length - 1; i++)
+            {
+                var next = new List<JsonObject>();
+                foreach (var parent in parents)
+                {
+                    if (parts[i] == "*")
+                        next.AddRange(parent.Select(kv => kv.Value).OfType<JsonObject>());
+                    else if (parent[parts[i]] is JsonObject child)
+                        next.Add(child);
+                }
+                parents = next;
+            }
+
+            var leaf = parts[^1];
+            foreach (var parent in parents)
+            {
+                if (parent[leaf] is not null) parent[leaf] = "***";
+            }
         }
         return copy;
     }

@@ -25,16 +25,23 @@ public sealed class LlmConfigBootValidator : IBootValidator
         if (!bool.TryParse(configuration["Llm:Enabled"], out var enabled) || !enabled)
             return; // Llm:Enabled=false → AddNodePilotAi skips the check too; stay consistent.
 
-        var baseUrl = configuration["Llm:BaseUrl"];
-        if (string.IsNullOrWhiteSpace(baseUrl)) return;
+        // Exactly the helper AddNodePilotAi calls, so a save this validator accepts can never
+        // produce a configuration that refuses to boot. Covers EVERY profile, not just the active
+        // one: switching the active profile is a plain settings save with no restart, so a parked
+        // metadata endpoint would only detonate on the switch.
+        foreach (var issue in LlmProfileValidation.ValidateProfileEndpoints(configuration))
+            issues.Add(new BootValidationIssue(Name, BootValidationSeverity.Error, issue.ConfigKey, issue.Message));
 
-        if (LlmEndpointGuard.IsCloudMetadataEndpoint(baseUrl))
+        // Deliberately a Warning, not an Error: the AI features are opt-in, and a half-finished
+        // profile setup must not keep the service from booting. The endpoints answer
+        // 503 LLM_NO_ACTIVE_PROFILE instead.
+        if (!LlmProfileValidation.HasResolvableActiveProfile(configuration))
         {
             issues.Add(new BootValidationIssue(
-                Name, BootValidationSeverity.Error, "Llm:BaseUrl",
-                $"'{baseUrl}' points at a cloud-metadata endpoint (169.254.0.0/16, " +
-                "metadata.google.internal, metadata.azure.com). This range is always blocked. " +
-                "Choose a real LLM endpoint or disable Llm:Enabled."));
+                Name, BootValidationSeverity.Warning, "Llm:ActiveProfileId",
+                "Llm:Enabled=true but no active LLM profile resolves. Every AI endpoint will answer "
+                + "503 LLM_NO_ACTIVE_PROFILE until a profile is added and selected under "
+                + "Settings → System → Integrations → LLM."));
         }
     }
 }

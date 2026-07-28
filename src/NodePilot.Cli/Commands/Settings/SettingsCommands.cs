@@ -313,7 +313,8 @@ public sealed class SettingsTestLlmCommand : BaseCommand<SettingsTestLlmSettings
     {
         if (string.IsNullOrWhiteSpace(settings.File))
         {
-            writer.Error("--file <PATH> ist Pflicht (Body-Shape: { settings: LlmSettingsDto }).");
+            writer.Error("--file <PATH> ist Pflicht (Body-Shape: { profileId?: string, settings: { baseUrl, apiKey?, timeoutSeconds } }). "
+                         + "profileId ist nur noetig, wenn apiKey der Marker \"__unchanged__\" ist.");
             return ExitCodes.Error;
         }
 

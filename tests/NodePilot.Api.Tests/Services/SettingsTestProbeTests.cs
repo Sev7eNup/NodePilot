@@ -80,7 +80,7 @@ public sealed class SettingsTestProbeTests
         var handler = new StubHandler(HttpStatusCode.OK, "{\"data\":[]}");
 
         var result = await Probe(handler).TestLlmAsync(
-            new LlmTestProbeRequest(Llm("http://127.0.0.1:1234/v1")),
+            Llm("http://127.0.0.1:1234/v1"),
             TestContext.Current.CancellationToken);
 
         result.Ok.Should().BeTrue();
@@ -94,7 +94,7 @@ public sealed class SettingsTestProbeTests
         var handler = new StubHandler(HttpStatusCode.OK, "{}");
 
         await Probe(handler).TestLlmAsync(
-            new LlmTestProbeRequest(Llm("http://127.0.0.1:1234/v1", apiKey: "sk-secret")),
+            Llm("http://127.0.0.1:1234/v1", apiKey: "sk-secret"),
             TestContext.Current.CancellationToken);
 
         handler.LastRequest!.Headers.Authorization!.Scheme.Should().Be("Bearer");
@@ -107,7 +107,7 @@ public sealed class SettingsTestProbeTests
         var handler = new StubHandler(HttpStatusCode.OK, "{}");
 
         await Probe(handler).TestLlmAsync(
-            new LlmTestProbeRequest(Llm("http://127.0.0.1:1234/v1", apiKey: null)),
+            Llm("http://127.0.0.1:1234/v1", apiKey: null),
             TestContext.Current.CancellationToken);
 
         handler.LastRequest!.Headers.Authorization.Should().BeNull();
@@ -119,7 +119,7 @@ public sealed class SettingsTestProbeTests
         var handler = new StubHandler(HttpStatusCode.Unauthorized, "invalid api key");
 
         var result = await Probe(handler).TestLlmAsync(
-            new LlmTestProbeRequest(Llm("http://127.0.0.1:1234/v1")),
+            Llm("http://127.0.0.1:1234/v1"),
             TestContext.Current.CancellationToken);
 
         result.Ok.Should().BeFalse();
@@ -133,7 +133,7 @@ public sealed class SettingsTestProbeTests
         var handler = new StubHandler(HttpStatusCode.InternalServerError, new string('x', 500));
 
         var result = await Probe(handler).TestLlmAsync(
-            new LlmTestProbeRequest(Llm("http://127.0.0.1:1234/v1")),
+            Llm("http://127.0.0.1:1234/v1"),
             TestContext.Current.CancellationToken);
 
         result.Ok.Should().BeFalse();
@@ -147,7 +147,7 @@ public sealed class SettingsTestProbeTests
         var handler = new ThrowingHandler(new HttpRequestException("connection refused"));
 
         var result = await Probe(handler).TestLlmAsync(
-            new LlmTestProbeRequest(Llm("http://127.0.0.1:1234/v1")),
+            Llm("http://127.0.0.1:1234/v1"),
             TestContext.Current.CancellationToken);
 
         result.Ok.Should().BeFalse();
@@ -164,7 +164,7 @@ public sealed class SettingsTestProbeTests
         var handler = new StubHandler(HttpStatusCode.OK, "{}");
 
         var result = await Probe(handler).TestLlmAsync(
-            new LlmTestProbeRequest(Llm(baseUrl)), TestContext.Current.CancellationToken);
+            Llm(baseUrl), TestContext.Current.CancellationToken);
 
         result.Ok.Should().BeFalse();
         handler.LastRequest.Should().BeNull(
@@ -260,14 +260,13 @@ public sealed class SettingsTestProbeTests
 
     // ---------------------------------------------------------------- helpers
 
-    private static LlmSettingsDto Llm(string baseUrl, string? apiKey = null) => new()
-    {
-        Enabled = true,
-        BaseUrl = baseUrl,
-        Model = "test-model",
-        ApiKey = apiKey,
-        TimeoutSeconds = 5,
-    };
+    private static LlmTestProbeRequest Llm(string baseUrl, string? apiKey = null)
+        => new(ProfileId: "default", new LlmProfileProbeDto
+        {
+            BaseUrl = baseUrl,
+            ApiKey = apiKey,
+            TimeoutSeconds = 5,
+        });
 
     private static SettingsTestProbe Probe(
         HttpMessageHandler? handler = null,

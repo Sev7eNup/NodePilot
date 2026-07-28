@@ -26,7 +26,6 @@
 
   <!-- Embedded data so the packaged tool works after `dotnet tool install` (no docs/ at runtime). -->
   <ItemGroup>
-    <EmbeddedResource Include="Resources\Embedded\activity-config-reference.json" />
     <EmbeddedResource Include="..\..\docs\workflow-styleguide.md" Link="Resources\Embedded\workflow-styleguide.md" />
   </ItemGroup>
 

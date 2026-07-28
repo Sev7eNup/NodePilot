@@ -1,7 +1,7 @@
 ﻿import { describe, it, expect } from 'vitest';
 import {
   windowFor, timeToX, buildTimelineBars, assignLanes, placeBar, axisTicks, isActiveBarStatus,
-  pairCallConnectors, OPS_WINDOW_MS, OPS_NOW_FRACTION,
+  pairCallConnectors, isOverdue, isStalled, tickStepFor, OPS_WINDOW_MS, OPS_NOW_FRACTION,
   type TimelineBarInput,
 } from '../../lib/opsTimeline';
 import type { OpsNode } from '../../types/api';
@@ -15,7 +15,7 @@ function iso(ms: number): string {
 }
 
 function node(workflowId: string, name: string, folderPath = '/'): OpsNode {
-  return { workflowId, name, folderId: 'f1', folderPath, isEnabled: true, runningCount: 0, lastStatus: null, callFrequency: null };
+  return { workflowId, name, folderId: 'f1', folderPath, isEnabled: true, runningCount: 0, lastStatus: null, callFrequency: null, canRun: true, canEdit: true };
 }
 
 describe('windowFor / timeToX', () => {
@@ -40,7 +40,7 @@ describe('buildTimelineBars', () => {
 
   it('merges running + recent, snapshot recent beats locallySettled per executionId', () => {
     const bars = buildTimelineBars(
-      [{ executionId: 'run1', workflowId: 'w1', status: 'Running', startedAt: iso(NOW - 4 * MIN), parentExecutionId: null }],
+      [{ executionId: 'run1', workflowId: 'w1', status: 'Running', startedAt: iso(NOW - 4 * MIN), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
       [{ executionId: 'done1', workflowId: 'w1', status: 'Failed', startedAt: iso(NOW - 10 * MIN), completedAt: iso(NOW - 8 * MIN), parentExecutionId: null }],
       { done1: { workflowId: 'w1', status: 'Failed', settledAtMs: NOW - 7 * MIN, startedAtMs: NOW - 10 * MIN } },
       W, scope,
@@ -73,7 +73,7 @@ describe('buildTimelineBars', () => {
 
   it('drops bars fully left of the window and out-of-scope workflows', () => {
     const bars = buildTimelineBars(
-      [{ executionId: 'r-out', workflowId: 'other', status: 'Running', startedAt: iso(NOW - MIN), parentExecutionId: null }],
+      [{ executionId: 'r-out', workflowId: 'other', status: 'Running', startedAt: iso(NOW - MIN), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
       [
         { executionId: 'old', workflowId: 'w1', status: 'Succeeded', startedAt: iso(NOW - 60 * MIN), completedAt: iso(NOW - 40 * MIN), parentExecutionId: null },
         { executionId: 'in', workflowId: 'w1', status: 'Succeeded', startedAt: iso(NOW - 6 * MIN), completedAt: iso(NOW - 5 * MIN), parentExecutionId: null },
@@ -97,6 +97,7 @@ describe('assignLanes', () => {
       startedAtMs: NOW - startOffsetMin * MIN,
       completedAtMs: endOffsetMin === null ? null : NOW - endOffsetMin * MIN,
       parentExecutionId: null,
+      stepsFinished: null, lastCompletedStepName: null, lastProgressAtMs: null,
     };
   }
 
@@ -137,8 +138,8 @@ describe('assignLanes', () => {
 
   it('is deterministic: ties broken by workflowId', () => {
     const t = NOW - 4 * MIN;
-    const a: TimelineBarInput = { executionId: 'x', workflowId: 'w2', status: 'Succeeded', startedAtMs: t, completedAtMs: NOW - MIN, parentExecutionId: null };
-    const b: TimelineBarInput = { executionId: 'y', workflowId: 'w1', status: 'Succeeded', startedAtMs: t, completedAtMs: NOW - MIN, parentExecutionId: null };
+    const a: TimelineBarInput = { executionId: 'x', workflowId: 'w2', status: 'Succeeded', startedAtMs: t, completedAtMs: NOW - MIN, parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAtMs: null };
+    const b: TimelineBarInput = { executionId: 'y', workflowId: 'w1', status: 'Succeeded', startedAtMs: t, completedAtMs: NOW - MIN, parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAtMs: null };
     const { lanes } = assignLanes([a, b], nodes);
     expect(lanes.map((l) => l.workflowId)).toEqual(['w1', 'w2']);
   });
@@ -168,7 +169,7 @@ describe('assignLanes', () => {
 describe('placeBar', () => {
   it('clamps bars starting before the window and flags them clipped', () => {
     const placed = placeBar(
-      { executionId: 'a', workflowId: 'w1', status: 'Succeeded', startedAtMs: NOW - 40 * MIN, completedAtMs: NOW - 5 * MIN, parentExecutionId: null, laneIndex: 0, subRow: 0 },
+      { executionId: 'a', workflowId: 'w1', status: 'Succeeded', startedAtMs: NOW - 40 * MIN, completedAtMs: NOW - 5 * MIN, parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAtMs: null, laneIndex: 0, subRow: 0 },
       W,
     );
     expect(placed.clippedLeft).toBe(true);
@@ -178,7 +179,7 @@ describe('placeBar', () => {
 
   it('running bars extend to NOW', () => {
     const placed = placeBar(
-      { executionId: 'a', workflowId: 'w1', status: 'Running', startedAtMs: NOW - 5 * MIN, completedAtMs: null, parentExecutionId: null, laneIndex: 0, subRow: 0 },
+      { executionId: 'a', workflowId: 'w1', status: 'Running', startedAtMs: NOW - 5 * MIN, completedAtMs: null, parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAtMs: null, laneIndex: 0, subRow: 0 },
       W,
     );
     expect(placed.clippedLeft).toBe(false);
@@ -204,6 +205,7 @@ describe('pairCallConnectors', () => {
     return {
       executionId, workflowId: 'w1', status: 'Running', parentExecutionId,
       startedAtMs: NOW - MIN, completedAtMs: null,
+      stepsFinished: null, lastCompletedStepName: null, lastProgressAtMs: null,
       leftPx: 10, widthPx: 20, clippedLeft: false, laneIndex: 0, subRow: 0,
     };
   }
@@ -230,5 +232,96 @@ describe('isActiveBarStatus', () => {
     expect(isActiveBarStatus('Paused')).toBe(true);
     expect(isActiveBarStatus('Succeeded')).toBe(false);
     expect(isActiveBarStatus('Failed')).toBe(false);
+  });
+});
+
+describe('isOverdue', () => {
+  const OVERDUE_MS = 10 * MIN;
+  const bar = (p: Partial<TimelineBarInput> = {}) => ({
+    status: 'Running', startedAtMs: NOW - 30 * MIN, completedAtMs: null,
+    stepsFinished: null, lastCompletedStepName: null, lastProgressAtMs: null, ...p,
+  });
+
+  it('flags a Running bar older than the threshold', () => {
+    expect(isOverdue(bar(), NOW, OVERDUE_MS)).toBe(true);
+  });
+
+  it('is inclusive exactly at the threshold and false just below it', () => {
+    expect(isOverdue(bar({ startedAtMs: NOW - OVERDUE_MS }), NOW, OVERDUE_MS)).toBe(true);
+    expect(isOverdue(bar({ startedAtMs: NOW - OVERDUE_MS + 1 }), NOW, OVERDUE_MS)).toBe(false);
+  });
+
+  it('never flags a settled bar, however old', () => {
+    expect(isOverdue(bar({ completedAtMs: NOW - MIN }), NOW, OVERDUE_MS)).toBe(false);
+  });
+
+  // The threshold belongs to the alerting collector, which looks at Running alone. Pending
+  // (queued, never started) and Paused (breakpoint) are different conditions entirely.
+  it.each(['Pending', 'Paused'])('does not flag %s — the alerting threshold is Running-only', (status) => {
+    expect(isOverdue(bar({ status }), NOW, OVERDUE_MS)).toBe(false);
+  });
+});
+
+describe('tickStepFor', () => {
+  it('keeps roughly four axis labels at every selectable window', () => {
+    expect(tickStepFor(20 * MIN)).toBe(5 * MIN);
+    expect(tickStepFor(60 * MIN)).toBe(15 * MIN);
+    expect(tickStepFor(240 * MIN)).toBe(60 * MIN);
+  });
+
+  it('switches step at the boundaries, not inside them', () => {
+    expect(tickStepFor(20 * MIN + 1)).toBe(15 * MIN);
+    expect(tickStepFor(60 * MIN + 1)).toBe(60 * MIN);
+  });
+});
+
+describe('isStalled', () => {
+  const STALL_MS = 10 * MIN;
+  const bar = (p: Record<string, unknown> = {}) => ({
+    status: 'Running', completedAtMs: null, lastProgressAtMs: NOW - 30 * MIN, ...p,
+  } as Parameters<typeof isStalled>[0]);
+
+  it('flags a run whose last step finished longer ago than the threshold', () => {
+    expect(isStalled(bar(), NOW, STALL_MS)).toBe(true);
+  });
+
+  it('does not flag a run that is still completing steps', () => {
+    expect(isStalled(bar({ lastProgressAtMs: NOW - MIN }), NOW, STALL_MS)).toBe(false);
+  });
+
+  // Unknown must never render as stalled: not-enriched runs and freshly started ones both
+  // carry null, and "we did not look" is not "it is stuck".
+  it('does not flag a run with no activity data', () => {
+    expect(isStalled(bar({ lastProgressAtMs: null }), NOW, STALL_MS)).toBe(false);
+  });
+
+  it('never flags a settled run', () => {
+    expect(isStalled(bar({ completedAtMs: NOW - MIN }), NOW, STALL_MS)).toBe(false);
+  });
+});
+
+describe('buildTimelineBars — activity fields', () => {
+  it('carries activity for running bars and nulls it for settled ones', () => {
+    const bars = buildTimelineBars(
+      [{
+        executionId: 'r1', workflowId: 'w1', status: 'Running',
+        startedAt: iso(NOW - 5 * MIN), parentExecutionId: null,
+        stepsFinished: 4, lastCompletedStepName: 'Copy files',
+        lastProgressAt: iso(NOW - 2 * MIN), activeStepCount: 0,
+      }],
+      [{
+        executionId: 'd1', workflowId: 'w1', status: 'Succeeded',
+        startedAt: iso(NOW - 9 * MIN), completedAt: iso(NOW - 8 * MIN), parentExecutionId: null,
+      }],
+      {}, W, new Set(['w1']),
+    );
+    const running = bars.find((b) => b.executionId === 'r1')!;
+    expect(running.stepsFinished).toBe(4);
+    expect(running.lastCompletedStepName).toBe('Copy files');
+    expect(running.lastProgressAtMs).toBe(NOW - 2 * MIN);
+
+    const settled = bars.find((b) => b.executionId === 'd1')!;
+    expect(settled.stepsFinished).toBeNull();
+    expect(settled.lastProgressAtMs).toBeNull();
   });
 });

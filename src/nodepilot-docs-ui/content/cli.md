@@ -22,7 +22,7 @@
 | `cron` | `cron next` |
 | `db` | info/query (Read-Default, `--write` opt-in) |
 | `dashboard` | Stats |
-| `operations` | graph (Live-Ops-Snapshot: Workflows, Call-Graph, laufende + kürzlich beendete Executions; RBAC-folder-scoped) |
+| `operations` | graph (Live-Ops-Snapshot: Workflows, Call-Graph, laufende + kürzlich beendete Executions; RBAC-folder-scoped; `--window 20\|60\|240`) |
 | `observability` | summary/**query**/**query-range** |
 | `settings` | status/system-info/get/put/test smtp\|llm |
 | `secrets` | **reencrypt** |
@@ -334,6 +334,7 @@ np alerting delete 9a2f...
 # Operations — Live-Ops-Snapshot: Workflows, Call-Graph, laufende + kürzlich
 # beendete Executions (alle Rollen, RBAC-folder-scoped)
 np operations graph -o json
+np operations graph --window 240              # Rückblick für beendete Läufe: 20 | 60 | 240 Min
 ```
 
 ## system-alert · policies (ADR 0008)

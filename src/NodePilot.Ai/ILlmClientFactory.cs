@@ -4,16 +4,28 @@ using Microsoft.Extensions.Options;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// Creates an <see cref="ILlmClient"/> bound to an effective connection: the global
-/// <see cref="LlmOptions"/> with optional per-call <see cref="LlmConnection"/> overrides applied.
-/// The single entry point for per-node endpoint/model/apiKey overrides (the <c>llmQuery</c>
-/// activity). The global singleton <see cref="ILlmClient"/> is itself just <c>Create(null)</c>,
-/// so every LLM call — assistant, script/workflow-gen, and the activity — resolves through here
-/// and through the same guarded named HttpClient + <see cref="LlmEndpointGuard"/>.
+/// Creates an <see cref="ILlmClient"/> bound to an effective connection: the active
+/// <see cref="LlmProfileOptions"/> with optional per-call <see cref="LlmConnection"/> overrides
+/// applied. The single entry point for per-node endpoint/model/apiKey overrides (the
+/// <c>llmQuery</c> activity). Every LLM call — assistant, script/workflow-gen, and the activity —
+/// resolves through here and through the same guarded named HttpClient +
+/// <see cref="LlmEndpointGuard"/>.
+///
+/// <para><b>Callers must resolve lazily.</b> <see cref="Create"/> throws when no active profile is
+/// configured, so it belongs inside the call, never in a constructor: services take this factory
+/// (not a pre-built <see cref="ILlmClient"/>) so a half-configured instance fails as a clean 503
+/// from the endpoint gate instead of blowing up during DI construction.</para>
 /// </summary>
 public interface ILlmClientFactory
 {
-    /// <summary>Builds a client for the effective connection. <paramref name="overrides"/> null ⇒ the global config.</summary>
+    /// <summary>
+    /// Builds a client for the effective connection: the active profile, with any non-null
+    /// <paramref name="overrides"/> field taking precedence.
+    /// </summary>
+    /// <exception cref="LlmException">
+    /// No profile is configured or <c>Llm:ActiveProfileId</c> doesn't name one, or the effective
+    /// BaseUrl fails <see cref="LlmEndpointGuard.NormalizeAndValidateBaseUrl"/>.
+    /// </exception>
     ILlmClient Create(LlmConnection? overrides = null);
 }
 
@@ -39,18 +51,24 @@ public sealed class LlmClientFactory : ILlmClientFactory
         // Hot-reload: read the live LlmOptions per Create() so a config edit (Admin-Settings-UI
         // save or appsettings.runtime.json) takes effect without a restart. The factory is
         // singleton — IOptionsMonitor is the correct live source.
-        var g = _options.CurrentValue;
+        if (!_options.CurrentValue.TryResolveActiveProfile(out var profile))
+        {
+            throw new LlmException(LlmErrorKind.Unreachable,
+                "No active LLM profile is configured. Add a profile under Settings → System → "
+                + "Integrations → LLM and select it as the active profile.");
+        }
+
         // Validate/normalize the effective BaseUrl HERE — the factory is the central override
         // entry point and must never trust callers to have pre-checked it.
-        var baseUrl = LlmEndpointGuard.NormalizeAndValidateBaseUrl(overrides?.BaseUrl ?? g.BaseUrl);
+        var baseUrl = LlmEndpointGuard.NormalizeAndValidateBaseUrl(overrides?.BaseUrl ?? profile.BaseUrl);
 
         var config = new LlmClientConfig(
             BaseUrl: baseUrl,
-            ApiKey: overrides?.ApiKey ?? g.ApiKey,
-            Model: overrides?.Model ?? g.Model,
-            MaxTokens: overrides?.MaxTokens ?? g.MaxTokens,
-            Temperature: overrides?.Temperature, // per-call only; no global default
-            TimeoutSeconds: overrides?.TimeoutSeconds ?? g.TimeoutSeconds);
+            ApiKey: overrides?.ApiKey ?? profile.ApiKey,
+            Model: overrides?.Model ?? profile.Model,
+            MaxTokens: overrides?.MaxTokens ?? profile.MaxTokens,
+            Temperature: overrides?.Temperature, // per-call only; no profile default
+            TimeoutSeconds: overrides?.TimeoutSeconds ?? profile.TimeoutSeconds);
 
         return new OpenAiCompatibleLlmClient(
             _httpClientFactory, config, _loggerFactory.CreateLogger<OpenAiCompatibleLlmClient>());

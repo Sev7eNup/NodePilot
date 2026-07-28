@@ -44,7 +44,7 @@ public sealed class PromptCatalog
     {
         var asm = typeof(PromptCatalog).Assembly;
         ScriptSystemPrompt = LoadResource(asm, ScriptSystemResource);
-        ActivityReference = LoadResource(asm, ActivityReferenceResource);
+        ActivityReference = RenderActivityCatalog(LoadResource(asm, ActivityReferenceResource));
         AssistantSystemPrompt = LoadResource(asm, AssistantSystemResource);
         KnowledgeSystemPrompt = LoadResource(asm, KnowledgeSystemResource);
         WorkflowExampleJson = LoadResource(asm, WorkflowExampleResource);
@@ -54,6 +54,28 @@ public sealed class PromptCatalog
         WorkflowSystemPrompt = LoadResource(asm, WorkflowSystemRulesResource)
                                + "\n\n"
                                + ActivityReference;
+    }
+
+    /// <summary>
+    /// Substitutes the activity-catalog placeholder in the static reference with the catalog
+    /// rendered from <c>ActivityCatalog</c> + <c>ActivityConfigReference</c>. The list used to be
+    /// maintained by hand inside the markdown, which let activity types (notably <c>llmQuery</c>)
+    /// silently drop out of the model's world.
+    /// </summary>
+    private static string RenderActivityCatalog(string reference)
+    {
+        if (!reference.Contains(ActivityCatalogPromptRenderer.PlaceholderToken, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Prompt resource '{ActivityReferenceResource}' does not contain the "
+                + $"'{ActivityCatalogPromptRenderer.PlaceholderToken}' placeholder. Without it the AI prompts "
+                + "would ship without any activity catalog.");
+        }
+
+        return reference.Replace(
+            ActivityCatalogPromptRenderer.PlaceholderToken,
+            ActivityCatalogPromptRenderer.Render(),
+            StringComparison.Ordinal);
     }
 
     private static string LoadResource(Assembly asm, string name)

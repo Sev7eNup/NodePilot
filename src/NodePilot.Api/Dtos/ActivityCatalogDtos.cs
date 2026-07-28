@@ -12,8 +12,7 @@ public sealed record ActivityCatalogEntryResponse(
     bool IsRemote,
     string Timeout,
     IReadOnlyList<ActivityOutputParameterResponse> OutputParameters,
-    IReadOnlyList<string> TelemetryParameters,
-    ActivityPromptResponse Prompt)
+    IReadOnlyList<string> TelemetryParameters)
 {
     public static ActivityCatalogEntryResponse From(ActivityDescriptor descriptor) =>
         new(
@@ -26,8 +25,7 @@ public sealed record ActivityCatalogEntryResponse(
             descriptor.IsRemote,
             ToResponseTimeout(descriptor.Timeout),
             descriptor.OutputParameters.Select(ActivityOutputParameterResponse.From).ToArray(),
-            descriptor.TelemetryParameters.ToArray(),
-            ActivityPromptResponse.From(descriptor.Prompt));
+            descriptor.TelemetryParameters.ToArray());
 
     private static string ToResponseCategory(ActivityCategory category) => category switch
     {
@@ -54,8 +52,3 @@ public sealed record ActivityOutputParameterResponse(string Name, string Type)
         new(descriptor.Name, descriptor.Type);
 }
 
-public sealed record ActivityPromptResponse(bool Included, string? ExclusionReason)
-{
-    public static ActivityPromptResponse From(ActivityPromptDescriptor descriptor) =>
-        new(descriptor.IsIncluded, descriptor.ExclusionReason);
-}

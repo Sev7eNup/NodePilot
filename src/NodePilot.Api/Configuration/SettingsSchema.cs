@@ -31,6 +31,19 @@ public static class SettingsSchema
 {
     public const string UnchangedSecretSentinel = "__unchanged__";
 
+    /// <summary>The literal a configured secret reads back as. Never a real value.</summary>
+    public const string MaskedSecretDisplay = "********";
+
+    /// <summary>
+    /// True when an incoming secret value means "keep what's stored". Covers the explicit
+    /// <see cref="UnchangedSecretSentinel"/> the UI sends <b>and</b> the display mask — a client
+    /// that round-trips a GET payload straight back into a PUT would otherwise have
+    /// <c>"********"</c> encrypted and persisted as the new secret, silently destroying it.
+    /// </summary>
+    public static bool IsUnchangedSecretValue(string? incoming)
+        => string.Equals(incoming, UnchangedSecretSentinel, StringComparison.Ordinal)
+           || string.Equals(incoming, MaskedSecretDisplay, StringComparison.Ordinal);
+
     public static readonly ImmutableArray<SettingsSectionDescriptor> Sections = ImmutableArray.Create(
         new SettingsSectionDescriptor(
             SectionPath: "Smtp",
@@ -47,7 +60,8 @@ public static class SettingsSchema
             DisplayName: "LLM (KI)",
             OptionsType: typeof(LlmOptions),
             DtoType: typeof(LlmSettingsDto),
-            SecretFieldPaths: ImmutableArray.Create("ApiKey"),
+            // '*' matches every profile id — the keys are operator-defined, so the path can't be literal.
+            SecretFieldPaths: ImmutableArray.Create("Profiles.*.ApiKey"),
             // Hot-reload: ILlmClientFactory + the controller gates read IOptionsMonitor<LlmOptions>.CurrentValue
             // per use, so a Settings-UI save (incl. the Llm:Enabled kill-switch) takes effect without a restart.
             IsHotReloadable: true,
