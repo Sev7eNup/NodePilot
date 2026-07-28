@@ -108,6 +108,10 @@ coverage-report/
 
 # Ad-hoc scratch area for local experiments (parked API logs, recheck copies, ...)
 /tmp/
+# Same purpose, dotted name — agent runs park API/UI logs, probe projects and JSON
+# dumps here. Untracked but not ignored, it was one `git add -A` away from landing
+# several MB of run logs in a commit.
+/.tmp/
 
 # SQLite runtime DB + ad-hoc backups
 **/nodepilot.db
