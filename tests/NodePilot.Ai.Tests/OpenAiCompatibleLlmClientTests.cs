@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -320,6 +321,68 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
         done!.Model.Should().Be("test-model");
         done.PromptTokens.Should().Be(5);
         done.CompletionTokens.Should().Be(2);
+    }
+
+    // ---- GenerationMs: the denominator for a tok/s figure ----------------------------
+    // It must cover ONLY the span in which the server emitted output. Everything before the
+    // first token (connect, prompt prefill) belongs to the wall clock, not to throughput —
+    // folding it in reported a fraction of the model's real decode speed.
+
+    [Fact]
+    public async Task StreamAsync_GenerationMs_ExcludesEverythingBeforeTheFirstToken()
+    {
+        // The 600 ms delay stands in for connect + prompt prefill: nothing arrives before it.
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(200)
+                   .WithDelay(TimeSpan.FromMilliseconds(600))
+                   .WithHeader("Content-Type", "text/event-stream").WithBody(SseBody));
+
+        var start = Stopwatch.GetTimestamp();
+        var (_, done) = await Collect(BuildClient(), new LlmRequest("sys", "user"));
+        var totalMs = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+
+        totalMs.Should().BeGreaterThan(500, "the stub stalls before responding at all");
+        done!.GenerationMs.Should().NotBeNull();
+        // Generous margin: the assertion that matters is "far below the wall clock", not an
+        // exact figure — the buffered body streams in well under the stall.
+        done.GenerationMs!.Value.Should().BeLessThan(300);
+    }
+
+    [Fact]
+    public async Task StreamAsync_RoleOnlyOpeningChunk_DoesNotStartTheGenerationClock()
+    {
+        // OpenAI opens every stream with delta:{role:"assistant",content:""}. Treating that
+        // empty string as output would start the clock while the model is still prefilling.
+        var sse = Sse(
+            """{"choices":[{"delta":{"role":"assistant","content":""}}],"model":"test-model"}""",
+            """{"choices":[],"usage":{"prompt_tokens":5,"completion_tokens":0}}""",
+            "[DONE]");
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(200)
+                   .WithHeader("Content-Type", "text/event-stream").WithBody(sse));
+
+        var (_, done) = await Collect(BuildClient(), new LlmRequest("sys", "user"));
+
+        done!.GenerationMs.Should().BeNull("no actual token was ever emitted");
+    }
+
+    [Fact]
+    public async Task StreamAsync_ToolCallOnlyRound_StillReportsGenerationMs()
+    {
+        // A tool-call round emits no prose, but the model still generated tokens — the round
+        // must contribute to the accumulated generation window, not vanish from it.
+        var sse = Sse(
+            """{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search_docs","arguments":"{}"}}]}}]}""",
+            """{"choices":[{"delta":{},"finish_reason":"tool_calls"}]}""",
+            "[DONE]");
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(200)
+                   .WithHeader("Content-Type", "text/event-stream").WithBody(sse));
+
+        var (deltas, done) = await Collect(BuildClient(), new LlmRequest("sys", "user"));
+
+        deltas.Should().BeEmpty();
+        done!.GenerationMs.Should().NotBeNull();
     }
 
     [Fact]

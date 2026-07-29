@@ -141,7 +141,7 @@ public sealed class WorkflowAssistantService
         var proseFlushedLen = 0;
         var inDefinition = false;
         string? model = null;
-        int? promptTokens = null, completionTokens = null;
+        int? promptTokens = null, completionTokens = null, generationMs = null;
 
         for (var iteration = 0; ; iteration++)
         {
@@ -168,6 +168,9 @@ public sealed class WorkflowAssistantService
                     // footer would only count the last LLM round. Stays null if usage is never reported.
                     if (evt.PromptTokens is int pt) promptTokens = (promptTokens ?? 0) + pt;
                     if (evt.CompletionTokens is int cpt) completionTokens = (completionTokens ?? 0) + cpt;
+                    // Same accumulation for the generation window, so it stays the matching
+                    // denominator for the summed completion tokens.
+                    if (evt.GenerationMs is int gm) generationMs = (generationMs ?? 0) + gm;
                     toolCalls = evt.ToolCalls;
                     break;
                 }
@@ -255,7 +258,7 @@ public sealed class WorkflowAssistantService
             yield return ChatStreamEvent.Proposal(proposal);
 
         sw.Stop();
-        yield return ChatStreamEvent.Done(model ?? "unknown", (int)sw.ElapsedMilliseconds, promptTokens, completionTokens);
+        yield return ChatStreamEvent.Done(model ?? "unknown", (int)sw.ElapsedMilliseconds, promptTokens, completionTokens, generationMs);
     }
 
     /// <summary>Fetches enabled custom activities keyed by their <c>custom:&lt;key&gt;</c> type. Empty when the store is absent or the LLM call fails.</summary>
@@ -552,13 +555,15 @@ public abstract record ChatStreamEvent
     /// <summary>The tool result (JSON) — lets the client close out the "Calling tool X…" indicator.</summary>
     public static ChatStreamEvent ToolResult(string toolId, string toolName, string resultJson)
         => new ToolResultEvent(toolId, toolName, resultJson);
-    public static ChatStreamEvent Done(string model, int durationMs, int? promptTokens, int? completionTokens)
-        => new DoneEvent(model, durationMs, promptTokens, completionTokens);
+    public static ChatStreamEvent Done(string model, int durationMs, int? promptTokens, int? completionTokens, int? generationMs = null)
+        => new DoneEvent(model, durationMs, promptTokens, completionTokens, generationMs);
 
     public sealed record DeltaEvent(string Text) : ChatStreamEvent;
     public sealed record BuildingEvent : ChatStreamEvent;
     public sealed record ProposalEvent(WorkflowChatProposalDto Dto) : ChatStreamEvent;
     public sealed record ToolCallEvent(string ToolName, string ToolId, string ArgumentsJson) : ChatStreamEvent;
     public sealed record ToolResultEvent(string ToolId, string ToolName, string ResultJson) : ChatStreamEvent;
-    public sealed record DoneEvent(string Model, int DurationMs, int? PromptTokens, int? CompletionTokens) : ChatStreamEvent;
+    /// <param name="DurationMs">End-to-end wall clock of the whole assistant loop — including prefill, tool execution and every LLM round.</param>
+    /// <param name="GenerationMs">Of that, the time actually spent generating tokens (summed over all rounds). Divide <paramref name="CompletionTokens"/> by this — never by <paramref name="DurationMs"/> — to get a throughput that matches what the LLM server itself reports.</param>
+    public sealed record DoneEvent(string Model, int DurationMs, int? PromptTokens, int? CompletionTokens, int? GenerationMs = null) : ChatStreamEvent;
 }

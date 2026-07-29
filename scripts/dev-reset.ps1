@@ -12,7 +12,7 @@
 #>
 param(
     [switch]$SkipTests = $true,
-    [switch]$SkipBuild = $true
+    [switch]$SkipBuild = $false
 )
 
 Set-StrictMode -Version 3.0

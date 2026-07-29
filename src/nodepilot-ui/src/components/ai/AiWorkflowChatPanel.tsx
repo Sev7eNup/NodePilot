@@ -21,10 +21,11 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Edge, Node } from '@xyflow/react';
-import { aiApi, type AiChatTurn, type ChatDoneMeta, type WorkflowChatProposal, type ChatActivityEntry } from '../../api/ai';
+import { aiApi, type AiChatTurn, type WorkflowChatProposal, type ChatActivityEntry } from '../../api/ai';
 import { hashDefinition, buildChangelog, assembleSelectiveDefinition, type WorkflowDefinition, type ChangelogEntry } from '../../lib/workflowDiff';
 import { Markdown } from '../common/Markdown';
 import { CopyButton } from '../common/CopyButton';
+import { UsageFooter } from './UsageFooter';
 import { useAiChatStore, aiChatScopeKey, aiChatFullKey, type ChatMessage, type ChatThreadMeta } from '../../stores/aiChatStore';
 import { useAuthStore } from '../../stores/authStore';
 import { buildChatMarkdown, chatFilenameSlug, downloadTextFile } from '../../lib/chatExport';
@@ -867,32 +868,6 @@ function ThreadMenu({
         </div>
       )}
     </div>
-  );
-}
-
-function UsageFooter({ meta }: Readonly<{ meta: ChatDoneMeta }>) {
-  const { t } = useTranslation(['ai']);
-  const tokens = meta.promptTokens != null && meta.completionTokens != null
-    ? meta.promptTokens + meta.completionTokens
-    : null;
-  // Generation throughput: completion tokens per second (end-to-end duration).
-  const tpsValue = meta.completionTokens != null && meta.durationMs > 0
-    ? meta.completionTokens / (meta.durationMs / 1000)
-    : null;
-  const tps = tpsValue != null ? (tpsValue < 10 ? tpsValue.toFixed(1) : Math.round(tpsValue).toString()) : null;
-
-  let label: string;
-  if (tokens != null && tps != null) {
-    label = t('ai:chat.usageTokensTps', { model: meta.model, ms: meta.durationMs, tokens, tps });
-  } else if (tokens != null) {
-    label = t('ai:chat.usageTokens', { model: meta.model, ms: meta.durationMs, tokens });
-  } else {
-    label = t('ai:chat.usageNoTokens', { model: meta.model, ms: meta.durationMs });
-  }
-  return (
-    <span className="ml-1 select-none text-[10px] text-on-surface-variant/70" title={t('ai:chat.usageTitle')}>
-      {label}
-    </span>
   );
 }
 

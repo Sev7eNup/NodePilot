@@ -153,17 +153,21 @@ describe('AiChatPage', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('renders the usage footer (model + tokens + tok/s) after the stream completes', async () => {
+  it('derives tok/s from the generation window, not from the total duration', async () => {
     askMock.mockImplementation(streamMock({
       reply: 'done answer',
-      meta: { model: 'gpt-x', durationMs: 1000, promptTokens: 100, completionTokens: 50 },
+      // A realistic knowledge-chat turn: the system prompt plus tool schemas make prefill the
+      // bulk of the wall clock. 40 tokens generated in 800 ms is 50 tok/s — dividing by the
+      // 12 s total would claim 3 tok/s for the exact same run.
+      meta: { model: 'gpt-x', durationMs: 12000, generationMs: 800, promptTokens: 2600, completionTokens: 40 },
     }));
     renderPage();
     await ask('explain');
 
     await waitFor(() => expect(screen.getByText(/gpt-x/i)).toBeInTheDocument());
-    expect(screen.getByText(/150 tokens/i)).toBeInTheDocument();
+    expect(screen.getByText(/2640 tokens/i)).toBeInTheDocument();
     expect(screen.getByText(/50 tok\/s/i)).toBeInTheDocument();
+    expect(screen.getByText(/12000 ms \(800 ms gen\.\)/i)).toBeInTheDocument();
   });
 
   it('sends an example prompt from the empty state', async () => {

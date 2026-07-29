@@ -362,8 +362,9 @@ describe('AiWorkflowChatPanel (streaming)', () => {
     chatMock.mockImplementation((_req: WorkflowChatRequest, h?: ChatStreamHandlers) => {
       if (!h) return Promise.resolve();
       h.onDelta('done answer');
-      // 50 completion tokens in 1000 ms → 50 tok/s.
-      h.onDone?.({ model: 'gpt-x', durationMs: 1000, promptTokens: 100, completionTokens: 50 });
+      // 50 completion tokens generated in 1000 ms → 50 tok/s. The other 10 s of the turn were
+      // prefill and tool calls; dividing by durationMs would report 4.5 tok/s for the same run.
+      h.onDone?.({ model: 'gpt-x', durationMs: 11000, generationMs: 1000, promptTokens: 100, completionTokens: 50 });
       return Promise.resolve();
     });
     setup();
@@ -372,6 +373,23 @@ describe('AiWorkflowChatPanel (streaming)', () => {
     await waitFor(() => expect(screen.getByText(/gpt-x/i)).toBeInTheDocument());
     expect(screen.getByText(/150 tokens/i)).toBeInTheDocument();
     expect(screen.getByText(/50 tok\/s/i)).toBeInTheDocument();
+    expect(screen.getByText(/11000 ms \(1000 ms gen\.\)/i)).toBeInTheDocument();
+  });
+
+  it('omits tok/s when the endpoint reported no generation window', async () => {
+    chatMock.mockImplementation((_req: WorkflowChatRequest, h?: ChatStreamHandlers) => {
+      if (!h) return Promise.resolve();
+      h.onDelta('done answer');
+      h.onDone?.({ model: 'gpt-x', durationMs: 11000, promptTokens: 100, completionTokens: 50 });
+      return Promise.resolve();
+    });
+    setup();
+    await ask('explain');
+
+    await waitFor(() => expect(screen.getByText(/gpt-x/i)).toBeInTheDocument());
+    expect(screen.getByText(/150 tokens/i)).toBeInTheDocument();
+    // Falling back to the wall clock here would resurrect the misleading figure.
+    expect(screen.queryByText(/tok\/s/i)).not.toBeInTheDocument();
   });
 
   it('shows a node mention popup on "@" and inserts the label', async () => {

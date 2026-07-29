@@ -4319,7 +4319,9 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 ### Test 80.2 — SSE-Streaming + Usage-Footer
 1. Frage stellen (z. B. „Welche Trigger-Typen gibt es?") → Absenden.
 2. Antwort erscheint token-weise (nicht in einem Block).
+3. Usage-Footer lesen: `Modell · Gesamtdauer (X ms gen.) · Tokens · tok/s`.
 - [ ] Antwort streamt inkrementell; nach Abschluss steht der Usage-Footer (Token-Zahlen) darunter; Composer ist wieder freigegeben.
+- [ ] Die Generierungszeit in Klammern ist kleiner als die Gesamtdauer (die Differenz sind Prompt-Verarbeitung und Tool-Aufrufe), und der tok/s-Wert entspricht der Geschwindigkeit, die der LLM-Server selbst meldet — nicht einem Bruchteil davon.
 
 ### Test 80.3 — Tool-Call-Indikator
 1. Frage stellen, die eine Datenquelle braucht (z. B. „Wie viele Workflows gibt es?").

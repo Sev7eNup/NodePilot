@@ -30,7 +30,10 @@ interface KnowledgeCapabilities {
 
 interface ChatDoneMeta {
   model: string;
+  /** End-to-end wall clock, including prefill and tool calls. */
   durationMs: number;
+  /** Of that, the pure generation window — the footer's tok/s divides by this. */
+  generationMs?: number | null;
   promptTokens?: number | null;
   completionTokens?: number | null;
 }
@@ -108,11 +111,12 @@ test.describe('AI Knowledge Chat (/ai-chat)', () => {
   // 2. composer send → SSE stream (two delta frames) → token append + final answer + usage footer + send re-enabled
   test('streams a two-delta answer and shows the usage footer, then re-enables the composer', async ({ page }) => {
     await mockCaps(page, capsJson());
-    // Two delta frames → "Hello World"; done with tokens → usageTokensTps footer.
+    // Two delta frames → "Hello World"; done with tokens AND a generation window → the full
+    // usageTokensTps footer (without generationMs the footer drops the tok/s figure).
     await mockAsk(page, [
       deltaFrame('Hello '),
       deltaFrame('World'),
-      doneFrame({ model: 'knowledge-model', durationMs: 12, promptTokens: 10, completionTokens: 20 }),
+      doneFrame({ model: 'knowledge-model', durationMs: 12, generationMs: 4, promptTokens: 10, completionTokens: 20 }),
     ]);
     await openChat(page);
 

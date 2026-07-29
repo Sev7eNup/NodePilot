@@ -91,7 +91,7 @@ public sealed class KnowledgeAssistantService(
         }
 
         string? model = null;
-        int? promptTokens = null, completionTokens = null;
+        int? promptTokens = null, completionTokens = null, generationMs = null;
 
         for (var iteration = 0; ; iteration++)
         {
@@ -113,6 +113,10 @@ public sealed class KnowledgeAssistantService(
                     model = evt.Model;
                     if (evt.PromptTokens is int pt) promptTokens = (promptTokens ?? 0) + pt;
                     if (evt.CompletionTokens is int cpt) completionTokens = (completionTokens ?? 0) + cpt;
+                    // Accumulated like the token counts, so it stays the matching denominator:
+                    // the wall clock below also covers prefill and tool execution, which is why
+                    // dividing completion tokens by it produces a nonsensically low throughput.
+                    if (evt.GenerationMs is int gm) generationMs = (generationMs ?? 0) + gm;
                     toolCalls = evt.ToolCalls;
                     break;
                 }
@@ -144,7 +148,7 @@ public sealed class KnowledgeAssistantService(
         }
 
         sw.Stop();
-        yield return ChatStreamEvent.Done(model ?? "unknown", (int)sw.ElapsedMilliseconds, promptTokens, completionTokens);
+        yield return ChatStreamEvent.Done(model ?? "unknown", (int)sw.ElapsedMilliseconds, promptTokens, completionTokens, generationMs);
     }
 
     private static IReadOnlyList<LlmMessage> BuildConversation(KnowledgeAskRequest request)

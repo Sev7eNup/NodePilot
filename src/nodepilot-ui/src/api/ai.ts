@@ -125,7 +125,12 @@ function sseError(data: string): Error {
 /** Completion metadata for a chat turn (model, duration, token usage) — shown in the usage footer. */
 export interface ChatDoneMeta {
   model: string;
+  /** End-to-end wall clock: prompt prefill, every LLM round and all tool execution included. */
   durationMs: number;
+  /** Of that, the time the model actually spent emitting tokens. The only valid denominator for
+   *  a tok/s figure — `durationMs` is dominated by prefill and tool calls. Null when the
+   *  endpoint streamed no output. */
+  generationMs?: number | null;
   promptTokens?: number | null;
   completionTokens?: number | null;
 }

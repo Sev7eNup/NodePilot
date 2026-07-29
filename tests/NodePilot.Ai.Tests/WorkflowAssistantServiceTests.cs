@@ -359,6 +359,10 @@ public class WorkflowAssistantServiceTests
         done.Should().NotBeNull();
         done!.PromptTokens.Should().Be(2);
         done.CompletionTokens.Should().Be(2);
+        // The generation window is summed the same way, so it stays the matching denominator for
+        // those completion tokens. DurationMs must NOT be used for that — it also covers prefill
+        // and the tool execution between the rounds.
+        done.GenerationMs.Should().Be(2 * FakeLlmClient.FakeGenerationMs);
     }
 
     [Fact]

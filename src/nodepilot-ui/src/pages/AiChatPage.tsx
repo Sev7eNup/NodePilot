@@ -7,10 +7,11 @@ import {
 } from '@carbon/icons-react';
 import {
   askStream, getKnowledgeCapabilities,
-  type AiChatTurn, type ChatDoneMeta, type KnowledgeCapabilities,
+  type AiChatTurn, type KnowledgeCapabilities,
 } from '../api/ai';
 import { Markdown } from '../components/common/Markdown';
 import { CopyButton } from '../components/common/CopyButton';
+import { UsageFooter } from '../components/ai/UsageFooter';
 import {
   useAiChatStore, aiChatScopeKey, aiChatFullKey,
   type ChatMessage, type ChatThreadMeta,
@@ -545,35 +546,11 @@ function MessageBubble({
                 <Renew size={12} />
               </button>
             )}
-            {message.meta && <UsageFooter meta={message.meta} t={t} />}
+            {message.meta && <UsageFooter meta={message.meta} />}
           </div>
         )}
       </div>
     </div>
-  );
-}
-
-function UsageFooter({ meta, t }: Readonly<{ meta: ChatDoneMeta; t: (k: string, opts?: Record<string, unknown>) => string }>) {
-  const tokens = meta.promptTokens != null && meta.completionTokens != null
-    ? meta.promptTokens + meta.completionTokens
-    : null;
-  const tpsValue = meta.completionTokens != null && meta.durationMs > 0
-    ? meta.completionTokens / (meta.durationMs / 1000)
-    : null;
-  const tps = tpsValue != null ? (tpsValue < 10 ? tpsValue.toFixed(1) : Math.round(tpsValue).toString()) : null;
-
-  let label: string;
-  if (tokens != null && tps != null) {
-    label = t('ai:chat.usageTokensTps', { model: meta.model, ms: meta.durationMs, tokens, tps });
-  } else if (tokens != null) {
-    label = t('ai:chat.usageTokens', { model: meta.model, ms: meta.durationMs, tokens });
-  } else {
-    label = t('ai:chat.usageNoTokens', { model: meta.model, ms: meta.durationMs });
-  }
-  return (
-    <span className="ml-1 select-none text-[10px] text-on-surface-variant/70" title={t('ai:chat.usageTitle')}>
-      {label}
-    </span>
   );
 }
 
