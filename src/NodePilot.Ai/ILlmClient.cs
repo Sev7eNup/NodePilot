@@ -28,6 +28,13 @@ public interface ILlmClient
 /// available for streaming responses when the request set <c>stream_options.include_usage</c> —
 /// otherwise those fields stay null.
 /// </summary>
+/// <param name="GenerationMs">
+/// On the Done event: how long the server spent actually emitting output — measured from the
+/// first chunk carrying content or tool-call deltas to the end of the stream. Everything before
+/// that (connect, prompt prefill / time-to-first-token) is deliberately excluded, so
+/// <c>CompletionTokens / GenerationMs</c> is a decode throughput comparable to what llama.cpp
+/// reports as <c>predicted_per_second</c>. Null when the stream never produced any output.
+/// </param>
 public sealed record LlmStreamEvent(
     string? ContentDelta,
     bool Done = false,
@@ -36,7 +43,8 @@ public sealed record LlmStreamEvent(
     int? CompletionTokens = null,
     // Tool-calling (opt-in): the Done event carries FinishReason plus (when it's "tool_calls") the accumulated calls.
     IReadOnlyList<LlmToolCall>? ToolCalls = null,
-    string? FinishReason = null);
+    string? FinishReason = null,
+    int? GenerationMs = null);
 
 /// <summary>
 /// An OpenAI-compatible tool definition (function calling). Offered to the LLM via

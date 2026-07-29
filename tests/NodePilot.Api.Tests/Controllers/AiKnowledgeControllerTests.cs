@@ -166,6 +166,25 @@ public class AiKnowledgeControllerTests
     }
 
     [Fact]
+    public async Task Ask_ToolCallRounds_DonePayloadSumsGenerationMsAcrossRounds()
+    {
+        var (controller, _, llm, body) = Build(enableToolCalling: true);
+        llm.EnqueueToolCallStreamWithFinish(new[] { new LlmToolCall("c1", "get_next_scheduled_fires", "{}") }, "stop");
+        llm.EnqueueStream("Die nächsten Cron-Feuerzeiten.");
+
+        await controller.Ask(new KnowledgeAskRequest("Wann laufen die Workflows?", null), CancellationToken.None);
+
+        var done = ParseSse(body).Should().ContainSingle(e => e.ev == "done").Subject;
+        using var doc = System.Text.Json.JsonDocument.Parse(done.data);
+        // Two LLM rounds, so both the completion tokens and the generation windows add up. The
+        // client divides one by the other; dividing by durationMs instead would fold in prefill
+        // and the tool execution between the rounds and report a fraction of the real speed.
+        doc.RootElement.GetProperty("completionTokens").GetInt32().Should().Be(2);
+        doc.RootElement.GetProperty("generationMs").GetInt32()
+            .Should().Be(2 * FakeLlmClient.FakeGenerationMs);
+    }
+
+    [Fact]
     public async Task Ask_DbToolCall_AuditsFingerprintButNeverSqlText()
     {
         var (controller, audit, llm, _) = Build(

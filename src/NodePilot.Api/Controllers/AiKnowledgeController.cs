@@ -161,7 +161,7 @@ public sealed class AiKnowledgeController : ControllerBase
                     durationMs = done.DurationMs;
                     promptTokens = done.PromptTokens;
                     completionTokens = done.CompletionTokens;
-                    await sse.WriteAsync("done", new { model = done.Model, durationMs = done.DurationMs, promptTokens = done.PromptTokens, completionTokens = done.CompletionTokens }, ct);
+                    await sse.WriteAsync("done", new { model = done.Model, durationMs = done.DurationMs, generationMs = done.GenerationMs, promptTokens = done.PromptTokens, completionTokens = done.CompletionTokens }, ct);
                     break;
                 // BuildingEvent / ProposalEvent never occur on the knowledge stream.
             }

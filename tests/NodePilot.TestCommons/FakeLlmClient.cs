@@ -14,6 +14,12 @@ namespace NodePilot.TestCommons;
 /// </summary>
 public sealed class FakeLlmClient : ILlmClient
 {
+    /// <summary>
+    /// Generation window every stubbed Done event reports. Fixed so a service test can assert
+    /// that a multi-round (tool-calling) run sums the windows: N rounds → N × this value.
+    /// </summary>
+    public const int FakeGenerationMs = 10;
+
     private readonly Queue<Func<LlmRequest, Task<LlmResponse>>> _responses = new();
     private readonly Queue<Func<LlmRequest, IAsyncEnumerable<LlmStreamEvent>>> _streams = new();
     public List<LlmRequest> Calls { get; } = new();
@@ -89,7 +95,8 @@ public sealed class FakeLlmClient : ILlmClient
         await Task.Yield();
         foreach (var c in chunks)
             yield return new LlmStreamEvent(c, Model: "fake-model");
-        yield return new LlmStreamEvent(null, Done: true, Model: "fake-model", PromptTokens: 1, CompletionTokens: 1);
+        yield return new LlmStreamEvent(null, Done: true, Model: "fake-model", PromptTokens: 1, CompletionTokens: 1,
+            GenerationMs: FakeGenerationMs);
     }
 
     private static async IAsyncEnumerable<LlmStreamEvent> ToolCallStream(string[] chunks, IReadOnlyList<LlmToolCall> toolCalls, string? finishReason)
@@ -98,7 +105,7 @@ public sealed class FakeLlmClient : ILlmClient
         foreach (var c in chunks)
             yield return new LlmStreamEvent(c, Model: "fake-model");
         yield return new LlmStreamEvent(null, Done: true, Model: "fake-model", PromptTokens: 1, CompletionTokens: 1,
-            ToolCalls: toolCalls, FinishReason: finishReason);
+            ToolCalls: toolCalls, FinishReason: finishReason, GenerationMs: FakeGenerationMs);
     }
 
     private static async IAsyncEnumerable<LlmStreamEvent> ThrowingStream(LlmException ex)

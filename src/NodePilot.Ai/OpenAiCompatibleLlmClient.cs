@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -345,6 +346,13 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             int? promptTokens = null, completionTokens = null;
             var toolAcc = new Dictionary<int, ToolCallAccumulator>();
             var toolAutoIndex = 0; // slot counter for the index-less streaming path (see AccumulateToolCallDeltas)
+            // Marks when the server started emitting output, so the Done event can report a decode
+            // throughput instead of a wall-clock rate. Everything before this stamp — connect, and
+            // above all prompt prefill — is not generation: a 3k-token prompt can take seconds while
+            // the answer itself decodes in milliseconds. Strictly the window spans n-1 decode
+            // intervals for n tokens, so very short answers read slightly high; irrelevant at
+            // realistic answer lengths.
+            long? firstOutputTs = null;
 
             while (true)
             {
@@ -373,6 +381,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
 
                 // Parsing happens outside a yield block (yield is not allowed inside try/catch).
                 string? delta = null;
+                var sawToolDelta = false;
                 try
                 {
                     using var doc = JsonDocument.Parse(data);
@@ -390,7 +399,10 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                             if (d.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String)
                                 delta = c.GetString();
                             if (d.TryGetProperty("tool_calls", out var tcs) && tcs.ValueKind == JsonValueKind.Array)
+                            {
                                 AccumulateToolCallDeltas(tcs, toolAcc, ref toolAutoIndex);
+                                sawToolDelta = tcs.GetArrayLength() > 0;
+                            }
                         }
                     }
                     if (root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
@@ -406,6 +418,11 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                     delta = null; // skip this one malformed chunk and keep going
                 }
 
+                // An empty content string doesn't count: OpenAI opens every stream with a role-only
+                // chunk carrying `content: ""`, which would start the clock before the first token.
+                if (!string.IsNullOrEmpty(delta) || sawToolDelta)
+                    firstOutputTs ??= Stopwatch.GetTimestamp();
+
                 if (!string.IsNullOrEmpty(delta))
                     yield return new LlmStreamEvent(delta, Model: model);
             }
@@ -418,9 +435,13 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                 : null;
             if (finalToolCalls is { Count: 0 }) finalToolCalls = null;
 
+            var generationMs = firstOutputTs is long outputStart
+                ? (int)Stopwatch.GetElapsedTime(outputStart).TotalMilliseconds
+                : (int?)null;
+
             yield return new LlmStreamEvent(null, Done: true, Model: model ?? _config.Model,
                 PromptTokens: promptTokens, CompletionTokens: completionTokens,
-                ToolCalls: finalToolCalls, FinishReason: finishReason);
+                ToolCalls: finalToolCalls, FinishReason: finishReason, GenerationMs: generationMs);
         }
     }
 
