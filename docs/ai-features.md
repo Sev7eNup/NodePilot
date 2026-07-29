@@ -228,9 +228,9 @@ beim Startup eine Hardening-Warnung in den Logs aus.
 - **Sandbox-Schutz**: KI-generiertes PowerShell wird **am Cursor eingefügt** (Default),
   nicht stumm den ganzen Editor ersetzen. User sieht das Script bevor er Run klickt.
 - **Audit**: Erfolgreiche Generierungen schreiben `AI_SCRIPT_GENERATED` bzw.
-  `AI_WORKFLOW_GENERATED` ins AuditLog, der Chat `AI_WORKFLOW_EXPLAINED` und beim Übernehmen
-  eines Vorschlags `AI_PROPOSAL_APPLIED` (mit Node-/Edge-Counts). Details enthalten Modell, Dauer,
-  Token-Counts — **niemals** den Prompt-Text (PII).
+  `AI_WORKFLOW_GENERATED` ins AuditLog, der Workflow-Chat `AI_WORKFLOW_EXPLAINED` und beim Übernehmen
+  eines Vorschlags `AI_PROPOSAL_APPLIED` (mit Node-/Edge-Counts); der Wissens-Assistent schreibt
+  `AI_KNOWLEDGE_ASKED`. Details enthalten Modell, Dauer, Token-Counts — **niemals** den Prompt-Text (PII).
 
 ---
 
