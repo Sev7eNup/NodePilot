@@ -362,6 +362,13 @@ DB-Tools nutzen Strict Function Schemas; inkompatible lokale Endpoints erhalten 
 Best-Effort-Retry. SQL-Text wird nicht auditiert, stattdessen nur Anzahl und SHA-256-Kurzfingerprints.
 Text2SQL ist nur als Capability sichtbar, wenn das aktive Profil `EnableToolCalling=true` hat.
 
+**Einstiegsvorschläge folgen den Capabilities.** Der Empty-State hält zwei Prompt-Sets in i18n
+(`ai:knowledge.examples` + `ai:knowledge.examplesLite`, je 8 Strings) und wählt anhand von `caps.db`:
+mit DB-Quelle Betriebsauswertungen (letzte Fehlläufe, hängende Runs, unerreichbare Maschinen,
+Audit-Trail), sonst Doku- und Zeitplan-Fragen. Grund: die Alltagsfragen brauchen text2sql, das per
+Default aus **und** Admin/Operator-only ist — einem Viewer würden sie nur „Quelle nicht verfügbar"
+liefern. Das Grid rendert erst nach dem Auflösen der Capabilities, sonst blitzt das Lite-Set auf.
+
 ---
 
 ## Bewusst auf v2 verschoben

@@ -1,7 +1,8 @@
 ﻿import { describe, it, expect } from 'vitest';
 import {
   windowFor, timeToX, buildTimelineBars, assignLanes, placeBar, axisTicks, isActiveBarStatus,
-  pairCallConnectors, isOverdue, isStalled, tickStepFor, OPS_WINDOW_MS, OPS_NOW_FRACTION,
+  pairCallConnectors, isOverdue, isStalled, tickStepFor, buildDensityCells,
+  OPS_WINDOW_MS, OPS_NOW_FRACTION,
   type TimelineBarInput,
 } from '../../lib/opsTimeline';
 import type { OpsNode } from '../../types/api';
@@ -163,6 +164,86 @@ describe('assignLanes', () => {
     const orphan = { ...bar('c1', 'w2', 3, null), parentExecutionId: 'gone' };
     const { lanes } = assignLanes([orphan], nodes);
     expect(lanes[0].depth).toBe(0);
+  });
+
+  it('gives a workflow with density but no bar a lane, sorted behind the ones that have bars', () => {
+    // Every run of w2 fell past the raw cap. No lane would mean its density has nowhere to draw
+    // and the workflow reads as idle — the exact misreading density exists to prevent.
+    const { lanes, placed } = assignLanes([bar('a', 'w1', 5, 2)], nodes, new Set(['w2']));
+    expect(lanes.map((l) => l.workflowId)).toEqual(['w1', 'w2']);
+    // One row tall even with nothing in it, otherwise label and strip collapse to zero height.
+    expect(lanes[1].subRowCount).toBe(1);
+    expect(lanes[1].hasActive).toBe(false);
+    expect(placed).toHaveLength(1);
+  });
+
+  it('does not duplicate a lane that has both bars and density', () => {
+    const { lanes } = assignLanes([bar('a', 'w1', 5, 2)], nodes, new Set(['w1']));
+    expect(lanes.map((l) => l.workflowId)).toEqual(['w1']);
+    expect(lanes[0].subRowCount).toBe(1);
+  });
+});
+
+describe('buildDensityCells', () => {
+  // A 4 h window bucketed at 5 min, with the bar/aggregate seam 30 min before NOW.
+  const WIDE = windowFor(NOW, 240 * MIN, 1000);
+  const SINCE = NOW - 240 * MIN;
+  const SEAM = NOW - 30 * MIN;
+  const BUCKET_S = 300;
+
+  const cells = (buckets: { bucketIndex: number; total: number; failed?: number; cancelled?: number }[]) =>
+    buildDensityCells(
+      buckets.map((b) => ({ failed: 0, cancelled: 0, ...b })),
+      SINCE, BUCKET_S, SEAM, WIDE,
+    );
+
+  it('maps a bucket index onto the pixels of its time range', () => {
+    const [cell] = cells([{ bucketIndex: 2, total: 5 }]);
+    expect(cell.fromMs).toBe(SINCE + 2 * BUCKET_S * 1000);
+    expect(cell.toMs).toBe(SINCE + 3 * BUCKET_S * 1000);
+    expect(cell.leftPx).toBeCloseTo(timeToX(cell.fromMs, WIDE), 5);
+    expect(cell.widthPx).toBeCloseTo(timeToX(cell.toMs, WIDE) - cell.leftPx, 5);
+  });
+
+  it('clips the bucket that straddles the seam instead of drawing over the bars', () => {
+    // The seam is wherever the oldest returned run happens to sit — it does not land on a bucket
+    // boundary. Half of that bucket's runs are already bars; only the older half may be drawn.
+    const offSeam = NOW - 32.5 * MIN;
+    const straddled = Math.floor((offSeam - SINCE) / (BUCKET_S * 1000));
+    const [cell] = buildDensityCells(
+      [{ bucketIndex: straddled, total: 9, failed: 0, cancelled: 0 }],
+      SINCE, BUCKET_S, offSeam, WIDE,
+    );
+    expect(cell.toMs).toBe(offSeam);
+    expect(cell.fromMs).toBeLessThan(offSeam);
+  });
+
+  it('drops buckets that lie entirely right of the seam — those runs are already bars', () => {
+    const pastSeam = Math.floor((SEAM - SINCE) / (BUCKET_S * 1000)) + 1;
+    expect(cells([{ bucketIndex: pastSeam, total: 9 }])).toHaveLength(0);
+  });
+
+  it('drops empty buckets and keeps a sub-pixel one at least 1 px wide', () => {
+    // A slice that rounds away to nothing would read as a gap in the history — the opposite of
+    // what it says. A zero-count slice, on the other hand, has nothing to say at all.
+    expect(cells([{ bucketIndex: 3, total: 0 }])).toHaveLength(0);
+    const narrow = buildDensityCells(
+      [{ bucketIndex: 3, total: 1, failed: 0, cancelled: 0 }],
+      SINCE, 1, SEAM, WIDE,
+    );
+    expect(narrow[0].widthPx).toBeGreaterThanOrEqual(1);
+  });
+
+  it('carries the outcome split through untouched', () => {
+    const [cell] = cells([{ bucketIndex: 1, total: 20, failed: 3, cancelled: 1 }]);
+    expect(cell).toMatchObject({ total: 20, failed: 3, cancelled: 1 });
+  });
+
+  it('returns nothing before the track has been measured or without a bucket width', () => {
+    const unmeasured = windowFor(NOW, 240 * MIN, 0);
+    expect(buildDensityCells([{ bucketIndex: 1, total: 4, failed: 0, cancelled: 0 }], SINCE, BUCKET_S, SEAM, unmeasured)).toHaveLength(0);
+    expect(cells([{ bucketIndex: 1, total: 4 }]).length).toBeGreaterThan(0);
+    expect(buildDensityCells([{ bucketIndex: 1, total: 4, failed: 0, cancelled: 0 }], SINCE, 0, SEAM, WIDE)).toHaveLength(0);
   });
 });
 

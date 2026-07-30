@@ -13,7 +13,11 @@
     "idleHint": "Sobald ein Workflow startet, wächst hier live sein Balken.",
     "nextStart": "Nächster Start {{time}} — {{name}}",
     "historyGap": "Keine beendeten Läufe vor {{time}} geliefert",
-    "recentTruncated": "Zu viele beendete Läufe in diesem Fenster — ältere werden nicht angezeigt."
+    "density": "{{runs}} beendete Läufe in diesem Fenster, {{failed}} fehlgeschlagen — ältere sind als Dichte zusammengefasst. Für einzelne Balken ein kürzeres Fenster wählen.",
+    "densityCapped": "Mehr als {{runs}} beendete Läufe in diesem Fenster — die Dichte beruht auf den neuesten {{runs}}. Für einzelne Balken ein kürzeres Fenster wählen.",
+    "densityCell": "{{from}}–{{to}} · {{runs}} Läufe",
+    "densityCellFailed": "{{count}} fehlgeschlagen",
+    "densityCellCancelled": "{{count}} abgebrochen"
   },
   "window": {
     "label": "Zeitfenster",

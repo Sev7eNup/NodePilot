@@ -25,7 +25,8 @@ const GRAPH = () => ({
   recent: [
     { executionId: 'ex-2', workflowId: 'wf-2', status: 'Failed', startedAt: new Date(now() - 10 * MIN).toISOString(), completedAt: new Date(now() - 8 * MIN).toISOString() },
   ],
-  meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false },
+  density: [],
+  meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
 });
 
 const STATS = () => ({
@@ -241,25 +242,36 @@ test('window selector re-requests the snapshot and freeze pins the view', async 
   await expect(page.getByTestId('ops-frozen-badge')).toHaveCount(0);
 });
 
-test('a truncated window says so instead of showing empty track', async ({ page }) => {
+test('a window the bars cannot cover is filled with density, not left empty', async ({ page }) => {
   await installDefaultMocks(page);
   await page.route('**/api/operations/graph*', (r) => json(r, {
     ...GRAPH(),
+    density: [
+      { workflowId: 'wf-1', buckets: [{ bucketIndex: 4, total: 12, failed: 0, cancelled: 0 }] },
+      { workflowId: 'wf-2', buckets: [{ bucketIndex: 6, total: 20, failed: 3, cancelled: 0 }] },
+    ],
     meta: {
       overdueSeconds: 600, windowMinutes: 240,
       recentSinceUtc: new Date(now() - 240 * MIN).toISOString(),
       oldestReturnedCompletedAt: new Date(now() - 8 * MIN).toISOString(),
-      recentTruncated: true,
+      recentTruncated: true, densityBucketSeconds: 300, densityCapped: false,
     },
   }));
   await page.route('**/api/stats/dashboard*', (r) => json(r, STATS()));
   await page.route('**/api/executions/ex-1', (r) => json(r, EXEC_DETAIL));
 
   await page.goto('/operations');
+  await expect(page.getByTitle(/Nightly Backup · Running/)).toBeVisible();
+  // The track has to actually span 4 h for the aggregate to have anywhere to sit — the window
+  // the user picked is what sets the visible span, the snapshot only fills it.
+  await page.getByLabel('Window').selectOption('240');
 
-  await expect(page.getByTestId('ops-truncated')).toBeVisible();
-  // The band is anchored on the oldest row actually returned, not the requested edge.
-  await expect(page.getByTestId('ops-history-gap')).toBeVisible();
+  // The whole point: at 4 h the stretch older than the newest bars carries the run counts
+  // instead of the hatched "nothing came back" band it used to show.
+  await expect(page.getByTestId('ops-density-cell')).toHaveCount(2);
+  await expect(page.getByTestId('ops-density-notice')).toContainText('32 finished runs');
+  await expect(page.getByTestId('ops-density-notice')).toContainText('3 failed');
+  await expect(page.getByTestId('ops-history-gap')).toHaveCount(0);
 });
 
 test('folder filter scopes timeline and departure board together', async ({ page }) => {

@@ -36,7 +36,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 
 - **Backend:** ASP.NET Core Web API, .NET 10, Windows-only (`net10.0-windows`)
 - **Datenbank:** PostgreSQL (default) / SQL Server (`Database:Provider` = `postgres` | `sqlserver`). SQLite nur als Test-In-Memory-Backend.
-- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` muss per `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1` quittiert werden, sonst Boot-Abbruch)
+- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` muss per `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1` quittiert werden, sonst Boot-Abbruch). Engine-local (In-Proc-Pool): implizite WinPS-Kompatibilität **deaktiviert** (Desktop-only-Module → lauter Fehler statt `powershell.exe -s`-Session-Leak; `Microsoft.PowerShell.Archive` gebündelt) — Details `docs/claude-reference.md` + `docs/performance-improvements.md`
 - **Real-time:** SignalR (`/hubs/execution`)
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
 - **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 99 Tools, HTTP-only gegen die REST-API
@@ -251,7 +251,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 **E2E (Playwright):** hermetische Specs in `src/nodepilot-ui/e2e/`, alle APIs gemockt (kein Backend/Postgres nötig). Konventionen: `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`.
 
-**Desktop-Shell:** `src/nodepilot-desktop` hat eine eigene vitest-Suite (node-Env) für die reine Logik — `config.ts` (desktop.json-Handoff-Validierung) + `security.ts` (Cert-Pinning, Navigations-Containment). `npm run test:run`; eigener CI-Job `desktop`.
+**Desktop-Shell:** `src/nodepilot-desktop` hat eine eigene vitest-Suite (node-Env) für die reine Logik — `config.ts` (desktop.json-Handoff-Validierung), `security.ts` (Cert-Pinning, Navigations-Containment) + `skins.ts` (Skin-Icon-Auflösung aus der Favicon-Meldung der SPA). `npm run test:run`; eigener CI-Job `desktop`.
 
 **Nightly:** Windows-Task `NodePilot Nightly Tests` (täglich 22:00) fährt via `scripts/nightly-tests.ps1` alle vier Suiten (je 1× Retry bei Flake), Report nach `C:\temp\nodepilot-nightly\` (+ `latest.md`). Das Skript gibt vorm Rebuild Port 5000 frei + killt verwaiste `testhost`-Prozesse. Manuell: `powershell -File scripts/nightly-tests.ps1`; Zeit ändern: `scripts/register-nightly-task.ps1 -Time HH:mm`.
 
@@ -336,4 +336,4 @@ Getrennt vom Workflow-Export: voller DR-Snapshot der Konfiguration (Workflows+Fo
 
 Produktiv-Rollout über `deploy/`-Skripte — Claude führt sie **nicht** aus. Vollständige Doku: `deploy/README.md`. Architektur (gMSA, Kestrel-HTTPS, Install-Dir-Split, Config-Keys, Stolperfallen): siehe `docs/claude-reference.md`.
 
-**Desktop-App (Electron, `deploy/desktop/`):** zweites Shipping-Ziel — offline Win-11-x64-Installer, alles als Boot-Start-Dienste. Posture `Deployment:Mode` (`Server`|`Desktop`, default `Server`): Desktop relaxiert **nur** loopback-DB-TLS + Kestrel-`ListenLocalhost` + 120s-Postgres-Wait vor dem Migration-Bootstrap; Rest bleibt Production-gehärtet. Volle Doku (Architektur, Dienste-Identitäten, First-Run-Admin-Handoff): `deploy/desktop/README.md`.
+**Desktop-App (Electron, `deploy/desktop/`):** zweites Shipping-Ziel — offline Win-11-x64-Installer, alles als Boot-Start-Dienste. Posture `Deployment:Mode` (`Server`|`Desktop`, default `Server`): Desktop relaxiert **nur** loopback-DB-TLS + Kestrel-`ListenLocalhost` + 120s-Postgres-Wait vor dem Migration-Bootstrap; Rest bleibt Production-gehärtet. Icons kommen aus `scripts/generate-desktop-icons.ps1` (Default blau, Fenster-/Tray-Icon folgt zur Laufzeit dem SPA-Skin über `page-favicon-updated`). Volle Doku (Architektur, Dienste-Identitäten, First-Run-Admin-Handoff): `deploy/desktop/README.md`.

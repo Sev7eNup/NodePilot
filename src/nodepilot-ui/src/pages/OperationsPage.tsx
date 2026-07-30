@@ -332,6 +332,7 @@ export function OperationsPage() {
             nowMs={nowMs}
             running={data.running}
             recent={data.recent}
+            density={data.density ?? []}
             locallySettled={locallySettled}
             scopedWorkflowIds={scopedWorkflowIds}
             nodesById={nodesById}
@@ -340,7 +341,9 @@ export function OperationsPage() {
             overdueMs={(data.meta?.overdueSeconds ?? 600) * 1000}
             windowMs={windowMinutes * 60_000}
             historyFromMs={data.meta?.oldestReturnedCompletedAt ? Date.parse(data.meta.oldestReturnedCompletedAt) : null}
-            recentTruncated={data.meta?.recentTruncated ?? false}
+            recentSinceMs={data.meta?.recentSinceUtc ? Date.parse(data.meta.recentSinceUtc) : nowMs - windowMinutes * 60_000}
+            densityBucketSeconds={data.meta?.densityBucketSeconds ?? 0}
+            densityCapped={data.meta?.densityCapped ?? false}
             onSelect={setSelected}
           />
         )}

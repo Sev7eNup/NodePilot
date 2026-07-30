@@ -498,17 +498,180 @@ public class OperationsControllerTests
         var wf = Guid.NewGuid();
         db.Workflows.Add(Wf(wf, "W", "{}"));
         var now = DateTime.UtcNow;
-        for (var i = 0; i < 505; i++)
+        for (var i = 0; i < 1005; i++)
             db.WorkflowExecutions.Add(Settled(wf, now.AddSeconds(-i)));
         await db.SaveChangesAsync();
 
         var graph = await GetGraph(NewController(db));
 
-        graph.Recent.Should().HaveCount(500);
+        graph.Recent.Should().HaveCount(1000);
         graph.Meta.RecentTruncated.Should().BeTrue();
         // The honest left edge sits INSIDE the window, right of what the caller asked for.
         graph.Meta.OldestReturnedCompletedAt.Should().NotBeNull();
         graph.Meta.OldestReturnedCompletedAt!.Value.Should().BeAfter(graph.Meta.RecentSinceUtc);
+    }
+
+    // ---- Density: the window covered where individual bars run out ---------------------------
+    //
+    // The defect these guard: at 1 h / 4 h a busy system blew past the raw cap after ~30 minutes,
+    // so every wider window showed the same newest half hour and an empty band for the rest. The
+    // window selector was decoration. Bars still cap — thousands of them cannot be re-sent every
+    // poll and re-positioned every tick — but what they cannot reach now comes back counted.
+
+    private static async Task<NodePilot.Data.NodePilotDbContext> SeedBusyWindow(
+        Guid wf, int count, TimeSpan spacing, params (int Index, ExecutionStatus Status)[] outcomes)
+    {
+        var db = TestDbFactory.Create();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        var now = DateTime.UtcNow;
+        var overrides = outcomes.ToDictionary(o => o.Index, o => o.Status);
+        for (var i = 0; i < count; i++)
+        {
+            var run = Settled(wf, now - spacing * i);
+            if (overrides.TryGetValue(i, out var status)) run.Status = status;
+            db.WorkflowExecutions.Add(run);
+        }
+        await db.SaveChangesAsync();
+        return db;
+    }
+
+    [Fact]
+    public async Task GetGraph_UntruncatedWindow_ShipsNoDensityAtAll()
+    {
+        // A quiet system must pay nothing for this: no second query, no extra payload.
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        db.WorkflowExecutions.Add(Settled(wf, DateTime.UtcNow.AddMinutes(-5)));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        graph.Density.Should().BeEmpty();
+        graph.Meta.DensityBucketSeconds.Should().Be(0);
+        graph.Meta.DensityCapped.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetGraph_TruncatedWindow_CountsEveryRunIncludingTheOnesPastTheBarCap()
+    {
+        // 1200 runs, 1000 of them bars — the density must account for all 1200, otherwise the
+        // console cannot answer "how much ran in this window?" at all.
+        var wf = Guid.NewGuid();
+        // 500 ms apart, so all 1200 comfortably fit the 20-minute window even if the request
+        // lands a moment after the seed — a 1 s spacing would push the oldest rows out of it.
+        var db = await SeedBusyWindow(wf, 1200, TimeSpan.FromMilliseconds(500),
+            (3, ExecutionStatus.Failed), (7, ExecutionStatus.Failed), (11, ExecutionStatus.Cancelled));
+
+        var graph = await GetGraph(NewController(db));
+
+        var lane = graph.Density.Should().ContainSingle().Subject;
+        lane.WorkflowId.Should().Be(wf);
+        lane.Buckets.Sum(b => b.Total).Should().Be(1200);
+        lane.Buckets.Sum(b => b.Failed).Should().Be(2);
+        lane.Buckets.Sum(b => b.Cancelled).Should().Be(1);
+        graph.Meta.DensityCapped.Should().BeFalse();
+    }
+
+    [Theory]
+    [InlineData(20, 25)]
+    [InlineData(60, 75)]
+    [InlineData(240, 300)]
+    public async Task GetGraph_DensityBucketWidth_ScalesWithTheWindow(int windowMinutes, int expectedSeconds)
+    {
+        // Fixed bucket COUNT, not fixed bucket width: that is what makes a wider window cost the
+        // console nothing extra, however many runs sit behind it.
+        var db = await SeedBusyWindow(Guid.NewGuid(), 1010, TimeSpan.FromSeconds(1));
+
+        var graph = await GetGraph(NewController(db), windowMinutes);
+
+        graph.Meta.DensityBucketSeconds.Should().Be(expectedSeconds);
+        graph.Density.Should().ContainSingle().Which.Buckets.Should().HaveCountLessThanOrEqualTo(48);
+    }
+
+    [Fact]
+    public async Task GetGraph_DensityBuckets_AreAscendingAndAnchoredOnRecentSince()
+    {
+        // Bucket 0 starts at RecentSinceUtc — the console turns an index straight back into a
+        // time range, so an off-by-one anchor would slide the whole history sideways.
+        var db = await SeedBusyWindow(Guid.NewGuid(), 1010, TimeSpan.FromSeconds(1));
+
+        var graph = await GetGraph(NewController(db), 240);
+
+        var buckets = graph.Density.Should().ContainSingle().Subject.Buckets;
+        buckets.Select(b => b.BucketIndex).Should().BeInAscendingOrder();
+        buckets.Should().OnlyContain(b => b.Total > 0);
+        // Everything was seeded within the last ~17 min of a 4 h window → the newest 5-min slices.
+        var lastIndex = (int)((DateTime.UtcNow - graph.Meta.RecentSinceUtc).TotalSeconds / graph.Meta.DensityBucketSeconds);
+        buckets.Should().OnlyContain(b => b.BucketIndex <= lastIndex && b.BucketIndex >= lastIndex - 5);
+    }
+
+    [Fact]
+    public async Task GetGraph_Density_IsFolderScopedLikeEverythingElse()
+    {
+        var db = TestDbFactory.Create();
+        SeedFolders(db);
+        var visible = Guid.NewGuid();
+        var hidden = Guid.NewGuid();
+        db.Workflows.AddRange(
+            Wf(visible, "Visible", "{}", folderId: FolderA),
+            Wf(hidden, "Hidden", "{}", folderId: FolderB));
+        // The visible folder alone has to blow past the cap: RBAC scoping runs BEFORE the cap, so
+        // the hidden folder's runs can neither trigger the truncation nor inflate the counts.
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < 1100; i++)
+        {
+            db.WorkflowExecutions.Add(Settled(visible, now.AddMilliseconds(-500 * i)));
+            db.WorkflowExecutions.Add(Settled(hidden, now.AddMilliseconds(-500 * i)));
+        }
+        await db.SaveChangesAsync();
+
+        var scoped = new ScopedAuthz(new AccessibleFolderSet { IsUnrestricted = false, FolderIds = [FolderA] });
+        var graph = await GetGraph(NewController(db, scoped, role: "Operator"));
+
+        graph.Meta.RecentTruncated.Should().BeTrue();
+        var lane = graph.Density.Should().ContainSingle().Subject;
+        lane.WorkflowId.Should().Be(visible);
+        lane.Buckets.Sum(b => b.Total).Should().Be(1100); // the hidden folder's 1100 never counted
+    }
+
+    [Fact]
+    public async Task GetGraph_Density_SeparatesLanesPerWorkflow()
+    {
+        var db = TestDbFactory.Create();
+        var a = Guid.NewGuid();
+        var b = Guid.NewGuid();
+        db.Workflows.AddRange(Wf(a, "A", "{}"), Wf(b, "B", "{}"));
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < 600; i++) db.WorkflowExecutions.Add(Settled(a, now.AddSeconds(-i)));
+        for (var i = 0; i < 500; i++) db.WorkflowExecutions.Add(Settled(b, now.AddSeconds(-i)));
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        graph.Density.Should().HaveCount(2);
+        graph.Density.Single(l => l.WorkflowId == a).Buckets.Sum(x => x.Total).Should().Be(600);
+        graph.Density.Single(l => l.WorkflowId == b).Buckets.Sum(x => x.Total).Should().Be(500);
+    }
+
+    [Fact]
+    public async Task GetGraph_Density_ExcludesActiveRunsJustLikeRecent()
+    {
+        // A Running row has no CompletedAt; counting it would inflate "what finished here".
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        var now = DateTime.UtcNow;
+        for (var i = 0; i < 1010; i++) db.WorkflowExecutions.Add(Settled(wf, now.AddSeconds(-i)));
+        db.WorkflowExecutions.Add(new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = wf, Status = ExecutionStatus.Running, StartedAt = now.AddMinutes(-2),
+        });
+        await db.SaveChangesAsync();
+
+        var graph = await GetGraph(NewController(db));
+
+        graph.Density.Should().ContainSingle().Which.Buckets.Sum(b => b.Total).Should().Be(1010);
     }
 
     // ---- Step activity on live runs ----------------------------------------------------------

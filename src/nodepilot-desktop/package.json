@@ -8,6 +8,7 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc && node scripts/copy-static.mjs",
+    "icons": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/generate-desktop-icons.ps1",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",

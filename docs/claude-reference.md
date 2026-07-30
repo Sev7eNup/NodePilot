@@ -50,6 +50,8 @@ in den Kontext-Window geladen werden müssen, aber bei Bedarf nachschlagbar sind
 - **Maschine gesetzt** (non-loopback bzw. + Credential) → NodePilot baut die WinRM-Session über die gepoolte `WinRmSessionFactory` (`ExecuteRemoteAsync`). Das Script läuft auf dem Ziel, **kein** Session-Management im Script nötig.
 - **Keine Maschine** (bzw. loopback ohne Credential) → der Node läuft **engine-local im API-Host** (`ExecuteLocalAsync`, Runspace-Pool bzw. isolierter Prozess). Von dort kann das Script die Remote-Verbindung **selbst** herstellen — SCOrch-Stil: `Invoke-Command -ComputerName SRV01 -Credential $c { … }` / `New-PSSession`. Sinnvoll für dynamische Ziellisten, Fan-out auf N Maschinen in **einem** Node oder Jump-Host-Ketten.
 
+**Engine-local = PowerShell-SDK, nicht volles pwsh:** Der In-Process-Pool shippt nur die acht Core-Module plus das gebündelte `Microsoft.PowerShell.Archive` (eager importiert, `PSModules\` im Output — Grund: WinPSCompat-Session-Leak 2026-07-30, siehe `docs/performance-improvements.md`). **Implizite Windows-PowerShell-Kompatibilität ist deaktiviert** (`powershell.config.json` mit `DisableImplicitWinCompat` neben der SDK-DLL, platziert via `Directory.Build.targets`): Ein Desktop-only-Modul (z. B. die System32-Kopien ohne Core-Flag) schlägt engine-local **laut** fehl statt still einen `powershell.exe -s`-Kindprozess pro Pool-Runspace zu akkumulieren. CDXML-Module (ScheduledTasks, NetTCPIP, Defender, …) laden weiterhin nativ; bewusstes `Import-Module -UseWindowsPowerShell` bleibt möglich (die so erzeugte Session gehört dann dem Script — inkl. Aufräumen). `pwsh`/`powershell.exe`-Prozess-Engines und der WinRM-Pfad sind nicht betroffen (eigenes `$PSHOME` bzw. Remote-Seite).
+
 **Trade-offs beim Self-Managen** (bewusst außerhalb des managed WinRM-Pfads):
 
 1. Läuft auf dem **API-Host**, nicht auf dem Ziel — der Host braucht Netz-/WinRM-Client-Zugriff (TrustedHosts/Kerberos/SSL) selbst.
@@ -382,8 +384,21 @@ Alerting-Webhooks). Merksatz: *ausgehend alles, eingehend nichts.*
 - **`$PSHOME\Modules` muss mitgeliefert werden**, sonst schlägt jedes `runScript` fehl (Modul-Staging im Build)
 - Deploy-Skripte **ASCII-only** halten (UTF-8-no-BOM wird als ANSI gelesen)
 
+**Icons (skin-folgend):** [scripts/generate-desktop-icons.ps1](scripts/generate-desktop-icons.ps1)
+rendert `src/nodepilot-desktop/assets/` aus den Brand-Assets der SPA — Default-Set (`icon.ico`
+16/32/48/256, `icon.png`, `tray.png`) **blau** aus `appicon-dark.png` plus `skins/<id>.png` +
+`<id>-tray.png` je Skin. Zur Laufzeit folgt die Shell dem Skin: die SPA schreibt bei jedem Wechsel
+`/appicon-<skin>.png` in `<link rel="icon">`, Chromium meldet das als `page-favicon-updated`, und
+[skins.ts](src/nodepilot-desktop/src/skins.ts) mappt es zurück auf `skins/<id>.*` (Fenster- +
+Tray-Icon). Bewusst **kein** Preload/IPC am Produktions-SPA-Fenster — die Shell liest ein Signal,
+das der Renderer ohnehin sendet. Die Skin-Liste ist **nicht** gespiegelt: der Generator leitet sie
+aus den vorhandenen `appicon-*.png` ab, die Shell aus den erzeugten Dateien (unbekannter Skin →
+aktuelles Icon bleibt). Nur exe/Installer/Startmenü-Icon bleibt fix — Windows löst die aus der Datei
+auf. Output ist gitignored, die Quellen sind versioniert.
+
 **Dev-Loop:** `Sync-DesktopApp.ps1` (~1 Min) statt Installer-Rebuild; Electron-Shell via `npm start`
-direkt aus dem Quellcode gegen die installierte Backend-Instanz.
+direkt aus dem Quellcode gegen die installierte Backend-Instanz (davor einmal `npm run icons`,
+sonst ist `assets/` leer).
 
 ---
 
@@ -499,7 +514,15 @@ Dashboard + Workflow-Listen lesen ein **vorberechnetes** `WorkflowStats`-Aggrega
 
 **Warum der Sample-Cap:** Zähler und Zeitstempel aggregiert die DB serverseitig, Perzentile lassen sich aber nicht provider-agnostisch in LINQ ausdrücken. Die Dauer-Samples werden deshalb pro Workflow über den deckenden Index `(WorkflowId, StartedAt DESC)` geholt und hart gedeckelt — vorher materialisierte ein Pass **jeden** Erfolgslauf des Fensters im Speicher, alle 5 Minuten, für drei Kennzahlen.
 
-**Zeitfenster + Truncation.** `GET /api/operations/graph?windowMinutes=` ist serverseitig auf `{20, 60, 240}` geklemmt (alles andere → 20) und steuert **nur** die beendeten Läufe. `running[]` ist bewusst nie gefenstert — ein seit sechs Stunden laufender Job muss in jedem Fenster sichtbar bleiben, das ist ja der Stuck-Fall. Ein Cap (`RecentCap = 500`) gilt für alle Fenster; das Fenster ohne Cap-Anhebung zu verbreitern hätte stille **Löcher** in die Timeline gerissen (die neuesten N überleben, ältere verschwinden mitten im Fenster), was sich als „da lief nichts" liest. Deshalb drei Meta-Felder mit drei verschiedenen Bedeutungen: `RecentSinceUtc` = *angeforderter* linker Rand, `OldestReturnedCompletedAt` = ältester *tatsächlich gelieferter* Abschluss, `RecentTruncated` = ob der Cap gegriffen hat. Das „keine Historie"-Band wird ab `OldestReturnedCompletedAt` gezeichnet, **nicht** ab `RecentSinceUtc` — bei Truncation markierte letzteres genau die Strecke, die *nicht* verloren ging.
+**Zeitfenster, Balken-Cap und Dichte.** `GET /api/operations/graph?windowMinutes=` ist serverseitig auf `{20, 60, 240}` geklemmt (alles andere → 20) und steuert **nur** die beendeten Läufe. `running[]` ist bewusst nie gefenstert — ein seit sechs Stunden laufender Job muss in jedem Fenster sichtbar bleiben, das ist ja der Stuck-Fall.
+
+`RecentCap = 1000` gilt für **jedes** Fenster, weil er ein **Render-Budget** ist und kein Fenster-Budget: er begrenzt, wie viele Balken die Konsole bei jedem Uhr-Tick neu positioniert und bei jedem 5-s-Poll neu empfängt — beides hängt nicht daran, wie weit zurück jemand geschaut hat. Auf einer ausgelasteten Anlage (gemessen: 982 beendete Läufe/h über 24 Workflows) deckt der Cap ~30 min ab; alles darüber hinaus mit Rohzeilen zu füllen hieße ~3.900 Zeilen alle 5 s — nicht tragbar.
+
+Die Abdeckung des Fensters übernimmt deshalb **`density[]`**: pro Workflow gebucketete Zähler (`total`/`failed`/`cancelled`) über das **ganze** Fenster, berechnet **nur wenn** der Cap gegriffen hat (ruhige Anlage → zweite Query und Payload entfallen komplett). Feste Bucket-**Anzahl** statt fester Breite (`DensityBucketTarget = 48`, also 25 s bei 20 min, 5 min bei 4 h) — dadurch kostet ein breiteres Fenster nichts extra, egal wie viele Läufe dahinterstehen. Aggregiert wird **in-memory** über einen gedeckelten Scan (`DensityScanCap = 20.000`), bewusst nicht in SQL: portables Datums-Bucketing über Postgres, SQL Server **und** das SQLite-Test-Backend ist ein Übersetzungs-Minenfeld, ein schmaler Range-Read dagegen billig.
+
+Fünf Meta-Felder mit fünf verschiedenen Bedeutungen: `RecentSinceUtc` = *angeforderter* linker Rand (und Anker von Bucket 0), `OldestReturnedCompletedAt` = ältester *tatsächlich gelieferter* Abschluss (die Naht zwischen Balken und Dichte), `RecentTruncated` = ob der Cap gegriffen hat, `DensityBucketSeconds` = Bucket-Breite, `DensityCapped` = ob schon das Aggregat gedeckelt wurde (die Zähler sind dann eine Untergrenze, keine Summe).
+
+Die Buckets decken absichtlich das ganze Fenster ab und nicht nur die fehlende Strecke: die Naht fällt mitten in einen Bucket (ein dort abgeschnittener Bucket zählte sich selbst zu klein), und so ist die Bucket-Summe die ehrliche Fenster-Gesamtzahl für die Hinweiszeile. Das **Clipping** an der Naht ist eine reine Render-Entscheidung in `buildDensityCells` — rechts davon ist jeder Lauf ohnehin ein Balken. Das „keine Historie"-Band entfällt, sobald Dichte da ist: es behauptet „für diese Strecke kam nichts zurück", und die Dichte ist genau die Widerlegung. Ein Workflow **nur** mit Dichte (jeder seiner Läufe fiel hinter den Cap) bekommt in `assignLanes` trotzdem eine Lane — sonst hätte seine Historie nichts zum Zeichnen und der Workflow läse sich als untätig.
 
 **Freeze ist ein Darstellungs-Freeze.** Eingefroren werden nur die Render-Inputs (Snapshot, `locallySettled`, Uhr). Der SignalR-Feed bleibt verbunden, `seedRunning` reconciled weiter, und Hintergrund-Invalidierungen dürfen weiterhin Requests auslösen. `useOperationsFeed()` darf **niemals** bedingt aufgerufen werden: ohne den Feed schriebe `applyStatus` keine Tombstones mehr, und ein Refetch nach dem Auftauen könnte Läufe wiederbeleben, die währenddessen terminiert sind. Der Query-Key ist `['operations-graph', windowMinutes]`; beim Fensterwechsel verliert die alte Query ihren Observer und pollt von selbst nicht weiter.
 

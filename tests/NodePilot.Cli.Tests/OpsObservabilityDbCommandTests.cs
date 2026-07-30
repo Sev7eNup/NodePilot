@@ -43,11 +43,13 @@ public class OpsObservabilityDbCommandTests
                 },
                 running = Array.Empty<object>(),
                 recent = Array.Empty<object>(),
+                density = Array.Empty<object>(),
                 meta = new
                 {
                     overdueSeconds = 600, windowMinutes = 20,
                     recentSinceUtc = DateTime.UtcNow.AddMinutes(-20),
                     oldestReturnedCompletedAt = (DateTime?)null, recentTruncated = false,
+                    densityBucketSeconds = 0, densityCapped = false,
                 },
             }));
 
@@ -58,6 +60,49 @@ public class OpsObservabilityDbCommandTests
         result.Output.Should().Contain("Workflows:");
         result.Output.Should().Contain("missing: Ghost");
         result.Output.Should().Contain("last 20 min");
+    }
+
+    [Fact]
+    public void OperationsGraph_TruncatedWindow_ReportsTheAggregateInsteadOfClaimingRunsAreMissing()
+    {
+        // The note used to say older runs "are omitted". They are not — they come back as density,
+        // and the number a reader wants is what those buckets add up to.
+        using var h = new CommandTestHarness();
+        var wf = Guid.NewGuid();
+        h.Server.Given(Request.Create().WithPath("/api/operations/graph").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                nodes = new object[]
+                {
+                    new { workflowId = wf, name = "Deploy App", folderId = Guid.NewGuid(), folderPath = "/ops",
+                          isEnabled = true, runningCount = 0, lastStatus = "Succeeded", callFrequency = (int?)null, canRun = true, canEdit = true },
+                },
+                edges = Array.Empty<object>(),
+                running = Array.Empty<object>(),
+                recent = Array.Empty<object>(),
+                density = new object[]
+                {
+                    new { workflowId = wf, buckets = new object[]
+                    {
+                        new { bucketIndex = 2, total = 900, failed = 4, cancelled = 0 },
+                        new { bucketIndex = 3, total = 1100, failed = 7, cancelled = 2 },
+                    } },
+                },
+                meta = new
+                {
+                    overdueSeconds = 600, windowMinutes = 240,
+                    recentSinceUtc = DateTime.UtcNow.AddMinutes(-240),
+                    oldestReturnedCompletedAt = DateTime.UtcNow.AddMinutes(-35), recentTruncated = true,
+                    densityBucketSeconds = 300, densityCapped = false,
+                },
+            }));
+
+        var result = h.Run("operations", "graph", "-o", "table");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        result.Output.Should().Contain("2000 finished runs");
+        result.Output.Should().Contain("11 failed");
+        result.Output.Should().Contain("300s density buckets");
     }
 
     // ---- observability query ------------------------------------------------

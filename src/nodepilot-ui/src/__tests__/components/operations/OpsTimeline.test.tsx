@@ -19,6 +19,7 @@ function renderTimeline(overrides: Partial<Parameters<typeof OpsTimeline>[0]> = 
       nowMs={NOW}
       running={[{ executionId: 'run-1', workflowId: 'w1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }]}
       recent={[{ executionId: 'done-1', workflowId: 'w2', status: 'Failed', startedAt: new Date(NOW - 10 * MIN).toISOString(), completedAt: new Date(NOW - 8 * MIN).toISOString(), parentExecutionId: null }]}
+      density={[]}
       locallySettled={{}}
       scopedWorkflowIds={new Set(['w1', 'w2'])}
       nodesById={NODES}
@@ -27,7 +28,9 @@ function renderTimeline(overrides: Partial<Parameters<typeof OpsTimeline>[0]> = 
       overdueMs={10 * MIN}
       windowMs={20 * MIN}
       historyFromMs={null}
-      recentTruncated={false}
+      recentSinceMs={NOW - 20 * MIN}
+      densityBucketSeconds={0}
+      densityCapped={false}
       onSelect={onSelect}
       {...overrides}
     />,
@@ -161,6 +164,95 @@ describe('OpsTimeline — overdue runs', () => {
       recent: [],
     });
     expect(screen.queryByLabelText('Stuck / long-running')).not.toBeInTheDocument();
+  });
+});
+
+describe('OpsTimeline — density for the stretch bars cannot reach', () => {
+  // The 4 h window on a busy system: ~4000 finished runs exist, the snapshot ships the newest
+  // 1000 as bars and the rest as counts. Before this, everything older than the newest ~30 min
+  // was an empty hatched band and the window selector was decoration.
+  const DENSITY_ARGS = {
+    running: [],
+    recent: [{
+      executionId: 'newest', workflowId: 'w1', status: 'Succeeded',
+      startedAt: new Date(NOW - 31 * MIN).toISOString(),
+      completedAt: new Date(NOW - 30 * MIN).toISOString(), parentExecutionId: null,
+    }],
+    windowMs: 240 * MIN,
+    recentSinceMs: NOW - 240 * MIN,
+    historyFromMs: NOW - 30 * MIN,   // seam: bars start here, density covers what is left of it
+    densityBucketSeconds: 300,
+    density: [{
+      workflowId: 'w1',
+      buckets: [
+        { bucketIndex: 3, total: 12, failed: 0, cancelled: 0 },
+        { bucketIndex: 4, total: 20, failed: 3, cancelled: 1 },
+      ],
+    }],
+  };
+
+  it('draws one cell per bucket left of the seam and names its runs in the tooltip', () => {
+    renderTimeline(DENSITY_ARGS);
+    const cells = screen.getAllByTestId('ops-density-cell');
+    expect(cells).toHaveLength(2);
+    expect(cells[1].getAttribute('title')).toContain('20 runs');
+    expect(cells[1].getAttribute('title')).toContain('3 failed');
+    expect(cells[1].getAttribute('title')).toContain('1 cancelled');
+  });
+
+  it('omits the zero counts from a clean bucket rather than printing "0 failed"', () => {
+    renderTimeline(DENSITY_ARGS);
+    const cells = screen.getAllByTestId('ops-density-cell');
+    expect(cells[0].getAttribute('title')).toContain('12 runs');
+    expect(cells[0].getAttribute('title')).not.toContain('failed');
+  });
+
+  it('states the window total and suppresses the "no history" band', () => {
+    renderTimeline(DENSITY_ARGS);
+    // 12 + 20 counted, 3 of them failed — the answer to "what happened in these four hours?".
+    expect(screen.getByTestId('ops-density-notice').textContent).toContain('32 finished runs');
+    expect(screen.getByTestId('ops-density-notice').textContent).toContain('3 failed');
+    // The band claims nothing came back for that stretch; density is the refutation.
+    expect(screen.queryByTestId('ops-history-gap')).not.toBeInTheDocument();
+  });
+
+  it('says so when the aggregate itself was capped', () => {
+    renderTimeline({ ...DENSITY_ARGS, densityCapped: true });
+    expect(screen.getByTestId('ops-density-notice').textContent).toContain('More than');
+  });
+
+  it('gives a workflow with density but no bar a lane of its own', () => {
+    // Every run of w2 fell past the raw cap. Without a lane its history would have nowhere to
+    // draw and the workflow would read as idle — the exact misreading density exists to prevent.
+    renderTimeline({
+      ...DENSITY_ARGS,
+      density: [{ workflowId: 'w2', buckets: [{ bucketIndex: 5, total: 7, failed: 0, cancelled: 0 }] }],
+    });
+    expect(screen.getByText('Report Gen')).toBeInTheDocument();
+    expect(screen.getAllByTestId('ops-density-cell')).toHaveLength(1);
+  });
+
+  it('drops density for out-of-scope workflows, notice included', () => {
+    // w2 stays visible (so the lane view still renders) but w1's density must not leak into a
+    // folder-filtered board — nor into the run total the notice states.
+    renderTimeline({
+      ...DENSITY_ARGS,
+      scopedWorkflowIds: new Set(['w2']),
+      recent: [{
+        executionId: 'w2-run', workflowId: 'w2', status: 'Succeeded',
+        startedAt: new Date(NOW - 31 * MIN).toISOString(),
+        completedAt: new Date(NOW - 30 * MIN).toISOString(), parentExecutionId: null,
+      }],
+    });
+    expect(screen.getByTestId('ops-timeline')).toBeInTheDocument();
+    expect(screen.queryByTestId('ops-density-cell')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ops-density-notice')).not.toBeInTheDocument();
+  });
+
+  it('renders nothing extra on a quiet snapshot', () => {
+    renderTimeline();
+    expect(screen.queryByTestId('ops-density-cell')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ops-density-notice')).not.toBeInTheDocument();
   });
 });
 

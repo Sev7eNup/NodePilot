@@ -174,11 +174,25 @@ describe('AiChatPage', () => {
     askMock.mockImplementation(streamMock({ reply: 'ok' }));
     renderPage();
 
-    // The first example is the webhook-trigger prompt.
-    fireEvent.click(screen.getByRole('button', { name: /webhook trigger/i }));
+    // Default caps have db:false → the lite set, whose second prompt is the webhook how-to.
+    // `find*`, not `get*`: the grid only mounts once capabilities resolve.
+    fireEvent.click(await screen.findByRole('button', { name: /webhook trigger/i }));
 
     await waitFor(() => expect(askMock).toHaveBeenCalledTimes(1));
     expect((askMock.mock.calls[0][0] as KnowledgeAskRequest).question).toMatch(/webhook trigger/i);
+  });
+
+  it('offers the operational example prompts once the database source is available', async () => {
+    capsMock.mockResolvedValue({ enabled: true, docs: true, operational: true, sourceCode: false, db: true });
+    askMock.mockImplementation(streamMock({ reply: 'ok' }));
+    renderPage();
+
+    // db:true swaps the whole slate: ops questions in, docs-only lite prompts out.
+    fireEvent.click(await screen.findByRole('button', { name: /failed runs/i }));
+    expect(screen.queryByRole('button', { name: /webhook trigger/i })).not.toBeInTheDocument();
+
+    await waitFor(() => expect(askMock).toHaveBeenCalledTimes(1));
+    expect((askMock.mock.calls[0][0] as KnowledgeAskRequest).question).toMatch(/failed runs/i);
   });
 
   it('isolates threads — "New chat" starts an empty thread', async () => {

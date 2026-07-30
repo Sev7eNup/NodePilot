@@ -106,6 +106,10 @@ test.describe('AI Knowledge Chat (/ai-chat)', () => {
 
     // Empty-state title (no messages yet).
     await expect(page.getByRole('heading', { name: /Ask NodePilot anything/i })).toBeVisible();
+
+    // db:true → the operational starter prompts, not the docs-only lite set.
+    await expect(main.getByRole('button', { name: /last 10 failed runs/i })).toBeVisible();
+    await expect(main.getByRole('button', { name: /webhook trigger/i })).toHaveCount(0);
   });
 
   // 2. composer send → SSE stream (two delta frames) → token append + final answer + usage footer + send re-enabled
@@ -301,6 +305,12 @@ test.describe('AI Knowledge Chat (/ai-chat)', () => {
     // Source code + Database badges absent.
     await expect(page.getByText(/^Source code$/i)).toHaveCount(0);
     await expect(page.getByText(/^Database$/i)).toHaveCount(0);
+
+    // Without the DB source the starter prompts fall back to the lite set — a Viewer never sees
+    // ops questions that would only answer "database source is not available".
+    const main = page.locator('#np-main-scroll');
+    await expect(main.getByRole('button', { name: /webhook trigger/i })).toBeVisible();
+    await expect(main.getByRole('button', { name: /last 10 failed runs/i })).toHaveCount(0);
 
     // Composer is usable — Viewer can still ask questions.
     await page.getByRole('textbox', { name: /Ask about NodePilot/i }).fill('What can I see?');

@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import {
-  Add, BareMetalServer, Chat, Checkbox, Checkmark, ChevronDown, CircleDash, Code, DataBase, Document,
-  Download, Edit, Email, FlowModeler, Renew, Reset, Save, Send, Time, Tools, TrashCan, WarningAlt,
+  Add, BareMetalServer, ChartColumn, Chat, Checkbox, Checkmark, ChevronDown, CircleDash, Code,
+  DataBase, DataShare, Debug, Document, Download, Edit, Email, Events, FlowModeler, InProgress,
+  Locked, Renew, Reset, Save, Send, Time, Tools, TrashCan, UserRole, WarningAlt,
 } from '@carbon/icons-react';
 import {
   askStream, getKnowledgeCapabilities,
@@ -253,10 +254,15 @@ export function AiChatPage() {
     downloadTextFile(`nodepilot-ai-chat-${slug}-${date}.md`, md);
   }, [messages, threads, threadId, t]);
 
-  const examples = useMemo(
-    () => (t('ai:knowledge.examples', { returnObjects: true }) as string[]) ?? [],
-    [t],
-  );
+  // Starter prompts follow the enabled sources: the ops set leans on the DB/text2sql tools, which
+  // are off by default AND privileged-only — offering "show me the last 10 failed runs" to someone
+  // without that source just produces "source not available". Hold both back until `caps` resolves,
+  // otherwise the lite set flashes for a beat before swapping.
+  const examples = useMemo(() => {
+    if (!caps) return [];
+    const key = caps.db ? 'ai:knowledge.examples' : 'ai:knowledge.examplesLite';
+    return (t(key, { returnObjects: true }) as string[]) ?? [];
+  }, [t, caps]);
   const lastIndex = messages.length - 1;
 
   // Disabled state: capabilities loaded and the chat is off (Llm or AiKnowledge master off).
@@ -316,7 +322,12 @@ export function AiChatPage() {
       <div className="relative mt-6 min-h-0 flex-1">
         <div ref={scrollRef} onScroll={onScroll} className="absolute inset-0 space-y-5 overflow-y-auto pr-1">
           {messages.length === 0 ? (
-            <EmptyState examples={examples} onPick={sendQuestion} t={t} />
+            <EmptyState
+              examples={examples}
+              icons={caps?.db ? EXAMPLE_ICONS_OPS : EXAMPLE_ICONS_LITE}
+              onPick={sendQuestion}
+              t={t}
+            />
           ) : (
             messages.map((m, i) => (
               <MessageBubble
@@ -395,23 +406,35 @@ export function AiChatPage() {
   );
 }
 
-// Icons paired to the ordered `knowledge.examples` prompts (docs how-to, ops, config).
+// Icons paired positionally to the ordered example prompts — one row per i18n array, same order.
 // Falls back to Chat when more prompts than icons are configured.
-const EXAMPLE_ICONS: (typeof Document)[] = [
-  Document,        // set up a webhook trigger
-  WarningAlt,      // which workflows failed
-  FlowModeler,     // what does 'Nightly Backup' do
-  Email,           // email alerts for failed runs
-  Time,            // workflows on a schedule
+const EXAMPLE_ICONS_OPS: (typeof Document)[] = [
+  WarningAlt,      // last 10 failed runs
+  Debug,           // which step broke
+  ChartColumn,     // most-failing workflows this week
+  InProgress,      // runs stuck in Running
   BareMetalServer, // machines unreachable
-  Renew,           // retry a failed run
-  Save,            // system-configuration backup
+  Time,            // scheduled in the next 24h
+  Events,          // audit trail
+  Email,           // email on failure (docs)
+];
+
+const EXAMPLE_ICONS_LITE: (typeof Document)[] = [
+  Time,      // scheduled in the next 24h
+  Document,  // webhook trigger setup
+  Email,     // email on failure
+  Renew,     // retry a failed run
+  DataShare, // pass data between steps
+  Locked,    // edit lock
+  Save,      // config backup + restore
+  UserRole,  // what the Operator role may do
 ];
 
 function EmptyState({
-  examples, onPick, t,
+  examples, icons, onPick, t,
 }: Readonly<{
   examples: string[];
+  icons: (typeof Document)[];
   onPick: (q: string) => void;
   t: (k: string) => string;
 }>) {
@@ -425,7 +448,7 @@ function EmptyState({
       {examples.length > 0 && (
         <div className="mt-6 grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
           {examples.map((ex, i) => {
-            const Icon = EXAMPLE_ICONS[i] ?? Chat;
+            const Icon = icons[i] ?? Chat;
             return (
               <button
                 key={ex}

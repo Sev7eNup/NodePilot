@@ -38,7 +38,17 @@ public sealed class OperationsGraphCommand : BaseCommand<OperationsGraphSettings
         var runningTotal = graph.Nodes.Sum(n => n.RunningCount);
         console.MarkupLine($"[bold]Workflows:[/] {graph.Nodes.Count}   [bold]Edges:[/] {graph.Edges.Count}   [bold]Running:[/] {runningTotal}   [bold]Recent:[/] {graph.Recent.Count} (last {graph.Meta.WindowMinutes} min)");
         if (graph.Meta.RecentTruncated)
-            console.MarkupLine("[yellow]Note:[/] more finished runs exist in this window than were returned — older ones are omitted.");
+        {
+            // Not "omitted" — the runs past the cap come back as density. Report what they add up
+            // to, which is the number a `np operations graph` reader actually wants.
+            var counted = graph.Density.Sum(l => l.Buckets.Sum(b => b.Total));
+            var failed = graph.Density.Sum(l => l.Buckets.Sum(b => b.Failed));
+            var prefix = graph.Meta.DensityCapped ? "more than " : "";
+            console.MarkupLine(
+                $"[yellow]Note:[/] {prefix}{counted} finished runs in this window ({failed} failed) — "
+                + $"only the newest {graph.Recent.Count} are listed individually, the rest are aggregated "
+                + $"into {graph.Meta.DensityBucketSeconds}s density buckets.");
+        }
 
         var nodes = new Table().Border(TableBorder.Rounded)
             .AddColumn("Workflow").AddColumn("Folder").AddColumn("Enabled").AddColumn("Running").AddColumn("Last");

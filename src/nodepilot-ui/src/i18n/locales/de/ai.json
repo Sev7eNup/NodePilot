@@ -120,14 +120,24 @@
     "disabledTitle": "KI-Chat ist deaktiviert",
     "disabledBody": "Ein Administrator kann ihn in den Einstellungen unter „AI-Wissen (Chat)“ aktivieren (setzt Llm:Enabled voraus).",
     "examples": [
-      "Wie richte ich einen Webhook-Trigger ein?",
-      "Welche Workflows sind in den letzten 24 Stunden fehlgeschlagen?",
-      "Was macht der Workflow ‚Nightly Backup‘ und welche Maschinen nutzt er?",
-      "Wie richte ich E-Mail-Alerts bei fehlgeschlagenen Läufen ein?",
-      "Welche Workflows laufen nach einem Zeitplan?",
-      "Welche Maschinen sind aktuell nicht erreichbar?",
+      "Zeig mir die letzten 10 fehlgeschlagenen Läufe mit Fehlermeldung.",
+      "An welchem Schritt ist der letzte fehlgeschlagene Lauf gescheitert?",
+      "Welche Workflows sind in den letzten 7 Tagen am häufigsten fehlgeschlagen?",
+      "Welche Läufe hängen seit über einer Stunde im Status „Running“?",
+      "Welche Maschinen waren beim letzten Verbindungstest nicht erreichbar?",
+      "Was steht in den nächsten 24 Stunden auf dem Zeitplan?",
+      "Wer hat in den letzten 24 Stunden was geändert?",
+      "Wie bekomme ich eine E-Mail, wenn ein Workflow fehlschlägt?"
+    ],
+    "examplesLite": [
+      "Was steht in den nächsten 24 Stunden auf dem Zeitplan?",
+      "Wie richte ich einen Webhook-Trigger sicher ein?",
+      "Wie bekomme ich eine E-Mail, wenn ein Workflow fehlschlägt?",
       "Wie starte ich einen fehlgeschlagenen Lauf erneut?",
-      "Wie funktioniert das System-Backup?"
+      "Wie gebe ich Daten von einem Schritt an den nächsten weiter?",
+      "Wozu dient der Bearbeitungs-Lock und wie gebe ich einen Workflow wieder frei?",
+      "Wie sichere ich die komplette NodePilot-Konfiguration und spiele sie zurück?",
+      "Was darf die Rolle ‚Operator‘ — und was nicht?"
     ]
   },
   "aria": {

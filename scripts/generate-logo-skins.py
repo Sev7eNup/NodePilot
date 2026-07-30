@@ -29,7 +29,9 @@ SRC = os.path.join(PUBLIC, "appicon.original.png")
 MAX_SIZE = 384
 
 # Uniform target hue (degrees) per skin id, matching that skin's --color-primary
-# accent family. `dark` = 25 reproduces the previously-approved orange appicon.png.
+# accent family. The orange of `appicon.png` is the untinted source art, not a skin —
+# no entry here reproduces it. `dark` doubles as the Electron shell's default icon
+# (see scripts/generate-desktop-icons.ps1), which is why it must stay a brand blue.
 SKIN_HUE = {
     "light": 210,           # blue    (#004ac6 / #2563eb)
     "dark": 216,            # azure   (#6da8ff / #2467d9)

@@ -13,7 +13,11 @@
     "idleHint": "As soon as a workflow starts, its bar grows here live.",
     "nextStart": "Next start {{time}} — {{name}}",
     "historyGap": "No finished runs returned before {{time}}",
-    "recentTruncated": "Too many finished runs in this window — older ones are not shown."
+    "density": "{{runs}} finished runs in this window, {{failed}} failed — older ones are aggregated as density. Pick a shorter window for individual bars.",
+    "densityCapped": "More than {{runs}} finished runs in this window — the density is based on the newest {{runs}}. Pick a shorter window for individual bars.",
+    "densityCell": "{{from}}–{{to}} · {{runs}} runs",
+    "densityCellFailed": "{{count}} failed",
+    "densityCellCancelled": "{{count}} cancelled"
   },
   "window": {
     "label": "Window",

@@ -38,6 +38,30 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             // to dot-source the .psm1 files those modules ship as.
             var iss = InitialSessionState.CreateDefault2();
             iss.ExecutionPolicy = Microsoft.PowerShell.ExecutionPolicy.Bypass;
+
+            // The PowerShell SDK ships only the eight core modules — Microsoft.PowerShell.Archive
+            // (Compress-Archive / Expand-Archive, used by the zipOperation activity on the
+            // localhost-bypass path) is not among them. Left to itself, the module auto-loader
+            // found the Windows PowerShell 5.1 copy under System32 and loaded it through the
+            // implicit WinCompat feature: one `powershell.exe -Version 5.1 -s` child process per
+            // pool runspace, registered as "WinPSCompatSession" in that runspace's session
+            // repository and never closed. Pool runspaces live forever, so sessions, their
+            // transport threads and ~148 MB child processes accumulated without bound (the
+            // 2026-07-30 9-GB leak). Importing the bundled copy eagerly means the auto-loader
+            // never goes looking; implicit WinCompat itself is additionally disabled via
+            // powershell.config.json next to the SDK assembly (see Directory.Build.targets),
+            // so any future desktop-only cmdlet fails loudly instead of silently leaking.
+            var archiveManifest = Path.Combine(AppContext.BaseDirectory,
+                "PSModules", "Microsoft.PowerShell.Archive", "Microsoft.PowerShell.Archive.psd1");
+            if (File.Exists(archiveManifest))
+                iss.ImportPSModule(archiveManifest);
+            else
+                logger.LogWarning(
+                    "Bundled Microsoft.PowerShell.Archive module not found at {Path} — local " +
+                    "Compress-Archive/Expand-Archive (zipOperation) will fail in the runspace pool. " +
+                    "The output layout is missing the PSModules folder from NodePilot.Engine.",
+                    archiveManifest);
+
             _pool = RunspaceFactory.CreateRunspacePool(iss);
             _pool.SetMinRunspaces(_minRunspaces);
             _pool.SetMaxRunspaces(_maxRunspaces);

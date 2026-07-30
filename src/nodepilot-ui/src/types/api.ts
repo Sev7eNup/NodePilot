@@ -401,7 +401,10 @@ export interface OpsRunningExecution {
   activeStepCount: number | null;
 }
 
-/** Terminal execution completed within the recent window (30 min, newest 200). */
+/**
+ * Terminal execution completed within the requested window, newest first and capped. Runs past
+ * the cap are not dropped — they come back aggregated in `OpsDensityLane`.
+ */
 export interface OpsRecentExecution {
   executionId: string;
   workflowId: string;
@@ -429,8 +432,35 @@ export interface OpsSnapshotMeta {
    * stretch that was not lost.
    */
   oldestReturnedCompletedAt: string | null;
-  /** More settled runs existed in the window than the cap returns. */
+  /** More settled runs existed in the window than the cap returns — i.e. `density` is populated. */
   recentTruncated: boolean;
+  /**
+   * Width of one density bucket. Bucket `i` spans
+   * `[recentSinceUtc + i·s, recentSinceUtc + (i+1)·s)`. Zero when no density was computed.
+   */
+  densityBucketSeconds: number;
+  /**
+   * The density scan hit its own row cap: the aggregate describes the newest N settled runs of
+   * the window rather than all of them. Distinct from `recentTruncated` — that one means "not
+   * every run is a bar", this one means "not every run is even counted".
+   */
+  densityCapped: boolean;
+}
+
+/** One time slice of one workflow's settled runs. Outcome is split, never reduced to a worst status. */
+export interface OpsDensityBucket {
+  /** Slice offset from `meta.recentSinceUtc`, in `meta.densityBucketSeconds` steps. */
+  bucketIndex: number;
+  total: number;
+  failed: number;
+  cancelled: number;
+}
+
+/** Bucketed settled-run counts for one workflow. Only present when `recent` was capped. */
+export interface OpsDensityLane {
+  workflowId: string;
+  /** Only buckets with at least one run, ascending by index. */
+  buckets: OpsDensityBucket[];
 }
 
 export interface OperationsGraph {
@@ -438,6 +468,11 @@ export interface OperationsGraph {
   edges: OpsEdge[];
   running: OpsRunningExecution[];
   recent: OpsRecentExecution[];
+  /**
+   * Per-workflow run density over the window — populated only when `recent` was capped, so the
+   * stretch the bars cannot reach is drawn as an aggregate instead of an empty band.
+   */
+  density: OpsDensityLane[];
   meta: OpsSnapshotMeta;
 }
 

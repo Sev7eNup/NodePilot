@@ -46,12 +46,31 @@ public class OperationsController : ControllerBase
     private static readonly int[] AllowedWindowMinutes = [20, 60, 240];
 
     /// <summary>
-    /// Cap on returned settled runs. Raising the window without raising this would punch silent
-    /// HOLES into the timeline (the newest N survive, older ones vanish mid-window) — which reads
-    /// as "nothing ran" rather than "too much ran". Hence one cap for every window plus an
-    /// explicit truncation flag, never a silent trim.
+    /// Cap on returned settled runs. This is a RENDER budget, not a window budget — the same
+    /// number at every window, because what it bounds is how many bars the console re-positions
+    /// on every clock tick and re-receives on every 5 s poll, neither of which cares how far back
+    /// the caller looked. Coverage of the window is not this cap's job: whatever it cannot reach
+    /// comes back aggregated in <see cref="OpsDensityLane"/>, so widening the window can no longer
+    /// punch a hole that reads as "nothing ran".
     /// </summary>
-    private const int RecentCap = 500;
+    private const int RecentCap = 1000;
+
+    /// <summary>
+    /// Bucket count the density aggregate aims for at any window — the reason widening the window
+    /// costs nothing extra. At 20 min a bucket is 25 s, at 4 h it is 5 min; either way the console
+    /// receives at most <c>lanes × 48</c> cells no matter how many runs are behind them.
+    /// </summary>
+    private const int DensityBucketTarget = 48;
+
+    /// <summary>
+    /// Row ceiling for the density scan. The aggregate is computed in memory rather than in SQL
+    /// deliberately: portable date-part bucketing across Postgres, SQL Server AND the SQLite test
+    /// backend is a translation minefield, and 20 000 narrow rows is a cheap indexed range read.
+    /// At the 4 h window this is ~83 finished runs per minute sustained — well past the busiest
+    /// real load — and if it is ever hit, <c>Meta.DensityCapped</c> says so instead of quietly
+    /// under-counting.
+    /// </summary>
+    private const int DensityScanCap = 20_000;
 
     /// <summary>
     /// How many running executions get step-activity enrichment per snapshot. The oldest win —
@@ -71,7 +90,7 @@ public class OperationsController : ControllerBase
     {
         if (!AllowedWindowMinutes.Contains(windowMinutes)) windowMinutes = 20;
         var recentSince = DateTime.UtcNow.AddMinutes(-windowMinutes);
-        var emptyMeta = new OpsSnapshotMeta(OverdueSeconds(), windowMinutes, recentSince, null, false);
+        var emptyMeta = new OpsSnapshotMeta(OverdueSeconds(), windowMinutes, recentSince, null, false, 0, false);
 
         // RBAC: resolve the accessible-folder set once and scope every query to it. Global Admin
         // is unrestricted and skips the filter; a user with zero folder access gets an empty graph.
@@ -81,7 +100,7 @@ public class OperationsController : ControllerBase
         if (!accessible.IsUnrestricted)
         {
             if (accessible.FolderIds.Count == 0)
-                return Ok(new OperationsGraphDto([], [], [], [], emptyMeta));
+                return Ok(new OperationsGraphDto([], [], [], [], [], emptyMeta));
             workflowQuery = workflowQuery.Where(w => accessible.FolderIds.Contains(w.FolderId));
             execQuery = execQuery.Where(e => accessible.FolderIds.Contains(e.Workflow.FolderId));
         }
@@ -183,11 +202,13 @@ public class OperationsController : ControllerBase
         // fact we can report rather than a silent trim. `running` is deliberately NOT windowed —
         // a job that started six hours ago must stay on the timeline at every window setting;
         // that is precisely the stuck-run case the view exists for.
-        var recentFetched = await execQuery
+        var settledQuery = execQuery
             .Where(e => e.CompletedAt != null && e.CompletedAt >= recentSince
                      && e.Status != ExecutionStatus.Running
                      && e.Status != ExecutionStatus.Pending
-                     && e.Status != ExecutionStatus.Paused)
+                     && e.Status != ExecutionStatus.Paused);
+
+        var recentFetched = await settledQuery
             .OrderByDescending(e => e.CompletedAt)
             .Take(RecentCap + 1)
             .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.ParentExecutionId })
@@ -197,6 +218,25 @@ public class OperationsController : ControllerBase
         var recentRows = recentTruncated ? recentFetched.Take(RecentCap).ToList() : recentFetched;
         // Ordered by CompletedAt desc, so the last row is the oldest one we actually returned.
         var oldestReturned = recentRows.Count > 0 ? recentRows[^1].CompletedAt : null;
+
+        // Density only when the bars could not cover the window. On a quiet system this whole
+        // block is skipped: no second query, no extra payload, timeline unchanged.
+        var density = Array.Empty<OpsDensityLane>() as IReadOnlyList<OpsDensityLane>;
+        var densityBucketSeconds = 0;
+        var densityCapped = false;
+        if (recentTruncated)
+        {
+            densityBucketSeconds = Math.Max(1, windowMinutes * 60 / DensityBucketTarget);
+            var scan = await settledQuery
+                .OrderByDescending(e => e.CompletedAt)
+                .Take(DensityScanCap + 1)
+                .Select(e => new { e.WorkflowId, e.CompletedAt, e.Status })
+                .ToListAsync(ct);
+            densityCapped = scan.Count > DensityScanCap;
+            density = Bucketize(
+                scan.Take(DensityScanCap).Select(r => (r.WorkflowId, r.CompletedAt!.Value, r.Status)),
+                recentSince, densityBucketSeconds);
+        }
 
         var wfIds = workflows.Select(w => w.Id).ToList();
         var statsRows = await _db.WorkflowStats.AsNoTracking()
@@ -265,9 +305,50 @@ public class OperationsController : ControllerBase
             .ToList();
 
         var meta = new OpsSnapshotMeta(
-            OverdueSeconds(), windowMinutes, recentSince, oldestReturned, recentTruncated);
+            OverdueSeconds(), windowMinutes, recentSince, oldestReturned, recentTruncated,
+            densityBucketSeconds, densityCapped);
 
-        return Ok(new OperationsGraphDto(nodes, edges, running, recent, meta));
+        return Ok(new OperationsGraphDto(nodes, edges, running, recent, density, meta));
+    }
+
+    /// <summary>
+    /// Groups settled runs into fixed-width time slices per workflow.
+    /// <para>
+    /// Slices span the WHOLE window, not just the stretch the raw list missed. Two reasons: the
+    /// boundary between "is a bar" and "is a bucket" falls mid-slice, so a bucket cut at that
+    /// boundary would under-count itself; and covering everything makes the bucket sums the honest
+    /// total for the window, which is what the console puts in its notice line. The console draws
+    /// only the slices left of the seam — double-counting is a rendering concern, not a data one.
+    /// </para>
+    /// </summary>
+    private static IReadOnlyList<OpsDensityLane> Bucketize(
+        IEnumerable<(Guid WorkflowId, DateTime CompletedAt, ExecutionStatus Status)> rows,
+        DateTime recentSince,
+        int bucketSeconds)
+    {
+        var counts = new Dictionary<(Guid WorkflowId, int Bucket), (int Total, int Failed, int Cancelled)>();
+        foreach (var row in rows)
+        {
+            // Clamped at 0: a run whose CompletedAt sits a hair before recentSince (clock skew
+            // between the filter's timestamp and the row) belongs in the first slice, not in a
+            // negative one that would sort ahead of the window.
+            var offset = (int)Math.Max(0, (row.CompletedAt - recentSince).TotalSeconds / bucketSeconds);
+            var key = (row.WorkflowId, offset);
+            counts.TryGetValue(key, out var c);
+            counts[key] = (
+                c.Total + 1,
+                c.Failed + (row.Status == ExecutionStatus.Failed ? 1 : 0),
+                c.Cancelled + (row.Status == ExecutionStatus.Cancelled ? 1 : 0));
+        }
+
+        return counts
+            .GroupBy(kv => kv.Key.WorkflowId)
+            .Select(g => new OpsDensityLane(
+                g.Key,
+                g.OrderBy(kv => kv.Key.Bucket)
+                 .Select(kv => new OpsDensityBucket(kv.Key.Bucket, kv.Value.Total, kv.Value.Failed, kv.Value.Cancelled))
+                 .ToList()))
+            .ToList();
     }
 
     /// <summary>
