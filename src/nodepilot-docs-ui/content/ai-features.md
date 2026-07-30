@@ -89,6 +89,8 @@ Der Chat kann keine Workflow-Änderungen vorschlagen oder übernehmen. Antworten
 
 Die Datenbankquelle führt ausschließlich lesende Abfragen aus. Schreiboperationen werden blockiert. Geschützte Spalten und erkannte Secrets werden nicht an das Modell ausgegeben.
 
+Die Einstiegsvorschläge auf der leeren Chat-Seite richten sich nach den verfügbaren Wissensquellen. Steht die Datenbankquelle zur Verfügung, werden Betriebsauswertungen vorgeschlagen — etwa die letzten fehlgeschlagenen Läufe, hängende Ausführungen oder nicht erreichbare Maschinen. Andernfalls erscheinen Fragen zur Dokumentation und zum Zeitplan, die auch ohne diese Quelle beantwortet werden können.
+
 ## Abgrenzung
 
 | Aufgabe | Passende Funktion |

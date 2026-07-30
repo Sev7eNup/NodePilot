@@ -7,12 +7,21 @@ namespace NodePilot.Api.Dtos;
 /// never leaking its existence). Live status deltas arrive separately over the SignalR
 /// <c>ops-feed</c> group; this is the initial paint: nodes, static call topology, currently
 /// running executions and the recently finished ones for the live timeline.
+/// <para>
+/// <c>Density</c> carries per-workflow run counts over the window and is populated ONLY when
+/// <c>Recent</c> was capped. It is what makes the window selector mean something on a busy system:
+/// individual bars cannot cover four hours (that is thousands of rows re-sent every poll and
+/// re-positioned every clock tick), so the stretch the raw list does not reach comes back as an
+/// aggregate instead of being left blank. Empty on a quiet system — nothing is computed and
+/// nothing is shipped when the raw list already covers the window.
+/// </para>
 /// </summary>
 public record OperationsGraphDto(
     IReadOnlyList<OpsNode> Nodes,
     IReadOnlyList<OpsEdge> Edges,
     IReadOnlyList<OpsRunningExecution> Running,
     IReadOnlyList<OpsRecentExecution> Recent,
+    IReadOnlyList<OpsDensityLane> Density,
     OpsSnapshotMeta Meta);
 
 /// <summary>Snapshot-wide settings the console needs to render consistently with the backend.</summary>
@@ -35,15 +44,29 @@ public record OperationsGraphDto(
 /// band would cover exactly the stretch the truncation did NOT lose.
 /// </param>
 /// <param name="RecentTruncated">
-/// True when more settled runs existed in the window than the cap returns. Surfaced so an empty
-/// stretch of track is never silently read as "nothing ran".
+/// True when more settled runs existed in the window than the cap returns — i.e. exactly when
+/// <c>Density</c> is populated. Surfaced so an empty stretch of track is never silently read as
+/// "nothing ran".
+/// </param>
+/// <param name="DensityBucketSeconds">
+/// Width of one <see cref="OpsDensityBucket"/>, so the console can turn a bucket index back into
+/// a time range: bucket <c>i</c> spans <c>[RecentSinceUtc + i·s, RecentSinceUtc + (i+1)·s)</c>.
+/// Zero when no density was computed. Sized to hit a fixed bucket count at every window, which is
+/// what keeps the aggregate's cost independent of how busy the system is.
+/// </param>
+/// <param name="DensityCapped">
+/// The density scan hit its own row cap, so the aggregate describes the newest N settled runs in
+/// the window rather than all of them. Separate from <paramref name="RecentTruncated"/> on
+/// purpose: that one says "not every run is a bar", this one says "not every run is even counted".
 /// </param>
 public record OpsSnapshotMeta(
     int OverdueSeconds,
     int WindowMinutes,
     DateTime RecentSinceUtc,
     DateTime? OldestReturnedCompletedAt,
-    bool RecentTruncated);
+    bool RecentTruncated,
+    int DensityBucketSeconds,
+    bool DensityCapped);
 
 /// <param name="RunningCount">Live count of Running/Pending executions at snapshot time.</param>
 /// <param name="LastStatus">Status of the most recent execution (from WorkflowStats), or null if never run.</param>
@@ -126,9 +149,10 @@ public record OpsRunningExecution(
     int? ActiveStepCount);
 
 /// <summary>
-/// Terminal execution completed within the recent window (30 min, newest 200 win on very busy
-/// systems — bars age out of the timeline before the cap matters). Slim on purpose: rich details
-/// (error, triggeredBy, parent) come from <c>GET /api/executions/{id}</c> on drill-down.
+/// Terminal execution completed within the requested window, newest first and capped — on a busy
+/// system the runs past the cap come back aggregated in <see cref="OpsDensityLane"/> instead of
+/// being dropped. Slim on purpose: rich details (error, triggeredBy, parent) come from
+/// <c>GET /api/executions/{id}</c> on drill-down.
 /// </summary>
 /// <param name="ParentExecutionId">Parent run for sub-workflow executions — see <see cref="OpsRunningExecution"/>.</param>
 public record OpsRecentExecution(
@@ -138,4 +162,31 @@ public record OpsRecentExecution(
     DateTime StartedAt,
     DateTime CompletedAt,
     Guid? ParentExecutionId);
+
+/// <summary>
+/// Settled-run counts for one workflow, bucketed over the window. Nested under the workflow rather
+/// than carrying a <c>WorkflowId</c> per bucket: at ~48 buckets × N workflows the repeated GUID
+/// would be the bulk of the payload, and the console wants them grouped by lane anyway.
+/// </summary>
+/// <param name="WorkflowId">The lane these counts belong to.</param>
+/// <param name="Buckets">Only buckets with at least one run. Ascending by index; index 0 is the
+/// oldest bucket, starting at <c>Meta.RecentSinceUtc</c>.</param>
+public record OpsDensityLane(
+    Guid WorkflowId,
+    IReadOnlyList<OpsDensityBucket> Buckets);
+
+/// <summary>
+/// One time slice of one workflow's settled runs. Outcome is split rather than reduced to a single
+/// "worst status": a slice holding nineteen successes and one failure is neither green nor red,
+/// and collapsing it either way is a lie the operator would act on.
+/// </summary>
+/// <param name="BucketIndex">Slice offset from <c>Meta.RecentSinceUtc</c>, in <c>Meta.DensityBucketSeconds</c> steps.</param>
+/// <param name="Total">All settled runs in the slice, whatever their status.</param>
+/// <param name="Failed">Runs that ended <c>Failed</c>.</param>
+/// <param name="Cancelled">Runs that ended <c>Cancelled</c>.</param>
+public record OpsDensityBucket(
+    int BucketIndex,
+    int Total,
+    int Failed,
+    int Cancelled);
 

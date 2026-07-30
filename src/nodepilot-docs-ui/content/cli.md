@@ -337,6 +337,13 @@ np operations graph -o json
 np operations graph --window 240              # Rückblick für beendete Läufe: 20 | 60 | 240 Min
 ```
 
+Einzeln aufgelistet werden die neuesten 1000 beendeten Läufe des Fensters. Gibt es mehr,
+liefert `density[]` zusätzlich gebucketete Zähler (`total`/`failed`/`cancelled` je Workflow und
+Zeitscheibe) über das **ganze** Fenster — „wie viel lief in den letzten vier Stunden?" bleibt
+also beantwortbar, auch wenn nicht jeder Lauf einzeln aufgeführt ist. Die Tabellenausgabe nennt
+in dem Fall die Gesamtzahl; `meta.densityBucketSeconds` gibt die Scheibenbreite,
+`meta.densityCapped` sagt, dass selbst die Zähler nur eine Untergrenze sind.
+
 ## system-alert · policies (ADR 0008)
 
 ```bash

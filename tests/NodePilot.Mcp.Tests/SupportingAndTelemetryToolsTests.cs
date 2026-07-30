@@ -189,6 +189,12 @@ public sealed class SupportingAndTelemetryToolsTests
                 },
                 running = new[] { new { executionId = Guid.NewGuid(), workflowId = parent, status = "Running", startedAt = DateTime.UtcNow } },
                 recent = new[] { new { executionId = Guid.NewGuid(), workflowId = parent, status = "Failed", startedAt = DateTime.UtcNow.AddMinutes(-9), completedAt = DateTime.UtcNow.AddMinutes(-8) } },
+                // On a busy window `recent` is capped and the rest arrives counted — an agent
+                // answering "how much ran in the last four hours?" reads this, not the bar list.
+                density = new[]
+                {
+                    new { workflowId = parent, buckets = new[] { new { bucketIndex = 7, total = 340, failed = 5, cancelled = 0 } } },
+                },
                 capabilities = new { canCancel = true },
             }));
 
@@ -197,6 +203,7 @@ public sealed class SupportingAndTelemetryToolsTests
         json.Should().Contain("\"name\":\"Parent\"");
         json.Should().Contain("\"refStatus\":\"Resolved\"");
         json.Should().Contain("\"status\":\"Failed\"");
+        json.Should().Contain("\"total\":340");
         json.Should().Contain("\"canCancel\":true");
     }
 

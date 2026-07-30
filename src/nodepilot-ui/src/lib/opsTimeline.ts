@@ -1,4 +1,4 @@
-import type { OpsNode, OpsRecentExecution, OpsRunningExecution } from '../types/api';
+import type { OpsDensityBucket, OpsNode, OpsRecentExecution, OpsRunningExecution } from '../types/api';
 import type { LocalSettled } from '../stores/operationsStore';
 
 // Pure geometry + lane allocation for the Mission-Control live timeline. Everything here is
@@ -187,12 +187,19 @@ const ACTIVE_STATUSES = new Set(['Running', 'Pending', 'Paused']);
 export function assignLanes(
   bars: TimelineBarInput[],
   nodesById: Map<string, OpsNode>,
+  densityWorkflowIds: ReadonlySet<string> = new Set(),
 ): { lanes: TimelineLane[]; placed: Omit<PlacedBar, 'leftPx' | 'widthPx' | 'clippedLeft'>[] } {
   const byWorkflow = new Map<string, TimelineBarInput[]>();
   for (const b of bars) {
     const list = byWorkflow.get(b.workflowId);
     if (list) list.push(b);
     else byWorkflow.set(b.workflowId, [b]);
+  }
+  // A workflow can have density but no bar: it ran inside the window, yet every one of its runs
+  // fell past the raw cap. Without a lane of its own its density strip would have nowhere to
+  // draw and the workflow would read as idle — the exact misreading density exists to prevent.
+  for (const workflowId of densityWorkflowIds) {
+    if (!byWorkflow.has(workflowId)) byWorkflow.set(workflowId, []);
   }
 
   const wfByExec = new Map(bars.map((b) => [b.executionId, b.workflowId]));
@@ -278,13 +285,70 @@ export function assignLanes(
       workflowId: lane.workflowId,
       name: node?.name ?? lane.workflowId,
       folderPath: node?.folderPath ?? '/',
-      subRowCount: rowEnds.length,
+      // Floored at 1: a density-only lane has no bars and would otherwise be zero rows tall,
+      // leaving its label and its density strip nowhere to render.
+      subRowCount: Math.max(rowEnds.length, 1),
       hasActive: lane.hasActive,
       depth,
     });
   });
 
   return { lanes, placed };
+}
+
+/** One rendered density slice: pixel geometry plus the counts behind it. */
+export interface DensityCell {
+  bucketIndex: number;
+  /** Time range this slice covers, already clipped to what is actually drawn. */
+  fromMs: number;
+  toMs: number;
+  leftPx: number;
+  widthPx: number;
+  total: number;
+  failed: number;
+  cancelled: number;
+}
+
+/**
+ * Turns one workflow's density buckets into drawable cells.
+ *
+ * Only the stretch LEFT of `seamMs` is emitted: that is where the snapshot ran out of individual
+ * runs, and it is the only place an aggregate adds anything. Right of the seam every run is
+ * already a bar, and drawing density under them would count the same runs twice on screen. The
+ * server nevertheless buckets the whole window (so the totals stay honest); the clipping is a
+ * rendering decision made here.
+ */
+export function buildDensityCells(
+  buckets: readonly OpsDensityBucket[],
+  recentSinceMs: number,
+  bucketSeconds: number,
+  seamMs: number,
+  w: TimelineWindow,
+): DensityCell[] {
+  if (bucketSeconds <= 0 || w.trackWidthPx <= 0) return [];
+  const bucketMs = bucketSeconds * 1000;
+  const cells: DensityCell[] = [];
+  for (const b of buckets) {
+    if (b.total <= 0) continue;
+    const from = Math.max(recentSinceMs + b.bucketIndex * bucketMs, w.startMs);
+    const to = Math.min(recentSinceMs + (b.bucketIndex + 1) * bucketMs, seamMs);
+    if (to <= from) continue;
+    const leftPx = timeToX(from, w);
+    // Floored at 1 px: a slice that rounds away to nothing would read as a gap in the history,
+    // which is the opposite of what it says.
+    const widthPx = Math.max(timeToX(to, w) - leftPx, 1);
+    cells.push({
+      bucketIndex: b.bucketIndex,
+      fromMs: from,
+      toMs: to,
+      leftPx,
+      widthPx,
+      total: b.total,
+      failed: b.failed,
+      cancelled: b.cancelled,
+    });
+  }
+  return cells;
 }
 
 /** Computes final pixel geometry for a bar within the window. */

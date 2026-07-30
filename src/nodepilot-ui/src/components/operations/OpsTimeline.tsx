@@ -1,12 +1,13 @@
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Activity } from '@carbon/icons-react';
-import type { OpsNode, OpsRecentExecution, OpsRunningExecution } from '../../types/api';
+import type { OpsDensityLane, OpsNode, OpsRecentExecution, OpsRunningExecution } from '../../types/api';
 import type { LocalSettled } from '../../stores/operationsStore';
-import { rawStatusLabelKey, STATUS_TEXT_CLASS } from '../../lib/statusTokens';
+import { rawStatusLabelKey, STATUS_COLOR_VAR, STATUS_TEXT_CLASS } from '../../lib/statusTokens';
 import {
   windowFor, buildTimelineBars, assignLanes, placeBar, axisTicks, timeToX, pairCallConnectors,
-  isActiveBarStatus, isOverdue, isStalled, tickStepFor, formatDuration, type PlacedBar,
+  buildDensityCells, isActiveBarStatus, isOverdue, isStalled, tickStepFor, formatDuration,
+  type DensityCell, type PlacedBar,
 } from '../../lib/opsTimeline';
 import { OpsTimelineBar, OPS_ROW_H, OPS_MIN_BAR_PX, OPS_INSIDE_LABEL_PX } from './OpsTimelineBar';
 import { OpsStuckStrip } from './OpsStuckStrip';
@@ -25,11 +26,46 @@ const LANE_GAP = 8;
 const LABEL_COL_PX = 380;
 /** Room the out-of-bar duration text needs before it is worth drawing. */
 const OUTSIDE_LABEL_PX = 46;
+/** Vertical padding of a density slice inside its lane, so lanes stay visually separable. */
+const DENSITY_INSET = 5;
 
-export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWorkflowIds, nodesById, selectedExecutionId, nextStart, overdueMs, windowMs, historyFromMs, recentTruncated, onSelect }: Readonly<{
+/**
+ * Vertical stack of a density slice's outcomes: failures at the bottom, cancellations above them,
+ * successes filling the rest — each sized by its share of the slice. A single "worst status"
+ * colour was the obvious alternative and is a lie in both directions: it paints nineteen good
+ * runs red, or hides one bad run among them.
+ */
+function densityBackground(cell: DensityCell): string {
+  const failedPct = (cell.failed / cell.total) * 100;
+  const cancelledPct = ((cell.failed + cell.cancelled) / cell.total) * 100;
+  if (cancelledPct === 0) return STATUS_COLOR_VAR.success;
+  return `linear-gradient(to top,`
+    + ` ${STATUS_COLOR_VAR.failed} 0 ${failedPct}%,`
+    + ` ${STATUS_COLOR_VAR.cancelled} ${failedPct}% ${cancelledPct}%,`
+    + ` ${STATUS_COLOR_VAR.success} ${cancelledPct}% 100%)`;
+}
+
+/**
+ * Run count → ink. Scaled against the busiest slice in the same snapshot rather than an absolute
+ * number, because "busy" only means anything relative to the rest of what is on screen. Floored
+ * well above zero so a quiet slice stays visible: the difference that matters most is between
+ * "few runs" and "no runs at all".
+ */
+function densityOpacity(total: number, peak: number): number {
+  if (peak <= 0) return 0.85;
+  return 0.28 + 0.57 * (total / peak);
+}
+
+export function OpsTimeline({ nowMs, running, recent, density, locallySettled, scopedWorkflowIds, nodesById, selectedExecutionId, nextStart, overdueMs, windowMs, historyFromMs, recentSinceMs, densityBucketSeconds, densityCapped, onSelect }: Readonly<{
   nowMs: number;
   running: OpsRunningExecution[];
   recent: OpsRecentExecution[];
+  /**
+   * Bucketed run counts for the stretch the bars could not reach. Empty whenever `recent` already
+   * covers the window, which is the normal case — density is what a busy system degrades to, not
+   * a second rendering mode the view flips between.
+   */
+  density: OpsDensityLane[];
   locallySettled: Record<string, LocalSettled>;
   scopedWorkflowIds: Set<string>;
   nodesById: Map<string, OpsNode>;
@@ -41,12 +77,16 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
   /** Visible span of the track. */
   windowMs: number;
   /**
-   * Oldest settled run the server actually returned. When it lies inside the visible window,
-   * everything left of it is "no history returned", not "nothing ran" — the band says so.
+   * Oldest settled run the server actually returned — the seam between bars and density. When
+   * nothing is left of it, everything left of it is "no history returned", not "nothing ran".
    */
   historyFromMs: number | null;
-  /** The server hit its cap: older settled runs inside the window exist but were not sent. */
-  recentTruncated: boolean;
+  /** Left edge the snapshot was built for; density bucket 0 starts here. */
+  recentSinceMs: number;
+  /** Width of one density bucket; 0 when the snapshot carries no density. */
+  densityBucketSeconds: number;
+  /** Density was computed off the newest N runs only — the counts are a floor, not a total. */
+  densityCapped: boolean;
   onSelect: (executionId: string) => void;
 }>) {
   const { t } = useTranslation(['operations', 'executions']);
@@ -70,10 +110,19 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
 
   const w = useMemo(() => windowFor(nowMs, windowMs, trackWidth), [nowMs, windowMs, trackWidth]);
 
+  // Density arrives keyed by workflow; scope it once and reuse the key set for lane allocation.
+  const densityByWorkflow = useMemo(() => {
+    const map = new Map<string, OpsDensityLane['buckets']>();
+    for (const lane of density) {
+      if (scopedWorkflowIds.has(lane.workflowId)) map.set(lane.workflowId, lane.buckets);
+    }
+    return map;
+  }, [density, scopedWorkflowIds]);
+
   const { lanes, placed } = useMemo(() => {
     const bars = buildTimelineBars(running, recent, locallySettled, w, scopedWorkflowIds);
-    return assignLanes(bars, nodesById);
-  }, [running, recent, locallySettled, w, scopedWorkflowIds, nodesById]);
+    return assignLanes(bars, nodesById, new Set(densityByWorkflow.keys()));
+  }, [running, recent, locallySettled, w, scopedWorkflowIds, nodesById, densityByWorkflow]);
 
   // Vertical offsets: lanes stack; each lane is subRowCount rows tall.
   const laneTops = useMemo(() => {
@@ -159,14 +208,50 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
 
   const ticks = useMemo(() => axisTicks(w, tickStepFor(windowMs)), [w, windowMs]);
 
+  // Density cells per lane, covering the stretch left of the bar/aggregate seam.
+  const densityCellsByLane = useMemo(() => {
+    const seam = historyFromMs ?? nowMs;
+    const map = new Map<string, DensityCell[]>();
+    for (const [workflowId, buckets] of densityByWorkflow) {
+      const cells = buildDensityCells(buckets, recentSinceMs, densityBucketSeconds, seam, w);
+      if (cells.length > 0) map.set(workflowId, cells);
+    }
+    return map;
+  }, [densityByWorkflow, recentSinceMs, densityBucketSeconds, historyFromMs, nowMs, w]);
+
+  // Busiest slice on screen — the reference the per-cell opacity is scaled against, so "darker"
+  // reliably means "more runs" within one snapshot.
+  const densityPeak = useMemo(() => {
+    let peak = 0;
+    for (const cells of densityCellsByLane.values()) {
+      for (const c of cells) if (c.total > peak) peak = c.total;
+    }
+    return peak;
+  }, [densityCellsByLane]);
+
+  // Window-wide totals for the notice line. Summed over every bucket, INCLUDING the ones right of
+  // the seam that are not drawn — the server buckets the whole window precisely so this number is
+  // the honest answer to "how much ran here?", not just "how much was aggregated".
+  const densitySummary = useMemo(() => {
+    let runs = 0;
+    let failed = 0;
+    for (const buckets of densityByWorkflow.values()) {
+      for (const b of buckets) { runs += b.total; failed += b.failed; }
+    }
+    return { runs, failed };
+  }, [densityByWorkflow]);
+
   // Width of the "no history returned" band at the left edge, in px. Anchored on the oldest
   // row the server actually sent — NOT on the requested window edge: when the cap bit, the
   // requested edge would mark the one stretch truncation did not lose.
+  //
+  // Suppressed once density is present: the band claims "nothing came back for this stretch",
+  // and the density strip is exactly the refutation of that claim.
   const historyGapPx = useMemo(() => {
-    if (historyFromMs === null) return 0;
+    if (historyFromMs === null || densityCellsByLane.size > 0) return 0;
     const x = timeToX(historyFromMs, w);
     return x > 2 ? Math.min(x, w.trackWidthPx) : 0;
-  }, [historyFromMs, w]);
+  }, [historyFromMs, densityCellsByLane, w]);
   const nowX = timeToX(nowMs, w);
 
   const rowCenterY = (bar: PlacedBar) =>
@@ -176,6 +261,21 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
     const key = rawStatusLabelKey(status);
     return key ? t(`executions:status.${key}`) : status;
   };
+
+  const clockLabel = (ms: number) =>
+    new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  // Failed/cancelled are appended only when non-zero: a slice that reads "· 0 failed" trains the
+  // eye to skip the very part of the label that matters when it is not zero.
+  const densityTitle = (cell: DensityCell) => [
+    t('operations:timeline.densityCell', {
+      from: clockLabel(cell.fromMs),
+      to: clockLabel(cell.toMs),
+      runs: cell.total,
+    }),
+    cell.failed > 0 ? t('operations:timeline.densityCellFailed', { count: cell.failed }) : null,
+    cell.cancelled > 0 ? t('operations:timeline.densityCellCancelled', { count: cell.cancelled }) : null,
+  ].filter(Boolean).join(' · ');
 
   if (lanes.length === 0) {
     return (
@@ -205,9 +305,12 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
         nameFor={(id) => nodesById.get(id)?.name ?? id}
         onSelect={onSelect}
       />
-      {recentTruncated && (
-        <p className={`shrink-0 text-xs ${STATUS_TEXT_CLASS.warning}`} data-testid="ops-truncated">
-          {t('operations:timeline.recentTruncated')}
+      {densityCellsByLane.size > 0 && (
+        <p className={`shrink-0 text-xs ${STATUS_TEXT_CLASS.warning}`} data-testid="ops-density-notice">
+          {t(densityCapped ? 'operations:timeline.densityCapped' : 'operations:timeline.density', {
+            runs: densitySummary.runs,
+            failed: densitySummary.failed,
+          })}
         </p>
       )}
       <div className="flex min-h-0 flex-1 overflow-y-auto">
@@ -276,6 +379,27 @@ export function OpsTimeline({ nowMs, running, recent, locallySettled, scopedWork
                 })}
                 data-testid="ops-history-gap"
               />
+            )}
+            {/* Density: what the window holds where individual bars ran out. One slice per
+                (lane, bucket), stacked by outcome so a slice with a single failure among twenty
+                successes cannot render as either all-green or all-red. */}
+            {lanes.flatMap((lane, i) =>
+              (densityCellsByLane.get(lane.workflowId) ?? []).map((cell) => (
+                <div
+                  key={`dens-${lane.workflowId}#${cell.bucketIndex}`}
+                  className="np-ops-density"
+                  style={{
+                    left: cell.leftPx,
+                    width: cell.widthPx,
+                    top: laneTops.tops[i] + DENSITY_INSET,
+                    height: Math.max(lane.subRowCount * OPS_ROW_H - 2 * DENSITY_INSET, 1),
+                    background: densityBackground(cell),
+                    opacity: densityOpacity(cell.total, densityPeak),
+                  }}
+                  title={densityTitle(cell)}
+                  data-testid="ops-density-cell"
+                />
+              )),
             )}
             {/* Gridlines */}
             {ticks.map((tick) => (

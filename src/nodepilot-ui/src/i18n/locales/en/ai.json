@@ -120,14 +120,24 @@
     "disabledTitle": "AI Chat is disabled",
     "disabledBody": "An administrator can enable it in Settings under \"AI Knowledge (Chat)\" (requires Llm:Enabled).",
     "examples": [
-      "How do I set up a webhook trigger?",
-      "Which workflows failed in the last 24 hours?",
-      "What does the 'Nightly Backup' workflow do and which machines does it use?",
-      "How do I set up email alerts for failed runs?",
-      "Which workflows run on a schedule?",
-      "Which machines are currently unreachable?",
+      "Show me the last 10 failed runs with their error message.",
+      "Which step broke in the most recent failed run?",
+      "Which workflows failed most often in the last 7 days?",
+      "Which runs have been stuck in \"Running\" for more than an hour?",
+      "Which machines were unreachable at the last connectivity check?",
+      "What is scheduled to run in the next 24 hours?",
+      "Who changed what in the last 24 hours?",
+      "How do I get an email when a workflow fails?"
+    ],
+    "examplesLite": [
+      "What is scheduled to run in the next 24 hours?",
+      "How do I set up a webhook trigger securely?",
+      "How do I get an email when a workflow fails?",
       "How do I retry a failed run?",
-      "How does the system-configuration backup work?"
+      "How do I pass data from one step to the next?",
+      "What is the edit lock for, and how do I release a workflow?",
+      "How do I back up the whole NodePilot configuration and restore it?",
+      "What may the Operator role do — and what not?"
     ]
   },
   "aria": {

@@ -2577,6 +2577,17 @@ html:not(.dark) .np-ops-bar--running {
   border-right: 1px dashed color-mix(in srgb, var(--color-outline) 60%, transparent);
 }
 
+/* Density slice: what one time bucket of a lane held once individual bars ran out. Drawn before
+   the gridlines and the bars, so anything with a drill-down wins the pointer; density only ever
+   occupies the stretch left of the seam, where no bar exists to compete with. It does keep
+   pointer events — the hover title is the only way to read the counts behind a slice. Inline
+   styles carry the outcome stack and the count-driven opacity. */
+.np-ops-density {
+  position: absolute;
+  cursor: default;
+  border-radius: 2px;
+}
+
 /* --- Stuck strip: overdue runs lifted out of the timeline ------------------- */
 .np-ops-stuck {
   display: flex;
