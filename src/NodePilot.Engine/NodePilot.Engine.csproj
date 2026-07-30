@@ -35,4 +35,18 @@
     <InternalsVisibleTo Include="NodePilot.Engine.Tests" />
   </ItemGroup>
 
+  <!-- Microsoft.PowerShell.Archive 1.2.5 (MIT, unmodified — see PowerShell/Modules/NOTICE.md).
+       The PowerShell SDK ships only the eight core modules; without Archive, a local
+       Compress-Archive call made the in-process pool spawn a `powershell.exe -Version 5.1 -s`
+       WinPSCompat session per pool runspace that was never closed (memory/thread leak,
+       diagnosed 2026-07-30). Copied to PSModules\ in the output; RunspaceExecutionEngine
+       imports it eagerly into every pool runspace. Flows into referencing projects' output
+       (Api, tests) via the standard Content copy mechanism. -->
+  <ItemGroup>
+    <Content Include="PowerShell\Modules\Microsoft.PowerShell.Archive\**">
+      <Link>PSModules\Microsoft.PowerShell.Archive\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

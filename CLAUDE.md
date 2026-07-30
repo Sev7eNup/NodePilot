@@ -36,7 +36,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 
 - **Backend:** ASP.NET Core Web API, .NET 10, Windows-only (`net10.0-windows`)
 - **Datenbank:** PostgreSQL (default) / SQL Server (`Database:Provider` = `postgres` | `sqlserver`). SQLite nur als Test-In-Memory-Backend.
-- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` muss per `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1` quittiert werden, sonst Boot-Abbruch)
+- **Remote Execution:** PowerShell SDK / WinRM, agentless. `Remote:Provider`: `winrm` (default) | `noop` (`noop` muss per `Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1` quittiert werden, sonst Boot-Abbruch). Engine-local (In-Proc-Pool): implizite WinPS-Kompatibilität **deaktiviert** (Desktop-only-Module → lauter Fehler statt `powershell.exe -s`-Session-Leak; `Microsoft.PowerShell.Archive` gebündelt) — Details `docs/claude-reference.md` + `docs/performance-improvements.md`
 - **Real-time:** SignalR (`/hubs/execution`)
 - **Logging:** Serilog. Format via `Logging:Format`: `text`|`cmtrace`|`json`|`ecs-json` (ECS 1.x für SIEM, siehe `docs/siem-logging.md`). Support-Log: File + DB-Projektion
 - **MCP-Server (opt-in):** `nodepilot-mcp` (stdio) — AI-Agent steuert/editiert Workflows über 99 Tools, HTTP-only gegen die REST-API

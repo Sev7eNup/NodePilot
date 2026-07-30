@@ -1,0 +1,40 @@
+<Project>
+
+  <!--
+    Repo-wide MSBuild targets. Imported automatically by every .csproj under the repo root.
+
+    NodePilotPlacePowerShellSdkConfig: puts src/NodePilot.Engine/PowerShell/powershell.config.json
+    next to the PowerShell SDK's System.Management.Automation.dll in the output. The SDK reads
+    `$PSHOME/powershell.config.json`, and $PSHOME is wherever that DLL was loaded from — so this
+    file is how `DisableImplicitWinCompat` reaches the in-process runspace pool. Without it,
+    a script calling a Windows-PowerShell-only cmdlet makes the pool silently spawn a
+    `powershell.exe -Version 5.1 -s` compatibility session per pool runspace that is never closed
+    (the 2026-07-30 memory/thread leak). With it, such calls fail loudly (CommandNotFound).
+
+    Scope is exactly the in-process SDK: standalone powershell.exe (5.1) and pwsh.exe processes
+    have their own $PSHOME and never see this file, so the process-spawn engines are unaffected.
+
+    Two layouts, hence two targets:
+      - Build output keeps the NuGet runtime asset layout (runtimes\win\lib\net10.0\).
+      - Publish flattens the runtime assets into the app root.
+    The Exists() conditions make this a no-op for projects that don't pull in the PowerShell SDK.
+  -->
+  <PropertyGroup>
+    <NodePilotPsConfigSource>$(MSBuildThisFileDirectory)src\NodePilot.Engine\PowerShell\powershell.config.json</NodePilotPsConfigSource>
+  </PropertyGroup>
+
+  <Target Name="NodePilotPlacePowerShellSdkConfig" AfterTargets="Build"
+          Condition="Exists('$(NodePilotPsConfigSource)') And Exists('$(OutDir)runtimes\win\lib\net10.0\System.Management.Automation.dll')">
+    <Copy SourceFiles="$(NodePilotPsConfigSource)"
+          DestinationFolder="$(OutDir)runtimes\win\lib\net10.0"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="NodePilotPlacePowerShellSdkConfigOnPublish" AfterTargets="Publish"
+          Condition="Exists('$(NodePilotPsConfigSource)') And Exists('$(PublishDir)System.Management.Automation.dll')">
+    <Copy SourceFiles="$(NodePilotPsConfigSource)"
+          DestinationFolder="$(PublishDir)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

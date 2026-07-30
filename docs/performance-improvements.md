@@ -576,3 +576,58 @@ Die 132×-Verlangsamung von `collect-host` ist die **dominante Engine-Decke** f�
 ### Sperrvermerk
 
 Die vier Hebel dieser Session (`MaxConcurrentSteps` 1500, `ChildSemaphore` 600, DB-Pool 1500, `VACUUM ANALYZE`) sind gemessen widerlegt und stehen als solche im Anhang von [`roadmap.md`](roadmap.md). Diese Sektion ist die Beweislage — wer sie erneut vorschlägt, misst zuerst mit dem hier dokumentierten 500-Parallel-Test.
+
+---
+
+## WinPSCompat-Session-Leak im In-Process-Pool (Session 2026-07-30)
+
+Die Dev-API wuchs unter der 2-min-Dauertest-Batterie auf **10,05 GB committed / gen2 7,49 GB
+(~93 % live) / 472 Threads** in 9,7 h (~1 MB pro Execution, Threads +45/h). Ursache war kein
+Engine-Tuning-Hebel, sondern ein Leck im Modul-Laden des In-Process-Pools.
+
+### Ursache-Kette
+
+1. Dauertest-Workflows targeten die localhost-Maschine ohne Credential → **Localhost-Bypass**
+   führt die „Remote"-Steps engine-local im PS7-**SDK**-RunspacePool aus (nicht WinRM).
+2. `zipOperation` ruft `Compress-Archive` — **`Microsoft.PowerShell.Archive` ist im
+   PowerShell-SDK-NuGet nicht enthalten** (das SDK shippt nur die acht Core-Module).
+3. Der Modul-Auto-Loader fand die Windows-PowerShell-5.1-Kopie unter System32 (Edition
+   `Desktop`) und lud sie über die **implizite WinCompat-Schiene**: ein
+   `powershell.exe -Version 5.1 -s`-Kindprozess (~148 MB) pro Pool-Runspace, als
+   `WinPSCompatSession` im `RunspaceRepository` **des jeweiligen Runspace** registriert.
+4. Pool-Runspaces (256/768) sterben nie → jeder Zyklus auf einem frischen Runspace erzeugte eine
+   neue Session; **keine wurde je geschlossen.** Pro Session: 1 Transport-Thread
+   (`ProcessMessageProc`), Proxy-Modul + importierte Format-Daten im gen2, plus der Kindprozess.
+
+Beweise: Kindprozesse mit Parent=API im exakten 2-min-Takt; `gcroot` (3/3 identisch):
+`LocalRunspace → RunspaceRepository → PSSession("WinPSCompatSession") → RemoteRunspace →
+OutOfProcessClientSessionTransportManager`; `PSModuleInfo._name = "Microsoft.PowerShell.Archive"`.
+Gegenprobe: Desktop-Install (eigene DB ohne Dauertests, Pool 8/64) nach 24 h flach bei 216 MB.
+
+### Fix (zweiteilig)
+
+1. **`Microsoft.PowerShell.Archive` 1.2.5 gebündelt** (`src/NodePilot.Engine/PowerShell/Modules/`,
+   MIT, unmodifiziert — dieselbe Version, die volles pwsh 7 bundlet) → Output `PSModules\`,
+   eager in jede Pool-ISS importiert (`RunspaceExecutionEngine`). `Compress-/Expand-Archive`
+   laufen nativ in-process, der Auto-Loader sucht gar nicht erst.
+2. **Implizite WinCompat deaktiviert** für das In-Proc-SDK: `powershell.config.json`
+   (`DisableImplicitWinCompat: true`) wird via `Directory.Build.targets` neben die
+   `System.Management.Automation.dll` gelegt (Build- und Publish-Layout). Künftige Desktop-only-
+   Cmdlets scheitern **laut** („…disabled in the settings file") statt still zu leaken;
+   explizites `Import-Module -UseWindowsPowerShell` bleibt möglich. `powershell.exe`/`pwsh`-
+   Prozess-Engines haben eigenes `$PSHOME` und sind nicht betroffen.
+
+Wächter-Tests: `RunspaceEngineWinCompatTests` — (a) Archive-Roundtrip muss aus `PSModules\`
+kommen, (b) expliziter Import der Desktop-only-System32-Kopie muss mit der Settings-File-Meldung
+scheitern und darf keine Session hinterlassen. Entfernt jemand die Config-Platzierung, lädt
+WinCompat wieder still → Test (b) wird rot.
+
+### Sperrvermerk-Ergänzung
+
+Auf dem Weg zur Ursache wurde **Shared `FormatTable` über Pool-Runspaces** implementiert, gemessen
+und **verworfen**: nur ~0,4–0,7 MB/Runspace Ersparnis (Runspaces kosten 1,2–1,4 MB und werden bei
+Dispose frei — der Pool war nie der Halter), und `Update-FormatData`/`FormatsToProcess` brechen an
+einer Shared Table terminierend (`CannotUpdateSharedFormatTable`) → über `ps.HadErrors` ein roter
+Step. Ebenfalls aktenkundig: `dotnet-gcdump` bricht still am 10-Mio.-Objekt-Cap ab — das
+Typ-Histogramm eines übergroßen Heaps beschreibt dann nur die Stichprobe. Kausalität immer über
+vollen `dotnet-dump` + `gcroot` auf mehrere Instanzen belegen.
