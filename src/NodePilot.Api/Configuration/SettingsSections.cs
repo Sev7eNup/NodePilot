@@ -227,6 +227,21 @@ public static class SettingsSectionAdapters
                     ["AllowedHosts"] = dto.AllowedHosts,
                 }),
 
+            new DelegateSettingsSectionAdapter<PerformanceSettingsDto>(
+                Descriptor("Performance"),
+                [NodePilot.Core.Configuration.PerformanceSizing.ConfigKeys.ManualTuning],
+                () => new PerformanceSettingsDto
+                {
+                    // Default false: hardware-derived sizing is the safe posture, and every
+                    // shipped template relies on that rather than on a per-file repeat.
+                    ManualTuning = BoolDefaultFalse(configRoot["Performance:ManualTuning"]),
+                },
+                BuildPerformanceDtoFromJson,
+                (dto, _) => new JsonObject
+                {
+                    ["ManualTuning"] = dto.ManualTuning,
+                }),
+
             new DelegateSettingsSectionAdapter<EngineSettingsDto>(
                 Descriptor("Engine"),
                 EngineConfigKeys,
@@ -1169,6 +1184,15 @@ public static class SettingsSectionAdapters
                 MinRunspaces = rs["MinRunspaces"]?.GetValue<int>() ?? 256,
                 MaxRunspaces = rs["MaxRunspaces"]?.GetValue<int>() ?? 768,
             },
+        };
+    }
+
+    private static PerformanceSettingsDto BuildPerformanceDtoFromJson(JsonObject? section)
+    {
+        section ??= new JsonObject();
+        return new PerformanceSettingsDto
+        {
+            ManualTuning = section["ManualTuning"]?.GetValue<bool>() ?? false,
         };
     }
 

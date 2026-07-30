@@ -95,6 +95,15 @@
       "DbProjectionEnabled": true
     }
   },
+  // Sizing mode. Left OFF on purpose: this template is rolled out by Install-NodePilot.ps1 onto
+  // whatever hardware the operator has, and the numbers below are the profile measured for
+  // 20 cores / 500 parallel workflows. On a smaller box they over-provision badly (768 ThreadPool
+  // threads on 8 cores measured a 28% regression). With the switch off NodePilot sizes itself
+  // from the detected CPU and memory; the numbers stay as an immediately activatable preset for
+  // hosts that genuinely serve that load. See docs/performance-improvements.md for the heuristic.
+  "Performance": {
+    "ManualTuning": false
+  },
   "Engine": {
     "Debug": {
       "MaxPauseMinutes": 10

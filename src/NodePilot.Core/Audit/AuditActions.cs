@@ -102,6 +102,7 @@ public static class AuditActions
     public const string SettingsAuthenticationUpdated = "SETTINGS_AUTHENTICATION_UPDATED";
     public const string SettingsAuthenticationTested = "SETTINGS_AUTHENTICATION_TESTED";
     public const string SettingsDbadminUpdated = "SETTINGS_DBADMIN_UPDATED";
+    public const string SettingsPerformanceUpdated = "SETTINGS_PERFORMANCE_UPDATED";
     public const string SettingsEngineUpdated = "SETTINGS_ENGINE_UPDATED";
     public const string SettingsExecutionDispatchUpdated = "SETTINGS_EXECUTIONDISPATCH_UPDATED";
     public const string SettingsExternalTriggerUpdated = "SETTINGS_EXTERNALTRIGGER_UPDATED";

@@ -87,6 +87,22 @@
   "smtpEnableSslLabel": "Enable TLS (EnableSsl)",
   "smtpEnableSslWarning": "Warning: a username is configured but TLS is disabled. SMTP credentials and message bodies will travel in plaintext. Only recommended for local, non-public relays.",
   "perf": {
+    "modeCardTitle": "Sizing Mode",
+    "modeExplainer": "With automatic sizing NodePilot derives the values below from the detected CPU and memory. Switch on manual tuning to use the configured values instead — they stay stored either way.",
+    "manualTuning": "Manual tuning (use configured values)",
+    "modePendingRestart": "The saved mode differs from the one this process booted in. The runspace pool and dispatch queue are sized once at startup, so a restart is required.",
+    "detected": "Detected: {{cores}} cores, {{memory}} usable memory, {{posture}} posture.",
+    "memoryUnknown": "unknown",
+    "inertUnderAuto": "Automatic sizing is active — these values are stored but not in force.",
+    "safetyCapHint": "Safety cap against runaway trigger loops and sub-workflow cascades — not a throughput setting. Always applies, in both sizing modes.",
+    "activeValue": "Active: {{value}} ({{bound}})",
+    "bound": {
+      "Cpu": "from CPU",
+      "Ram": "limited by memory",
+      "Floor": "minimum",
+      "Ceiling": "measured maximum",
+      "Manual": "configured"
+    },
     "engineCardTitle": "Engine Concurrency",
     "executionDispatchCardTitle": "Execution Dispatch Queue",
     "threadingCardTitle": "ThreadPool Pre-Warming",

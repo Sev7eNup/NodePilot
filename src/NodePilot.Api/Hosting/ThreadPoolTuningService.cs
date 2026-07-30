@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Primitives;
+using NodePilot.Core.Configuration;
 using System.Diagnostics.CodeAnalysis;
 
 namespace NodePilot.Api.Hosting;
@@ -26,6 +27,7 @@ namespace NodePilot.Api.Hosting;
 internal sealed class ThreadPoolTuningService : IHostedService, IDisposable
 {
     private readonly IConfiguration _configuration;
+    private readonly PerformancePlan _plan;
     private readonly ILogger<ThreadPoolTuningService> _logger;
     private IDisposable? _changeSubscription;
     // Last successfully applied floor — logged for context on a rejected re-tune so ops sees
@@ -33,9 +35,13 @@ internal sealed class ThreadPoolTuningService : IHostedService, IDisposable
     private int _appliedMinWorkers;
     private int _appliedMinIoc;
 
-    public ThreadPoolTuningService(IConfiguration configuration, ILogger<ThreadPoolTuningService> logger)
+    public ThreadPoolTuningService(
+        IConfiguration configuration,
+        PerformancePlan plan,
+        ILogger<ThreadPoolTuningService> logger)
     {
         _configuration = configuration;
+        _plan = plan;
         _logger = logger;
     }
 
@@ -55,9 +61,23 @@ internal sealed class ThreadPoolTuningService : IHostedService, IDisposable
 
     private void Apply()
     {
-        var defaultMin = Math.Max(200, Environment.ProcessorCount * 16);
-        var minWorkers = _configuration.GetValue<int?>("Threading:MinWorkerThreads") ?? defaultMin;
-        var minIoc = _configuration.GetValue<int?>("Threading:MinIoCompletionThreads") ?? defaultMin;
+        // Follow the mode the process actually BOOTED in, not whatever the live configuration
+        // says right now. Switching Performance:ManualTuning only takes effect on restart because
+        // the runspace pool and the dispatch queue are built once at startup; honouring a live
+        // toggle here would re-tune the ThreadPool for a mode the rest of the process is not in.
+        // The Settings UI surfaces that difference as a restart hint instead.
+        var minWorkers = _plan.MinWorkerThreads.Value;
+        var minIoc = _plan.MinIoCompletionThreads.Value;
+
+        // Under manual tuning an operator may re-tune the floor live — the ThreadPool is the one
+        // consumer that can honour that without a restart, and doing so is the documented reason
+        // this section is hot-reloadable at all.
+        if (_plan.ManualTuning)
+        {
+            minWorkers = _configuration.GetValue<int?>(PerformanceSizing.ConfigKeys.MinWorkerThreads) ?? minWorkers;
+            minIoc = _configuration.GetValue<int?>(PerformanceSizing.ConfigKeys.MinIoCompletionThreads) ?? minIoc;
+        }
+
         if (minWorkers <= 0 || minIoc <= 0) return;
 
         if (!ThreadPool.SetMinThreads(minWorkers, minIoc))

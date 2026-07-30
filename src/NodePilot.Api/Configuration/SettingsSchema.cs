@@ -195,6 +195,13 @@ public static class SettingsSchema
         // Performance tuning. All strict-startup — values are cached at boot, save persists
         // them and the operator restarts. The Remote section combines security flag,
         // WinRm timeouts and the connection-pool tuning under one atomic save.
+        new SettingsSectionDescriptor("Performance", "Performance Tuning Mode", typeof(object),
+            typeof(PerformanceSettingsDto), ImmutableArray<string>.Empty,
+            // Restart-required: the switch decides how the runspace pool and the dispatch queue
+            // are sized, and both are constructed once at boot. Honouring a live toggle would
+            // re-tune only the ThreadPool and leave the rest in the previous mode, so the whole
+            // section is deliberately restart-gated rather than partially hot.
+            false, AuditActions.SettingsPerformanceUpdated),
         new SettingsSectionDescriptor("Engine", "Engine Concurrency", typeof(object),
             typeof(EngineSettingsDto), ImmutableArray<string>.Empty,
             // Restart-required: WorkflowEngine concurrency caps are cached at boot; no in-process

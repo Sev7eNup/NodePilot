@@ -36,6 +36,18 @@ export type SettingsStatus = {
   lastSavedBy: string | null;
 };
 
+// What the process is actually sized to. `manualTuning` is the mode it BOOTED in;
+// `desiredManualTuning` is what is saved right now. They differ between a save and the restart
+// that puts it into effect — the runspace pool and dispatch queue are built once at boot.
+export type EffectiveSizing = {
+  manualTuning: boolean;
+  desiredManualTuning: boolean;
+  processorCount: number;
+  usableMemoryBytes: number | null;
+  isDesktop: boolean;
+  values: { key: string; value: number; bound: 'Cpu' | 'Ram' | 'Floor' | 'Ceiling' | 'Manual' }[];
+};
+
 export type SettingsSectionResponse<TPayload> = {
   sectionPath: string;
   payload: TPayload;
@@ -113,6 +125,13 @@ export const adminSettings = {
 
   async getSection<TPayload>(section: string): Promise<SettingsSectionResponse<TPayload>> {
     return expectOk(await adminFetch(`/admin/settings/${encodeURIComponent(section)}`));
+  },
+
+  // Separate from getSection on purpose: with automatic tuning the numbers stored in the
+  // Engine/Threading/ExecutionDispatch sections are inert, so only this endpoint knows what the
+  // process is really sized to — and which constraint produced each value.
+  async getEffectiveSizing(): Promise<EffectiveSizing> {
+    return expectOk(await adminFetch('/admin/settings/effective-sizing'));
   },
 
   // Write-payload is intentionally `unknown`-shaped: ASP.NET Core deserialises with
