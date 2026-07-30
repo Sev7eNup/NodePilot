@@ -101,8 +101,8 @@ and a PostgreSQL 16 binaries folder (the `pgsql` directory from the EDB zip dist
 # -> out\NodePilot-Desktop-Setup-1.0.0.exe   (sign with your Authenticode cert before distribution)
 ```
 
-The build generates the icons from the tracked brand asset `src/nodepilot-ui/public/appicon.png`
-(multi-resolution `.ico`: 16/32/48/256), publishes the API self-contained (`-r win-x64
+The build generates the icons via `scripts/generate-desktop-icons.ps1` (see **Icons** below),
+publishes the API self-contained (`-r win-x64
 --self-contained true`, no single-file — the PowerShell SDK is folder-deployed), builds the SPA into
 `app\wwwroot`, packages the Electron shell with Electron Forge, stages the Postgres server runtime +
 scripts, and compiles the installer.
@@ -121,6 +121,32 @@ Two build steps are load-bearing and easy to break by accident:
   of which NodePilot uses; excluding them takes the installer from ~350 MB to **~176 MB**. `share`
   is not optional — `initdb` fails without `postgres.bki` and the timezone data. `-PgBinariesPath`
   may therefore point at a full EDB folder or an already-trimmed one.
+
+### Icons
+
+`scripts/generate-desktop-icons.ps1` renders `src/nodepilot-desktop/assets/` from the SPA's tracked
+brand assets (`src/nodepilot-ui/public/appicon-<skin>.png`). The output is gitignored; the sources
+are versioned, so a clean clone can always rebuild it.
+
+| Output | Used for |
+|---|---|
+| `icon.ico` (16/32/48/256) | exe, installer, Start-Menu entry, Explorer |
+| `icon.png` / `tray.png` | every window + the tray until the SPA reports its skin |
+| `skins\<id>.png` / `<id>-tray.png` | window + tray icon per SPA color skin |
+
+The static default is **blue** — rendered from `appicon-dark.png`, not from the untinted orange
+source art `appicon.png` (`-DefaultSkin` picks a different one). At runtime the shell follows the
+skin: the SPA rewrites `<link rel="icon">` to `/appicon-<skin>.png` on every skin switch, Chromium
+reports that as `page-favicon-updated`, and `src/skins.ts` maps it back onto `skins\<id>.*`. That
+keeps the production SPA window preload-less and IPC-free — the shell reads a one-way signal the
+renderer already broadcasts. The per-skin set is discovered from the `appicon-*.png` files, so a new
+UI skin needs no change here.
+
+The `.exe`/installer/Start-Menu icon cannot follow a skin — Windows resolves those from the file
+itself, which is why the shipped default matters.
+
+Running the Electron shell straight from source (`npm start`, see below) starts with an empty
+`assets/`: run `npm run icons` in `src/nodepilot-desktop` once to populate it.
 
 ## Install / update / uninstall
 
@@ -141,6 +167,7 @@ Two build steps are load-bearing and easy to break by accident:
 | File | Role |
 |---|---|
 | `Build-DesktopInstaller.ps1` | Build orchestrator (icons + publish + SPA + Modules + Electron + PG subset + ISCC). |
+| `../../scripts/generate-desktop-icons.ps1` | Icon set from the SPA brand assets (default + per-skin); also runnable standalone. |
 | `Sync-DesktopApp.ps1` | Dev loop: pushes local changes into an installed app in ~1 min (see below). |
 | `NodePilot.iss` | Inno Setup installer definition. |
 | `Provision-LocalDb.ps1` | First-run/repeatable runtime provisioner (DB, services, cert, config, handoff). |
@@ -156,6 +183,7 @@ app is just files plus two services, so day-to-day changes have much shorter loo
 | Changing | Fastest loop | Time |
 |---|---|---|
 | Electron shell | `cd src/nodepilot-desktop; npm start` — runs **from source** against the installed backend (it reads `%ProgramData%\NodePilot\desktop.json`), no packaging at all | seconds |
+| Electron shell, icons | `npm run icons` in the same folder — regenerates `assets/` (empty in a fresh clone) | seconds |
 | Backend / SPA, normal work | ordinary dev mode (backend on 5000, Vite on 5173 with HMR) | seconds |
 | Backend / SPA, **as packaged** | `Sync-DesktopApp.ps1 -Component api\|spa\|all` (elevated) — incremental publish/build, robocopy into the installation, service restart + health poll | ~1 min |
 | Distribution | `Build-DesktopInstaller.ps1` | ~10–15 min |
@@ -164,17 +192,22 @@ Use the sync script when the *packaging* matters — service identity is LocalSy
 bundled Postgres, TLS is the pinned loopback cert — none of which dev mode reproduces. It never
 mirrors over `app\Modules` or `app\wwwroot`, so the PowerShell modules and SPA stay intact.
 
+Quit the installed shell first (tray → *Quit Electron*) before `npm start`: both resolve to the same
+`productName`, so the single-instance lock makes the second one focus the first and exit. Shell
+changes reach the *installed* app only through a new installer — `app.asar` is not patchable.
+
 ## Known gaps (deliberately not covered in v1)
 
 Honest inventory so nobody assumes more coverage than exists:
 
 - **The Electron module's pure logic is unit-tested; its Electron-runtime behaviour is not.**
   `npm run test:run` in `src/nodepilot-desktop` (vitest, node environment) covers `config.ts`
-  (desktop.json handoff validation — origin, fingerprint, serviceName injection barrier) and
+  (desktop.json handoff validation — origin, fingerprint, serviceName injection barrier),
   `security.ts` (certificate-pin match/mismatch/parse-failure, non-loopback rejection, permission
-  and download blocking, navigation containment). What still needs a real Electron process — the
-  setup-token IPC guard, the elevated `restartBackend` path, window lifecycle — is verified only by
-  hand. The backend half of the feature *is* unit-tested (`DeploymentModeTests`,
+  and download blocking, navigation containment) and `skins.ts` (favicon → skin-icon resolution,
+  including the path-charset guard on the renderer-supplied id). What still needs a real Electron
+  process — the setup-token IPC guard, the elevated `restartBackend` path, window lifecycle, and
+  whether Chromium actually reports the SPA's favicon swap — is verified only by hand. The backend half of the feature *is* unit-tested (`DeploymentModeTests`,
   `DatabaseTlsBootValidatorTests`, `DatabaseReadinessGateTests`, `KestrelHttpsConfiguratorTests`).
 - **No CI coverage for `deploy/desktop/*`.** The `desktop` CI job runs `npm audit`, typecheck and
   vitest for `src/nodepilot-desktop`, and the nightly script adds a `desktop-vitest` suite; there is

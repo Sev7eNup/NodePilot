@@ -4,10 +4,14 @@ import { join } from 'node:path';
 import { spawn } from 'node:child_process';
 import { loadDesktopConfig, type DesktopConfig } from './config';
 import { hardenSession, hardenWindow } from './security';
+import { defaultIcons, skinIconsForFavicons, type SkinIcons } from './skins';
 
 /** Persistent session partition shared by the login request, the setup window, and the SPA window
  *  so the auth cookies set during first-run setup are available to the app. */
 const PARTITION = 'persist:nodepilot';
+
+/** Generated icon set — sits next to dist/ inside the asar (see scripts/generate-desktop-icons.ps1). */
+const ASSETS_DIR = join(__dirname, '..', 'assets');
 
 /** Per-user handoff copy of the admin bootstrap token, written by the elevated installer into the
  *  installing user's profile (the real token under ProgramData is SYSTEM-owned and unreadable here). */
@@ -19,6 +23,9 @@ let setupWindow: BrowserWindow | null = null;
 let splashWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let quitting = false;
+/** Icon pair currently in use. Starts on the build-time default (blue) and follows the SPA's
+ *  color skin from its first favicon report onwards. */
+let icons: SkinIcons = defaultIcons(ASSETS_DIR);
 
 const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -162,6 +169,44 @@ async function handleSetupComplete(
 }
 
 // -------------------------------------------------------------------------------------------
+// Icons — the shell's window + tray icon track the color skin selected in the SPA.
+// -------------------------------------------------------------------------------------------
+/** `undefined` (not an empty image) when the asset is missing, so Electron keeps its default
+ *  rather than being handed a blank icon. */
+function windowIcon(): Electron.NativeImage | undefined {
+  const image = nativeImage.createFromPath(icons.window);
+  return image.isEmpty() ? undefined : image;
+}
+
+function trayIcon(): Electron.NativeImage {
+  const candidate = nativeImage.createFromPath(icons.tray);
+  if (!candidate.isEmpty()) return candidate;
+  // 1x1 fallback so Tray construction never fails on a build missing the asset.
+  return nativeImage.createFromDataURL(
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+}
+
+/**
+ * Repaints every icon after the SPA reported a new favicon. The SPA rewrites `<link rel="icon">`
+ * to `/appicon-<skin>.png` on every skin switch, which Chromium surfaces here — no preload and no
+ * IPC channel on the production window. An unknown skin (or a build without the generated set)
+ * simply leaves the current icon in place.
+ */
+function applySkinIcons(favicons: readonly string[]): void {
+  const next = skinIconsForFavicons(ASSETS_DIR, favicons);
+  if (!next || next.window === icons.window) return;
+  icons = next;
+
+  const image = windowIcon();
+  if (image) {
+    for (const win of [mainWindow, setupWindow]) {
+      if (win && !win.isDestroyed()) win.setIcon(image);
+    }
+  }
+  try { tray?.setImage(trayIcon()); } catch { /* tray already destroyed */ }
+}
+
+// -------------------------------------------------------------------------------------------
 // Windows
 // -------------------------------------------------------------------------------------------
 function baseWebPreferences(): Electron.WebPreferences {
@@ -186,12 +231,14 @@ function openMainWindow(): void {
     minHeight: 640,
     show: false,
     title: 'NodePilot',
+    icon: windowIcon(),
     backgroundColor: '#0b1020',
     // NO preload and NO IPC for the production SPA window.
     webPreferences: baseWebPreferences(),
   });
   mainWindow.removeMenu();
   hardenWindow(mainWindow, config.origin);
+  mainWindow.webContents.on('page-favicon-updated', (_event, favicons) => applySkinIcons(favicons));
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('close', (event) => {
     if (!quitting) { event.preventDefault(); mainWindow?.hide(); }
@@ -207,6 +254,7 @@ function openSetupWindow(): void {
     height: 620,
     resizable: false,
     title: 'NodePilot — First-time setup',
+    icon: windowIcon(),
     backgroundColor: '#0b1020',
     webPreferences: {
       ...baseWebPreferences(),
@@ -222,6 +270,7 @@ function openSetupWindow(): void {
 function showSplash(): void {
   splashWindow = new BrowserWindow({
     width: 420, height: 240, frame: false, resizable: false, show: true,
+    icon: windowIcon(),
     backgroundColor: '#0b1020',
     webPreferences: { contextIsolation: true, sandbox: true },
   });
@@ -262,14 +311,6 @@ function createTray(): void {
     // A missing tray icon must not prevent the app from running.
     tray = null;
   }
-}
-
-function trayIcon(): Electron.NativeImage {
-  const candidate = nativeImage.createFromPath(join(__dirname, '..', 'assets', 'tray.png'));
-  if (!candidate.isEmpty()) return candidate;
-  // 1x1 fallback so Tray construction never fails on a build missing the asset.
-  return nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
 }
 
 /**

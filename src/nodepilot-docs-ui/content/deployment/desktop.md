@@ -37,6 +37,8 @@ PostgreSQL 16 auf 127.0.0.1
 
 Die Dienste starten beim Systemstart. Das Schließen des Electron-Fensters beendet keine Workflows oder Trigger.
 
+Fenster- und Infobereichssymbol übernehmen die Farbe des in der Oberfläche gewählten Skins. Das Symbol der Programmdatei, des Installers und des Startmenüeintrags bleibt beim blauen Standard, da Windows diese Symbole aus der Datei selbst auflöst.
+
 ## Installierte Pfade
 
 | Pfad | Inhalt |

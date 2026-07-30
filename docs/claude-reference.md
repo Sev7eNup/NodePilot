@@ -382,8 +382,21 @@ Alerting-Webhooks). Merksatz: *ausgehend alles, eingehend nichts.*
 - **`$PSHOME\Modules` muss mitgeliefert werden**, sonst schlägt jedes `runScript` fehl (Modul-Staging im Build)
 - Deploy-Skripte **ASCII-only** halten (UTF-8-no-BOM wird als ANSI gelesen)
 
+**Icons (skin-folgend):** [scripts/generate-desktop-icons.ps1](scripts/generate-desktop-icons.ps1)
+rendert `src/nodepilot-desktop/assets/` aus den Brand-Assets der SPA — Default-Set (`icon.ico`
+16/32/48/256, `icon.png`, `tray.png`) **blau** aus `appicon-dark.png` plus `skins/<id>.png` +
+`<id>-tray.png` je Skin. Zur Laufzeit folgt die Shell dem Skin: die SPA schreibt bei jedem Wechsel
+`/appicon-<skin>.png` in `<link rel="icon">`, Chromium meldet das als `page-favicon-updated`, und
+[skins.ts](src/nodepilot-desktop/src/skins.ts) mappt es zurück auf `skins/<id>.*` (Fenster- +
+Tray-Icon). Bewusst **kein** Preload/IPC am Produktions-SPA-Fenster — die Shell liest ein Signal,
+das der Renderer ohnehin sendet. Die Skin-Liste ist **nicht** gespiegelt: der Generator leitet sie
+aus den vorhandenen `appicon-*.png` ab, die Shell aus den erzeugten Dateien (unbekannter Skin →
+aktuelles Icon bleibt). Nur exe/Installer/Startmenü-Icon bleibt fix — Windows löst die aus der Datei
+auf. Output ist gitignored, die Quellen sind versioniert.
+
 **Dev-Loop:** `Sync-DesktopApp.ps1` (~1 Min) statt Installer-Rebuild; Electron-Shell via `npm start`
-direkt aus dem Quellcode gegen die installierte Backend-Instanz.
+direkt aus dem Quellcode gegen die installierte Backend-Instanz (davor einmal `npm run icons`,
+sonst ist `assets/` leer).
 
 ---
 
