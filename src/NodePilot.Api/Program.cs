@@ -44,6 +44,12 @@ NodePilot.Engine.Execution.WorkflowScheduler.Configure(performancePlan.MaxConcur
 
 Log.Logger = LoggingSetup.BuildBootstrapLogger(bootstrapConfig);
 
+// Logged as soon as there is a logger (the plan itself is resolved earlier, before the ThreadPool
+// prewarm needs it). Without this line the effective sizing is invisible in the field: an operator
+// wondering why two hosts behave differently needs to see what was detected, what was chosen, and
+// which constraint bound each value.
+Log.Information("{PerformanceSizing}", NodePilot.Api.Configuration.PerformancePlanFactory.Describe(performancePlan));
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Splice the UI-managed runtime overrides JSON file into the configuration source list,
