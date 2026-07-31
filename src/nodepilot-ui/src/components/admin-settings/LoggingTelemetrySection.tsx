@@ -10,7 +10,7 @@ import {
 import { SecretField, serializeSecretField, type SecretFieldMode } from './SecretField';
 import { EnvOverrideBadge } from './EnvOverrideBadge';
 import { EtagConflictDialog } from './EtagConflictDialog';
-import { HotReloadHint } from './SectionFormHelpers';
+import { GroupHeading, HotReloadHint } from './SectionFormHelpers';
 
 /**
  * Three independently-saveable cards in one tab: Logging / OpenTelemetry / Stats.
@@ -81,7 +81,7 @@ function LoggingCard() {
           onChange={(v) => set({ ...form, file: { ...form.file, fileSizeLimitBytes: v } })}
           configKey="Logging:File:FileSizeLimitBytes" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       </div>
-      <h4 className="font-medium text-sm mt-4 mb-2">{t('logging.logLevels')}</h4>
+      <GroupHeading>{t('logging.logLevels')}</GroupHeading>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Select label={t('logging.levelDefault')} value={form.logLevel.default} options={LOG_LEVELS}
           onChange={(v) => set({ ...form, logLevel: { ...form.logLevel, default: v } })}
@@ -99,7 +99,7 @@ function LoggingCard() {
           onChange={(v) => set({ ...form, logLevel: { ...form.logLevel, efCoreInfrastructure: v } })}
           configKey="Logging:LogLevel:Microsoft.EntityFrameworkCore.Infrastructure" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       </div>
-      <h4 className="font-medium text-sm mt-4 mb-2">{t('logging.stepDetailRedaction')}</h4>
+      <GroupHeading>{t('logging.stepDetailRedaction')}</GroupHeading>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Toggle label={t('logging.stepDetailEnabled')} checked={form.stepDetail.enabled}
           onChange={(v) => set({ ...form, stepDetail: { ...form.stepDetail, enabled: v } })}
@@ -111,7 +111,7 @@ function LoggingCard() {
           onChange={(v) => set({ ...form, redaction: { enabled: v } })}
           configKey="Logging:Redaction:Enabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       </div>
-      <h4 className="font-medium text-sm mt-4 mb-2">Support-Log (zweiter, schlanker Sink)</h4>
+      <GroupHeading>Support-Log (zweiter, schlanker Sink)</GroupHeading>
       <p className="text-xs text-on-surface-variant mb-2">
         Schreibt eine schlanke Plain-Text-Datei <code>nodepilot-support-*.log</code> mit nur den
         Support-relevanten Events (User-Log-Activity, Workflow-Lifecycle, Auth-Audits,
@@ -248,7 +248,7 @@ function OpenTelemetryCard() {
           configKey="OpenTelemetry:MetricExportIntervalSeconds" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       </div>
 
-      <h4 className="font-medium text-sm mt-4 mb-2">OTLP</h4>
+      <GroupHeading>OTLP</GroupHeading>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TextInput label={t('otel.endpoint')} value={form.otlp.endpoint} onChange={(v) => set({ ...form, otlp: { ...form.otlp, endpoint: v } })}
           configKey="OpenTelemetry:Otlp:Endpoint" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} placeholder="http://localhost:4317" />
@@ -261,7 +261,7 @@ function OpenTelemetryCard() {
           configKey="OpenTelemetry:Otlp:BrowserEndpoint" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       </div>
 
-      <h4 className="font-medium text-sm mt-4 mb-2">{t('otel.samplingExporters')}</h4>
+      <GroupHeading>{t('otel.samplingExporters')}</GroupHeading>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Select label={t('otel.samplingMode')} value={form.sampling.mode} options={SAMPLING_MODES}
           onChange={(v) => set({ ...form, sampling: { ...form.sampling, mode: v } })}
@@ -286,7 +286,7 @@ function OpenTelemetryCard() {
           configKey="OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       </div>
 
-      <h4 className="font-medium text-sm mt-4 mb-2">{t('otel.traceUiPrometheusQuery')}</h4>
+      <GroupHeading>{t('otel.traceUiPrometheusQuery')}</GroupHeading>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TextInput label={t('otel.traceUiUrlTemplate')} value={form.traceUi.urlTemplate}
           onChange={(v) => set({ ...form, traceUi: { ...form.traceUi, urlTemplate: v } })}

@@ -21,6 +21,7 @@ import { useResizable } from '../../../hooks/useResizable';
 import { PausedVariablesInspector } from '../debug/PausedVariablesInspector';
 import { ActivityTypeIcon, ExecutionStatusBadge, OutputBlock, StepInputBlock, StepOutputParametersBlock, StepStatusIcon, formatMs } from './ExecutionPanelParts';
 import { LiveOverview } from '../live/LiveOverview';
+import { ResizeHandle } from '../library/NodeLibrary';
 
 export function LiveTab({ executionsLive, simulation, workflowId, executions, panelHeight, onJoinExecution, onLeaveExecution }: Readonly<{
   execution: LiveExecution | null;
@@ -384,11 +385,11 @@ function LiveExecutionDetail({ execution, workflowId, historyExecutions }: Reado
           })}
         </div>
       </div>
-      {/* Drag handle — 4 px hit target, shows a highlight stripe on hover. Double-click
+      {/* Drag handle — shared splitter (visible grip + widened hit target). Double-click
           resets to the default width via useResizable's onDoubleClick. */}
-      <div
+      <ResizeHandle
+        direction="horizontal"
         {...stepList.handleProps}
-        className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-primary/30 transition-colors"
         title={t('execution.resize.stepList')}
       />
       {/* Detail view — Horizontal layout when step selected: Inspector (left) + Timeline (right).
@@ -472,9 +473,9 @@ function LiveExecutionDetail({ execution, workflowId, historyExecutions }: Reado
             </div>
 
             {/* Drag handle — resize inspector width */}
-            <div
+            <ResizeHandle
+              direction="horizontal"
               {...inspectorPanel.handleProps}
-              className="w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-primary/30 transition-colors"
               title={t('execution.resize.panel')}
             />
           </>

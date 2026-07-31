@@ -3,10 +3,12 @@ import { useTranslation } from 'react-i18next';
 import {
   useSectionForm,
   Card,
+  GroupHeading,
   HotReloadHint,
   Toggle,
   TextInput,
   NumberInput,
+  WarningNote,
   ErrorsAndSave,
 } from './SectionFormHelpers';
 
@@ -67,39 +69,33 @@ export function AiKnowledgeSection() {
     <div className="space-y-4">
       <Card icon={Chat} title={t('aiKnowledge.cardTitle')}>
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
-        <p className="text-xs text-on-surface-variant mb-3">{t('aiKnowledge.intro')}</p>
+        <p className="text-xs leading-relaxed text-on-surface-variant mb-5">{t('aiKnowledge.intro')}</p>
 
         <Toggle label={t('aiKnowledge.enabled')} checked={form.enabled}
           onChange={(v) => set({ ...form, enabled: v })}
           configKey="AiKnowledge:Enabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
 
-        <h4 className="font-medium text-sm mt-4 mb-2">{t('aiKnowledge.sourcesTitle')}</h4>
+        <GroupHeading>{t('aiKnowledge.sourcesTitle')}</GroupHeading>
         <Toggle label={t('aiKnowledge.docsEnabled')} checked={form.docsEnabled}
           onChange={(v) => set({ ...form, docsEnabled: v })}
           configKey="AiKnowledge:DocsEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
         <Toggle label={t('aiKnowledge.operationalEnabled')} checked={form.operationalEnabled}
           onChange={(v) => set({ ...form, operationalEnabled: v })}
-          configKey="AiKnowledge:OperationalEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
-        <p className="text-xs text-on-surface-variant -mt-1 mb-1">{t('aiKnowledge.operationalHint')}</p>
+          configKey="AiKnowledge:OperationalEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
+          hint={t('aiKnowledge.operationalHint')} />
         <Toggle label={t('aiKnowledge.sourceCodeEnabled')} checked={form.sourceCodeEnabled}
           onChange={(v) => set({ ...form, sourceCodeEnabled: v })}
-          configKey="AiKnowledge:SourceCodeEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
-        {form.sourceCodeEnabled && (
-          <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
-            {t('aiKnowledge.sourceCodeWarning')}
-          </div>
-        )}
+          configKey="AiKnowledge:SourceCodeEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}>
+          {form.sourceCodeEnabled && <WarningNote>{t('aiKnowledge.sourceCodeWarning')}</WarningNote>}
+        </Toggle>
         <Toggle label={t('aiKnowledge.dbEnabled')} checked={form.dbEnabled}
           onChange={(v) => set({ ...form, dbEnabled: v })}
-          configKey="AiKnowledge:DbEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
-        {form.dbEnabled && (
-          <div className="mt-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5 text-xs text-amber-700 dark:text-amber-300">
-            {t('aiKnowledge.dbWarning')}
-          </div>
-        )}
+          configKey="AiKnowledge:DbEnabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}>
+          {form.dbEnabled && <WarningNote>{t('aiKnowledge.dbWarning')}</WarningNote>}
+        </Toggle>
 
-        <h4 className="font-medium text-sm mt-4 mb-2">{t('aiKnowledge.rootsTitle')}</h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <GroupHeading>{t('aiKnowledge.rootsTitle')}</GroupHeading>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
           <TextInput label={t('aiKnowledge.docsRootPath')} value={form.docsRootPath ?? ''}
             onChange={(v) => set({ ...form, docsRootPath: v || null })}
             configKey="AiKnowledge:DocsRootPath" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
@@ -109,10 +105,10 @@ export function AiKnowledgeSection() {
             configKey="AiKnowledge:SourceCodeRootPath" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
             placeholder="{ContentRoot}\knowledge\source" />
         </div>
-        <p className="text-xs text-on-surface-variant mt-1">{t('aiKnowledge.rootsHint')}</p>
+        <p className="text-xs leading-relaxed text-on-surface-variant mt-2.5">{t('aiKnowledge.rootsHint')}</p>
 
-        <h4 className="font-medium text-sm mt-4 mb-2">{t('aiKnowledge.capsTitle')}</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <GroupHeading>{t('aiKnowledge.capsTitle')}</GroupHeading>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-5 gap-y-4">
           <NumberInput label={t('aiKnowledge.docsMaxResults')} value={form.docsMaxResults}
             onChange={(v) => set({ ...form, docsMaxResults: v })} min={1} max={100}
             configKey="AiKnowledge:DocsMaxResults" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />

@@ -112,7 +112,9 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
 export function ErrorsAndSave({ errors, onSave }: Readonly<{ errors: string[] | null; onSave: () => void }>) {
   const { t } = useTranslation(['adminSettings']);
   return (
-    <div className="mt-4 space-y-3">
+    // Rule + generous gap: the save action belongs to the card, not to whatever field
+    // happens to sit above it — without the separation it reads as part of the last group.
+    <div className="mt-7 space-y-3 border-t border-outline-variant/15 pt-5">
       {errors && errors.length > 0 && (
         <div className="bg-error-container/30 border border-error/30 rounded-md p-3 text-on-error-container text-sm">
           <p className="font-semibold mb-1">{t('adminSettings:validationErrorsTitle')}</p>
@@ -131,12 +133,41 @@ export function ErrorsAndSave({ errors, onSave }: Readonly<{ errors: string[] | 
 
 export function Card({ icon: Icon, title, children }: Readonly<{ icon: React.ComponentType<{ size?: number }>; title: string; children: React.ReactNode }>) {
   return (
-    <div className="np-card p-4">
-      <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
-        <Icon size={18} /> {title}
+    <div className="np-card p-5 sm:p-6">
+      <h3 className="font-semibold text-on-surface flex items-center gap-2.5 border-b border-outline-variant/15 pb-3 mb-4">
+        <span className="shrink-0 text-on-surface-variant"><Icon size={18} /></span> {title}
       </h3>
       {children}
     </div>
+  );
+}
+
+/**
+ * Sub-group heading inside a settings card.
+ *
+ * Long cards (AI knowledge, logging, performance) are really three or four unrelated blocks
+ * stacked on top of each other, and previously nothing but a 16 px margin said so. The
+ * heading therefore carries its own separation — a rule above plus real breathing room — and
+ * a quiet micro-label look that can't be confused with the card title one level up.
+ * `first:` drops both for a group that opens a card, so no card starts with a stray rule.
+ */
+export function GroupHeading({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <h4 className="mt-7 mb-3 border-t border-outline-variant/15 pt-5 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant first:mt-0 first:border-t-0 first:pt-0">
+      {children}
+    </h4>
+  );
+}
+
+/**
+ * Inline confidentiality/caution note. Token-driven (`warning`), not a palette literal, so it
+ * follows every skin — see the status-token rule for the designer.
+ */
+export function WarningNote({ children }: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <p className="rounded-md border border-warning/40 bg-warning-container/25 px-3 py-2.5 text-xs leading-relaxed text-on-warning-container">
+      {children}
+    </p>
   );
 }
 
@@ -157,16 +188,30 @@ export function HotReloadHint({ isHotReloadable }: Readonly<{ isHotReloadable: b
   );
 }
 
+/**
+ * Checkbox row. `hint` and `children` (e.g. a {@link WarningNote} that only shows while the
+ * toggle is on) render *indented under the label*, aligned past the checkbox — so the text
+ * visibly belongs to this switch instead of floating between two of them, which is what the
+ * old `-mt-1` hints at the call sites did.
+ */
 export function Toggle({
-  label, checked, onChange, configKey, effectiveSource, isEnvLocked,
-}: Readonly<{ label: string; checked: boolean; onChange: (v: boolean) => void; configKey: string; effectiveSource: Record<string, string>; isEnvLocked: (k: string) => boolean }>) {
+  label, checked, onChange, configKey, effectiveSource, isEnvLocked, hint, children,
+}: Readonly<{ label: string; checked: boolean; onChange: (v: boolean) => void; configKey: string; effectiveSource: Record<string, string>; isEnvLocked: (k: string) => boolean; hint?: string; children?: React.ReactNode }>) {
   return (
-    <label className="flex items-center gap-2 text-sm cursor-pointer my-1">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
-        disabled={isEnvLocked(configKey)} className="rounded disabled:opacity-50" />
-      {label}
-      <EnvOverrideBadge source={effectiveSource[configKey] ?? ''} configKey={configKey} />
-    </label>
+    <div className="py-1.5">
+      <label className="flex items-center gap-2.5 text-sm cursor-pointer w-fit">
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)}
+          disabled={isEnvLocked(configKey)} className="h-4 w-4 shrink-0 rounded disabled:opacity-50" />
+        {label}
+        <EnvOverrideBadge source={effectiveSource[configKey] ?? ''} configKey={configKey} />
+      </label>
+      {(hint || children) && (
+        <div className="mt-2 ml-[1.625rem] space-y-2">
+          {hint && <p className="text-xs leading-relaxed text-on-surface-variant">{hint}</p>}
+          {children}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -176,7 +221,7 @@ export function TextInput({
   const locked = isEnvLocked(configKey);
   return (
     <div>
-      <label className="text-xs font-medium text-on-surface-variant mb-1 flex items-center gap-2">
+      <label className="text-xs font-medium text-on-surface-variant mb-1.5 flex items-center gap-2">
         {label}
         <EnvOverrideBadge source={effectiveSource[configKey] ?? ''} configKey={configKey} />
       </label>
@@ -193,14 +238,14 @@ export function NumberInput({
   const locked = isEnvLocked(configKey);
   return (
     <div>
-      <label className="text-xs font-medium text-on-surface-variant mb-1 flex items-center gap-2">
+      <label className="text-xs font-medium text-on-surface-variant mb-1.5 flex items-center gap-2">
         {label}
         <EnvOverrideBadge source={effectiveSource[configKey] ?? ''} configKey={configKey} />
       </label>
       <input type="number" value={value} min={min} max={max} disabled={locked}
         onChange={(e) => onChange(Number.parseInt(e.target.value, 10) || 0)}
         className="w-full px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-surface-low disabled:text-on-surface-variant" />
-      {hint && <p className="text-[11px] text-on-surface-variant/80 mt-1 leading-snug">{hint}</p>}
+      {hint && <p className="text-[11px] text-on-surface-variant/80 mt-1.5 leading-relaxed">{hint}</p>}
     </div>
   );
 }

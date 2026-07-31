@@ -2259,8 +2259,82 @@ select option {
   background-color: var(--color-surface-lowest);
   color: var(--color-on-surface);
 }
+
 select:disabled {
   color: var(--color-on-surface-variant);
+}
+
+/* Highlight of the open dropdown.
+   ────────────────────────────────
+   The rules above only reach the *base* style of each option, and that is all the native
+   popup ever takes: Chromium renders it outside the page and copies the resolved option
+   styles into it, so `option:hover` never matches (nothing is hovered in the page) and the
+   selected row is painted with a hardcoded light-grey highlight — a pale bar with near-black
+   text inside an otherwise black menu, unreadable under every dark skin. No amount of
+   `option` CSS fixes that; the popup simply isn't ours to paint.
+
+   `appearance: base-select` is: it swaps the native popup for real DOM (`::picker(select)`
+   with the options as children), at which point `:hover`/`:checked` behave like anywhere
+   else. Behind `@supports` on purpose — where the browser doesn't know the value the whole
+   block is dropped and the native popup above stays exactly as it was, so this is a pure
+   upgrade with no fallback branch to maintain. */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+
+  /* The button keeps its utility classes (padding/border/radius); base-select only turns it
+     into a flex box, so the label goes left and the arrow right. */
+  select {
+    justify-content: space-between;
+    gap: 0.5rem;
+    text-align: left;
+  }
+  select::picker-icon {
+    color: var(--color-on-surface-variant);
+    transition: transform 0.15s ease;
+  }
+  select:open::picker-icon {
+    transform: rotate(180deg);
+  }
+
+  ::picker(select) {
+    max-height: 20rem;
+    overflow-y: auto;
+    padding: 0.25rem;
+    border: 1px solid var(--color-outline-variant);
+    border-radius: 0.625rem;
+    background: var(--color-surface-lowest);
+    box-shadow: 0 20px 45px -22px rgb(0 0 0 / 0.55);
+  }
+
+  /* Transparent so the picker's own surface shows through and the hover/checked chips read
+     as rounded rows rather than full-bleed bars. */
+  select option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--color-on-surface);
+  }
+  select option:hover,
+  select option:focus {
+    background: var(--color-surface-high);
+  }
+  select option:checked {
+    background: var(--color-primary-fixed);
+    color: var(--color-on-primary-fixed);
+  }
+  select option:disabled {
+    color: var(--color-on-surface-variant);
+    background: transparent;
+  }
+  select option::checkmark {
+    color: var(--color-primary);
+  }
 }
 
 /* ═══════════════════════════════════════════════════════════════
