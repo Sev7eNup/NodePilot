@@ -313,7 +313,7 @@ Speicher ab (siehe „Hardware-adaptive Dimensionierung" weiter unten).
 
 **Memory-Daumenregel Postgres:** Backend ~10MB pro Connection + `shared_buffers`. Bei `max_connections=600` und `shared_buffers=512MB` zieht Postgres bis zu ~6.5 GB — das ist eine **Kapazitätsgrenze**, kein gemessener Dauerbedarf: unter Last sind nur ~85 von 480 Pool-Slots belegt (siehe Sperrvermerk).
 
-**Memory-Daumenregel RunspacePool:** ~**1,2–1,4 MB** pro Pool-Runspace (2026-07-30 gemessen: N=32 in eigenem Prozess, nach blockierender Gen2-GC; mit Modul-Importen 1,36 MB). Inklusive aller Nebenkosten unter 500-Parallel-Last liegt der Wert bei ~8 MB/Runspace. *Die frühere Angabe „~30 MB pro Runspace" war falsch* — sie stammt vom **Prozess**-Spawn-Pfad (`ProcessExecutionEngine`, siehe Zeile zu `5fd8ddb` oben) und ist hier irrtümlich übernommen worden. Sie hat Sizing-Empfehlungen um Faktor ~20 überzeichnet.
+**Memory-Daumenregel RunspacePool:** ~**1,2–1,4 MB** pro Pool-Runspace (2026-07-30 gemessen: N=32 in eigenem Prozess, nach blockierender Gen2-GC; mit Modul-Importen 1,36 MB). Damit: `MinRunspaces=128` → ~150–180 MB Idle-RAM, `MaxRunspaces=512` voll ausgelastet → ~600–720 MB. Inklusive aller Nebenkosten unter 500-Parallel-Last liegt der Wert bei ~8 MB/Runspace — das ist die Zahl, mit der die Auto-Dimensionierung konservativ rechnet. *Die frühere Angabe „~30 MB pro Runspace" war falsch* — sie stammt vom **Prozess**-Spawn-Pfad (`ProcessExecutionEngine`, siehe Zeile zu `5fd8ddb` oben) und ist hier irrtümlich übernommen worden; Analyse und Beweis in der WinPSCompat-Session unten. Sie hat Sizing-Empfehlungen um Faktor ~20 überzeichnet.
 
 ### Tests / Verifikation
 
