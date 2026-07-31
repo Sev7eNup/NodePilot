@@ -102,20 +102,49 @@ export function SnippetsSection({ collapsed, onToggle, onInsert, canWrite = true
   );
 }
 
+/**
+ * Splitter between a panel and its neighbour (canvas, list, …).
+ *
+ * The handle used to be fully transparent at rest and only lit up on hover — you had to know
+ * it was there and fish for a 4 px band to find it. It now shows a permanent grip pill at the
+ * centre of the seam: enough to read as "grab me here", quiet enough not to compete with the
+ * panel border a few pixels over (hence a *centred grip* and no full-length line at rest —
+ * that would double the panel's own `border-l`).
+ *
+ * The pointer target is deliberately wider than the drawn band: an absolutely-positioned,
+ * transparent extender overhangs the 4 px lane by 4 px on each side (12 px total). It sits
+ * *inside* the wrapper, so its events bubble to the wrapper's drag handlers while the layout
+ * width stays 4 px — widening the wrapper itself would shift the canvas.
+ */
 export function ResizeHandle({ direction, ...props }: { direction: 'horizontal' | 'vertical' } & React.HTMLAttributes<HTMLDivElement>) {
   const isH = direction === 'horizontal';
   return (
     <div
+      role="separator"
+      aria-orientation={isH ? 'vertical' : 'horizontal'}
       {...props}
       className={`shrink-0 group relative z-20 ${
         isH ? 'w-1 cursor-col-resize' : 'h-1 cursor-row-resize'
       }`}
     >
-      <div className={`absolute transition-colors ${
-        isH
-          ? 'top-0 bottom-0 left-0 w-1 group-hover:bg-primary/30 group-active:bg-primary/60'
-          : 'left-0 right-0 top-0 h-1 group-hover:bg-primary/30 group-active:bg-primary/60'
-      }`} />
+      {/* Hit target — overhangs the lane on both sides. Transparent, no own styling. */}
+      <span className={`absolute ${isH ? 'inset-y-0 -inset-x-1' : 'inset-x-0 -inset-y-1'}`} />
+      {/* Hover/drag band along the whole seam. */}
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute bg-transparent transition-colors group-hover:bg-primary/25 group-active:bg-primary/45 ${
+          isH ? 'inset-y-0 left-0 w-1' : 'inset-x-0 top-0 h-1'
+        }`}
+      />
+      {/* Always-visible grip pill — grows and takes the accent colour under the cursor. */}
+      <span
+        aria-hidden
+        className={`pointer-events-none absolute rounded-full bg-outline-variant/70 transition-all duration-150 group-hover:bg-primary group-active:bg-primary ${
+          isH
+            ? 'left-1/2 top-1/2 h-9 w-[3px] -translate-x-1/2 -translate-y-1/2 group-hover:h-14'
+            : 'left-1/2 top-1/2 h-[3px] w-9 -translate-x-1/2 -translate-y-1/2 group-hover:w-14'
+        }`}
+      />
     </div>
   );
 }
