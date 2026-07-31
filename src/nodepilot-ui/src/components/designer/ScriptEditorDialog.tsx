@@ -15,6 +15,7 @@ import {
   Minimize,
   Play,
   Redo,
+  Save,
   Subtract,
   TextWrap,
   Undo,
@@ -552,16 +553,18 @@ export function ScriptEditorDialog({
           </div>
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-1.5 text-on-surface-variant hover:text-on-surface hover:bg-surface-highest rounded transition-colors focus-visible:outline-2 focus-visible:outline-primary"
+              className="inline-flex h-7 w-7 items-center justify-center text-on-surface-variant hover:text-on-surface hover:bg-surface-highest rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
               title={t('editor:scriptEditor.toggleFullscreen')}
               aria-label={t('editor:scriptEditor.toggleFullscreen')}
             >
               {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
             </button>
             <button
+              type="button"
               onClick={onClose}
-              className="p-1.5 text-on-surface-variant hover:text-error hover:bg-error-container/30 rounded transition-colors focus-visible:outline-2 focus-visible:outline-primary"
+              className="inline-flex h-7 w-7 items-center justify-center text-on-surface-variant hover:text-error hover:bg-error-container/30 rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary"
               aria-label={t('editor:scriptEditor.close')}
             >
               <Close size={14} />
@@ -593,33 +596,34 @@ export function ScriptEditorDialog({
               disabled={fontSize >= MAX_FONT}
             />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {onAiGenerate && (
-              <button
+              <ActionButton
+                variant="tonal"
+                icon={MagicWandFilled}
                 onClick={() => setAiDialogOpen(true)}
                 disabled={aiBusy}
-                className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-br from-primary to-primary-container text-on-primary text-xs font-label font-medium rounded-md shadow-sm hover:shadow-lg hover:brightness-110 hover:-translate-y-px active:translate-y-0 active:brightness-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:translate-y-0 disabled:hover:shadow-sm"
                 title={aiDialogTitle}
-                aria-label={t('editor:scriptEditor.generateWithAi')}
+                ariaLabel={t('editor:scriptEditor.generateWithAi')}
               >
-                <MagicWandFilled size={12} />
                 KI
-              </button>
+              </ActionButton>
             )}
             {onRun && (
-              <button
+              <ActionButton
+                variant="success"
+                icon={testing ? CircleDash : Play}
+                iconClassName={testing ? 'animate-spin' : undefined}
                 onClick={handleRun}
                 disabled={testing || aiBusy}
-                className="flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white text-xs font-label font-medium rounded-md shadow-sm hover:shadow-lg hover:brightness-110 hover:-translate-y-px active:translate-y-0 active:brightness-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:translate-y-0 disabled:hover:shadow-sm"
                 title="Step testen (nutzt den zuletzt gespeicherten Stand aus der DB)"
               >
-                {testing ? <CircleDash size={12} className="animate-spin" /> : <Play size={12} />}
                 {testing ? t('editor:scriptEditor.running') : t('editor:scriptEditor.run')}
-              </button>
+              </ActionButton>
             )}
-            <button onClick={handleSave} disabled={aiBusy} className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-br from-primary to-primary-container text-on-primary text-xs font-label font-semibold rounded-md shadow-sm hover:shadow-lg hover:brightness-110 hover:-translate-y-px active:translate-y-0 active:brightness-95 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:brightness-100 disabled:hover:translate-y-0 disabled:hover:shadow-sm">
+            <ActionButton variant="primary" icon={Save} onClick={handleSave} disabled={aiBusy}>
               {t('editor:scriptEditor.saveClose')}
-            </button>
+            </ActionButton>
           </div>
         </div>
 
@@ -878,16 +882,63 @@ function ToolbarButton({
 }: Readonly<{ icon: React.ElementType; label: string; onClick: () => void; active?: boolean; disabled?: boolean }>) {
   return (
     <button
+      type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`p-1.5 rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-40 disabled:cursor-not-allowed ${
-        active ? 'text-primary bg-primary-fixed' : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-high'
+      className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
+        active
+          ? 'text-on-primary-fixed bg-primary-fixed ring-1 ring-primary/20'
+          : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-high'
       }`}
       title={label}
       aria-label={label}
       aria-pressed={active}
     >
       <Icon size={14} />
+    </button>
+  );
+}
+
+/**
+ * Toolbar call-to-actions. All three share one geometry (h-7, same radius/type scale) so the
+ * cluster reads as a row instead of three loose pills; only the *fill* carries the hierarchy:
+ * `primary` (gradient — the house CTA style, exactly one per toolbar), `tonal` (secondary) and
+ * `success` (the Run action). Colours come from tokens — `bg-green-600` was skin- and dark-blind.
+ * Hover deepens the tonal fills via opacity, which reads correctly in light *and* dark (a
+ * brightness filter would lighten one and darken the other).
+ */
+const ACTION_VARIANTS = {
+  primary:
+    'bg-gradient-to-br from-primary to-primary-container text-on-primary font-semibold shadow-sm ring-1 ring-primary/25 hover:shadow-md hover:brightness-105 active:brightness-95 disabled:hover:shadow-sm disabled:hover:brightness-100',
+  tonal:
+    'bg-primary-fixed/70 text-on-primary-fixed font-medium ring-1 ring-primary/20 hover:bg-primary-fixed hover:ring-primary/35 active:bg-primary-fixed disabled:hover:bg-primary-fixed/70',
+  success:
+    'bg-success-container/60 text-on-success-container font-medium ring-1 ring-success/30 hover:bg-success-container hover:ring-success/50 active:bg-success-container disabled:hover:bg-success-container/60',
+} as const;
+
+function ActionButton({
+  variant, icon: Icon, iconClassName, onClick, disabled, title, ariaLabel, children,
+}: Readonly<{
+  variant: keyof typeof ACTION_VARIANTS;
+  icon: React.ElementType;
+  iconClassName?: string;
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+  ariaLabel?: string;
+  children: React.ReactNode;
+}>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-label whitespace-nowrap transition-all cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 disabled:cursor-not-allowed ${ACTION_VARIANTS[variant]}`}
+      title={title}
+      aria-label={ariaLabel}
+    >
+      <Icon size={13} className={iconClassName} />
+      {children}
     </button>
   );
 }
