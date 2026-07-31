@@ -310,7 +310,7 @@ Werte aus dem 2026-05-04-Stand der Heuristik plus die aktuelle Live-Zeile separa
 
 **Memory-Daumenregel Postgres:** Backend ~10MB pro Connection + `shared_buffers`. Bei `max_connections=600` und `shared_buffers=512MB` zieht Postgres bis zu ~6.5 GB.
 
-**Memory-Daumenregel RunspacePool:** ~30MB pro initialisiertem Runspace. `MinRunspaces=128` → ~3.8 GB Idle-RAM. `MaxRunspaces=512` voll ausgelastet → ~15 GB.
+**Memory-Daumenregel RunspacePool:** ~1,2–1,4 MB pro initialisiertem Runspace (gemessen 2026-07-30; frühere ~30-MB-Schätzung galt für den Prozess-Spawn-Pfad, nicht den In-Process-Pool — Analyse und Beweis in der WinPSCompat-Session unten). `MinRunspaces=128` → ~150–180 MB Idle-RAM. `MaxRunspaces=512` voll ausgelastet → ~600–720 MB.
 
 ### Tests / Verifikation
 
