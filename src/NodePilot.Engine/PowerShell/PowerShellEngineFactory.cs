@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using NodePilot.Core.Configuration;
 
 namespace NodePilot.Engine.PowerShell;
 
@@ -27,7 +28,10 @@ public class PowerShellEngineFactory
         _runspace = runspace;
     }
 
-    public PowerShellEngineFactory(ILoggerFactory loggerFactory, IConfiguration? configuration = null)
+    public PowerShellEngineFactory(
+        ILoggerFactory loggerFactory,
+        IConfiguration? configuration = null,
+        PerformancePlan? performancePlan = null)
     {
         var logger = loggerFactory.CreateLogger<PowerShellEngineFactory>();
 
@@ -42,12 +46,17 @@ public class PowerShellEngineFactory
         _windowsPowerShell = ProcessExecutionEngine.CreateWindowsPowerShell(logger, isolatedDrainGrace);
 
         // Runspace pool sizing: process-spawn pwsh.exe per script costs ~50-200ms (process
-        // start + temp file write + module load) and ~30 MB RAM. The runspace pool reuses
-        // in-process runspaces at <5 ms per script. Default max scales with CPU count
-        // capped at 64; overridable via Engine:Runspace:MinRunspaces / :MaxRunspaces.
-        var defaultMax = Math.Min(64, Math.Max(8, Environment.ProcessorCount * 4));
-        var minRunspaces = configuration?.GetValue<int?>("Engine:Runspace:MinRunspaces") ?? 1;
-        var maxRunspaces = configuration?.GetValue<int?>("Engine:Runspace:MaxRunspaces") ?? defaultMax;
+        // start + temp file write + module load). The runspace pool reuses in-process runspaces
+        // at <5 ms per script. The sizing decision itself belongs to the process-wide
+        // PerformancePlan (hardware-derived by default, operator values under manual tuning);
+        // the fallback below only covers hosts that construct the factory without a plan —
+        // tests and the CLI-side tooling — and mirrors the plan's own auto formula.
+        var plan = performancePlan ?? PerformanceSizing.Create(
+            new DetectedResources(Environment.ProcessorCount, null, IsDesktop: false),
+            manualTuning: false,
+            new Dictionary<string, int?>());
+        var minRunspaces = plan.MinRunspaces.Value;
+        var maxRunspaces = plan.MaxRunspaces.Value;
         _runspace = new RunspaceExecutionEngine(logger, minRunspaces, maxRunspaces);
 
         logger.LogInformation("PowerShell engines: pwsh={PwshAvailable}, powershell={PSAvailable}, runspace=true (min={Min}, max={Max})",

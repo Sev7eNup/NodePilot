@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Authorization;
+using k = NodePilot.Core.Configuration.PerformanceSizing.ConfigKeys;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 using NodePilot.Ai;
@@ -207,6 +208,40 @@ public sealed class AdminSettingsController : ControllerBase
         await _audit.LogAsync(descriptor.AuditCode, "Settings", null, diff, ct);
 
         return Ok(BuildSectionResponseFromJson(adapter, atomic.PersistedSection, atomic.CurrentEtag));
+    }
+
+    /// <summary>
+    /// The sizing actually in force, with the constraint that produced each value. Needed because
+    /// under automatic tuning the numbers in the Engine/Threading/ExecutionDispatch sections are
+    /// inert — showing those would tell the operator something untrue about their process.
+    /// </summary>
+    [HttpGet("effective-sizing")]
+    public ActionResult<EffectiveSizingDto> GetEffectiveSizing(
+        [FromServices] NodePilot.Core.Configuration.PerformancePlan plan)
+    {
+        static SizedValueDto V(string key, NodePilot.Core.Configuration.SizedValue v) =>
+            new() { Key = key, Value = v.Value, Bound = v.Bound.ToString() };
+
+        return Ok(new EffectiveSizingDto
+        {
+            ManualTuning = plan.ManualTuning,
+            // Read live, not from the plan: after a save the desired mode differs from the booted
+            // one until the operator restarts, and that difference is what the UI must surface.
+            DesiredManualTuning = _configRoot.GetValue(k.ManualTuning, false),
+            ProcessorCount = plan.Resources.ProcessorCount,
+            UsableMemoryBytes = plan.Resources.UsableMemoryBytes,
+            IsDesktop = plan.Resources.IsDesktop,
+            Values =
+            [
+                V(k.MinRunspaces, plan.MinRunspaces),
+                V(k.MaxRunspaces, plan.MaxRunspaces),
+                V(k.MaxConcurrentSteps, plan.MaxConcurrentSteps),
+                V(k.MinWorkerThreads, plan.MinWorkerThreads),
+                V(k.MinIoCompletionThreads, plan.MinIoCompletionThreads),
+                V(k.DispatchWorkerCount, plan.DispatchWorkerCount),
+                V(k.DispatchCapacity, plan.DispatchCapacity),
+            ],
+        });
     }
 
     [HttpGet("system-info")]

@@ -293,7 +293,9 @@ Hardening-Flags: `Remote:RequireWinRmSsl`, `RestApi:BlockPrivateNetworks`, `Rest
 
 ## Admin-Settings Hot-Reload
 
-Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker (UI: emerald `HotReloadHint` vs. oranger `RestartBanner`). 12 Sektionen sind hot-reloadable, 8 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed. **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — nie `IOptions<T>.Value`-Snapshot. Vollständige Matrix + Mixed-Section-Limits: `docs/claude-reference.md`.
+Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker (UI: emerald `HotReloadHint` vs. oranger `RestartBanner`). 12 Sektionen sind hot-reloadable, 9 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed.
+
+**Dimensionierung:** `Performance:ManualTuning` (default **`false`**) entscheidet, ob `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` und `ExecutionDispatch:*` aus erkannter CPU+RAM abgeleitet (`PerformanceSizing` in Core, Boot-Snapshot via `PerformancePlanFactory`) oder verbatim aus der Config genommen werden. Aus = hardware-adaptiv, die konfigurierten Zahlen bleiben als inertes Preset stehen. Restart-pflichtig. **`Engine:MaxConcurrentExecutions:*` ist ausgenommen** (Sicherheits-Cap, nicht Tuning — gilt in beiden Modi). Details: `docs/performance-improvements.md`. **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — nie `IOptions<T>.Value`-Snapshot. Vollständige Matrix + Mixed-Section-Limits: `docs/claude-reference.md`.
 
 ## AuditLog
 

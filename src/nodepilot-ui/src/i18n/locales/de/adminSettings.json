@@ -87,6 +87,22 @@
   "smtpEnableSslLabel": "TLS aktivieren (EnableSsl)",
   "smtpEnableSslWarning": "Warnung: Benutzername ist gesetzt, aber TLS ist deaktiviert. SMTP-Anmeldedaten und Nachrichteninhalte werden im Klartext übertragen. Nur für lokale, nicht öffentlich erreichbare Relays empfohlen.",
   "perf": {
+    "modeCardTitle": "Dimensionierung",
+    "modeExplainer": "Bei automatischer Dimensionierung leitet NodePilot die Werte unten aus erkannter CPU und erkanntem Speicher ab. Manuelles Tuning einschalten, um stattdessen die konfigurierten Werte zu verwenden — gespeichert bleiben sie in beiden Fällen.",
+    "manualTuning": "Manuelles Tuning (konfigurierte Werte verwenden)",
+    "modePendingRestart": "Der gespeicherte Modus weicht von dem ab, in dem dieser Prozess gestartet ist. Runspace-Pool und Dispatch-Queue werden einmalig beim Start dimensioniert — ein Neustart ist nötig.",
+    "detected": "Erkannt: {{cores}} Kerne, {{memory}} nutzbarer Speicher, Posture {{posture}}.",
+    "memoryUnknown": "unbekannt",
+    "inertUnderAuto": "Automatische Dimensionierung ist aktiv — diese Werte sind gespeichert, aber nicht in Kraft.",
+    "safetyCapHint": "Sicherheits-Cap gegen Trigger-Schleifen und Sub-Workflow-Kaskaden — kein Durchsatz-Regler. Gilt immer, in beiden Dimensionierungs-Modi.",
+    "activeValue": "Aktiv: {{value}} ({{bound}})",
+    "bound": {
+      "Cpu": "aus CPU",
+      "Ram": "durch Speicher begrenzt",
+      "Floor": "Minimum",
+      "Ceiling": "gemessenes Maximum",
+      "Manual": "konfiguriert"
+    },
     "engineCardTitle": "Engine-Parallelität",
     "executionDispatchCardTitle": "Ausführungs-Dispatch-Queue",
     "threadingCardTitle": "ThreadPool-Vorwärmung",

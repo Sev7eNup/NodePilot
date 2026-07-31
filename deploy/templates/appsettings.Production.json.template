@@ -95,6 +95,9 @@
       "DbProjectionEnabled": true
     }
   },
+  "Performance": {
+    "ManualTuning": false
+  },
   "Engine": {
     "Debug": {
       "MaxPauseMinutes": 10

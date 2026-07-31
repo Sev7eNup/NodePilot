@@ -557,7 +557,7 @@ Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (hängt
 | `Llm` | ✓ | `ILlmClientFactory` + `WorkflowAssistantService` + Gates (`LlmQueryActivity`/`AiController`/`AiChatController`) lesen `IOptionsMonitor<LlmOptions>.CurrentValue` pro Use/Request — gilt auch für den Profilwechsel (`ActiveProfileId`) |
 | `Retention` | ✓ | `Execution`/`AuditLog`/`WorkflowVersions`/`Notification`/`SupportEvent`-RetentionService lesen `IOptionsMonitor<RetentionOptions>.CurrentValue` pro Schleifen-Pass (`RunIterationAsync`-Seam); `ArchivePath`-Wechsel invalidiert den Cache → Re-Probe (AuditLog bewahrt Compliance-Invariante). `IdempotencyKeyCleanupService` bleibt bewusst config-frei (fixe 24h-TTL) |
 | `Stats` | ✓ | `WorkflowStatsRefresher` liest `IConfiguration.GetValue` pro Pass |
-| `Threading` | ✓ | `ThreadPoolTuningService` re-appliert `ThreadPool.SetMinThreads` bei Start + `ChangeToken.OnChange` (Boot-Call bleibt für Cold-Start-Prewarm) |
+| `Threading` | ✓ | `ThreadPoolTuningService` re-appliert `ThreadPool.SetMinThreads` bei Start + `ChangeToken.OnChange` (Boot-Call bleibt für Cold-Start-Prewarm). **Nur bei `Performance:ManualTuning=true`** — unter Auto-Dimensionierung folgt der Service dem Boot-Plan, sonst würde ein Reload allein den ThreadPool in einen anderen Modus ziehen als Runspace-Pool und Dispatch-Queue |
 | `FileSystemOperation` | ✓ | `PathGuard` liest `FileSystemOperation:RejectTraversal`/`AllowedRoots` pro Use aus `IConfiguration` |
 | `SqlActivity` | ✓ | `SqlActivity` liest `SqlActivity:RequireConnectionRef` pro Use aus `IConfiguration` |
 | `StartProgram` | ✓ | `StartProgramActivity` liest `StartProgram:DisallowShellExecute` pro Use aus `IConfiguration` |
@@ -570,7 +570,10 @@ Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (hängt
 | `Security` | ✗ | `StrictAllowedHosts`/`AllowedHosts` einmal beim Boot gelesen |
 | `RestApi` | ✗ | Mixed: `BlockPrivateNetworks` live, `Proxy` an `RestApiActivity` boot-fest → konservativ ganze Sektion restart-pflichtig |
 | `Remote` | ✗ | Mixed: `Provider`+SSL+Timeouts+Pool boot-fest gebunden → konservativ ganze Sektion restart-pflichtig |
+| `Performance` | ✗ | `ManualTuning` entscheidet, wie Runspace-Pool und Dispatch-Queue dimensioniert werden — beide entstehen einmal beim Boot. Der Plan wird deshalb genau einmal aufgelöst (`PerformancePlanFactory`) und als Singleton geteilt |
 | `Engine` | ✗ | Concurrency-Caps beim Boot in den Engine-Channel/Pool gebaut |
 | `ExecutionDispatch` | ✗ | Queue/Channel beim Boot gebaut |
+
+**Dimensionierung (`Performance:ManualTuning`, default `false`):** Ohne den Schalter leitet NodePilot `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` und `ExecutionDispatch:*` aus erkannter CPU und erkanntem Speicher ab. **`Engine:MaxConcurrentExecutions:*` ist bewusst ausgenommen** — Sicherheits-Cap gegen Trigger-Schleifen/Sub-Workflow-Kaskaden, rein config-gesteuert (500/200), gilt in beiden Modi (`PerformanceSizing` in `NodePilot.Core`, reiner Algorithmus; Erkennung + `Deployment:Mode` liefert `PerformancePlanFactory` in der Api, weil Core nicht rückwärts referenzieren darf). Die in den Sektionen gespeicherten Zahlen sind dann **inert** — `GET /api/admin/settings/effective-sizing` liefert die tatsächlich wirksamen Werte samt bindender Grenze (`Cpu`/`Ram`/`Floor`/`Ceiling`/`Manual`), die UI graut die Felder aus und zeigt den aktiven Wert. Formeln, Ceilings und die Speicher-Budgetierung: `docs/performance-improvements.md`.
 
 **Mixed-Section-Limits:** `RestApi` und `Remote` mischen live- und boot-feste Keys in einer Sektion. Da `IsHotReloadable` nur Section-Granularität kennt, können diese nicht gemischt sein — sie bleiben konservativ restart-pflichtig (als bekannte Einschränkung dokumentiert, kein Flag-Per-Field). `Retention:ArchivePath` ist davon ausgenommen: der Pfad wird aktiv re-validiert, ein Wechsel löst eine Re-Probe aus (kein Neustart).

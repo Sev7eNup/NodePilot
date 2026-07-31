@@ -296,21 +296,24 @@ in_flight_steps  ≈  throughput  ×  avg_latency
 
 ### Default-Tuning für 500-par.-WF-Topologie
 
-Skalierungs-Heuristik. Der Live-Stand (20-Core / 500 par.) ist nach `15c9c32` auf
-600/600/768/256 mit DB-Pool=800 nachgezogen worden; die Tabelle hier zeigt die
-Werte aus dem 2026-05-04-Stand der Heuristik plus die aktuelle Live-Zeile separat.
+**Diese Tabelle ist eine *Lastprofil*-Tabelle, keine reine Hardware-Skalierungsreihe.** Die Zeilen
+mischen Hardware **und** angenommene Last („20 Cores / 500 par. WFs"); das Optimum hängt außerdem
+an Activity-Mix, Step-Laufzeit, Runspace-Anteil, Remote-Latenz und DB-Provider. Sie beschreibt
+damit **bewusst gesetzte Overrides** (`Performance:ManualTuning: true`), nicht das, was NodePilot
+von sich aus tut — ohne den Schalter leitet es die Werte aus erkannter CPU **und** erkanntem
+Speicher ab (siehe „Hardware-adaptive Dimensionierung" weiter unten).
 
-| Last-Profil | WorkerCount | MaxConcurrentSteps | MaxRunspaces | MinRunspaces | DB-Pool | Postgres `max_connections` |
-|---|---|---|---|---|---|---|
-| 8-Core / 20 par. WFs | 20 | 256 | 32 | 1 | 30 | 100 (default) |
-| 16-Core / 50 par. WFs | 50 | 512 | 64 | 1 | 100 | 100 (default) |
-| 20-Core / 500 par. WFs (Stand 2026-05-04) | 512 | 512 | 512 | 128 | 480 | 600 |
-| **20-Core / 500 par. WFs (live, Stand 2026-05-07)** | **600** | **600** | **768** | **256** | **800** | **600** |
-| 32-Core / 1000 par. WFs | 1024 | 1024 | 1024 | 256 | 800 | 1200 |
+| Last-Profil | WorkerCount | MaxConcurrentSteps | MaxRunspaces | MinRunspaces | MinWorkerThreads | DB-Pool | Postgres `max_connections` |
+|---|---|---|---|---|---|---|---|
+| 8-Core / 20 par. WFs | 20 | 256 | 32 | 1 | 200 | 30 | 100 (default) |
+| 16-Core / 50 par. WFs | 50 | 512 | 64 | 1 | 256 | 100 | 100 (default) |
+| 20-Core / 500 par. WFs (Stand 2026-05-04) | 512 | 512 | 512 | 128 | 512 | 480 | 600 |
+| **20-Core / 500 par. WFs (live, Stand 2026-05-07)** | **600** | **600** | **768** | **256** | **768** | **800** | **600** |
+| 32-Core / 1000 par. WFs | 1024 | 1024 | 1024 | 256 | 1024 | 800 | 1200 |
 
-**Memory-Daumenregel Postgres:** Backend ~10MB pro Connection + `shared_buffers`. Bei `max_connections=600` und `shared_buffers=512MB` zieht Postgres bis zu ~6.5 GB.
+**Memory-Daumenregel Postgres:** Backend ~10MB pro Connection + `shared_buffers`. Bei `max_connections=600` und `shared_buffers=512MB` zieht Postgres bis zu ~6.5 GB — das ist eine **Kapazitätsgrenze**, kein gemessener Dauerbedarf: unter Last sind nur ~85 von 480 Pool-Slots belegt (siehe Sperrvermerk).
 
-**Memory-Daumenregel RunspacePool:** ~1,2–1,4 MB pro initialisiertem Runspace (gemessen 2026-07-30; frühere ~30-MB-Schätzung galt für den Prozess-Spawn-Pfad, nicht den In-Process-Pool — Analyse und Beweis in der WinPSCompat-Session unten). `MinRunspaces=128` → ~150–180 MB Idle-RAM. `MaxRunspaces=512` voll ausgelastet → ~600–720 MB.
+**Memory-Daumenregel RunspacePool:** ~**1,2–1,4 MB** pro Pool-Runspace (2026-07-30 gemessen: N=32 in eigenem Prozess, nach blockierender Gen2-GC; mit Modul-Importen 1,36 MB). Damit: `MinRunspaces=128` → ~150–180 MB Idle-RAM, `MaxRunspaces=512` voll ausgelastet → ~600–720 MB. Inklusive aller Nebenkosten unter 500-Parallel-Last liegt der Wert bei ~8 MB/Runspace — das ist die Zahl, mit der die Auto-Dimensionierung konservativ rechnet. *Die frühere Angabe „~30 MB pro Runspace" war falsch* — sie stammt vom **Prozess**-Spawn-Pfad (`ProcessExecutionEngine`, siehe Zeile zu `5fd8ddb` oben) und ist hier irrtümlich übernommen worden; Analyse und Beweis in der WinPSCompat-Session unten. Sie hat Sizing-Empfehlungen um Faktor ~20 überzeichnet.
 
 ### Tests / Verifikation
 
@@ -631,3 +634,105 @@ einer Shared Table terminierend (`CannotUpdateSharedFormatTable`) → über `ps.
 Step. Ebenfalls aktenkundig: `dotnet-gcdump` bricht still am 10-Mio.-Objekt-Cap ab — das
 Typ-Histogramm eines übergroßen Heaps beschreibt dann nur die Stichprobe. Kausalität immer über
 vollen `dotnet-dump` + `gcroot` auf mehrere Instanzen belegen.
+
+---
+
+## Hardware-adaptive Dimensionierung (Session 2026-07-31)
+
+Bis hierher stand das für **20 Kerne / 500 parallele Workflows** gemessene Profil fest in
+`src/NodePilot.Api/appsettings.json` — der Basis-Config **aller** Environments. Das
+Production-Template rollte es über `deploy/Install-NodePilot.ps1` zusätzlich auf beliebige
+Hardware aus. Auf einer kleineren Maschine ist das aktiv schädlich: 768 Min-ThreadPool-Threads
+maßen bereits auf einer 20-Core-Kiste **28 % Regression** (Anti-Pattern-Abschnitt oben), und die
+Kapazitätsgrenzen von App und Postgres addieren sich im Worst Case zu deutlich mehr, als ein
+16-GB-Host bereitstellt.
+
+### Was jetzt gilt
+
+`Performance:ManualTuning` (default **`false`**) entscheidet:
+
+- **Aus** — NodePilot leitet Runspace-Pool, Step-Cap, ThreadPool-Floor, Dispatch-Queue und die
+  Execution-Sanity-Caps aus **erkannter CPU und erkanntem Speicher** ab.
+- **An** — die konfigurierten Werte gelten unverändert. So wird das gemessene Hochlast-Profil
+  aktiviert; es bleibt in allen Templates als inertes, sofort einschaltbares Preset stehen.
+
+Der Schalter ist **restart-pflichtig**: Runspace-Pool und Dispatch-Queue entstehen einmal beim
+Boot. Der Plan wird deshalb genau einmal beim Start aufgelöst (`PerformancePlanFactory`) und als
+Singleton geteilt — sonst würde ein Config-Reload nur den hot-reloadbaren ThreadPool umschalten
+und der Prozess liefe in zwei Modi gleichzeitig. Die Settings-UI zeigt den **gewünschten** gegen
+den **aktiven** Modus und weist auf den nötigen Neustart hin.
+
+### Zielsetzung — und was bewusst nicht versprochen wird
+
+Erzeugt wird ein **sicherer, monoton skalierender Default mit begrenztem Ressourcenrisiko**, kein
+universelles Optimum: CPU und RAM reichen als Eingaben dafür nicht (Workflow-Anzahl,
+Activity-Mix, Step-Laufzeit, Remote-Latenz und DB-Provider bestimmen es mit und sind beim Boot
+unbekannt). **Auto zielt deshalb auf die leichten/mittleren Zeilen der Tabelle oben, nicht auf die
+Hochlast-Zeilen** — 768 Runspaces bleiben dem manuellen Modus vorbehalten und werden durch Auto
+nie abgesenkt.
+
+### Formeln, Floors und Ceilings
+
+`wert = clamp( min( cpuFormel, teilbudget / kosten ), floor, autoCeiling )`
+
+| Stellschraube | CPU-Formel | Floor | Auto-Ceiling |
+|---|---|---:|---:|
+| `Engine:Runspace:MaxRunspaces` | `min(64, max(8, Cores×4))` | 8 | 64 |
+| `Engine:Runspace:MinRunspaces` | `MaxRunspaces / 8` (lazy) | 1 | 8 |
+| `Engine:MaxConcurrentSteps` | `Cores × 32` | 32 | 600 |
+| `Threading:MinWorkerThreads` / `MinIoCompletionThreads` | `max(200, Cores×16)` | 64 | 768 |
+| `ExecutionDispatch:WorkerCount` | `Cores × 3` | 20 | 200 |
+| `ExecutionDispatch:Capacity` | `WorkerCount × 8` | 128 | 2048 |
+
+**`Engine:MaxConcurrentExecutions:Global`/`PerUser` steht bewusst *nicht* in dieser Tabelle.** Das
+sind Sicherheits-Caps gegen pathologische Fälle (Trigger-Schleifen, Sub-Workflow-Kaskaden), kein
+Durchsatz-Hebel — sie sollen im Normalbetrieb nie greifen. Wer einen davon setzt, meint ihn; ihn
+im Auto-Modus durch einen hardware-abgeleiteten Wert zu ersetzen würde genau die Schutzschranke
+entwaffnen, die der Operator eingezogen hat. Sie bleiben rein config-gesteuert (Defaults 500/200)
+und gelten in **beiden** Modi. Ein Test hält das fest; die Fehleinschätzung ist beim ersten Anlauf
+aufgefallen, weil `WorkflowEngineCapacityTests` daraufhin endlos auf eine Ablehnung wartete, die
+nie kam.
+
+Die Ceilings stammen aus Messungen, nicht aus Geschmack: **600 Steps** ist Sperrvermerk-Optimum
+(600→1500 = 42 % schlechter, 600→300 = 9 % schlechter). **64 Runspaces** ist die
+„16-Core / 50 par. WFs"-Zeile — das Maximum, das Auto ohne Lastkenntnis verantworten kann.
+`MinRunspaces` bleibt klein: Eager-Pre-Warm ist als Anti-Pattern gemessen.
+
+### Speicher als zweite Dimension
+
+Ein **gemeinsamer** Haushalt, keine unabhängigen Budgets pro Stellschraube — sonst würde derselbe
+Speicher mehrfach verplant:
+
+```
+appBudget = erkannterSpeicher × Share − 512 MB Sockel
+  Share: 60 % (Server) bzw. 25 % (Desktop — dort laufen Postgres, Electron-Shell und
+         die Anwendungen des Nutzers auf derselben Maschine)
+  Runspace-Pool 50 % · In-Flight-Steps 25 % · Dispatch-Queue 5 % · Reserve 20 %
+```
+
+Invariante, per Test über ein CPU×RAM-Raster geprüft:
+`Sockel + Runspaces×R + Steps×S + Queue×Q ≤ appBudget`.
+
+**Der DB-Pool ist bewusst nicht modelliert:** sein dominanter Anteil ist serverseitiger
+Postgres-Speicher, den keine App-Einstellung steuert, und unter Last sind nur ~85 von 480
+Slots belegt. Ihn mitzurechnen wäre Scheingenauigkeit.
+
+**Ehrlichkeit zur Wirksamkeit:** weil die Auto-Ceilings konservativ sind (64 Runspaces ≈ 512 MB),
+bindet der Speicher auf normaler Hardware **nie** — er ist ein Sicherheitsnetz für wirklich
+knappe Hosts (cgroup-limitierte Container). Ein Test hält beide Seiten fest: 32 Kerne / 2 GB ist
+RAM-gebunden, 32 Kerne / 8 GB ist es nicht.
+
+**Ressourcen-Erkennung:** `Environment.ProcessorCount` und
+`GC.GetGCMemoryInfo().TotalAvailableMemoryBytes` — beide respektieren Container- und
+Job-Object-Limits, was der Punkt ist: ein cgroup-begrenzter Container muss sich nach seiner
+Scheibe dimensionieren, nicht nach dem Host. `Win32_ComputerSystem.TotalPhysicalMemory` wäre
+falsch. Werte unter 1 GB gelten als *fehlgeschlagene Erkennung* (nicht als winziger Host) →
+Fallback auf reine CPU-Dimensionierung, damit ein Messfehler nicht alles auf die Floors kollabiert.
+
+### Offen: Kalibrierung der Speicher-Koeffizienten
+
+`R` (pro Runspace), `S` (pro In-Flight-Step) und `Q` (pro Queue-Eintrag) sind derzeit
+**konservative Platzhalter** (8 MB / 256 KB / 8 KB). Der gemessene Bereich für Runspaces
+(1,2–1,4 MB leer vs. ~8 MB unter Volllast) ist Faktor 6 breit; belastbare Werte brauchen eine
+Messreihe unter realistischem Activity-Mix, je Messpunkt eigener Prozess, nach blockierender
+Gen2-GC. Bis dahin kann die Speicher-Dimension den Plan nur **verkleinern**, nie vergrößern.

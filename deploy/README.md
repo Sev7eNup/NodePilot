@@ -23,6 +23,25 @@ Der Dienst läuft wahlweise unter:
 | [templates/appsettings.Cluster.json.template](templates/appsettings.Cluster.json.template) | Config-Template für Active/Passive-HA (`Cluster:Enabled=true`, `Secrets:Provider=AesGcm`) — siehe `docs/ha-active-passive.md` |
 | [templates/haproxy.cfg.template](templates/haproxy.cfg.template) | HAProxy-Beispielconfig mit `GET /healthz/leader`-Probe für das HA-Setup |
 
+**Hinweis: Die Templates sind striktes JSON, keine Kommentare.** `Test-DeploymentTemplates.ps1`
+parst sie mit `ConvertFrom-Json` (Windows PowerShell 5.1) — ein `//`-Kommentar bricht den Check,
+auch wenn ASP.NET Core ihn beim Laden tolerieren würde. Erklärungen gehören hierher oder in
+`docs/`, nicht in die Template-Datei.
+
+### Dimensionierung in den Templates
+
+Beide Templates liefern `"Performance": { "ManualTuning": false }` aus — NodePilot leitet
+Runspace-Pool, Step-Cap, ThreadPool-Floor und Dispatch-Queue dann aus erkannter CPU und erkanntem
+Speicher ab. Das ist Absicht: `Install-NodePilot.ps1` rollt das Production-Template auf *beliebige*
+Hardware aus, und die dort hinterlegten Zahlen sind das für **20 Kerne / 500 parallele Workflows**
+gemessene Profil. Auf einer kleineren Maschine überdimensionieren sie deutlich (768
+Min-ThreadPool-Threads maßen bereits auf einer 20-Core-Kiste 28 % Regression).
+
+Die Zahlen bleiben als **inertes, sofort aktivierbares Preset** stehen: Wer eine Maschine wirklich
+mit dieser Last fährt, setzt `ManualTuning: true` (Config oder Settings-UI) und bekommt exakt das
+vermessene Profil. Der Schalter ist restart-pflichtig. Formeln, Grenzen und Messbelege:
+`docs/performance-improvements.md`.
+
 ## Voraussetzungen (einmalig, per Hand vor dem ersten Install)
 
 ### 1. Server-Host

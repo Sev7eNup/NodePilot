@@ -16,34 +16,39 @@ using Serilog;
 // auto-detection mismatches on the rolling file's first lines).
 var bootstrapConfig = LoggingSetup.BuildBootstrapConfiguration();
 
+// Perf: the process-wide sizing decision, taken exactly once here and shared by every consumer
+// (ThreadPool floor, step cap, runspace pool, dispatch queue, engine capacity caps). With
+// Performance:ManualTuning off — the default — the values are derived from the detected CPU and
+// memory; with it on, the operator's configured values win. Resolving once is what keeps the
+// boot-fixed consumers (runspace pool, dispatch queue) and the hot-reloadable ThreadPool from
+// drifting into different modes after a configuration reload.
+var performancePlan = NodePilot.Api.Configuration.PerformancePlanFactory.Create(bootstrapConfig);
+
 // Perf: ThreadPool starts with MinThreads = ProcessorCount and only injects new
 // workers at ~1-2 per second beyond that. Burst workloads (50+ simultaneous
 // /api/execute, webhook fan-in, scheduled-trigger storms) wait seconds for the
 // pool to grow. Pre-warming MinThreads to a generous floor eliminates the
 // cold-start latency at the cost of some idle threads when load is light.
-// Tunable via Threading:MinWorkerThreads / Threading:MinIoCompletionThreads.
 {
-    var defaultMinWorkers = Math.Max(200, Environment.ProcessorCount * 16);
-    var defaultMinIoc = Math.Max(200, Environment.ProcessorCount * 16);
-    var minWorkers = bootstrapConfig.GetValue<int?>("Threading:MinWorkerThreads") ?? defaultMinWorkers;
-    var minIoc = bootstrapConfig.GetValue<int?>("Threading:MinIoCompletionThreads") ?? defaultMinIoc;
+    var minWorkers = performancePlan.MinWorkerThreads.Value;
+    var minIoc = performancePlan.MinIoCompletionThreads.Value;
     if (minWorkers > 0 && minIoc > 0)
         ThreadPool.SetMinThreads(minWorkers, minIoc);
 }
 
-// Perf: Global step-concurrency cap. Caps the number of in-flight workflow steps
-// across ALL executions to ProcessorCount * 32 (default 512 on a 16-core box). Sized
-// to absorb a bursty 50-execution × 12-branch fan-out without queueing most steps on
-// the gate — keeps the junction-race cancellation path narrow. Set to <=0 to disable.
-// startWorkflow(waitForCompletion=true) releases its parent step slot while waiting
-// for the child, so queued child steps can still make progress under this cap.
-{
-    var defaultMaxSteps = Environment.ProcessorCount * 32;
-    var maxSteps = bootstrapConfig.GetValue<int?>("Engine:MaxConcurrentSteps") ?? defaultMaxSteps;
-    NodePilot.Engine.Execution.WorkflowScheduler.Configure(maxSteps);
-}
+// Perf: Global step-concurrency cap. Caps the number of in-flight workflow steps across ALL
+// executions. Sized to absorb a bursty fan-out without queueing most steps on the gate — keeps
+// the junction-race cancellation path narrow. startWorkflow(waitForCompletion=true) releases its
+// parent step slot while waiting for the child, so queued child steps can still make progress.
+NodePilot.Engine.Execution.WorkflowScheduler.Configure(performancePlan.MaxConcurrentSteps.Value);
 
 Log.Logger = LoggingSetup.BuildBootstrapLogger(bootstrapConfig);
+
+// Logged as soon as there is a logger (the plan itself is resolved earlier, before the ThreadPool
+// prewarm needs it). Without this line the effective sizing is invisible in the field: an operator
+// wondering why two hosts behave differently needs to see what was detected, what was chosen, and
+// which constraint bound each value.
+Log.Information("{PerformanceSizing}", NodePilot.Api.Configuration.PerformancePlanFactory.Describe(performancePlan));
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -151,8 +156,16 @@ builder.Services.AddScoped<INotificationRuleStore, NotificationRuleStore>();
 // Singleton evaluator: an immutable in-memory snapshot read on the dispatch hot path, refreshed
 // by the (non-leader-gated) MaintenanceWindowSnapshotService and inline after window CRUD.
 builder.Services.AddSingleton<IMaintenanceWindowEvaluator, MaintenanceWindowEvaluator>();
-builder.Services.Configure<NodePilot.Api.ExecutionDispatch.ExecutionDispatchOptions>(
-    builder.Configuration.GetSection(NodePilot.Api.ExecutionDispatch.ExecutionDispatchOptions.SectionName));
+// The boot plan is the single source of truth for sizing; every consumer resolves it from DI
+// rather than reading the raw keys, so none of them can disagree about the active mode.
+builder.Services.AddSingleton(performancePlan);
+// Dispatch queue/worker sizing comes from the plan, not straight from the section: under auto
+// tuning the configured numbers are inert and the plan carries the hardware-derived ones.
+builder.Services.Configure<NodePilot.Api.ExecutionDispatch.ExecutionDispatchOptions>(o =>
+{
+    o.WorkerCount = performancePlan.DispatchWorkerCount.Value;
+    o.Capacity = performancePlan.DispatchCapacity.Value;
+});
 builder.Services.AddSingleton<NodePilot.Api.ExecutionDispatch.ExecutionDispatchQueue>();
 builder.Services.AddSingleton<NodePilot.Core.Interfaces.IExecutionDispatchQueue>(
     sp => sp.GetRequiredService<NodePilot.Api.ExecutionDispatch.ExecutionDispatchQueue>());

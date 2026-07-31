@@ -40,8 +40,39 @@ const remote = {
   etag: '"r-1"', isHotReloadable: false, effectiveSource: {},
 };
 
-function renderAll() {
+const sizingValues = [
+  { key: 'Engine:Runspace:MinRunspaces', value: 4, bound: 'Cpu' },
+  { key: 'Engine:Runspace:MaxRunspaces', value: 32, bound: 'Cpu' },
+  { key: 'Engine:MaxConcurrentSteps', value: 256, bound: 'Cpu' },
+  { key: 'Threading:MinWorkerThreads', value: 200, bound: 'Cpu' },
+  { key: 'Threading:MinIoCompletionThreads', value: 200, bound: 'Cpu' },
+  { key: 'ExecutionDispatch:WorkerCount', value: 24, bound: 'Cpu' },
+  { key: 'ExecutionDispatch:Capacity', value: 192, bound: 'Cpu' },
+  { key: 'Engine:MaxConcurrentExecutions:Global', value: 240, bound: 'Cpu' },
+  { key: 'Engine:MaxConcurrentExecutions:PerUser', value: 96, bound: 'Cpu' },
+];
+
+/**
+ * Defaults to manual tuning so the pre-existing assertions keep exercising editable fields;
+ * the mode-specific behaviour is covered by the dedicated cases further down.
+ */
+function renderAll(sizing: Partial<{
+  manualTuning: boolean; desiredManualTuning: boolean; usableMemoryBytes: number | null;
+}> = {}) {
+  const manualTuning = sizing.manualTuning ?? true;
   server.use(
+    http.get('/api/admin/settings/Performance', () => HttpResponse.json({
+      sectionPath: 'Performance', payload: { manualTuning },
+      etag: '"p-1"', isHotReloadable: false, effectiveSource: {},
+    })),
+    http.get('/api/admin/settings/effective-sizing', () => HttpResponse.json({
+      manualTuning,
+      desiredManualTuning: sizing.desiredManualTuning ?? manualTuning,
+      processorCount: 8,
+      usableMemoryBytes: sizing.usableMemoryBytes === undefined ? 16 * 1024 ** 3 : sizing.usableMemoryBytes,
+      isDesktop: false,
+      values: sizingValues,
+    })),
     http.get('/api/admin/settings/Engine', () => HttpResponse.json(engine)),
     http.get('/api/admin/settings/ExecutionDispatch', () => HttpResponse.json(dispatch)),
     http.get('/api/admin/settings/Threading', () => HttpResponse.json(threading)),
@@ -66,6 +97,53 @@ describe('PerformanceSection', () => {
     await waitFor(() => expect(screen.getByDisplayValue('5000')).toBeInTheDocument());
     // Engine / ExecutionDispatch / Remote need a service restart to take effect → only Threading carries the hint.
     expect(screen.getAllByText(/Changes apply immediately/i).length).toBe(1);
+  });
+
+  it('greys out the plan-governed fields while automatic sizing is active', async () => {
+    // The stored numbers stay visible, but under automatic sizing they are not what the process
+    // runs on — letting an operator edit them would imply an effect they do not have.
+    renderAll({ manualTuning: false });
+    // 600 is both MaxConcurrentSteps and the dispatch WorkerCount — the plan governs both.
+    await waitFor(() => expect(screen.getAllByDisplayValue('600')).toHaveLength(2));
+    for (const field of screen.getAllByDisplayValue('600')) expect(field).toBeDisabled();
+    expect(screen.getByDisplayValue('2048')).toBeDisabled(); // dispatch queue capacity
+    expect(screen.getByDisplayValue('256')).toBeDisabled();  // MinRunspaces
+  });
+
+  it('keeps the fields the plan does not govern editable under automatic sizing', async () => {
+    renderAll({ manualTuning: false });
+    // MaxConcurrentExecutions is a safety cap against trigger loops, not a throughput knob —
+    // overriding a deliberately configured guard would disarm it.
+    await waitFor(() => expect(screen.getByDisplayValue('5000')).not.toBeDisabled());
+    expect(screen.getByDisplayValue('2000')).not.toBeDisabled();
+    // The debug pause is not part of sizing either.
+    expect(screen.getByDisplayValue('10')).not.toBeDisabled();
+  });
+
+  it('shows the value actually in force, not the stored one', async () => {
+    renderAll({ manualTuning: false });
+    // 32 is hardware-derived; the section still stores 768.
+    await waitFor(() => expect(screen.getByText(/Aktiv: 32|Active: 32/)).toBeInTheDocument());
+    // The detected hardware is stated explicitly, so the derived numbers can be sanity-checked.
+    expect(screen.getByText(/Erkannt: 8 Kerne|Detected: 8 cores/)).toBeInTheDocument();
+  });
+
+  it('keeps the fields editable under manual tuning', async () => {
+    renderAll({ manualTuning: true });
+    await waitFor(() => expect(screen.getByDisplayValue('5000')).not.toBeDisabled());
+    expect(screen.getByDisplayValue('2048')).not.toBeDisabled();
+  });
+
+  it('flags a saved mode that has not taken effect yet', async () => {
+    // Saved manual while the process still runs the automatic plan: runspace pool and dispatch
+    // queue are sized once at boot, so this needs a restart rather than a config reload.
+    renderAll({ manualTuning: false, desiredManualTuning: true });
+    await waitFor(() => expect(screen.getByText(/Neustart|restart/i)).toBeInTheDocument());
+  });
+
+  it('reports unknown memory rather than implying a detected size', async () => {
+    renderAll({ manualTuning: false, usableMemoryBytes: null });
+    await waitFor(() => expect(screen.getByText(/unbekannt|unknown/)).toBeInTheDocument());
   });
 
   it('Remote save serializes nested Pool + WinRm payload in PascalCase', async () => {

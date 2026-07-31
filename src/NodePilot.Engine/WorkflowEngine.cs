@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using NodePilot.Core.Configuration;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
@@ -145,6 +146,11 @@ public class WorkflowEngine : IWorkflowEngine
     /// </summary>
     private bool CheckCapacityCaps(Guid? startedByUserId, int callDepth, bool interactiveRun)
     {
+        // Sanity upper bounds for pathological cases (trigger loops, sub-workflow cascades).
+        // Deliberately NOT part of the hardware sizing plan: these are safety caps, not a
+        // throughput lever, and they should never trip in normal operation. An operator who sets
+        // one explicitly means it — silently overriding it with a hardware-derived number would
+        // disarm the very guard they configured.
         const int DefaultMaxGlobal = 500;
         const int DefaultMaxPerUser = 200;
         var maxGlobal = _configuration?.GetValue("Engine:MaxConcurrentExecutions:Global", DefaultMaxGlobal) ?? DefaultMaxGlobal;

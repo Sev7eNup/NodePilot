@@ -80,6 +80,9 @@
       "DbProjectionEnabled": true
     }
   },
+  "Performance": {
+    "ManualTuning": false
+  },
   "Engine": {
     "Debug": { "MaxPauseMinutes": 10 },
     "MaxConcurrentExecutions": { "Global": 200, "PerUser": 100 },

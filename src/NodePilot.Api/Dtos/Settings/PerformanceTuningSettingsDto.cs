@@ -6,6 +6,22 @@ namespace NodePilot.Api.Dtos.Settings;
 // tab. All of these are strict-startup (Restart required); the values are read once
 // in Program.cs / hosting setup and cached for the process lifetime.
 
+/// <summary>
+/// The switch that decides whether the sections below apply at all.
+///
+/// <para>Off (the default) NodePilot derives its sizing from the detected CPU and memory, which
+/// is what makes one build behave sensibly on a laptop and on a 32-core server. On, the values
+/// configured in the sections below are used verbatim — that is how the measured high-load
+/// profile in <c>deploy/templates/appsettings.Production.json.template</c> gets activated.</para>
+///
+/// <para>The configured numbers are never deleted when the switch is off; they sit there inert as
+/// an immediately activatable preset.</para>
+/// </summary>
+public sealed class PerformanceSettingsDto
+{
+    public bool ManualTuning { get; set; }
+}
+
 public sealed class EngineSettingsDto : IValidatableObject
 {
     [Required] public DebugSettingsDto Debug { get; set; } = new();

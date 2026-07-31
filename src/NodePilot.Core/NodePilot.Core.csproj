@@ -10,4 +10,11 @@
     <EmbeddedResource Include="Activities\Embedded\activity-config-reference.json" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- PerformanceSizing's floors, ceilings and memory coefficients are internal on purpose:
+         they are calibration constants, not API. The tests assert against them by name so a
+         changed constant cannot silently invalidate the expectations built on it. -->
+    <InternalsVisibleTo Include="NodePilot.Engine.Tests" />
+  </ItemGroup>
+
 </Project>
