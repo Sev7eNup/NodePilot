@@ -80,11 +80,6 @@
       "DbProjectionEnabled": true
     }
   },
-  // Sizing mode. Off: NodePilot derives the numbers below from the detected CPU and memory, which
-  // on a desktop is the better fit — the machine also runs Postgres, the Electron shell and the
-  // user's own applications, and its core count varies far more than a server's. The values kept
-  // below are the proven desktop preset (measured 383 MB / 57 threads after 25 h) and can be
-  // activated by switching this on.
   "Performance": {
     "ManualTuning": false
   },
