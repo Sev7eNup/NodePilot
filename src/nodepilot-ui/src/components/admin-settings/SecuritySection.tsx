@@ -20,6 +20,7 @@ import { EnvOverrideBadge } from './EnvOverrideBadge';
 import {
   useSectionForm,
   Card,
+  GroupHeading,
   HotReloadHint,
   Toggle,
   TextInput,
@@ -105,7 +106,7 @@ function RestApiCard() {
           placeholder="api.internal.example" />
         <p className="text-xs text-on-surface-variant mt-1">{t('sec.outboundAllowedHostsHint')}</p>
       </div>
-      <h4 className="font-medium text-sm mt-4 mb-2">{t('sec.outboundProxy')}</h4>
+      <GroupHeading>{t('sec.outboundProxy')}</GroupHeading>
       <Toggle label={t('enabled')} checked={form.proxy.enabled}
         onChange={(v) => set({ ...form, proxy: { ...form.proxy, enabled: v } })}
         configKey="RestApi:Proxy:Enabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />

@@ -5,6 +5,7 @@ import { adminSettings, type EffectiveSizing } from '../../api/adminSettings';
 import {
   useSectionForm,
   Card,
+  GroupHeading,
   HotReloadHint,
   Toggle,
   NumberInput,
@@ -251,7 +252,7 @@ function RemoteCard() {
       <Toggle label={t('perf.requireWinRmSsl')} checked={form.requireWinRmSsl}
         onChange={(v) => set({ ...form, requireWinRmSsl: v })}
         configKey="Remote:RequireWinRmSsl" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
-      <h4 className="font-medium text-sm mt-4 mb-2">{t('perf.winRmTimeouts')}</h4>
+      <GroupHeading>{t('perf.winRmTimeouts')}</GroupHeading>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <NumberInput label={t('perf.operationTimeout')} value={form.winRm.operationTimeoutSeconds} min={1} max={3600}
           onChange={(v) => set({ ...form, winRm: { ...form.winRm, operationTimeoutSeconds: v } })}
@@ -260,7 +261,7 @@ function RemoteCard() {
           onChange={(v) => set({ ...form, winRm: { ...form.winRm, openTimeoutSeconds: v } })}
           configKey="Remote:WinRm:OpenTimeoutSeconds" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       </div>
-      <h4 className="font-medium text-sm mt-4 mb-2">{t('perf.sessionPool')}</h4>
+      <GroupHeading>{t('perf.sessionPool')}</GroupHeading>
       <Toggle label={t('perf.poolEnabled')} checked={form.pool.enabled}
         onChange={(v) => set({ ...form, pool: { ...form.pool, enabled: v } })}
         configKey="Remote:Pool:Enabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
