@@ -4,7 +4,7 @@
     "exportedAt":  "2026-07-14T00:00:00Z",
     "workflows":  [
                       {
-                          "name":  "[Dauertest 2m] 01 - Host Snapshot",
+                          "name":  "[Dauertest 1m] 01 - Host Snapshot",
                           "description":  "Dauertest 01: Host-Snapshot mit alphanumerischem Token, JSON-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — runScript, Test — fileOperation, Test — folderOperation. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -20,7 +20,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }
@@ -342,7 +342,7 @@
                                          }
                       },
                       {
-                          "name":  "[Dauertest 2m] 02 - Service Inventory",
+                          "name":  "[Dauertest 1m] 02 - Service Inventory",
                           "description":  "Dauertest 02: Service-Inventar mit Hex-Token, XPath-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — serviceManagement, Test — registryOperation, Test — wmiQuery. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -358,7 +358,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }
@@ -679,7 +679,7 @@
                                          }
                       },
                       {
-                          "name":  "[Dauertest 2m] 03 - Disk Metrics",
+                          "name":  "[Dauertest 1m] 03 - Disk Metrics",
                           "description":  "Dauertest 03: Disk-Metriken mit GUID-Token, JSON-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — startProgram, Test — restApi, Test — sql. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -695,7 +695,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }
@@ -1015,7 +1015,7 @@
                                          }
                       },
                       {
-                          "name":  "[Dauertest 2m] 04 - Queue Health",
+                          "name":  "[Dauertest 1m] 04 - Queue Health",
                           "description":  "Dauertest 04: Queue-Health mit numerischem Token, XPath-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — xmlQuery, Test — jsonQuery, Test — emailNotification. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -1031,7 +1031,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }
@@ -1352,7 +1352,7 @@
                                          }
                       },
                       {
-                          "name":  "[Dauertest 2m] 05 - Certificate Check",
+                          "name":  "[Dauertest 1m] 05 - Certificate Check",
                           "description":  "Dauertest 05: Zertifikatscheck mit alphabetischem Token, JSON-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — generateText, Test — llmQuery, Test — fileHash. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -1368,7 +1368,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }
@@ -1690,7 +1690,7 @@
                                          }
                       },
                       {
-                          "name":  "[Dauertest 2m] 06 - Event Throughput",
+                          "name":  "[Dauertest 1m] 06 - Event Throughput",
                           "description":  "Dauertest 06: Event-Durchsatz mit Passwort-Zeichensatz, XPath-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — zipOperation, Test — textFileEdit, Test — waitForCondition. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -1706,7 +1706,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }
@@ -2027,7 +2027,7 @@
                                          }
                       },
                       {
-                          "name":  "[Dauertest 2m] 07 - Backup Window",
+                          "name":  "[Dauertest 1m] 07 - Backup Window",
                           "description":  "Dauertest 07: Backup-Fenster mit benutzerdefiniertem Token, JSON-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — scheduledTask, Test — powerManagement, Test — decision. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -2043,7 +2043,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }
@@ -2365,7 +2365,7 @@
                                          }
                       },
                       {
-                          "name":  "[Dauertest 2m] 08 - Deployment Signals",
+                          "name":  "[Dauertest 1m] 08 - Deployment Signals",
                           "description":  "Dauertest 08: Deployment-Signale mit kurzem Hex-Token, XPath-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — delay, Test — log, Test — returnData. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -2381,7 +2381,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }
@@ -2702,7 +2702,7 @@
                                          }
                       },
                       {
-                          "name":  "[Dauertest 2m] 09 - Latency Sample",
+                          "name":  "[Dauertest 1m] 09 - Latency Sample",
                           "description":  "Dauertest 09: Latenzprobe mit alphanumerischem Token, JSON-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — junction, Test — forEach, Test — startWorkflow. Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -2718,7 +2718,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }
@@ -3039,7 +3039,7 @@
                                          }
                       },
                       {
-                          "name":  "[Dauertest 2m] 10 - Synthetic Probe",
+                          "name":  "[Dauertest 1m] 10 - Synthetic Probe",
                           "description":  "Dauertest 10: Synthetische Probe mit GUID-Token, XPath-Filter. Startet drei vorhandene Aktivitaets-Testworkflows parallel (Fire-and-Forget): Test — manualTrigger, Muster — Variable-Pipe, Muster — Sub-Workflow (Parent). Der Eltern-Workflow bleibt mindestens 20 Sekunden aktiv.",
                           "isEnabled":  true,
                           "definition":  {
@@ -3055,7 +3055,7 @@
                                                                             "label":  "Schedule: every 2 minutes",
                                                                             "activityType":  "scheduleTrigger",
                                                                             "config":  {
-                                                                                           "cronExpression":  "0 0/2 * * * ? *",
+                                                                                           "cronExpression":  "0 0/1 * * * ? *",
                                                                                            "description":  "Continuous test cadence"
                                                                                        }
                                                                         }

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [string]$DefinitionFile = (Join-Path $PSScriptRoot 'continuous-test-2min.workflows.json')
+  [string]$DefinitionFile = (Join-Path $PSScriptRoot 'continuous-test-1min.workflows.json')
 )
 
 Set-StrictMode -Version Latest
@@ -17,6 +17,21 @@ foreach ($workflow in @($bundle.workflows)) {
   $nodes = @($workflow.definition.nodes)
   $edges = @($workflow.definition.edges)
   $nodeIds = @($nodes | ForEach-Object { $_.id })
+
+  # The cadence and the enabled flag are the whole point of the package: an orchestrator that
+  # ships disabled, or on a slower cron, silently stops driving its three activity tests. That
+  # is exactly how six of ten orchestrators went unnoticed-dark for days.
+  if ($workflow.isEnabled -ne $true) {
+    $errors.Add("$($workflow.name): must ship enabled, otherwise its three activity tests never run.")
+  }
+  $crons = @($nodes | Where-Object { $_.data.activityType -eq 'scheduleTrigger' } |
+    ForEach-Object { $_.data.config.cronExpression })
+  if ($crons.Count -ne 1) {
+    $errors.Add("$($workflow.name): expected exactly one scheduleTrigger, found $($crons.Count).")
+  }
+  elseif ($crons[0] -ne '0 0/1 * * * ? *') {
+    $errors.Add("$($workflow.name): cadence must be every minute ('0 0/1 * * * ? *'), found '$($crons[0])'.")
+  }
   $junctions = @($nodes | Where-Object { $_.data.activityType -eq 'junction' })
   $durationHolds = @($nodes | Where-Object {
     $_.id -eq 'durationHold' -and
