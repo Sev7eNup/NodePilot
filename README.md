@@ -140,7 +140,7 @@ The app DB ships with a Postgres-first setup. Point `ConnectionStrings:Postgres`
 dotnet run --project src/NodePilot.Api --urls "http://localhost:5000"
 ```
 
-On first start, NodePilot writes a one-time setup token to `admin-setup.token` in the working directory. Use it on the login screen to create your first Admin account.
+On first start, NodePilot writes a one-time setup token to `admin-setup.token` in the working directory. Sign in with your desired admin username + password — the login screen reveals a **Setup token** field on the first attempt; paste the token to create your first Admin account.
 
 ### 3. Start the frontend (port 5173)
 
@@ -983,13 +983,13 @@ What you get:
 
 ### Prerequisites (one-time)
 
-- .NET 10 ASP.NET Core **Hosting Bundle** on the target (not the full SDK)
-- **gMSA** (`New-ADServiceAccount` + `Install-ADServiceAccount`)
-- **PostgreSQL 16+** or **SQL Server 2022** with DDL rights for the gMSA / role
+- **ASP.NET Core Runtime 10** (x64) on the target — the plain runtime, not the Hosting Bundle (Kestrel self-hosts; the bundle rewires IIS)
+- **gMSA** (`New-ADServiceAccount` + `Install-ADServiceAccount`) — or `-UseLocalSystem`
+- **PostgreSQL 16+** or **SQL Server 2022 CU1+** (build ≥ 16.0.4003.1; `Encrypt=Strict` needs TDS 8.0, and 2022 RTM has a TDS 8.0 bug fixed in CU1) with DDL rights for the gMSA / role
 - **TLS cert** in `Cert:\LocalMachine\My` with a private key
 - *(optional)* **Kerberos resource-based constrained delegation** from the gMSA to each WinRM target → WinRM uses implicit Kerberos instead of stored credentials
 
-Full operator walk-through (gMSA setup, T-SQL snippet, troubleshooting matrix, update & uninstall): **[deploy/README.md](deploy/README.md)**.
+Step-by-step first-deployment guide (certificates, SQL TLS, first login, troubleshooting): **[docs/deployment-guide.md](docs/deployment-guide.md)**. Full operator reference (gMSA setup, T-SQL snippet, troubleshooting matrix, update & uninstall): **[deploy/README.md](deploy/README.md)**.
 
 ---
 

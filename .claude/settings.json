@@ -346,7 +346,8 @@
       "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/swashbuckle.aspnetcore.swaggergen/10.2.3/swashbuckle.aspnetcore.swaggergen.nuspec\")",
       "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/swashbuckle.aspnetcore.swaggergen/10.1.7/swashbuckle.aspnetcore.swaggergen.nuspec\")",
       "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/bcrypt.net-next/4.2.0/bcrypt.net-next.nuspec\")",
-      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/quartz/3.19.0/quartz.nuspec\")"
+      "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/quartz/3.19.0/quartz.nuspec\")",
+      "PowerShell($errs = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile\\('e:\\\\NodePilot\\\\deploy\\\\Install-NodePilot.ps1', [ref]$null, [ref]$errs\\); \"Install-NodePilot.ps1: $\\($errs.Count\\) parse errors\"; $errs | ForEach-Object { $_.Message }; $errs2 = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile\\('e:\\\\NodePilot\\\\deploy\\\\Build-Artifact.ps1', [ref]$null, [ref]$errs2\\); \"Build-Artifact.ps1: $\\($errs2.Count\\) parse errors\"; $errs2 | ForEach-Object { $_.Message })"
     ],
     "additionalDirectories": [
       "e:\\NodePilot",

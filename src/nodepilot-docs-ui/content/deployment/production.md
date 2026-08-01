@@ -33,8 +33,13 @@ Single-Node-Installationen verwenden Kestrel direkt. Active/Passive-Installation
 
 | Provider | Authentifizierung | Produktions-TLS |
 |---|---|---|
-| SQL Server 2022 | Windows Integrated Security | `Encrypt=Strict;TrustServerCertificate=False` |
+| SQL Server 2022 **ab CU1** (Build ≥ 16.0.4003.1) | Windows Integrated Security | `Encrypt=Strict;TrustServerCertificate=False` |
 | PostgreSQL 16+ | Benutzername und Passwort | `SSL Mode=VerifyFull` mit Root-CA |
+
+`Encrypt=Strict` ist TDS 8.0: SQL Server 2019 und älter beherrschen es nicht, und SQL Server
+2022 **RTM** enthält einen TDS-8.0-Fehler, der parametrisierte Abfragen mit Error 8005
+abbrechen lässt — behoben ab CU1. Der Installer prüft den Patchstand im Preflight; manuell:
+`SELECT SERVERPROPERTY('ProductVersion')`.
 
 ## Voraussetzungen
 
@@ -43,7 +48,7 @@ Single-Node-Installationen verwenden Kestrel direkt. Active/Passive-Installation
 - Windows Server 2022 oder 2025
 - Domain-Mitgliedschaft
 - PowerShell 5.1 oder PowerShell 7
-- .NET 10 ASP.NET Core Hosting Bundle
+- ASP.NET Core Runtime 10 (x64) — die reine Runtime genügt, Kestrel hostet selbst; das Hosting Bundle nur bei bewusstem IIS-Einsatz (es konfiguriert IIS um und startet W3SVC neu)
 - Netzwerkzugriff zur Datenbank
 - TLS-Zertifikat mit privatem Schlüssel in `LocalMachine\My`
 - Lokale Administratorrechte für die Installation
@@ -240,7 +245,15 @@ Bei aktivierter Verzeichnisanbindung ist `/healthz/directory` separat zu prüfen
 
 ## 8. Ersten Admin-Account anlegen
 
-Der Installer zeigt den einmaligen Setup-Token aus `C:\ProgramData\NodePilot\admin-setup.token` an. Der Setup-Dialog verwendet diesen Token zum Anlegen des ersten lokalen Admin-Kontos. Nach erfolgreichem Setup wird der Token gelöscht.
+Der Installer zeigt den einmaligen Setup-Token aus `C:\ProgramData\NodePilot\admin-setup.token` an. Im Browser mit Wunsch-Benutzername und Passwort anmelden: Beim ersten Versuch blendet die Login-Seite ein **Setup-Token-Feld** ein — Token einfügen, erneut anmelden. Danach ist das Admin-Konto angelegt und der Token gelöscht.
+
+Konnte der Installer den Token nicht anzeigen: Die Datei ist per Owner-only-ACL auf das Dienstkonto beschränkt (auch für Administratoren nicht direkt lesbar — Absicht). Ohne ACL-Änderung per Backup-Semantik lesen:
+
+```powershell
+robocopy C:\ProgramData\NodePilot $env:TEMP admin-setup.token /B | Out-Null
+Get-Content "$env:TEMP\admin-setup.token"
+Remove-Item "$env:TEMP\admin-setup.token"   # nach dem ersten Login
+```
 
 Der External-Trigger-API-Key wird nur einmal angezeigt und muss in einem Secret-Management-System gespeichert werden.
 
@@ -265,12 +278,13 @@ Der Updater:
 
 - prüft das neue Artefakt,
 - sichert die vorhandenen Binaries,
+- bricht ab, solange noch ein Prozess aus dem Installationsverzeichnis läuft — mit Prozessname und PID, **bevor** eine Datei gelöscht wird (ein gestoppter Dienst genügt nicht: verwaiste Worker halten ihre DLLs weiterhin gemappt),
 - erhält Datenbank, Dienstkonto und Produktionskonfiguration,
 - startet den Dienst neu,
-- prüft den Health-Endpunkt,
+- prüft den Health-Endpunkt auf dem Port aus der installierten Konfiguration (`-HttpsPort` ist nur zum Überschreiben nötig),
 - stellt bei einem fehlgeschlagenen Health-Check die vorherigen Binaries wieder her.
 
-Das Binärbackup enthält keine secret-haltige `appsettings.Production.json`.
+Das Binärbackup enthält keine secret-haltige `appsettings.Production.json`. Sie wird beim Austausch deshalb als Letztes ersetzt, damit ein Abbruch sie nicht zerstört.
 
 ## Deinstallation
 

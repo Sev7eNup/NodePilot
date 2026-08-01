@@ -1,6 +1,8 @@
 # NodePilot — Windows Server Deployment
 
-Turnkey installer für NodePilot als Windows-Service auf einem domain-joined Windows Server 2022/2025. TLS wird direkt von Kestrel terminiert (Cert aus `LocalMachine\My`), die Datenbank läuft auf **SQL Server 2022 (Trusted Connection)** oder **PostgreSQL 16+** (user/password) — umschaltbar per `-DbProvider`.
+Turnkey installer für NodePilot als Windows-Service auf einem domain-joined Windows Server 2022/2025. TLS wird direkt von Kestrel terminiert (Cert aus `LocalMachine\My`), die Datenbank läuft auf **SQL Server 2022 ab CU1** (Trusted Connection, Build ≥ `16.0.4003.1` — die Runtime verbindet mit `Encrypt=Strict`/TDS 8.0; 2019 kann kein TDS 8.0, 2022 RTM hat einen TDS-8.0-RPC-Bug, Error 8005) oder **PostgreSQL 16+** (user/password) — umschaltbar per `-DbProvider`.
+
+> **Schritt-für-Schritt-Anleitung** (EN, lab-validiert, inkl. Zertifikats-Rezepten und Troubleshooting): [`docs/deployment-guide.md`](../docs/deployment-guide.md).
 
 > **Nur eine Maschine, kein Team-Zugriff nötig?** Dann ist die **Desktop-App** der deutlich schnellere Weg: ein `.exe`-Installer, der PostgreSQL und .NET-Laufzeit mitbringt, ohne Zertifikat, Datenbank oder AD-Vorarbeit — siehe [`desktop/README.md`](desktop/README.md). Sie bindet dafür ausschließlich Loopback: **kein Netzwerkzugriff, keine eingehenden Webhooks, kein SSO, keine HA**.
 
@@ -13,8 +15,10 @@ Der Dienst läuft wahlweise unter:
 
 | Datei | Zweck |
 |---|---|
-| [Build-Artifact.ps1](Build-Artifact.ps1) | Baut `out\NodePilot-<version>.zip` aus dem Repo (dotnet publish + npm build + Template) |
+| [Build-Artifact.ps1](Build-Artifact.ps1) | Baut `out\NodePilot-<version>.zip` aus dem Repo (dotnet publish + PS-Modul-Staging nach `<stage>\Modules` + npm build + Template) und signiert das Manifest (detached CMS) |
 | [Install-NodePilot.ps1](Install-NodePilot.ps1) | Hauptinstaller — Service, ACLs, Firewall, Cert-Key-Access |
+| [ArtifactSecurity.ps1](ArtifactSecurity.ps1) | Geteilte Signier-/Verifikationslogik (Manifest + `.p7s`); wird von Build/Install/Update dot-sourced |
+| [Test-ArtifactSecurity.ps1](Test-ArtifactSecurity.ps1) | Selbsttest der Artefakt-Signaturkette (Tamper-Erkennung, Signer-Pinning) |
 | [Update-NodePilot.ps1](Update-NodePilot.ps1) | In-Place-Upgrade, erhält appsettings + SQL-DB, rollt bei Fehler zurück |
 | [Uninstall-NodePilot.ps1](Uninstall-NodePilot.ps1) | Stoppt Dienst, entfernt Binaries + Firewall-Regel. DB bleibt unberührt |
 | [Test-Failover.ps1](Test-Failover.ps1) | HA-Failover-Smoke-Test gegen zwei Knoten (killt Leader, misst RTO bis `/healthz/leader` am Standby grün wird) |
@@ -48,7 +52,7 @@ vermessene Profil. Der Schalter ist restart-pflichtig. Formeln, Grenzen und Mess
 
 - Windows Server 2022 oder 2025, Domain-joined
 - PowerShell ≥ 5.1 (Windows PowerShell) oder 7+ (empfohlen)
-- **.NET 10 ASP.NET Core Hosting Bundle** — Download unter <https://dotnet.microsoft.com/download>
+- **ASP.NET Core Runtime 10 (x64)** — Download unter <https://dotnet.microsoft.com/download>. Die reine Runtime genügt (Kestrel hostet selbst); das **Hosting Bundle nur, wenn bewusst IIS im Spiel ist** — es verdrahtet IIS und startet W3SVC neu, auf geteilten Hosts (SCCM/WSUS) unerwünscht
 - Zielserver kann den SQL Server auf Port 1433 erreichen
 
 ### 2. Service-Identität
@@ -82,7 +86,15 @@ Test-ADServiceAccount -Identity svc-nodepilot    # → True
 
 ### 3. Datenbank
 
-#### Variante A: SQL Server 2022 (Default)
+#### Variante A: SQL Server 2022 ab CU1 (Default)
+
+Patchstand zuerst prüfen — der Installer bricht unter `16.0.4003.1` (CU1) im Preflight ab,
+weil 2022 RTM `Encrypt=Strict`-Verbindungen (TDS 8.0) mit Error 8005 korrumpiert:
+
+```sql
+SELECT SERVERPROPERTY('ProductVersion') AS Version, SERVERPROPERTY('ProductUpdateLevel') AS CU;
+-- 16.0.1000.x = RTM (ungepatcht) → erst aktuelles SQL-2022-CU installieren.
+```
 
 Am SQL Server als `sysadmin`. Der Windows-Login ist die **Netzwerk-Identität** des Dienstes:
 
@@ -267,7 +279,7 @@ Der Installer macht alles Weitere:
 Nach erfolgreichem Install steht in der Konsole:
 
 - URL: `https://<public-hostname>/`
-- **Admin-Setup-Token** (aus `C:\ProgramData\NodePilot\admin-setup.token`) → im Browser beim ersten Login als `X-Setup-Token`-Header oder im Setup-Screen der SPA eingeben, dann Admin-User erstellen → Token wird gelöscht, Bootstrap-Fenster schließt.
+- **Admin-Setup-Token** (aus `C:\ProgramData\NodePilot\admin-setup.token`) → im Browser anmelden: beim ersten Versuch blendet die Login-Seite ein **„Setup-Token"-Feld** ein, Token dort einfügen, erneut anmelden → Admin-User wird erstellt, Token-Datei gelöscht, Bootstrap-Fenster schließt. Kann der Installer das Token nicht anzeigen (die Datei ist per Owner-only-ACL auf das **Dienstkonto** beschränkt — auch für Admins by design nicht direkt lesbar), per Backup-Semantik lesen statt die ACL anzufassen: `robocopy C:\ProgramData\NodePilot $env:TEMP admin-setup.token /B`, dann `Get-Content "$env:TEMP\admin-setup.token"` (Temp-Kopie danach löschen). ACL-Änderung nur mit Bedacht: Der Server validiert die Datei fail-closed; im Trusted-Set sind nur Dienstkonto, SYSTEM und die **Administrators-Gruppe** — `takeown /a` + Gruppen-Grant übersteht das, Ownership auf den persönlichen Admin-User invalidiert die Datei.
 - **External-Trigger API Key** — einmalig sichern, wird nicht erneut angezeigt.
 
 ### Parameter-Übersicht
@@ -355,6 +367,10 @@ $releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
 
 Erhält `appsettings.Production.json`, die DB (SQL Server oder Postgres) und den Service-Account. Das Backup unter `C:\Program Files\NodePilot.backup.<timestamp>` enthält nur Binaries und niemals die secret-haltige Produktionskonfiguration; automatischer Rollback bei Health-Check-Fehler.
 
+- **`-HttpsPort` muss nicht wiederholt werden**: die Health-Probe übernimmt `Kestrel:Https:HttpsPort` aus der installierten Config (explizites `-HttpsPort` gewinnt weiterhin). Ohne diese Ableitung probte ein Update einer 8443-Installation gegen 443 und rollte ein gesundes Upgrade zurück.
+- **Prozess-Guard vor dem Swap:** Läuft noch ein Prozess aus dem Install-Verzeichnis, bricht der Updater **vor der ersten Löschung** mit PID + Namen ab. Ein gestoppter Dienst genügt nicht — ein verwaister Worker hält seine DLLs als Image gemappt, Windows meldet das als schlichtes „Access denied" mitten im Wipe.
+- Beim Swap fällt `appsettings.Production.json` bewusst **zuletzt**, damit ein Abbruch die Config nicht mit ins Grab nimmt (sie steht per Design nicht im Backup). Fehlt sie doch einmal, lehnt der Updater ab — dann `Install-NodePilot.ps1` fahren, das die Config aus seinen Parametern neu rendert (DB, DataPath und Konten bleiben; nur der External-Trigger-API-Key wird neu erzeugt).
+
 ## Uninstall
 
 ```powershell
@@ -395,10 +411,13 @@ Restore läuft transaktional in Abhängigkeitsreihenfolge, validiert Referenzen 
 | Symptom | Check |
 |---|---|
 | Service startet und stoppt sofort | Event Viewer → Windows Logs → Application, Quelle `<ServiceName>`. Meist Config- oder ACL-Problem. |
+| Update bricht mit „Access to the path '…\*.dll' is denied" ab | Prozess läuft noch aus dem Install-Verzeichnis (DLLs als Image gemappt), trotz gestopptem Dienst. `tasklist /m <dll>` nennt den Halter; `Get-Process \| Where-Object { $_.Path -like 'C:\Program Files\NodePilot\*' } \| Stop-Process -Force`, dann erneut. Aktuelle Builds brechen mit PID ab, bevor etwas gelöscht wird. |
+| Browser zeigt `{"message":"Token is no longer valid"}` statt der App | Session-Cookie hat die absolute Lebensdauer (`Authentication:SessionAbsoluteLifetimeHours`, 8 h) überschritten. Artefakte vor 2026-08-02 beantworteten damit auch SPA-Navigationen inkl. `/login`. Cookies der Seite löschen; dauerhaft: aktuelles Artefakt einspielen. |
 | Cert nicht gefunden / No private key | `Get-ChildItem Cert:\LocalMachine\My\<thumb>` — muss HasPrivateKey=True zeigen. Bei Re-Import `-KeyStorageFlags MachineKeySet,PersistKeySet,Exportable`. |
 | 503 auf `/healthz/ready` | SQL nicht erreichbar. `sqlcmd -S sql01 -E -d NodePilot -Q "SELECT 1"` als gMSA (via `PsExec -u gMSA$ -s ...`) verifizieren. |
 | WinRM-Remote-Calls schlagen mit "Access denied" fehl | gMSA hat keine Kerberos-Delegation zum Ziel. Siehe Abschnitt 5 (Resource-based Constrained Delegation). |
-| SPA lädt, API-Calls 401 | Login über Setup-Token noch nicht erfolgt — `admin-setup.token` unter DataPath lesen. |
+| SPA lädt, API-Calls 401 | Login über Setup-Token noch nicht erfolgt — Login-Seite blendet das Feld beim ersten Versuch ein; Token via `robocopy <DataPath> $env:TEMP admin-setup.token /B` lesen (Datei ist owner-only für das Dienstkonto). |
+| Service-Boot-Loop, Log zeigt TDS-Error 8005 „The parameter name is invalid" | SQL Server 2022 RTM ohne CU — TDS-8.0-RPC-Bug, gefixt ab CU1 (`16.0.4003.1`). Aktuelles 2022-CU installieren. Neuere Installer fangen das im Preflight ab. |
 | DPAPI decrypt failed für Credentials nach Service-Account-Wechsel | Template setzt `Credentials:DpapiScope=LocalMachine`. Bei existierenden `CurrentUser`-verschlüsselten Credentials: Credentials neu eingeben (keine Migrations-Helper). |
 | Nach Update sieht der Service die Config nicht | ACL auf `appsettings.Production.json` — Update-Skript setzt Read für den aktuellen Service-Account nach. Bei manuellem Eingriff: `icacls "<Install>\appsettings.Production.json" /grant "<gMSA$>:(R)"`. |
 | Port 443 bereits belegt | `Get-NetTCPConnection -LocalPort 443` zeigt PID. Häufig IIS-Default-Site oder WinRM-HTTPS-Listener. Installer bindet via Kestrel-Socket, nicht http.sys — trotzdem bleibt ein Konflikt ein Konflikt. |
@@ -406,7 +425,7 @@ Restore läuft transaktional in Abhängigkeitsreihenfolge, validiert Referenzen 
 
 ## Was NICHT vom Installer gemacht wird
 
-- Keine Installation des .NET Hosting Bundles — muss vorab vorhanden sein.
+- Keine Installation der ASP.NET Core Runtime — muss vorab vorhanden sein.
 - Kein Erstellen des gMSA, der SQL-Login oder der Kerberos-Delegation — AD/DBA-Aufgabe.
 - Keine Registrierung des NodePilot-HTTP-SPN und keine NTLM-Block-Policy — beides muss das AD-/Security-Team vor Aktivierung von Windows SSO ausrollen und prüfen.
 - Keine Konfiguration eines OIDC-IdP oder SCIM-Clients — Redirect-URI, Claims, Gruppen-Allowlist und Provisioning-Bearer-Token bleiben IdP-/IAM-Aufgabe.

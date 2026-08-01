@@ -98,6 +98,26 @@ Write-Host "[build] dotnet publish ($Configuration/$RuntimeIdentifier)" -Foregro
     -p:DebugType=embedded
 if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed with exit code $LASTEXITCODE" }
 
+# --- PowerShell built-in modules -> <stage>\Modules -------------------------------------------
+# Microsoft.PowerShell.SDK ships its built-in modules (Utility, Management, CimCmdlets, ...)
+# under runtimes\win\lib\<tfm>\Modules, but the hosted runspace pool resolves them via
+# $PSHOME\Modules, where $PSHOME is the directory holding System.Management.Automation.dll —
+# after publish that is the stage root. Without this copy the in-process engine finds no
+# cmdlet modules at all and every runScript fails with "The term 'Write-Output' is not
+# recognized" (server-lab finding 2026-08-01; implicit WinPS compat used to mask this by
+# delegating to powershell.exe and is deliberately disabled). Same staging as
+# deploy\desktop\Build-DesktopInstaller.ps1.
+Write-Host "[build] Staging PowerShell built-in modules" -ForegroundColor Cyan
+$psModuleSource = Get-ChildItem -Path (Join-Path $StageDir 'runtimes\win\lib') -Directory -ErrorAction SilentlyContinue |
+    ForEach-Object { Join-Path $_.FullName 'Modules' } |
+    Where-Object { Test-Path -LiteralPath $_ } |
+    Select-Object -First 1
+if (-not $psModuleSource) { throw "PowerShell built-in modules not found under $StageDir\runtimes\win\lib\*\Modules." }
+Copy-Item -Path $psModuleSource -Destination (Join-Path $StageDir 'Modules') -Recurse -Force
+if (-not (Test-Path -LiteralPath (Join-Path $StageDir 'Modules\Microsoft.PowerShell.Utility'))) {
+    throw 'Module staging failed: Microsoft.PowerShell.Utility missing under <stage>\Modules.'
+}
+
 if (-not $SkipFrontend) {
     # Invoke npm through cmd.exe to dodge the PS-shim (npm.ps1), which under PS 7 +
     # StrictMode throws PropertyNotFoundStrict on a ".Statement" property lookup
@@ -112,9 +132,17 @@ if (-not $SkipFrontend) {
             Write-Host "[build] npm run build (skipping npm ci)" -ForegroundColor Cyan
         } else {
             Write-Host "[build] npm ci" -ForegroundColor Cyan
+            # Same stderr guard as `npm run build` below: npm emits warnings (e.g. EBADENGINE
+            # from transitive deps) on stderr, which PS 5.1 turns into a terminating
+            # NativeCommandError under Stop mode even though npm exits 0. Worse, the abort
+            # happens mid-install and leaves node_modules half-wiped. Exit code stays the
+            # source of truth.
+            $prevEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
             cmd.exe /c 'npm ci'
-            if ($LASTEXITCODE -ne 0) {
-                throw ("npm ci failed with exit code $LASTEXITCODE. If this is a file lock (EPERM on " +
+            $npmCiExit = $LASTEXITCODE
+            $ErrorActionPreference = $prevEap
+            if ($npmCiExit -ne 0) {
+                throw ("npm ci failed with exit code $npmCiExit. If this is a file lock (EPERM on " +
                        "node_modules), stop any running Vite dev server / editor and retry, or re-run " +
                        "with -SkipNpmCi to reuse the current node_modules.")
             }
