@@ -4112,6 +4112,18 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ---
 
+### Test 76.6 — Performance: Dimensionierungs-Modus umschalten
+
+**Schritte:** System-Tab → Performance → Karte **Dimensionierung** → „Manuelles Tuning" an- und wieder abhaken (ohne zu speichern).
+
+**Prüfpunkte:**
+- [ ] Anhaken: die Felder in Engine-Parallelität / Dispatch-Queue / Threading werden **sofort** editierbar, der Hinweis wechselt auf „Manuelles Tuning ist gewählt, aber noch nicht in Kraft …".
+- [ ] Abhaken: Hinweis und Sperre kehren in den Ausgangszustand zurück (bei Boot-Modus „manuell": „Automatische Dimensionierung ist gewählt, aber noch nicht in Kraft …", Felder bleiben editierbar).
+- [ ] „Aktiv: N (…)" pro Feld ändert sich beim Umschalten **nicht** — es beschreibt den laufenden Prozess, nicht die Auswahl.
+- [ ] Der Hot-Reload-Hinweis auf der Threading-Karte erscheint nur, wenn der Prozess **im manuellen Modus gestartet** ist — Anhaken allein bringt ihn nicht zurück.
+
+---
+
 ## Teil 77: KI-Workflow-Assistent + Streaming (Erklären + Bearbeiten)
 
 > Voraussetzung: `Llm:Enabled=true` + erreichbarer LLM-Endpoint. Hermetisch in `e2e/ai-assistant.spec.ts` abgedeckt (alle APIs gemockt via `page.route`): Panel öffnen, fragen, Proposal-Apply-Gating, Stale-Schutz, SSE-End-State (77.1–77.3) sowie das Chat-vs-Properties-Verhalten des rechten Panels (77.10). Echtes Token-Chunking + Antwort-Qualität sind backend-/modellabhängig und nur manuell prüfbar. Tests 77.5 (benannte Threads) und 77.7 (Markdown-Export) sind ebenfalls hermetisch testbar (kein LLM nötig); 77.6/77.8/77.9 setzen LocalStorage-Persistenz, Audit-Schreibzugriff bzw. einen echten Tool-Calling-LLM voraus. `chat` + `generate-script` antworten als SSE (`text/event-stream`).
@@ -4496,7 +4508,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 [ ] Teil 73: Edge-Label manuell überschreiben (73.1 — 73.2)
 [ ] Teil 74: Workflow-Snippets / NodeLibrary (74.1)
 [ ] Teil 75: Quick-Interaktionen im Designer (75.1 — 75.4)
-[ ] Teil 76: Admin Settings UI — SettingsPage Sektionen (76.1 — 76.5)
+[ ] Teil 76: Admin Settings UI — SettingsPage Sektionen (76.1 — 76.6)
 [ ] Teil 77: KI-Workflow-Assistent + Streaming (77.1 — 77.10)
 [ ] Teil 78: Alerting (78.1 — 78.8)
 [ ] Teil 79: Toolbar-Layout-Umschalter (79.1 — 79.4)

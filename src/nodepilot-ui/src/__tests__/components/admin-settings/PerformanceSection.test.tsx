@@ -60,14 +60,17 @@ function renderAll(sizing: Partial<{
   manualTuning: boolean; desiredManualTuning: boolean; usableMemoryBytes: number | null;
 }> = {}) {
   const manualTuning = sizing.manualTuning ?? true;
+  // The Performance section stores the DESIRED mode — that is what the checkbox shows, and it is
+  // `desiredManualTuning` in the sizing plan, not the mode the process booted in.
+  const desiredManualTuning = sizing.desiredManualTuning ?? manualTuning;
   server.use(
     http.get('/api/admin/settings/Performance', () => HttpResponse.json({
-      sectionPath: 'Performance', payload: { manualTuning },
+      sectionPath: 'Performance', payload: { manualTuning: desiredManualTuning },
       etag: '"p-1"', isHotReloadable: false, effectiveSource: {},
     })),
     http.get('/api/admin/settings/effective-sizing', () => HttpResponse.json({
       manualTuning,
-      desiredManualTuning: sizing.desiredManualTuning ?? manualTuning,
+      desiredManualTuning,
       processorCount: 8,
       usableMemoryBytes: sizing.usableMemoryBytes === undefined ? 16 * 1024 ** 3 : sizing.usableMemoryBytes,
       isDesktop: false,
@@ -138,7 +141,54 @@ describe('PerformanceSection', () => {
     // Saved manual while the process still runs the automatic plan: runspace pool and dispatch
     // queue are sized once at boot, so this needs a restart rather than a config reload.
     renderAll({ manualTuning: false, desiredManualTuning: true });
-    await waitFor(() => expect(screen.getByText(/Neustart|restart/i)).toBeInTheDocument());
+    await waitFor(() => expect(
+      screen.getByText(/gespeicherte Modus weicht|saved mode differs/i),
+    ).toBeInTheDocument());
+    // …and the cards below say the same thing in their own terms instead of claiming automatic
+    // sizing is what the operator asked for.
+    expect(screen.getAllByText(/Manuelles Tuning ist gewählt|Manual tuning is selected/i).length).toBe(3);
+    expect(screen.queryByText(/Automatische Dimensionierung ist aktiv|Automatic sizing is active/i)).not.toBeInTheDocument();
+  });
+
+  it('flips the cards the moment the mode checkbox is clicked', async () => {
+    // The whole point of the checkbox is that it changes what the cards below are: leaving them
+    // greyed out and labelled "automatic sizing is active" until a restart made the switch
+    // unusable — the values a restart would pick up could not even be typed.
+    renderAll({ manualTuning: false });
+    await waitFor(() => expect(screen.getByDisplayValue('256')).toBeDisabled());
+    expect(screen.getAllByText(/Automatische Dimensionierung ist aktiv|Automatic sizing is active/i).length).toBe(3);
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Manuelles Tuning|Manual tuning/i }));
+
+    await waitFor(() => expect(screen.getByDisplayValue('256')).not.toBeDisabled());
+    expect(screen.getAllByText(/Manuelles Tuning ist gewählt|Manual tuning is selected/i).length).toBe(3);
+    expect(screen.queryByText(/Automatische Dimensionierung ist aktiv|Automatic sizing is active/i)).not.toBeInTheDocument();
+  });
+
+  it('says the configured values still govern when automatic sizing is only chosen', async () => {
+    renderAll({ manualTuning: true });
+    await waitFor(() => expect(screen.getByDisplayValue('256')).not.toBeDisabled());
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Manuelles Tuning|Manual tuning/i }));
+
+    await waitFor(() => expect(
+      screen.getAllByText(/Automatische Dimensionierung ist gewählt|Automatic sizing is selected/i).length,
+    ).toBe(3));
+    // Still booted manual → the stored numbers are what the process runs on, so they stay editable.
+    expect(screen.getByDisplayValue('256')).not.toBeDisabled();
+  });
+
+  it('keeps the hot-reload hint tied to the booted mode, not to the checkbox', async () => {
+    // ThreadPoolTuningService follows the boot plan; ticking the box does not make a Threading
+    // save apply live, so promising it would be a lie.
+    renderAll({ manualTuning: false });
+    await waitFor(() => expect(screen.getByDisplayValue('256')).toBeDisabled());
+    expect(screen.queryByText(/Changes apply immediately|sofort/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /Manuelles Tuning|Manual tuning/i }));
+
+    await waitFor(() => expect(screen.getByDisplayValue('256')).not.toBeDisabled());
+    expect(screen.queryByText(/Changes apply immediately|sofort/i)).not.toBeInTheDocument();
   });
 
   it('reports unknown memory rather than implying a detected size', async () => {
