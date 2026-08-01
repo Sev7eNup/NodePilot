@@ -159,12 +159,21 @@ function RestoreTab() {
     [policies],
   );
 
-  const runPreview = () => {
+  const runPreview = (picked: File | null = file) => {
     // Reset both mutations so a re-preview clears the old table, error, and restore result.
     previewMutation.reset();
     restoreMutation.reset();
-    if (!file) return;
-    previewMutation.mutate({ file, passphrase });
+    if (!picked) return;
+    previewMutation.mutate({ file: picked, passphrase });
+  };
+
+  // Picking a file IS the request to see what is in it, so the preview runs right away instead
+  // of leaving the operator in front of an unchanged page wondering whether the file loaded.
+  // With no passphrase yet this is the structure-only preview; typing one and pressing Preview
+  // re-runs it with the integrity check.
+  const onFilePicked = (picked: File | null) => {
+    setFile(picked);
+    runPreview(picked);
   };
 
   const runRestore = async () => {
@@ -189,7 +198,7 @@ function RestoreTab() {
             ref={fileRef}
             type="file"
             accept=".npbackup,application/json"
-            onChange={(e) => { setFile(e.target.files?.[0] ?? null); previewMutation.reset(); restoreMutation.reset(); }}
+            onChange={(e) => onFilePicked(e.target.files?.[0] ?? null)}
             className="block mt-1 text-sm text-on-surface-variant file:mr-3 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:bg-surface-high file:text-on-surface file:text-sm file:cursor-pointer"
           />
         </div>
@@ -199,13 +208,18 @@ function RestoreTab() {
           <p className="text-xs text-on-surface-variant font-label mt-1">{t('backup:restore.passphraseHint')}</p>
         </div>
         <button
-          onClick={runPreview}
+          onClick={() => runPreview()}
           disabled={busy || !file}
           className="flex items-center gap-2 px-4 py-2 rounded-md text-sm font-label font-medium bg-surface-high text-on-surface hover:bg-surface-highest transition-colors disabled:opacity-50"
         >
           <Upload size={15} /> {busy && !result ? t('backup:restore.previewing') : t('backup:restore.preview')}
         </button>
       </section>
+      {/* The auto-run starts away from the button, so the analysis needs to say so where the
+          result will appear — otherwise a big file reads as "nothing happened". */}
+      {previewMutation.isPending && (
+        <p className="text-sm text-on-surface-variant font-label">{t('backup:restore.previewing')}</p>
+      )}
       {error && <p className="text-sm text-error font-label whitespace-pre-wrap">{error}</p>}
       {preview && (
         <section className="space-y-3">

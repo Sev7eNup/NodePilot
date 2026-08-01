@@ -139,6 +139,33 @@ test.describe('Backup & Restore (/backup)', () => {
     await expect(policySelect.locator('option', { hasText: /overwrite|überschreiben/i })).toHaveCount(1);
   });
 
+  test('restore tab: picking the file previews it without pressing Preview', async ({ page }) => {
+    await mockManifest(page);
+    let previewCalls = 0;
+    await page.route('**/api/backup/preview', (route) => {
+      previewCalls += 1;
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({
+          integrityVerified: false, appVersion: '1.4.0',
+          sections: [{ section: 'workflows', inBackup: 5, new: 2, conflicts: 3 }],
+          warnings: [],
+        }),
+      });
+    });
+
+    await page.goto('/backup');
+    await page.getByRole('button', { name: /^restore$|^wiederherstellen$/i }).click();
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'cfg.npbackup', mimeType: 'application/octet-stream', buffer: Buffer.from('sealed'),
+    });
+
+    // No Preview click — the diff table has to be there on its own.
+    await expect(page.locator('table select').first()).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(/enter the passphrase for a full check|Passphrase eingeben/i)).toBeVisible();
+    expect(previewCalls).toBe(1);
+  });
+
   test('restore tab: choosing a policy and confirming POSTs /backup/restore and shows the result', async ({ page }) => {
     await mockManifest(page);
     await page.route('**/api/backup/preview', (route) =>

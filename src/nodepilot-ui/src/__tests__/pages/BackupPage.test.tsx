@@ -107,10 +107,97 @@ describe('BackupPage', () => {
     const file = new File(['{}'], 'backup.npbackup', { type: 'application/json' });
     fireEvent.change(fileInput, { target: { files: [file] } });
 
-    fireEvent.click(screen.getByRole('button', { name: /Preview/i }));
+    // Picking the file already previews; the button re-runs it (this is the path an operator
+    // takes after typing the passphrase, to get the integrity check).
+    const previewButton = await screen.findByRole('button', { name: /^Preview$/i });
+    fireEvent.click(previewButton);
 
-    expect(await screen.findByText(/Integrity unverified/i)).toBeInTheDocument();
+    expect(await screen.findByText(/enter the passphrase for a full check/i)).toBeInTheDocument();
     // The conflict count for the workflows section is surfaced.
     await waitFor(() => expect(screen.getByText('1')).toBeInTheDocument());
+  });
+
+  it('previews as soon as a file is picked, without a second click', async () => {
+    // Picking the file is the request to see what is in it — leaving the page unchanged until
+    // the Preview button is pressed reads as "the file did not load".
+    let previewCalls = 0;
+    server.use(
+      http.post(`${BASE}/api/backup/preview`, () => {
+        previewCalls += 1;
+        return HttpResponse.json({
+          integrityVerified: false,
+          appVersion: '1.2.3',
+          sections: [{ section: 'workflows', inBackup: 3, new: 2, conflicts: 1 }],
+          warnings: [],
+        });
+      })
+    );
+    const { container } = renderPage();
+    await screen.findByText('Workflows');
+    fireEvent.click(screen.getByRole('button', { name: /^Restore$/i }));
+
+    const fileInput = container.querySelector<HTMLInputElement>('input[type=file]')!;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['{}'], 'backup.npbackup', { type: 'application/json' })] },
+    });
+
+    expect(await screen.findByText(/enter the passphrase for a full check/i)).toBeInTheDocument();
+    expect(previewCalls).toBe(1);
+  });
+
+  it('shows the analysing state while the auto-preview runs', async () => {
+    let release: (() => void) | null = null;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    server.use(
+      http.post(`${BASE}/api/backup/preview`, async () => {
+        await gate;
+        return HttpResponse.json({
+          integrityVerified: true, appVersion: '1.2.3',
+          sections: [{ section: 'workflows', inBackup: 3, new: 2, conflicts: 0 }], warnings: [],
+        });
+      })
+    );
+    const { container } = renderPage();
+    await screen.findByText('Workflows');
+    fireEvent.click(screen.getByRole('button', { name: /^Restore$/i }));
+
+    fireEvent.change(container.querySelector<HTMLInputElement>('input[type=file]')!, {
+      target: { files: [new File(['{}'], 'backup.npbackup', { type: 'application/json' })] },
+    });
+
+    // The button label flips too, but the operator is looking at the file input — the status has
+    // to appear where the result will be, hence the paragraph.
+    await waitFor(() => expect(
+      screen.getAllByText(/Analysing/i).some((el) => el.tagName === 'P'),
+    ).toBe(true));
+    release!();
+    await waitFor(() => expect(screen.queryAllByText(/Analysing/i)).toHaveLength(0));
+    expect(await screen.findByText('Integrity verified')).toBeInTheDocument();
+  });
+
+  it('clearing the file selection leaves no stale preview behind', async () => {
+    server.use(
+      http.post(`${BASE}/api/backup/preview`, () =>
+        HttpResponse.json({
+          integrityVerified: false, appVersion: '1.2.3',
+          sections: [{ section: 'workflows', inBackup: 3, new: 2, conflicts: 1 }], warnings: [],
+        })
+      )
+    );
+    const { container } = renderPage();
+    await screen.findByText('Workflows');
+    fireEvent.click(screen.getByRole('button', { name: /^Restore$/i }));
+
+    const fileInput = container.querySelector<HTMLInputElement>('input[type=file]')!;
+    fireEvent.change(fileInput, {
+      target: { files: [new File(['{}'], 'backup.npbackup', { type: 'application/json' })] },
+    });
+    expect(await screen.findByText(/enter the passphrase for a full check/i)).toBeInTheDocument();
+
+    fireEvent.change(fileInput, { target: { files: [] } });
+
+    await waitFor(() => expect(
+      screen.queryByText(/enter the passphrase for a full check/i),
+    ).not.toBeInTheDocument());
   });
 });
