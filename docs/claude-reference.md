@@ -422,6 +422,7 @@ Voller DR-Snapshot der **Konfiguration** — getrennt vom redigierten Workflow-E
 | `GET /api/backup/manifest` | — | Section-Counts |
 | `POST /api/backup/export` | JSON `{sections[], passphrase}` | streamt `.npbackup` |
 | `POST /api/backup/preview` | multipart `file` + `passphrase?` | Diff je Section; ohne Passphrase `integrityVerified=false` |
+| | | *UI:* feuert bereits beim Dateiauswählen (Struktur-Vorschau), der „Vorschau"-Button ist der Re-Run nach Passphrase-Eingabe |
 | `POST /api/backup/restore` | multipart `file` + `passphrase` + `policy` | wendet an |
 
 **Export** zieht harte Dependencies automatisch mit (Workflows → Folders/Machines/Credentials) und versiegelt mit dem Whole-file-MAC. **Workflow-Secrets** liegen inline in `DefinitionJson` (`secret`/`apiKey`/`password`/`authToken`/`bearer`/`connectionString`) und werden über `WorkflowDefinitionSecretRewriter` mit `SecretHandling = Redact | EncryptForBackup | PlainInternal` behandelt — dieselbe Klasse, die der redigierte Workflow-Export nutzt. `targetMachineId`/`credentialId` sind GUID-Referenzen, kein Secret → ID-Remap beim Restore.

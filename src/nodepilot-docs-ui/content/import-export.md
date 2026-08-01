@@ -26,6 +26,9 @@ Secrets per **Passphrase-Rewrap** (PBKDF2→HKDF→AES-GCM) + Whole-file-HMAC. G
 
 ### Restore
 
+- **Vorschau läuft beim Dateiauswählen automatisch** — die Diff-Tabelle steht direkt da. Ohne
+  Passphrase ist es die Struktur-Vorschau (Integrität ungeprüft); nach Eingabe der Passphrase
+  erneut auf „Vorschau" klicken, um zusätzlich die Integrität zu prüfen.
 - Validiert Refs (Abbruch bei unresolvable).
 - Läuft in EF-Execution-Strategy-gekapselter Transaktion in Abhängigkeitsreihenfolge mit ID-Remap.
 - Konflikt-Policy: `skip` / `rename` / `overwrite`.
