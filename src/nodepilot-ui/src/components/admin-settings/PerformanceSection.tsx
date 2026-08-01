@@ -10,7 +10,19 @@ import {
   Toggle,
   NumberInput,
   ErrorsAndSave,
+  type FormUi,
 } from './SectionFormHelpers';
+
+type ModeForm = { manualTuning: boolean };
+type ModeUi = FormUi<ModeForm> | ({ loading: true } & Partial<FormUi<ModeForm>>);
+
+/**
+ * Which sizing mode the cards below live in. `chosen` is the checkbox in the mode card — what a
+ * save would store, live as the operator clicks. `booted` is the mode this process actually
+ * started in, which is what governs until the next restart. They differ between a toggle (or a
+ * save) and the restart, and the cards have to say which of the two they are talking about.
+ */
+type SizingMode = { chosen: boolean; booted: boolean };
 
 /**
  * Performance tuning tab. The mode card on top decides whether the cards below apply at all:
@@ -18,21 +30,29 @@ import {
  * memory, and the configured values sit inert as a preset. Everything here is strict-startup —
  * the runspace pool and the dispatch queue are built once at boot — so a save shows the restart
  * banner. Threading alone re-applies live, but only while manual tuning is on.
+ *
+ * The mode form is held here rather than inside the mode card so the cards below react to the
+ * checkbox the moment it is clicked, instead of staying in the booted mode until a restart.
  */
 export function PerformanceSection() {
   const { data: sizing } = useQuery({
     queryKey: ['admin-settings', 'effective-sizing'],
     queryFn: () => adminSettings.getEffectiveSizing(),
   });
-  // Until the plan is known, treat the cards as editable rather than flashing them disabled.
-  const manual = sizing?.manualTuning ?? true;
+  const modeUi = useSectionForm<ModeForm>('Performance', { manualTuning: false });
+  // Until the plan and the saved mode are known, treat the cards as editable rather than
+  // flashing them disabled.
+  const mode: SizingMode = {
+    chosen: modeUi.form?.manualTuning ?? true,
+    booted: sizing?.manualTuning ?? true,
+  };
 
   return (
     <div className="space-y-4">
-      <PerformanceModeCard sizing={sizing} />
-      <EngineCard manual={manual} sizing={sizing} />
-      <ExecutionDispatchCard manual={manual} sizing={sizing} />
-      <ThreadingCard manual={manual} sizing={sizing} />
+      <PerformanceModeCard ui={modeUi} sizing={sizing} />
+      <EngineCard mode={mode} sizing={sizing} />
+      <ExecutionDispatchCard mode={mode} sizing={sizing} />
+      <ThreadingCard mode={mode} sizing={sizing} />
       <RemoteCard />
     </div>
   );
@@ -42,9 +62,8 @@ export function PerformanceSection() {
 // Sizing mode
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PerformanceModeCard({ sizing }: Readonly<{ sizing?: EffectiveSizing }>) {
+function PerformanceModeCard({ ui, sizing }: Readonly<{ ui: ModeUi; sizing?: EffectiveSizing }>) {
   const { t } = useTranslation('adminSettings');
-  const ui = useSectionForm<{ manualTuning: boolean }>('Performance', { manualTuning: false });
   if (ui.loading) return <Card icon={Meter} title={t('perf.modeCardTitle')}><p className="text-sm">{t('loading')}</p></Card>;
   const { form, set, data, isEnvLocked, save, errors } = ui;
 
@@ -84,9 +103,32 @@ function DetectedHardware({ sizing }: Readonly<{ sizing: EffectiveSizing }>) {
 }
 
 /**
+ * One line per card saying whether the numbers in it are in force. With the checkbox and the
+ * booted mode in agreement there is at most one thing to say (automatic sizing makes the stored
+ * values inert); when they differ the note names the restart that closes the gap — so flipping
+ * the checkbox visibly changes what the cards claim about themselves.
+ */
+function SizingModeNote({ mode }: Readonly<{ mode: SizingMode }>) {
+  const { t } = useTranslation('adminSettings');
+  const key = mode.chosen === mode.booted
+    ? (mode.chosen ? null : 'perf.inertUnderAuto')
+    : (mode.chosen ? 'perf.manualPendingRestart' : 'perf.autoPendingRestart');
+  if (!key) return null;
+  return <p className="text-xs text-on-surface-variant mb-2">{t(key)}</p>;
+}
+
+/**
+ * The plan only governs the fields while automatic sizing is *both* chosen and booted. With
+ * manual tuning chosen the operator has to be able to type the values a restart will pick up,
+ * and with manual tuning still booted the stored numbers are what the process runs on.
+ */
+const planGovernsFields = (mode: SizingMode) => !mode.chosen && !mode.booted;
+
+/**
  * Under automatic sizing the stored numbers are not what the process runs on, so showing them
  * unannotated would be a lie. The effective value and the constraint that produced it are
- * appended to each field's hint instead.
+ * appended to each field's hint instead. Keyed on the booted mode: this reports what the process
+ * is running on right now, which a checkbox click does not change.
  */
 function effectiveHint(
   sizing: EffectiveSizing | undefined,
@@ -112,7 +154,7 @@ type EngineDto = {
   runspace: { minRunspaces: number; maxRunspaces: number };
 };
 
-function EngineCard({ manual, sizing }: Readonly<{ manual: boolean; sizing?: EffectiveSizing }>) {
+function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: EffectiveSizing }>) {
   const { t } = useTranslation('adminSettings');
   const ui = useSectionForm<EngineDto>('Engine', {
     debug: { maxPauseMinutes: 10 },
@@ -129,11 +171,11 @@ function EngineCard({ manual, sizing }: Readonly<{ manual: boolean; sizing?: Eff
   // stays configuration-driven in both modes.
   const planGoverns = (k: string) =>
     k.startsWith('Engine:Runspace:') || k === 'Engine:MaxConcurrentSteps';
-  const isEnvLocked = (k: string) => ui.isEnvLocked(k) || (!manual && planGoverns(k));
+  const isEnvLocked = (k: string) => ui.isEnvLocked(k) || (planGovernsFields(mode) && planGoverns(k));
 
   return (
     <Card icon={Chip} title={t('perf.engineCardTitle')}>
-      {!manual && <p className="text-xs text-on-surface-variant mb-2">{t('perf.inertUnderAuto')}</p>}
+      <SizingModeNote mode={mode} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <NumberInput label={t('perf.debugMaxPause')} value={form.debug.maxPauseMinutes} min={1} max={1440}
           onChange={(v) => set({ ...form, debug: { maxPauseMinutes: v } })}
@@ -177,15 +219,15 @@ function EngineCard({ manual, sizing }: Readonly<{ manual: boolean; sizing?: Eff
 // ExecutionDispatch + Threading + Remote
 // ─────────────────────────────────────────────────────────────────────────────
 
-function ExecutionDispatchCard({ manual, sizing }: Readonly<{ manual: boolean; sizing?: EffectiveSizing }>) {
+function ExecutionDispatchCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: EffectiveSizing }>) {
   const { t } = useTranslation('adminSettings');
   const ui = useSectionForm<{ capacity: number; workerCount: number }>('ExecutionDispatch', { capacity: 2048, workerCount: 600 });
   if (ui.loading) return <Card icon={Layers} title={t('perf.executionDispatchCardTitle')}><p className="text-sm">{t('loading')}</p></Card>;
   const { form, set, data, save, errors } = ui;
-  const isEnvLocked = (k: string) => ui.isEnvLocked(k) || !manual;
+  const isEnvLocked = (k: string) => ui.isEnvLocked(k) || planGovernsFields(mode);
   return (
     <Card icon={Layers} title={t('perf.executionDispatchCardTitle')}>
-      {!manual && <p className="text-xs text-on-surface-variant mb-2">{t('perf.inertUnderAuto')}</p>}
+      <SizingModeNote mode={mode} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <NumberInput label={t('perf.queueCapacity')} value={form.capacity} min={1} max={100000}
           onChange={(v) => set({ ...form, capacity: v })}
@@ -202,19 +244,19 @@ function ExecutionDispatchCard({ manual, sizing }: Readonly<{ manual: boolean; s
   );
 }
 
-function ThreadingCard({ manual, sizing }: Readonly<{ manual: boolean; sizing?: EffectiveSizing }>) {
+function ThreadingCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: EffectiveSizing }>) {
   const { t } = useTranslation('adminSettings');
   const ui = useSectionForm<{ minWorkerThreads: number; minIoCompletionThreads: number }>('Threading', { minWorkerThreads: 768, minIoCompletionThreads: 768 });
   if (ui.loading) return <Card icon={Box} title={t('perf.threadingCardTitle')}><p className="text-sm">{t('loading')}</p></Card>;
   const { form, set, data, save, errors } = ui;
-  const isEnvLocked = (k: string) => ui.isEnvLocked(k) || !manual;
+  const isEnvLocked = (k: string) => ui.isEnvLocked(k) || planGovernsFields(mode);
   return (
     <Card icon={Box} title={t('perf.threadingCardTitle')}>
       {/* The ThreadPool floor is the one sizing knob that can be re-applied without a restart —
-          but only while manual tuning is on, because under automatic sizing the live values come
-          from the boot plan and a reload must not drag the pool into a different mode. */}
-      <HotReloadHint isHotReloadable={data.isHotReloadable && manual} />
-      {!manual && <p className="text-xs text-on-surface-variant mb-2">{t('perf.inertUnderAuto')}</p>}
+          but only while the process BOOTED into manual tuning: `ThreadPoolTuningService` follows
+          the boot plan, so ticking the checkbox does not make a save take effect live. */}
+      <HotReloadHint isHotReloadable={data.isHotReloadable && mode.booted} />
+      <SizingModeNote mode={mode} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <NumberInput label={t('perf.minWorkerThreads')} value={form.minWorkerThreads} min={1} max={10000}
           onChange={(v) => set({ ...form, minWorkerThreads: v })}

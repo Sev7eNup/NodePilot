@@ -662,6 +662,13 @@ Singleton geteilt — sonst würde ein Config-Reload nur den hot-reloadbaren Thr
 und der Prozess liefe in zwei Modi gleichzeitig. Die Settings-UI zeigt den **gewünschten** gegen
 den **aktiven** Modus und weist auf den nötigen Neustart hin.
 
+Die Karten unter dem Schalter folgen dabei der **Checkbox**, nicht dem Boot-Modus: sobald
+manuelles Tuning angehakt ist, sind die plan-regierten Felder editierbar (sonst ließen sich die
+Werte, die der Neustart aufnimmt, gar nicht eintragen) und der Kartenhinweis wechselt auf
+„gewählt, aber noch nicht in Kraft". Ausgegraut wird nur, wenn Auto sowohl gewählt **als auch**
+gebootet ist. Die pro Feld eingeblendeten „Aktiv: N"-Werte und der Hot-Reload-Hinweis der
+Threading-Karte hängen dagegen weiterhin am Boot-Modus — sie beschreiben den laufenden Prozess.
+
 ### Zielsetzung — und was bewusst nicht versprochen wird
 
 Erzeugt wird ein **sicherer, monoton skalierender Default mit begrenztem Ressourcenrisiko**, kein

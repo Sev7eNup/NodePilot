@@ -94,6 +94,8 @@
     "detected": "Erkannt: {{cores}} Kerne, {{memory}} nutzbarer Speicher, Posture {{posture}}.",
     "memoryUnknown": "unbekannt",
     "inertUnderAuto": "Automatische Dimensionierung ist aktiv — diese Werte sind gespeichert, aber nicht in Kraft.",
+    "manualPendingRestart": "Manuelles Tuning ist gewählt, aber noch nicht in Kraft — bis zum Service-Neustart gelten die automatisch abgeleiteten Werte.",
+    "autoPendingRestart": "Automatische Dimensionierung ist gewählt, aber noch nicht in Kraft — bis zum Service-Neustart gelten die konfigurierten Werte.",
     "safetyCapHint": "Sicherheits-Cap gegen Trigger-Schleifen und Sub-Workflow-Kaskaden — kein Durchsatz-Regler. Gilt immer, in beiden Dimensionierungs-Modi.",
     "activeValue": "Aktiv: {{value}} ({{bound}})",
     "bound": {

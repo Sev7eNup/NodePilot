@@ -94,6 +94,8 @@
     "detected": "Detected: {{cores}} cores, {{memory}} usable memory, {{posture}} posture.",
     "memoryUnknown": "unknown",
     "inertUnderAuto": "Automatic sizing is active — these values are stored but not in force.",
+    "manualPendingRestart": "Manual tuning is selected but not in force yet — the automatically derived values govern until the service restarts.",
+    "autoPendingRestart": "Automatic sizing is selected but not in force yet — the configured values govern until the service restarts.",
     "safetyCapHint": "Safety cap against runaway trigger loops and sub-workflow cascades — not a throughput setting. Always applies, in both sizing modes.",
     "activeValue": "Active: {{value}} ({{bound}})",
     "bound": {
