@@ -128,7 +128,7 @@ describe('SharedFolderPermissionsModal', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('Keine expliziten Berechtigungen.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('No explicit permissions.')).toBeInTheDocument());
 
     await userEvent.selectOptions(
       screen.getByTestId('shared-folder-perms-user-picker'),
@@ -160,7 +160,7 @@ describe('SharedFolderPermissionsModal', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('Keine expliziten Berechtigungen.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('No explicit permissions.')).toBeInTheDocument());
     await userEvent.selectOptions(screen.getByTestId('shared-folder-perms-principal-type'), 'Group');
     await userEvent.type(screen.getByTestId('shared-folder-perms-group-key'), 'S-1-5-21-1-2-3-4001');
     await userEvent.selectOptions(screen.getByTestId('shared-folder-perms-role-picker'), 'FolderOperator');
@@ -187,7 +187,7 @@ describe('SharedFolderPermissionsModal', () => {
       />,
     );
 
-    await waitFor(() => expect(screen.getByText('Keine expliziten Berechtigungen.')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('No explicit permissions.')).toBeInTheDocument());
     await userEvent.selectOptions(screen.getByTestId('shared-folder-perms-principal-type'), 'Group');
     await userEvent.selectOptions(screen.getByTestId('shared-folder-perms-group-authority-mode'), 'oidc');
     await userEvent.type(
@@ -243,7 +243,7 @@ describe('SharedFolderPermissionsModal', () => {
     );
 
     await waitFor(() => expect(screen.getByText('alice')).toBeInTheDocument());
-    await userEvent.click(screen.getByText('Entfernen'));
+    await userEvent.click(screen.getByTestId('shared-folder-perms-revoke-btn'));
 
     await waitFor(() =>
       expect(mockApi.revokePermission).toHaveBeenCalledWith('folder-id', 'p1'),

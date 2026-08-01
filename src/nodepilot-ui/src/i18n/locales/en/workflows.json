@@ -96,6 +96,26 @@
     "createSubfolder": "Create subfolder",
     "newFolderPlaceholder": "New folder",
     "refresh": "Refresh",
-    "permissionsFor": "Permissions for {{path}}"
+    "permissionsFor": "Permissions for {{path}}",
+    "perms": {
+      "existing": "Existing permissions",
+      "none": "No explicit permissions.",
+      "principal": "Principal",
+      "role": "Role",
+      "revoke": "Remove",
+      "new": "New permission",
+      "grant": "Grant",
+      "duplicate": "This principal already has a permission.",
+      "principalType": "Principal type",
+      "typeUser": "User",
+      "typeGroup": "Directory group",
+      "user": "User",
+      "pickUser": "— Select user —",
+      "directoryProvider": "Directory provider",
+      "oidcIssuer": "OIDC / SCIM issuer",
+      "groupIdPlaceholder": "Provider-stable group ID",
+      "adGroupSid": "AD group SID",
+      "oidcGroupId": "OIDC / SCIM group ID"
+    }
   }
 }

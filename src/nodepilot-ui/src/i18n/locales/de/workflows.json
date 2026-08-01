@@ -96,6 +96,26 @@
     "createSubfolder": "Unterordner anlegen",
     "newFolderPlaceholder": "Neuer Folder",
     "refresh": "Aktualisieren",
-    "permissionsFor": "Berechtigungen für {{path}}"
+    "permissionsFor": "Berechtigungen für {{path}}",
+    "perms": {
+      "existing": "Bestehende Berechtigungen",
+      "none": "Keine expliziten Berechtigungen.",
+      "principal": "Principal",
+      "role": "Rolle",
+      "revoke": "Entfernen",
+      "new": "Neue Berechtigung",
+      "grant": "Vergeben",
+      "duplicate": "Dieser Principal hat bereits eine Berechtigung.",
+      "principalType": "Principal-Typ",
+      "typeUser": "User",
+      "typeGroup": "Directory-Gruppe",
+      "user": "User",
+      "pickUser": "— User wählen —",
+      "directoryProvider": "Directory-Provider",
+      "oidcIssuer": "OIDC-/SCIM-Issuer",
+      "groupIdPlaceholder": "Provider-stabile Gruppen-ID",
+      "adGroupSid": "AD-Gruppen-SID",
+      "oidcGroupId": "OIDC-/SCIM-Gruppen-ID"
+    }
   }
 }

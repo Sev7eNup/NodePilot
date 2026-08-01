@@ -29,6 +29,11 @@ export interface SharedFolderTreeProps {
    *  query invalidation, and error reporting. Drop is silently ignored on folders
    *  where the caller lacks canEdit. */
   onWorkflowDropped?: (workflowId: string, folderId: string) => void;
+  /** Opens the folder-permissions modal for a folder. When set, the right-click menu
+   *  gains a "permissions" entry on every folder the caller has `capabilities.canAdmin`
+   *  on — including Root, which has no rename/delete entries. Omit for navigation-only
+   *  embeddings (designer sidebar). */
+  onManagePermissions?: (folderId: string) => void;
   /** When true, the "Shared Folders" header + refresh button are hidden (for embedding in
    *  narrow panels like the designer sidebar where the parent already provides context). */
   compact?: boolean;
@@ -49,6 +54,7 @@ export function SharedFolderTree({
   onFolderSelected,
   onTreeMutated,
   onWorkflowDropped,
+  onManagePermissions,
   compact = false,
   hideManagement = false,
 }: Readonly<SharedFolderTreeProps>) {
@@ -183,6 +189,10 @@ export function SharedFolderTree({
     const isSelected = node.folder.id === selectedFolderId;
     const isRoot = node.folder.id === ROOT_FOLDER_ID;
     const canEdit = node.folder.capabilities.canEdit;
+    // Rename/delete are meaningless on Root; permissions are not — Root is the folder
+    // whose grants matter most, so it gets a menu of its own when the caller is FolderAdmin.
+    const canRenameOrDelete = canEdit && !isRoot;
+    const canManagePermissions = !!onManagePermissions && node.folder.capabilities.canAdmin;
     const dragEnabled = !!onWorkflowDropped && canEdit;
     const isDropTarget = dragOverFolderId === node.folder.id;
     const isRenaming = renamingId === node.folder.id;
@@ -229,7 +239,8 @@ export function SharedFolderTree({
           tabIndex={0}
           aria-selected={isSelected}
           onContextMenu={(e) => {
-            if (isRoot || !canEdit || hideManagement) return;
+            if (hideManagement) return;
+            if (!canRenameOrDelete && !canManagePermissions) return;
             e.preventDefault();
             setMenuState({ x: e.clientX, y: e.clientY, folder: node.folder });
           }}
@@ -375,14 +386,25 @@ export function SharedFolderTree({
         <SharedFolderContextMenu
           x={menuState.x}
           y={menuState.y}
-          onRename={() => {
-            setRenamingId(menuState.folder.id);
-            setRenameValue(menuState.folder.name);
-            setLocalError(null);
-          }}
-          onDelete={() => {
-            confirmAndDelete(menuState.folder);
-          }}
+          onManagePermissions={
+            onManagePermissions && menuState.folder.capabilities.canAdmin
+              ? () => onManagePermissions(menuState.folder.id)
+              : undefined
+          }
+          onRename={
+            menuState.folder.capabilities.canEdit && menuState.folder.id !== ROOT_FOLDER_ID
+              ? () => {
+                  setRenamingId(menuState.folder.id);
+                  setRenameValue(menuState.folder.name);
+                  setLocalError(null);
+                }
+              : undefined
+          }
+          onDelete={
+            menuState.folder.capabilities.canEdit && menuState.folder.id !== ROOT_FOLDER_ID
+              ? () => confirmAndDelete(menuState.folder)
+              : undefined
+          }
           onClose={() => setMenuState(null)}
         />
       )}
