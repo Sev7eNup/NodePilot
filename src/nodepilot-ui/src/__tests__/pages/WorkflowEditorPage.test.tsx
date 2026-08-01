@@ -1167,6 +1167,93 @@ describe('WorkflowEditorPage — Right Sidebar (Properties / EdgeProperties / Bu
   });
 });
 
+describe('WorkflowEditorPage — AI chat vs. Properties (shared right panel)', () => {
+  /**
+   * Both live in the same slot: the AI assistant overlays the properties. Opening the chat while
+   * a node is selected hides the properties; touching the canvas selection hands the slot back.
+   */
+  const aiPanel = () => screen.queryByLabelText(/AI workflow assistant|KI-Workflow-Assistent/i);
+
+  function workflowWithSelectedNode() {
+    return {
+      ...MOCK_WORKFLOW,
+      definitionJson: JSON.stringify({
+        nodes: [
+          { id: 'step-a', type: 'activity', position: { x: 100, y: 100 }, selected: true,
+            data: { label: 'Selected', activityType: 'log', config: { message: 'hi' } } },
+          { id: 'step-b', type: 'activity', position: { x: 400, y: 100 },
+            data: { label: 'Second', activityType: 'log', config: { message: 'ho' } } },
+        ],
+        edges: [],
+      }),
+    };
+  }
+
+  it('opening the assistant while a node is selected overlays the properties panel', async () => {
+    server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(workflowWithSelectedNode())));
+    renderPage();
+    await waitFor(() => expect(screen.getAllByText(/Selected/).length).toBeGreaterThan(0));
+
+    fireEvent.click(screen.getByTestId('toggle-ai-assistant'));
+
+    await waitFor(() => expect(aiPanel()).toBeInTheDocument());
+    expect(screen.queryByText(/Log Message|Nachricht protokollieren/)).not.toBeInTheDocument();
+  });
+
+  it('clicking a node closes the assistant and brings the properties panel back', async () => {
+    server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(workflowWithSelectedNode())));
+    renderPage();
+    await waitForCanvasReady();
+
+    fireEvent.click(screen.getByTestId('toggle-ai-assistant'));
+    await waitFor(() => expect(aiPanel()).toBeInTheDocument());
+
+    // Re-clicking the ALREADY selected node changes nothing in ReactFlow's selection — this is
+    // exactly the case the onNodeClick handler exists for.
+    fireEvent.click(document.querySelector('.react-flow__node[data-id="step-a"]')!);
+
+    await waitFor(() => expect(aiPanel()).not.toBeInTheDocument());
+    expect(screen.getAllByText(/Selected/).length).toBeGreaterThan(0);
+  });
+
+  it('selecting a node from the search overlay also closes the assistant', async () => {
+    renderPage();
+    await waitForCanvasReady();
+
+    fireEvent.click(screen.getByTestId('toggle-ai-assistant'));
+    await waitFor(() => expect(aiPanel()).toBeInTheDocument());
+
+    // Non-canvas selection path (jumpToNode) — covered by the selection effect, not onNodeClick.
+    fireEvent.click(screen.getByTitle(/Search nodes \(Ctrl\+F\)/));
+    const searchInput = await screen.findByPlaceholderText(/Search nodes by label/i);
+    fireEvent.change(searchInput, { target: { value: 'Trigger' } });
+    fireEvent.click(await screen.findByRole('button', { name: /manualTrigger/ }));
+
+    await waitFor(() => expect(aiPanel()).not.toBeInTheDocument());
+  });
+
+  it('growing a multi-selection keeps the assistant open (it scopes the chat)', async () => {
+    server.use(http.get(`${BASE}/api/workflows/wf-smoke-1`, () => HttpResponse.json(workflowWithSelectedNode())));
+    renderPage();
+    await waitForCanvasReady();
+
+    fireEvent.click(screen.getByTestId('toggle-ai-assistant'));
+    await waitFor(() => expect(aiPanel()).toBeInTheDocument());
+
+    // Shift-click adds step-b to the already-selected step-a → 2 nodes selected. The chat shows
+    // that selection as its context chip, so it must survive. (ReactFlow reads the held modifier
+    // from its own key listener, hence the keyDown alongside the click's shiftKey.)
+    fireEvent.keyDown(document, { key: 'Shift' });
+    fireEvent.click(document.querySelector('.react-flow__node[data-id="step-b"]')!, { shiftKey: true });
+    fireEvent.keyUp(document, { key: 'Shift' });
+
+    // The chip proves both nodes are selected — without it the test would also pass on a
+    // click that never reached ReactFlow.
+    await waitFor(() => expect(screen.getByText(/Selection \(2\)|Auswahl \(2\)/)).toBeInTheDocument());
+    expect(aiPanel()).toBeInTheDocument();
+  });
+});
+
 describe('WorkflowEditorPage — Tidy Layout', () => {
   /**
    * Designer-Store layoutMode persists across tests via Zustand. We reset it before each

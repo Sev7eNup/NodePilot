@@ -66,6 +66,8 @@ Der Assistent kennt den aktuell geöffneten Workflow. Mögliche Aufgaben sind:
 
 Der workflowbezogene Chat unterstützt mehrere benannte Threads, erneute Generierung, Markdown-Export und eine Ansicht der bisherigen AI-Aktivität.
 
+Chat und Properties-Panel teilen sich den rechten Bereich des Designers: Der geöffnete Assistent überlagert die Properties. Sobald im Canvas ein Node oder eine Verbindung angeklickt wird, tritt der Chat zurück und die zugehörigen Properties erscheinen wieder. Eine Mehrfachauswahl lässt den Chat stehen — sie ist sein Auswahl-Kontext.
+
 ## Globaler AI-Chat
 
 **Ort:** Navigation, Seite **AI Chat**.
