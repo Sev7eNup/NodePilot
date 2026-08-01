@@ -153,8 +153,8 @@ curl -s -b cookie.jar -X POST "$NP/api/machines/9f1a.../test" \
 
 # Credential (password min 8, wird nie zurückgegeben)
 curl -s -b cookie.jar -X POST "$NP/api/credentials" -H 'Content-Type: application/json' \
-  -d '{ "name":"svc-winrm", "username":"CONTOSO\\svc-winrm", "password":"p@ssw0rd!", "domain":null }'
-# 201 → { "id":"...", "name":"svc-winrm", "username":"CONTOSO\\svc-winrm", "domain":null }
+  -d '{ "name":"svc-winrm", "username":"CONTOSO\\\\svc-winrm", "password":"p@ssw0rd!", "domain":null }'
+# 201 → { "id":"...", "name":"svc-winrm", "username":"CONTOSO\\\\svc-winrm", "domain":null }
 ```
 
 ## Global Variables
@@ -292,7 +292,7 @@ curl -s -b cookie.jar -X PUT "$NP/api/admin/settings/Smtp" \
 | Maintenance Windows | `GET /api/maintenance-windows`, `GET /{id}`, `GET /affecting/{workflowId}`, `POST`, `PUT/DELETE /{id}` |
 | Shared Folders | `GET/POST /api/shared-workflow-folders`, `PUT/DELETE /{id}`, `POST /{id}/move`, `POST /api/workflows/{workflowId}/move-folder` |
 | Folder-Permissions | `GET/POST /api/shared-workflow-folders/{folderId}/permissions`, `PUT/DELETE /{permissionId}` |
-| Settings | `GET /api/admin/settings`, `GET\|PUT /{section}`, `GET /status\|system-info`, `POST /test/smtp\|test/llm\|test/ldap` (Admin; Authentication-PUT im Cluster = 409) |
+| Settings | `GET /api/admin/settings`, `GET\|PUT /{section}`, `GET /status\|system-info\|effective-sizing`, `POST /test/smtp\|test/llm\|test/ldap` (Admin; Authentication-PUT im Cluster = 409) |
 | DB-Admin | `GET /api/dbadmin/tables`, `GET\|PATCH\|DELETE /tables/{name}/rows`, `GET /info`, `POST /query` (Admin) |
 | Dashboard | `GET /api/stats/dashboard` |
 | Activity-Catalog | `GET /api/activity-catalog` |
