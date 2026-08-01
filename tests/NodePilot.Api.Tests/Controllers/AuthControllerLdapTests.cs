@@ -14,6 +14,7 @@ using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Api.Security.Ldap;
+using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -463,17 +464,57 @@ public sealed class AuthControllerLdapTests : IDisposable
     }
 
     [Fact]
-    public async Task LdapUnavailable_ExternalCandidate_Returns503()
+    public async Task LdapUnavailable_ExternalCandidate_Returns503_AndIsAudited()
     {
         // A password-bearing local row is short-circuited before LDAP. Any request that
         // reaches an unavailable directory cannot establish current external authorization.
-        var (controller, adapter) = NewController();
+        var audit = new CapturingAuditWriter();
+        var (controller, adapter) = NewController(audit: audit);
         adapter.ThrowInfra = true;
 
         var result = await controller.Login(new LoginRequest("alice", "pw"), default);
 
         result.Result.Should().BeOfType<ObjectResult>()
             .Which.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        // Lab regression 2026-08-01: this branch used to return 503 without any audit row,
+        // leaving the operator with a failing login and no trace of why.
+        audit.Calls.Should().Contain(c =>
+            c.Action == AuditActions.LoginFailed
+            && c.Details!.Contains("infrastructure_failure"));
+    }
+
+    [Fact]
+    public async Task LdapUserObjectMissing_Returns401_AuditsDistinctReason_AndDoesNotFallThroughToLocal()
+    {
+        // Lab regression 2026-08-01: an AD account without a userPrincipalName attribute
+        // binds successfully (implicit samAccountName@domain) but has no searchable object.
+        // That must read as a refused login with its own audit reason — not as a directory
+        // outage (503, previously unaudited) — and must never fall through to a local
+        // account that happens to share the username.
+        _db.Users.Add(new User
+        {
+            Id = Guid.NewGuid(),
+            Username = "alice",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Password1", AuthController.BCryptWorkFactor),
+            Provider = AuthProvider.Ldap,
+            Role = UserRole.Operator,
+            IsActive = true,
+            PasswordChangedAt = DateTime.UtcNow,
+        });
+        await _db.SaveChangesAsync();
+
+        var audit = new CapturingAuditWriter();
+        var (controller, adapter) = NewController(audit: audit);
+        adapter.ExceptionToThrow = new LdapUserObjectNotFoundException(
+            "LDAP bind succeeded but no user object found for UPN 'alice@firma.de'.");
+
+        var result = await controller.Login(new LoginRequest("alice", "Password1"), default);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>(
+            "the directory answered — this is a refusal, not an outage");
+        audit.Calls.Should().Contain(c =>
+            c.Action == AuditActions.LoginFailed
+            && c.Details!.Contains("ldap_user_object_not_found"));
     }
 
     [Fact]

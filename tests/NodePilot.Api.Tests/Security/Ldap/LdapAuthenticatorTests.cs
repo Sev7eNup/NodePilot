@@ -109,6 +109,30 @@ public class LdapAuthenticatorTests
     }
 
     [Fact]
+    public async Task UserObjectMissing_ReturnsDirectoryObjectMissing_NeverTripsBreaker()
+    {
+        // Lab regression 2026-08-01: an AD account whose userPrincipalName attribute is unset
+        // still binds (AD resolves the implicit samAccountName@domain UPN), but the follow-up
+        // search finds no object. That is a per-account data problem, so it must never be
+        // counted as an outage — otherwise one broken account trips the breaker and blocks
+        // LDAP logins for every user. Repeat past the failure threshold to prove it.
+        var adapter = new FakeAdapter { ThrowUserObjectMissing = true };
+        var breaker = new LdapCircuitBreaker(failureThreshold: 2);
+        var auth = NewAuthenticator(EnabledOptions(), adapter, breaker);
+
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var outcome = await auth.AuthenticateAsync("alice", "pw", default);
+            outcome.Outcome.Should().Be(LdapAuthOutcome.DirectoryObjectMissing);
+            outcome.Result.Should().BeNull();
+            outcome.UnavailableReason.Should().BeNull("this is not an availability problem");
+        }
+
+        breaker.CurrentState.Should().Be(LdapCircuitBreaker.State.Closed);
+        adapter.Calls.Should().Be(5, "the breaker must never fast-fail this case");
+    }
+
+    [Fact]
     public async Task MalformedUsername_ReturnsInvalidCredentials_DoesNotTripBreaker()
     {
         var adapter = new FakeAdapter();
@@ -161,6 +185,7 @@ public class LdapAuthenticatorTests
     {
         public LdapAuthResult? Result { get; set; }
         public bool ThrowInfra { get; set; }
+        public bool ThrowUserObjectMissing { get; set; }
         public bool ThrowCancellation { get; set; }
         public int Calls { get; private set; }
         public string? LastUpn { get; private set; }
@@ -170,6 +195,8 @@ public class LdapAuthenticatorTests
             Calls++;
             LastUpn = upn;
             if (ThrowCancellation) throw new OperationCanceledException(ct);
+            if (ThrowUserObjectMissing)
+                throw new LdapUserObjectNotFoundException("simulated missing userPrincipalName");
             if (ThrowInfra) throw new LdapInfrastructureException("simulated DC offline");
             return Task.FromResult(Result);
         }

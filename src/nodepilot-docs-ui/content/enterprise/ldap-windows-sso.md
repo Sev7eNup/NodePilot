@@ -108,6 +108,7 @@ OIDC-Correlation, Nonce und serverseitige Tickets werden mit ASP.NET Core Data P
 ## Identität, Gruppen und Offboarding
 
 - Externe Identitäten werden über das unveränderliche Paar `(Authority, Subject)` gefunden.
+- Benutzer werden über das Attribut `userPrincipalName` unterhalb der `BaseDn` gesucht. Ein erfolgreicher Bind genügt nicht: Ist das UPN-Attribut am Konto leer, akzeptiert Active Directory den Bind trotzdem über die implizite Form `samAccountName@DNS-Domäne`, es existiert aber kein auffindbares Objekt. Der Login wird dann mit dem eigenen Audit-Grund `ldap_user_object_not_found` abgelehnt — als Konto-Problem, nicht als Directory-Ausfall: Der Circuit Breaker bleibt unberührt, ein einzelnes fehlkonfiguriertes Konto kann also nicht die LDAP-Anmeldung für alle blockieren. Behebung: `Set-ADUser <user> -UserPrincipalName '<user>@<upn-suffix>'`.
 - LDAP und Windows verwenden dieselbe AD-Authority und den Benutzer-`objectSid` als Subject. Beide Wege landen daher bei derselben Person auf demselben NodePilot-Benutzer.
 - Windows verwendet aus dem Kerberos-Principal nur die primäre SID. Bei **jedem** Windows-Login lädt ein Service-Bind über LDAPS den aktuellen, autoritativen Benutzer- und Gruppen-Snapshot; möglicherweise alte PAC-Gruppen werden nicht vertraut. Ist der Directory-Lookup nicht möglich, schlägt der Login geschlossen fehl.
 - OIDC verwendet den validierten Issuer als Authority und `sub` als Subject.
@@ -158,6 +159,8 @@ OIDC und SCIM bleiben bis zu realen Provider-, Parallel-JIT-, Group-Overage- und
 | `GET /healthz/ready` | DB-Readiness; enthält bewusst keinen Directory-Check |
 | `GET /healthz/directory` | separater LDAPS-/Service-Bind-Healthcheck über alle DCs; ein ausgefallener Secondary ergibt `Degraded` |
 | `/api/scim/v2/*` | SCIM-Discovery, Users und Groups |
+
+**Anmeldename im Formular.** `alice`, `DOMAIN\alice` und `alice@firma.de` werden alle auf denselben UPN normalisiert; ein Vorwärts-Schrägstrich (`DOMAIN/alice`) wird **nicht** erkannt und bleibt Teil des Namens. Jeder Fehlschlag hinterlässt einen Audit-Eintrag mit `reason`: `ldap_invalid_credentials` (Passwort/UPN falsch), `ldap_user_object_not_found` (UPN-Attribut fehlt), `no_allowed_directory_group` (Gruppen-Gate), `pre_jit_account_throttle` (fünf Versuche je 15 Minuten) oder `infrastructure_failure` (Directory nicht erreichbar, zusätzlich HTTP 503).
 
 Beim IdP wird `https://<nodepilot>/signin-oidc` als Redirect URI registriert.
 `/api/auth/oidc/callback` ist nur die interne Landing-URL, nachdem der OIDC-Handler

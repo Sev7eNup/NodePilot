@@ -153,20 +153,25 @@ describe('API Client', () => {
     expect(window.location.href).toBe('/login');
   });
 
-  it('get_401_onLoginPage_doesNotRedirect', async () => {
-    // LoginPage needs the 401 error bubble up (wrong password). Redirecting from /login
+  it('post_401_onLoginPage_surfacesServerPayloadWithoutRedirect', async () => {
+    // LoginPage needs the server's 401 payload to bubble up so it can tell a wrong
+    // password from the SETUP_TOKEN_REQUIRED bootstrap gate. Redirecting from /login
     // to /login would swallow the error and potentially infinite-loop.
     Object.defineProperty(window, 'location', {
       value: { href: '/login', pathname: '/login' },
       writable: true,
     });
     server.use(
-      http.post(`${BASE}/api/auth/login`, () => new HttpResponse(null, { status: 401 }))
+      http.post(`${BASE}/api/auth/login`, () =>
+        HttpResponse.json(
+          { code: 'SETUP_TOKEN_REQUIRED', message: 'Admin bootstrap required.' },
+          { status: 401 },
+        ))
     );
     patchFetch();
 
     const { api } = await import('../../api/client');
-    await expect(api.post('/auth/login', {})).rejects.toThrow('Unauthorized');
+    await expect(api.post('/auth/login', {})).rejects.toThrow(/SETUP_TOKEN_REQUIRED/);
     expect(window.location.href).toBe('/login'); // unchanged
   });
 

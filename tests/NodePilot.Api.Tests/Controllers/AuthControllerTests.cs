@@ -176,7 +176,10 @@ public sealed class AuthControllerTests : IDisposable
         var result = await controller.Login(new LoginRequest("attacker", "x"), CancellationToken.None);
 
         // Assert
-        result.Result.Should().BeOfType<UnauthorizedObjectResult>();
+        var unauthorized = result.Result.Should().BeOfType<UnauthorizedObjectResult>().Subject;
+        // The SPA login page keys on this code to reveal its setup-token field — a plain
+        // wrong-password 401 must NOT carry it (see Login_WrongPassword_ReturnsUnauthorized).
+        unauthorized.Value!.ToString().Should().Contain("SETUP_TOKEN_REQUIRED");
         (await db.Users.AnyAsync()).Should().BeFalse("no user must be created without a valid setup token");
         audit.Calls.Should().ContainSingle(call =>
             call.Action == AuditActions.LoginFailed

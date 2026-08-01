@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useAuthStore } from '../../stores/authStore';
 
-// Mock the api module — both `post` and `get` are used by the auth flow now.
+// Mock the api module — `post`, `get` and `postWithHeaders` (setup-token login) are
+// used by the auth flow now.
 vi.mock('../../api/client', () => ({
   api: {
     post: vi.fn(),
     get: vi.fn(),
+    postWithHeaders: vi.fn(),
   },
 }));
 
@@ -36,6 +38,23 @@ describe('authStore (cookie-based, audit H-5)', () => {
     expect(state.role).toBe('Admin');
     // No token field in state — the cookie is the source of truth.
     expect((state as unknown as { token?: string }).token).toBeUndefined();
+  });
+
+  it('login_withSetupToken_sendsXSetupTokenHeader', async () => {
+    // First-login bootstrap: the one-shot token travels as the X-Setup-Token header,
+    // never inside the JSON body.
+    const mockResponse = { userId: 'u-1', username: 'admin', role: 'Admin' };
+    vi.mocked(api.postWithHeaders).mockResolvedValueOnce(mockResponse);
+
+    await useAuthStore.getState().login('admin', 'password', 'one-shot-token');
+
+    expect(api.postWithHeaders).toHaveBeenCalledWith(
+      '/auth/login',
+      { username: 'admin', password: 'password' },
+      { 'X-Setup-Token': 'one-shot-token' },
+    );
+    expect(api.post).not.toHaveBeenCalled();
+    expect(useAuthStore.getState().isAuthenticated).toBe(true);
   });
 
   it('logout_clearsStateAndPostsToServer', async () => {

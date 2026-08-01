@@ -23,6 +23,12 @@ public enum LdapAuthOutcome
     /// reason: rows that carry a PasswordHash skip the LDAP path entirely before this
     /// outcome is ever produced.</summary>
     Unavailable,
+    /// <summary>Bind succeeded, but no directory object carries a matching
+    /// <c>userPrincipalName</c> under the configured <c>BaseDn</c> — a per-account data
+    /// problem (usually an unset UPN attribute), not an outage. The AuthController returns
+    /// an audited 401 and, like <see cref="InvalidCredentials"/>, MUST NOT fall through to
+    /// the local-password path.</summary>
+    DirectoryObjectMissing,
 }
 
 /// <summary>Outcome envelope. <see cref="Result"/> is non-null iff <see cref="Outcome"/>
@@ -106,6 +112,16 @@ public sealed class LdapAuthenticator
             return result is null
                 ? new LdapAuthOutcomeResult(LdapAuthOutcome.InvalidCredentials, null, null)
                 : new LdapAuthOutcomeResult(LdapAuthOutcome.Success, result, null);
+        }
+        catch (LdapUserObjectNotFoundException ex)
+        {
+            // The directory answered correctly — it simply has no matching user object.
+            // RecordSuccess, not RecordFailure: counting this as an outage let a single
+            // misconfigured account (unset userPrincipalName) trip the breaker and block
+            // LDAP logins for every user.
+            _breaker.RecordSuccess();
+            _logger.LogWarning(ex, "LDAP user object missing for '{Upn}' — login refused", upn);
+            return new LdapAuthOutcomeResult(LdapAuthOutcome.DirectoryObjectMissing, null, null);
         }
         catch (LdapInfrastructureException ex)
         {

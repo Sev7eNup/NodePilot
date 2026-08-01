@@ -2305,11 +2305,12 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 **Schritte:**
 1. Browser auf `/login`.
-2. Login-Form mit Username `admin`, Passwort `Admin#2025!`, Setup-Token aus Datei kopieren.
-3. Submit.
+2. Login-Form mit Username `admin`, Passwort `Admin#2025!` absenden — Server antwortet 401 `SETUP_TOKEN_REQUIRED`, die Seite blendet das Setup-Token-Feld ein.
+3. Setup-Token aus der Datei einfügen, erneut absenden (SPA sendet ihn als `X-Setup-Token`-Header).
 
 **Prüfpunkte:**
-- [ ] Login-Erfolg, Redirect auf Dashboard.
+- [ ] Erster Versuch ohne Token: Fehlerbanner „Ersteinrichtung…", Token-Feld wird sichtbar (vorher nicht im DOM).
+- [ ] Login-Erfolg mit Token, Redirect auf Dashboard.
 - [ ] `admin-setup.token` ist nach Konsum gelöscht (nicht nur leer).
 - [ ] `Audit-Log` enthält `USER_CREATED_BOOTSTRAP`.
 - [ ] Cookie `np_auth` gesetzt mit `HttpOnly`, `SameSite=Lax`.

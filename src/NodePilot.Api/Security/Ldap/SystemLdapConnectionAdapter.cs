@@ -507,8 +507,12 @@ internal sealed class SystemLdapConnectionAdapter : ILdapConnectionAdapter
             var userResponse = (SearchResponse)connection.SendRequest(userSearch);
             if (userResponse.Entries.Count == 0)
             {
-                throw new LdapInfrastructureException(
-                    $"LDAP bind succeeded but no user object found for UPN '{upn}' under BaseDn '{opts.BaseDn}'.");
+                throw new LdapUserObjectNotFoundException(
+                    $"LDAP bind succeeded but no user object found for UPN '{upn}' under BaseDn " +
+                    $"'{opts.BaseDn}'. The account most likely has no 'userPrincipalName' " +
+                    "attribute matching this value — Active Directory accepts the bind via the " +
+                    "implicit samAccountName@domain UPN regardless. Set the attribute " +
+                    "(Set-ADUser <user> -UserPrincipalName ...) or check BaseDn/UpnSuffix.");
             }
             var entry = userResponse.Entries[0];
 
@@ -555,6 +559,11 @@ internal sealed class SystemLdapConnectionAdapter : ILdapConnectionAdapter
                     endpoint.Host, endpoint.Port);
             }
         }
+
+        // Every endpoint agreeing that the account has no matching user object is a verdict
+        // about that account, not an outage. Surface the specific type so the login path
+        // audits a 401 instead of reporting a directory outage (and sparing the breaker).
+        if (lastInfrastructureError is LdapUserObjectNotFoundException notFound) throw notFound;
 
         throw new LdapInfrastructureException(
             $"All {endpoints.Count} configured LDAP endpoints failed.",

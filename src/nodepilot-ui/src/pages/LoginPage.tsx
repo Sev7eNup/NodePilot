@@ -4,6 +4,7 @@ import {
   CircleDash,
   FingerprintRecognition,
   Locked,
+  Password,
   User,
   WarningFilled,
 } from '@carbon/icons-react';
@@ -23,6 +24,10 @@ export function LoginPage() {
   const { t } = useTranslation(['auth']);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  // First-login bootstrap: hidden until the server answers with SETUP_TOKEN_REQUIRED —
+  // on an installed system with existing users the field never appears.
+  const [setupToken, setSetupToken] = useState('');
+  const [showSetupToken, setShowSetupToken] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [methods, setMethods] = useState<AuthMethodsResponse | null>(null);
@@ -51,12 +56,18 @@ export function LoginPage() {
     setError('');
     setSubmitting(true);
     try {
-      await login(username, password);
+      const trimmedToken = showSetupToken ? setupToken.trim() : '';
+      await (trimmedToken ? login(username, password, trimmedToken) : login(username, password));
       navigate('/');
       // On success we navigate away, so we deliberately leave `submitting` set to keep
       // the button in its busy state until the route unmounts the page.
-    } catch {
-      setError(t('auth:invalidCredentials'));
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('SETUP_TOKEN_REQUIRED')) {
+        setShowSetupToken(true);
+        setError(t('auth:setupTokenRequired'));
+      } else {
+        setError(t('auth:invalidCredentials'));
+      }
       setSubmitting(false);
     }
   };
@@ -182,6 +193,29 @@ export function LoginPage() {
               />
             </div>
           </div>
+
+          {showSetupToken && (
+            <div>
+              <label htmlFor="np-login-setup-token" className="block text-xs font-semibold uppercase tracking-wide text-on-surface-variant mb-1.5">
+                {t('auth:setupToken')}
+              </label>
+              <div className="relative">
+                <Password size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/70" />
+                <input
+                  id="np-login-setup-token"
+                  type="text"
+                  value={setupToken}
+                  onChange={(e) => setSetupToken(e.target.value)}
+                  className={inputClass}
+                  required
+                  autoFocus
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+              <p className="text-xs text-outline mt-1.5">{t('auth:setupTokenHint')}</p>
+            </div>
+          )}
 
           <button
             type="submit"

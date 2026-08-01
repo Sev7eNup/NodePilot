@@ -79,7 +79,7 @@ curl -s -b cookie.jar "$NP/api/auth/me"
 curl -s -H "Authorization: Bearer $TOKEN" "$NP/api/workflows"
 ```
 
-**Bootstrap** (leere DB, erster Login): 401 `{"message":"Admin bootstrap required. Send the X-Setup-Token header ..."}`. Setup-Token aus `admin-setup.token`:
+**Bootstrap** (leere DB, erster Login): 401 `{"code":"SETUP_TOKEN_REQUIRED","message":"Admin bootstrap required. Send the X-Setup-Token header ..."}` — die Web-Oberfläche reagiert auf diesen Code und blendet ihr Setup-Token-Feld ein. Per API: Setup-Token aus `admin-setup.token`:
 
 ```bash
 curl -s -c cookie.jar -X POST "$NP/api/auth/login" \

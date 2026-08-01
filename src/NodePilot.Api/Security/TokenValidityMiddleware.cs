@@ -41,7 +41,19 @@ public class TokenValidityMiddleware
         ExternalAuthorizationEvaluator? externalAuthorization = null)
     {
         var endpoint = ctx.GetEndpoint();
-        var allowAnonymous = endpoint?.Metadata.GetMetadata<IAllowAnonymous>() is not null;
+        // Anonymize instead of reject on everything that is not the protected API surface.
+        // The SPA fallback endpoint (index.html for /login, /workflows, …) carries no
+        // [AllowAnonymous] metadata, so a browser holding an expired/revoked np_auth cookie
+        // otherwise gets this middleware's raw 401 JSON instead of the page — including on
+        // /login itself, leaving no way back in short of manually clearing cookies
+        // (lab 2026-08-01: SessionAbsoluteLifetimeHours elapsed overnight → site "bricked").
+        // Dev never sees this because Vite serves the shell and only proxies /api. Stripping
+        // the stale identity is safe here: static files and the SPA shell never consume it,
+        // and the SPA's own /auth/me probe lands on the API surface below, where invalid
+        // tokens still hard-fail.
+        var allowAnonymous = endpoint?.Metadata.GetMetadata<IAllowAnonymous>() is not null
+            || !(ctx.Request.Path.StartsWithSegments("/api")
+                 || ctx.Request.Path.StartsWithSegments("/hubs"));
 
         if (ctx.User?.Identity?.IsAuthenticated == true)
         {

@@ -31,19 +31,19 @@ public static class SecurityPipelineSetup
                 //  - form-action 'self'       → forms can only POST back to our own origin
                 //  - frame-src 'none'         → no nested browsing contexts at all
                 //  - ws:/wss: dropped         → 'self' already covers SignalR's same-origin upgrades
-                //  - style-src split (M-3)    → 'unsafe-inline' moved from generic style-src to
-                //                               style-src-attr only, so XSS-injected <style> tags
-                //                               are blocked while inline style="..." attributes
-                //                               (used by React Flow transforms / Tailwind runtime
-                //                               utilities) keep working. style-src-elem 'self'
-                //                               is the strict <style>/<link> policy. CSP3 in all
-                //                               supported browsers (Chromium 75+ / FF 86+ / Safari 14+).
+                //  - style-src 'unsafe-inline' (M-3 partially reverted, 2026-08-01): the designer's
+                //    code editors inject their styling as runtime <style> elements — CodeMirror 6
+                //    (style-mod) does so exclusively, Monaco for its token colors. The former
+                //    style-src-elem 'self' split blocked those elements and rendered the inline
+                //    editors structurally unstyled in production; no test surface caught it because
+                //    Development and the hermetic E2E suite run without this middleware. A nonce is
+                //    no way out: Monaco has no CSP-nonce API. script-src stays 'self' — the XSS
+                //    execution floor this CSP exists for is unchanged; only style injection is
+                //    re-permitted, matching how every style already renders in Development.
                 headers["Content-Security-Policy"] =
                     "default-src 'self'; " +
                     "img-src 'self' data:; " +
-                    "style-src 'self'; " +
-                    "style-src-elem 'self'; " +
-                    "style-src-attr 'unsafe-inline'; " +
+                    "style-src 'self' 'unsafe-inline'; " +
                     "script-src 'self'; " +
                     "connect-src 'self'; " +
                     "object-src 'none'; " +

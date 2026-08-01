@@ -28,13 +28,12 @@ async function authedFetch(path: string, options?: RequestInit): Promise<Respons
     headers: { ...headers, ...options?.headers },
   });
 
-  if (response.status === 401) {
-    // Cookie expired / revoked / missing. Redirect to login, but stay put if we're
-    // already on the login page so the form can surface its own 401 error normally
-    // (e.g. wrong password) instead of looping.
-    if (typeof window !== 'undefined' && !globalThis.location.pathname.startsWith('/login')) {
-      globalThis.location.href = '/login';
-    }
+  if (response.status === 401 && typeof window !== 'undefined' && !globalThis.location.pathname.startsWith('/login')) {
+    // Cookie expired / revoked / missing. Redirect to login. On the login page itself we
+    // instead fall through to the generic error parser below so the form can distinguish
+    // the server's 401 payloads (wrong password vs. the SETUP_TOKEN_REQUIRED bootstrap
+    // gate) instead of seeing an opaque "Unauthorized".
+    globalThis.location.href = '/login';
     throw new Error('Unauthorized');
   }
 
@@ -72,7 +71,7 @@ async function authedFetch(path: string, options?: RequestInit): Promise<Respons
     if (error && error.length > 500) error = error.slice(0, 500) + '... [truncated]';
     error = error.replaceAll(/(?:\s+at\s+[^\n]+\n?)+/g, ' [stack hidden] ');
     error = error.replaceAll(/System\.\w+Exception:[^\n]+/g, '[exception hidden]');
-    throw new Error(error || response.statusText);
+    throw new Error(error || response.statusText || `HTTP ${response.status}`);
   }
 
   return response;

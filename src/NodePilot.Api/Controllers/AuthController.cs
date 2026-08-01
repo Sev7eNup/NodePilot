@@ -355,8 +355,11 @@ public class AuthController : ControllerBase
                             ("username", SafeUsernameForAudit(request.Username)),
                             ("source", "LocalBootstrap"),
                             ("reason", "bootstrap_token_invalid")), ct);
+                    // The machine-readable code lets the SPA login page distinguish this
+                    // gate from a plain wrong-password 401 and reveal its setup-token field.
                     return Unauthorized(new
                     {
+                        code = "SETUP_TOKEN_REQUIRED",
                         message = "Admin bootstrap required. Send the X-Setup-Token header " +
                                   "matching the admin-setup.token file written to the content root on first startup."
                     });
@@ -693,8 +696,12 @@ public class AuthController : ControllerBase
             }
 
             var ldap = await _ldapAuthenticator.AuthenticateAsync(request.Username, request.Password, ct);
+            // DirectoryObjectMissing counts as a verdict: the bind itself completed, so the
+            // attempt legitimately consumes its throttle slot like any other password check.
             credentialVerdictReached = ldap.Outcome is
-                LdapAuthOutcome.Success or LdapAuthOutcome.InvalidCredentials;
+                LdapAuthOutcome.Success
+                or LdapAuthOutcome.InvalidCredentials
+                or LdapAuthOutcome.DirectoryObjectMissing;
             switch (ldap.Outcome)
             {
             case LdapAuthOutcome.Success:
@@ -796,11 +803,31 @@ public class AuthController : ControllerBase
                     new KeyValuePair<string, object?>("result", "failure"),
                     new KeyValuePair<string, object?>("reason", "ldap_invalid_credentials"));
                 return Unauthorized(new { message = "Invalid credentials" });
+            case LdapAuthOutcome.DirectoryObjectMissing:
+                // Password verified, but the directory holds no user object for this UPN —
+                // typically an AD account whose userPrincipalName attribute is unset, which
+                // AD still binds via the implicit samAccountName@domain form. A distinct
+                // audit reason keeps this apart from a wrong password; without it the
+                // operator sees only a generic denial and no way to tell the two apart.
+                await _audit.LogAsync(AuditActions.LoginFailed, "User", existing?.Id,
+                    AuditDetails.Json(("username", SafeUsernameForAudit(request.Username)),
+                                      ("reason", "ldap_user_object_not_found"),
+                                      ("source", AuthSourceLdap)), ct);
+                ApiMetrics.AuthLoginAttempts.Add(1,
+                    new KeyValuePair<string, object?>("result", "failure"),
+                    new KeyValuePair<string, object?>("reason", "ldap_user_object_not_found"));
+                return Unauthorized(new { message = "Invalid credentials" });
             default:
                 // Local password users were already short-circuited before LDAP. Reaching
                 // this branch means an external login cannot establish authoritative
                 // all-DC authorization state; fail with 503 rather than turning ambiguity
                 // into either a local-password fallback or a misleading credential denial.
+                // Audited like every other refusal: a login that fails without any audit
+                // trail is undiagnosable from the operator's side (lab 2026-08-01).
+                await _audit.LogAsync(AuditActions.LoginFailed, "User", existing?.Id,
+                    AuditDetails.Json(("username", SafeUsernameForAudit(request.Username)),
+                                      ("reason", ldap.UnavailableReason ?? "directory_unavailable"),
+                                      ("source", AuthSourceLdap)), ct);
                 ApiMetrics.AuthLoginAttempts.Add(1,
                     new KeyValuePair<string, object?>("result", "failure"),
                     new KeyValuePair<string, object?>("reason", ldap.UnavailableReason ?? "unavailable"));
