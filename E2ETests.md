@@ -4114,7 +4114,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ## Teil 77: KI-Workflow-Assistent + Streaming (Erklären + Bearbeiten)
 
-> Voraussetzung: `Llm:Enabled=true` + erreichbarer LLM-Endpoint. Hermetisch in `e2e/ai-assistant.spec.ts` abgedeckt (alle APIs gemockt via `page.route`): Panel öffnen, fragen, Proposal-Apply-Gating, Stale-Schutz, SSE-End-State (77.1–77.3). Echtes Token-Chunking + Antwort-Qualität sind backend-/modellabhängig und nur manuell prüfbar. Tests 77.5 (benannte Threads) und 77.7 (Markdown-Export) sind ebenfalls hermetisch testbar (kein LLM nötig); 77.6/77.8/77.9 setzen LocalStorage-Persistenz, Audit-Schreibzugriff bzw. einen echten Tool-Calling-LLM voraus. `chat` + `generate-script` antworten als SSE (`text/event-stream`).
+> Voraussetzung: `Llm:Enabled=true` + erreichbarer LLM-Endpoint. Hermetisch in `e2e/ai-assistant.spec.ts` abgedeckt (alle APIs gemockt via `page.route`): Panel öffnen, fragen, Proposal-Apply-Gating, Stale-Schutz, SSE-End-State (77.1–77.3) sowie das Chat-vs-Properties-Verhalten des rechten Panels (77.10). Echtes Token-Chunking + Antwort-Qualität sind backend-/modellabhängig und nur manuell prüfbar. Tests 77.5 (benannte Threads) und 77.7 (Markdown-Export) sind ebenfalls hermetisch testbar (kein LLM nötig); 77.6/77.8/77.9 setzen LocalStorage-Persistenz, Audit-Schreibzugriff bzw. einen echten Tool-Calling-LLM voraus. `chat` + `generate-script` antworten als SSE (`text/event-stream`).
 
 ### Test 77.1 — Panel öffnen & Erklärung streamt
 
@@ -4222,6 +4222,18 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 - [ ] `tool_result`-Event → die Anzeige wechselt zu „checked".
 - [ ] Ist Tool-Calling am aktiven Profil aus (Default), wird die Schleife nicht ausgeführt (keine `tool_call`/`tool_result`-Events).
 - [ ] Umschalten auf ein Profil **ohne** Tool-Calling schaltet die Schleife ab, ohne dass sonst etwas geändert werden muss — die Fähigkeit hängt am Modell, nicht an der Installation.
+
+---
+
+### Test 77.10 — Rechtes Panel: Chat vs. Properties
+
+**Schritte:** Node anklicken (Properties öffnen) → „KI-Assistent" öffnen → im Canvas erneut auf einen Node klicken → Assistent erneut öffnen.
+
+**Prüfpunkte:**
+- [ ] Der Assistent überlagert die Node-/Edge-Properties (beide teilen sich den rechten Slot).
+- [ ] Ein Klick auf einen Node **schließt** den Assistenten und zeigt wieder dessen Properties — auch wenn der Node bereits selektiert war.
+- [ ] Gleiches gilt für Edge-Klick, Drop einer neuen Activity, Suche (Ctrl+F) und Tastatur-Navigation.
+- [ ] Eine **Mehrfachauswahl** (Shift/Strg-Klick auf einen weiteren Node) lässt den Assistenten offen — sie ist sein „Auswahl (N)"-Kontext.
 
 ---
 
@@ -4485,7 +4497,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 [ ] Teil 74: Workflow-Snippets / NodeLibrary (74.1)
 [ ] Teil 75: Quick-Interaktionen im Designer (75.1 — 75.4)
 [ ] Teil 76: Admin Settings UI — SettingsPage Sektionen (76.1 — 76.5)
-[ ] Teil 77: KI-Workflow-Assistent + Streaming (77.1 — 77.9)
+[ ] Teil 77: KI-Workflow-Assistent + Streaming (77.1 — 77.10)
 [ ] Teil 78: Alerting (78.1 — 78.8)
 [ ] Teil 79: Toolbar-Layout-Umschalter (79.1 — 79.4)
 [ ] Teil 80: Globaler AI-Chat (80.1 — 80.9)

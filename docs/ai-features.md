@@ -16,7 +16,10 @@ NodePilot integriert einen LLM für drei No-Code-Helfer:
    (Layout/Secrets/Felder bleiben erhalten). Die Proposal-Karte zeigt ein strukturiertes
    Changelog, selektives Übernehmen, Verfeinern und Rückgängig/Tidy. Chat-UX: benannte
    Threads je Workflow, reload-persistenter Verlauf, Markdown-Export und AI-Aktivitäts-
-   Ansicht (`GET /api/ai/chat/activity/{workflowId}`, Admin/Op, Folder-RBAC).
+   Ansicht (`GET /api/ai/chat/activity/{workflowId}`, Admin/Op, Folder-RBAC). Panel und
+   Node-/Edge-Properties teilen sich den rechten Slot: der Chat überlagert die Properties,
+   jede Einzelselektion im Canvas (Klick, Drop, Suche, Tastatur-Navigation) gibt den Slot
+   zurück; eine Mehrfachauswahl lässt den Chat offen — sie ist sein „Auswahl (N)"-Kontext.
 
 Die KI-Features sind **opt-in** und Default-aus: `appsettings.json` liefert `Llm:Enabled=false`
 aus (ein default-aktiver LLM-Egress wäre ein authentifizierter Ausgangspfad, den ein Operator

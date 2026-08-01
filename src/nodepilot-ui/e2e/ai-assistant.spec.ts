@@ -112,6 +112,24 @@ test.describe('KI-Workflow-Assistent', () => {
     await expect(panel.getByText(/applied/i)).toBeVisible();
   });
 
+  test('clicking a node hands the right panel back to the properties', async ({ page }) => {
+    await mockChat(page, false);
+    await openEditor(page);
+
+    await page.getByTestId('toggle-ai-assistant').click();
+    const panel = page.getByRole('complementary', { name: /AI workflow assistant/i });
+    await expect(panel).toBeVisible();
+
+    // Chat and properties share the right slot — selecting on the canvas wins it back.
+    await page.locator('.react-flow__node[data-id="step-b"]').click({ position: { x: 15, y: 15 } });
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByText(/log message/i).first()).toBeVisible();
+
+    // …and reopening the assistant overlays the properties again.
+    await page.getByTestId('toggle-ai-assistant').click();
+    await expect(panel).toBeVisible();
+  });
+
   test('viewer can ask but cannot apply a proposal', async ({ page }) => {
     await page.route('**/api/auth/me', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...MOCK_USER, role: 'Viewer' }) }),

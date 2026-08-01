@@ -523,6 +523,21 @@ function WorkflowEditorInner() {
     setNodes([...def.nodes].sort((a) => (a.type === 'group' ? -1 : 1)));
     setEdges(def.edges);
   }, [commitHistory, markDirty, setNodes, setEdges]);
+  // Das rechte Panel ist geteilte Fläche: der KI-Chat legt sich über die Node-/Edge-Properties.
+  // Sobald auf der Canvas etwas selektiert wird, will der User die Properties zurück — der Chat
+  // weicht. Deckt alle Selektions-Wege ab (Klick, Marquee mit Einzeltreffer, Drop, Suche,
+  // Tastatur-Navigation, Kontextmenü); der Klick auf einen *bereits* selektierten Node ändert
+  // `selected` nicht und wird deshalb separat in `onNodeClick` gefangen.
+  useEffect(() => {
+    if (selected) setAiChatOpen(false);
+  }, [selected]);
+  // Klick auf einen bereits selektierten Node feuert kein onSelectionChange — hier direkt
+  // schließen. Multi-Select-Klicks (Shift/Ctrl/Meta) bauen nur die Auswahl auf und lassen den
+  // Chat stehen: er zeigt die Mehrfachauswahl als Kontext-Chip.
+  const onNodeClick = useCallback((e: React.MouseEvent) => {
+    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+    setAiChatOpen(false);
+  }, []);
   // Aktuelle Canvas-Selektion (Labels) für das „Auswahl"-Scoping im KI-Chat.
   const aiSelection = useMemo(() => ({
     nodeLabels: nodes.filter((n) => n.selected).map((n) => (n.data?.label as string) || n.id),
@@ -1274,6 +1289,7 @@ function WorkflowEditorInner() {
               setSelected({ type: 'node', id: newNode.id });
             }}
             onSelectionChange={onSelectionChange}
+            onNodeClick={onNodeClick}
             onPaneClick={() => setSelected(null)}
             onEdgeClick={(_event, edge) => setSelected({ type: 'edge', id: edge.id })}
             onNodeDragStart={() => commitHistory('Move nodes')}
