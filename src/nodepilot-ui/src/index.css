@@ -1593,6 +1593,18 @@ html.dark .np-shell .np-card {
     0 14px 40px -18px rgba(0, 0, 0, 0.75);
 }
 
+/* Dialog panel (ModalShell) — the same dark lift as a card, for the same reason. A dialog is a
+   raised surface, and the recessed `.input-field` needs something to sink INTO: on the near-black
+   `surface-lowest` base the field painted itself the panel's own colour and its boundaries
+   disappeared (Custom-Nodes dialog). The dialogs that looked right (Globals, Users) only escaped
+   it by carrying their own full outline instead of the shared input style. Light keeps the white
+   panel — inputs are `surface-high` there and read fine. */
+html.dark .np-shell .np-modal-panel {
+  background-color: var(--color-surface-container);
+  background-image:
+    linear-gradient(157deg, color-mix(in srgb, var(--color-surface-high) 55%, transparent) 0%, transparent 58%);
+}
+
 /* Shared-Folders box: a lighter, more uniform card. The default np-card gradient fades to
    the (darker) container base over the lower ~42%, which reads heavy on this prominent,
    resizable panel. Lift the base to the highest surface token and lay a soft full-height

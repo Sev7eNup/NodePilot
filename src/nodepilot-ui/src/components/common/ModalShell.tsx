@@ -43,7 +43,7 @@ export function ModalShell({
             Tighter horizontal/top spacing on phones so the dialog isn't cramped. */}
         <div className="flex min-h-full justify-center items-start px-3 sm:px-4 pb-8 sm:pb-12 pt-[6vh] sm:pt-[10vh]">
           <div
-            className={panelClassName ?? `bg-surface-lowest rounded-xl shadow-2xl ring-1 ring-outline-variant/20 p-4 sm:p-6 w-full ${maxWidth} shrink-0`}
+            className={panelClassName ?? `np-modal-panel bg-surface-lowest rounded-xl shadow-2xl ring-1 ring-outline-variant/20 p-4 sm:p-6 w-full ${maxWidth} shrink-0`}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => e.stopPropagation()}
             role="presentation"
