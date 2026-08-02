@@ -197,17 +197,34 @@ Enable-PSRemoting -Force
 winrm quickconfig -transport:https   # für Remote:RequireWinRmSsl=true
 ```
 
-## Artefakt bauen
+## Artefakt beziehen
 
-Auf einem Build-Host mit .NET 10 SDK + Node.js LTS:
+Zwei Wege — der Installer verlangt in beiden Fällen ein signiertes Artefakt und den Thumbprint
+des Publishers, dem vertraut werden soll.
+
+**Fertiges Release herunterladen.** Am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest)
+hängen `NodePilot-<version>.zip`, `.manifest.json`, `.manifest.json.p7s`, `SHA256SUMS.txt` und das
+öffentliche Signaturzertifikat `nodepilot-release-signing.cer`. Prüfsummen vergleichen, den
+Thumbprint gegen die Release-Notes abgleichen, dann das Zertifikat auf dem Zielserver nach
+`Cert:\LocalMachine\Root` importieren. Ablauf im Detail: [`docs/deployment-guide.md`](../docs/deployment-guide.md),
+Schritt 1 Option A.
+
+**Selbst bauen.** Auf einem Build-Host mit .NET 10 SDK + Node (Versionen aus `global.json` bzw.
+den `engines`-Feldern):
 
 ```powershell
 git clone <repo> NodePilot
 cd NodePilot
-$releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
-.\deploy\Build-Artifact.ps1 -Version 2026.04.23 -SigningCertificateThumbprint $releaseSigner
-# → .\out\NodePilot-2026.04.23.zip
+$releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'   # eigenes Code-Signing-Zertifikat
+.\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $releaseSigner
+# → .\out\NodePilot-<version>.zip + .manifest.json + .p7s + .SHA256SUMS.txt
 ```
+
+`-Version` ist optional und fällt auf die Produktversion aus `Directory.Build.props` zurück.
+Mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` entsteht im selben Lauf zusätzlich
+`NodePilot-Desktop-Setup-<version>.exe` unter derselben Version. Fehlen Inno Setup 6 oder die
+PostgreSQL-Binaries, wird nur dieser Teil mit einer Warnung übersprungen — das Server-Zip
+entsteht trotzdem.
 
 Den Zip auf den Zielserver kopieren.
 

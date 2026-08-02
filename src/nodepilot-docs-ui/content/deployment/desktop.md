@@ -79,7 +79,9 @@ Credential-lose Kerberos-Delegation ist im Desktop-Modus nicht vorgesehen.
 
 ## Installer-Verfügbarkeit
 
-Der Installer ist ein Build-Ziel des Repositorys. Ein signiertes Release-Artefakt muss vor der Verteilung durch den jeweiligen Release-Prozess erzeugt werden.
+`NodePilot-Desktop-Setup-<version>.exe` hängt als Asset am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest); die zugehörigen Prüfsummen stehen in `SHA256SUMS.txt`.
+
+Der Installer bleibt daneben ein Build-Ziel des Repositorys — der Abschnitt unten beschreibt, wie er selbst erzeugt wird. Eine selbst gebaute `.exe` ist **unsigniert** und wird von SmartScreen beim ersten Start angemeldet, bis sie mit einem eigenen Authenticode-Zertifikat signiert wird.
 
 ## Installer bauen
 
