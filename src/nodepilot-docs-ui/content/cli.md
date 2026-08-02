@@ -1,6 +1,17 @@
 # CLI (`np`)
 
-`np` ist das Kommandozeilenwerkzeug für Administration und Betrieb. Es wird als .NET Global Tool installiert und greift ausschließlich über die REST-API auf NodePilot zu. Ein direkter Datenbankzugriff findet nicht statt.
+`np` ist das Kommandozeilenwerkzeug für Administration und Betrieb. Es greift ausschließlich über die REST-API auf NodePilot zu; ein direkter Datenbankzugriff findet nicht statt.
+
+## Installation
+
+`np` ist **kein** .NET Global Tool — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146). Stattdessen veröffentlichen und den Ordner in den `PATH` legen:
+
+```powershell
+dotnet publish src/NodePilot.Cli -c Release -o C:\Tools\NodePilot-Cli
+$env:PATH += ';C:\Tools\NodePilot-Cli'   # dauerhaft über Systemeigenschaften → Umgebungsvariablen
+
+np auth login --server https://nodepilot.example.com
+```
 
 > **Konventionen in den Beispielen:** `<ARG>` = erforderlich, `[ARG]` = optional. `<ID-OR-NAME>` nimmt eine Workflow-GUID **oder** den Workflow-Namen (exakte Schreibweise gewinnt, sonst case-insensitive; mehrdeutige Namen → Fehler mit GUID-Hinweis). Destruktive Befehle (`delete`, `force-unlock`, `restore`, `reencrypt`, `db --write`) fragen interaktiv nach — in CI/Pipes `--yes` setzen oder stdin umleiten. `--file -` liest überall von stdin.
 

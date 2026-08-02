@@ -25,10 +25,9 @@ Der Zugriff ist ausschließlich auf dem installierten System möglich. Eingehend
 
 ### Installer beziehen
 
-Der Desktop-Installer ist derzeit ein Build-Ziel des Repositorys und kein vorgefertigter signierter Download. Für die Bereitstellung sind zwei Schritte erforderlich:
+`NodePilot-Desktop-Setup-<version>.exe` liegt als Asset am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest). Herunterladen, gegen `SHA256SUMS.txt` prüfen, ausführen — der Installer richtet Datenbank, Zertifikat und beide Dienste ein und übergibt das Setup-Token direkt an die Anmeldemaske.
 
-1. Installer mit `deploy\desktop\Build-DesktopInstaller.ps1` bauen.
-2. Erzeugte `.exe` vor der Verteilung mit Authenticode signieren.
+Alternativ selbst bauen: `deploy\desktop\Build-DesktopInstaller.ps1` benötigt zusätzlich Inno Setup 6 und die PostgreSQL-16-Binaries. Eine selbst gebaute `.exe` ist **unsigniert** und wird von SmartScreen angemeldet, bis sie mit einem eigenen Authenticode-Zertifikat signiert wird.
 
 Build-Voraussetzungen, vollständiger Befehl, Installation, Update und Deinstallation stehen unter [Desktop-App](../deployment/desktop).
 
@@ -67,8 +66,8 @@ Die Produktoberfläche leitet API-, Health- und SignalR-Aufrufe an Port 5000 wei
 
 - Windows
 - Git
-- .NET 10 SDK
-- Node.js 22.22 oder neuer
+- .NET 10 SDK — das akzeptierte SDK-Band steht in `global.json`
+- Node.js — die Mindestversion ist im `engines`-Feld der `package.json`-Dateien deklariert (react-router 8 setzt die Untergrenze); `npm` warnt bei einer älteren Version
 - PostgreSQL 16 oder neuer
 - Lokale Administratorrechte für die Installation der Voraussetzungen
 

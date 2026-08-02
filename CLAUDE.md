@@ -28,6 +28,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 - `docs/mcp-server.md` — MCP-Server inkl. Tool-Katalog + `.mcp.json`-Beispiel
 - `docs/ai-features.md` — KI-Features: Config-Keys, Modell-Empfehlungen
 - `docs/deployment-guide.md` — End-to-End-Produktions-Deployment (EN): Build → SQL-TLS → Install → First Login → Troubleshooting; lab-validiert
+- `docs/av-exclusions.md` — Antiviren-Ausschlüsse (Server + Desktop) als Übergabedokument für eine AV-Abteilung: Ordner, Prozesse, Temp-Dateimuster, Verhaltensregeln — je mit Begründung und Restrisiko
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen
@@ -52,17 +53,23 @@ Projekt-Layout unter `src/` + `tests/` — nicht hier gespiegelt, direkt nachseh
 ## Projekt starten
 
 ```powershell
-# Postgres (lokales Dev-Cluster)
+# Postgres — Cluster DIESER Maschine. Nichts im Repo legt ihn an; die allgemeine
+# Einrichtung (CREATE ROLE/DATABASE, Connection-String per Env-Var) steht in CONTRIBUTING.md.
 & 'C:\NodePilot-Postgres\pgsql\bin\pg_ctl.exe' start -D 'C:\NodePilot-Postgres\data' -l 'C:\NodePilot-Postgres\data\postgres.log' -w
 
 # Backend (Port 5000) — schlägt fehl wenn Postgres nicht läuft
-cd src\NodePilot.Api; dotnet run --urls "http://localhost:5000"
+cd src\NodePilot.Api; dotnet run
 
 # Frontend (Port 5173, Proxy auf Backend)
 cd src\nodepilot-ui; npm run dev
 ```
 
-Erster Login erstellt Admin-Account. **Immer erst `pg_ctl start`, dann `dotnet run`.**
+Port 5000 kommt aus `launchSettings.json` und ist derselbe, auf den der Vite-Proxy zeigt — `--urls`
+ist nicht nötig. **Immer erst `pg_ctl start`, dann `dotnet run`.**
+
+**Erster Login braucht das Setup-Token**, nicht nur leere DB: die API schreibt es nach
+`src\NodePilot.Api\admin-setup.token` (ContentRoot). Login-Maske zeigt beim ersten Versuch ein
+**Setup-Token**-Feld; erst damit entsteht der Admin-Account.
 
 **Für Claude:** Dev-Mode verwenden. **API-Neustarts (stop+rebuild+start) sind jederzeit ohne Rückfrage erlaubt** — DLL-Locks sind normal. Vorab PID via `Get-NetTCPConnection -LocalPort 5000` finden, dann `Stop-Process` + Rebuild + Start. `npm run dev` kaputt → `npm install`. Deploy-Skripte unter `deploy/` **niemals** ausführen.
 
@@ -258,7 +265,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 
-Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad, beide `dotnet global tool`. Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (99 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI (`np auth login`).
+Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad. Ausgeliefert werden beide per `dotnet publish` (Ordner in den `PATH` bzw. `.mcp.json` auf die `.exe` zeigen lassen); **keine** `dotnet global tool`s — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146, siehe `docs/roadmap.md`-Sperrvermerk). Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (99 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI (`np auth login`).
 
 **Jeder neue API-Endpoint braucht beide Clients.** Mechanik, Befehlsbereiche und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`, `docs/claude-reference.md`.
 

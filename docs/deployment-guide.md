@@ -6,8 +6,9 @@ first time. Every step has been validated on a domain-joined Windows Server co-i
 next to an SCCM site server, against SQL Server 2022, without an enterprise PKI
 (self-signed certificates throughout).
 
-Parameter-by-parameter reference, HA/cluster setup and the desktop installer live in
-[`deploy/README.md`](../deploy/README.md).
+Parameter-by-parameter reference and HA/cluster setup live in
+[`deploy/README.md`](../deploy/README.md); the desktop installer has its own guide in
+[`deploy/desktop/README.md`](../deploy/desktop/README.md).
 
 ## What gets installed
 
@@ -55,6 +56,12 @@ unsigned or tampered artifacts, so a code-signing certificate is part of the set
 - **A free HTTPS port.** Default is 443. On a host where IIS/http.sys owns 80/443 (SCCM,
   WSUS, …), use `-HttpsPort 8443 -HttpPort 0` instead.
 
+- **Antivirus exclusions agreed with your security team.** The service starts PowerShell
+  child processes and executes generated scripts out of `%TEMP%`; without exceptions,
+  endpoint protection blocks individual steps or the install-directory swap during an
+  upgrade. Hand-off list with per-entry rationale and residual risk:
+  [av-exclusions.md](av-exclusions.md) (German).
+
 ### The three certificates
 
 Without an enterprise CA you create all three self-signed; with a CA, issue them there and
@@ -66,7 +73,44 @@ skip the `Root` imports.
 | **Kestrel HTTPS** | NodePilot server | `LocalMachine\My` + (self-signed) `LocalMachine\Root` there and on browser clients | CN/SAN = public hostname |
 | **SQL Server TLS** | SQL server | `LocalMachine\My` on the SQL server + (self-signed) `LocalMachine\Root` on the NodePilot server | RSA with `KeySpec=KeyExchange`, CN/SAN = SQL host FQDN |
 
-## Step 1 — Build the signed artifact (build host)
+## Step 1 — Get the signed artifact
+
+You can either **download** the published one or **build your own**. The installer does not care
+which — it cares that the artifact is signed and that you tell it which publisher to trust.
+
+### Option A — download the published release
+
+Take these from the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest):
+
+- `NodePilot-<version>.zip`
+- `NodePilot-<version>.zip.manifest.json`
+- `NodePilot-<version>.zip.manifest.json.p7s`
+- `SHA256SUMS.txt`
+- `nodepilot-release-signing.cer` — the public signing certificate
+
+Verify the download, then trust the publisher on the target server:
+
+```powershell
+# 1. Checksums (compare against SHA256SUMS.txt)
+Get-FileHash .\NodePilot-1.0.1.zip -Algorithm SHA256 | Format-List
+
+# 2. The certificate you are about to trust is the one named in the release notes
+(Get-PfxCertificate .\nodepilot-release-signing.cer).Thumbprint
+
+# 3. Import it so the signature chain validates on this machine (elevated)
+Import-Certificate -FilePath .\nodepilot-release-signing.cer -CertStoreLocation Cert:\LocalMachine\Root
+```
+
+The thumbprint printed in step 2 is what you pass as `-TrustedArtifactSignerThumbprint`. **Compare
+it against the value published in the release notes before importing** — importing a certificate
+into `LocalMachine\Root` makes that publisher trusted for the whole machine.
+
+> The published artifact is signed with a **self-signed** publisher certificate, not one issued by
+> a public CA. That is why the thumbprint is published and why you verify it out-of-band. If your
+> organisation will not trust a self-signed publisher, use Option B and sign with your own
+> enterprise code-signing certificate.
+
+### Option B — build it yourself (build host)
 
 Create the signing certificate once and keep it:
 
@@ -76,18 +120,31 @@ $signer = New-SelfSignedCertificate -Type CodeSigningCert -Subject 'CN=NodePilot
 Export-Certificate -Cert $signer -FilePath .\nodepilot-signer.cer
 ```
 
-Build (needs .NET 10 SDK + Node.js LTS):
+Build (needs the .NET 10 SDK and Node — versions are pinned in `global.json` and the `engines`
+fields). `-Version` defaults to the product version in `Directory.Build.props`, so pass it only
+when you want something else:
 
 ```powershell
-.\deploy\Build-Artifact.ps1 -Version 1.0.0 -SigningCertificateThumbprint $signer.Thumbprint
+.\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $signer.Thumbprint
+
+# Same run, plus the desktop installer (needs Inno Setup 6 and a PostgreSQL 16 "pgsql" folder;
+# without them the desktop step is skipped with a warning and the server zip is still produced).
+# -DesktopSigningCertificateThumbprint Authenticode-signs the .exe as part of the build - signing
+# it afterwards would invalidate its SHA256SUMS entry.
+.\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $signer.Thumbprint `
+    -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql' `
+    -DesktopSigningCertificateThumbprint $signer.Thumbprint
 ```
 
 Copy **four files** to the target server (e.g. `C:\Temp`):
 
-- `out\NodePilot-1.0.0.zip`
-- `out\NodePilot-1.0.0.zip.manifest.json`
-- `out\NodePilot-1.0.0.zip.manifest.json.p7s`
+- `out\NodePilot-1.0.1.zip`
+- `out\NodePilot-1.0.1.zip.manifest.json`
+- `out\NodePilot-1.0.1.zip.manifest.json.p7s`
 - `nodepilot-signer.cer`
+
+`out\NodePilot-1.0.1.SHA256SUMS.txt` covers everything the run produced, if you want to verify the
+transfer.
 
 plus the `deploy\` folder itself (`Install-NodePilot.ps1` + `ArtifactSecurity.ps1`).
 

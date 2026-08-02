@@ -12,7 +12,9 @@ param(
     [string]$HaproxyTemplatePath,
     [string]$AppSettingsTemplatePath,
     [string]$InstallerPath,
-    [string]$SsoDocumentationPath
+    [string]$SsoDocumentationPath,
+    [string]$BuildScriptPath,
+    [string]$BuildPropsPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +35,12 @@ if ([string]::IsNullOrWhiteSpace($InstallerPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($SsoDocumentationPath)) {
     $SsoDocumentationPath = Join-Path $scriptDirectory '..\docs\ldap-windows-sso.md'
+}
+if ([string]::IsNullOrWhiteSpace($BuildScriptPath)) {
+    $BuildScriptPath = Join-Path $scriptDirectory 'Build-Artifact.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($BuildPropsPath)) {
+    $BuildPropsPath = Join-Path $scriptDirectory '..\Directory.Build.props'
 }
 
 function Assert-TextMatches {
@@ -59,7 +67,7 @@ function Assert-TextDoesNotMatch {
     }
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath)) {
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
     }
@@ -150,6 +158,66 @@ Assert-TextMatches -Name 'installer keeps the Postgres secret in the service-sco
     -Text $installer -Pattern 'ConnectionStrings__Postgres=\$postgresServiceConnStr'
 Assert-TextMatches -Name 'installer protects the service registry key before writing the Postgres secret' `
     -Text $installer -Pattern '(?s)Set-ServiceRegistryAclForSecrets\s+-Path\s+\$envRegPath.*ConnectionStrings__Postgres=\$postgresServiceConnStr'
+
+# --- release build contracts ------------------------------------------------------------------
+# The release drop must stay reproducible from one script and one version number. These guard the
+# three properties that silently rot: the version source, the SPA being built twice, and the
+# desktop step being allowed to abort a server build.
+$buildScript = Get-Content -LiteralPath $BuildScriptPath -Raw
+$requiredBuildContracts = [ordered]@{
+    'build script accepts the desktop-installer switch' = '\[switch\]\$IncludeDesktopInstaller'
+    'build script accepts the Postgres binaries path' = '\[string\]\$PgBinariesPath'
+    'build script accepts an Inno Setup override' = '\[string\]\$IsccPath'
+    'version defaults to Directory.Build.props instead of a timestamp' = "Directory\.Build\.props"
+    'version is parsed from the <Version> element' = "'<Version>"
+    'the desktop build inherits the same version' = '(?s)\$desktopArgs\s*=\s*@\{[^}]*Version\s*=\s*\$Version'
+    'the SPA is not rebuilt for the desktop payload' = '(?s)\$desktopArgs\s*=\s*@\{[^}]*SkipSpaBuild\s*=\s*\$true'
+    'the produced installer is copied next to the server zip' = 'NodePilot-Desktop-Setup-\$Version\.exe'
+    'a checksum file is written' = 'SHA256SUMS'
+    'checksums are SHA256' = "Get-FileHash[^`r`n]*-Algorithm SHA256"
+    'missing desktop prerequisites warn instead of failing' = '(?s)\$desktopSkipReasons\.Count -eq 0.*?else\s*\{\s*Write-Warning'
+    'the installer can be Authenticode-signed by the build' = '\[string\]\$DesktopSigningCertificateThumbprint'
+    'signing is verified rather than trusted to signtool exit code' = 'Get-AuthenticodeSignature'
+}
+
+# Signing rewrites the .exe, so it must happen BEFORE the checksums are computed. Getting this
+# backwards produces a SHA256SUMS that declares the shipped installer corrupt - and it is exactly
+# the order the script had while signing was still a manual follow-up step.
+# Anchored on code, not on prose: the phrase "Authenticode-sign" also appears in the .PARAMETER
+# help at the top of the script, and matching that would make this check pass no matter where the
+# signing step actually sits.
+$signIndex = $buildScript.IndexOf('$signTool.FullName sign')
+$checksumIndex = $buildScript.IndexOf('$checksumLines')
+if ($signIndex -lt 0 -or $checksumIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the signing and checksum steps in the build script.'
+}
+if ($signIndex -gt $checksumIndex) {
+    throw 'Deployment template check failed: the installer is signed after the checksums are written, which invalidates them.'
+}
+
+foreach ($contract in $requiredBuildContracts.GetEnumerator()) {
+    Assert-TextMatches -Name $contract.Key -Text $buildScript -Pattern $contract.Value
+}
+
+# A missing Inno Setup or Postgres distribution must never abort the server artifact, so the
+# pre-flight block that decides this may not contain a throw.
+$desktopPreflight = [regex]::Match($buildScript, '(?s)if \(\$IncludeDesktopInstaller\) \{.*?\r?\n\}')
+if (-not $desktopPreflight.Success) {
+    throw 'Deployment template check failed: could not locate the desktop pre-flight block in the build script.'
+}
+Assert-TextDoesNotMatch -Name 'desktop pre-flight must not throw on missing prerequisites' `
+    -Text $desktopPreflight.Value -Pattern '\bthrow\b'
+
+# The version regex in the build script must actually match the props file it reads. A renamed or
+# conditioned <Version> element would otherwise only surface when someone cuts a release.
+$buildProps = Get-Content -LiteralPath $BuildPropsPath -Raw
+$versionMatch = [regex]::Match($buildProps, '<Version>\s*([^<\s]+)\s*</Version>')
+if (-not $versionMatch.Success) {
+    throw "Deployment template check failed: no <Version> element in '$BuildPropsPath' - Build-Artifact.ps1 could not derive a default version."
+}
+if ($versionMatch.Groups[1].Value -notmatch '^\d+\.\d+\.\d+') {
+    throw "Deployment template check failed: <Version> '$($versionMatch.Groups[1].Value)' is not a three-part product version."
+}
 
 $ssoDocumentation = Get-Content -LiteralPath $SsoDocumentationPath -Raw
 Assert-TextMatches -Name 'SPN examples use duplicate-safe registration' `

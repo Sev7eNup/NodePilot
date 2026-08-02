@@ -132,24 +132,36 @@ Get-ChildItem Cert:\LocalMachine\My |
 
 Der Zertifikatsname muss zum öffentlichen Hostnamen passen.
 
-## 4. Produktionsartefakt bauen
+## 4. Produktionsartefakt beziehen
 
-Im Repository auf dem Build-Host:
+Entweder das veröffentlichte Release herunterladen oder selbst bauen — der Installer verlangt in
+beiden Fällen ein signiertes Artefakt und den Thumbprint des Publishers.
+
+**Variante A — Release herunterladen.** Am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest)
+hängen das Zip, `manifest.json`, `.p7s`, `SHA256SUMS.txt` und das öffentliche Signaturzertifikat.
+Prüfsummen vergleichen, Thumbprint gegen die Release-Notes abgleichen, Zertifikat auf dem
+Zielserver nach `Cert:\LocalMachine\Root` importieren.
+
+**Variante B — selbst bauen.** Im Repository auf dem Build-Host:
 
 ```powershell
 $releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
-.\deploy\Build-Artifact.ps1 `
-  -Version 2026.07.27 `
-  -SigningCertificateThumbprint $releaseSigner
+.\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $releaseSigner
 ```
+
+`-Version` ist optional und fällt auf die Produktversion aus `Directory.Build.props` zurück.
 
 Ergebnis:
 
 ```text
-out\NodePilot-2026.07.27.zip
-out\NodePilot-2026.07.27.zip.manifest.json
-out\NodePilot-2026.07.27.zip.manifest.json.p7s
+out\NodePilot-1.0.1.zip
+out\NodePilot-1.0.1.zip.manifest.json
+out\NodePilot-1.0.1.zip.manifest.json.p7s
+out\NodePilot-1.0.1.SHA256SUMS.txt
 ```
+
+Mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` entsteht im selben Lauf zusätzlich
+`NodePilot-Desktop-Setup-1.0.1.exe` unter derselben Version.
 
 Installer und Updater prüfen Signatur, Zertifikatskette, Dateiname, Länge und SHA-256-Hash vor jeder Änderung.
 

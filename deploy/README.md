@@ -54,6 +54,7 @@ vermessene Profil. Der Schalter ist restart-pflichtig. Formeln, Grenzen und Mess
 - PowerShell ≥ 5.1 (Windows PowerShell) oder 7+ (empfohlen)
 - **ASP.NET Core Runtime 10 (x64)** — Download unter <https://dotnet.microsoft.com/download>. Die reine Runtime genügt (Kestrel hostet selbst); das **Hosting Bundle nur, wenn bewusst IIS im Spiel ist** — es verdrahtet IIS und startet W3SVC neu, auf geteilten Hosts (SCCM/WSUS) unerwünscht
 - Zielserver kann den SQL Server auf Port 1433 erreichen
+- Antiviren-Ausschlüsse sind mit der Security-Abteilung abgestimmt — Liste in [`docs/av-exclusions.md`](../docs/av-exclusions.md)
 
 ### 2. Service-Identität
 
@@ -196,17 +197,34 @@ Enable-PSRemoting -Force
 winrm quickconfig -transport:https   # für Remote:RequireWinRmSsl=true
 ```
 
-## Artefakt bauen
+## Artefakt beziehen
 
-Auf einem Build-Host mit .NET 10 SDK + Node.js LTS:
+Zwei Wege — der Installer verlangt in beiden Fällen ein signiertes Artefakt und den Thumbprint
+des Publishers, dem vertraut werden soll.
+
+**Fertiges Release herunterladen.** Am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest)
+hängen `NodePilot-<version>.zip`, `.manifest.json`, `.manifest.json.p7s`, `SHA256SUMS.txt` und das
+öffentliche Signaturzertifikat `nodepilot-release-signing.cer`. Prüfsummen vergleichen, den
+Thumbprint gegen die Release-Notes abgleichen, dann das Zertifikat auf dem Zielserver nach
+`Cert:\LocalMachine\Root` importieren. Ablauf im Detail: [`docs/deployment-guide.md`](../docs/deployment-guide.md),
+Schritt 1 Option A.
+
+**Selbst bauen.** Auf einem Build-Host mit .NET 10 SDK + Node (Versionen aus `global.json` bzw.
+den `engines`-Feldern):
 
 ```powershell
 git clone <repo> NodePilot
 cd NodePilot
-$releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'
-.\deploy\Build-Artifact.ps1 -Version 2026.04.23 -SigningCertificateThumbprint $releaseSigner
-# → .\out\NodePilot-2026.04.23.zip
+$releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'   # eigenes Code-Signing-Zertifikat
+.\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $releaseSigner
+# → .\out\NodePilot-<version>.zip + .manifest.json + .p7s + .SHA256SUMS.txt
 ```
+
+`-Version` ist optional und fällt auf die Produktversion aus `Directory.Build.props` zurück.
+Mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` entsteht im selben Lauf zusätzlich
+`NodePilot-Desktop-Setup-<version>.exe` unter derselben Version. Fehlen Inno Setup 6 oder die
+PostgreSQL-Binaries, wird nur dieser Teil mit einer Warnung übersprungen — das Server-Zip
+entsteht trotzdem.
 
 Den Zip auf den Zielserver kopieren.
 
@@ -294,7 +312,7 @@ Nach erfolgreichem Install steht in der Konsole:
 | Parameter | Pflicht | Default |
 |---|---|---|
 | `-ArtifactPath` | ✓ | |
-| `-TrustedArtifactSignerThumbprint` | ✓ | gepinnter Enterprise Code-Signing-Publisher |
+| `-TrustedArtifactSignerThumbprint` | ✓ | — (**keinen** Default; es gibt keinen eingebauten gepinnten Publisher, der Thumbprint muss immer übergeben werden) |
 | `-ServiceAccount` | ✓ im gMSA-Pfad (entfällt bei `-UseLocalSystem`) | |
 | `-UseLocalSystem` | Alternative zu `-ServiceAccount` | off |
 | `-CertThumbprint` | ✓ | |
@@ -439,3 +457,4 @@ Restore läuft transaktional in Abhängigkeitsreihenfolge, validiert Referenzen 
 - Keine Backups der SQL-Datenbank — separat per SQL-Agent/Ola Hallengren/etc. einrichten.
 - Keine Log-Forwarding/Monitoring-Integration — Logs landen unter `C:\ProgramData\NodePilot\logs`, Abholung per Winlogbeat/OTel-Collector/etc. nach Wahl.
 - Keine Cross-Provider-Daten-Migration zwischen SQL Server und Postgres. Falls benötigt: Export/Import via `GET /api/workflows/export` → `POST /api/workflows/import`.
+- Keine Antiviren-Ausschlüsse. Der Dienst startet PowerShell-Kindprozesse und führt generierte Skripte aus `%TEMP%` aus — ohne passende Ausnahmen blockiert Endpoint-Security einzelne Schritte oder den Install-Dir-Tausch beim Update. Übergabefertige Liste inkl. Restrisiken: [`docs/av-exclusions.md`](../docs/av-exclusions.md).

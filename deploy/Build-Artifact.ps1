@@ -1,13 +1,20 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-    Builds a production-ready NodePilot artifact zip (backend + SPA + template).
+    Builds a production-ready NodePilot artifact zip (backend + SPA + template), and
+    optionally the desktop installer alongside it.
 .DESCRIPTION
     Runs "dotnet publish" on NodePilot.Api, builds the React SPA, merges wwwroot,
     copies the appsettings.Production.json.template, and packs everything into
     NodePilot-<version>.zip under .\out\.
+
+    With -IncludeDesktopInstaller it then chains deploy\desktop\Build-DesktopInstaller.ps1
+    and drops NodePilot-Desktop-Setup-<version>.exe into the same .\out\ directory, so one
+    release build produces both shipping targets under ONE version. A SHA256SUMS file over
+    everything produced is written either way.
 .PARAMETER Version
-    Version tag baked into the zip filename. Defaults to yyyyMMdd-HHmmss.
+    Version tag baked into the artifact filenames, and shared with the desktop installer.
+    Defaults to the <Version> from Directory.Build.props.
 .PARAMETER Configuration
     dotnet build configuration. Defaults to Release.
 .PARAMETER RuntimeIdentifier
@@ -23,21 +30,44 @@
     Required unless AllowUnsignedDevelopmentArtifact is explicitly selected.
 .PARAMETER AllowUnsignedDevelopmentArtifact
     Produces a local-only ZIP that production installers will reject. Never use for deployment.
+.PARAMETER IncludeDesktopInstaller
+    Also build the Electron desktop installer and place it next to the server zip in .\out\.
+    Needs Inno Setup 6 and a PostgreSQL binaries folder; when either is missing the desktop
+    step is SKIPPED with a warning and the server zip is still produced.
+.PARAMETER PgBinariesPath
+    PostgreSQL 16 "pgsql" directory (from the EDB zip distribution), passed through to the
+    desktop installer build. Only read when -IncludeDesktopInstaller is set.
+.PARAMETER IsccPath
+    Inno Setup 6 compiler, passed through to the desktop installer build. Only read when
+    -IncludeDesktopInstaller is set; defaults to the desktop script's own default.
+.PARAMETER DesktopSigningCertificateThumbprint
+    Authenticode-sign the desktop installer with this certificate, before the checksums are
+    written. Without it the installer is produced unsigned and SmartScreen warns on first launch.
+    Signing afterwards by hand invalidates the SHA256SUMS entry for the .exe, which is why this
+    is a build parameter rather than a documented follow-up step.
 .EXAMPLE
     .\deploy\Build-Artifact.ps1
 .EXAMPLE
     .\deploy\Build-Artifact.ps1 -Version 2026.04.23 -Configuration Release
+.EXAMPLE
+    # Full release drop: server zip + desktop installer + checksums, one version.
+    .\deploy\Build-Artifact.ps1 -Version 1.0.1 -SigningCertificateThumbprint $tp `
+        -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql'
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Signed')]
 param(
-    [string]$Version = (Get-Date -Format "yyyyMMdd-HHmmss"),
+    [string]$Version,
     [string]$Configuration = "Release",
     [string]$RuntimeIdentifier = "win-x64",
     [switch]$SkipFrontend,
     [switch]$SkipNpmCi,
     [Parameter(Mandatory, ParameterSetName = 'Signed')][string]$SigningCertificateThumbprint,
-    [Parameter(Mandatory, ParameterSetName = 'UnsignedDevelopment')][switch]$AllowUnsignedDevelopmentArtifact
+    [Parameter(Mandatory, ParameterSetName = 'UnsignedDevelopment')][switch]$AllowUnsignedDevelopmentArtifact,
+    [switch]$IncludeDesktopInstaller,
+    [string]$PgBinariesPath,
+    [string]$IsccPath,
+    [string]$DesktopSigningCertificateThumbprint
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,8 +84,24 @@ $OutDir = Join-Path $RepoRoot 'out'
 $StageDir = Join-Path $OutDir 'artifact'
 $TemplateSrc = Join-Path $PSScriptRoot 'templates\appsettings.Production.json.template'
 $DeploymentTemplateTest = Join-Path $PSScriptRoot 'Test-DeploymentTemplates.ps1'
-$ZipPath = Join-Path $OutDir ("NodePilot-$Version.zip")
 $ArtifactSecurityScript = Join-Path $PSScriptRoot 'ArtifactSecurity.ps1'
+$DesktopBuildScript = Join-Path $PSScriptRoot 'desktop\Build-DesktopInstaller.ps1'
+$BuildPropsPath = Join-Path $RepoRoot 'Directory.Build.props'
+
+# Directory.Build.props is the single source of the product version (it also stamps the
+# assemblies). Deriving the default from it keeps the server zip, the desktop installer and
+# the compiled binaries on ONE number instead of the timestamp-vs-hand-typed drift that
+# produced NodePilot-1.0.0-lab3.zip next to NodePilot-Desktop-Setup-1.0.3.exe.
+if (-not $Version) {
+    if (-not (Test-Path $BuildPropsPath)) { throw "Cannot derive -Version: $BuildPropsPath not found. Pass -Version explicitly." }
+    $versionMatch = [regex]::Match((Get-Content $BuildPropsPath -Raw), '<Version>\s*([^<\s]+)\s*</Version>')
+    if (-not $versionMatch.Success) { throw "Cannot derive -Version: no <Version> element in $BuildPropsPath. Pass -Version explicitly." }
+    $Version = $versionMatch.Groups[1].Value
+    Write-Host "[build] Version $Version (from Directory.Build.props)" -ForegroundColor DarkGray
+}
+
+$ZipPath = Join-Path $OutDir ("NodePilot-$Version.zip")
+$ChecksumPath = Join-Path $OutDir ("NodePilot-$Version.SHA256SUMS.txt")
 
 function Assert-RequiredTool {
     param([string]$Name, [string]$HowToInstall)
@@ -80,6 +126,43 @@ if (-not (Test-Path $TemplateSrc)) { throw "Template missing: $TemplateSrc" }
 if (-not (Test-Path $DeploymentTemplateTest)) { throw "Deployment template test missing: $DeploymentTemplateTest" }
 if (-not (Test-Path $ArtifactSecurityScript)) { throw "Artifact security helper missing: $ArtifactSecurityScript" }
 . $ArtifactSecurityScript
+
+# --- desktop installer pre-flight ------------------------------------------------------------
+# Decided BEFORE the server build so a missing Inno Setup surfaces in second one rather than
+# after a ten-minute publish. Missing prerequisites downgrade to a skip, never to a failure:
+# the server zip must stay buildable on a machine that has no Inno Setup and no Postgres
+# distribution lying around.
+$buildDesktop = $false
+$desktopSkipReasons = @()
+if ($IncludeDesktopInstaller) {
+    if (-not (Test-Path $DesktopBuildScript)) {
+        $desktopSkipReasons += "Desktop build script missing: $DesktopBuildScript"
+    }
+    if (-not $PgBinariesPath) {
+        $desktopSkipReasons += 'No -PgBinariesPath given. Point it at the "pgsql" folder of a PostgreSQL 16 zip distribution (https://www.enterprisedb.com/download-postgresql-binaries).'
+    } elseif (-not (Test-Path -LiteralPath (Join-Path $PgBinariesPath 'bin\postgres.exe'))) {
+        $desktopSkipReasons += "-PgBinariesPath does not look like a PostgreSQL install (no bin\postgres.exe): $PgBinariesPath"
+    }
+    # Same resolver the desktop build uses, so this pre-flight cannot disagree with it about
+    # where ISCC.exe lives (notably the per-user install location).
+    . (Join-Path $PSScriptRoot 'desktop\Resolve-IsccPath.ps1')
+    $resolvedIscc = Resolve-NodePilotIsccPath -Explicit $IsccPath
+    if (-not $resolvedIscc) {
+        $desktopSkipReasons += ("Inno Setup 6 compiler (ISCC.exe) not found. Install it from " +
+            "https://jrsoftware.org/isdl.php or pass -IsccPath. Probed: " + ((Get-NodePilotIsccCandidates) -join '; '))
+    } else {
+        # Pass the resolved path on explicitly so the desktop build does not have to probe again.
+        $IsccPath = $resolvedIscc
+    }
+
+    if ($desktopSkipReasons.Count -eq 0) {
+        $buildDesktop = $true
+        Write-Host "         Desktop installer: will be built" -ForegroundColor DarkGray
+    } else {
+        Write-Warning "Desktop installer will be SKIPPED - the server artifact is still built:"
+        foreach ($reason in $desktopSkipReasons) { Write-Warning "  - $reason" }
+    }
+}
 
 Write-Host "[build] Validate deployment templates" -ForegroundColor Cyan
 & $DeploymentTemplateTest
@@ -233,8 +316,98 @@ if ($AllowUnsignedDevelopmentArtifact) {
     Write-Host "         Signature: $($signed.SignaturePath)"
 }
 
+# --- desktop installer ------------------------------------------------------------------------
+# Chained rather than duplicated: the desktop script owns its own staging (self-contained publish,
+# Electron package, Postgres subset, Inno Setup). It gets -SkipSpaBuild because the SPA was just
+# built above and both targets consume the same src\nodepilot-ui\dist. The two dotnet publishes
+# stay separate on purpose - the server zip is framework-dependent, the desktop payload is not.
+$desktopInstaller = $null
+if ($buildDesktop) {
+    Write-Host ""
+    Write-Host "[build] Desktop installer (this takes a while - Electron + Postgres + Inno Setup)" -ForegroundColor Cyan
+    $desktopArgs = @{
+        PgBinariesPath = $PgBinariesPath
+        Version        = $Version
+        Configuration  = $Configuration
+        SkipSpaBuild   = $true
+    }
+    if ($IsccPath) { $desktopArgs['IsccPath'] = $IsccPath }
+    & $DesktopBuildScript @desktopArgs
+
+    $desktopOut = Join-Path (Split-Path $DesktopBuildScript -Parent) "out\NodePilot-Desktop-Setup-$Version.exe"
+    if (-not (Test-Path -LiteralPath $desktopOut)) {
+        throw "Desktop build reported success but the installer is missing: $desktopOut"
+    }
+    $desktopInstaller = Join-Path $OutDir "NodePilot-Desktop-Setup-$Version.exe"
+    Copy-Item -LiteralPath $desktopOut -Destination $desktopInstaller -Force
+    Write-Host "         Copied → $desktopInstaller" -ForegroundColor DarkGray
+
+    # Signing has to happen HERE, before the checksum step. Signing the .exe afterwards rewrites
+    # the file and silently invalidates its SHA256SUMS entry - a downloader following the
+    # verification instructions would then be told the artifact is corrupt.
+    if ($DesktopSigningCertificateThumbprint) {
+        Write-Host "[build] Authenticode-sign the desktop installer" -ForegroundColor Cyan
+        $signTool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter 'signtool.exe' -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\' } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+        if (-not $signTool) {
+            throw ("signtool.exe not found - install the Windows SDK, or drop " +
+                   "-DesktopSigningCertificateThumbprint to produce an unsigned installer.")
+        }
+        $prevSignEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try {
+            & $signTool.FullName sign /sha1 $DesktopSigningCertificateThumbprint /fd SHA256 /td SHA256 `
+                /tr 'http://timestamp.digicert.com' /d 'NodePilot Desktop' $desktopInstaller
+            $signExit = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $prevSignEap }
+        if ($signExit -ne 0) { throw "signtool failed with exit code $signExit." }
+
+        $signature = Get-AuthenticodeSignature -LiteralPath $desktopInstaller
+        if (-not $signature.SignerCertificate -or
+            $signature.SignerCertificate.Thumbprint -ne $DesktopSigningCertificateThumbprint) {
+            throw "Installer is not signed by the requested certificate after signtool reported success."
+        }
+        Write-Host "         Signed by $($signature.SignerCertificate.Subject)" -ForegroundColor DarkGray
+    }
+}
+
+# --- checksums --------------------------------------------------------------------------------
+# One file covering everything this run produced, so a downloader can verify the drop without
+# knowing which pieces are supposed to exist.
+Write-Host "[build] Write SHA256SUMS" -ForegroundColor Cyan
+$artifacts = @($ZipPath)
+if (-not $AllowUnsignedDevelopmentArtifact) {
+    $artifacts += "$ZipPath.manifest.json"
+    $artifacts += "$ZipPath.manifest.json.p7s"
+}
+if ($desktopInstaller) { $artifacts += $desktopInstaller }
+$checksumLines = foreach ($artifact in $artifacts) {
+    if (-not (Test-Path -LiteralPath $artifact)) { throw "Checksum target missing: $artifact" }
+    # "<hash>  <name>" - two spaces, the sha256sum/certutil-compatible layout.
+    '{0}  {1}' -f (Get-FileHash -LiteralPath $artifact -Algorithm SHA256).Hash.ToLowerInvariant(), (Split-Path $artifact -Leaf)
+}
+$checksumLines | Out-File -FilePath $ChecksumPath -Encoding ascii -Force
+
+# --- summary ----------------------------------------------------------------------------------
 $sizeMb = [Math]::Round((Get-Item $ZipPath).Length / 1MB, 1)
 Write-Host ""
-Write-Host "[build] Done: $ZipPath ($sizeMb MB)" -ForegroundColor Green
-Write-Host "         Version: $Version"
-Write-Host "         Deploy with: .\deploy\Install-NodePilot.ps1 -ArtifactPath '$ZipPath' ..."
+Write-Host "[build] Done - version $Version" -ForegroundColor Green
+Write-Host "         $(Split-Path $ZipPath -Leaf) ($sizeMb MB)"
+if (-not $AllowUnsignedDevelopmentArtifact) {
+    Write-Host "         $(Split-Path $ZipPath -Leaf).manifest.json + .p7s"
+}
+if ($desktopInstaller) {
+    $desktopMb = [Math]::Round((Get-Item $desktopInstaller).Length / 1MB, 1)
+    Write-Host "         $(Split-Path $desktopInstaller -Leaf) ($desktopMb MB)"
+}
+Write-Host "         $(Split-Path $ChecksumPath -Leaf)"
+Write-Host "         all under $OutDir"
+Write-Host ""
+Write-Host "         Deploy the server with: .\deploy\Install-NodePilot.ps1 -ArtifactPath '$ZipPath' ..."
+if ($desktopInstaller -and -not $DesktopSigningCertificateThumbprint) {
+    Write-Host "         The installer is UNSIGNED. Re-run with -DesktopSigningCertificateThumbprint to sign it;" -ForegroundColor Yellow
+    Write-Host "         signing it by hand afterwards would invalidate its entry in $(Split-Path $ChecksumPath -Leaf)." -ForegroundColor Yellow
+}
+if ($IncludeDesktopInstaller -and -not $buildDesktop) {
+    Write-Host "         Desktop installer was SKIPPED - see the warnings above." -ForegroundColor Yellow
+}

@@ -49,6 +49,10 @@ Everything else stays hardened. `Deployment:Mode` defaults to `Server`; an unkno
   "certificateSha256": "<uppercase-hex>", "serviceName": "NodePilot" }
 ```
 
+The port is **not fixed at 47000**: `Provision-LocalDb.ps1` picks the first free port from 47000
+upwards (and 47100–47149 for Postgres), so an installation that hit a busy port looks different.
+Read the actual origin out of `desktop.json` rather than assuming the number above.
+
 The DB password is **never** here — it lives only in the ACL-restricted `ConnectionStrings__Postgres`
 service-environment value.
 
@@ -160,7 +164,12 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
   full staged update with binary + config + DB rollback for direct/advanced use. Postgres **major**
   upgrades are out of scope for v1.
 - **Uninstall:** removes both services, the certificate, and Program Files. **ProgramData and `pgdata`
-  are preserved** unless `Uninstall-Desktop.ps1 -PurgeData` is used.
+  are preserved** unless `-PurgeData` is used. The script lives inside the installation and takes a
+  mandatory `-InstallPath`:
+  `& 'C:\Program Files\NodePilot\deploy\Uninstall-Desktop.ps1' -InstallPath 'C:\Program Files\NodePilot' -PurgeData`
+- **Antivirus:** the installer sets no AV exclusions. Electron's Chromium native DLLs, Postgres' WAL
+  I/O and the generated `%TEMP%\nodepilot_*.ps1` scripts are the usual false-positive sources — a
+  hand-off list with per-entry rationale and residual risk is in [`docs/av-exclusions.md`](../../docs/av-exclusions.md).
 
 ## Files
 
@@ -185,7 +194,7 @@ app is just files plus two services, so day-to-day changes have much shorter loo
 | Electron shell | `cd src/nodepilot-desktop; npm start` — runs **from source** against the installed backend (it reads `%ProgramData%\NodePilot\desktop.json`), no packaging at all | seconds |
 | Electron shell, icons | `npm run icons` in the same folder — regenerates `assets/` (empty in a fresh clone) | seconds |
 | Backend / SPA, normal work | ordinary dev mode (backend on 5000, Vite on 5173 with HMR) | seconds |
-| Backend / SPA, **as packaged** | `Sync-DesktopApp.ps1 -Component api\|spa\|all` (elevated) — incremental publish/build, robocopy into the installation, service restart + health poll | ~1 min |
+| Backend / SPA, **as packaged** | `Sync-DesktopApp.ps1 -Component api\|spa\|shell\|all` (elevated) — incremental publish/build, robocopy into the installation, service restart + health poll | ~1 min |
 | Distribution | `Build-DesktopInstaller.ps1` | ~10–15 min |
 
 Use the sync script when the *packaging* matters — service identity is LocalSystem, the DB is the
@@ -220,8 +229,12 @@ Honest inventory so nobody assumes more coverage than exists:
   for what each one is. Nothing ships from this: Forge is build-time only and `dependencies` is
   empty. Re-check the list whenever Forge is bumped; an override that Forge has caught up with is
   dead weight.
-- **The installer is unsigned.** SmartScreen warns on first launch until an Authenticode certificate
-  is wired into the build.
+- **The installer is unsigned unless you ask for a signature.** `Build-DesktopInstaller.ps1` alone
+  never signs. Building through `deploy\Build-Artifact.ps1 -IncludeDesktopInstaller
+  -DesktopSigningCertificateThumbprint <tp>` signs it as part of the run — which is where signing
+  belongs, because doing it afterwards rewrites the `.exe` and invalidates its `SHA256SUMS.txt`
+  entry. A self-signed publisher still leaves SmartScreen warning on first launch; only a
+  reputation-carrying certificate silences that.
 - **Not exercised end-to-end:** upgrade with a forced health failure (the rollback path),
   installation on a genuinely clean VM, and process-isolated `runScript` (`config.isolated`).
 - **Postgres major-version upgrades** and **Electron auto-update** are out of scope by design.

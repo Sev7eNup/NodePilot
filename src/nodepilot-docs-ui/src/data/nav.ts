@@ -4,8 +4,8 @@ import {
   ChartRelationship, Chat, CloudMonitoring, DataBase, DecisionTree, Deploy, Document,
   Download, Draw, Firewall, Flow, FlowModeler, Folder, Group, Idea, Json, Laptop,
   Layers, Lightning, ListChecked, Notification, Password, PlayFilledAlt, Plug,
-  Replicate, Rocket, Screen, Security, Settings, SettingsAdjust, Terminal, Time,
-  UserRole, ValueVariable,
+  Replicate, Rocket, Screen, Security, SecurityServices, Settings, SettingsAdjust,
+  Terminal, Time, UserRole, ValueVariable,
 } from '@carbon/icons-react'
 
 export interface NavPage {
@@ -98,6 +98,7 @@ export const navGroups: NavGroup[] = [
       { path: 'deployment/overview', title: 'Betriebsarten', icon: Deploy },
       { path: 'deployment/production', title: 'Windows-Server', icon: BareMetalServer },
       { path: 'deployment/desktop', title: 'Desktop-App', icon: Laptop },
+      { path: 'deployment/av-exclusions', title: 'Antiviren-Ausschlüsse', icon: SecurityServices },
       { path: 'ai-features', title: 'AI-Features', icon: Chat },
       { path: 'alerting', title: 'Alerting', icon: Notification },
       { path: 'observability', title: 'Observability', icon: ChartLine },

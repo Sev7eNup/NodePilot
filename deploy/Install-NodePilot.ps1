@@ -1293,6 +1293,23 @@ if ($BindHttp) {
     Get-NetFirewallRule -DisplayName $fwRuleHttp -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
     New-NetFirewallRule -DisplayName $fwRuleHttp -Direction Inbound -Protocol TCP -LocalPort $HttpPort -Action Allow -Profile Domain | Out-Null
 }
+# The rules above are scoped to the Domain profile on purpose - opening a listener on Private or
+# Public without the operator asking for it is not ours to decide. But -UseLocalSystem makes a
+# non-domain-joined install a supported case, and there the rule silently applies to no active
+# profile: the service starts, https://localhost answers, and nothing else on the network can
+# reach it. Say so instead of leaving it to be discovered.
+try {
+    if (-not (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).PartOfDomain) {
+        Write-Warn "  This host is not domain-joined, and the firewall rules above apply to the Domain profile only."
+        Write-Warn "  They will NOT open port $HttpsPort on the active (Private/Public) profile - NodePilot will be"
+        Write-Warn "  reachable on this machine but not from the network. Open the port for the profile you intend"
+        Write-Warn "  to serve, e.g.:"
+        Write-Warn "    New-NetFirewallRule -DisplayName '$fwRule (Private)' -Direction Inbound -Protocol TCP ``"
+        Write-Warn "      -LocalPort $HttpsPort -Action Allow -Profile Private"
+    }
+} catch {
+    Write-Warn "  Could not determine domain membership ($($_.Exception.Message)); firewall rules cover the Domain profile only."
+}
 
 Write-Step "Registering Windows Service"
 # Win32_Service.Create over CIM is the native PS way to register a service and - unlike

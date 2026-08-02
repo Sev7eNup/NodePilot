@@ -9,12 +9,18 @@ and exercises the engine / DB / hub path with big, complex workflows.
 
    ```bash
    cd tests/NodePilot.LoadTests
+   cp .env.example .env      # then set MSSQL_SA_PASSWORD and GF_SECURITY_ADMIN_PASSWORD
    docker compose up -d
    ```
 
-   - SQL Server: `localhost:1433`, SA password `LoadTest!Password1`
+   The `.env` is not optional — compose declares both passwords as required and aborts
+   without them.
+
+   - SQL Server: `localhost:1433`, SA password = your `MSSQL_SA_PASSWORD`
    - Prometheus: http://localhost:9090
-   - Grafana: http://localhost:3000 (anonymous Viewer, admin/admin to edit)
+   - Grafana: http://localhost:3000 — user `admin`, password = your
+     `GF_SECURITY_ADMIN_PASSWORD`. Anonymous viewing is **off** unless you set
+     `GF_AUTH_ANONYMOUS_ENABLED=true`.
 
 2. **Configure the API host for load testing.** Create `src/NodePilot.Api/appsettings.Loadtest.json`:
 

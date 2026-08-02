@@ -13,7 +13,20 @@ public static class MigrationBootstrapper
 {
     public static void Bootstrap(NodePilotDbContext db, ILogger logger)
     {
-        db.Database.Migrate();
+        try
+        {
+            db.Database.Migrate();
+        }
+        catch (Exception ex) when (IsDatabaseUnreachable(db))
+        {
+            // A stopped database is the single most common first-run failure, and the raw
+            // provider exception ("No connection could be made because the target machine
+            // actively refused it") reads as a crash rather than as "start Postgres first".
+            // Re-throw with the connection target spelled out. The predicate deliberately
+            // re-probes instead of matching exception types, so this stays provider-agnostic
+            // and never swallows a genuine migration error against a reachable database.
+            throw new DatabaseUnreachableException(BuildUnreachableMessage(db, ex), ex);
+        }
         var applied = db.Database.GetAppliedMigrations().ToList();
         var providerName = db.Database.ProviderName ?? "unknown";
         // SupportLog scope: the migration summary is one of the few system boot log lines a
@@ -34,6 +47,58 @@ public static class MigrationBootstrapper
 
         BackfillWorkflowComputedColumns(db, logger);
         SeedClusterLeaderRow(db, logger);
+    }
+
+    /// <summary>
+    /// True when the database cannot be reached at all, as opposed to being reachable but
+    /// rejecting the migration. Never throws: any failure to probe is itself treated as
+    /// unreachable, which is the conservative answer for the caller's exception filter.
+    /// </summary>
+    private static bool IsDatabaseUnreachable(NodePilotDbContext db)
+    {
+        try
+        {
+            return !db.Database.CanConnect();
+        }
+        catch
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Names the connection target without ever touching the connection string, which carries
+    /// the password. <c>DataSource</c> and <c>Database</c> are the password-free projections
+    /// every ADO.NET provider exposes.
+    /// </summary>
+    private static string BuildUnreachableMessage(NodePilotDbContext db, Exception cause)
+    {
+        var server = "(unknown)";
+        var database = "(unknown)";
+        try
+        {
+            var connection = db.Database.GetDbConnection();
+            if (!string.IsNullOrWhiteSpace(connection.DataSource)) server = connection.DataSource;
+            if (!string.IsNullOrWhiteSpace(connection.Database)) database = connection.Database;
+        }
+        catch
+        {
+            // A malformed connection string cannot be projected. The generic message below is
+            // still far better than the raw provider exception.
+        }
+
+        return
+            "Cannot reach the NodePilot database, so the schema could not be created or migrated." +
+            Environment.NewLine +
+            $"  Provider : {db.Database.ProviderName ?? "unknown"}" + Environment.NewLine +
+            $"  Server   : {server}" + Environment.NewLine +
+            $"  Database : {database}" + Environment.NewLine +
+            "Start the database server first, then start NodePilot. Check that the server is " +
+            "running and listening, that the database and its login exist, and that " +
+            "ConnectionStrings:Postgres (or :DefaultConnection for SQL Server) carries a password " +
+            "— neither shipped connection string does. Setup walkthrough: docs/getting-started." +
+            Environment.NewLine +
+            $"Underlying error: {cause.Message}";
     }
 
     /// <summary>

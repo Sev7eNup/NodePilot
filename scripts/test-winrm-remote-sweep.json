@@ -1,0 +1,1491 @@
+{
+  "nodes": [
+    {
+      "id": "trg",
+      "type": "activity",
+      "position": {
+        "x": 0,
+        "y": 910
+      },
+      "data": {
+        "label": "manualTrigger: WinRM-Sweep",
+        "activityType": "manualTrigger",
+        "outputVariable": "trg",
+        "config": {
+          "parameters": [
+            {
+              "name": "runLabel",
+              "type": "string",
+              "defaultValue": "winrm-sweep",
+              "required": false,
+              "description": "Freitext-Marke fuer diesen Lauf"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a01",
+      "type": "activity",
+      "position": {
+        "x": 400,
+        "y": 280
+      },
+      "data": {
+        "label": "runScript: Hostinfo + Identitaet",
+        "activityType": "runScript",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_hostInfo",
+        "config": {
+          "script": "$hostName   = $env:COMPUTERNAME\n$osCaption  = (Get-CimInstance Win32_OperatingSystem).Caption\n$psVersion  = $PSVersionTable.PSVersion.ToString()\n$runAsUser  = (whoami)\n$isRemote   = ($PSSenderInfo -ne $null).ToString()\nWrite-Output \"host=$hostName os=$osCaption ps=$psVersion user=$runAsUser remote=$isRemote\"",
+          "timeoutSeconds": 120
+        }
+      }
+    },
+    {
+      "id": "a02",
+      "type": "activity",
+      "position": {
+        "x": 700,
+        "y": 280
+      },
+      "data": {
+        "label": "folderOperation: create Testwurzel",
+        "activityType": "folderOperation",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_folderCreate",
+        "config": {
+          "operation": "create",
+          "path": "C:\\NP-WinRM-Test"
+        }
+      }
+    },
+    {
+      "id": "a03",
+      "type": "activity",
+      "position": {
+        "x": 1000,
+        "y": 280
+      },
+      "data": {
+        "label": "fileOperation: create probe.txt",
+        "activityType": "fileOperation",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_fileCreate",
+        "config": {
+          "operation": "create",
+          "path": "C:\\NP-WinRM-Test\\probe.txt"
+        }
+      }
+    },
+    {
+      "id": "a04",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 280
+      },
+      "data": {
+        "label": "textFileEdit: append 3 Zeilen",
+        "activityType": "textFileEdit",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_textAppend",
+        "config": {
+          "operation": "append",
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "content": "NodePilot WinRM probe\nzeile-2\nzeile-3",
+          "createIfMissing": true,
+          "encoding": "utf8",
+          "lineEnding": "crlf"
+        }
+      }
+    },
+    {
+      "id": "a05",
+      "type": "activity",
+      "position": {
+        "x": 1600,
+        "y": 280
+      },
+      "data": {
+        "label": "textFileEdit: replace Token",
+        "activityType": "textFileEdit",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_textReplace",
+        "config": {
+          "operation": "replace",
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "matchPattern": "zeile-2",
+          "replace": "zeile-2-ersetzt",
+          "occurrences": "all"
+        }
+      }
+    },
+    {
+      "id": "a06",
+      "type": "activity",
+      "position": {
+        "x": 1900,
+        "y": 280
+      },
+      "data": {
+        "label": "fileHash: SHA256 probe.txt",
+        "activityType": "fileHash",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_hash",
+        "config": {
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "algorithm": "SHA256"
+        }
+      }
+    },
+    {
+      "id": "a07",
+      "type": "activity",
+      "position": {
+        "x": 2200,
+        "y": 280
+      },
+      "data": {
+        "label": "fileOperation: copy probe.txt",
+        "activityType": "fileOperation",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_fileCopy",
+        "config": {
+          "operation": "copy",
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "destination": "C:\\NP-WinRM-Test\\probe-copy.txt"
+        }
+      }
+    },
+    {
+      "id": "a08",
+      "type": "activity",
+      "position": {
+        "x": 2200,
+        "y": 500
+      },
+      "data": {
+        "label": "zipOperation: compress",
+        "activityType": "zipOperation",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_zipCompress",
+        "config": {
+          "operation": "compress",
+          "source": "C:\\NP-WinRM-Test\\*",
+          "destination": "C:\\NP-WinRM-Test.zip",
+          "compressionLevel": "Optimal",
+          "force": true
+        }
+      }
+    },
+    {
+      "id": "a09",
+      "type": "activity",
+      "position": {
+        "x": 1900,
+        "y": 500
+      },
+      "data": {
+        "label": "zipOperation: extract",
+        "activityType": "zipOperation",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_zipExtract",
+        "config": {
+          "operation": "extract",
+          "source": "C:\\NP-WinRM-Test.zip",
+          "destination": "C:\\NP-WinRM-Test-unzip",
+          "force": true
+        }
+      }
+    },
+    {
+      "id": "a10",
+      "type": "activity",
+      "position": {
+        "x": 1600,
+        "y": 500
+      },
+      "data": {
+        "label": "folderOperation: list entpackt",
+        "activityType": "folderOperation",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_folderList",
+        "config": {
+          "operation": "list",
+          "path": "C:\\NP-WinRM-Test-unzip"
+        }
+      }
+    },
+    {
+      "id": "a11",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 500
+      },
+      "data": {
+        "label": "registryOperation: createKey",
+        "activityType": "registryOperation",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_regCreate",
+        "config": {
+          "keyPath": "HKLM:\\SOFTWARE\\NodePilotLabTest",
+          "operation": "createKey"
+        }
+      }
+    },
+    {
+      "id": "a12",
+      "type": "activity",
+      "position": {
+        "x": 1000,
+        "y": 500
+      },
+      "data": {
+        "label": "registryOperation: write Hostname",
+        "activityType": "registryOperation",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_regWrite",
+        "config": {
+          "keyPath": "HKLM:\\SOFTWARE\\NodePilotLabTest",
+          "operation": "write",
+          "valueName": "LastSweepHost",
+          "value": "{{a01.param.hostName}}",
+          "valueType": "String"
+        }
+      }
+    },
+    {
+      "id": "a13",
+      "type": "activity",
+      "position": {
+        "x": 700,
+        "y": 500
+      },
+      "data": {
+        "label": "registryOperation: read zurueck",
+        "activityType": "registryOperation",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_regRead",
+        "config": {
+          "keyPath": "HKLM:\\SOFTWARE\\NodePilotLabTest",
+          "operation": "read",
+          "valueName": "LastSweepHost"
+        }
+      }
+    },
+    {
+      "id": "a14",
+      "type": "activity",
+      "position": {
+        "x": 400,
+        "y": 500
+      },
+      "data": {
+        "label": "wmiQuery: Win32_OperatingSystem",
+        "activityType": "wmiQuery",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_wmi",
+        "config": {
+          "mode": "query",
+          "className": "Win32_OperatingSystem",
+          "captureProperties": [
+            "Caption",
+            "Version",
+            "CSName",
+            "LastBootUpTime"
+          ]
+        }
+      }
+    },
+    {
+      "id": "a15",
+      "type": "activity",
+      "position": {
+        "x": 400,
+        "y": 720
+      },
+      "data": {
+        "label": "serviceManagement: status W32Time",
+        "activityType": "serviceManagement",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_svcStatus",
+        "config": {
+          "serviceName": "W32Time",
+          "action": "status"
+        }
+      }
+    },
+    {
+      "id": "a16",
+      "type": "activity",
+      "position": {
+        "x": 700,
+        "y": 720
+      },
+      "data": {
+        "label": "startProgram: cmd /c ver",
+        "activityType": "startProgram",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_startProg",
+        "config": {
+          "filePath": "C:\\Windows\\System32\\cmd.exe",
+          "arguments": "/c ver",
+          "waitForExit": true,
+          "successExitCodes": "0"
+        }
+      }
+    },
+    {
+      "id": "a17",
+      "type": "activity",
+      "position": {
+        "x": 1000,
+        "y": 720
+      },
+      "data": {
+        "label": "scheduledTask: register",
+        "activityType": "scheduledTask",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_taskRegister",
+        "config": {
+          "taskName": "NP-LabProbe",
+          "taskPath": "\\NodePilotLab\\",
+          "action": "register",
+          "program": "C:\\Windows\\System32\\cmd.exe",
+          "arguments": "/c exit 0",
+          "triggerType": "once",
+          "startTime": "23:30",
+          "runAsUser": "SYSTEM",
+          "runLevel": "Highest",
+          "force": true,
+          "description": "NodePilot WinRM-Sweep Probe"
+        }
+      }
+    },
+    {
+      "id": "a18",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 720
+      },
+      "data": {
+        "label": "scheduledTask: get",
+        "activityType": "scheduledTask",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_taskGet",
+        "config": {
+          "taskName": "NP-LabProbe",
+          "taskPath": "\\NodePilotLab\\",
+          "action": "get"
+        }
+      }
+    },
+    {
+      "id": "a19",
+      "type": "activity",
+      "position": {
+        "x": 1600,
+        "y": 720
+      },
+      "data": {
+        "label": "scheduledTask: unregister",
+        "activityType": "scheduledTask",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_taskUnregister",
+        "config": {
+          "taskName": "NP-LabProbe",
+          "taskPath": "\\NodePilotLab\\",
+          "action": "unregister"
+        }
+      }
+    },
+    {
+      "id": "a20",
+      "type": "activity",
+      "position": {
+        "x": 1900,
+        "y": 720
+      },
+      "data": {
+        "label": "waitForCondition: probe.txt da",
+        "activityType": "waitForCondition",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_waitPath",
+        "config": {
+          "conditionType": "pathExists",
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "timeoutSeconds": 30,
+          "intervalSeconds": 2
+        }
+      }
+    },
+    {
+      "id": "a21",
+      "type": "activity",
+      "position": {
+        "x": 2200,
+        "y": 720
+      },
+      "data": {
+        "label": "powerManagement: shutdown +900s",
+        "activityType": "powerManagement",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_powerShutdown",
+        "config": {
+          "action": "shutdown",
+          "delaySeconds": 900,
+          "force": false,
+          "message": "NodePilot WinRM-Sweep - wird sofort abgebrochen"
+        }
+      }
+    },
+    {
+      "id": "a22",
+      "type": "activity",
+      "position": {
+        "x": 2500,
+        "y": 720
+      },
+      "data": {
+        "label": "powerManagement: abort",
+        "activityType": "powerManagement",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_powerAbort",
+        "config": {
+          "action": "abort"
+        }
+      }
+    },
+    {
+      "id": "a23",
+      "type": "activity",
+      "position": {
+        "x": 2800,
+        "y": 720
+      },
+      "data": {
+        "label": "runScript: Cleanup",
+        "activityType": "runScript",
+        "targetMachineId": "34dc15f5-7efe-47e8-ab97-00d91824a59b",
+        "outputVariable": "a_cleanup",
+        "config": {
+          "script": "$removed = @()\nforeach ($p in @('C:\\NP-WinRM-Test','C:\\NP-WinRM-Test.zip','C:\\NP-WinRM-Test-unzip')) {\n    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force; $removed += $p }\n}\nif (Test-Path -LiteralPath 'HKLM:\\SOFTWARE\\NodePilotLabTest') { Remove-Item -LiteralPath 'HKLM:\\SOFTWARE\\NodePilotLabTest' -Recurse -Force; $removed += 'HKLM:\\SOFTWARE\\NodePilotLabTest' }\n$cleanupCount = $removed.Count\nWrite-Output \"cleaned=$cleanupCount :: $($removed -join ', ')\"",
+          "timeoutSeconds": 120
+        }
+      }
+    },
+    {
+      "id": "note-a",
+      "type": "stickyNote",
+      "position": {
+        "x": 0,
+        "y": 140
+      },
+      "data": {
+        "label": "Note",
+        "activityType": "note",
+        "disabled": true,
+        "fontSize": 16,
+        "text": "Lane A -- Ziel CLIENT1\n23 Remote-Activities ueber WinRM/HTTPS:5986.\nAlle Kanten unbedingt: ein Fehlschlag stoppt die Lane nicht,\ndamit jede Activity einzeln bewertbar bleibt."
+      }
+    },
+    {
+      "id": "b01",
+      "type": "activity",
+      "position": {
+        "x": 400,
+        "y": 1100
+      },
+      "data": {
+        "label": "runScript: Hostinfo + Identitaet",
+        "activityType": "runScript",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_hostInfo",
+        "config": {
+          "script": "$hostName   = $env:COMPUTERNAME\n$osCaption  = (Get-CimInstance Win32_OperatingSystem).Caption\n$psVersion  = $PSVersionTable.PSVersion.ToString()\n$runAsUser  = (whoami)\n$isRemote   = ($PSSenderInfo -ne $null).ToString()\nWrite-Output \"host=$hostName os=$osCaption ps=$psVersion user=$runAsUser remote=$isRemote\"",
+          "timeoutSeconds": 120
+        }
+      }
+    },
+    {
+      "id": "b02",
+      "type": "activity",
+      "position": {
+        "x": 700,
+        "y": 1100
+      },
+      "data": {
+        "label": "folderOperation: create Testwurzel",
+        "activityType": "folderOperation",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_folderCreate",
+        "config": {
+          "operation": "create",
+          "path": "C:\\NP-WinRM-Test"
+        }
+      }
+    },
+    {
+      "id": "b03",
+      "type": "activity",
+      "position": {
+        "x": 1000,
+        "y": 1100
+      },
+      "data": {
+        "label": "fileOperation: create probe.txt",
+        "activityType": "fileOperation",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_fileCreate",
+        "config": {
+          "operation": "create",
+          "path": "C:\\NP-WinRM-Test\\probe.txt"
+        }
+      }
+    },
+    {
+      "id": "b04",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 1100
+      },
+      "data": {
+        "label": "textFileEdit: append 3 Zeilen",
+        "activityType": "textFileEdit",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_textAppend",
+        "config": {
+          "operation": "append",
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "content": "NodePilot WinRM probe\nzeile-2\nzeile-3",
+          "createIfMissing": true,
+          "encoding": "utf8",
+          "lineEnding": "crlf"
+        }
+      }
+    },
+    {
+      "id": "b05",
+      "type": "activity",
+      "position": {
+        "x": 1600,
+        "y": 1100
+      },
+      "data": {
+        "label": "textFileEdit: replace Token",
+        "activityType": "textFileEdit",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_textReplace",
+        "config": {
+          "operation": "replace",
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "matchPattern": "zeile-2",
+          "replace": "zeile-2-ersetzt",
+          "occurrences": "all"
+        }
+      }
+    },
+    {
+      "id": "b06",
+      "type": "activity",
+      "position": {
+        "x": 1900,
+        "y": 1100
+      },
+      "data": {
+        "label": "fileHash: SHA256 probe.txt",
+        "activityType": "fileHash",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_hash",
+        "config": {
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "algorithm": "SHA256"
+        }
+      }
+    },
+    {
+      "id": "b07",
+      "type": "activity",
+      "position": {
+        "x": 2200,
+        "y": 1100
+      },
+      "data": {
+        "label": "fileOperation: copy probe.txt",
+        "activityType": "fileOperation",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_fileCopy",
+        "config": {
+          "operation": "copy",
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "destination": "C:\\NP-WinRM-Test\\probe-copy.txt"
+        }
+      }
+    },
+    {
+      "id": "b08",
+      "type": "activity",
+      "position": {
+        "x": 2200,
+        "y": 1320
+      },
+      "data": {
+        "label": "zipOperation: compress",
+        "activityType": "zipOperation",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_zipCompress",
+        "config": {
+          "operation": "compress",
+          "source": "C:\\NP-WinRM-Test\\*",
+          "destination": "C:\\NP-WinRM-Test.zip",
+          "compressionLevel": "Optimal",
+          "force": true
+        }
+      }
+    },
+    {
+      "id": "b09",
+      "type": "activity",
+      "position": {
+        "x": 1900,
+        "y": 1320
+      },
+      "data": {
+        "label": "zipOperation: extract",
+        "activityType": "zipOperation",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_zipExtract",
+        "config": {
+          "operation": "extract",
+          "source": "C:\\NP-WinRM-Test.zip",
+          "destination": "C:\\NP-WinRM-Test-unzip",
+          "force": true
+        }
+      }
+    },
+    {
+      "id": "b10",
+      "type": "activity",
+      "position": {
+        "x": 1600,
+        "y": 1320
+      },
+      "data": {
+        "label": "folderOperation: list entpackt",
+        "activityType": "folderOperation",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_folderList",
+        "config": {
+          "operation": "list",
+          "path": "C:\\NP-WinRM-Test-unzip"
+        }
+      }
+    },
+    {
+      "id": "b11",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 1320
+      },
+      "data": {
+        "label": "registryOperation: createKey",
+        "activityType": "registryOperation",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_regCreate",
+        "config": {
+          "keyPath": "HKLM:\\SOFTWARE\\NodePilotLabTest",
+          "operation": "createKey"
+        }
+      }
+    },
+    {
+      "id": "b12",
+      "type": "activity",
+      "position": {
+        "x": 1000,
+        "y": 1320
+      },
+      "data": {
+        "label": "registryOperation: write Hostname",
+        "activityType": "registryOperation",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_regWrite",
+        "config": {
+          "keyPath": "HKLM:\\SOFTWARE\\NodePilotLabTest",
+          "operation": "write",
+          "valueName": "LastSweepHost",
+          "value": "{{b01.param.hostName}}",
+          "valueType": "String"
+        }
+      }
+    },
+    {
+      "id": "b13",
+      "type": "activity",
+      "position": {
+        "x": 700,
+        "y": 1320
+      },
+      "data": {
+        "label": "registryOperation: read zurueck",
+        "activityType": "registryOperation",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_regRead",
+        "config": {
+          "keyPath": "HKLM:\\SOFTWARE\\NodePilotLabTest",
+          "operation": "read",
+          "valueName": "LastSweepHost"
+        }
+      }
+    },
+    {
+      "id": "b14",
+      "type": "activity",
+      "position": {
+        "x": 400,
+        "y": 1320
+      },
+      "data": {
+        "label": "wmiQuery: Win32_OperatingSystem",
+        "activityType": "wmiQuery",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_wmi",
+        "config": {
+          "mode": "query",
+          "className": "Win32_OperatingSystem",
+          "captureProperties": [
+            "Caption",
+            "Version",
+            "CSName",
+            "LastBootUpTime"
+          ]
+        }
+      }
+    },
+    {
+      "id": "b15",
+      "type": "activity",
+      "position": {
+        "x": 400,
+        "y": 1540
+      },
+      "data": {
+        "label": "serviceManagement: status W32Time",
+        "activityType": "serviceManagement",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_svcStatus",
+        "config": {
+          "serviceName": "W32Time",
+          "action": "status"
+        }
+      }
+    },
+    {
+      "id": "b16",
+      "type": "activity",
+      "position": {
+        "x": 700,
+        "y": 1540
+      },
+      "data": {
+        "label": "startProgram: cmd /c ver",
+        "activityType": "startProgram",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_startProg",
+        "config": {
+          "filePath": "C:\\Windows\\System32\\cmd.exe",
+          "arguments": "/c ver",
+          "waitForExit": true,
+          "successExitCodes": "0"
+        }
+      }
+    },
+    {
+      "id": "b17",
+      "type": "activity",
+      "position": {
+        "x": 1000,
+        "y": 1540
+      },
+      "data": {
+        "label": "scheduledTask: register",
+        "activityType": "scheduledTask",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_taskRegister",
+        "config": {
+          "taskName": "NP-LabProbe",
+          "taskPath": "\\NodePilotLab\\",
+          "action": "register",
+          "program": "C:\\Windows\\System32\\cmd.exe",
+          "arguments": "/c exit 0",
+          "triggerType": "once",
+          "startTime": "23:30",
+          "runAsUser": "SYSTEM",
+          "runLevel": "Highest",
+          "force": true,
+          "description": "NodePilot WinRM-Sweep Probe"
+        }
+      }
+    },
+    {
+      "id": "b18",
+      "type": "activity",
+      "position": {
+        "x": 1300,
+        "y": 1540
+      },
+      "data": {
+        "label": "scheduledTask: get",
+        "activityType": "scheduledTask",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_taskGet",
+        "config": {
+          "taskName": "NP-LabProbe",
+          "taskPath": "\\NodePilotLab\\",
+          "action": "get"
+        }
+      }
+    },
+    {
+      "id": "b19",
+      "type": "activity",
+      "position": {
+        "x": 1600,
+        "y": 1540
+      },
+      "data": {
+        "label": "scheduledTask: unregister",
+        "activityType": "scheduledTask",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_taskUnregister",
+        "config": {
+          "taskName": "NP-LabProbe",
+          "taskPath": "\\NodePilotLab\\",
+          "action": "unregister"
+        }
+      }
+    },
+    {
+      "id": "b20",
+      "type": "activity",
+      "position": {
+        "x": 1900,
+        "y": 1540
+      },
+      "data": {
+        "label": "waitForCondition: probe.txt da",
+        "activityType": "waitForCondition",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_waitPath",
+        "config": {
+          "conditionType": "pathExists",
+          "path": "C:\\NP-WinRM-Test\\probe.txt",
+          "timeoutSeconds": 30,
+          "intervalSeconds": 2
+        }
+      }
+    },
+    {
+      "id": "b21",
+      "type": "activity",
+      "position": {
+        "x": 2200,
+        "y": 1540
+      },
+      "data": {
+        "label": "powerManagement: shutdown +900s",
+        "activityType": "powerManagement",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_powerShutdown",
+        "config": {
+          "action": "shutdown",
+          "delaySeconds": 900,
+          "force": false,
+          "message": "NodePilot WinRM-Sweep - wird sofort abgebrochen"
+        }
+      }
+    },
+    {
+      "id": "b22",
+      "type": "activity",
+      "position": {
+        "x": 2500,
+        "y": 1540
+      },
+      "data": {
+        "label": "powerManagement: abort",
+        "activityType": "powerManagement",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_powerAbort",
+        "config": {
+          "action": "abort"
+        }
+      }
+    },
+    {
+      "id": "b23",
+      "type": "activity",
+      "position": {
+        "x": 2800,
+        "y": 1540
+      },
+      "data": {
+        "label": "runScript: Cleanup",
+        "activityType": "runScript",
+        "targetMachineId": "02c72bb2-b638-443b-af55-6a7d9c7ecdd1",
+        "outputVariable": "b_cleanup",
+        "config": {
+          "script": "$removed = @()\nforeach ($p in @('C:\\NP-WinRM-Test','C:\\NP-WinRM-Test.zip','C:\\NP-WinRM-Test-unzip')) {\n    if (Test-Path -LiteralPath $p) { Remove-Item -LiteralPath $p -Recurse -Force; $removed += $p }\n}\nif (Test-Path -LiteralPath 'HKLM:\\SOFTWARE\\NodePilotLabTest') { Remove-Item -LiteralPath 'HKLM:\\SOFTWARE\\NodePilotLabTest' -Recurse -Force; $removed += 'HKLM:\\SOFTWARE\\NodePilotLabTest' }\n$cleanupCount = $removed.Count\nWrite-Output \"cleaned=$cleanupCount :: $($removed -join ', ')\"",
+          "timeoutSeconds": 120
+        }
+      }
+    },
+    {
+      "id": "note-b",
+      "type": "stickyNote",
+      "position": {
+        "x": 0,
+        "y": 1700
+      },
+      "data": {
+        "label": "Note",
+        "activityType": "note",
+        "disabled": true,
+        "fontSize": 16,
+        "text": "Lane B -- Ziel GW1\n23 Remote-Activities ueber WinRM/HTTPS:5986.\nAlle Kanten unbedingt: ein Fehlschlag stoppt die Lane nicht,\ndamit jede Activity einzeln bewertbar bleibt."
+      }
+    },
+    {
+      "id": "jn",
+      "type": "activity",
+      "position": {
+        "x": 3200,
+        "y": 910
+      },
+      "data": {
+        "label": "Junction: waitAll (2 Lanes)",
+        "activityType": "junction",
+        "outputVariable": "join",
+        "config": {
+          "mode": "waitAll"
+        }
+      }
+    },
+    {
+      "id": "sum",
+      "type": "activity",
+      "position": {
+        "x": 3550,
+        "y": 910
+      },
+      "data": {
+        "label": "Log: Sweep-Zusammenfassung",
+        "activityType": "log",
+        "outputVariable": "summary",
+        "config": {
+          "level": "Information",
+          "message": "WinRM-Sweep '{{trg.param.runLabel}}' fertig. CLIENT1={{a01.output}} | GW1={{b01.output}} | Cleanup A={{a23.output}} B={{b23.output}}"
+        }
+      }
+    },
+    {
+      "id": "ret",
+      "type": "activity",
+      "position": {
+        "x": 3900,
+        "y": 910
+      },
+      "data": {
+        "label": "returnData: Sweep-Ergebnis",
+        "activityType": "returnData",
+        "outputVariable": "result",
+        "config": {
+          "data": {
+            "runLabel": "{{trg.param.runLabel}}",
+            "client1Host": "{{a01.param.hostName}}",
+            "client1Os": "{{a01.param.osCaption}}",
+            "client1RunAs": "{{a01.param.runAsUser}}",
+            "client1Hash": "{{a06.param.hash}}",
+            "gw1Host": "{{b01.param.hostName}}",
+            "gw1Os": "{{b01.param.osCaption}}",
+            "gw1RunAs": "{{b01.param.runAsUser}}",
+            "gw1Hash": "{{b06.param.hash}}"
+          }
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-a01-a02",
+      "source": "a01",
+      "target": "a02",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a02-a03",
+      "source": "a02",
+      "target": "a03",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a03-a04",
+      "source": "a03",
+      "target": "a04",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a04-a05",
+      "source": "a04",
+      "target": "a05",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a05-a06",
+      "source": "a05",
+      "target": "a06",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a06-a07",
+      "source": "a06",
+      "target": "a07",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a07-a08",
+      "source": "a07",
+      "target": "a08",
+      "type": "labeled",
+      "data": {
+        "label": "Zeilenwechsel"
+      },
+      "sourceHandle": "bottom",
+      "targetHandle": "top"
+    },
+    {
+      "id": "e-a08-a09",
+      "source": "a08",
+      "target": "a09",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a09-a10",
+      "source": "a09",
+      "target": "a10",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a10-a11",
+      "source": "a10",
+      "target": "a11",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a11-a12",
+      "source": "a11",
+      "target": "a12",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a12-a13",
+      "source": "a12",
+      "target": "a13",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a13-a14",
+      "source": "a13",
+      "target": "a14",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a14-a15",
+      "source": "a14",
+      "target": "a15",
+      "type": "labeled",
+      "data": {
+        "label": "Zeilenwechsel"
+      },
+      "sourceHandle": "bottom",
+      "targetHandle": "top"
+    },
+    {
+      "id": "e-a15-a16",
+      "source": "a15",
+      "target": "a16",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a16-a17",
+      "source": "a16",
+      "target": "a17",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a17-a18",
+      "source": "a17",
+      "target": "a18",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a18-a19",
+      "source": "a18",
+      "target": "a19",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a19-a20",
+      "source": "a19",
+      "target": "a20",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a20-a21",
+      "source": "a20",
+      "target": "a21",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a21-a22",
+      "source": "a21",
+      "target": "a22",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-a22-a23",
+      "source": "a22",
+      "target": "a23",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-trg-a01",
+      "source": "trg",
+      "target": "a01",
+      "type": "labeled",
+      "data": {
+        "label": "Lane A"
+      },
+      "sourceHandle": "right",
+      "targetHandle": "left"
+    },
+    {
+      "id": "e-b01-b02",
+      "source": "b01",
+      "target": "b02",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b02-b03",
+      "source": "b02",
+      "target": "b03",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b03-b04",
+      "source": "b03",
+      "target": "b04",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b04-b05",
+      "source": "b04",
+      "target": "b05",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b05-b06",
+      "source": "b05",
+      "target": "b06",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b06-b07",
+      "source": "b06",
+      "target": "b07",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b07-b08",
+      "source": "b07",
+      "target": "b08",
+      "type": "labeled",
+      "data": {
+        "label": "Zeilenwechsel"
+      },
+      "sourceHandle": "bottom",
+      "targetHandle": "top"
+    },
+    {
+      "id": "e-b08-b09",
+      "source": "b08",
+      "target": "b09",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b09-b10",
+      "source": "b09",
+      "target": "b10",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b10-b11",
+      "source": "b10",
+      "target": "b11",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b11-b12",
+      "source": "b11",
+      "target": "b12",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b12-b13",
+      "source": "b12",
+      "target": "b13",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b13-b14",
+      "source": "b13",
+      "target": "b14",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b14-b15",
+      "source": "b14",
+      "target": "b15",
+      "type": "labeled",
+      "data": {
+        "label": "Zeilenwechsel"
+      },
+      "sourceHandle": "bottom",
+      "targetHandle": "top"
+    },
+    {
+      "id": "e-b15-b16",
+      "source": "b15",
+      "target": "b16",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b16-b17",
+      "source": "b16",
+      "target": "b17",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b17-b18",
+      "source": "b17",
+      "target": "b18",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b18-b19",
+      "source": "b18",
+      "target": "b19",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b19-b20",
+      "source": "b19",
+      "target": "b20",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b20-b21",
+      "source": "b20",
+      "target": "b21",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b21-b22",
+      "source": "b21",
+      "target": "b22",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-b22-b23",
+      "source": "b22",
+      "target": "b23",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-trg-b01",
+      "source": "trg",
+      "target": "b01",
+      "type": "labeled",
+      "data": {
+        "label": "Lane B"
+      },
+      "sourceHandle": "right",
+      "targetHandle": "left"
+    },
+    {
+      "id": "e-a23-jn",
+      "source": "a23",
+      "target": "jn",
+      "type": "labeled",
+      "data": {
+        "label": "Lane A fertig"
+      },
+      "sourceHandle": "right",
+      "targetHandle": "top"
+    },
+    {
+      "id": "e-b23-jn",
+      "source": "b23",
+      "target": "jn",
+      "type": "labeled",
+      "data": {
+        "label": "Lane B fertig"
+      },
+      "sourceHandle": "right",
+      "targetHandle": "bottom"
+    },
+    {
+      "id": "e-jn-sum",
+      "source": "jn",
+      "target": "sum",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    },
+    {
+      "id": "e-sum-ret",
+      "source": "sum",
+      "target": "ret",
+      "type": "labeled",
+      "data": {
+        "label": "Always"
+      }
+    }
+  ]
+}
