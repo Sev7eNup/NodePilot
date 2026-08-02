@@ -29,17 +29,26 @@ const proposalDefinitionJson = JSON.stringify({
   edges: [{ id: 'e1', source: 't1', target: 'l1', type: 'labeled', data: {} }],
 });
 
+/** Same graph as the base, just moved — every changelog row comes back flagged "layout only". */
+const layoutOnlyDefinitionJson = JSON.stringify({
+  nodes: baseNodes.map((n) => ({ ...n, position: { x: 120, y: 60 } })),
+  edges: [],
+});
+
 /** Drives the streaming handlers: sends text deltas, and optionally a proposal (which echoes
  *  back the request's baseDefinitionHash).
  *  The `if (!h) return` guard exists because vitest's module-mock spread calls this mock
  *  implementation a second time under `act()` without a handlers object — in the real component,
  *  `handleSend` (and thus the single `chatStream` call) only fires once. */
-function streamMock(opts: { reply: string; proposal?: boolean }) {
+function streamMock(opts: { reply: string; proposal?: boolean; definitionJson?: string }) {
   return (req: WorkflowChatRequest, h?: ChatStreamHandlers) => {
     if (!h) return Promise.resolve();
     h.onDelta(opts.reply);
     if (opts.proposal) {
-      h.onProposal({ definitionJson: proposalDefinitionJson, summary: '', nodeCount: 2, edgeCount: 1, baseDefinitionHash: req.baseDefinitionHash });
+      h.onProposal({
+        definitionJson: opts.definitionJson ?? proposalDefinitionJson,
+        summary: '', nodeCount: 2, edgeCount: 1, baseDefinitionHash: req.baseDefinitionHash,
+      });
     }
     return Promise.resolve();
   };
@@ -436,6 +445,45 @@ describe('AiWorkflowChatPanel (streaming)', () => {
     // The added node 'l1' (label "Log") shows up in the changelog list.
     expect(screen.getByText('Log')).toBeInTheDocument();
     expect(screen.getAllByRole('checkbox')).toHaveLength(2); // add node + add edge
+  });
+
+  it('checks every changelog row by default', async () => {
+    chatMock.mockImplementation(streamMock({ reply: 'Added a log step.', proposal: true }));
+    setup();
+    await ask('Add a log step.');
+    await screen.findByRole('button', { name: /^apply$/i });
+    screen.getAllByRole('checkbox').forEach((c) => expect(c).toBeChecked());
+  });
+
+  it('a layout-only proposal is still applyable — every row starts selected', async () => {
+    // Regression: rows flagged "layout only" used to start unchecked, so a proposal consisting
+    // purely of moves (e.g. "clean up the layout") rendered a disabled "0 apply" button.
+    chatMock.mockImplementation(streamMock({
+      reply: 'Tidied the layout.', proposal: true, definitionJson: layoutOnlyDefinitionJson,
+    }));
+    const { applyDefinition } = setup();
+    await ask('Clean up the layout.');
+
+    const applyBtn = await screen.findByRole('button', { name: /^apply$/i });
+    expect(screen.getByRole('checkbox')).toBeChecked();
+    expect(applyBtn).toBeEnabled();
+
+    fireEvent.click(applyBtn);
+    const arg = applyDefinition.mock.calls[0][0] as { nodes: Node[]; edges: Edge[] };
+    expect(arg.nodes.find((n) => n.id === 't1')!.position).toEqual({ x: 120, y: 60 });
+  });
+
+  it('deselecting everything disables apply', async () => {
+    chatMock.mockImplementation(streamMock({ reply: 'Added a log step.', proposal: true }));
+    setup();
+    await ask('Add a log step.');
+    await screen.findByRole('button', { name: /^apply$/i });
+
+    fireEvent.click(screen.getByRole('button', { name: /^none$/i }));
+
+    const applyBtn = screen.getByRole('button', { name: /^apply 0$/i });
+    expect(applyBtn).toBeDisabled();
+    screen.getAllByRole('checkbox').forEach((c) => expect(c).not.toBeChecked());
   });
 
   it('selective apply: unchecking the edge applies only the node', async () => {
