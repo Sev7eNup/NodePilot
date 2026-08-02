@@ -229,8 +229,12 @@ Honest inventory so nobody assumes more coverage than exists:
   for what each one is. Nothing ships from this: Forge is build-time only and `dependencies` is
   empty. Re-check the list whenever Forge is bumped; an override that Forge has caught up with is
   dead weight.
-- **The installer is unsigned.** SmartScreen warns on first launch until an Authenticode certificate
-  is wired into the build.
+- **The installer is unsigned unless you ask for a signature.** `Build-DesktopInstaller.ps1` alone
+  never signs. Building through `deploy\Build-Artifact.ps1 -IncludeDesktopInstaller
+  -DesktopSigningCertificateThumbprint <tp>` signs it as part of the run — which is where signing
+  belongs, because doing it afterwards rewrites the `.exe` and invalidates its `SHA256SUMS.txt`
+  entry. A self-signed publisher still leaves SmartScreen warning on first launch; only a
+  reputation-carrying certificate silences that.
 - **Not exercised end-to-end:** upgrade with a forced health failure (the rollback path),
   installation on a genuinely clean VM, and process-isolated `runScript` (`config.isolated`).
 - **Postgres major-version upgrades** and **Electron auto-update** are out of scope by design.

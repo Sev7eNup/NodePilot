@@ -128,9 +128,12 @@ when you want something else:
 .\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $signer.Thumbprint
 
 # Same run, plus the desktop installer (needs Inno Setup 6 and a PostgreSQL 16 "pgsql" folder;
-# without them the desktop step is skipped with a warning and the server zip is still produced):
+# without them the desktop step is skipped with a warning and the server zip is still produced).
+# -DesktopSigningCertificateThumbprint Authenticode-signs the .exe as part of the build - signing
+# it afterwards would invalidate its SHA256SUMS entry.
 .\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $signer.Thumbprint `
-    -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql'
+    -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql' `
+    -DesktopSigningCertificateThumbprint $signer.Thumbprint
 ```
 
 Copy **four files** to the target server (e.g. `C:\Temp`):

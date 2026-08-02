@@ -176,6 +176,23 @@ $requiredBuildContracts = [ordered]@{
     'a checksum file is written' = 'SHA256SUMS'
     'checksums are SHA256' = "Get-FileHash[^`r`n]*-Algorithm SHA256"
     'missing desktop prerequisites warn instead of failing' = '(?s)\$desktopSkipReasons\.Count -eq 0.*?else\s*\{\s*Write-Warning'
+    'the installer can be Authenticode-signed by the build' = '\[string\]\$DesktopSigningCertificateThumbprint'
+    'signing is verified rather than trusted to signtool exit code' = 'Get-AuthenticodeSignature'
+}
+
+# Signing rewrites the .exe, so it must happen BEFORE the checksums are computed. Getting this
+# backwards produces a SHA256SUMS that declares the shipped installer corrupt - and it is exactly
+# the order the script had while signing was still a manual follow-up step.
+# Anchored on code, not on prose: the phrase "Authenticode-sign" also appears in the .PARAMETER
+# help at the top of the script, and matching that would make this check pass no matter where the
+# signing step actually sits.
+$signIndex = $buildScript.IndexOf('$signTool.FullName sign')
+$checksumIndex = $buildScript.IndexOf('$checksumLines')
+if ($signIndex -lt 0 -or $checksumIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the signing and checksum steps in the build script.'
+}
+if ($signIndex -gt $checksumIndex) {
+    throw 'Deployment template check failed: the installer is signed after the checksums are written, which invalidates them.'
 }
 
 foreach ($contract in $requiredBuildContracts.GetEnumerator()) {

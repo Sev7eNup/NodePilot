@@ -164,8 +164,11 @@ deploy\desktop\Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\Packages\pgsql' -V
 # -> deploy\desktop\out\NodePilot-Desktop-Setup-1.0.1.exe
 ```
 
-A self-built installer is **unsigned**, so SmartScreen will warn on first launch until you sign it
-with your own Authenticode certificate. Internals, service identities and the first-run handoff:
+The installer is produced **unsigned** unless you pass
+`-DesktopSigningCertificateThumbprint <thumbprint>`, which Authenticode-signs it as part of the
+build. Sign during the build rather than afterwards: signing rewrites the `.exe` and would
+invalidate its entry in `SHA256SUMS.txt`. An unsigned installer makes SmartScreen warn on first
+launch. Internals, service identities and the first-run handoff:
 [`deploy/desktop/README.md`](deploy/desktop/README.md).
 
 </details>

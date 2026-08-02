@@ -40,6 +40,11 @@
 .PARAMETER IsccPath
     Inno Setup 6 compiler, passed through to the desktop installer build. Only read when
     -IncludeDesktopInstaller is set; defaults to the desktop script's own default.
+.PARAMETER DesktopSigningCertificateThumbprint
+    Authenticode-sign the desktop installer with this certificate, before the checksums are
+    written. Without it the installer is produced unsigned and SmartScreen warns on first launch.
+    Signing afterwards by hand invalidates the SHA256SUMS entry for the .exe, which is why this
+    is a build parameter rather than a documented follow-up step.
 .EXAMPLE
     .\deploy\Build-Artifact.ps1
 .EXAMPLE
@@ -61,7 +66,8 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'UnsignedDevelopment')][switch]$AllowUnsignedDevelopmentArtifact,
     [switch]$IncludeDesktopInstaller,
     [string]$PgBinariesPath,
-    [string]$IsccPath
+    [string]$IsccPath,
+    [string]$DesktopSigningCertificateThumbprint
 )
 
 $ErrorActionPreference = 'Stop'
@@ -335,6 +341,34 @@ if ($buildDesktop) {
     $desktopInstaller = Join-Path $OutDir "NodePilot-Desktop-Setup-$Version.exe"
     Copy-Item -LiteralPath $desktopOut -Destination $desktopInstaller -Force
     Write-Host "         Copied → $desktopInstaller" -ForegroundColor DarkGray
+
+    # Signing has to happen HERE, before the checksum step. Signing the .exe afterwards rewrites
+    # the file and silently invalidates its SHA256SUMS entry - a downloader following the
+    # verification instructions would then be told the artifact is corrupt.
+    if ($DesktopSigningCertificateThumbprint) {
+        Write-Host "[build] Authenticode-sign the desktop installer" -ForegroundColor Cyan
+        $signTool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter 'signtool.exe' -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\' } |
+            Sort-Object FullName -Descending | Select-Object -First 1
+        if (-not $signTool) {
+            throw ("signtool.exe not found - install the Windows SDK, or drop " +
+                   "-DesktopSigningCertificateThumbprint to produce an unsigned installer.")
+        }
+        $prevSignEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        try {
+            & $signTool.FullName sign /sha1 $DesktopSigningCertificateThumbprint /fd SHA256 /td SHA256 `
+                /tr 'http://timestamp.digicert.com' /d 'NodePilot Desktop' $desktopInstaller
+            $signExit = $LASTEXITCODE
+        } finally { $ErrorActionPreference = $prevSignEap }
+        if ($signExit -ne 0) { throw "signtool failed with exit code $signExit." }
+
+        $signature = Get-AuthenticodeSignature -LiteralPath $desktopInstaller
+        if (-not $signature.SignerCertificate -or
+            $signature.SignerCertificate.Thumbprint -ne $DesktopSigningCertificateThumbprint) {
+            throw "Installer is not signed by the requested certificate after signtool reported success."
+        }
+        Write-Host "         Signed by $($signature.SignerCertificate.Subject)" -ForegroundColor DarkGray
+    }
 }
 
 # --- checksums --------------------------------------------------------------------------------
@@ -370,8 +404,9 @@ Write-Host "         $(Split-Path $ChecksumPath -Leaf)"
 Write-Host "         all under $OutDir"
 Write-Host ""
 Write-Host "         Deploy the server with: .\deploy\Install-NodePilot.ps1 -ArtifactPath '$ZipPath' ..."
-if ($desktopInstaller) {
-    Write-Host "         Authenticode-sign the installer before distribution: signtool sign /fd SHA256 ... '$desktopInstaller'" -ForegroundColor Yellow
+if ($desktopInstaller -and -not $DesktopSigningCertificateThumbprint) {
+    Write-Host "         The installer is UNSIGNED. Re-run with -DesktopSigningCertificateThumbprint to sign it;" -ForegroundColor Yellow
+    Write-Host "         signing it by hand afterwards would invalidate its entry in $(Split-Path $ChecksumPath -Leaf)." -ForegroundColor Yellow
 }
 if ($IncludeDesktopInstaller -and -not $buildDesktop) {
     Write-Host "         Desktop installer was SKIPPED - see the warnings above." -ForegroundColor Yellow
