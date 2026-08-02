@@ -21,7 +21,11 @@ var app = new CommandApp(registrar);
 app.Configure(config =>
 {
     config.SetApplicationName("np");
-    config.SetApplicationVersion("1.0.0");
+    // Read from the assembly rather than a literal: Directory.Build.props is the single source
+    // of the product version, and a hand-maintained string here silently reported the previous
+    // release long after the version was bumped. Strip the "+<commit>" source-revision suffix
+    // the SDK appends to the informational version.
+    config.SetApplicationVersion(CliVersion.Current);
     config.UseStrictParsing();
     config.PropagateExceptions();
 

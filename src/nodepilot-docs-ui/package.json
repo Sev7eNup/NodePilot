@@ -1,6 +1,6 @@
 {
   "name": "nodepilot-docs-ui",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "NodePilot documentation website — React SPA.",
   "type": "module",
   "private": true,

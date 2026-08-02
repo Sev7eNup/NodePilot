@@ -9,7 +9,7 @@
          Short version: PackAsTool rejects the net10.0-windows TFM this project inherits, so
          `dotnet pack` fails with NETSDK1146. Distribute via `dotnet publish` and point the MCP
          client's `command` at the produced nodepilot-mcp.exe. -->
-    <Version>1.0.0</Version>
+    <!-- No <Version> here: inherited from Directory.Build.props (single source). -->
     <Authors>NodePilot</Authors>
     <Description>Model Context Protocol server for NodePilot — drive and edit workflows and read data from an AI agent.</Description>
   </PropertyGroup>
