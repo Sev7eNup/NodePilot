@@ -21,7 +21,7 @@ param(
     [Parameter(Mandatory)] [string] $PgBinariesPath,
     [string] $Version = '1.0.0',
     [string] $Configuration = 'Release',
-    [string] $IsccPath = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe',
+    [string] $IsccPath,
     [string] $OutputRoot = (Join-Path $PSScriptRoot 'out'),
     [switch] $SkipSpaBuild
 )
@@ -53,7 +53,13 @@ function Invoke-Tool([scriptblock] $Command, [string] $FailMessage) {
 Write-Step 'Pre-flight checks'
 Assert-Tool 'dotnet' 'dotnet'
 Assert-Tool 'npm' 'npm'
-if (-not (Test-Path -LiteralPath $IsccPath)) { throw "Inno Setup compiler not found: $IsccPath. Install Inno Setup 6 or pass -IsccPath." }
+. (Join-Path $PSScriptRoot 'Resolve-IsccPath.ps1')
+$resolvedIscc = Resolve-NodePilotIsccPath -Explicit $IsccPath
+if (-not $resolvedIscc) {
+    throw ("Inno Setup 6 compiler (ISCC.exe) not found. Install it from https://jrsoftware.org/isdl.php " +
+           "or pass -IsccPath. Probed: " + ((Get-NodePilotIsccCandidates) -join '; '))
+}
+$IsccPath = $resolvedIscc
 if (-not (Test-Path -LiteralPath (Join-Path $PgBinariesPath 'bin\postgres.exe'))) {
     throw "PgBinariesPath does not look like a PostgreSQL install (no bin\postgres.exe): $PgBinariesPath"
 }

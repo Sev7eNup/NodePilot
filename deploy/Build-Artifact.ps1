@@ -137,9 +137,16 @@ if ($IncludeDesktopInstaller) {
     } elseif (-not (Test-Path -LiteralPath (Join-Path $PgBinariesPath 'bin\postgres.exe'))) {
         $desktopSkipReasons += "-PgBinariesPath does not look like a PostgreSQL install (no bin\postgres.exe): $PgBinariesPath"
     }
-    $effectiveIscc = if ($IsccPath) { $IsccPath } else { 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' }
-    if (-not (Test-Path -LiteralPath $effectiveIscc)) {
-        $desktopSkipReasons += "Inno Setup 6 compiler not found at '$effectiveIscc'. Install it from https://jrsoftware.org/isdl.php or pass -IsccPath."
+    # Same resolver the desktop build uses, so this pre-flight cannot disagree with it about
+    # where ISCC.exe lives (notably the per-user install location).
+    . (Join-Path $PSScriptRoot 'desktop\Resolve-IsccPath.ps1')
+    $resolvedIscc = Resolve-NodePilotIsccPath -Explicit $IsccPath
+    if (-not $resolvedIscc) {
+        $desktopSkipReasons += ("Inno Setup 6 compiler (ISCC.exe) not found. Install it from " +
+            "https://jrsoftware.org/isdl.php or pass -IsccPath. Probed: " + ((Get-NodePilotIsccCandidates) -join '; '))
+    } else {
+        # Pass the resolved path on explicitly so the desktop build does not have to probe again.
+        $IsccPath = $resolvedIscc
     }
 
     if ($desktopSkipReasons.Count -eq 0) {
