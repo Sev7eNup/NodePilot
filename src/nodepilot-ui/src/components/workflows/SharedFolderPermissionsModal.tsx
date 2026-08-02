@@ -12,8 +12,8 @@ import { confirmDialog } from '../../stores/confirmStore';
 /**
  * Admin-only modal: list/grant/revoke folder permissions for one
  * <c>SharedWorkflowFolder</c>. Grants can target a user or an authority-scoped directory group.
- * The "Berechtigungen verwalten" button in the folder tree
- * only renders when the folder's <c>capabilities.canAdmin</c> is true, so this modal
+ * Both entry points (the folder-tree right-click entry and the button under the folder
+ * card) only render when the folder's <c>capabilities.canAdmin</c> is true, so this modal
  * does not need to enforce admin-only itself; the API enforces 403 on Grant/Revoke
  * if the caller lacks permission.
  */
@@ -33,7 +33,7 @@ export function SharedFolderPermissionsModal({
   users,
   onClose,
 }: Readonly<SharedFolderPermissionsModalProps>) {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['workflows', 'common']);
   const [permissions, setPermissions] = useState<SharedFolderPermission[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -159,17 +159,17 @@ export function SharedFolderPermissionsModal({
         )}
 
         <div className="mt-3">
-          <h3 className="mb-1 text-sm font-medium text-on-surface">Bestehende Berechtigungen</h3>
+          <h3 className="mb-1 text-sm font-medium text-on-surface">{t('workflows:folder.perms.existing')}</h3>
           {loading ? (
-            <div className="text-sm text-on-surface-variant">Lade …</div>
+            <div className="text-sm text-on-surface-variant">{t('common:loadingDots')}</div>
           ) : permissions.length === 0 ? (
-            <div className="text-sm text-on-surface-variant">Keine expliziten Berechtigungen.</div>
+            <div className="text-sm text-on-surface-variant">{t('workflows:folder.perms.none')}</div>
           ) : (
             <table className="w-full text-sm">
               <thead className="text-xs text-on-surface-variant">
                 <tr>
-                  <th className="text-left font-medium pb-1">Principal</th>
-                  <th className="text-left font-medium pb-1">Rolle</th>
+                  <th className="text-left font-medium pb-1">{t('workflows:folder.perms.principal')}</th>
+                  <th className="text-left font-medium pb-1">{t('workflows:folder.perms.role')}</th>
                   <th className="w-20"></th>
                 </tr>
               </thead>
@@ -203,8 +203,9 @@ export function SharedFolderPermissionsModal({
                         className="text-xs text-error hover:underline disabled:opacity-50"
                         disabled={busy}
                         onClick={() => revoke(p)}
+                        data-testid="shared-folder-perms-revoke-btn"
                       >
-                        Entfernen
+                        {t('workflows:folder.perms.revoke')}
                       </button>
                     </td>
                   </tr>
@@ -215,7 +216,7 @@ export function SharedFolderPermissionsModal({
         </div>
 
         <div className="mt-4 border-t border-outline-variant/30 pt-3">
-          <h3 className="mb-1 text-sm font-medium text-on-surface">Neue Berechtigung</h3>
+          <h3 className="mb-1 text-sm font-medium text-on-surface">{t('workflows:folder.perms.new')}</h3>
           <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto_auto] items-center gap-2">
             <select
               className={selectClass}
@@ -226,10 +227,10 @@ export function SharedFolderPermissionsModal({
               }}
               disabled={busy}
               data-testid="shared-folder-perms-principal-type"
-              aria-label="Principal-Typ"
+              aria-label={t('workflows:folder.perms.principalType')}
             >
-              <option value="User">User</option>
-              <option value="Group">Directory-Gruppe</option>
+              <option value="User">{t('workflows:folder.perms.typeUser')}</option>
+              <option value="Group">{t('workflows:folder.perms.typeGroup')}</option>
             </select>
             {principalType === 'User' ? (
             <select
@@ -238,9 +239,9 @@ export function SharedFolderPermissionsModal({
               onChange={(e) => setPrincipalKey(e.target.value)}
               disabled={busy}
               data-testid="shared-folder-perms-user-picker"
-              aria-label="User"
+              aria-label={t('workflows:folder.perms.user')}
             >
-              <option value="">— User wählen —</option>
+              <option value="">{t('workflows:folder.perms.pickUser')}</option>
               {unassignedUsers.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.username}
@@ -259,7 +260,7 @@ export function SharedFolderPermissionsModal({
                   }}
                   disabled={busy}
                   data-testid="shared-folder-perms-group-authority-mode"
-                  aria-label="Directory-Provider"
+                  aria-label={t('workflows:folder.perms.directoryProvider')}
                 >
                   <option value="ad">Active Directory</option>
                   <option value="oidc">OIDC / SCIM</option>
@@ -273,7 +274,7 @@ export function SharedFolderPermissionsModal({
                     disabled={busy}
                     placeholder="https://issuer.example/tenant"
                     data-testid="shared-folder-perms-group-authority"
-                    aria-label="OIDC-/SCIM-Issuer"
+                    aria-label={t('workflows:folder.perms.oidcIssuer')}
                   />
                 )}
               <input
@@ -282,9 +283,13 @@ export function SharedFolderPermissionsModal({
                 value={principalKey}
                 onChange={(e) => setPrincipalKey(e.target.value)}
                 disabled={busy}
-                placeholder={groupAuthorityMode === 'ad' ? 'S-1-5-21-...' : 'Provider-stabile Gruppen-ID'}
+                placeholder={groupAuthorityMode === 'ad'
+                  ? 'S-1-5-21-...'
+                  : t('workflows:folder.perms.groupIdPlaceholder')}
                 data-testid="shared-folder-perms-group-key"
-                aria-label={groupAuthorityMode === 'ad' ? 'AD-Gruppen-SID' : 'OIDC-/SCIM-Gruppen-ID'}
+                aria-label={groupAuthorityMode === 'ad'
+                  ? t('workflows:folder.perms.adGroupSid')
+                  : t('workflows:folder.perms.oidcGroupId')}
               />
               </div>
             )}
@@ -311,11 +316,13 @@ export function SharedFolderPermissionsModal({
                 || hasExistingPrincipal}
               data-testid="shared-folder-perms-grant-btn"
             >
-              Vergeben
+              {t('workflows:folder.perms.grant')}
             </button>
           </div>
           {hasExistingPrincipal && (
-            <p className="mt-1 text-xs text-error" role="alert">Dieser Principal hat bereits eine Berechtigung.</p>
+            <p className="mt-1 text-xs text-error" role="alert">
+              {t('workflows:folder.perms.duplicate')}
+            </p>
           )}
         </div>
       </div>

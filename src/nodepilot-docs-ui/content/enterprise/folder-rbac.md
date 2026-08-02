@@ -21,6 +21,13 @@ Folder-RBAC ist standardmäßig aktiv. Bestehende Benutzer erhalten beim Upgrade
 - **SignalR-Group-Routing:** Execution-Events landen nur in Hub-Groups von Usern, die den Workflow lesen dürfen.
 - **Authority-scoped Gruppen:** `PrincipalType=Group` speichert `PrincipalAuthority` plus `PrincipalKey`. AD nutzt die kanonische AD-Authority und eine Windows-SID; OIDC/SCIM nutzt den exakten HTTPS-Issuer und die opake Gruppen-ID. Gruppen werden ausschließlich mit serverseitigen Membership-Snapshots ausgewertet, nie aus JWT-Claims.
 
+## Grants in der UI vergeben
+
+Auf der Seite **Workflows** gibt es zwei Wege zum Berechtigungs-Dialog eines Ordners — beide erscheinen nur, wenn der Aufrufer `FolderAdmin` auf diesem Ordner hat (globale Admins immer):
+
+- **Rechtsklick** auf den Ordner im Baum → **Berechtigungen…**. Funktioniert auch auf dem Root-Ordner `\`, der weder umbenannt noch gelöscht werden kann und deshalb sonst keinen Kontextmenü-Eintrag hat.
+- **Ordner anklicken** (auswählen) → Button **Berechtigungen…** am unteren Rand der Ordner-Karte.
+
 ## Default-Mapping (Migration + Create)
 
 | Globale UserRole | Folder-Permission auf Root |

@@ -261,6 +261,87 @@ describe('SharedFolderTree', () => {
       await waitFor(() => expect(mockApi.delete).toHaveBeenCalledWith('finance'));
     });
 
+    it('shows the permissions entry on a canAdmin folder and reports the folder id', async () => {
+      mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
+      const onManagePermissions = vi.fn();
+
+      renderWithClient(
+        <SharedFolderTree
+          selectedFolderId={null}
+          onFolderSelected={() => {}}
+          onManagePermissions={onManagePermissions}
+        />,
+      );
+      await waitFor(() => expect(screen.getByText('Finance')).toBeInTheDocument());
+
+      await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('Finance') });
+      await userEvent.click(screen.getByTestId('shared-folder-menu-permissions'));
+
+      expect(onManagePermissions).toHaveBeenCalledWith('finance');
+    });
+
+    it('opens a permissions-only menu on Root — rename/delete stay hidden there', async () => {
+      // Root grants are the ones that matter most, but Root can be neither renamed nor
+      // deleted. Before, the whole menu was suppressed on Root and permissions were only
+      // reachable through the sidebar button.
+      mockApi.list.mockResolvedValue([rootFolder]);
+      const onManagePermissions = vi.fn();
+
+      renderWithClient(
+        <SharedFolderTree
+          selectedFolderId={null}
+          onFolderSelected={() => {}}
+          onManagePermissions={onManagePermissions}
+        />,
+      );
+      await waitFor(() => expect(screen.getByText(/\\/)).toBeInTheDocument());
+      await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText(/\\/) });
+
+      expect(screen.getByTestId('shared-folder-menu-permissions')).toBeInTheDocument();
+      expect(screen.queryByTestId('shared-folder-menu-rename')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('shared-folder-menu-delete')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('shared-folder-menu-permissions'));
+      expect(onManagePermissions).toHaveBeenCalledWith(ROOT_FOLDER_ID);
+    });
+
+    it('hides the permissions entry when the caller has canEdit but not canAdmin', async () => {
+      const editorOnly = makeFolder({
+        id: 'ops', parentFolderId: ROOT_FOLDER_ID, name: 'Ops', path: '/Ops', depth: 1,
+        capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: false },
+      });
+      mockApi.list.mockResolvedValue([rootFolder, editorOnly]);
+
+      renderWithClient(
+        <SharedFolderTree
+          selectedFolderId={null}
+          onFolderSelected={() => {}}
+          onManagePermissions={vi.fn()}
+        />,
+      );
+      await waitFor(() => expect(screen.getByText('Ops')).toBeInTheDocument());
+      await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('Ops') });
+
+      expect(screen.getByTestId('shared-folder-menu-rename')).toBeInTheDocument();
+      expect(screen.queryByTestId('shared-folder-menu-permissions')).not.toBeInTheDocument();
+    });
+
+    it('still opens no menu on a read-only folder even with onManagePermissions set', async () => {
+      mockApi.list.mockResolvedValue([rootFolder, readOnlyFolder]);
+      renderWithClient(
+        <SharedFolderTree
+          selectedFolderId={null}
+          onFolderSelected={() => {}}
+          onManagePermissions={vi.fn()}
+        />,
+      );
+
+      await waitFor(() => expect(screen.getByText('Reports')).toBeInTheDocument());
+      await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('Reports') });
+
+      expect(screen.queryByTestId('shared-folder-context-menu')).not.toBeInTheDocument();
+    });
+
     it('delete: 409 from backend surfaces in an error toast with the backend message', async () => {
       mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
       mockApi.delete.mockRejectedValue(new Error('Folder is not empty — move or delete sub-folders and workflows first'));

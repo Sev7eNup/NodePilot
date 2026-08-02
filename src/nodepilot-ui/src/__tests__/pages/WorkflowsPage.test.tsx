@@ -335,6 +335,77 @@ describe('WorkflowsPage — RBAC', () => {
   });
 });
 
+describe('WorkflowsPage — folder permissions affordance', () => {
+  const ROOT = '00000000-0000-0000-0000-000000000001';
+  const ADMIN_CAPS = { canRead: true, canRun: true, canEdit: true, canAdmin: true };
+
+  function folderList() {
+    return [
+      { id: ROOT, parentFolderId: null, name: 'Root', path: '\\', depth: 0,
+        createdAt: '2026-06-01T00:00:00.000Z', createdByUserId: null, workflowCount: 0,
+        capabilities: ADMIN_CAPS },
+      { id: 'cm-folder', parentFolderId: ROOT, name: 'CM', path: '\\CM', depth: 1,
+        createdAt: '2026-06-01T00:00:00.000Z', createdByUserId: null, workflowCount: 1,
+        capabilities: ADMIN_CAPS },
+    ];
+  }
+
+  beforeEach(() => {
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json(folderList())),
+    );
+  });
+
+  /**
+   * Regression: the button used to be a plain sibling of the tree inside a single
+   * `overflow-auto` aside. As soon as the card had a definite height — the user dragging
+   * the corner grip, or the `max-height: calc(100vh - 3rem)` clamp on a long folder list —
+   * the tree's own `h-full` claimed the entire card and pushed the button past the scroll
+   * fold. Since the tree has its own inner scroller it swallowed the wheel, so the button
+   * was invisible AND unreachable. jsdom does no layout, so we assert the structural
+   * invariant that makes the overflow impossible instead.
+   */
+  it('pins the permissions button outside the folder card scroll area', async () => {
+    renderPage('Admin');
+    await waitFor(() => expect(screen.getByText('CM')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('CM'));
+
+    const button = await screen.findByTestId('manage-folder-permissions');
+    const aside = button.closest('aside')!;
+
+    // Pinned footer: a direct child of the card, not nested inside the scrolling region.
+    expect(button.parentElement).toBe(aside);
+    expect(aside.className).toContain('flex-col');
+    // The card itself must never be the scroller — that is what buried the button.
+    expect(aside.className).not.toContain('overflow-auto');
+
+    // The tree lives in the one region that is allowed to consume leftover height.
+    const treeRegion = aside.querySelector('[data-testid="shared-folder-tree"]')!.parentElement!;
+    expect(treeRegion.className).toContain('flex-1');
+    expect(treeRegion.className).toContain('min-h-0');
+    expect(treeRegion.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING)
+      .toBeTruthy();
+  });
+
+  it('hides the permissions button when the selected folder lacks canAdmin', async () => {
+    server.use(
+      http.get(`${BASE}/api/shared-workflow-folders`, () =>
+        HttpResponse.json([
+          folderList()[0],
+          { ...folderList()[1], capabilities: { ...ADMIN_CAPS, canAdmin: false } },
+        ]),
+      ),
+    );
+    renderPage('Admin');
+    await waitFor(() => expect(screen.getByText('CM')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('CM'));
+
+    await waitFor(() => expect(screen.getByText('CM')).toBeInTheDocument());
+    expect(screen.queryByTestId('manage-folder-permissions')).not.toBeInTheDocument();
+  });
+});
+
 describe('WorkflowsPage — Create flow', () => {
   it('shows create form when New Workflow clicked', async () => {
     server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));

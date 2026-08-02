@@ -629,48 +629,48 @@ export function WorkflowsPage() {
             the tree is permission-filtered server-side. */}
         {(() => {
           const folderTree = (
-            <>
-              <SharedFolderTree
-                selectedFolderId={selectedFolderId}
-                onFolderSelected={setSelectedFolderId}
-                onTreeMutated={() => {
-                  queryClient.invalidateQueries({ queryKey: ['workflows'] });
-                  queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
-                }}
-                onWorkflowDropped={(workflowId, targetFolderId) => {
-                  // Skip a no-op move when the workflow is already in the target folder —
-                  // saves a round-trip and keeps the audit log clean.
-                  const wf = workflows?.find((w) => w.id === workflowId);
-                  if (wf && (wf.folderId ?? ROOT_FOLDER_ID) === targetFolderId) return;
-                  moveWorkflowMutation.mutate({ workflowId, targetFolderId });
-                }}
-              />
-              {selectedFolderId && (() => {
-                // Show "manage permissions" only when the caller has Admin on the selected
-                // folder. Read capabilities directly from the folder list — an earlier version
-                // inferred them from workflows in the folder, which broke for empty folders
-                // even when the caller actually had FolderAdmin.
-                const folder = sharedFolders?.find((f: SharedFolder) => f.id === selectedFolderId);
-                const canAdmin = folder?.capabilities.canAdmin ?? isAdmin;
-                if (!canAdmin) return null;
-                return (
-                  <button
-                    onClick={() => setPermissionsModalFolderId(selectedFolderId)}
-                    className="mt-3 w-full px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
-                  >
-                    {t('workflows:managePermissions')}
-                  </button>
-                );
-              })()}
-            </>
+            <SharedFolderTree
+              selectedFolderId={selectedFolderId}
+              onFolderSelected={setSelectedFolderId}
+              onManagePermissions={setPermissionsModalFolderId}
+              onTreeMutated={() => {
+                queryClient.invalidateQueries({ queryKey: ['workflows'] });
+                queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
+              }}
+              onWorkflowDropped={(workflowId, targetFolderId) => {
+                // Skip a no-op move when the workflow is already in the target folder —
+                // saves a round-trip and keeps the audit log clean.
+                const wf = workflows?.find((w) => w.id === workflowId);
+                if (wf && (wf.folderId ?? ROOT_FOLDER_ID) === targetFolderId) return;
+                moveWorkflowMutation.mutate({ workflowId, targetFolderId });
+              }}
+            />
           );
+          const permissionsButton = selectedFolderId && (() => {
+            // Show "manage permissions" only when the caller has Admin on the selected
+            // folder. Read capabilities directly from the folder list — an earlier version
+            // inferred them from workflows in the folder, which broke for empty folders
+            // even when the caller actually had FolderAdmin.
+            const folder = sharedFolders?.find((f: SharedFolder) => f.id === selectedFolderId);
+            const canAdmin = folder?.capabilities.canAdmin ?? isAdmin;
+            if (!canAdmin) return null;
+            return (
+              <button
+                onClick={() => setPermissionsModalFolderId(selectedFolderId)}
+                className="mt-3 w-full shrink-0 px-3 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm"
+                data-testid="manage-folder-permissions"
+              >
+                {t('workflows:managePermissions')}
+              </button>
+            );
+          })();
           if (isMobile) {
             return (
               <details className="np-card p-3 mb-3">
                 <summary className="cursor-pointer select-none text-sm font-medium text-on-surface-variant">
                   {t('workflows:foldersHeading')}
                 </summary>
-                <div className="mt-2">{folderTree}</div>
+                <div className="mt-2">{folderTree}{permissionsButton}</div>
               </details>
             );
           }
@@ -686,8 +686,15 @@ export function WorkflowsPage() {
                   maxHeight: 'calc(100vh - 3rem)',
                 }}
               >
-                <aside className="np-card np-folder-card p-3 h-full w-full overflow-auto">
-                  {folderTree}
+                {/* Column layout, NOT a single scroll box: the tree scrolls inside
+                    `min-h-0 flex-1` while the permissions button stays pinned as a footer.
+                    Previously both lived in one `overflow-auto` aside — once the box had a
+                    definite height (corner-grip drag, or the 100vh max-height kicking in),
+                    the tree's own `h-full` ate the full card and pushed the button past the
+                    scroll fold. The tree swallowed the wheel, so the button was unreachable. */}
+                <aside className="np-card np-folder-card p-3 h-full w-full flex flex-col overflow-hidden">
+                  <div className="min-h-0 flex-1 flex flex-col">{folderTree}</div>
+                  {permissionsButton}
                 </aside>
                 <CornerResizeHandle
                   title={t('workflows:folder.resizeHandleTitle')}

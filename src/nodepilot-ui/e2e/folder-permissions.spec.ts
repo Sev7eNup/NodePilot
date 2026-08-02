@@ -19,8 +19,9 @@ import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
  *   Admin selects a folder in the sidebar tree → a "manage permissions" button renders only
  *   when folder.capabilities.canAdmin is true → opens the modal → list/grant/revoke.
  *
- * The modal labels are German source strings ("Vergeben"/"Entfernen") with stable
- * data-testid hooks (shared-folder-perms-*) — we lean on those test-ids for resilience.
+ * The modal labels are translated (workflows:folder.perms.*), so Playwright — which renders
+ * EN — sees "Grant"/"Remove". Every control also carries a stable data-testid hook
+ * (shared-folder-perms-*); we lean on those test-ids rather than on label text.
  */
 
 const ADMIN = { id: MOCK_USER.id, username: 'e2e-admin', role: 'Admin' };

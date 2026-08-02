@@ -342,7 +342,63 @@ starten anders.
   - PascalCase → snake_case-Konversion bei der Property-Namen-Übersetzung.
 - **`LoggingSetup`** im `Program.cs` liest `Logging:Format` und schaltet zwischen
   `text` (Default), `cmtrace`, `json` (CLEF), `ecs-json`.
-- **`AuditWriter.LogAsync`** wickelt den SIEM-Forward in `Begin…1228 tokens truncated…er-Request-Cache mit `(userId, folderId)` als Key — Service ist scoped, lebt nur
+- **`AuditWriter.LogAsync`** wickelt den SIEM-Forward in `BeginScope` und emittiert **nach**
+  dem `SaveChanges` genau eine `LogInformation`-Zeile pro Audit-Row. Das Scope-Dictionary
+  trägt die ECS-Namen (`event.action`, `event.category`, `event.kind`, `event.outcome`,
+  `event.dataset`, `event.id`, `event.original`, `user.id`, `user.name`, `source.ip`) plus
+  die Support-Log-Felder (`support.event_type`, `support.message`, `SupportLog`).
+  - **Support-Log-Spiegel** greift bei einer Action auf der Allowlist (Auth, User-Mgmt,
+    Publish, Trigger, Secrets) **oder** bei jedem `outcome == "failure"` — Brute-Force,
+    fehlgeschlagene Entschlüsselungen und `_FAILED`/`_SUPPRESSED`/`_REJECTED`-Actions landen
+    damit automatisch im Support-Log, ohne dass die Allowlist sie einzeln kennen muss.
+  - Ein Fehler im Audit-Write bricht die auslösende Mutation **nie** ab; einziges
+    operatives Signal ist die `AuditWrites`-Metrik mit `result=failure`.
+
+Config-Keys, Feld-Referenz und die Forwarder-Rezepte stehen in
+[docs/siem-logging.md](siem-logging.md).
+
+## 4. Folder-RBAC (Shared Folders)
+
+### Was es kann
+
+Folder-RBAC begrenzt den Zugriff auf Workflows über den Shared Folder, in dem sie liegen.
+Die Ordner bilden einen Baum (Default-Maximaltiefe 5); Grants gehen an Benutzer oder an
+Verzeichnisgruppen. Die vier Folder-Rollen bauen aufeinander auf:
+
+```text
+FolderViewer < FolderOperator < FolderEditor < FolderAdmin
+```
+
+- **Vererbung nach unten:** `FolderEditor` auf `/Finance` gilt für `/Finance/Reports` und
+  tiefer, ohne weiteren Grant.
+- **Highest-Role-Wins:** ein Grant auf einem Unterordner **override** nicht nach unten —
+  Editor auf `/Finance` + Viewer auf `/Finance/Reports` ergibt Editor auf beiden.
+- **Globaler Admin bypassed alles**; globale Operator/Viewer werden durch ihre `UserRole`
+  **gecappt** — ein globaler Viewer mit FolderAdmin bekommt trotzdem kein Run/Edit/Admin.
+- **Existence Hiding:** nicht lesbare Workflows liefern `404` statt `403`, damit ihre bloße
+  Existenz nicht offengelegt wird.
+- **Capabilities pro Row** (`canRead`, `canRun`, `canEdit`, `canAdmin`) in List- und
+  Detail-Responses — die UI zeigt nur Buttons, die der Aufrufer auch nutzen darf.
+- **Sub-Workflow-Authorization zur Laufzeit:** startet Workflow A den Workflow B, prüft die
+  Engine die Read-Permission des effektiven Principals auf B's Folder.
+- **SignalR-Group-Routing:** Execution-Events landen nur in den Hub-Groups von Usern, die
+  den Workflow lesen dürfen.
+- **Authority-scoped Gruppen:** `PrincipalType=Group` speichert `PrincipalAuthority` plus
+  `PrincipalKey`. AD nutzt die kanonische AD-Authority und eine Windows-SID, OIDC/SCIM den
+  exakten HTTPS-Issuer und die opake Gruppen-ID. Ausgewertet wird ausschließlich gegen
+  serverseitige Membership-Snapshots, nie gegen JWT-Claims.
+
+Grants vergibt ein FolderAdmin in der UI auf der Seite **Workflows** — Rechtsklick auf den
+Ordner im Baum → **Berechtigungen…** (funktioniert auch auf Root `\`), oder Ordner
+auswählen und den Button **Berechtigungen…** am Fuß der Ordner-Karte nutzen.
+
+### Wie es umgesetzt ist
+
+- **`ResourceAuthorizationService`** (`src/NodePilot.Api/Security/`) ist der einzige
+  Resolver für „darf dieser Principal diese Operation auf diesem Folder": er löst die
+  Ordner-Ahnenkette auf, sammelt User- und Gruppen-Grants und reduziert sie auf die
+  effektive Folder-Rolle.
+  - Per-Request-Cache mit `(userId, folderId)` als Key — Service ist scoped, lebt nur
     für den Request, kein Cache-Invalidation-Problem zwischen Usern.
   - **Cache-Invalidate** nach jedem Folder/Permission-Mutation, damit eine Capability-
     Computation in derselben Response die gerade applied changes reflektiert.
@@ -413,9 +469,9 @@ auf den Zielordner und lehnt sonst mit 403 ab.
 
 ### Bewusst nicht in Scope (V1)
 
-- **Role/Group-Principals** — Schema-Support drin (`PrincipalType`-Enum), API + UI
-  exposed nur `User`. Group-Mapping kommt mit OIDC: `PrincipalType=Group`,
-  `PrincipalId=<group-id-aus-IdP>`.
+- **Role-Principals** — `PrincipalType=Role` bleibt im Enum reserviert und wird von der
+  Grant-API abgelehnt. `User` und `Group` sind verfügbar; Gruppen tragen zusätzlich die
+  `PrincipalAuthority` (AD-Authority + SID bzw. OIDC/SCIM-Issuer + Gruppen-ID).
 - **Per-Workflow-Permissions** — V1 vergibt nur auf Folder-Ebene. Wer einen Workflow
   isoliert schützen will, legt einen Sub-Folder an. Eine separate Workflow-ACL würde die
   Resolution-Komplexität verdoppeln.
