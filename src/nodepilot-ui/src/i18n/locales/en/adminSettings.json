@@ -279,6 +279,7 @@
     "enableToolCallingHint": "Lets the workflow chat assistant call read-only analysis tools. Requires a model with reliable function-calling.",
     "toolCallMaxDepth": "Max tool rounds",
     "baseUrl": "Base URL",
+    "baseUrlHint": "e.g. https://api.openai.com/v1 — a URL ending in /responses uses the OpenAI Responses API; one ending in /chat/completions is used verbatim.",
     "profiles": "Profiles",
     "activeProfile": "Active profile",
     "activeProfileHint": "Every AI feature uses this profile.",

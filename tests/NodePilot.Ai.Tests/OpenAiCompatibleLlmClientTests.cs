@@ -33,7 +33,7 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
     private OpenAiCompatibleLlmClient BuildClient(int? timeoutSeconds = null)
     {
         var config = new LlmClientConfig(
-            BaseUrl: _server.Url!.TrimEnd('/'),
+            Endpoint: LlmEndpointGuard.ResolveEndpoint(_server.Url!),
             ApiKey: null,
             Model: "test-model",
             MaxTokens: 100,
@@ -58,6 +58,35 @@ public sealed class OpenAiCompatibleLlmClientTests : IDisposable
 
         resp.Content.Should().Be("hello world");
         resp.Model.Should().Be("test-model");
+    }
+
+    [Fact]
+    public async Task CompleteAsync_BaseUrlAlreadyEndsWithChatCompletions_PostsThereExactlyOnce()
+    {
+        // Regression: the endpoint path used to be appended unconditionally, so an operator
+        // pasting the full endpoint URL got POST /chat/completions/chat/completions → HTTP 404.
+        _server.Given(Request.Create().WithPath("/chat/completions").UsingPost())
+               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+               {
+                   model = "test-model",
+                   choices = new[] { new { message = new { role = "assistant", content = "ok" } } },
+               }));
+
+        var config = new LlmClientConfig(
+            Endpoint: LlmEndpointGuard.ResolveEndpoint(_server.Url!.TrimEnd('/') + "/chat/completions"),
+            ApiKey: null,
+            Model: "test-model",
+            MaxTokens: 100,
+            Temperature: null,
+            TimeoutSeconds: 90);
+        var client = new OpenAiCompatibleLlmClient(
+            new SingleClientHttpClientFactory(), config, NullLogger<OpenAiCompatibleLlmClient>.Instance);
+
+        var resp = await client.CompleteAsync(new LlmRequest("sys", "user"), CancellationToken.None);
+
+        resp.Content.Should().Be("ok");
+        _server.LogEntries.Should().ContainSingle()
+            .Which.RequestMessage.Path.Should().Be("/chat/completions");
     }
 
     [Fact]

@@ -94,10 +94,13 @@ public sealed class SettingsTestProbe
     }
 
     /// <summary>
-    /// LLM connectivity probe. Sends a HEAD/GET to <c>{BaseUrl}/models</c>, which every
+    /// LLM connectivity probe. Sends a GET to <c>{ApiRoot}/models</c>, which every
     /// OpenAI-compatible endpoint (OpenAI Cloud, Ollama, LM Studio, vLLM, LocalAI,
     /// llama.cpp) supports as a cheap "are you there + does my key work" check. Avoids
-    /// burning tokens on a chat-completion probe.
+    /// burning tokens on a chat-completion probe. The root is the configured BaseUrl minus its
+    /// dialect suffix, so a BaseUrl pointing straight at <c>/responses</c> or
+    /// <c>/chat/completions</c> probes the sibling <c>/models</c> instead of a nested path that
+    /// doesn't exist.
     /// </summary>
     public async Task<SettingsTestProbeResult> TestLlmAsync(LlmTestProbeRequest request, CancellationToken ct)
     {
@@ -113,7 +116,7 @@ public sealed class SettingsTestProbe
             var client = _httpFactory.CreateClient(LlmHttpClient.Name);
             client.Timeout = TimeSpan.FromSeconds(Math.Min(request.Settings.TimeoutSeconds, 30));
 
-            var url = LlmEndpointGuard.NormalizeAndValidateBaseUrl(request.Settings.BaseUrl) + "/models";
+            var url = LlmEndpointGuard.ResolveEndpoint(request.Settings.BaseUrl).ApiRoot + "/models";
             using var probe = new HttpRequestMessage(HttpMethod.Get, url);
             if (!string.IsNullOrEmpty(request.Settings.ApiKey))
                 probe.Headers.Authorization = new AuthenticationHeaderValue("Bearer", request.Settings.ApiKey);

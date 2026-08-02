@@ -7,8 +7,10 @@ using NodePilot.Core.Interfaces;
 namespace NodePilot.Engine.Activities;
 
 /// <summary>
-/// Engine-local activity that calls an OpenAI-compatible chat-completions endpoint (prompt →
-/// text answer). By default it uses the globally configured <c>Llm:*</c> endpoint; per-node config
+/// Engine-local activity that calls an OpenAI-compatible endpoint (prompt → text answer) — chat
+/// completions or OpenAI's Responses API, depending on the base URL's path (see
+/// <c>LlmEndpointGuard.ResolveEndpoint</c>).
+/// By default it uses the globally configured <c>Llm:*</c> endpoint; per-node config
 /// can override <c>baseUrl</c>/<c>model</c>/<c>apiKey</c> plus <c>maxTokens</c>/<c>temperature</c>/
 /// <c>timeoutSeconds</c>. Gated by the global <c>Llm:Enabled</c> master switch (single kill-switch
 /// for all LLM egress). Shares the exact transport + SSRF guard as the AI assistant via

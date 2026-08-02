@@ -10,9 +10,11 @@ namespace NodePilot.Ai;
 /// <see cref="LlmProfileOptions"/>.
 ///
 /// <para>
-/// The transport is OpenAI-compatible (chat completions), so the same code works against OpenAI
-/// Cloud, Ollama, LM Studio, vLLM, LocalAI, and llama.cpp servers. Local endpoints are the
-/// preferred use case — this whole feature is opt-in (<c>Enabled=false</c> by default).
+/// The transport is OpenAI-compatible, so the same code works against OpenAI Cloud, Ollama, LM
+/// Studio, vLLM, LocalAI, and llama.cpp servers. Which of the two wire dialects (chat completions
+/// or OpenAI's Responses API) a profile speaks follows from its
+/// <see cref="LlmProfileOptions.BaseUrl"/>. Local endpoints are the preferred use case — this
+/// whole feature is opt-in (<c>Enabled=false</c> by default).
 /// </para>
 ///
 /// <para>

@@ -44,6 +44,95 @@ public sealed class LlmEndpointGuardTests
         act.Should().Throw<LlmException>().Where(e => e.Message.Contains("cloud-metadata"));
     }
 
+    // ---- Dialect resolution ---------------------------------------------------------
+    // The BaseUrl path is the only signal for which wire dialect an endpoint speaks, and it also
+    // decides whether the endpoint suffix still has to be appended. Pasting the full endpoint URL
+    // used to produce a double-append (POST /v1/responses/chat/completions → HTTP 404).
+
+    [Fact]
+    public void ResolveEndpoint_ResponsesPath_PostsVerbatimAndStripsSuffixForRoot()
+    {
+        var target = LlmEndpointGuard.ResolveEndpoint("https://api.openai.com/v1/responses");
+
+        target.Flavor.Should().Be(LlmApiFlavor.Responses);
+        target.PostUrl.Should().Be("https://api.openai.com/v1/responses");
+        target.ApiRoot.Should().Be("https://api.openai.com/v1");
+    }
+
+    [Fact]
+    public void ResolveEndpoint_ChatCompletionsPath_DoesNotAppendTheSuffixTwice()
+    {
+        var target = LlmEndpointGuard.ResolveEndpoint("https://api.openai.com/v1/chat/completions");
+
+        target.Flavor.Should().Be(LlmApiFlavor.ChatCompletions);
+        target.PostUrl.Should().Be("https://api.openai.com/v1/chat/completions");
+        target.ApiRoot.Should().Be("https://api.openai.com/v1");
+    }
+
+    [Fact]
+    public void ResolveEndpoint_PlainRoot_AppendsChatCompletions()
+    {
+        var target = LlmEndpointGuard.ResolveEndpoint("https://api.openai.com/v1");
+
+        target.Flavor.Should().Be(LlmApiFlavor.ChatCompletions);
+        target.PostUrl.Should().Be("https://api.openai.com/v1/chat/completions");
+        target.ApiRoot.Should().Be("https://api.openai.com/v1");
+    }
+
+    [Fact]
+    public void ResolveEndpoint_HostRootWithoutPath_AppendsChatCompletions()
+    {
+        var target = LlmEndpointGuard.ResolveEndpoint("http://localhost:11434");
+
+        target.Flavor.Should().Be(LlmApiFlavor.ChatCompletions);
+        target.PostUrl.Should().Be("http://localhost:11434/chat/completions");
+        target.ApiRoot.Should().Be("http://localhost:11434");
+    }
+
+    [Theory]
+    [InlineData("https://api.openai.com/v1/responses/")]
+    [InlineData("  https://api.openai.com/v1/responses//  ")]
+    public void ResolveEndpoint_TrailingSlash_IsNormalizedBeforeDetection(string input)
+    {
+        var target = LlmEndpointGuard.ResolveEndpoint(input);
+
+        target.Flavor.Should().Be(LlmApiFlavor.Responses);
+        target.PostUrl.Should().Be("https://api.openai.com/v1/responses");
+    }
+
+    [Theory]
+    [InlineData("https://api.openai.com/v1/Responses", LlmApiFlavor.Responses)]
+    [InlineData("https://api.openai.com/v1/Chat/Completions", LlmApiFlavor.ChatCompletions)]
+    public void ResolveEndpoint_MixedCaseSuffix_IsDetected(string input, LlmApiFlavor expected)
+    {
+        var target = LlmEndpointGuard.ResolveEndpoint(input);
+
+        target.Flavor.Should().Be(expected);
+        target.PostUrl.Should().Be(input);
+    }
+
+    [Fact]
+    public void ResolveEndpoint_HostNamedResponses_IsNotTreatedAsResponsesDialect()
+    {
+        // The suffix is a path, not a hostname — matching on the whole string only works because
+        // the constants carry a leading slash.
+        var target = LlmEndpointGuard.ResolveEndpoint("https://responses.example.test");
+
+        target.Flavor.Should().Be(LlmApiFlavor.ChatCompletions);
+        target.PostUrl.Should().Be("https://responses.example.test/chat/completions");
+    }
+
+    [Theory]
+    [InlineData("http://169.254.169.254/v1/responses")]
+    [InlineData("not-a-url")]
+    [InlineData("")]
+    public void ResolveEndpoint_GuardRejectedBaseUrl_Throws(string input)
+    {
+        // Dialect detection must never run ahead of the SSRF/format guard.
+        var act = () => LlmEndpointGuard.ResolveEndpoint(input);
+        act.Should().Throw<LlmException>();
+    }
+
     [Theory]
     [InlineData("http://169.254.169.254/", true)]
     [InlineData("http://metadata.google.internal", true)]

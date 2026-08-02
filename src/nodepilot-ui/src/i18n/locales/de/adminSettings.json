@@ -279,6 +279,7 @@
     "enableToolCallingHint": "Lässt den Workflow-Chat-Assistenten read-only Analyse-Tools aufrufen. Erfordert ein Modell mit zuverlässigem Function-Calling.",
     "toolCallMaxDepth": "Max. Tool-Runden",
     "baseUrl": "Base URL",
+    "baseUrlHint": "z. B. https://api.openai.com/v1 — endet die URL auf /responses, spricht NodePilot die OpenAI-Responses-API; auf /chat/completions wird sie unverändert verwendet.",
     "profiles": "Profile",
     "activeProfile": "Aktives Profil",
     "activeProfileHint": "Alle KI-Features nutzen dieses Profil.",

@@ -20,11 +20,14 @@ public interface ILlmClientFactory
 {
     /// <summary>
     /// Builds a client for the effective connection: the active profile, with any non-null
-    /// <paramref name="overrides"/> field taking precedence.
+    /// <paramref name="overrides"/> field taking precedence. Which implementation comes back
+    /// depends on the wire dialect <see cref="LlmEndpointGuard.ResolveEndpoint"/> derives from the
+    /// effective BaseUrl — chat completions by default, OpenAI's Responses API for a
+    /// <c>/responses</c> endpoint.
     /// </summary>
     /// <exception cref="LlmException">
     /// No profile is configured or <c>Llm:ActiveProfileId</c> doesn't name one, or the effective
-    /// BaseUrl fails <see cref="LlmEndpointGuard.NormalizeAndValidateBaseUrl"/>.
+    /// BaseUrl fails <see cref="LlmEndpointGuard.ResolveEndpoint"/>.
     /// </exception>
     ILlmClient Create(LlmConnection? overrides = null);
 }
@@ -58,19 +61,24 @@ public sealed class LlmClientFactory : ILlmClientFactory
                 + "Integrations → LLM and select it as the active profile.");
         }
 
-        // Validate/normalize the effective BaseUrl HERE — the factory is the central override
-        // entry point and must never trust callers to have pre-checked it.
-        var baseUrl = LlmEndpointGuard.NormalizeAndValidateBaseUrl(overrides?.BaseUrl ?? profile.BaseUrl);
+        // Validate the effective BaseUrl and resolve its wire dialect HERE — the factory is the
+        // central override entry point and must never trust callers to have pre-checked it.
+        var endpoint = LlmEndpointGuard.ResolveEndpoint(overrides?.BaseUrl ?? profile.BaseUrl);
 
         var config = new LlmClientConfig(
-            BaseUrl: baseUrl,
+            Endpoint: endpoint,
             ApiKey: overrides?.ApiKey ?? profile.ApiKey,
             Model: overrides?.Model ?? profile.Model,
             MaxTokens: overrides?.MaxTokens ?? profile.MaxTokens,
             Temperature: overrides?.Temperature, // per-call only; no profile default
             TimeoutSeconds: overrides?.TimeoutSeconds ?? profile.TimeoutSeconds);
 
-        return new OpenAiCompatibleLlmClient(
-            _httpClientFactory, config, _loggerFactory.CreateLogger<OpenAiCompatibleLlmClient>());
+        return endpoint.Flavor switch
+        {
+            LlmApiFlavor.Responses => new OpenAiResponsesLlmClient(
+                _httpClientFactory, config, _loggerFactory.CreateLogger<OpenAiResponsesLlmClient>()),
+            _ => new OpenAiCompatibleLlmClient(
+                _httpClientFactory, config, _loggerFactory.CreateLogger<OpenAiCompatibleLlmClient>()),
+        };
     }
 }

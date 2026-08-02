@@ -575,6 +575,7 @@ function LlmProfileForm({
           value={profile.baseUrl}
           onChange={(v) => onPatch({ baseUrl: v })}
           disabled={isEnvLocked(key('BaseUrl'))}
+          hint={t('adminSettings:integrations.baseUrlHint')}
         />
         <LabeledInput
           label={t('adminSettings:integrations.model')} configKey={key('Model')} effectiveSource={effectiveSource}
@@ -677,7 +678,7 @@ function Card({ icon: Icon, title, children }: Readonly<{ icon: React.ComponentT
 }
 
 function LabeledInput({
-  label, configKey, effectiveSource, value, onChange, type = 'text', disabled,
+  label, configKey, effectiveSource, value, onChange, type = 'text', disabled, hint,
 }: Readonly<{
   label: string;
   configKey: string;
@@ -686,6 +687,7 @@ function LabeledInput({
   onChange: (v: string) => void;
   type?: string;
   disabled?: boolean;
+  hint?: string;
 }>) {
   // The config key doubles as the field id so label and input are actually associated — several
   // of these render the same label text (e.g. one "Model" per LLM profile).
@@ -704,6 +706,7 @@ function LabeledInput({
         disabled={disabled}
         className="w-full px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-surface-low disabled:text-on-surface-variant"
       />
+      {hint ? <p className="mt-1 text-xs text-on-surface-variant">{hint}</p> : null}
     </div>
   );
 }
