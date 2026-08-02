@@ -198,7 +198,7 @@ public sealed class OpenAiCompatibleLlmClientErrorTests : IDisposable
     private OpenAiCompatibleLlmClient Client(string? baseUrl = null) => new(
         new SingleClientHttpClientFactory(),
         new LlmClientConfig(
-            BaseUrl: (baseUrl ?? _server.Url!).TrimEnd('/'),
+            Endpoint: LlmEndpointGuard.ResolveEndpoint(baseUrl ?? _server.Url!),
             ApiKey: null,
             Model: "test-model",
             MaxTokens: 100,

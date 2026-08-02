@@ -121,6 +121,7 @@ public static class AuditActions
     public const string SettingsSqlActivityUpdated = "SETTINGS_SQLACTIVITY_UPDATED";
     public const string SettingsStartProgramUpdated = "SETTINGS_STARTPROGRAM_UPDATED";
     public const string SettingsThreadingUpdated = "SETTINGS_THREADING_UPDATED";
+    public const string SettingsWaitForConditionUpdated = "SETTINGS_WAITFORCONDITION_UPDATED";
     public const string SettingsWebhookUpdated = "SETTINGS_WEBHOOK_UPDATED";
 
     public const string TokenRefreshed = "TOKEN_REFRESHED";

@@ -253,7 +253,7 @@
       ]
     },
     "llmQuery": {
-      "description": "Call an OpenAI-compatible chat-completions endpoint — prompt in, answer text out (engine-local).",
+      "description": "Call an OpenAI-compatible endpoint — prompt in, answer text out (engine-local).",
       "promptNotes": [
         "This is THE activity for calling an AI model during a run. Use it whenever the workflow needs a model to summarize, classify, extract or draft something — never hand-build an LLM HTTP call with `restApi` or Invoke-RestMethod.",
         "Uses the ACTIVE LLM profile (Llm:ActiveProfileId → Llm:Profiles:<id>) by default, so baseUrl/model/apiKey can normally be left empty. Requires Llm:Enabled=true and a resolvable active profile.",
@@ -263,7 +263,7 @@
         { "key": "prompt", "type": "string", "required": true, "description": "User prompt. Supports {{variables}}." },
         { "key": "systemPrompt", "type": "string", "required": false, "description": "Optional system message; empty = passthrough (no default)." },
         { "key": "model", "type": "string", "required": false, "description": "Override the active profile's model." },
-        { "key": "baseUrl", "type": "string", "required": false, "description": "Override the active profile's endpoint (absolute http/https; cloud-metadata endpoints are blocked)." },
+        { "key": "baseUrl", "type": "string", "required": false, "description": "Override the active profile's endpoint (absolute http/https; cloud-metadata endpoints are blocked). A URL ending in /responses speaks the OpenAI Responses API, otherwise chat completions." },
         { "key": "apiKey", "type": "string", "required": false, "description": "Override the active profile's bearer key (secret; redacted on export/MCP)." },
         { "key": "maxTokens", "type": "number", "required": false, "description": "Override the active profile's max output tokens (> 0)." },
         { "key": "temperature", "type": "number", "required": false, "description": "Sampling temperature 0..2 (per-node only; omitted = provider default)." },

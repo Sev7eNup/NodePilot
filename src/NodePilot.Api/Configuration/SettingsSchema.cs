@@ -165,6 +165,12 @@ public static class SettingsSchema
         new SettingsSectionDescriptor("FileSystemOperation", "File-System Activities", typeof(object),
             typeof(FileSystemOperationSettingsDto), ImmutableArray<string>.Empty, true,
             AuditActions.SettingsFilesystemOperationUpdated),
+        // Hot-reload: NetworkGuard.RequireExplicitlyAllowlistedHost reads
+        // WaitForCondition:AllowedHosts from the live IConfiguration on every probe, so a
+        // Settings-UI save takes effect on the next waitForCondition step without a restart.
+        new SettingsSectionDescriptor("WaitForCondition", "Network Probe Allow-List", typeof(object),
+            typeof(WaitForConditionSettingsDto), ImmutableArray<string>.Empty, true,
+            AuditActions.SettingsWaitForConditionUpdated),
         // Hot-reload: SqlActivity reads SqlActivity:RequireConnectionRef from the live IConfiguration
         // indexer on every execution (ResolveConnectionString), so a Settings-UI save takes effect
         // without a restart.

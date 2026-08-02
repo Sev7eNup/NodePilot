@@ -15,14 +15,14 @@ public sealed record LlmConnection(
     int? TimeoutSeconds = null);
 
 /// <summary>
-/// The fully-resolved connection an <see cref="OpenAiCompatibleLlmClient"/> instance is bound to:
-/// the global <see cref="LlmOptions"/> with any per-call <see cref="LlmConnection"/> overrides
-/// applied. <see cref="BaseUrl"/> is already normalized + validated via
-/// <see cref="LlmEndpointGuard.NormalizeAndValidateBaseUrl"/>. <see cref="Temperature"/> is
-/// per-call only (no global default) — null ⇒ omit <c>temperature</c> from the request body.
+/// The fully-resolved connection an <see cref="ILlmClient"/> instance is bound to: the global
+/// <see cref="LlmOptions"/> with any per-call <see cref="LlmConnection"/> overrides applied.
+/// <see cref="Endpoint"/> is already validated and dialect-resolved via
+/// <see cref="LlmEndpointGuard.ResolveEndpoint"/>. <see cref="Temperature"/> is per-call only (no
+/// global default) — null ⇒ omit <c>temperature</c> from the request body.
 /// </summary>
 public sealed record LlmClientConfig(
-    string BaseUrl,
+    LlmEndpointTarget Endpoint,
     string? ApiKey,
     string Model,
     int MaxTokens,

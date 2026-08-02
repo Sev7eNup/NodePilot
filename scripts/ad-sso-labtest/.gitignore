@@ -1,0 +1,8 @@
+# Evidenz-Artefakte des Feldtests (klist-Dumps, Eventlog-Auszuege, Fiddler-Sessions,
+# Screenshots). Enthalten Kontonamen, SIDs und Ticket-Metadaten des Labs.
+evidence/
+
+# Lokale Zertifikate/Thumbprints, falls hier abgelegt.
+certs/
+*.pfx
+*.saz

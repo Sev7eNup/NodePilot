@@ -166,13 +166,33 @@ Je Profil:
 | Einstellung | Bedeutung |
 |---|---|
 | `Name` | Anzeigename; frei änderbar, die Kennung bleibt bestehen |
-| `BaseUrl` | Basisadresse eines OpenAI-kompatiblen Chat-Completions-Endpunkts |
+| `BaseUrl` | Adresse eines OpenAI-kompatiblen Endpunkts; der Pfad bestimmt das Anfrageformat (siehe unten) |
 | `ApiKey` | API-Schlüssel; für lokale Modelle häufig nicht erforderlich |
 | `Model` | verwendeter Modellname |
 | `MaxTokens` | maximale Länge einer Modellantwort |
 | `TimeoutSeconds` | maximale Wartezeit auf den Modell-Endpunkt |
 | `EnableToolCalling` | erlaubt den Chats, freigegebene lesende Analyse- und Wissensquellen zu verwenden |
 | `ToolCallMaxDepth` | maximale Anzahl aufeinanderfolgender Tool-Aufrufe pro Frage |
+
+### Anfrageformat (ergibt sich aus der Base-URL)
+
+OpenAI betreibt zwei Anfrageformate nebeneinander: das klassische **Chat Completions** und die
+neuere **Responses-API**. Einzelne Modelle sind ausschließlich über die Responses-API erreichbar.
+NodePilot beherrscht beide und erkennt am Pfad der Base-URL, welches gemeint ist — ein eigener
+Schalter dafür ist bewusst nicht nötig:
+
+| Base-URL endet auf | Verwendetes Format | Aufgerufene Adresse |
+|---|---|---|
+| `/responses` | Responses-API | genau diese Adresse |
+| `/chat/completions` | Chat Completions | genau diese Adresse |
+| alles andere (z. B. `…/v1`) | Chat Completions | Base-URL + `/chat/completions` |
+
+Die Erkennung ignoriert Groß-/Kleinschreibung und abschließende Schrägstriche. Lokale Runtimes wie
+Ollama, LM Studio, vLLM, LocalAI oder llama.cpp verstehen ausschließlich Chat Completions.
+
+Bei der Responses-API sendet NodePilot immer die Anweisung, die Anfrage **nicht** beim Anbieter zu
+speichern. Ohne diese Anweisung würde OpenAI dort standardmäßig jede Anfrage 30 Tage aufbewahren,
+während Chat Completions nichts speichert.
 
 Profile werden am besten unter **Einstellungen → System → Integrationen → LLM** angelegt. Dort angelegte Profile lassen sich vollständig verwalten. Ein Profil, das zusätzlich in einer Basis-Konfigurationsdatei oder in Umgebungsvariablen definiert ist, kann in der Oberfläche zwar bearbeitet, aber nicht gelöscht werden — es würde beim nächsten Neuladen der Konfiguration wieder erscheinen. Solche Profile sind in der Oberfläche entsprechend gekennzeichnet.
 

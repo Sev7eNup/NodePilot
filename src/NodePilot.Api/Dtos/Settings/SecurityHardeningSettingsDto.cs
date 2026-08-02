@@ -29,29 +29,49 @@ public sealed class RestApiSettingsDto : IValidatableObject
                 yield return new ValidationResult(r.ErrorMessage, r.MemberNames.Select(m => $"Proxy.{m}"));
         }
 
-        if (AllowedHosts is null)
+        foreach (var result in HostAllowList.Validate(AllowedHosts, nameof(AllowedHosts), "outbound"))
+            yield return result;
+    }
+}
+
+/// <summary>
+/// Shared validation for the two exact-host allow-lists (<c>RestApi:AllowedHosts</c> and
+/// <c>WaitForCondition:AllowedHosts</c>). They are separate settings on purpose — one governs
+/// restApi's loopback/private-network exception, the other the PowerShell-backed probes — but
+/// the accepted syntax is identical, so the rules live in one place.
+/// </summary>
+internal static class HostAllowList
+{
+    private const int MaxEntries = 256;
+
+    public static IEnumerable<ValidationResult> Validate(
+        List<string>? allowedHosts, string memberName, string listNoun)
+    {
+        if (allowedHosts is null)
         {
             yield return new ValidationResult(
-                "AllowedHosts is required; use an empty array when no host is allowed.",
-                [nameof(AllowedHosts)]);
+                $"{memberName} is required; use an empty array when no host is allowed.",
+                [memberName]);
             yield break;
         }
 
-        if (AllowedHosts.Count > 256)
+        if (allowedHosts.Count > MaxEntries)
         {
             yield return new ValidationResult(
-                "At most 256 exact outbound hosts may be allow-listed.",
-                [nameof(AllowedHosts)]);
+                $"At most {MaxEntries} exact {listNoun} hosts may be allow-listed.",
+                [memberName]);
             yield break;
         }
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var configured in AllowedHosts)
+        foreach (var configured in allowedHosts)
         {
             var host = configured?.Trim() ?? string.Empty;
             var unbracketed = host.Length > 2 && host[0] == '[' && host[^1] == ']'
                 ? host[1..^1]
                 : host;
+            // Exact host or IP only: a scheme, path, port, wildcard or user-info would make the
+            // comparison in NetworkGuard.NormalizeHostForComparison silently never match.
             var valid = host.Length is > 0 and <= 253
                         && !host.Contains("://", StringComparison.Ordinal)
                         && host.IndexOfAny(['/', '?', '#', '@']) < 0
@@ -61,16 +81,31 @@ public sealed class RestApiSettingsDto : IValidatableObject
             {
                 yield return new ValidationResult(
                     $"'{host}' is not an exact host name or IP address. Schemes, paths, ports, wildcards, and user-info are not allowed.",
-                    [nameof(AllowedHosts)]);
+                    [memberName]);
             }
             else if (!seen.Add(host))
             {
                 yield return new ValidationResult(
-                    $"Duplicate outbound allow-list host '{host}'.",
-                    [nameof(AllowedHosts)]);
+                    $"Duplicate {listNoun} allow-list host '{host}'.",
+                    [memberName]);
             }
         }
     }
+}
+
+/// <summary>
+/// Allow-list for the PowerShell-backed network probes of <c>waitForCondition</c>
+/// (<c>portOpen</c> / <c>httpOk</c>). Separate from <see cref="RestApiSettingsDto.AllowedHosts"/>
+/// so permitting "probe my own host" does not also open restApi's loopback exception, whose
+/// URLs can be assembled from trigger payloads.
+/// </summary>
+public sealed class WaitForConditionSettingsDto : IValidatableObject
+{
+    /// <summary>Exact hosts the probes may target. Empty list rejects every probe.</summary>
+    [Required] public List<string> AllowedHosts { get; set; } = new();
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        => HostAllowList.Validate(AllowedHosts, nameof(AllowedHosts), "probe");
 }
 
 public sealed class RestApiProxyDto

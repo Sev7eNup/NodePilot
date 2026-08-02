@@ -6,6 +6,7 @@ import {
   Password,
   Renew,
   Terminal,
+  Time,
   Webhook,
 } from '@carbon/icons-react';
 import { useEffect, useState } from 'react';
@@ -39,6 +40,7 @@ export function SecuritySection() {
   return (
     <div className="space-y-4">
       <RestApiCard />
+      <WaitForConditionCard />
       <FileSystemOperationCard />
       <SqlActivityCard />
       <StartProgramCard />
@@ -132,6 +134,44 @@ function RestApiCard() {
         </div>
       </div>
       <ErrorsAndSave errors={errors} onSave={() => save(payload())} />
+      {ui.dialog}
+    </Card>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WaitForCondition (probe allow-list)
+//
+// Deliberately its own card next to RestApi: the two allow-lists look alike but
+// govern different guards. This one admits the PowerShell-backed portOpen/httpOk
+// probes; RestApi:AllowedHosts is the loopback exception for restApi calls. Merging
+// them would mean "let a workflow check whether my own service is up" silently also
+// opens outbound HTTP to loopback — whose URLs can come from trigger payloads.
+// ─────────────────────────────────────────────────────────────────────────────
+
+type WaitForConditionDto = { allowedHosts: string[] };
+
+function WaitForConditionCard() {
+  const { t } = useTranslation('adminSettings');
+  const ui = useSectionForm<WaitForConditionDto>('WaitForCondition', { allowedHosts: [] });
+  if (ui.loading) {
+    return (
+      <Card icon={Time} title={t('sec.waitForConditionCardTitle')}>
+        <p className="text-sm">{t('loading')}</p>
+      </Card>
+    );
+  }
+  const { form, set, save, errors, data } = ui;
+
+  return (
+    <Card icon={Time} title={t('sec.waitForConditionCardTitle')}>
+      <StringListEditor label={t('sec.probeAllowedHosts')} value={form.allowedHosts}
+        onChange={(v) => set({ ...form, allowedHosts: v })}
+        placeholder="localhost" />
+      <p className="text-xs text-on-surface-variant mt-1">{t('sec.probeAllowedHostsHint')}</p>
+      {/* Hot-reloadable: the guard reads the list from live config on every probe. */}
+      <HotReloadHint isHotReloadable={data.isHotReloadable} />
+      <ErrorsAndSave errors={errors} onSave={() => save({ AllowedHosts: form.allowedHosts })} />
       {ui.dialog}
     </Card>
   );

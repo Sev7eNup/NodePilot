@@ -154,7 +154,8 @@ internal sealed class StepRunner
 
         stepDb.StepExecutions.Add(stepExecution);
         if (!_deferRunningStateWrite)
-            await stepDb.SaveChangesMeasuredAsync("step.running", ct);
+            // CancellationToken.None deliberately — see the note on the terminal write below.
+            await stepDb.SaveChangesMeasuredAsync("step.running", CancellationToken.None);
 
         await _notifier.StepStartedAsync(execution.Id, execution.WorkflowId, node.Id, node.Data.Label, node.Type ?? "unknown", stepExecution.StartedAt ?? DateTime.UtcNow);
 
@@ -255,7 +256,18 @@ internal sealed class StepRunner
                 stepExecution.CustomActivityHash = prov.Hash;
             }
             stepExecution.CompletedAt = DateTime.UtcNow;
-            await stepDb.SaveChangesMeasuredAsync("step.terminal", ct);
+            // CancellationToken.None, NOT ct — the step's own lifecycle row must be written
+            // even while the branch is being torn down. Passing ct here caused duplicate
+            // INSERTs in production (field finding 2026-08-02, ~1200 hits/day on SQL Server):
+            // a junction cancels the losing branches, the token trips *inside* SaveChangesAsync
+            // after the INSERT already committed, and EF then leaves the entity in the Added
+            // state because it only accepts changes on successful completion. The cancellation
+            // handler below saves again, EF re-issues the INSERT, and SQL Server rejects it with
+            // a PK violation. Postgres never showed this because Npgsql actually aborts the
+            // command server-side on cancel, so nothing was committed to collide with.
+            // The two error handlers below already used CancellationToken.None for the same
+            // reason; this write was the inconsistent one.
+            await stepDb.SaveChangesMeasuredAsync("step.terminal", CancellationToken.None);
 
             stepActivity?.SetTag(TelemetryConstants.Attributes.StepStatus, stepExecution.Status.ToString());
             if (result.Success)
@@ -302,7 +314,10 @@ internal sealed class StepRunner
         }
         catch (Exception ex)
         {
-            var sanitizedError = _redactor.Redact(ex.Message);
+            // Describe, not ex.Message: wrapper exceptions carry the diagnosis one level down.
+            // A DbUpdateException persisted only "See the inner exception for details", which
+            // forced a server-log dive to learn that it was a primary-key violation.
+            var sanitizedError = _redactor.Redact(ExceptionDetail.Describe(ex));
             stepExecution.Status = ExecutionStatus.Failed;
             stepExecution.ErrorOutput = TruncateForPersist(sanitizedError);
             stepExecution.CompletedAt = DateTime.UtcNow;

@@ -66,6 +66,13 @@ Neu-Eintippen.
         "TimeoutSeconds": 360,
         "EnableToolCalling": true,
         "ToolCallMaxDepth": 6
+      },
+      "openai-responses": {
+        "Name": "OpenAI Responses",
+        "BaseUrl": "https://api.openai.com/v1/responses",
+        "Model": "gpt-5.1",
+        "MaxTokens": 32768,
+        "TimeoutSeconds": 300
       }
     }
   }
@@ -85,7 +92,7 @@ Neu-Eintippen.
 | Key | Default | Erklärung |
 |---|---|---|
 | `Name` | `""` | Anzeigename, frei umbenennbar. Die Id bleibt dabei stehen — sie ist der Anker für Secret, Env-Override und `ActiveProfileId`. |
-| `BaseUrl` | OpenAI Cloud | OpenAI-kompatible Chat-Completions-Root. Für lokale Modelle siehe Tabelle unten. |
+| `BaseUrl` | OpenAI Cloud | Adresse des OpenAI-kompatiblen Endpunkts. Der Pfad bestimmt den Wire-Dialekt — siehe „Wire-Dialekt" unten. Für lokale Modelle siehe Tabelle weiter unten. |
 | `ApiKey` | `null` | OpenAI-Cloud verlangt einen Key; lokale Endpoints meist nicht. **Empfohlener Weg: Env-Var `Llm__Profiles__<id>__ApiKey`** — Klartext in der Settings-Datei löst eine Startup-Hardening-Warnung aus. |
 | `Model` | `gpt-4o-mini` | Wird für Script-, Workflow-Generierung und beide Chats verwendet. |
 | `MaxTokens` | `4096` | Cap der LLM-Antwort. Reicht für ein typisches Script und einen mittelgroßen Workflow. Bei großen Modellen (32k+ Context) gerne erhöhen. |
@@ -95,6 +102,36 @@ Neu-Eintippen.
 
 **Restart erforderlich**: nein — die Sektion ist hot-reloadable. Ein Save in der Admin-UI (inkl.
 Profilwechsel) greift beim nächsten Aufruf.
+
+### Wire-Dialekt (aus der `BaseUrl` abgeleitet)
+
+OpenAI betreibt zwei Request-Formate nebeneinander: das klassische **Chat Completions**
+(`/chat/completions`) und die neuere **Responses-API** (`/responses`). Manche Modelle werden nur
+noch über Responses ausgeliefert. NodePilot spricht beide und leitet den Dialekt **aus dem Pfad der
+`BaseUrl`** ab — es gibt bewusst keinen zusätzlichen Config-Key: der Anbieter nennt ohnehin eine
+URL, und die trägt die Information schon.
+
+| `BaseUrl` endet auf | Dialekt | Wohin gepostet wird | Wohin die Test-Probe geht |
+|---|---|---|---|
+| `/responses` | Responses | genau diese URL | `…/models` neben der URL |
+| `/chat/completions` | Chat Completions | genau diese URL | `…/models` neben der URL |
+| alles andere (`…/v1`) | Chat Completions | `{BaseUrl}/chat/completions` | `{BaseUrl}/models` |
+
+Die Erkennung ist case-insensitiv und ignoriert Trailing-Slashes. Eine `BaseUrl` mit Query-String
+(Azure-OpenAI-Stil `?api-version=…`) fällt in die letzte Zeile und wird nicht unterstützt.
+
+Was sich im Responses-Dialekt intern unterscheidet (für Fehlersuche in Logs relevant): der Prompt
+reist als `input` statt `messages`, der Cap heißt `max_output_tokens`, JSON-Mode ist `text.format`
+statt `response_format`, Tool-Definitionen sind flach (kein verschachteltes `function`-Objekt), und
+der Stream besteht aus typisierten Events statt Choice-Deltas. Zusätzlich sendet NodePilot immer
+`store: false` — die Responses-API würde sonst per Default jeden Prompt 30 Tage im
+OpenAI-Dashboard aufbewahren, während Chat Completions nichts speichert.
+
+Die vier Kompatibilitäts-Fallbacks des Chat-Completions-Pfads (`max_tokens` →
+`max_completion_tokens`, `stream_options`, `response_format`, `strict`-Tool-Schemas) gibt es im
+Responses-Dialekt nicht: die ersten beiden Felder existieren dort gar nicht, die anderen beiden
+sind keine optionalen Extras. Ein Responses-Endpunkt, der sie ablehnt, scheitert laut statt still
+etwas anderes zu senden.
 
 ### Profile anlegen
 
@@ -132,7 +169,9 @@ NodePilot bevorzugt lokale Modelle: keine Daten verlassen das Netzwerk, kein API
 keine Rate-Limit-Sorgen. Der OpenAI-kompatible Transport läuft gegen Ollama, LM Studio,
 vLLM, LocalAI und llama.cpp-Server.
 
-Alle `BaseUrl`-Beispiele unten gehen von Ollama unter `http://localhost:11434/v1` aus.
+Alle `BaseUrl`-Beispiele unten gehen von Ollama unter `http://localhost:11434/v1` aus. Diese
+Runtimes sprechen ausschließlich Chat Completions — der `/responses`-Dialekt ist ausschließlich für
+OpenAI-gehostete Modelle relevant, die nicht anders erreichbar sind.
 
 | Modell | Ollama-Tag | Größe | Stärke | Mindest-RAM |
 |---|---|---|---|---|

@@ -126,6 +126,24 @@ public class AiControllerTests
         audit.Calls.Should().BeEmpty();
     }
 
+    [Fact]
+    public async Task GenerateScript_UpstreamErrorWithoutHttpStatus_SurfacesTheExceptionMessage()
+    {
+        // The Responses API reports a failed run inside an HTTP 200 body, so UpstreamError can
+        // arrive without a status — the response must not read "returned HTTP .".
+        var (controller, _, llm, _) = NewController();
+        llm.EnqueueStreamException(new LlmException(
+            LlmErrorKind.UpstreamError, "LLM-Endpoint hat den Lauf als fehlgeschlagen beendet.",
+            bodyExcerpt: "model unavailable"));
+
+        var result = await controller.GenerateScript(ScriptReq(), CancellationToken.None);
+
+        var obj = result.Should().BeOfType<ObjectResult>().Subject;
+        obj.StatusCode.Should().Be(502);
+        obj.Value!.GetType().GetProperty("message")!.GetValue(obj.Value).Should()
+            .Be("LLM-Endpoint hat den Lauf als fehlgeschlagen beendet.");
+    }
+
     // ---- generate-workflow (unchanged JSON) -----------------------------------------
 
     [Fact]

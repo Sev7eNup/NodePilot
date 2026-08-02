@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -10,34 +8,28 @@ using Microsoft.Extensions.Logging;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// HTTP client for an OpenAI-compatible chat-completions endpoint. Works against OpenAI Cloud,
-/// Ollama, LM Studio, vLLM, LocalAI, and llama.cpp servers — they all implement the same wire
-/// format under <c>{BaseUrl}/chat/completions</c>.
+/// HTTP client for an OpenAI-compatible <b>chat-completions</b> endpoint. Works against OpenAI
+/// Cloud, Ollama, LM Studio, vLLM, LocalAI, and llama.cpp servers — they all implement the same
+/// wire format. The URL to POST to comes from <see cref="LlmEndpointTarget.PostUrl"/>; OpenAI's
+/// separate <c>/responses</c> dialect is served by <see cref="OpenAiResponsesLlmClient"/> instead.
 /// </summary>
 public sealed class OpenAiCompatibleLlmClient : ILlmClient
 {
-    private const int BodyExcerptMaxChars = 500;
-
-    // L-4 (security audit 2026-05-15): cap upstream response bodies before parsing them so
-    // a hostile or runaway LLM endpoint cannot exhaust memory by streaming gigabytes into
-    // JsonDocument.ParseAsync. 16 MiB is well above any realistic chat-completion payload
-    // (typical Workflow-Gen responses are <100 KiB) and safe to allocate in one shot.
-    private const long MaxResponseBytes = 16L * 1024 * 1024;
     private static readonly ConcurrentDictionary<string, byte> MaxCompletionTokenEndpoints =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly IHttpClientFactory _httpClientFactory;
     private readonly LlmClientConfig _config;
     private readonly ILogger<OpenAiCompatibleLlmClient> _logger;
+    private readonly LlmHttpTransport _transport;
 
     public OpenAiCompatibleLlmClient(
         IHttpClientFactory httpClientFactory,
         LlmClientConfig config,
         ILogger<OpenAiCompatibleLlmClient> logger)
     {
-        _httpClientFactory = httpClientFactory;
         _config = config;
         _logger = logger;
+        _transport = new LlmHttpTransport(httpClientFactory, config, logger);
     }
 
     public async Task<LlmResponse> CompleteAsync(LlmRequest request, CancellationToken ct)
@@ -128,7 +120,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     private void RememberMaxCompletionTokens() =>
         MaxCompletionTokenEndpoints.TryAdd(CompatibilityKey, 0);
 
-    private string CompatibilityKey => $"{_config.BaseUrl.TrimEnd('/')}|{_config.Model}";
+    private string CompatibilityKey => $"{_config.Endpoint.PostUrl}|{_config.Model}";
 
     private static bool HasStrictTools(LlmRequest request) =>
         request.Tools?.Any(t => t.Strict) == true;
@@ -144,8 +136,6 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     private async Task<LlmResponse> SendOnceAsync(
         LlmRequest request, bool includeJsonResponseFormat, bool useMaxCompletionTokens, CancellationToken ct)
     {
-        var http = _httpClientFactory.CreateClient(LlmHttpClient.Name);
-
         var body = new Dictionary<string, object?>
         {
             ["model"] = _config.Model,
@@ -160,136 +150,62 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         }
         AppendTools(body, request);
 
-        // BaseUrl robustness: the operator may configure it with or without a trailing slash,
-        // with or without /v1. We simply append "chat/completions" and normalize the trailing slash.
-        var baseUrl = _config.BaseUrl.TrimEnd('/');
-        var url = $"{baseUrl}/chat/completions";
+        using var timeoutCts = _transport.CreateTimeoutScope(ct);
+        using var resp = await _transport.SendAsync(
+            body, HttpCompletionOption.ResponseContentRead, timeoutCts.Token, ct);
+        using var doc = await LlmHttpTransport.ReadJsonAsync(resp, ct);
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, url)
-        {
-            Content = JsonContent.Create(body),
-        };
-        if (!string.IsNullOrWhiteSpace(_config.ApiKey))
-        {
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _config.ApiKey);
-        }
-
-        // Timeout via a linked CTS, so the caller can cancel at any time without
-        // HttpClient.Timeout getting in the way globally.
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(_config.TimeoutSeconds));
-
-        HttpResponseMessage resp;
-        try
-        {
-            resp = await http.SendAsync(req, HttpCompletionOption.ResponseContentRead, timeoutCts.Token);
-        }
-        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-        {
-            throw new LlmException(LlmErrorKind.Timeout,
-                $"LLM-Endpoint hat innerhalb von {_config.TimeoutSeconds}s nicht geantwortet ({_config.BaseUrl}).");
-        }
-        catch (HttpRequestException ex)
-        {
-            throw new LlmException(LlmErrorKind.Unreachable,
-                $"LLM-Endpoint nicht erreichbar ({_config.BaseUrl}): {ex.Message}", inner: ex);
-        }
-
-        // L-4: pre-flight ContentLength check rejects oversized responses without ever
-        // touching the body. A hostile upstream omitting Content-Length still goes through
-        // the LimitedStream wrapper below, so this is the cheap-path optimization only.
-        if (resp.Content.Headers.ContentLength is long cl && cl > MaxResponseBytes)
+        if (!doc.RootElement.TryGetProperty("choices", out var choices)
+            || choices.ValueKind != JsonValueKind.Array
+            || choices.GetArrayLength() == 0)
         {
             throw new LlmException(LlmErrorKind.MalformedResponse,
-                $"LLM-Antwort überschreitet das Body-Limit ({cl} > {MaxResponseBytes} bytes).",
-                httpStatus: (int)resp.StatusCode);
+                "LLM-Antwort enthielt kein 'choices'-Array.");
         }
-        await using var rawStream = await resp.Content.ReadAsStreamAsync(ct);
-        await using var stream = new LengthLimitedStream(rawStream, MaxResponseBytes);
-        if (!resp.IsSuccessStatusCode)
-        {
-            var bodyText = await ReadBodyExcerptAsync(stream, ct);
-            var kind = resp.StatusCode switch
-            {
-                HttpStatusCode.Unauthorized => LlmErrorKind.Unauthorized,
-                HttpStatusCode.Forbidden => LlmErrorKind.Unauthorized,
-                HttpStatusCode.TooManyRequests => LlmErrorKind.RateLimited,
-                _ => LlmErrorKind.UpstreamError,
-            };
-            _logger.LogWarning("LLM upstream returned {Status} for model {Model}: {BodyExcerpt}",
-                (int)resp.StatusCode, _config.Model, bodyText);
-            throw new LlmException(kind,
-                $"LLM-Endpoint antwortete mit HTTP {(int)resp.StatusCode}.",
-                httpStatus: (int)resp.StatusCode, bodyExcerpt: bodyText);
-        }
-
-        try
-        {
-            using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct);
-            if (!doc.RootElement.TryGetProperty("choices", out var choices)
-                || choices.ValueKind != JsonValueKind.Array
-                || choices.GetArrayLength() == 0)
-            {
-                throw new LlmException(LlmErrorKind.MalformedResponse,
-                    "LLM-Antwort enthielt kein 'choices'-Array.");
-            }
-            var first = choices[0];
-            if (!first.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object)
-            {
-                throw new LlmException(LlmErrorKind.MalformedResponse,
-                    "LLM-Antwort enthielt kein 'choices[0].message'-Objekt.");
-            }
-
-            // Tool-call responses often have content: null plus tool_calls — accept both cases.
-            var contentStr = message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String
-                ? content.GetString() ?? string.Empty
-                : string.Empty;
-            var toolCalls = ParseToolCalls(message);
-            var finishReason = first.TryGetProperty("finish_reason", out var fr) && fr.ValueKind == JsonValueKind.String
-                ? fr.GetString() : null;
-            if (contentStr.Length == 0 && (toolCalls is null || toolCalls.Count == 0))
-            {
-                throw new LlmException(LlmErrorKind.MalformedResponse,
-                    "LLM-Antwort enthielt weder 'content' (string) noch 'tool_calls'.");
-            }
-
-            var modelEcho = doc.RootElement.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.String
-                ? m.GetString() ?? _config.Model
-                : _config.Model;
-
-            int? promptTokens = null, completionTokens = null, totalTokens = null;
-            if (doc.RootElement.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
-            {
-                promptTokens = usage.TryGetProperty("prompt_tokens", out var pt) && pt.ValueKind == JsonValueKind.Number
-                    ? pt.GetInt32() : null;
-                // Deliberately not named `ct` locally — that would shadow the outer CancellationToken parameter (CS0136).
-                completionTokens = usage.TryGetProperty("completion_tokens", out var ctTok) && ctTok.ValueKind == JsonValueKind.Number
-                    ? ctTok.GetInt32() : null;
-                totalTokens = usage.TryGetProperty("total_tokens", out var tt) && tt.ValueKind == JsonValueKind.Number
-                    ? tt.GetInt32() : null;
-            }
-
-            return new LlmResponse(contentStr, modelEcho,
-                promptTokens, completionTokens, totalTokens, toolCalls, finishReason);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("Body-Limit", StringComparison.Ordinal))
-        {
-            // L-4: LengthLimitedStream tripped — upstream sent more than MaxResponseBytes.
-            throw new LlmException(LlmErrorKind.MalformedResponse,
-                ex.Message, inner: ex);
-        }
-        catch (JsonException ex)
+        var first = choices[0];
+        if (!first.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.Object)
         {
             throw new LlmException(LlmErrorKind.MalformedResponse,
-                "LLM-Antwort war kein valides JSON.", inner: ex);
+                "LLM-Antwort enthielt kein 'choices[0].message'-Objekt.");
         }
+
+        // Tool-call responses often have content: null plus tool_calls — accept both cases.
+        var contentStr = message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String
+            ? content.GetString() ?? string.Empty
+            : string.Empty;
+        var toolCalls = ParseToolCalls(message);
+        var finishReason = first.TryGetProperty("finish_reason", out var fr) && fr.ValueKind == JsonValueKind.String
+            ? fr.GetString() : null;
+        if (contentStr.Length == 0 && (toolCalls is null || toolCalls.Count == 0))
+        {
+            throw new LlmException(LlmErrorKind.MalformedResponse,
+                "LLM-Antwort enthielt weder 'content' (string) noch 'tool_calls'.");
+        }
+
+        var modelEcho = doc.RootElement.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.String
+            ? m.GetString() ?? _config.Model
+            : _config.Model;
+
+        int? promptTokens = null, completionTokens = null, totalTokens = null;
+        if (doc.RootElement.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
+        {
+            promptTokens = usage.TryGetProperty("prompt_tokens", out var pt) && pt.ValueKind == JsonValueKind.Number
+                ? pt.GetInt32() : null;
+            // Deliberately not named `ct` locally — that would shadow the outer CancellationToken parameter (CS0136).
+            completionTokens = usage.TryGetProperty("completion_tokens", out var ctTok) && ctTok.ValueKind == JsonValueKind.Number
+                ? ctTok.GetInt32() : null;
+            totalTokens = usage.TryGetProperty("total_tokens", out var tt) && tt.ValueKind == JsonValueKind.Number
+                ? tt.GetInt32() : null;
+        }
+
+        return new LlmResponse(contentStr, modelEcho,
+            promptTokens, completionTokens, totalTokens, toolCalls, finishReason);
     }
 
     public async IAsyncEnumerable<LlmStreamEvent> StreamAsync(
         LlmRequest request, [EnumeratorCancellation] CancellationToken ct)
     {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(_config.TimeoutSeconds));
+        using var timeoutCts = _transport.CreateTimeoutScope(ct);
         var token = timeoutCts.Token;
 
         // Sends the request, including the stream_options and max_completion_tokens fallbacks.
@@ -303,7 +219,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             try
             {
                 resp = await SendStreamingWithStreamOptionsFallbackAsync(
-                    effectiveRequest, useMaxCompletionTokens, token);
+                    effectiveRequest, useMaxCompletionTokens, token, ct);
                 break;
             }
             catch (LlmException ex) when (!useMaxCompletionTokens && IsMaxTokensUnsupported(ex))
@@ -321,26 +237,12 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                     "LLM upstream rejected strict function schemas — retrying with best-effort tool calling. Body: {BodyExcerpt}",
                     ex.BodyExcerpt);
             }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-            {
-                throw new LlmException(LlmErrorKind.Timeout,
-                    $"LLM-Endpoint hat innerhalb von {_config.TimeoutSeconds}s nicht geantwortet ({_config.BaseUrl}).");
-            }
-            catch (HttpRequestException ex)
-            {
-                throw new LlmException(LlmErrorKind.Unreachable,
-                    $"LLM-Endpoint nicht erreichbar ({_config.BaseUrl}): {ex.Message}", inner: ex);
-            }
 
             if (attempt >= 2) throw new InvalidOperationException("LLM compatibility fallback limit exceeded.");
         }
 
         using (resp)
         {
-            await using var stream = await resp.Content.ReadAsStreamAsync(token);
-            using var reader = new StreamReader(stream);
-
-            long totalBytes = 0;
             string? model = null;
             string? finishReason = null;
             int? promptTokens = null, completionTokens = null;
@@ -354,31 +256,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             // realistic answer lengths.
             long? firstOutputTs = null;
 
-            while (true)
+            await foreach (var data in _transport.ReadSseDataAsync(resp, token, ct))
             {
-                string? line;
-                try
-                {
-                    line = await reader.ReadLineAsync(token);
-                }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                {
-                    throw new LlmException(LlmErrorKind.Timeout,
-                        $"LLM-Stream lieferte innerhalb von {_config.TimeoutSeconds}s nicht weiter ({_config.BaseUrl}).");
-                }
-                if (line is null) break;
-
-                // L-4: byte cap applies in the streaming path too (LengthLimitedStream doesn't cover this).
-                totalBytes += line.Length;
-                if (totalBytes > MaxResponseBytes)
-                    throw new LlmException(LlmErrorKind.MalformedResponse,
-                        $"LLM-Stream überschreitet das Body-Limit ({MaxResponseBytes} bytes).");
-
-                if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
-                var data = line[5..].Trim();
-                if (data.Length == 0) continue;
-                if (data == "[DONE]") break;
-
                 // Parsing happens outside a yield block (yield is not allowed inside try/catch).
                 string? delta = null;
                 var sawToolDelta = false;
@@ -452,11 +331,11 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     /// outer StreamAsync catch handles it instead.
     /// </summary>
     private async Task<HttpResponseMessage> SendStreamingWithStreamOptionsFallbackAsync(
-        LlmRequest request, bool useMaxCompletionTokens, CancellationToken token)
+        LlmRequest request, bool useMaxCompletionTokens, CancellationToken token, CancellationToken ct)
     {
         try
         {
-            return await SendStreamingAsync(request, includeStreamOptions: true, useMaxCompletionTokens, token);
+            return await SendStreamingAsync(request, includeStreamOptions: true, useMaxCompletionTokens, token, ct);
         }
         catch (LlmException ex) when (ex.Kind == LlmErrorKind.UpstreamError
             && ex.HttpStatus == (int)HttpStatusCode.BadRequest
@@ -464,15 +343,14 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             && !IsStrictToolsUnsupported(ex))
         {
             _logger.LogWarning("LLM upstream rejected stream_options with HTTP 400 — retrying without it.");
-            return await SendStreamingAsync(request, includeStreamOptions: false, useMaxCompletionTokens, token);
+            return await SendStreamingAsync(request, includeStreamOptions: false, useMaxCompletionTokens, token, ct);
         }
     }
 
     private async Task<HttpResponseMessage> SendStreamingAsync(
-        LlmRequest request, bool includeStreamOptions, bool useMaxCompletionTokens, CancellationToken token)
+        LlmRequest request, bool includeStreamOptions, bool useMaxCompletionTokens,
+        CancellationToken token, CancellationToken ct)
     {
-        var http = _httpClientFactory.CreateClient(LlmHttpClient.Name);
-
         var body = new Dictionary<string, object?>
         {
             ["model"] = _config.Model,
@@ -486,32 +364,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             body["stream_options"] = new { include_usage = true };
         AppendTools(body, request);
 
-        var baseUrl = _config.BaseUrl.TrimEnd('/');
-        var url = $"{baseUrl}/chat/completions";
-        using var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
-        if (!string.IsNullOrWhiteSpace(_config.ApiKey))
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _config.ApiKey);
-
-        var resp = await http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, token);
-        if (!resp.IsSuccessStatusCode)
-        {
-            await using var errStream = await resp.Content.ReadAsStreamAsync(token);
-            var bodyText = await ReadBodyExcerptAsync(errStream, token);
-            var status = (int)resp.StatusCode;
-            var kind = resp.StatusCode switch
-            {
-                HttpStatusCode.Unauthorized => LlmErrorKind.Unauthorized,
-                HttpStatusCode.Forbidden => LlmErrorKind.Unauthorized,
-                HttpStatusCode.TooManyRequests => LlmErrorKind.RateLimited,
-                _ => LlmErrorKind.UpstreamError,
-            };
-            _logger.LogWarning("LLM streaming upstream returned {Status} for model {Model}: {BodyExcerpt}",
-                status, _config.Model, bodyText);
-            resp.Dispose();
-            throw new LlmException(kind, $"LLM-Endpoint antwortete mit HTTP {status}.",
-                httpStatus: status, bodyExcerpt: bodyText);
-        }
-        return resp;
+        return await _transport.SendAsync(body, HttpCompletionOption.ResponseHeadersRead, token, ct);
     }
 
     /// <summary>Builds the OpenAI `messages` array: [system, ...Conversation] or [system, user]. Also
@@ -636,89 +489,4 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         public string Name = "";
         public System.Text.StringBuilder Arguments { get; } = new();
     }
-
-    private static async Task<string> ReadBodyExcerptAsync(Stream stream, CancellationToken ct)
-    {
-        try
-        {
-            using var sr = new StreamReader(stream);
-            var raw = await sr.ReadToEndAsync(ct);
-            return raw.Length > BodyExcerptMaxChars
-                ? raw[..BodyExcerptMaxChars] + "…"
-                : raw;
-        }
-        catch
-        {
-            return "<body unreadable>";
-        }
-    }
-}
-
-/// <summary>
-/// Const container for the named HttpClient's name. Registered in
-/// <see cref="LlmServiceCollectionExtensions.AddNodePilotAi"/> and resolved by
-/// <see cref="OpenAiCompatibleLlmClient"/> via <see cref="IHttpClientFactory"/>.
-/// </summary>
-public static class LlmHttpClient
-{
-    public const string Name = "Llm";
-}
-
-/// <summary>
-/// Read-only stream wrapper that throws after <paramref name="maxBytes"/> have been read.
-/// L-4: protects <see cref="JsonDocument.ParseAsync(Stream, JsonDocumentOptions, CancellationToken)"/>
-/// from gigabyte-scale upstream responses when the LLM endpoint omits Content-Length or lies
-/// about it.
-/// </summary>
-internal sealed class LengthLimitedStream : Stream
-{
-    private readonly Stream _inner;
-    private readonly long _maxBytes;
-    private long _read;
-
-    public LengthLimitedStream(Stream inner, long maxBytes) { _inner = inner; _maxBytes = maxBytes; }
-
-    public override bool CanRead => _inner.CanRead;
-    public override bool CanSeek => false;
-    public override bool CanWrite => false;
-    public override long Length => throw new NotSupportedException();
-    public override long Position
-    {
-        get => _read;
-        set => throw new NotSupportedException();
-    }
-
-    public override int Read(byte[] buffer, int offset, int count)
-    {
-        var n = _inner.Read(buffer, offset, count);
-        Advance(n);
-        return n;
-    }
-
-    public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default)
-    {
-        var n = await _inner.ReadAsync(buffer, ct);
-        Advance(n);
-        return n;
-    }
-
-    public override async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct)
-    {
-        var n = await _inner.ReadAsync(buffer.AsMemory(offset, count), ct);
-        Advance(n);
-        return n;
-    }
-
-    private void Advance(int n)
-    {
-        _read += n;
-        if (_read > _maxBytes)
-            throw new InvalidOperationException(
-                $"LLM-Antwort überschreitet das Body-Limit ({_read} > {_maxBytes} bytes).");
-    }
-
-    public override void Flush() => throw new NotSupportedException();
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
-    public override void SetLength(long value) => throw new NotSupportedException();
-    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
 }

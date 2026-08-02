@@ -906,25 +906,31 @@ function ProposalCard({
     [baseDef, proposedDef],
   );
 
-  // Default: everything selected except pure layout moves.
-  const [selected, setSelected] = useState<Set<string>>(
-    () => new Set(changelog.filter((e) => !e.layoutOnly).map((e) => e.id)),
-  );
+  // Everything is selected by default; the state tracks what the user opted OUT of. Storing the
+  // inverse matters because `changelog` recomputes whenever the canvas changes — an "included" set
+  // built once at mount would silently leave later rows unchecked, and a proposal whose rows are
+  // all layout moves (e.g. "clean up the layout") would arrive with a dead "0 übernehmen" button.
+  const [deselected, setDeselected] = useState<Set<string>>(() => new Set());
   const toggle = useCallback((id: string) =>
-    setSelected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }), []);
+    setDeselected((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; }), []);
   const setAll = useCallback((on: boolean) =>
-    setSelected(on ? new Set(changelog.map((e) => e.id)) : new Set()), [changelog]);
+    setDeselected(on ? new Set() : new Set(changelog.map((e) => e.id))), [changelog]);
+
+  const selectedIds = useMemo(
+    () => new Set(changelog.filter((e) => !deselected.has(e.id)).map((e) => e.id)),
+    [changelog, deselected],
+  );
 
   const handleApply = useCallback(() => {
     if (!proposedDef || !canApply) return;
     const canvas = getCurrentDefinition();
     if (hashDefinition(canvas) !== proposal.baseDefinitionHash) { setStale(true); return; }
-    const { nodes, edges, droppedEdges: dropped } = assembleSelectiveDefinition(canvas, proposedDef, selected);
+    const { nodes, edges, droppedEdges: dropped } = assembleSelectiveDefinition(canvas, proposedDef, selectedIds);
     applyDefinition({ nodes, edges });
     setDroppedEdges(dropped);
     setApplied(true);
     onApplied?.(nodes.length, edges.length);
-  }, [proposedDef, canApply, getCurrentDefinition, proposal.baseDefinitionHash, selected, applyDefinition, onApplied]);
+  }, [proposedDef, canApply, getCurrentDefinition, proposal.baseDefinitionHash, selectedIds, applyDefinition, onApplied]);
 
   if (!proposedDef) return null;
 
@@ -936,7 +942,7 @@ function ProposalCard({
     );
   }
 
-  const selectedCount = changelog.filter((e) => selected.has(e.id)).length;
+  const selectedCount = selectedIds.size;
 
   return (
     <div className="rounded-lg border border-primary/30 bg-primary-fixed/40 p-2">
@@ -962,7 +968,7 @@ function ProposalCard({
               {!applied && canApply && (
                 <input
                   type="checkbox"
-                  checked={selected.has(e.id)}
+                  checked={!deselected.has(e.id)}
                   onChange={() => toggle(e.id)}
                   aria-label={`${e.kind} ${e.label}`}
                   className="h-3 w-3 shrink-0 accent-primary"

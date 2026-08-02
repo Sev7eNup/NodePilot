@@ -84,8 +84,24 @@ public sealed class SettingsTestProbeTests
             TestContext.Current.CancellationToken);
 
         result.Ok.Should().BeTrue();
-        handler.LastRequest!.RequestUri!.ToString().Should().EndWith("/models",
+        handler.LastRequest!.RequestUri!.ToString().Should().Be("http://127.0.0.1:1234/v1/models",
             "the probe uses the cheap model listing rather than a chat completion");
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:1234/v1/responses")]
+    [InlineData("http://127.0.0.1:1234/v1/chat/completions")]
+    public async Task TestLlmAsync_BaseUrlWithEndpointSuffix_ProbesTheApiRootModels(string baseUrl)
+    {
+        // A BaseUrl that already names the endpoint must not get /models nested underneath it —
+        // that path exists on neither dialect and made the Test button fail on a working profile.
+        var handler = new StubHandler(HttpStatusCode.OK, "{\"data\":[]}");
+
+        var result = await Probe(handler).TestLlmAsync(
+            Llm(baseUrl), TestContext.Current.CancellationToken);
+
+        result.Ok.Should().BeTrue();
+        handler.LastRequest!.RequestUri!.ToString().Should().Be("http://127.0.0.1:1234/v1/models");
     }
 
     [Fact]

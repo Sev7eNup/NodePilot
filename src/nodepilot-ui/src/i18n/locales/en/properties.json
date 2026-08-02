@@ -405,7 +405,7 @@
       "jsonModeHint": "Request a JSON object response (response_format). The answer is returned as-is; it is not validated.",
       "overrideHint": "Overrides (optional) — leave empty to use the global AI endpoint from Settings.",
       "baseUrl": "Endpoint (Base URL)",
-      "baseUrlPlaceholder": "(global default) e.g. http://localhost:11434/v1",
+      "baseUrlPlaceholder": "(global default) e.g. http://localhost:11434/v1 · /responses for the OpenAI Responses API",
       "model": "Model",
       "modelPlaceholder": "(global default)",
       "apiKey": "API key",

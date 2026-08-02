@@ -48,6 +48,24 @@ public sealed class LlmClientFactoryTests
             .Should().NotBeNull();
     }
 
+    [Theory]
+    [InlineData("https://api.openai.com/v1", typeof(OpenAiCompatibleLlmClient))]
+    [InlineData("https://api.openai.com/v1/chat/completions", typeof(OpenAiCompatibleLlmClient))]
+    [InlineData("https://api.openai.com/v1/responses", typeof(OpenAiResponsesLlmClient))]
+    public void Create_BaseUrlPath_SelectsTheMatchingDialectClient(string baseUrl, Type expected)
+    {
+        Build(OptionsWith(baseUrl: baseUrl)).Create(null).Should().BeOfType(expected);
+    }
+
+    [Fact]
+    public void Create_PerNodeBaseUrlOverride_SelectsTheDialectFromTheOverride()
+    {
+        // The llmQuery per-node override changes the endpoint, so it has to change the dialect too.
+        Build(OptionsWith(baseUrl: "https://api.openai.com/v1"))
+            .Create(new LlmConnection(BaseUrl: "https://api.openai.com/v1/responses"))
+            .Should().BeOfType<OpenAiResponsesLlmClient>();
+    }
+
     [Fact]
     public void Create_MetadataOverride_ThrowsFromGuard()
     {

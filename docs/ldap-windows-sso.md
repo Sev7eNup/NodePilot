@@ -1,6 +1,8 @@
 # Enterprise Authentication: AD SSO Preview
 
-> **Status: AD SSO Preview.** The implementation is hardened and covered by automated tests, but the label may only change after a real Active Directory field test has verified Kerberos and LDAPS through the production HAProxy path, including rejection of NTLM.
+> **Status: AD SSO Preview.** On 2026-08-02 the Kerberos/Negotiate path was verified against a real Active Directory (Windows Server 2025, domain/forest mode 2016, single DC) with NodePilot running under a gMSA and the test driven from a domain-joined Windows 11 client: a genuine `HTTP/<host>` service ticket, transitive `tokenGroups` admission, LDAP and Windows resolving to one user id, JIT create/update without duplicates, the allowed-group gate, and parallel first-logins. Evidence and the harness live in [`scripts/ad-sso-labtest/`](../scripts/ad-sso-labtest/README.md).
+>
+> The label stays **Preview** because the remainder of the matrix below is still open — most importantly the HAProxy path, multi-DC consensus, the NTLM denial (see item 4) and session revocation on group removal.
 
 NodePilot supports four login paths and one provisioning path:
 
@@ -144,7 +146,39 @@ setspn -S HTTP/nodepilot.contoso.example CONTOSO\svc-nodepilot$
 setspn -Q HTTP/nodepilot.contoso.example
 ```
 
-Configure browsers to treat the HTTPS origin as an intranet/Kerberos site. Disable incoming NTLM through domain or host policy before setting `NtlmDisabledByPolicy=true`; the flag is an attestation, not the enforcement mechanism.
+Disable incoming NTLM through domain or host policy before setting `NtlmDisabledByPolicy=true`; the flag is an attestation, not the enforcement mechanism.
+
+### Browser configuration — the acceptance criterion is *no credential prompt*
+
+Registering the SPN is only half the deployment. Browsers present an ambient Kerberos ticket **only** for origins they consider intranet targets; for any other origin they fall back to an interactive credential dialog. A correctly configured client therefore signs in **without ever being asked for a password**. If a dialog appears, the policy is not in effect — treat it as a misconfiguration, not as normal behaviour.
+
+Roll out both settings by Group Policy for the NodePilot origin:
+
+```text
+Computer Configuration > Administrative Templates > Microsoft Edge > HTTP authentication
+  Authentication server allowlist  =  nodepilot.contoso.example
+Computer Configuration > Administrative Templates > Google > Google Chrome > HTTP authentication
+  Authentication server allowlist  =  nodepilot.contoso.example
+
+Computer Configuration > Administrative Templates > Windows Components >
+Internet Explorer > Internet Control Panel > Security Page > Site to Zone Assignment List
+  https://nodepilot.contoso.example  ->  Zone 1 (Local Intranet)
+```
+
+The equivalent registry values — useful for a lab or for verification — are `AuthServerAllowlist` under `HKLM\SOFTWARE\Policies\Microsoft\Edge` respectively `…\Google\Chrome`, plus the host entry under `HKLM\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap\Domains`. A ready-made script that applies and removes exactly these values lives in [`scripts/ad-sso-labtest/Set-BrowserSsoPolicy.ps1`](../scripts/ad-sso-labtest/Set-BrowserSsoPolicy.ps1); use it as the template for the GPO.
+
+Deliberately **not** configured: `AuthNegotiateDelegateAllowlist` — NodePilot needs no delegation — and `AuthSchemes`, because the browser is the wrong place to block NTLM; SPNEGO can carry NTLM under `negotiate`, so that job belongs to the Restrict-NTLM policy above.
+
+Verify on the client with `edge://policy` (the entry must read *Applied*) after closing **every** browser process. Note that Chromium canonicalises the host before building the SPN: with a CNAME the SPN is derived from the A-record target, so publish the NodePilot origin as a direct A record.
+
+### Integrated Windows Authentication is not a credential filler
+
+Both get a user in without typing, and they are easy to confuse — but only one of them is what this feature does:
+
+- **IWA/Kerberos** — the browser presents a short-lived, service-bound ticket. No password exists anywhere in the exchange.
+- **Credential fillers** — Windows Credential Manager (after "remember my credentials") or enterprise SSO products that type a stored password into the dialog. Legitimate, and the right answer for applications that cannot speak Kerberos. NodePilot can, so it does not need them.
+
+This matters operationally: **the server cannot tell the two apart.** SSPI produces a valid Kerberos AP-REQ either way and the audit records `source: "Windows"` in both cases. A credential filler therefore fully masks a missing browser policy — the sign-in looks seamless while integrated authentication is not actually in effect. Any verification that "SSO works" has to be done on the client: no filler installed, no stored credential for the origin, and after a cold browser start.
 
 Negotiate is connection-scoped. The production proxy must preserve a frontend/backend HTTP/1.1 connection pair and must never reuse an authenticated backend connection for a different client. The checked-in [HAProxy template](../deploy/templates/haproxy.cfg.template) enforces the required baseline:
 
@@ -233,6 +267,9 @@ Common failures:
 | LDAP login fails although the password is correct; audit reason `ldap_user_object_not_found` | The account has no `userPrincipalName` attribute matching the bound UPN. AD accepts the simple bind through the implicit `samAccountName@dns-domain` form, but the directory lookup searches `userPrincipalName` explicitly. Fix with `Set-ADUser <user> -UserPrincipalName '<user>@<upn-suffix>'`, or verify `BaseDn` covers the account's OU. Confirmed in a real AD lab, 2026-08-01 |
 | Login form rejects a domain user with `DOMAIN/user` | Only backslash (`DOMAIN\user`), bare (`user`) and full UPN (`user@domain`) are normalized; a forward slash stays part of the name and produces an unknown UPN |
 | Repeating `401 Negotiate` | SPN ownership, browser intranet policy, HTTP/1.1 persistence and `http-reuse never` |
+| A credential dialog appears on the sign-in button | The origin is not in `AuthServerAllowlist` and not in the Local Intranet zone, so the browser never offers the ambient ticket. Apply the policy, close **all** browser processes, confirm *Applied* in `edge://policy` |
+| First click prompts, second one does not | The browser session's HTTP auth credential cache replaying what was typed. A NodePilot logout does not clear it. This proves nothing about SSO — only a cold browser start does |
+| Sign-in is silent although no browser policy is set | A stored credential (Credential Manager) or an enterprise credential filler is supplying the password and masking the misconfiguration. Check with `cmdkey /list` on the console and verify on a client without such tooling |
 | NTLM succeeds | Host/domain policy is not actually blocking NTLM; do not attest `NtlmDisabledByPolicy` yet |
 | LDAPS connection fails or health is degraded | DC SAN/hostname, trust chain, port 636, service-bind DN, firewall and every configured endpoint (all must be reachable — access is all-DC consensus, not failover) |
 | Startup refuses an existing SSO database | Provision or restore an active local Admin with password and `IsBreakGlass=true` before enabling external authentication |
@@ -243,19 +280,35 @@ Common failures:
 
 ## Required field-test before production status
 
-Run this matrix against real AD and production-equivalent HAProxy—not a mock directory:
+Run this matrix against real AD and production-equivalent HAProxy—not a mock directory. Status after the 2026-08-02 lab run is noted per item.
 
 1. Validate every configured LDAPS endpoint with full certificate verification. Then decide the multi-DC contract explicitly: the current semantics are **all-DC consensus, not login failover** — the bind fails over across endpoints, but the authoritative post-bind lookup requires every DC to agree, so a primary-DC outage blocks external logins (fail-closed 503) instead of failing over. Either accept and document that (single-DC or always-both topology), or implement a quorum/degraded login path before sign-off.
+   *Partly done (2026-08-02): LDAPS verified end to end against an Enterprise-CA-issued DC certificate with full validation. The multi-DC contract remains undecided and unexercised — the lab has one DC.*
 2. Log in the same person once through LDAP and once through Windows; verify both use the same NodePilot user id and AD SID identity.
-3. Capture the Windows handshake through HAProxy and verify Kerberos succeeds over persistent HTTP/1.1 connections.
+   ***Done (2026-08-02):*** *both paths returned the same user id; the audit shows `LOGIN_SUCCESS` with `source: "Ldap"` and `source: "Windows"` against one identity keyed on the AD `objectSid`.*
+3. Capture the Windows handshake through HAProxy and verify Kerberos succeeds over persistent HTTP/1.1 connections. The browser leg must complete **without a credential prompt**, on a client with no credential-filling tooling and no stored credential for the origin, after closing every browser process — otherwise the check passes on a typed or auto-filled password and proves nothing about integrated authentication.
+   *Partly done (2026-08-02): Kerberos verified on the direct Kestrel path — a real `HTTP/<host>` service ticket appears in the client ticket cache. **The HAProxy path is untested, and so is the prompt-free browser leg**: the first manual attempt raised a credential dialog because the client had no browser policy at all, and the silent second attempt was the browser's credential cache.*
 4. Remove the Kerberos ticket or force an NTLM-only client; verify NodePilot access is denied and no NTLM-authenticated session is created.
+   ***Not done.*** *The lab attempt was inconclusive: a `CredentialCache` bound to `NTLM` never answers the server's `Negotiate` challenge, so the request produced a bare 401 the application never saw. The application-level branch itself is proven — on a non-domain host SPNEGO must fall back to NTLM, and NodePilot answered 401 with `reason=windows_ntlm_disabled, mechanism=NTLM` and created no session. To close this item properly, drive the probe through a DNS alias that carries no HTTP SPN.*
 5. Remove the allowed AD group and then disable the AD account; in both cases confirm HTTP, SignalR, schedules, webhooks, external triggers and active execution stop no later than 15 minutes.
+   *Partly done (2026-08-02): a disabled AD account is refused at login. Revocation of an already-established session, and the execution/SignalR/trigger teardown, are still unexercised.*
 6. Interrupt one DC while the other answers "not found"; verify the account is not incorrectly tombstoned.
+   *Not done — requires a second DC.*
 7. Run parallel first-logins for one new AD identity and verify exactly one user/identity is created.
+   ***Done (2026-08-02):*** *five concurrent first-logins all returned 200 with a single JIT create.*
 8. Exercise OIDC with 500 groups and verify the NodePilot session cookie remains below 3,800 bytes.
+   *Not done — OIDC out of scope for that run.*
 9. Exercise SCIM user/group create, update, removal, last-admin protection and full re-provisioning.
+   *Not done — SCIM out of scope for that run.*
 10. Restart both HA nodes after changing authentication settings and verify discovery, readiness and provider-specific Admin UI state.
+    *Not done — single-node lab.*
 
 Until all applicable checks pass and evidence is retained, use the status **AD SSO Preview**.
 
-A local pre-check harness for the LDAP password path lives in [`scripts/ldap-testdc/`](../scripts/ldap-testdc/README.md): a Samba AD DC in Docker with real LDAPS and a throwaway CA, a 13-step login suite (nested `tokenGroups`, role mapping, group gate, JIT, H-17, admin probe) plus an outage drill — validated 2026-07-24. It exercises the real `SystemLdapConnectionAdapter` wire path end to end but does **not** replace this field test: it covers no Kerberos/Negotiate handshake, no multi-DC consensus, and no HAProxy path. Note that with a single configured endpoint the harness cannot exercise item 1 above — and per the current reconciliation semantics, a primary-DC failure blocks external logins rather than failing over (see `ReconcileEndpointResults`); resolve that design-vs-doc tension before running the field test.
+Two harnesses cover parts of this matrix. Neither replaces it.
+
+**LDAP password path** — [`scripts/ldap-testdc/`](../scripts/ldap-testdc/README.md): a Samba AD DC in Docker with real LDAPS and a throwaway CA, a 13-step login suite (nested `tokenGroups`, role mapping, group gate, JIT, H-17, admin probe) plus an outage drill — validated 2026-07-24. It exercises the real `SystemLdapConnectionAdapter` wire path end to end but covers no Kerberos/Negotiate handshake, no multi-DC consensus, and no HAProxy path. With a single configured endpoint it cannot exercise item 1 above — and per the current reconciliation semantics, a primary-DC failure blocks external logins rather than failing over (see `ReconcileEndpointResults`); resolve that design-vs-doc tension before running the field test.
+
+**Kerberos/Negotiate path** — [`scripts/ad-sso-labtest/`](../scripts/ad-sso-labtest/README.md): a Hyper-V lab harness against a real Windows Server DC with a domain-joined API host and client. Preflight (clock skew, SPN duplicates, certificate SAN, LDAPS bind), a 25-point suite covering the happy path with transitive `tokenGroups`, group gate, identity equality across LDAP and Windows, JIT race, fail-closed DC outage and revocation, plus a two-pass NTLM negative test — the application-level refusal must be captured under *Audit* NTLM policy before *Deny all accounts* is enforced, because enforcement makes the application branch unreachable. **Executed 2026-08-02: 22 pass, 1 fail (a mis-supplied break-glass parameter, not a defect), 6 skipped**; per-item results are recorded in the matrix above and in the harness README. Out of scope by construction: HAProxy (item 3's proxy half), multi-DC consensus (items 1 and 6), OIDC/SCIM (8, 9) and the HA restart (10).
+
+One operational lesson from that run is worth repeating here: when NodePilot runs under a **gMSA or a domain user account**, the computer account's implicit `HOST/` mapping does *not* cover it. The KDC encrypts the `HTTP/<host>` ticket with the computer account's key, the service process cannot decrypt it, and SPNEGO falls back to NTLM **silently** — a test suite then reports "NTLM is rejected" while never having exercised Kerberos at all. Register the SPN explicitly on the service identity (`setspn -S HTTP/<fqdn> <DOMAIN>\<gmsa>$`) and verify with `setspn -L`.

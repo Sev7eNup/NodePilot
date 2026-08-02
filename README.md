@@ -588,7 +588,7 @@ NodePilot ships **27 built-in activities** in two scopes — *Remote* (executed 
 | `jsonQuery` | JSONPath query over a JSON payload or file | `jsonPath`, `source`, `content`/`path`, `resultMode` |
 | `log` | Write a structured Serilog entry | `level`, `message` |
 | `generateText` | Generate a cryptographically-secure random string (IDs, tokens, GUIDs, password charsets) via `RandomNumberGenerator`, rejection-sampled (no modulo bias) | `mode` (`alphanumeric`/`alphabetic`/`numeric`/`hex`/`guid`/`password`/`custom`), `length`, `customCharset`, `excludeAmbiguous` |
-| `llmQuery` | Call an OpenAI-compatible chat-completions endpoint (prompt → text). Uses the active LLM profile by default; per-node override of endpoint/model/key/tuning. Requires `Llm:Enabled=true` and a resolvable active profile | `prompt`, `systemPrompt`, `jsonMode`, per-node: `baseUrl`, `model`, `apiKey`, `maxTokens`, `temperature`, `timeoutSeconds` |
+| `llmQuery` | Call an OpenAI-compatible endpoint (prompt → text), chat completions or the Responses API depending on the base URL. Uses the active LLM profile by default; per-node override of endpoint/model/key/tuning. Requires `Llm:Enabled=true` and a resolvable active profile | `prompt`, `systemPrompt`, `jsonMode`, per-node: `baseUrl`, `model`, `apiKey`, `maxTokens`, `temperature`, `timeoutSeconds` |
 
 ### Retry policy
 
@@ -789,7 +789,8 @@ exercise.
     "Profiles": {
       "ollama": {
         "Name": "Local Ollama",
-        "BaseUrl": "http://localhost:11434/v1",   // Ollama default
+        "BaseUrl": "http://localhost:11434/v1",   // Ollama default; a URL ending in /responses
+                                                  // switches to the OpenAI Responses API
         "ApiKey": null,                           // env var Llm__Profiles__ollama__ApiKey recommended
         "Model": "qwen3.6:27b",
         "MaxTokens": 4096,
@@ -945,7 +946,8 @@ The file-system / network / SQL / shell / WinRM guards below ship **enabled** in
 |---|---|
 | `Remote:RequireWinRmSsl` | Reject WinRM connections without SSL |
 | `RestApi:BlockPrivateNetworks` | Block RFC 1918 / loopback targets in `restApi` |
-| `RestApi:AllowedHosts` | Exact host/IP allow-list required by `waitForCondition` network probes |
+| `RestApi:AllowedHosts` | Exact host/IP allow-list — the exception to `BlockPrivateNetworks` for `restApi` targets and redirects |
+| `WaitForCondition:AllowedHosts` | Separate exact host/IP allow-list for the `portOpen`/`httpOk` network probes. Ships with `localhost`; kept apart from the entry above so permitting a local probe does not also open `restApi` to loopback |
 | `FileSystemOperation:RejectTraversal` | Reject `..` in file/folder operation paths |
 | `SqlActivity:RequireConnectionRef` | Only allow named connection references (no inline strings) |
 | `StartProgram:DisallowShellExecute` | Disallow `useShellExecute=true` in `startProgram` |
@@ -1040,7 +1042,7 @@ All settings live in [`src/NodePilot.Api/appsettings.json`](src/NodePilot.Api/ap
 | `Llm:ActiveProfileId` | `""` | Id of the profile every AI feature uses. Must name an entry in `Llm:Profiles` — there is no "just take the first one" fallback |
 | `Llm:Profiles` | `{}` | Stored connections, keyed by immutable profile id |
 | `Llm:Profiles:<id>:Name` | `""` | Display name; renameable, the id stays put |
-| `Llm:Profiles:<id>:BaseUrl` | OpenAI cloud | OpenAI-compatible chat-completions root |
+| `Llm:Profiles:<id>:BaseUrl` | OpenAI cloud | OpenAI-compatible endpoint. The path picks the wire dialect: a URL ending in `/responses` speaks the OpenAI Responses API, one ending in `/chat/completions` is used verbatim, anything else gets `/chat/completions` appended |
 | `Llm:Profiles:<id>:ApiKey` | `null` | Bearer key; prefer the env var `Llm__Profiles__<id>__ApiKey` |
 | `Llm:Profiles:<id>:Model` | `gpt-4o-mini` | Used for script generation, workflow generation and both chats |
 | `Llm:Profiles:<id>:MaxTokens` | `4096` | Response cap |

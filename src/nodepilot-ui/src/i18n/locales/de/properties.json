@@ -405,7 +405,7 @@
       "jsonModeHint": "Fordert eine JSON-Objekt-Antwort an (response_format). Die Antwort wird unverändert zurückgegeben, nicht validiert.",
       "overrideHint": "Overrides (optional) — leer lassen, um den globalen KI-Endpunkt aus den Einstellungen zu nutzen.",
       "baseUrl": "Endpunkt (Base URL)",
-      "baseUrlPlaceholder": "(globaler Default) z. B. http://localhost:11434/v1",
+      "baseUrlPlaceholder": "(globaler Default) z. B. http://localhost:11434/v1 · /responses für die OpenAI-Responses-API",
       "model": "Modell",
       "modelPlaceholder": "(globaler Default)",
       "apiKey": "API-Key",

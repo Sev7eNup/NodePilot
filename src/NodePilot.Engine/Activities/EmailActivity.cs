@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Mail;
 using System.Text.Json;
 using NodePilot.Core.Interfaces;
+using NodePilot.Engine.Execution;
 using NodePilot.Engine.Options;
 using Microsoft.Extensions.Options;
 
@@ -85,9 +86,41 @@ public class EmailActivity : IActivityExecutor
             {
                 return new ActivityResult { Success = false, ErrorOutput = $"Email: send timed out after {timeoutSeconds}s" };
             }
+            catch (SmtpException ex)
+            {
+                // SmtpException.Message is almost always the constant "Failure sending mail.",
+                // which is useless on its own: a refused connection, a TLS mismatch and a
+                // rejected recipient all look identical. Field finding 2026-08-02 — 2021
+                // failures in one lab, every one of them with that same seven-word message.
+                // Report where we tried to send and what the underlying transport said.
+                return new ActivityResult
+                {
+                    Success = false,
+                    ErrorOutput = DescribeSmtpFailure(ex, o),
+                };
+            }
 
             return new ActivityResult { Success = true, Output = $"Email sent to {to}" };
         });
+
+    /// <summary>
+    /// Builds an actionable SMTP error: the endpoint actually used, the TLS mode, the SMTP
+    /// status code when the server supplied one, and the flattened inner-exception chain
+    /// (which carries the real cause, e.g. the SocketException for a refused connection).
+    /// </summary>
+    internal static string DescribeSmtpFailure(SmtpException ex, SmtpOptions options)
+    {
+        // StatusCode is GeneralFailure when the failure happened below the SMTP protocol
+        // (DNS, TCP, TLS) — naming it then would suggest a server response that never existed.
+        var status = ex.StatusCode == SmtpStatusCode.GeneralFailure
+            ? null
+            : $", status {ex.StatusCode}";
+        var cause = ExceptionDetail.Describe(ex.InnerException);
+        if (string.IsNullOrEmpty(cause)) cause = ex.Message;
+
+        return $"Email: SMTP send via {options.Host}:{options.Port} "
+               + $"(TLS={(options.EnableSsl ? "on" : "off")}{status}) failed: {cause}";
+    }
 
     // D6: bounded SMTP timeout so a stuck connection cannot pin a step indefinitely.
     // Override per-activity via the `timeoutSeconds` config field (positive integer).

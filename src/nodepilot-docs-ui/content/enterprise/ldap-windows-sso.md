@@ -123,7 +123,11 @@ OIDC-Correlation, Nonce und serverseitige Tickets werden mit ASP.NET Core Data P
 
 ## Kerberos und HAProxy
 
-Für Windows-SSO muss der HTTP-SPN mit `setspn -S` auf dem Dienstkonto registriert sein. Browser müssen die URL als Intranet-Ziel behandeln.
+Für Windows-SSO muss der HTTP-SPN mit `setspn -S` **auf der Dienstidentität** registriert sein. Läuft NodePilot unter einem gMSA oder Domänenkonto, deckt das `HOST/`-SPN des Computerkontos den Dienst nicht ab — das Ticket ist dann für den Prozess unlesbar, Kerberos scheitert und SPNEGO fällt still auf NTLM zurück.
+
+Zusätzlich müssen Browser die URL als Intranet-Ziel behandeln: `AuthServerAllowlist` für Edge und Chrome, dazu die Zuordnung zur Zone „Lokales Intranet" per GPO. **Ein korrekt konfigurierter Client fragt nie nach Zugangsdaten** — erscheint ein Anmeldedialog, ist die Policy nicht wirksam.
+
+Wichtig für die Abnahme: ein gespeichertes Kennwort in der Windows-Anmeldeinformationsverwaltung oder ein Enterprise-SSO-Produkt, das Dialoge automatisch ausfüllt, lässt die Anmeldung nahtlos wirken, obwohl die Browser-Policy fehlt. Serverseitig sind beide Fälle nicht unterscheidbar. Der Nachweis ist deshalb nur auf einem Client ohne solche Werkzeuge und nach vollständigem Browser-Neustart aussagekräftig.
 
 Vor HAProxy gelten zusätzlich:
 

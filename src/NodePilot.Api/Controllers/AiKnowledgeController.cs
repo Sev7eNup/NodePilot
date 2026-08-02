@@ -284,7 +284,10 @@ public sealed class AiKnowledgeController : ControllerBase
                 "LLM endpoint rate-limited the request. Try again shortly."),
             LlmErrorKind.MalformedResponse => BadGateway("LLM_MALFORMED_RESPONSE", ex.Message, ex.BodyExcerpt),
             LlmErrorKind.UpstreamError => BadGateway("LLM_UPSTREAM_ERROR",
-                $"LLM endpoint returned HTTP {ex.HttpStatus}.", ex.BodyExcerpt),
+                // Not every upstream error is an HTTP status: the Responses API reports a failed
+                // run inside an HTTP 200 body, and "returned HTTP ." helps nobody.
+                ex.HttpStatus is int status ? $"LLM endpoint returned HTTP {status}." : ex.Message,
+                ex.BodyExcerpt),
             _ => StatusCode(StatusCodes.Status500InternalServerError,
                 new { code = "LLM_UNKNOWN", message = ex.Message }),
         };
