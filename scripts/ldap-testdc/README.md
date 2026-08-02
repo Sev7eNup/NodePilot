@@ -11,6 +11,10 @@ Firmen-AD. Schließt die Lücke, dass alle Unit-/Controller-Tests an der
 >
 > **Ersetzt NICHT** den in `docs/ldap-windows-sso.md` geforderten Real-AD-Feldtest:
 > kein Kerberos/Negotiate-SSO, kein Multi-DC-Konsens, kein HAProxy-Pfad, Samba ≠ MS-AD.
+>
+> Den Kerberos-Teil deckt das Schwester-Harness [`scripts/ad-sso-labtest/`](../ad-sso-labtest/README.md)
+> ab (Hyper-V-Lab mit echtem Windows-DC + domain-joined API-Host). Multi-DC und HAProxy
+> bleiben auch dort offen.
 
 ## Was der Test abdeckt
 

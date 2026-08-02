@@ -218,7 +218,7 @@ Beschreibung, Nutzerproblem und Sicherheitsgrenzen je Idee: [`ai-feature-ideas.m
 | RBAC Stufe B — `WorkflowPermissions`-Tabelle für Per-Resource-Sharing | Konkreter Kundenwunsch. Stufe A (Folder-RBAC inkl. Group-SID-Integration) ist seit Mai 2026 in `main`. |
 | Active/Active-Cluster | Nur bei **Last**-Skalierungsbedarf. Für Verfügbarkeit reicht Active/Passive (RTO 40–60 s). |
 | HashiCorp Vault Transit / KMIP / Cloud-KMS · HSM-gestützter AES-Key · Per-Row-Key-ID | `ISecretProtector` ist die vorbereitete Naht — ein neuer Provider ist eine Klasse plus DI-Zeile. Kein Vorbau nötig, jederzeit nachrüstbar. Details: [`secrets-providers.md`](secrets-providers.md). |
-| Kerberos/Negotiate-Feldtest + NTLM-Negativtest | Braucht eine domänengejointe Maschine. Grund für das bleibende „Preview"-Label am Windows-SSO-Pfad. Der LDAP-Pfad selbst ist gegen einen echten Samba-DC verifiziert (Harness: `scripts/ldap-testdc/`). |
+| Windows-SSO: Restlücken bis zum Wegfall des „Preview"-Labels | **Kerberos ist am 2026-08-02 gegen echtes AD verifiziert** (Server 2025, gMSA, domain-joined Client; 22 PASS — echtes `HTTP/<host>`-Ticket, transitive `tokenGroups`, LDAP↔Windows dieselbe UserId, JIT-Race, Gruppen-Gate). Harness + Evidenz: `scripts/ad-sso-labtest/`. **Offen bleiben:** HAProxy-Pfad, Multi-DC-Konsens (Lab hat 1 DC), NTLM-Negativtest (braucht einen SPN-freien DNS-Alias — der Lab-Versuch war unschlüssig), Session-Revocation bei Gruppenentzug, OIDC/SCIM und HA-Restart. Das Label fällt erst, wenn diese Punkte abgeräumt sind. |
 
 ### Qualität & Betrieb
 

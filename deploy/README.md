@@ -162,6 +162,13 @@ Der Installer grantet dem gMSA automatisch Read-Access auf die Private-Key-Datei
 
 LDAP, Windows/Kerberos, OIDC und SCIM sind opt-in und bleiben bis zum bestandenen realen AD-/Kerberos-/LDAPS-Feldtest als **AD SSO Preview** gekennzeichnet. Für AD-Pfade sind LDAPS mit vollständiger Zertifikatsprüfung, mindestens eine zugelassene AD-Gruppen-SID, ein Service-Bind für den Verzeichnisabgleich und ein Sync-Intervall von höchstens fünf Minuten verpflichtend. Windows SSO setzt außerdem eine wirksame Host-/Domain-Policy voraus, die eingehendes NTLM ablehnt.
 
+Windows SSO braucht darüber hinaus **zwei clientseitige Voraussetzungen**, die leicht übersehen werden:
+
+- **HTTP-SPN auf der Dienstidentität.** Läuft NodePilot unter einem gMSA oder Domänenkonto, deckt das `HOST/`-SPN des Computerkontos den Dienst **nicht** ab — das Ticket ist mit dem Schlüssel des Computerkontos verschlüsselt und für den Dienstprozess unlesbar. Kerberos scheitert dann und SPNEGO fällt **still** auf NTLM zurück. `setspn -S HTTP/<fqdn> <DOMAIN>\<konto>$`, danach mit `setspn -L` und `setspn -X` gegenprüfen.
+- **Browser-Policy für die NodePilot-Origin.** Ohne `AuthServerAllowlist` (Edge/Chrome) bzw. Zuordnung zur Intranet-Zone weist der Browser das vorhandene Kerberos-Ticket nicht automatisch vor und öffnet stattdessen einen Anmeldedialog. Ein korrekt konfigurierter Client fragt **nie** nach Zugangsdaten; ein Dialog ist ein Konfigurationsfehler. GPO-Einstellungen und ein fertiges Skript als Vorlage: [`docs/ldap-windows-sso.md`](../docs/ldap-windows-sso.md) und [`scripts/ad-sso-labtest/Set-BrowserSsoPolicy.ps1`](../scripts/ad-sso-labtest/Set-BrowserSsoPolicy.ps1).
+
+> Achtung bei der Abnahme: ein Credential-Manager-Eintrag oder ein Enterprise-SSO-Produkt, das Kennwörter in Dialoge einträgt, lässt die Anmeldung nahtlos wirken, **obwohl die Browser-Policy fehlt**. Serverseitig ist beides nicht unterscheidbar. Die Prüfung „läuft ohne Eingabe" ist deshalb nur auf einem Client ohne solche Werkzeuge, mit leerem Anmeldeinformationsspeicher und nach vollständigem Browser-Neustart aussagekräftig.
+
 Änderungen unter `Authentication` werden beim Speichern validiert, greifen aber erst nach einem Dienstneustart vollständig. Das ausgelieferte Default-Profil lässt alle externen Provider deaktiviert und setzt lokale Anmeldung auf `BreakGlassOnly`. SCIM-Token werden ohne Unterbrechung rotiert, indem der alte Wert kurzzeitig unter `Authentication:Scim:PreviousBearerToken` bleibt und nach der IdP-Umstellung gelöscht wird.
 
 ### 5. Kerberos Constrained Delegation (für WinRM-Ziele)
@@ -427,7 +434,7 @@ Restore läuft transaktional in Abhängigkeitsreihenfolge, validiert Referenzen 
 
 - Keine Installation der ASP.NET Core Runtime — muss vorab vorhanden sein.
 - Kein Erstellen des gMSA, der SQL-Login oder der Kerberos-Delegation — AD/DBA-Aufgabe.
-- Keine Registrierung des NodePilot-HTTP-SPN und keine NTLM-Block-Policy — beides muss das AD-/Security-Team vor Aktivierung von Windows SSO ausrollen und prüfen.
+- Keine Registrierung des NodePilot-HTTP-SPN, keine NTLM-Block-Policy und **keine Browser-Intranet-Policy** (`AuthServerAllowlist` / Site-to-Zone) — alle drei muss das AD-/Security-Team vor Aktivierung von Windows SSO ausrollen und prüfen. Ohne die Browser-Policy funktioniert die Anmeldung zwar, fragt aber bei jedem Anwender nach Zugangsdaten statt still per Ticket zu laufen.
 - Keine Konfiguration eines OIDC-IdP oder SCIM-Clients — Redirect-URI, Claims, Gruppen-Allowlist und Provisioning-Bearer-Token bleiben IdP-/IAM-Aufgabe.
 - Keine Backups der SQL-Datenbank — separat per SQL-Agent/Ola Hallengren/etc. einrichten.
 - Keine Log-Forwarding/Monitoring-Integration — Logs landen unter `C:\ProgramData\NodePilot\logs`, Abholung per Winlogbeat/OTel-Collector/etc. nach Wahl.

@@ -604,7 +604,11 @@ Negotiate ist connection-scoped. Das ausgelieferte
 - Entfernen und vertrauenswürdiges Neuerzeugen von Forwarded Headers.
 
 Nur die Transport-IP des Proxys gehört in `ForwardedHeaders:KnownProxies`. SPN,
-Browser-Intranet-Policy und NTLM-Block-Policy bleiben explizite Deployment-Aufgaben.
+Browser-Intranet-Policy und NTLM-Block-Policy bleiben explizite Deployment-Aufgaben —
+konkrete Anleitung inklusive GPO-Pfaden und Skript-Vorlage in
+[`docs/ldap-windows-sso.md`](ldap-windows-sso.md). Zwei Fallstricke daraus: ein HTTP-SPN
+auf dem **Computerkonto** deckt einen unter gMSA laufenden Dienst nicht ab, und ohne
+Browser-Allowlist fragt jeder Client nach Zugangsdaten, statt still per Ticket anzumelden.
 
 ### LDAP-Directory-Konsens und Offboarding
 
