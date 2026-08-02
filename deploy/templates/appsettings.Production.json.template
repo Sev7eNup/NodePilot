@@ -167,6 +167,9 @@
   "SqlActivity": {
     "RequireConnectionRef": true
   },
+  "WaitForCondition": {
+    "AllowedHosts": [ "localhost" ]
+  },
   "Trigger": {
     "Database": {
       "RequireConnectionRef": true

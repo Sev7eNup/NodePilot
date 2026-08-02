@@ -102,10 +102,28 @@ public static class NetworkGuard
         return allowed.ToArray();
     }
 
+    /// <summary>
+    /// Outbound allow-list for <c>restApi</c>. Listing a host here is a narrow exception to
+    /// <c>RestApi:BlockPrivateNetworks</c> — it lets an HTTP call reach a loopback/RFC1918
+    /// service. Deliberately separate from the probe list below: widening one must never
+    /// silently widen the other.
+    /// </summary>
     internal static bool IsHostAllowlisted(IConfiguration config, string host)
+        => IsHostListed(config, "RestApi:AllowedHosts", host);
+
+    /// <summary>
+    /// Allow-list for the PowerShell-backed network probes (<c>waitForCondition</c>
+    /// <c>portOpen</c>/<c>httpOk</c>). Kept in its own configuration section so an operator can
+    /// permit "probe my own host" without also punching a loopback hole into the
+    /// <c>restApi</c> SSRF guard, whose URLs can be assembled from trigger payloads.
+    /// </summary>
+    internal static bool IsProbeHostAllowlisted(IConfiguration config, string host)
+        => IsHostListed(config, "WaitForCondition:AllowedHosts", host);
+
+    private static bool IsHostListed(IConfiguration config, string sectionPath, string host)
     {
         var requested = NormalizeHostForComparison(host);
-        var allowedHosts = config.GetSection("RestApi:AllowedHosts").GetChildren()
+        var allowedHosts = config.GetSection(sectionPath).GetChildren()
             .Select(c => c.Value)
             .Where(v => !string.IsNullOrWhiteSpace(v))
             .Select(v => NormalizeHostForComparison(v!));
@@ -119,10 +137,11 @@ public static class NetworkGuard
     /// </summary>
     internal static void RequireExplicitlyAllowlistedHost(IConfiguration config, string host, string operation)
     {
-        if (IsHostAllowlisted(config, host)) return;
+        if (IsProbeHostAllowlisted(config, host)) return;
         throw new InvalidOperationException(
-            $"{operation}: host '{host}' is not explicitly allowed. Add the exact host to RestApi:AllowedHosts; " +
-            "PowerShell-backed network probes reject all dynamic destinations by default to prevent SSRF and DNS rebinding.");
+            $"{operation}: host '{host}' is not explicitly allowed. Add the exact host to WaitForCondition:AllowedHosts; " +
+            "PowerShell-backed network probes reject all dynamic destinations by default to prevent SSRF and DNS rebinding. " +
+            "Note this is a separate list from RestApi:AllowedHosts, which only governs restApi's loopback/private-network exception.");
     }
 
     private static bool ShouldBlockPrivateNetworks(IConfiguration config)

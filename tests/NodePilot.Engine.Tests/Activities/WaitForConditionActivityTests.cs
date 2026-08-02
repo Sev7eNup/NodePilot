@@ -30,9 +30,12 @@ public sealed class WaitForConditionActivityTests : IDisposable
     private readonly IConfiguration _configuration = new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
         {
-            ["RestApi:AllowedHosts:0"] = "db.internal",
-            ["RestApi:AllowedHosts:1"] = "api",
-            ["RestApi:AllowedHosts:2"] = "x",
+            // Probe admission reads WaitForCondition:AllowedHosts — a deliberately separate
+            // list from RestApi:AllowedHosts, so that allowing a local probe does not also
+            // open restApi's loopback/private-network exception.
+            ["WaitForCondition:AllowedHosts:0"] = "db.internal",
+            ["WaitForCondition:AllowedHosts:1"] = "api",
+            ["WaitForCondition:AllowedHosts:2"] = "x",
         })
         .Build();
     private readonly ManagedMachine _machine;

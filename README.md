@@ -945,7 +945,8 @@ The file-system / network / SQL / shell / WinRM guards below ship **enabled** in
 |---|---|
 | `Remote:RequireWinRmSsl` | Reject WinRM connections without SSL |
 | `RestApi:BlockPrivateNetworks` | Block RFC 1918 / loopback targets in `restApi` |
-| `RestApi:AllowedHosts` | Exact host/IP allow-list required by `waitForCondition` network probes |
+| `RestApi:AllowedHosts` | Exact host/IP allow-list — the exception to `BlockPrivateNetworks` for `restApi` targets and redirects |
+| `WaitForCondition:AllowedHosts` | Separate exact host/IP allow-list for the `portOpen`/`httpOk` network probes. Ships with `localhost`; kept apart from the entry above so permitting a local probe does not also open `restApi` to loopback |
 | `FileSystemOperation:RejectTraversal` | Reject `..` in file/folder operation paths |
 | `SqlActivity:RequireConnectionRef` | Only allow named connection references (no inline strings) |
 | `StartProgram:DisallowShellExecute` | Disallow `useShellExecute=true` in `startProgram` |

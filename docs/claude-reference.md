@@ -463,7 +463,8 @@ Die Guard-Flags sind **hardened by default**: appsettings.json shippt sie als `t
 |---|---|---|
 | `Remote:RequireWinRmSsl` | `true` | WinRM ohne SSL → Exception (Dev: `false`) |
 | `RestApi:BlockPrivateNetworks` | `true` | Blockiert RFC1918/Loopback in `restApi` (Dev: `false`) |
-| `RestApi:AllowedHosts` | `[]` | Exakte Host-/IP-Allow-Liste; zwingend für PowerShell-`waitForCondition`-Netzwerk-Probes und tatsächlich proxied `restApi`-Ziele/Redirects. Link-Local/Cloud-Metadata bleibt immer gesperrt (Dev: `localhost`/`127.0.0.1`/`::1`) |
+| `RestApi:AllowedHosts` | `[]` | Exakte Host-/IP-Allow-Liste für tatsächlich proxied `restApi`-Ziele/Redirects — die Ausnahme von `BlockPrivateNetworks`. Link-Local/Cloud-Metadata bleibt immer gesperrt (Dev: `localhost`/`127.0.0.1`/`::1`) |
+| `WaitForCondition:AllowedHosts` | `["localhost"]` | **Eigene** Liste für die PowerShell-Probes `portOpen`/`httpOk`. Diese können das Ziel beim Connect nicht erneut prüfen (kein `ConnectCallback`), akzeptieren deshalb nur exakt gelistete Hosts; leere Liste lehnt jede Probe ab. Bewusst getrennt von `RestApi:AllowedHosts`, damit „eigenen Dienst prüfen" nicht zugleich `restApi` zu Loopback öffnet — dessen URLs können aus Trigger-Payloads stammen. Vergleich exakt: `127.0.0.1` deckt `localhost` nicht ab (Dev: alle drei Schreibweisen) |
 | `FileSystemOperation:RejectTraversal` | `true` | Lehnt `..` in File-System-Op-Paths ab (Dev: `false`) |
 | `SqlActivity:RequireConnectionRef` | `true` | Nur benannte `connectionRef` statt inline `connectionString` (Dev: `false`) |
 | `StartProgram:DisallowShellExecute` | `true` | Verwirft `useShellExecute=true` (Dev: `false`) |

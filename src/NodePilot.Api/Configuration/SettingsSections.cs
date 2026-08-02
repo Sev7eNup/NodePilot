@@ -170,6 +170,16 @@ public static class SettingsSectionAdapters
                     ["AllowedRoots"] = ToJsonArray(dto.AllowedRoots),
                 }),
 
+            new DelegateSettingsSectionAdapter<WaitForConditionSettingsDto>(
+                Descriptor("WaitForCondition"),
+                ["WaitForCondition:AllowedHosts"],
+                () => new WaitForConditionSettingsDto
+                {
+                    AllowedHosts = ReadStringArray(configRoot, "WaitForCondition:AllowedHosts"),
+                },
+                BuildWaitForConditionDtoFromJson,
+                (dto, _) => new JsonObject { ["AllowedHosts"] = ToJsonArray(dto.AllowedHosts) }),
+
             new DelegateSettingsSectionAdapter<SqlActivitySettingsDto>(
                 Descriptor("SqlActivity"),
                 ["SqlActivity:RequireConnectionRef"],
@@ -1072,6 +1082,15 @@ public static class SettingsSectionAdapters
         {
             RejectTraversal = section["RejectTraversal"]?.GetValue<bool>() ?? true,
             AllowedRoots = ReadStringArray(section, "AllowedRoots"),
+        };
+    }
+
+    private static WaitForConditionSettingsDto BuildWaitForConditionDtoFromJson(JsonObject? section)
+    {
+        section ??= new JsonObject();
+        return new WaitForConditionSettingsDto
+        {
+            AllowedHosts = ReadStringArray(section, "AllowedHosts"),
         };
     }
 
