@@ -991,6 +991,8 @@ What you get:
 - **TLS cert** in `Cert:\LocalMachine\My` with a private key
 - *(optional)* **Kerberos resource-based constrained delegation** from the gMSA to each WinRM target → WinRM uses implicit Kerberos instead of stored credentials
 
+- **Antivirus exclusions** agreed with your security team — the service spawns PowerShell and executes generated scripts out of `%TEMP%`; see **[docs/av-exclusions.md](docs/av-exclusions.md)**
+
 Step-by-step first-deployment guide (certificates, SQL TLS, first login, troubleshooting): **[docs/deployment-guide.md](docs/deployment-guide.md)**. Full operator reference (gMSA setup, T-SQL snippet, troubleshooting matrix, update & uninstall): **[deploy/README.md](deploy/README.md)**.
 
 ---
@@ -1208,6 +1210,7 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). You are free to u
 - **[docs/ai-features.md](docs/ai-features.md)** — LLM configuration, recommended models, security model, error taxonomy.
 - **[docs/performance-improvements.md](docs/performance-improvements.md)** — capacity tuning playbook (parallel workflow targets, runspace pools, DB pool sizing).
 - **[docs/security-findings.md](docs/security-findings.md)** — register of resolved security findings with fix and test, by severity.
+- **[docs/av-exclusions.md](docs/av-exclusions.md)** — antivirus/EDR exclusions for the server and desktop roles (folders, processes, temp-file patterns, behaviour rules), each with its rationale and residual risk — written to be handed to a security team. German.
 - **[docs/enterprise-features.md](docs/enterprise-features.md)** — enterprise features, configuration switches and release gates, including the current AD SSO Preview.
 - **[docs/ha-active-passive.md](docs/ha-active-passive.md)** — Active/Passive HA setup, lease/fencing model, failover RTO.
 - **[docs/secrets-providers.md](docs/secrets-providers.md)** — secret-provider operator runbook (DPAPI ↔ AES-GCM migration).

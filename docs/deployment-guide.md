@@ -55,6 +55,12 @@ unsigned or tampered artifacts, so a code-signing certificate is part of the set
 - **A free HTTPS port.** Default is 443. On a host where IIS/http.sys owns 80/443 (SCCM,
   WSUS, …), use `-HttpsPort 8443 -HttpPort 0` instead.
 
+- **Antivirus exclusions agreed with your security team.** The service starts PowerShell
+  child processes and executes generated scripts out of `%TEMP%`; without exceptions,
+  endpoint protection blocks individual steps or the install-directory swap during an
+  upgrade. Hand-off list with per-entry rationale and residual risk:
+  [av-exclusions.md](av-exclusions.md) (German).
+
 ### The three certificates
 
 Without an enterprise CA you create all three self-signed; with a CA, issue them there and

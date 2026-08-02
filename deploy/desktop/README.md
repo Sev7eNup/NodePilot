@@ -161,6 +161,9 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
   upgrades are out of scope for v1.
 - **Uninstall:** removes both services, the certificate, and Program Files. **ProgramData and `pgdata`
   are preserved** unless `Uninstall-Desktop.ps1 -PurgeData` is used.
+- **Antivirus:** the installer sets no AV exclusions. Electron's Chromium native DLLs, Postgres' WAL
+  I/O and the generated `%TEMP%\nodepilot_*.ps1` scripts are the usual false-positive sources — a
+  hand-off list with per-entry rationale and residual risk is in [`docs/av-exclusions.md`](../../docs/av-exclusions.md).
 
 ## Files
 

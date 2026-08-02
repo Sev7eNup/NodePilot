@@ -28,6 +28,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 - `docs/mcp-server.md` — MCP-Server inkl. Tool-Katalog + `.mcp.json`-Beispiel
 - `docs/ai-features.md` — KI-Features: Config-Keys, Modell-Empfehlungen
 - `docs/deployment-guide.md` — End-to-End-Produktions-Deployment (EN): Build → SQL-TLS → Install → First Login → Troubleshooting; lab-validiert
+- `docs/av-exclusions.md` — Antiviren-Ausschlüsse (Server + Desktop) als Übergabedokument für eine AV-Abteilung: Ordner, Prozesse, Temp-Dateimuster, Verhaltensregeln — je mit Begründung und Restrisiko
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen

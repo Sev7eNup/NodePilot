@@ -54,6 +54,7 @@ vermessene Profil. Der Schalter ist restart-pflichtig. Formeln, Grenzen und Mess
 - PowerShell ≥ 5.1 (Windows PowerShell) oder 7+ (empfohlen)
 - **ASP.NET Core Runtime 10 (x64)** — Download unter <https://dotnet.microsoft.com/download>. Die reine Runtime genügt (Kestrel hostet selbst); das **Hosting Bundle nur, wenn bewusst IIS im Spiel ist** — es verdrahtet IIS und startet W3SVC neu, auf geteilten Hosts (SCCM/WSUS) unerwünscht
 - Zielserver kann den SQL Server auf Port 1433 erreichen
+- Antiviren-Ausschlüsse sind mit der Security-Abteilung abgestimmt — Liste in [`docs/av-exclusions.md`](../docs/av-exclusions.md)
 
 ### 2. Service-Identität
 
@@ -439,3 +440,4 @@ Restore läuft transaktional in Abhängigkeitsreihenfolge, validiert Referenzen 
 - Keine Backups der SQL-Datenbank — separat per SQL-Agent/Ola Hallengren/etc. einrichten.
 - Keine Log-Forwarding/Monitoring-Integration — Logs landen unter `C:\ProgramData\NodePilot\logs`, Abholung per Winlogbeat/OTel-Collector/etc. nach Wahl.
 - Keine Cross-Provider-Daten-Migration zwischen SQL Server und Postgres. Falls benötigt: Export/Import via `GET /api/workflows/export` → `POST /api/workflows/import`.
+- Keine Antiviren-Ausschlüsse. Der Dienst startet PowerShell-Kindprozesse und führt generierte Skripte aus `%TEMP%` aus — ohne passende Ausnahmen blockiert Endpoint-Security einzelne Schritte oder den Install-Dir-Tausch beim Update. Übergabefertige Liste inkl. Restrisiken: [`docs/av-exclusions.md`](../docs/av-exclusions.md).
