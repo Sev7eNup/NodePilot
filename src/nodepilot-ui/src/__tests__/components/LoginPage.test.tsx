@@ -75,6 +75,50 @@ describe('LoginPage', () => {
     expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
   });
 
+  it('reveals the setup-token field on SETUP_TOKEN_REQUIRED and retries with the token', async () => {
+    const user = userEvent.setup();
+    const loginMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Admin bootstrap required. (SETUP_TOKEN_REQUIRED)'))
+      .mockResolvedValueOnce(undefined);
+    useAuthStore.setState({ login: loginMock });
+
+    renderLoginPage();
+
+    const inputs = screen.getAllByRole('textbox');
+    const passwordInput = document.querySelector('input[type="password"]') as HTMLElement;
+    await user.type(inputs[0], 'admin');
+    await user.type(passwordInput, 'secret123');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    // The bootstrap gate reveals the token field together with its explanatory error.
+    expect(await screen.findByText(/first-time setup/i)).toBeInTheDocument();
+    const tokenInput = document.getElementById('np-login-setup-token') as HTMLElement;
+    expect(tokenInput).toBeInTheDocument();
+
+    await user.type(tokenInput, 'one-shot-token');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(loginMock).toHaveBeenLastCalledWith('admin', 'secret123', 'one-shot-token');
+  });
+
+  it('keeps the setup-token field hidden for a plain wrong-password 401', async () => {
+    const user = userEvent.setup();
+    const loginMock = vi.fn().mockRejectedValue(new Error('Invalid credentials'));
+    useAuthStore.setState({ login: loginMock });
+
+    renderLoginPage();
+
+    const inputs = screen.getAllByRole('textbox');
+    const passwordInput = document.querySelector('input[type="password"]') as HTMLElement;
+    await user.type(inputs[0], 'admin');
+    await user.type(passwordInput, 'wrong');
+    await user.click(screen.getByRole('button', { name: /sign in/i }));
+
+    expect(await screen.findByText('Invalid credentials')).toBeInTheDocument();
+    expect(document.getElementById('np-login-setup-token')).not.toBeInTheDocument();
+  });
+
   it('hides the Windows SSO button when the server reports windows: false', async () => {
     renderLoginPage();
     // Wait one tick for the methods fetch to resolve.

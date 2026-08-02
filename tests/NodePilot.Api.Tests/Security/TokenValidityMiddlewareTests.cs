@@ -28,6 +28,10 @@ public class TokenValidityMiddlewareTests
     {
         var ctx = new DefaultHttpContext();
         ctx.Response.Body = new System.IO.MemoryStream();
+        // Default to the protected API surface: outside /api and /hubs the middleware
+        // deliberately anonymizes instead of rejecting (SPA-shell navigations must never
+        // be answered with the 401 JSON — see the path check in the middleware).
+        ctx.Request.Path = "/api/test";
 
         if (!authenticated) return ctx;
 
@@ -134,6 +138,64 @@ public class TokenValidityMiddlewareTests
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
+
+        nextCalled.Should().BeFalse();
+        ctx.Response.StatusCode.Should().Be(401);
+    }
+
+    [Fact]
+    public async Task Invoke_InvalidTokenOnSpaRoute_AnonymizesAndServesPage()
+    {
+        // A browser holding an expired/revoked np_auth cookie navigates to /login (served by
+        // the SPA fallback endpoint, which carries no [AllowAnonymous] metadata). The page —
+        // including the login page itself — must render; rejecting here bricks the app until
+        // the user manually clears cookies (lab regression 2026-08-01).
+        var db = TestDbFactory.Create();
+        var userId = Guid.NewGuid();
+        db.Users.Add(MakeUser(userId));
+        var jti = Guid.NewGuid().ToString();
+        db.RevokedTokens.Add(new RevokedToken
+        {
+            Jti = jti, UserId = userId, RevokedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(1),
+        });
+        await db.SaveChangesAsync();
+
+        var ctx = MakeContext(jti: jti, userId: userId, db: db);
+        ctx.Request.Path = "/login";
+        var nextCalled = false;
+        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+
+        await middleware.Invoke(ctx, db, NewCache());
+
+        nextCalled.Should().BeTrue();
+        ctx.Response.StatusCode.Should().Be(200);
+        ctx.User.Identity!.IsAuthenticated.Should().BeFalse(
+            "the stale identity must be stripped, not trusted, on the anonymous continuation");
+    }
+
+    [Fact]
+    public async Task Invoke_InvalidTokenOnHubPath_StillRejects()
+    {
+        // SignalR hubs are part of the protected surface — the SPA-shell exemption must not
+        // open them to revoked sessions.
+        var db = TestDbFactory.Create();
+        var userId = Guid.NewGuid();
+        db.Users.Add(MakeUser(userId));
+        var jti = Guid.NewGuid().ToString();
+        db.RevokedTokens.Add(new RevokedToken
+        {
+            Jti = jti, UserId = userId, RevokedAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddHours(1),
+        });
+        await db.SaveChangesAsync();
+
+        var ctx = MakeContext(jti: jti, userId: userId, db: db);
+        ctx.Request.Path = "/hubs/execution";
+        var nextCalled = false;
+        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+
+        await middleware.Invoke(ctx, db, NewCache());
 
         nextCalled.Should().BeFalse();
         ctx.Response.StatusCode.Should().Be(401);

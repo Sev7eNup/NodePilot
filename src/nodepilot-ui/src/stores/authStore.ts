@@ -21,7 +21,9 @@ interface AuthState {
   role: string | null;
   /** `null` = still initializing, `true` = signed in, `false` = anonymous */
   isAuthenticated: boolean | null;
-  login: (username: string, password: string) => Promise<void>;
+  /** `setupToken` is only used on a fresh installation: the server's one-shot admin
+   *  bootstrap gate (AdminBootstrap) expects it as the `X-Setup-Token` header. */
+  login: (username: string, password: string, setupToken?: string) => Promise<void>;
   /** Revoke server-side THEN clear local state. Awaitable. */
   logout: () => Promise<void>;
   /** Probe `/auth/me` via cookie and set authenticated/anonymous accordingly. */
@@ -38,8 +40,14 @@ export const useAuthStore = create<AuthState>((set) => ({
   role: null,
   isAuthenticated: null,
 
-  login: async (username: string, password: string) => {
-    const response = await api.post<LoginResponse>('/auth/login', { username, password });
+  login: async (username: string, password: string, setupToken?: string) => {
+    const response = setupToken
+      ? await api.postWithHeaders<LoginResponse>(
+          '/auth/login',
+          { username, password },
+          { 'X-Setup-Token': setupToken },
+        )
+      : await api.post<LoginResponse>('/auth/login', { username, password });
     // The server set np_auth + np_csrf cookies on this response. The body carries only our
     // identity (userId/username/role) — never the JWT. The token reaches Bearer callers
     // (CLI/API) only, and only when they opt in; the SPA relies solely on the httpOnly cookie.

@@ -27,12 +27,11 @@ test.describe('Auth lifecycle', () => {
       }),
     );
 
-    // Login endpoint flips the flag and reflects a successful login.
+    // Login endpoint flips the flag and reflects a successful login. This mock plays a
+    // server whose bootstrap window is already closed (users exist), so plain
+    // username/password succeeds — the setup-token gate has its own test (25.1b).
     await page.route('**/api/auth/login', async (route) => {
       const body = route.request().postDataJSON?.() ?? {};
-      // Local-BCrypt login: username + password. The bootstrap one-shot token is a
-      // server-side file (admin-setup.token), not a form field, so the SPA only ever
-      // submits username/password — accept that shape here.
       if (typeof body === 'object' && body.username === 'admin' && body.password) {
         loggedIn = true;
         return route.fulfill({
@@ -64,6 +63,67 @@ test.describe('Auth lifecycle', () => {
 
     // Dashboard renders the username badge once /me resolves to 200.
     await expect(page.getByText(/admin/i).first()).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('25.1b — bootstrap gate reveals the setup-token field and retries with X-Setup-Token', async ({ page }) => {
+    // Fresh-install flow: the server's AdminBootstrap gate answers the first login with
+    // 401 SETUP_TOKEN_REQUIRED. The SPA must reveal its setup-token field and resend the
+    // same credentials with the X-Setup-Token header.
+    let loggedIn = false;
+    let seenSetupToken: string | null = null;
+    await page.route('**/api/auth/me', (route) =>
+      route.fulfill({
+        status: loggedIn ? 200 : 401,
+        contentType: 'application/json',
+        body: loggedIn
+          ? JSON.stringify({ id: '00000000-0000-0000-0000-000000000001', username: 'admin', role: 'Admin' })
+          : '{"error":"unauthenticated"}',
+      }),
+    );
+    await page.route('**/api/auth/methods', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ local: true, ldap: false, windows: false, windowsEndpoint: null }) }),
+    );
+    await page.route('**/api/auth/login', async (route) => {
+      const token = route.request().headers()['x-setup-token'];
+      if (!token) {
+        // Same payload shape as AuthController's bootstrap gate.
+        return route.fulfill({
+          status: 401,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            code: 'SETUP_TOKEN_REQUIRED',
+            message: 'Admin bootstrap required. Send the X-Setup-Token header matching the admin-setup.token file written to the content root on first startup.',
+          }),
+        });
+      }
+      seenSetupToken = token;
+      loggedIn = true;
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: {
+          'Set-Cookie': [
+            'np_auth=mock-jwt; HttpOnly; SameSite=Lax; Path=/',
+            'np_csrf=mock-csrf; SameSite=Lax; Path=/',
+          ].join(', '),
+        },
+        body: JSON.stringify({ userId: '00000000-0000-0000-0000-000000000001', username: 'admin', role: 'Admin' }),
+      });
+    });
+
+    await page.goto('/login');
+    await page.locator('input[autocomplete="username"]').fill('admin');
+    await page.locator('input[type="password"]').fill('Admin#2025!');
+    await page.getByRole('button', { name: /anmelden|sign\s?in|login/i }).click();
+
+    // The gate response reveals the token field (hidden before the first attempt).
+    const tokenInput = page.locator('#np-login-setup-token');
+    await expect(tokenInput).toBeVisible({ timeout: 10_000 });
+    await tokenInput.fill('one-shot-token');
+    await page.getByRole('button', { name: /anmelden|sign\s?in|login/i }).click();
+
+    await expect(page).not.toHaveURL(/\/login/, { timeout: 15_000 });
+    expect(seenSetupToken).toBe('one-shot-token');
   });
 
   test('25.7 — disabled user is logged out on next API call', async ({ page }) => {
