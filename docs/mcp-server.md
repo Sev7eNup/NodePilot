@@ -13,9 +13,9 @@ computes in-process against `NodePilot.Core`).
 ## Install & run
 
 ```powershell
-# From the repo:
-dotnet pack src/NodePilot.Mcp -c Release -o ./out/mcp
-dotnet tool install --global --add-source ./out/mcp NodePilot.Mcp
+# From the repo. Not a dotnet global tool: PackAsTool rejects the net10.0-windows TFM this
+# project inherits (NETSDK1146), so `dotnet pack` fails. Publish and reference the .exe.
+dotnet publish src/NodePilot.Mcp -c Release -o C:\Tools\NodePilot-Mcp
 ```
 
 Authenticate once with the CLI (the MCP server reuses that session):
@@ -32,7 +32,7 @@ Then point an MCP client at the `nodepilot-mcp` command.
 {
   "mcpServers": {
     "nodepilot": {
-      "command": "nodepilot-mcp",
+      "command": "C:\\Tools\\NodePilot-Mcp\\nodepilot-mcp.exe",
       "env": {
         "NODEPILOT_MCP_SERVER": "https://nodepilot.example.com",
         "NODEPILOT_MCP_PROFILE": "default"

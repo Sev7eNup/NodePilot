@@ -8,9 +8,12 @@ in-proc gegen `NodePilot.Core`. 99 Tools über 10 Gruppen, plus 3 MCP-Resources.
 
 ## Installation
 
+Der Server ist **kein** .NET Global Tool: `PackAsTool` verträgt das geerbte
+`net10.0-windows`-TFM nicht (NETSDK1146), `dotnet pack` scheitert also. Ausgeliefert wird per
+`dotnet publish`; der MCP-Client zeigt auf die erzeugte `.exe`.
+
 ```powershell
-dotnet pack src/NodePilot.Mcp -c Release -o ./out/mcp
-dotnet tool install --global --add-source ./out/mcp NodePilot.Mcp
+dotnet publish src/NodePilot.Mcp -c Release -o C:\Tools\NodePilot-Mcp
 
 np auth login          # der MCP-Server nutzt diese CLI-Session weiter
 ```
@@ -20,7 +23,7 @@ np auth login          # der MCP-Server nutzt diese CLI-Session weiter
 {
   "mcpServers": {
     "nodepilot": {
-      "command": "nodepilot-mcp",
+      "command": "C:\\Tools\\NodePilot-Mcp\\nodepilot-mcp.exe",
       "env": { "NODEPILOT_MCP_SERVER": "https://nodepilot.example.com", "NODEPILOT_MCP_PROFILE": "default" }
     }
   }

@@ -259,7 +259,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 
-Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad, beide `dotnet global tool`. Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (99 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI (`np auth login`).
+Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad. Ausgeliefert werden beide per `dotnet publish` (Ordner in den `PATH` bzw. `.mcp.json` auf die `.exe` zeigen lassen); **keine** `dotnet global tool`s — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146, siehe `docs/roadmap.md`-Sperrvermerk). Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (99 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI (`np auth login`).
 
 **Jeder neue API-Endpoint braucht beide Clients.** Mechanik, Befehlsbereiche und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`, `docs/claude-reference.md`.
 

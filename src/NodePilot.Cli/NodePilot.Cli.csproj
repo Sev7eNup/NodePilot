@@ -5,9 +5,12 @@
     <RootNamespace>NodePilot.Cli</RootNamespace>
     <AssemblyName>np</AssemblyName>
 
-    <PackAsTool>true</PackAsTool>
-    <ToolCommandName>np</ToolCommandName>
-    <PackageId>NodePilot.Cli</PackageId>
+    <!-- NOT packaged as a dotnet global tool. PackAsTool rejects a platform TFM (NETSDK1146)
+         and this project hangs transitively off net10.0-windows, so `dotnet pack` fails outright.
+         The properties used to sit here anyway, which is where the "dotnet tool install -g"
+         instructions in the README and docs site came from - an install path that never worked.
+         Ship it with `dotnet publish` and put the output folder on PATH instead. Rationale for
+         not multi-targeting the whole chain: docs/roadmap.md, "Bewusst nicht auf der Roadmap". -->
     <Version>1.0.0</Version>
     <Authors>NodePilot</Authors>
     <Description>Operations CLI for NodePilot — manage workflows, executions and audit logs from the terminal.</Description>

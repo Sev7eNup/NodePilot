@@ -229,7 +229,6 @@ Beschreibung, Nutzerproblem und Sicherheitsgrenzen je Idee: [`ai-feature-ideas.m
 | E2E-Spec für `/metrics/:section` | Einzige Seite ohne Playwright-Spec. Mock-Smoke-testbar. |
 | `/operations` (Live-Ops) über den Snapshot-Happy-Path hinaus | RBAC-Cross-Checks, Drilldown und Health-Rail sind unasserted; SignalR-Live bleibt untestbar (404-Stub). |
 | MCP Streamable-HTTP-Transport | Bewusst als Erweiterungspunkt dokumentiert, nicht gebaut. Erster Bedarf nach nicht-stdio-Anbindung. |
-| Desktop-Installer: pgAdmin4 aus dem Bundle filtern (~150 MB) | Beim nächsten Anfassen des Installers mitnehmen. |
 | Least-Privilege-DB-Login statt lexikalischer Read-Only-Prüfung | Deployment-Thema, kein Code-Thema. Die autoritative Lösung für den DbAdmin-Read-Pfad auf SQL Server/SQLite. |
 
 ---
@@ -283,7 +282,7 @@ erst mit dem dokumentierten 500-Parallel-Test verifizieren, dann committen. Das 
 | `secret`-Input-Typ für Custom Activities | Gestrichen — Secrets laufen über `{{globals.X}}` und Credentials. |
 | R2 „nur `manualTrigger` ist als Child aufrufbar" | Zugunsten von Modell C zurückgenommen: `startWorkflow` ruft **jeden** enabled Workflow, unabhängig vom Trigger-Typ. Bekannter, bewusst akzeptierter Edge-Case: Ein Child mit mehreren Triggern feuert beim Call alle als Roots. |
 | Multi-tone Node-Icons | 2026-07-08 verworfen — flache Silhouette + Glyph bleibt. |
-| `dotnet pack` für CLI/MCP in CI | Die Tools hängen transitiv an `net10.0-windows`; `PackAsTool` verbietet ein Platform-TFM (NETSDK1146). Echte Tool-Pakete bräuchten Multi-Targeting der ganzen Kette. |
+| `dotnet pack` für CLI/MCP (global tools) | Die Tools hängen transitiv an `net10.0-windows`; `PackAsTool` verbietet ein Platform-TFM (NETSDK1146). Echte Tool-Pakete bräuchten Multi-Targeting der ganzen Kette. **2026-08-02 nachgemessen: `dotnet pack` scheitert für beide Projekte reproduzierbar.** Die Doku hatte bis dahin `dotnet tool install -g` als Installationsweg angegeben — also einen Weg, den es nie gab; sie zeigt jetzt auf `dotnet publish` + `PATH`. Die toten `PackAsTool`/`ToolCommandName`/`PackageId`-Properties sind aus beiden `.csproj` entfernt, damit die Behauptung nicht erneut entsteht. |
 
 ### Refactoring ohne Anlass
 
