@@ -27,6 +27,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 - `docs/custom-activities.md` — Custom Activities (Plugin-System)
 - `docs/mcp-server.md` — MCP-Server inkl. Tool-Katalog + `.mcp.json`-Beispiel
 - `docs/ai-features.md` — KI-Features: Config-Keys, Modell-Empfehlungen
+- `docs/deployment-guide.md` — End-to-End-Produktions-Deployment (EN): Build → SQL-TLS → Install → First Login → Troubleshooting; lab-validiert
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC
 - `src/nodepilot-ui/e2e/README.md` — E2E-Coverage-Map + Spec-Konventionen

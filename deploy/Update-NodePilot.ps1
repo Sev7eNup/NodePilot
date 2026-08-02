@@ -19,7 +19,9 @@
 .PARAMETER DataPath
     Writable data directory. Retained for command-line compatibility.
 .PARAMETER HttpsPort
-    HTTPS port used for the health probe after restart. Default: 443.
+    HTTPS port used for the health probe after restart. Defaults to the port in the installed
+    appsettings.Production.json (Kestrel:Https:HttpsPort), falling back to 443 only when that
+    cannot be read. Pass explicitly to override.
 .PARAMETER KeepBackupCount
     Number of binary-only backups to retain. Default: 3.
 #>
@@ -47,6 +49,7 @@ if (-not (Test-Path -LiteralPath $ArtifactSecurityScript -PathType Leaf)) {
 function Write-Step { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Cyan }
 function Write-Info { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Gray }
 function Write-Ok   { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Green }
+function Write-Warn { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Yellow }
 
 function Resolve-ServiceAclIdentity {
     param([Parameter(Mandatory)][string]$Name)
@@ -146,6 +149,34 @@ try {
     Set-RestrictedSettingsAcl -Path $settingsPath -ServiceAccount $svcAccount
     $settingsBytes = [IO.File]::ReadAllBytes($settingsPath)
 
+    # Health-probe port: the installed configuration is authoritative. Silently probing the
+    # 443 parameter default against an installation that listens on 8443 (any host where IIS
+    # owns 443 — SCCM, WSUS) fails the post-restart probe and rolls back a perfectly healthy
+    # upgrade (lab 2026-08-01). Explicit -HttpsPort still wins.
+    if (-not $PSBoundParameters.ContainsKey('HttpsPort')) {
+        try {
+            $installedSettings = [Text.Encoding]::UTF8.GetString($settingsBytes) | ConvertFrom-Json
+            $httpsSection = $null
+            if ($installedSettings.PSObject.Properties.Name -contains 'Kestrel') {
+                $kestrelSection = $installedSettings.Kestrel
+                if ($kestrelSection -and $kestrelSection.PSObject.Properties.Name -contains 'Https') {
+                    $httpsSection = $kestrelSection.Https
+                }
+            }
+            if ($httpsSection -and $httpsSection.PSObject.Properties.Name -contains 'HttpsPort') {
+                $configuredPort = [int]$httpsSection.HttpsPort
+                if ($configuredPort -gt 0 -and $configuredPort -ne $HttpsPort) {
+                    Write-Info "Health probe follows the installed configuration: port $configuredPort."
+                    $HttpsPort = $configuredPort
+                }
+            }
+        } catch {
+            Write-Warn ("Could not read Kestrel:Https:HttpsPort from $settingsPath " +
+                        "($($_.Exception.Message)); probing the default $HttpsPort. " +
+                        'Pass -HttpsPort explicitly if the service listens elsewhere.')
+        }
+    }
+
     # Reject a malformed signed ZIP before stopping the service or touching the installation.
     $artifactStage = Expand-NodePilotArtifactToStaging -ArtifactPath $ArtifactPath
     Write-Info "Verified restricted staging: $artifactStage"
@@ -165,9 +196,28 @@ try {
         Write-Step "Stopping service '$ServiceName'"
         Stop-ServiceAndVerify -Name $ServiceName
 
+        # A stopped service does not guarantee an empty install dir: an orphaned worker (or a
+        # manually started NodePilot.Api.exe) keeps its DLLs mapped as image sections, and
+        # deleting a mapped DLL fails with plain "Access denied" (lab 2026-08-01, mid-wipe —
+        # which also destroys appsettings.Production.json before the abort). Fail CLOSED with
+        # names before touching a single file.
+        $lockers = Get-Process | Where-Object {
+            $_.Path -and $_.Path.StartsWith($InstallPath, [StringComparison]::OrdinalIgnoreCase)
+        }
+        if ($lockers) {
+            $names = ($lockers | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '
+            throw ("Processes are still running from ${InstallPath}: $names. " +
+                   "Stop them (Stop-Process -Id <PID> -Force) and re-run. " +
+                   "Diagnose foreign DLL holds with: tasklist /m BCrypt-Net-Next.dll")
+        }
+
         Write-Step 'Installing verified artifact'
         $installTouched = $true
+        # appsettings.Production.json last: if the wipe aborts midway (locked file, AV), the
+        # config must still be on disk — the backup deliberately excludes it and the in-memory
+        # copy dies with this process.
         Get-ChildItem -LiteralPath $InstallPath -Force |
+            Sort-Object { $_.Name -eq 'appsettings.Production.json' } |
             Remove-Item -Recurse -Force -ErrorAction Stop
         Copy-DirectoryContents -Source $artifactStage -Destination $InstallPath
         Assert-NodePilotExtractedFiles -RootPath $InstallPath

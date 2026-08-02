@@ -112,8 +112,10 @@
     for example -KnownProxyIps '10.0.1.5','10.0.1.6'. Do not pass the public VIP.
 
 .PARAMETER SkipSqlConnectivityCheck
-    Skip the Test-NetConnection probe to SQL / Postgres. Use when the installer host cannot
-    reach the DB port but the service account will once the service starts.
+    Skip the Test-NetConnection probe to SQL / Postgres AND the SQL Server version gate
+    (>= 2022 CU1 / 16.0.4003.1, required for the runtime's Encrypt=Strict TDS 8.0
+    connections). Use when the installer host cannot reach the DB port but the service
+    account will once the service starts.
 
 .PARAMETER SkipGmsaCheck
     Skip Test-ADServiceAccount. Use when the ActiveDirectory module is unavailable on the
@@ -502,6 +504,63 @@ function Test-SqlReachable {
     } finally {
         $conn.Dispose()
     }
+}
+
+function Assert-SqlServerTds8Support {
+    <#
+      The runtime connection pins Encrypt=Strict (TDS 8.0). Two hard floors follow:
+      - TDS 8.0 exists only on SQL Server 2022+ (ProductMajorVersion 16).
+      - SQL Server 2022 RTM ships a TDS 8.0 bug that corrupts RPC parameter streams
+        (error 8005 "The parameter name is invalid") on the first parameterized
+        statement. Plain-text batches (EF migrations) still work, so without this gate
+        the failure surfaces only after install, as a service boot loop. Fixed
+        server-side in CU1 = 16.0.4003.1 (dotnet/SqlClient#1807).
+      This preflight connects with Encrypt=$true (TDS 7.4 - System.Data.SqlClient cannot
+      speak TDS 8.0), so the version query is the only way to prove the server can handle
+      what the .NET 10 runtime will actually send. Returns the ProductVersion string.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Server,
+        [Parameter(Mandatory)][string]$CertificateHostName
+    )
+    $serverWithoutPrefix = $Server -replace '^tcp:', ''
+    $suffixIndex = $serverWithoutPrefix.IndexOfAny([char[]]@('\', ','))
+    $serverSuffix = if ($suffixIndex -ge 0) { $serverWithoutPrefix.Substring($suffixIndex) } else { '' }
+    $tlsValidationServer = "tcp:$CertificateHostName$serverSuffix"
+
+    $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
+    $builder['Server'] = $tlsValidationServer
+    # master, not the app DB: the version property needs no database and this keeps the
+    # gate meaningful even when the app DB is created only after the preflight.
+    $builder['Database'] = 'master'
+    $builder['Integrated Security'] = $true
+    $builder['Encrypt'] = $true
+    $builder['TrustServerCertificate'] = $false
+    $builder['Connect Timeout'] = 10
+    $builder['Application Name'] = 'NodePilot-Installer'
+
+    $conn = New-Object System.Data.SqlClient.SqlConnection $builder.ConnectionString
+    try {
+        $conn.Open()
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = "SELECT CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128))"
+        $productVersion = [string]$cmd.ExecuteScalar()
+    } finally {
+        $conn.Dispose()
+    }
+
+    $minVersion = [version]'16.0.4003.1'
+    $parsed = $null
+    if (-not [version]::TryParse($productVersion, [ref]$parsed)) {
+        throw "Could not parse SQL Server ProductVersion '$productVersion'."
+    }
+    if ($parsed -lt $minVersion) {
+        throw ("SQL Server $productVersion cannot serve NodePilot's Encrypt=Strict (TDS 8.0) " +
+               "connections. Minimum: SQL Server 2022 CU1 ($minVersion) - SQL Server 2019 and " +
+               "older lack TDS 8.0 entirely, and 2022 RTM corrupts TDS 8.0 RPC parameter streams " +
+               "(error 8005). Install the latest SQL Server 2022 cumulative update, then re-run.")
+    }
+    return $productVersion
 }
 
 function Enable-SqlReadCommittedSnapshot {
@@ -975,6 +1034,23 @@ if (-not $SkipSqlConnectivityCheck) {
             Write-Host "  After the DB is ready, re-run the installer (optionally with -SkipSqlConnectivityCheck)." -ForegroundColor Yellow
             throw "Aborted: SQL pre-flight failed."
         }
+
+        # Version gate, separate from the reachability check above so its failure prints
+        # patch-level guidance instead of the login-remediation snippet.
+        try {
+            $sqlProductVersion = Assert-SqlServerTds8Support `
+                -Server $SqlServer `
+                -CertificateHostName $SqlCertificateHostName
+            Write-Info "  SQL Server $sqlProductVersion supports TDS 8.0 (>= 2022 CU1)."
+        } catch {
+            Write-Warn "  SQL version pre-flight FAILED: $($_.Exception.Message)"
+            Write-Host ""
+            Write-Host "  Check the patch level in SSMS:" -ForegroundColor Yellow
+            Write-Host "    SELECT SERVERPROPERTY('ProductVersion') AS Version, SERVERPROPERTY('ProductUpdateLevel') AS CU;" -ForegroundColor Gray
+            Write-Host "  16.0.1000.x = 2022 RTM (unpatched). Install the latest SQL Server 2022 cumulative" -ForegroundColor Yellow
+            Write-Host "  update, then re-run the installer." -ForegroundColor Yellow
+            throw "Aborted: SQL version pre-flight failed."
+        }
     } else {
         try {
             Test-PostgresReachable -HostName $PostgresHost -Port $PostgresPort
@@ -1383,8 +1459,15 @@ Write-Ok "  /healthz/ready → 200 OK"
 # Admin bootstrap token surfaces for first login.
 $tokenPath = Join-Path $DataPath 'admin-setup.token'
 $tokenContent = $null
+$tokenUnreadable = $false
 if (Test-Path $tokenPath) {
-    $tokenContent = (Get-Content $tokenPath -Raw).Trim()
+    # The service writes this file with an owner-only ACL (single ACE for the service
+    # account), so the installing admin is EXPECTED to hit Access denied here whenever
+    # the service identity differs from the installer identity (gMSA and LocalSystem
+    # alike). This read is display convenience only — the install is already healthy at
+    # this point, so it must never abort (and thereby roll back) the installation.
+    try { $tokenContent = (Get-Content $tokenPath -Raw -ErrorAction Stop).Trim() }
+    catch { $tokenUnreadable = $true }
 }
 
 # Persist an install report (no secrets) alongside the data dir for post-mortem.
@@ -1429,13 +1512,26 @@ if ($tokenContent) {
     Write-Host "  FIRST-LOGIN ADMIN BOOTSTRAP" -ForegroundColor Yellow
     Write-Host "  ---------------------------"
     Write-Host "  Go to:   https://$PublicHostname/"
-    Write-Host "  Present the following value as the 'X-Setup-Token' header on your first POST /api/auth/login"
-    Write-Host "  (the web UI prompts for it on the setup screen). After successful admin creation the"
-    Write-Host "  token file is deleted and this bootstrap window closes."
+    Write-Host "  Sign in with your desired admin username + password. The sign-in page reveals a"
+    Write-Host "  'Setup token' field on the first attempt - paste the value below. After successful"
+    Write-Host "  admin creation the token file is deleted and this bootstrap window closes."
     Write-Host ""
     Write-Host "    $tokenContent" -ForegroundColor Cyan
     Write-Host ""
     Write-Host "  Token path: $tokenPath"
+} elseif ($tokenUnreadable) {
+    Write-Host "  FIRST-LOGIN ADMIN BOOTSTRAP" -ForegroundColor Yellow
+    Write-Host "  ---------------------------"
+    Write-Host "  Go to:   https://$PublicHostname/"
+    Write-Host "  Sign in with your desired admin username + password. The sign-in page reveals a"
+    Write-Host "  'Setup token' field on the first attempt. The token lives in"
+    Write-Host "  $tokenPath, which is ACL-restricted to the service account -"
+    Write-Host "  read it without touching that ACL via backup semantics:"
+    Write-Host ""
+    Write-Host "    robocopy `"$DataPath`" `"`$env:TEMP`" admin-setup.token /B" -ForegroundColor Cyan
+    Write-Host "    Get-Content `"`$env:TEMP\admin-setup.token`"" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  Delete the temp copy after the first login (the server deletes the original itself)."
 } else {
     Write-Info "  No admin-setup.token on disk (users already exist or bootstrap ran silently)."
 }

@@ -168,10 +168,10 @@ npm run dev
 ### 6. Ersten Admin-Account anlegen
 
 1. `http://localhost:5173` im Browser öffnen.
-2. Im Setup-Dialog einen lokalen Admin-Benutzernamen und ein Passwort festlegen.
-3. Setup abschließen.
+2. Wunsch-Benutzername und Passwort eingeben und anmelden — beim ersten Versuch blendet die Login-Seite ein **Setup-Token-Feld** ein.
+3. Token aus `src\NodePilot.Api\admin-setup.token` einfügen und erneut anmelden.
 
-Bei einer leeren Datenbank erzeugt das Backend `src\NodePilot.Api\admin-setup.token`. Die lokale Oberfläche verwendet diesen einmaligen Token automatisch. Nach erfolgreichem Setup wird der Token gelöscht. Es existiert kein voreingestelltes Konto.
+Bei einer leeren Datenbank erzeugt das Backend diese Token-Datei beim Start. Nach erfolgreichem Setup wird sie gelöscht. Es existiert kein voreingestelltes Konto.
 
 Der nächste Schritt ist der [Schnelleinstieg](./quickstart).
 

@@ -273,6 +273,7 @@ Globale Flags: `--server`, `--profile`, `-o table|json|yaml`, `--no-color`, `-v`
 - `CREDENTIAL_CREATED|UPDATED|DELETED`
 - `GLOBAL_VARIABLE_CREATED|UPDATED|DELETED`
 - `LOGIN_SUCCESS|LOGIN_FAILED|LOGIN_LOCKED|LOGOUT|TOKEN_REFRESHED|USER_CREATED_BOOTSTRAP`
+  - **Jeder** Login-Fehlschlag ist auditiert — der `reason` im Details-JSON ist das einzige Mittel, die im Browser bewusst identische Meldung „Invalid credentials" aufzuschlüsseln: `local_login_policy` (Modus verbietet lokalen Login), `bootstrap_token_invalid`, `ldap_invalid_credentials` (Bind abgelehnt), `ldap_user_object_not_found` (Bind OK, aber kein Objekt mit passendem `userPrincipalName` — meist ein leeres UPN-Attribut), `no_allowed_directory_group` (eigener Code `USER_DIRECTORY_ACCESS_REFUSED`), `pre_jit_account_throttle` (als `LOGIN_LOCKED`), `infrastructure_failure` (zusätzlich HTTP 503)
 - `USER_CREATED|USER_ROLE_CHANGED|USER_ACTIVATED|USER_DEACTIVATED|USER_PASSWORD_RESET|USER_DELETED`
 - `CREDENTIAL_DECRYPTED|CREDENTIAL_DECRYPT_FAILED` (pro Decryption-Versuch, nicht pro Run; Fehlerdetails enthalten nur Provider und Fehlerklasse)
 - `USER_LDAP_JIT_CREATED|JIT_UPDATED|LINKED|REFUSED_COLLISION|REFUSED_BOOTSTRAP` + `USER_WINDOWS_*` (gleiche Suffixe; Code ist `USER_{providerTag}_…` mit `providerTag` = LDAP|WINDOWS)
@@ -310,9 +311,10 @@ Vollständige Operator-Doku: [deploy/README.md](deploy/README.md). Zweites Shipp
 
 ### Ziel-Topologie
 
-- **Windows Service** unter einem **gMSA** (`DOMAIN\svc-nodepilot$`, `sc.exe create` mit leerem Passwort — `New-Service` kann gMSA nicht), Delayed-Auto-Start, Recovery-Actions
+- **Windows Service** unter einem **gMSA** (`DOMAIN\svc-nodepilot$`, `sc.exe create` mit leerem Passwort — `New-Service` kann gMSA nicht) **oder** `-UseLocalSystem` (Netzwerk-Identität = Computer-Konto `DOMAIN\<host>$`; einfachster Einzelserver-Pfad), Delayed-Auto-Start, Recovery-Actions
+- **Signiertes Artefakt**: `Build-Artifact.ps1 -SigningCertificateThumbprint` erzeugt ZIP + Manifest + detached CMS (`.p7s`); `Install-NodePilot.ps1 -TrustedArtifactSignerThumbprint` verifiziert Pin **und Kette** (`ArtifactSecurity.ps1`) — der Signer (bzw. sein Self-Signed-Cert) muss auf dem Ziel in `LocalMachine\Root`
 - **Kestrel bindet HTTPS direkt** auf den Ports aus `Kestrel:Https:HttpsPort|HttpPort`, Cert per Thumbprint aus `LocalMachine\My` — **kein IIS / Reverse Proxy**. SPA + API liegen zwingend auf **einer Origin**
-- **Externes SQL Server 2022** (Trusted Connection) oder **PostgreSQL 16+** (user/password). gMSA-Login bzw. Postgres-Role braucht DDL-Rechte.
+- **Externes SQL Server 2022 ab CU1** (Trusted Connection; Build ≥ `16.0.4003.1` — Runtime verbindet mit `Encrypt=Strict`/TDS 8.0, 2022 RTM korrumpiert TDS-8.0-RPC-Streams mit Error 8005, Installer-Preflight prüft das) oder **PostgreSQL 16+** (user/password). gMSA-Login bzw. Postgres-Role braucht DDL-Rechte.
 - **gMSA-Identität als WinRM-Auth**: `NegotiateWithImplicitCredential` in [WinRmSessionFactory.cs](src/NodePilot.Remote/WinRmSessionFactory.cs) erlaubt Kerberos gegen Ziel-Maschinen ohne gespeicherte Credentials, sofern resource-based Constrained Delegation eingerichtet ist
 
 ### Install-Dir / Data-Dir Split
@@ -329,7 +331,7 @@ Vollständige Operator-Doku: [deploy/README.md](deploy/README.md). Zweites Shipp
 |---|---|---|
 | `Jwt:KeyPath` | Absoluter Pfad für `jwt-secret.key` | `{ContentRoot}/jwt-secret.key` |
 | `Jwt:RotateInsecureKeyFile` | Einmalige, explizite Rotation einer unsicheren bestehenden Key-Datei; danach wieder auf `false` setzen. Invalidiert alle Sessions. | `false` |
-| `Database:AllowInsecureTls` | Expliziter Development-Override, der die strikte DB-TLS-Prüfung des `DatabaseTlsBootValidator` deaktiviert; in Produktion `false` = Boot-Abbruch bei ungeprüftem Server-Zertifikat. | `false` |
+| `Database:AllowInsecureTls` | Escape-Hatch der strikten DB-TLS-Prüfung (`DatabaseTlsBootValidator`). Wirkt **nur** bei Loopback-DB-Host **und** (Development-Env **oder** `Deployment:Mode=Desktop`) — auf einem Produktions-Server bricht der Boot trotz `true` ab. | `false` |
 | `Security:AdminSetupTokenPath` | Absoluter Pfad für `admin-setup.token` | `{ContentRoot}/admin-setup.token` |
 | `Logging:File:Path` | Absoluter Pfad für Serilog-Rolling-File | `{ContentRoot}/logs/nodepilot-.log` |
 | `Kestrel:Https:*` | Kestrel-direct-HTTPS aus Windows Cert Store | No-op → Default-Binding |
@@ -346,6 +348,10 @@ Installer-Template setzt `LocalMachine` ([appsettings.Production.json.template](
 - **Em-Dashes (`—`) in PS-Scripts**: bricht PS 5.1 Parsing wenn Datei ohne BOM gespeichert. In Deploy-Skripten nur ASCII-Punctuation verwenden
 - **`Set-StrictMode -Version Latest`** + `& npm ...`-Shim triggert `PropertyNotFoundStrict` auf `.Statement`. In Deploy-Skripten `Version 3.0` verwenden
 - **`New-Service` unterstützt keine gMSA** (verlangt Passwort). `sc.exe create ... obj= DOMAIN\acct$ password= ""` ist der Workaround
+- **`$PSHOME\Modules` muss auch im Server-Artefakt gestaged werden**: `dotnet publish` legt SMA.dll in die Wurzel, die Core-Module aber unter `runtimes\win\lib\<tfm>\Modules` → ohne Kopie nach `<stage>\Modules` scheitert **jede** runScript-Activity mit „The term 'Write-Output' is not recognized" (implizite WinPS-Compat, die das früher maskierte, ist seit PR #87 bewusst aus). `Build-Artifact.ps1` staged seit 2026-08-01 wie der Desktop-Build
+- **CSP vs. Code-Editoren**: CodeMirror 6 (style-mod) und Monaco injizieren Laufzeit-`<style>`-Elemente → `style-src` braucht `'unsafe-inline'` (M-3 für Styles teilrevertiert, `script-src 'self'` bleibt strikt; Monaco hat keine Nonce-API). Guard: `SecurityPipelineSetupTests` — Dev und E2E fahren ohne diese Middleware, ein Direktiven-Regress fiele sonst erst auf dem Server auf
+- **`TokenValidityMiddleware` rejected nur auf `/api` + `/hubs`**: der SPA-Fallback-Endpoint trägt kein `[AllowAnonymous]`, ein abgelaufenes `np_auth` machte damit die gesamte SPA **inklusive `/login`** unerreichbar (rohes 401-JSON statt Seite). Außerhalb dieser beiden Präfixe wird die ungültige Identität gestrippt statt abgelehnt
+- **Update-Skript-Semantik** (alles drei aus dem Lab-Rollout): Prozess-Guard bricht **vor** dem ersten Delete ab, wenn noch etwas aus dem InstallPath läuft (gestoppter Dienst ≠ freie DLLs — gemappte Images liefern „Access denied"); `appsettings.Production.json` fällt beim Wipe **zuletzt** (steht bewusst nicht im Backup); die Health-Probe leitet ihren Port aus `Kestrel:Https:HttpsPort` der installierten Config ab — der 443-Parameterdefault rollte sonst ein gesundes 8443-Upgrade zurück
 
 ---
 
@@ -380,7 +386,7 @@ Alerting-Webhooks). Merksatz: *ausgehend alles, eingehend nichts.*
 - `RandomNumberGenerator.Fill` und `GetCertHashString(HashAlgorithmName)` sind .NET-Core-/4.8-APIs — unter PS 5.1 nicht vorhanden
 - **PostgreSQL re-execed unter Restricted-Token** (droppt Administrators) → `pgdata`/pwfile brauchen den **User-SID**
 - `sc.exe create binPath=` bricht bei Leerzeichen-Pfad (`C:\Program Files\…`) **still** ab → `New-Service`
-- `admin-setup.token` ist owner-only (SYSTEM): elevierter Admin darf weder lesen noch DACL ändern → `takeown /a` + `icacls`-Lesegrant (Owner/ACEs bleiben im trusted-Set von `RestrictedFileWriter`)
+- `admin-setup.token` ist owner-only (SYSTEM): elevierter Admin darf weder lesen noch DACL ändern → einfachster Weg ohne ACL-Änderung: `robocopy <DataPath> $env:TEMP admin-setup.token /B` (Backup-Semantik). Alternativ `takeown /a` + `icacls`-Lesegrant an die **Administrators-Gruppe** (bleibt im trusted-Set von `RestrictedFileWriter`; Ownership auf den persönlichen Admin-User dagegen invalidiert die Datei)
 - `Invoke-WebRequest` scheitert unter PS 5.1 an Kestrels Loopback-TLS trotz gesunder API → `curl.exe`-Fallback
 - **`$PSHOME\Modules` muss mitgeliefert werden**, sonst schlägt jedes `runScript` fehl (Modul-Staging im Build)
 - Deploy-Skripte **ASCII-only** halten (UTF-8-no-BOM wird als ANSI gelesen)
@@ -464,7 +470,7 @@ Die Guard-Flags sind **hardened by default**: appsettings.json shippt sie als `t
 | `Trigger:Database:RequireConnectionRef` | `true` | Nur benannte `connectionRef` für `databaseTrigger` (Dev: `false`) |
 | `Security:StrictAllowedHosts` | `true` | Boot-Abbruch bei unsicherem `AllowedHosts` (z.B. `*`) (Dev: `false`) |
 | `Webhook:RequireSecret` | `true` | `webhookTrigger` erzwingt ein konfiguriertes Secret — verifiziert je nach `signatureMode` als `X-Webhook-Secret`-Header oder NodePilot-HMAC-v2-Signatur (Dev: `false`) |
-| `Database:AllowInsecureTls` | `false` | Relaxation: deaktiviert die strikte DB-TLS-Prüfung (`Encrypt=Strict` / `SSL Mode=VerifyFull`). Prod-Default fail-closed; Dev: `true` |
+| `Database:AllowInsecureTls` | `false` | Relaxation: deaktiviert die strikte DB-TLS-Prüfung (`Encrypt=Strict` / `SSL Mode=VerifyFull`) — greift nur bei Loopback-Host + (Development **oder** `Deployment:Mode=Desktop`). Prod-Default fail-closed; Dev: `true` |
 | `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` | `false` | `/metrics` anonym erreichbar |
 
 ## Maintenance Windows — Semantik
