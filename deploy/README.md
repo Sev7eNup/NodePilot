@@ -295,7 +295,7 @@ Nach erfolgreichem Install steht in der Konsole:
 | Parameter | Pflicht | Default |
 |---|---|---|
 | `-ArtifactPath` | ✓ | |
-| `-TrustedArtifactSignerThumbprint` | ✓ | gepinnter Enterprise Code-Signing-Publisher |
+| `-TrustedArtifactSignerThumbprint` | ✓ | — (**keinen** Default; es gibt keinen eingebauten gepinnten Publisher, der Thumbprint muss immer übergeben werden) |
 | `-ServiceAccount` | ✓ im gMSA-Pfad (entfällt bei `-UseLocalSystem`) | |
 | `-UseLocalSystem` | Alternative zu `-ServiceAccount` | off |
 | `-CertThumbprint` | ✓ | |

@@ -53,17 +53,23 @@ Projekt-Layout unter `src/` + `tests/` — nicht hier gespiegelt, direkt nachseh
 ## Projekt starten
 
 ```powershell
-# Postgres (lokales Dev-Cluster)
+# Postgres — Cluster DIESER Maschine. Nichts im Repo legt ihn an; die allgemeine
+# Einrichtung (CREATE ROLE/DATABASE, Connection-String per Env-Var) steht in CONTRIBUTING.md.
 & 'C:\NodePilot-Postgres\pgsql\bin\pg_ctl.exe' start -D 'C:\NodePilot-Postgres\data' -l 'C:\NodePilot-Postgres\data\postgres.log' -w
 
 # Backend (Port 5000) — schlägt fehl wenn Postgres nicht läuft
-cd src\NodePilot.Api; dotnet run --urls "http://localhost:5000"
+cd src\NodePilot.Api; dotnet run
 
 # Frontend (Port 5173, Proxy auf Backend)
 cd src\nodepilot-ui; npm run dev
 ```
 
-Erster Login erstellt Admin-Account. **Immer erst `pg_ctl start`, dann `dotnet run`.**
+Port 5000 kommt aus `launchSettings.json` und ist derselbe, auf den der Vite-Proxy zeigt — `--urls`
+ist nicht nötig. **Immer erst `pg_ctl start`, dann `dotnet run`.**
+
+**Erster Login braucht das Setup-Token**, nicht nur leere DB: die API schreibt es nach
+`src\NodePilot.Api\admin-setup.token` (ContentRoot). Login-Maske zeigt beim ersten Versuch ein
+**Setup-Token**-Feld; erst damit entsteht der Admin-Account.
 
 **Für Claude:** Dev-Mode verwenden. **API-Neustarts (stop+rebuild+start) sind jederzeit ohne Rückfrage erlaubt** — DLL-Locks sind normal. Vorab PID via `Get-NetTCPConnection -LocalPort 5000` finden, dann `Stop-Process` + Rebuild + Start. `npm run dev` kaputt → `npm install`. Deploy-Skripte unter `deploy/` **niemals** ausführen.
 

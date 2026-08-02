@@ -6,8 +6,9 @@ first time. Every step has been validated on a domain-joined Windows Server co-i
 next to an SCCM site server, against SQL Server 2022, without an enterprise PKI
 (self-signed certificates throughout).
 
-Parameter-by-parameter reference, HA/cluster setup and the desktop installer live in
-[`deploy/README.md`](../deploy/README.md).
+Parameter-by-parameter reference and HA/cluster setup live in
+[`deploy/README.md`](../deploy/README.md); the desktop installer has its own guide in
+[`deploy/desktop/README.md`](../deploy/desktop/README.md).
 
 ## What gets installed
 

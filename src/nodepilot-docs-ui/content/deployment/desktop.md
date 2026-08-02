@@ -191,8 +191,12 @@ Die Daten unter `C:\ProgramData\NodePilot`, einschließlich `pgdata`, bleiben st
 
 Vollständige Entfernung:
 
+Das Skript liegt in der Installation, nicht im aktuellen Verzeichnis, und `-InstallPath` ist ein
+Pflichtparameter:
+
 ```powershell
-.\Uninstall-Desktop.ps1 -PurgeData
+& 'C:\Program Files\NodePilot\deploy\Uninstall-Desktop.ps1' `
+    -InstallPath 'C:\Program Files\NodePilot' -PurgeData
 ```
 
 `-PurgeData` löscht die lokale Datenbank und ist nicht rückgängig zu machen. Vorher ist ein Backup erforderlich.

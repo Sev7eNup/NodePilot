@@ -12,25 +12,55 @@ detail but assumes an autonomous workflow. Prefer this document for onboarding, 
 ## Prerequisites
 
 - **.NET 10 SDK** (the solution targets `net10.0-windows` — a Windows host is required; the
-  remote-execution and PowerShell-SDK layers are Windows-only).
-- **Node.js 20+** and npm (frontend + docs site).
-- **PostgreSQL** for running the backend locally (a local dev cluster is fine). SQL Server is
-  the alternative provider; SQLite is used only as the in-memory test backend.
+  remote-execution and PowerShell-SDK layers are Windows-only). The accepted SDK band is pinned
+  in [`global.json`](global.json).
+- **Node.js** and npm (frontend + docs site). The minimum version is declared in the `engines`
+  field of each `package.json` — react-router 8 sets the floor, and `npm` warns if you are below
+  it. Do not hard-code a number here; it drifted three different ways once already.
+- **PostgreSQL 16+** for running the backend locally. SQL Server 2022 CU1+ is the alternative
+  provider; SQLite is used only as the in-memory test backend.
 
 ## Local setup
 
+**1. Create the database.** Neither shipped connection string carries a password, so this is a
+required step, not a formality:
+
 ```powershell
-# 1. Start Postgres (example uses a local dev cluster)
-& 'C:\NodePilot-Postgres\pgsql\bin\pg_ctl.exe' start -D 'C:\NodePilot-Postgres\data' -w
+winget install PostgreSQL.PostgreSQL
+$psql = "C:\Program Files\PostgreSQL\16\bin\psql.exe"
+& $psql -U postgres -c "CREATE ROLE nodepilot WITH LOGIN PASSWORD 'ChangeMe!';"
+& $psql -U postgres -c "CREATE DATABASE nodepilot OWNER nodepilot;"
+```
 
-# 2. Backend on http://localhost:5000  (fails fast if Postgres isn't up)
-cd src\NodePilot.Api; dotnet run --urls "http://localhost:5000"
+Any reachable PostgreSQL works — a service install, a container, or a hand-rolled cluster you
+start with `pg_ctl`. Nothing in this repository provisions one for you.
 
-# 3. Frontend on http://localhost:5173 (proxies /api to the backend)
+**2. Run it.** Pass the password through the environment so it never lands in a tracked file:
+
+```powershell
+# Backend on http://localhost:5000 (the port launchSettings binds and the Vite proxy targets)
+$env:ConnectionStrings__Postgres = "Host=127.0.0.1;Port=5432;Database=nodepilot;Username=nodepilot;Password=ChangeMe!;SSL Mode=Disable"
+cd src\NodePilot.Api; dotnet run
+
+# Frontend on http://localhost:5173 (proxies /api, /healthz and /hubs to the backend)
 cd src\nodepilot-ui; npm install; npm run dev
 ```
 
-The first login on an empty database creates the initial Admin account.
+Start PostgreSQL **before** the API. Without a reachable database the process exits during the
+migration bootstrap, naming the server and database it could not reach.
+
+**3. First login.** An empty database does **not** simply accept the first login: the API writes a
+one-time setup token to `src\NodePilot.Api\admin-setup.token` (the content root). Sign in with the
+admin username and password you want — the login screen reveals a **Setup token** field on the
+first attempt, and pasting the token creates the Admin account.
+
+> Local logins are fully enabled in Development. In Production `Authentication:LocalLoginMode`
+> defaults to `BreakGlassOnly`, where only accounts explicitly flagged as break-glass may sign in
+> with a password.
+
+Want the AI Chat's source-code knowledge source to work against your checkout? Set it outside
+version control — `$env:AiKnowledge__SourceCodeRootPath = 'C:\path\to\NodePilot'` — never in
+`appsettings.Development.json`, which is tracked and shared.
 
 ## Build & test
 
