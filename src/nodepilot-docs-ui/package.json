@@ -4,6 +4,9 @@
   "description": "NodePilot documentation website — React SPA.",
   "type": "module",
   "private": true,
+  "engines": {
+    "node": ">=22.22.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

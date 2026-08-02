@@ -71,6 +71,39 @@ public sealed class MigrationBootstrapperTests : IDisposable
         db.Users.Count().Should().Be(0);
     }
 
+    /// <summary>
+    /// A stopped database is the most common first-run failure, and it used to surface as a raw
+    /// provider exception plus stack trace, which reads as a crash rather than as "start Postgres
+    /// first". The wrapper must name the connection target — and must never echo the password,
+    /// which is why the message is built from DataSource/Database rather than the connection
+    /// string.
+    ///
+    /// <para>The complementary case (reachable database, migration succeeds) is covered by
+    /// <see cref="Bootstrap_FreshDatabase_AppliesAllMigrationsAndCreatesSchema"/>: it would fail
+    /// if the added try/catch swallowed or re-wrapped a healthy run.</para>
+    /// </summary>
+    [Fact]
+    public void Bootstrap_UnreachableDatabase_ThrowsWithTheConnectionTargetAndWithoutThePassword()
+    {
+        const string password = "super-secret-must-never-be-logged";
+        // Port 1 has no listener, so the connect fails immediately rather than waiting out a timeout.
+        var options = new DbContextOptionsBuilder<NodePilotDbContext>()
+            .UseNpgsql($"Host=127.0.0.1;Port=1;Database=nodepilot_unreachable;Username=np;Password={password};Timeout=1;Command Timeout=1")
+            .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))
+            .Options;
+        using var db = new NodePilotDbContext(options);
+
+        var act = () => MigrationBootstrapper.Bootstrap(db, NullLogger.Instance);
+
+        var thrown = act.Should().Throw<DatabaseUnreachableException>(
+            "an unreachable database must be reported as such, not as an opaque provider failure").Which;
+
+        thrown.Message.Should().Contain("nodepilot_unreachable", "the operator needs to see which database was addressed");
+        thrown.Message.Should().Contain("127.0.0.1", "the operator needs to see which server was addressed");
+        thrown.Message.Should().NotContain(password, "the connection password must never reach a log or console");
+        thrown.InnerException.Should().NotBeNull("the original provider exception stays available for diagnosis");
+    }
+
     [Fact]
     public void EnterpriseIdentityMigration_BackfillsOnlyUnambiguousKeys_AndPreservesBreakGlassAdmin()
     {

@@ -67,7 +67,17 @@ New-Item -ItemType Directory -Force -Path $Stage, $OutputRoot | Out-Null
 # SOURCES are versioned, which is why a clean clone can always rebuild them. The generator also
 # emits assets/skins/<id>.* so the shell can recolor its window + tray icon with the SPA skin.
 Write-Step 'Generating application icons from the brand assets'
-& (Join-Path $RepoRoot 'scripts\generate-desktop-icons.ps1') -SetupIconPath (Join-Path $Stage 'setup-icon.ico')
+# Launched through powershell.exe (Windows PowerShell 5.1) rather than dot-called in-process,
+# because the generator is built entirely on GDI+ (`Add-Type -AssemblyName System.Drawing`) and
+# that assembly name does not resolve the same way outside Windows PowerShell. This script's
+# `#requires -Version 5.1` admits PowerShell 7 too, so without pinning the shell the icon step
+# would depend on which console the operator happened to start the build from. The npm script
+# `nodepilot-desktop: icons` already pins it the same way.
+$iconScript = Join-Path $RepoRoot 'scripts\generate-desktop-icons.ps1'
+Invoke-Tool {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $iconScript `
+        -SetupIconPath (Join-Path $Stage 'setup-icon.ico')
+} 'Icon generation failed.'
 
 # --- 1. API (self-contained) -----------------------------------------------------------------
 Write-Step 'Publishing API (self-contained win-x64)'

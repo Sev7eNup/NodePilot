@@ -6,6 +6,15 @@
   "private": true,
   "license": "Apache-2.0",
   "main": "dist/main.js",
+  "//engines": [
+    "One repository-wide floor, not this project's own minimum. react-router 8 in",
+    "nodepilot-ui and nodepilot-docs-ui requires >=22.22.0; contributors build all three",
+    "from a single Node install, so publishing two different floors would just re-create",
+    "the version drift this field exists to remove."
+  ],
+  "engines": {
+    "node": ">=22.22.0"
+  },
   "scripts": {
     "build": "tsc && node scripts/copy-static.mjs",
     "icons": "powershell -NoProfile -ExecutionPolicy Bypass -File ../../scripts/generate-desktop-icons.ps1",
