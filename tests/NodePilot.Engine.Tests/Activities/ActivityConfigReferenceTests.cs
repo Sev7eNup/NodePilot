@@ -69,6 +69,108 @@ public class ActivityConfigReferenceTests
             string.Join(", ", phantom));
     }
 
+    /// <summary>
+    /// Enum values the engine never spells out as a literal because it hands them to a generic
+    /// parser. Listing them here is the same trade-off <see cref="ReadElsewhere"/> makes for keys:
+    /// the guard stays meaningful for the hand-written switches, which is where drift actually
+    /// happened.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> ValuesNotLiteralInSource = new(StringComparer.Ordinal)
+    {
+        // Passed straight to new HttpMethod(...) — no per-verb literal exists.
+        ["restApi.method"] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
+        // Verified by WebhooksController / WebhookHmacSecurity in NodePilot.Api.
+        ["webhookTrigger.signatureMode"] = ["header", "nodepilot-hmac-v2"],
+        // Parsed via Enum.TryParse<EventLogEntryType>.
+        ["eventLogTrigger.entryType"] = ["Information", "Warning", "Error"],
+    };
+
+    /// <summary>
+    /// The reference documents enum values as "a | b | c" prose. Nothing verified those against the
+    /// engine, and three drifted: <c>scheduledTask.action</c> listed run/query/delete/create when the
+    /// executor accepts get/start/stop/enable/disable/register/unregister, its <c>triggerType</c>
+    /// said onLogon/onStartup instead of atLogon/atStartup, and xml/jsonQuery <c>resultMode</c> said
+    /// "list" where the executors only honour "all". Each one renders into the AI prompt catalog and
+    /// the MCP config tools, so an agent authoring from them produces a node that throws "unknown
+    /// action" or silently falls back to the default.
+    /// </summary>
+    [Fact]
+    public void DocumentedEnumValues_ExistInTheEngineSources()
+    {
+        var engineText = LoadAllEngineSources();
+        var unknown = new List<string>();
+
+        foreach (var (type, entry) in ActivityConfigReference.ByType)
+        {
+            foreach (var key in entry.ConfigKeys)
+            {
+                var exempt = ValuesNotLiteralInSource.TryGetValue($"{type}.{key.Key}", out var e) ? e : [];
+
+                foreach (var value in ExtractEnumValues(key.Description))
+                {
+                    if (exempt.Contains(value, StringComparer.OrdinalIgnoreCase)) continue;
+                    if (!engineText.Contains($"\"{value}\"", StringComparison.OrdinalIgnoreCase))
+                        unknown.Add($"{type}.{key.Key}={value}");
+                }
+            }
+        }
+
+        unknown.Should().BeEmpty(
+            "these documented enum values appear nowhere in the engine sources, so a node authored "
+            + "from them is rejected or silently falls back to the default: {0}",
+            string.Join(", ", unknown));
+    }
+
+    /// <summary>
+    /// Pulls the "a | b | c" alternatives out of a key description. The first alternative is
+    /// preceded by prose ("Required for setStartType: Automatic | …"), so it contributes its LAST
+    /// word; every later alternative is followed by prose ("file — where the XML comes from"), so it
+    /// contributes its FIRST word. Anything that is not identifier-shaped is dropped, which is how
+    /// the trailing "…" in an open-ended list stays out.
+    /// </summary>
+    internal static IEnumerable<string> ExtractEnumValues(string description)
+    {
+        if (string.IsNullOrWhiteSpace(description) || !description.Contains('|')) yield break;
+
+        // Everything after the first sentence is explanatory prose, not part of the enum.
+        var parts = description.Split('|');
+        for (var i = 0; i < parts.Length; i++)
+        {
+            // "(default)" / "(register)" annotate an alternative without being one.
+            var cleaned = Regex.Replace(parts[i], @"\([^)]*\)", " ");
+            var words = Regex.Matches(cleaned, @"[A-Za-z][A-Za-z0-9._-]*")
+                             .Select(m => m.Value.TrimEnd('.'))
+                             .Where(w => w.Length > 0)
+                             .ToList();
+            if (words.Count == 0) continue;
+
+            var candidate = i == 0 ? words[^1] : words[0];
+            if (Regex.IsMatch(candidate, @"^[A-Za-z][A-Za-z0-9._-]*$")) yield return candidate;
+        }
+    }
+
+    /// <summary>
+    /// Engine + Scheduler sources. An enum value is often honoured outside the activity class:
+    /// runScript's "pwsh" lives in PowerShellEngineFactory, junction's modes in the scheduler, and
+    /// every background trigger (fileWatcher watchType, databaseTrigger, eventLog) is evaluated by
+    /// its NodePilot.Scheduler source rather than by the node executor.
+    /// </summary>
+    private static string LoadAllEngineSources()
+    {
+        var root = FindRepoRoot();
+        var sb = new System.Text.StringBuilder();
+
+        foreach (var project in new[] { "NodePilot.Engine", "NodePilot.Scheduler" })
+        {
+            var path = Path.Combine(root, "src", project);
+            Directory.Exists(path).Should().BeTrue($"{project} sources must be discoverable");
+            foreach (var file in Directory.EnumerateFiles(path, "*.cs", SearchOption.AllDirectories))
+                sb.AppendLine(File.ReadAllText(file));
+        }
+
+        return sb.ToString();
+    }
+
     [Fact]
     public void DocumentedKeys_HaveATypeAndADescription()
     {

@@ -5,7 +5,7 @@
   "workflows": [
     {
       "name": "Test — runScript",
-      "description": "Varianten: strukturierter param.*-Output, Native-Exit-Code via successExitCodes, isolated Prozess.",
+      "description": "Varianten: strukturierter param.*-Output, Native-Exit-Code via successExitCodes, isolated Prozess, engine runspace und transcript-Capture. engine 'pwsh' fehlt bewusst — es setzt eine installierte PowerShell 7 voraus und wäre auf einem Host ohne pwsh.exe ein dauerhaft roter Schritt.",
       "definition": {
         "nodes": [
           {
@@ -88,10 +88,47 @@
             }
           },
           {
-            "id": "ret",
+            "id": "s3",
             "type": "activity",
             "position": {
               "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: engine runspace",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "config": {
+                "engine": "runspace",
+                "timeoutSeconds": 30,
+                "script": "$engineUsed = 'runspace'\nWrite-Output \"engine=$engineUsed\""
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "runScript: transcript",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "config": {
+                "engine": "auto",
+                "timeoutSeconds": 30,
+                "transcript": true,
+                "script": "Get-Date -Format 'yyyy-MM-dd'\n$transcriptProbe = 'yes'\nWrite-Output \"transcript variant\""
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 2060,
               "y": 260
             },
             "data": {
@@ -101,7 +138,9 @@
                 "data": {
                   "v0_runScript_ok": "{{s0.success}}",
                   "v1_runScript_ok": "{{s1.success}}",
-                  "v2_runScript_ok": "{{s2.success}}"
+                  "v2_runScript_ok": "{{s2.success}}",
+                  "v3_runScript_ok": "{{s3.success}}",
+                  "v4_runScript_ok": "{{s4.success}}"
                 }
               }
             }
@@ -136,8 +175,26 @@
             }
           },
           {
-            "id": "eret",
+            "id": "e3",
             "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "s3",
+            "target": "s4",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s4",
             "target": "ret",
             "type": "labeled",
             "data": {
@@ -869,7 +926,7 @@
     },
     {
       "name": "Test — zipOperation",
-      "description": "Varianten: compress → extract (Round-Trip).",
+      "description": "Varianten: compress → extract (Round-Trip) plus alle drei compressionLevel (Optimal, Fastest, NoCompression).",
       "definition": {
         "nodes": [
           {
@@ -910,6 +967,7 @@
                 "operation": "compress",
                 "source": "C:\\Windows\\System32\\notepad.exe",
                 "destination": "C:\\Temp\\np-zip.zip",
+                "compressionLevel": "Optimal",
                 "force": true
               }
             }
@@ -934,10 +992,50 @@
             }
           },
           {
-            "id": "ret",
+            "id": "s2",
             "type": "activity",
             "position": {
               "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "zipOp: compress Fastest",
+              "activityType": "zipOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Windows\\System32\\notepad.exe",
+                "destination": "C:\\Temp\\np-zip-fast.zip",
+                "compressionLevel": "Fastest",
+                "force": true
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "zipOp: compress NoCompression",
+              "activityType": "zipOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "compress",
+                "source": "C:\\Windows\\System32\\notepad.exe",
+                "destination": "C:\\Temp\\np-zip-store.zip",
+                "compressionLevel": "NoCompression",
+                "force": true
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1720,
               "y": 260
             },
             "data": {
@@ -946,7 +1044,9 @@
               "config": {
                 "data": {
                   "v0_zipOperation_ok": "{{s0.success}}",
-                  "v1_zipOperation_ok": "{{s1.success}}"
+                  "v1_zipOperation_ok": "{{s1.success}}",
+                  "v2_zipOperation_ok": "{{s2.success}}",
+                  "v3_zipOperation_ok": "{{s3.success}}"
                 }
               }
             }
@@ -972,8 +1072,26 @@
             }
           },
           {
-            "id": "eret",
+            "id": "e2",
             "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s3",
             "target": "ret",
             "type": "labeled",
             "data": {
@@ -1210,7 +1328,7 @@
     },
     {
       "name": "Test — registryOperation",
-      "description": "Varianten: createkey → write(String) → write(DWord) → read → exists → deletevalue → deletekey (HKCU-Testschlüssel).",
+      "description": "Alle 8 Operationen (createKey → write → read → exists → listValues → listSubKeys → deleteValue → deleteKey) und alle 6 valueType-Werte (String, ExpandString, Binary, DWord, MultiString, QWord) auf einem HKCU-Testschlüssel.",
       "definition": {
         "nodes": [
           {
@@ -1244,11 +1362,11 @@
               "y": 260
             },
             "data": {
-              "label": "reg: createkey",
+              "label": "reg: createKey",
               "activityType": "registryOperation",
               "targetMachineId": "localhost",
               "config": {
-                "operation": "createkey",
+                "operation": "createKey",
                 "keyPath": "HKCU:\\SOFTWARE\\NP-Muster"
               }
             }
@@ -1301,6 +1419,86 @@
               "y": 260
             },
             "data": {
+              "label": "reg: write ExpandString",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
+                "valueName": "Expand",
+                "value": "%SystemRoot%\\System32",
+                "valueType": "ExpandString"
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: write Binary",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
+                "valueName": "Bin",
+                "value": "DEADBEEF",
+                "valueType": "Binary"
+              }
+            }
+          },
+          {
+            "id": "s5",
+            "type": "activity",
+            "position": {
+              "x": 2060,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: write MultiString",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
+                "valueName": "Multi",
+                "value": "eins\nzwei",
+                "valueType": "MultiString"
+              }
+            }
+          },
+          {
+            "id": "s6",
+            "type": "activity",
+            "position": {
+              "x": 2400,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: write QWord",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "write",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
+                "valueName": "Big",
+                "value": "1234567890123",
+                "valueType": "QWord"
+              }
+            }
+          },
+          {
+            "id": "s7",
+            "type": "activity",
+            "position": {
+              "x": 2740,
+              "y": 260
+            },
+            "data": {
               "label": "reg: read",
               "activityType": "registryOperation",
               "targetMachineId": "localhost",
@@ -1312,10 +1510,10 @@
             }
           },
           {
-            "id": "s4",
+            "id": "s8",
             "type": "activity",
             "position": {
-              "x": 1720,
+              "x": 3080,
               "y": 260
             },
             "data": {
@@ -1330,36 +1528,70 @@
             }
           },
           {
-            "id": "s5",
+            "id": "s9",
             "type": "activity",
             "position": {
-              "x": 2060,
+              "x": 3420,
               "y": 260
             },
             "data": {
-              "label": "reg: deletevalue",
+              "label": "reg: listValues",
               "activityType": "registryOperation",
               "targetMachineId": "localhost",
               "config": {
-                "operation": "deletevalue",
+                "operation": "listValues",
+                "keyPath": "HKCU:\\SOFTWARE\\NP-Muster"
+              }
+            }
+          },
+          {
+            "id": "s10",
+            "type": "activity",
+            "position": {
+              "x": 3760,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: listSubKeys",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "listSubKeys",
+                "keyPath": "HKCU:\\SOFTWARE"
+              }
+            }
+          },
+          {
+            "id": "s11",
+            "type": "activity",
+            "position": {
+              "x": 4100,
+              "y": 260
+            },
+            "data": {
+              "label": "reg: deleteValue",
+              "activityType": "registryOperation",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "deleteValue",
                 "keyPath": "HKCU:\\SOFTWARE\\NP-Muster",
                 "valueName": "Str"
               }
             }
           },
           {
-            "id": "s6",
+            "id": "s12",
             "type": "activity",
             "position": {
-              "x": 2400,
+              "x": 4440,
               "y": 260
             },
             "data": {
-              "label": "reg: deletekey",
+              "label": "reg: deleteKey",
               "activityType": "registryOperation",
               "targetMachineId": "localhost",
               "config": {
-                "operation": "deletekey",
+                "operation": "deleteKey",
                 "keyPath": "HKCU:\\SOFTWARE\\NP-Muster"
               }
             }
@@ -1368,7 +1600,7 @@
             "id": "ret",
             "type": "activity",
             "position": {
-              "x": 2740,
+              "x": 4780,
               "y": 260
             },
             "data": {
@@ -1382,7 +1614,13 @@
                   "v3_registryOperation_ok": "{{s3.success}}",
                   "v4_registryOperation_ok": "{{s4.success}}",
                   "v5_registryOperation_ok": "{{s5.success}}",
-                  "v6_registryOperation_ok": "{{s6.success}}"
+                  "v6_registryOperation_ok": "{{s6.success}}",
+                  "v7_registryOperation_ok": "{{s7.success}}",
+                  "v8_registryOperation_ok": "{{s8.success}}",
+                  "v9_registryOperation_ok": "{{s9.success}}",
+                  "v10_registryOperation_ok": "{{s10.success}}",
+                  "v11_registryOperation_ok": "{{s11.success}}",
+                  "v12_registryOperation_ok": "{{s12.success}}"
                 }
               }
             }
@@ -1453,8 +1691,62 @@
             }
           },
           {
-            "id": "eret",
+            "id": "e7",
             "source": "s6",
+            "target": "s7",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e8",
+            "source": "s7",
+            "target": "s8",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e9",
+            "source": "s8",
+            "target": "s9",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e10",
+            "source": "s9",
+            "target": "s10",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e11",
+            "source": "s10",
+            "target": "s11",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e12",
+            "source": "s11",
+            "target": "s12",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s12",
             "target": "ret",
             "type": "labeled",
             "data": {
@@ -1466,7 +1758,7 @@
     },
     {
       "name": "Test — wmiQuery",
-      "description": "Varianten: query (className Win32_OperatingSystem) + wql (WQL SELECT). invokemethod ausgelassen (potenziell destruktiv).",
+      "description": "Alle 3 Modi: query (className Win32_OperatingSystem), wql (WQL SELECT) und invokeMethod. invokeMethod nutzt bewusst die lesende Instanzmethode Win32_Process.GetOwner (per filter auf eine Instanz gescopt) — keine erzeugende/verändernde Methode.",
       "definition": {
         "nodes": [
           {
@@ -1529,10 +1821,34 @@
             }
           },
           {
-            "id": "ret",
+            "id": "s2",
             "type": "activity",
             "position": {
               "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "wmi: invokeMethod (Instanz)",
+              "activityType": "wmiQuery",
+              "targetMachineId": "localhost",
+              "config": {
+                "mode": "invokeMethod",
+                "className": "Win32_Process",
+                "methodName": "GetOwner",
+                "filter": "Name='svchost.exe'",
+                "namespace": "root\\cimv2",
+                "captureProperties": [
+                  "ReturnValue",
+                  "User"
+                ]
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1380,
               "y": 260
             },
             "data": {
@@ -1541,7 +1857,8 @@
               "config": {
                 "data": {
                   "v0_wmiQuery_ok": "{{s0.success}}",
-                  "v1_wmiQuery_ok": "{{s1.success}}"
+                  "v1_wmiQuery_ok": "{{s1.success}}",
+                  "v2_wmiQuery_ok": "{{s2.success}}"
                 }
               }
             }
@@ -1567,8 +1884,17 @@
             }
           },
           {
-            "id": "eret",
+            "id": "e2",
             "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s2",
             "target": "ret",
             "type": "labeled",
             "data": {
@@ -1580,7 +1906,7 @@
     },
     {
       "name": "Test — startProgram",
-      "description": "Varianten: waitForExit=true, non-zero Exit + successExitCodes, waitForExit=false (fire-forget).",
+      "description": "Varianten: waitForExit=true, non-zero Exit + successExitCodes, waitForExit=false (fire-forget), workingDirectory und useShellExecute=false. useShellExecute=true fehlt bewusst — es ist per StartProgram:DisallowShellExecute produktiv geblockt und waere unter Produktionsdefaults ein dauerhaft roter Schritt.",
       "definition": {
         "nodes": [
           {
@@ -1620,9 +1946,11 @@
               "config": {
                 "filePath": "C:\\Windows\\System32\\cmd.exe",
                 "arguments": "/c echo muster",
+                "workingDirectory": "C:\\Windows\\System32",
                 "waitForExit": true,
                 "timeoutSeconds": 30,
-                "successExitCodes": "0"
+                "successExitCodes": "0",
+                "useShellExecute": false
               }
             }
           },
@@ -2015,7 +2343,7 @@
     },
     {
       "name": "Test — textFileEdit",
-      "description": "Varianten: alle Operationen append/prepend/insert/replace/replaceline/delete (prep sät die Datei).",
+      "description": "Alle Operationen append/prepend/insert/replace/replaceline/delete (prep sät die Datei) plus die Modifier: encoding, lineEnding, occurrences=first, appendIfMissing, backupSuffix und dryRun.",
       "definition": {
         "nodes": [
           {
@@ -2171,10 +2499,91 @@
             }
           },
           {
-            "id": "ret",
+            "id": "s7",
             "type": "activity",
             "position": {
               "x": 2740,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: encoding + lineEnding + backup",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "content": "utf8-bom + crlf",
+                "encoding": "utf8-bom",
+                "lineEnding": "crlf",
+                "createIfMissing": true,
+                "backupSuffix": ".bak"
+              }
+            }
+          },
+          {
+            "id": "s8",
+            "type": "activity",
+            "position": {
+              "x": 3080,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: replace occurrences=first",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "replace",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "matchPattern": "muster",
+                "replace": "MUSTER",
+                "occurrences": "first",
+                "ignoreCase": true
+              }
+            }
+          },
+          {
+            "id": "s9",
+            "type": "activity",
+            "position": {
+              "x": 3420,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: appendIfMissing (idempotent)",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "append",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "content": "nur-einmal-anhaengen",
+                "appendIfMissing": true
+              }
+            }
+          },
+          {
+            "id": "s10",
+            "type": "activity",
+            "position": {
+              "x": 3760,
+              "y": 260
+            },
+            "data": {
+              "label": "tfe: dryRun",
+              "activityType": "textFileEdit",
+              "targetMachineId": "localhost",
+              "config": {
+                "operation": "delete",
+                "path": "C:\\Temp\\np-tfe.txt",
+                "matchPattern": "nur-einmal-anhaengen",
+                "dryRun": true
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 4100,
               "y": 260
             },
             "data": {
@@ -2188,7 +2597,11 @@
                   "v3_textFileEdit_ok": "{{s3.success}}",
                   "v4_textFileEdit_ok": "{{s4.success}}",
                   "v5_textFileEdit_ok": "{{s5.success}}",
-                  "v6_textFileEdit_ok": "{{s6.success}}"
+                  "v6_textFileEdit_ok": "{{s6.success}}",
+                  "v7_textFileEdit_ok": "{{s7.success}}",
+                  "v8_textFileEdit_ok": "{{s8.success}}",
+                  "v9_textFileEdit_ok": "{{s9.success}}",
+                  "v10_textFileEdit_ok": "{{s10.success}}"
                 }
               }
             }
@@ -2259,8 +2672,44 @@
             }
           },
           {
-            "id": "eret",
+            "id": "e7",
             "source": "s6",
+            "target": "s7",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e8",
+            "source": "s7",
+            "target": "s8",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e9",
+            "source": "s8",
+            "target": "s9",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e10",
+            "source": "s9",
+            "target": "s10",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s10",
             "target": "ret",
             "type": "labeled",
             "data": {
@@ -2272,7 +2721,7 @@
     },
     {
       "name": "Test — restApi",
-      "description": "Varianten: GET, GET mit Custom-Headers, GET mit Retry-Policy + Timeout (alle gegen lokale healthz).",
+      "description": "Varianten: alle 6 HTTP-Methoden (GET/POST/PUT/PATCH/DELETE/HEAD), Custom-Headers, Retry-Policy + Timeout (alle gegen lokale healthz, die jede Methode mit 200 beantwortet).",
       "definition": {
         "nodes": [
           {
@@ -2360,10 +2809,107 @@
             }
           },
           {
-            "id": "ret",
+            "id": "s3",
             "type": "activity",
             "position": {
               "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: POST",
+              "activityType": "restApi",
+              "config": {
+                "url": "http://localhost:5000/healthz/live",
+                "method": "POST",
+                "timeoutSeconds": 5,
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "{\"probe\":\"muster\"}"
+              }
+            }
+          },
+          {
+            "id": "s4",
+            "type": "activity",
+            "position": {
+              "x": 1720,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: PUT",
+              "activityType": "restApi",
+              "config": {
+                "url": "http://localhost:5000/healthz/live",
+                "method": "PUT",
+                "timeoutSeconds": 5,
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "{\"probe\":\"muster\"}"
+              }
+            }
+          },
+          {
+            "id": "s5",
+            "type": "activity",
+            "position": {
+              "x": 2060,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: PATCH",
+              "activityType": "restApi",
+              "config": {
+                "url": "http://localhost:5000/healthz/live",
+                "method": "PATCH",
+                "timeoutSeconds": 5,
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "{\"probe\":\"muster\"}"
+              }
+            }
+          },
+          {
+            "id": "s6",
+            "type": "activity",
+            "position": {
+              "x": 2400,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: DELETE",
+              "activityType": "restApi",
+              "config": {
+                "url": "http://localhost:5000/healthz/live",
+                "method": "DELETE",
+                "timeoutSeconds": 5
+              }
+            }
+          },
+          {
+            "id": "s7",
+            "type": "activity",
+            "position": {
+              "x": 2740,
+              "y": 260
+            },
+            "data": {
+              "label": "rest: HEAD",
+              "activityType": "restApi",
+              "config": {
+                "url": "http://localhost:5000/healthz/live",
+                "method": "HEAD",
+                "timeoutSeconds": 5
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 3080,
               "y": 260
             },
             "data": {
@@ -2373,7 +2919,12 @@
                 "data": {
                   "v0_restApi_ok": "{{s0.success}}",
                   "v1_restApi_ok": "{{s1.success}}",
-                  "v2_restApi_ok": "{{s2.success}}"
+                  "v2_restApi_ok": "{{s2.success}}",
+                  "v3_restApi_ok": "{{s3.success}}",
+                  "v4_restApi_ok": "{{s4.success}}",
+                  "v5_restApi_ok": "{{s5.success}}",
+                  "v6_restApi_ok": "{{s6.success}}",
+                  "v7_restApi_ok": "{{s7.success}}"
                 }
               }
             }
@@ -2408,8 +2959,53 @@
             }
           },
           {
-            "id": "eret",
+            "id": "e3",
             "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e4",
+            "source": "s3",
+            "target": "s4",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e5",
+            "source": "s4",
+            "target": "s5",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e6",
+            "source": "s5",
+            "target": "s6",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e7",
+            "source": "s6",
+            "target": "s7",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s7",
             "target": "ret",
             "type": "labeled",
             "data": {
@@ -2563,7 +3159,7 @@
     },
     {
       "name": "Test — xmlQuery",
-      "description": "Varianten: resultMode single (ein Node) + all (alle Nodes als Array).",
+      "description": "Varianten: resultMode single (ein Node) + all (alle Nodes als Array) sowie beide Quellen — source inline und source file (die Datei legt der prep-Node an).",
       "definition": {
         "nodes": [
           {
@@ -2626,10 +3222,45 @@
             }
           },
           {
-            "id": "ret",
+            "id": "s2",
             "type": "activity",
             "position": {
               "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "prep: XML-Datei schreiben",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "config": {
+                "script": "$dir = 'C:\\Temp'\nif (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }\nSet-Content -LiteralPath 'C:\\Temp\\np-muster.xml' -Value '<?xml version=\"1.0\"?><root><item id=\"1\">alpha</item><item id=\"2\">beta</item></root>' -Encoding UTF8\n$xmlPrepared = 'yes'",
+                "timeoutSeconds": 30
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "xml: source file",
+              "activityType": "xmlQuery",
+              "config": {
+                "source": "file",
+                "path": "C:\\Temp\\np-muster.xml",
+                "xpath": "//item",
+                "resultMode": "all"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1720,
               "y": 260
             },
             "data": {
@@ -2638,7 +3269,9 @@
               "config": {
                 "data": {
                   "v0_xmlQuery_ok": "{{s0.success}}",
-                  "v1_xmlQuery_ok": "{{s1.success}}"
+                  "v1_xmlQuery_ok": "{{s1.success}}",
+                  "v2_xmlQuery_ok": "{{s2.success}}",
+                  "v3_xmlQuery_ok": "{{s3.success}}"
                 }
               }
             }
@@ -2664,8 +3297,26 @@
             }
           },
           {
-            "id": "eret",
+            "id": "e2",
             "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s3",
             "target": "ret",
             "type": "labeled",
             "data": {
@@ -2677,7 +3328,7 @@
     },
     {
       "name": "Test — jsonQuery",
-      "description": "Varianten: resultMode single (ein Wert) + all (alle Treffer als Array).",
+      "description": "Varianten: resultMode single (ein Wert) + all (alle Treffer als Array) sowie beide Quellen — source inline und source file (die Datei legt der prep-Node an).",
       "definition": {
         "nodes": [
           {
@@ -2740,10 +3391,45 @@
             }
           },
           {
-            "id": "ret",
+            "id": "s2",
             "type": "activity",
             "position": {
               "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "prep: JSON-Datei schreiben",
+              "activityType": "runScript",
+              "targetMachineId": "localhost",
+              "config": {
+                "script": "$dir = 'C:\\Temp'\nif (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }\nSet-Content -LiteralPath 'C:\\Temp\\np-muster.json' -Value '{\"items\":[{\"name\":\"alpha\",\"id\":1},{\"name\":\"beta\",\"id\":2}]}' -Encoding UTF8\n$jsonPrepared = 'yes'",
+                "timeoutSeconds": 30
+              }
+            }
+          },
+          {
+            "id": "s3",
+            "type": "activity",
+            "position": {
+              "x": 1380,
+              "y": 260
+            },
+            "data": {
+              "label": "json: source file",
+              "activityType": "jsonQuery",
+              "config": {
+                "source": "file",
+                "path": "C:\\Temp\\np-muster.json",
+                "jsonPath": "$.items[*].name",
+                "resultMode": "all"
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1720,
               "y": 260
             },
             "data": {
@@ -2752,7 +3438,9 @@
               "config": {
                 "data": {
                   "v0_jsonQuery_ok": "{{s0.success}}",
-                  "v1_jsonQuery_ok": "{{s1.success}}"
+                  "v1_jsonQuery_ok": "{{s1.success}}",
+                  "v2_jsonQuery_ok": "{{s2.success}}",
+                  "v3_jsonQuery_ok": "{{s3.success}}"
                 }
               }
             }
@@ -2778,8 +3466,26 @@
             }
           },
           {
-            "id": "eret",
+            "id": "e2",
             "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "e3",
+            "source": "s2",
+            "target": "s3",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s3",
             "target": "ret",
             "type": "labeled",
             "data": {
@@ -3257,7 +3963,7 @@
     },
     {
       "name": "Test — log",
-      "description": "Varianten: alle Level debug/info/warning/error.",
+      "description": "Varianten: alle drei Level info/warning/error plus der Default (kein level-Key gesetzt → info). 'debug' gibt es nicht — LogActivity kennt nur warning/error und faellt sonst auf info zurueck, ein debug-Node haette also still auf info geloggt.",
       "definition": {
         "nodes": [
           {
@@ -3291,11 +3997,10 @@
               "y": 260
             },
             "data": {
-              "label": "log: debug",
+              "label": "log: default level",
               "activityType": "log",
               "config": {
-                "level": "debug",
-                "message": "NodePilot Muster debug"
+                "message": "NodePilot Muster default level"
               }
             }
           },
@@ -4281,7 +4986,7 @@
     },
     {
       "name": "Test — forEach",
-      "description": "Varianten: itemsFormat json (parallel) + lines (seriell) — ruft je Item 'Muster Test: Child'.",
+      "description": "Alle 3 itemsFormat-Werte: json (parallel), lines (seriell) und auto (JSON-Erkennung am fuehrenden [) — ruft je Item 'Muster Test: Child'. Einen CSV-Modus gibt es nicht: ParseItems kennt nur json/lines/auto, ein komma-getrennter String waere EIN Item.",
       "definition": {
         "nodes": [
           {
@@ -4352,10 +5057,32 @@
             }
           },
           {
-            "id": "ret",
+            "id": "s2",
             "type": "activity",
             "position": {
               "x": 1040,
+              "y": 260
+            },
+            "data": {
+              "label": "forEach: auto",
+              "activityType": "forEach",
+              "config": {
+                "items": "[\"eins\",\"zwei\"]",
+                "itemsFormat": "auto",
+                "childWorkflowNameOrId": "Muster Test: Child",
+                "itemParameterName": "item",
+                "indexParameterName": "index",
+                "maxParallelism": 2,
+                "continueOnError": true,
+                "timeoutSecondsPerItem": 30
+              }
+            }
+          },
+          {
+            "id": "ret",
+            "type": "activity",
+            "position": {
+              "x": 1380,
               "y": 260
             },
             "data": {
@@ -4364,7 +5091,8 @@
               "config": {
                 "data": {
                   "v0_forEach_ok": "{{s0.success}}",
-                  "v1_forEach_ok": "{{s1.success}}"
+                  "v1_forEach_ok": "{{s1.success}}",
+                  "v2_forEach_ok": "{{s2.success}}"
                 }
               }
             }
@@ -4390,8 +5118,17 @@
             }
           },
           {
-            "id": "eret",
+            "id": "e2",
             "source": "s1",
+            "target": "s2",
+            "type": "labeled",
+            "data": {
+              "label": "Always"
+            }
+          },
+          {
+            "id": "eret",
+            "source": "s2",
             "target": "ret",
             "type": "labeled",
             "data": {

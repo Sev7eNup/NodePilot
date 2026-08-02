@@ -8,7 +8,7 @@ abdeckt — einzeln und in Kombination. Import über die UI (`Import`) oder `POS
 | Datei | Inhalt |
 |---|---|
 | `muster-alle-aktivitaeten.json` | **Master**: 1 Workflow der alle 27 Aktivitäten in Variation anwendet (alle 14 Edge-Operatoren, AND/OR/NOT, disabled Edges/Nodes, Retry, alle 3 Junction-Modi, decision/forEach/startWorkflow) + Child. Roots: manualTrigger (aktiv) + scheduleTrigger (disabled, demonstrativ). |
-| `muster-einzeltests.json` | **33 Einzeltests** — je 1 Workflow pro Aktivität (`Test — <activity>`) und pro Trigger. Jeder Aktivitäts-Workflow spielt **alle (sicheren) Varianten** seiner Aktivität durch (z.B. fileOperation create/exists/copy/rename/move/delete, folderOperation +list, fileHash SHA256/SHA1/MD5/SHA384/SHA512, zipOperation compress+extract, registry createkey/write/read/exists/deletevalue/deletekey, textFileEdit append/prepend/insert/replace/replaceline/delete, waitForCondition script/pathExists/serviceRunning/portOpen/httpOk, generateText alle 7 Modi, junction alle 3 Modi, forEach json+lines, startWorkflow wait+fire-forget). Destruktive Varianten (serviceManagement stop/restart, powerManagement shutdown, scheduledTask enable/disable) werden **nicht** gegen echte Ressourcen ausgeführt. Plus gemeinsamer `Muster Test: Child`. |
+| `muster-einzeltests.json` | **33 Einzeltests** — je 1 Workflow pro Aktivität (`Test — <activity>`) und pro Trigger. Jeder Aktivitäts-Workflow spielt **alle (sicheren) Varianten** seiner Aktivität durch (z.B. fileOperation create/exists/copy/rename/move/delete, folderOperation +list, fileHash SHA256/SHA1/MD5/SHA384/SHA512, zipOperation compress+extract mit allen 3 compressionLevel, registry alle 8 Operationen + alle 6 valueTypes, textFileEdit alle 6 Operationen + encoding/lineEnding/occurrences/appendIfMissing/backupSuffix/dryRun, waitForCondition script/pathExists/serviceRunning/portOpen/httpOk, restApi alle 6 HTTP-Methoden, wmiQuery query/wql/invokeMethod, xml-/jsonQuery inline+file × single+all, generateText alle 7 Modi, junction alle 3 Modi, forEach auto/json/lines, runScript engine+isolated+transcript+successExitCodes, startWorkflow wait+fire-forget). Destruktive Varianten (serviceManagement stop/restart/create/delete, powerManagement shutdown/restart, scheduledTask register/unregister) werden **nicht** gegen echte Ressourcen ausgeführt. Plus gemeinsamer `Muster Test: Child`. |
 | `muster-kombinationen.json` | **Kombinationen/Topologie**: `Muster — Trigger → Databus` (beweist, dass Trigger-Output-Parameter auf dem Databus landen), `Muster — Variable-Pipe` (Databus-Durchreichung runScript→jsonQuery→decision) und `Muster — Sub-Workflow (Parent)` + Child (startWorkflow + forEach Fan-out). |
 
 Remote-Aktivitäten nutzen `targetMachineId: "localhost"` → laufen via **Localhost-Bypass in-process**
@@ -17,6 +17,24 @@ auf dem API-Host, sind also ohne WinRM-Ziel real ausführbar.
 **Umgebungsabhängige Nodes** (Config korrekt, Ausführung host-/config-abhängig): `emailNotification`
 (braucht SMTP), `llmQuery` (braucht `Llm:Enabled=true`), `scheduledTask` (braucht funktionierende
 Task-Scheduler-CIM auf dem Ziel).
+
+**Bewusst nicht enthaltene Varianten** — sie wären auf einem normalen Host ein dauerhaft roter Schritt
+statt eines Tests:
+
+| Variante | Grund |
+|---|---|
+| `runScript` `engine: pwsh` | setzt eine installierte PowerShell 7 voraus |
+| `startProgram` `useShellExecute: true` | unter Produktionsdefaults per `StartProgram:DisallowShellExecute` geblockt |
+| `sql` `provider: sqlserver`/`postgres` | braucht eine erreichbare DB; ohne `connectionRef` stünde ein Passwort im Workflow-JSON (das der Export ohnehin zu `***` redigiert) |
+| `powerManagement` außer `abort` | fährt den Host herunter |
+| `serviceManagement` stop/restart/create/delete/setStartType, `scheduledTask` register/unregister/start/stop/enable/disable | verändern echten Systemzustand; im Minutentakt wären das >1400 Dienst-/Task-Mutationen pro Tag |
+
+## Kontinuierlicher Lauf
+
+`scripts/continuous-test-1min/` installiert 10 Orchestratoren, die **jede Minute** zusammen 30 dieser
+Testworkflows per `startWorkflow` (fire-and-forget) starten. Details: `scripts/continuous-test-1min/README.md`.
+Die fünf Hintergrund-Trigger-Tests lassen sich von dort **nicht** antreiben — `startWorkflow` nimmt den
+Engine-Pfad, nicht den Trigger-Pfad.
 
 Reine Hintergrund-Trigger-Tests (`scheduleTrigger`/`webhookTrigger`/`databaseTrigger`/
 `fileWatcherTrigger`/`eventLogTrigger`) werden **disabled** importiert, damit sie nicht im Hintergrund

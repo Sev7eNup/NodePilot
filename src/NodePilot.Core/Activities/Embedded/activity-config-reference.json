@@ -80,20 +80,20 @@
       "description": "Manage a Windows scheduled task (remote).",
       "configKeys": [
         { "key": "taskName", "type": "string", "required": true, "description": "Task name." },
-        { "key": "action", "type": "string", "required": false, "description": "run | enable | disable | query | delete | create." },
+        { "key": "action", "type": "string", "required": false, "description": "get (default) | start | stop | enable | disable | register | unregister." },
         { "key": "taskPath", "type": "string", "required": false, "description": "Task folder path, e.g. \\MyTasks\\." },
-        { "key": "program", "type": "string", "required": false, "description": "Executable to run (create)." },
-        { "key": "arguments", "type": "string", "required": false, "description": "Program arguments (create)." },
-        { "key": "workingDirectory", "type": "string", "required": false, "description": "Working directory (create)." },
-        { "key": "description", "type": "string", "required": false, "description": "Task description (create)." },
-        { "key": "triggerType", "type": "string", "required": false, "description": "Trigger kind for create, e.g. daily | weekly | once | onLogon | onStartup." },
-        { "key": "startTime", "type": "string", "required": false, "description": "Start time for the trigger (create)." },
-        { "key": "daysInterval", "type": "number", "required": false, "description": "Daily trigger interval (create)." },
-        { "key": "weeksInterval", "type": "number", "required": false, "description": "Weekly trigger interval (create)." },
-        { "key": "daysOfWeek", "type": "string", "required": false, "description": "Weekly trigger days (create)." },
-        { "key": "runAsUser", "type": "string", "required": false, "description": "Principal to run the task as (create)." },
-        { "key": "runLevel", "type": "string", "required": false, "description": "Limited | Highest (create)." },
-        { "key": "force", "type": "boolean", "required": false, "description": "Overwrite an existing task (create)." }
+        { "key": "program", "type": "string", "required": false, "description": "Executable to run (register)." },
+        { "key": "arguments", "type": "string", "required": false, "description": "Program arguments (register)." },
+        { "key": "workingDirectory", "type": "string", "required": false, "description": "Working directory (register)." },
+        { "key": "description", "type": "string", "required": false, "description": "Task description (register)." },
+        { "key": "triggerType", "type": "string", "required": false, "description": "Trigger kind for register: once | daily | weekly | atLogon | atStartup." },
+        { "key": "startTime", "type": "string", "required": false, "description": "Start time for the trigger (register)." },
+        { "key": "daysInterval", "type": "number", "required": false, "description": "Daily trigger interval (register)." },
+        { "key": "weeksInterval", "type": "number", "required": false, "description": "Weekly trigger interval (register)." },
+        { "key": "daysOfWeek", "type": "string", "required": false, "description": "Weekly trigger days (register)." },
+        { "key": "runAsUser", "type": "string", "required": false, "description": "Principal to run the task as (register)." },
+        { "key": "runLevel", "type": "string", "required": false, "description": "Limited | Highest (register)." },
+        { "key": "force", "type": "boolean", "required": false, "description": "Overwrite an existing task (register)." }
       ]
     },
     "registryOperation": {
@@ -279,7 +279,7 @@
         { "key": "content", "type": "string", "required": false, "description": "Inline XML (required for source=inline)." },
         { "key": "xpath", "type": "string", "required": true, "description": "XPath expression." },
         { "key": "namespaces", "type": "object", "required": false, "description": "Prefix → namespace URI map." },
-        { "key": "resultMode", "type": "string", "required": false, "description": "single (default) | list." }
+        { "key": "resultMode", "type": "string", "required": false, "description": "single (default) | all. 'all' returns a JSON array of every match; 'single' fails when the XPath matches more than one node." }
       ]
     },
     "jsonQuery": {
@@ -289,7 +289,7 @@
         { "key": "path", "type": "string", "required": false, "description": "JSON file path (required for source=file)." },
         { "key": "content", "type": "string", "required": false, "description": "Inline JSON (required for source=inline)." },
         { "key": "jsonPath", "type": "string", "required": true, "description": "JSONPath expression." },
-        { "key": "resultMode", "type": "string", "required": false, "description": "single (default) | list." }
+        { "key": "resultMode", "type": "string", "required": false, "description": "single (default) | all. 'all' returns a JSON array of every match; 'single' fails when the JSONPath matches more than one token." }
       ]
     },
     "log": {
@@ -323,7 +323,7 @@
       ],
       "configKeys": [
         { "key": "items", "type": "string", "required": true, "description": "Collection to iterate (often a {{…}} value)." },
-        { "key": "itemsFormat", "type": "string", "required": false, "description": "How to parse `items`, e.g. json | lines | csv." },
+        { "key": "itemsFormat", "type": "string", "required": false, "description": "How to parse `items`: auto (default) | json | lines. 'auto' tries JSON when the value starts with [ or {, else splits on newlines. There is no CSV mode — a comma-separated string parses as ONE item." },
         { "key": "childWorkflowNameOrId", "type": "string", "required": false, "description": "Child workflow executed per item." },
         { "key": "itemParameterName", "type": "string", "required": false, "description": "Child parameter name receiving the item." },
         { "key": "indexParameterName", "type": "string", "required": false, "description": "Child parameter name receiving the 0-based index." },
@@ -385,7 +385,7 @@
       "description": "FileSystemWatcher trigger — fires on file-system changes in a directory.",
       "configKeys": [
         { "key": "directory", "type": "string", "required": true, "description": "Directory to watch." },
-        { "key": "watchType", "type": "string", "required": false, "description": "created (default) | changed | deleted | renamed." },
+        { "key": "watchType", "type": "string", "required": false, "description": "created (default) | changed | deleted | renamed | any." },
         { "key": "filter", "type": "string", "required": false, "description": "Glob filter, e.g. *.csv." },
         { "key": "includeSubdirectories", "type": "boolean", "required": false, "description": "Recurse into subfolders." }
       ]

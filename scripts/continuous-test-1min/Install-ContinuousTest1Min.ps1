@@ -4,7 +4,7 @@ param(
   [string]$User = 'admin',
   [Parameter(Mandatory)]
   [string]$Password,
-  [string]$DefinitionFile = (Join-Path $PSScriptRoot 'continuous-test-2min.workflows.json')
+  [string]$DefinitionFile = (Join-Path $PSScriptRoot 'continuous-test-1min.workflows.json')
 )
 
 Set-StrictMode -Version Latest
@@ -87,4 +87,4 @@ foreach ($workflow in @($bundle.workflows)) {
   }
 }
 
-Write-Host 'Fertig: 10 Orchestratoren sind sichtbar und aktiv. Alle zwei Minuten starten sie zusammen 30 vorhandene Aktivitaets-Testworkflows.'
+Write-Host 'Fertig: 10 Orchestratoren sind sichtbar und aktiv. Jede Minute starten sie zusammen 30 vorhandene Aktivitaets-Testworkflows.'

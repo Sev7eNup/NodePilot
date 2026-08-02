@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [string]$DefinitionFile = (Join-Path $PSScriptRoot 'continuous-test-2min.workflows.json')
+  [string]$DefinitionFile = (Join-Path $PSScriptRoot 'continuous-test-1min.workflows.json')
 )
 
 Set-StrictMode -Version Latest
@@ -41,7 +41,7 @@ $targets = @(
 )
 
 $bundle = Get-Content -LiteralPath $DefinitionFile -Raw | ConvertFrom-Json
-$parents = @($bundle.workflows | Where-Object { $_.name -like '[[]Dauertest 2m[]]*' } | Sort-Object name)
+$parents = @($bundle.workflows | Where-Object { $_.name -like '[[]Dauertest 1m[]]*' } | Sort-Object name)
 if ($parents.Count -ne 10 -or $targets.Count -ne 30) {
   throw 'Erwartet werden genau 10 Eltern-Workflows und 30 Ziel-Workflows.'
 }
