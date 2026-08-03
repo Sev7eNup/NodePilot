@@ -109,6 +109,7 @@ var
   ProviderPage: TInputOptionWizardPage;
   SqlPage: TInputQueryWizardPage;
   PostgresPage: TInputQueryWizardPage;
+  PostgresAuthPage: TInputQueryWizardPage;
   NetworkPage: TInputQueryWizardPage;
   ReadinessPage: TWizardPage;
 
@@ -323,9 +324,9 @@ begin
     AddLine(Lines, Count, '    "postgresHost": ' + JsonString(Trim(PostgresPage.Values[0])) + ',');
     AddLine(Lines, Count, '    "postgresPort": ' + Trim(PostgresPage.Values[1]) + ',');
     AddLine(Lines, Count, '    "postgresDatabase": ' + JsonString(Trim(PostgresPage.Values[2])) + ',');
-    AddLine(Lines, Count, '    "postgresUser": ' + JsonString(Trim(PostgresPage.Values[3])) + ',');
-    AddLine(Lines, Count, '    "postgresPassword": ' + JsonString(PostgresPage.Values[4]) + ',');
-    AddLine(Lines, Count, '    "postgresRootCertificate": ' + JsonString(Trim(PostgresPage.Values[5])));
+    AddLine(Lines, Count, '    "postgresUser": ' + JsonString(Trim(PostgresAuthPage.Values[0])) + ',');
+    AddLine(Lines, Count, '    "postgresPassword": ' + JsonString(PostgresAuthPage.Values[1]) + ',');
+    AddLine(Lines, Count, '    "postgresRootCertificate": ' + JsonString(Trim(PostgresAuthPage.Values[2])));
   end;
   AddLine(Lines, Count, '  },');
 
@@ -662,21 +663,31 @@ begin
   SqlPage.Add('Certificate host name (leave blank to derive it):', False);
   SqlPage.Values[1] := 'NodePilot';
 
+  // Split across two pages, and not for cosmetic reasons: an Inno input page has 309 pixels of
+  // surface and each label+edit pair costs 54, so the sixth field lands at 337 and is simply not
+  // drawn. Measured. The page does not scroll and gives no hint that anything is missing - the
+  // root-certificate field was invisible, and the wizard then failed on a value the operator was
+  // never given the chance to enter. Five is the maximum; every page here stays at three.
   PostgresPage := CreateInputQueryPage(SqlPage.ID,
-    'PostgreSQL',
+    'PostgreSQL - server',
     'Where does NodePilot find its database?',
-    'The connection uses SSL Mode=VerifyFull, so a root certificate is required.');
+    'Credentials follow on the next page.');
   PostgresPage.Add('Host:', False);
   PostgresPage.Add('Port:', False);
   PostgresPage.Add('Database:', False);
-  PostgresPage.Add('User:', False);
-  PostgresPage.Add('Password:', True);
-  PostgresPage.Add('Root certificate (PEM file):', False);
   PostgresPage.Values[1] := '5432';
   PostgresPage.Values[2] := 'nodepilot';
 
-  // Anchored to PostgresPage because that is the last page created, not because it belongs to it.
-  NetworkPage := CreateInputQueryPage(PostgresPage.ID,
+  PostgresAuthPage := CreateInputQueryPage(PostgresPage.ID,
+    'PostgreSQL - credentials',
+    'How does NodePilot authenticate?',
+    'The connection uses SSL Mode=VerifyFull, so a root certificate is required.');
+  PostgresAuthPage.Add('User:', False);
+  PostgresAuthPage.Add('Password:', True);
+  PostgresAuthPage.Add('Root certificate (PEM file):', False);
+
+  // Anchored to the last page created, not because it belongs to it.
+  NetworkPage := CreateInputQueryPage(PostgresAuthPage.ID,
     'Network and TLS',
     'How will clients reach NodePilot?',
     'Kestrel terminates TLS itself using a certificate from the local machine store. There is no IIS and no reverse proxy.');
@@ -700,8 +711,10 @@ begin
   begin
     Result := (PageID = ModePage.ID) or (PageID = IdentityPage.ID) or (PageID = AccountPage.ID) or
               (PageID = ProviderPage.ID) or (PageID = SqlPage.ID) or (PageID = PostgresPage.ID) or
+              (PageID = PostgresAuthPage.ID) or
               (PageID = NetworkPage.ID) or (PageID = ReadinessPage.ID);
     Exit;
+
   end;
   if PageID = ModePage.ID then
     Result := (not IsUpgrade) or ForceFullReinstall
@@ -709,12 +722,13 @@ begin
     // An update needs no answers: it swaps binaries and leaves the configuration alone.
     Result := (PageID = wpSelectDir) or (PageID = IdentityPage.ID) or (PageID = AccountPage.ID) or
               (PageID = ProviderPage.ID) or (PageID = SqlPage.ID) or (PageID = PostgresPage.ID) or
+              (PageID = PostgresAuthPage.ID) or
               (PageID = NetworkPage.ID) or (PageID = ReadinessPage.ID)
   else if PageID = AccountPage.ID then
     Result := IsLocalSystemSelected()
   else if PageID = SqlPage.ID then
     Result := not IsSqlServerSelected()
-  else if PageID = PostgresPage.ID then
+  else if (PageID = PostgresPage.ID) or (PageID = PostgresAuthPage.ID) then
     Result := IsSqlServerSelected();
 end;
 
@@ -793,14 +807,31 @@ begin
     end
     else if not ValidatePort(PostgresPage.Values[1], False, 'The PostgreSQL port') then
       Result := False
-    else if PostgresPage.Values[4] = '' then
+    else if Trim(PostgresPage.Values[2]) = '' then
+    begin
+      MsgBox('Enter the database name.', mbError, MB_OK);
+      Result := False;
+    end;
+    Exit;
+  end;
+
+  if CurPageID = PostgresAuthPage.ID then
+  begin
+    if Trim(PostgresAuthPage.Values[0]) = '' then
+    begin
+      MsgBox('Enter the PostgreSQL user.', mbError, MB_OK);
+      Result := False;
+    end
+    else if PostgresAuthPage.Values[1] = '' then
     begin
       MsgBox('Enter the password for the PostgreSQL user.', mbError, MB_OK);
       Result := False;
     end
-    else if not FileExists(Trim(PostgresPage.Values[5])) then
+    else if not FileExists(Trim(PostgresAuthPage.Values[2])) then
     begin
-      MsgBox('The root certificate file was not found.', mbError, MB_OK);
+      MsgBox('The root certificate file was not found. NodePilot connects with ' +
+             'SSL Mode=VerifyFull and needs the PEM file that signed the server certificate.',
+             mbError, MB_OK);
       Result := False;
     end;
     Exit;

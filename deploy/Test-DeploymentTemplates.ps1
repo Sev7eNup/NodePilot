@@ -581,6 +581,32 @@ if ($duplicateAnchors.Count -gt 0) {
            'the wizard - anchor every page to the one created before it.')
 }
 
+# An input page offers 309 pixels of surface and each label+edit pair costs 54, so the sixth field
+# is laid out at 337 and simply is not drawn. Measured, not estimated. The page does not scroll and
+# gives no indication that anything is missing: the PostgreSQL page's root-certificate field was
+# invisible, and setup then failed on a value the operator was never shown a box for.
+$queryPageNames = @([regex]::Matches($serverIss, '(?m)^\s*([A-Za-z0-9_, ]+):\s*TInputQueryWizardPage;') |
+    ForEach-Object { $_.Groups[1].Value -split ',' } |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ })
+if ($queryPageNames.Count -eq 0) {
+    throw 'Deployment template check failed: could not find any TInputQueryWizardPage declarations in the server setup script.'
+}
+$fieldCounts = @{}
+foreach ($match in [regex]::Matches($serverIss, '(?m)^\s*([A-Za-z0-9_]+)\.Add\(')) {
+    $pageName = $match.Groups[1].Value
+    if ($queryPageNames -notcontains $pageName) { continue }
+    if (-not $fieldCounts.ContainsKey($pageName)) { $fieldCounts[$pageName] = 0 }
+    $fieldCounts[$pageName]++
+}
+$overfullPages = @($fieldCounts.GetEnumerator() | Where-Object { $_.Value -gt 5 })
+if ($overfullPages.Count -gt 0) {
+    throw ('Deployment template check failed: wizard input page(s) with more than five fields (' +
+           (($overfullPages | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ') +
+           '). Only five label+edit pairs fit on an Inno input page; the rest are laid out below ' +
+           'the visible surface and the page does not scroll. Split the page.')
+}
+
 # --- setup adapter contracts ---------------------------------------------------------------------
 $setupAdapter = Remove-CommentLines -Text (Get-Content -LiteralPath $SetupAdapterPath -Raw)
 
