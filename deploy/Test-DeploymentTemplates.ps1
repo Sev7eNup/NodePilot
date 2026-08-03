@@ -15,7 +15,9 @@ param(
     [string]$SsoDocumentationPath,
     [string]$BuildScriptPath,
     [string]$BuildPropsPath,
-    [string]$UpdateScriptPath
+    [string]$UpdateScriptPath,
+    [string]$PreflightScriptPath,
+    [string]$UninstallScriptPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,6 +48,12 @@ if ([string]::IsNullOrWhiteSpace($BuildPropsPath)) {
 if ([string]::IsNullOrWhiteSpace($UpdateScriptPath)) {
     $UpdateScriptPath = Join-Path $scriptDirectory 'Update-NodePilot.ps1'
 }
+if ([string]::IsNullOrWhiteSpace($PreflightScriptPath)) {
+    $PreflightScriptPath = Join-Path $scriptDirectory 'Preflight.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($UninstallScriptPath)) {
+    $UninstallScriptPath = Join-Path $scriptDirectory 'Uninstall-NodePilot.ps1'
+}
 
 function Assert-TextMatches {
     param(
@@ -71,7 +79,7 @@ function Assert-TextDoesNotMatch {
     }
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath)) {
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
     }
@@ -250,11 +258,142 @@ $rollbackPath = $updateScript.Substring($catchStart)
 Assert-TextMatches -Name 'a failed update still restores the pre-update state' `
     -Text $rollbackPath -Pattern '(?s)\$serviceWasRunning\s+-and.*?Start-Service'
 
+# --- pre-flight extraction contracts ----------------------------------------------------------
+# The readiness checks live in Preflight.ps1 so the setup wizard can run the same set behind a
+# "re-check" button. That shared use is the entire reason for the split, and it only holds while
+# the file stays free of side effects.
+$preflightScript = Get-Content -LiteralPath $PreflightScriptPath -Raw
+
+# The near-miss this guards against, concretely: Enable-SqlReadCommittedSnapshot used to sit
+# INSIDE the SQL reachability try/catch. Moving the pre-flight block wholesale would have carried
+# its ALTER DATABASE ... WITH ROLLBACK IMMEDIATE along - and that drops every open session on the
+# target database, once per click of a re-check button, against production.
+#
+# Checked over the parsed AST, not with a regex over the source. A regex cannot tell "executes
+# New-NetFirewallRule" from "prints New-NetFirewallRule as the fix for a red row" - and this file
+# is full of the latter on purpose, including CREATE LOGIN / CREATE DATABASE / sc.exe. In the AST
+# a remediation string is a StringConstantExpression and simply is not a command, so the check
+# becomes exact instead of heuristic.
+$preflightParseErrors = $null
+$preflightAst = [System.Management.Automation.Language.Parser]::ParseFile(
+    $PreflightScriptPath, [ref]$null, [ref]$preflightParseErrors)
+if ($preflightParseErrors -and $preflightParseErrors.Count -gt 0) {
+    throw "Deployment template check failed: '$PreflightScriptPath' does not parse: $($preflightParseErrors[0].Message)"
+}
+
+$forbiddenPreflightCommands = @(
+    'New-Item', 'New-ItemProperty', 'Set-ItemProperty', 'Remove-Item', 'Remove-ItemProperty'
+    'Set-Acl', 'icacls', 'secedit'
+    'New-Service', 'Set-Service', 'Start-Service', 'Stop-Service', 'Restart-Service', 'sc.exe'
+    'New-NetFirewallRule', 'Remove-NetFirewallRule', 'Set-NetFirewallRule'
+    'New-SelfSignedCertificate', 'Import-PfxCertificate', 'Import-Certificate'
+    'Invoke-CimMethod', 'Install-ADServiceAccount'
+    'Out-File', 'Set-Content', 'Add-Content', 'Copy-Item', 'Move-Item', 'Expand-Archive'
+    'Enable-SqlReadCommittedSnapshot'
+)
+$invokedCommands = @(
+    $preflightAst.FindAll(
+        { param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true) |
+        ForEach-Object { $_.GetCommandName() } |
+        Where-Object { $_ } |
+        Sort-Object -Unique
+)
+$mutatingCommands = @($invokedCommands | Where-Object { $forbiddenPreflightCommands -contains $_ })
+if ($mutatingCommands.Count -gt 0) {
+    throw ("Deployment template check failed: Preflight.ps1 invokes mutating command(s) " +
+           "'$($mutatingCommands -join "', '")'. Readiness checks run behind the setup wizard's " +
+           're-check button and must have no side effects; move install-time work to Install-NodePilot.ps1.')
+}
+
+# ExecuteNonQuery is the single gate every ADO.NET mutation passes through, and it is a method
+# call rather than a command, so it needs its own pass over the AST.
+$invokedMethods = @(
+    $preflightAst.FindAll(
+        { param($node) $node -is [System.Management.Automation.Language.InvokeMemberExpressionAst] }, $true) |
+        ForEach-Object { [string]$_.Member.Value } |
+        Where-Object { $_ } |
+        Sort-Object -Unique
+)
+if ($invokedMethods -contains 'ExecuteNonQuery') {
+    throw ('Deployment template check failed: Preflight.ps1 calls ExecuteNonQuery. ' +
+           'Readiness probes may read, never write.')
+}
+
+# Every check must report rather than throw, or it cannot be rendered as a traffic-light row.
+Assert-TextMatches -Name 'preflight checks return result objects' `
+    -Text $preflightScript -Pattern 'function\s+New-NodePilotPreflightResult'
+Assert-TextMatches -Name 'preflight exposes a collect-only entry point' `
+    -Text $preflightScript -Pattern 'function\s+Invoke-NodePilotPreflight'
+Assert-TextMatches -Name 'preflight exposes an asserting entry point' `
+    -Text $preflightScript -Pattern 'function\s+Assert-NodePilotPreflight'
+
+# A process that just installed the runtime still carries the PATH it started with, so a
+# PATH-only lookup keeps failing after a successful install. Losing this fallback would make the
+# wizard's "install the runtime for me" action look broken.
+Assert-TextMatches -Name 'the dotnet probe falls back to the machine-wide install location' `
+    -Text $preflightScript -Pattern 'dotnet\\dotnet\.exe'
+
+$installerScript = Get-Content -LiteralPath $InstallerPath -Raw
+Assert-TextMatches -Name 'installer dot-sources the shared pre-flight helper' `
+    -Text $installerScript -Pattern "Join-Path\s+\`$PSScriptRoot\s+'Preflight\.ps1'"
+# A re-forked copy inside the installer would drift from the one the wizard runs, silently.
+Assert-TextDoesNotMatch -Name 'installer must not re-declare the extracted pre-flight checks' `
+    -Text $installerScript `
+    -Pattern '(?m)^\s*function\s+(Test-NodePilot(DotNetRuntime|SqlReachable|SqlTds8Support|PostgresReachable|TlsCertificate|Gmsa)|Test-DotNet10Runtime|Test-SqlReachable|Assert-SqlServerTds8Support|Test-PostgresReachable)\b'
+# RCSI is install-time work and must stay on the installer side of the split.
+Assert-TextMatches -Name 'RCSI stays with the installer, not the pre-flight' `
+    -Text $installerScript -Pattern 'function\s+Enable-SqlReadCommittedSnapshot'
+
+# Ordering, anchored on code rather than on the section comment: a pre-flight that ran after the
+# artifact was staged would have already mutated the target before it could refuse to.
+$assertIndex = $installerScript.IndexOf('Assert-NodePilotPreflight -Results')
+$stagingIndex = $installerScript.IndexOf('Expand-NodePilotArtifactToStaging')
+if ($assertIndex -lt 0 -or $stagingIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the pre-flight assertion and the staging step in the installer.'
+}
+if ($assertIndex -gt $stagingIndex) {
+    throw 'Deployment template check failed: the installer stages the artifact before asserting the pre-flight results.'
+}
+
+# The marker is how any later tool finds this installation. Leaving it behind on uninstall makes
+# every subsequent fresh install look like an upgrade.
+Assert-TextMatches -Name 'installer records a machine-wide installation marker' `
+    -Text $installerScript -Pattern 'HKLM:\\SOFTWARE\\NodePilot\\Server'
+$uninstallScript = Get-Content -LiteralPath $UninstallScriptPath -Raw
+Assert-TextMatches -Name 'uninstaller removes the installation marker' `
+    -Text $uninstallScript -Pattern "(?s)Remove-Item[^\r\n]*\`$markerPath"
+
+# Observed on the lab host: the SCM reports 'Stopped' as soon as the service acknowledges the
+# control code, but the process kept running for 31 more seconds. Deleting the service in that
+# window ORPHANS it - nothing can stop it through the SCM afterwards - and the file deletion then
+# rips DLLs out from under a live process, leaving a half-deleted install directory. The wait has
+# to sit before sc.exe delete, so the operator still holds a supported way to stop the thing.
+#
+# Comments are stripped before the indices are taken, and the anchors are code-shaped rather than
+# prose-shaped. Both, because the explanatory comment above the wait names 'sc.exe delete' itself -
+# and the first version of this check duly failed on correct code.
+$uninstallCode = ($uninstallScript -split "`r?`n" | Where-Object { $_.TrimStart() -notmatch '^#' }) -join "`n"
+$processWaitIndex = $uninstallCode.IndexOf('$blocking = @(Get-ProcessesUnderPath -Path $InstallPath)')
+$serviceDeleteIndex = $uninstallCode.IndexOf('& sc.exe delete $ServiceName')
+if ($processWaitIndex -lt 0 -or $serviceDeleteIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the process wait and the service deletion in the uninstaller.'
+}
+if ($processWaitIndex -gt $serviceDeleteIndex) {
+    throw 'Deployment template check failed: the uninstaller deletes the service before waiting for its process to exit, which orphans a running process.'
+}
+Assert-TextMatches -Name 'uninstaller fails closed while processes still run from the install path' `
+    -Text $uninstallScript -Pattern '(?s)Still running: PID.*?\bthrow\b'
+
+# sc.exe delete leaves the service key behind while a handle is open, and that key holds the
+# Postgres connection string including its password.
+Assert-TextMatches -Name 'uninstaller clears the service environment holding the DB secret' `
+    -Text $uninstallScript -Pattern "Remove-ItemProperty[^\r\n]*-Name\s+'Environment'"
+
 $ssoDocumentation = Get-Content -LiteralPath $SsoDocumentationPath -Raw
 Assert-TextMatches -Name 'SPN examples use duplicate-safe registration' `
     -Text $ssoDocumentation -Pattern '(?m)^\s*setspn\s+-S\s+HTTP/'
 Assert-TextDoesNotMatch -Name 'SPN examples must not use duplicate-unsafe registration' `
     -Text $ssoDocumentation -Pattern '(?m)^\s*setspn\s+-A\s+HTTP/'
 
-Write-Host ("Deployment template checks passed ({0} HAProxy contracts, appsettings JSON, installer and SPN contracts)." -f `
+Write-Host ("Deployment template checks passed ({0} HAProxy contracts, appsettings JSON, installer, pre-flight, uninstall and SPN contracts)." -f `
     $requiredHaproxyContracts.Count) -ForegroundColor Green

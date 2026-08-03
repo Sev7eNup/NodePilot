@@ -189,6 +189,14 @@ if (-not (Test-Path -LiteralPath $ArtifactSecurityScript -PathType Leaf)) {
     throw "Artifact security helper not found: $ArtifactSecurityScript"
 }
 . $ArtifactSecurityScript
+
+# Readiness checks live in their own file because the setup wizard runs the same set behind a
+# "re-check" button. That shared use is why nothing in Preflight.ps1 may mutate anything.
+$PreflightScript = Join-Path $PSScriptRoot 'Preflight.ps1'
+if (-not (Test-Path -LiteralPath $PreflightScript -PathType Leaf)) {
+    throw "Preflight helper not found: $PreflightScript"
+}
+. $PreflightScript
 $artifactLock = $null
 $artifactStage = $null
 $installRollbackDir = $null
@@ -306,17 +314,6 @@ function Get-RandomBase64 {
     $rng = [System.Security.Cryptography.RNGCryptoServiceProvider]::new()
     try { $rng.GetBytes($buf) } finally { $rng.Dispose() }
     return [Convert]::ToBase64String($buf)
-}
-
-function Test-DotNet10Runtime {
-    try {
-        $lines = & dotnet --list-runtimes 2>$null
-    } catch {
-        throw ".NET Runtime not found on PATH. Install the .NET 10 ASP.NET Core Hosting Bundle from https://dotnet.microsoft.com/download."
-    }
-    if (-not ($lines -match '^Microsoft\.AspNetCore\.App 10\.')) {
-        throw ".NET 10 ASP.NET Core Runtime not found. Install the Hosting Bundle (https://dotnet.microsoft.com/download)."
-    }
 }
 
 function Set-DirectoryAclForService {
@@ -467,102 +464,6 @@ function Grant-CertPrivateKeyAccess {
     }
 }
 
-function Test-SqlReachable {
-    param(
-        [Parameter(Mandatory)][string]$Server,
-        [Parameter(Mandatory)][string]$Database,
-        [Parameter(Mandatory)][string]$CertificateHostName
-    )
-    # Connection using the installer's current Windows identity. Actual service runtime
-    # will use the gMSA - we're just verifying the SQL instance is reachable and that the
-    # database exists. If the installing admin is not authorised, the script still surfaces
-    # a clear error with a T-SQL remediation snippet.
-    # Windows PowerShell 5.1's legacy System.Data.SqlClient cannot express
-    # HostNameInCertificate. Connect through the certificate hostname while preserving an
-    # explicit instance/port suffix so this preflight validates the same identity the .NET 10
-    # runtime pins via HostNameInCertificate.
-    $serverWithoutPrefix = $Server -replace '^tcp:', ''
-    $suffixIndex = $serverWithoutPrefix.IndexOfAny([char[]]@('\', ','))
-    $serverSuffix = if ($suffixIndex -ge 0) { $serverWithoutPrefix.Substring($suffixIndex) } else { '' }
-    $tlsValidationServer = "tcp:$CertificateHostName$serverSuffix"
-
-    $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
-    $builder['Server'] = $tlsValidationServer
-    $builder['Database'] = $Database
-    $builder['Integrated Security'] = $true
-    $builder['Encrypt'] = $true
-    $builder['TrustServerCertificate'] = $false
-    $builder['Connect Timeout'] = 10
-    $builder['Application Name'] = 'NodePilot-Installer'
-
-    $conn = New-Object System.Data.SqlClient.SqlConnection $builder.ConnectionString
-    try {
-        $conn.Open()
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = 'SELECT 1'
-        [void]$cmd.ExecuteScalar()
-    } finally {
-        $conn.Dispose()
-    }
-}
-
-function Assert-SqlServerTds8Support {
-    <#
-      The runtime connection pins Encrypt=Strict (TDS 8.0). Two hard floors follow:
-      - TDS 8.0 exists only on SQL Server 2022+ (ProductMajorVersion 16).
-      - SQL Server 2022 RTM ships a TDS 8.0 bug that corrupts RPC parameter streams
-        (error 8005 "The parameter name is invalid") on the first parameterized
-        statement. Plain-text batches (EF migrations) still work, so without this gate
-        the failure surfaces only after install, as a service boot loop. Fixed
-        server-side in CU1 = 16.0.4003.1 (dotnet/SqlClient#1807).
-      This preflight connects with Encrypt=$true (TDS 7.4 - System.Data.SqlClient cannot
-      speak TDS 8.0), so the version query is the only way to prove the server can handle
-      what the .NET 10 runtime will actually send. Returns the ProductVersion string.
-    #>
-    param(
-        [Parameter(Mandatory)][string]$Server,
-        [Parameter(Mandatory)][string]$CertificateHostName
-    )
-    $serverWithoutPrefix = $Server -replace '^tcp:', ''
-    $suffixIndex = $serverWithoutPrefix.IndexOfAny([char[]]@('\', ','))
-    $serverSuffix = if ($suffixIndex -ge 0) { $serverWithoutPrefix.Substring($suffixIndex) } else { '' }
-    $tlsValidationServer = "tcp:$CertificateHostName$serverSuffix"
-
-    $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
-    $builder['Server'] = $tlsValidationServer
-    # master, not the app DB: the version property needs no database and this keeps the
-    # gate meaningful even when the app DB is created only after the preflight.
-    $builder['Database'] = 'master'
-    $builder['Integrated Security'] = $true
-    $builder['Encrypt'] = $true
-    $builder['TrustServerCertificate'] = $false
-    $builder['Connect Timeout'] = 10
-    $builder['Application Name'] = 'NodePilot-Installer'
-
-    $conn = New-Object System.Data.SqlClient.SqlConnection $builder.ConnectionString
-    try {
-        $conn.Open()
-        $cmd = $conn.CreateCommand()
-        $cmd.CommandText = "SELECT CAST(SERVERPROPERTY('ProductVersion') AS nvarchar(128))"
-        $productVersion = [string]$cmd.ExecuteScalar()
-    } finally {
-        $conn.Dispose()
-    }
-
-    $minVersion = [version]'16.0.4003.1'
-    $parsed = $null
-    if (-not [version]::TryParse($productVersion, [ref]$parsed)) {
-        throw "Could not parse SQL Server ProductVersion '$productVersion'."
-    }
-    if ($parsed -lt $minVersion) {
-        throw ("SQL Server $productVersion cannot serve NodePilot's Encrypt=Strict (TDS 8.0) " +
-               "connections. Minimum: SQL Server 2022 CU1 ($minVersion) - SQL Server 2019 and " +
-               "older lack TDS 8.0 entirely, and 2022 RTM corrupts TDS 8.0 RPC parameter streams " +
-               "(error 8005). Install the latest SQL Server 2022 cumulative update, then re-run.")
-    }
-    return $productVersion
-}
-
 function Enable-SqlReadCommittedSnapshot {
     <#
       Enable READ_COMMITTED_SNAPSHOT on the target database. This is the SQL-Server-side
@@ -574,31 +475,24 @@ function Enable-SqlReadCommittedSnapshot {
 
       Idempotent: checks `sys.databases.is_read_committed_snapshot_on` first. WITH ROLLBACK
       IMMEDIATE drops any open sessions on the target DB so the ALTER can grab the brief
-      exclusive lock it needs — safe at install time when the service isn't running yet.
+      exclusive lock it needs - safe at install time when the service isn't running yet.
       Failure here is a warning, not a hard fail: RCSI is performance, not correctness.
+
+      This is the reason Preflight.ps1 exists as a separate, mutation-free file: dropping every
+      open session is correct install-time work, and catastrophic behind a wizard's "re-check"
+      button. It stays here, and it runs only after the preflight has passed in full.
     #>
     param(
         [Parameter(Mandatory)][string]$Server,
         [Parameter(Mandatory)][string]$Database,
         [Parameter(Mandatory)][string]$CertificateHostName
     )
-    $serverWithoutPrefix = $Server -replace '^tcp:', ''
-    $suffixIndex = $serverWithoutPrefix.IndexOfAny([char[]]@('\', ','))
-    $serverSuffix = if ($suffixIndex -ge 0) { $serverWithoutPrefix.Substring($suffixIndex) } else { '' }
-    $tlsValidationServer = "tcp:$CertificateHostName$serverSuffix"
-
-    $builder = New-Object System.Data.SqlClient.SqlConnectionStringBuilder
-    $builder['Server'] = $tlsValidationServer
     # Connect to master so ALTER DATABASE ... WITH ROLLBACK IMMEDIATE doesn't kick out our
     # own session.
-    $builder['Database'] = 'master'
-    $builder['Integrated Security'] = $true
-    $builder['Encrypt'] = $true
-    $builder['TrustServerCertificate'] = $false
-    $builder['Connect Timeout'] = 10
-    $builder['Application Name'] = 'NodePilot-Installer'
+    $connectionString = Resolve-NodePilotSqlProbeConnectionString `
+        -Server $Server -Database 'master' -CertificateHostName $CertificateHostName
 
-    $conn = New-Object System.Data.SqlClient.SqlConnection $builder.ConnectionString
+    $conn = New-Object System.Data.SqlClient.SqlConnection $connectionString
     try {
         $conn.Open()
 
@@ -626,26 +520,6 @@ function Enable-SqlReadCommittedSnapshot {
         Write-Ok "  RCSI enabled on $Database (READ_COMMITTED_SNAPSHOT ON)."
     } finally {
         $conn.Dispose()
-    }
-}
-
-function Test-PostgresReachable {
-    <#
-      TCP port probe against the Postgres endpoint. We don't attempt a full auth + query
-      because Npgsql isn't shipped with the installer and pulling it in would bloat the
-      bootstrap. A 503 "can't even connect" is the common failure mode we want to catch
-      before starting the service; role/password errors surface in the health-probe step.
-
-      Param is named HostName (not Host) because $Host is a reserved PowerShell automatic
-      variable (PSAvoidAssignmentToAutomaticVariable).
-    #>
-    param(
-        [Parameter(Mandatory)][string]$HostName,
-        [Parameter(Mandatory)][int]$Port
-    )
-    $tnc = Test-NetConnection -ComputerName $HostName -Port $Port -WarningAction SilentlyContinue
-    if (-not $tnc.TcpTestSucceeded) {
-        throw "TCP probe failed to $HostName`:$Port. Check DNS, firewall, and pg_hba.conf."
     }
 }
 
@@ -910,8 +784,7 @@ if ($NormalizedThumbprint.Length -ne 40) {
     $rawLen = if ($null -eq $CertThumbprint) { 0 } else { $CertThumbprint.Length }
     Write-Host ""
     Write-Host "Certificates currently in Cert:\LocalMachine\My on this machine:" -ForegroundColor Yellow
-    $certsHere = Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
-        Select-Object Thumbprint, Subject, @{n='HasKey';e={$_.HasPrivateKey}}, NotAfter
+    $certsHere = Get-NodePilotCertificateInventory
     if ($certsHere) {
         $certsHere | Format-Table -AutoSize | Out-String | Write-Host
     } else {
@@ -949,124 +822,50 @@ Write-Info "  Public host   : $PublicHostname"
 Write-Step "Pre-flight checks"
 
 if (-not (Test-Path $ArtifactPath)) { throw "Artifact not found: $ArtifactPath" }
-Test-DotNet10Runtime
-Write-Info "  .NET 10 ASP.NET Core runtime found."
 
-# Cert present + private key
-$cert = Get-ChildItem Cert:\LocalMachine\My | Where-Object { $_.Thumbprint -eq $NormalizedThumbprint }
-if (-not $cert) {
-    throw "Cert $NormalizedThumbprint not found in Cert:\LocalMachine\My. Import the PFX (MachineKeySet|PersistKeySet) and retry."
-}
-if (-not $cert.HasPrivateKey) {
-    throw "Cert $NormalizedThumbprint has no private key. Re-import with -KeyStorageFlags MachineKeySet|PersistKeySet|Exportable."
-}
-Write-Info "  Cert found: $($cert.Subject)"
+# Collect first, then report and abort. The collecting half is shared with the setup wizard,
+# which renders the same results as a traffic-light page instead of aborting - see Preflight.ps1.
+$preflightResults = Invoke-NodePilotPreflight `
+    -CertificateThumbprint $NormalizedThumbprint `
+    -DbProvider $DbProvider `
+    -IsLocalSystem $isLocalSystem `
+    -ServiceAccount $ServiceAccount `
+    -ComputerAccount $ComputerAccount `
+    -SqlPrincipal $SqlPrincipal `
+    -SqlServer $SqlServer `
+    -SqlDatabase $SqlDatabase `
+    -SqlCertificateHostName $SqlCertificateHostName `
+    -PostgresHost $PostgresHost `
+    -PostgresPort $PostgresPort `
+    -PostgresUser $PostgresUser `
+    -PostgresDatabase $PostgresDatabase `
+    -ServiceName $ServiceName `
+    -SkipDatabaseCheck:$SkipSqlConnectivityCheck `
+    -SkipGmsaCheck:$SkipGmsaCheck
 
-# gMSA check (best-effort; ActiveDirectory module may be absent). Skipped for LocalSystem,
-# whose network identity is the computer account - there is no gMSA to verify.
-if ($isLocalSystem) {
-    Write-Info "  Service identity: LocalSystem - network identity is the computer account $ComputerAccount."
-} elseif (-not $SkipGmsaCheck) {
+Assert-NodePilotPreflight -Results $preflightResults
+
+# RCSI is best applied at install time, before the service starts and holds connections - the
+# brief exclusive lock is uncontended then. Failures degrade to a warning so a missing
+# ALTER DATABASE permission doesn't block install.
+#
+# It runs AFTER the preflight passed in full, not inside it. Two reasons: it is a mutation and
+# so it cannot live in the shared, wizard-callable Preflight.ps1 (its WITH ROLLBACK IMMEDIATE
+# would drop every open session on the customer's database each time someone clicks
+# "re-check"), and an install that is about to abort on a later check should not have altered
+# the database on its way out.
+if (-not $SkipSqlConnectivityCheck -and $DbProvider -eq 'sqlserver') {
     try {
-        Import-Module ActiveDirectory -ErrorAction Stop
-        # Test-ADServiceAccount takes the short SAM name (without domain, without $).
-        $sam = $ServiceAccount
-        if ($sam -like '*\*') { $sam = $sam.Split('\')[-1] }
-        $sam = $sam.TrimEnd('$')
-        if (Test-ADServiceAccount -Identity $sam) {
-            Write-Info "  gMSA '$sam' is installed on this host."
-        } else {
-            throw "Test-ADServiceAccount returned false for '$sam'. Run Install-ADServiceAccount -Identity $sam as Domain Admin."
-        }
+        Enable-SqlReadCommittedSnapshot `
+            -Server $SqlServer `
+            -Database $SqlDatabase `
+            -CertificateHostName $SqlCertificateHostName
     } catch {
-        Write-Warn "  gMSA check skipped: $($_.Exception.Message)"
-        Write-Warn "  Install the RSAT-AD-PowerShell feature, or re-run with -SkipGmsaCheck once verified manually."
-    }
-}
-
-# DB reachability - dispatch per provider
-if (-not $SkipSqlConnectivityCheck) {
-    if ($DbProvider -eq 'sqlserver') {
-        try {
-            Test-SqlReachable `
-                -Server $SqlServer `
-                -Database $SqlDatabase `
-                -CertificateHostName $SqlCertificateHostName
-            Write-Info "  SQL reachable: $SqlServer/$SqlDatabase"
-            if ($isLocalSystem) {
-                # The probe used the INSTALLING ADMIN's identity, not the service identity. A
-                # green check here does NOT prove the computer account can log in. Spell out the
-                # exact login the running service will use so a 503 on /healthz/ready isn't a surprise.
-                Write-Warn "  NOTE: reachability was tested with your admin identity. At runtime the"
-                Write-Warn "  service connects as the computer account $ComputerAccount."
-                Write-Warn "  Ensure that login exists with db_owner on [$SqlDatabase]:"
-                Write-Warn "    CREATE LOGIN [$ComputerAccount] FROM WINDOWS;"
-                Write-Warn "    USE [$SqlDatabase]; CREATE USER [$ComputerAccount] FOR LOGIN [$ComputerAccount];"
-                Write-Warn "    ALTER ROLE db_owner ADD MEMBER [$ComputerAccount];"
-            }
-            # RCSI is best applied at install time, before the service starts and holds
-            # connections - the brief exclusive lock is uncontended then. Failures degrade
-            # to a warning so a missing ALTER DATABASE permission doesn't block install.
-            try {
-                Enable-SqlReadCommittedSnapshot `
-                    -Server $SqlServer `
-                    -Database $SqlDatabase `
-                    -CertificateHostName $SqlCertificateHostName
-            } catch {
-                Write-Warn "  RCSI setup failed: $($_.Exception.Message)"
-                Write-Warn "  NodePilot will run without snapshot isolation. Long-running"
-                Write-Warn "  reads (stats refresh, retention) will block concurrent writes."
-                Write-Warn "  Have a DBA run, in SSMS:"
-                Write-Warn "    ALTER DATABASE [$SqlDatabase] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;"
-            }
-        } catch {
-            Write-Warn "  SQL reachability FAILED: $($_.Exception.Message)"
-            Write-Host ""
-            Write-Host "  The installer could not open a connection to the target DB using the current" -ForegroundColor Yellow
-            Write-Host "  admin's Windows identity. Have the DBA run, on the SQL Server:" -ForegroundColor Yellow
-            Write-Host ""
-            Write-Host "    CREATE LOGIN [$SqlPrincipal] FROM WINDOWS;" -ForegroundColor Gray
-            Write-Host "    CREATE DATABASE [$SqlDatabase];" -ForegroundColor Gray
-            Write-Host "    USE [$SqlDatabase];" -ForegroundColor Gray
-            Write-Host "    CREATE USER [$SqlPrincipal] FOR LOGIN [$SqlPrincipal];" -ForegroundColor Gray
-            Write-Host "    ALTER ROLE db_owner ADD MEMBER [$SqlPrincipal];" -ForegroundColor Gray
-            Write-Host ""
-            Write-Host "  After the DB is ready, re-run the installer (optionally with -SkipSqlConnectivityCheck)." -ForegroundColor Yellow
-            throw "Aborted: SQL pre-flight failed."
-        }
-
-        # Version gate, separate from the reachability check above so its failure prints
-        # patch-level guidance instead of the login-remediation snippet.
-        try {
-            $sqlProductVersion = Assert-SqlServerTds8Support `
-                -Server $SqlServer `
-                -CertificateHostName $SqlCertificateHostName
-            Write-Info "  SQL Server $sqlProductVersion supports TDS 8.0 (>= 2022 CU1)."
-        } catch {
-            Write-Warn "  SQL version pre-flight FAILED: $($_.Exception.Message)"
-            Write-Host ""
-            Write-Host "  Check the patch level in SSMS:" -ForegroundColor Yellow
-            Write-Host "    SELECT SERVERPROPERTY('ProductVersion') AS Version, SERVERPROPERTY('ProductUpdateLevel') AS CU;" -ForegroundColor Gray
-            Write-Host "  16.0.1000.x = 2022 RTM (unpatched). Install the latest SQL Server 2022 cumulative" -ForegroundColor Yellow
-            Write-Host "  update, then re-run the installer." -ForegroundColor Yellow
-            throw "Aborted: SQL version pre-flight failed."
-        }
-    } else {
-        try {
-            Test-PostgresReachable -HostName $PostgresHost -Port $PostgresPort
-            Write-Info "  Postgres TCP reachable: $PostgresHost`:$PostgresPort"
-        } catch {
-            Write-Warn "  Postgres reachability FAILED: $($_.Exception.Message)"
-            Write-Host ""
-            Write-Host "  Cannot reach $PostgresHost`:$PostgresPort from this host. Verify DNS, firewall," -ForegroundColor Yellow
-            Write-Host "  and that Postgres is listening on the external interface. Role setup on the DB server:" -ForegroundColor Yellow
-            Write-Host ""
-            Write-Host "    CREATE ROLE $PostgresUser WITH LOGIN PASSWORD '<same-as--PostgresPassword>';" -ForegroundColor Gray
-            Write-Host "    CREATE DATABASE $PostgresDatabase OWNER $PostgresUser;" -ForegroundColor Gray
-            Write-Host ""
-            Write-Host "  After Postgres is reachable, re-run the installer (optionally with -SkipSqlConnectivityCheck)." -ForegroundColor Yellow
-            throw "Aborted: Postgres pre-flight failed."
-        }
+        Write-Warn "  RCSI setup failed: $($_.Exception.Message)"
+        Write-Warn "  NodePilot will run without snapshot isolation. Long-running"
+        Write-Warn "  reads (stats refresh, retention) will block concurrent writes."
+        Write-Warn "  Have a DBA run, in SSMS:"
+        Write-Warn "    ALTER DATABASE [$SqlDatabase] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;"
     }
 }
 
@@ -1512,6 +1311,40 @@ JwtIssuer      : $JwtIssuer
 JwtAudience    : $JwtAudience
 AllowedHosts   : $AllowedHosts
 "@ | Out-File -FilePath $reportPath -Encoding ascii -Force
+
+# Machine-wide marker so a later tool can find this installation without being told where it
+# is. Until now that information lived only in install-report.txt INSIDE $DataPath, which you
+# can only read once you already know $DataPath. The setup wizard reads this key to decide
+# between "upgrade" and "fresh install", and Uninstall-NodePilot.ps1 removes it - without that
+# removal, a fresh install after an uninstall would be misdetected as an upgrade forever.
+#
+# Written on the success path only, so a rolled-back install never leaves a marker behind. On a
+# failed re-install the previous marker survives and stays correct, because the rollback also
+# restored the previous binaries. A write failure is a warning: it costs discoverability, not
+# a working installation.
+try {
+    $markerPath = 'HKLM:\SOFTWARE\NodePilot\Server'
+    if (-not (Test-Path -LiteralPath $markerPath)) {
+        [void](New-Item -Path $markerPath -Force)
+    }
+    $markerValues = [ordered]@{
+        InstallPath = $InstallPath
+        DataPath    = $DataPath
+        ServiceName = $ServiceName
+        Version     = [string]$verifiedArtifact.Version
+        DbProvider  = $DbProvider
+        HttpsPort   = $HttpsPort
+    }
+    foreach ($marker in $markerValues.GetEnumerator()) {
+        $markerType = if ($marker.Value -is [int]) { 'DWord' } else { 'String' }
+        New-ItemProperty -LiteralPath $markerPath -Name $marker.Key -Value $marker.Value `
+            -PropertyType $markerType -Force | Out-Null
+    }
+    Write-Info "  Registered installation marker at $markerPath."
+} catch {
+    Write-Warn "  Could not write the installation marker (HKLM:\SOFTWARE\NodePilot\Server): $($_.Exception.Message)"
+    Write-Warn "  The installation works; tools that auto-detect it will not find this instance."
+}
 
 Write-Host ""
 Write-Ok "Installation complete."
