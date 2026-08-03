@@ -8,11 +8,13 @@ import { useToastStore } from '../../stores/toastStore';
  * constructing one through a QueryClient would test React Query's plumbing rather than this
  * decision.
  */
-function fakeQuery(options: { data?: unknown; silentError?: boolean } = {}): Query {
+function fakeQuery(
+  options: { data?: unknown; silentError?: boolean } = {},
+): Query<unknown, unknown, unknown, readonly unknown[]> {
   return {
     meta: options.silentError ? { silentError: true } : undefined,
     state: { data: options.data },
-  } as unknown as Query;
+  } as unknown as Query<unknown, unknown, unknown, readonly unknown[]>;
 }
 
 describe('shouldToastQueryError', () => {

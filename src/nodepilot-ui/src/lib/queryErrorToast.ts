@@ -3,6 +3,13 @@ import { toast } from '../stores/toastStore';
 import i18n from '../i18n';
 
 /**
+ * Exactly what `QueryCache.onError` hands over. Spelled out rather than left as a bare `Query`,
+ * whose error parameter defaults to `Error` while the cache passes `unknown` — close enough to
+ * look right and not close enough to compile.
+ */
+type CachedQuery = Query<unknown, unknown, unknown, readonly unknown[]>;
+
+/**
  * Global handler for failed queries, wired into the app's `QueryCache`.
  *
  * A failed query used to be invisible unless the page happened to read `isError`. Most do not:
@@ -13,7 +20,7 @@ import i18n from '../i18n';
  * It lives here rather than inline in `App.tsx` so the policy below can be tested as the real
  * thing rather than as a copy of it.
  */
-export function handleQueryError(error: unknown, query: Query): void {
+export function handleQueryError(error: unknown, query: CachedQuery): void {
   if (!shouldToastQueryError(query)) return;
   const message = error instanceof Error && error.message ? error.message : undefined;
   toast.error(message ?? i18n.t('common:loadError'));
@@ -30,7 +37,7 @@ export function handleQueryError(error: unknown, query: Query): void {
  *   forever. The case this handler exists for is the opposite — a query with nothing to show,
  *   where the failure is the only thing worth reporting.
  */
-export function shouldToastQueryError(query: Query): boolean {
+export function shouldToastQueryError(query: CachedQuery): boolean {
   if (query.meta?.silentError) return false;
   if (query.state.data !== undefined) return false;
   return true;
