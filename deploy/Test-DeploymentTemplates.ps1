@@ -565,6 +565,22 @@ Assert-TextDoesNotMatch -Name 'the adapter path must not point into the not-yet-
 Assert-TextMatches -Name 'the scripts are extracted before the wizard uses them' `
     -Text $serverIss -Pattern "ExtractTemporaryFiles\('\*\.ps1'\)"
 
+# Inno inserts a wizard page directly AFTER the ID it is anchored to, so two pages sharing an
+# anchor come out in reverse creation order - and any page anchored to the earlier of the two then
+# lands in front of the later one. Anchoring both the SQL and the PostgreSQL page to the provider
+# page produced Provider -> Postgres -> Network -> Prerequisites -> Sql: the SQL page sat after the
+# page that reads its values, so it was never shown and its fields kept their defaults. Every page
+# must therefore be anchored to a DISTINCT predecessor.
+$pageAnchors = @([regex]::Matches($serverIss, 'Create(?:InputQuery|InputOption|Custom)Page\(\s*([A-Za-z0-9_]+(?:\.ID)?)') |
+    ForEach-Object { $_.Groups[1].Value })
+$duplicateAnchors = @($pageAnchors | Group-Object | Where-Object { $_.Count -gt 1 })
+if ($duplicateAnchors.Count -gt 0) {
+    throw ("Deployment template check failed: wizard pages share an anchor (" +
+           ($duplicateAnchors.Name -join ', ') +
+           '). Inno inserts each page directly after its anchor, so sharing one silently reorders ' +
+           'the wizard - anchor every page to the one created before it.')
+}
+
 # --- setup adapter contracts ---------------------------------------------------------------------
 $setupAdapter = Remove-CommentLines -Text (Get-Content -LiteralPath $SetupAdapterPath -Raw)
 

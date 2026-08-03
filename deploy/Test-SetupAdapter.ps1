@@ -156,6 +156,79 @@ try {
         Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'broken.json' -Json '{"schemaVersion":1,')
     }
 
+    # --- byte-order mark ----------------------------------------------------------------------
+    # The wizard writes its answer file with Inno's SaveStringsToUTF8File, which emits a BOM, and
+    # an operator hand-writing one in Notepad gets the same. UTF8.GetString turns those three bytes
+    # into U+FEFF, which is neither whitespace nor a JSON token, so the whole document is rejected
+    # with "Invalid JSON primitive: ." - and that is exactly how the first interactive run of the
+    # wizard died. The unattended path never caught it because it copies a supplied file.
+    $bomPath = Join-Path $workingDirectory 'bom.json'
+    $bomJson = @{
+        schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
+        serviceName = 'NodePilot'; identity = @{ type = 'gmsa'; account = 'CORP\svc$' }
+        database = @{ provider = 'sqlserver'; sqlServer = 'db'; sqlDatabase = 'NodePilot' }
+        network = @{ publicHostname = 'h'; httpsPort = 8443; httpPort = 0 }
+        certificate = @{ thumbprint = 'C' * 40 }
+    } | ConvertTo-Json -Depth 6
+    [IO.File]::WriteAllBytes($bomPath,
+        ([byte[]](0xEF, 0xBB, 0xBF)) + [Text.Encoding]::UTF8.GetBytes($bomJson))
+    $bomAnswers = Read-NodePilotAnswerFile -Path $bomPath
+    Assert-True -Name 'an answer file with a UTF-8 BOM is accepted' `
+        -Condition ($bomAnswers['serviceName'] -eq 'NodePilot')
+    Assert-True -Name 'the BOM does not leak into the first value' `
+        -Condition ([int][char]([string]$bomAnswers['mode'])[0] -eq [int][char]'i')
+
+    # --- the document the WIZARD actually produces ---------------------------------------------
+    # Verbatim capture from a real interactive run, BOM and Pascal's own formatting included. The
+    # unattended path copies an operator-supplied file and therefore never exercises the wizard's
+    # JSON writer at all - which is precisely how a BOM reached production untested. Reproducing
+    # the shape by hand would only test my idea of it; this is the bytes it really wrote.
+    $wizardJson = @'
+{
+  "schemaVersion": 1,
+  "mode": "install",
+  "installPath": "C:\\Program Files\\NodePilot",
+  "dataPath": "C:\\ProgramData\\NodePilot",
+  "serviceName": "NodePilot",
+  "identity": {
+    "type": "gmsa",
+    "account": "corp\\q-sdvorch2$"
+  },
+  "database": {
+    "provider": "sqlserver",
+    "sqlServer": "cm1.corp.contoso.com",
+    "sqlDatabase": "NodePilot",
+    "sqlCertificateHostName": ""
+  },
+  "network": {
+    "publicHostname": "cm1.corp.contoso.com",
+    "httpsPort": 8443,
+    "httpPort": 0,
+    "allowedHosts": "cm1.corp.contoso.com;cm1;localhost",
+    "knownProxyIps": []
+  },
+  "certificate": {
+    "thumbprint": "9457A38A58F741F80236AA8941C4E803ABDD48D1",
+    "source": "existing"
+  }
+}
+'@
+    $wizardPath = Join-Path $workingDirectory 'wizard.json'
+    [IO.File]::WriteAllBytes($wizardPath,
+        ([byte[]](0xEF, 0xBB, 0xBF)) + [Text.Encoding]::UTF8.GetBytes($wizardJson))
+    $wizardAnswers = Read-NodePilotAnswerFile -Path $wizardPath
+    Assert-True -Name 'the wizard-produced answer file parses' `
+        -Condition ($wizardAnswers['network.publicHostname'] -eq 'cm1.corp.contoso.com')
+    Assert-True -Name 'a gMSA name with a trailing dollar survives the wizard escaping' `
+        -Condition ($wizardAnswers['identity.account'] -eq 'corp\q-sdvorch2$')
+    Assert-True -Name 'a blank optional field stays blank rather than becoming a literal' `
+        -Condition ([string]$wizardAnswers['database.sqlCertificateHostName'] -eq '')
+    $wizardSplat = ConvertTo-NodePilotInstallParameters -Answers $wizardAnswers
+    Assert-True -Name 'the wizard-produced answers splat into a usable install' `
+        -Condition ($wizardSplat['SqlServer'] -eq 'cm1.corp.contoso.com' -and
+                    $wizardSplat['HttpPort'] -eq 0 -and
+                    -not $wizardSplat.Contains('SqlCertificateHostName'))
+
     Assert-Throws -Name 'a gMSA identity without an account is rejected' -MessagePattern "needs 'identity\.account'" -Action {
         Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'gmsa.json' -Json (@{
             schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'

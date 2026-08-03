@@ -647,6 +647,12 @@ begin
   ProviderPage.Add('PostgreSQL 16 or newer');
   ProviderPage.SelectedValueIndex := 0;
 
+  // Each page is anchored to the one created BEFORE it, never to a shared parent. Inno inserts a
+  // page directly after the ID it is given, so two pages anchored to the same parent come out in
+  // reverse creation order - and anything anchored to the earlier of the two then lands in front
+  // of the later one. Anchoring SqlPage and PostgresPage both to ProviderPage produced
+  // Provider -> Postgres -> Network -> Prerequisites -> Sql: the SQL page sat AFTER the page that
+  // reads its values, so it was never shown and its fields stayed at their defaults.
   SqlPage := CreateInputQueryPage(ProviderPage.ID,
     'SQL Server',
     'Where does NodePilot find its database?',
@@ -656,7 +662,7 @@ begin
   SqlPage.Add('Certificate host name (leave blank to derive it):', False);
   SqlPage.Values[1] := 'NodePilot';
 
-  PostgresPage := CreateInputQueryPage(ProviderPage.ID,
+  PostgresPage := CreateInputQueryPage(SqlPage.ID,
     'PostgreSQL',
     'Where does NodePilot find its database?',
     'The connection uses SSL Mode=VerifyFull, so a root certificate is required.');
@@ -669,6 +675,7 @@ begin
   PostgresPage.Values[1] := '5432';
   PostgresPage.Values[2] := 'nodepilot';
 
+  // Anchored to PostgresPage because that is the last page created, not because it belongs to it.
   NetworkPage := CreateInputQueryPage(PostgresPage.ID,
     'Network and TLS',
     'How will clients reach NodePilot?',

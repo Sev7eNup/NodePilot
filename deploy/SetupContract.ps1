@@ -86,7 +86,13 @@ function Read-NodePilotAnswerFile {
     if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
         throw "Answer file not found: $Path"
     }
+    # The leading byte-order mark has to go before ConvertFrom-Json sees it. UTF8.GetString turns
+    # EF BB BF into U+FEFF, which is not whitespace and not a JSON token, so the parser rejects the
+    # whole document with "Invalid JSON primitive: ." - the dot being how it renders that
+    # unprintable character. Two realistic producers write one: Inno Setup's SaveStringsToUTF8File,
+    # which the wizard uses, and Notepad, which an operator hand-writing an answer file uses.
     $text = [Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($Path))
+    $text = $text.TrimStart([char]0xFEFF, [char]0xFFFE)
     try { $parsed = $text | ConvertFrom-Json }
     catch { throw "Answer file is not valid JSON: $($_.Exception.Message)" }
     if ($null -eq $parsed) { throw 'Answer file is empty.' }
