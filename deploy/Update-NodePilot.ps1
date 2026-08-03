@@ -8,6 +8,9 @@
     binaries are backed up while the service is still running; appsettings.Production.json is
     never copied to a backup and remains only in memory. Any failure after mutation starts rolls
     binaries and configuration back before the old service is restarted.
+
+    A successful update leaves the service RUNNING, regardless of whether it was running when the
+    script was invoked. A failed update restores the pre-update state instead.
 .PARAMETER ArtifactPath
     Path to the new NodePilot-*.zip.
 .PARAMETER TrustedArtifactSignerThumbprint
@@ -262,9 +265,19 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
         if (-not $healthy) { throw 'Service did not become ready after upgrade.' }
         Write-Ok '/healthz/ready returned 200 OK'
 
+        # A successful update leaves the service RUNNING, whatever its state was before.
+        #
+        # This used to restore the pre-update state, and that combination bit in the lab: the
+        # 30-second timeout in Stop-ServiceAndVerify pushes operators to stop the service by hand
+        # first (an in-flight execution otherwise aborts the run), so "stopped" becomes the
+        # recorded prior state — and the update then started the service, proved it healthy on
+        # /healthz/ready, and stopped it again. The operator was left with a dead service after a
+        # run that printed "Update complete."
+        #
+        # Failure is different and still restores the prior state (see the catch block): an update
+        # that rolled back must not start something the operator had deliberately taken down.
         if (-not $serviceWasRunning) {
-            Stop-ServiceAndVerify -Name $ServiceName
-            Write-Info 'Restored the service to its pre-update stopped state.'
+            Write-Info 'Service was stopped before the update and is now running.'
         }
 
         try {

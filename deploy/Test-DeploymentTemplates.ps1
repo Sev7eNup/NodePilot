@@ -14,7 +14,8 @@ param(
     [string]$InstallerPath,
     [string]$SsoDocumentationPath,
     [string]$BuildScriptPath,
-    [string]$BuildPropsPath
+    [string]$BuildPropsPath,
+    [string]$UpdateScriptPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,6 +43,9 @@ if ([string]::IsNullOrWhiteSpace($BuildScriptPath)) {
 if ([string]::IsNullOrWhiteSpace($BuildPropsPath)) {
     $BuildPropsPath = Join-Path $scriptDirectory '..\Directory.Build.props'
 }
+if ([string]::IsNullOrWhiteSpace($UpdateScriptPath)) {
+    $UpdateScriptPath = Join-Path $scriptDirectory 'Update-NodePilot.ps1'
+}
 
 function Assert-TextMatches {
     param(
@@ -67,7 +71,7 @@ function Assert-TextDoesNotMatch {
     }
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath)) {
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
     }
@@ -218,6 +222,33 @@ if (-not $versionMatch.Success) {
 if ($versionMatch.Groups[1].Value -notmatch '^\d+\.\d+\.\d+') {
     throw "Deployment template check failed: <Version> '$($versionMatch.Groups[1].Value)' is not a three-part product version."
 }
+
+# --- update contract -----------------------------------------------------------------------
+# A successful update must leave the service RUNNING. The script used to restore the pre-update
+# state, which combined badly with its own 30-second stop timeout: operators stop the service by
+# hand first, so "stopped" became the recorded state and a successful update ended with a dead
+# service. Failure must still restore the prior state.
+$updateScript = Get-Content -LiteralPath $UpdateScriptPath -Raw
+
+$successStart = $updateScript.IndexOf("Write-Ok '/healthz/ready returned 200 OK'")
+$catchStart = $updateScript.IndexOf("`n    catch {", $(if ($successStart -ge 0) { $successStart } else { 0 }))
+if ($successStart -lt 0 -or $catchStart -lt 0) {
+    throw 'Deployment template check failed: could not delimit the success path in Update-NodePilot.ps1.'
+}
+$successPath = $updateScript.Substring($successStart, $catchStart - $successStart)
+
+# Comments are stripped first. The block carries an explanation that names Stop-ServiceAndVerify,
+# and matching prose would fail the check no matter what the code does - the same way an earlier
+# version of the build-script ordering check passed no matter where the signing step sat.
+$successCode = ($successPath -split "`n" | Where-Object { $_.TrimStart() -notmatch '^#' }) -join "`n"
+
+Assert-TextDoesNotMatch -Name 'a successful update must not stop the service again' `
+    -Text $successCode -Pattern 'Stop-ServiceAndVerify'
+
+# The rollback path is the one place the prior state still governs.
+$rollbackPath = $updateScript.Substring($catchStart)
+Assert-TextMatches -Name 'a failed update still restores the pre-update state' `
+    -Text $rollbackPath -Pattern '(?s)\$serviceWasRunning\s+-and.*?Start-Service'
 
 $ssoDocumentation = Get-Content -LiteralPath $SsoDocumentationPath -Raw
 Assert-TextMatches -Name 'SPN examples use duplicate-safe registration' `
