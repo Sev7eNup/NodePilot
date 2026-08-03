@@ -360,6 +360,9 @@ function Invoke-SetupInstall {
         'https://{0}:{1}/' -f $answers['network.publicHostname'], $answers['network.httpsPort'])
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'externalTriggerApiKey' -Value $splat['ExternalTriggerApiKey']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'certificateThumbprint' -Value $answers['certificate.thumbprint']
+    Set-NodePilotResult -Buffer $result -Section 'result' -Name 'installPath' -Value $answers['installPath']
+    Set-NodePilotResult -Buffer $result -Section 'result' -Name 'dataPath' -Value $answers['dataPath']
+    Set-NodePilotResult -Buffer $result -Section 'result' -Name 'serviceName' -Value $answers['serviceName']
 
     # Read the bootstrap token here rather than scraping console text for a secret. The file is
     # owner-only for the service account, so failure is expected, not an error.
@@ -393,6 +396,28 @@ function Invoke-SetupUpdate {
     }
     & (Join-Path $scriptDirectory 'Update-NodePilot.ps1') @splat 6>&1 |
         ForEach-Object { Write-Host $_ }
+
+    Set-NodePilotResult -Buffer $result -Section 'result' -Name 'installPath' -Value $splat['InstallPath']
+    Set-NodePilotResult -Buffer $result -Section 'result' -Name 'serviceName' -Value $splat['ServiceName']
+
+    # An update collects no network answers, so the address comes from the configuration that is
+    # already installed - the same source Update-NodePilot.ps1 derives its health-probe port from.
+    # Best effort: a finish page without a URL is a small loss, a failed update is not.
+    try {
+        $installedSettings = Join-Path ([string]$splat['InstallPath']) 'appsettings.Production.json'
+        if (Test-Path -LiteralPath $installedSettings -PathType Leaf) {
+            $https = (Get-Content -LiteralPath $installedSettings -Raw | ConvertFrom-Json).Kestrel.Https
+            if ($https.PublicHostname -and $https.HttpsPort) {
+                Set-NodePilotResult -Buffer $result -Section 'result' -Name 'url' `
+                    -Value ('https://{0}:{1}/' -f $https.PublicHostname, $https.HttpsPort)
+            }
+            if ($https.CertificateThumbprint) {
+                Set-NodePilotResult -Buffer $result -Section 'result' -Name 'certificateThumbprint' `
+                    -Value $https.CertificateThumbprint
+            }
+        }
+    }
+    catch { }
     return 0
 }
 

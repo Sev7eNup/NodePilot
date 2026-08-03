@@ -128,6 +128,31 @@ Ein erneuter Lauf erkennt die vorhandene Installation über `HKLM\SOFTWARE\NodeP
 `Update-NodePilot.ps1`-Semantik: nur Binaries, `appsettings.Production.json` bleibt, Datenbank und
 Dienstidentität unangetastet, Rollback bei Fehler, Dienst läuft danach.
 
+## Abschlussseite
+
+Der Adapter schreibt nach einem erfolgreichen Lauf eine `[result]`-Sektion in seine INI; die
+letzte Wizard-Seite zeigt sie. Enthalten ist alles, was für den ersten Zugriff nötig ist:
+
+- **Adresse** (`https://<host>:<port>/`). Beim Update aus der bereits installierten
+  `appsettings.Production.json` abgeleitet — ein Update erfragt keine Netzwerkdaten.
+- **Setup-Token** für die erste Anmeldung, solange noch kein Konto existiert. Ist die Datei
+  besitzer-exklusiv und unlesbar, wird stattdessen ihr Pfad und der `robocopy /B`-Trick genannt;
+  fehlt sie ganz, hat die Datenbank bereits Konten — auch das steht dort, statt zu schweigen.
+- **External-Trigger-API-Key.** Der einzige Ort, an dem er je erscheint: erzeugt wird er vom
+  Adapter, `Install-NodePilot.ps1` druckt ihn auf eine Konsole, die unter `Exec(…, SW_HIDE)` nicht
+  existiert, und `install-report.txt` lässt ihn bewusst weg.
+- **Zertifikats-Thumbprint** mit dem Hinweis, ein selbstsigniertes auf den Clients zu importieren.
+- **Dienstname, Programm- und Datenverzeichnis.**
+
+Hier ist es ein `TNewMemo`, nicht wie auf der Readiness-Seite ein Label: die Seite ist sonst leer,
+also ist Platz für ein ordentlich dimensioniertes, und ein 64-Zeichen-API-Key, den man nicht
+markieren kann, müsste abgetippt werden. „Save this summary…" legt denselben Text auf den Desktop
+— **mit den Secrets darin**, worauf der Bestätigungsdialog hinweist.
+
+Gebaut wird die Zusammenfassung in `PrepareToInstall`, nicht in `CurPageChanged`: `DeinitializeSetup`
+räumt das Session-Verzeichnis, die INI wäre beim Anzeigen also längst weg. Und ausschließlich auf
+dem Erfolgspfad — ein zurückgerollter Lauf darf keine Werte präsentieren, als hätte er funktioniert.
+
 ## Deinstallation
 
 Erreichbar an zwei Stellen: über „Apps & Features" wie bei jedem Windows-Programm, **und als dritte
@@ -257,6 +282,9 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 10 | Deinstallation `/PURGEDATA=1` | zusätzlich Datenverzeichnis weg, Datenbank bleibt |
 | 11 | Modus-Seite → „Remove" | Uninstaller übernimmt, Setup schließt ohne Abbruch-Rückfrage |
 | 12 | Neustart nach Installation | Dienst kommt ohne Zutun hoch, auch wenn die DB später bereit ist |
+| 13 | Abschlussseite nach Neuinstallation | URL, Setup-Token, API-Key, Thumbprint, Pfade sichtbar und markierbar |
+| 14 | Abschlussseite nach Update | URL aus der installierten Config, kein Token, kein neuer API-Key |
+| 15 | Update über laufenden Dienst | wartet den Prozess ab statt abzubrechen |
 
 Stand: 1, 3, 5, 9 und 10 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server 2022 CU
-gelaufen. 2, 4, 6, 7, 8, 11 und 12 nicht.
+gelaufen. 2, 4, 6, 7, 8 und 11 bis 15 nicht.

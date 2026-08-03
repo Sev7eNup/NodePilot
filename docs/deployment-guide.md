@@ -255,6 +255,12 @@ that whoever races to the login endpoint first cannot make themselves admin.
 3. Paste the token printed at the end of the install output, sign in again — done. The
    server deletes the token file and the bootstrap window closes permanently.
 
+If you installed with the GUI setup, its final page carries all of this — address, setup
+token, External-Trigger API key, certificate thumbprint, service name and paths — as
+selectable text, with a button to save it to a file. The API key appears there and
+nowhere else: it is not recoverable afterwards, and `install-report.txt` omits it by
+design.
+
 If the installer could not print the token: it lives in
 `C:\ProgramData\NodePilot\admin-setup.token`, which is ACL-restricted to the **service
 account** — by design even administrators cannot open it directly. Read it via backup
