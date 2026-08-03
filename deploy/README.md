@@ -18,9 +18,10 @@ Der Dienst läuft wahlweise unter:
 | [Build-Artifact.ps1](Build-Artifact.ps1) | Baut `out\NodePilot-<version>.zip` aus dem Repo (dotnet publish + PS-Modul-Staging nach `<stage>\Modules` + npm build + Template) und signiert das Manifest (detached CMS) |
 | [Install-NodePilot.ps1](Install-NodePilot.ps1) | Hauptinstaller — Service, ACLs, Firewall, Cert-Key-Access |
 | [ArtifactSecurity.ps1](ArtifactSecurity.ps1) | Geteilte Signier-/Verifikationslogik (Manifest + `.p7s`); wird von Build/Install/Update dot-sourced |
+| [Preflight.ps1](Preflight.ps1) | Geteilte **seiteneffektfreie** Readiness-Checks (Runtime, Zertifikat, gMSA, DB-Erreichbarkeit, TDS-8.0-Version, Dienstidentität, Domänenmitgliedschaft); wird von Install dot-sourced |
 | [Test-ArtifactSecurity.ps1](Test-ArtifactSecurity.ps1) | Selbsttest der Artefakt-Signaturkette (Tamper-Erkennung, Signer-Pinning) |
 | [Update-NodePilot.ps1](Update-NodePilot.ps1) | In-Place-Upgrade, erhält appsettings + SQL-DB, rollt bei Fehler zurück |
-| [Uninstall-NodePilot.ps1](Uninstall-NodePilot.ps1) | Stoppt Dienst, entfernt Binaries + Firewall-Regel. DB bleibt unberührt |
+| [Uninstall-NodePilot.ps1](Uninstall-NodePilot.ps1) | Stoppt Dienst, entfernt Binaries, Firewall-Regeln und den Installations-Marker. DB bleibt unberührt |
 | [Test-Failover.ps1](Test-Failover.ps1) | HA-Failover-Smoke-Test gegen zwei Knoten (killt Leader, misst RTO bis `/healthz/leader` am Standby grün wird) |
 | [Test-DeploymentTemplates.ps1](Test-DeploymentTemplates.ps1) | Statischer Sicherheits-/Vertragscheck für HAProxy- und Appsettings-Templates |
 | [templates/appsettings.Production.json.template](templates/appsettings.Production.json.template) | Produktions-Config-Template (Single-Node) |
@@ -299,7 +300,20 @@ Der Installer macht alles Weitere:
 7. Firewall-Regel `NodePilot <Name> HTTPS` (Domain profile)
 8. Dienst per `Win32_Service.Create` anlegen — gMSA (leeres Passwort + `sc.exe managedaccount` + „Log on as a service"-Grant) oder `LocalSystem` (keine dieser drei Schritte nötig), Recovery-Actions, `ASPNETCORE_ENVIRONMENT=Production`
 9. Dienst starten, `https://localhost/healthz/ready` pollen
-10. Admin-Bootstrap-Token + External-Trigger-API-Key auf der Konsole ausgeben
+10. Installations-Marker `HKLM\SOFTWARE\NodePilot\Server` schreiben (`InstallPath`, `DataPath`, `ServiceName`, `Version`, `DbProvider`, `HttpsPort`) — nur auf dem Erfolgspfad, damit ein zurückgerollter Lauf keinen Marker hinterlässt
+11. Admin-Bootstrap-Token + External-Trigger-API-Key auf der Konsole ausgeben
+
+Schritt 1 kommt aus [`Preflight.ps1`](Preflight.ps1) und ist bewusst als eigene Datei ausgelagert:
+die Checks sammeln nur (`Invoke-NodePilotPreflight`), das Abbrechen ist ein zweiter Schritt
+(`Assert-NodePilotPreflight`). Dadurch kann dieselbe Prüflogik später hinter einem
+„Erneut prüfen"-Button laufen, ohne bei jedem Klick etwas zu verändern. **Nichts in `Preflight.ps1`
+darf mutieren** — `Test-DeploymentTemplates.ps1` erzwingt das über den geparsten AST, nicht per
+Textsuche, weil die Datei Remediation-Kommandos (`CREATE LOGIN`, `sc.exe`, `New-NetFirewallRule`)
+legitim als **Anzeigetext** enthält. Konkreter Anlass: `Enable-SqlReadCommittedSnapshot` lag im
+selben `try` wie der SQL-Erreichbarkeitscheck, und sein
+`ALTER DATABASE … WITH ROLLBACK IMMEDIATE` wirft jede offene Session der Zieldatenbank raus. RCSI
+ist Installationsarbeit und läuft jetzt **nach** bestandenem Pre-Flight statt mittendrin — ein Lauf,
+der gleich abbricht, fasst die Datenbank damit gar nicht erst an.
 
 Nach erfolgreichem Install steht in der Konsole:
 
@@ -404,6 +418,16 @@ Erhält `appsettings.Production.json`, die DB (SQL Server oder Postgres) und den
 ```
 
 Die **SQL-Datenbank wird nie automatisch gelöscht** — nach Bedarf per DBA-Tooling droppen.
+
+Zusätzlich entfernt das Skript den Installations-Marker `HKLM\SOFTWARE\NodePilot\Server` und —
+falls `sc.exe delete` den Dienstschlüssel wegen eines offenen SCM-Handles nur als
+`DELETE_PENDING` markiert hat — dessen `Environment`-Wert, in dem der Postgres-Connection-String
+**samt Passwort** steht.
+
+Zwei Dinge bleiben **absichtlich** stehen, weil beide mit etwas anderem auf dem Host geteilt sein
+können und ein blindes Entziehen genau das kaputtmachen würde: das „Log on as a service"-Recht des
+gMSA und die Lese-ACE auf dem Private Key des TLS-Zertifikats. Das Skript benennt beide am Ende
+seines Laufs namentlich statt sie stillschweigend zu hinterlassen.
 
 ## Backup & Disaster Recovery
 
