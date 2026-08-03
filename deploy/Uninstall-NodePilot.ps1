@@ -19,6 +19,9 @@
     Install directory to delete. Default: C:\Program Files\NodePilot.
 .PARAMETER DataPath
     Writable data directory (logs, JWT key, admin-setup.token). Preserved unless -PurgeData.
+.PARAMETER ProcessExitTimeoutSeconds
+    How long to wait for processes running out of InstallPath to exit after the service is
+    stopped, before the service is deleted. Default: 90.
 .PARAMETER PurgeData
     Also delete DataPath (logs, JWT key, admin-setup.token, install-report). Irreversible.
 .EXAMPLE
@@ -32,6 +35,7 @@ param(
     [string]$ServiceName = 'NodePilot',
     [string]$InstallPath = 'C:\Program Files\NodePilot',
     [string]$DataPath = 'C:\ProgramData\NodePilot',
+    [int]$ProcessExitTimeoutSeconds = 90,
     [switch]$PurgeData
 )
 
@@ -61,6 +65,20 @@ try {
     }
 } catch { $installedThumbprint = $null }
 
+function Get-ProcessesUnderPath {
+    <#
+      Processes whose image lives under $Path. Same question Update-NodePilot.ps1 asks before it
+      wipes an install directory; the uninstaller has to ask it too, and earlier.
+    #>
+    param([Parameter(Mandatory)][string]$Path)
+    $prefix = $Path.TrimEnd('\') + '\'
+    Get-Process -ErrorAction SilentlyContinue | Where-Object {
+        $imagePath = $null
+        try { $imagePath = $_.Path } catch { $imagePath = $null }
+        $imagePath -and $imagePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+    }
+}
+
 Write-Step "Stopping and removing service '$ServiceName'"
 $svc = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($svc) {
@@ -73,6 +91,37 @@ if ($svc) {
             Start-Sleep -Milliseconds 500
         }
     }
+
+    # The SCM reports 'Stopped' as soon as the service acknowledges the control code, but the
+    # process keeps running while ASP.NET Core drains. Measured on a real installation: 31
+    # seconds after Stop-Service returned.
+    #
+    # This wait has to happen BEFORE sc.exe delete, not after. Deleting the service first
+    # ORPHANS a still-running process: nothing can stop it through the SCM any more, and the
+    # file deletion below then rips DLLs out from under a live process. That is exactly what
+    # happened on the lab host - a half-deleted install directory and a process nobody could
+    # address.
+    $processDeadline = (Get-Date).AddSeconds($ProcessExitTimeoutSeconds)
+    $blocking = @(Get-ProcessesUnderPath -Path $InstallPath)
+    if ($blocking.Count -gt 0) {
+        Write-Info "  Waiting up to $ProcessExitTimeoutSeconds s for the service process to exit."
+        while ((Get-Date) -lt $processDeadline) {
+            $blocking = @(Get-ProcessesUnderPath -Path $InstallPath)
+            if ($blocking.Count -eq 0) { break }
+            Start-Sleep -Milliseconds 500
+        }
+    }
+    if ($blocking.Count -gt 0) {
+        foreach ($process in $blocking) {
+            Write-Warn "  Still running: PID $($process.Id) $($process.Name) ($($process.Path))"
+        }
+        # Fail closed, with the service still registered so the operator keeps a supported way
+        # to stop it.
+        throw ("Processes are still running out of '$InstallPath' after $ProcessExitTimeoutSeconds s. " +
+               "The service has NOT been deleted, so you can still stop it. End the processes above " +
+               '(or reboot), then re-run this script.')
+    }
+
     & sc.exe delete $ServiceName | Out-Null
     Write-Info "  sc.exe delete returned exit $LASTEXITCODE"
 
@@ -118,9 +167,39 @@ foreach ($name in @("NodePilot $ServiceName HTTPS", "NodePilot $ServiceName HTTP
 }
 
 Write-Step "Removing install directory"
+$installPathRemaining = $false
 if (Test-Path $InstallPath) {
-    Remove-Item -Path $InstallPath -Recurse -Force
-    Write-Info "  Deleted: $InstallPath"
+    # Retry briefly: an antivirus scanner or the search indexer can hold a freshly closed file
+    # for a moment. This is NOT the guard against a running service - that one is above, before
+    # the service was deleted, because by this point there is no supported way to stop anything.
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        try {
+            Remove-Item -LiteralPath $InstallPath -Recurse -Force -ErrorAction Stop
+            break
+        } catch {
+            if ($attempt -eq 3) { Write-Warn "  Deletion failed: $($_.Exception.Message)" }
+            else { Start-Sleep -Seconds 2 }
+        }
+    }
+
+    if (Test-Path $InstallPath) {
+        # Do NOT abort here. The service is already gone and the marker with it; stopping now
+        # would skip the data notice and the residue report and leave the operator with less
+        # information, not more. Report precisely, then carry on and exit non-zero at the end.
+        $installPathRemaining = $true
+        $leftovers = @(Get-ChildItem -LiteralPath $InstallPath -Recurse -File -ErrorAction SilentlyContinue)
+        Write-Warn "  $($leftovers.Count) file(s) could not be deleted under $InstallPath."
+        $holders = @(Get-ProcessesUnderPath -Path $InstallPath)
+        foreach ($process in $holders) {
+            Write-Warn "    held by PID $($process.Id) $($process.Name)"
+        }
+        if ($holders.Count -eq 0) {
+            Write-Info '    No process is running out of that path; a file handle from antivirus or'
+            Write-Info '    the search indexer is the usual cause. Delete the folder manually or reboot.'
+        }
+    } else {
+        Write-Info "  Deleted: $InstallPath"
+    }
 } else {
     Write-Info "  Install path not present."
 }
@@ -154,4 +233,8 @@ if ($installedThumbprint -and $isManagedAccount) {
 }
 
 Write-Host ""
+if ($installPathRemaining) {
+    Write-Warn "Uninstall finished with leftovers in $InstallPath (see above)."
+    exit 1
+}
 Write-Ok "Uninstall complete."

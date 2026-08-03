@@ -424,6 +424,15 @@ falls `sc.exe delete` den Dienstschlüssel wegen eines offenen SCM-Handles nur a
 `DELETE_PENDING` markiert hat — dessen `Environment`-Wert, in dem der Postgres-Connection-String
 **samt Passwort** steht.
 
+**Der Uninstaller wartet, bevor er den Dienst löscht.** Der SCM meldet `Stopped`, sobald der Dienst
+den Control-Code quittiert; der Prozess läuft danach noch weiter, während ASP.NET Core drainiert (im
+Lab gemessen: 31 Sekunden). Wird der Dienst in diesem Fenster gelöscht, ist der Prozess **verwaist** —
+über den SCM nicht mehr ansprechbar — und das anschließende Löschen zieht einer laufenden Anwendung
+die DLLs unter den Füßen weg. Das Skript wartet deshalb bis zu `-ProcessExitTimeoutSeconds` (Default
+90) auf Prozesse aus `InstallPath` und bricht andernfalls **mit noch registriertem Dienst** ab, damit
+ein unterstützter Weg zum Stoppen bleibt. Bleiben danach Dateien liegen (Virenscanner, Suchindexer),
+läuft das Skript trotzdem zu Ende, benennt die Reste samt haltendem Prozess und endet mit Exit-Code 1.
+
 Zwei Dinge bleiben **absichtlich** stehen, weil beide mit etwas anderem auf dem Host geteilt sein
 können und ein blindes Entziehen genau das kaputtmachen würde: das „Log on as a service"-Recht des
 gMSA und die Lese-ACE auf dem Private Key des TLS-Zertifikats. Das Skript benennt beide am Ende

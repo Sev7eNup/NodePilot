@@ -331,6 +331,27 @@ Assert-TextMatches -Name 'installer records a machine-wide installation marker' 
 $uninstallScript = Get-Content -LiteralPath $UninstallScriptPath -Raw
 Assert-TextMatches -Name 'uninstaller removes the installation marker' `
     -Text $uninstallScript -Pattern "(?s)Remove-Item[^\r\n]*\`$markerPath"
+
+# Observed on the lab host: the SCM reports 'Stopped' as soon as the service acknowledges the
+# control code, but the process kept running for 31 more seconds. Deleting the service in that
+# window ORPHANS it - nothing can stop it through the SCM afterwards - and the file deletion then
+# rips DLLs out from under a live process, leaving a half-deleted install directory. The wait has
+# to sit before sc.exe delete, so the operator still holds a supported way to stop the thing.
+#
+# Comments are stripped before the indices are taken, and the anchors are code-shaped rather than
+# prose-shaped. Both, because the explanatory comment above the wait names 'sc.exe delete' itself -
+# and the first version of this check duly failed on correct code.
+$uninstallCode = ($uninstallScript -split "`r?`n" | Where-Object { $_.TrimStart() -notmatch '^#' }) -join "`n"
+$processWaitIndex = $uninstallCode.IndexOf('$blocking = @(Get-ProcessesUnderPath -Path $InstallPath)')
+$serviceDeleteIndex = $uninstallCode.IndexOf('& sc.exe delete $ServiceName')
+if ($processWaitIndex -lt 0 -or $serviceDeleteIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the process wait and the service deletion in the uninstaller.'
+}
+if ($processWaitIndex -gt $serviceDeleteIndex) {
+    throw 'Deployment template check failed: the uninstaller deletes the service before waiting for its process to exit, which orphans a running process.'
+}
+Assert-TextMatches -Name 'uninstaller fails closed while processes still run from the install path' `
+    -Text $uninstallScript -Pattern '(?s)Still running: PID.*?\bthrow\b'
 # sc.exe delete leaves the service key behind while a handle is open, and that key holds the
 # Postgres connection string including its password.
 Assert-TextMatches -Name 'uninstaller clears the service environment holding the DB secret' `
