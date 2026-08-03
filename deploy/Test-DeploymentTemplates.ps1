@@ -433,6 +433,42 @@ if ($assertIndex -gt $stagingIndex) {
 Assert-TextMatches -Name 'installer records a machine-wide installation marker' `
     -Text $installerScript -Pattern 'HKLM:\\SOFTWARE\\NodePilot\\Server'
 
+# --- process-wait contracts ---------------------------------------------------------------------
+# The SCM reports SERVICE_STOPPED while the host is still unwinding, so an immediate snapshot of
+# the install directory finds the very process the script just stopped. Both scripts used to abort
+# there and tell the operator to kill it by hand (lab 2026-08-03, exit code 4 on a plain update).
+# Waiting for it - and ending what is left - is the script's job.
+Assert-TextMatches -Name 'the update waits for the stopped service process instead of blaming it' `
+    -Text $updateCode -Pattern 'Wait-NodePilotProcessesUnderPath[^\r\n]*-Force'
+Assert-TextMatches -Name 'the installer waits for the stopped service process too' `
+    -Text $installerScript -Pattern 'Wait-NodePilotProcessesUnderPath[^\r\n]*-Force'
+# The snapshot-and-throw is what produced the dead end. Its distinguishing feature is testing
+# Path.StartsWith inline instead of going through the shared helper.
+Assert-TextDoesNotMatch -Name 'the update must not re-add an unwaited process snapshot' `
+    -Text $updateCode -Pattern 'Get-Process[\s\S]{0,120}Path\.StartsWith'
+# Deleting the service before its process exits orphans it: nothing can address it through the
+# SCM afterwards, and the file replacement then rips DLLs out from under a live process.
+$installWaitIndex = $installerScript.IndexOf('Wait-NodePilotProcessesUnderPath')
+$installDeleteIndex = $installerScript.IndexOf('& sc.exe delete $Name')
+if ($installWaitIndex -lt 0 -or $installDeleteIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the installer process wait and service delete.'
+}
+if ($installWaitIndex -gt $installDeleteIndex) {
+    throw 'Deployment template check failed: the installer deletes the service before waiting for its process.'
+}
+# Both callers share one implementation; a re-forked copy would drift from the one that was fixed.
+$serviceControlScript = Get-Content -LiteralPath (Join-Path $scriptDirectory 'ServiceControl.ps1') -Raw
+Assert-TextMatches -Name 'the shared process helper exists' `
+    -Text $serviceControlScript -Pattern 'function\s+Wait-NodePilotProcessesUnderPath'
+Assert-TextDoesNotMatch -Name 'installer and update do not re-declare the shared process helper' `
+    -Text ($installerScript + $updateScript) `
+    -Pattern '(?m)^\s*function\s+(Wait|Get)-NodePilotProcessesUnderPath\b'
+# It has to ship, or the copy of Update-NodePilot.ps1 the setup lays down cannot dot-source it
+# and every update through the wizard dies on a missing helper.
+Assert-TextMatches -Name 'the shared process helper ships with the setup' `
+    -Text (Get-Content -LiteralPath (Join-Path $scriptDirectory 'server\Build-ServerInstaller.ps1') -Raw) `
+    -Pattern "'ServiceControl\.ps1'"
+
 # --- service start-type contracts ---------------------------------------------------------------
 # Scoped to the registration section, because Restore-ServiceRollbackSnapshot legitimately still
 # writes start= delayed-auto: it restores whatever the service it replaced had. A file-wide check

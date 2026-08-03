@@ -49,6 +49,14 @@ if (-not (Test-Path -LiteralPath $ArtifactSecurityScript -PathType Leaf)) {
 }
 . $ArtifactSecurityScript
 
+# Shared with Install-NodePilot.ps1: a service the SCM calls stopped can still have a live
+# process holding its own binaries, and waiting that out is this script's job, not the operator's.
+$ServiceControlScript = Join-Path $PSScriptRoot 'ServiceControl.ps1'
+if (-not (Test-Path -LiteralPath $ServiceControlScript -PathType Leaf)) {
+    throw "Service control helper not found: $ServiceControlScript"
+}
+. $ServiceControlScript
+
 function Write-Step { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Cyan }
 function Write-Info { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Gray }
 function Write-Ok   { param([string]$Text) Write-Host "[update] $Text" -ForegroundColor Green }
@@ -201,16 +209,20 @@ try {
 
         # A stopped service does not guarantee an empty install dir: an orphaned worker (or a
         # manually started NodePilot.Api.exe) keeps its DLLs mapped as image sections, and
-        # deleting a mapped DLL fails with plain "Access denied" (lab 2026-08-01, mid-wipe —
-        # which also destroys appsettings.Production.json before the abort). Fail CLOSED with
-        # names before touching a single file.
-        $lockers = Get-Process | Where-Object {
-            $_.Path -and $_.Path.StartsWith($InstallPath, [StringComparison]::OrdinalIgnoreCase)
-        }
-        if ($lockers) {
+        # deleting a mapped DLL fails with plain "Access denied" (lab 2026-08-01, mid-wipe -
+        # which also destroys appsettings.Production.json before the abort).
+        #
+        # It does not follow that the operator should be the one to clean up. The SCM reports
+        # SERVICE_STOPPED while the host is still unwinding, so the process this script just
+        # stopped was routinely still listed a second later - and the run aborted telling the
+        # operator to kill it by hand (lab 2026-08-03). Wait for it, then end whatever is left:
+        # everything under InstallPath is a NodePilot binary whose files are about to be
+        # replaced anyway. Fail CLOSED, with names, only if something survives that too.
+        $lockers = @(Wait-NodePilotProcessesUnderPath -Path $InstallPath -TimeoutSeconds 30 -Force)
+        if ($lockers.Count -gt 0) {
             $names = ($lockers | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '
-            throw ("Processes are still running from ${InstallPath}: $names. " +
-                   "Stop them (Stop-Process -Id <PID> -Force) and re-run. " +
+            throw ("Processes are still running from ${InstallPath} and could not be ended: $names. " +
+                   "Stop them (Stop-Process -Id <PID> -Force) or reboot, then re-run. " +
                    "Diagnose foreign DLL holds with: tasklist /m BCrypt-Net-Next.dll")
         }
 

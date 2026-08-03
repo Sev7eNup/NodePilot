@@ -197,6 +197,15 @@ if (-not (Test-Path -LiteralPath $PreflightScript -PathType Leaf)) {
     throw "Preflight helper not found: $PreflightScript"
 }
 . $PreflightScript
+
+# Shared with Update-NodePilot.ps1: a service the SCM calls stopped can still have a live process
+# holding its own binaries, and waiting that out is this script's job, not the operator's.
+$ServiceControlScript = Join-Path $PSScriptRoot 'ServiceControl.ps1'
+if (-not (Test-Path -LiteralPath $ServiceControlScript -PathType Leaf)) {
+    throw "Service control helper not found: $ServiceControlScript"
+}
+. $ServiceControlScript
+
 $artifactLock = $null
 $artifactStage = $null
 $installRollbackDir = $null
@@ -628,7 +637,13 @@ SeServiceLogonRight = $newValue
 }
 
 function Remove-ExistingService {
-    param([Parameter(Mandatory)][string]$Name)
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        # Explicit rather than reached out of the script scope: the wait below is about this
+        # directory's binaries, and a function that silently depends on an ambient variable is
+        # one refactor away from waiting on the wrong path.
+        [Parameter(Mandatory)][string]$InstallPath
+    )
     $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
     if (-not $svc) { return }
     Write-Info "Existing service '$Name' found - stopping and removing."
@@ -645,6 +660,19 @@ function Remove-ExistingService {
             throw "Service '$Name' did not stop within 30s; refusing to delete the service or replace its files."
         }
     }
+
+    # Between SERVICE_STOPPED and the process actually exiting, the binaries stay mapped. This
+    # wait belongs BEFORE sc.exe delete: deleting first orphans a live process that nothing can
+    # address through the SCM any more, and the file replacement below then rips DLLs out from
+    # under it. Same ordering as Uninstall-NodePilot.ps1, for the same reason.
+    $remaining = @(Wait-NodePilotProcessesUnderPath -Path $InstallPath -TimeoutSeconds 30 -Force)
+    if ($remaining.Count -gt 0) {
+        $names = ($remaining | ForEach-Object { "$($_.ProcessName) (PID $($_.Id))" }) -join ', '
+        throw ("Processes are still running from ${InstallPath} and could not be ended: $names. " +
+               "The service has NOT been deleted, so you can still stop it. End the processes above " +
+               'or reboot, then re-run.')
+    }
+
     & sc.exe delete $Name | Out-Null
     $deadline = (Get-Date).AddSeconds(20)
     while ((Get-Date) -lt $deadline) {
@@ -922,7 +950,7 @@ if ($DbProvider -eq 'postgres') {
 
 try {
 $installMutationStarted = $true
-Remove-ExistingService -Name $ServiceName
+Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath
 
 Write-Step "Preparing directories"
 if (Test-Path $InstallPath) {
@@ -1413,7 +1441,7 @@ catch {
     if ($installMutationStarted) {
         try {
             Write-Host "[install] Restoring the previous installation..." -ForegroundColor Yellow
-            Remove-ExistingService -Name $ServiceName
+            Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath
             if (-not (Test-Path -LiteralPath $InstallPath -PathType Container)) {
                 New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
             } else {

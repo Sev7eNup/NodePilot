@@ -134,6 +134,7 @@ Write-Step 'Staging the deployment scripts'
 $deployScripts = @(
     'ArtifactSecurity.ps1'
     'Preflight.ps1'
+    'ServiceControl.ps1'
     'SetupContract.ps1'
     'Invoke-NodePilotSetup.ps1'
     'Install-NodePilot.ps1'
