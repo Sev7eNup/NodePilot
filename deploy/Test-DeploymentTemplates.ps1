@@ -316,6 +316,21 @@ $rollbackPath = $updateScript.Substring($catchStart)
 Assert-TextMatches -Name 'a failed update still restores the pre-update state' `
     -Text $rollbackPath -Pattern '(?s)\$serviceWasRunning\s+-and.*?Start-Service'
 
+# Comment-stripped, because the explanation of the rule below necessarily names the things the
+# rule forbids. Anchored on the whole script rather than on $successCode: the start-type fix runs
+# before the health probe, and $successCode covers only what happens after it returned 200.
+$updateCode = Remove-CommentLines -Text $updateScript
+# Without this the delayed-auto fix reaches fresh installations only, and every upgraded host
+# keeps idling roughly two minutes past each boot waiting for something the new binaries now do
+# themselves. An upgrade that leaves the old start type behind looks exactly like no fix at all.
+Assert-TextMatches -Name 'an update normalises the service start type' `
+    -Text $updateCode -Pattern 'sc\.exe\s+config\s+\$ServiceName\s+start=\s+auto\b'
+# The update's contract is binaries only. Identity, dependencies and recovery actions belong to
+# the installer; reconfiguring them from here would change a service the operator asked us only
+# to update, and would do it without ever saying so.
+Assert-TextDoesNotMatch -Name 'an update must not reconfigure identity, dependencies or recovery' `
+    -Text $updateCode -Pattern 'sc\.exe\s+(failure|managedaccount)|sc\.exe\s+config[^\r\n]*\b(obj|depend)='
+
 # --- pre-flight extraction contracts ----------------------------------------------------------
 # The readiness checks live in Preflight.ps1 so the setup wizard can run the same set behind a
 # "re-check" button. That shared use is the entire reason for the split, and it only holds while

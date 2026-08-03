@@ -329,6 +329,11 @@ The health probe follows the port in the installed configuration, so a non-defau
   deleted**, naming the PID. A stopped service is not enough — an orphaned worker keeps its
   DLLs mapped, and Windows reports that as a plain *Access denied* mid-wipe. Stop the named
   process and re-run.
+- The **only** service setting an update changes is the start type, normalised to plain
+  `auto`. Installations made before the API waited for the database on its own carry
+  *Automatic (Delayed Start)*, which idles about two minutes past every boot for a wait the
+  new binaries now perform themselves. Identity, dependencies and recovery actions stay
+  exactly as the installer left them.
 - The binary backup deliberately **excludes** `appsettings.Production.json` (it holds
   secrets). It is the last file removed during the swap, so an aborted upgrade leaves it in
   place — but if it is ever lost, do not re-run the update: it refuses a layout without a
