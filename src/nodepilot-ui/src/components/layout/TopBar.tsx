@@ -79,7 +79,7 @@ export function TopBar({ onOpenMenu }: Readonly<{ onOpenMenu?: () => void }> = {
 
 /**
  * Inline host identity (machine name, FQDN, DNS domain) shown in the header so any signed-in
- * user can see at a glance which server answered — useful in active/passive HA where several
+ * user can see at a glance which server answered â€” useful in active/passive HA where several
  * nodes may serve the SPA. All fields are visible at once, separated by thin dividers; hidden
  * below `md` so they never crowd the title on narrow viewports.
  *
@@ -93,7 +93,7 @@ function HostIdentityInfo() {
   const { data } = useQuery({
     queryKey: ['host-info'],
     queryFn: systemApi.getHostInfo,
-    // Host identity is fixed for a given backend — fetch once, never poll, don't retry.
+    // Host identity is fixed for a given backend â€” fetch once, never poll, don't retry.
     enabled: isAuthenticated === true,
     staleTime: Infinity,
     retry: false,
@@ -147,9 +147,13 @@ function BackendStatus() {
     refetchOnWindowFocus: true,
     retry: false,
     staleTime: 10_000,
+    // The pill below IS this query's error UI, and it never holds data while the backend is
+    // down â€” so without this it would toast "status 502" every 15 seconds, forever, saying
+    // exactly what the red dot next to it already says.
+    meta: { silentError: true },
   });
 
-  // First load (no prior data) reads as "checking"; after that, error → offline.
+  // First load (no prior data) reads as "checking"; after that, error â†’ offline.
   const state: 'checking' | 'online' | 'offline' =
     isLoading && online === undefined ? 'checking' : (isError || !online) ? 'offline' : 'online';
 
