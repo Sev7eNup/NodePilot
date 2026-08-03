@@ -681,6 +681,7 @@ function Get-ServiceRollbackSnapshot {
     $registryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\$Name"
     $environment = @()
     $delayedAutoStart = 0
+    $dependOnService = @()
     if (-not (Test-Path -LiteralPath $registryPath)) {
         throw "Service '$Name' has no readable registry configuration; refusing to mutate it."
     }
@@ -694,6 +695,9 @@ function Get-ServiceRollbackSnapshot {
     if ($registryValues.PSObject.Properties.Name -contains 'DelayedAutoStart') {
         $delayedAutoStart = [int]$registryValues.DelayedAutoStart
     }
+    if ($registryValues.PSObject.Properties.Name -contains 'DependOnService') {
+        $dependOnService = @($registryValues.DependOnService | Where-Object { $_ })
+    }
     return [pscustomobject]@{
         Name = $Name
         DisplayName = [string]$service.DisplayName
@@ -703,6 +707,7 @@ function Get-ServiceRollbackSnapshot {
         WasRunning = [string]$service.State -eq 'Running'
         Environment = $environment
         DelayedAutoStart = $delayedAutoStart
+        DependOnService = $dependOnService
     }
 }
 
@@ -737,6 +742,12 @@ function Restore-ServiceRollbackSnapshot {
     }
     if ($Snapshot.StartMode -eq 'Auto' -and $Snapshot.DelayedAutoStart -eq 1) {
         & sc.exe config $Snapshot.Name start= delayed-auto | Out-Null
+    }
+    # sc.exe separates multiple dependencies with '/'. Restoring these matters because the
+    # service we replaced may itself have carried depend= Netlogon.
+    if ($Snapshot.DependOnService.Count -gt 0) {
+        & sc.exe config $Snapshot.Name depend= ($Snapshot.DependOnService -join '/') | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warn "  Rollback could not restore service dependencies." }
     }
 
     if ($Snapshot.Environment.Count -gt 0) {
@@ -1146,12 +1157,27 @@ if (-not $isLocalSystem -and $ScmStartName.TrimEnd().EndsWith('$')) {
         throw "sc.exe managedaccount failed (exit $LASTEXITCODE). Service rolled back."
     }
     Write-Info "  Marked service as Managed Account (SCM will retrieve gMSA password from DC)."
+
+    # A gMSA logon needs a DC: LSA fetches the managed password at start time. Without this
+    # dependency SCM can start us before Netlogon is running and the logon fails outright with
+    # event 7000 - a failure the API cannot ride out, because the process never starts. Only
+    # the domain-account path needs it; LocalSystem always logs on, and its database connection
+    # (computer-account Kerberos) is covered by the readiness gate inside the API instead.
+    & sc.exe config $ServiceName depend= Netlogon | Out-Null
+    if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe config (depend= Netlogon) returned $LASTEXITCODE" }
 }
 
-# delayed-auto and recovery-actions aren't exposed via Win32_Service, so we still use sc.exe
+# start type and recovery-actions aren't exposed via Win32_Service, so we still use sc.exe
 # for those - but those calls don't involve empty-string args, so the plain & operator works.
-& sc.exe config $ServiceName start= delayed-auto | Out-Null
-if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe config (delayed-auto) returned $LASTEXITCODE" }
+#
+# Plain auto, NOT delayed-auto. Delayed-auto was standing in for a database wait the API did not
+# have on this path, and it was wrong at both ends: it idled for two minutes on a host whose SQL
+# Server was ready after eight, and it still started too early whenever the database needed
+# longer than the fixed delay - leaving a crash-and-restart loop as the only recovery. The API
+# now waits for connectivity itself (DatabaseReadinessGate, Database:StartupWaitSeconds), so the
+# service may start as early as SCM will let it and simply blocks until the database answers.
+& sc.exe config $ServiceName start= auto | Out-Null
+if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe config (start= auto) returned $LASTEXITCODE" }
 
 & sc.exe description $ServiceName 'NodePilot workflow orchestrator. See https://localhost/swagger for API docs.' | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe description returned $LASTEXITCODE" }

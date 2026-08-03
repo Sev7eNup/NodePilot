@@ -128,6 +128,7 @@ var
   IsUpgrade: Boolean;
   ForceFullReinstall: Boolean;
   UninstallPurgeData: Boolean;
+  UninstallHandoff: Boolean;
   ProbeRan: Boolean;
   ProbeBlocking: Boolean;
 
@@ -250,6 +251,29 @@ begin
   begin
     IsUpgrade := True;
   end;
+end;
+
+// Locates the uninstaller this setup family registered. Empty when the installation came from
+// the zip package: that path leaves the HKLM marker DetectExistingInstallation reads, but no
+// unins000.exe, and offering a button that cannot work is worse than saying so.
+function UninstallerPath(): String;
+var
+  Raw: String;
+begin
+  Result := '';
+  if RegQueryStringValue(HKLM64,
+    'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{03EAD540-1472-4A1B-9F06-9CB3D358E202}_is1',
+    'UninstallString', Raw) then
+  begin
+    Raw := RemoveQuotes(Trim(Raw));
+    if (Raw <> '') and FileExists(Raw) then
+    begin
+      Result := Raw;
+      Exit;
+    end;
+  end;
+  if (ExistingInstallPath <> '') and FileExists(ExistingInstallPath + '\unins000.exe') then
+    Result := ExistingInstallPath + '\unins000.exe';
 end;
 
 // ---------------------------------------------------------------------------
@@ -624,6 +648,9 @@ begin
     'What should this setup do?', True, False);
   ModePage.Add('Update the program files and keep the current configuration');
   ModePage.Add('Set the installation up again from scratch (issues a new External-Trigger API key)');
+  // Removal belongs on the page an operator actually reaches. It is also reachable through
+  // Apps & Features, but nobody who just double-clicked the setup goes looking there.
+  ModePage.Add('Remove NodePilot from this computer (your database is left untouched)');
   ModePage.SelectedValueIndex := 0;
 
   IdentityPage := CreateInputOptionPage(wpSelectDir,
@@ -756,10 +783,41 @@ function NextButtonClick(CurPageID: Integer): Boolean;
 var
   ResultCode: Integer;
   Thumbprint: String;
+  UninstPath: String;
   I: Integer;
   WantsFix: Boolean;
 begin
   Result := True;
+
+  if (CurPageID = ModePage.ID) and (ModePage.SelectedValueIndex = 2) then
+  begin
+    UninstPath := UninstallerPath();
+    if UninstPath = '' then
+    begin
+      MsgBox('This installation was deployed from the zip package, so it has no setup ' +
+        'uninstaller to hand over to.' + #13#10#13#10 + 'Remove it with this script instead, ' +
+        'from an elevated PowerShell:' + #13#10#13#10 +
+        '  ' + ExistingInstallPath + '\deploy\Uninstall-NodePilot.ps1' + #13#10#13#10 +
+        'Add -PurgeData to delete the data directory as well.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    // No confirmation here on purpose: the uninstaller asks its own question - whether to keep
+    // the data directory - and two prompts in a row for one decision is how people learn to
+    // click through prompts. Launched without waiting so it takes over the screen instead of
+    // running behind a setup window frozen for the duration.
+    if not Exec(UninstPath, '', '', SW_SHOW, ewNoWait, ResultCode) then
+    begin
+      MsgBox('The uninstaller could not be started:' + #13#10#13#10 +
+        SysErrorMessage(ResultCode), mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    UninstallHandoff := True;
+    Result := False;
+    WizardForm.Close;
+    Exit;
+  end;
 
   if (CurPageID = ModePage.ID) and (ModePage.SelectedValueIndex = 1) then
   begin
@@ -1050,6 +1108,15 @@ begin
 
   if CurUninstallStep = usPostUninstall then
     RegDeleteKeyIncludingSubkeys(HKLM64, 'SOFTWARE\NodePilot\Server');
+end;
+
+procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
+begin
+  // Closing the wizard to hand over to the uninstaller is not the user cancelling anything, so
+  // do not ask them to confirm an abort they never asked for. DeinitializeSetup still runs and
+  // still wipes the session directory.
+  if UninstallHandoff then
+    Confirm := False;
 end;
 
 procedure DeinitializeSetup();

@@ -144,9 +144,21 @@ export function WorkflowsPage() {
     staleTime: 60_000,
   });
 
-  const { data: workflows, isLoading } = useQuery({
+  // isError and refetch are read, not just data and isLoading. Without them a failed request
+  // fell through to the "no workflows" empty state, so an overloaded database was indistinguishable
+  // from an empty installation. silentError suppresses the global toast because this page shows
+  // the failure in place, with a retry button.
+  const {
+    data: workflows,
+    isLoading,
+    isError,
+    error: workflowsError,
+    refetch: refetchWorkflows,
+    isFetching: isRefetchingWorkflows,
+  } = useQuery({
     queryKey: ['workflows'],
     queryFn: () => api.get<Workflow[]>('/workflows'),
+    meta: { silentError: true },
   });
 
   const createMutation = useMutation({
@@ -721,6 +733,23 @@ export function WorkflowsPage() {
       <div className="flex-1 min-w-0 lg:ml-3">
       {isLoading ? (
         <p className="text-outline">{t('common:loadingDots')}</p>
+      ) : isError ? (
+        <div className="np-card p-8 text-center np-fade-up" role="alert">
+          <p className="text-error font-medium">{t('workflows:loadFailed')}</p>
+          <p className="text-outline text-sm mt-2">
+            {workflowsError instanceof Error && workflowsError.message
+              ? workflowsError.message
+              : t('common:loadError')}
+          </p>
+          <button
+            type="button"
+            className="np-btn np-btn-secondary mt-4"
+            onClick={() => { void refetchWorkflows(); }}
+            disabled={isRefetchingWorkflows}
+          >
+            {isRefetchingWorkflows ? t('common:loadingDots') : t('common:retry')}
+          </button>
+        </div>
       ) : sortedWorkflows.length === 0 ? (
         <div className="np-card p-8 text-center text-outline np-fade-up">
           {selectedFolderId

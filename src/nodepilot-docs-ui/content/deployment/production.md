@@ -183,10 +183,14 @@ Unbeaufsichtigt für SCCM oder GPO:
 NodePilot-Server-Setup-1.0.1.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
-Ein erneuter Lauf erkennt eine vorhandene Installation und fährt per Default ein Update; über
-`/FULLREINSTALL` wird stattdessen neu aufgesetzt — das erzeugt allerdings einen **neuen
-External-Trigger-API-Key**, der alte ist nicht rekonstruierbar. Schema der Antwortdatei, Schalter
-und Exit-Codes stehen in `deploy/server/README.md`.
+Ein erneuter Lauf erkennt eine vorhandene Installation und bietet drei Wege an: per Default ein
+**Update**, alternativ **neu aufsetzen** — das erzeugt allerdings einen **neuen
+External-Trigger-API-Key**, der alte ist nicht rekonstruierbar — oder **entfernen**. Die dritte
+Option übergibt an denselben Uninstaller, den auch „Apps & Features" startet; sie fragt nichts
+doppelt, sondern lässt ihn seine eine Frage stellen: Datenverzeichnis behalten oder löschen. Die
+**Datenbank bleibt in jedem Fall unberührt** — dieses Setup hat sie nicht angelegt und entfernt sie
+nicht. `/FULLREINSTALL` überspringt die Auswahl und setzt direkt neu auf. Schema der Antwortdatei,
+Schalter und Exit-Codes stehen in `deploy/server/README.md`.
 
 ### Variante B: Skripte
 
@@ -254,7 +258,7 @@ Der Installer führt folgende Schritte aus:
 5. Produktionskonfiguration rendern.
 6. Dateisystem- und Zertifikats-ACLs setzen.
 7. HTTPS-Firewallregel anlegen.
-8. Windows-Dienst mit Delayed Auto Start und Recovery Actions registrieren.
+8. Windows-Dienst mit Auto Start und Recovery Actions registrieren (bei einem gMSA zusätzlich abhängig von Netlogon, damit der Logon nicht vor dem DC-Kontakt scheitert). Der Dienst startet also ohne feste Verzögerung und wartet stattdessen selbst auf die Datenbank — Obergrenze `Database:StartupWaitSeconds`, Standard 120 Sekunden.
 9. Dienst starten und Readiness prüfen.
 10. Admin-Setup-Token und External-Trigger-API-Key ausgeben.
 

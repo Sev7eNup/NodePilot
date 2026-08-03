@@ -219,6 +219,8 @@ Drei opt-in Helfer (Default `Llm:Enabled=false`):
 
 **Auth/Rate-Limit**: generate-Endpoints `[Authorize(Roles = "Admin,Operator")]`, chat `[Authorize]` (alle Rollen); `[EnableRateLimiting("ai-generate")]` (20/min/IP, hardcoded in [RateLimitingSetup.cs](src/NodePilot.Api/Hosting/RateLimitingSetup.cs)) sitzt auf allen drei AI-Controllern — `AiController`, `AiChatController` **und** `AiKnowledgeController` —, gilt also auch für `/api/ai/knowledge/ask`.
 
+**DB-Timeout → 503 `DATABASE_TIMEOUT`**: Ein Command-Timeout ist ein transienter Lastzustand, kein Bug — `DatabaseTimeoutExceptionHandler` liefert 503 + `Retry-After` statt eines anonymen 500 (Erkennung provider-agnostisch über `DbErrorClassifier.IsCommandTimeout`: SQL Server `-2`, Postgres `57014`, `TimeoutException`; die Kette wird über `InnerException` abgelaufen, weil EF und seine Retry-Strategie doppelt wrappen). Die interaktive Workflow-Liste setzt zusätzlich ein eigenes 15-s-Command-Timeout statt der 120 s aus `Database:CommandTimeoutSeconds` — EF behandelt Timeouts als transient und wiederholt sie, aus einem langsamen Query wurden sonst bis zu sechs volle Timeouts hintereinander. Frontend-Seite: der globale `QueryCache.onError` toastet jeden fehlgeschlagenen Query (opt-out per `meta.silentError`), weil eine Seite, die nur `data`/`isLoading` liest, einen Fehler sonst als leere Liste rendert. Siehe ADR 0007, Amendment 2026-08-03.
+
 **Disabled-Antwort**: Wenn `Llm:Enabled=false` → 503 mit `code: LLM_DISABLED`; wenn an, aber `Llm:ActiveProfileId` kein vorhandenes Profil benennt → 503 `LLM_NO_ACTIVE_PROFILE` (`LlmAvailability` in [LlmAvailability.cs](src/NodePilot.Api/Configuration/LlmAvailability.cs)). Andere Fehlerklassen siehe `LlmErrorKind` in [LlmException.cs](src/NodePilot.Ai/LlmException.cs).
 
 **Profile (`Llm:Profiles:<id>`)**: Verbindungen liegen als benannte Profile vor, gekeyt nach unveränderlicher Id; `Llm:ActiveProfileId` wählt das eine aktive. Global bleiben nur `Enabled` + `ActiveProfileId`, alles Verbindungsförmige (inkl. `EnableToolCalling`/`ToolCallMaxDepth` — Modell-Eigenschaft) sitzt im Profil (`LlmProfileOptions`).
@@ -346,6 +348,16 @@ Vollständige Operator-Doku: [deploy/README.md](deploy/README.md). Zweites Shipp
 
 Installer-Template setzt `LocalMachine` ([appsettings.Production.json.template](deploy/templates/appsettings.Production.json.template)). `CurrentUser` bricht bei Service-Account-Wechsel. Siehe Warnung in [CredentialStore.cs](src/NodePilot.Data/CredentialStore.cs) (~Zeile 99).
 
+### Dienst-Startverhalten (Boot)
+
+Der Dienst steht auf **`start= auto`** (nicht `delayed-auto`) und wartet die Datenbank selbst ab.
+
+- **`DatabaseReadinessGate` läuft in beiden Deployment-Modi**, direkt vor `MigrationBootstrapper`. Gewartet wird **nur** auf Erreichbarkeit (`CanConnectAsync`); ein Schema-/Migrationsfehler ist deterministisch und wird nie wiederholt, sondern schlägt sofort durch.
+- **`Database:StartupWaitSeconds`** (default 120, boot-fixed) steuert die Obergrenze. `0` oder negativ = einmal prüfen, dann weiter (dokumentierter Opt-out); Werte über **10 Minuten** werden gekappt — sonst hängt ein `86400`-Tippfehler den Dienststart wortlos einen Tag lang. Unlesbare Werte fallen auf 120 zurück.
+- **`depend= Netlogon` nur auf dem gMSA-Pfad.** Ein gMSA-Logon holt sein Passwort beim DC, bevor der Prozess existiert — kein In-Process-Warten kann das abfangen, der Fehlschlag ist Event 7000. LocalSystem braucht die Abhängigkeit nicht: es meldet sich immer an, und seine DB-Verbindung (Computerkonto-Kerberos) deckt das Gate ab.
+- **Warum nicht mehr `delayed-auto`:** die Verzögerung war der Ersatz für ein Warten, das es auf dem Server-Pfad nicht gab, und war an beiden Enden falsch. Gemessen auf CM1: Boot 11:37:45, SQL Server bereit 11:37:53, Dienststart 11:39:48 — 115 Sekunden Leerlauf, die für den Operator wie ein kaputter Dienst aussehen. Umgekehrt startete er bei einer Datenbank, die länger als die feste Frist braucht, weiterhin zu früh; einzige Rettung war die Absturz-Neustart-Schleife der SCM-Recovery-Aktionen.
+- **Bekannte Kante:** existiert die Zieldatenbank noch gar nicht (EF würde sie per `Migrate()` anlegen), meldet `CanConnectAsync` „nicht erreichbar" und der Boot wartet die volle Frist ab, bevor er sie anlegt. Auf dem Server-Pfad tritt das nicht auf — der Preflight prüft `Server/Database` und lässt eine Installation gegen eine fehlende Datenbank nicht zu.
+
 ### Stolperfallen (aus dem ersten Lab-Rollout gelernt)
 
 - **PS 5.1-Kompatibilität**: `RandomNumberGenerator.Fill()` ist .NET-Core-only — stattdessen `RNGCryptoServiceProvider.GetBytes()`. Deploy-Skripte müssen auf PS 5.1 **und** PS 7 laufen
@@ -355,7 +367,7 @@ Installer-Template setzt `LocalMachine` ([appsettings.Production.json.template](
 - **`$PSHOME\Modules` muss auch im Server-Artefakt gestaged werden**: `dotnet publish` legt SMA.dll in die Wurzel, die Core-Module aber unter `runtimes\win\lib\<tfm>\Modules` → ohne Kopie nach `<stage>\Modules` scheitert **jede** runScript-Activity mit „The term 'Write-Output' is not recognized" (implizite WinPS-Compat, die das früher maskierte, ist seit PR #87 bewusst aus). `Build-Artifact.ps1` staged seit 2026-08-01 wie der Desktop-Build
 - **CSP vs. Code-Editoren**: CodeMirror 6 (style-mod) und Monaco injizieren Laufzeit-`<style>`-Elemente → `style-src` braucht `'unsafe-inline'` (M-3 für Styles teilrevertiert, `script-src 'self'` bleibt strikt; Monaco hat keine Nonce-API). Guard: `SecurityPipelineSetupTests` — Dev und E2E fahren ohne diese Middleware, ein Direktiven-Regress fiele sonst erst auf dem Server auf
 - **`TokenValidityMiddleware` rejected nur auf `/api` + `/hubs`**: der SPA-Fallback-Endpoint trägt kein `[AllowAnonymous]`, ein abgelaufenes `np_auth` machte damit die gesamte SPA **inklusive `/login`** unerreichbar (rohes 401-JSON statt Seite). Außerhalb dieser beiden Präfixe wird die ungültige Identität gestrippt statt abgelehnt
-- **Update-Skript-Semantik** (alles drei aus dem Lab-Rollout): Prozess-Guard bricht **vor** dem ersten Delete ab, wenn noch etwas aus dem InstallPath läuft (gestoppter Dienst ≠ freie DLLs — gemappte Images liefern „Access denied"); `appsettings.Production.json` fällt beim Wipe **zuletzt** (steht bewusst nicht im Backup); die Health-Probe leitet ihren Port aus `Kestrel:Https:HttpsPort` der installierten Config ab — der 443-Parameterdefault rollte sonst ein gesundes 8443-Upgrade zurück
+- **Update-Skript-Semantik** (alles drei aus dem Lab-Rollout): Prozess-Guard bricht **vor** dem ersten Delete ab, wenn noch etwas aus dem InstallPath läuft (gestoppter Dienst ≠ freie DLLs — gemappte Images liefern „Access denied"); `appsettings.Production.json` fällt beim Wipe **zuletzt** (steht bewusst nicht im Backup); die Health-Probe leitet ihren Port aus `Kestrel:Https:HttpsPort` der installierten Config ab — der 443-Parameterdefault rollte sonst ein gesundes 8443-Upgrade zurück. **Einzige Dienstkonfiguration, die ein Update anfasst:** `start= auto` (Normalisierung von Altbeständen auf `delayed-auto`, sonst erreichte der Fix nur Neuinstallationen). Identität, `depend=` und Recovery-Aktionen bleiben Installer-Sache — per Contract
 
 ---
 
@@ -372,7 +384,7 @@ Electron als dünner Viewer.
 **Posture `Deployment:Mode`** (`Server` default | `Desktop`, [DeploymentMode.cs](src/NodePilot.Api/Configuration/DeploymentMode.cs); unbekannter Wert = Boot-Error). Desktop relaxiert **nur** drei Dinge:
 - `DatabaseTlsBootValidator`: `AllowInsecureTls` wird bei **Loopback-DB** zur Warning statt Error
 - `KestrelHttpsConfigurator`: `ListenLocalhost` statt `ListenAnyIP` (`LoopbackOnly`, nicht abschaltbar)
-- `DatabaseReadinessGate`: ≤120 s Warten auf Postgres vor dem Migration-Bootstrap (nur Erreichbarkeit, keine Migrationsfehler)
+- `DatabaseReadinessGate`: Warten auf DB-Erreichbarkeit vor dem Migration-Bootstrap (nur Erreichbarkeit, keine Migrationsfehler) — läuft in **beiden** Deployment-Modi, siehe „Dienst-Startverhalten"
 
 **Konsequenzen (nicht offensichtlich):** Der Loopback-Bind trifft den **kompletten Listener** — SPA,
 `/api/*`, `/hubs/*`, `/healthz`, `/api/webhooks/*`. Es ist **nicht** so, dass einzelne Routen gesperrt

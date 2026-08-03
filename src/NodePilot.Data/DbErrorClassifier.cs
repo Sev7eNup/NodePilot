@@ -30,6 +30,17 @@ public static class DbErrorClassifier
     private const int SqliteConstraintUnique = 2067;
     private const int SqliteConstraintPrimaryKey = 1555;
 
+    // SQL Server reports a client-side command timeout as error -2. It is not a server error at
+    // all: the client gave up and cancelled. Observed in the field as a workflow-list query that
+    // needed 85 ms of CPU and 2,585 logical reads but waited 55 seconds on RESOURCE_SEMAPHORE -
+    // a 22 MB memory grant it could not get while the box was under load.
+    private const int SqlServerCommandTimeout = -2;
+
+    // PostgreSQL: statement_timeout cancels the query server-side and reports 57014
+    // (query_canceled). Npgsql surfaces a client-side timeout as a plain TimeoutException instead,
+    // which the caller below also covers.
+    private const string PostgresQueryCanceled = "57014";
+
     /// <summary>
     /// True when the update failed because it would have duplicated a unique key — on any of
     /// the three providers this codebase runs against.
@@ -56,5 +67,36 @@ public static class DbErrorClassifier
         if (exception.GetType().FullName != "Microsoft.Data.SqlClient.SqlException") return false;
         var number = exception.GetType().GetProperty("Number")?.GetValue(exception) as int?;
         return number is SqlServerUniqueConstraint or SqlServerUniqueIndex;
+    }
+
+    /// <summary>
+    /// True when the command did not finish in time — the database is reachable and the statement
+    /// is valid, it simply took longer than the client was willing to wait.
+    ///
+    /// <para>This is worth distinguishing from every other database failure because the honest
+    /// answer to the user is different: not "something went wrong" but "the database is too busy
+    /// right now, try again". It also has nothing to do with the query being badly written; the
+    /// case that prompted this classifier spent 99.8% of its time waiting for a 22 MB memory
+    /// grant on a memory-starved server.</para>
+    ///
+    /// <para>The exception is unwrapped along <c>InnerException</c> because EF Core wraps provider
+    /// exceptions, and its retrying execution strategy wraps them again after the last attempt.</para>
+    /// </summary>
+    public static bool IsCommandTimeout(Exception? exception)
+    {
+        for (var current = exception; current is not null; current = current.InnerException)
+        {
+            if (current is TimeoutException) return true;
+            if (current is PostgresException pg && pg.SqlState == PostgresQueryCanceled) return true;
+            if (IsSqlServerCommandTimeout(current)) return true;
+        }
+        return false;
+    }
+
+    private static bool IsSqlServerCommandTimeout(Exception exception)
+    {
+        if (exception.GetType().FullName != "Microsoft.Data.SqlClient.SqlException") return false;
+        var number = exception.GetType().GetProperty("Number")?.GetValue(exception) as int?;
+        return number == SqlServerCommandTimeout;
     }
 }

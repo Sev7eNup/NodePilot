@@ -226,6 +226,15 @@ try {
         Assert-NodePilotExtractedFiles -RootPath $InstallPath
         Write-RestrictedSettings -Path $settingsPath -Content $settingsBytes -ServiceAccount $svcAccount
 
+        # Normalise the start type. Installations made before the API waited for the database
+        # carry start= delayed-auto, which idles roughly two minutes past every boot for a wait
+        # the binaries we just laid down now do themselves. Without this the fix would only ever
+        # reach fresh installations, and an upgraded host would keep looking dead after a reboot.
+        # This is the one piece of service configuration an update touches, and it changes no
+        # identity, no dependency and no recovery action.
+        & sc.exe config $ServiceName start= auto | Out-Null
+        if ($LASTEXITCODE -ne 0) { Write-Warn "  sc.exe config (start= auto) returned $LASTEXITCODE" }
+
         Write-Step "Starting service '$ServiceName'"
         Start-Service -Name $ServiceName -ErrorAction Stop
 

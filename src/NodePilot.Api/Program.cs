@@ -113,6 +113,9 @@ builder.Services.AddProblemDetails();
 // registered BEFORE the default handler, otherwise the generic ProblemDetails mapping
 // wins first and the client sees a 500 instead of the correct 503.
 builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.CapacityExceptionHandler>();
+// A database command timeout is a transient load condition, not a bug: 503 + Retry-After +
+// DATABASE_TIMEOUT rather than an anonymous 500 the client cannot act on.
+builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.DatabaseTimeoutExceptionHandler>();
 
 // Health checks — exposed as /healthz/live (process alive, no deps) and /healthz/ready
 // (DB reachable). Kept [AllowAnonymous] in the endpoint-mapping step below so Kubernetes /
@@ -397,19 +400,17 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
     var bootstrapDbLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    // Desktop mode: the bundled Postgres runs as its own Windows service and may still be
-    // starting when the API service comes up (the service `depend=` narrows but doesn't fully
-    // close the race, especially on first boot after initdb). Wait up to 120s for connectivity
-    // before migrating. Only reachability is awaited — a schema/migration error is never retried
-    // and surfaces immediately from Bootstrap below.
-    if (DeploymentModeReader.IsDesktop(builder.Configuration))
-    {
-        await DatabaseReadinessGate.WaitForDatabaseAsync(
-            canConnectAsync: token => db.Database.CanConnectAsync(token),
-            timeout: TimeSpan.FromSeconds(120),
-            pollInterval: TimeSpan.FromSeconds(2),
-            logger: bootstrapDbLogger);
-    }
+    // Wait for the database to accept connections before migrating. Both deployment modes race
+    // the same way at boot and neither service dependency closes it: Desktop against the bundled
+    // Postgres service (`depend=` narrows but doesn't close it, especially on first boot after
+    // initdb), Server against a remote SQL Server or PostgreSQL still recovering its databases.
+    // Only reachability is awaited — a schema/migration error is never retried and surfaces
+    // immediately from Bootstrap below.
+    await DatabaseReadinessGate.WaitForDatabaseAsync(
+        canConnectAsync: token => db.Database.CanConnectAsync(token),
+        timeout: DatabaseReadinessGate.ResolveStartupWait(builder.Configuration),
+        pollInterval: TimeSpan.FromSeconds(2),
+        logger: bootstrapDbLogger);
 
     MigrationBootstrapper.Bootstrap(db, bootstrapDbLogger);
 

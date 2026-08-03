@@ -131,6 +131,20 @@ ALTER ROLE db_owner ADD MEMBER [CONTOSO\NPSRV01$];
 
 `db_owner` ist nötig, damit der MigrationBootstrapper beim ersten Start das EF-Migrations-Set anwenden kann.
 
+> **`max server memory` setzen, wenn SQL Server sich die Maschine teilt.** Der Default ist
+> unbegrenzt; auf einem Host mit wenig RAM neben anderen Diensten führt das dazu, dass Abfragen auf
+> ihre Speicherzuteilung warten statt zu rechnen. Im Lab gemessen: die Workflow-Liste brauchte
+> 85 ms CPU und 2.585 logische Lesevorgänge, wartete aber 55 Sekunden auf eine 22-MB-Zuteilung
+> (`RESOURCE_SEMAPHORE`, längste Einzelwartezeit 119 s) — auf einer 4-GB-VM neben einem
+> SCCM-Site-Server. NodePilot antwortet darauf jetzt mit `503 DATABASE_TIMEOUT` statt zu hängen,
+> aber die Ursache liegt in der SQL-Server-Konfiguration. Prüfen mit:
+>
+> ```sql
+> SELECT name, value_in_use FROM sys.configurations WHERE name = 'max server memory (MB)';
+> SELECT wait_type, waiting_tasks_count, wait_time_ms, max_wait_time_ms
+> FROM sys.dm_os_wait_stats WHERE wait_type = 'RESOURCE_SEMAPHORE';
+> ```
+
 > Der Installer-Pre-Flight prüft die SQL-Erreichbarkeit mit der Identität des **installierenden Admins**, nicht mit der Dienst-Identität. Bei LocalSystem gibt er nach erfolgreichem Check zusätzlich genau das `CREATE LOGIN [<host>$]`-Snippet aus, das der laufende Dienst braucht — fehlt der Login, startet der Dienst, scheitert aber an `/healthz/ready` (503).
 
 **RCSI (Read-Committed-Snapshot-Isolation)** wird vom Installer automatisch aktiviert (`Enable-SqlReadCommittedSnapshot` im Pre-Flight). Das ist das SQL-Server-Pendant zu Postgres-MVCC: ohne RCSI blockieren langlaufende Reader (Stats-Refresh, Retention-Sweeps) jeden parallelen `INSERT` in `WorkflowExecutions`/`StepExecutions` unter dem Default-2PL-Locking. Falls der Installer-Schritt am Permission-Check scheitert (Login hat kein `ALTER DATABASE`), zeigt er die T-SQL-Anweisung für den DBA an. Manuelle Aktivierung:

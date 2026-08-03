@@ -118,6 +118,15 @@ Dienstidentität unangetastet, Rollback bei Fehler, Dienst läuft danach.
 
 ## Deinstallation
 
+Erreichbar an zwei Stellen: über „Apps & Features" wie bei jedem Windows-Programm, **und als dritte
+Option auf der Modus-Seite**, wenn man das Setup auf einem Rechner startet, auf dem NodePilot
+bereits installiert ist. Die zweite existiert, weil niemand, der gerade das Setup doppelgeklickt
+hat, anschließend in der Systemsteuerung sucht. Die Modus-Seite fragt dort nichts selbst, sondern
+übergibt an denselben Uninstaller — eine Entscheidung, eine Rückfrage.
+
+Bei einer per ZIP installierten Instanz gibt es keinen `unins000.exe`. Die Option nennt dann den
+Pfad zu `Uninstall-NodePilot.ps1` statt ins Leere zu greifen.
+
 Entfernt **alles, was dieses Setup installiert hat**: Windows-Dienst, Dienst-Binaries,
 Firewall-Regeln, Installations-Marker, Registry-Environment (inklusive des dort liegenden
 Postgres-Passworts) und den Uninstall-Eintrag.
@@ -234,6 +243,8 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 8 | Abbruch mitten im Wizard | kein Session-Verzeichnis bleibt zurück |
 | 9 | Deinstallation ohne Schalter | alles weg, Daten und Datenbank bleiben |
 | 10 | Deinstallation `/PURGEDATA=1` | zusätzlich Datenverzeichnis weg, Datenbank bleibt |
+| 11 | Modus-Seite → „Remove" | Uninstaller übernimmt, Setup schließt ohne Abbruch-Rückfrage |
+| 12 | Neustart nach Installation | Dienst kommt ohne Zutun hoch, auch wenn die DB später bereit ist |
 
 Stand: 1, 3, 5, 9 und 10 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server 2022 CU
-gelaufen. 2, 4, 6, 7, 8 nicht.
+gelaufen. 2, 4, 6, 7, 8, 11 und 12 nicht.
