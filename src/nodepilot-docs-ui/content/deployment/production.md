@@ -177,6 +177,11 @@ Kapiteln 1 bis 4 **bevor** es etwas verändert, und zeigt jede als grün, gelb o
 kopierbarer Anleitung. Auf Wunsch installiert es die Runtime, legt SQL-Login und Datenbank an oder
 erzeugt ein Laborzertifikat.
 
+Die Abschlussseite zeigt alles, was für den ersten Zugriff nötig ist: Adresse, Setup-Token für die
+erste Anmeldung, External-Trigger-API-Key, Zertifikats-Thumbprint sowie Dienstname und Pfade. Der
+API-Key erscheint **nur dort** — er ist danach nicht mehr rekonstruierbar. Der Text ist markierbar,
+und „Save this summary…" legt ihn als Datei ab.
+
 Unbeaufsichtigt für SCCM oder GPO:
 
 ```powershell

@@ -15,10 +15,22 @@ nutzbar und ist weiterhin die Referenz; das Setup ruft genau dieses Skript auf.
 | **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
 | **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), PostgreSQL-Rolle anlegen (kein PG-Client im Payload), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
 
-Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird und zeigt pro Zeile grün,
-gelb oder rot mit kopierbarer Anleitung. Rote Pflicht-Zeilen blockieren „Weiter" — der Installer
-würde ohnehin abbrechen, und ein Wizard, der einen in ein garantiertes Scheitern hineinführt, ist
-schlechter als einer, der stoppt.
+Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird. Jede Zeile trägt rechts ein
+Statuszeichen — Haken, Kreuz, Ausrufezeichen oder Gedankenstrich — und ist zusätzlich eingefärbt.
+Das Zeichen ist nicht Dekoration: Farbe allein sagt niemandem etwas, der dieses Grün nicht von
+diesem Rot unterscheidet, und in einem Screenshot in einem Ticket schon gar nicht. Rote
+Pflicht-Zeilen blockieren „Weiter" — der Installer würde ohnehin abbrechen, und ein Wizard, der
+einen in ein garantiertes Scheitern hineinführt, ist schlechter als einer, der stoppt.
+
+Ein Klick auf eine Zeile zeigt die zugehörige Anleitung darunter. Das ist ein **Label**, kein
+Eingabefeld: als `TNewMemo` blieb dafür nach acht Prüfzeilen genau eine Zeile Höhe übrig, mitsamt
+Scrollleiste — das sah aus wie ein kaputtes Textfeld. Der Preis ist, dass der Text nicht mehr
+markierbar ist; Inno-Pascal hat keine Clipboard-API, deshalb bleibt „In Datei speichern…" der Weg,
+die Anleitung aus dem Wizard herauszubekommen.
+
+Die Zeilen werden erst positioniert, wenn ihr Text steht. Vorher reservierte jede der acht
+Zeilen 16 px für eine Auto-Fix-Checkbox, die fast nie sichtbar ist — 128 px einer 309 px hohen
+Fläche für nichts.
 
 ## Architektur
 
@@ -115,6 +127,31 @@ Ein erneuter Lauf erkennt die vorhandene Installation über `HKLM\SOFTWARE\NodeP
 **auch eine, die per ZIP installiert wurde** — und fährt per Default die
 `Update-NodePilot.ps1`-Semantik: nur Binaries, `appsettings.Production.json` bleibt, Datenbank und
 Dienstidentität unangetastet, Rollback bei Fehler, Dienst läuft danach.
+
+## Abschlussseite
+
+Der Adapter schreibt nach einem erfolgreichen Lauf eine `[result]`-Sektion in seine INI; die
+letzte Wizard-Seite zeigt sie. Enthalten ist alles, was für den ersten Zugriff nötig ist:
+
+- **Adresse** (`https://<host>:<port>/`). Beim Update aus der bereits installierten
+  `appsettings.Production.json` abgeleitet — ein Update erfragt keine Netzwerkdaten.
+- **Setup-Token** für die erste Anmeldung, solange noch kein Konto existiert. Ist die Datei
+  besitzer-exklusiv und unlesbar, wird stattdessen ihr Pfad und der `robocopy /B`-Trick genannt;
+  fehlt sie ganz, hat die Datenbank bereits Konten — auch das steht dort, statt zu schweigen.
+- **External-Trigger-API-Key.** Der einzige Ort, an dem er je erscheint: erzeugt wird er vom
+  Adapter, `Install-NodePilot.ps1` druckt ihn auf eine Konsole, die unter `Exec(…, SW_HIDE)` nicht
+  existiert, und `install-report.txt` lässt ihn bewusst weg.
+- **Zertifikats-Thumbprint** mit dem Hinweis, ein selbstsigniertes auf den Clients zu importieren.
+- **Dienstname, Programm- und Datenverzeichnis.**
+
+Hier ist es ein `TNewMemo`, nicht wie auf der Readiness-Seite ein Label: die Seite ist sonst leer,
+also ist Platz für ein ordentlich dimensioniertes, und ein 64-Zeichen-API-Key, den man nicht
+markieren kann, müsste abgetippt werden. „Save this summary…" legt denselben Text auf den Desktop
+— **mit den Secrets darin**, worauf der Bestätigungsdialog hinweist.
+
+Gebaut wird die Zusammenfassung in `PrepareToInstall`, nicht in `CurPageChanged`: `DeinitializeSetup`
+räumt das Session-Verzeichnis, die INI wäre beim Anzeigen also längst weg. Und ausschließlich auf
+dem Erfolgspfad — ein zurückgerollter Lauf darf keine Werte präsentieren, als hätte er funktioniert.
 
 ## Deinstallation
 
@@ -245,6 +282,9 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 10 | Deinstallation `/PURGEDATA=1` | zusätzlich Datenverzeichnis weg, Datenbank bleibt |
 | 11 | Modus-Seite → „Remove" | Uninstaller übernimmt, Setup schließt ohne Abbruch-Rückfrage |
 | 12 | Neustart nach Installation | Dienst kommt ohne Zutun hoch, auch wenn die DB später bereit ist |
+| 13 | Abschlussseite nach Neuinstallation | URL, Setup-Token, API-Key, Thumbprint, Pfade sichtbar und markierbar |
+| 14 | Abschlussseite nach Update | URL aus der installierten Config, kein Token, kein neuer API-Key |
+| 15 | Update über laufenden Dienst | wartet den Prozess ab statt abzubrechen |
 
 Stand: 1, 3, 5, 9 und 10 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server 2022 CU
-gelaufen. 2, 4, 6, 7, 8, 11 und 12 nicht.
+gelaufen. 2, 4, 6, 7, 8 und 11 bis 15 nicht.

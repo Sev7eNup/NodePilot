@@ -433,6 +433,42 @@ if ($assertIndex -gt $stagingIndex) {
 Assert-TextMatches -Name 'installer records a machine-wide installation marker' `
     -Text $installerScript -Pattern 'HKLM:\\SOFTWARE\\NodePilot\\Server'
 
+# --- process-wait contracts ---------------------------------------------------------------------
+# The SCM reports SERVICE_STOPPED while the host is still unwinding, so an immediate snapshot of
+# the install directory finds the very process the script just stopped. Both scripts used to abort
+# there and tell the operator to kill it by hand (lab 2026-08-03, exit code 4 on a plain update).
+# Waiting for it - and ending what is left - is the script's job.
+Assert-TextMatches -Name 'the update waits for the stopped service process instead of blaming it' `
+    -Text $updateCode -Pattern 'Wait-NodePilotProcessesUnderPath[^\r\n]*-Force'
+Assert-TextMatches -Name 'the installer waits for the stopped service process too' `
+    -Text $installerScript -Pattern 'Wait-NodePilotProcessesUnderPath[^\r\n]*-Force'
+# The snapshot-and-throw is what produced the dead end. Its distinguishing feature is testing
+# Path.StartsWith inline instead of going through the shared helper.
+Assert-TextDoesNotMatch -Name 'the update must not re-add an unwaited process snapshot' `
+    -Text $updateCode -Pattern 'Get-Process[\s\S]{0,120}Path\.StartsWith'
+# Deleting the service before its process exits orphans it: nothing can address it through the
+# SCM afterwards, and the file replacement then rips DLLs out from under a live process.
+$installWaitIndex = $installerScript.IndexOf('Wait-NodePilotProcessesUnderPath')
+$installDeleteIndex = $installerScript.IndexOf('& sc.exe delete $Name')
+if ($installWaitIndex -lt 0 -or $installDeleteIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the installer process wait and service delete.'
+}
+if ($installWaitIndex -gt $installDeleteIndex) {
+    throw 'Deployment template check failed: the installer deletes the service before waiting for its process.'
+}
+# Both callers share one implementation; a re-forked copy would drift from the one that was fixed.
+$serviceControlScript = Get-Content -LiteralPath (Join-Path $scriptDirectory 'ServiceControl.ps1') -Raw
+Assert-TextMatches -Name 'the shared process helper exists' `
+    -Text $serviceControlScript -Pattern 'function\s+Wait-NodePilotProcessesUnderPath'
+Assert-TextDoesNotMatch -Name 'installer and update do not re-declare the shared process helper' `
+    -Text ($installerScript + $updateScript) `
+    -Pattern '(?m)^\s*function\s+(Wait|Get)-NodePilotProcessesUnderPath\b'
+# It has to ship, or the copy of Update-NodePilot.ps1 the setup lays down cannot dot-source it
+# and every update through the wizard dies on a missing helper.
+Assert-TextMatches -Name 'the shared process helper ships with the setup' `
+    -Text (Get-Content -LiteralPath (Join-Path $scriptDirectory 'server\Build-ServerInstaller.ps1') -Raw) `
+    -Pattern "'ServiceControl\.ps1'"
+
 # --- service start-type contracts ---------------------------------------------------------------
 # Scoped to the registration section, because Restore-ServiceRollbackSnapshot legitimately still
 # writes start= delayed-auto: it restores whatever the service it replaced had. A file-wide check
@@ -581,6 +617,92 @@ Assert-TextMatches -Name 'the uninstall says the database is left alone' `
 # page is the only screen a second run of the setup reliably shows, so the option lives there.
 Assert-TextMatches -Name 'the mode page offers removal' `
     -Text $serverIss -Pattern "ModePage\.Add\('Remove NodePilot from this computer"
+
+# --- readiness page presentation ----------------------------------------------------------------
+# Status was carried by text colour alone, which conveys nothing to anyone who cannot tell this
+# green from this red, and nothing at all in a greyscale screenshot or a support ticket.
+Assert-TextMatches -Name 'a passing check renders a glyph, not just a colour' `
+    -Text $serverIss -Pattern 'CheckMarks\[I\]\.Caption := MarkPass'
+Assert-TextMatches -Name 'a failing check renders a glyph, not just a colour' `
+    -Text $serverIss -Pattern 'CheckMarks\[I\]\.Caption := MarkFail'
+# The glyphs are character codes rather than literal characters on purpose: a .iss that only
+# compiles when saved in one particular encoding is a trap for whoever edits it next.
+Assert-TextDoesNotMatch -Name 'the setup script stays pure ASCII' `
+    -Text $serverIss -Pattern '[^\x00-\x7F]'
+# Rows are positioned after the captions are set, because a wrapped label only knows its height
+# once it has text. Laying out at construction time is what reserved 128 px for checkboxes that
+# are almost never shown and squeezed the remediation area down to a single line.
+$captionIndex = $serverIss.IndexOf('CheckLabels[I].Caption := Title')
+# Anchored on the indented CALL, not on the substring: 'procedure LayoutReadiness();' contains it
+# too, sits above the render loop, and made this check fail against a correct file.
+$layoutMatch = [regex]::Match($serverIss, '(?m)^[ \t]+LayoutReadiness\(\);')
+$layoutIndex = $(if ($layoutMatch.Success) { $layoutMatch.Index } else { -1 })
+if ($captionIndex -lt 0 -or $layoutIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the readiness render and layout steps.'
+}
+if ($layoutIndex -lt $captionIndex) {
+    throw 'Deployment template check failed: the readiness page lays rows out before their captions are set.'
+}
+# A memo sized to the leftovers is what produced a one-line box with a scrollbar that reads as a
+# broken edit field. The remediation text is display-only and belongs in a label.
+#
+# Scoped to the page, not the file: the finish page uses a memo on purpose, because it is
+# otherwise empty and a 64-character API key that cannot be selected would have to be retyped.
+$readinessStart = $serverIss.IndexOf('procedure CreateReadinessPage()')
+$readinessEnd = $serverIss.IndexOf('procedure InitializeWizard', $readinessStart)
+if ($readinessStart -lt 0 -or $readinessEnd -lt 0) {
+    throw 'Deployment template check failed: could not delimit CreateReadinessPage in the server setup.'
+}
+$readinessPageCode = $serverIss.Substring($readinessStart, $readinessEnd - $readinessStart)
+Assert-TextDoesNotMatch -Name 'the readiness page has no edit control' `
+    -Text $readinessPageCode -Pattern 'TNewMemo'
+
+# --- finish page ---------------------------------------------------------------------------------
+# The adapter has written url / adminSetupToken / externalTriggerApiKey into result.ini since the
+# wizard existed, and nothing ever read them back: the finish page showed Inno's stock "Setup has
+# finished" and the operator was left without an address, a first-login token, or the API key -
+# which is generated by the adapter, omitted from install-report.txt by design, and unrecoverable.
+Assert-TextMatches -Name 'the finish page shows the address' `
+    -Text $serverIss -Pattern "GetIniString\('result', 'url'"
+Assert-TextMatches -Name 'the finish page shows the first-login token' `
+    -Text $serverIss -Pattern "GetIniString\('result', 'adminSetupToken'"
+Assert-TextMatches -Name 'the finish page shows the external-trigger API key' `
+    -Text $serverIss -Pattern "GetIniString\('result', 'externalTriggerApiKey'"
+# The summary is assembled while result.ini still exists - DeinitializeSetup wipes the session
+# directory, so reading it from the page handler would find nothing. Which FUNCTION each step
+# lives in is the invariant; comparing file offsets would only measure declaration order, and
+# CurPageChanged is declared above PrepareToInstall regardless of when either runs.
+$prepareStart = $serverIss.IndexOf('function PrepareToInstall(')
+$prepareEnd = $serverIss.IndexOf('function InitializeUninstall(', $prepareStart)
+if ($prepareStart -lt 0 -or $prepareEnd -lt 0) {
+    throw 'Deployment template check failed: could not delimit PrepareToInstall in the server setup.'
+}
+$prepareCode = $serverIss.Substring($prepareStart, $prepareEnd - $prepareStart)
+
+Assert-TextMatches -Name 'the finish summary is built while the session still exists' `
+    -Text $prepareCode -Pattern 'BuildFinishSummary\(ResultIni\)'
+
+# A rolled-back run must never present values as if it had succeeded. Inside one function offsets
+# do reflect execution order, so: the failure branch comes first, and it leaves. Anchored on the
+# branch itself rather than on the first Exit; in the function - PrepareToInstall opens with an
+# early Exit; for the session check, which would satisfy a naive ordering test without proving
+# anything about the failure path.
+$failBranchIndex = $prepareCode.IndexOf('if ResultCode <> 0 then')
+$buildIndex = $prepareCode.IndexOf('BuildFinishSummary(ResultIni)')
+if ($failBranchIndex -lt 0 -or $buildIndex -lt 0 -or $buildIndex -lt $failBranchIndex) {
+    throw 'Deployment template check failed: the finish summary is built before the failure branch runs.'
+}
+Assert-TextMatches -Name 'a failed run leaves before the finish summary is built' `
+    -Text $prepareCode.Substring($failBranchIndex, $buildIndex - $failBranchIndex) -Pattern '(?m)^\s*Exit;\s*$'
+
+$pageChangedStart = $serverIss.IndexOf('procedure CurPageChanged(')
+$pageChangedEnd = $serverIss.IndexOf('function ValidatePort(', $pageChangedStart)
+if ($pageChangedStart -lt 0 -or $pageChangedEnd -lt 0) {
+    throw 'Deployment template check failed: could not delimit CurPageChanged in the server setup.'
+}
+Assert-TextDoesNotMatch -Name 'the finish page reads no file of its own' `
+    -Text $serverIss.Substring($pageChangedStart, $pageChangedEnd - $pageChangedStart) `
+    -Pattern 'GetIniString'
 # Sliced to the removal branch exactly, rather than bounded by a character count. A window wide
 # enough to cover the branch also reaches the /FULLREINSTALL confirmation that follows it, and
 # PowerShell's -match is case-insensitive, so a bounded pattern for "must not ask about purging"
@@ -686,7 +808,15 @@ $updateBranchStart = $setupAdapter.IndexOf('function Invoke-SetupUpdate')
 if ($updateBranchStart -lt 0) {
     throw 'Deployment template check failed: could not locate the update path in the setup adapter.'
 }
-$updateBranch = $setupAdapter.Substring($updateBranchStart)
+# Bounded at the invocation, not at the end of the file. What matters is the splat handed to
+# Update-NodePilot.ps1; after the call the adapter legitimately READS the installed
+# Kestrel:Https:HttpsPort to compose the address for the finish page, and a file-wide ban on the
+# word could not tell that apart from passing it.
+$updateInvokeIndex = $setupAdapter.IndexOf("'Update-NodePilot.ps1'", $updateBranchStart)
+if ($updateInvokeIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the updater invocation in the setup adapter.'
+}
+$updateBranch = $setupAdapter.Substring($updateBranchStart, $updateInvokeIndex - $updateBranchStart)
 # Matched without the leading hyphen on purpose: the adapter splats, so the realistic way this
 # regresses is a bare `HttpsPort = 443` hashtable key, not a `-HttpsPort` argument. The first
 # version of this check only looked for the hyphenated form and a mutation walked straight past it.

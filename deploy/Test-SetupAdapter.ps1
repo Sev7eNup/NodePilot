@@ -20,7 +20,8 @@
 [CmdletBinding()]
 param(
     [string]$SetupContractPath,
-    [string]$PreflightPath
+    [string]$PreflightPath,
+    [string]$ServiceControlPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,7 +34,10 @@ if ([string]::IsNullOrWhiteSpace($SetupContractPath)) {
 if ([string]::IsNullOrWhiteSpace($PreflightPath)) {
     $PreflightPath = Join-Path $scriptDirectory 'Preflight.ps1'
 }
-foreach ($path in @($SetupContractPath, $PreflightPath)) {
+if ([string]::IsNullOrWhiteSpace($ServiceControlPath)) {
+    $ServiceControlPath = Join-Path $scriptDirectory 'ServiceControl.ps1'
+}
+foreach ($path in @($SetupContractPath, $PreflightPath, $ServiceControlPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Setup adapter check failed: missing file '$path'."
     }
@@ -41,6 +45,12 @@ foreach ($path in @($SetupContractPath, $PreflightPath)) {
 
 . $SetupContractPath
 . $PreflightPath
+. $ServiceControlPath
+
+# ServiceControl.ps1 logs through the host script's writers. The real callers define these; the
+# harness has to stand in for them or the -Force path throws on its first warning.
+function Write-Info { param([string]$Text) Write-Verbose $Text }
+function Write-Warn { param([string]$Text) Write-Verbose $Text }
 
 $script:Passed = 0
 
@@ -326,6 +336,53 @@ try {
     Assert-Throws -Name 'asserting the same results does abort' -MessagePattern 'Aborted|not found|not present' -Action {
         Assert-NodePilotPreflight -Results $checks | Out-Null
     }
+
+    # --- ServiceControl.ps1 -------------------------------------------------------------------
+    # Static checks can prove the wait is CALLED; only running it proves it works. The defect this
+    # covers shipped: the update aborted on the process it had just stopped, because the SCM
+    # reports SERVICE_STOPPED before the host has exited.
+    $processRoot = Join-Path $workingDirectory 'procdir'
+    New-Item -ItemType Directory -Path $processRoot -Force | Out-Null
+
+    Assert-True -Name 'an empty directory reports no processes' `
+        -Condition (@(Get-NodePilotProcessesUnderPath -Path $processRoot).Count -eq 0)
+    Assert-True -Name 'waiting on an empty directory returns immediately' `
+        -Condition (@(Wait-NodePilotProcessesUnderPath -Path $processRoot -TimeoutSeconds 1).Count -eq 0)
+
+    # cmd.exe runs from anywhere and needs no arguments to sit idle on a paused pipe.
+    $probeExe = Join-Path $processRoot 'nodepilot-probe.exe'
+    Copy-Item -LiteralPath (Join-Path $env:SystemRoot 'System32\cmd.exe') -Destination $probeExe -Force
+    $probe = Start-Process -FilePath $probeExe -ArgumentList '/c', 'pause' -PassThru -WindowStyle Hidden
+    try {
+        # Start-Process returns before the image is necessarily enumerable; a short settle avoids
+        # asserting on a race rather than on the helper.
+        $settle = (Get-Date).AddSeconds(10)
+        while ((Get-Date) -lt $settle -and @(Get-NodePilotProcessesUnderPath -Path $processRoot).Count -eq 0) {
+            Start-Sleep -Milliseconds 200
+        }
+        Assert-True -Name 'a process under the path is found' `
+            -Condition (@(Get-NodePilotProcessesUnderPath -Path $processRoot).Count -ge 1)
+
+        # Without -Force the helper only observes: it must report the straggler, never end it.
+        Assert-True -Name 'waiting without -Force reports the straggler' `
+            -Condition (@(Wait-NodePilotProcessesUnderPath -Path $processRoot -TimeoutSeconds 1).Count -ge 1)
+        Assert-True -Name 'waiting without -Force leaves it running' `
+            -Condition (-not (Get-Process -Id $probe.Id -ErrorAction SilentlyContinue).HasExited)
+
+        # With -Force it is the caller's job to clear the directory, not the operator's.
+        Assert-True -Name 'waiting with -Force ends the straggler' `
+            -Condition (@(Wait-NodePilotProcessesUnderPath -Path $processRoot -TimeoutSeconds 1 -Force).Count -eq 0)
+        Assert-True -Name 'the ended process is really gone' `
+            -Condition ($null -eq (Get-Process -Id $probe.Id -ErrorAction SilentlyContinue))
+    }
+    finally {
+        Stop-Process -Id $probe.Id -Force -ErrorAction SilentlyContinue
+    }
+
+    # A path that never existed must be an empty answer, not an exception: callers use it to
+    # decide whether to proceed, and a throw there would abort an otherwise fine installation.
+    Assert-True -Name 'a non-existent path reports no processes' `
+        -Condition (@(Get-NodePilotProcessesUnderPath -Path (Join-Path $workingDirectory 'nope')).Count -eq 0)
 }
 finally {
     if (Test-Path -LiteralPath $workingDirectory) {

@@ -255,6 +255,12 @@ that whoever races to the login endpoint first cannot make themselves admin.
 3. Paste the token printed at the end of the install output, sign in again — done. The
    server deletes the token file and the bootstrap window closes permanently.
 
+If you installed with the GUI setup, its final page carries all of this — address, setup
+token, External-Trigger API key, certificate thumbprint, service name and paths — as
+selectable text, with a button to save it to a file. The API key appears there and
+nowhere else: it is not recoverable afterwards, and `install-report.txt` omits it by
+design.
+
 If the installer could not print the token: it lives in
 `C:\ProgramData\NodePilot\admin-setup.token`, which is ACL-restricted to the **service
 account** — by design even administrators cannot open it directly. Read it via backup
@@ -304,6 +310,7 @@ Logs: `C:\ProgramData\NodePilot\logs\` (CMTrace-formatted). Firewall rule:
 | Installer prints `FAILED: ... Restoring the previous installation` | any error after mutation began rolls back to the previous state | fix the reported cause and re-run; note the diagnostics tail the shared log file, so lines from the *previous* installation can appear — check timestamps |
 | Browser shows *Not secure* / `Invoke-RestMethod` trust error | self-signed Kestrel certificate not trusted on the client | import it into `LocalMachine\Root` on that machine |
 | Upgrade fails with *Access to the path '…\<some>.dll' is denied* | a process is still running from the install directory and keeps DLLs mapped, even though the service is stopped | `tasklist /m <dll>` names the holder; `Get-Process \| Where-Object { $_.Path -like 'C:\Program Files\NodePilot\*' } \| Stop-Process -Force`, then re-run. Current builds abort before deleting anything and print the PID |
+| Upgrade fails with *Processes are still running from … and could not be ended* | something under the install directory survived the 30-second grace period **and** could not be stopped — in practice a permissions problem or a hung kernel call | the message names the PID. Nothing was deleted and the service is untouched, so end it yourself or reboot, then re-run. Artifacts before 2026-08-03 reported this immediately after stopping the service, naming the very process they had just stopped; that was a missing wait, not a stuck process |
 | Browser shows `{"message":"Token is no longer valid"}` instead of the app | session cookie outlived `Authentication:SessionAbsoluteLifetimeHours` (8 h); artifacts built before 2026-08-02 answered SPA navigations with that 401 | clear the site's cookies to get back in; upgrade to a current artifact to stop it recurring |
 | AD login fails with correct credentials; audit shows `ldap_user_object_not_found`, log says *bind succeeded but no user object found* | the account's `userPrincipalName` attribute is unset or uses another suffix — AD still binds via the implicit `samAccountName@domain`, but the lookup searches that attribute | `Set-ADUser <user> -UserPrincipalName '<user>@corp.example.com'`; also verify `BaseDn` covers the account's OU |
 | AD login fails, audit shows `local_login_policy` although LDAP is configured | LDAP was not active for that request — the settings were saved but not yet in effect | re-check that the LDAP section is enabled and saved (HTTP 200), then retry |
