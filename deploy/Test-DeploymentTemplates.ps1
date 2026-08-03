@@ -581,6 +581,36 @@ Assert-TextMatches -Name 'the uninstall says the database is left alone' `
 # page is the only screen a second run of the setup reliably shows, so the option lives there.
 Assert-TextMatches -Name 'the mode page offers removal' `
     -Text $serverIss -Pattern "ModePage\.Add\('Remove NodePilot from this computer"
+
+# --- readiness page presentation ----------------------------------------------------------------
+# Status was carried by text colour alone, which conveys nothing to anyone who cannot tell this
+# green from this red, and nothing at all in a greyscale screenshot or a support ticket.
+Assert-TextMatches -Name 'a passing check renders a glyph, not just a colour' `
+    -Text $serverIss -Pattern 'CheckMarks\[I\]\.Caption := MarkPass'
+Assert-TextMatches -Name 'a failing check renders a glyph, not just a colour' `
+    -Text $serverIss -Pattern 'CheckMarks\[I\]\.Caption := MarkFail'
+# The glyphs are character codes rather than literal characters on purpose: a .iss that only
+# compiles when saved in one particular encoding is a trap for whoever edits it next.
+Assert-TextDoesNotMatch -Name 'the setup script stays pure ASCII' `
+    -Text $serverIss -Pattern '[^\x00-\x7F]'
+# Rows are positioned after the captions are set, because a wrapped label only knows its height
+# once it has text. Laying out at construction time is what reserved 128 px for checkboxes that
+# are almost never shown and squeezed the remediation area down to a single line.
+$captionIndex = $serverIss.IndexOf('CheckLabels[I].Caption := Title')
+# Anchored on the indented CALL, not on the substring: 'procedure LayoutReadiness();' contains it
+# too, sits above the render loop, and made this check fail against a correct file.
+$layoutMatch = [regex]::Match($serverIss, '(?m)^[ \t]+LayoutReadiness\(\);')
+$layoutIndex = $(if ($layoutMatch.Success) { $layoutMatch.Index } else { -1 })
+if ($captionIndex -lt 0 -or $layoutIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the readiness render and layout steps.'
+}
+if ($layoutIndex -lt $captionIndex) {
+    throw 'Deployment template check failed: the readiness page lays rows out before their captions are set.'
+}
+# A memo sized to the leftovers is what produced a one-line box with a scrollbar that reads as a
+# broken edit field. The remediation text is display-only and belongs in a label.
+Assert-TextDoesNotMatch -Name 'the readiness page has no edit control' `
+    -Text $serverIss -Pattern 'TNewMemo'
 # Sliced to the removal branch exactly, rather than bounded by a character count. A window wide
 # enough to cover the branch also reaches the /FULLREINSTALL confirmation that follows it, and
 # PowerShell's -match is case-insensitive, so a bounded pattern for "must not ask about purging"

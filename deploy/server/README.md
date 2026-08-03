@@ -15,10 +15,22 @@ nutzbar und ist weiterhin die Referenz; das Setup ruft genau dieses Skript auf.
 | **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
 | **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), PostgreSQL-Rolle anlegen (kein PG-Client im Payload), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
 
-Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird und zeigt pro Zeile grün,
-gelb oder rot mit kopierbarer Anleitung. Rote Pflicht-Zeilen blockieren „Weiter" — der Installer
-würde ohnehin abbrechen, und ein Wizard, der einen in ein garantiertes Scheitern hineinführt, ist
-schlechter als einer, der stoppt.
+Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird. Jede Zeile trägt rechts ein
+Statuszeichen — Haken, Kreuz, Ausrufezeichen oder Gedankenstrich — und ist zusätzlich eingefärbt.
+Das Zeichen ist nicht Dekoration: Farbe allein sagt niemandem etwas, der dieses Grün nicht von
+diesem Rot unterscheidet, und in einem Screenshot in einem Ticket schon gar nicht. Rote
+Pflicht-Zeilen blockieren „Weiter" — der Installer würde ohnehin abbrechen, und ein Wizard, der
+einen in ein garantiertes Scheitern hineinführt, ist schlechter als einer, der stoppt.
+
+Ein Klick auf eine Zeile zeigt die zugehörige Anleitung darunter. Das ist ein **Label**, kein
+Eingabefeld: als `TNewMemo` blieb dafür nach acht Prüfzeilen genau eine Zeile Höhe übrig, mitsamt
+Scrollleiste — das sah aus wie ein kaputtes Textfeld. Der Preis ist, dass der Text nicht mehr
+markierbar ist; Inno-Pascal hat keine Clipboard-API, deshalb bleibt „In Datei speichern…" der Weg,
+die Anleitung aus dem Wizard herauszubekommen.
+
+Die Zeilen werden erst positioniert, wenn ihr Text steht. Vorher reservierte jede der acht
+Zeilen 16 px für eine Auto-Fix-Checkbox, die fast nie sichtbar ist — 128 px einer 309 px hohen
+Fläche für nichts.
 
 ## Architektur
 

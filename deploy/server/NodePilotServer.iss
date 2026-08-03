@@ -102,6 +102,17 @@ const
   ExitInstallFailed = 4;
   CheckCount = 8;
 
+  // Status glyphs. Written as character codes so this file stays pure ASCII on disk - a .iss
+  // that needs a specific encoding to compile is a trap for the next editor.
+  MarkPass = #$2713;  // check mark
+  MarkFail = #$2717;  // ballot X
+  MarkWarn = '!';
+  MarkSkip = #$2013;  // en dash
+
+  ColourPass = clGreen;
+  ColourFail = $000000C0;
+  ColourWarn = $000080C0;
+
 var
   ModePage: TInputOptionWizardPage;
   IdentityPage: TInputOptionWizardPage;
@@ -115,8 +126,10 @@ var
 
   CheckIds: array[0..CheckCount - 1] of String;
   CheckLabels: array[0..CheckCount - 1] of TNewStaticText;
+  CheckMarks: array[0..CheckCount - 1] of TNewStaticText;
   CheckFixes: array[0..CheckCount - 1] of TNewCheckBox;
-  RemediationMemo: TNewMemo;
+  RemediationLabel: TNewStaticText;
+  RemediationText: String;
   RecheckButton: TNewButton;
   SaveButton: TNewButton;
 
@@ -419,18 +432,54 @@ begin
   Hint := GetIniString('check.' + CheckIds[Index], 'hint', '', Ini);
   Remediation := GetIniString('check.' + CheckIds[Index], 'remediation', '', Ini);
   if (Hint = '') and (Remediation = '') then
-    RemediationMemo.Text := 'Nothing to do for this item.'
+    RemediationText := 'Nothing to do for this item.'
   else
-    RemediationMemo.Text := ExpandNewlines(Hint) + #13#10#13#10 + ExpandNewlines(Remediation);
+    RemediationText := ExpandNewlines(Hint) + #13#10#13#10 + ExpandNewlines(Remediation);
+  RemediationLabel.Caption := RemediationText;
 end;
 
 procedure CheckLabelClick(Sender: TObject);
 var
   I: Integer;
 begin
+  // Either half of a row is a valid click target - the glyph sits in its own control, and
+  // hitting it should do what hitting the text does.
   for I := 0 to CheckCount - 1 do
-    if CheckLabels[I] = Sender then
+    if (CheckLabels[I] = Sender) or (CheckMarks[I] = Sender) then
       UpdateRemediation(I);
+end;
+
+// Rows are placed here rather than at construction time because a hidden auto-fix checkbox used
+// to reserve its 16 px anyway: eight of them ate 128 px of a 309 px surface for controls that are
+// almost never shown, which is what squeezed the remediation area down to a single line.
+procedure LayoutReadiness();
+var
+  I, Y, ButtonTop, Available: Integer;
+begin
+  Y := 0;
+  for I := 0 to CheckCount - 1 do
+  begin
+    CheckMarks[I].Visible := CheckLabels[I].Visible;
+    if not CheckLabels[I].Visible then Continue;
+
+    CheckLabels[I].Top := Y;
+    CheckMarks[I].Top := Y;
+    Y := Y + CheckLabels[I].Height + ScaleY(3);
+
+    if CheckFixes[I].Visible then
+    begin
+      CheckFixes[I].Top := Y;
+      Y := Y + ScaleY(19);
+    end;
+  end;
+
+  ButtonTop := ReadinessPage.SurfaceHeight - ScaleY(24);
+  RemediationLabel.Top := Y + ScaleY(8);
+  Available := ButtonTop - ScaleY(6) - RemediationLabel.Top;
+  // Never negative, never overlapping the buttons: with every row wrapped and every fix offered
+  // there is little left, and a label with no room is still better than one drawn over them.
+  if Available < ScaleY(13) then Available := ScaleY(13);
+  RemediationLabel.Height := Available;
 end;
 
 // Created lazily, because both the readiness page and PrepareToInstall need it and either can be
@@ -508,20 +557,41 @@ begin
     begin
       CheckLabels[I].Caption := '';
       CheckLabels[I].Visible := False;
+      CheckMarks[I].Visible := False;
       CheckFixes[I].Visible := False;
       Continue;
     end;
 
     CheckLabels[I].Visible := True;
     CheckLabels[I].Caption := Title + ': ' + Detail;
+    CheckMarks[I].Visible := True;
+
+    // Colour alone carried the status until now, which says nothing to anyone who cannot
+    // separate this green from this red - and nothing at all in a greyscale screenshot.
     if Status = 'Pass' then
-      CheckLabels[I].Font.Color := clGreen
+    begin
+      CheckMarks[I].Caption := MarkPass;
+      CheckLabels[I].Font.Color := ColourPass;
+      CheckMarks[I].Font.Color := ColourPass;
+    end
     else if Status = 'Fail' then
-      CheckLabels[I].Font.Color := $000000C0
+    begin
+      CheckMarks[I].Caption := MarkFail;
+      CheckLabels[I].Font.Color := ColourFail;
+      CheckMarks[I].Font.Color := ColourFail;
+    end
     else if Status = 'Warn' then
-      CheckLabels[I].Font.Color := $000080C0
+    begin
+      CheckMarks[I].Caption := MarkWarn;
+      CheckLabels[I].Font.Color := ColourWarn;
+      CheckMarks[I].Font.Color := ColourWarn;
+    end
     else
+    begin
+      CheckMarks[I].Caption := MarkSkip;
       CheckLabels[I].Font.Color := clGray;
+      CheckMarks[I].Font.Color := clGray;
+    end;
 
     // A fix is only offered for a red row that the adapter says it can act on. Ticking one and
     // clicking Next runs Provision and then re-runs this probe - the fix is never assumed to
@@ -536,7 +606,10 @@ begin
 
   ProbeRan := True;
   ProbeBlocking := ResultCode = ExitProbeFailed;
-  RemediationMemo.Text := 'Select a line above to see what to do about it.';
+  RemediationText := 'Select a line above to see what to do about it.';
+  RemediationLabel.Caption := RemediationText;
+  // Last, because it measures the wrapped heights the captions above just produced.
+  LayoutReadiness();
 end;
 
 procedure RecheckClick(Sender: TObject);
@@ -546,16 +619,28 @@ end;
 
 procedure SaveRemediationClick(Sender: TObject);
 var
-  Target: String;
+  Target, Rest: String;
   Lines: TArrayOfString;
-  I: Integer;
+  Count, P: Integer;
 begin
-  // Inno Setup's Pascal Script has no clipboard API, so "copy the snippet" is a save button plus
-  // a selectable memo (Ctrl+A, Ctrl+C works there).
+  // Inno Setup's Pascal Script has no clipboard API and the text now lives in a label rather than
+  // a selectable memo, so this button is the only way the instructions leave the wizard. Split by
+  // hand: the source is one string and SaveStringsToUTF8File wants one entry per line.
   Target := ExpandConstant('{userdesktop}\nodepilot-prerequisites.txt');
-  SetArrayLength(Lines, RemediationMemo.Lines.Count);
-  for I := 0 to RemediationMemo.Lines.Count - 1 do
-    Lines[I] := RemediationMemo.Lines[I];
+  Rest := RemediationText;
+  Count := 0;
+  SetArrayLength(Lines, 0);
+  P := Pos(#13#10, Rest);
+  while P > 0 do
+  begin
+    SetArrayLength(Lines, Count + 1);
+    Lines[Count] := Copy(Rest, 1, P - 1);
+    Count := Count + 1;
+    Rest := Copy(Rest, P + 2, Length(Rest));
+    P := Pos(#13#10, Rest);
+  end;
+  SetArrayLength(Lines, Count + 1);
+  Lines[Count] := Rest;
   if SaveStringsToUTF8File(Target, Lines, False) then
     MsgBox('Saved to ' + Target, mbInformation, MB_OK)
   else
@@ -564,41 +649,55 @@ end;
 
 procedure CreateReadinessPage();
 var
-  I, Top: Integer;
+  I: Integer;
 begin
   ReadinessPage := CreateCustomPage(NetworkPage.ID, 'Prerequisites',
     'NodePilot checks what it needs before anything is changed.');
 
-  Top := 0;
   for I := 0 to CheckCount - 1 do
   begin
+    // Text first, glyph in a fixed column at the right edge, so the glyphs line up into a
+    // status column instead of trailing ragged text.
     CheckLabels[I] := TNewStaticText.Create(ReadinessPage);
     CheckLabels[I].Parent := ReadinessPage.Surface;
-    CheckLabels[I].Top := Top;
-    CheckLabels[I].Width := ReadinessPage.SurfaceWidth;
+    CheckLabels[I].Left := 0;
+    CheckLabels[I].Width := ReadinessPage.SurfaceWidth - ScaleX(20);
+    // Wrapping matters: several details are long enough to be cut mid-sentence at this width,
+    // and a check that reports half a sentence is worse than one that takes two lines.
+    CheckLabels[I].WordWrap := True;
+    CheckLabels[I].AutoSize := True;
     CheckLabels[I].Cursor := crHand;
     CheckLabels[I].OnClick := @CheckLabelClick;
     CheckLabels[I].Caption := '';
-    Top := Top + ScaleY(15);
+
+    CheckMarks[I] := TNewStaticText.Create(ReadinessPage);
+    CheckMarks[I].Parent := ReadinessPage.Surface;
+    CheckMarks[I].Left := ReadinessPage.SurfaceWidth - ScaleX(16);
+    CheckMarks[I].Width := ScaleX(16);
+    CheckMarks[I].Font.Style := [fsBold];
+    CheckMarks[I].Cursor := crHand;
+    CheckMarks[I].OnClick := @CheckLabelClick;
+    CheckMarks[I].Caption := '';
 
     CheckFixes[I] := TNewCheckBox.Create(ReadinessPage);
     CheckFixes[I].Parent := ReadinessPage.Surface;
-    CheckFixes[I].Top := Top;
     CheckFixes[I].Left := ScaleX(12);
     CheckFixes[I].Width := ReadinessPage.SurfaceWidth - ScaleX(12);
-    CheckFixes[I].Height := ScaleY(15);
+    CheckFixes[I].Height := ScaleY(17);
     CheckFixes[I].Visible := False;
-    Top := Top + ScaleY(16);
   end;
 
-  RemediationMemo := TNewMemo.Create(ReadinessPage);
-  RemediationMemo.Parent := ReadinessPage.Surface;
-  RemediationMemo.Top := Top + ScaleY(6);
-  RemediationMemo.Width := ReadinessPage.SurfaceWidth;
-  RemediationMemo.Height := ReadinessPage.SurfaceHeight - Top - ScaleY(34);
-  RemediationMemo.ScrollBars := ssVertical;
-  RemediationMemo.ReadOnly := True;
-  RemediationMemo.Text := '';
+  // A read-only memo sized to the leftovers ended up one line tall with a scrollbar, which reads
+  // as a broken edit field. A wrapped label carries the same text and cannot be mistaken for
+  // something to type into. The cost is that the text is no longer selectable, so "Save
+  // instructions..." is now the only way to get it out of the wizard - it stays for that reason.
+  RemediationLabel := TNewStaticText.Create(ReadinessPage);
+  RemediationLabel.Parent := ReadinessPage.Surface;
+  RemediationLabel.Left := 0;
+  RemediationLabel.Width := ReadinessPage.SurfaceWidth;
+  RemediationLabel.WordWrap := True;
+  RemediationLabel.AutoSize := False;
+  RemediationLabel.Caption := '';
 
   RecheckButton := TNewButton.Create(ReadinessPage);
   RecheckButton.Parent := ReadinessPage.Surface;
