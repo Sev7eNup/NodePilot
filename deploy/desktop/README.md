@@ -35,8 +35,12 @@ relaxes **only** the things that make sense for a machine talking to itself:
 - `DatabaseTlsBootValidator` accepts `Database:AllowInsecureTls=true` **only** for a loopback DB host
   under Desktop mode (a 127.0.0.1 Postgres with no PKI). Remote hosts still fail closed.
 - Kestrel binds **loopback only** (`ListenLocalhost`), never every interface.
-- Before the migration bootstrap, the API waits up to **120 s** for Postgres connectivity (only
-  reachability is retried; a migration/schema error surfaces immediately).
+
+Waiting for the database before the migration bootstrap used to be listed here as a third Desktop
+relaxation. It is not one any more: `DatabaseReadinessGate` runs in **both** deployment modes,
+because both race the same way at boot — Desktop against the bundled Postgres service, Server
+against a remote database still recovering. The bound is `Database:StartupWaitSeconds` (default
+120 s). Only reachability is retried; a migration/schema error surfaces immediately.
 
 Everything else stays hardened. `Deployment:Mode` defaults to `Server`; an unknown value is a boot error.
 

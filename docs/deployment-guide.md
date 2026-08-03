@@ -296,6 +296,9 @@ Logs: `C:\ProgramData\NodePilot\logs\` (CMTrace-formatted). Firewall rule:
 | SQL preflight: SSL handshake error / `The wait operation timed out` | no TLS certificate assigned to SQL Server, or the certificate's key is CNG instead of `KeySpec=KeyExchange`, or the cert isn't trusted on the NodePilot server | redo [Step 2](#step-2--prepare-sql-server) |
 | Preflight: `SQL version pre-flight FAILED` — or, on older installer versions, the service boot-loops with TDS **error 8005** (`The parameter name is invalid`) | SQL Server 2022 RTM (or 2019 and older) cannot serve `Encrypt=Strict` | install the latest SQL Server 2022 CU (≥ 16.0.4003.1) |
 | Service starts, `/healthz/ready` stays 503, log shows `Login failed for user 'DOMAIN\...$'` | service identity has no SQL login / no DB user | grant it as in [Step 2](#step-2--prepare-sql-server) |
+| After a reboot the service is still stopped, then comes up on its own | artifacts built before 2026-08-03 registered the service as *Automatic (Delayed Start)*, which idles ~120 s after boot before starting anything | expected on those builds — nothing is broken. Current builds start immediately and wait for the database instead; the boot log names what it is waiting for |
+| Boot log repeats `Waiting for the database to accept connections (n/120s)` | the database is not answering yet — a remote SQL Server still recovering, a DC not yet reachable for Kerberos, or a wrong host | let it finish; it proceeds either way and then reports the real connection error. Raise `Database:StartupWaitSeconds` (max 600) if the database routinely needs longer |
+| Event log 7000 *the service did not start due to a logon failure*, gMSA identity, only on boot | the service tried to log on before Netlogon could fetch the gMSA password from a DC | current builds set `depend= Netlogon` for gMSA services; on older ones `sc.exe config NodePilot depend= Netlogon` fixes it in place |
 | `admin-setup.token` → *Access to the path is denied* | intentional owner-only ACL for the service account | read via `robocopy /B` as shown in [Step 4](#step-4--first-login) instead of editing the ACL |
 | Every `runScript` step fails with `The term 'Write-Output' is not recognized` | artifact built with a pre-2026-08 `Build-Artifact.ps1` that did not stage the PowerShell built-in modules — `$PSHOME\Modules` is missing in the install dir | rebuild with the current build script; or hot-fix in place: `Copy-Item 'C:\Program Files\NodePilot\runtimes\win\lib\net10.0\Modules' 'C:\Program Files\NodePilot\Modules' -Recurse` and restart the service |
 | Installer prints `FAILED: ... Restoring the previous installation` | any error after mutation began rolls back to the previous state | fix the reported cause and re-run; note the diagnostics tail the shared log file, so lines from the *previous* installation can appear — check timestamps |
@@ -337,6 +340,11 @@ The health probe follows the port in the installed configuration, so a non-defau
 service, its registry environment (which holds the Postgres password), the firewall rules, the
 installation marker and the binaries. `C:\ProgramData\NodePilot` survives unless you add
 `-PurgeData` (logs, JWT key, data-protection keyring — irreversible).
+
+If you installed with the GUI setup, you do not need the script: removal is offered as the third
+option on the setup's own start page when it finds an existing installation, and under
+*Apps & Features* as usual. Both ask the same single question — keep or delete the data directory —
+and both leave the database alone.
 
 **The database is never removed, by either path, and there is no switch for it.** NodePilot did not
 create it: you provisioned it in Step 2, it may be replicated or backed up, and in an

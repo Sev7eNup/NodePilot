@@ -417,6 +417,35 @@ if ($assertIndex -gt $stagingIndex) {
 # every subsequent fresh install look like an upgrade.
 Assert-TextMatches -Name 'installer records a machine-wide installation marker' `
     -Text $installerScript -Pattern 'HKLM:\\SOFTWARE\\NodePilot\\Server'
+
+# --- service start-type contracts ---------------------------------------------------------------
+# Scoped to the registration section, because Restore-ServiceRollbackSnapshot legitimately still
+# writes start= delayed-auto: it restores whatever the service it replaced had. A file-wide check
+# would either fail on that correct code or be weakened until it proves nothing.
+$registrationStart = $installerScript.IndexOf('Write-Step "Registering Windows Service"')
+$registrationEnd = $installerScript.IndexOf('Write-Step ', $registrationStart + 40)
+if ($registrationStart -lt 0 -or $registrationEnd -lt 0) {
+    throw 'Deployment template check failed: could not delimit the service registration section in the installer.'
+}
+# Comment-stripped: the block below explains at length why delayed-auto is wrong, and that prose
+# quotes the exact token the contract forbids.
+$registrationCode = Remove-CommentLines -Text $installerScript.Substring(
+    $registrationStart, $registrationEnd - $registrationStart)
+
+Assert-TextMatches -Name 'the service is registered as plain automatic start' `
+    -Text $registrationCode -Pattern 'sc\.exe\s+config\s+\$ServiceName\s+start=\s+auto\b'
+# Delayed-auto was a two-minute timer standing in for a database wait the API did not have. The
+# API waits for connectivity itself now; reintroducing the delay would restore both failure modes
+# (idle for two minutes when the database is ready in eight seconds, still too early when it is
+# not) and would do so invisibly, because the service does eventually come up either way.
+Assert-TextDoesNotMatch -Name 'the service start type must not fall back to a fixed delay' `
+    -Text $registrationCode -Pattern 'delayed-auto'
+# A gMSA logon needs a DC before the process exists, so no in-process wait can cover it.
+Assert-TextMatches -Name 'a gMSA service depends on Netlogon' `
+    -Text $registrationCode -Pattern 'sc\.exe\s+config\s+\$ServiceName\s+depend=\s+Netlogon'
+
+Assert-TextMatches -Name 'rollback restores the replaced service dependencies' `
+    -Text $installerScript -Pattern '\$Snapshot\.DependOnService\s+-join'
 # Comment-stripped, like the adapter and runtime scripts. Every contract below anchors on code,
 # and the comments explaining those rules necessarily quote the very things the rules forbid.
 $uninstallScript = Remove-CommentLines -Text (Get-Content -LiteralPath $UninstallScriptPath -Raw)
@@ -533,6 +562,31 @@ Assert-TextDoesNotMatch -Name 'the setup must not offer to drop the database' `
     -Text $serverIss -Pattern 'DROPDATABASE|DropDatabase|DROP DATABASE'
 Assert-TextMatches -Name 'the uninstall says the database is left alone' `
     -Text $serverIss -Pattern '(?s)InitializeUninstall[\s\S]*?DATABASE is not affected'
+# Removal has to be offered where an operator lands, not only under Apps & Features. The mode
+# page is the only screen a second run of the setup reliably shows, so the option lives there.
+Assert-TextMatches -Name 'the mode page offers removal' `
+    -Text $serverIss -Pattern "ModePage\.Add\('Remove NodePilot from this computer"
+# Sliced to the removal branch exactly, rather than bounded by a character count. A window wide
+# enough to cover the branch also reaches the /FULLREINSTALL confirmation that follows it, and
+# PowerShell's -match is case-insensitive, so a bounded pattern for "must not ask about purging"
+# also matched the branch's own help text naming the -PurgeData switch. Both are false positives
+# about neighbouring text rather than statements about this branch.
+$removalStart = $serverIss.IndexOf('ModePage.SelectedValueIndex = 2')
+$removalEnd = $serverIss.IndexOf('ModePage.SelectedValueIndex = 1', $removalStart)
+if ($removalStart -lt 0 -or $removalEnd -lt 0) {
+    throw 'Deployment template check failed: could not delimit the removal branch in the server setup.'
+}
+$removalBranch = $serverIss.Substring($removalStart, $removalEnd - $removalStart)
+
+Assert-TextMatches -Name 'choosing removal hands off to the registered uninstaller' `
+    -Text $removalBranch -Pattern 'Exec\(UninstPath'
+# The uninstaller owns the keep-or-delete-the-data-directory question. A second yes/no here would
+# put two prompts behind one decision, which is how operators learn to click prompts away.
+Assert-TextDoesNotMatch -Name 'the removal branch must not ask its own yes/no question' `
+    -Text $removalBranch -Pattern 'MB_YESNO'
+# Without this the handoff pops "are you sure you want to cancel?" for an abort nobody requested.
+Assert-TextMatches -Name 'the uninstall handoff suppresses the cancel confirmation' `
+    -Text $serverIss -Pattern '(?s)procedure CancelButtonClick[\s\S]{0,400}UninstallHandoff then[\s\S]{0,80}Confirm := False'
 # Silently pinning a publisher the operator never saw would be worse than today's explicit
 # -TrustedArtifactSignerThumbprint parameter.
 Assert-TextMatches -Name 'the pinned signer thumbprint is compiled in' `

@@ -1,11 +1,19 @@
 using System.Diagnostics;
+using Microsoft.Extensions.Configuration;
 
 namespace NodePilot.Api.Hosting;
 
 /// <summary>
-/// Polls database connectivity until the server accepts connections or a timeout elapses.
-/// Used in <c>Deployment:Mode=Desktop</c> so the API waits for the bundled Postgres Windows
-/// service to finish starting before <c>MigrationBootstrapper</c> runs <c>Database.Migrate()</c>.
+/// Polls database connectivity until the server accepts connections or a timeout elapses, so
+/// the API waits for the database instead of crashing on it when <c>MigrationBootstrapper</c>
+/// runs <c>Database.Migrate()</c>.
+/// <para>
+/// Runs in <b>both</b> deployment modes, because both race the same way at boot: Desktop against
+/// the bundled Postgres Windows service, Server against a remote SQL Server or PostgreSQL that
+/// is still recovering. The server installer used to substitute a fixed delayed-auto start for
+/// this wait, which is wrong at both ends — it idles for two minutes when the database was ready
+/// in eight seconds, and it still starts too early when the database needs longer than the delay.
+/// </para>
 /// <para>
 /// Only <b>connectivity</b> is retried. A schema or migration failure is a deterministic bug,
 /// not a transient startup race, so it is never retried here — the gate returns and the caller
@@ -14,6 +22,38 @@ namespace NodePilot.Api.Hosting;
 /// </summary>
 public static class DatabaseReadinessGate
 {
+    /// <summary>How long boot waits for the database to accept connections.</summary>
+    public const string StartupWaitSecondsKey = "Database:StartupWaitSeconds";
+
+    /// <summary>Applies when the key is absent, empty or unparseable.</summary>
+    public static readonly TimeSpan DefaultStartupWait = TimeSpan.FromSeconds(120);
+
+    /// <summary>
+    /// Upper bound. Past this point an unreachable database is an operational problem, not a
+    /// startup race, and silently hanging service start is the worst way to report it. Also
+    /// contains the "thought the unit was something else" typo — 86400 would hang boot for a day.
+    /// </summary>
+    public static readonly TimeSpan MaxStartupWait = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Reads <see cref="StartupWaitSecondsKey"/>. Absent, empty or unparseable →
+    /// <see cref="DefaultStartupWait"/>; zero or negative → <see cref="TimeSpan.Zero"/> (probe
+    /// once, then proceed, which is the documented opt-out); anything above
+    /// <see cref="MaxStartupWait"/> is clamped to it. Never throws.
+    /// </summary>
+    public static TimeSpan ResolveStartupWait(IConfiguration configuration)
+    {
+        var raw = configuration[StartupWaitSecondsKey];
+        if (string.IsNullOrWhiteSpace(raw)) return DefaultStartupWait;
+        if (!int.TryParse(raw.Trim(), System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds))
+            return DefaultStartupWait;
+        if (seconds <= 0) return TimeSpan.Zero;
+
+        var requested = TimeSpan.FromSeconds(seconds);
+        return requested > MaxStartupWait ? MaxStartupWait : requested;
+    }
+
     /// <summary>
     /// Repeatedly invokes <paramref name="canConnectAsync"/> until it returns true or
     /// <paramref name="timeout"/> elapses, sleeping <paramref name="pollInterval"/> between
