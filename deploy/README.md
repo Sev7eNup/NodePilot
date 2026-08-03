@@ -4,6 +4,13 @@ Turnkey installer für NodePilot als Windows-Service auf einem domain-joined Win
 
 > **Schritt-für-Schritt-Anleitung** (EN, lab-validiert, inkl. Zertifikats-Rezepten und Troubleshooting): [`docs/deployment-guide.md`](../docs/deployment-guide.md).
 
+> **Lieber klicken als tippen?** Es gibt einen GUI-Installer für genau diese Server-Installation:
+> `NodePilot-Server-Setup-<version>.exe`, siehe [`server/README.md`](server/README.md). Er ruft
+> dieselben Skripte auf, die hier beschrieben sind — der ZIP-Weg bleibt unverändert die Referenz
+> und ist für Automatisierung weiterhin der direktere. Das Setup nimmt vor allem die
+> Vertrauenszeremonie ab (ein Asset statt fünf, kein manueller Thumbprint-Abgleich) und prüft die
+> Voraussetzungen, bevor es etwas verändert. `/SILENT /ANSWERFILE=` deckt SCCM/GPO ab.
+
 > **Nur eine Maschine, kein Team-Zugriff nötig?** Dann ist die **Desktop-App** der deutlich schnellere Weg: ein `.exe`-Installer, der PostgreSQL und .NET-Laufzeit mitbringt, ohne Zertifikat, Datenbank oder AD-Vorarbeit — siehe [`desktop/README.md`](desktop/README.md). Sie bindet dafür ausschließlich Loopback: **kein Netzwerkzugriff, keine eingehenden Webhooks, kein SSO, keine HA**.
 
 Der Dienst läuft wahlweise unter:
@@ -19,6 +26,13 @@ Der Dienst läuft wahlweise unter:
 | [Install-NodePilot.ps1](Install-NodePilot.ps1) | Hauptinstaller — Service, ACLs, Firewall, Cert-Key-Access |
 | [ArtifactSecurity.ps1](ArtifactSecurity.ps1) | Geteilte Signier-/Verifikationslogik (Manifest + `.p7s`); wird von Build/Install/Update dot-sourced |
 | [Preflight.ps1](Preflight.ps1) | Geteilte **seiteneffektfreie** Readiness-Checks (Runtime, Zertifikat, gMSA, DB-Erreichbarkeit, TDS-8.0-Version, Dienstidentität, Domänenmitgliedschaft); wird von Install dot-sourced |
+| [SetupContract.ps1](SetupContract.ps1) | Answer-File-Vertrag des GUI-Setups: Schema, Splat-Abbildung auf `Install-NodePilot.ps1`, SecureString-Aufbau, INI-Ergebnisdatei |
+| [Invoke-NodePilotSetup.ps1](Invoke-NodePilotSetup.ps1) | Adapter zwischen Wizard und Skripten (`InitSession`/`Probe`/`Provision`/`Apply`/`Cleanup`) |
+| [Provision-NodePilotDatabase.ps1](Provision-NodePilotDatabase.ps1) | Opt-in: SQL-Login + Datenbank anlegen. Rechte-Gate **vor** jeder Mutation, sonst nur DDL-Ausgabe. Nur SQL Server |
+| [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Opt-in: selbstsigniertes Kestrel-Zertifikat, zwei Jahre, **kein** automatischer Root-Import |
+| [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Bauzeit: ASP.NET-Core-Runtime holen, gegen publizierten SHA512 + eingecheckten Pin + Authenticode prüfen |
+| [Test-SetupAdapter.ps1](Test-SetupAdapter.ps1) | Verhaltenstest des Answer-File-Vertrags (non-admin, offline, ohne DB) |
+| [server/](server/README.md) | GUI-Installer für die Server-Installation (Inno Setup 6) |
 | [Test-ArtifactSecurity.ps1](Test-ArtifactSecurity.ps1) | Selbsttest der Artefakt-Signaturkette (Tamper-Erkennung, Signer-Pinning) |
 | [Update-NodePilot.ps1](Update-NodePilot.ps1) | In-Place-Upgrade, erhält appsettings + SQL-DB, rollt bei Fehler zurück |
 | [Uninstall-NodePilot.ps1](Uninstall-NodePilot.ps1) | Stoppt Dienst, entfernt Binaries, Firewall-Regeln und den Installations-Marker. DB bleibt unberührt |
@@ -436,7 +450,14 @@ läuft das Skript trotzdem zu Ende, benennt die Reste samt haltendem Prozess und
 Zwei Dinge bleiben **absichtlich** stehen, weil beide mit etwas anderem auf dem Host geteilt sein
 können und ein blindes Entziehen genau das kaputtmachen würde: das „Log on as a service"-Recht des
 gMSA und die Lese-ACE auf dem Private Key des TLS-Zertifikats. Das Skript benennt beide am Ende
-seines Laufs namentlich statt sie stillschweigend zu hinterlassen.
+seines Laufs namentlich statt sie stillschweigend zu hinterlassen — ebenso die Datenbank, damit
+niemand nach der Deinstallation raten muss, ob sie noch da ist.
+
+**`-PurgeData` nimmt sich vorher die Besitzrechte.** `jwt-secret.key` und `admin-setup.token`
+schreibt der Installer owner-only auf das *Dienstkonto*; auch ein Administrator kann sie sonst
+nicht löschen, und der Lauf bricht mittendrin ab. Das Skript ruft dafür `takeown` und `icacls` mit
+der well-known SID `S-1-5-32-544` auf — **ohne** `(OI)(CI)`: das sind Container-Vererbungsflags,
+die auf einer Blattdatei stillschweigend verworfen werden, während `icacls` trotzdem Erfolg meldet.
 
 ## Backup & Disaster Recovery
 
@@ -483,7 +504,13 @@ Restore läuft transaktional in Abhängigkeitsreihenfolge, validiert Referenzen 
 
 ## Was NICHT vom Installer gemacht wird
 
-- Keine Installation der ASP.NET Core Runtime — muss vorab vorhanden sein.
+- Keine Installation der ASP.NET Core Runtime — muss vorab vorhanden sein. **Ausnahme:** das
+  GUI-Setup (`server/`) bringt den offiziellen Microsoft-Runtime-Installer mit und bietet ihn auf
+  der Readiness-Seite an; der hier beschriebene ZIP-Weg tut das nicht.
+- **Kein Löschen der Datenbank bei der Deinstallation — auch nicht optional.** Sie wurde separat
+  bereitgestellt, hat oft ein eigenes Backup- und Replikationsregime, und in einem
+  Active/Passive-Cluster teilen sich beide Knoten dieselbe. Was der Installer nie angelegt hat,
+  entfernt er nicht.
 - Kein Erstellen des gMSA, der SQL-Login oder der Kerberos-Delegation — AD/DBA-Aufgabe.
 - Keine Registrierung des NodePilot-HTTP-SPN, keine NTLM-Block-Policy und **keine Browser-Intranet-Policy** (`AuthServerAllowlist` / Site-to-Zone) — alle drei muss das AD-/Security-Team vor Aktivierung von Windows SSO ausrollen und prüfen. Ohne die Browser-Policy funktioniert die Anmeldung zwar, fragt aber bei jedem Anwender nach Zugangsdaten statt still per Ticket zu laufen.
 - Keine Konfiguration eines OIDC-IdP oder SCIM-Clients — Redirect-URI, Claims, Gruppen-Allowlist und Provisioning-Bearer-Token bleiben IdP-/IAM-Aufgabe.

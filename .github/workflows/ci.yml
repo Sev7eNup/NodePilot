@@ -52,10 +52,13 @@ jobs:
         run: |
           .\deploy\Test-DeploymentTemplates.ps1
           .\deploy\Test-ArtifactSecurity.ps1
+          .\deploy\Test-SetupAdapter.ps1
 
       - name: Deployment security contracts (PowerShell 7)
         shell: pwsh
-        run: .\deploy\Test-ArtifactSecurity.ps1
+        run: |
+          .\deploy\Test-ArtifactSecurity.ps1
+          .\deploy\Test-SetupAdapter.ps1
 
       - name: Build
         run: dotnet build --configuration Release --no-restore

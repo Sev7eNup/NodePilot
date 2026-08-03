@@ -19,7 +19,7 @@ NodePilot unterstützt drei Betriebsarten. Die Auswahl bestimmt Installation, Ne
 |---|---|---|---|
 | Zweck | Entwicklung und Test | Produktiver Team-Betrieb | Produktiver Einzelplatz |
 | Betriebssystem | Windows | Windows Server 2022/2025 | Windows 11 x64 |
-| Installation | Quellcode, manuelle Prozesse | Signiertes ZIP und PowerShell-Skripte | Signierter Inno-Setup-Installer |
+| Installation | Quellcode, manuelle Prozesse | Signierter Inno-Setup-Installer **oder** signiertes ZIP mit PowerShell-Skripten | Signierter Inno-Setup-Installer |
 | Backend | `dotnet run` | Windows-Dienst | Windows-Dienst |
 | Oberfläche | Vite-Dev-Server | Vom Backend ausgelieferte SPA | Vom Backend ausgelieferte SPA in Electron |
 | Datenbank | Lokales PostgreSQL | Externer SQL Server 2022 oder PostgreSQL 16+ | Mitgeliefertes PostgreSQL 16 |

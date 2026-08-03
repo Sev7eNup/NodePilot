@@ -73,6 +73,18 @@ skip the `Root` imports.
 | **Kestrel HTTPS** | NodePilot server | `LocalMachine\My` + (self-signed) `LocalMachine\Root` there and on browser clients | CN/SAN = public hostname |
 | **SQL Server TLS** | SQL server | `LocalMachine\My` on the SQL server + (self-signed) `LocalMachine\Root` on the NodePilot server | RSA with `KeySpec=KeyExchange`, CN/SAN = SQL host FQDN |
 
+> **Shortcut: the GUI setup.** `NodePilot-Server-Setup-<version>.exe` performs exactly the
+> installation described below, driven by a wizard. It bundles the signed artifact and the ASP.NET
+> Core runtime, checks every prerequisite before it changes anything, and can create the SQL login
+> and database for you if your account may. That collapses Step 1 to "download one file" and
+> Step 3 to "click Next". It also runs unattended:
+> `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`.
+>
+> This guide keeps the scripted path as the reference, because it is what the wizard runs and what
+> you will want for automation and for troubleshooting. See
+> [`deploy/server/README.md`](../deploy/server/README.md) for the wizard, its answer-file schema
+> and its switches.
+
 ## Step 1 — Get the signed artifact
 
 You can either **download** the published one or **build your own**. The installer does not care
@@ -321,11 +333,22 @@ The health probe follows the port in the installed configuration, so a non-defau
   parameters. The database, the data directory and the admin accounts are untouched by
   either path; only the External-Trigger API key is regenerated.
 
-**Uninstall:** [`Uninstall-NodePilot.ps1`](../deploy/Uninstall-NodePilot.ps1) stops the
-service and removes binaries + firewall rule; the database and
-`C:\ProgramData\NodePilot` survive. Add `-PurgeData` to also wipe the data directory
-(logs, JWT key, setup token — irreversible), then drop the database
-(`DROP DATABASE [NodePilot];`) and remove the SQL login and certificates if desired.
+**Uninstall:** [`Uninstall-NodePilot.ps1`](../deploy/Uninstall-NodePilot.ps1) stops and removes the
+service, its registry environment (which holds the Postgres password), the firewall rules, the
+installation marker and the binaries. `C:\ProgramData\NodePilot` survives unless you add
+`-PurgeData` (logs, JWT key, data-protection keyring — irreversible).
+
+**The database is never removed, by either path, and there is no switch for it.** NodePilot did not
+create it: you provisioned it in Step 2, it may be replicated or backed up, and in an
+active/passive cluster both nodes share one. Drop it yourself once you are sure
+(`DROP DATABASE [NodePilot];`), along with the SQL login and any certificates you no longer need.
+For the same reason the uninstaller leaves the gMSA's *Log on as a service* right and the read ACE
+on the TLS certificate's private key in place — both can be shared with another service. It names
+all three at the end of its run rather than leaving you to guess.
+
+If you installed with the GUI setup, uninstall through *Apps & Features* or run
+`"C:\Program Files\NodePilot\unins000.exe"`; it asks the same data-directory question and accepts
+`/VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1` for unattended removal.
 
 ## Optional: sign in with Active Directory accounts (LDAP)
 
