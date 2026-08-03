@@ -63,6 +63,7 @@
   "importFailed": "Import failed: {{message}}",
   "exportFailed": "Export failed: {{message}}",
   "loadError": "Failed to load.",
+  "retry": "Try again",
   "minus": "—",
   "dash": "–",
   "min": "Min",

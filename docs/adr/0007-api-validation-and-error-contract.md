@@ -66,3 +66,31 @@ existing call sites is planned, and new code is not required to use `ApiProblems
 documented convention match the dominant practice instead of prescribing a migration nobody
 executes.
 
+## Amendment (2026-08-03) — thrown exceptions and 5xx
+
+The decision above governs 4xx responses a controller *returns*. It says nothing about responses
+produced by a thrown exception, and the result filter cannot: it only rewrites an `ObjectResult`
+(`if (context.Result is not ObjectResult objectResult) return;`), and its own guard is
+`status < 400`. A thrown exception therefore bypasses the contract entirely and lands on the
+framework's generic ProblemDetails — status, `traceId`, and nothing else.
+
+That gap cost real time. A database command timeout on `GET /api/workflows` escaped as an anonymous
+500; the SPA, which read only `data` and `isLoading`, rendered its "no workflows yet" empty state.
+A busy database was indistinguishable from an empty installation, on a page whose own counter said
+70. A generic 500 would already have been better than that — but a timeout genuinely deserves its
+own answer, because nothing is broken and retrying is the correct next step.
+
+The convention, matching what `CapacityExceptionHandler` had already established informally:
+
+- A failure mode the **client can act on differently** gets an `IExceptionHandler` registered with
+  `AddExceptionHandler`, mapping it to the status that describes the condition and emitting
+  `{ code, message }` — the same `SCREAMING_SNAKE_CASE` code namespace as the 4xx path.
+- Transient, load-related conditions use **503 + `Retry-After`**, not 500. Present:
+  `ExecutionCapacityException` → 503, and `DATABASE_TIMEOUT` → 503 (`DatabaseTimeoutExceptionHandler`).
+- Everything else keeps falling through to the generic handler. This is a list of deliberate
+  exceptions, not an invitation to hand-map every exception type.
+- **`UseExceptionHandler()` is only registered outside Development** (`SecurityPipelineSetup`), so
+  these handlers do not run under `dotnet run` — Development shows the developer exception page
+  instead. Tests must exercise the handler directly rather than through a Development-hosted
+  `WebApplicationFactory`, which would pass while proving nothing.
+

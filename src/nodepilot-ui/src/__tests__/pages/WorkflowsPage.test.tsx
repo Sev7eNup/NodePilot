@@ -911,3 +911,45 @@ describe('WorkflowsPage — AI workflow generation', () => {
     expect(screen.queryByText(/Generierten Workflow überprüfen/i)).not.toBeInTheDocument();
   });
 });
+
+describe('WorkflowsPage — load failure', () => {
+  // The defect this covers, observed in production: the page read only `data` and `isLoading`,
+  // so a failing request fell through to the "no workflows yet" empty state. An overloaded
+  // database was indistinguishable from an empty installation — on a page whose counter said 70.
+  it('shows an error with a retry button instead of the empty state', async () => {
+    server.use(
+      http.get(`${BASE}/api/workflows`, () =>
+        HttpResponse.json(
+          { code: 'DATABASE_TIMEOUT', message: 'The database did not answer in time.' },
+          { status: 503 },
+        ),
+      ),
+    );
+    renderPage('Admin');
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/Could not load the workflows/i);
+    // The empty state must NOT be what the user sees; that is the whole point.
+    expect(screen.queryByText(/No workflows yet/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+  });
+
+  it('recovers when the retry succeeds', async () => {
+    let attempt = 0;
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => {
+        attempt += 1;
+        if (attempt === 1) {
+          return HttpResponse.json({ code: 'DATABASE_TIMEOUT', message: 'busy' }, { status: 503 });
+        }
+        return HttpResponse.json([mkWorkflow({ name: 'Recovered Workflow' })]);
+      }),
+    );
+    renderPage('Admin');
+
+    fireEvent.click(await screen.findByRole('button', { name: /try again/i }));
+
+    expect(await screen.findByText('Recovered Workflow')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});

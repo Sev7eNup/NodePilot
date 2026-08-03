@@ -4,7 +4,7 @@ import { createBrowserRouter, Navigate } from 'react-router';
 // react-router v8 dissolved react-router-dom: general APIs live in 'react-router', the
 // DOM-specific ones (RouterProvider) in 'react-router/dom'.
 import { RouterProvider } from 'react-router/dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AppLayout } from './components/layout/AppLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ConfirmHost } from './components/common/ConfirmHost';
@@ -14,6 +14,8 @@ import { WorkflowsPage } from './pages/WorkflowsPage';
 import { LoginPage } from './pages/LoginPage';
 import { useAuthStore } from './stores/authStore';
 import { useThemeStore, applyTheme } from './stores/themeStore';
+import { toast } from './stores/toastStore';
+import i18n from './i18n';
 import { applyFavicon } from './lib/appIcon';
 
 // Lazy-loaded heavy pages — only fetched/compiled on first navigation.
@@ -36,6 +38,20 @@ const BackupPage = lazy(() => import('./pages/BackupPage').then(m => ({ default:
 const MetricsPage = lazy(() => import('./pages/MetricsPage').then(m => ({ default: m.MetricsPage })));
 
 const queryClient = new QueryClient({
+  // A failed query used to be invisible unless the page happened to read `isError`. Most did
+  // not: they destructure `data` and `isLoading`, so a 500 renders as an empty list — a busy
+  // database looked exactly like an empty installation. Mutations always surfaced their errors
+  // via toast; queries never did. This closes that asymmetry once, for every query in the app,
+  // instead of page by page.
+  queryCache: new QueryCache({
+    onError: (error, query) => {
+      // Silent by opt-in: a query that renders its own error UI sets meta.silentError so the
+      // user is not told the same thing twice.
+      if (query.meta?.silentError) return;
+      const message = error instanceof Error && error.message ? error.message : undefined;
+      toast.error(message ?? i18n.t('common:loadError'));
+    },
+  }),
   defaultOptions: {
     queries: {
       retry: 1,

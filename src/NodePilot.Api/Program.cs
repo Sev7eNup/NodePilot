@@ -113,6 +113,9 @@ builder.Services.AddProblemDetails();
 // registered BEFORE the default handler, otherwise the generic ProblemDetails mapping
 // wins first and the client sees a 500 instead of the correct 503.
 builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.CapacityExceptionHandler>();
+// A database command timeout is a transient load condition, not a bug: 503 + Retry-After +
+// DATABASE_TIMEOUT rather than an anonymous 500 the client cannot act on.
+builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.DatabaseTimeoutExceptionHandler>();
 
 // Health checks — exposed as /healthz/live (process alive, no deps) and /healthz/ready
 // (DB reachable). Kept [AllowAnonymous] in the endpoint-mapping step below so Kubernetes /
