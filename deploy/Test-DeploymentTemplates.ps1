@@ -15,6 +15,7 @@ param(
     [string]$SsoDocumentationPath,
     [string]$BuildScriptPath,
     [string]$BuildPropsPath,
+    [string]$UpdateScriptPath,
     [string]$PreflightScriptPath,
     [string]$UninstallScriptPath
 )
@@ -43,6 +44,9 @@ if ([string]::IsNullOrWhiteSpace($BuildScriptPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($BuildPropsPath)) {
     $BuildPropsPath = Join-Path $scriptDirectory '..\Directory.Build.props'
+}
+if ([string]::IsNullOrWhiteSpace($UpdateScriptPath)) {
+    $UpdateScriptPath = Join-Path $scriptDirectory 'Update-NodePilot.ps1'
 }
 if ([string]::IsNullOrWhiteSpace($PreflightScriptPath)) {
     $PreflightScriptPath = Join-Path $scriptDirectory 'Preflight.ps1'
@@ -75,7 +79,7 @@ function Assert-TextDoesNotMatch {
     }
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $PreflightScriptPath, $UninstallScriptPath)) {
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
     }
@@ -227,6 +231,33 @@ if ($versionMatch.Groups[1].Value -notmatch '^\d+\.\d+\.\d+') {
     throw "Deployment template check failed: <Version> '$($versionMatch.Groups[1].Value)' is not a three-part product version."
 }
 
+# --- update contract -----------------------------------------------------------------------
+# A successful update must leave the service RUNNING. The script used to restore the pre-update
+# state, which combined badly with its own 30-second stop timeout: operators stop the service by
+# hand first, so "stopped" became the recorded state and a successful update ended with a dead
+# service. Failure must still restore the prior state.
+$updateScript = Get-Content -LiteralPath $UpdateScriptPath -Raw
+
+$successStart = $updateScript.IndexOf("Write-Ok '/healthz/ready returned 200 OK'")
+$catchStart = $updateScript.IndexOf("`n    catch {", $(if ($successStart -ge 0) { $successStart } else { 0 }))
+if ($successStart -lt 0 -or $catchStart -lt 0) {
+    throw 'Deployment template check failed: could not delimit the success path in Update-NodePilot.ps1.'
+}
+$successPath = $updateScript.Substring($successStart, $catchStart - $successStart)
+
+# Comments are stripped first. The block carries an explanation that names Stop-ServiceAndVerify,
+# and matching prose would fail the check no matter what the code does - the same way an earlier
+# version of the build-script ordering check passed no matter where the signing step sat.
+$successCode = ($successPath -split "`n" | Where-Object { $_.TrimStart() -notmatch '^#' }) -join "`n"
+
+Assert-TextDoesNotMatch -Name 'a successful update must not stop the service again' `
+    -Text $successCode -Pattern 'Stop-ServiceAndVerify'
+
+# The rollback path is the one place the prior state still governs.
+$rollbackPath = $updateScript.Substring($catchStart)
+Assert-TextMatches -Name 'a failed update still restores the pre-update state' `
+    -Text $rollbackPath -Pattern '(?s)\$serviceWasRunning\s+-and.*?Start-Service'
+
 # --- pre-flight extraction contracts ----------------------------------------------------------
 # The readiness checks live in Preflight.ps1 so the setup wizard can run the same set behind a
 # "re-check" button. That shared use is the entire reason for the split, and it only holds while
@@ -352,6 +383,7 @@ if ($processWaitIndex -gt $serviceDeleteIndex) {
 }
 Assert-TextMatches -Name 'uninstaller fails closed while processes still run from the install path' `
     -Text $uninstallScript -Pattern '(?s)Still running: PID.*?\bthrow\b'
+
 # sc.exe delete leaves the service key behind while a handle is open, and that key holds the
 # Postgres connection string including its password.
 Assert-TextMatches -Name 'uninstaller clears the service environment holding the DB secret' `
