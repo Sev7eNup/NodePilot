@@ -306,16 +306,6 @@ function ConvertTo-NormalizedThumbprint {
     ($Raw -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
 }
 
-function Get-RandomBase64 {
-    param([int]$ByteCount = 48)
-    # RNGCryptoServiceProvider works on both Windows PowerShell 5.1 (.NET Framework)
-    # and PowerShell 7 (.NET 6+). RandomNumberGenerator.Fill() is Core-only.
-    $buf = New-Object byte[] $ByteCount
-    $rng = [System.Security.Cryptography.RNGCryptoServiceProvider]::new()
-    try { $rng.GetBytes($buf) } finally { $rng.Dispose() }
-    return [Convert]::ToBase64String($buf)
-}
-
 function Set-DirectoryAclForService {
     <#
       $DataPath must be writable by the service account and readable by Administrators/SYSTEM
@@ -777,7 +767,7 @@ if (-not $PublicHostname) {
 if (-not $JwtIssuer)   { $JwtIssuer   = "nodepilot:prod:$env:COMPUTERNAME" }
 if (-not $JwtAudience) { $JwtAudience = "nodepilot:prod:$env:COMPUTERNAME" }
 if (-not $AllowedHosts) { $AllowedHosts = $PublicHostname }
-if (-not $ExternalTriggerApiKey) { $ExternalTriggerApiKey = Get-RandomBase64 -ByteCount 48 }
+if (-not $ExternalTriggerApiKey) { $ExternalTriggerApiKey = New-NodePilotRandomBase64 -ByteCount 48 }
 
 $NormalizedThumbprint = ConvertTo-NormalizedThumbprint -Raw $CertThumbprint
 if ($NormalizedThumbprint.Length -ne 40) {

@@ -120,7 +120,7 @@ complete route to a working login, and nothing below mixes them.
 |---|---|---|---|
 | **For** | one person, one machine | a team, a real server | contributors, evaluation |
 | **You need** | Windows 11 x64, local admin | Windows Server 2022/2025, a TLS certificate, a prepared database | .NET 10 SDK, Node, a local PostgreSQL |
-| **You get** | installer `.exe` — bundles a local PostgreSQL and the .NET runtime, installs both as services, opens a native window | signed `.zip` + PowerShell installer — Windows service under a gMSA, Kestrel HTTPS | `dotnet run` + Vite dev server on your own machine |
+| **You get** | installer `.exe` — bundles a local PostgreSQL and the .NET runtime, installs both as services, opens a native window | setup `.exe` (or the signed `.zip` + PowerShell installer) — Windows service under a gMSA, Kestrel HTTPS | `dotnet run` + Vite dev server on your own machine |
 | **Database** | bundled, loopback-only | you provide it | you provide it |
 | **Offline** | yes, fully | yes | no (package restore) |
 | **Guide** | [below](#path-1--desktop-app) · [details](deploy/desktop/README.md) | [below](#path-2--windows-service) · [step-by-step](docs/deployment-guide.md) | [below](#path-3--from-source) |
@@ -192,8 +192,19 @@ directories so in-place upgrades can roll back.
 - a **TLS certificate** in `Cert:\LocalMachine\My` with its private key
 - **antivirus exclusions** agreed with your security team — see [docs/av-exclusions.md](docs/av-exclusions.md)
 
-Download the signed `NodePilot-<version>.zip` together with its `.manifest.json` and
-`.manifest.json.p7s` from the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest),
+There are two ways to run it, and they install the same thing.
+
+**With the wizard.** Download `NodePilot-Server-Setup-<version>.exe` from the
+[latest release](https://github.com/Sev7eNup/NodePilot/releases/latest) and run it. It carries the
+signed artifact and the ASP.NET Core runtime, checks every prerequisite above *before* changing
+anything — showing each as green, amber or red with a copyable fix — and can install the runtime,
+create the SQL login and database, or issue a lab certificate for you. One file instead of five,
+and no manual thumbprint comparison. Unattended:
+`Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`. Details, answer-file schema and
+switches: [deploy/server/README.md](deploy/server/README.md).
+
+**With the scripts**, which is what the wizard runs and what you want for automation. Download the
+signed `NodePilot-<version>.zip` together with its `.manifest.json` and `.manifest.json.p7s`,
 verify it against `SHA256SUMS.txt`, then:
 
 ```powershell

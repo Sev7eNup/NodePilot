@@ -40,19 +40,28 @@
 .PARAMETER IsccPath
     Inno Setup 6 compiler, passed through to the desktop installer build. Only read when
     -IncludeDesktopInstaller is set; defaults to the desktop script's own default.
-.PARAMETER DesktopSigningCertificateThumbprint
-    Authenticode-sign the desktop installer with this certificate, before the checksums are
-    written. Without it the installer is produced unsigned and SmartScreen warns on first launch.
-    Signing afterwards by hand invalidates the SHA256SUMS entry for the .exe, which is why this
-    is a build parameter rather than a documented follow-up step.
+.PARAMETER IncludeServerInstaller
+    Also build the GUI setup for the Windows-service deployment and place it next to the server
+    zip in .\out\. Needs Inno Setup 6 and a signed artifact; when either is missing the step is
+    SKIPPED with a warning and the server zip is still produced.
+.PARAMETER RuntimePayloadPath
+    A pre-fetched ASP.NET Core runtime installer for the server setup payload. Downloaded and
+    verified by deploy\Get-DotnetRuntimePayload.ps1 when omitted.
+.PARAMETER InstallerSigningCertificateThumbprint
+    Authenticode-sign every installer this run produces with this certificate, before the
+    checksums are written. Without it they are produced unsigned and SmartScreen warns on first
+    launch. Signing afterwards by hand invalidates the SHA256SUMS entry for the .exe, which is
+    why this is a build parameter rather than a documented follow-up step.
 .EXAMPLE
     .\deploy\Build-Artifact.ps1
 .EXAMPLE
     .\deploy\Build-Artifact.ps1 -Version 2026.04.23 -Configuration Release
 .EXAMPLE
-    # Full release drop: server zip + desktop installer + checksums, one version.
+    # Full release drop: server zip + server setup + desktop installer + checksums, one version,
+    # every installer Authenticode-signed before the checksums are written.
     .\deploy\Build-Artifact.ps1 -Version 1.0.1 -SigningCertificateThumbprint $tp `
-        -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql'
+        -IncludeServerInstaller -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql' `
+        -InstallerSigningCertificateThumbprint $tp
 #>
 
 [CmdletBinding(DefaultParameterSetName = 'Signed')]
@@ -65,9 +74,11 @@ param(
     [Parameter(Mandatory, ParameterSetName = 'Signed')][string]$SigningCertificateThumbprint,
     [Parameter(Mandatory, ParameterSetName = 'UnsignedDevelopment')][switch]$AllowUnsignedDevelopmentArtifact,
     [switch]$IncludeDesktopInstaller,
+    [switch]$IncludeServerInstaller,
     [string]$PgBinariesPath,
     [string]$IsccPath,
-    [string]$DesktopSigningCertificateThumbprint
+    [string]$RuntimePayloadPath,
+    [string]$InstallerSigningCertificateThumbprint
 )
 
 $ErrorActionPreference = 'Stop'
@@ -86,6 +97,7 @@ $TemplateSrc = Join-Path $PSScriptRoot 'templates\appsettings.Production.json.te
 $DeploymentTemplateTest = Join-Path $PSScriptRoot 'Test-DeploymentTemplates.ps1'
 $ArtifactSecurityScript = Join-Path $PSScriptRoot 'ArtifactSecurity.ps1'
 $DesktopBuildScript = Join-Path $PSScriptRoot 'desktop\Build-DesktopInstaller.ps1'
+$ServerBuildScript = Join-Path $PSScriptRoot 'server\Build-ServerInstaller.ps1'
 $BuildPropsPath = Join-Path $RepoRoot 'Directory.Build.props'
 
 # Directory.Build.props is the single source of the product version (it also stamps the
@@ -134,6 +146,9 @@ if (-not (Test-Path $ArtifactSecurityScript)) { throw "Artifact security helper 
 # distribution lying around.
 $buildDesktop = $false
 $desktopSkipReasons = @()
+# Declared up front: both pre-flight blocks read it, and either can be the only one that runs.
+# StrictMode makes an undeclared read a hard error rather than a silent $null.
+$resolvedIscc = $null
 if ($IncludeDesktopInstaller) {
     if (-not (Test-Path $DesktopBuildScript)) {
         $desktopSkipReasons += "Desktop build script missing: $DesktopBuildScript"
@@ -161,6 +176,42 @@ if ($IncludeDesktopInstaller) {
     } else {
         Write-Warning "Desktop installer will be SKIPPED - the server artifact is still built:"
         foreach ($reason in $desktopSkipReasons) { Write-Warning "  - $reason" }
+    }
+}
+
+# --- server installer pre-flight ---------------------------------------------------------------
+# Same rule as above: decided before the publish, and a missing prerequisite is a skip, never a
+# failure. The server zip has to stay buildable on a machine with no Inno Setup.
+$buildServerInstaller = $false
+$serverSkipReasons = @()
+if ($IncludeServerInstaller) {
+    if (-not (Test-Path $ServerBuildScript)) {
+        $serverSkipReasons += "Server setup build script missing: $ServerBuildScript"
+    }
+    if ($AllowUnsignedDevelopmentArtifact) {
+        # Not a limitation worth working around: the wizard runs the same
+        # Assert-NodePilotSignedArtifact the scripted path does, so an unsigned payload would
+        # produce an installer that refuses its own contents.
+        $serverSkipReasons += 'The server setup embeds the signed artifact and verifies it at install time, so it cannot be built from an -AllowUnsignedDevelopmentArtifact run.'
+    }
+    if (-not $resolvedIscc) {
+        # Resolve once; the desktop pre-flight may not have run at all.
+        . (Join-Path $PSScriptRoot 'desktop\Resolve-IsccPath.ps1')
+        $resolvedIscc = Resolve-NodePilotIsccPath -Explicit $IsccPath
+    }
+    if (-not $resolvedIscc) {
+        $serverSkipReasons += ("Inno Setup 6 compiler (ISCC.exe) not found. Install it from " +
+            "https://jrsoftware.org/isdl.php or pass -IsccPath. Probed: " + ((Get-NodePilotIsccCandidates) -join '; '))
+    } else {
+        $IsccPath = $resolvedIscc
+    }
+
+    if ($serverSkipReasons.Count -eq 0) {
+        $buildServerInstaller = $true
+        Write-Host "         Server setup: will be built" -ForegroundColor DarkGray
+    } else {
+        Write-Warning "Server setup will be SKIPPED - the server artifact is still built:"
+        foreach ($reason in $serverSkipReasons) { Write-Warning "  - $reason" }
     }
 }
 
@@ -342,30 +393,67 @@ if ($buildDesktop) {
     Copy-Item -LiteralPath $desktopOut -Destination $desktopInstaller -Force
     Write-Host "         Copied → $desktopInstaller" -ForegroundColor DarkGray
 
-    # Signing has to happen HERE, before the checksum step. Signing the .exe afterwards rewrites
-    # the file and silently invalidates its SHA256SUMS entry - a downloader following the
-    # verification instructions would then be told the artifact is corrupt.
-    if ($DesktopSigningCertificateThumbprint) {
-        Write-Host "[build] Authenticode-sign the desktop installer" -ForegroundColor Cyan
-        $signTool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter 'signtool.exe' -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -match '\\x64\\' } |
-            Sort-Object FullName -Descending | Select-Object -First 1
-        if (-not $signTool) {
-            throw ("signtool.exe not found - install the Windows SDK, or drop " +
-                   "-DesktopSigningCertificateThumbprint to produce an unsigned installer.")
-        }
+}
+
+# --- server setup installer -------------------------------------------------------------------
+# Runs AFTER the manifest signature exists: the setup embeds the signed zip plus its sidecars and
+# verifies them at install time, so it cannot be built before there is a signature to embed.
+$serverInstaller = $null
+if ($buildServerInstaller) {
+    Write-Host ""
+    Write-Host "[build] Server setup (GUI installer for the Windows service)" -ForegroundColor Cyan
+    $serverArgs = @{
+        ArtifactPath            = $ZipPath
+        TrustedSignerThumbprint = $SigningCertificateThumbprint
+        Version                 = $Version
+    }
+    if ($IsccPath) { $serverArgs['IsccPath'] = $IsccPath }
+    if ($RuntimePayloadPath) { $serverArgs['RuntimeInstallerPath'] = $RuntimePayloadPath }
+    & $ServerBuildScript @serverArgs | Out-Null
+
+    $serverOut = Join-Path (Split-Path $ServerBuildScript -Parent) "out\NodePilot-Server-Setup-$Version.exe"
+    if (-not (Test-Path -LiteralPath $serverOut)) {
+        throw "Server setup build reported success but the installer is missing: $serverOut"
+    }
+    $serverInstaller = Join-Path $OutDir "NodePilot-Server-Setup-$Version.exe"
+    Copy-Item -LiteralPath $serverOut -Destination $serverInstaller -Force
+    Write-Host "         Copied -> $serverInstaller" -ForegroundColor DarkGray
+}
+
+# --- Authenticode signing ---------------------------------------------------------------------
+# Signing has to happen HERE, before the checksum step. Signing an .exe afterwards rewrites the
+# file and silently invalidates its SHA256SUMS entry - a downloader following the verification
+# instructions would then be told the artifact is corrupt.
+#
+# One loop over every installer this run produced, rather than a block per target: a second
+# hand-maintained copy is how the two drift apart, and the ordering contract only pins one of them.
+$installersToSign = @()
+if ($desktopInstaller) { $installersToSign += @{ Path = $desktopInstaller; Description = 'NodePilot Desktop' } }
+if ($serverInstaller) { $installersToSign += @{ Path = $serverInstaller; Description = 'NodePilot Server Setup' } }
+
+if ($InstallerSigningCertificateThumbprint -and $installersToSign.Count -gt 0) {
+    $signTool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Filter 'signtool.exe' -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match '\\x64\\' } |
+        Sort-Object FullName -Descending | Select-Object -First 1
+    if (-not $signTool) {
+        throw ("signtool.exe not found - install the Windows SDK, or drop " +
+               "-InstallerSigningCertificateThumbprint to produce unsigned installers.")
+    }
+    foreach ($target in $installersToSign) {
+        Write-Host "[build] Authenticode-sign $(Split-Path $target.Path -Leaf)" -ForegroundColor Cyan
         $prevSignEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
         try {
-            & $signTool.FullName sign /sha1 $DesktopSigningCertificateThumbprint /fd SHA256 /td SHA256 `
-                /tr 'http://timestamp.digicert.com' /d 'NodePilot Desktop' $desktopInstaller
+            & $signTool.FullName sign /sha1 $InstallerSigningCertificateThumbprint /fd SHA256 /td SHA256 `
+                /tr 'http://timestamp.digicert.com' /d $target.Description $target.Path
             $signExit = $LASTEXITCODE
         } finally { $ErrorActionPreference = $prevSignEap }
         if ($signExit -ne 0) { throw "signtool failed with exit code $signExit." }
 
-        $signature = Get-AuthenticodeSignature -LiteralPath $desktopInstaller
+        # Verified, not trusted to signtool's exit code.
+        $signature = Get-AuthenticodeSignature -LiteralPath $target.Path
         if (-not $signature.SignerCertificate -or
-            $signature.SignerCertificate.Thumbprint -ne $DesktopSigningCertificateThumbprint) {
-            throw "Installer is not signed by the requested certificate after signtool reported success."
+            $signature.SignerCertificate.Thumbprint -ne $InstallerSigningCertificateThumbprint) {
+            throw "$(Split-Path $target.Path -Leaf) is not signed by the requested certificate after signtool reported success."
         }
         Write-Host "         Signed by $($signature.SignerCertificate.Subject)" -ForegroundColor DarkGray
     }
@@ -381,6 +469,7 @@ if (-not $AllowUnsignedDevelopmentArtifact) {
     $artifacts += "$ZipPath.manifest.json.p7s"
 }
 if ($desktopInstaller) { $artifacts += $desktopInstaller }
+if ($serverInstaller) { $artifacts += $serverInstaller }
 $checksumLines = foreach ($artifact in $artifacts) {
     if (-not (Test-Path -LiteralPath $artifact)) { throw "Checksum target missing: $artifact" }
     # "<hash>  <name>" - two spaces, the sha256sum/certutil-compatible layout.
@@ -400,14 +489,24 @@ if ($desktopInstaller) {
     $desktopMb = [Math]::Round((Get-Item $desktopInstaller).Length / 1MB, 1)
     Write-Host "         $(Split-Path $desktopInstaller -Leaf) ($desktopMb MB)"
 }
+if ($serverInstaller) {
+    $serverMb = [Math]::Round((Get-Item $serverInstaller).Length / 1MB, 1)
+    Write-Host "         $(Split-Path $serverInstaller -Leaf) ($serverMb MB)"
+}
 Write-Host "         $(Split-Path $ChecksumPath -Leaf)"
 Write-Host "         all under $OutDir"
 Write-Host ""
 Write-Host "         Deploy the server with: .\deploy\Install-NodePilot.ps1 -ArtifactPath '$ZipPath' ..."
-if ($desktopInstaller -and -not $DesktopSigningCertificateThumbprint) {
-    Write-Host "         The installer is UNSIGNED. Re-run with -DesktopSigningCertificateThumbprint to sign it;" -ForegroundColor Yellow
-    Write-Host "         signing it by hand afterwards would invalidate its entry in $(Split-Path $ChecksumPath -Leaf)." -ForegroundColor Yellow
+if ($serverInstaller) {
+    Write-Host "         ...or hand an operator NodePilot-Server-Setup-$Version.exe instead."
+}
+if ($installersToSign.Count -gt 0 -and -not $InstallerSigningCertificateThumbprint) {
+    Write-Host "         The installers are UNSIGNED. Re-run with -InstallerSigningCertificateThumbprint to sign them;" -ForegroundColor Yellow
+    Write-Host "         signing by hand afterwards would invalidate their entries in $(Split-Path $ChecksumPath -Leaf)." -ForegroundColor Yellow
 }
 if ($IncludeDesktopInstaller -and -not $buildDesktop) {
     Write-Host "         Desktop installer was SKIPPED - see the warnings above." -ForegroundColor Yellow
+}
+if ($IncludeServerInstaller -and -not $buildServerInstaller) {
+    Write-Host "         Server setup was SKIPPED - see the warnings above." -ForegroundColor Yellow
 }

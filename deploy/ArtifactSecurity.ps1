@@ -11,6 +11,22 @@ function Normalize-NodePilotThumbprint {
     return $normalized
 }
 
+function New-NodePilotRandomBase64 {
+    <#
+      One definition, three consumers: the installer's External-Trigger key default, the setup
+      adapter (which has to generate that key itself, because the installer prints it to a console
+      the wizard does not have), and anything else that needs a CSPRNG secret.
+
+      RNGCryptoServiceProvider works on both Windows PowerShell 5.1 (.NET Framework) and
+      PowerShell 7 (.NET 6+). RandomNumberGenerator.Fill() is Core-only.
+    #>
+    param([int]$ByteCount = 48)
+    $buffer = New-Object byte[] $ByteCount
+    $rng = [System.Security.Cryptography.RNGCryptoServiceProvider]::new()
+    try { $rng.GetBytes($buffer) } finally { $rng.Dispose() }
+    return [Convert]::ToBase64String($buffer)
+}
+
 function Import-NodePilotPkcsTypes {
     if ('System.Security.Cryptography.Pkcs.SignedCms' -as [type]) { return }
     try { Add-Type -AssemblyName System.Security.Cryptography.Pkcs -ErrorAction Stop }
@@ -232,13 +248,22 @@ function Write-NodePilotRestrictedFile {
 }
 
 function New-NodePilotRestrictedStagingDirectory {
+    <#
+      An unpredictable directory whose DACL is SYSTEM + Administrators + the current user only,
+      applied atomically in the create call rather than afterwards. Also used by the setup
+      adapter for its answer file, which is why the name is configurable: an operator who finds
+      one of these lying around should be able to tell what put it there.
+    #>
     [CmdletBinding()]
-    param([string]$ParentPath = [IO.Path]::GetTempPath())
+    param(
+        [string]$ParentPath = [IO.Path]::GetTempPath(),
+        [string]$Prefix = 'nodepilot-artifact-'
+    )
 
     if (-not (Test-Path -LiteralPath $ParentPath -PathType Container)) {
         throw "Artifact staging parent does not exist: $ParentPath"
     }
-    $path = Join-Path $ParentPath ("nodepilot-artifact-" + [Guid]::NewGuid().ToString('N'))
+    $path = Join-Path $ParentPath ($Prefix + [Guid]::NewGuid().ToString('N'))
     try {
         $acl = New-Object System.Security.AccessControl.DirectorySecurity
         $acl.SetAccessRuleProtection($true, $false)

@@ -3,7 +3,7 @@
 **Führendes Dokument für „was wird gebaut".** Was hier nicht steht, ist kein Vorhaben — auch dann
 nicht, wenn es irgendwo als Idee, Plan oder Follow-up auftaucht.
 
-Stand: **2026-07-27**. Konsolidiert aus dem damaligen `docs/backlog.md`, `docs/ai-feature-ideas.md`,
+Stand: **2026-08-03**. Konsolidiert aus dem damaligen `docs/backlog.md`, `docs/ai-feature-ideas.md`,
 `docs/db-schema-audit-followups.md`, den „Noch offen"-Abschnitten in `docs/performance-improvements.md`
 und `docs/alerting.md`, den offenen GitHub-Issues sowie der Session-Memory.
 
@@ -22,7 +22,7 @@ Ein Posten wandert von R2 nach R1, wenn sein Trigger eintritt — nicht, weil er
 
 ## R1 — Gesetzt
 
-25 Posten in sieben Wellen. Die Wellenreihenfolge ist bewusst: erst wird ehrlich, was gerade
+26 Posten in acht Wellen. Die Wellenreihenfolge ist bewusst: erst wird ehrlich, was gerade
 unehrlich ist, dann wird gebaut.
 
 ### Welle 1 — Sicherheit
@@ -37,7 +37,7 @@ Hier steht nur, *was* geändert wird.
 | 2 | **SSRF-Guard: Adressabdeckung vervollständigen** | `NetworkGuard.IsPrivateNetwork` deckt nicht alle Adressformen ab, die auf Windows beim lokalen Host landen. Zwei Zeilen (IPv4- und IPv6-Zweig) plus Regressionstest. Betrifft `RestApiActivity` und `WebhookNotificationSink`. |
 | 3 | **Passwortpolicy für Break-Glass-Konten** | `AuthController.MinPasswordLength` steht auf 8 ohne Komplexitätsregel. Für explizit als Break-Glass markierte Konten auf 12 anheben. |
 | 4 | **`restApi` bekommt ein First-Class-Credential-Feld** | Heute landen Auth-Header als Klartext im `config.headers` und werden nur nachgelagert redigiert. Ein `credentialId`-Feld analog zu den Remote-Activities löst die Ursache statt des Symptoms. Backend + `RestApiConfig.tsx`. |
-| 5 | **Audit-Nachlauf: die ungeprüften Dimensionen** | Der Audit vom 2026-07-26 kam über elf Bereiche nicht hinaus — LDAP/OIDC/SCIM-Interna, Backup-Restore-Transaktion + ID-Remap, Cluster/HA-Fencing, Alerting-Dispatcher, IDOR/Folder-Scoping über alle Controller, Trigger-Quellen, Frontend jenseits der XSS-Senken, CLI/MCP-Session-Storage, `deploy/`-Skripte, GitHub-Actions. Für diese Bereiche ist die Aussage „unbekannt", nicht „sauber". |
+| 5 | **Audit-Nachlauf: die ungeprüften Dimensionen** | Der Audit vom 2026-07-26 kam über elf Bereiche nicht hinaus — LDAP/OIDC/SCIM-Interna, Backup-Restore-Transaktion + ID-Remap, Cluster/HA-Fencing, Alerting-Dispatcher, IDOR/Folder-Scoping über alle Controller, Trigger-Quellen, Frontend jenseits der XSS-Senken, CLI/MCP-Session-Storage, `deploy/`-Skripte, GitHub-Actions. Für diese Bereiche ist die Aussage „unbekannt", nicht „sauber". Mit Posten 26 ist die `deploy/`-Fläche gewachsen (Setup-Adapter, Answer-File, Provisioning-Helfer, Inno-Pascal) — der Audit-Umfang wächst entsprechend mit. |
 
 ### Welle 2 — Hygiene
 
@@ -138,6 +138,12 @@ Dateien: `WorkflowEngine.cs` (Signatur + Scheduler-Init), `Core/Models/StepExecu
 | # | Posten | Inhalt |
 |---|---|---|
 | 25 | **CI-Matrix: Migrationen gegen echte Container fahren** | Top-Empfehlung des DB-Schema-Audits. Fresh-Install **und** Upgrade-Pfad gegen echte PostgreSQL- und SQL-Server-Container **ausführen**, nicht nur `GenerateScript`. Die vorhandenen `MigrationDriftTests` generieren nur Skripte und fangen daher keine reinen Laufzeitfehler — z. B. ein ungeschütztes `DropTable` auf einer divergierten DB. Schließt eine ganze Fehlerklasse. |
+
+### Welle 8 — Auslieferung
+
+| # | Posten | Inhalt |
+|---|---|---|
+| 26 | **GUI-Setup für die Server-Installation** | `NodePilot-Server-Setup-<version>.exe` (Inno Setup 6) als zweiter Weg zur selben Installation; der ZIP-Weg bleibt unverändert die Referenz. Der Pascal-Layer bleibt dünn — Seiten und Payload, keine Installationslogik: der Wizard schreibt eine ACL-geschützte Antwortdatei und ruft über `Invoke-NodePilotSetup.ps1` das unveränderte `Install-NodePilot.ps1`. Nötig, weil `-PostgresPassword` ein `[SecureString]` ist und über `powershell.exe -File` gar nicht übergeben werden kann; `/SILENT /ANSWERFILE=` deckt damit zugleich SCCM/GPO ab. Größter Gewinn ist nicht die Oberfläche, sondern der Wegfall der Vertrauenszeremonie: ein Asset statt fünf, kein manueller Thumbprint-Abgleich, kein `LocalMachine\Root`-Eingriff von Hand. Readiness-Seite über die seiteneffektfreie `Preflight.ps1` (Posten aus derselben Welle), zwei Opt-in-Aktionen (SQL-Login+DB nur mit ausreichenden Rechten, sonst nur DDL-Ausgabe; Labor-Zertifikat mit Warnung), ASP.NET-Core-Runtime als offizieller Microsoft-Installer im Payload (SHA512 gegen Release-Metadaten **und** eingecheckten Pin, Authenticode auf Microsoft, Standalone-Runtime statt Hosting Bundle). Re-Run erkennt die Installation über `HKLM\SOFTWARE\NodePilot\Server` und fährt Update-Semantik; `/FULLREINSTALL` erzwingt Neuaufsetzen inklusive neuem External-Trigger-API-Key (bestätigungspflichtig). **Die Deinstallation entfernt die Datenbank nicht und bekommt dafür auch keine Option** — der Installer legt sie nicht an, sie ist separat bereitgestellt und wird im Cluster von beiden Knoten geteilt. Einzige Frage ist das Datenverzeichnis, Default überall „behalten". Testfläche: `Test-SetupAdapter.ps1` (Verhalten) plus mutationsgeprüfte Verträge in `Test-DeploymentTemplates.ps1`; der Pascal-Anteil bleibt bewusst minimal und ist samt manueller Smoke-Matrix als Testlücke in `deploy/server/README.md` dokumentiert. |
 
 ---
 

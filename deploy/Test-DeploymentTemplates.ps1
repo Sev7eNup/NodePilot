@@ -17,7 +17,10 @@ param(
     [string]$BuildPropsPath,
     [string]$UpdateScriptPath,
     [string]$PreflightScriptPath,
-    [string]$UninstallScriptPath
+    [string]$UninstallScriptPath,
+    [string]$SetupAdapterPath,
+    [string]$ServerIssPath,
+    [string]$RuntimePayloadScriptPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -54,6 +57,15 @@ if ([string]::IsNullOrWhiteSpace($PreflightScriptPath)) {
 if ([string]::IsNullOrWhiteSpace($UninstallScriptPath)) {
     $UninstallScriptPath = Join-Path $scriptDirectory 'Uninstall-NodePilot.ps1'
 }
+if ([string]::IsNullOrWhiteSpace($SetupAdapterPath)) {
+    $SetupAdapterPath = Join-Path $scriptDirectory 'Invoke-NodePilotSetup.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($ServerIssPath)) {
+    $ServerIssPath = Join-Path $scriptDirectory 'server\NodePilotServer.iss'
+}
+if ([string]::IsNullOrWhiteSpace($RuntimePayloadScriptPath)) {
+    $RuntimePayloadScriptPath = Join-Path $scriptDirectory 'Get-DotnetRuntimePayload.ps1'
+}
 
 function Assert-TextMatches {
     param(
@@ -79,7 +91,26 @@ function Assert-TextDoesNotMatch {
     }
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath)) {
+function Remove-CommentLines {
+    <#
+      Strips whole-line comments before a contract looks at the source.
+
+      This is not a nicety. Four separate checks in this file have been written against text that
+      also appears in the comment explaining the rule - the build-script signing order, the update
+      success path, the uninstall ordering, and the adapter's HttpsPort rule - and every one of
+      them passed or failed for the wrong reason until the comments were removed. A contract that
+      matches its own explanation measures nothing.
+    #>
+    param([Parameter(Mandatory)][string]$Text, [string]$CommentPrefix = '#')
+    # Block comments first - the comment-based help at the top of these scripts states the rules
+    # in prose, using the very identifiers the contracts search for.
+    $withoutBlocks = [regex]::Replace($Text, '(?s)<#.*?#>', '')
+    return (($withoutBlocks -split "`r?`n" | Where-Object {
+        $_.TrimStart() -notlike "$CommentPrefix*"
+    }) -join "`n")
+}
+
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $ServerIssPath, $RuntimePayloadScriptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
     }
@@ -188,8 +219,13 @@ $requiredBuildContracts = [ordered]@{
     'a checksum file is written' = 'SHA256SUMS'
     'checksums are SHA256' = "Get-FileHash[^`r`n]*-Algorithm SHA256"
     'missing desktop prerequisites warn instead of failing' = '(?s)\$desktopSkipReasons\.Count -eq 0.*?else\s*\{\s*Write-Warning'
-    'the installer can be Authenticode-signed by the build' = '\[string\]\$DesktopSigningCertificateThumbprint'
+    'the installers can be Authenticode-signed by the build' = '\[string\]\$InstallerSigningCertificateThumbprint'
     'signing is verified rather than trusted to signtool exit code' = 'Get-AuthenticodeSignature'
+    'build script accepts the server-setup switch' = '\[switch\]\$IncludeServerInstaller'
+    'the produced server setup is copied next to the server zip' = 'NodePilot-Server-Setup-\$Version\.exe'
+    # One signing loop covering every installer, not a hand-maintained block per target: a second
+    # copy is how the two drift apart, and the ordering check below only pins one place.
+    'signing iterates over every installer this run produced' = '(?s)foreach \(\$target in \$installersToSign\)'
 }
 
 # Signing rewrites the .exe, so it must happen BEFORE the checksums are computed. Getting this
@@ -219,6 +255,28 @@ if (-not $desktopPreflight.Success) {
 }
 Assert-TextDoesNotMatch -Name 'desktop pre-flight must not throw on missing prerequisites' `
     -Text $desktopPreflight.Value -Pattern '\bthrow\b'
+
+$serverPreflight = [regex]::Match($buildScript, '(?s)if \(\$IncludeServerInstaller\) \{.*?\r?\n\}')
+if (-not $serverPreflight.Success) {
+    throw 'Deployment template check failed: could not locate the server-setup pre-flight block in the build script.'
+}
+Assert-TextDoesNotMatch -Name 'server-setup pre-flight must not throw on missing prerequisites' `
+    -Text $serverPreflight.Value -Pattern '\bthrow\b'
+
+# The setup embeds the signed zip and verifies it at install time, so an unsigned development
+# artifact would produce an installer that refuses its own payload. Skip, do not attempt.
+Assert-TextMatches -Name 'the server setup is not built from an unsigned artifact' `
+    -Text $serverPreflight.Value -Pattern '\$AllowUnsignedDevelopmentArtifact'
+
+# Both installers must be in $artifacts before the checksums are computed, or SHA256SUMS ships
+# describing a drop it does not cover.
+$serverArtifactIndex = $buildScript.IndexOf('$artifacts += $serverInstaller')
+if ($serverArtifactIndex -lt 0) {
+    throw 'Deployment template check failed: the server setup is never added to the checksum list.'
+}
+if ($serverArtifactIndex -gt $checksumIndex) {
+    throw 'Deployment template check failed: the server setup is added to the checksum list after the checksums are written.'
+}
 
 # The version regex in the build script must actually match the props file it reads. A renamed or
 # conditioned <Version> element would otherwise only surface when someone cuts a release.
@@ -359,7 +417,9 @@ if ($assertIndex -gt $stagingIndex) {
 # every subsequent fresh install look like an upgrade.
 Assert-TextMatches -Name 'installer records a machine-wide installation marker' `
     -Text $installerScript -Pattern 'HKLM:\\SOFTWARE\\NodePilot\\Server'
-$uninstallScript = Get-Content -LiteralPath $UninstallScriptPath -Raw
+# Comment-stripped, like the adapter and runtime scripts. Every contract below anchors on code,
+# and the comments explaining those rules necessarily quote the very things the rules forbid.
+$uninstallScript = Remove-CommentLines -Text (Get-Content -LiteralPath $UninstallScriptPath -Raw)
 Assert-TextMatches -Name 'uninstaller removes the installation marker' `
     -Text $uninstallScript -Pattern "(?s)Remove-Item[^\r\n]*\`$markerPath"
 
@@ -384,10 +444,215 @@ if ($processWaitIndex -gt $serviceDeleteIndex) {
 Assert-TextMatches -Name 'uninstaller fails closed while processes still run from the install path' `
     -Text $uninstallScript -Pattern '(?s)Still running: PID.*?\bthrow\b'
 
+# The GUI setup registers its uninstaller as <InstallPath>\unins000.exe and calls this script from
+# there, so the uninstaller is itself a process running out of the watched directory - and this
+# script's own grandparent. Without excluding its own process tree the guard waits out the full
+# timeout and then refuses to uninstall anything, blaming the process doing the uninstalling.
+Assert-TextMatches -Name 'the running-process guard ignores the uninstaller that invoked it' `
+    -Text $uninstallScript -Pattern '(?s)function Get-ProcessesUnderPath.*?ownTree -contains \$_\.Id'
+
 # sc.exe delete leaves the service key behind while a handle is open, and that key holds the
 # Postgres connection string including its password.
 Assert-TextMatches -Name 'uninstaller clears the service environment holding the DB secret' `
     -Text $uninstallScript -Pattern "Remove-ItemProperty[^\r\n]*-Name\s+'Environment'"
+
+# The installer writes jwt-secret.key and admin-setup.token owner-only to the SERVICE account, so
+# an administrator cannot delete them either. Without taking ownership first, -PurgeData gets
+# partway through and throws: measured on the lab host as 12 of 17 entries gone and an aborted run.
+$purgeBlockStart = $uninstallScript.IndexOf('if ($PurgeData) {')
+if ($purgeBlockStart -lt 0) {
+    throw 'Deployment template check failed: could not locate the data purge block in the uninstaller.'
+}
+$purgeBlock = $uninstallScript.Substring($purgeBlockStart)
+Assert-TextMatches -Name 'purging takes ownership before deleting owner-only files' `
+    -Text $purgeBlock -Pattern 'takeown\.exe'
+# "BUILTIN\Administrators" does not resolve on a non-English Windows.
+Assert-TextMatches -Name 'the ownership grant uses the well-known SID, not a localised group name' `
+    -Text $purgeBlock -Pattern 'S-1-5-32-544'
+Assert-TextDoesNotMatch -Name 'the ownership grant must not use a localised group name' `
+    -Text $purgeBlock -Pattern 'BUILTIN\\Administrators'
+# (OI) and (CI) are CONTAINER inheritance flags. Applied to a leaf file, icacls drops them, reports
+# "Successfully processed 1 files" and adds no ACE whatsoever - so the grant looks like it worked
+# and the file stays undeletable. Measured on the lab host against jwt-secret.key.
+Assert-TextDoesNotMatch -Name 'the grant must not carry container inheritance flags' `
+    -Text $purgeBlock -Pattern 'icacls[^\r\n]*\(OI\)'
+
+# --- server setup wizard contracts -------------------------------------------------------------
+# The Pascal side has no unit-test story at all, so what CAN be pinned statically is pinned here
+# and the residual gap is written down in deploy/server/README.md rather than left implied.
+$serverIss = Get-Content -LiteralPath $ServerIssPath -Raw
+
+# [Run] cannot inspect an exit code. The desktop installer's [Run] entry silently swallows a
+# failed provisioning run - it calls exit 1 and Inno still reports success. Forbidding the section
+# outright makes that class of defect structurally impossible here rather than merely absent today.
+Assert-TextDoesNotMatch -Name 'the server setup must not use a [Run] section' `
+    -Text $serverIss -Pattern '(?mi)^\s*\[Run\]'
+Assert-TextMatches -Name 'every Exec result is inspected' `
+    -Text $serverIss -Pattern '(?m)ResultCode\s*<>\s*0'
+
+# Windows Server 2022 is build 20348. Copying the desktop installer's 22000 would make the SERVER
+# setup refuse to run on the only operating system it targets.
+Assert-TextMatches -Name 'the server setup runs on Windows Server 2022' `
+    -Text $serverIss -Pattern '(?m)^MinVersion=10\.0\.20348\s*$'
+Assert-TextDoesNotMatch -Name 'the server setup must not inherit the desktop Windows 11 floor' `
+    -Text $serverIss -Pattern '(?m)^MinVersion=10\.0\.22000'
+Assert-TextMatches -Name 'a failed setup leaves a log behind' `
+    -Text $serverIss -Pattern '(?m)^SetupLogging=yes\s*$'
+Assert-TextMatches -Name 'the setup requires elevation' `
+    -Text $serverIss -Pattern '(?m)^PrivilegesRequired=admin\s*$'
+# Measured on Inno 6.7.3: in ssPostInstall neither RaiseException nor Abort changes the exit code -
+# a failed installation still reports 0. Under SCCM that is a deployment claiming success having
+# installed nothing, which is the same silent-failure class the [Run] ban above exists to prevent.
+# PrepareToInstall returns a message and exits 7.
+Assert-TextMatches -Name 'the installation runs where failure can be signalled' `
+    -Text $serverIss -Pattern '(?s)function PrepareToInstall.*-Mode Apply'
+Assert-TextDoesNotMatch -Name 'the installation must not run in a step that swallows failures' `
+    -Text $serverIss -Pattern '(?s)ssPostInstall[^;]*-Mode Apply'
+# Everything used at runtime is extracted to {tmp}: the readiness page and PrepareToInstall both
+# run before Inno has copied a single file, and 11 MB of redistributable has no business staying
+# on the target afterwards either.
+Assert-TextMatches -Name 'the runtime payload and artifact are temporary, never installed' `
+    -Text $serverIss -Pattern '(?m)^Source:[^\r\n]*payload\\\*"[^\r\n]*dontcopy'
+# Inno deduplicates identical source files, so a dontcopy entry and a DestDir entry pointing at
+# the same file collapse into one and the dontcopy variant disappears. Keeping the two staging
+# trees apart is what prevents that; a dontcopy entry reading from deploy\ would reintroduce it.
+Assert-TextDoesNotMatch -Name 'the temporary payload must not share a source tree with the installed scripts' `
+    -Text $serverIss -Pattern '(?m)^Source:[^\r\n]*deploy\\[^\r\n]*dontcopy'
+# Measured on the lab host: Inno evaluates {code:...} in [UninstallRun] parameters at INSTALL time
+# and freezes the result into unins000.dat, so an uninstall-time choice such as /PURGEDATA=1 can
+# never reach the script through it - and like [Run] it cannot inspect an exit code either.
+Assert-TextDoesNotMatch -Name 'the server setup must not use an [UninstallRun] section' `
+    -Text $serverIss -Pattern '(?mi)^\s*\[UninstallRun\]'
+Assert-TextMatches -Name 'uninstalling runs the deployment uninstaller from code' `
+    -Text $serverIss -Pattern '(?s)usUninstall.*Uninstall-NodePilot\.ps1'
+Assert-TextMatches -Name 'the purge switch is built at uninstall time' `
+    -Text $serverIss -Pattern '(?s)usUninstall.*UninstallPurgeData then Switches'
+# The data directory is ours; the database is not. There is no option to remove it and there must
+# not be one: this installer never created it.
+Assert-TextDoesNotMatch -Name 'the setup must not offer to drop the database' `
+    -Text $serverIss -Pattern 'DROPDATABASE|DropDatabase|DROP DATABASE'
+Assert-TextMatches -Name 'the uninstall says the database is left alone' `
+    -Text $serverIss -Pattern '(?s)InitializeUninstall[\s\S]*?DATABASE is not affected'
+# Silently pinning a publisher the operator never saw would be worse than today's explicit
+# -TrustedArtifactSignerThumbprint parameter.
+Assert-TextMatches -Name 'the pinned signer thumbprint is compiled in' `
+    -Text $serverIss -Pattern '\{#SignerThumbprint\}'
+# A full re-setup issues a NEW External-Trigger API key and the old one is unrecoverable. That
+# needs a confirmation, not a line of body text.
+# Bounded, not (?s).* - the file grew a second mbConfirmation for the uninstall question, and an
+# unbounded pattern happily spanned to that one, so the check passed even with this confirmation
+# downgraded to an OK box. Caught by the mutation harness, which is the point of it.
+Assert-TextMatches -Name 'a full re-setup warns that the API key changes' `
+    -Text $serverIss -Pattern 'External-Trigger API key[\s\S]{0,400}mbConfirmation, MB_YESNO\) = IDYES'
+# The answer file holds the database password; a cancelled wizard must not leave it behind.
+Assert-TextMatches -Name 'cancelling the wizard still cleans up the session' `
+    -Text $serverIss -Pattern '(?s)procedure DeinitializeSetup.*-Mode Cleanup'
+# Unattended deployment (SCCM, GPO) is one of the three reasons the answer file is a file rather
+# than a command line - a [SecureString] password cannot be passed as an argument at all.
+Assert-TextMatches -Name 'the wizard accepts an externally supplied answer file' `
+    -Text $serverIss -Pattern '\{param:ANSWERFILE\|\}'
+
+# The readiness page and PrepareToInstall both run BEFORE [Files] is copied, so an adapter path
+# under {app} does not exist yet. Observed on the lab host as a bare "PrepareToInstall failed".
+$adapterPathFunction = [regex]::Match($serverIss, '(?s)function AdapterPath\(\).*?\bend;')
+if (-not $adapterPathFunction.Success) {
+    throw 'Deployment template check failed: could not locate AdapterPath() in the server setup script.'
+}
+Assert-TextMatches -Name 'the adapter is run from the temporary extraction directory' `
+    -Text $adapterPathFunction.Value -Pattern "ExpandConstant\('\{tmp\}"
+Assert-TextDoesNotMatch -Name 'the adapter path must not point into the not-yet-installed app directory' `
+    -Text $adapterPathFunction.Value -Pattern '\{app\}'
+Assert-TextMatches -Name 'the scripts are extracted before the wizard uses them' `
+    -Text $serverIss -Pattern "ExtractTemporaryFiles\('\*\.ps1'\)"
+
+# Inno inserts a wizard page directly AFTER the ID it is anchored to, so two pages sharing an
+# anchor come out in reverse creation order - and any page anchored to the earlier of the two then
+# lands in front of the later one. Anchoring both the SQL and the PostgreSQL page to the provider
+# page produced Provider -> Postgres -> Network -> Prerequisites -> Sql: the SQL page sat after the
+# page that reads its values, so it was never shown and its fields kept their defaults. Every page
+# must therefore be anchored to a DISTINCT predecessor.
+$pageAnchors = @([regex]::Matches($serverIss, 'Create(?:InputQuery|InputOption|Custom)Page\(\s*([A-Za-z0-9_]+(?:\.ID)?)') |
+    ForEach-Object { $_.Groups[1].Value })
+$duplicateAnchors = @($pageAnchors | Group-Object | Where-Object { $_.Count -gt 1 })
+if ($duplicateAnchors.Count -gt 0) {
+    throw ("Deployment template check failed: wizard pages share an anchor (" +
+           ($duplicateAnchors.Name -join ', ') +
+           '). Inno inserts each page directly after its anchor, so sharing one silently reorders ' +
+           'the wizard - anchor every page to the one created before it.')
+}
+
+# An input page offers 309 pixels of surface and each label+edit pair costs 54, so the sixth field
+# is laid out at 337 and simply is not drawn. Measured, not estimated. The page does not scroll and
+# gives no indication that anything is missing: the PostgreSQL page's root-certificate field was
+# invisible, and setup then failed on a value the operator was never shown a box for.
+$queryPageNames = @([regex]::Matches($serverIss, '(?m)^\s*([A-Za-z0-9_, ]+):\s*TInputQueryWizardPage;') |
+    ForEach-Object { $_.Groups[1].Value -split ',' } |
+    ForEach-Object { $_.Trim() } |
+    Where-Object { $_ })
+if ($queryPageNames.Count -eq 0) {
+    throw 'Deployment template check failed: could not find any TInputQueryWizardPage declarations in the server setup script.'
+}
+$fieldCounts = @{}
+foreach ($match in [regex]::Matches($serverIss, '(?m)^\s*([A-Za-z0-9_]+)\.Add\(')) {
+    $pageName = $match.Groups[1].Value
+    if ($queryPageNames -notcontains $pageName) { continue }
+    if (-not $fieldCounts.ContainsKey($pageName)) { $fieldCounts[$pageName] = 0 }
+    $fieldCounts[$pageName]++
+}
+$overfullPages = @($fieldCounts.GetEnumerator() | Where-Object { $_.Value -gt 5 })
+if ($overfullPages.Count -gt 0) {
+    throw ('Deployment template check failed: wizard input page(s) with more than five fields (' +
+           (($overfullPages | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join ', ') +
+           '). Only five label+edit pairs fit on an Inno input page; the rest are laid out below ' +
+           'the visible surface and the page does not scroll. Split the page.')
+}
+
+# --- setup adapter contracts ---------------------------------------------------------------------
+$setupAdapter = Remove-CommentLines -Text (Get-Content -LiteralPath $SetupAdapterPath -Raw)
+
+# Update-NodePilot.ps1 derives the probe port from the installed Kestrel configuration. Passing the
+# 443 default rolled back a healthy 8443 installation in the lab on 2026-08-01; the adapter must
+# not reintroduce that by being helpful.
+$updateBranchStart = $setupAdapter.IndexOf('function Invoke-SetupUpdate')
+if ($updateBranchStart -lt 0) {
+    throw 'Deployment template check failed: could not locate the update path in the setup adapter.'
+}
+$updateBranch = $setupAdapter.Substring($updateBranchStart)
+# Matched without the leading hyphen on purpose: the adapter splats, so the realistic way this
+# regresses is a bare `HttpsPort = 443` hashtable key, not a `-HttpsPort` argument. The first
+# version of this check only looked for the hyphenated form and a mutation walked straight past it.
+Assert-TextDoesNotMatch -Name 'the adapter must not pass a HTTPS port to the updater' `
+    -Text $updateBranch -Pattern '\bHttpsPort\b'
+
+# powershell.exe -File returns 0 for a script that merely wrote errors, so an implicit
+# fall-through would report a failed installation as success.
+Assert-TextMatches -Name 'the adapter exits explicitly' `
+    -Text $setupAdapter -Pattern '(?m)^exit \$exitCode\s*$'
+Assert-TextMatches -Name 'the answer file is shredded in a finally block' `
+    -Text $setupAdapter -Pattern '(?s)finally \{.*Remove-NodePilotAnswerFile'
+# The answer file carries the database password in clear text for the duration of the run.
+Assert-TextDoesNotMatch -Name 'the adapter must not log the password' `
+    -Text $setupAdapter -Pattern 'Write-(Host|Output|Information)[^\r\n]*[Pp]assword'
+
+# --- runtime payload contracts --------------------------------------------------------------------
+$runtimeScript = Remove-CommentLines -Text (Get-Content -LiteralPath $RuntimePayloadScriptPath -Raw)
+
+# deploy/README.md tells operators to install the plain runtime and specifically NOT the Hosting
+# Bundle, which rewires IIS and restarts W3SVC on shared hosts. Bundling the wrong one would make
+# the installer contradict its own documentation.
+Assert-TextMatches -Name 'the payload is the standalone ASP.NET Core runtime' `
+    -Text $runtimeScript -Pattern 'aspnetcore-runtime-win-x64\.exe'
+Assert-TextDoesNotMatch -Name 'the payload must not be the IIS Hosting Bundle' `
+    -Text $runtimeScript -Pattern 'dotnet-hosting-'
+# This is a supply-chain boundary, not a convenience download.
+Assert-TextMatches -Name 'the download is verified against the published digest' `
+    -Text $runtimeScript -Pattern 'Get-Sha512'
+Assert-TextMatches -Name 'the download is verified against a committed pin' `
+    -Text $runtimeScript -Pattern 'Runtime payload hash mismatch'
+Assert-TextMatches -Name 'the download must be signed by Microsoft' `
+    -Text $runtimeScript -Pattern "SignerCertificate\.Subject -notmatch 'Microsoft Corporation'"
+Assert-TextDoesNotMatch -Name 'certificate validation is never relaxed for the download' `
+    -Text $runtimeScript -Pattern 'SkipCertificateCheck|ServerCertificateValidationCallback|TrustAllCerts'
 
 $ssoDocumentation = Get-Content -LiteralPath $SsoDocumentationPath -Raw
 Assert-TextMatches -Name 'SPN examples use duplicate-safe registration' `
@@ -395,5 +660,5 @@ Assert-TextMatches -Name 'SPN examples use duplicate-safe registration' `
 Assert-TextDoesNotMatch -Name 'SPN examples must not use duplicate-unsafe registration' `
     -Text $ssoDocumentation -Pattern '(?m)^\s*setspn\s+-A\s+HTTP/'
 
-Write-Host ("Deployment template checks passed ({0} HAProxy contracts, appsettings JSON, installer, pre-flight, uninstall and SPN contracts)." -f `
+Write-Host ("Deployment template checks passed ({0} HAProxy contracts, appsettings JSON, installer, update, pre-flight, uninstall, server setup, adapter, runtime payload and SPN contracts)." -f `
     $requiredHaproxyContracts.Count) -ForegroundColor Green

@@ -167,7 +167,31 @@ Installer und Updater prüfen Signatur, Zertifikatskette, Dateiname, Länge und 
 
 ## 5. NodePilot installieren
 
-Die Installationsbefehle laufen als lokaler Administrator auf dem Zielserver.
+Es gibt zwei Wege zur selben Installation.
+
+### Variante A: GUI-Setup
+
+`NodePilot-Server-Setup-<version>.exe` aus dem Release herunterladen und ausführen. Es bringt das
+signierte Artefakt und die ASP.NET-Core-Runtime mit, prüft sämtliche Voraussetzungen aus den
+Kapiteln 1 bis 4 **bevor** es etwas verändert, und zeigt jede als grün, gelb oder rot mit
+kopierbarer Anleitung. Auf Wunsch installiert es die Runtime, legt SQL-Login und Datenbank an oder
+erzeugt ein Laborzertifikat.
+
+Unbeaufsichtigt für SCCM oder GPO:
+
+```powershell
+NodePilot-Server-Setup-1.0.1.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+```
+
+Ein erneuter Lauf erkennt eine vorhandene Installation und fährt per Default ein Update; über
+`/FULLREINSTALL` wird stattdessen neu aufgesetzt — das erzeugt allerdings einen **neuen
+External-Trigger-API-Key**, der alte ist nicht rekonstruierbar. Schema der Antwortdatei, Schalter
+und Exit-Codes stehen in `deploy/server/README.md`.
+
+### Variante B: Skripte
+
+Der Weg, den das Setup intern selbst geht, und der richtige für Automatisierung. Die
+Installationsbefehle laufen als lokaler Administrator auf dem Zielserver.
 
 ### SQL Server mit LocalSystem
 
@@ -304,13 +328,26 @@ Das Binärbackup enthält keine secret-haltige `appsettings.Production.json`. Si
 .\deploy\Uninstall-NodePilot.ps1
 ```
 
-Logs und Konfiguration bleiben erhalten. Vollständige Entfernung der lokalen Betriebsdaten:
+Entfernt werden Dienst, Dienst-Binaries, Firewall-Regeln, der Installations-Marker und der
+Registry-Environment-Eintrag (in dem das Postgres-Passwort liegt). Logs und Konfiguration bleiben
+erhalten. Vollständige Entfernung der lokalen Betriebsdaten:
 
 ```powershell
 .\deploy\Uninstall-NodePilot.ps1 -PurgeData
 ```
 
-Die externe Datenbank wird nie automatisch gelöscht.
+Nach einer Installation über das GUI-Setup geht dasselbe über „Apps & Features" oder direkt:
+
+```powershell
+& 'C:\Program Files\NodePilot\unins000.exe' /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1
+```
+
+**Die Datenbank wird nie entfernt, und es gibt dafür keine Option.** NodePilot legt sie nicht an —
+sie wurde in Kapitel 2 separat bereitgestellt, hat oft ein eigenes Backup- und
+Replikationsregime, und in einem Active/Passive-Cluster teilen sich beide Knoten dieselbe. Aus
+demselben Grund bleiben das „Log on as a service"-Recht des gMSA und die Lese-ACE auf dem Private
+Key des TLS-Zertifikats stehen; beide können mit einem anderen Dienst geteilt sein. Der
+Uninstaller benennt alle drei am Ende seines Laufs.
 
 ## Backup und Wiederherstellung
 

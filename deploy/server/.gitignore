@@ -1,0 +1,7 @@
+# Build output and staging for the server setup. Same reasoning as deploy/desktop/.gitignore:
+# these are build artefacts, and the runtime installer in payload/ is a redistributable that is
+# fetched and verified at build time, never committed. Its SHA512 pin in
+# runtime-payload.lock.json IS committed - that is what makes the payload reproducible.
+out*/
+stage/
+payload/
