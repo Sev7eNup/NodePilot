@@ -323,11 +323,13 @@ Der Updater:
 
 - prüft das neue Artefakt,
 - sichert die vorhandenen Binaries,
-- bricht ab, solange noch ein Prozess aus dem Installationsverzeichnis läuft — mit Prozessname und PID, **bevor** eine Datei gelöscht wird (ein gestoppter Dienst genügt nicht: verwaiste Worker halten ihre DLLs weiterhin gemappt),
+- wartet nach dem Dienststopp bis zu 30 Sekunden auf das Ende von Prozessen aus dem Installationsverzeichnis und beendet Verbliebene erzwungen; nur wenn das nicht greift, bricht der Updater mit Prozessname und PID **vor der ersten Dateilöschung** ab (ein gestoppter Dienst genügt nicht: verwaiste Worker halten ihre DLLs weiterhin gemappt),
 - erhält Datenbank, Dienstkonto und Produktionskonfiguration,
 - startet den Dienst neu,
 - prüft den Health-Endpunkt auf dem Port aus der installierten Konfiguration (`-HttpsPort` ist nur zum Überschreiben nötig),
-- stellt bei einem fehlgeschlagenen Health-Check die vorherigen Binaries wieder her.
+- stellt bei einem fehlgeschlagenen Health-Check die vorherigen Binaries wieder her und lässt den Dienst im Zustand vor dem Update.
+
+Ein **erfolgreicher** Update lässt den Dienst immer **laufen**, unabhängig davon, ob er vorher gestoppt war. Nur ein fehlgeschlagener Update stellt den Ausgangszustand wieder her.
 
 Das Binärbackup enthält keine secret-haltige `appsettings.Production.json`. Sie wird beim Austausch deshalb als Letztes ersetzt, damit ein Abbruch sie nicht zerstört.
 

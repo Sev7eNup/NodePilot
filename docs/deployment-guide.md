@@ -332,15 +332,21 @@ Logs: `C:\ProgramData\NodePilot\logs\` (CMTrace-formatted). Firewall rule:
 The health probe follows the port in the installed configuration, so a non-default
 `-HttpsPort` does not have to be repeated here. Two behaviours worth knowing:
 
-- **Processes still running from the install directory abort the upgrade before anything is
-  deleted**, naming the PID. A stopped service is not enough — an orphaned worker keeps its
-  DLLs mapped, and Windows reports that as a plain *Access denied* mid-wipe. Stop the named
-  process and re-run.
+- **Processes still running from the install directory are waited for**, then stopped by
+  force if needed. The update waits up to 30 seconds after stopping the service (the SCM
+  reports `SERVICE_STOPPED` before the hosting process has actually exited), then kills any
+  remaining processes from the install path. Only if a process survives that and cannot be
+  ended does the upgrade abort — before any file is touched, naming the PID. A stopped
+  service alone is not enough — an orphaned worker keeps its DLLs mapped, and Windows
+  reports that as a plain *Access denied* mid-wipe.
 - The **only** service setting an update changes is the start type, normalised to plain
   `auto`. Installations made before the API waited for the database on its own carry
   *Automatic (Delayed Start)*, which idles about two minutes past every boot for a wait the
   new binaries now perform themselves. Identity, dependencies and recovery actions stay
   exactly as the installer left them.
+- A **successful update always leaves the service running**, regardless of whether it was
+  running before. A failed update restores the pre-update state instead — a service that
+  was deliberately stopped is not started by a rollback.
 - The binary backup deliberately **excludes** `appsettings.Production.json` (it holds
   secrets). It is the last file removed during the swap, so an aborted upgrade leaves it in
   place — but if it is ever lost, do not re-run the update: it refuses a layout without a
