@@ -414,18 +414,36 @@ try {
         -Condition ($null -eq (Get-NodePilotPhaseProgress -Line '[install]   Service acct  : CORP\svc$'))
     Assert-True -Name 'an unrelated line is not a phase' `
         -Condition ($null -eq (Get-NodePilotPhaseProgress -Line 'random output'))
-    # The updater interpolates the service name into its headings, so those match on a prefix.
+    # Several headings interpolate a value into themselves. An exact comparison cannot express
+    # those at all, which is how three of them went unrecognised and the bar stood still through
+    # half of an update.
     $updatePhase = Get-NodePilotPhaseProgress -Line "[update] Stopping service 'NodePilot'"
     Assert-True -Name 'an updater heading with an interpolated name still matches' `
         -Condition ($null -ne $updatePhase -and $updatePhase.Percent -gt 0)
+    Assert-True -Name 'an installer heading with an interpolated account still matches' `
+        -Condition ($null -ne (Get-NodePilotPhaseProgress -Line "[install] Granting 'Log on as a service' to CORP\svc`$"))
+    # Every phase either script announces has to be recognised - the reverse of the drift guard,
+    # checked here against the real tables rather than against the scripts.
+    foreach ($sample in @(
+        '[update] Backing up current install',
+        "[update] Stopping service 'NodePilot'",
+        '[update] Installing verified artifact',
+        "[update] Starting service 'NodePilot'")) {
+        Assert-True -Name "the updater phase in '$sample' is recognised" `
+            -Condition ($null -ne (Get-NodePilotPhaseProgress -Line $sample))
+    }
     Assert-True -Name 'an updater detail line is not a phase' `
         -Condition ($null -eq (Get-NodePilotPhaseProgress -Line '[update]   Backup: C:\x'))
     # Ascending percentages are what let the wizard refuse to ever move the bar backwards without
     # tracking state per phase.
-    $percents = @(Get-NodePilotInstallPhases | ForEach-Object { [int]$_.Percent })
-    Assert-True -Name 'install phases ascend' `
-        -Condition (($percents -join ',') -eq ((@($percents) | Sort-Object) -join ',') -and
-                    (@($percents | Select-Object -Unique).Count -eq $percents.Count))
+    foreach ($table in @(
+        @{ Name = 'install'; Percents = @(Get-NodePilotInstallPhases | ForEach-Object { [int]$_.Percent }) },
+        @{ Name = 'update';  Percents = @(Get-NodePilotUpdatePhases  | ForEach-Object { [int]$_.Percent }) })) {
+        $percents = $table.Percents
+        Assert-True -Name "$($table.Name) phases ascend" `
+            -Condition (($percents -join ',') -eq ((@($percents) | Sort-Object) -join ',') -and
+                        (@($percents | Select-Object -Unique).Count -eq $percents.Count))
+    }
     # Progress is cosmetic. It runs inside the pipe that carries the installer's output, so an
     # exception here would take the installation with it.
     Assert-True -Name 'an empty line is handled rather than thrown on' `

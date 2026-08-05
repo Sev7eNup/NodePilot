@@ -930,11 +930,55 @@ if ($installPhases.Count -eq 0) {
 # THE drift guard. The bar is driven by matching the installer's own output, so a renamed step does
 # not break anything loudly - it silently produces a bar that stops at the phase before it and an
 # operator who watches a frozen 25% for two minutes.
-foreach ($phase in $installPhases) {
-    if ($installerScript -notmatch [regex]::Escape("Write-Step `"$($phase.Step)`"")) {
-        throw ("Deployment template check failed: progress phase '$($phase.Step)' no longer exists " +
-               'as a Write-Step in the installer. The progress bar would stop at the previous ' +
-               'phase and never move again.')
+function Get-DeclaredStepPrefixes {
+    param([Parameter(Mandatory)][string]$Script)
+    $prefixes = @()
+    foreach ($match in [regex]::Matches($Script, "Write-Step\s+(?:'([^']*)'|`"([^`"]*)`")")) {
+        $literal = if ($match.Groups[1].Success) { $match.Groups[1].Value } else { $match.Groups[2].Value }
+        # Cut at the first interpolation: "Stopping service '$ServiceName'" is only ever knowable
+        # up to "Stopping service ", which is exactly what the table matches on.
+        $dollar = $literal.IndexOf('$')
+        if ($dollar -ge 0) { $literal = $literal.Substring(0, $dollar) }
+        $literal = $literal.TrimEnd()
+        if ($literal) { $prefixes += $literal }
+    }
+    return $prefixes
+}
+
+$updatePhases = @(Get-NodePilotUpdatePhases)
+foreach ($pair in @(
+    @{ Name = 'installer'; Script = $installerScript;                                  Phases = $installPhases },
+    @{ Name = 'updater';   Script = (Get-Content -LiteralPath $UpdateScriptPath -Raw); Phases = $updatePhases })) {
+
+    $declaredSteps = @(Get-DeclaredStepPrefixes -Script $pair.Script)
+    if ($declaredSteps.Count -eq 0) {
+        throw "Deployment template check failed: found no Write-Step announcements in the $($pair.Name)."
+    }
+
+    # Forward: an entry whose step has been renamed away would stop the bar at the phase before it.
+    foreach ($phase in $pair.Phases) {
+        $found = @($declaredSteps | Where-Object { $_.StartsWith($phase.Step, [System.StringComparison]::Ordinal) })
+        if ($found.Count -eq 0) {
+            throw ("Deployment template check failed: progress phase '$($phase.Step)' no longer " +
+                   "exists as a Write-Step in the $($pair.Name). The bar would stop at the phase " +
+                   'before it and never move again.')
+        }
+    }
+
+    # Backward, and the direction that was missing. The forward guard only asks whether every table
+    # entry still exists in the script; it says nothing about a step in the script that no entry
+    # covers. That gap shipped: the updater announces four phases and the table listed two, the
+    # installer ten and the table nine, so the bar stood still through half of an update and
+    # nothing went red. Both omissions came from the same sloppy search - one pattern found only
+    # double-quoted steps, the other was anchored at the start of a line and missed the indented
+    # ones.
+    foreach ($declared in $declaredSteps) {
+        $covered = @($pair.Phases | Where-Object { $declared.StartsWith($_.Step, [System.StringComparison]::Ordinal) })
+        if ($covered.Count -eq 0) {
+            throw ("Deployment template check failed: the $($pair.Name) announces a phase " +
+                   "('$declared') that no progress entry covers. It would run with neither the bar " +
+                   'nor the caption moving, which is indistinguishable from being stuck.')
+        }
     }
 }
 # A bar that can go backwards is a bar nobody believes. Ascending percentages are what make the

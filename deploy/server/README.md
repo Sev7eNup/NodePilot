@@ -55,9 +55,16 @@ Vier Punkte, die daran nicht offensichtlich sind:
   in 6.7.3 allesamt unbekannte Bezeichner (nachgemessen). Die Schleife ruft deshalb pro Tick
   `ProgressPage.SetProgress` — das ist der Mechanismus, den Inno für lange Operationen vorsieht.
 - **Der Fortschritt entsteht aus der Ausgabe der Installer-Skripte**, nicht aus neuen Meldungen in
-  ihnen. `Install-NodePilot.ps1` und `Update-NodePilot.ps1` sind unverändert; der Adapter übersetzt
-  ihre `Write-Step`-Zeilen im Vorbeigehen in `percent|text`. Ein Contract prüft, dass jede Phase,
-  auf die er matcht, dort noch existiert — sonst bliebe der Balken stillschweigend stehen.
+  ihnen. `Install-NodePilot.ps1` (10 Phasen) und `Update-NodePilot.ps1` (4) sind unverändert; der
+  Adapter übersetzt ihre `Write-Step`-Zeilen im Vorbeigehen in `percent|text`. Zugeordnet wird per
+  **Präfix**, weil mehrere Überschriften einen Wert einbetten (`Stopping service '$ServiceName'`).
+  Das ist sicher, weil `Write-Step` bündig schreibt und `Write-Info` einrückt — eine Detailzeile
+  beginnt mit Leerzeichen und kann keinen Phasennamen präfixieren.
+- **Der Drift-Contract läuft in beide Richtungen.** Jeder Tabelleneintrag muss im Skript existieren
+  *und* jede `Write-Step` des Skripts muss von einem Eintrag abgedeckt sein. Die zweite Richtung
+  fehlte zuerst, und genau das ist durchgerutscht: Der Updater meldet vier Phasen, die Tabelle
+  kannte zwei; der Installer zehn, die Tabelle neun. Der Balken stand dadurch über die halbe
+  Update-Laufzeit still, ohne dass ein Test rot wurde.
 - **Kein Abbrechen.** Ein halb installiertes System ist schlimmer als drei Minuten warten.
 
 Der Balken **steht** während „Starting service" — diese Phase wartet bis zu 180 s auf

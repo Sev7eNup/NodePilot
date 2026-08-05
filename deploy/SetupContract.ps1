@@ -291,16 +291,17 @@ $script:NodePilotInstallPhases = @(
     [pscustomobject]@{ Step = 'Applying ACLs';                           Percent = 62; Text = 'Applying permissions' }
     [pscustomobject]@{ Step = 'Firewall rules';                          Percent = 68; Text = 'Adding firewall rules' }
     [pscustomobject]@{ Step = 'Registering Windows Service';             Percent = 74; Text = 'Registering the Windows service' }
+    [pscustomobject]@{ Step = "Granting 'Log on as a service' to";       Percent = 77; Text = 'Granting the service logon right' }
     [pscustomobject]@{ Step = 'Starting service';                        Percent = 80; Text = 'Starting the service - this can take up to three minutes' }
 )
 
-# Update-NodePilot.ps1 announces only two phases, and both interpolate the service name
-# ("Stopping service 'NodePilot'"), so these match on a prefix rather than exactly. Two positions
-# is thin, but an update also waits on a health probe, and a bar that moves twice beats a window
-# that shows nothing for two minutes.
+# The updater's four phases. The probe here waits 60 s, not the installer's 180, so the last
+# caption promises less.
 $script:NodePilotUpdatePhases = @(
-    [pscustomobject]@{ Step = 'Stopping service'; Percent = 25; Text = 'Stopping the service' }
-    [pscustomobject]@{ Step = 'Starting service'; Percent = 70; Text = 'Starting the service - this can take up to three minutes' }
+    [pscustomobject]@{ Step = 'Backing up current install';   Percent = 20; Text = 'Backing up the current installation' }
+    [pscustomobject]@{ Step = 'Stopping service';             Percent = 40; Text = 'Stopping the service' }
+    [pscustomobject]@{ Step = 'Installing verified artifact'; Percent = 55; Text = 'Installing the verified artifact' }
+    [pscustomobject]@{ Step = 'Starting service';             Percent = 75; Text = 'Starting the service - this can take up to a minute' }
 )
 
 function Get-NodePilotInstallPhases {
@@ -317,8 +318,14 @@ function Get-NodePilotPhaseProgress {
       Translates one line of installer or updater output into a progress position, or $null when
       the line is not a phase heading.
 
-      Install phases match exactly. That is what separates a heading from the indented detail lines
-      Write-Info emits underneath it - both arrive carrying the same "[install] " prefix.
+      Matched on a prefix, because several headings interpolate a value into themselves
+      ("Stopping service 'NodePilot'", "Granting 'Log on as a service' to CORP\svc$"). An exact
+      comparison cannot express those at all - which is how three of them went unrecognised, and
+      why the bar stood still through half of an update.
+
+      A prefix is safe here for a reason worth stating: Write-Step prints its heading flush, while
+      Write-Info indents every detail line underneath it. A detail line therefore begins with
+      whitespace and cannot be the prefix of any phase name.
 
       Returning $null for everything else is the behaviour that matters most: an unrecognised line
       has to leave the bar where it is rather than reset it.
@@ -326,21 +333,25 @@ function Get-NodePilotPhaseProgress {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Line)
 
     if ($Line -cmatch '^\[install\]\s(.*)$') {
-        $text = $matches[1]
-        foreach ($phase in $script:NodePilotInstallPhases) {
-            if ($text -ceq $phase.Step) {
-                return [pscustomobject]@{ Percent = $phase.Percent; Text = $phase.Text }
-            }
-        }
-        return $null
+        return Find-NodePilotPhase -Text $matches[1] -Phases $script:NodePilotInstallPhases
     }
-
     if ($Line -cmatch '^\[update\]\s(.*)$') {
-        $text = $matches[1]
-        foreach ($phase in $script:NodePilotUpdatePhases) {
-            if ($text -clike "$($phase.Step)*") {
-                return [pscustomobject]@{ Percent = $phase.Percent; Text = $phase.Text }
-            }
+        return Find-NodePilotPhase -Text $matches[1] -Phases $script:NodePilotUpdatePhases
+    }
+    return $null
+}
+
+function Find-NodePilotPhase {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory)][object[]]$Phases
+    )
+    # StartsWith, not -clike: the wildcard operator would read '[', ']' and '*' in a phase name as
+    # pattern syntax and stop matching without saying so - the same silent class of failure this
+    # whole table exists to avoid.
+    foreach ($phase in $Phases) {
+        if ($Text.StartsWith($phase.Step, [System.StringComparison]::Ordinal)) {
+            return [pscustomobject]@{ Percent = $phase.Percent; Text = $phase.Text }
         }
     }
     return $null
