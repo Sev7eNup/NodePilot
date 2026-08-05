@@ -62,7 +62,7 @@
 .EXAMPLE
     # Full release drop: server zip + server setup + desktop installer + checksums, one version,
     # every installer Authenticode-signed before the checksums are written.
-    .\deploy\Build-Artifact.ps1 -Version 1.1.0 -SigningCertificateThumbprint $tp `
+    .\deploy\Build-Artifact.ps1 -Version 1.1.1 -SigningCertificateThumbprint $tp `
         -IncludeServerInstaller -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql' `
         -InstallerSigningCertificateThumbprint $tp
 #>

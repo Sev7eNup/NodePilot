@@ -25,6 +25,11 @@ Maschinenschlüssel findet `Grant-CertPrivateKeyAccess` die Schlüsseldatei spä
 Installation bricht ab. Gültig und auf den Public-Hostnamen ausgestellt: ein abgelaufenes Zertifikat
 ist eine rote Pflicht-Zeile, ein abweichender Name nur eine Warnung.
 
+Wer **noch keins hat**, lässt das Thumbprint-Feld leer: die Prüfseite meldet dann „No certificate
+selected" und bietet an, ein selbstsigniertes zu erzeugen — für Labor und Pilot, nicht für
+Produktion. Unbeaufsichtigt ist das derselbe Fall: leeres `certificate.thumbprint` plus
+`"provisioning": { "generateSelfSignedCertificate": true }`.
+
 **2. Datenbank-Server**, erreichbar, dessen **TLS der NodePilot-Host verifizieren kann** — bei
 self-signed also den öffentlichen Teil nach `LocalMachine\Root` auf dem NodePilot-Server. SQL Server
 muss **2022 CU1** (`16.0.4003.1`) oder neuer sein. Für PostgreSQL zusätzlich die **Root-CA als PEM**
@@ -48,7 +53,7 @@ Zielserver. Den Zugriff auf den privaten Schlüssel des Zertifikats erledigt der
 | 5 | Datenbank | SQL Server 2022 CU1+ oder PostgreSQL 16+ |
 | 6a | SQL Server | Server, Datenbank, Zertifikats-Hostname (leer = wird aus dem Server abgeleitet) |
 | 6b | PostgreSQL | Host/Port/Datenbank, dann User, Passwort, Root-Zertifikat — optional Superuser + Passwort, damit Rolle und Datenbank angelegt werden können |
-| 7 | Netzwerk und TLS | Public-Hostname, HTTPS-Port, HTTP-Port (**`0`** = kein Redirect), Allowed Hosts, Thumbprint — die Liste darunter füllt das Feld |
+| 7 | Netzwerk und TLS | Public-Hostname, HTTPS-Port, HTTP-Port (**`0`** = kein Redirect), Allowed Hosts, Thumbprint — die Liste darunter füllt das Feld, **leer** heißt „habe ich noch nicht" |
 | 8 | Prerequisites | neun Prüfzeilen; rote Pflicht-Zeilen sperren „Weiter". Wo eine Checkbox erscheint: anhaken, „Weiter" führt den Fix aus und **prüft neu** |
 | 9 | Installation | läuft mit Fortschritt und Phasentext, 2–3 Minuten |
 | 10 | Abschluss | URL, Zugangsdaten bzw. Setup-Token, Pfade, Zertifikat — und der **External-Trigger-API-Key, der nur hier steht** |
@@ -120,6 +125,12 @@ führt den Fix aus und **prüft danach neu** — ein Fix gilt nie als gelungen, 
 ist. Der Haken ist mit dem Versuch verbraucht: er wird danach gelöscht, sonst hinge ein
 dauerhaft scheiternder Fix (typisch: keine Rechte am SQL Server) in einer Schleife aus „Weiter →
 gleiche rote Zeile".
+
+Ein leeres Thumbprint-Feld ist der Weg zu genau einem dieser Fixes: die Zertifikatszeile meldet
+dann „No certificate selected" statt eines nicht gefundenen Thumbprints und bietet die Erzeugung
+eines selbstsignierten an — **nicht** vorangehakt, denn ein Laborzertifikat entsteht auf Ansage,
+nicht durch Drücken von „Weiter". Bei einem **abgelaufenen** Zertifikat wird die Erzeugung bewusst
+nicht angeboten (siehe unten).
 
 Eine Zeile kommt **vorangehakt**: der DB-Zugriff der Dienst-Identität. Der Pre-Flight testet die
 Erreichbarkeit mit der Identität des installierenden Admins — zur Laufzeit meldet sich aber der
@@ -333,6 +344,12 @@ Unter dem Feld *Certificate thumbprint* steht eine Auswahlliste der Zertifikate 
 bleibt der einzige Wert, den Answer-File, Validierung und der Rückschreibpfad des selbstsignierten
 Zertifikats lesen. Deshalb musste für die Liste an keiner dieser Stellen etwas angepasst werden.
 
+**Ein leeres Feld ist erlaubt** und heißt „ich habe noch keins". Die Seite prüft die Länge nur,
+wenn überhaupt etwas dasteht; entschieden wird auf der Prüfseite, die die Zertifikatszeile rot
+setzt und die Erzeugung anbietet. Vorher verlangte die Seite bedingungslos 40 Zeichen — und sagte
+in derselben Meldung, man solle das Feld so lassen, wie es ist. Auf einer Maschine ganz ohne
+Zertifikat kam man an das Angebot also nur heran, indem man 40 Hex-Zeichen erfand.
+
 Der Grund für die Liste ist der Weg, den sie ersetzt: den Thumbprint eines bereits installierten
 Zertifikats bekommt man sonst nur über die Zertifikats-MMC, deren Kopierknopf ein **unsichtbares
 U+200E** voranstellt. Genau dafür wirft `Install-NodePilot.ps1` alle Nicht-Hex-Zeichen weg, bevor er
@@ -417,7 +434,7 @@ gar nichts — ein Parser in Pascal wären ~120 Zeilen, die kein Test erreicht.
 ## Unbeaufsichtigt (SCCM, GPO)
 
 ```powershell
-NodePilot-Server-Setup-1.1.0.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+NodePilot-Server-Setup-1.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
 | Schalter | Wirkung |
@@ -592,7 +609,7 @@ Uninstaller **benennt** sie am Ende namentlich.
 ```powershell
 # Einzeln:
 .\deploy\server\Build-ServerInstaller.ps1 `
-    -ArtifactPath .\out\NodePilot-1.1.0.zip `
+    -ArtifactPath .\out\NodePilot-1.1.1.zip `
     -TrustedSignerThumbprint 277EAB317A581C88302CE92BE805938C86B4650D
 
 # Als Teil des Release-Builds (empfohlen — signiert und in SHA256SUMS):
@@ -715,9 +732,11 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 36 | Installer ohne `-PgBinariesPath` gebaut, Postgres gewählt | Zeile **gelb**: erreichbar, Anmeldung ungeprüft |
 | 37 | Neuinstallation mit gMSA über eine LocalSystem-Installation | Exit 0, Dienst läuft als gMSA, `jwt-secret.key` gehört jetzt dem gMSA |
 | 38 | Fehlschlag **nach** dem ACL-Schritt | Rollback stellt Dienst **und** Verzeichnis-ACL wieder her, die vorherige Installation läuft weiter |
+| 39 | Thumbprint-Feld leer gelassen | „Weiter" führt auf die Prüfseite, Zeile rot mit „No certificate selected" + **nicht** vorangehaktem Angebot; Haken + „Weiter" erzeugt eins, schreibt den Thumbprint ins Feld zurück, Neuprüfung grün |
+| 40 | Feld mit 12 Zeichen gefüllt | Meldung „40 hexadecimal characters", Seite bleibt stehen |
 
 Stand: 1, 3, 5, 9, 10, 22, 23, 30, 37 und 38 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und
-SQL Server 2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29 sowie 31 bis 36 nicht —
+SQL Server 2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29, 31 bis 36 sowie 39/40 nicht —
 wobei die **Logik** hinter 33 bis 35 gegen einen echten PostgreSQL 16 mit TLS gefahren wurde (siehe
 unten); was dort fehlt, ist die Seite.
 

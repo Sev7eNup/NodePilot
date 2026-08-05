@@ -847,6 +847,20 @@ Assert-TextMatches -Name 'a malformed entry is dropped rather than offered' `
 Assert-TextMatches -Name 'each offered certificate shows the thumbprint it will fill in' `
     -Text $loaderCode -Pattern 'Entry := Subject \+ [^\r\n]*Thumbprint'
 
+# An empty field means "I have none yet", which is the answer a fresh host gives and the one the
+# answer file has always accepted (Invoke-NodePilotSetup treats a thumbprint that is not 40 hex
+# characters as "use the certificate the Provision step generated"). The page demanded 40
+# characters unconditionally while its own error text said to leave the field as it is, so the
+# prerequisite page that offers to create one could only be reached by inventing a thumbprint.
+Assert-TextMatches -Name 'the TLS page lets an empty thumbprint through' `
+    -Text $serverIss -Pattern "NetworkPage\.Values\[4\] <> ''\) and \(Length\(NetworkPage\.Values\[4\]\) <> 40"
+# Nothing is waved through: the value still has to be a thumbprint if one is given at all, and the
+# prerequisite page fails the certificate row - required, so Next stays blocked - either way.
+Assert-TextMatches -Name 'a thumbprint that is given is still checked for length' `
+    -Text $serverIss -Pattern "A certificate thumbprint is 40 hexadecimal characters"
+Assert-TextMatches -Name 'having none selected is its own verdict, not a missing certificate' `
+    -Text $preflightScript -Pattern "(?s)IsNullOrWhiteSpace\(\`$Thumbprint\)[\s\S]{0,600}No certificate selected"
+
 # --- finish page ---------------------------------------------------------------------------------
 # The adapter has written url / adminSetupToken / externalTriggerApiKey into result.ini since the
 # wizard existed, and nothing ever read them back: the finish page showed Inno's stock "Setup has

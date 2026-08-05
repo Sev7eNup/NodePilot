@@ -235,7 +235,7 @@ Honest inventory so nobody assumes more coverage than exists:
   dead weight.
 - **The installer is unsigned unless you ask for a signature.** `Build-DesktopInstaller.ps1` alone
   never signs. Building through `deploy\Build-Artifact.ps1 -IncludeDesktopInstaller
-  -DesktopSigningCertificateThumbprint <tp>` signs it as part of the run — which is where signing
+  -InstallerSigningCertificateThumbprint <tp>` signs it as part of the run — which is where signing
   belongs, because doing it afterwards rewrites the `.exe` and invalidates its `SHA256SUMS.txt`
   entry. A self-signed publisher still leaves SmartScreen warning on first launch; only a
   reputation-carrying certificate silences that.

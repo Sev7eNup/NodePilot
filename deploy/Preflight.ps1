@@ -394,6 +394,21 @@ function Test-NodePilotTlsCertificate {
     )
 
     $title = 'Kestrel TLS certificate'
+
+    # "I have none yet" is a different answer from "the one I named is missing", and it is the
+    # answer a fresh host gives. Reported before the store is read, so this branch also states the
+    # verdict on a machine where the certificate store cannot be enumerated at all - and so the
+    # message stops reading "Certificate  is not present", with the empty thumbprint rendered as
+    # the gap it is.
+    if ([string]::IsNullOrWhiteSpace($Thumbprint)) {
+        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
+            -CanAutoFix $true -AutoFixLabel 'Generate a self-signed certificate (lab use only)' `
+            -Detail 'No certificate selected. Kestrel terminates TLS itself and will not start without one.' `
+            -RemediationHint 'Pick one on the previous page, or tick the box to have a self-signed certificate created.' `
+            -Remediation 'Import-PfxCertificate -FilePath <file>.pfx -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)' `
+            -AbortMessage 'No certificate thumbprint was given. Kestrel cannot serve HTTPS without one.'
+    }
+
     $cert = Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
         Where-Object { $_.Thumbprint -eq $Thumbprint }
 

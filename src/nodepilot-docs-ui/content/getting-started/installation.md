@@ -42,9 +42,19 @@ Unterstützte Kombinationen:
 - Single-Node oder Active/Passive-Cluster
 - Kestrel-HTTPS mit Zertifikat aus `LocalMachine\My`
 
-Das Repository erzeugt ein signiertes ZIP-Artefakt. `deploy\Install-NodePilot.ps1` installiert daraus den Windows-Dienst, setzt ACLs und Firewallregeln und prüft den Health-Endpunkt.
+Es gibt zwei Wege zur selben Installation.
 
-Voraussetzungen und vollständige Installationsbefehle stehen unter [Windows-Server-Deployment](../deployment/production).
+### GUI-Setup
+
+`NodePilot-Server-Setup-<version>.exe` liegt als Asset am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest). Es bringt das signierte Artefakt und die ASP.NET-Core-Runtime mit und prüft sämtliche Voraussetzungen, **bevor** es etwas verändert. Auf Wunsch legt es SQL-Login und Datenbank beziehungsweise PostgreSQL-Rolle und -Datenbank selbst an; das Kestrel-Zertifikat wird aus einer Liste der Zertifikate in `Cert:\LocalMachine\My` ausgewählt statt als Thumbprint eingetippt. Unbeaufsichtigt für SCCM oder GPO: `NodePilot-Server-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`.
+
+Das ist der kürzeste Weg: eine Datei statt fünf, und kein manueller Abgleich des Publisher-Thumbprints.
+
+### PowerShell-Skripte
+
+Dasselbe, was das Setup ausführt, und für Automatisierung der direktere Weg: Das Repository erzeugt ein signiertes ZIP-Artefakt, `deploy\Install-NodePilot.ps1` installiert daraus den Windows-Dienst, setzt ACLs und Firewallregeln und prüft den Health-Endpunkt.
+
+Voraussetzungen und vollständige Installationsbefehle für beide Wege stehen unter [Windows-Server-Deployment](../deployment/production).
 
 ## Variante 3: Installation aus Quellcode
 

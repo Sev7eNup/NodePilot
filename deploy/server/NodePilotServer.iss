@@ -1449,10 +1449,16 @@ begin
       Thumbprint := Trim(NetworkPage.Values[4]);
       StringChangeEx(Thumbprint, ' ', '', True);
       NetworkPage.Values[4] := Uppercase(Thumbprint);
-      if Length(NetworkPage.Values[4]) <> 40 then
+      // An empty field passes on purpose: it is how you say "I do not have one yet", and it is
+      // already how the answer file says it. The page used to reject it while telling the operator
+      // to leave it as is - so on a host with no certificate at all, the only way to reach the
+      // prerequisite page that offers to create one was to invent 40 hexadecimal characters. The
+      // check is not lost, it is moved: the certificate row goes red there and blocks Next until
+      // something real is in the store.
+      if (NetworkPage.Values[4] <> '') and (Length(NetworkPage.Values[4]) <> 40) then
       begin
-        MsgBox('A certificate thumbprint is 40 hexadecimal characters. Leave it as is for now if ' +
-               'you want the next page to create a self-signed certificate for you.', mbError, MB_OK);
+        MsgBox('A certificate thumbprint is 40 hexadecimal characters. Leave the field empty if ' +
+               'you want the next page to offer to create a self-signed certificate for you.', mbError, MB_OK);
         Result := False;
       end;
     end;
