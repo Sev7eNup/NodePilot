@@ -662,14 +662,30 @@ Assert-TextDoesNotMatch -Name 'the readiness page has no edit control' `
 # through the certificate MMC, whose copy button prepends an invisible U+200E - the reason
 # Install-NodePilot.ps1 strips non-hex characters before measuring the length at all. The adapter
 # has published the store's contents since the wizard existed and nothing ever read them back.
+$compactStart = $serverIss.IndexOf('procedure CompactNetworkPage(')
 $certComboStart = $serverIss.IndexOf('procedure CertComboChange(')
 $loaderStart = $serverIss.IndexOf('procedure LoadCertificateList(')
 $loaderEnd = $serverIss.IndexOf('procedure CreateReadinessPage(')
-if ($certComboStart -lt 0 -or $loaderStart -le $certComboStart -or $loaderEnd -le $loaderStart) {
+if ($compactStart -lt 0 -or $certComboStart -le $compactStart -or
+    $loaderStart -le $certComboStart -or $loaderEnd -le $loaderStart) {
     throw 'Deployment template check failed: could not delimit the certificate picker in the server setup.'
 }
+$compactCode = $serverIss.Substring($compactStart, $certComboStart - $compactStart)
 $certComboCode = $serverIss.Substring($certComboStart, $loaderStart - $certComboStart)
 $loaderCode = $serverIss.Substring($loaderStart, $loaderEnd - $loaderStart)
+
+# The picker shipped drawn as a sliver under the bottom edge of the page. An input page does not
+# scroll and gives no indication that anything is below it, so "a few pixels too low" is invisible
+# in the source and total on screen. Whatever the reflow computes, the control has to land inside
+# the surface.
+Assert-TextMatches -Name 'the picker is kept inside the visible surface' `
+    -Text $compactCode -Pattern 'CertCombo\.Top \+ CertCombo\.Height > NetworkPage\.SurfaceHeight'
+# Reflowed, not split. Five values that answer one question belong on one screen; the space comes
+# from Inno's 54 px per label+edit pair, which is about 11 px more than the controls occupy.
+Assert-TextMatches -Name 'the page is reflowed from the controls, not from constants' `
+    -Text $compactCode -Pattern 'NetworkPage\.PromptLabels\[I\]\.Height'
+Assert-TextMatches -Name 'the reflow runs while the wizard is built' `
+    -Text $serverIss -Pattern '(?s)procedure InitializeWizard[\s\S]*?CompactNetworkPage\(\);'
 
 # Picking one has to land in the field that the answer file, the validation and the self-signed
 # write-back all read. A picker holding its own copy would be a second home for the same value, and
@@ -700,6 +716,12 @@ Assert-TextDoesNotMatch -Name 'a certificate list that cannot be read must not s
 # problem that does not exist.
 Assert-TextMatches -Name 'a malformed entry is dropped rather than offered' `
     -Text $loaderCode -Pattern 'Length\(Thumbprint\) <> 40'
+# Subject and expiry alone are not unique. On the lab host two certificates share both - "NodePilot
+# Lab HTTPS" and "NodePilot Lab SQL TLS", issued 39 seconds apart under the same CN - so the list
+# rendered two identical lines, and choosing the wrong one would have handed Kestrel the database's
+# certificate in silence. The value that lands in the field has to be on the line.
+Assert-TextMatches -Name 'each offered certificate shows the thumbprint it will fill in' `
+    -Text $loaderCode -Pattern 'Entry := Subject \+ [^\r\n]*Thumbprint'
 
 # --- finish page ---------------------------------------------------------------------------------
 # The adapter has written url / adminSetupToken / externalTriggerApiKey into result.ini since the

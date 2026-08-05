@@ -57,8 +57,21 @@ Vier Entscheidungen, die nicht offensichtlich sind:
   gefiltert zu werden. „Es liegt doch im Store, warum steht es nicht da?" hat eine häufige Antwort —
   es wurde ein `.cer` importiert, wo ein `.pfx` gemeint war — und eine gefilterte Liste macht daraus
   ein Rätsel.
+- **Jede Zeile trägt den Thumbprint**, nicht nur Subject und Ablauf. Auf CM1 liegen zwei
+  Zertifikate mit demselben Subject **und** demselben Ablaufdatum („NodePilot Lab HTTPS" und
+  „NodePilot Lab SQL TLS", 39 Sekunden auseinander ausgestellt): ohne den Thumbprint waren das zwei
+  identische Zeilen, und die falsche hätte Kestrel kommentarlos das Datenbank-Zertifikat gegeben.
+  Nebeneffekt: der Wert lässt sich gegen einen übergebenen Thumbprint prüfen, statt ihn zu glauben.
 - **Sortiert nach Ablauf, spätestes zuerst.** Ein erneuertes Zertifikat liegt neben dem, das es
-  ersetzt, unter demselben Subject; das Datum ist das Einzige, was die beiden unterscheidet.
+  ersetzt, unter demselben Subject; das Datum ist das Erste, was die beiden unterscheidet.
+
+**Layout.** Die Liste steht auf derselben Seite wie die fünf Eingabefelder — dafür wird die Seite neu
+umbrochen. Inno rechnet 54 px pro Label+Feld-Paar, die Controls brauchen real ~43 px; fünf Paare
+belegten damit 270 der 309 px Fläche und die Liste wurde **unterhalb der sichtbaren Kante**
+gezeichnet. Eine Input-Seite scrollt nicht und zeigt nicht an, dass da noch etwas ist. Der Umbruch
+misst die Controls, statt Konstanten zu setzen, und eine Klemme erzwingt zusätzlich, dass die Liste
+innerhalb der Fläche endet. Die Alternative wäre eine zweite Seite gewesen — fünf Werte, die zu
+einer Entscheidung gehören, auf zwei Bildschirme verteilt.
 
 **Was die Auswahl nicht prüft** — und die Readiness-Seite auch nicht: ob das Subject bzw. die SAN zum
 *Public Host Name* passt, ob die Kette den Clients vertrauenswürdig ist, und ob das Zertifikat noch
@@ -306,9 +319,10 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
   `ISCC /Qp /O- /DStageDir=<stage> /DOutputDir=<out> NodePilotServer.iss`; dass dabei wirklich der
   `[Code]`-Abschnitt übersetzt wird, lässt sich mit einem absichtlich falschen Bezeichner in einer
   Kopie nachweisen. Läuft **nicht** in CI (kein ISCC auf dem Runner).
-- **Positionen berechneter Steuerelemente.** Die Zertifikatsliste wird aus `Edits[4].Top + Height`
-  platziert. Der Compiler prüft das nicht, und eine Input-Seite hat nur 309 px Fläche: passt es
-  nicht, wird das Element unterhalb der sichtbaren Fläche gezeichnet und die Seite scrollt nicht.
+- **Positionen berechneter Steuerelemente.** Dass die Zertifikatsliste *innerhalb* der Fläche
+  landet, erzwingt die Klemme in `CompactNetworkPage` und ein Contract darauf. Wie die Seite dann
+  aussieht — ob die Abstände stimmen oder es gedrängt wirkt — sieht man erst im laufenden Wizard.
+  Genau so ist die Liste beim ersten Mal abgeschnitten ausgeliefert worden.
 - **Die GUI wurde nie geklickt.** Alle Lab-Läufe waren unbeaufsichtigt. Der interaktive Pfad —
   Readiness-Ampel, Auto-Fix-Checkboxen, Zertifikatsauswahl — ist ungetestet.
 - **Nur SQL Server + gMSA getestet.** Der PostgreSQL-Pfad und der LocalSystem-Pfad sind im Lab nie

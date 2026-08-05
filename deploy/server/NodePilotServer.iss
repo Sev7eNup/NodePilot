@@ -753,6 +753,40 @@ begin
   end;
 end;
 
+// Inno lays an input page out at 54 px per label+edit pair, which is generous: a prompt label is
+// about 13 px tall and an edit about 21. Five pairs therefore claim 270 of the 309 px surface and
+// leave the picker below the bottom edge - it shipped drawn as a sliver, because an input page
+// does not scroll and gives no hint that anything is under the edge.
+//
+// Reflowing the same controls at the heights they actually have frees roughly 55 px, which is
+// enough for the picker on the SAME page. Splitting the page would have been the other way out and
+// a worse one: five values that belong to one decision, spread over two screens.
+//
+// Measured off the controls rather than off constants, so a font change or a sixth field moves it
+// instead of quietly reintroducing the clipping.
+procedure CompactNetworkPage();
+var
+  I, Top: Integer;
+begin
+  Top := NetworkPage.PromptLabels[0].Top;
+  for I := 0 to 4 do
+  begin
+    NetworkPage.PromptLabels[I].Top := Top;
+    Top := Top + NetworkPage.PromptLabels[I].Height + ScaleY(2);
+    NetworkPage.Edits[I].Top := Top;
+    // 6 px between an edit and the next prompt. Chosen so the picker lands inside the surface even
+    // if an edit turns out to be 23 px rather than 21 - the clamp below is a backstop, not the plan.
+    Top := Top + NetworkPage.Edits[I].Height + ScaleY(6);
+  end;
+
+  CertCombo.Top := Top;
+  // Last line of defence, and the reason this is not just arithmetic: whatever the reflow computes,
+  // the picker has to end up inside the surface. Being a few pixels too low is invisible in the
+  // source and unmistakable on screen.
+  if CertCombo.Top + CertCombo.Height > NetworkPage.SurfaceHeight then
+    CertCombo.Top := NetworkPage.SurfaceHeight - CertCombo.Height;
+end;
+
 procedure CertComboChange(Sender: TObject);
 begin
   // Entry 0 is the prompt and maps to an empty thumbprint deliberately: landing back on it must
@@ -806,7 +840,13 @@ begin
     // not a thumbprint into the field and fail the next page for a reason that is not the truth.
     if Length(Thumbprint) <> 40 then Continue;
 
-    Entry := Subject + '   expires ' + Expires;
+    // The thumbprint is in the caption, not just behind it. On the lab host two certificates share
+    // a subject AND an expiry date - "NodePilot Lab HTTPS" and "NodePilot Lab SQL TLS", issued 39
+    // seconds apart - so subject and date rendered two identical lines, and picking the wrong one
+    // would have configured Kestrel with the database's certificate without saying anything.
+    // Showing the value that lands in the box above also means the operator can check it against a
+    // thumbprint they were handed, instead of selecting on trust.
+    Entry := Subject + '   ' + Thumbprint + '   expires ' + Expires;
     // Listed, not filtered out. "It is in the store, why is it not offered?" has one common
     // answer - a .cer was imported where a .pfx was meant - and hiding the certificate keeps that
     // a mystery until the prerequisite page says it about a thumbprint typed out by hand.
@@ -1015,11 +1055,13 @@ begin
   CertCombo.Parent := NetworkPage.Surface;
   CertCombo.Left := NetworkPage.Edits[4].Left;
   CertCombo.Width := NetworkPage.Edits[4].Width;
-  CertCombo.Top := NetworkPage.Edits[4].Top + NetworkPage.Edits[4].Height + ScaleY(6);
+  // Top is set by CompactNetworkPage below - one place decides the vertical layout of this page.
   // Pick-only: free text belongs in the edit above, and two boxes accepting the same value are two
   // boxes that can disagree about it.
   CertCombo.Style := csDropDownList;
   CertCombo.OnChange := @CertComboChange;
+  // Last, because it measures the controls above to place this one.
+  CompactNetworkPage();
 
   CreateReadinessPage();
 
