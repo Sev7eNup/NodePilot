@@ -428,6 +428,16 @@ if ($assertIndex -gt $stagingIndex) {
     throw 'Deployment template check failed: the installer stages the artifact before asserting the pre-flight results.'
 }
 
+# The unattended path never shows the readiness page - with /ANSWERFILE every wizard page is
+# skipped, so nothing calls the probe. The port check reaches a silent installation only through
+# THIS call, and only if it is handed the ports actually being installed. Dropping these two
+# arguments would leave the pre-flight checking the parameter defaults (443 and 80) while the
+# install proceeds on 8443, which passes and then fails at service start - the exact failure the
+# check exists to prevent, restored in the one mode where nobody is watching.
+Assert-TextMatches -Name 'the installer pre-flights the ports it is installing on' `
+    -Text $installerScript `
+    -Pattern '(?s)Invoke-NodePilotPreflight[\s\S]{0,600}-HttpsPort \$HttpsPort[\s\S]{0,80}-HttpPort \$HttpPort'
+
 # The marker is how any later tool finds this installation. Leaving it behind on uninstall makes
 # every subsequent fresh install look like an upgrade.
 Assert-TextMatches -Name 'installer records a machine-wide installation marker' `

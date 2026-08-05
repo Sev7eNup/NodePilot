@@ -433,6 +433,12 @@ try {
             -Condition ($busyResult.AbortMessage -match '10013 or 10048')
         Assert-True -Name 'a blocked port explains where Windows reservations are listed' `
             -Condition ($busyResult.Remediation -match 'excludedportrange')
+        # The unattended path never renders a readiness page - /ANSWERFILE skips every wizard page,
+        # so nothing calls the probe. A silent install is stopped by this assert inside
+        # Install-NodePilot.ps1 instead, and only because the port result is Required.
+        Assert-Throws -Name 'a blocked port aborts an unattended install' -MessagePattern 'Kestrel cannot bind' -Action {
+            Assert-NodePilotPreflight -Results @($busyResult) | Out-Null
+        }
     }
     finally { $busyProbe.Stop() }
 
