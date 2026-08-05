@@ -306,7 +306,10 @@ in der Installation zuschlägt.
     "httpsPort": 443, "httpPort": 80,
     "allowedHosts": "nodepilot.contoso.local", "knownProxyIps": []
   },
-  "certificate": { "thumbprint": "A1B2...", "source": "existing" }
+  "certificate": { "thumbprint": "A1B2...", "source": "existing" },
+
+  "bootstrap": { "adminUsername": "npadmin" },
+  "seed": { "backupPath": "\\\\share\\golden.npbackup", "passphrase": "..." }
 }
 ```
 
@@ -315,6 +318,25 @@ in der Installation zuschlägt.
 `postgresHost`, `postgresDatabase`, `postgresUser`, `postgresPassword`, `postgresRootCertificate`).
 Für `"mode": "update"` genügen `installPath` und `serviceName`; jeder weitere Schlüssel wird
 abgelehnt, damit eine veraltete Datei nicht halb angewendet wird.
+
+**Optionale Schlüssel im Überblick:**
+
+| Schlüssel | Wirkung |
+|---|---|
+| `serviceDisplayName` | Anzeigename des Dienstes |
+| `database.sqlCertificateHostName` | leer lassen → Installer leitet ihn aus `sqlServer` ab |
+| `network.allowedHosts`, `network.knownProxyIps` | Host-Filter und vertrauenswürdige Proxy-IPs |
+| `certificate.source` | rein dokumentarisch |
+| `provisioning.installDotnetRuntime`, `.createDatabaseAndLogin`, `.generateSelfSignedCertificate`, `.trustArtifactSigner` | die Auto-Fixes der Readiness-Seite. **Im Silent-Modus wirkungslos** — sie werden nur ausgeführt, wenn jemand sie auf der Prüfseite anhakt. |
+| `bootstrap.adminUsername` | legt den ersten Admin an, Kennwort zufällig (siehe [Schlüsselfertiger Rollout](#schlüsselfertiger-rollout-unbeaufsichtigt-ohne-token-eingabe)) |
+| `bootstrap.credentialOutputPath` | wohin die Zugangsdaten geschrieben werden. Default `<dataPath>\bootstrap-admin.json` |
+| `seed.backupPath` | `.npbackup`, das beim ersten Start eingespielt wird |
+| `seed.passphrase` | dessen Passphrase. Landet **nie** in der `appsettings.Production.json`, sondern im `Environment`-Wert des Dienstschlüssels |
+| `skips.databaseCheck`, `skips.gmsaCheck` | überspringen die jeweilige Preflight-Prüfung |
+
+`bootstrap` und `seed` schließen einander nicht aus, aber nur einer greift: bringt der Seed Benutzer
+mit, gibt es kein Token, und `bootstrap` läuft ins Leere. Ohne beide bleibt es beim Token auf der
+Abschlussseite.
 
 **Das Passwort steht im Klartext in der Datei.** Geschützt ist sie über die DACL ihres
 Verzeichnisses (SYSTEM + Administratoren + installierender Benutzer, atomar beim Anlegen gesetzt).

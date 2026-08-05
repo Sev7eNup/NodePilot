@@ -383,6 +383,16 @@ Nach erfolgreichem Install steht in der Konsole:
 | `-KnownProxyIps` | | leer (nur Loopback wird vertraut); bei HAProxy jede direkte Transport-IP angeben |
 | `-SkipSqlConnectivityCheck` | | off |
 | `-SkipGmsaCheck` | | off |
+| `-BootstrapAdminUsername` | | leer. Gesetzt = **nur** dieses Konto darf das einmalige Setup-Token einlösen (`NodePilot:BootstrapAdminUsername`). Für unbeaufsichtigte Rollouts, die den Namen vorher kennen. |
+| `-SeedBackupPath` | | leer. `.npbackup`, das beim **ersten Start** in eine leere Instanz eingespielt wird — Benutzer, Workflows, Maschinen, Credentials, Settings. Die Datei wird nach `<DataPath>\seed.npbackup` kopiert und nach dem Einspielen gelöscht. |
+| `-SeedBackupPassphrase` | ✓ wenn `-SeedBackupPath` gesetzt (SecureString) | landet im `Environment`-Wert des Dienstschlüssels, **nie** in der `appsettings.Production.json` |
+
+> **Schlüsselfertig ohne Token-Eingabe.** `-BootstrapAdminUsername` und `-SeedBackupPath` sind die
+> beiden Wege, eine unbeaufsichtigte Installation benutzbar zu beenden — sonst müsste jemand das
+> Setup-Token von Hand in die Anmeldemaske tippen. Der Seed gewinnt: bringt er Benutzer mit, wird
+> gar kein Token ausgestellt. Ein falscher Seed lässt den Dienst **nicht** starten, statt eine
+> scheinbar provisionierte, in Wahrheit leere Instanz zu hinterlassen. Vollständig in
+> [`server/README.md`](server/README.md#schlüsselfertiger-rollout-unbeaufsichtigt-ohne-token-eingabe).
 
 ## HAProxy vor NodePilot
 

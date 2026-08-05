@@ -188,12 +188,23 @@ erste Anmeldung, External-Trigger-API-Key, Zertifikats-Thumbprint sowie Dienstna
 API-Key erscheint **nur dort** — er ist danach nicht mehr rekonstruierbar. Der Text ist markierbar,
 und „Save this summary…" legt ihn als Datei ab.
 
-**Schlüsselfertig ohne Token-Eingabe:** Trägt die Antwortdatei eine `bootstrap`-Gruppe mit
-`adminUsername`, legt das Setup den ersten Administrator selbst an — Kennwort pro Maschine zufällig
-erzeugt und in einer ACL-geschützten Datei unter `<DataPath>\bootstrap-admin.json` hinterlegt. Feste
-Standard-Zugangsdaten gibt es bewusst nicht: sie wären über alle Maschinen gleich und würden
-gefunden statt geraten. Bringt eine Installation bereits Benutzer mit, passiert gar nichts — dann
-existiert kein Token, das eingelöst werden könnte.
+**Schlüsselfertig ohne Token-Eingabe.** Zwei Wege, die sich gegenseitig ausschließen:
+
+- **`bootstrap`-Gruppe mit `adminUsername`** — das Setup legt den ersten Administrator selbst an.
+  Kennwort pro Maschine zufällig erzeugt und in einer ACL-geschützten Datei unter
+  `<DataPath>\bootstrap-admin.json` hinterlegt (nur SYSTEM und Administratoren). Feste
+  Standard-Zugangsdaten gibt es bewusst nicht: sie wären über alle Maschinen gleich und würden
+  gefunden statt geraten.
+- **`seed`-Gruppe mit `backupPath` und `passphrase`** — eine Referenzmaschine einmal einrichten,
+  `np backup export`, und jede weitere Installation spielt diesen Stand beim ersten Start ein:
+  Benutzer, Workflows, Maschinen, Credentials und Einstellungen. Dann entsteht gar kein Token. Die
+  Passphrase landet im Dienstschlüssel, nie in der Konfigurationsdatei; die Seed-Datei wird nach dem
+  Einspielen gelöscht.
+
+Der Seed gewinnt: bringt er Benutzer mit, gibt es nichts einzulösen. Er füllt außerdem **nur** eine
+leere Instanz — eine Maschine im Betrieb behält alles, was sie hat. Und er ist fail-closed: eine
+falsche Passphrase lässt den Dienst nicht starten, statt eine scheinbar provisionierte, in Wahrheit
+leere Instanz zu hinterlassen.
 
 Unbeaufsichtigt für SCCM oder GPO:
 
