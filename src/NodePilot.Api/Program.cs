@@ -440,6 +440,16 @@ using (var scope = app.Services.CreateScope())
     // first login must present. Without this the first HTTP caller of /api/auth/login
     // would auto-become Admin — trivial takeover on a freshly deployed instance.
     var bootstrapLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+
+    // Before usersExist is read, and before the recovery invariant: a seeded backup brings its own
+    // users - including the break-glass Admin the invariant insists on - so both of the checks
+    // below have to see the instance as it is AFTER provisioning, not before.
+    await NodePilot.Api.Security.ProvisioningSeeder.SeedIfEmptyAsync(
+        db,
+        builder.Configuration,
+        scope.ServiceProvider.GetRequiredService<NodePilot.Api.Services.Backup.BackupRestoreService>(),
+        bootstrapLogger);
+
     var usersExist = await db.Users.AnyAsync();
     await NodePilot.Api.Security.EnterpriseRecoveryInvariant.EnsureAsync(
         db, builder.Configuration);

@@ -36,6 +36,7 @@ $script:NodePilotAnswerFileKeys = @{
             'provisioning.installDotnetRuntime', 'provisioning.createDatabaseAndLogin',
             'provisioning.generateSelfSignedCertificate', 'provisioning.trustArtifactSigner',
             'bootstrap.adminUsername', 'bootstrap.credentialOutputPath',
+            'seed.backupPath', 'seed.passphrase',
             'skips.databaseCheck', 'skips.gmsaCheck'
         )
     }
@@ -240,6 +241,16 @@ function ConvertTo-NodePilotInstallParameters {
     # the adapter's login can no longer be spent on a name of the interceptor's choosing.
     $bootstrapAdmin = & $optional 'bootstrap.adminUsername'
     if ($bootstrapAdmin) { $splat['BootstrapAdminUsername'] = [string]$bootstrapAdmin }
+
+    # A configuration backup to restore on first start. The passphrase travels as a SecureString for
+    # the same reason -PostgresPassword does: it cannot cross a powershell.exe -File boundary any
+    # other way, and it unlocks a file holding every credential the reference machine had.
+    $seedPath = & $optional 'seed.backupPath'
+    if ($seedPath) {
+        $splat['SeedBackupPath'] = [string]$seedPath
+        $splat['SeedBackupPassphrase'] = ConvertTo-NodePilotSecureString `
+            -PlainText ([string]$Answers['seed.passphrase'])
+    }
 
     return $splat
 }

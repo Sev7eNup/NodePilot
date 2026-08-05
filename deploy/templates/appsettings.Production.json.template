@@ -54,6 +54,9 @@
   "NodePilot": {
     "BootstrapAdminUsername": "{{BOOTSTRAP_ADMIN_USERNAME}}"
   },
+  "Provisioning": {
+    "SeedBackupPath": "{{SEED_BACKUP_PATH}}"
+  },
   "Settings": {
     "RuntimeOverridesPath": "{{DATA_PATH_ESCAPED}}\\appsettings.runtime.json"
   },

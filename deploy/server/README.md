@@ -37,8 +37,12 @@ Fläche für nichts.
 ## Schlüsselfertiger Rollout (unbeaufsichtigt, ohne Token-Eingabe)
 
 Ein unbeaufsichtigter Lauf endet sonst mit einer Instanz, die niemand benutzen kann: das
-Setup-Token müsste ein Mensch in die Anmeldemaske tippen. Mit der optionalen `bootstrap`-Gruppe löst
-das Setup es selbst ein.
+Setup-Token müsste ein Mensch in die Anmeldemaske tippen. Es gibt zwei Wege daran vorbei, die sich
+gegenseitig ausschließen — welcher greift, entscheidet allein, ob die Instanz danach Benutzer hat.
+
+### Variante 1: Zufalls-Admin
+
+Mit der optionalen `bootstrap`-Gruppe löst das Setup das Token selbst ein.
 
 ```json
 "bootstrap": {
@@ -55,11 +59,43 @@ alle Maschinen gleich, hätte einen bekannten Wert und würde gefunden statt ger
 Produkt, das PowerShell auf allen verwalteten Maschinen ausführt und im Server-Modus auf allen
 Interfaces lauscht. Die Answer-File kennt deshalb **kein** `adminPassword`.
 
+### Variante 2: Bestand aus einem Backup einspielen
+
+Die reichere Variante. Eine Referenzmaschine normal installieren, einrichten, `np backup export` —
+das Ergebnis ist der Seed für alle weiteren Maschinen:
+
+```json
+"seed": {
+  "backupPath": "\\\\share\\golden.npbackup",
+  "passphrase": "…"
+}
+```
+
+Der Installer kopiert die Datei nach `<DataPath>\seed.npbackup` (restriktive ACL, gleicher Writer
+wie die Konfiguration) und legt die Passphrase in den `Environment`-Wert des Dienstschlüssels —
+**nicht** in die `appsettings.Production.json`, genau wie die Postgres-Verbindungszeichenfolge. Beim
+ersten Start spielt `ProvisioningSeeder` sie ein, **bevor** irgendetwas die Benutzertabelle liest,
+und löscht die Datei danach.
+
+Damit kommt die Maschine mit Benutzern, Workflows, Maschinen, Credentials **und Settings** hoch. Weil
+das Restore einen Break-Glass-Admin verlangt, wenn es in eine leere Datenbank läuft, ist danach auch
+`EnterpriseRecoveryInvariant` erfüllt — LDAP/SSO lässt sich also einschalten. (Die Auth-Sektion ist
+laut Hot-Reload-Matrix restart-pflichtig; nach dem Seed einmal neu starten.)
+
+Zwei Regeln, die den Seed sicher machen, dauerhaft konfiguriert zu lassen:
+
+- **Nur in eine leere Instanz.** Existieren Benutzer, passiert nichts — der Seed ist Erstbefüllung,
+  nie Migration. Eine Maschine im Betrieb behält alles, was sie hat, egal was die Konfiguration sagt.
+- **Fail closed.** Falsche Passphrase, fehlende oder kaputte Datei → der Dienst startet **nicht**.
+  Die Alternative wäre eine leere Instanz mit offenem Bootstrap-Fenster, die der Betreiber für
+  provisioniert hält.
+
 Was dabei passiert:
 
 | Lage | Ergebnis |
 |---|---|
-| Benutzer existieren bereits (z. B. eingespielter Bestand) | Es gibt kein Token, nichts einzulösen. `bootstrap.status=AlreadyProvisioned`, **keine** Zugangsdatei. |
+| `seed`-Gruppe gesetzt, Instanz leer | Bestand wird eingespielt. Es gibt kein Token, `bootstrap.status=AlreadyProvisioned`, **keine** Zugangsdatei. |
+| Benutzer existieren bereits (Seed oder Neuinstallation über bestehende DB) | Es gibt kein Token, nichts einzulösen. `bootstrap.status=AlreadyProvisioned`, **keine** Zugangsdatei. |
 | Kein Benutzer, `bootstrap.adminUsername` gesetzt | Konto wird angelegt, Zugangsdaten werden abgelegt. `bootstrap.status=Created`. |
 | Kein Benutzer, keine `bootstrap`-Gruppe | Wie bisher: Token auf der Abschlussseite, manuelle Erstanmeldung. |
 
@@ -479,9 +515,12 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 21 | Installation unbeaufsichtigt | keine Oberfläche, Exit-Code unverändert |
 | 22 | Unbeaufsichtigt mit `bootstrap.adminUsername` | Exit 0, Zugangsdatei da (ACL nur SYSTEM + Administratoren), Anmeldung damit ohne Token, `admin-setup.token` weg |
 | 23 | Unbeaufsichtigt ohne `bootstrap`-Gruppe | wie bisher: Token auf der Abschlussseite, kein Konto |
+| 24 | Unbeaufsichtigt mit `seed`-Gruppe, leere Instanz | Anmeldung mit einem Benutzer **aus dem Backup**, kein Token, keine Zugangsdatei, Seed-Datei gelöscht |
+| 25 | Derselbe Seed gegen eine befüllte Instanz | nichts passiert, keine Duplikate, Seed-Datei bleibt liegen |
+| 26 | Falsche Seed-Passphrase | Dienst startet **nicht**, Meldung nennt die Passphrase, kein Teilbestand in der DB |
 
-Stand: 1, 3, 5, 9 und 10 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server 2022 CU
-gelaufen. 2, 4, 6, 7, 8 und 11 bis 23 nicht.
+Stand: 1, 3, 5, 9, 10, 22 und 23 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server
+2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21 sowie 24 bis 26 nicht.
 
 Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
 `httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,

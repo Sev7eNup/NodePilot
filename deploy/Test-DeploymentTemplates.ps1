@@ -170,6 +170,7 @@ function Render-AppSettingsTemplate {
         '{{DATA_PATH_ESCAPED}}' = 'C:\\ProgramData\\NodePilot'
         '{{EXTERNAL_TRIGGER_API_KEY}}' = 'test-key'
         '{{BOOTSTRAP_ADMIN_USERNAME}}' = ''
+        '{{SEED_BACKUP_PATH}}' = ''
         '{{ALLOWED_HOSTS}}' = 'nodepilot.example.test'
         '{{KNOWN_PROXIES_JSON}}' = $KnownProxiesJson
     }
@@ -1192,6 +1193,24 @@ Assert-TextMatches -Name 'the token read uses backup semantics' `
 Assert-TextMatches -Name 'the staged token copy is shredded in a finally' `
     -Text $contractScript `
     -Pattern "(?s)function Get-NodePilotBootstrapToken[\s\S]*?finally \{[\s\S]*?Remove-NodePilotAnswerFile[\s\S]*?Remove-Item"
+
+# --- provisioning seed ---------------------------------------------------------------------------
+# The seed unlocks a file holding every credential the reference machine had, so where its
+# passphrase ends up matters more than anything else about this feature.
+Assert-TextMatches -Name 'only the seed path is rendered into the configuration' `
+    -Text $installerScript -Pattern "\{\{SEED_BACKUP_PATH\}\}"
+Assert-TextDoesNotMatch -Name 'the seed passphrase is never rendered into appsettings' `
+    -Text $appSettingsTemplate -Pattern 'SeedBackupPassphrase'
+# Same treatment the database secret gets: the key is locked down BEFORE the value lands in it,
+# not afterwards, so there is no window where the plaintext sits under a default ACL.
+Assert-TextMatches -Name 'the service registry key is restricted before the passphrase is written' `
+    -Text $installerScript `
+    -Pattern '(?s)if \(\$SeedBackupPassphrase\) \{[\s\S]{0,400}Set-ServiceRegistryAclForSecrets[\s\S]{0,400}Provisioning__SeedBackupPassphrase'
+# Copied in with the same restricted writer as the configuration; a plain Copy-Item would inherit
+# from DataPath.
+Assert-TextMatches -Name 'the staged seed file gets a restricted ACL' `
+    -Text $installerScript `
+    -Pattern '(?s)\$seedTargetPath = Join-Path \$DataPath[\s\S]{0,300}Write-NodePilotRestrictedFile'
 
 # --- first-admin bootstrap ---------------------------------------------------------------------
 # An unattended rollout has nobody to type the setup token, so the setup spends it and writes down

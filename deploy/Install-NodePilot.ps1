@@ -177,6 +177,10 @@ param(
     # installer cannot know the answer, and pinning the wrong name would lock the operator out of
     # their own bootstrap. An unattended install does know it, and passes it.
     [string]$BootstrapAdminUsername,
+    # A configuration backup to restore on first start. The file is copied into DataPath and the
+    # passphrase goes into the service's Environment value, never into appsettings.
+    [string]$SeedBackupPath,
+    [SecureString]$SeedBackupPassphrase,
     [string]$JwtIssuer,
     [string]$JwtAudience,
     [string]$AllowedHosts,
@@ -977,6 +981,24 @@ New-Item -ItemType Directory -Path $DataPath -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $DataPath 'logs') -Force | Out-Null
 Set-DirectoryAclForService -Path $DataPath -ServiceAccount $AclIdentity -SkipServiceRule:$isLocalSystem
 
+# Provisioning seed: copied in rather than referenced where the operator left it, because the API
+# reads it as the service account at first start and a deployment share is not reachable then.
+# It carries credentials, so it lands with the same restricted ACL as the configuration itself and
+# the service deletes it once it has been consumed.
+$seedTargetPath = ''
+if ($SeedBackupPath) {
+    if (-not (Test-Path -LiteralPath $SeedBackupPath -PathType Leaf)) {
+        throw "SeedBackupPath '$SeedBackupPath' does not exist."
+    }
+    $seedTargetPath = Join-Path $DataPath 'seed.npbackup'
+    Write-NodePilotRestrictedFile `
+        -Path $seedTargetPath `
+        -Content ([IO.File]::ReadAllBytes($SeedBackupPath)) `
+        -ServiceAccount $AclIdentity `
+        -SkipServiceRule:$isLocalSystem
+    Write-Info "  Provisioning seed staged: $seedTargetPath"
+}
+
 $installedPostgresRootCertificate = $null
 if ($DbProvider -eq 'postgres') {
     $installedPostgresRootCertificate = $postgresRootCertificateTarget
@@ -1096,6 +1118,9 @@ $rendered = $rendered.Replace('{{BIND_HTTP_JSON}}',             $BindHttpJson)
 $rendered = $rendered.Replace('{{DATA_PATH_ESCAPED}}',          $dataEscaped)
 $rendered = $rendered.Replace('{{EXTERNAL_TRIGGER_API_KEY}}',   (ConvertTo-JsonInnerLocal $ExternalTriggerApiKey))
 $rendered = $rendered.Replace('{{BOOTSTRAP_ADMIN_USERNAME}}',   (ConvertTo-JsonInnerLocal $BootstrapAdminUsername))
+# Only the PATH goes into the configuration file. The passphrase that unlocks it is placed in the
+# service's Environment value instead, next to the database secret and behind the same ACL.
+$rendered = $rendered.Replace('{{SEED_BACKUP_PATH}}',           (ConvertTo-JsonInnerLocal $seedTargetPath))
 $rendered = $rendered.Replace('{{ALLOWED_HOSTS}}',              (ConvertTo-JsonInnerLocal $AllowedHosts))
 $rendered = $rendered.Replace('{{KNOWN_PROXIES_JSON}}',         (ConvertTo-Json -InputObject @($normalizedKnownProxyIps) -Compress))
 
@@ -1240,7 +1265,17 @@ if ($DbProvider -eq 'postgres') {
     Set-ServiceRegistryAclForSecrets -Path $envRegPath
     $envValues += "ConnectionStrings__Postgres=$postgresServiceConnStr"
 }
+if ($SeedBackupPassphrase) {
+    # Same reasoning as the connection string above: this unlocks a file containing every
+    # credential the reference machine had, so it never reaches appsettings.Production.json. The
+    # key is restricted BEFORE the value is written, not after.
+    Set-ServiceRegistryAclForSecrets -Path $envRegPath
+    $seedPassphrasePlain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR(
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SeedBackupPassphrase))
+    $envValues += "Provisioning__SeedBackupPassphrase=$seedPassphrasePlain"
+}
 New-ItemProperty -Path $envRegPath -Name 'Environment' -PropertyType MultiString -Value $envValues -Force | Out-Null
+if ($SeedBackupPassphrase) { $seedPassphrasePlain = $null }
 if ($DbProvider -eq 'postgres') {
     $pgPwPlain = $null
     $postgresServiceConnStr = $null

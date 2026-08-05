@@ -462,6 +462,25 @@ try {
     Assert-True -Name 'two generated passwords differ' `
         -Condition ((New-NodePilotBootstrapPassword) -ne (New-NodePilotBootstrapPassword))
 
+    # --- provisioning seed ----------------------------------------------------------------------
+    $seedAnswers = Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'seed.json' -Json (@{
+        schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
+        serviceName = 'NodePilot'; identity = @{ type = 'localSystem' }
+        database = @{ provider = 'sqlserver'; sqlServer = 'db'; sqlDatabase = 'NodePilot' }
+        network = @{ publicHostname = 'h'; httpsPort = 8443; httpPort = 0 }
+        certificate = @{ thumbprint = 'E' * 40 }
+        seed = @{ backupPath = '\\share\golden.npbackup'; passphrase = 'seed-pass-phrase' }
+    } | ConvertTo-Json -Depth 6))
+    $seedSplat = ConvertTo-NodePilotInstallParameters -Answers $seedAnswers
+    Assert-True -Name 'the seed path reaches the installer' `
+        -Condition ($seedSplat['SeedBackupPath'] -eq '\\share\golden.npbackup')
+    # Same reason -PostgresPassword is one: it cannot cross a powershell.exe -File boundary any
+    # other way, and it unlocks every credential the reference machine had.
+    Assert-True -Name 'the seed passphrase travels as a SecureString' `
+        -Condition ($seedSplat['SeedBackupPassphrase'] -is [System.Security.SecureString])
+    Assert-True -Name 'no seed group means neither seed parameter' `
+        -Condition (-not $sqlSplat.Contains('SeedBackupPath') -and -not $sqlSplat.Contains('SeedBackupPassphrase'))
+
     # The credential file is the whole point of the silent path: nobody is watching, so the
     # generated password has to be written somewhere the automation can collect it - and nowhere
     # else can read it.
