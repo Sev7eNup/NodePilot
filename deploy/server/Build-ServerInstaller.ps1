@@ -29,6 +29,14 @@
     Inno Setup compiler. Probed via Resolve-IsccPath.ps1 when omitted.
 .PARAMETER RuntimeInstallerPath
     A pre-fetched ASP.NET Core runtime installer. Fetched and verified when omitted.
+.PARAMETER PgBinariesPath
+    A PostgreSQL distribution ("pgsql" from the EDB zip), same input the desktop installer takes.
+    Only the psql CLIENT is taken from it - seven files, ~8 MB - so the wizard can create the role
+    and database on a PostgreSQL server the way it already can on SQL Server.
+
+    OPTIONAL, unlike the desktop build. Omitted, the installer is built exactly as before and the
+    readiness page says the Postgres fix is unavailable in this build rather than offering a button
+    that cannot work. Release builds pass it.
 .PARAMETER OutputRoot
     Where the .exe lands. Defaults to deploy\server\out.
 #>
@@ -41,6 +49,7 @@ param(
     [string]$Version,
     [string]$IsccPath,
     [string]$RuntimeInstallerPath,
+    [string]$PgBinariesPath,
     [string]$OutputRoot
 )
 
@@ -141,6 +150,7 @@ $deployScripts = @(
     'Update-NodePilot.ps1'
     'Uninstall-NodePilot.ps1'
     'Provision-NodePilotDatabase.ps1'
+    'Provision-NodePilotPostgres.ps1'
     'New-NodePilotSelfSignedCertificate.ps1'
 )
 foreach ($script in $deployScripts) {
@@ -167,6 +177,44 @@ $stagedRuntime = Get-ChildItem -LiteralPath (Join-Path $stage 'payload') -Filter
     Select-Object -First 1
 if (-not $stagedRuntime) { throw 'No ASP.NET Core runtime installer was staged.' }
 Write-Info "  $($stagedRuntime.Name)"
+
+# The psql CLIENT only - the seven files it actually loads, measured off its import table, not
+# bin\*. A stock distribution's bin folder is 57 MB, of which 27 MB is ICU and 8 MB is wxWidgets
+# for pgAdmin; none of it is reachable from psql. Staged FLAT into payload\ rather than into a
+# subfolder, because the [Files] entry that carries the payload is "payload\*" with no
+# recursesubdirs - a subdirectory would compile without complaint and simply not be there.
+$pgClientFiles = @(
+    'psql.exe'
+    'LIBPQ.dll'
+    'libssl-3-x64.dll'
+    'libcrypto-3-x64.dll'
+    'libintl-9.dll'
+    'libiconv-2.dll'
+    'libwinpthread-1.dll'
+)
+if ([string]::IsNullOrWhiteSpace($PgBinariesPath)) {
+    Write-Step 'Staging the PostgreSQL client: skipped (-PgBinariesPath not given)'
+    Write-Info '  This build cannot create a PostgreSQL role and database; the readiness page will say so.'
+}
+else {
+    Write-Step 'Staging the PostgreSQL client (psql only)'
+    $pgBin = Join-Path $PgBinariesPath 'bin'
+    if (-not (Test-Path -LiteralPath (Join-Path $pgBin 'psql.exe') -PathType Leaf)) {
+        throw "PgBinariesPath does not look like a PostgreSQL distribution (no bin\psql.exe): $PgBinariesPath"
+    }
+    $staged = 0
+    foreach ($file in $pgClientFiles) {
+        $source = Join-Path $pgBin $file
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw ("PostgreSQL client staging incomplete: $file is missing from $pgBin. psql will not " +
+                   'start without it, and a wizard that ships a broken client is worse than one that ' +
+                   'ships none.')
+        }
+        Copy-Item -LiteralPath $source -Destination (Join-Path $stage 'payload') -Force
+        $staged += (Get-Item -LiteralPath $source).Length
+    }
+    Write-Info ("  {0} files, {1:N1} MB" -f $pgClientFiles.Count, ($staged / 1MB))
+}
 
 Write-Step 'Staging the publisher certificate'
 if ([string]::IsNullOrWhiteSpace($SignerCertificatePath)) {

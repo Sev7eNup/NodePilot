@@ -158,6 +158,10 @@ var
   CertCombo: TNewComboBox;
   CertThumbprints: array of String;
 
+  // Whether the bundled psql client has been extracted to {tmp} yet. Extraction is idempotent but
+  // not free, and it is attempted at most once per run whether or not this build carries one.
+  PgClientExtracted: Boolean;
+
   // Drawn while the adapter installs. The wizard used to sit on "Preparing to Install" for the
   // whole run - measured 136 s healthy, 187 s when the health probe is lost - showing nothing.
   ProgressPage: TOutputProgressWizardPage;
@@ -208,6 +212,25 @@ function AdapterArguments(const Arguments: String): String;
 begin
   Result := '-NoProfile -ExecutionPolicy Bypass -File "' + AdapterPath() + '"' +
     ' -PayloadRoot "' + ExpandConstant('{tmp}') + '" ' + Arguments;
+end;
+
+// The bundled psql client, extracted on first need rather than at startup: it is eight megabytes
+// that an installation onto SQL Server never touches, and the wizard has to stay responsive on the
+// page where it is first wanted.
+//
+// The build script's -PgBinariesPath is OPTIONAL, so a setup with no client in it is a normal
+// build, not a broken one - hence the try/except rather than a check. The adapter decides what to
+// do about it by looking for the file, so nothing here has to report anything.
+procedure EnsurePgClient();
+begin
+  if PgClientExtracted then Exit;
+  PgClientExtracted := True;
+  try
+    ExtractTemporaryFiles('psql.exe');
+    ExtractTemporaryFiles('*.dll');
+  except
+    // Built without the client. The Postgres row says so on its own.
+  end;
 end;
 
 function RunPowerShell(const Arguments: String; var ResultCode: Integer): Boolean;
@@ -450,7 +473,20 @@ begin
   AddLine(Lines, Count, '  "certificate": {');
   AddLine(Lines, Count, '    "thumbprint": ' + JsonString(Trim(NetworkPage.Values[4])) + ',');
   AddLine(Lines, Count, '    "source": "existing"');
-  if ForProbe then
+
+  // The probe file carries no fix flags - it is a question, not an instruction. It DOES carry the
+  // PostgreSQL superuser, because whether those credentials exist is what decides if the Postgres
+  // row may offer a fix at all, and a probe that cannot see them would never show the checkbox
+  // that makes them useful.
+  if ForProbe and (not IsSqlServerSelected()) and (Trim(PostgresAuthPage.Values[3]) <> '') then
+  begin
+    AddLine(Lines, Count, '  },');
+    AddLine(Lines, Count, '  "provisioning": {');
+    AddLine(Lines, Count, '    "postgresSuperUser": ' + JsonString(Trim(PostgresAuthPage.Values[3])) + ',');
+    AddLine(Lines, Count, '    "postgresSuperPassword": ' + JsonString(PostgresAuthPage.Values[4]));
+    AddLine(Lines, Count, '  }');
+  end
+  else if ForProbe then
     AddLine(Lines, Count, '  }')
   else
   begin
@@ -460,9 +496,16 @@ begin
     AddLine(Lines, Count, '    "generateSelfSignedCertificate": ' + JsonBool(IsFixRequested('certificate')) + ',');
     // Two rows, one key: Provision-NodePilotDatabase.ps1 is existence-guarded end to end, so the
     // same run covers "nothing exists yet" and "everything exists except the service identity's
-    // grant" without being told which it is.
+    // grant" without being told which it is. On the Postgres path the same key routes to
+    // Provision-NodePilotPostgres.ps1 - which script runs follows from the provider, not from a
+    // second flag that could contradict the first.
     AddLine(Lines, Count, '    "createDatabaseAndLogin": ' +
       JsonBool(IsFixRequested('database') or IsFixRequested('databaseServiceLogin')) + ',');
+    if not IsSqlServerSelected() then
+    begin
+      AddLine(Lines, Count, '    "postgresSuperUser": ' + JsonString(Trim(PostgresAuthPage.Values[3])) + ',');
+      AddLine(Lines, Count, '    "postgresSuperPassword": ' + JsonString(PostgresAuthPage.Values[4]) + ',');
+    end;
     AddLine(Lines, Count, '    "trustArtifactSigner": false');
     AddLine(Lines, Count, '  }');
   end;
@@ -603,6 +646,10 @@ begin
     ProbeRan := False;
     Exit;
   end;
+  // Before the answer file, because the Postgres row's verdict depends on whether the client is
+  // there to log in with.
+  if not IsSqlServerSelected() then EnsurePgClient();
+
   WriteAnswerFile('install', True);
   Ini := SessionDir + '\probe.ini';
   DeleteFile(Ini);
@@ -1125,6 +1172,12 @@ begin
   PostgresAuthPage.Add('User:', False);
   PostgresAuthPage.Add('Password:', True);
   PostgresAuthPage.Add('Root certificate (PEM file):', False);
+  // Provisioning only, and only if the operator wants it - the service never authenticates with
+  // these. SQL Server needs no equivalent: there Trusted_Connection means the installing admin's
+  // own Windows identity IS the permission to create a login and a database. PostgreSQL has
+  // nothing like it, so creating the role has to be asked for with credentials that can.
+  PostgresAuthPage.Add('Superuser for creating the role (optional):', False);
+  PostgresAuthPage.Add('Superuser password:', True);
 
   // Anchored to the last page created, not because it belongs to it.
   NetworkPage := CreateInputQueryPage(PostgresAuthPage.ID,
@@ -1415,6 +1468,7 @@ begin
 
     if WantsFix then
     begin
+      if not IsSqlServerSelected() then EnsurePgClient();
       WriteAnswerFile('install', False);
       ProvisionIni := SessionDir + '\provision.ini';
       if not RunPowerShell('-Mode Provision -AnswerFile "' + AnswerFilePath() + '" -OutFile "' +
@@ -1589,6 +1643,9 @@ begin
   // requested performs no action and exits 0.
   if WizardSilent() and (AnswerMode = 'install') then
   begin
+    // Unattended runs never reached the readiness page, so this is the first and only chance to
+    // put the client where the adapter looks for it.
+    EnsurePgClient();
     ProvisionIni := SessionDir + '\provision.ini';
     if not RunPowerShell('-Mode Provision -AnswerFile "' + AnswerFilePath() + '" -OutFile "' +
       ProvisionIni + '"', ResultCode) or (ResultCode <> 0) then

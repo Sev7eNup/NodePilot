@@ -825,6 +825,108 @@ try {
     Assert-True -Name 'the unverifiable case still names the principal and the statements' `
         -Condition ($svcUnreachable.Detail -match 'CONTOSO\\HOST\$' -and $svcUnreachable.Remediation -match 'ALTER ROLE')
 
+    # --- the Postgres row ---------------------------------------------------------------------
+    # The TCP probe could only ever say "the port answered". On SQL Server that gap is covered by
+    # Windows auth - the pre-flight connects as somebody real; on Postgres there is no such
+    # fallback, so a typo in the role password looked exactly like a healthy install until the
+    # service started and the installer rolled it back 180 seconds later.
+    $pgArgs = @{ HostName = 'pg1.corp.example'; Port = 5432; User = 'nodepilot'; Database = 'nodepilot' }
+
+    $pgDown = New-NodePilotPostgresResult @pgArgs -TcpReachable $false -TcpError 'No route to host'
+    Assert-True -Name 'an unreachable Postgres is still a required failure' `
+        -Condition ($pgDown.Status -eq 'Fail' -and $pgDown.Required)
+
+    # Built without -PgBinariesPath. Reporting Pass here would be repeating the old lie with extra
+    # steps; the row says what it does and does not know.
+    $pgNoClient = New-NodePilotPostgresResult @pgArgs -TcpReachable $true
+    Assert-True -Name 'without a client the row warns instead of claiming success' `
+        -Condition ($pgNoClient.Status -eq 'Warn')
+    Assert-True -Name 'the clientless row says the login is untested' `
+        -Condition ($pgNoClient.Detail -match 'untested')
+    Assert-True -Name 'the clientless row offers no fix it cannot run' `
+        -Condition (-not $pgNoClient.CanAutoFix)
+
+    $pgOk = New-NodePilotPostgresResult @pgArgs -TcpReachable $true `
+        -PsqlOutcome ([pscustomobject]@{ Succeeded = $true; Error = '' })
+    Assert-True -Name 'a role that can log in passes' -Condition ($pgOk.Status -eq 'Pass')
+    Assert-True -Name 'the passing row says the login was actually tried' `
+        -Condition ($pgOk.Detail -match 'can log in')
+
+    # What is missing comes from pg_roles and pg_database, NOT from psql's message. That message is
+    # localised: the de-DE cluster this was built against answers "Rolle »nodepilot« existiert
+    # nicht" and "Passwort-Authentifizierung ... fehlgeschlagen", so an English-only matcher
+    # classifies correctly on one host and calls everything "refused" on the next. The German
+    # strings below are the real ones, kept as the regression they are.
+    $germanNoRole = 'psql: Fehler: FATAL: Rolle »nodepilot« existiert nicht'
+    $germanBadPassword = 'psql: Fehler: FATAL: Passwort-Authentifizierung für Benutzer »nodepilot« fehlgeschlagen'
+
+    $pgNoRole = New-NodePilotPostgresResult @pgArgs -TcpReachable $true -CanProvision $true `
+        -PsqlOutcome ([pscustomobject]@{ Succeeded = $false; Error = $germanNoRole }) `
+        -RoleExists $false -DatabaseExists $false
+    Assert-True -Name 'a missing role is named and fixable' `
+        -Condition ($pgNoRole.Status -eq 'Fail' -and $pgNoRole.CanAutoFix -and $pgNoRole.Detail -match "role 'nodepilot' does not exist")
+    Assert-True -Name 'a missing database is named alongside it' `
+        -Condition ($pgNoRole.Detail -match 'database \[nodepilot\] does not exist')
+
+    # Role there, database not: half the work, and the fix does only the half that is missing.
+    $pgNoDb = New-NodePilotPostgresResult @pgArgs -TcpReachable $true -CanProvision $true `
+        -PsqlOutcome ([pscustomobject]@{ Succeeded = $false; Error = 'anything at all' }) `
+        -RoleExists $true -DatabaseExists $false
+    Assert-True -Name 'a missing database alone is named and fixable' `
+        -Condition ($pgNoDb.Status -eq 'Fail' -and $pgNoDb.CanAutoFix -and $pgNoDb.Detail -match 'database \[nodepilot\] does not exist')
+    Assert-True -Name 'an existing role is not reported as missing' `
+        -Condition ($pgNoDb.Detail -notmatch "role 'nodepilot' does not exist")
+
+    # THE localisation regression: a German "password authentication failed" must not read as a
+    # missing role just because the English words are absent.
+    $pgBadPassword = New-NodePilotPostgresResult @pgArgs -TcpReachable $true -CanProvision $true `
+        -PsqlOutcome ([pscustomobject]@{ Succeeded = $false; Error = $germanBadPassword }) `
+        -RoleExists $true -DatabaseExists $true
+    Assert-True -Name 'both present but refused is not called a missing role' `
+        -Condition ($pgBadPassword.Status -eq 'Fail' -and $pgBadPassword.Detail -notmatch 'does not exist')
+    # Creating them again would change nothing, and the fix never rewrites an existing role's
+    # password, so a button here would be a button that reports failure.
+    Assert-True -Name 'both present but refused offers no fix' -Condition (-not $pgBadPassword.CanAutoFix)
+    # Says what it DOES know, so the operator looks at the password and pg_hba.conf rather than at
+    # whether the role was ever created. "Could not tell" would send them the wrong way.
+    Assert-True -Name 'both present but refused says both are present' `
+        -Condition ($pgBadPassword.Detail -match "both the role 'nodepilot' and the database \[nodepilot\] exist")
+    Assert-True -Name 'the refusal is quoted verbatim, in whatever language it arrived' `
+        -Condition ($pgBadPassword.Detail -match 'Passwort-Authentifizierung')
+
+    # Could not ask: no superuser credentials. "I do not know" is a different answer from "they are
+    # not there", and offering to create a role because nobody could look would be the worse guess.
+    $pgUnknown = New-NodePilotPostgresResult @pgArgs -TcpReachable $true -CanProvision $false `
+        -PsqlOutcome ([pscustomobject]@{ Succeeded = $false; Error = $germanNoRole })
+    Assert-True -Name 'without a superuser the cause is not guessed at' `
+        -Condition ($pgUnknown.Status -eq 'Fail' -and -not $pgUnknown.CanAutoFix -and $pgUnknown.Detail -notmatch 'does not exist')
+    Assert-True -Name 'the unknown case still repeats what the server said' `
+        -Condition ($pgUnknown.Detail -match 'existiert nicht')
+    Assert-True -Name 'the unfixable row still carries the statements for a DBA' `
+        -Condition ($pgUnknown.Remediation -match 'CREATE ROLE' -and $pgUnknown.Remediation -match 'CREATE DATABASE')
+
+    # Windows PowerShell 5.1 has no ProcessStartInfo.ArgumentList, so the quoting is ours to get
+    # right. A database name is validated before it reaches DDL, but a PASSWORD is not, and a
+    # password with a quote or a trailing backslash in it would otherwise change where the argument
+    # ends.
+    Assert-True -Name 'a plain argument is passed through untouched' `
+        -Condition ((ConvertTo-NodePilotCommandLineArgument -Value 'nodepilot') -eq 'nodepilot')
+    Assert-True -Name 'an argument with a space is quoted' `
+        -Condition ((ConvertTo-NodePilotCommandLineArgument -Value 'two words') -eq '"two words"')
+    Assert-True -Name 'an embedded quote is escaped' `
+        -Condition ((ConvertTo-NodePilotCommandLineArgument -Value 'a"b') -eq '"a\"b"')
+    # A path with no space needs no quotes at all, and its trailing backslash is then harmless.
+    Assert-True -Name 'a path without spaces is left alone, backslash and all' `
+        -Condition ((ConvertTo-NodePilotCommandLineArgument -Value 'C:\dir\') -eq 'C:\dir\')
+    # Once quoting IS needed, that same trailing backslash would escape the closing quote and
+    # swallow the next argument, so it doubles.
+    Assert-True -Name 'a trailing backslash cannot escape the closing quote' `
+        -Condition ((ConvertTo-NodePilotCommandLineArgument -Value 'C:\program files\') -eq '"C:\program files\\"')
+    Assert-True -Name 'backslashes before a quote double' `
+        -Condition ((ConvertTo-NodePilotCommandLineArgument -Value 'a\"b') -eq '"a\\\"b"')
+    Assert-True -Name 'an empty argument still occupies a slot' `
+        -Condition ((ConvertTo-NodePilotCommandLineArgument -Value '') -eq '""')
+
     # --- ServiceControl.ps1 -------------------------------------------------------------------
     # Static checks can prove the wait is CALLED; only running it proves it works. The defect this
     # covers shipped: the update aborted on the process it had just stopped, because the SCM

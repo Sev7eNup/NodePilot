@@ -208,6 +208,11 @@ ALTER ROLE db_owner ADD MEMBER [CORP\svc-nodepilot$];
 The installer enables `READ_COMMITTED_SNAPSHOT` on the database automatically (warning
 only if it lacks permission).
 
+The same applies on PostgreSQL, where the setup ships `psql` and can create the role and the
+database — but PostgreSQL has no counterpart to `Trusted_Connection`, so that one needs superuser
+credentials (`provisioning.postgresSuperUser` / `.postgresSuperPassword`, or the two extra fields
+on the credentials page). It never overwrites an existing role's password.
+
 You can skip this step if you install with `NodePilot-Server-Setup-<version>.exe` and the
 account running it is `sysadmin` (or holds `CREATE ANY DATABASE`). The readiness page checks
 the service identity's login, database user and `db_owner` membership separately from plain

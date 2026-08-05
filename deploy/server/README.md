@@ -12,8 +12,8 @@ nutzbar und ist weiterhin die Referenz; das Setup ruft genau dieses Skript auf.
 | | |
 |---|---|
 | **Nimmt ab** | Fünf Release-Assets herunterladen, Prüfsumme vergleichen, Signer-Thumbprint out-of-band abgleichen, `.cer` nach `LocalMachine\Root` importieren, neun Parameter fehlerfrei tippen, den Kestrel-Thumbprint aus der Zertifikats-MMC heraussuchen. Ein Asset, ein Doppelklick. |
-| **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
-| **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), PostgreSQL-Rolle anlegen (kein PG-Client im Payload), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
+| **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, **PostgreSQL-Rolle und -Datenbank anlegen**, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
+| **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
 
 Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — neun Zeilen: .NET-Runtime,
 Kestrel-Zertifikat, **HTTP/HTTPS-Ports**, gMSA, Dienstidentität, Domänenmitgliedschaft,
@@ -54,6 +54,43 @@ opt-in bleibt. Sichtbar und abwählbar ist der Haken trotzdem.
 Der Fix läuft über `Provision-NodePilotDatabase.ps1`: erst Rechte-Gate (`sysadmin` oder
 `CREATE ANY DATABASE`), dann existenzgeprüft Login → Datenbank → Benutzer → `db_owner`. Fehlen
 die Rechte, wird **nichts** verändert und der Wizard zeigt die Anweisungen für den DBA.
+
+### PostgreSQL
+
+Dieselbe Zeile, andere Mechanik — und ein Unterschied, den man kennen muss: bei SQL Server ist die
+Berechtigung gratis, weil `Trusted_Connection` die Windows-Identität des installierenden Admins
+*ist*. PostgreSQL kennt das nicht. Für `CREATE ROLE`/`CREATE DATABASE` braucht das Setup deshalb
+**Superuser-Zugangsdaten**, die es sonst nirgends bekommt: zwei zusätzliche Felder auf der
+Credentials-Seite (leer lassen → kein Fix-Angebot), unbeaufsichtigt
+`provisioning.postgresSuperUser` / `.postgresSuperPassword`. Der Dienst sieht sie nie; sie leben
+nur in der ACL-geschützten Session der laufenden Installation.
+
+Der Client (`psql`) liegt im Payload — sieben Dateien, 8,4 MB, gemessen aus der Import-Tabelle von
+`psql.exe`, also ohne ICU und ohne die pgAdmin-Bibliotheken. Er wird **erst extrahiert, wenn er
+gebraucht wird**; eine Installation auf SQL Server fasst ihn nie an. Gebaut wird er nur mit
+`-PgBinariesPath`; ohne den Schalter entsteht derselbe Installer wie zuvor, und die Postgres-Zeile
+sagt dann ausdrücklich, dass die Anmeldung ungeprüft blieb.
+
+Dadurch ist die Zeile überhaupt erst aussagekräftig: vorher war sie ein reiner TCP-Probe, der bei
+fehlender Rolle, fehlender Datenbank oder falschem Passwort **grün** blieb — der Fehler tauchte
+180 Sekunden später beim Health-Probe auf und rollte die Installation zurück. Jetzt meldet sich der
+Check als NodePilot-Rolle an, in derselben TLS-Form wie die Laufzeit (`sslmode=verify-full` gegen
+das angegebene Root-Zertifikat).
+
+**Was fehlt, wird im Katalog nachgesehen, nicht aus der Fehlermeldung gelesen.** psql-Meldungen sind
+lokalisiert — ein deutscher Server antwortet „Rolle »nodepilot« existiert nicht" —, ein
+englisch gebauter Matcher klassifiziert also auf einem Host richtig und auf dem nächsten alles als
+„abgelehnt". Bei fehlgeschlagener Anmeldung fragt der Check deshalb mit den Superuser-Daten
+`pg_roles` und `pg_database`. Ohne Superuser-Daten sagt er, dass er es nicht unterscheiden kann,
+und gibt die Server-Meldung wörtlich weiter — statt zu raten.
+
+Der Fix (`Provision-NodePilotPostgres.ps1`) folgt derselben Regel wie die SQL-Server-Seite: erst
+Rechte-Gate (`rolsuper` oder `rolcreaterole` **und** `rolcreatedb`), dann existenzgeprüft Rolle →
+Datenbank, zum Schluss eine Probeanmeldung als die Rolle selbst. Zwei Dinge tut er bewusst **nicht**:
+das Passwort einer vorhandenen Rolle zurücksetzen (ein nicht passendes Passwort ist ein Tippfehler in
+der Answer-File — ihn zu „heilen" würde ihn verstecken und alles andere aussperren, was diese Rolle
+benutzt) und den Eigentümer einer vorhandenen Datenbank ändern. Beides wird gemeldet, nicht
+korrigiert.
 
 ## Schlüsselfertiger Rollout (unbeaufsichtigt, ohne Token-Eingabe)
 
@@ -362,6 +399,7 @@ abgelehnt, damit eine veraltete Datei nicht halb angewendet wird.
 | `network.allowedHosts`, `network.knownProxyIps` | Host-Filter und vertrauenswürdige Proxy-IPs. `localhost` hängt der Installer immer an — seine eigene Health-Probe geht dorthin |
 | `certificate.source` | rein dokumentarisch |
 | `provisioning.installDotnetRuntime`, `.createDatabaseAndLogin`, `.generateSelfSignedCertificate`, `.trustArtifactSigner` | dieselben Auto-Fixes wie auf der Readiness-Seite, **auch im Silent-Modus** — dort ist die Answer-File die einzige Stelle, an der sie angefordert werden können. Laufen vor der Installation, nicht danach. |
+| `provisioning.postgresSuperUser`, `.postgresSuperPassword` | nur für den PostgreSQL-Fix. `CREATE ROLE`/`CREATE DATABASE` brauchen eine Berechtigung, die es bei SQL Server gratis über die Windows-Identität gibt. Der Dienst sieht sie nie |
 | `bootstrap.adminUsername` | legt den ersten Admin an, Kennwort zufällig (siehe [Schlüsselfertiger Rollout](#schlüsselfertiger-rollout-unbeaufsichtigt-ohne-token-eingabe)) |
 | `bootstrap.credentialOutputPath` | wohin die Zugangsdaten geschrieben werden. Default `<dataPath>\bootstrap-admin.json` |
 | `seed.backupPath` | `.npbackup`, das beim ersten Start eingespielt wird |
@@ -372,8 +410,13 @@ abgelehnt, damit eine veraltete Datei nicht halb angewendet wird.
 mit, gibt es kein Token, und `bootstrap` läuft ins Leere. Ohne beide bleibt es beim Token auf der
 Abschlussseite.
 
-**Für einen Rollout auf einen frischen SQL Server gehört `provisioning.createDatabaseAndLogin` in
-die Answer-File.** Der Schlüssel deckt beides ab, was ein unbeaufsichtigter Lauf sonst offen lässt:
+**Für einen Rollout auf eine frische Datenbank gehört `provisioning.createDatabaseAndLogin` in die
+Answer-File.** Ein Schlüssel, beide Provider — welches Skript läuft, folgt aus `database.provider`
+und nicht aus einem zweiten Flag, das dem ersten widersprechen könnte. Auf dem Postgres-Pfad
+brauchen zusätzlich `provisioning.postgresSuperUser` / `.postgresSuperPassword` gesetzt zu sein,
+sonst bleibt die Rolle unangetastet und der Lauf sagt es im Log.
+
+Bei SQL Server deckt der Schlüssel beides ab, was ein unbeaufsichtigter Lauf sonst offen lässt:
 Datenbank und Login anlegen, und der Dienst-Identität (Computer-Konto bzw. gMSA) `db_owner` geben.
 Ohne ihn startet der Dienst und antwortet auf `/healthz/ready` mit 503, weil er sich an der
 Datenbank nicht anmelden kann. Existenzgeprüft — auf einer Maschine, wo alles schon da ist,
@@ -589,9 +632,15 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 30 | Unbeaufsichtigt mit `provisioning.createDatabaseAndLogin` | Exit 0, Datenbank + Login angelegt, `/healthz/ready` 200 |
 | 31 | Abgelaufenes Zertifikat gewählt | Zeile rot mit Ablaufdatum, „Weiter" gesperrt, kein Auto-Fix angeboten |
 | 32 | Zertifikat mit fremdem SAN | Zeile **gelb**, nennt beide Namen, „Weiter" bleibt möglich |
+| 33 | Postgres ohne Rolle/Datenbank, Superuser angegeben | Zeile rot mit Checkbox, „Weiter" legt beides an, Neuprüfung grün |
+| 34 | Dasselbe ohne Superuser-Felder | Zeile rot **ohne** Checkbox, Server-Meldung wörtlich, Snippet sichtbar |
+| 35 | Postgres mit falschem Rollen-Passwort | Zeile rot, nennt „beide vorhanden", kein Fix-Angebot, Passwort bleibt unverändert |
+| 36 | Installer ohne `-PgBinariesPath` gebaut, Postgres gewählt | Zeile **gelb**: erreichbar, Anmeldung ungeprüft |
 
 Stand: 1, 3, 5, 9, 10, 22, 23 und 30 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server
-2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26 sowie 27 bis 29 nicht.
+2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29 sowie 31 bis 36 nicht — wobei die
+**Logik** hinter 33 bis 35 gegen einen echten PostgreSQL 16 mit TLS gefahren wurde (siehe unten);
+was dort fehlt, ist die Seite.
 
 Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
 `httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,
@@ -606,6 +655,18 @@ gefahren: beim zweiten Mal `Pass` ohne Änderung. Fall 30 end-to-end: Datenbank 
 `/VERYSILENT /ANSWERFILE` mit `createDatabaseAndLogin` → Exit 0, Datenbank + Login + `db_owner`
 angelegt, 36 Tabellen migriert, `healthz` 200. Gegenprobe ohne den Schlüssel: Exit 7 im Pre-Flight,
 nichts angefasst. Was weiter fehlt, ist die **Seite** (27–29): die Checkbox ist nie geklickt worden.
+
+Zusatz 2026-08-05 (PostgreSQL): gegen einen eigens aufgesetzten PostgreSQL 16 mit `ssl = on` und
+`sslmode=verify-full`, sieben Fälle. Rolle und Datenbank fehlen, Superuser vorhanden → rot, beide
+namentlich genannt, Fix angeboten; dasselbe ohne Superuser → rot, deutsche Server-Meldung wörtlich,
+kein Fix. Fix legt beides an und meldet sich zur Kontrolle als die Rolle an; zweiter Lauf ändert
+nichts (`Pass`); Neuprüfung grün ohne Checkbox. Fix mit einem Konto ohne `CREATEROLE`/`CREATEDB` →
+`Skipped`, und im Katalog nachgesehen: **nichts** angelegt. Falsches Rollen-Passwort bei
+vorhandener Rolle → rot mit „beide vorhanden", kein Fix, Passwort unverändert.
+
+Der Cluster antwortete auf Deutsch — was den Entwurf geändert hat: die ursprüngliche
+Fehlerklassifikation las psql-Meldungen und hätte „Rolle »nodepilot« existiert nicht" als
+„abgelehnt" durchgereicht. Seitdem wird `pg_roles`/`pg_database` gefragt statt geparst.
 
 Dabei gefunden und behoben: eine `AllowedHosts`-Liste ohne `localhost` ließ die Installation an
 ihrer **eigenen** Health-Probe scheitern — `UseHostFiltering` antwortet auf `Host: localhost` mit

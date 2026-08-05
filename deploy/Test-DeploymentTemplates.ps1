@@ -22,7 +22,9 @@ param(
     [string]$SetupContractPath,
     [string]$ArtifactSecurityPath,
     [string]$ServerIssPath,
-    [string]$RuntimePayloadScriptPath
+    [string]$RuntimePayloadScriptPath,
+    [string]$PostgresProvisionScriptPath,
+    [string]$ServerBuildScriptPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -73,6 +75,12 @@ if ([string]::IsNullOrWhiteSpace($ServerIssPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($RuntimePayloadScriptPath)) {
     $RuntimePayloadScriptPath = Join-Path $scriptDirectory 'Get-DotnetRuntimePayload.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($PostgresProvisionScriptPath)) {
+    $PostgresProvisionScriptPath = Join-Path $scriptDirectory 'Provision-NodePilotPostgres.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($ServerBuildScriptPath)) {
+    $ServerBuildScriptPath = Join-Path $scriptDirectory 'server\Build-ServerInstaller.ps1'
 }
 
 function Assert-TextMatches {
@@ -986,6 +994,102 @@ Assert-TextDoesNotMatch -Name 'the name check never parses a localised extension
 Assert-TextMatches -Name 'the installer tells the pre-flight which host name it is installing for' `
     -Text $installerScript -Pattern '(?s)Invoke-NodePilotPreflight[\s\S]{0,400}-PublicHostname \$PublicHostname'
 
+# --- the PostgreSQL row and its fix ---------------------------------------------------------------
+# The TCP probe could only ever report that the port answered. On SQL Server the gap is covered by
+# Windows auth - the pre-flight connects as somebody real - but PostgreSQL has no such fallback, so
+# a missing role or a mistyped password looked exactly like a healthy install right up to the point
+# where the service started and the installer rolled it back 180 seconds later.
+Assert-TextMatches -Name 'the Postgres row logs in rather than only probing the port' `
+    -Text $preflightStripped -Pattern 'Invoke-NodePilotPsqlLogin'
+# Same TLS shape as the runtime. A login that succeeds over a laxer path is a success the service
+# cannot repeat - the reason the SQL probe pins the certificate host name too.
+Assert-TextMatches -Name 'the Postgres login probe verifies the server certificate' `
+    -Text $preflightStripped -Pattern "PGSSLMODE\s*=\s*'verify-full'"
+# What is missing comes from pg_roles and pg_database, never from psql's message. That message is
+# localised - a de-DE cluster answers "Rolle »x« existiert nicht" - so an English-only matcher
+# classifies correctly on one host and calls everything "refused" on the next. Measured while
+# building this against a German cluster.
+Assert-TextMatches -Name 'the Postgres cause comes from the catalogue' `
+    -Text $preflightStripped -Pattern '(?s)pg_roles WHERE rolname[\s\S]{0,200}pg_database WHERE datname'
+Assert-TextDoesNotMatch -Name 'the Postgres cause is never parsed out of a localised message' `
+    -Text $preflightStripped -Pattern '\$psqlError\s+-match'
+# "Could not find out" is a different answer from "they are not there": offering to create a role
+# because the superuser password was wrong is the worse of the two mistakes.
+Assert-TextMatches -Name 'an unusable superuser connection reports nothing rather than guessing' `
+    -Text $preflightStripped -Pattern '(?s)if \(-not \$result\.Succeeded\) \{ return \$null \}'
+# The statement goes in on stdin. CREATE ROLE carries the new role's password, and an argument is
+# readable in the process list by every user on the machine for as long as the call runs.
+Assert-TextMatches -Name 'psql reads its statement from stdin' `
+    -Text $preflightStripped -Pattern '\$startInfo\.RedirectStandardInput = \$true'
+Assert-TextDoesNotMatch -Name 'no SQL is ever passed to psql as an argument' `
+    -Text $preflightStripped -Pattern "'-c',|'-tAc'"
+# The password must not travel on the command line, where the process list exposes it to anyone on
+# the machine for the lifetime of the call. It goes into the child process's own environment block,
+# which also keeps it out of this process where anything else could read it back.
+Assert-TextMatches -Name 'the Postgres password travels in the environment, not the argument list' `
+    -Text $preflightStripped -Pattern 'PGPASSWORD\s*=\s*\$Secret'
+Assert-TextMatches -Name 'the secret goes to the child process only' `
+    -Text $preflightStripped -Pattern '\$startInfo\.EnvironmentVariables\[\$name\]'
+Assert-TextDoesNotMatch -Name 'psql secrets never touch the installing process environment' `
+    -Text $preflightStripped -Pattern "\[Environment\]::SetEnvironmentVariable\('PG"
+# NOTHING IN Preflight.ps1 MAY MUTATE. That rule does not stop at PowerShell cmdlets: a psql -c
+# with DDL in it would sail past the AST check above, and it would run again on every click of
+# "Check again".
+$psqlLoginStart = $preflightStripped.IndexOf('function Invoke-NodePilotPsqlLogin')
+if ($psqlLoginStart -lt 0) {
+    throw 'Deployment template check failed: could not locate the Postgres login probe.'
+}
+Assert-TextDoesNotMatch -Name 'the Postgres probe issues no DDL' `
+    -Text $preflightStripped.Substring($psqlLoginStart) `
+    -Pattern 'CREATE\s+(ROLE|DATABASE|USER)|ALTER\s+(ROLE|DATABASE)|DROP\s+'
+
+$postgresProvision = Remove-CommentLines -Text (Get-Content -LiteralPath $PostgresProvisionScriptPath -Raw)
+# Degrade before mutating, not during: without CREATEROLE and CREATEDB the script hands over the
+# statements instead of half-applying them. Enforced by position, because a gate that runs after
+# the first CREATE is not a gate.
+$gateIndex = $postgresProvision.IndexOf('rolcreaterole')
+$firstCreate = $postgresProvision.IndexOf('CREATE ROLE')
+if ($gateIndex -lt 0 -or $firstCreate -lt 0 -or $gateIndex -gt $firstCreate) {
+    throw ('Deployment template check failed: the PostgreSQL provisioning runs a CREATE before it ' +
+           'checks whether it may. Nothing must be changed on a server the credentials cannot act on.')
+}
+# Through the shared builder, which the contract above pins to verify-full. A fix that reaches the
+# server over a laxer TLS path than the runtime will use has proven nothing about the runtime.
+Assert-TextMatches -Name 'the PostgreSQL provisioning connects the way the runtime does' `
+    -Text $postgresProvision -Pattern 'Get-NodePilotPsqlEnvironment'
+Assert-TextDoesNotMatch -Name 'the provisioning does not build its own connection settings' `
+    -Text $postgresProvision -Pattern "SetEnvironmentVariable\('PG|PGSSLMODE\s*="
+Assert-TextMatches -Name 'psql is never allowed to prompt' -Text $postgresProvision -Pattern "'-w'"
+Assert-TextMatches -Name 'a failing statement is an exit code, not a message' `
+    -Text $postgresProvision -Pattern "ON_ERROR_STOP=1"
+# Resetting an existing role's password would hide the operator's typo AND lock out anything else
+# using that role. A password that does not authenticate is reported, never healed.
+Assert-TextDoesNotMatch -Name 'an existing role keeps the password the server already has' `
+    -Text $postgresProvision -Pattern 'ALTER\s+ROLE[^\r\n]*PASSWORD'
+# Same for a database that exists and belongs to somebody else.
+Assert-TextDoesNotMatch -Name 'an existing database keeps its owner' `
+    -Text $postgresProvision -Pattern 'ALTER\s+DATABASE[^\r\n]*OWNER'
+# CREATE ROLE carries the new role's password. As an argument it would sit in the process list for
+# every user on the machine to read for as long as the call runs.
+Assert-TextDoesNotMatch -Name 'the new role password never appears in an argument list' `
+    -Text $postgresProvision -Pattern "'-c'"
+Assert-TextMatches -Name 'the provisioning sends its statements on stdin' `
+    -Text $postgresProvision -Pattern '-Sql "\$Sql;"'
+
+$serverBuild = Remove-CommentLines -Text (Get-Content -LiteralPath $ServerBuildScriptPath -Raw)
+# The client, not the distribution: a stock bin folder is 57 MB, of which 27 MB is ICU and 8 MB is
+# wxWidgets for pgAdmin, none of it reachable from psql. The seven files come off psql's own import
+# table.
+Assert-TextMatches -Name 'the build stages the psql client rather than the whole bin folder' `
+    -Text $serverBuild -Pattern "(?s)pgClientFiles = @\([\s\S]{0,400}'LIBPQ\.dll'"
+Assert-TextDoesNotMatch -Name 'the build does not sweep in the whole PostgreSQL bin folder' `
+    -Text $serverBuild -Pattern "Join-Path \`$pgBin '\*'|bin\\\\\*"
+# Optional, unlike the desktop build. Without it the installer is built exactly as before and the
+# readiness page says the fix is unavailable, rather than the build failing on a machine that has
+# no EDB distribution on it.
+Assert-TextMatches -Name 'the PostgreSQL binaries stay an optional build input' `
+    -Text $serverBuild -Pattern '(?s)IsNullOrWhiteSpace\(\$PgBinariesPath\)[\s\S]{0,200}skipped'
+
 # --- the service identity's access to the database -----------------------------------------------
 # This was a caveat printed unconditionally: correct advice, no information, and shown just as
 # loudly on the hosts where the grant was already in place. A sentence nobody can act on trains
@@ -1068,6 +1172,22 @@ Assert-TextMatches -Name 'the pre-tick comes from the adapter, not from the wiza
 # actually forwards the second row's tick.
 Assert-TextMatches -Name 'either database row can request the provisioning run' `
     -Text $serverIss -Pattern "IsFixRequested\('database'\) or IsFixRequested\('databaseServiceLogin'\)"
+
+# The probe file carries no fix flags - it is a question, not an instruction - but it MUST carry
+# the PostgreSQL superuser, because whether those credentials exist is what decides if the row may
+# offer a fix at all. Without them the probe reports "role missing" and never shows the checkbox
+# that would create it.
+Assert-TextMatches -Name 'the probe knows whether Postgres provisioning is even possible' `
+    -Text $serverIss -Pattern "(?s)if ForProbe and \(not IsSqlServerSelected\(\)\)[\s\S]{0,400}postgresSuperUser"
+# Extraction is lazy - eight megabytes an installation onto SQL Server never touches - so every
+# path that needs the client has to ask for it. Missing on any one of them, the adapter finds no
+# psql and silently degrades to the old TCP-only answer.
+Assert-TextMatches -Name 'the readiness probe extracts the Postgres client first' `
+    -Text $serverIss -Pattern '(?s)if not IsSqlServerSelected\(\) then EnsurePgClient\(\);[\s\S]{0,200}WriteAnswerFile\(.install., True\)'
+Assert-TextMatches -Name 'the auto-fix run extracts it too' `
+    -Text $serverIss -Pattern '(?s)if WantsFix then[\s\S]{0,200}EnsurePgClient\(\)'
+Assert-TextMatches -Name 'and so does the unattended path, which never sees a page' `
+    -Text $serverIss -Pattern "(?s)WizardSilent\(\) and \(AnswerMode = 'install'\)[\s\S]{0,300}EnsurePgClient\(\)"
 
 # The readiness page is the ONLY thing that ever ran that provisioning, and /ANSWERFILE skips every
 # wizard page. Without a silent equivalent the provisioning keys are dead weight in an unattended

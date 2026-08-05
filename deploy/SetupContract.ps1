@@ -35,6 +35,10 @@ $script:NodePilotAnswerFileKeys = @{
             'certificate.source',
             'provisioning.installDotnetRuntime', 'provisioning.createDatabaseAndLogin',
             'provisioning.generateSelfSignedCertificate', 'provisioning.trustArtifactSigner',
+            # PostgreSQL has no equivalent of Trusted_Connection, so createDatabaseAndLogin needs
+            # credentials there that the SQL Server path gets for free from the installing admin's
+            # own Windows identity. Provisioning-only: the service never sees them.
+            'provisioning.postgresSuperUser', 'provisioning.postgresSuperPassword',
             'bootstrap.adminUsername', 'bootstrap.credentialOutputPath',
             'seed.backupPath', 'seed.passphrase',
             'skips.databaseCheck', 'skips.gmsaCheck'

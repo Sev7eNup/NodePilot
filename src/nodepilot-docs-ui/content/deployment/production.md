@@ -94,6 +94,8 @@ Das erwartete Testergebnis ist `True`. Für SQL Server wird das gMSA analog zum 
 
 Wer mit `NodePilot-Server-Setup-<version>.exe` installiert, kann das SQL oben überspringen, sofern das ausführende Konto `sysadmin` ist (oder `CREATE ANY DATABASE` besitzt). Die Readiness-Seite prüft den Datenbank-Zugriff der **Dienst-Identität** getrennt von der reinen Erreichbarkeit — erreichbar wird als *installierender Admin* getestet, angemeldet wird zur Laufzeit der Dienst — und legt Login, Benutzer und `db_owner` bei Bedarf an. Die Zeile kommt vorangehakt; unbeaufsichtigt fordert `"provisioning": { "createDatabaseAndLogin": true }` in der Answer-File dasselbe an. Existenzgeprüft: ist alles vorhanden, passiert nichts. Fehlen die Rechte, wird nichts verändert und die Anweisungen für den DBA werden angezeigt.
 
+**PostgreSQL ebenso, mit einem Unterschied.** Das Setup bringt `psql` mit, meldet sich im Pre-Flight als NodePilot-Rolle an (`sslmode=verify-full` gegen das angegebene Root-Zertifikat) und legt Rolle und Datenbank auf Wunsch an. Weil PostgreSQL kein Gegenstück zu `Trusted_Connection` hat, verlangt das **Superuser-Zugangsdaten**: zwei zusätzliche Felder auf der Credentials-Seite bzw. `provisioning.postgresSuperUser` / `.postgresSuperPassword` in der Answer-File. Ohne sie bleibt die Zeile eine Diagnose ohne Knopf. Das Passwort einer bereits vorhandenen Rolle wird dabei **nie** überschrieben.
+
 ## 2. Datenbank vorbereiten
 
 ### SQL Server

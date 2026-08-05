@@ -261,6 +261,19 @@ function Add-NodePilotCertificateInventory {
     Set-NodePilotResult -Buffer $Buffer -Section 'certificates' -Name 'count' -Value $index
 }
 
+function Get-NodePilotPsqlPath {
+    <#
+      The bundled PostgreSQL client, or empty when this build carries none.
+
+      -PgBinariesPath is optional on the build script, so both cases are real and neither is a
+      fault: without it the Postgres row reports reachability the way it always did and says that
+      the login is untested, instead of offering a fix that cannot run.
+    #>
+    $candidate = Join-Path $PayloadRoot 'psql.exe'
+    if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    return ''
+}
+
 function ConvertTo-NodePilotPreflightParameters {
     # Mirrors the answer file onto Invoke-NodePilotPreflight, which takes the installer's own
     # variable names rather than the answer file's nesting.
@@ -307,6 +320,27 @@ function ConvertTo-NodePilotPreflightParameters {
         if ($Answers.Contains('database.postgresPort') -and $Answers['database.postgresPort']) {
             $splat['PostgresPort'] = [int]$Answers['database.postgresPort']
         }
+        # Everything the row needs to answer "can the SERVICE log in" rather than "did the port
+        # answer". Without the client the check falls back to the TCP probe on its own.
+        if ($Answers.Contains('database.postgresPassword')) {
+            $splat['PostgresPassword'] = ConvertTo-NodePilotSecureString `
+                -PlainText ([string]$Answers['database.postgresPassword'])
+        }
+        $splat['PostgresRootCertificate'] = [string]$Answers['database.postgresRootCertificate']
+        $splat['PsqlPath'] = Get-NodePilotPsqlPath
+        # The superuser is what lets the check ask the catalogue what is missing instead of reading
+        # a localised error message, and what lets it offer to create it.
+        if ($Answers.Contains('provisioning.postgresSuperUser')) {
+            $splat['PostgresSuperUser'] = [string]$Answers['provisioning.postgresSuperUser']
+        }
+        if ($Answers.Contains('provisioning.postgresSuperPassword')) {
+            $splat['PostgresSuperPassword'] = ConvertTo-NodePilotSecureString `
+                -PlainText ([string]$Answers['provisioning.postgresSuperPassword'])
+        }
+        $splat['CanProvisionPostgres'] =
+            -not [string]::IsNullOrWhiteSpace($splat['PsqlPath']) -and
+            $splat.Contains('PostgresSuperUser') -and
+            -not [string]::IsNullOrWhiteSpace($splat['PostgresSuperUser'])
     }
     if ($Answers.Contains('skips.databaseCheck') -and [bool]$Answers['skips.databaseCheck']) {
         $splat['SkipDatabaseCheck'] = $true
@@ -462,16 +496,50 @@ function Invoke-NodePilotSetupMode {
                 $performed++
             }
 
+            # One key, both providers. It means "create whatever database objects the chosen
+            # provider needs"; which script that is follows from database.provider, not from a
+            # second answer-file flag that could disagree with the first.
             if ($answers.Contains('provisioning.createDatabaseAndLogin') -and [bool]$answers['provisioning.createDatabaseAndLogin']) {
-                Write-NodePilotProgress -Step 'database' -Text 'Creating the SQL login and database'
-                $principal = if ([string]$answers['identity.type'] -eq 'localSystem') {
-                    "$env:USERDOMAIN\$env:COMPUTERNAME`$"
+                $outcome = $null
+                if ([string]$answers['database.provider'] -eq 'postgres') {
+                    Write-NodePilotProgress -Step 'database' -Text 'Creating the PostgreSQL role and database'
+                    $psql = Get-NodePilotPsqlPath
+                    $superUser = [string]$answers['provisioning.postgresSuperUser']
+                    if ([string]::IsNullOrWhiteSpace($superUser)) {
+                        # Not an error: the operator asked for provisioning without giving the
+                        # credentials it needs, which on the wizard path cannot happen and on the
+                        # unattended path is a fixable omission in their answer file.
+                        $outcome = [pscustomobject]@{
+                            Status = 'Skipped'
+                            Detail = ('No PostgreSQL superuser was given (provisioning.postgresSuperUser), ' +
+                                      'so the role and database were left alone.')
+                            Remediation = ''
+                        }
+                    }
+                    else {
+                        $outcome = & (Join-Path $scriptDirectory 'Provision-NodePilotPostgres.ps1') `
+                            -PsqlPath $psql `
+                            -HostName ([string]$answers['database.postgresHost']) `
+                            -Port ([int]$answers['database.postgresPort']) `
+                            -Database ([string]$answers['database.postgresDatabase']) `
+                            -User ([string]$answers['database.postgresUser']) `
+                            -Password (ConvertTo-NodePilotSecureString -PlainText ([string]$answers['database.postgresPassword'])) `
+                            -SuperUser $superUser `
+                            -SuperPassword (ConvertTo-NodePilotSecureString -PlainText ([string]$answers['provisioning.postgresSuperPassword'])) `
+                            -RootCertificate ([string]$answers['database.postgresRootCertificate'])
+                    }
                 }
-                else { [string]$answers['identity.account'] }
-                $outcome = & (Join-Path $scriptDirectory 'Provision-NodePilotDatabase.ps1') `
-                    -Server ([string]$answers['database.sqlServer']) `
-                    -Database ([string]$answers['database.sqlDatabase']) `
-                    -Principal $principal
+                else {
+                    Write-NodePilotProgress -Step 'database' -Text 'Creating the SQL login and database'
+                    $principal = if ([string]$answers['identity.type'] -eq 'localSystem') {
+                        "$env:USERDOMAIN\$env:COMPUTERNAME`$"
+                    }
+                    else { [string]$answers['identity.account'] }
+                    $outcome = & (Join-Path $scriptDirectory 'Provision-NodePilotDatabase.ps1') `
+                        -Server ([string]$answers['database.sqlServer']) `
+                        -Database ([string]$answers['database.sqlDatabase']) `
+                        -Principal $principal
+                }
                 Set-NodePilotResult -Buffer $result -Section 'provision.database' -Name 'status' -Value $outcome.Status
                 Set-NodePilotResult -Buffer $result -Section 'provision.database' -Name 'detail' -Value $outcome.Detail
                 Set-NodePilotResult -Buffer $result -Section 'provision.database' -Name 'remediation' -Value $outcome.Remediation

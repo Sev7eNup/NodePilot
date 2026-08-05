@@ -806,12 +806,125 @@ function Test-NodePilotSqlTds8Support {
         -Detail "SQL Server $productVersion supports TDS 8.0 (>= 2022 CU1)."
 }
 
+function New-NodePilotPostgresResult {
+    <#
+      The verdict for the Postgres row, separated from the connection that produces it - same
+      split as New-NodePilotSqlServiceLoginResult, and for the same reason: no test host has a
+      PostgreSQL server on it.
+
+      -PsqlOutcome is what the login attempt produced: $null when no client was available (then
+      this degrades to the TCP verdict the check has always given), otherwise an object with
+      Succeeded and Error.
+
+      -RoleExists / -DatabaseExists come from a SECOND connection, as the superuser, and are $null
+      when there were no superuser credentials to make it with. They exist because psql's messages
+      are localised: a German server answers "Rolle »nodepilot« existiert nicht", so matching on
+      "role ... does not exist" classifies correctly on an English host and silently falls through
+      to "refused" everywhere else. Measured on a de-DE cluster while building this. Asking
+      pg_roles and pg_database is the same question in every locale.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$HostName,
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$User,
+        [Parameter(Mandatory)][string]$Database,
+        [Parameter(Mandatory)][bool]$TcpReachable,
+        [AllowEmptyString()][string]$TcpError = '',
+        $PsqlOutcome = $null,
+        $RoleExists = $null,
+        $DatabaseExists = $null,
+        [bool]$CanProvision = $false
+    )
+
+    $title = 'PostgreSQL reachable'
+    $remediation = Get-NodePilotPostgresRemediationScript -User $User -Database $Database
+
+    if (-not $TcpReachable) {
+        $suffix = if ($TcpError) { ": $TcpError" } else { '. Check DNS, firewall, and pg_hba.conf.' }
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
+            -Detail "Postgres reachability FAILED: TCP probe failed to ${HostName}:${Port}$suffix" `
+            -RemediationHint "Cannot reach ${HostName}:${Port} from this host. Verify DNS, firewall, and that Postgres is listening on the external interface. Role setup on the DB server:" `
+            -Remediation $remediation `
+            -AbortMessage 'Aborted: Postgres pre-flight failed.'
+    }
+
+    # No client bundled: the port answered and that is all anyone can say. This is what the check
+    # did for its whole life, and it is why a missing role or a wrong password used to cost a full
+    # install and a 180-second health probe before anybody found out.
+    if ($null -eq $PsqlOutcome) {
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Warn' -Required $true `
+            -Detail ("Postgres TCP reachable: ${HostName}:${Port}. This build carries no PostgreSQL " +
+                     "client, so whether '$User' can actually log in to [$Database] is untested - a " +
+                     'missing role or a wrong password will surface as a failed service start.') `
+            -RemediationHint 'Verify on the database server that the role and database exist:' `
+            -Remediation $remediation
+    }
+    if ($PsqlOutcome.Succeeded) {
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Pass' -Required $true `
+            -Detail "Postgres reachable and '$User' can log in to [$Database] on ${HostName}:${Port}."
+    }
+
+    # What the server said, verbatim and unparsed. Useful to a human in any language, and the only
+    # thing there is to go on when nobody could ask the catalogue.
+    # Not $error: that is a PowerShell automatic variable, and writing to it would clobber the
+    # session's error history for everything downstream.
+    $psqlError = ([string]$PsqlOutcome.Error) -replace '\s+', ' '
+
+    $missing = @()
+    if ($RoleExists -eq $false) { $missing += "the role '$User' does not exist" }
+    if ($DatabaseExists -eq $false) { $missing += "the database [$Database] does not exist" }
+
+    if ($missing.Count -gt 0) {
+        # Only these two are something creating anything would help with, and they are exactly what
+        # the fix creates.
+        $label = if ($CanProvision) { "Create the role and database on $HostName now" } else { '' }
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("Postgres answered on ${HostName}:${Port} but $($missing -join ' and '). " +
+                     'The service would start and fail its first query.') `
+            -RemediationHint 'On the database server:' -Remediation $remediation `
+            -CanAutoFix $CanProvision -AutoFixLabel $label `
+            -AbortMessage "Aborted: Postgres pre-flight failed - $($missing -join ' and ')."
+    }
+
+    if ($null -ne $RoleExists -and $null -ne $DatabaseExists) {
+        # Both there, still refused. Creating them again would change nothing, and the fix
+        # deliberately never rewrites an existing role's password - so no button.
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("Postgres answered on ${HostName}:${Port} and both the role '$User' and the " +
+                     "database [$Database] exist, but the login was refused: $psqlError " +
+                     'That is the password, pg_hba.conf, or the TLS trust chain - not something ' +
+                     'missing that could be created.') `
+            -RemediationHint 'Check the password in this answer file, then pg_hba.conf on the server:' `
+            -Remediation $remediation `
+            -AbortMessage 'Aborted: Postgres pre-flight failed - the login was refused.'
+    }
+
+    # Nobody could ask the catalogue: no superuser credentials were given. The message is repeated
+    # as-is rather than guessed at.
+    New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
+        -Detail ("Postgres answered on ${HostName}:${Port} but '$User' could not log in to " +
+                 "[$Database]: $psqlError The service would start and fail its first query.") `
+        -RemediationHint ('Without a PostgreSQL superuser the setup cannot tell a missing role from ' +
+                          'a wrong password. On the database server:') `
+        -Remediation $remediation `
+        -AbortMessage 'Aborted: Postgres pre-flight failed - the login was refused.'
+}
+
 function Test-NodePilotPostgresReachable {
     <#
-      TCP port probe against the Postgres endpoint. We do not attempt a full auth + query
-      because Npgsql is not shipped with the installer and pulling it in would bloat the
-      bootstrap. A "cannot even connect" is the common failure mode we want to catch before
-      starting the service; role/password errors surface in the health-probe step.
+      Two probes, the second only when a client is available.
+
+      The TCP probe has always been here and stays: "cannot even connect" is the common failure
+      and it needs no credentials. What it could never answer is whether the SERVICE will get in,
+      and on the Postgres path that is the whole question - unlike SQL Server there is no Windows
+      identity to fall back on, so a typo in the role password looks exactly like a healthy
+      install right up to the moment the service starts and the installer rolls it back 180
+      seconds later.
+
+      With psql from the installer payload the check logs in as the NodePilot role itself, in the
+      runtime's own TLS shape (sslmode=verify-full against the configured root certificate). When
+      that is refused AND superuser credentials were supplied, it asks the catalogue what is
+      actually missing - rather than reading psql's message, which is localised.
 
       Param is named HostName (not Host) because $Host is a reserved PowerShell automatic
       variable (PSAvoidAssignmentToAutomaticVariable).
@@ -820,30 +933,249 @@ function Test-NodePilotPostgresReachable {
         [Parameter(Mandatory)][string]$HostName,
         [Parameter(Mandatory)][int]$Port,
         [Parameter(Mandatory)][string]$User,
-        [Parameter(Mandatory)][string]$Database
+        [Parameter(Mandatory)][string]$Database,
+        [System.Security.SecureString]$Password,
+        [AllowEmptyString()][string]$RootCertificate = '',
+        [AllowEmptyString()][string]$PsqlPath = '',
+        [AllowEmptyString()][string]$SuperUser = '',
+        [System.Security.SecureString]$SuperPassword,
+        [bool]$CanProvision = $false
     )
 
-    $title = 'PostgreSQL reachable'
     $reachable = $false
-    $detail = ''
+    $tcpError = ''
     try {
         $tnc = Test-NetConnection -ComputerName $HostName -Port $Port -WarningAction SilentlyContinue
         $reachable = [bool]$tnc.TcpTestSucceeded
     } catch {
-        $detail = $_.Exception.Message
+        $tcpError = $_.Exception.Message
     }
 
-    if (-not $reachable) {
-        $suffix = if ($detail) { ": $detail" } else { '. Check DNS, firewall, and pg_hba.conf.' }
-        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
-            -Detail "Postgres reachability FAILED: TCP probe failed to ${HostName}:${Port}$suffix" `
-            -RemediationHint "Cannot reach ${HostName}:${Port} from this host. Verify DNS, firewall, and that Postgres is listening on the external interface. Role setup on the DB server:" `
-            -Remediation (Get-NodePilotPostgresRemediationScript -User $User -Database $Database) `
-            -AbortMessage 'Aborted: Postgres pre-flight failed.'
+    $clientUsable = $reachable -and
+        -not [string]::IsNullOrWhiteSpace($PsqlPath) -and (Test-Path -LiteralPath $PsqlPath -PathType Leaf) -and
+        -not [string]::IsNullOrWhiteSpace($RootCertificate) -and (Test-Path -LiteralPath $RootCertificate -PathType Leaf)
+
+    $outcome = $null
+    if ($clientUsable -and $null -ne $Password -and $Password.Length -gt 0) {
+        $outcome = Invoke-NodePilotPsqlLogin -PsqlPath $PsqlPath -HostName $HostName -Port $Port `
+            -User $User -Password $Password -Database $Database -RootCertificate $RootCertificate
     }
 
-    New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Pass' -Required $true `
-        -Detail "Postgres TCP reachable: ${HostName}:${Port}"
+    # Only when the service's own login failed: on the happy path there is nothing to diagnose, and
+    # a superuser connection nobody needs is a superuser connection not worth making.
+    $roleExists = $null
+    $databaseExists = $null
+    if ($clientUsable -and $null -ne $outcome -and -not $outcome.Succeeded -and
+        -not [string]::IsNullOrWhiteSpace($SuperUser) -and
+        $null -ne $SuperPassword -and $SuperPassword.Length -gt 0) {
+        $catalogue = Invoke-NodePilotPsqlCatalogue -PsqlPath $PsqlPath -HostName $HostName -Port $Port `
+            -SuperUser $SuperUser -SuperPassword $SuperPassword -RootCertificate $RootCertificate `
+            -User $User -Database $Database
+        if ($null -ne $catalogue) {
+            $roleExists = $catalogue.RoleExists
+            $databaseExists = $catalogue.DatabaseExists
+        }
+    }
+
+    New-NodePilotPostgresResult -HostName $HostName -Port $Port -User $User -Database $Database `
+        -TcpReachable $reachable -TcpError $tcpError -PsqlOutcome $outcome `
+        -RoleExists $roleExists -DatabaseExists $databaseExists -CanProvision $CanProvision
+}
+
+function Invoke-NodePilotPsqlCatalogue {
+    <#
+      Asks pg_roles and pg_database whether the two things the service needs are there. Read-only,
+      and the answer is the same in every locale - which reading psql's error message is not.
+
+      Returns $null when the superuser connection itself fails: "I could not find out" is a
+      different answer from "they are not there", and offering to create a role because the
+      superuser password was wrong would be the worse of the two mistakes.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$PsqlPath,
+        [Parameter(Mandatory)][string]$HostName,
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$SuperUser,
+        [Parameter(Mandatory)][System.Security.SecureString]$SuperPassword,
+        [Parameter(Mandatory)][string]$RootCertificate,
+        [Parameter(Mandatory)][string]$User,
+        [Parameter(Mandatory)][string]$Database
+    )
+
+    $sql = "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$($User.Replace("'", "''"))')," +
+           " EXISTS (SELECT 1 FROM pg_database WHERE datname = '$($Database.Replace("'", "''"))');"
+
+    $result = Invoke-NodePilotPsql -PsqlPath $PsqlPath -Arguments @(
+            '-w'
+            '-h', $HostName
+            '-p', "$Port"
+            '-U', $SuperUser
+            '-d', 'postgres'
+            '-v', 'ON_ERROR_STOP=1'
+            '-tA'
+        ) -Sql $sql -Environment (Get-NodePilotPsqlEnvironment `
+            -Secret (ConvertFrom-NodePilotSecureString -Value $SuperPassword) `
+            -RootCertificate $RootCertificate)
+
+    if (-not $result.Succeeded) { return $null }
+    $fields = ([string]$result.Output).Trim() -split '\|'
+    if ($fields.Count -lt 2) { return $null }
+    return [pscustomobject]@{
+        RoleExists     = ($fields[0] -eq 't')
+        DatabaseExists = ($fields[1] -eq 't')
+    }
+}
+
+function ConvertTo-NodePilotCommandLineArgument {
+    <#
+      One argument, quoted the way CommandLineToArgvW parses it back.
+
+      Windows PowerShell 5.1 runs on .NET Framework, where ProcessStartInfo has no ArgumentList -
+      only a single Arguments string - so the quoting has to be done here rather than by the
+      runtime. This is Microsoft's own ArgvQuote algorithm: backslashes are literal EXCEPT when
+      they precede a quote, where they double.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Value)
+
+    if ($Value -ne '' -and $Value -notmatch '[ \t\n\v"]') { return $Value }
+
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    for ($index = 0; $index -lt $Value.Length; $index++) {
+        $backslashes = 0
+        while ($index -lt $Value.Length -and $Value[$index] -eq '\') { $index++; $backslashes++ }
+        if ($index -eq $Value.Length) {
+            # Trailing backslashes would escape the closing quote, so they double.
+            [void]$builder.Append('\', $backslashes * 2)
+            break
+        }
+        if ($Value[$index] -eq '"') {
+            [void]$builder.Append('\', $backslashes * 2 + 1)
+            [void]$builder.Append('"')
+        }
+        else {
+            [void]$builder.Append('\', $backslashes)
+            [void]$builder.Append($Value[$index])
+        }
+    }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Invoke-NodePilotPsql {
+    <#
+      Runs the bundled psql client and hands back exit code, stdout and stderr.
+
+      Plumbing only - it decides nothing and issues no SQL of its own; the caller supplies the
+      statement, and in THIS file the only caller supplies a SELECT. The provisioning script is
+      where statements that change something live.
+
+      The SQL goes in on STDIN, never as -c. A CREATE ROLE carries the new role's password, and an
+      argument is visible in the process list to every user on the machine for as long as the call
+      runs. psql with neither -c nor -f reads its input from stdin, so this costs nothing.
+
+      System.Diagnostics.Process rather than the call operator, for three reasons that all bite:
+        * The connection secrets go into this ONE process's environment block. Setting them on the
+          current process would leave PGPASSWORD readable by anything else running in it.
+        * psql writes ordinary refusals ("role does not exist") to stderr, which Windows PowerShell
+          turns into a terminating NativeCommandError under $ErrorActionPreference = 'Stop'.
+        * No temporary file, so a readiness check that must not touch the machine does not have to
+          create and delete one to read an error message.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$PsqlPath,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Sql,
+        [Parameter(Mandatory)][hashtable]$Environment
+    )
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $PsqlPath
+    $startInfo.Arguments = (($Arguments | ForEach-Object {
+        ConvertTo-NodePilotCommandLineArgument -Value $_
+    }) -join ' ')
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($name in $Environment.Keys) {
+        $startInfo.EnvironmentVariables[$name] = [string]$Environment[$name]
+    }
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+    try {
+        [void]$process.Start()
+        $process.StandardInput.Write($Sql)
+        $process.StandardInput.Close()
+        # stdout asynchronously, stderr synchronously: reading both to the end in sequence
+        # deadlocks the moment either pipe buffer fills.
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            Succeeded = ($process.ExitCode -eq 0)
+            Output    = ([string]$stdout.Result).Trim()
+            Error     = ([string]$stderr).Trim()
+        }
+    }
+    finally { $process.Dispose() }
+}
+
+function ConvertFrom-NodePilotSecureString {
+    param([Parameter(Mandatory)][System.Security.SecureString]$Value)
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Value)
+    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
+}
+
+function Get-NodePilotPsqlEnvironment {
+    <#
+      The connection settings every psql call gets, in the runtime's own TLS shape. Shared so the
+      check and the fix cannot drift into connecting differently - a fix that succeeds over a
+      laxer path than the service will use has proven nothing.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Secret,
+        [Parameter(Mandatory)][string]$RootCertificate
+    )
+    return @{
+        PGPASSWORD        = $Secret
+        PGSSLMODE         = 'verify-full'
+        PGSSLROOTCERT     = $RootCertificate
+        PGCONNECT_TIMEOUT = '10'
+    }
+}
+
+function Invoke-NodePilotPsqlLogin {
+    <#
+      One login attempt as the NodePilot role. SELECT 1 and nothing else - this file may not
+      mutate, and that rule does not stop at PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$PsqlPath,
+        [Parameter(Mandatory)][string]$HostName,
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$User,
+        [Parameter(Mandatory)][System.Security.SecureString]$Password,
+        [Parameter(Mandatory)][string]$Database,
+        [Parameter(Mandatory)][string]$RootCertificate
+    )
+
+    # -w on every call so psql fails instead of prompting: there is no console behind a hidden
+    # Exec, and a prompt there is a wizard that hangs until its own timeout.
+    return Invoke-NodePilotPsql -PsqlPath $PsqlPath -Arguments @(
+            '-w'
+            '-h', $HostName
+            '-p', "$Port"
+            '-U', $User
+            '-d', $Database
+            '-v', 'ON_ERROR_STOP=1'
+            '-tA'
+        ) -Sql 'SELECT 1;' -Environment (Get-NodePilotPsqlEnvironment `
+            -Secret (ConvertFrom-NodePilotSecureString -Value $Password) `
+            -RootCertificate $RootCertificate)
 }
 
 # ---------------------------------------------------------------------------
@@ -876,6 +1208,15 @@ function Invoke-NodePilotPreflight {
         [int]$PostgresPort = 5432,
         [string]$PostgresUser,
         [string]$PostgresDatabase,
+        # Only the Postgres row uses these, and only to answer the question the TCP probe never
+        # could: can the SERVICE log in. Absent, that row degrades to the reachability answer it
+        # has always given.
+        [System.Security.SecureString]$PostgresPassword,
+        [AllowEmptyString()][string]$PostgresRootCertificate = '',
+        [AllowEmptyString()][string]$PsqlPath = '',
+        [AllowEmptyString()][string]$PostgresSuperUser = '',
+        [System.Security.SecureString]$PostgresSuperPassword,
+        [bool]$CanProvisionPostgres = $false,
         [string]$ServiceName = 'NodePilot',
         [switch]$SkipDatabaseCheck,
         [switch]$SkipGmsaCheck
@@ -928,7 +1269,10 @@ function Invoke-NodePilotPreflight {
     } else {
         $results += Test-NodePilotPostgresReachable `
             -HostName $PostgresHost -Port $PostgresPort `
-            -User $PostgresUser -Database $PostgresDatabase
+            -User $PostgresUser -Database $PostgresDatabase `
+            -Password $PostgresPassword -RootCertificate $PostgresRootCertificate `
+            -PsqlPath $PsqlPath -SuperUser $PostgresSuperUser -SuperPassword $PostgresSuperPassword `
+            -CanProvision $CanProvisionPostgres
     }
 
     return $results

@@ -30,6 +30,7 @@ Der Dienst läuft wahlweise unter:
 | [SetupContract.ps1](SetupContract.ps1) | Answer-File-Vertrag des GUI-Setups: Schema, Splat-Abbildung auf `Install-NodePilot.ps1`, SecureString-Aufbau, INI-Ergebnisdatei |
 | [Invoke-NodePilotSetup.ps1](Invoke-NodePilotSetup.ps1) | Adapter zwischen Wizard und Skripten (`InitSession`/`Probe`/`Provision`/`Apply`/`Cleanup`) |
 | [Provision-NodePilotDatabase.ps1](Provision-NodePilotDatabase.ps1) | Opt-in: SQL-Login + Datenbank anlegen. Rechte-Gate **vor** jeder Mutation, sonst nur DDL-Ausgabe. Nur SQL Server |
+| [Provision-NodePilotPostgres.ps1](Provision-NodePilotPostgres.ps1) | Dasselbe für PostgreSQL: Rolle + Datenbank über das mitgelieferte `psql`. Braucht Superuser-Zugangsdaten (Postgres kennt kein `Trusted_Connection`). Setzt **kein** Passwort einer vorhandenen Rolle zurück und ändert **keinen** Datenbank-Eigentümer |
 | [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Opt-in: selbstsigniertes Kestrel-Zertifikat, zwei Jahre, **kein** automatischer Root-Import |
 | [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Bauzeit: ASP.NET-Core-Runtime holen, gegen publizierten SHA512 + eingecheckten Pin + Authenticode prüfen |
 | [Test-SetupAdapter.ps1](Test-SetupAdapter.ps1) | Verhaltenstest des Answer-File-Vertrags (non-admin, offline, ohne DB) |
@@ -166,7 +167,9 @@ CREATE ROLE nodepilot WITH LOGIN PASSWORD '<choose-strong-secret>';
 CREATE DATABASE nodepilot OWNER nodepilot;
 ```
 
-Der Installer pollt nur die TCP-Reachability (Port 5432). Auth-Probleme (falsches Passwort, pg_hba-Block) zeigen sich erst beim `/healthz/ready`-Poll nach Service-Start — dann mit der exakten Npgsql-Fehlermeldung im Serilog-Rolling-File unter `C:\ProgramData\NodePilot\logs`.
+Der **Konsolen-Pfad** pollt nur die TCP-Reachability (Port 5432) — er bringt keinen PG-Client mit. Auth-Probleme (falsches Passwort, pg_hba-Block) zeigen sich dort erst beim `/healthz/ready`-Poll nach Service-Start, dann mit der exakten Npgsql-Fehlermeldung im Serilog-Rolling-File unter `C:\ProgramData\NodePilot\logs`.
+
+Das **Setup-Programm** kann mehr: es liefert `psql` mit, meldet sich damit schon im Pre-Flight als die NodePilot-Rolle an (`sslmode=verify-full`, also genau so wie die Laufzeit) und legt Rolle und Datenbank auf Wunsch selbst an. Dafür braucht es Superuser-Zugangsdaten — bei SQL Server ist die Windows-Identität des Installierenden die Berechtigung, PostgreSQL kennt nichts Vergleichbares. Siehe [`server/README.md`](server/README.md).
 
 > **DB-TLS ist Pflicht in Produktion.** Der `DatabaseTlsBootValidator` bricht den Boot ab, wenn die DB-Verbindung den Server nicht verifiziert — SQL Server wird als `Encrypt=Strict;TrustServerCertificate=False` erzwungen (Installer setzt bei Bedarf `-SqlCertificateHostName`), Postgres als `SSL Mode=VerifyFull` gegen die per `-PostgresRootCertificate` übergebene Root-CA (PEM). Der DB-Server muss also ein von dieser CA ausgestelltes Server-Zertifikat auf den Connect-Hostnamen präsentieren. `Database:AllowInsecureTls=true` ist ein reiner Dev-Loopback-Escape und in Produktion untersagt.
 
