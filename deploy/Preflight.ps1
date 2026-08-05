@@ -646,8 +646,11 @@ function Invoke-NodePilotPreflight {
     $results += Test-NodePilotListenPorts -HttpsPort $HttpsPort -HttpPort $HttpPort -ServiceName $ServiceName
 
     if ($IsLocalSystem) {
+        # The detail must not repeat the title: the wizard renders "<Title>: <Detail>", so a detail
+        # that opens with its own title produced "Service identity: Service identity: LocalSystem -
+        # ..." on screen and wrapped a line further than it needed to.
         $results += New-NodePilotPreflightResult -Id 'gmsa' -Title 'Service identity' -Status 'Skipped' `
-            -Detail "Service identity: LocalSystem - network identity is the computer account $ComputerAccount."
+            -Detail "LocalSystem - network identity is the computer account $ComputerAccount."
     } elseif ($SkipGmsaCheck) {
         $results += New-NodePilotPreflightResult -Id 'gmsa' -Title 'Group managed service account' -Status 'Skipped' `
             -Detail 'gMSA check skipped by -SkipGmsaCheck.'

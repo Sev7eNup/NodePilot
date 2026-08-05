@@ -141,7 +141,7 @@ var
   CheckLabels: array[0..CheckCount - 1] of TNewStaticText;
   CheckMarks: array[0..CheckCount - 1] of TNewStaticText;
   CheckFixes: array[0..CheckCount - 1] of TNewCheckBox;
-  RemediationLabel: TNewStaticText;
+  RemediationBox: TNewMemo;
   RemediationText: String;
   RecheckButton: TNewButton;
   SaveButton: TNewButton;
@@ -502,7 +502,7 @@ begin
     RemediationText := 'Nothing to do for this item.'
   else
     RemediationText := ExpandNewlines(Hint) + #13#10#13#10 + ExpandNewlines(Remediation);
-  RemediationLabel.Caption := RemediationText;
+  RemediationBox.Text := RemediationText;
 end;
 
 procedure CheckLabelClick(Sender: TObject);
@@ -541,12 +541,12 @@ begin
   end;
 
   ButtonTop := ReadinessPage.SurfaceHeight - ScaleY(24);
-  RemediationLabel.Top := Y + ScaleY(8);
-  Available := ButtonTop - ScaleY(6) - RemediationLabel.Top;
+  RemediationBox.Top := Y + ScaleY(8);
+  Available := ButtonTop - ScaleY(6) - RemediationBox.Top;
   // Never negative, never overlapping the buttons: with every row wrapped and every fix offered
   // there is little left, and a label with no room is still better than one drawn over them.
   if Available < ScaleY(13) then Available := ScaleY(13);
-  RemediationLabel.Height := Available;
+  RemediationBox.Height := Available;
 end;
 
 // Created lazily, because both the readiness page and PrepareToInstall need it and either can be
@@ -674,7 +674,7 @@ begin
   ProbeRan := True;
   ProbeBlocking := ResultCode = ExitProbeFailed;
   RemediationText := 'Select a line above to see what to do about it.';
-  RemediationLabel.Caption := RemediationText;
+  RemediationBox.Text := RemediationText;
   // Last, because it measures the wrapped heights the captions above just produced.
   LayoutReadiness();
 end;
@@ -741,6 +741,7 @@ end;
 procedure BuildFinishSummary(const ResultIni: String);
 var
   Url, Token, ApiKey, Thumb, InstallDir, DataDir, Service, S: String;
+  BootstrapUser, BootstrapPassword: String;
 begin
   Url := GetIniString('result', 'url', '', ResultIni);
   Token := GetIniString('result', 'adminSetupToken', '', ResultIni);
@@ -750,34 +751,47 @@ begin
   DataDir := GetIniString('result', 'dataPath', '', ResultIni);
   Service := GetIniString('result', 'serviceName', '', ResultIni);
 
-  S := '';
-  if Url <> '' then
-    S := S + 'Open NodePilot at' + #13#10 + '    ' + Url + #13#10#13#10;
+  BootstrapUser := GetIniString('bootstrap', 'username', '', ResultIni);
+  BootstrapPassword := GetIniString('bootstrap', 'password', '', ResultIni);
 
-  if Token <> '' then
-    S := S + 'First login - setup token (one-shot, needed only while no account exists):' + #13#10 +
-             '    ' + Token + #13#10#13#10
+  // A label per line, value straight after it. The previous version wrapped explanatory sentences
+  // across the memo, which has no word wrap - so every prose line was simply cut off at the right
+  // edge mid-word ("so the database already h"). Short labelled lines cannot be truncated into
+  // something that reads as a different sentence, and they scan in one pass.
+  S := '';
+  if Url <> '' then S := S + 'Address       ' + Url + #13#10;
+  if Service <> '' then S := S + 'Service       ' + Service + #13#10;
+  if InstallDir <> '' then S := S + 'Program       ' + InstallDir + #13#10;
+  if DataDir <> '' then S := S + 'Data          ' + DataDir + #13#10;
+  if Thumb <> '' then S := S + 'Certificate   ' + Thumb + #13#10;
+
+  // Credentials last and in their own block: they are the reason this page has a Save button, and
+  // burying them between paths is how they get missed.
+  S := S + #13#10;
+  if BootstrapUser <> '' then
+  begin
+    S := S + 'Sign in with' + #13#10;
+    S := S + '  User        ' + BootstrapUser + #13#10;
+    S := S + '  Password    ' + BootstrapPassword + #13#10;
+  end
+  else if Token <> '' then
+  begin
+    S := S + 'Setup token (first login only)' + #13#10;
+    S := S + '  ' + Token + #13#10;
+  end
   else if GetIniString('result', 'adminSetupTokenUnreadable', '', ResultIni) <> '' then
-    S := S + 'First login - the setup token could not be read from' + #13#10 +
-             '    ' + DataDir + '\admin-setup.token' + #13#10 +
-             '  It is owner-only for the service account. Read it with: robocopy /B' + #13#10#13#10
+  begin
+    S := S + 'Setup token unreadable. Retrieve it with:' + #13#10;
+    S := S + '  robocopy "' + DataDir + '" "%TEMP%" admin-setup.token /B' + #13#10;
+  end
   else if not IsUpdateSelected() then
-    S := S + 'First login - no setup token was issued, so the database already has accounts.' + #13#10 +
-             '  Sign in with an existing one.' + #13#10#13#10;
+    S := S + 'Sign in with an existing account - no setup token was issued.' + #13#10;
 
   if ApiKey <> '' then
-    S := S + 'External-Trigger API key (header X-Api-Key). Copy it now - it is not' + #13#10 +
-             'recoverable, and re-running this setup issues a different one:' + #13#10 +
-             '    ' + ApiKey + #13#10#13#10;
-
-  if Thumb <> '' then
-    S := S + 'TLS certificate' + #13#10 + '    ' + Thumb + #13#10 +
-             '  If it is self-signed, import it into LocalMachine\Root on every client' + #13#10 +
-             '  or the browser will call the site unsafe.' + #13#10#13#10;
-
-  if Service <> '' then S := S + 'Service        ' + Service + #13#10;
-  if InstallDir <> '' then S := S + 'Program files  ' + InstallDir + #13#10;
-  if DataDir <> '' then S := S + 'Data           ' + DataDir + #13#10;
+  begin
+    S := S + #13#10 + 'API key (header X-Api-Key), shown only here' + #13#10;
+    S := S + '  ' + ApiKey + #13#10;
+  end;
 
   FinishSummary := S;
 end;
@@ -966,13 +980,19 @@ begin
   // as a broken edit field. A wrapped label carries the same text and cannot be mistaken for
   // something to type into. The cost is that the text is no longer selectable, so "Save
   // instructions..." is now the only way to get it out of the wizard - it stays for that reason.
-  RemediationLabel := TNewStaticText.Create(ReadinessPage);
-  RemediationLabel.Parent := ReadinessPage.Surface;
-  RemediationLabel.Left := 0;
-  RemediationLabel.Width := ReadinessPage.SurfaceWidth;
-  RemediationLabel.WordWrap := True;
-  RemediationLabel.AutoSize := False;
-  RemediationLabel.Caption := '';
+  RemediationBox := TNewMemo.Create(ReadinessPage);
+  RemediationBox.Parent := ReadinessPage.Surface;
+  RemediationBox.Left := 0;
+  RemediationBox.Width := ReadinessPage.SurfaceWidth;
+  RemediationBox.ReadOnly := True;
+  RemediationBox.WordWrap := True;
+  // Scrollable, because the content is not bounded: a database remediation is a CREATE LOGIN /
+  // CREATE USER / ALTER ROLE block, and nine check rows leave roughly five lines for it. A label
+  // simply stopped at the last line that fit - the SQL an operator is meant to hand to a DBA was
+  // cut off by the buttons below it. It also makes the text selectable again, which is what the
+  // "Save instructions..." button had to exist for.
+  RemediationBox.ScrollBars := ssVertical;
+  RemediationBox.Text := '';
 
   RecheckButton := TNewButton.Create(ReadinessPage);
   RecheckButton.Parent := ReadinessPage.Surface;
@@ -1129,7 +1149,10 @@ begin
   FinishMemo.Width := WizardForm.FinishedLabel.Width;
   FinishMemo.Top := WizardForm.FinishedLabel.Top + ScaleY(58);
   FinishMemo.Height := WizardForm.FinishedPage.Height - FinishMemo.Top - ScaleY(38);
-  FinishMemo.ScrollBars := ssVertical;
+  // Both scrollbars, not just the vertical one. Word wrap stays off so the labelled columns line
+  // up, which means a 64-character API key is wider than the memo - without a horizontal bar it is
+  // silently cut at the right edge, exactly as the first version shipped.
+  FinishMemo.ScrollBars := ssBoth;
   FinishMemo.ReadOnly := True;
   FinishMemo.WordWrap := False;
   FinishMemo.Visible := False;
@@ -1192,12 +1215,18 @@ begin
 
   if (CurPageID = wpFinished) and (FinishSummary <> '') then
   begin
+    // Two short sentences. The previous four-line paragraph wrapped far enough down the page that
+    // its last line ran underneath the memo, which sits at a fixed offset below the label's top.
     WizardForm.FinishedLabel.Caption :=
-      'NodePilot is installed and the service is running.' + #13#10#13#10 +
-      'Everything you need for the first connection is below. The setup token and the API key ' +
-      'are shown here once - save them before you close this window.';
+      'NodePilot is installed and running.' + #13#10 +
+      'Save the values below - the credentials are shown only here.';
+    // Measured off the label instead of assuming its height: the caption above is short today, and
+    // a translation or an extra sentence would silently push it back under the memo.
+    FinishMemo.Top := WizardForm.FinishedLabel.Top + WizardForm.FinishedLabel.Height + ScaleY(12);
+    FinishMemo.Height := WizardForm.FinishedPage.Height - FinishMemo.Top - ScaleY(38);
     FinishMemo.Text := FinishSummary;
     FinishMemo.Visible := True;
+    FinishSaveButton.Top := FinishMemo.Top + FinishMemo.Height + ScaleY(8);
     FinishSaveButton.Visible := True;
   end;
 end;

@@ -694,8 +694,19 @@ if ($readinessStart -lt 0 -or $readinessEnd -lt 0) {
     throw 'Deployment template check failed: could not delimit CreateReadinessPage in the server setup.'
 }
 $readinessPageCode = $serverIss.Substring($readinessStart, $readinessEnd - $readinessStart)
-Assert-TextDoesNotMatch -Name 'the readiness page has no edit control' `
-    -Text $readinessPageCode -Pattern 'TNewMemo'
+# This used to ban TNewMemo outright, because a memo sized to the leftovers of eight check rows came
+# out one line tall with a scrollbar and read as a broken edit field. That reason is gone: the rows
+# are laid out after their text is known, which leaves the remediation area about five lines. What
+# remains true is that a remediation is unbounded - a database fix is a CREATE LOGIN / CREATE USER /
+# ALTER ROLE block - so the control has to be able to reach content past its own height. A label
+# could not, and simply stopped at the last line that fit, hiding the SQL behind the buttons.
+#
+# So the rule is no longer "not a memo" but "read-only and scrollable": not mistakable for an input,
+# and incapable of silently truncating.
+Assert-TextMatches -Name 'the remediation area cannot be typed into' `
+    -Text $readinessPageCode -Pattern 'RemediationBox\.ReadOnly := True'
+Assert-TextMatches -Name 'the remediation area can reach text taller than itself' `
+    -Text $readinessPageCode -Pattern 'RemediationBox\.ScrollBars := ssVertical'
 
 # --- certificate picker ---------------------------------------------------------------------------
 # The thumbprint of a certificate already installed on the machine is otherwise only reachable
@@ -774,6 +785,18 @@ Assert-TextMatches -Name 'the finish page shows the first-login token' `
     -Text $serverIss -Pattern "GetIniString\('result', 'adminSetupToken'"
 Assert-TextMatches -Name 'the finish page shows the external-trigger API key' `
     -Text $serverIss -Pattern "GetIniString\('result', 'externalTriggerApiKey'"
+# An unattended install creates the account itself; those credentials exist in the result file and
+# in one ACL-protected file on disk, and nowhere else an operator would think to look.
+Assert-TextMatches -Name 'the finish page shows the generated credentials' `
+    -Text $serverIss -Pattern "GetIniString\('bootstrap', 'password'"
+# Word wrap is off so the labelled columns line up, which makes a 64-character API key wider than
+# the memo. Without a horizontal bar it is cut at the right edge and reads as a shorter key.
+Assert-TextMatches -Name 'the finish memo can scroll to the end of a long value' `
+    -Text $serverIss -Pattern 'FinishMemo\.ScrollBars := ssBoth'
+# Measured, not assumed: a fixed offset below the label put the memo underneath the caption's last
+# line as soon as the caption wrapped one line further than the author had in mind.
+Assert-TextMatches -Name 'the finish memo is placed below the caption it follows' `
+    -Text $serverIss -Pattern 'FinishMemo\.Top := WizardForm\.FinishedLabel\.Top \+ WizardForm\.FinishedLabel\.Height'
 # The summary is assembled while result.ini still exists - DeinitializeSetup wipes the session
 # directory, so reading it from the page handler would find nothing. Which FUNCTION each step
 # lives in is the invariant; comparing file offsets would only measure declaration order, and
