@@ -204,13 +204,22 @@ public class TelemetryEmissionTests
     {
         using var metrics = new MetricCollector(TelemetryConstants.Meters.Engine);
 
+        // The step has to still be running when the cancel lands. Waiting a fixed few
+        // milliseconds and hoping does not survive a loaded CI agent, where the six test
+        // assemblies run in parallel and a 25 ms delay routinely wakes up late enough for a
+        // 200 ms step to have finished - the run then succeeds and the assertion below reads
+        // Succeeded. So: the step reports that it has started, and never finishes on its own.
+        using var stepStarted = new SemaphoreSlim(0);
         _mockExecutor.Setup(e => e.ExecuteAsync(
                 It.IsAny<StepExecutionContext>(),
                 It.IsAny<JsonElement>(),
                 It.IsAny<CancellationToken>()))
             .Returns<StepExecutionContext, JsonElement, CancellationToken>(async (_, _, token) =>
             {
-                await Task.Delay(200, token);
+                stepStarted.Release();
+                // Long enough that scheduling jitter can never reach it, short enough that a
+                // regression in cancellation propagation fails the test instead of hanging it.
+                await Task.Delay(TimeSpan.FromSeconds(30), token);
                 return new ActivityResult { Success = true };
             });
 
@@ -220,7 +229,8 @@ public class TelemetryEmissionTests
 
         using var cts = new CancellationTokenSource();
         var runTask = _engine.ExecuteAsync(workflow, "manual", cts.Token);
-        await Task.Delay(25);
+        (await stepStarted.WaitAsync(TimeSpan.FromSeconds(30))).Should().BeTrue(
+            "the step must be running before the cancellation is issued");
         cts.Cancel();
         var execution = await runTask;
 

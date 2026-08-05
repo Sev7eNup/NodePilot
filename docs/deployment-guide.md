@@ -116,7 +116,7 @@ Verify the download, then trust the publisher on the target server:
 
 ```powershell
 # 1. Checksums (compare against SHA256SUMS.txt)
-Get-FileHash .\NodePilot-1.0.1.zip -Algorithm SHA256 | Format-List
+Get-FileHash .\NodePilot-1.1.0.zip -Algorithm SHA256 | Format-List
 
 # 2. The certificate you are about to trust is the one named in the release notes
 (Get-PfxCertificate .\nodepilot-release-signing.cer).Thumbprint
@@ -151,23 +151,23 @@ when you want something else:
 ```powershell
 .\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $signer.Thumbprint
 
-# Same run, plus the desktop installer (needs Inno Setup 6 and a PostgreSQL 16 "pgsql" folder;
-# without them the desktop step is skipped with a warning and the server zip is still produced).
-# -DesktopSigningCertificateThumbprint Authenticode-signs the .exe as part of the build - signing
-# it afterwards would invalidate its SHA256SUMS entry.
+# Same run, plus both installers (needs Inno Setup 6, and a PostgreSQL 16 "pgsql" folder for the
+# desktop bundle; without them the desktop step is skipped with a warning and the server zip is
+# still produced). -InstallerSigningCertificateThumbprint Authenticode-signs both .exe files as
+# part of the build - signing them afterwards would invalidate their SHA256SUMS entries.
 .\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $signer.Thumbprint `
-    -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql' `
-    -DesktopSigningCertificateThumbprint $signer.Thumbprint
+    -IncludeServerInstaller -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql' `
+    -InstallerSigningCertificateThumbprint $signer.Thumbprint
 ```
 
 Copy **four files** to the target server (e.g. `C:\Temp`):
 
-- `out\NodePilot-1.0.1.zip`
-- `out\NodePilot-1.0.1.zip.manifest.json`
-- `out\NodePilot-1.0.1.zip.manifest.json.p7s`
+- `out\NodePilot-1.1.0.zip`
+- `out\NodePilot-1.1.0.zip.manifest.json`
+- `out\NodePilot-1.1.0.zip.manifest.json.p7s`
 - `nodepilot-signer.cer`
 
-`out\NodePilot-1.0.1.SHA256SUMS.txt` covers everything the run produced, if you want to verify the
+`out\NodePilot-1.1.0.SHA256SUMS.txt` covers everything the run produced, if you want to verify the
 transfer.
 
 plus the `deploy\` folder itself (`Install-NodePilot.ps1` + `ArtifactSecurity.ps1`).

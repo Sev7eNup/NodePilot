@@ -417,7 +417,7 @@ gar nichts — ein Parser in Pascal wären ~120 Zeilen, die kein Test erreicht.
 ## Unbeaufsichtigt (SCCM, GPO)
 
 ```powershell
-NodePilot-Server-Setup-1.0.1.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+NodePilot-Server-Setup-1.1.0.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
 | Schalter | Wirkung |
@@ -592,7 +592,7 @@ Uninstaller **benennt** sie am Ende namentlich.
 ```powershell
 # Einzeln:
 .\deploy\server\Build-ServerInstaller.ps1 `
-    -ArtifactPath .\out\NodePilot-1.0.1.zip `
+    -ArtifactPath .\out\NodePilot-1.1.0.zip `
     -TrustedSignerThumbprint 277EAB317A581C88302CE92BE805938C86B4650D
 
 # Als Teil des Release-Builds (empfohlen — signiert und in SHA256SUMS):
