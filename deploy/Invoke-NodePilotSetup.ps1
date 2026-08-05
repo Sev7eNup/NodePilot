@@ -449,16 +449,21 @@ function Invoke-SetupInstall {
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'dataPath' -Value $answers['dataPath']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'serviceName' -Value $answers['serviceName']
 
-    # Read the bootstrap token here rather than scraping console text for a secret. The file is
-    # owner-only for the service account, so failure is expected, not an error.
-    $tokenPath = Join-Path ([string]$answers['dataPath']) 'admin-setup.token'
-    try {
-        if (Test-Path -LiteralPath $tokenPath -PathType Leaf) {
-            Set-NodePilotResult -Buffer $result -Section 'result' -Name 'adminSetupToken' `
-                -Value ((Get-Content -LiteralPath $tokenPath -Raw).Trim())
-        }
+    # Read the bootstrap token here rather than scraping console text for a secret.
+    #
+    # Through Get-NodePilotBootstrapToken, not Get-Content: the service writes that file with a
+    # single ACE for its own identity, so an elevated installing admin is denied a plain read
+    # whenever the two differ - which is always. Test-Path still says true, because Administrators
+    # own the directory, so the naive version failed silently and the finish page simply had no
+    # token on it. The operator then went hunting for the file, granted themselves access on the
+    # folder, and that ACE is what makes the server reject every setup token afterwards.
+    $token = Get-NodePilotBootstrapToken `
+        -DataPath ([string]$answers['dataPath']) `
+        -StagingDirectory (Split-Path -Parent $OutFile)
+    if ($token) {
+        Set-NodePilotResult -Buffer $result -Section 'result' -Name 'adminSetupToken' -Value $token
     }
-    catch {
+    else {
         Set-NodePilotResult -Buffer $result -Section 'result' -Name 'adminSetupTokenUnreadable' -Value 1
     }
     return 0

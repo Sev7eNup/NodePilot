@@ -357,6 +357,54 @@ function Find-NodePilotPhase {
     return $null
 }
 
+function Get-NodePilotBootstrapToken {
+    <#
+      Reads admin-setup.token for display on the wizard's finish page.
+
+      The service writes that file with a single ACE for its own identity, so an elevated
+      installing admin is DENIED a plain read whenever the service runs as someone else - which is
+      always, for both LocalSystem and a gMSA. Test-Path still returns true, because Administrators
+      own the directory, so the naive version looked like it worked and silently produced nothing:
+      the finish page showed no token, the operator went looking for the file by hand, and granting
+      themselves access on the folder is what then broke the bootstrap outright.
+
+      robocopy /B copies through the backup semantics an elevated administrator already holds - the
+      same mechanism the installer prints as a hint for the scripted path. The copy lands in the
+      caller's ACL-protected session directory and is shredded immediately after reading.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$DataPath,
+        [Parameter(Mandatory)][string]$StagingDirectory
+    )
+
+    $tokenPath = Join-Path $DataPath 'admin-setup.token'
+    if (-not (Test-Path -LiteralPath $tokenPath)) { return '' }
+
+    # Direct read first: it succeeds when the installer and the service share an identity, and it
+    # avoids putting a second copy of the secret on disk when it does.
+    try { return (Get-Content -LiteralPath $tokenPath -Raw -ErrorAction Stop).Trim() } catch { }
+
+    $scratch = Join-Path $StagingDirectory ([Guid]::NewGuid().ToString('N'))
+    try {
+        [void](New-Item -ItemType Directory -Path $scratch -ErrorAction Stop)
+        # /B is the whole point; /NJH /NJS /NP keep robocopy's banner out of the transcript.
+        & robocopy.exe $DataPath $scratch 'admin-setup.token' /B /NJH /NJS /NP | Out-Null
+        $copy = Join-Path $scratch 'admin-setup.token'
+        if (-not (Test-Path -LiteralPath $copy)) { return '' }
+        return (Get-Content -LiteralPath $copy -Raw -ErrorAction Stop).Trim()
+    }
+    catch { return '' }
+    finally {
+        # The copy is a live credential; it must not outlive this call.
+        if (Test-Path -LiteralPath $scratch) {
+            foreach ($file in @(Get-ChildItem -LiteralPath $scratch -File -ErrorAction SilentlyContinue)) {
+                Remove-NodePilotAnswerFile -Path $file.FullName
+            }
+            Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 function Format-NodePilotCertificateLine {
     <#
       One certificate from the machine store as a single INI value, for the wizard's picker:

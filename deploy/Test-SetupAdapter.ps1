@@ -402,6 +402,28 @@ try {
     Assert-True -Name 'certificates are offered newest expiry first' `
         -Condition (($expiryDates -join ',') -eq ((@($expiryDates) | Sort-Object -Descending) -join ','))
 
+    # --- bootstrap token ------------------------------------------------------------------------
+    # The finish page is the only place this token is ever shown, and it was blank on every real
+    # installation: the service writes the file with a single ACE for its own identity, so the
+    # installing admin is denied a plain read. Test-Path still says true, because Administrators own
+    # the directory - which is why the naive version looked correct and produced nothing.
+    $tokenData = Join-Path $workingDirectory 'tokendata'
+    $tokenStage = Join-Path $workingDirectory 'tokenstage'
+    New-Item -ItemType Directory -Path $tokenData, $tokenStage -Force | Out-Null
+
+    Assert-True -Name 'a missing token file yields an empty string, not an error' `
+        -Condition ((Get-NodePilotBootstrapToken -DataPath $tokenData -StagingDirectory $tokenStage) -eq '')
+
+    [IO.File]::WriteAllText((Join-Path $tokenData 'admin-setup.token'), "  a-token-value`r`n")
+    Assert-True -Name 'a readable token is returned trimmed' `
+        -Condition ((Get-NodePilotBootstrapToken -DataPath $tokenData -StagingDirectory $tokenStage) -eq 'a-token-value')
+    # A readable file never reaches the robocopy fallback, so there is nothing here to assert about
+    # its cleanup - the staging directory stays empty because it was never used. That the fallback
+    # shreds its copy is pinned as a contract in Test-DeploymentTemplates.ps1 instead; asserting it
+    # here would only look like coverage.
+    Assert-True -Name 'a readable token needs no staging copy at all' `
+        -Condition (@(Get-ChildItem -LiteralPath $tokenStage -Recurse -Force -ErrorAction SilentlyContinue).Count -eq 0)
+
     # --- installation progress ------------------------------------------------------------------
     # Drives the wizard's bar. The installer is not touched for it: its own phase headings are
     # translated on the way past, which is why "does this line mean a phase" has to be exact.

@@ -262,6 +262,57 @@ public sealed class AdminBootstrapTests : IDisposable
     }
 
     [Fact]
+    public void Validate_ExistingBroadAcl_SaysTheFileFailedValidation_NotThatTheTokenIsWrong()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        // The failure this reports is otherwise undiscoverable. Granting a named principal access
+        // to the token - which is exactly what Windows Explorer's "You don't currently have
+        // permission to access this folder / Continue" button does to the directory - stops the
+        // file validating, and every correct token is refused for the rest of the installation's
+        // life. Reported as a mismatch, it sends the operator to check the one thing that is fine.
+        AdminBootstrap.EnsureBootstrapTokenIfNeeded(
+            _env, usersExist: false, NullLogger.Instance);
+        var token = File.ReadAllText(TokenPath).Trim();
+        GrantEveryoneRead(TokenPath);
+
+        AdminBootstrap.Validate(_env, token, config: null, out var reason).Should().BeFalse();
+        reason.Should().Contain("security validation");
+        reason.Should().NotContain("does not match");
+    }
+
+    [Fact]
+    public void Validate_WrongToken_SaysSo()
+    {
+        AdminBootstrap.EnsureBootstrapTokenIfNeeded(
+            _env, usersExist: false, NullLogger.Instance);
+
+        AdminBootstrap.Validate(_env, "not-the-token", config: null, out var reason).Should().BeFalse();
+        reason.Should().Contain("does not match");
+    }
+
+    [Fact]
+    public void Validate_NoTokenPresented_IsDistinguishedFromAWrongOne()
+    {
+        AdminBootstrap.EnsureBootstrapTokenIfNeeded(
+            _env, usersExist: false, NullLogger.Instance);
+
+        AdminBootstrap.Validate(_env, null, config: null, out var reason).Should().BeFalse();
+        reason.Should().Contain("no setup token");
+    }
+
+    [Fact]
+    public void Validate_CorrectToken_ReportsNoReason()
+    {
+        AdminBootstrap.EnsureBootstrapTokenIfNeeded(
+            _env, usersExist: false, NullLogger.Instance);
+        var token = File.ReadAllText(TokenPath).Trim();
+
+        AdminBootstrap.Validate(_env, token, config: null, out var reason).Should().BeTrue();
+        reason.Should().BeNull();
+    }
+
+    [Fact]
     public void EnsureBootstrapTokenIfNeeded_ExistingReparsePoint_FailsClosed()
     {
         var target = Path.Combine(_tempDir, "attacker-token.txt");

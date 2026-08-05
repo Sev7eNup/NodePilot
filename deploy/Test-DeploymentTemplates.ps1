@@ -1146,6 +1146,33 @@ Assert-TextMatches -Name 'the crash lookup is bounded to the current run' `
 Assert-TextMatches -Name 'the crash lookup cannot itself fail the run' `
     -Text $setupAdapter -Pattern "(?s)function Get-NodePilotServiceCrashReason[\s\S]*?catch \{ return '' \}"
 
+# The finish page is the only place the bootstrap token is ever shown, and a plain read of it always
+# fails: the service writes the file with a single ACE for its own identity, and the installing admin
+# is not that identity for either LocalSystem or a gMSA. Test-Path still returns true - Administrators
+# own the directory - so the naive version reported no error and simply produced no token. The
+# operator then went looking for the file by hand, and granting themselves access on the folder is
+# what stops the server accepting any setup token at all.
+$installBranchStart = $setupAdapter.IndexOf('function Invoke-SetupInstall')
+$installBranchEnd = $setupAdapter.IndexOf('function Invoke-SetupUpdate', $installBranchStart)
+if ($installBranchStart -lt 0 -or $installBranchEnd -le $installBranchStart) {
+    throw 'Deployment template check failed: could not delimit the install path in the setup adapter.'
+}
+$installBranch = $setupAdapter.Substring($installBranchStart, $installBranchEnd - $installBranchStart)
+Assert-TextMatches -Name 'the token is read through the helper that can actually read it' `
+    -Text $installBranch -Pattern 'Get-NodePilotBootstrapToken'
+Assert-TextDoesNotMatch -Name 'the token is never read with a plain Get-Content' `
+    -Text $installBranch -Pattern "Get-Content[^\r\n]*admin-setup\.token"
+# Backup semantics are the mechanism; without /B the helper is just a slower plain read.
+$contractScript = Get-Content -LiteralPath $SetupContractPath -Raw
+Assert-TextMatches -Name 'the token read uses backup semantics' `
+    -Text $contractScript -Pattern "(?s)function Get-NodePilotBootstrapToken[\s\S]*?robocopy\.exe[^\r\n]*/B"
+# The fallback puts a live credential on disk. It has to come off again on every path out of the
+# function, including the ones that throw - which is why this is a finally and not a trailing line.
+# Not assertable from the behavioural test: a readable token returns before the fallback runs.
+Assert-TextMatches -Name 'the staged token copy is shredded in a finally' `
+    -Text $contractScript `
+    -Pattern "(?s)function Get-NodePilotBootstrapToken[\s\S]*?finally \{[\s\S]*?Remove-NodePilotAnswerFile[\s\S]*?Remove-Item"
+
 # One emitter serving both the probe and the standalone mode. Two copies would drift into different
 # field orders behind a Pascal reader that splits on position and has no way to notice.
 $inventoryReads = @([regex]::Matches($setupAdapter, 'Get-NodePilotCertificateInventory'))
