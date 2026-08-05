@@ -876,6 +876,11 @@ Assert-TextMatches -Name 'the pre-flight checks whether the ports can be bound' 
 # message about a busy port would send the operator hunting a process that does not exist.
 Assert-TextMatches -Name 'a reserved port is told apart from an occupied one' `
     -Text $preflightStripped -Pattern 'SocketError\]::AccessDenied'
+# The other face of the same reservation, and the one the lab host actually shows: HTTP.SYS holds
+# the listener in the kernel, so it surfaces as PID 4 rather than as a bind failure. "In use by
+# System (PID 4)" is true and sends the operator after a process nobody can stop.
+Assert-TextMatches -Name 'a kernel-held port is not reported as an ordinary process' `
+    -Text $preflightStripped -Pattern 'OwningProcess -le 4'
 # Kestrel binds the wildcard address - the crash came out of AnyIPListenOptions.BindAsync. Probing
 # loopback would pass on a port that is reserved on 0.0.0.0.
 Assert-TextMatches -Name 'the port probe binds the address Kestrel binds' `

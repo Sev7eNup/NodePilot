@@ -228,6 +228,17 @@ function Get-NodePilotPortStatus {
                 Detail = "held by the $ServiceName service being replaced"
             }
         }
+        # PID 4 is the System process, and that is what an HTTP.SYS reservation looks like from
+        # here. Reporting "in use by System (PID 4)" is true and useless: it sends the operator
+        # after a process that cannot be stopped or moved. Measured on the lab host, where IIS
+        # reserves 80 and 443 exactly this way - the kernel driver holds the listener, so this
+        # branch is reached instead of the AccessDenied one below.
+        if ($listener.OwningProcess -le 4) {
+            return [pscustomobject]@{
+                Port = $Port; IsBlocked = $true
+                Detail = 'reserved by Windows HTTP.SYS (IIS, WinRM or WSUS) - no ordinary process holds it'
+            }
+        }
         $name = if ($owner) { "$($owner.Name) (PID $($listener.OwningProcess))" } else { "PID $($listener.OwningProcess)" }
         return [pscustomobject]@{ Port = $Port; IsBlocked = $true; Detail = "already in use by $name" }
     }
