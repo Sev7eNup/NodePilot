@@ -7,6 +7,83 @@ nutzbar und ist weiterhin die Referenz; das Setup ruft genau dieses Skript auf.
 > Für **eine einzelne Maschine ohne Netzwerkzugriff** ist die Desktop-App der schnellere Weg —
 > siehe [`../desktop/README.md`](../desktop/README.md). Sie bindet ausschließlich Loopback.
 
+## Quick start
+
+Der Rest dieser Datei erklärt, **warum** die Dinge so sind. Das hier ist, **was man tut**.
+
+### Vorher besorgen — zwei Dinge
+
+**1. Kestrel-Zertifikat** auf dem Zielserver in den Maschinenspeicher:
+
+```powershell
+Import-PfxCertificate -FilePath cert.pfx -CertStoreLocation Cert:\LocalMachine\My `
+  -Password (Read-Host -AsSecureString)
+```
+
+`MachineKeySet|PersistKeySet` ist bei diesem Aufruf Default und ist Pflicht — ohne persistierten
+Maschinenschlüssel findet `Grant-CertPrivateKeyAccess` die Schlüsseldatei später nicht und die
+Installation bricht ab. Gültig und auf den Public-Hostnamen ausgestellt: ein abgelaufenes Zertifikat
+ist eine rote Pflicht-Zeile, ein abweichender Name nur eine Warnung.
+
+**2. Datenbank-Server**, erreichbar, dessen **TLS der NodePilot-Host verifizieren kann** — bei
+self-signed also den öffentlichen Teil nach `LocalMachine\Root` auf dem NodePilot-Server. SQL Server
+muss **2022 CU1** (`16.0.4003.1`) oder neuer sein. Für PostgreSQL zusätzlich die **Root-CA als PEM**
+bereitlegen.
+
+**Datenbank, Login und Rechte legt das Setup an** — bei SQL Server, wenn das ausführende Konto
+`sysadmin` ist; bei PostgreSQL, wenn Superuser-Zugangsdaten eingetragen werden. Das ist keine
+Vorarbeit mehr, siehe [Auto-Fixes](#auto-fixes).
+
+Nur beim gMSA-Pfad: Konto in AD anlegen, für den Host freigeben, `Install-ADServiceAccount` auf dem
+Zielserver. Den Zugriff auf den privaten Schlüssel des Zertifikats erledigt der Installer.
+
+### Der Wizard
+
+| # | Seite | Eingabe |
+|---|---|---|
+| 1 | Modus | Neuinstallation (bzw. Update / Entfernen) |
+| 2 | Zielordner | Installationsverzeichnis |
+| 3 | Dienst-Identität | LocalSystem oder gMSA |
+| 4 | Konto | nur bei gMSA: `DOMAIN\name$` |
+| 5 | Datenbank | SQL Server 2022 CU1+ oder PostgreSQL 16+ |
+| 6a | SQL Server | Server, Datenbank, Zertifikats-Hostname (leer = wird aus dem Server abgeleitet) |
+| 6b | PostgreSQL | Host/Port/Datenbank, dann User, Passwort, Root-Zertifikat — optional Superuser + Passwort, damit Rolle und Datenbank angelegt werden können |
+| 7 | Netzwerk und TLS | Public-Hostname, HTTPS-Port, HTTP-Port (**`0`** = kein Redirect), Allowed Hosts, Thumbprint — die Liste darunter füllt das Feld |
+| 8 | Prerequisites | neun Prüfzeilen; rote Pflicht-Zeilen sperren „Weiter". Wo eine Checkbox erscheint: anhaken, „Weiter" führt den Fix aus und **prüft neu** |
+| 9 | Installation | läuft mit Fortschritt und Phasentext, 2–3 Minuten |
+| 10 | Abschluss | URL, Zugangsdaten bzw. Setup-Token, Pfade, Zertifikat — und der **External-Trigger-API-Key, der nur hier steht** |
+
+Erster Login: das Setup-Token in das Feld, das die Anmeldemaske beim ersten Versuch einblendet.
+
+### Unbeaufsichtigt
+
+```
+NodePilot-Server-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json
+```
+
+Die elf Pflichtschlüssel stehen unter [Answer-File](#answer-file). Dazu praktisch immer:
+
+```json
+"provisioning": { "createDatabaseAndLogin": true },
+"bootstrap":    { "adminUsername": "npadmin" }
+```
+
+Der erste legt Datenbank und Login an (bei PostgreSQL zusätzlich `provisioning.postgresSuperUser` /
+`.postgresSuperPassword`), der zweite verhindert, dass der Lauf mit einem Token endet, das niemand
+eintippt — das erzeugte Kennwort landet ACL-geschützt in `<dataPath>\bootstrap-admin.json`. Wer
+stattdessen eine Referenzinstanz klonen will, nimmt `seed.backupPath`; siehe
+[Schlüsselfertiger Rollout](#schlüsselfertiger-rollout-unbeaufsichtigt-ohne-token-eingabe).
+
+### Zwei Stolpersteine
+
+- **Ports 80 und 443 gehören auf einem Host mit IIS der HTTP.SYS** und sind für Kestrel nicht
+  bindbar. Andere Ports wählen oder den HTTP-Port auf `0` setzen. Die Readiness-Seite sagt es
+  vorher — mit „reserved by Windows", nicht mit „in use by System (PID 4)".
+- **AV-Ausschlüsse** vorher einreichen: [`../../docs/av-exclusions.md`](../../docs/av-exclusions.md)
+  ist als Übergabedokument für eine AV-Abteilung geschrieben.
+
+Die Deinstallation fasst die **Datenbank nie** an; das Datenverzeichnis nur mit `/PURGEDATA=1`.
+
 ## Was er abnimmt — und was nicht
 
 | | |

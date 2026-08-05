@@ -88,6 +88,10 @@ skip the `Root` imports.
 > machine and written to an ACL-protected file, so a rollout does not end waiting for someone to
 > type a setup token into a browser.
 >
+> For the wizard's own step-by-step - what to have ready, which page asks for what, what the finish
+> page shows - see the **Quick start** at the top of
+> [`deploy/server/README.md`](../deploy/server/README.md#quick-start).
+>
 > This guide keeps the scripted path as the reference, because it is what the wizard runs and what
 > you will want for automation and for troubleshooting. See
 > [`deploy/server/README.md`](../deploy/server/README.md) for the wizard, its answer-file schema
