@@ -34,6 +34,39 @@ Die Zeilen werden erst positioniert, wenn ihr Text steht. Vorher reservierte jed
 Zeilen 16 px für eine Auto-Fix-Checkbox, die fast nie sichtbar ist — 128 px einer 309 px hohen
 Fläche für nichts.
 
+## Fortschrittsanzeige
+
+Während der Installation zeigt der Wizard Phase und Balken. Vorher stand er auf „Preparing to
+Install" und zeigte **nichts** — gemessen 136 s bei einem erfolgreichen Lauf, 187 s bei einem, der
+in den Health-Probe-Timeout läuft. Lange genug, dass Windows das Fenster ausgraut und „Keine
+Rückmeldung" danebenschreibt; genau so wurde es auch gelesen.
+
+Ursache war `Exec` mit `ewWaitUntilTerminated`: synchron, blockiert Innos UI-Thread vollständig.
+**Nur die Installation** läuft deshalb jetzt detached (`ewNoWait`); Probe, Provision, Certificates
+und Cleanup bleiben synchron, die sind in Sekunden durch.
+
+Vier Punkte, die daran nicht offensichtlich sind:
+
+- **Der Exit-Code kommt aus `result.ini`, nicht von `Exec`.** Mit `ewNoWait` gibt es keinen — der
+  Prozess läuft ja noch. Der Adapter schreibt die Datei in einem `finally`, sie existiert also auch
+  auf den Rollback-Pfaden. Geprüft wird nicht ihre Existenz, sondern ob `summary.exitCode` darin
+  steht: `WriteAllLines` ist nicht atomar, die Datei kann da und halb geschrieben sein.
+- **Inno hat keinen Message-Pump.** `AppProcessMessages`, `ProcessMessages` und `Application` sind
+  in 6.7.3 allesamt unbekannte Bezeichner (nachgemessen). Die Schleife ruft deshalb pro Tick
+  `ProgressPage.SetProgress` — das ist der Mechanismus, den Inno für lange Operationen vorsieht.
+- **Der Fortschritt entsteht aus der Ausgabe der Installer-Skripte**, nicht aus neuen Meldungen in
+  ihnen. `Install-NodePilot.ps1` und `Update-NodePilot.ps1` sind unverändert; der Adapter übersetzt
+  ihre `Write-Step`-Zeilen im Vorbeigehen in `percent|text`. Ein Contract prüft, dass jede Phase,
+  auf die er matcht, dort noch existiert — sonst bliebe der Balken stillschweigend stehen.
+- **Kein Abbrechen.** Ein halb installiertes System ist schlimmer als drei Minuten warten.
+
+Der Balken **steht** während „Starting service" — diese Phase wartet bis zu 180 s auf
+`/healthz/ready`. Der Text sagt das dazu. Ein künstlich weiterlaufender Balken würde Fortschritt
+behaupten, den niemand misst.
+
+Ein Timeout von 45 Minuten begrenzt die Schleife. Er greift nur, wenn der Adapter hart abgeschossen
+wurde und `result.ini` nie erscheint — sonst würde der Wizard ewig warten.
+
 ## Port-Prüfung
 
 Die Ports werden **vor** der Installation auf Bindbarkeit geprüft — gemessen an dem, was ohne diese
@@ -383,9 +416,11 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 17 | TLS-Seite, leerer Zertifikatsspeicher | Hinweiszeile statt Auswahl, „Weiter" bleibt möglich |
 | 18 | HTTP-Port 80 auf einem Host mit IIS | Readiness-Zeile rot mit „reserved by Windows", „Weiter" gesperrt |
 | 19 | HTTP-Port 0 | Zeile grün, „HTTP disabled" |
+| 20 | Installation interaktiv | Balken und Phasentext laufen, Fenster bleibt bedienbar, kein „Keine Rückmeldung" |
+| 21 | Installation unbeaufsichtigt | keine Oberfläche, Exit-Code unverändert |
 
 Stand: 1, 3, 5, 9 und 10 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server 2022 CU
-gelaufen. 2, 4, 6, 7, 8 und 11 bis 19 nicht.
+gelaufen. 2, 4, 6, 7, 8 und 11 bis 21 nicht.
 
 Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
 `httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,

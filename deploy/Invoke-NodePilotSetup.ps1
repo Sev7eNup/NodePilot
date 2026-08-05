@@ -102,6 +102,20 @@ function Write-NodePilotProgress {
     catch { }  # Progress is cosmetic; it must never break an installation.
 }
 
+function Write-NodePilotPhaseProgress {
+    <#
+      Turns the installer's own output into progress the wizard can draw. Neither
+      Install-NodePilot.ps1 nor Update-NodePilot.ps1 is touched for this: both already announce
+      every phase they enter, and those lines already travel through this process on their way to
+      the log.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Line)
+
+    $phase = Get-NodePilotPhaseProgress -Line $Line
+    if (-not $phase) { return }
+    Write-NodePilotProgress -Step ([string]$phase.Percent) -Text $phase.Text
+}
+
 function Add-NodePilotCheckResults {
     param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Results)
     foreach ($check in $Results) {
@@ -420,11 +434,12 @@ function Invoke-SetupInstall {
     # only way the wizard can show it to the operator.
     $splat['ExternalTriggerApiKey'] = New-NodePilotRandomBase64 -ByteCount 48
 
-    Write-NodePilotProgress -Step 'install' -Text 'Installing NodePilot'
+    Write-NodePilotProgress -Step '0' -Text 'Installing NodePilot'
     # 6>&1 because every operator-visible line in the installer is Write-Host, i.e. the
-    # information stream.
+    # information stream. The same pass that logs a line also translates it into progress - the
+    # installer announces each phase it enters, so nothing there had to change.
     & (Join-Path $scriptDirectory 'Install-NodePilot.ps1') @splat 6>&1 |
-        ForEach-Object { Write-Host $_ }
+        ForEach-Object { Write-NodePilotPhaseProgress -Line $_; Write-Host $_ }
 
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'url' -Value (
         'https://{0}:{1}/' -f $answers['network.publicHostname'], $answers['network.httpsPort'])
@@ -451,7 +466,7 @@ function Invoke-SetupInstall {
 
 function Invoke-SetupUpdate {
     $answers = Read-NodePilotAnswerFile -Path $AnswerFile
-    Write-NodePilotProgress -Step 'update' -Text 'Updating NodePilot'
+    Write-NodePilotProgress -Step '0' -Text 'Updating NodePilot'
     # Deliberately no HTTPS port here. Update-NodePilot.ps1 derives the probe port from the
     # installed Kestrel configuration precisely because passing the 443 default rolled back a
     # healthy 8443 installation in the lab.
@@ -465,7 +480,7 @@ function Invoke-SetupUpdate {
         $splat['DataPath'] = [string]$answers['dataPath']
     }
     & (Join-Path $scriptDirectory 'Update-NodePilot.ps1') @splat 6>&1 |
-        ForEach-Object { Write-Host $_ }
+        ForEach-Object { Write-NodePilotPhaseProgress -Line $_; Write-Host $_ }
 
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'installPath' -Value $splat['InstallPath']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'serviceName' -Value $splat['ServiceName']

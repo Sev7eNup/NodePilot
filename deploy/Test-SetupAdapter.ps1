@@ -402,6 +402,35 @@ try {
     Assert-True -Name 'certificates are offered newest expiry first' `
         -Condition (($expiryDates -join ',') -eq ((@($expiryDates) | Sort-Object -Descending) -join ','))
 
+    # --- installation progress ------------------------------------------------------------------
+    # Drives the wizard's bar. The installer is not touched for it: its own phase headings are
+    # translated on the way past, which is why "does this line mean a phase" has to be exact.
+    $phase = Get-NodePilotPhaseProgress -Line '[install] Extracting artifact'
+    Assert-True -Name 'a phase heading yields a position and a caption' `
+        -Condition ($null -ne $phase -and $phase.Percent -gt 0 -and $phase.Text)
+    # Write-Info emits its detail lines under the same [install] prefix. Matching loosely would let
+    # "  Service acct : ..." register as a phase and drag the bar somewhere arbitrary.
+    Assert-True -Name 'an indented detail line is not a phase' `
+        -Condition ($null -eq (Get-NodePilotPhaseProgress -Line '[install]   Service acct  : CORP\svc$'))
+    Assert-True -Name 'an unrelated line is not a phase' `
+        -Condition ($null -eq (Get-NodePilotPhaseProgress -Line 'random output'))
+    # The updater interpolates the service name into its headings, so those match on a prefix.
+    $updatePhase = Get-NodePilotPhaseProgress -Line "[update] Stopping service 'NodePilot'"
+    Assert-True -Name 'an updater heading with an interpolated name still matches' `
+        -Condition ($null -ne $updatePhase -and $updatePhase.Percent -gt 0)
+    Assert-True -Name 'an updater detail line is not a phase' `
+        -Condition ($null -eq (Get-NodePilotPhaseProgress -Line '[update]   Backup: C:\x'))
+    # Ascending percentages are what let the wizard refuse to ever move the bar backwards without
+    # tracking state per phase.
+    $percents = @(Get-NodePilotInstallPhases | ForEach-Object { [int]$_.Percent })
+    Assert-True -Name 'install phases ascend' `
+        -Condition (($percents -join ',') -eq ((@($percents) | Sort-Object) -join ',') -and
+                    (@($percents | Select-Object -Unique).Count -eq $percents.Count))
+    # Progress is cosmetic. It runs inside the pipe that carries the installer's output, so an
+    # exception here would take the installation with it.
+    Assert-True -Name 'an empty line is handled rather than thrown on' `
+        -Condition ($null -eq (Get-NodePilotPhaseProgress -Line ''))
+
     # --- listen ports -------------------------------------------------------------------------
     # The defect this covers cost three minutes of silence on the lab host: Kestrel could not bind
     # port 80 - reserved by HTTP.SYS because IIS runs there - so the service crashed on startup,

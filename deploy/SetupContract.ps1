@@ -274,6 +274,78 @@ function ConvertTo-NodePilotIniValue {
     return ([string]$Value) -replace "`r`n", '\n' -replace "`n", '\n' -replace "`r", '\n'
 }
 
+# The installer's own phases, in the order it prints them, with the percentage each one STARTS at.
+# Mirrors the Write-Step calls in Install-NodePilot.ps1 - Test-DeploymentTemplates.ps1 pins that
+# every entry here still exists there, because a renamed step would silently produce a bar that
+# never moves past the phase before it.
+#
+# The percentages are not equal slices. Extracting the artifact and starting the service are where
+# the wall-clock goes (the service start alone waits up to 180 s on the health probe), so they get
+# the room. A bar that races to 90% and then sits there for two minutes is worse than no bar.
+$script:NodePilotInstallPhases = @(
+    [pscustomobject]@{ Step = 'NodePilot installer';                     Percent = 2;  Text = 'Starting the installer' }
+    [pscustomobject]@{ Step = 'Pre-flight checks';                       Percent = 8;  Text = 'Checking prerequisites' }
+    [pscustomobject]@{ Step = 'Preparing directories';                   Percent = 15; Text = 'Preparing directories' }
+    [pscustomobject]@{ Step = 'Extracting artifact';                     Percent = 25; Text = 'Extracting and verifying the signed artifact' }
+    [pscustomobject]@{ Step = 'Generating appsettings.Production.json';  Percent = 55; Text = 'Writing the configuration' }
+    [pscustomobject]@{ Step = 'Applying ACLs';                           Percent = 62; Text = 'Applying permissions' }
+    [pscustomobject]@{ Step = 'Firewall rules';                          Percent = 68; Text = 'Adding firewall rules' }
+    [pscustomobject]@{ Step = 'Registering Windows Service';             Percent = 74; Text = 'Registering the Windows service' }
+    [pscustomobject]@{ Step = 'Starting service';                        Percent = 80; Text = 'Starting the service - this can take up to three minutes' }
+)
+
+# Update-NodePilot.ps1 announces only two phases, and both interpolate the service name
+# ("Stopping service 'NodePilot'"), so these match on a prefix rather than exactly. Two positions
+# is thin, but an update also waits on a health probe, and a bar that moves twice beats a window
+# that shows nothing for two minutes.
+$script:NodePilotUpdatePhases = @(
+    [pscustomobject]@{ Step = 'Stopping service'; Percent = 25; Text = 'Stopping the service' }
+    [pscustomobject]@{ Step = 'Starting service'; Percent = 70; Text = 'Starting the service - this can take up to three minutes' }
+)
+
+function Get-NodePilotInstallPhases {
+    # Exposed so the tests and the drift contract read the same tables the translation uses.
+    return $script:NodePilotInstallPhases
+}
+
+function Get-NodePilotUpdatePhases {
+    return $script:NodePilotUpdatePhases
+}
+
+function Get-NodePilotPhaseProgress {
+    <#
+      Translates one line of installer or updater output into a progress position, or $null when
+      the line is not a phase heading.
+
+      Install phases match exactly. That is what separates a heading from the indented detail lines
+      Write-Info emits underneath it - both arrive carrying the same "[install] " prefix.
+
+      Returning $null for everything else is the behaviour that matters most: an unrecognised line
+      has to leave the bar where it is rather than reset it.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Line)
+
+    if ($Line -cmatch '^\[install\]\s(.*)$') {
+        $text = $matches[1]
+        foreach ($phase in $script:NodePilotInstallPhases) {
+            if ($text -ceq $phase.Step) {
+                return [pscustomobject]@{ Percent = $phase.Percent; Text = $phase.Text }
+            }
+        }
+        return $null
+    }
+
+    if ($Line -cmatch '^\[update\]\s(.*)$') {
+        $text = $matches[1]
+        foreach ($phase in $script:NodePilotUpdatePhases) {
+            if ($text -clike "$($phase.Step)*") {
+                return [pscustomobject]@{ Percent = $phase.Percent; Text = $phase.Text }
+            }
+        }
+    }
+    return $null
+}
+
 function Format-NodePilotCertificateLine {
     <#
       One certificate from the machine store as a single INI value, for the wizard's picker:

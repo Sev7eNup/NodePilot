@@ -19,6 +19,7 @@ param(
     [string]$PreflightScriptPath,
     [string]$UninstallScriptPath,
     [string]$SetupAdapterPath,
+    [string]$SetupContractPath,
     [string]$ServerIssPath,
     [string]$RuntimePayloadScriptPath
 )
@@ -59,6 +60,9 @@ if ([string]::IsNullOrWhiteSpace($UninstallScriptPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($SetupAdapterPath)) {
     $SetupAdapterPath = Join-Path $scriptDirectory 'Invoke-NodePilotSetup.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($SetupContractPath)) {
+    $SetupContractPath = Join-Path $scriptDirectory 'SetupContract.ps1'
 }
 if ([string]::IsNullOrWhiteSpace($ServerIssPath)) {
     $ServerIssPath = Join-Path $scriptDirectory 'server\NodePilotServer.iss'
@@ -110,7 +114,7 @@ function Remove-CommentLines {
     }) -join "`n")
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $ServerIssPath, $RuntimePayloadScriptPath)) {
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $SetupContractPath, $ServerIssPath, $RuntimePayloadScriptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
     }
@@ -909,6 +913,82 @@ if ($declaredCheckCount -ne $assignedCheckIds) {
            'check ids are assigned. The array is fixed-size, so a mismatch either drops the last ' +
            'check from the page or reads past the end of the array.')
 }
+
+# --- installation progress -------------------------------------------------------------------
+# The wizard sat on "Preparing to Install" showing nothing for the whole run - 136 s healthy, 187 s
+# when the health probe is lost - long enough for Windows to grey the window out as "Not
+# responding", which is how it was read.
+#
+# Dot-sourced rather than pattern-matched: the phase table IS the contract here, and reading the
+# real one is the only way this guard is worth having. SetupContract.ps1 has no top-level code -
+# Test-SetupAdapter.ps1 loads it the same way.
+. $SetupContractPath
+$installPhases = @(Get-NodePilotInstallPhases)
+if ($installPhases.Count -eq 0) {
+    throw 'Deployment template check failed: the install progress phase table is empty.'
+}
+# THE drift guard. The bar is driven by matching the installer's own output, so a renamed step does
+# not break anything loudly - it silently produces a bar that stops at the phase before it and an
+# operator who watches a frozen 25% for two minutes.
+foreach ($phase in $installPhases) {
+    if ($installerScript -notmatch [regex]::Escape("Write-Step `"$($phase.Step)`"")) {
+        throw ("Deployment template check failed: progress phase '$($phase.Step)' no longer exists " +
+               'as a Write-Step in the installer. The progress bar would stop at the previous ' +
+               'phase and never move again.')
+    }
+}
+# A bar that can go backwards is a bar nobody believes. Ascending percentages are what make the
+# wizard's "never retreat" rule hold without keeping state per phase.
+$previous = -1
+foreach ($phase in $installPhases) {
+    if ([int]$phase.Percent -le $previous) {
+        throw ("Deployment template check failed: install progress phase '$($phase.Step)' is not " +
+               'above the phase before it. The percentages must ascend.')
+    }
+    $previous = [int]$phase.Percent
+}
+# The service start waits up to 180 s on a health probe. A bar that stops there without saying why
+# is the same silence this replaced, just at 80% instead of 0.
+$lastPhase = $installPhases[$installPhases.Count - 1]
+if ($lastPhase.Text -notmatch 'minutes') {
+    throw ("Deployment template check failed: the last install phase ('$($lastPhase.Step)') must " +
+           'say how long it can take - it is the one that waits on the health probe.')
+}
+
+# Without the file, every Write-NodePilotProgress call in the adapter goes nowhere. That was the
+# state this feature shipped in: the writing side existed and nothing ever asked for it.
+Assert-TextMatches -Name 'the wizard asks the adapter for progress' `
+    -Text $serverIss -Pattern '(?s)-Mode Apply[\s\S]{0,400}-ProgressFile'
+# Synchronous Exec blocks Inno's UI thread for the whole installation, which is what produced the
+# frozen window. The installation - and only the installation - runs detached.
+Assert-TextMatches -Name 'the installation runs without blocking the interface' `
+    -Text $serverIss -Pattern '(?s)function RunAdapterWithProgress[\s\S]*?StartPowerShell\(Arguments\)'
+# Sliced to the function, not matched across the file. The first version of this check searched
+# from "function StartPowerShell" to the next ewNoWait anywhere below it - and the uninstaller
+# handoff further down uses ewNoWait too, so the contract passed with the start switched back to
+# ewWaitUntilTerminated. It measured the wrong line entirely.
+$startStart = $serverIss.IndexOf('function StartPowerShell(')
+$startEnd = $serverIss.IndexOf('function StripBom(', $startStart)
+if ($startStart -lt 0 -or $startEnd -le $startStart) {
+    throw 'Deployment template check failed: could not delimit StartPowerShell in the server setup.'
+}
+$startCode = $serverIss.Substring($startStart, $startEnd - $startStart)
+Assert-TextMatches -Name 'the detached start uses ewNoWait' `
+    -Text $startCode -Pattern 'ewNoWait'
+Assert-TextDoesNotMatch -Name 'the detached start must not wait' `
+    -Text $startCode -Pattern 'ewWaitUntilTerminated'
+# With ewNoWait there is no exit code to read from Exec. Trusting it would report every failed
+# installation as a success.
+Assert-TextMatches -Name 'the outcome is read from the result file, not from Exec' `
+    -Text $serverIss -Pattern "(?s)function RunAdapterWithProgress[\s\S]*?GetIniString\('summary', 'exitCode'"
+# Inno's Pascal exposes no message pump (AppProcessMessages, ProcessMessages and Application are
+# all unknown identifiers in 6.7.3), so something in the loop has to touch the window every tick.
+Assert-TextMatches -Name 'the wait loop keeps the window alive on every tick' `
+    -Text $serverIss -Pattern '(?s)repeat[\s\S]{0,600}ProgressPage\.SetProgress\(Shown, 100\)'
+# An adapter killed from Task Manager never writes result.ini. Without a bound, the wizard would
+# wait for it forever.
+Assert-TextMatches -Name 'the wait loop cannot run forever' `
+    -Text $serverIss -Pattern '(?s)repeat[\s\S]*?until Elapsed >= AdapterTimeoutMs'
 
 # --- setup adapter contracts ---------------------------------------------------------------------
 $setupAdapter = Remove-CommentLines -Text (Get-Content -LiteralPath $SetupAdapterPath -Raw)
