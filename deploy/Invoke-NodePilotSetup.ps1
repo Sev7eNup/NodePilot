@@ -271,6 +271,8 @@ function ConvertTo-NodePilotPreflightParameters {
         DbProvider            = [string]$Answers['database.provider']
         IsLocalSystem         = ([string]$Answers['identity.type'] -eq 'localSystem')
         ServiceName           = [string]$Answers['serviceName']
+        # Only the certificate check reads this, to say "issued for X, you are installing Y".
+        PublicHostname        = [string]$Answers['network.publicHostname']
         # Carried into the probe so the readiness page can say "this port cannot be bound" before
         # the installer finds out the hard way, 180 seconds into a health probe it will lose.
         HttpsPort             = [int]$Answers['network.httpsPort']

@@ -191,6 +191,11 @@ Get-ChildItem Cert:\LocalMachine\My |
 
 Der Installer grantet dem gMSA automatisch Read-Access auf die Private-Key-Datei.
 
+Der Pre-Flight prüft Gültigkeitszeitraum und Namen: ein **abgelaufenes oder noch nicht gültiges
+Zertifikat bricht die Installation ab** (früher lief sie durch und fiel erst im Browser auf).
+Passt keine SAN — bzw. ohne SAN der CN — zum `-PublicHostname`, gibt es eine **Warnung**, keinen
+Abbruch: hinter einem Reverse-Proxy oder unter einem Alias ist das legitim.
+
 ### AD SSO Preview
 
 LDAP, Windows/Kerberos, OIDC und SCIM sind opt-in und bleiben bis zum bestandenen realen AD-/Kerberos-/LDAPS-Feldtest als **AD SSO Preview** gekennzeichnet. Für AD-Pfade sind LDAPS mit vollständiger Zertifikatsprüfung, mindestens eine zugelassene AD-Gruppen-SID, ein Service-Bind für den Verzeichnisabgleich und ein Sync-Intervall von höchstens fünf Minuten verpflichtend. Windows SSO setzt außerdem eine wirksame Host-/Domain-Policy voraus, die eingehendes NTLM ablehnt.

@@ -253,11 +253,24 @@ misst die Controls, statt Konstanten zu setzen, und eine Klemme erzwingt zusätz
 innerhalb der Fläche endet. Die Alternative wäre eine zweite Seite gewesen — fünf Werte, die zu
 einer Entscheidung gehören, auf zwei Bildschirme verteilt.
 
-**Was die Auswahl nicht prüft** — und die Readiness-Seite auch nicht: ob das Subject bzw. die SAN zum
-*Public Host Name* passt, ob die Kette den Clients vertrauenswürdig ist, und ob das Zertifikat noch
-gültig ist. Der Ablauf steht nur als Datum in der Zeile; ein **abgelaufenes Zertifikat installiert
-sauber durch** und fällt erst im Browser auf. Für ein PKI-Zertifikat aus der eigenen CA ist das der
-übliche Fall — es muss vorher im Maschinenspeicher liegen, mehr verlangt das Setup nicht:
+**Was die Readiness-Seite prüft:** Vorhandensein im Maschinenspeicher, privater Schlüssel,
+**Gültigkeitszeitraum** und **Namensabgleich**. Ein abgelaufenes (oder noch nicht gültiges)
+Zertifikat ist eine rote Pflicht-Zeile und stoppt die Installation — vorher stand der Ablauf nur
+als Datum in der grünen Zeile, die Installation lief durch, und der Erste, der davon erfuhr, war ein
+Benutzer mit einer Browser-Warnung. Ein Auto-Fix gibt es hier bewusst **nicht**: „dein
+PKI-Zertifikat ist abgelaufen" mit „hier, nimm ein Lab-Zertifikat" zu beantworten wäre schlimmer als
+anzuhalten.
+
+Der Namensabgleich läuft gegen die SAN-Liste (Wildcards decken genau ein Label, RFC 6125; ohne SAN
+zählt der CN) und ist **nur eine Warnung** — hinter einem Reverse-Proxy oder unter einem Alias ist
+ein abweichender Name legitim, und „Weiter" bleibt möglich. Gelesen wird `DnsNameList` aus dem
+PowerShell-Zertifikats-Provider, nicht `Extensions.Format()`: dessen Ausgabe ist lokalisiert
+(`DNS Name=` vs. `DNS-Name=`), ein Parser darauf funktioniert auf einem englischen Host und findet
+auf einem deutschen stillschweigend nichts.
+
+**Was weiterhin niemand prüft:** ob die Kette den Clients vertrauenswürdig ist. Für ein
+PKI-Zertifikat aus der eigenen CA ist das der übliche Fall — es muss vorher im Maschinenspeicher
+liegen, mehr verlangt das Setup nicht:
 
 ```powershell
 Import-PfxCertificate -FilePath cert.pfx -CertStoreLocation Cert:\LocalMachine\My `
@@ -574,6 +587,8 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 28 | Derselbe Lauf mit bereits vorhandenem Login | Zeile grün ohne Checkbox, nichts wird verändert |
 | 29 | Fix ohne `sysadmin` | nichts verändert, Meldung nennt den Grund, Haken danach gelöscht (keine Schleife) |
 | 30 | Unbeaufsichtigt mit `provisioning.createDatabaseAndLogin` | Exit 0, Datenbank + Login angelegt, `/healthz/ready` 200 |
+| 31 | Abgelaufenes Zertifikat gewählt | Zeile rot mit Ablaufdatum, „Weiter" gesperrt, kein Auto-Fix angeboten |
+| 32 | Zertifikat mit fremdem SAN | Zeile **gelb**, nennt beide Namen, „Weiter" bleibt möglich |
 
 Stand: 1, 3, 5, 9, 10, 22, 23 und 30 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server
 2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26 sowie 27 bis 29 nicht.

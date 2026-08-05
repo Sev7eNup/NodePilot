@@ -330,8 +330,68 @@ function Test-NodePilotListenPorts {
                        '. The service would start and immediately fail with SocketException 10013 or 10048.')
 }
 
+function Test-NodePilotCertificateNameMatch {
+    <#
+      Whether a certificate presents the name operators are going to type. Split from the store
+      lookup so every branch is reachable from a test host, the same reason
+      New-NodePilotSqlServiceLoginResult is separate from its connection.
+
+      Callers pass DnsNameList rather than the raw SAN extension on purpose: X509Extension.Format()
+      renders "DNS Name=" in the machine's UI language, so a parser built against it works on an
+      English host and silently finds nothing on a German one. PowerShell's certificate provider
+      hands over the decoded list instead.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Names,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$PublicHostname
+    )
+
+    # Nothing to compare against is not a mismatch. The console path can be called without a
+    # public hostname, and inventing a complaint there would be noise.
+    if ([string]::IsNullOrWhiteSpace($PublicHostname)) { return $true }
+
+    foreach ($name in $Names) {
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if ($name -eq $PublicHostname) { return $true }
+        # A wildcard covers exactly one label (RFC 6125): *.corp.example matches np.corp.example
+        # but neither corp.example itself nor a.np.corp.example.
+        if ($name.StartsWith('*.')) {
+            $suffix = $name.Substring(1)
+            if ($PublicHostname.Length -gt $suffix.Length -and
+                $PublicHostname.EndsWith($suffix, [StringComparison]::OrdinalIgnoreCase)) {
+                $label = $PublicHostname.Substring(0, $PublicHostname.Length - $suffix.Length)
+                if (-not $label.Contains('.')) { return $true }
+            }
+        }
+    }
+    return $false
+}
+
+function Get-NodePilotCertificateNames {
+    <#
+      Every name a certificate claims, SAN first. The CN fallback is for certificates old enough
+      to carry no SAN at all - browsers stopped honouring those years ago, but they still turn up
+      in internal PKIs, and without it the check would report a mismatch that is really "no SAN".
+    #>
+    param([Parameter(Mandatory)]$Certificate)
+
+    $names = @()
+    if ($Certificate.PSObject.Properties.Name -contains 'DnsNameList') {
+        $names = @($Certificate.DnsNameList | ForEach-Object { [string]$_.Unicode } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    if ($names.Count -eq 0) {
+        $commonName = [regex]::Match([string]$Certificate.Subject, 'CN=([^,]+)').Groups[1].Value.Trim()
+        if ($commonName) { $names = @($commonName) }
+    }
+    return $names
+}
+
 function Test-NodePilotTlsCertificate {
-    param([Parameter(Mandatory)][AllowEmptyString()][string]$Thumbprint)
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Thumbprint,
+        [AllowEmptyString()][string]$PublicHostname = ''
+    )
 
     $title = 'Kestrel TLS certificate'
     $cert = Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
@@ -353,12 +413,70 @@ function Test-NodePilotTlsCertificate {
             -AbortMessage "Cert $Thumbprint has no private key. Re-import with -KeyStorageFlags MachineKeySet|PersistKeySet|Exportable."
     }
 
-    $expiryWarning = ''
-    if ($cert.NotAfter -lt (Get-Date).AddDays(30)) {
-        $expiryWarning = " Expires $($cert.NotAfter.ToString('yyyy-MM-dd'))."
+    New-NodePilotCertificateVerdict -Certificate $cert -Thumbprint $Thumbprint `
+        -PublicHostname $PublicHostname -Now (Get-Date)
+}
+
+function New-NodePilotCertificateVerdict {
+    <#
+      Everything that can be decided about a certificate once it has been found in the store,
+      separated from finding it. -Now is a parameter for the same reason: "expired" and "not yet
+      valid" are the two branches that matter here and neither is reachable from a test host that
+      may not install certificates.
+    #>
+    param(
+        [Parameter(Mandatory)]$Certificate,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Thumbprint,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$PublicHostname,
+        [Parameter(Mandatory)][datetime]$Now
+    )
+
+    $title = 'Kestrel TLS certificate'
+    $importHint = 'Import a current certificate into Cert:\LocalMachine\My (MachineKeySet|PersistKeySet), then re-check.'
+    $importCommand = 'Import-PfxCertificate -FilePath <file>.pfx -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)'
+
+    # Validity is a hard stop, not a note in the margin. The expiry used to be rendered into the
+    # green line as text with nothing acting on it, so an expired certificate installed cleanly
+    # and surfaced as a browser warning to the first user - after the rollout, on someone else's
+    # screen. Deliberately NOT auto-fixable: offering the self-signed generator here would answer
+    # "your PKI certificate expired" with "here, have a lab certificate instead".
+    if ($Certificate.NotAfter -lt $Now) {
+        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("Certificate $($Certificate.Subject) expired on $($Certificate.NotAfter.ToString('yyyy-MM-dd')). " +
+                     'Kestrel will serve it and every client will refuse it.') `
+            -RemediationHint $importHint -Remediation $importCommand `
+            -AbortMessage "Cert $Thumbprint expired on $($Certificate.NotAfter.ToString('yyyy-MM-dd'))."
     }
+    if ($Certificate.NotBefore -gt $Now) {
+        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("Certificate $($Certificate.Subject) is not valid until $($Certificate.NotBefore.ToString('yyyy-MM-dd')). " +
+                     'Clients will refuse it until then.') `
+            -RemediationHint $importHint -Remediation $importCommand `
+            -AbortMessage "Cert $Thumbprint is not valid until $($Certificate.NotBefore.ToString('yyyy-MM-dd'))."
+    }
+
+    $expiryWarning = ''
+    if ($Certificate.NotAfter -lt $Now.AddDays(30)) {
+        $expiryWarning = " Expires $($Certificate.NotAfter.ToString('yyyy-MM-dd'))."
+    }
+
+    # A warning, never a stop. A certificate whose SAN does not name this host is wrong far more
+    # often than it is deliberate - but behind a reverse proxy, or on a host reached under an
+    # alias, it is exactly right, and refusing the install would be refusing a valid setup.
+    $names = @(Get-NodePilotCertificateNames -Certificate $Certificate)
+    if (-not (Test-NodePilotCertificateNameMatch -Names $names -PublicHostname $PublicHostname)) {
+        $claimed = if ($names.Count -gt 0) { $names -join ', ' } else { '(no host name at all)' }
+        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Warn' -Required $true `
+            -Detail ("Cert found: $($Certificate.Subject)$expiryWarning It is issued for " +
+                     "$claimed - not for $PublicHostname.") `
+            -RemediationHint ('Browsers will show a name mismatch unless something in front of NodePilot ' +
+                              "terminates TLS under that name. Either use a certificate naming " +
+                              "$PublicHostname, or set the public host name to one the certificate covers.") `
+            -Remediation $importCommand
+    }
+
     New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Pass' -Required $true `
-        -Detail "Cert found: $($cert.Subject)$expiryWarning"
+        -Detail "Cert found: $($Certificate.Subject)$expiryWarning"
 }
 
 function Test-NodePilotGmsa {
@@ -743,6 +861,9 @@ function Invoke-NodePilotPreflight {
         [Parameter(Mandatory)][AllowEmptyString()][string]$CertificateThumbprint,
         [Parameter(Mandatory)][ValidateSet('sqlserver', 'postgres')][string]$DbProvider,
         [Parameter(Mandatory)][bool]$IsLocalSystem,
+        # Only used to tell the operator that the certificate names a different host. Optional,
+        # because the console path can be invoked without one and a missing name is not a finding.
+        [AllowEmptyString()][string]$PublicHostname = '',
         [int]$HttpsPort = 443,
         [int]$HttpPort = 0,
         [string]$ServiceAccount,
@@ -762,7 +883,7 @@ function Invoke-NodePilotPreflight {
 
     $results = @()
     $results += Test-NodePilotDotNetRuntime
-    $results += Test-NodePilotTlsCertificate -Thumbprint $CertificateThumbprint
+    $results += Test-NodePilotTlsCertificate -Thumbprint $CertificateThumbprint -PublicHostname $PublicHostname
     $results += Test-NodePilotListenPorts -HttpsPort $HttpsPort -HttpPort $HttpPort -ServiceName $ServiceName
 
     if ($IsLocalSystem) {

@@ -656,6 +656,105 @@ try {
         Assert-NodePilotPreflight -Results $checks | Out-Null
     }
 
+    # --- certificate name matching ------------------------------------------------------------
+    # The store lookup needs a certificate store; the comparison does not, which is why it is its
+    # own function. Wildcards are the part worth having tests for - "it ends with the right thing"
+    # accepts a.b.corp.example for *.corp.example, which is precisely what RFC 6125 forbids.
+    Assert-True -Name 'an exact SAN entry matches' `
+        -Condition (Test-NodePilotCertificateNameMatch -Names @('np.corp.example') -PublicHostname 'np.corp.example')
+    Assert-True -Name 'the comparison ignores case' `
+        -Condition (Test-NodePilotCertificateNameMatch -Names @('NP.Corp.Example') -PublicHostname 'np.corp.example')
+    Assert-True -Name 'a second SAN entry counts too' `
+        -Condition (Test-NodePilotCertificateNameMatch -Names @('other.corp.example', 'np.corp.example') -PublicHostname 'np.corp.example')
+    Assert-True -Name 'a wildcard covers one label' `
+        -Condition (Test-NodePilotCertificateNameMatch -Names @('*.corp.example') -PublicHostname 'np.corp.example')
+    Assert-True -Name 'a wildcard does not cover two labels' `
+        -Condition (-not (Test-NodePilotCertificateNameMatch -Names @('*.corp.example') -PublicHostname 'a.np.corp.example'))
+    Assert-True -Name 'a wildcard does not cover the bare domain' `
+        -Condition (-not (Test-NodePilotCertificateNameMatch -Names @('*.corp.example') -PublicHostname 'corp.example'))
+    Assert-True -Name 'an unrelated name is a mismatch' `
+        -Condition (-not (Test-NodePilotCertificateNameMatch -Names @('np.corp.example') -PublicHostname 'np.other.example'))
+    # No hostname to check against is not a finding - the console path can be called without one,
+    # and a complaint invented there would train people to ignore the line.
+    Assert-True -Name 'no public host name means nothing to complain about' `
+        -Condition (Test-NodePilotCertificateNameMatch -Names @('np.corp.example') -PublicHostname '')
+    Assert-True -Name 'a certificate claiming no names at all is a mismatch' `
+        -Condition (-not (Test-NodePilotCertificateNameMatch -Names @() -PublicHostname 'np.corp.example'))
+
+    # SAN first, CN only when there is no SAN. Certificates without a SAN still come out of
+    # internal PKIs, and reporting a mismatch for one would be reporting the wrong problem.
+    $sanCert = [pscustomobject]@{
+        Subject     = 'CN=fallback.corp.example, O=Contoso'
+        DnsNameList = @([pscustomobject]@{ Unicode = 'np.corp.example' })
+    }
+    Assert-True -Name 'the SAN wins over the common name' `
+        -Condition ((Get-NodePilotCertificateNames -Certificate $sanCert) -contains 'np.corp.example')
+    Assert-True -Name 'the common name is not consulted when a SAN exists' `
+        -Condition ((Get-NodePilotCertificateNames -Certificate $sanCert) -notcontains 'fallback.corp.example')
+    $cnOnlyCert = [pscustomobject]@{ Subject = 'CN=legacy.corp.example, OU=IT, O=Contoso' }
+    Assert-True -Name 'a certificate without a SAN falls back to its common name' `
+        -Condition ((Get-NodePilotCertificateNames -Certificate $cnOnlyCert) -eq 'legacy.corp.example')
+
+    # --- certificate validity -----------------------------------------------------------------
+    # -Now is injected so both ends of the validity window are reachable here. The store lookup
+    # is not: this suite installs nothing on the machine it runs on.
+    function New-FakeStoreCertificate {
+        param([string]$Name = 'np.corp.example', [int]$ValidFromDays = -30, [int]$ValidToDays = 365)
+        $reference = [datetime]::new(2026, 8, 5, 12, 0, 0, [DateTimeKind]::Local)
+        return [pscustomobject]@{
+            Subject       = "CN=$Name, O=Contoso"
+            HasPrivateKey = $true
+            NotBefore     = $reference.AddDays($ValidFromDays)
+            NotAfter      = $reference.AddDays($ValidToDays)
+            DnsNameList   = @([pscustomobject]@{ Unicode = $Name })
+        }
+    }
+    $referenceNow = [datetime]::new(2026, 8, 5, 12, 0, 0, [DateTimeKind]::Local)
+    $verdict = {
+        param($Cert, $HostName = 'np.corp.example')
+        New-NodePilotCertificateVerdict -Certificate $Cert -Thumbprint ('A' * 40) `
+            -PublicHostname $HostName -Now $referenceNow
+    }
+
+    $goodCert = & $verdict (New-FakeStoreCertificate)
+    Assert-True -Name 'a valid, matching certificate passes' -Condition ($goodCert.Status -eq 'Pass')
+
+    # THE case this was written for: it used to pass, the date was printed into the green line,
+    # and the first person to see the problem was a user with a browser warning.
+    $expired = & $verdict (New-FakeStoreCertificate -ValidToDays -1)
+    Assert-True -Name 'an expired certificate stops the installation' `
+        -Condition ($expired.Status -eq 'Fail' -and $expired.Required)
+    Assert-True -Name 'the expiry date is in the message, not just the fact' `
+        -Condition ($expired.Detail -match '2026-08-04' -and $expired.AbortMessage -match '2026-08-04')
+    # Answering "your PKI certificate expired" with "have a lab certificate" would be worse than
+    # stopping, so this failure carries no auto-fix even though the generator exists.
+    Assert-True -Name 'an expired certificate is not silently replaced by a self-signed one' `
+        -Condition (-not $expired.CanAutoFix)
+
+    $notYet = & $verdict (New-FakeStoreCertificate -ValidFromDays 1 -ValidToDays 400)
+    Assert-True -Name 'a certificate that is not valid yet stops the installation too' `
+        -Condition ($notYet.Status -eq 'Fail' -and $notYet.Required)
+
+    # Still valid, but not for much longer: worth saying, not worth stopping for.
+    $soon = & $verdict (New-FakeStoreCertificate -ValidToDays 10)
+    Assert-True -Name 'a certificate expiring soon still passes, with the date' `
+        -Condition ($soon.Status -eq 'Pass' -and $soon.Detail -match 'Expires 2026-08-15')
+
+    $mismatch = & $verdict (New-FakeStoreCertificate -Name 'other.corp.example')
+    Assert-True -Name 'a name mismatch warns rather than blocking' -Condition ($mismatch.Status -eq 'Warn')
+    Assert-True -Name 'the mismatch names both sides' `
+        -Condition ($mismatch.Detail -match 'other\.corp\.example' -and $mismatch.Detail -match 'np\.corp\.example')
+    # Reverse proxies and host aliases are legitimate, so this must never abort an install.
+    Assert-True -Name 'a name mismatch never carries an abort message' `
+        -Condition ([string]::IsNullOrEmpty($mismatch.AbortMessage))
+    Assert-True -Name 'a wildcard certificate passes for a host it covers' `
+        -Condition ((& $verdict (New-FakeStoreCertificate -Name '*.corp.example')).Status -eq 'Pass')
+    # Expiry is checked before the name: an expired certificate with the right name is still the
+    # more urgent finding, and reporting the name instead would bury it.
+    $expiredAndMismatched = & $verdict (New-FakeStoreCertificate -Name 'other.corp.example' -ValidToDays -1)
+    Assert-True -Name 'an expired certificate reports expiry, not the name' `
+        -Condition ($expiredAndMismatched.Status -eq 'Fail' -and $expiredAndMismatched.Detail -match 'expired')
+
     # --- the service identity's access to the database ----------------------------------------
     # Was a caveat printed on every host whether or not the grant existed. Now a verdict, and the
     # verdict is split from the connection precisely so these branches are reachable here: no test

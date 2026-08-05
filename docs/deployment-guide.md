@@ -78,7 +78,9 @@ skip the `Root` imports.
 > Core runtime, checks every prerequisite before it changes anything, and can create the SQL login
 > and database for you if your account may. For the Kestrel certificate it asks only for the
 > thumbprint and offers the machine store's certificates in a list below the field, so a PKI
-> certificate from your own CA needs importing and picking, nothing typed. The installation itself
+> certificate from your own CA needs importing and picking, nothing typed — and it refuses to
+> install against one that has expired instead of leaving that for the first user to discover in a
+> browser, while a certificate issued for a different name warns without blocking. The installation itself
 > reports the phase it is in rather than sitting on a blank page for the couple of minutes it takes.
 > That collapses Step 1 to "download one file" and Step 3 to "click Next". It also runs unattended:
 > `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json` — and with a `bootstrap` group

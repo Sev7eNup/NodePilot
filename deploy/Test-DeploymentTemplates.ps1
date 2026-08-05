@@ -964,6 +964,28 @@ Assert-TextMatches -Name 'the port probe releases what it binds' `
 Assert-TextMatches -Name 'the readiness page asks for the port check' `
     -Text $serverIss -Pattern "CheckIds\[\d\] := 'ports';"
 
+# --- certificate validity and naming -------------------------------------------------------------
+# The expiry used to be rendered into the green line as text with nothing acting on it, so an
+# expired certificate installed cleanly and the first person to find out was a user with a browser
+# warning. It is a required failure now.
+Assert-TextMatches -Name 'an expired certificate fails the pre-flight' `
+    -Text $preflightStripped `
+    -Pattern "(?s)NotAfter -lt \`$Now[\s\S]{0,300}Status 'Fail' -Required \`$true"
+Assert-TextMatches -Name 'a certificate that is not valid yet fails too' `
+    -Text $preflightStripped `
+    -Pattern "(?s)NotBefore -gt \`$Now[\s\S]{0,300}Status 'Fail' -Required \`$true"
+# X509Extension.Format() renders "DNS Name=" in the machine's UI language. A parser built on it
+# works on an English host and silently finds nothing on a German one - which would report every
+# certificate as naming nothing. PowerShell's certificate provider hands over the decoded list.
+Assert-TextMatches -Name 'the name check reads DnsNameList, not the formatted extension' `
+    -Text $preflightStripped -Pattern 'DnsNameList'
+Assert-TextDoesNotMatch -Name 'the name check never parses a localised extension dump' `
+    -Text $preflightStripped -Pattern 'Extensions[\s\S]{0,80}\.Format\('
+# Both callers have to hand the name over or the comparison silently has nothing to compare to
+# and every certificate passes.
+Assert-TextMatches -Name 'the installer tells the pre-flight which host name it is installing for' `
+    -Text $installerScript -Pattern '(?s)Invoke-NodePilotPreflight[\s\S]{0,400}-PublicHostname \$PublicHostname'
+
 # --- the service identity's access to the database -----------------------------------------------
 # This was a caveat printed unconditionally: correct advice, no information, and shown just as
 # loudly on the hosts where the grant was already in place. A sentence nobody can act on trains
@@ -1245,6 +1267,11 @@ Assert-TextDoesNotMatch -Name 'listing certificates needs no answer file' `
 # on the 443 default while the operator installs on 8443.
 Assert-TextMatches -Name 'the configured ports reach the pre-flight' `
     -Text $setupAdapter -Pattern "(?s)function ConvertTo-NodePilotPreflightParameters[\s\S]*?HttpsPort\s*=\s*\[int\]\`$Answers\['network\.httpsPort'\]"
+
+# The other half of the certificate name check: without this the comparison has nothing to
+# compare against, and then every certificate passes it.
+Assert-TextMatches -Name 'the wizard tells the pre-flight which host name it is installing for' `
+    -Text $setupAdapter -Pattern "PublicHostname\s*=\s*\[string\]\`$Answers\['network\.publicHostname'\]"
 
 # Which fixes arrive ticked is the adapter's call, not the wizard's - the wizard has no idea what
 # any of these checks mean. Unpublished, the flag never reaches the page and the pre-tick silently
