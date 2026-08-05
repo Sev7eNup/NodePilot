@@ -594,6 +594,13 @@ Assert-TextMatches -Name 'a failed setup leaves a log behind' `
     -Text $serverIss -Pattern '(?m)^SetupLogging=yes\s*$'
 Assert-TextMatches -Name 'the setup requires elevation' `
     -Text $serverIss -Pattern '(?m)^PrivilegesRequired=admin\s*$'
+# Without it the network page falls back to the 309 px it had to be re-flowed to fit into, and the
+# clamp in CompactNetworkPage goes from a backstop to the thing holding the picker on screen.
+Assert-TextMatches -Name 'the wizard window is enlarged' `
+    -Text $serverIss -Pattern '(?m)^WizardSizePercent=1[2-5]\d\s*$'
+# The controls are positioned once and carry no anchors; a resizable window would grow around them.
+Assert-TextDoesNotMatch -Name 'the wizard window must not be resizable' `
+    -Text $serverIss -Pattern '(?m)^WizardResizable=yes'
 # Measured on Inno 6.7.3: in ssPostInstall neither RaiseException nor Abort changes the exit code -
 # a failed installation still reports 0. Under SCCM that is a deployment claiming success having
 # installed nothing, which is the same silent-failure class the [Run] ban above exists to prevent.
