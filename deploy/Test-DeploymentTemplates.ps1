@@ -657,6 +657,50 @@ $readinessPageCode = $serverIss.Substring($readinessStart, $readinessEnd - $read
 Assert-TextDoesNotMatch -Name 'the readiness page has no edit control' `
     -Text $readinessPageCode -Pattern 'TNewMemo'
 
+# --- certificate picker ---------------------------------------------------------------------------
+# The thumbprint of a certificate already installed on the machine is otherwise only reachable
+# through the certificate MMC, whose copy button prepends an invisible U+200E - the reason
+# Install-NodePilot.ps1 strips non-hex characters before measuring the length at all. The adapter
+# has published the store's contents since the wizard existed and nothing ever read them back.
+$certComboStart = $serverIss.IndexOf('procedure CertComboChange(')
+$loaderStart = $serverIss.IndexOf('procedure LoadCertificateList(')
+$loaderEnd = $serverIss.IndexOf('procedure CreateReadinessPage(')
+if ($certComboStart -lt 0 -or $loaderStart -le $certComboStart -or $loaderEnd -le $loaderStart) {
+    throw 'Deployment template check failed: could not delimit the certificate picker in the server setup.'
+}
+$certComboCode = $serverIss.Substring($certComboStart, $loaderStart - $certComboStart)
+$loaderCode = $serverIss.Substring($loaderStart, $loaderEnd - $loaderStart)
+
+# Picking one has to land in the field that the answer file, the validation and the self-signed
+# write-back all read. A picker holding its own copy would be a second home for the same value, and
+# the wizard would install whichever of the two it happened to read.
+Assert-TextMatches -Name 'picking a certificate fills the thumbprint field itself' `
+    -Text $certComboCode -Pattern 'NetworkPage\.Values\[4\] := CertThumbprints'
+Assert-TextMatches -Name 'the certificate list is loaded when the TLS page is shown' `
+    -Text $serverIss `
+    -Pattern '(?s)procedure CurPageChanged[\s\S]{0,400}NetworkPage\.ID then[\s\S]{0,80}LoadCertificateList'
+
+# Called from the page handler and nowhere else. A call from InitializeWizard would spawn
+# PowerShell during /SILENT, where no page is ever shown - an unattended SCCM run paying for a
+# convenience nobody is there to use.
+$loaderCalls = @([regex]::Matches($serverIss, '(?m)^[ \t]+LoadCertificateList\(\);'))
+if ($loaderCalls.Count -ne 1) {
+    throw ("Deployment template check failed: LoadCertificateList is called $($loaderCalls.Count) times; " +
+           'it belongs to the TLS page handler alone, so the unattended path never shells out for it.')
+}
+
+# The picker is a convenience, never a gate. An unreadable store, a missing adapter or a PowerShell
+# that will not start must leave the operator typing the thumbprint by hand exactly as before this
+# existed - the prerequisite page verifies it either way, so there is nothing here worth stopping
+# an installation over.
+Assert-TextDoesNotMatch -Name 'a certificate list that cannot be read must not stop the wizard' `
+    -Text $loaderCode -Pattern 'MsgBox|RaiseException'
+# Offering a line that failed to parse would put something that is not a thumbprint into the field,
+# and the certificate check then reports it as a missing certificate - sending the operator after a
+# problem that does not exist.
+Assert-TextMatches -Name 'a malformed entry is dropped rather than offered' `
+    -Text $loaderCode -Pattern 'Length\(Thumbprint\) <> 40'
+
 # --- finish page ---------------------------------------------------------------------------------
 # The adapter has written url / adminSetupToken / externalTriggerApiKey into result.ini since the
 # wizard existed, and nothing ever read them back: the finish page showed Inno's stock "Setup has
@@ -832,6 +876,31 @@ Assert-TextMatches -Name 'the answer file is shredded in a finally block' `
 # The answer file carries the database password in clear text for the duration of the run.
 Assert-TextDoesNotMatch -Name 'the adapter must not log the password' `
     -Text $setupAdapter -Pattern 'Write-(Host|Output|Information)[^\r\n]*[Pp]assword'
+
+# The wizard calls this from the TLS page - before an answer file exists, before anything has
+# created the session directory, and while the operator is waiting on a page to finish drawing.
+# Requiring either input would make the picker fail precisely where it is meant to help, and
+# folding it into Probe would make it wait on a database connection to list a local store.
+$certificateModeStart = $setupAdapter.IndexOf("'Certificates' {")
+if ($certificateModeStart -lt 0) {
+    throw 'Deployment template check failed: the setup adapter has no Certificates mode for the wizard to call.'
+}
+$certificateModeEnd = $setupAdapter.IndexOf("'Provision' {", $certificateModeStart)
+if ($certificateModeEnd -lt 0) {
+    throw 'Deployment template check failed: could not delimit the Certificates mode in the setup adapter.'
+}
+Assert-TextDoesNotMatch -Name 'listing certificates needs no answer file' `
+    -Text $setupAdapter.Substring($certificateModeStart, $certificateModeEnd - $certificateModeStart) `
+    -Pattern 'Read-NodePilotAnswerFile|Invoke-NodePilotPreflight'
+
+# One emitter serving both the probe and the standalone mode. Two copies would drift into different
+# field orders behind a Pascal reader that splits on position and has no way to notice.
+$inventoryReads = @([regex]::Matches($setupAdapter, 'Get-NodePilotCertificateInventory'))
+if ($inventoryReads.Count -ne 1) {
+    throw ("Deployment template check failed: the setup adapter reads the certificate store in " +
+           "$($inventoryReads.Count) places; both callers must go through " +
+           'Add-NodePilotCertificateInventory so the line format cannot fork.')
+}
 
 # --- runtime payload contracts --------------------------------------------------------------------
 $runtimeScript = Remove-CommentLines -Text (Get-Content -LiteralPath $RuntimePayloadScriptPath -Raw)

@@ -177,6 +177,12 @@ Kapiteln 1 bis 4 **bevor** es etwas verändert, und zeigt jede als grün, gelb o
 kopierbarer Anleitung. Auf Wunsch installiert es die Runtime, legt SQL-Login und Datenbank an oder
 erzeugt ein Laborzertifikat.
 
+Für das Kestrel-Zertifikat verlangt es nur den Thumbprint — und bietet unter dem Eingabefeld die
+Zertifikate aus `Cert:\LocalMachine\My` zur Auswahl an, sortiert nach Ablauf. Das gilt für ein
+PKI-Zertifikat aus der eigenen CA genauso wie für ein selbstsigniertes: importieren, auswählen,
+fertig. Ein Zertifikat ohne privaten Schlüssel steht mit entsprechender Markierung in der Liste,
+statt kommentarlos zu fehlen.
+
 Die Abschlussseite zeigt alles, was für den ersten Zugriff nötig ist: Adresse, Setup-Token für die
 erste Anmeldung, External-Trigger-API-Key, Zertifikats-Thumbprint sowie Dienstname und Pfade. Der
 API-Key erscheint **nur dort** — er ist danach nicht mehr rekonstruierbar. Der Text ist markierbar,

@@ -177,8 +177,14 @@ function Get-NodePilotCertificateInventory {
     <#
       What is actually available in LocalMachine\My. The installer prints this when a
       thumbprint does not normalize; the wizard fills its certificate picker from it.
+
+      Sorted by expiry, latest first, and sorted HERE rather than in either caller: a renewed
+      certificate sits in the store beside the one it replaces, under the same subject, and the
+      only thing separating them is that date. Newest-first puts the renewal at the top of the
+      picker and sinks anything already expired to the bottom, where it belongs.
     #>
     Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
+        Sort-Object -Property NotAfter -Descending |
         Select-Object Thumbprint, Subject, @{n = 'HasKey'; e = { $_.HasPrivateKey } }, NotAfter
 }
 

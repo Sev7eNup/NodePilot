@@ -21,7 +21,8 @@
 param(
     [string]$SetupContractPath,
     [string]$PreflightPath,
-    [string]$ServiceControlPath
+    [string]$ServiceControlPath,
+    [string]$SetupAdapterPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,7 +38,11 @@ if ([string]::IsNullOrWhiteSpace($PreflightPath)) {
 if ([string]::IsNullOrWhiteSpace($ServiceControlPath)) {
     $ServiceControlPath = Join-Path $scriptDirectory 'ServiceControl.ps1'
 }
-foreach ($path in @($SetupContractPath, $PreflightPath, $ServiceControlPath)) {
+# Run as a process rather than dot-sourced: it takes a mandatory -Mode and ends in `exit`.
+if ([string]::IsNullOrWhiteSpace($SetupAdapterPath)) {
+    $SetupAdapterPath = Join-Path $scriptDirectory 'Invoke-NodePilotSetup.ps1'
+}
+foreach ($path in @($SetupContractPath, $PreflightPath, $ServiceControlPath, $SetupAdapterPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Setup adapter check failed: missing file '$path'."
     }
@@ -314,6 +319,88 @@ try {
         -Condition (($ini | Where-Object { $_ -like 'remediation=*' }) -eq 'remediation=CREATE LOGIN [x];\nCREATE DATABASE [y];')
     Assert-True -Name 'the INI carries its section header' `
         -Condition ($ini -contains '[check.database]')
+
+    # --- certificate picker lines -------------------------------------------------------------
+    # Four fields, thumbprint first, and the wizard splits on '|' with no way to notice if a field
+    # moved. Everything below is a way that has actually bitten someone in a DN or a locale.
+    function New-FakeCertificate {
+        param([string]$Subject = 'CN=np.contoso.local', [bool]$HasKey = $true, [string]$NotAfter = '2027-03-01')
+        return [pscustomobject]@{
+            Thumbprint = 'A' * 40
+            Subject    = $Subject
+            HasKey     = $HasKey
+            NotAfter   = [datetime]::ParseExact($NotAfter, 'yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+        }
+    }
+
+    Assert-True -Name 'a certificate line is thumbprint, subject, key flag and expiry' `
+        -Condition ((Format-NodePilotCertificateLine -Certificate (New-FakeCertificate)) -eq
+                    (('A' * 40) + '|CN=np.contoso.local|1|2027-03-01'))
+    Assert-True -Name 'a certificate without a private key is flagged, not dropped' `
+        -Condition ((Format-NodePilotCertificateLine -Certificate (New-FakeCertificate -HasKey $false)) -like '*|0|*')
+    # A pipe is legal inside an X.500 attribute value, and one would shift every field behind it -
+    # turning the key flag into a date and the expiry into nothing.
+    Assert-True -Name 'a pipe inside the subject cannot shift the remaining fields' `
+        -Condition ((Format-NodePilotCertificateLine -Certificate (New-FakeCertificate -Subject 'CN=a|b, O=c')).Split('|').Count -eq 4)
+    Assert-True -Name 'a certificate with no subject still yields four fields' `
+        -Condition ((Format-NodePilotCertificateLine -Certificate (New-FakeCertificate -Subject '')).Split('|').Count -eq 4)
+
+    # 'yyyy' resolves against the culture's default calendar. Under ar-SA that is Umm al-Qura, and
+    # the same call returns 1448 instead of 2027 - a date the operator cannot compare against
+    # anything. Pinned here because the wizard runs on whatever locale the server was installed in.
+    $originalCulture = [Threading.Thread]::CurrentThread.CurrentCulture
+    try {
+        [Threading.Thread]::CurrentThread.CurrentCulture = [Globalization.CultureInfo]::GetCultureInfo('ar-SA')
+        Assert-True -Name 'the expiry date is Gregorian regardless of the machine locale' `
+            -Condition ((Format-NodePilotCertificateLine -Certificate (New-FakeCertificate)) -like '*|2027-03-01')
+    }
+    finally {
+        [Threading.Thread]::CurrentThread.CurrentCulture = $originalCulture
+    }
+
+    # --- the Certificates mode, as a process --------------------------------------------------
+    # Run for real rather than by dot-sourcing: the adapter takes a mandatory -Mode and ends in
+    # `exit`, so the only honest way to prove the wizard's call works is to make it. Needs no
+    # answer file, no session directory and no elevation - reading the machine store's metadata is
+    # allowed to anyone, which is exactly why the picker can run before anything else exists.
+    $certificateIni = Join-Path $workingDirectory 'certificates.ini'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $SetupAdapterPath `
+        -Mode Certificates -OutFile $certificateIni `
+        -LogPath (Join-Path $workingDirectory 'adapter.log') | Out-Null
+    Assert-True -Name 'listing certificates succeeds without an answer file' -Condition ($LASTEXITCODE -eq 0)
+
+    $certificateIniLines = @(Get-Content -LiteralPath $certificateIni)
+    Assert-True -Name 'the certificate list has its own INI section' `
+        -Condition ($certificateIniLines -contains '[certificates]')
+    $countLine = @($certificateIniLines | Where-Object { $_ -like 'count=*' })
+    Assert-True -Name 'the count is always written, including as zero' -Condition ($countLine.Count -eq 1)
+
+    # The wizard reads count first and sizes its array from it, so a count that does not match the
+    # entries would leave it indexing past the end of the list.
+    $certificateCount = [int]($countLine[0] -replace '^count=', '')
+    $certificateLines = @($certificateIniLines |
+        Where-Object { $_ -match '^\d+=' } |
+        ForEach-Object { $_ -replace '^\d+=', '' })
+    Assert-True -Name 'the count matches the number of entries' `
+        -Condition ($certificateLines.Count -eq $certificateCount)
+
+    # This machine's store may legitimately be empty - a fresh Windows install has no personal
+    # machine certificates at all - so the shape assertions run only over what is actually there.
+    $malformed = @($certificateLines | Where-Object {
+        $fields = $_.Split('|')
+        ($fields.Count -ne 4) -or
+        ($fields[0] -notmatch '^[0-9A-Fa-f]{40}$') -or
+        ($fields[2] -notmatch '^[01]$') -or
+        ($fields[3] -notmatch '^\d{4}-\d{2}-\d{2}$')
+    })
+    Assert-True -Name 'every listed certificate parses into the four fields the wizard expects' `
+        -Condition ($malformed.Count -eq 0)
+
+    # Newest expiry first: a renewal sits in the store beside the certificate it replaces under the
+    # same subject, and that date is the only thing telling them apart in the picker.
+    $expiryDates = @($certificateLines | ForEach-Object { $_.Split('|')[3] })
+    Assert-True -Name 'certificates are offered newest expiry first' `
+        -Condition (($expiryDates -join ',') -eq ((@($expiryDates) | Sort-Object -Descending) -join ','))
 
     # --- the two-layer pre-flight split -------------------------------------------------------
     # The point of the whole split: collecting must report, only asserting may abort. .invalid is

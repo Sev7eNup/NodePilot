@@ -19,6 +19,8 @@
 .PARAMETER Mode
     InitSession - create the ACL-protected session directory and report its path.
     Probe       - run the readiness checks and report them. Never mutates anything.
+    Certificates- list Cert:\LocalMachine\My for the wizard's picker. Reads nothing else, needs
+                  no answer file, and never blocks: the thumbprint can still be typed by hand.
     Provision   - carry out the opt-in fixes the operator ticked on the readiness page.
     Apply       - install or upgrade, whichever the answer file declares.
     Cleanup     - shred the answer file and remove the session directory.
@@ -55,7 +57,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [ValidateSet('InitSession', 'Probe', 'Provision', 'Apply', 'Cleanup')]
+    [ValidateSet('InitSession', 'Probe', 'Certificates', 'Provision', 'Apply', 'Cleanup')]
     [string]$Mode,
     [string]$SessionPath,
     [string]$HandoffPath,
@@ -110,6 +112,25 @@ function Add-NodePilotCheckResults {
         Set-NodePilotResult -Buffer $result -Section $section -Name 'canAutoFix' -Value $(if ($check.CanAutoFix) { 1 } else { 0 })
         Set-NodePilotResult -Buffer $result -Section $section -Name 'autoFixLabel' -Value $check.AutoFixLabel
     }
+}
+
+function Add-NodePilotCertificateInventory {
+    <#
+      Publishes the machine's certificate store for the wizard's picker. Both the probe and the
+      standalone Certificates mode call this one emitter, so the two cannot drift into different
+      field orders behind a Pascal reader that has no way to tell.
+    #>
+    param([Parameter(Mandatory)][System.Collections.IDictionary]$Buffer)
+
+    $index = 0
+    foreach ($certificate in Get-NodePilotCertificateInventory) {
+        Set-NodePilotResult -Buffer $Buffer -Section 'certificates' -Name "$index" `
+            -Value (Format-NodePilotCertificateLine -Certificate $certificate)
+        $index++
+    }
+    # Always written, including as 0. The wizard reads the count first and decides between "pick
+    # one" and "there are none" on it; an absent key would make an unreadable store look empty.
+    Set-NodePilotResult -Buffer $Buffer -Section 'certificates' -Name 'count' -Value $index
 }
 
 function ConvertTo-NodePilotPreflightParameters {
@@ -266,20 +287,24 @@ function Invoke-NodePilotSetupMode {
             $checks = @(Invoke-NodePilotPreflight @preflightSplat)
             Add-NodePilotCheckResults -Results $checks
 
-            # The wizard fills its certificate picker from this rather than shelling out again.
-            $index = 0
-            foreach ($certificate in Get-NodePilotCertificateInventory) {
-                Set-NodePilotResult -Buffer $result -Section 'certificates' -Name "$index" -Value (
-                    '{0}|{1}|{2}|{3}' -f $certificate.Thumbprint, $certificate.Subject,
-                    $(if ($certificate.HasKey) { 1 } else { 0 }),
-                    $certificate.NotAfter.ToString('yyyy-MM-dd'))
-                $index++
-            }
-            Set-NodePilotResult -Buffer $result -Section 'certificates' -Name 'count' -Value $index
+            # Republished here so a re-check picks up a certificate imported while the wizard was
+            # open, without the operator having to walk back to the TLS page to refresh it.
+            Add-NodePilotCertificateInventory -Buffer $result
 
             $failed = @($checks | Where-Object { $_.Status -eq 'Fail' -and $_.Required })
             Set-NodePilotResult -Buffer $result -Section 'summary' -Name 'requiredFailures' -Value $failed.Count
             return $(if ($failed.Count -gt 0) { 2 } else { 0 })
+        }
+
+        'Certificates' {
+            # The certificate list on its own, for the TLS page - which the operator reaches long
+            # before the probe has run, and which is where the thumbprint is actually typed.
+            # Deliberately not a slice of Probe: Probe opens a database connection and can sit on a
+            # network timeout for seconds, and nothing here needs an answer file, a session
+            # directory or elevation. It reads the machine's own certificate store and stops.
+            . (Join-Path $scriptDirectory 'Preflight.ps1')
+            Add-NodePilotCertificateInventory -Buffer $result
+            return 0
         }
 
         'Provision' {

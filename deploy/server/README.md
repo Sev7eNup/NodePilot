@@ -11,7 +11,7 @@ nutzbar und ist weiterhin die Referenz; das Setup ruft genau dieses Skript auf.
 
 | | |
 |---|---|
-| **Nimmt ab** | Fünf Release-Assets herunterladen, Prüfsumme vergleichen, Signer-Thumbprint out-of-band abgleichen, `.cer` nach `LocalMachine\Root` importieren, neun Parameter fehlerfrei tippen. Ein Asset, ein Doppelklick. |
+| **Nimmt ab** | Fünf Release-Assets herunterladen, Prüfsumme vergleichen, Signer-Thumbprint out-of-band abgleichen, `.cer` nach `LocalMachine\Root` importieren, neun Parameter fehlerfrei tippen, den Kestrel-Thumbprint aus der Zertifikats-MMC heraussuchen. Ein Asset, ein Doppelklick. |
 | **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
 | **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), PostgreSQL-Rolle anlegen (kein PG-Client im Payload), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
 
@@ -32,6 +32,48 @@ Die Zeilen werden erst positioniert, wenn ihr Text steht. Vorher reservierte jed
 Zeilen 16 px für eine Auto-Fix-Checkbox, die fast nie sichtbar ist — 128 px einer 309 px hohen
 Fläche für nichts.
 
+## Zertifikatsauswahl (TLS-Seite)
+
+Unter dem Feld *Certificate thumbprint* steht eine Auswahlliste der Zertifikate aus
+`Cert:\LocalMachine\My`. Eine Auswahl schreibt den Thumbprint **in das Feld darüber** — das Feld
+bleibt der einzige Wert, den Answer-File, Validierung und der Rückschreibpfad des selbstsignierten
+Zertifikats lesen. Deshalb musste für die Liste an keiner dieser Stellen etwas angepasst werden.
+
+Der Grund für die Liste ist der Weg, den sie ersetzt: den Thumbprint eines bereits installierten
+Zertifikats bekommt man sonst nur über die Zertifikats-MMC, deren Kopierknopf ein **unsichtbares
+U+200E** voranstellt. Genau dafür wirft `Install-NodePilot.ps1` alle Nicht-Hex-Zeichen weg, bevor er
+die Länge misst — 40 Zeichen, sieht richtig aus, wird trotzdem abgelehnt.
+
+Vier Entscheidungen, die nicht offensichtlich sind:
+
+- **Eigener Adapter-Modus, nicht die Probe.** `-Mode Certificates` liest nur den Zertifikatsspeicher:
+  kein Answer-File, kein Session-Verzeichnis, keine Datenbankverbindung. Die Probe läuft erst auf der
+  Readiness-Seite, also eine Seite *nach* der, auf der der Thumbprint eingetippt wird — und sie darf
+  Sekunden auf ein Netzwerk-Timeout warten.
+- **Nie blockierend.** Lässt sich die Liste nicht lesen, erscheint eine Zeile die das sagt, und der
+  Thumbprint wird wie zuvor getippt. Die Readiness-Seite prüft ihn ohnehin. Ein Komfort-Feature, das
+  eine funktionierende Installation stoppt, wäre ein schlechter Tausch.
+- **Zertifikate ohne privaten Schlüssel werden angezeigt**, mit `NO PRIVATE KEY` markiert, statt
+  gefiltert zu werden. „Es liegt doch im Store, warum steht es nicht da?" hat eine häufige Antwort —
+  es wurde ein `.cer` importiert, wo ein `.pfx` gemeint war — und eine gefilterte Liste macht daraus
+  ein Rätsel.
+- **Sortiert nach Ablauf, spätestes zuerst.** Ein erneuertes Zertifikat liegt neben dem, das es
+  ersetzt, unter demselben Subject; das Datum ist das Einzige, was die beiden unterscheidet.
+
+**Was die Auswahl nicht prüft** — und die Readiness-Seite auch nicht: ob das Subject bzw. die SAN zum
+*Public Host Name* passt, ob die Kette den Clients vertrauenswürdig ist, und ob das Zertifikat noch
+gültig ist. Der Ablauf steht nur als Datum in der Zeile; ein **abgelaufenes Zertifikat installiert
+sauber durch** und fällt erst im Browser auf. Für ein PKI-Zertifikat aus der eigenen CA ist das der
+übliche Fall — es muss vorher im Maschinenspeicher liegen, mehr verlangt das Setup nicht:
+
+```powershell
+Import-PfxCertificate -FilePath cert.pfx -CertStoreLocation Cert:\LocalMachine\My `
+  -Password (Read-Host -AsSecureString)
+```
+
+Ohne `MachineKeySet|PersistKeySet` findet `Grant-CertPrivateKeyAccess` später die Schlüsseldatei
+unter `ProgramData\Microsoft\Crypto` nicht und bricht ab.
+
 ## Architektur
 
 Der Pascal-Layer ist bewusst **dünn**: Seiten, Payload, `Exec`, INI lesen. Keine Installationslogik.
@@ -47,7 +89,7 @@ Warum eine Datei statt einer Kommandozeile — drei Gründe, jeder für sich aus
    übergeben werden.
 2. `/SILENT /ANSWERFILE=` fällt damit für SCCM/GPO ab, ohne zweiten Codepfad.
 3. Inno-Pascal hat keine Unit-Test-Story. Was in PowerShell liegt, ist testbar
-   ([`../Test-SetupAdapter.ps1`](../Test-SetupAdapter.ps1), 30 Assertions).
+   ([`../Test-SetupAdapter.ps1`](../Test-SetupAdapter.ps1), 55 Assertions).
 
 Ergebnisse kommen als **INI** zurück, nicht als JSON: Inno hat `GetIniString` eingebaut und für JSON
 gar nichts — ein Parser in Pascal wären ~120 Zeilen, die kein Test erreicht.
@@ -259,7 +301,14 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 
 - **Der Pascal-Code selbst.** Seitenfluss, `ShouldSkipPage`-Matrix, JSON-Escaper, INI-Lesen,
   Steuerelement-Zustände. Inno-Pascal hat dafür kein Werkzeug. Gegenmittel: minimaler Umfang plus
-  die Verträge oben.
+  die Verträge oben. Was ein Compilerlauf abdeckt — Syntax und jeder verwendete Bezeichner —
+  bekommt man ohne Installer-Bau mit
+  `ISCC /Qp /O- /DStageDir=<stage> /DOutputDir=<out> NodePilotServer.iss`; dass dabei wirklich der
+  `[Code]`-Abschnitt übersetzt wird, lässt sich mit einem absichtlich falschen Bezeichner in einer
+  Kopie nachweisen. Läuft **nicht** in CI (kein ISCC auf dem Runner).
+- **Positionen berechneter Steuerelemente.** Die Zertifikatsliste wird aus `Edits[4].Top + Height`
+  platziert. Der Compiler prüft das nicht, und eine Input-Seite hat nur 309 px Fläche: passt es
+  nicht, wird das Element unterhalb der sichtbaren Fläche gezeichnet und die Seite scrollt nicht.
 - **Die GUI wurde nie geklickt.** Alle Lab-Läufe waren unbeaufsichtigt. Der interaktive Pfad —
   Readiness-Ampel, Auto-Fix-Checkboxen, Zertifikatsauswahl — ist ungetestet.
 - **Nur SQL Server + gMSA getestet.** Der PostgreSQL-Pfad und der LocalSystem-Pfad sind im Lab nie
@@ -285,6 +334,8 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 13 | Abschlussseite nach Neuinstallation | URL, Setup-Token, API-Key, Thumbprint, Pfade sichtbar und markierbar |
 | 14 | Abschlussseite nach Update | URL aus der installierten Config, kein Token, kein neuer API-Key |
 | 15 | Update über laufenden Dienst | wartet den Prozess ab statt abzubrechen |
+| 16 | TLS-Seite, Zertifikat aus der Liste gewählt | Thumbprint steht im Feld darüber, Readiness-Zeile grün |
+| 17 | TLS-Seite, leerer Zertifikatsspeicher | Hinweiszeile statt Auswahl, „Weiter" bleibt möglich |
 
 Stand: 1, 3, 5, 9 und 10 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server 2022 CU
-gelaufen. 2, 4, 6, 7, 8 und 11 bis 15 nicht.
+gelaufen. 2, 4, 6, 7, 8 und 11 bis 17 nicht.

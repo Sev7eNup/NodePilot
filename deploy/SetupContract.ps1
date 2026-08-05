@@ -274,6 +274,33 @@ function ConvertTo-NodePilotIniValue {
     return ([string]$Value) -replace "`r`n", '\n' -replace "`n", '\n' -replace "`r", '\n'
 }
 
+function Format-NodePilotCertificateLine {
+    <#
+      One certificate from the machine store as a single INI value, for the wizard's picker:
+
+          <thumbprint>|<subject>|<hasPrivateKey>|<yyyy-MM-dd>
+
+      The thumbprint comes first and unpadded because it is the only field the wizard puts to
+      work - everything after it is label text for the operator. A pipe inside the subject would
+      shift the remaining fields, so it is folded to a slash here rather than assumed not to
+      occur: an X.500 attribute value may legally contain one.
+
+      The date is formatted against the invariant culture, not the machine's. 'yyyy' resolves
+      against the culture's default CALENDAR, so on a server set to Arabic (Saudi Arabia) the same
+      call returns a Hijri year - a date in the picker that matches nothing the operator can
+      compare it against.
+    #>
+    param([Parameter(Mandatory)]$Certificate)
+
+    $subject = [string]$Certificate.Subject
+    if ([string]::IsNullOrWhiteSpace($subject)) { $subject = '(no subject)' }
+    return '{0}|{1}|{2}|{3}' -f `
+        $Certificate.Thumbprint,
+        ($subject -replace '\|', '/'),
+        $(if ($Certificate.HasKey) { '1' } else { '0' }),
+        $Certificate.NotAfter.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
+}
+
 function New-NodePilotResultBuffer {
     return [ordered]@{}
 }
