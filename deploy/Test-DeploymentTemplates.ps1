@@ -1521,6 +1521,22 @@ Assert-TextMatches -Name 'the staged token copy is shredded in a finally' `
     -Text $contractScript `
     -Pattern "(?s)function Get-NodePilotBootstrapToken[\s\S]*?finally \{[\s\S]*?Remove-NodePilotAnswerFile[\s\S]*?Remove-Item"
 
+# The TLS page letting an empty field through is worth nothing if the answer file it then writes is
+# rejected for the same emptiness. That is what happened on the first real run: the probe died with
+# "missing required key 'certificate.thumbprint'" before the page that offers to create one was
+# ever drawn. Required still means the key must be present; for this one key it no longer means the
+# value must be filled.
+Assert-TextMatches -Name 'the answer file accepts an empty certificate thumbprint' `
+    -Text $contractScript -Pattern "\`$mayBeEmpty = @\('certificate\.thumbprint'\)"
+# Empty is a statement; a typo is not, and used to travel all the way into Kestrel's configuration.
+Assert-TextMatches -Name 'a thumbprint that is present is still checked for shape' `
+    -Text $contractScript -Pattern "40 hexadecimal characters, or empty"
+# An install that arrives with no certificate at all binds an empty string to a mandatory
+# parameter; the operator then reads PowerShell's argument-binding wording instead of the choice
+# they actually have.
+Assert-TextMatches -Name 'installing without any certificate names both ways out' `
+    -Text $setupAdapter -Pattern 'No TLS certificate to install with'
+
 # --- provisioning seed ---------------------------------------------------------------------------
 # The seed unlocks a file holding every credential the reference machine had, so where its
 # passphrase ends up matters more than anything else about this feature.

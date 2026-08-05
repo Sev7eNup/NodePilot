@@ -118,7 +118,7 @@ Verify the download, then trust the publisher on the target server:
 
 ```powershell
 # 1. Checksums (compare against SHA256SUMS.txt)
-Get-FileHash .\NodePilot-1.1.1.zip -Algorithm SHA256 | Format-List
+Get-FileHash .\NodePilot-1.1.2.zip -Algorithm SHA256 | Format-List
 
 # 2. The certificate you are about to trust is the one named in the release notes
 (Get-PfxCertificate .\nodepilot-release-signing.cer).Thumbprint
@@ -164,12 +164,12 @@ when you want something else:
 
 Copy **four files** to the target server (e.g. `C:\Temp`):
 
-- `out\NodePilot-1.1.1.zip`
-- `out\NodePilot-1.1.1.zip.manifest.json`
-- `out\NodePilot-1.1.1.zip.manifest.json.p7s`
+- `out\NodePilot-1.1.2.zip`
+- `out\NodePilot-1.1.2.zip.manifest.json`
+- `out\NodePilot-1.1.2.zip.manifest.json.p7s`
 - `nodepilot-signer.cer`
 
-`out\NodePilot-1.1.1.SHA256SUMS.txt` covers everything the run produced, if you want to verify the
+`out\NodePilot-1.1.2.SHA256SUMS.txt` covers everything the run produced, if you want to verify the
 transfer.
 
 plus the `deploy\` folder itself (`Install-NodePilot.ps1` + `ArtifactSecurity.ps1`).
@@ -357,7 +357,7 @@ Logs: `C:\ProgramData\NodePilot\logs\` (CMTrace-formatted). Firewall rule:
 
 ```powershell
 .\Update-NodePilot.ps1 `
-    -ArtifactPath C:\Temp\NodePilot-1.1.1.zip `
+    -ArtifactPath C:\Temp\NodePilot-1.1.2.zip `
     -TrustedArtifactSignerThumbprint '<signer thumbprint>'
 ```
 

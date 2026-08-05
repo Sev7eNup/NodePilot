@@ -596,6 +596,16 @@ function Invoke-SetupInstall {
         }
     }
 
+    # Still nothing: an answer file that left the field empty and asked for no certificate to be
+    # created. Said here, where both halves of the choice can be named. Left alone it binds an
+    # empty string to a mandatory parameter, and the operator gets PowerShell's wording about
+    # argument binding for a decision they made three pages earlier.
+    if ($splat['CertThumbprint'] -notmatch '^[0-9A-Fa-f]{40}$') {
+        throw ('No TLS certificate to install with. Either name one in certificate.thumbprint, or ' +
+               'set provisioning.generateSelfSignedCertificate to have a self-signed one created ' +
+               'first. Kestrel terminates TLS itself and will not start without a certificate.')
+    }
+
     $splat['ArtifactPath'] = $ArtifactPath
     $splat['TrustedArtifactSignerThumbprint'] = $TrustedArtifactSignerThumbprint
     # Generated here, not left to the installer: it prints the key exactly once, to a console that

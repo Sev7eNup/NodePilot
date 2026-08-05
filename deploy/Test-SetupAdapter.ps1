@@ -171,6 +171,47 @@ try {
         } | ConvertTo-Json -Depth 6))
     }
 
+    # THE regression: the wizard writes what the TLS page holds, and leaving that page's field
+    # empty is how an operator says "I have no certificate yet". Requiring a value here killed the
+    # probe run before the prerequisite page - which is the page that offers to create one - was
+    # ever reached. The key still has to be present; only its value may be blank.
+    $blankCert = Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'blank-cert.json' -Json (@{
+        schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
+        serviceName = 'NodePilot'; identity = @{ type = 'localSystem' }
+        database = @{ provider = 'sqlserver'; sqlServer = 'db'; sqlDatabase = 'NodePilot' }
+        network = @{ publicHostname = 'h'; httpsPort = 443; httpPort = 80 }
+        certificate = @{ thumbprint = '' }
+    } | ConvertTo-Json -Depth 6))
+    Assert-True -Name 'an empty certificate thumbprint is accepted' `
+        -Condition ([string]$blankCert['certificate.thumbprint'] -eq '')
+
+    # Scoped to that one key. An empty serviceName is a mistake in every reading, and the blanket
+    # rule that used to catch it must keep catching it.
+    Assert-Throws -Name 'another required key left blank is still rejected' `
+        -MessagePattern "missing required key 'serviceName'" -Action {
+        Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'blank-service.json' -Json (@{
+            schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
+            serviceName = ''; identity = @{ type = 'localSystem' }
+            database = @{ provider = 'sqlserver'; sqlServer = 'db'; sqlDatabase = 'NodePilot' }
+            network = @{ publicHostname = 'h'; httpsPort = 443; httpPort = 80 }
+            certificate = @{ thumbprint = 'A' * 40 }
+        } | ConvertTo-Json -Depth 6))
+    }
+
+    # Empty is a statement, a typo is not. Unchecked, it reached Kestrel's configuration and came
+    # back as "the certificate is not in the store" - the same symptom as a certificate that really
+    # is missing, several minutes later.
+    Assert-Throws -Name 'a thumbprint that is neither empty nor 40 characters is rejected' `
+        -MessagePattern "40 hexadecimal characters, or empty" -Action {
+        Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'short-cert.json' -Json (@{
+            schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
+            serviceName = 'NodePilot'; identity = @{ type = 'localSystem' }
+            database = @{ provider = 'sqlserver'; sqlServer = 'db'; sqlDatabase = 'NodePilot' }
+            network = @{ publicHostname = 'h'; httpsPort = 443; httpPort = 80 }
+            certificate = @{ thumbprint = 'A1B2C3' }
+        } | ConvertTo-Json -Depth 6))
+    }
+
     Assert-Throws -Name 'an unsupported schemaVersion is rejected' -MessagePattern 'schemaVersion 2 is not supported' -Action {
         Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'version.json' -Json '{"schemaVersion":2,"mode":"install"}')
     }

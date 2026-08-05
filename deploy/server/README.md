@@ -434,7 +434,7 @@ gar nichts — ein Parser in Pascal wären ~120 Zeilen, die kein Test erreicht.
 ## Unbeaufsichtigt (SCCM, GPO)
 
 ```powershell
-NodePilot-Server-Setup-1.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+NodePilot-Server-Setup-1.1.2.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
 | Schalter | Wirkung |
@@ -481,6 +481,9 @@ in der Installation zuschlägt.
 `identity.type` ist `localSystem` oder `gmsa` (dann ist `identity.account` Pflicht).
 `database.provider` ist `sqlserver` (dann `sqlServer` + `sqlDatabase`) oder `postgres` (dann
 `postgresHost`, `postgresDatabase`, `postgresUser`, `postgresPassword`, `postgresRootCertificate`).
+`certificate.thumbprint` ist der einzige Pflichtschlüssel, der **leer** sein darf: leer heißt „noch
+keins vorhanden" und verlangt dann `provisioning.generateSelfSignedCertificate`. Steht etwas drin,
+müssen es 40 Hex-Zeichen sein — sonst bricht der Lauf hier ab statt später in der Kestrel-Config.
 Für `"mode": "update"` genügen `installPath` und `serviceName`; jeder weitere Schlüssel wird
 abgelehnt, damit eine veraltete Datei nicht halb angewendet wird.
 
@@ -609,7 +612,7 @@ Uninstaller **benennt** sie am Ende namentlich.
 ```powershell
 # Einzeln:
 .\deploy\server\Build-ServerInstaller.ps1 `
-    -ArtifactPath .\out\NodePilot-1.1.1.zip `
+    -ArtifactPath .\out\NodePilot-1.1.2.zip `
     -TrustedSignerThumbprint 277EAB317A581C88302CE92BE805938C86B4650D
 
 # Als Teil des Release-Builds (empfohlen — signiert und in SHA256SUMS):
@@ -739,6 +742,14 @@ Stand: 1, 3, 5, 9, 10, 22, 23, 30, 37 und 38 sind im Hyper-V-Lab gegen echtes AD
 SQL Server 2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29, 31 bis 36 sowie 39/40 nicht —
 wobei die **Logik** hinter 33 bis 35 gegen einen echten PostgreSQL 16 mit TLS gefahren wurde (siehe
 unten); was dort fehlt, ist die Seite.
+
+Zusatz 2026-08-06: Zeile 39 ist im Feld aufgeschlagen — leeres Feld, und der Probe-Lauf starb mit
+„Answer file is missing required key 'certificate.thumbprint'", weil die Vertragsprüfung Pflicht mit
+nicht-leer gleichsetzte. Behoben; danach mit einer echten Answer-File (leerer Thumbprint) gegen
+`-Mode Probe` nachgestellt: Exit 2 (`ExitProbeFailed`, die erwartete Antwort für eine rote
+Pflicht-Zeile), `check.certificate` meldet „No certificate selected" mit `canAutoFix=1` und
+`autoFixDefault=0`. Was damit **noch nicht** geklickt ist: der Haken selbst und das Zurückschreiben
+des erzeugten Thumbprints in das Feld — also die zweite Hälfte von Zeile 39.
 
 Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
 `httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,

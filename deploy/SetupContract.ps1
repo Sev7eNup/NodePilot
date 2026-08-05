@@ -121,9 +121,18 @@ function Read-NodePilotAnswerFile {
             throw "Answer file contains unknown key '$key' for mode '$answerMode'."
         }
     }
+    # Required means the key has to be there. For one of them it does NOT mean the value has to be
+    # non-empty: an empty certificate.thumbprint is how a file says "I have no certificate yet,
+    # offer to create one", and the prerequisite page acts on exactly that. Lumping it in with the
+    # rest made that state unexpressible - and it did: leaving the wizard's TLS field blank died
+    # here, on the probe run, with "missing required key 'certificate.thumbprint'".
+    $mayBeEmpty = @('certificate.thumbprint')
     foreach ($key in $keys.Required) {
-        if (-not $map.Contains($key) -or $null -eq $map[$key] -or
-            ($map[$key] -is [string] -and [string]::IsNullOrWhiteSpace($map[$key]))) {
+        $absent = -not $map.Contains($key) -or $null -eq $map[$key]
+        if (-not $absent -and $key -notin $mayBeEmpty) {
+            $absent = ($map[$key] -is [string] -and [string]::IsNullOrWhiteSpace($map[$key]))
+        }
+        if ($absent) {
             throw "Answer file is missing required key '$key' for mode '$answerMode'."
         }
     }
@@ -137,6 +146,14 @@ function Read-NodePilotAnswerFile {
         }
         if ($identityType -eq 'gmsa' -and -not $map.Contains('identity.account')) {
             throw "Answer file needs 'identity.account' when 'identity.type' is 'gmsa'."
+        }
+        # Empty is a statement; anything else has to be a thumbprint. Without this the value went
+        # unchecked all the way into Kestrel's configuration, where "the certificate is not in the
+        # store" is the only symptom a typo ever produces.
+        $thumbprint = [string]$map['certificate.thumbprint']
+        if (-not [string]::IsNullOrWhiteSpace($thumbprint) -and $thumbprint -notmatch '^[0-9A-Fa-f]{40}$') {
+            throw ("Answer file 'certificate.thumbprint' must be 40 hexadecimal characters, or empty to " +
+                   "have a self-signed certificate created; got '$thumbprint'.")
         }
         $provider = [string]$map['database.provider']
         switch ($provider) {
