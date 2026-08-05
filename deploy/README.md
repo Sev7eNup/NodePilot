@@ -194,6 +194,15 @@ Get-ChildItem Cert:\LocalMachine\My |
 
 Der Installer grantet dem gMSA automatisch Read-Access auf die Private-Key-Datei.
 
+**Dienst-Identität wechseln (LocalSystem ⇄ gMSA):** einfach neu installieren, das Datenverzeichnis
+bleibt erhalten. `jwt-secret.key` und `admin-setup.token` schreibt der **Dienst** für sich selbst —
+Owner und eine einzige ACE, die der Identität gehört, die sie angelegt hat. Der Installer übergibt
+beide an die neue Identität; ohne das startete der Dienst nach einem Identitätswechsel nicht mehr
+(„the file, its owner, or its ACL could not be verified"). Gelöscht wird nichts: der JWT-Key
+signiert laufende Sessions, und das Setup-Token ist der einzige Weg in eine noch nicht
+provisionierte Instanz. Der Data-Protection-Keyring braucht keine Sonderbehandlung — er erbt vom
+Verzeichnis.
+
 Der Pre-Flight prüft Gültigkeitszeitraum und Namen: ein **abgelaufenes oder noch nicht gültiges
 Zertifikat bricht die Installation ab** (früher lief sie durch und fiel erst im Browser auf).
 Passt keine SAN — bzw. ohne SAN der CN — zum `-PublicHostname`, gibt es eine **Warnung**, keinen

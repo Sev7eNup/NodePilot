@@ -98,6 +98,52 @@ function New-NodePilotRestrictedFileSecurity {
     return $security
 }
 
+function Set-NodePilotServiceOwnedFileAcl {
+    <#
+      Hands a secret the SERVICE wrote for itself over to a new service identity.
+
+      RestrictedFileWriter creates jwt-secret.key and admin-setup.token owned by whoever the
+      service was at the time, protected, with exactly one ACE: that identity, FullControl. It
+      then refuses to use a file it cannot verify - which is correct, and which is why an
+      installation that changes the service identity leaves both files behind as rubble: the new
+      identity cannot open them, and the old one no longer runs.
+
+      This writes the same descriptor the service itself would have written, for the identity it
+      is about to become. Owner AND the single ACE, because the validator checks both.
+
+      Applied unconditionally rather than only when the identity changed: it is idempotent, and a
+      machine that is already stuck in that state is repaired by installing over it.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ServiceAccount
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+
+    # Well-known SIDs, never localised names: BUILTIN\Administrators and NT AUTHORITY\SYSTEM do
+    # not resolve on a German Windows, which is the rule the rest of this file already follows.
+    $normalized = $ServiceAccount.Trim().ToLowerInvariant()
+    $identity = if ($normalized -in @('localsystem', '.\localsystem', 'system', 'nt authority\system', 's-1-5-18')) {
+        [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    }
+    elseif ($normalized -match '^s-\d+(?:-\d+)+$') {
+        [System.Security.Principal.SecurityIdentifier]::new($ServiceAccount.Trim())
+    }
+    else {
+        ([System.Security.Principal.NTAccount]::new($ServiceAccount.Trim())).Translate(
+            [System.Security.Principal.SecurityIdentifier])
+    }
+
+    $security = New-Object System.Security.AccessControl.FileSecurity
+    $security.SetOwner($identity)
+    $security.SetAccessRuleProtection($true, $false)
+    $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $identity, 'FullControl', 'None', 'None', 'Allow')))
+    Set-Acl -LiteralPath $Path -AclObject $security
+}
+
 function Write-NodePilotBootstrapCredentialFile {
     <#
       Leaves the generated first-admin credentials where an unattended rollout can collect them.

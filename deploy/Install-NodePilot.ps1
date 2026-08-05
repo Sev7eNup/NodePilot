@@ -226,6 +226,7 @@ $previousPostgresRootCertificateAcl = $null
 $postgresRootCertificatePreviouslyExisted = $false
 $postgresRootCertificateTouched = $false
 $installMutationStarted = $false
+$dataAclApplied = $false
 try {
     if (-not (Test-Path -LiteralPath $ArtifactPath -PathType Leaf)) { throw "Artifact not found: $ArtifactPath" }
     $ArtifactPath = (Resolve-Path -LiteralPath $ArtifactPath).Path
@@ -1001,6 +1002,23 @@ if (Test-Path $InstallPath) {
 New-Item -ItemType Directory -Path $DataPath -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $DataPath 'logs') -Force | Out-Null
 Set-DirectoryAclForService -Path $DataPath -ServiceAccount $AclIdentity -SkipServiceRule:$isLocalSystem
+# From here on the data directory carries an ACE for the identity being installed. If anything
+# below fails, the rollback has to take it off again - see the catch block.
+$dataAclApplied = $true
+
+# The two files the SERVICE writes for itself, owned by whoever it was at the time: a single ACE,
+# FullControl, protected. Change the service identity and the new one cannot open them, while the
+# old one is gone - so a fresh install with a different identity used to fail at the first start
+# with "the file, its owner, or its ACL could not be verified" (lab 2026-08-05, LocalSystem then
+# gMSA). Deleting them is not an option: the JWT key signs live sessions, and the setup token is
+# the only way into a not-yet-provisioned instance. They are handed over instead.
+foreach ($identityBoundSecret in @('jwt-secret.key', 'admin-setup.token')) {
+    $secretPath = Join-Path $DataPath $identityBoundSecret
+    if (Test-Path -LiteralPath $secretPath -PathType Leaf) {
+        Set-NodePilotServiceOwnedFileAcl -Path $secretPath -ServiceAccount $AclIdentity
+        Write-Info "  Handed $identityBoundSecret over to $AccountLabel."
+    }
+}
 
 # Provisioning seed: copied in rather than referenced where the operator left it, because the API
 # reads it as the service account at first start and a deployment share is not reachable then.
@@ -1544,6 +1562,27 @@ catch {
                 }
                 elseif (Test-Path -LiteralPath $postgresRootCertificateTarget) {
                     Remove-Item -LiteralPath $postgresRootCertificateTarget -Force -ErrorAction Stop
+                }
+            }
+            # The data directory's ACL is part of what was changed, and until now it was the one
+            # part the rollback left behind. That is not cosmetic: the ACE for the identity being
+            # installed is an UNTRUSTED principal from the restored identity's point of view, and
+            # RestrictedFileWriter refuses to read the JWT key when its parent directory grants
+            # mutation rights to one. So a failed identity switch did not just fail - it took the
+            # working installation it was replacing down with it, with "parent directory
+            # 'C:\ProgramData\NodePilot' grants mutation rights to an untrusted principal" on a
+            # service that had been running five minutes earlier. Reproduced in the lab
+            # 2026-08-05: the rollback restored the LocalSystem service and then could not start
+            # it ("ROLLBACK ALSO FAILED").
+            if ($dataAclApplied -and (Test-Path -LiteralPath $DataPath -PathType Container)) {
+                Set-DirectoryAclForService `
+                    -Path $DataPath `
+                    -ServiceAccount $previousAclIdentity `
+                    -SkipServiceRule:($previousAclIdentity -eq 'NT AUTHORITY\SYSTEM')
+                foreach ($identityBoundSecret in @('jwt-secret.key', 'admin-setup.token')) {
+                    Set-NodePilotServiceOwnedFileAcl `
+                        -Path (Join-Path $DataPath $identityBoundSecret) `
+                        -ServiceAccount $previousAclIdentity
                 }
             }
             if ($previousService) {

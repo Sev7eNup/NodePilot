@@ -825,6 +825,45 @@ try {
     Assert-True -Name 'the unverifiable case still names the principal and the statements' `
         -Condition ($svcUnreachable.Detail -match 'CONTOSO\\HOST\$' -and $svcUnreachable.Remediation -match 'ALTER ROLE')
 
+    # --- handing an identity-bound secret to a new service identity ---------------------------
+    # RestrictedFileWriter creates jwt-secret.key owned by whoever the service was, protected,
+    # with one ACE. Change the identity and the new one cannot open it while the old one is gone -
+    # which is exactly how a fresh install with a gMSA over a LocalSystem installation died at
+    # first start (lab 2026-08-05). The descriptor written here has to match what the service
+    # itself would have written, or the service will refuse its own key file.
+    $secretPath = Join-Path $workingDirectory 'jwt-secret.key'
+    [IO.File]::WriteAllText($secretPath, 'not a real key')
+    $me = ([Security.Principal.WindowsIdentity]::GetCurrent()).User
+    Set-NodePilotServiceOwnedFileAcl -Path $secretPath -ServiceAccount $me.Value
+
+    $handed = Get-Acl -LiteralPath $secretPath
+    Assert-True -Name 'the handed-over secret is owned by the new service identity' `
+        -Condition ("$($handed.GetOwner([Security.Principal.SecurityIdentifier]))" -eq $me.Value)
+    # Inheritance would pull in ACEs from the data directory, and the validator rejects a secret
+    # with any inherited rule at all.
+    Assert-True -Name 'the handed-over secret does not inherit' `
+        -Condition ($handed.AreAccessRulesProtected)
+    $handedRules = @($handed.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]))
+    Assert-True -Name 'exactly one principal can reach it' -Condition ($handedRules.Count -eq 1)
+    # FullControl exactly, not "at least Read": the service DELETES admin-setup.token after first
+    # login and replaces jwt-secret.key when rotating. A read-only handover produces a service that
+    # starts and then cannot finish provisioning itself.
+    Assert-True -Name 'and that principal is the new service identity, with full control' `
+        -Condition ("$($handedRules[0].IdentityReference)" -eq $me.Value -and
+                    $handedRules[0].FileSystemRights -eq [Security.AccessControl.FileSystemRights]::FullControl)
+
+    # LocalSystem arrives as a name, and 'NT AUTHORITY\SYSTEM' does not resolve on a German
+    # Windows - the same trap the rest of this file avoids with well-known SIDs.
+    Set-NodePilotServiceOwnedFileAcl -Path $secretPath -ServiceAccount 'LocalSystem'
+    $asSystem = Get-Acl -LiteralPath $secretPath
+    Assert-True -Name 'LocalSystem resolves to the well-known SID, not a localised name' `
+        -Condition ("$($asSystem.GetOwner([Security.Principal.SecurityIdentifier]))" -eq 'S-1-5-18')
+
+    # A secret that is not there is not a failure: admin-setup.token is deleted after first login,
+    # and an install over a provisioned instance must not trip over its absence.
+    Set-NodePilotServiceOwnedFileAcl -Path (Join-Path $workingDirectory 'admin-setup.token') -ServiceAccount 'LocalSystem'
+    Assert-True -Name 'a missing secret is a no-op, not an error' -Condition $true
+
     # --- the Postgres row ---------------------------------------------------------------------
     # The TCP probe could only ever say "the port answered". On SQL Server that gap is covered by
     # Windows auth - the pre-flight connects as somebody real; on Postgres there is no such

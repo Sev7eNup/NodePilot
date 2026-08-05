@@ -479,6 +479,63 @@ Assert-TextMatches -Name 'the installer pre-flights the ports it is installing o
 Assert-TextMatches -Name 'the rendered AllowedHosts always admits localhost' `
     -Text $installerScript -Pattern "(?s)-notcontains 'localhost'[\s\S]{0,120}AllowedHosts = "
 
+# --- changing the service identity ---------------------------------------------------------------
+# jwt-secret.key and admin-setup.token are written by the SERVICE, owned by whoever it was at the
+# time, protected, with one ACE. A fresh install with a different identity leaves both unreadable:
+# the new identity has no access and the old one no longer runs. Reproduced in the lab 2026-08-05
+# (LocalSystem, then gMSA): "the file, its owner, or its ACL could not be verified".
+# Sliced to the install path on purpose: the rollback below runs the same helper over the same two
+# names, so a file-wide search would go on passing with the install-time handover deleted.
+$installAclStart = $installerScript.IndexOf('Set-DirectoryAclForService -Path $DataPath')
+$installAclEnd = $installerScript.IndexOf('# Provisioning seed', $installAclStart)
+if ($installAclStart -lt 0 -or $installAclEnd -le $installAclStart) {
+    throw 'Deployment template check failed: could not delimit the data-directory ACL step.'
+}
+$installAclBlock = $installerScript.Substring($installAclStart, $installAclEnd - $installAclStart)
+Assert-TextMatches -Name 'the installer hands identity-bound secrets to the new identity' `
+    -Text $installAclBlock `
+    -Pattern "(?s)'jwt-secret\.key', 'admin-setup\.token'[\s\S]{0,400}Set-NodePilotServiceOwnedFileAcl -Path \`$secretPath -ServiceAccount \`$AclIdentity"
+# Deleting them instead would be cheaper and wrong: the JWT key signs live sessions and the setup
+# token is the only way into a not-yet-provisioned instance.
+Assert-TextDoesNotMatch -Name 'identity-bound secrets are handed over, never deleted' `
+    -Text $installAclBlock -Pattern 'Remove-Item'
+
+# The data directory's ACL is part of what an install changes, and leaving the new identity's ACE
+# behind does not merely fail - it takes the installation being replaced down with it, because
+# from the restored identity's point of view that ACE is an untrusted principal with mutation
+# rights on the JWT key's parent. The lab run reported exactly that: "ROLLBACK ALSO FAILED".
+$rollbackStart = $installerScript.IndexOf('Restoring the previous installation')
+$rollbackEnd = $installerScript.IndexOf('Previous installation restored', $rollbackStart)
+if ($rollbackStart -lt 0 -or $rollbackEnd -le $rollbackStart) {
+    throw 'Deployment template check failed: could not delimit the install rollback.'
+}
+$rollbackBlock = $installerScript.Substring($rollbackStart, $rollbackEnd - $rollbackStart)
+Assert-TextMatches -Name 'the rollback puts the data directory ACL back' `
+    -Text $rollbackBlock -Pattern '(?s)Set-DirectoryAclForService[\s\S]{0,200}\$previousAclIdentity'
+Assert-TextMatches -Name 'the rollback hands the secrets back to the previous identity too' `
+    -Text $rollbackBlock -Pattern '(?s)Set-NodePilotServiceOwnedFileAcl[\s\S]{0,200}\$previousAclIdentity'
+# Guarded, so a failure before the ACL was ever touched does not rewrite a directory this run had
+# nothing to do with.
+Assert-TextMatches -Name 'the ACL rollback only runs when this install changed it' `
+    -Text $rollbackBlock -Pattern '\$dataAclApplied'
+
+# The descriptor has to be the one the service writes for itself: owner AND a protected single
+# ACE. The validator checks the owner separately from the rules, so setting only the rules leaves
+# a file the service still refuses.
+$artifactSecurity = Remove-CommentLines -Text (Get-Content -LiteralPath $ArtifactSecurityPath -Raw)
+$handoverFunctionStart = $artifactSecurity.IndexOf('function Set-NodePilotServiceOwnedFileAcl')
+if ($handoverFunctionStart -lt 0) {
+    throw 'Deployment template check failed: the identity-bound secret handover helper is missing.'
+}
+$handoverFunction = $artifactSecurity.Substring($handoverFunctionStart, 1800)
+Assert-TextMatches -Name 'the handover sets the owner, not just the rules' `
+    -Text $handoverFunction -Pattern '\$security\.SetOwner\(\$identity\)'
+Assert-TextMatches -Name 'the handover protects the file from inheritance' `
+    -Text $handoverFunction -Pattern 'SetAccessRuleProtection\(\$true, \$false\)'
+# BUILTIN\Administrators and NT AUTHORITY\SYSTEM do not resolve on a German Windows.
+Assert-TextMatches -Name 'LocalSystem is resolved by well-known SID, not by name' `
+    -Text $handoverFunction -Pattern "SecurityIdentifier\]::new\('S-1-5-18'\)"
+
 # The marker is how any later tool finds this installation. Leaving it behind on uninstall makes
 # every subsequent fresh install look like an upgrade.
 Assert-TextMatches -Name 'installer records a machine-wide installation marker' `

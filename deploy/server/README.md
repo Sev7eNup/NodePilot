@@ -636,11 +636,13 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 34 | Dasselbe ohne Superuser-Felder | Zeile rot **ohne** Checkbox, Server-Meldung wörtlich, Snippet sichtbar |
 | 35 | Postgres mit falschem Rollen-Passwort | Zeile rot, nennt „beide vorhanden", kein Fix-Angebot, Passwort bleibt unverändert |
 | 36 | Installer ohne `-PgBinariesPath` gebaut, Postgres gewählt | Zeile **gelb**: erreichbar, Anmeldung ungeprüft |
+| 37 | Neuinstallation mit gMSA über eine LocalSystem-Installation | Exit 0, Dienst läuft als gMSA, `jwt-secret.key` gehört jetzt dem gMSA |
+| 38 | Fehlschlag **nach** dem ACL-Schritt | Rollback stellt Dienst **und** Verzeichnis-ACL wieder her, die vorherige Installation läuft weiter |
 
-Stand: 1, 3, 5, 9, 10, 22, 23 und 30 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server
-2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29 sowie 31 bis 36 nicht — wobei die
-**Logik** hinter 33 bis 35 gegen einen echten PostgreSQL 16 mit TLS gefahren wurde (siehe unten);
-was dort fehlt, ist die Seite.
+Stand: 1, 3, 5, 9, 10, 22, 23, 30, 37 und 38 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und
+SQL Server 2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29 sowie 31 bis 36 nicht —
+wobei die **Logik** hinter 33 bis 35 gegen einen echten PostgreSQL 16 mit TLS gefahren wurde (siehe
+unten); was dort fehlt, ist die Seite.
 
 Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
 `httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,
@@ -667,6 +669,26 @@ vorhandener Rolle → rot mit „beide vorhanden", kein Fix, Passwort unverände
 Der Cluster antwortete auf Deutsch — was den Entwurf geändert hat: die ursprüngliche
 Fehlerklassifikation las psql-Meldungen und hätte „Rolle »nodepilot« existiert nicht" als
 „abgelehnt" durchgereicht. Seitdem wird `pg_roles`/`pg_database` gefragt statt geparst.
+
+Zusatz 2026-08-05 (Identitätswechsel): gemeldeter Fall reproduziert — LocalSystem installieren, dann
+frisch mit gMSA. Zwei Defekte, beide behoben und nachgemessen.
+
+Erstens schrieb der Dienst `jwt-secret.key` mit Owner und **einer** ACE für sich selbst; nach dem
+Wechsel kam die neue Identität nicht mehr an die eigene Datei („the file, its owner, or its ACL
+could not be verified"). Der Installer übergibt sie jetzt.
+
+Zweitens — und das war der schlimmere Teil — ließ der **Rollback** die ACE der neuen Identität auf
+dem Datenverzeichnis stehen. Aus Sicht der zurückgestellten Identität ist das ein *untrusted
+principal* mit Mutationsrechten am Elternverzeichnis des JWT-Keys, also startete auch die
+wiederhergestellte Installation nicht mehr: im Log „ROLLBACK ALSO FAILED", auf dem Bildschirm die
+Meldung mit „grants mutation rights to an untrusted principal" — die aus dem *zurückgerollten*
+Dienst stammte, nicht aus dem neuen. Ein gescheiterter Identitätswechsel riss damit die laufende
+Installation mit. Nachgemessen: die ACE entfernen, Dienst startet wieder.
+
+Nachher, beides gegen CM1: gMSA-Installation über LocalSystem → Exit 0, Dienst läuft als
+`CORP\q-sdvorch2$`, Key-Owner mitgewandert. Erzwungener Fehlschlag nach dem ACL-Schritt → Exit 7,
+Dienst **weiterhin laufend** unter der alten Identität, Verzeichnis-ACL und Key-Owner
+zurückgestellt.
 
 Dabei gefunden und behoben: eine `AllowedHosts`-Liste ohne `localhost` ließ die Installation an
 ihrer **eigenen** Health-Probe scheitern — `UseHostFiltering` antwortet auf `Host: localhost` mit
