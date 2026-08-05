@@ -160,14 +160,14 @@ $releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
 Ergebnis:
 
 ```text
-out\NodePilot-1.0.1.zip
-out\NodePilot-1.0.1.zip.manifest.json
-out\NodePilot-1.0.1.zip.manifest.json.p7s
-out\NodePilot-1.0.1.SHA256SUMS.txt
+out\NodePilot-1.1.0.zip
+out\NodePilot-1.1.0.zip.manifest.json
+out\NodePilot-1.1.0.zip.manifest.json.p7s
+out\NodePilot-1.1.0.SHA256SUMS.txt
 ```
 
 Mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` entsteht im selben Lauf zusätzlich
-`NodePilot-Desktop-Setup-1.0.1.exe` unter derselben Version.
+`NodePilot-Desktop-Setup-1.1.0.exe` unter derselben Version.
 
 Installer und Updater prüfen Signatur, Zertifikatskette, Dateiname, Länge und SHA-256-Hash vor jeder Änderung.
 
@@ -215,7 +215,7 @@ leere Instanz zu hinterlassen.
 Unbeaufsichtigt für SCCM oder GPO:
 
 ```powershell
-NodePilot-Server-Setup-1.0.1.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+NodePilot-Server-Setup-1.1.0.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
 Ein erneuter Lauf erkennt eine vorhandene Installation und bietet drei Wege an: per Default ein
