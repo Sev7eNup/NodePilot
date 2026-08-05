@@ -131,7 +131,7 @@ Warum eine Datei statt einer Kommandozeile — drei Gründe, jeder für sich aus
 
 1. `-PostgresPassword` ist ein `[SecureString]` und kann über `powershell.exe -File` **gar nicht**
    übergeben werden.
-2. `/SILENT /ANSWERFILE=` fällt damit für SCCM/GPO ab, ohne zweiten Codepfad.
+2. `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=` fällt damit für SCCM/GPO ab, ohne zweiten Codepfad.
 3. Inno-Pascal hat keine Unit-Test-Story. Was in PowerShell liegt, ist testbar
    ([`../Test-SetupAdapter.ps1`](../Test-SetupAdapter.ps1), 55 Assertions).
 
@@ -368,7 +368,7 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 2 | Frisch, PostgreSQL + gMSA | dito |
 | 3 | Erneuter Lauf über Bestand | Update-Semantik, Config bleibt |
 | 4 | `/FULLREINSTALL` | Bestätigungsdialog erscheint, neuer API-Key |
-| 5 | `/SILENT /ANSWERFILE` | Exit 0, Dienst läuft |
+| 5 | `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE` | Exit 0, Dienst läuft |
 | 6 | Runtime fehlt, Angebot abgelehnt | „Weiter" bleibt gesperrt |
 | 7 | Rote Readiness-Zeile | „Weiter" gesperrt, Anleitung sichtbar |
 | 8 | Abbruch mitten im Wizard | kein Session-Verzeichnis bleibt zurück |
@@ -386,3 +386,8 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 
 Stand: 1, 3, 5, 9 und 10 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server 2022 CU
 gelaufen. 2, 4, 6, 7, 8 und 11 bis 19 nicht.
+
+Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
+`httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,
+`healthz` durchgehend 200 —, `httpPort: 0` installiert mit Exit 0 durch. Die Port-Zeile der
+Readiness-**Seite** (18/19) ist damit noch nicht geklickt, nur der Check dahinter.

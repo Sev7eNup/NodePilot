@@ -9,7 +9,7 @@ Turnkey installer für NodePilot als Windows-Service auf einem domain-joined Win
 > dieselben Skripte auf, die hier beschrieben sind — der ZIP-Weg bleibt unverändert die Referenz
 > und ist für Automatisierung weiterhin der direktere. Das Setup nimmt vor allem die
 > Vertrauenszeremonie ab (ein Asset statt fünf, kein manueller Thumbprint-Abgleich) und prüft die
-> Voraussetzungen, bevor es etwas verändert. `/SILENT /ANSWERFILE=` deckt SCCM/GPO ab.
+> Voraussetzungen, bevor es etwas verändert. `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=` deckt SCCM/GPO ab.
 
 > **Nur eine Maschine, kein Team-Zugriff nötig?** Dann ist die **Desktop-App** der deutlich schnellere Weg: ein `.exe`-Installer, der PostgreSQL und .NET-Laufzeit mitbringt, ohne Zertifikat, Datenbank oder AD-Vorarbeit — siehe [`desktop/README.md`](desktop/README.md). Sie bindet dafür ausschließlich Loopback: **kein Netzwerkzugriff, keine eingehenden Webhooks, kein SSO, keine HA**.
 
