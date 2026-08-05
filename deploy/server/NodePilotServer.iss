@@ -53,14 +53,12 @@ MinVersion=10.0.20348
 OutputDir={#OutputDir}
 OutputBaseFilename=NodePilot-Server-Setup-{#AppVersion}
 WizardStyle=modern
-; 20% more window, same font size - room, not bigger content. The pages here are dense: five input
-; fields plus the certificate picker on one surface, nine check rows plus their instructions and two
-; buttons on another. Every hand-positioned control measures against the surface it sits on, so the
-; extra space distributes itself and nothing had to be re-laid-out for this.
+; Default window size. WizardSizePercent=120 was tried and reverted - every page fits at 100%, and
+; the pages that are tight are tight by layout rather than by window size.
 ;
-; Deliberately not WizardResizable: those controls are positioned once and carry no anchors, so a
-; window the operator drags open would grow around a picker that stays where it was.
-WizardSizePercent=120
+; WizardResizable stays off regardless of that: the controls on the network and prerequisites pages
+; are positioned once, at wizard construction, and carry no anchors. A window the operator drags
+; open would grow around a certificate picker that stays where it was.
 SetupIconFile={#StageDir}\setup-icon.ico
 LicenseFile={#StageDir}\LICENSE.txt
 ; A failed setup has to be diagnosable without asking the operator to reproduce it.
