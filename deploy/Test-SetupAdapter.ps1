@@ -755,6 +755,24 @@ try {
     Assert-True -Name 'an expired certificate reports expiry, not the name' `
         -Condition ($expiredAndMismatched.Status -eq 'Fail' -and $expiredAndMismatched.Detail -match 'expired')
 
+    # A fresh host has no thumbprint to give, and the wizard's TLS page now accepts an empty field
+    # for exactly that case - so this branch is what the operator sees next. It answers before the
+    # certificate store is read, which is also why it is assertable here: this suite installs
+    # nothing and reads no store.
+    $noneGiven = Test-NodePilotTlsCertificate -Thumbprint '' -PublicHostname 'np.corp.example'
+    Assert-True -Name 'no certificate at all is a blocking failure' `
+        -Condition ($noneGiven.Status -eq 'Fail' -and $noneGiven.Required)
+    Assert-True -Name 'the generator is offered when no certificate was named' `
+        -Condition ($noneGiven.CanAutoFix -and $noneGiven.AutoFixLabel -match 'self-signed')
+    # Offered, not pre-ticked. Minting a lab certificate is a decision, and a rollout that meant to
+    # use its PKI certificate must not acquire a self-signed one by pressing Next.
+    Assert-True -Name 'generating a lab certificate is never the default tick' `
+        -Condition (-not $noneGiven.AutoFixDefault)
+    # It used to read "Certificate  is not present in Cert:\LocalMachine\My" - the gap in that
+    # sentence was the empty thumbprint being rendered as though it were one.
+    Assert-True -Name 'the message says none was selected instead of naming an empty one' `
+        -Condition ($noneGiven.Detail -match 'No certificate selected' -and $noneGiven.Detail -notmatch 'is not present')
+
     # --- the service identity's access to the database ----------------------------------------
     # Was a caveat printed on every host whether or not the grant existed. Now a verdict, and the
     # verdict is split from the connection precisely so these branches are reachable here: no test

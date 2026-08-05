@@ -160,16 +160,22 @@ and a **PostgreSQL 16 binaries folder** — the `pgsql` directory from the
 fast if either of the last two is missing. Expect 10–15 minutes.
 
 ```powershell
-deploy\desktop\Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\Packages\pgsql' -Version 1.1.0
-# -> deploy\desktop\out\NodePilot-Desktop-Setup-1.1.0.exe
+deploy\desktop\Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\Packages\pgsql' -Version 1.1.1
+# -> deploy\desktop\out\NodePilot-Desktop-Setup-1.1.1.exe
 ```
 
-The installer is produced **unsigned** unless you pass
-`-DesktopSigningCertificateThumbprint <thumbprint>`, which Authenticode-signs it as part of the
-build. Sign during the build rather than afterwards: signing rewrites the `.exe` and would
-invalidate its entry in `SHA256SUMS.txt`. An unsigned installer makes SmartScreen warn on first
-launch. Internals, service identities and the first-run handoff:
-[`deploy/desktop/README.md`](deploy/desktop/README.md).
+`Build-DesktopInstaller.ps1` never signs — it has no signing parameter at all. To get a signed
+installer, build it through the release build instead:
+
+```powershell
+deploy\Build-Artifact.ps1 -SigningCertificateThumbprint <artifact-signer> `
+    -IncludeDesktopInstaller -PgBinariesPath 'C:\Packages\pgsql' `
+    -InstallerSigningCertificateThumbprint <authenticode-signer>
+```
+
+Sign during the build rather than afterwards: signing rewrites the `.exe` and would invalidate its
+entry in `SHA256SUMS.txt`. An unsigned installer makes SmartScreen warn on first launch. Internals,
+service identities and the first-run handoff: [`deploy/desktop/README.md`](deploy/desktop/README.md).
 
 </details>
 
@@ -209,7 +215,7 @@ verify it against `SHA256SUMS.txt`, then:
 
 ```powershell
 .\deploy\Install-NodePilot.ps1 `
-    -ArtifactPath 'C:\Packages\NodePilot-1.1.0.zip' `
+    -ArtifactPath 'C:\Packages\NodePilot-1.1.1.zip' `
     -TrustedArtifactSignerThumbprint '<publisher thumbprint from the release notes>' `
     -CertThumbprint '<your TLS cert thumbprint>' `
     -ServiceAccount 'CONTOSO\svc-nodepilot$' `
@@ -1089,11 +1095,11 @@ covered in [docs/deployment-guide.md](docs/deployment-guide.md).
 ```powershell
 # 1) On the build host — produces out\NodePilot-<version>.zip plus manifest, signature and checksums.
 #    Add -IncludeDesktopInstaller -PgBinariesPath <pgsql> to build the desktop installer alongside it.
-.\deploy\Build-Artifact.ps1 -Version 1.1.0 -SigningCertificateThumbprint $releaseSigner.Thumbprint
+.\deploy\Build-Artifact.ps1 -Version 1.1.1 -SigningCertificateThumbprint $releaseSigner.Thumbprint
 
 # 2) On the target server (as Admin)
 .\deploy\Install-NodePilot.ps1 `
-    -ArtifactPath                     'C:\Packages\NodePilot-1.1.0.zip' `
+    -ArtifactPath                     'C:\Packages\NodePilot-1.1.1.zip' `
     -TrustedArtifactSignerThumbprint  $releaseSigner.Thumbprint `
     -ServiceAccount                   'CONTOSO\svc-nodepilot$' `
     -SqlServer                        'sql01.contoso.local' `

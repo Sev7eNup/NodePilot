@@ -256,7 +256,8 @@ hängen `NodePilot-<version>.zip`, `.manifest.json`, `.manifest.json.p7s`, `SHA2
 öffentliche Signaturzertifikat `nodepilot-release-signing.cer`. Prüfsummen vergleichen, den
 Thumbprint gegen die Release-Notes abgleichen, dann das Zertifikat auf dem Zielserver nach
 `Cert:\LocalMachine\Root` importieren. Ablauf im Detail: [`docs/deployment-guide.md`](../docs/deployment-guide.md),
-Schritt 1 Option A.
+Schritt 1 Option A. Am selben Release hängt `NodePilot-Server-Setup-<version>.exe` — es trägt
+dieses Artefakt bereits in sich, dieser Abschnitt entfällt dann komplett.
 
 **Selbst bauen.** Auf einem Build-Host mit .NET 10 SDK + Node (Versionen aus `global.json` bzw.
 den `engines`-Feldern):
@@ -270,10 +271,12 @@ $releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'   # eigenes Code-Sig
 ```
 
 `-Version` ist optional und fällt auf die Produktversion aus `Directory.Build.props` zurück.
-Mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` entsteht im selben Lauf zusätzlich
-`NodePilot-Desktop-Setup-<version>.exe` unter derselben Version. Fehlen Inno Setup 6 oder die
-PostgreSQL-Binaries, wird nur dieser Teil mit einer Warnung übersprungen — das Server-Zip
-entsteht trotzdem.
+Mit `-IncludeServerInstaller` entsteht im selben Lauf zusätzlich `NodePilot-Server-Setup-<version>.exe`,
+mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` außerdem `NodePilot-Desktop-Setup-<version>.exe`
+— alles unter derselben Version. `-InstallerSigningCertificateThumbprint <tp>` signiert beide
+Installer als Teil des Laufs; nachträglich zu signieren würde ihre `SHA256SUMS.txt`-Einträge
+ungültig machen. Fehlen Inno Setup 6 oder die PostgreSQL-Binaries, wird nur der jeweilige
+Installer-Teil mit einer Warnung übersprungen — das Server-Zip entsteht trotzdem.
 
 Den Zip auf den Zielserver kopieren.
 

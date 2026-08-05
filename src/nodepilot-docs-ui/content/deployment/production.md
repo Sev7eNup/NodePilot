@@ -148,6 +148,10 @@ hängen das Zip, `manifest.json`, `.p7s`, `SHA256SUMS.txt` und das öffentliche 
 Prüfsummen vergleichen, Thumbprint gegen die Release-Notes abgleichen, Zertifikat auf dem
 Zielserver nach `Cert:\LocalMachine\Root` importieren.
 
+> Wer mit dem GUI-Setup installiert (Kapitel 5, Variante A), braucht aus diesem Kapitel nichts:
+> `NodePilot-Server-Setup-<version>.exe` hängt am selben Release, trägt das signierte Artefakt in
+> sich und prüft dessen Signatur selbst — eine Datei statt fünf, kein Thumbprint-Abgleich von Hand.
+
 **Variante B — selbst bauen.** Im Repository auf dem Build-Host:
 
 ```powershell
@@ -160,14 +164,16 @@ $releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
 Ergebnis:
 
 ```text
-out\NodePilot-1.1.0.zip
-out\NodePilot-1.1.0.zip.manifest.json
-out\NodePilot-1.1.0.zip.manifest.json.p7s
-out\NodePilot-1.1.0.SHA256SUMS.txt
+out\NodePilot-1.1.1.zip
+out\NodePilot-1.1.1.zip.manifest.json
+out\NodePilot-1.1.1.zip.manifest.json.p7s
+out\NodePilot-1.1.1.SHA256SUMS.txt
 ```
 
-Mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` entsteht im selben Lauf zusätzlich
-`NodePilot-Desktop-Setup-1.1.0.exe` unter derselben Version.
+Mit `-IncludeServerInstaller` entsteht im selben Lauf zusätzlich `NodePilot-Server-Setup-1.1.1.exe`,
+mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` außerdem `NodePilot-Desktop-Setup-1.1.1.exe`
+— alles unter derselben Version. `-InstallerSigningCertificateThumbprint <tp>` signiert beide
+Installer als Teil des Laufs, was zwingend vor der Prüfsummenbildung passieren muss.
 
 Installer und Updater prüfen Signatur, Zertifikatskette, Dateiname, Länge und SHA-256-Hash vor jeder Änderung.
 
@@ -188,6 +194,13 @@ Zertifikate aus `Cert:\LocalMachine\My` zur Auswahl an, sortiert nach Ablauf. Da
 PKI-Zertifikat aus der eigenen CA genauso wie für ein selbstsigniertes: importieren, auswählen,
 fertig. Ein Zertifikat ohne privaten Schlüssel steht mit entsprechender Markierung in der Liste,
 statt kommentarlos zu fehlen.
+
+Wer noch gar keins hat, lässt das Feld **leer**. Die Prüfseite meldet dann „No certificate
+selected" und bietet an, ein selbstsigniertes zu erzeugen — angeboten, nicht vorangehakt, denn ein
+Laborzertifikat entsteht auf Ansage. Es gilt zwei Jahre und wird bewusst **nicht** in den
+Root-Store importiert; für Produktion bleibt ein Zertifikat aus der eigenen PKI der Weg.
+Unbeaufsichtigt entspricht das einem leeren `certificate.thumbprint` plus
+`"provisioning": { "generateSelfSignedCertificate": true }`.
 
 Die Abschlussseite zeigt alles, was für den ersten Zugriff nötig ist: Adresse, Setup-Token für die
 erste Anmeldung, External-Trigger-API-Key, Zertifikats-Thumbprint sowie Dienstname und Pfade. Der
@@ -215,7 +228,7 @@ leere Instanz zu hinterlassen.
 Unbeaufsichtigt für SCCM oder GPO:
 
 ```powershell
-NodePilot-Server-Setup-1.1.0.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+NodePilot-Server-Setup-1.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
 Ein erneuter Lauf erkennt eine vorhandene Installation und bietet drei Wege an: per Default ein
