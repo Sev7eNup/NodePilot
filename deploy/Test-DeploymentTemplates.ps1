@@ -911,6 +911,45 @@ Assert-TextMatches -Name 'the port probe releases what it binds' `
 # for is invisible, which is indistinguishable from not having written it.
 Assert-TextMatches -Name 'the readiness page asks for the port check' `
     -Text $serverIss -Pattern "CheckIds\[\d\] := 'ports';"
+# Auto-fixes are looked up by check id, never by position. Reading CheckFixes[5] for the database
+# fix was correct until the port check was inserted at index 2 and pushed every later row down by
+# one: the tick then landed on a row that offers no fix, the answer file said false, provisioning
+# did nothing and exited 0, and the wizard re-probed to the same red line. Nothing failed, so
+# nothing was reported - "I tick it, I press Next, nothing happens".
+# Checked against the code with the '//' comments removed - the comment explaining this rule names
+# the very expression it bans, which is the trap this file has fallen into four times before.
+Assert-TextDoesNotMatch -Name 'auto-fixes are never read by position' `
+    -Text (Remove-CommentLines -Text $serverIss -CommentPrefix '//') -Pattern 'CheckFixes\[\d'
+# The other half of the same trap: a mistyped id silently answers "not requested", which looks
+# exactly like an operator who ticked nothing.
+$referencedFixIds = @([regex]::Matches($serverIss, "IsFixRequested\('([^']+)'\)") |
+    ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+if ($referencedFixIds.Count -eq 0) {
+    throw 'Deployment template check failed: no auto-fix is looked up by id; the wizard cannot request one.'
+}
+foreach ($fixId in $referencedFixIds) {
+    if ($serverIss -notmatch [regex]::Escape("] := '$fixId';")) {
+        throw ("Deployment template check failed: the wizard asks for auto-fix '$fixId', which is " +
+               'not one of the check ids. The lookup would answer "not requested" and the fix ' +
+               'would never run.')
+    }
+}
+
+# A provisioning run that changes nothing exits 0 like a successful one, and a run that declines to
+# act (no sysadmin) does too - the outcome is in the result file, not the exit code. Without both of
+# these the wizard re-probes to the same red line and says nothing, which is what made the fixed
+# index above invisible for a whole build.
+$fixStart = $serverIss.IndexOf('if WantsFix then')
+$fixEnd = $serverIss.IndexOf('// A generated certificate', $fixStart)
+if ($fixStart -lt 0 -or $fixEnd -le $fixStart) {
+    throw 'Deployment template check failed: could not delimit the auto-fix branch in the server setup.'
+}
+$fixBranch = $serverIss.Substring($fixStart, $fixEnd - $fixStart)
+Assert-TextMatches -Name 'a provisioning run that changed nothing says so' `
+    -Text $fixBranch -Pattern "(?s)actionsPerformed[\s\S]{0,200}MsgBox"
+Assert-TextMatches -Name 'a database that could not be prepared says why' `
+    -Text $fixBranch -Pattern "(?s)GetIniString\('provision\.database', 'status'[\s\S]{0,400}MsgBox"
+
 $declaredCheckCount = [int]([regex]::Match($serverIss, 'CheckCount\s*=\s*(\d+)').Groups[1].Value)
 $assignedCheckIds = @([regex]::Matches($serverIss, "CheckIds\[\d+\] := '")).Count
 if ($declaredCheckCount -ne $assignedCheckIds) {

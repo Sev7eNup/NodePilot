@@ -347,6 +347,28 @@ end;
 // SaveStringsToUTF8File. This Inno version has no SaveStringToUTF8File, and the AnsiString-based
 // SaveStringToFile would encode a password or host name containing non-ASCII characters in the
 // system codepage - which the adapter, reading UTF-8, would then reject or mangle.
+// Which auto-fix the operator ticked, looked up by check id rather than by position.
+//
+// It used to read CheckFixes[5] for the database fix, and that was correct exactly until the port
+// check was inserted at index 2 and pushed every later check down by one. The tick then landed on
+// the checkbox of a row that offers no fix at all, the answer file said false, provisioning did
+// nothing, and the wizard re-probed to the same red line - "I tick it, I press Next, nothing
+// happens", with no error anywhere because nothing had failed.
+function IsFixRequested(const Id: String): Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 0 to CheckCount - 1 do
+    if CheckIds[I] = Id then
+    begin
+      // Visible as well as checked: a hidden box can still carry a tick from an earlier probe, and
+      // acting on one the operator cannot currently see is not what they asked for.
+      Result := CheckFixes[I].Visible and CheckFixes[I].Checked;
+      Exit;
+    end;
+end;
+
 procedure AddLine(var Lines: TArrayOfString; var Count: Integer; const Text: String);
 begin
   if Count >= GetArrayLength(Lines) then
@@ -429,9 +451,9 @@ begin
   begin
     AddLine(Lines, Count, '  },');
     AddLine(Lines, Count, '  "provisioning": {');
-    AddLine(Lines, Count, '    "installDotnetRuntime": ' + JsonBool(CheckFixes[0].Checked) + ',');
-    AddLine(Lines, Count, '    "generateSelfSignedCertificate": ' + JsonBool(CheckFixes[1].Checked) + ',');
-    AddLine(Lines, Count, '    "createDatabaseAndLogin": ' + JsonBool(CheckFixes[5].Checked) + ',');
+    AddLine(Lines, Count, '    "installDotnetRuntime": ' + JsonBool(IsFixRequested('dotnet')) + ',');
+    AddLine(Lines, Count, '    "generateSelfSignedCertificate": ' + JsonBool(IsFixRequested('certificate')) + ',');
+    AddLine(Lines, Count, '    "createDatabaseAndLogin": ' + JsonBool(IsFixRequested('database')) + ',');
     AddLine(Lines, Count, '    "trustArtifactSigner": false');
     AddLine(Lines, Count, '  }');
   end;
@@ -1199,6 +1221,7 @@ var
   ResultCode: Integer;
   Thumbprint: String;
   UninstPath: String;
+  ProvisionIni, DbStatus: String;
   I: Integer;
   WantsFix: Boolean;
 begin
@@ -1346,16 +1369,32 @@ begin
     if WantsFix then
     begin
       WriteAnswerFile('install', False);
+      ProvisionIni := SessionDir + '\provision.ini';
       if not RunPowerShell('-Mode Provision -AnswerFile "' + AnswerFilePath() + '" -OutFile "' +
-        SessionDir + '\provision.ini"', ResultCode) or (ResultCode <> 0) then
+        ProvisionIni + '"', ResultCode) or (ResultCode <> 0) then
       begin
         MsgBox('The requested changes could not be applied. See ' +
                ExpandConstant('{%TEMP}') + '\nodepilot-server-setup.log.', mbCriticalError, MB_OK);
         Result := False;
         Exit;
       end;
+
+      // A run that changes nothing exits 0 like any other, so without this the wizard would simply
+      // re-probe to the same red line and the operator would be left with "I ticked it, I pressed
+      // Next, nothing happened" - which is exactly how the index bug above stayed invisible.
+      DbStatus := GetIniString('provision.database', 'status', '', ProvisionIni);
+      if (DbStatus <> '') and (DbStatus <> 'Pass') then
+        // Kept on one continuation line: a line that STARTS with '#' is read by the preprocessor as
+        // a directive, so '#13#10' may never begin one.
+        MsgBox('The database could not be prepared:' + #13#10#13#10 +
+               ExpandNewlines(GetIniString('provision.database', 'detail', '', ProvisionIni)) + #13#10#13#10 +
+               'Select the database line below for the statements to hand to a DBA.', mbError, MB_OK)
+      else if StrToIntDef(GetIniString('summary', 'actionsPerformed', '0', ProvisionIni), 0) = 0 then
+        MsgBox('Nothing was changed - none of the ticked items produced an action.' + #13#10#13#10 +
+               'See ' + ExpandConstant('{%TEMP}') + '\nodepilot-server-setup.log.', mbError, MB_OK);
+
       // A generated certificate produces a thumbprint the operator never typed.
-      Thumbprint := GetIniString('provision.certificate', 'thumbprint', '', SessionDir + '\provision.ini');
+      Thumbprint := GetIniString('provision.certificate', 'thumbprint', '', ProvisionIni);
       if Thumbprint <> '' then
         NetworkPage.Values[4] := Thumbprint;
       // Never assume a fix worked.
