@@ -34,6 +34,58 @@ Die Zeilen werden erst positioniert, wenn ihr Text steht. Vorher reservierte jed
 Zeilen 16 px für eine Auto-Fix-Checkbox, die fast nie sichtbar ist — 128 px einer 309 px hohen
 Fläche für nichts.
 
+## Schlüsselfertiger Rollout (unbeaufsichtigt, ohne Token-Eingabe)
+
+Ein unbeaufsichtigter Lauf endet sonst mit einer Instanz, die niemand benutzen kann: das
+Setup-Token müsste ein Mensch in die Anmeldemaske tippen. Mit der optionalen `bootstrap`-Gruppe löst
+das Setup es selbst ein.
+
+```json
+"bootstrap": {
+  "adminUsername": "npadmin",
+  "credentialOutputPath": "C:\\ProgramData\\NodePilot\\bootstrap-admin.json"
+}
+```
+
+`credentialOutputPath` ist optional; ohne Angabe liegt die Datei unter
+`<DataPath>\bootstrap-admin.json`. Inhalt: Benutzername, Kennwort, Adresse, Zeitstempel.
+
+**Das Kennwort wird pro Maschine zufällig erzeugt, nicht vorgegeben.** Ein fester Wert wäre über
+alle Maschinen gleich, hätte einen bekannten Wert und würde gefunden statt geraten — auf einem
+Produkt, das PowerShell auf allen verwalteten Maschinen ausführt und im Server-Modus auf allen
+Interfaces lauscht. Die Answer-File kennt deshalb **kein** `adminPassword`.
+
+Was dabei passiert:
+
+| Lage | Ergebnis |
+|---|---|
+| Benutzer existieren bereits (z. B. eingespielter Bestand) | Es gibt kein Token, nichts einzulösen. `bootstrap.status=AlreadyProvisioned`, **keine** Zugangsdatei. |
+| Kein Benutzer, `bootstrap.adminUsername` gesetzt | Konto wird angelegt, Zugangsdaten werden abgelegt. `bootstrap.status=Created`. |
+| Kein Benutzer, keine `bootstrap`-Gruppe | Wie bisher: Token auf der Abschlussseite, manuelle Erstanmeldung. |
+
+**Die Zugangsdatei ist eine lebende Zugangsberechtigung.** Sie entsteht mit ACL vor Inhalt
+(SYSTEM + Administratoren, keine Vererbung) über dieselbe Mechanik wie das signierte Artefakt-Staging
+— sie erbt also nie kurzzeitig von `DataPath`. Gelöscht wird sie **nicht** automatisch: ein Rollout,
+der sie noch nicht abgeholt hat, stünde sonst ohne Konto da. Abholen, löschen, Kennwort rotieren ist
+der Schritt des Betreibers.
+
+Zwei Eigenschaften, die nicht offensichtlich sind:
+
+- **Ein fehlgeschlagener Bootstrap kippt die Installation nicht.** Der Dienst läuft und ist gesund,
+  wenn der Login versucht wird. Exit-Code bleibt 0, `bootstrap.status=Failed` trägt die Antwort des
+  Servers wörtlich. Eine funktionierende Installation als Fehlschlag zu melden hieße, SCCM zu einem
+  Wiederholungslauf zu bewegen — und ein erneuter Install ist deutlich zerstörerischer als ein
+  fehlendes Konto.
+- **Der Name wird festgenagelt.** Ist `bootstrap.adminUsername` gesetzt, schreibt der Installer
+  `NodePilot:BootstrapAdminUsername` in die Konfiguration. Selbst ein zwischen Dienststart und
+  Adapter-Login abgefangenes Token kann dann nur genau dieses Konto anlegen.
+
+**LDAP/SSO ersetzt das nicht.** Die JIT-Provisionierung ist ausdrücklich gesperrt, solange kein
+lokaler Break-Glass-Admin existiert (`external_jit_blocked_until_breakglass_admin_exists`), und
+`EnterpriseRecoveryInvariant` bricht den Boot ab, wenn SSO ohne einen solchen aktiv ist. Das so
+erzeugte Konto trägt `IsBreakGlass` und erfüllt genau diese Bedingung — SSO lässt sich danach
+einschalten.
+
 ## Fortschrittsanzeige
 
 Während der Installation zeigt der Wizard Phase und Balken. Vorher stand er auf „Preparing to
@@ -425,9 +477,11 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 19 | HTTP-Port 0 | Zeile grün, „HTTP disabled" |
 | 20 | Installation interaktiv | Balken und Phasentext laufen, Fenster bleibt bedienbar, kein „Keine Rückmeldung" |
 | 21 | Installation unbeaufsichtigt | keine Oberfläche, Exit-Code unverändert |
+| 22 | Unbeaufsichtigt mit `bootstrap.adminUsername` | Exit 0, Zugangsdatei da (ACL nur SYSTEM + Administratoren), Anmeldung damit ohne Token, `admin-setup.token` weg |
+| 23 | Unbeaufsichtigt ohne `bootstrap`-Gruppe | wie bisher: Token auf der Abschlussseite, kein Konto |
 
 Stand: 1, 3, 5, 9 und 10 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server 2022 CU
-gelaufen. 2, 4, 6, 7, 8 und 11 bis 21 nicht.
+gelaufen. 2, 4, 6, 7, 8 und 11 bis 23 nicht.
 
 Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
 `httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,

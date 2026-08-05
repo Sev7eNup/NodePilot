@@ -20,6 +20,7 @@ param(
     [string]$UninstallScriptPath,
     [string]$SetupAdapterPath,
     [string]$SetupContractPath,
+    [string]$ArtifactSecurityPath,
     [string]$ServerIssPath,
     [string]$RuntimePayloadScriptPath
 )
@@ -63,6 +64,9 @@ if ([string]::IsNullOrWhiteSpace($SetupAdapterPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($SetupContractPath)) {
     $SetupContractPath = Join-Path $scriptDirectory 'SetupContract.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($ArtifactSecurityPath)) {
+    $ArtifactSecurityPath = Join-Path $scriptDirectory 'ArtifactSecurity.ps1'
 }
 if ([string]::IsNullOrWhiteSpace($ServerIssPath)) {
     $ServerIssPath = Join-Path $scriptDirectory 'server\NodePilotServer.iss'
@@ -114,7 +118,7 @@ function Remove-CommentLines {
     }) -join "`n")
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $SetupContractPath, $ServerIssPath, $RuntimePayloadScriptPath)) {
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $SetupContractPath, $ArtifactSecurityPath, $ServerIssPath, $RuntimePayloadScriptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
     }
@@ -165,6 +169,7 @@ function Render-AppSettingsTemplate {
         '{{BIND_HTTP_JSON}}' = 'true'
         '{{DATA_PATH_ESCAPED}}' = 'C:\\ProgramData\\NodePilot'
         '{{EXTERNAL_TRIGGER_API_KEY}}' = 'test-key'
+        '{{BOOTSTRAP_ADMIN_USERNAME}}' = ''
         '{{ALLOWED_HOSTS}}' = 'nodepilot.example.test'
         '{{KNOWN_PROXIES_JSON}}' = $KnownProxiesJson
     }
@@ -1187,6 +1192,44 @@ Assert-TextMatches -Name 'the token read uses backup semantics' `
 Assert-TextMatches -Name 'the staged token copy is shredded in a finally' `
     -Text $contractScript `
     -Pattern "(?s)function Get-NodePilotBootstrapToken[\s\S]*?finally \{[\s\S]*?Remove-NodePilotAnswerFile[\s\S]*?Remove-Item"
+
+# --- first-admin bootstrap ---------------------------------------------------------------------
+# An unattended rollout has nobody to type the setup token, so the setup spends it and writes down
+# what it created. Three properties have to hold, and none of them is visible from the outside.
+
+# The installation is already healthy when the bootstrap runs - the installer has passed its own
+# health probe. Reporting a failed login as a failed installation would tell SCCM to retry a
+# deployment that succeeded, and retrying an install is far more destructive than a missing account.
+Assert-TextDoesNotMatch -Name 'a failed first login must not fail the installation' `
+    -Text $installBranch -Pattern '(?s)bootstrap[\s\S]{0,600}(return 4|throw)'
+# The generated password only exists in memory until this call; without it a silent installation
+# ends with an account nobody can use.
+Assert-TextMatches -Name 'a created admin has its credentials written down' `
+    -Text $installBranch -Pattern "(?s)Status -eq 'Created'[\s\S]{0,300}Write-NodePilotBootstrapCredentialFile"
+# An absent token means the users already exist. Reading that as "unreadable" would make a correctly
+# provisioned machine look broken.
+Assert-TextMatches -Name 'an absent token is told apart from an unreadable one' `
+    -Text $installBranch -Pattern "(?s)tokenExists[\s\S]{0,600}AlreadyProvisioned"
+
+# Read through the parameter, not through $scriptDirectory. Hard-coding the location made this
+# contract unmutatable: a sandboxed copy could be broken however you liked and the check still read
+# the pristine original next to itself, so it passed and proved nothing.
+$artifactSecurity = Remove-CommentLines -Text (Get-Content -LiteralPath $ArtifactSecurityPath -Raw)
+# Sliced to the function, not searched from its header. An unbounded window finds the definition of
+# New-NodePilotAclProtectedFileStream that follows it, so the contract passed with the call removed
+# from the writer entirely - it was measuring the wrong text.
+$writerStart = $artifactSecurity.IndexOf('function Write-NodePilotBootstrapCredentialFile')
+$writerEnd = $artifactSecurity.IndexOf('function New-NodePilotAclProtectedFileStream', $writerStart)
+if ($writerStart -lt 0 -or $writerEnd -le $writerStart) {
+    throw 'Deployment template check failed: could not delimit the credential-file writer.'
+}
+$credentialWriter = $artifactSecurity.Substring($writerStart, $writerEnd - $writerStart)
+# ACL before content, through the same primitive the signed-artifact staging uses. A plain
+# Set-Content would inherit from DataPath and hand a live admin password to whoever that lets in.
+Assert-TextMatches -Name 'the credential file is created with its ACL, not given one afterwards' `
+    -Text $credentialWriter -Pattern 'New-NodePilotAclProtectedFileStream'
+Assert-TextDoesNotMatch -Name 'the credential file is never written with a plain cmdlet' `
+    -Text $credentialWriter -Pattern 'Set-Content|Out-File'
 
 # One emitter serving both the probe and the standalone mode. Two copies would drift into different
 # field orders behind a Pascal reader that splits on position and has no way to notice.

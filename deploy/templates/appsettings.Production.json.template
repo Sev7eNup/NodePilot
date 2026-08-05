@@ -51,6 +51,9 @@
     "AdminSetupTokenPath": "{{DATA_PATH_ESCAPED}}\\admin-setup.token",
     "StrictAllowedHosts": true
   },
+  "NodePilot": {
+    "BootstrapAdminUsername": "{{BOOTSTRAP_ADMIN_USERNAME}}"
+  },
   "Settings": {
     "RuntimeOverridesPath": "{{DATA_PATH_ESCAPED}}\\appsettings.runtime.json"
   },

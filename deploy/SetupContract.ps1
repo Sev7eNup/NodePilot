@@ -35,6 +35,7 @@ $script:NodePilotAnswerFileKeys = @{
             'certificate.source',
             'provisioning.installDotnetRuntime', 'provisioning.createDatabaseAndLogin',
             'provisioning.generateSelfSignedCertificate', 'provisioning.trustArtifactSigner',
+            'bootstrap.adminUsername', 'bootstrap.credentialOutputPath',
             'skips.databaseCheck', 'skips.gmsaCheck'
         )
     }
@@ -233,7 +234,45 @@ function ConvertTo-NodePilotInstallParameters {
     if ([bool](& $optional 'skips.databaseCheck' $false)) { $splat['SkipSqlConnectivityCheck'] = $true }
     if ([bool](& $optional 'skips.gmsaCheck' $false)) { $splat['SkipGmsaCheck'] = $true }
 
+    # Pins which username may consume the one-shot setup token. The guard has existed in
+    # AuthController since H12 and nothing has ever set it; an unattended install is the first
+    # caller that knows the answer in advance, so a token intercepted between service start and
+    # the adapter's login can no longer be spent on a name of the interceptor's choosing.
+    $bootstrapAdmin = & $optional 'bootstrap.adminUsername'
+    if ($bootstrapAdmin) { $splat['BootstrapAdminUsername'] = [string]$bootstrapAdmin }
+
     return $splat
+}
+
+function New-NodePilotBootstrapPassword {
+    <#
+      The first admin's password, random per machine.
+
+      A fixed default would be the one thing worth avoiding: NodePilot runs PowerShell on every
+      machine it manages, Kestrel binds all interfaces in Server mode, and a known value is found
+      by scanning rather than guessing. Random costs the same to automate and has none of that.
+
+      24 bytes of CSPRNG - 32 base64 characters. The server's policy is length-only
+      (MinPasswordLength 8, MaxPasswordBytes 72, no complexity rule), so this clears it with room
+      at both ends; the upper bound exists because BCrypt silently truncates past 72 bytes, which
+      would make the extra characters decorative.
+    #>
+    return New-NodePilotRandomBase64 -ByteCount 24
+}
+
+function Get-NodePilotBootstrapCredentialPath {
+    <#
+      Where the generated credentials are left for the automation to collect. Inside DataPath by
+      default, because that is the one directory the installer has already locked down to SYSTEM
+      and Administrators - and because a silent installation has nowhere else to put it that the
+      caller can predict.
+    #>
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Answers
+    )
+    $configured = [string]$Answers['bootstrap.credentialOutputPath']
+    if (-not [string]::IsNullOrWhiteSpace($configured)) { return $configured }
+    return (Join-Path ([string]$Answers['dataPath']) 'bootstrap-admin.json')
 }
 
 function Remove-NodePilotAnswerFile {

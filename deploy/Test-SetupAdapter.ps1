@@ -22,7 +22,8 @@ param(
     [string]$SetupContractPath,
     [string]$PreflightPath,
     [string]$ServiceControlPath,
-    [string]$SetupAdapterPath
+    [string]$SetupAdapterPath,
+    [string]$ArtifactSecurityPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,7 +43,13 @@ if ([string]::IsNullOrWhiteSpace($ServiceControlPath)) {
 if ([string]::IsNullOrWhiteSpace($SetupAdapterPath)) {
     $SetupAdapterPath = Join-Path $scriptDirectory 'Invoke-NodePilotSetup.ps1'
 }
-foreach ($path in @($SetupContractPath, $PreflightPath, $ServiceControlPath, $SetupAdapterPath)) {
+# Loaded because the adapter loads it: the CSPRNG behind the generated bootstrap password and the
+# ACL-protected credential writer both live there. Testing the contract without it would test a
+# composition that does not exist in production.
+if ([string]::IsNullOrWhiteSpace($ArtifactSecurityPath)) {
+    $ArtifactSecurityPath = Join-Path $scriptDirectory 'ArtifactSecurity.ps1'
+}
+foreach ($path in @($SetupContractPath, $PreflightPath, $ServiceControlPath, $SetupAdapterPath, $ArtifactSecurityPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Setup adapter check failed: missing file '$path'."
     }
@@ -51,6 +58,7 @@ foreach ($path in @($SetupContractPath, $PreflightPath, $ServiceControlPath, $Se
 . $SetupContractPath
 . $PreflightPath
 . $ServiceControlPath
+. $ArtifactSecurityPath
 
 # ServiceControl.ps1 logs through the host script's writers. The real callers define these; the
 # harness has to stand in for them or the -Force path throws on its first warning.
@@ -401,6 +409,93 @@ try {
     $expiryDates = @($certificateLines | ForEach-Object { $_.Split('|')[3] })
     Assert-True -Name 'certificates are offered newest expiry first' `
         -Condition (($expiryDates -join ',') -eq ((@($expiryDates) | Sort-Object -Descending) -join ','))
+
+    # --- first-admin bootstrap --------------------------------------------------------------
+    # An unattended rollout has nobody to type a setup token, so the setup spends it itself and
+    # writes down what it created. The password is random per machine: a fixed default would be
+    # found by scanning rather than guessing, on a product that runs PowerShell everywhere.
+    $bootstrapAnswers = Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'bootstrap.json' -Json (@{
+        schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
+        serviceName = 'NodePilot'; identity = @{ type = 'localSystem' }
+        database = @{ provider = 'sqlserver'; sqlServer = 'db'; sqlDatabase = 'NodePilot' }
+        network = @{ publicHostname = 'h'; httpsPort = 8443; httpPort = 0 }
+        certificate = @{ thumbprint = 'D' * 40 }
+        bootstrap = @{ adminUsername = 'npadmin' }
+    } | ConvertTo-Json -Depth 6))
+    Assert-True -Name 'the bootstrap group parses' `
+        -Condition ($bootstrapAnswers['bootstrap.adminUsername'] -eq 'npadmin')
+    # Without this the token could be spent on a name of an interceptor's choosing.
+    Assert-True -Name 'the bootstrap username is pinned in the installer configuration' `
+        -Condition ((ConvertTo-NodePilotInstallParameters -Answers $bootstrapAnswers)['BootstrapAdminUsername'] -eq 'npadmin')
+    Assert-True -Name 'no bootstrap group means no pinned username' `
+        -Condition (-not (ConvertTo-NodePilotInstallParameters -Answers $sqlAnswers).Contains('BootstrapAdminUsername'))
+    # Casing is deliberately not the test: the key table is compared case-insensitively, like every
+    # other PowerShell hashtable lookup here, so 'adminUserName' is a legitimate spelling. A key
+    # that simply does not exist is what has to be caught, and named.
+    Assert-Throws -Name 'a mistyped bootstrap key is rejected by name' -MessagePattern "unknown key 'bootstrap\.adminUser'" -Action {
+        Read-NodePilotAnswerFile -Path (New-AnswerFile -Name 'bootstrap-typo.json' -Json (@{
+            schemaVersion = 1; mode = 'install'; installPath = 'C:\np'; dataPath = 'C:\npdata'
+            serviceName = 'NodePilot'; identity = @{ type = 'localSystem' }
+            database = @{ provider = 'sqlserver'; sqlServer = 'db'; sqlDatabase = 'NodePilot' }
+            network = @{ publicHostname = 'h'; httpsPort = 443; httpPort = 80 }
+            certificate = @{ thumbprint = 'A' * 40 }
+            bootstrap = @{ adminUser = 'npadmin' }
+        } | ConvertTo-Json -Depth 6))
+    }
+
+    # Default location, because a silent installation has nowhere else the caller can predict.
+    Assert-True -Name 'the credential file defaults into the data directory' `
+        -Condition ((Get-NodePilotBootstrapCredentialPath -Answers $bootstrapAnswers) -eq 'C:\npdata\bootstrap-admin.json')
+    Assert-True -Name 'an explicit credential path wins' `
+        -Condition ((Get-NodePilotBootstrapCredentialPath -Answers @{
+            'dataPath' = 'C:\npdata'; 'bootstrap.credentialOutputPath' = 'D:\out\np.json' }) -eq 'D:\out\np.json')
+
+    # Property test rather than one sample: the server rejects anything outside 8..72 bytes, and a
+    # generator that occasionally strays would fail one machine in a rollout, not the lab run.
+    $weakDraws = 0
+    for ($draw = 0; $draw -lt 200; $draw++) {
+        $candidate = New-NodePilotBootstrapPassword
+        $byteCount = [Text.Encoding]::UTF8.GetByteCount($candidate)
+        if ($candidate.Length -lt 8 -or $byteCount -gt 72) { $weakDraws++ }
+    }
+    Assert-True -Name 'every generated password satisfies the server policy' -Condition ($weakDraws -eq 0)
+    Assert-True -Name 'two generated passwords differ' `
+        -Condition ((New-NodePilotBootstrapPassword) -ne (New-NodePilotBootstrapPassword))
+
+    # The credential file is the whole point of the silent path: nobody is watching, so the
+    # generated password has to be written somewhere the automation can collect it - and nowhere
+    # else can read it.
+    $credentialFile = Join-Path $workingDirectory 'bootstrap-admin.json'
+    Write-NodePilotBootstrapCredentialFile -Path $credentialFile `
+        -Username 'npadmin' -Password 'a-generated-secret' -Url 'https://host:8443/'
+    $credential = Get-Content -LiteralPath $credentialFile -Raw | ConvertFrom-Json
+    Assert-True -Name 'the credential file carries username, password and address' `
+        -Condition ($credential.username -eq 'npadmin' -and $credential.password -eq 'a-generated-secret' -and
+                    $credential.url -eq 'https://host:8443/')
+    Assert-True -Name 'the credential file says it must be collected and rotated' `
+        -Condition ($credential.note -match 'rotate')
+
+    # Not $IsWindows: that variable does not exist in Windows PowerShell 5.1, and Set-StrictMode
+    # turns reading it into a terminating error rather than a false.
+    if ([Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT) {
+        $credentialAcl = Get-Acl -LiteralPath $credentialFile
+        Assert-True -Name 'the credential file does not inherit' `
+            -Condition ($credentialAcl.AreAccessRulesProtected)
+        # Anything beyond SYSTEM and Administrators would hand a live admin password to a wider
+        # audience than the machine's own operators.
+        $untrusted = @($credentialAcl.Access | Where-Object {
+            $sid = $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+            $sid -notin @('S-1-5-18', 'S-1-5-32-544')
+        })
+        Assert-True -Name 'only SYSTEM and Administrators can read the credential file' `
+            -Condition ($untrusted.Count -eq 0)
+    }
+
+    # A second install onto the same machine must replace it, not fall over an existing file.
+    Write-NodePilotBootstrapCredentialFile -Path $credentialFile `
+        -Username 'npadmin2' -Password 'second-secret' -Url 'https://host:8443/'
+    Assert-True -Name 'writing the credential file twice replaces it' `
+        -Condition (((Get-Content -LiteralPath $credentialFile -Raw | ConvertFrom-Json).username) -eq 'npadmin2')
 
     # --- bootstrap token ------------------------------------------------------------------------
     # The finish page is the only place this token is ever shown, and it was blank on every real

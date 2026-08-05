@@ -188,6 +188,13 @@ erste Anmeldung, External-Trigger-API-Key, Zertifikats-Thumbprint sowie Dienstna
 API-Key erscheint **nur dort** — er ist danach nicht mehr rekonstruierbar. Der Text ist markierbar,
 und „Save this summary…" legt ihn als Datei ab.
 
+**Schlüsselfertig ohne Token-Eingabe:** Trägt die Antwortdatei eine `bootstrap`-Gruppe mit
+`adminUsername`, legt das Setup den ersten Administrator selbst an — Kennwort pro Maschine zufällig
+erzeugt und in einer ACL-geschützten Datei unter `<DataPath>\bootstrap-admin.json` hinterlegt. Feste
+Standard-Zugangsdaten gibt es bewusst nicht: sie wären über alle Maschinen gleich und würden
+gefunden statt geraten. Bringt eine Installation bereits Benutzer mit, passiert gar nichts — dann
+existiert kein Token, das eingelöst werden könnte.
+
 Unbeaufsichtigt für SCCM oder GPO:
 
 ```powershell

@@ -173,6 +173,10 @@ param(
     [string]$ServiceName = 'NodePilot',
     [string]$ServiceDisplayName = 'NodePilot Orchestrator',
     [string]$ExternalTriggerApiKey,
+    # Pins which username may consume the one-shot setup token. Empty by default: an interactive
+    # installer cannot know the answer, and pinning the wrong name would lock the operator out of
+    # their own bootstrap. An unattended install does know it, and passes it.
+    [string]$BootstrapAdminUsername,
     [string]$JwtIssuer,
     [string]$JwtAudience,
     [string]$AllowedHosts,
@@ -1091,6 +1095,7 @@ $rendered = $rendered.Replace('{{HTTP_PORT}}',                  $HttpPort.ToStri
 $rendered = $rendered.Replace('{{BIND_HTTP_JSON}}',             $BindHttpJson)
 $rendered = $rendered.Replace('{{DATA_PATH_ESCAPED}}',          $dataEscaped)
 $rendered = $rendered.Replace('{{EXTERNAL_TRIGGER_API_KEY}}',   (ConvertTo-JsonInnerLocal $ExternalTriggerApiKey))
+$rendered = $rendered.Replace('{{BOOTSTRAP_ADMIN_USERNAME}}',   (ConvertTo-JsonInnerLocal $BootstrapAdminUsername))
 $rendered = $rendered.Replace('{{ALLOWED_HOSTS}}',              (ConvertTo-JsonInnerLocal $AllowedHosts))
 $rendered = $rendered.Replace('{{KNOWN_PROXIES_JSON}}',         (ConvertTo-Json -InputObject @($normalizedKnownProxyIps) -Compress))
 

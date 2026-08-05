@@ -98,6 +98,55 @@ function New-NodePilotRestrictedFileSecurity {
     return $security
 }
 
+function Write-NodePilotBootstrapCredentialFile {
+    <#
+      Leaves the generated first-admin credentials where an unattended rollout can collect them.
+
+      This is the whole point of the random-password path: a silent installation has nobody to show
+      a password to, so it has to be written down somewhere predictable. ACL-before-content through
+      the same primitive the signed-artifact staging uses - the file exists with SYSTEM +
+      Administrators and nothing else from its very first byte, never briefly inheriting from
+      DataPath and never existing unprotected with content in it.
+
+      It is a live credential and is deliberately NOT deleted afterwards: a rollout that has not
+      collected it yet would otherwise be left with an account nobody can use. Retrieving it,
+      removing it and rotating the password is the operator's step, and the documentation says so.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSAvoidUsingPlainTextForPassword', 'Password',
+        Justification = 'The file exists precisely so the automation can read this value.')]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Username,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$Url
+    )
+
+    $directory = Split-Path -Parent $Path
+    if ($directory -and -not (Test-Path -LiteralPath $directory)) {
+        [void](New-Item -ItemType Directory -Path $directory -Force)
+    }
+    # CreateNew below refuses an existing file; a re-run must replace, not fail.
+    if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
+
+    $payload = [ordered]@{
+        username   = $Username
+        password   = $Password
+        url        = $Url
+        createdUtc = (Get-Date).ToUniversalTime().ToString('o')
+        note       = 'Live credential. Collect it, delete this file, then rotate the password.'
+    } | ConvertTo-Json
+
+    $security = New-NodePilotRestrictedFileSecurity -ServiceAccount 'NT AUTHORITY\SYSTEM' -SkipServiceRule
+    $stream = New-NodePilotAclProtectedFileStream -Path $Path -Security $security
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+    }
+    finally { $stream.Dispose() }
+}
+
 function New-NodePilotAclProtectedFileStream {
     <#
       Windows PowerShell 5.1 exposes the ACL-aware FileStream constructor directly. Modern

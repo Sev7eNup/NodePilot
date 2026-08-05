@@ -131,6 +131,80 @@ function Add-NodePilotCheckResults {
     }
 }
 
+function Invoke-NodePilotFirstLogin {
+    <#
+      Spends the one-shot setup token on a first admin account, so an unattended installation ends
+      with something to log in with instead of a token nobody is there to type.
+
+      Deliberately against localhost: the loopback listener is up by the time the installer has
+      finished its own health probe, and it keeps the call off the network entirely.
+    #>
+    # PSAvoidUsingPlainTextForPassword is suppressed rather than satisfied. A SecureString here
+    # would be ceremony: this value is generated moments earlier, has to be serialised into a JSON
+    # request body, and is then written to a file in the clear so the automation can read it. There
+    # is no point in the chain where it is not plaintext, and pretending otherwise would only hide
+    # that from the next reader.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSAvoidUsingPlainTextForPassword', 'Password',
+        Justification = 'Sent as a JSON body and written to the credential file; plaintext throughout by design.')]
+    param(
+        [Parameter(Mandatory)][int]$HttpsPort,
+        [Parameter(Mandatory)][string]$Username,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$Token
+    )
+
+    $uri = "https://localhost:$HttpsPort/api/auth/login"
+    $body = @{ username = $Username; password = $Password } | ConvertTo-Json -Compress
+    $headers = @{ 'X-Setup-Token' = $Token }
+
+    # The certificate on a loopback call is the machine's own, and its name is the public hostname
+    # rather than "localhost". Same relaxation the installer already applies for its readiness
+    # probe, and restored in the finally so nothing else in this process inherits it.
+    $previousPolicy = $null
+    $policyChanged = $false
+    try {
+        if ($PSVersionTable.PSVersion.Major -lt 6) {
+            if (-not ('TrustAllCertsBootstrap' -as [type])) {
+                Add-Type @"
+using System.Net; using System.Security.Cryptography.X509Certificates;
+public class TrustAllCertsBootstrap : ICertificatePolicy {
+  public bool CheckValidationResult(ServicePoint s, X509Certificate c, WebRequest r, int p) { return true; }
+}
+"@
+            }
+            $previousPolicy = [System.Net.ServicePointManager]::CertificatePolicy
+            [System.Net.ServicePointManager]::CertificatePolicy = New-Object TrustAllCertsBootstrap
+            [System.Net.ServicePointManager]::SecurityProtocol = 'Tls12, Tls13'
+            $policyChanged = $true
+            $response = Invoke-WebRequest -Uri $uri -Method POST -Body $body -Headers $headers `
+                -ContentType 'application/json' -UseBasicParsing -TimeoutSec 30
+        }
+        else {
+            $response = Invoke-WebRequest -Uri $uri -Method POST -Body $body -Headers $headers `
+                -ContentType 'application/json' -UseBasicParsing -TimeoutSec 30 -SkipCertificateCheck
+        }
+        return [pscustomobject]@{ Status = 'Created'; Detail = "HTTP $($response.StatusCode)" }
+    }
+    catch {
+        # The server's own words, verbatim. A password-policy rejection or a pinned-username
+        # mismatch is actionable; "the first login failed" is not.
+        $detail = $_.Exception.Message
+        try {
+            $errorResponse = $_.Exception.Response
+            if ($errorResponse) {
+                $reader = New-Object IO.StreamReader($errorResponse.GetResponseStream())
+                $payload = $reader.ReadToEnd()
+                if ($payload) { $detail = $payload }
+            }
+        } catch { }
+        return [pscustomobject]@{ Status = 'Failed'; Detail = $detail }
+    }
+    finally {
+        if ($policyChanged) { [System.Net.ServicePointManager]::CertificatePolicy = $previousPolicy }
+    }
+}
+
 function Get-NodePilotServiceCrashReason {
     <#
       The one sentence worth putting on screen when the service was installed and never reported
@@ -457,14 +531,55 @@ function Invoke-SetupInstall {
     # own the directory, so the naive version failed silently and the finish page simply had no
     # token on it. The operator then went hunting for the file, granted themselves access on the
     # folder, and that ACE is what makes the server reject every setup token afterwards.
-    $token = Get-NodePilotBootstrapToken `
-        -DataPath ([string]$answers['dataPath']) `
-        -StagingDirectory (Split-Path -Parent $OutFile)
-    if ($token) {
-        Set-NodePilotResult -Buffer $result -Section 'result' -Name 'adminSetupToken' -Value $token
+    $dataPath = [string]$answers['dataPath']
+    # Existence and readability are different failures and must not be reported as one. The API
+    # writes no token at all when the Users table is already populated - which is exactly what a
+    # seeded installation looks like - and deletes any stale one. An absent file is therefore good
+    # news, while a present-but-unreadable file is a problem worth naming.
+    $tokenExists = Test-Path -LiteralPath (Join-Path $dataPath 'admin-setup.token') -PathType Leaf
+    $token = if ($tokenExists) {
+        Get-NodePilotBootstrapToken -DataPath $dataPath -StagingDirectory (Split-Path -Parent $OutFile)
+    } else { '' }
+
+    if (-not $tokenExists) {
+        # Users already exist. Nothing to redeem, nothing to write down, nothing to look up.
+        Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'status' -Value 'AlreadyProvisioned'
+        Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'detail' `
+            -Value 'The instance already has users, so no bootstrap token was issued.'
+    }
+    elseif (-not $token) {
+        Set-NodePilotResult -Buffer $result -Section 'result' -Name 'adminSetupTokenUnreadable' -Value 1
+        Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'status' -Value 'Failed'
+        Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'detail' `
+            -Value 'The bootstrap token exists but could not be read; no admin account was created.'
+    }
+    elseif ($answers.Contains('bootstrap.adminUsername') -and $answers['bootstrap.adminUsername']) {
+        $bootstrapUser = [string]$answers['bootstrap.adminUsername']
+        $bootstrapPassword = New-NodePilotBootstrapPassword
+        $outcome = Invoke-NodePilotFirstLogin -HttpsPort ([int]$answers['network.httpsPort']) `
+            -Username $bootstrapUser -Password $bootstrapPassword -Token $token
+
+        Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'status' -Value $outcome.Status
+        Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'detail' -Value $outcome.Detail
+        if ($outcome.Status -eq 'Created') {
+            $credentialPath = Get-NodePilotBootstrapCredentialPath -Answers $answers
+            Write-NodePilotBootstrapCredentialFile -Path $credentialPath `
+                -Username $bootstrapUser -Password $bootstrapPassword `
+                -Url ('https://{0}:{1}/' -f $answers['network.publicHostname'], $answers['network.httpsPort'])
+            Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'credentialPath' -Value $credentialPath
+            Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'username' -Value $bootstrapUser
+            Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'password' -Value $bootstrapPassword
+        }
+        else {
+            # The installation is healthy; only the account is missing. Reporting a failure here
+            # would tell SCCM to retry a deployment that already succeeded.
+            Set-NodePilotResult -Buffer $result -Section 'result' -Name 'adminSetupToken' -Value $token
+        }
     }
     else {
-        Set-NodePilotResult -Buffer $result -Section 'result' -Name 'adminSetupTokenUnreadable' -Value 1
+        # No bootstrap requested: the token goes to the finish page as before.
+        Set-NodePilotResult -Buffer $result -Section 'result' -Name 'adminSetupToken' -Value $token
+        Set-NodePilotResult -Buffer $result -Section 'bootstrap' -Name 'status' -Value 'TokenIssued'
     }
     return 0
 }

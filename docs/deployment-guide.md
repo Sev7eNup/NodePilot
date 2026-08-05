@@ -81,7 +81,10 @@ skip the `Root` imports.
 > certificate from your own CA needs importing and picking, nothing typed. The installation itself
 > reports the phase it is in rather than sitting on a blank page for the couple of minutes it takes.
 > That collapses Step 1 to "download one file" and Step 3 to "click Next". It also runs unattended:
-> `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`.
+> `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json` — and with a `bootstrap` group
+> in that answer file it creates the first administrator itself, with a password generated per
+> machine and written to an ACL-protected file, so a rollout does not end waiting for someone to
+> type a setup token into a browser.
 >
 > This guide keeps the scripted path as the reference, because it is what the wizard runs and what
 > you will want for automation and for troubleshooting. See
