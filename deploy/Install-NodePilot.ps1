@@ -331,6 +331,14 @@ function Set-DirectoryAclForService {
     $acl = Get-Acl $Path
     $acl.SetAccessRuleProtection($true, $false)
 
+    # Owner, not just the ACEs. The API refuses to read its bootstrap token when any directory on
+    # the way to it has an owner it does not trust, and a data directory that survived a previous
+    # life carries whoever last took ownership of it - which the uninstaller's own -PurgeData does,
+    # by design, to delete owner-only files. Fixing the ACEs and leaving that owner in place
+    # produced an installation that looked perfect and could never create its first admin.
+    # A fresh directory already comes out owned by Administrators; this only repairs the rest.
+    $acl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+
     # Wipe inherited ACEs that SetAccessRuleProtection preserved-as-explicit.
     $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
 

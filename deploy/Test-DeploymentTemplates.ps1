@@ -432,6 +432,21 @@ if ($assertIndex -gt $stagingIndex) {
     throw 'Deployment template check failed: the installer stages the artifact before asserting the pre-flight results.'
 }
 
+# The API validates the OWNER of every directory on the way to its bootstrap token, not just the
+# access rules. A data directory that survived a previous installation carries whoever last took
+# ownership of it - and the uninstaller's own -PurgeData takes ownership by design, to delete
+# owner-only files. Repairing the ACEs and leaving that owner behind produced an installation that
+# looked perfect, showed its token, and could never create a first admin: every correct token was
+# refused because the directory holding it had an untrusted owner.
+$aclFunctionStart = $installerScript.IndexOf('function Set-DirectoryAclForService')
+$aclFunctionEnd = $installerScript.IndexOf('function Set-FileAclForService', $aclFunctionStart)
+if ($aclFunctionStart -lt 0 -or $aclFunctionEnd -le $aclFunctionStart) {
+    throw 'Deployment template check failed: could not delimit Set-DirectoryAclForService in the installer.'
+}
+Assert-TextMatches -Name 'the data directory gets a trusted owner, not just trusted ACEs' `
+    -Text $installerScript.Substring($aclFunctionStart, $aclFunctionEnd - $aclFunctionStart) `
+    -Pattern 'SetOwner\('
+
 # The unattended path never shows the readiness page - with /ANSWERFILE every wizard page is
 # skipped, so nothing calls the probe. The port check reaches a silent installation only through
 # THIS call, and only if it is handed the ports actually being installed. Dropping these two
