@@ -91,6 +91,9 @@ if ([string]::IsNullOrWhiteSpace($PayloadRoot)) {
 . (Join-Path $scriptDirectory 'SetupContract.ps1')
 
 $result = New-NodePilotResultBuffer
+# Set when Apply begins; read by the crash lookup so it cannot attribute an older exception to
+# this run. Declared here so the failure handler can read it even if Apply threw before reaching it.
+$script:ApplyStartedAt = $null
 
 function Write-NodePilotProgress {
     param([Parameter(Mandatory)][string]$Step, [string]$Text = '')
@@ -112,6 +115,41 @@ function Add-NodePilotCheckResults {
         Set-NodePilotResult -Buffer $result -Section $section -Name 'canAutoFix' -Value $(if ($check.CanAutoFix) { 1 } else { 0 })
         Set-NodePilotResult -Buffer $result -Section $section -Name 'autoFixLabel' -Value $check.AutoFixLabel
     }
+}
+
+function Get-NodePilotServiceCrashReason {
+    <#
+      The one sentence worth putting on screen when the service was installed and never reported
+      ready. Install-NodePilot.ps1 writes a full diagnostics block into its transcript, but the
+      wizard shows only the message it gets back - and "did not report /healthz/ready within 180s"
+      names a symptom the operator can do nothing with. The cause sits in the Application log:
+
+          SocketException (10013): An attempt was made to access a socket in a way forbidden ...
+
+      Best-effort by construction. A diagnostic that throws would turn a failed installation into
+      a crashed adapter and lose the original error along with it.
+    #>
+    # Untyped on purpose: a [datetime] parameter turns an unset caller value into 01-01-0001 rather
+    # than staying empty, and Get-WinEvent then scans the whole log.
+    param($Since)
+
+    try {
+        if ($Since -isnot [datetime]) { $Since = (Get-Date).AddMinutes(-15) }
+        $crash = Get-WinEvent -FilterHashtable @{
+            LogName = 'Application'; ProviderName = '.NET Runtime'; StartTime = $Since
+        } -MaxEvents 10 -ErrorAction Stop |
+            Where-Object { $_.Message -like '*NodePilot.Api*' } |
+            Select-Object -First 1
+        if (-not $crash) { return '' }
+
+        $info = @($crash.Message -split "`r?`n" |
+            Where-Object { $_ -like 'Exception Info:*' }) | Select-Object -First 1
+        if (-not $info) { return '' }
+        # One line only: the caller folds this into a message box, and a stack trace there would
+        # bury the sentence that matters.
+        return ($info -replace '^Exception Info:\s*', '').Trim()
+    }
+    catch { return '' }
 }
 
 function Add-NodePilotCertificateInventory {
@@ -143,6 +181,10 @@ function ConvertTo-NodePilotPreflightParameters {
         DbProvider            = [string]$Answers['database.provider']
         IsLocalSystem         = ([string]$Answers['identity.type'] -eq 'localSystem')
         ServiceName           = [string]$Answers['serviceName']
+        # Carried into the probe so the readiness page can say "this port cannot be bound" before
+        # the installer finds out the hard way, 180 seconds into a health probe it will lose.
+        HttpsPort             = [int]$Answers['network.httpsPort']
+        HttpPort              = [int]$Answers['network.httpPort']
     }
     if ($splat['IsLocalSystem']) {
         $splat['ComputerAccount'] = "$env:USERDOMAIN\$env:COMPUTERNAME`$"
@@ -355,6 +397,9 @@ function Invoke-NodePilotSetupMode {
         }
 
         'Apply' {
+            # Stamped before anything runs so the crash lookup below cannot pick up an exception
+            # from an earlier attempt and report it as this one's cause.
+            $script:ApplyStartedAt = Get-Date
             # The answer file is authoritative about which of the two this is.
             $declared = [string](Read-NodePilotAnswerFile -Path $AnswerFile)['mode']
             if ($declared -eq 'update') { return Invoke-SetupUpdate }
@@ -461,6 +506,13 @@ try {
 }
 catch {
     $message = $_.Exception.Message
+    # A failed Apply almost always means the service would not start, and the installer can only
+    # report that it never went ready. Naming the exception here is the difference between an
+    # operator who reads "SocketException 10013" and one who stares at a health-probe timeout.
+    if ($Mode -eq 'Apply') {
+        $crashReason = Get-NodePilotServiceCrashReason -Since $script:ApplyStartedAt
+        if ($crashReason) { $message = "$message The service failed to start with: $crashReason" }
+    }
     Write-Host "[setup] $message" -ForegroundColor Red
     Set-NodePilotResult -Buffer $result -Section 'summary' -Name 'error' -Value $message
     $exitCode = if ($message -match '^Answer file') { 3 }

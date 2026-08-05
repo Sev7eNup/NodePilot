@@ -100,7 +100,7 @@ const
   ExitProbeFailed = 2;
   ExitAnswerFileInvalid = 3;
   ExitInstallFailed = 4;
-  CheckCount = 8;
+  CheckCount = 9;
 
   // Status glyphs. Written as character codes so this file stays pure ASCII on disk - a .iss
   // that needs a specific encoding to compile is a trap for the next editor.
@@ -947,12 +947,13 @@ procedure InitializeWizard();
 begin
   CheckIds[0] := 'dotnet';
   CheckIds[1] := 'certificate';
-  CheckIds[2] := 'gmsa';
-  CheckIds[3] := 'serviceIdentity';
-  CheckIds[4] := 'domainJoined';
-  CheckIds[5] := 'database';
-  CheckIds[6] := 'databaseVersion';
-  CheckIds[7] := 'databaseServiceLogin';
+  CheckIds[2] := 'ports';
+  CheckIds[3] := 'gmsa';
+  CheckIds[4] := 'serviceIdentity';
+  CheckIds[5] := 'domainJoined';
+  CheckIds[6] := 'database';
+  CheckIds[7] := 'databaseVersion';
+  CheckIds[8] := 'databaseServiceLogin';
 
   // Before anything can call the adapter, and that is every phase of this wizard.
   ExtractTemporaryFiles('*.ps1');
@@ -1392,7 +1393,9 @@ begin
 
   if ResultCode <> 0 then
   begin
-    Extra := GetIniString('summary', 'error', '', ResultIni);
+    // Expanded, not raw: the adapter escapes newlines to keep an INI value on one line, so an
+    // unexpanded message shows a literal \n in the middle of the sentence the operator has to read.
+    Extra := ExpandNewlines(GetIniString('summary', 'error', '', ResultIni));
     if ResultCode = ExitInstallFailed then
       Extra := Extra + ' The installation was rolled back.'
     else if ResultCode = ExitAnswerFileInvalid then

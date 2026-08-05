@@ -402,13 +402,56 @@ try {
     Assert-True -Name 'certificates are offered newest expiry first' `
         -Condition (($expiryDates -join ',') -eq ((@($expiryDates) | Sort-Object -Descending) -join ','))
 
+    # --- listen ports -------------------------------------------------------------------------
+    # The defect this covers cost three minutes of silence on the lab host: Kestrel could not bind
+    # port 80 - reserved by HTTP.SYS because IIS runs there - so the service crashed on startup,
+    # the installer waited out its 180-second health probe, rolled everything back, and reported
+    # "did not report /healthz/ready". Nothing on screen mentioned a port.
+    $freeProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $freeProbe.Start()
+    $freePort = ([System.Net.IPEndPoint]$freeProbe.LocalEndpoint).Port
+    $freeProbe.Stop()
+
+    $freeResult = Test-NodePilotListenPorts -HttpsPort $freePort -HttpPort 0
+    Assert-True -Name 'a bindable port passes' -Condition ($freeResult.Status -eq 'Pass')
+    # 0 is how the wizard says "no HTTP redirect". Treating it as a port would fail every
+    # installation that does not want one.
+    Assert-True -Name 'a zero HTTP port reads as disabled, not as a failure' `
+        -Condition ($freeResult.Detail -match 'HTTP disabled')
+
+    $busyProbe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    $busyProbe.Start()
+    $busyPort = ([System.Net.IPEndPoint]$busyProbe.LocalEndpoint).Port
+    try {
+        $busyResult = Test-NodePilotListenPorts -HttpsPort $busyPort -HttpPort 0
+        Assert-True -Name 'an occupied port is reported as a required failure' `
+            -Condition ($busyResult.Status -eq 'Fail' -and $busyResult.Required)
+        # "Port in use" without a name sends the operator to netstat. The check already knows.
+        Assert-True -Name 'the process holding the port is named' `
+            -Condition ($busyResult.Detail -match 'already in use by')
+        Assert-True -Name 'a blocked port carries an abort message naming the socket error' `
+            -Condition ($busyResult.AbortMessage -match '10013 or 10048')
+        Assert-True -Name 'a blocked port explains where Windows reservations are listed' `
+            -Condition ($busyResult.Remediation -match 'excludedportrange')
+    }
+    finally { $busyProbe.Stop() }
+
+    # Probing must leave nothing behind - it runs again on every click of "Check again".
+    $reprobe = Test-NodePilotListenPorts -HttpsPort $freePort -HttpPort 0
+    Assert-True -Name 're-checking a free port does not leave it bound' `
+        -Condition ($reprobe.Status -eq 'Pass')
+
     # --- the two-layer pre-flight split -------------------------------------------------------
     # The point of the whole split: collecting must report, only asserting may abort. .invalid is
     # reserved by RFC 2606, so DNS fails immediately instead of burning the connect timeout.
+    # Ports passed explicitly rather than left to the 443 default: whether this machine happens to
+    # have 443 free is not what this assertion is about.
     $checks = @(Invoke-NodePilotPreflight `
         -CertificateThumbprint ('0' * 40) `
         -DbProvider 'sqlserver' `
         -IsLocalSystem $true `
+        -HttpsPort $freePort `
+        -HttpPort 0 `
         -ComputerAccount 'CONTOSO\HOST$' `
         -SqlPrincipal 'CONTOSO\HOST$' `
         -SqlServer 'nodepilot-unreachable.invalid' `

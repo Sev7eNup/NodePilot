@@ -864,6 +864,37 @@ if ($overfullPages.Count -gt 0) {
            'the visible surface and the page does not scroll. Split the page.')
 }
 
+# --- listen-port pre-flight ------------------------------------------------------------------
+# Added after a lab install died on it: Kestrel could not bind port 80, which HTTP.SYS reserves on
+# any host running IIS, so the service crashed at startup and the operator watched a 180-second
+# health probe expire followed by a rollback. The checks covered .NET, the certificate, the gMSA and
+# the database - everything except whether the thing could listen.
+$preflightStripped = Remove-CommentLines -Text (Get-Content -LiteralPath $PreflightScriptPath -Raw)
+Assert-TextMatches -Name 'the pre-flight checks whether the ports can be bound' `
+    -Text $preflightStripped -Pattern '(?s)function Invoke-NodePilotPreflight[\s\S]*?Test-NodePilotListenPorts'
+# 10013 is not "in use" - Windows returns it for a reservation with no listener behind it, so a
+# message about a busy port would send the operator hunting a process that does not exist.
+Assert-TextMatches -Name 'a reserved port is told apart from an occupied one' `
+    -Text $preflightStripped -Pattern 'SocketError\]::AccessDenied'
+# Kestrel binds the wildcard address - the crash came out of AnyIPListenOptions.BindAsync. Probing
+# loopback would pass on a port that is reserved on 0.0.0.0.
+Assert-TextMatches -Name 'the port probe binds the address Kestrel binds' `
+    -Text $preflightStripped -Pattern 'IPAddress\]::Any'
+# A probe, not a change: it runs again on every click of "Check again".
+Assert-TextMatches -Name 'the port probe releases what it binds' `
+    -Text $preflightStripped -Pattern 'try \{ \$probe\.Start\(\) \} finally \{ \$probe\.Stop\(\) \}'
+# The wizard reads a fixed list of check ids; a check the adapter reports and the page never asks
+# for is invisible, which is indistinguishable from not having written it.
+Assert-TextMatches -Name 'the readiness page asks for the port check' `
+    -Text $serverIss -Pattern "CheckIds\[\d\] := 'ports';"
+$declaredCheckCount = [int]([regex]::Match($serverIss, 'CheckCount\s*=\s*(\d+)').Groups[1].Value)
+$assignedCheckIds = @([regex]::Matches($serverIss, "CheckIds\[\d+\] := '")).Count
+if ($declaredCheckCount -ne $assignedCheckIds) {
+    throw ("Deployment template check failed: CheckCount is $declaredCheckCount but $assignedCheckIds " +
+           'check ids are assigned. The array is fixed-size, so a mismatch either drops the last ' +
+           'check from the page or reads past the end of the array.')
+}
+
 # --- setup adapter contracts ---------------------------------------------------------------------
 $setupAdapter = Remove-CommentLines -Text (Get-Content -LiteralPath $SetupAdapterPath -Raw)
 
@@ -914,6 +945,23 @@ if ($certificateModeEnd -lt 0) {
 Assert-TextDoesNotMatch -Name 'listing certificates needs no answer file' `
     -Text $setupAdapter.Substring($certificateModeStart, $certificateModeEnd - $certificateModeStart) `
     -Pattern 'Read-NodePilotAnswerFile|Invoke-NodePilotPreflight'
+
+# The probe can only check the ports it is told about. Without this the readiness page would report
+# on the 443 default while the operator installs on 8443.
+Assert-TextMatches -Name 'the configured ports reach the pre-flight' `
+    -Text $setupAdapter -Pattern "(?s)function ConvertTo-NodePilotPreflightParameters[\s\S]*?HttpsPort\s*=\s*\[int\]\`$Answers\['network\.httpsPort'\]"
+
+# "Service did not report /healthz/ready within 180s" names a symptom. The cause is one line in the
+# Application log, and without it the operator is left with a rollback and no reason for it.
+Assert-TextMatches -Name 'a failed install reports why the service would not start' `
+    -Text $setupAdapter -Pattern '(?s)catch \{[\s\S]{0,400}Get-NodePilotServiceCrashReason'
+# Scoped to this run: an exception left in the log by an earlier attempt would otherwise be
+# presented as the reason for this one.
+Assert-TextMatches -Name 'the crash lookup is bounded to the current run' `
+    -Text $setupAdapter -Pattern '(?s)function Get-NodePilotServiceCrashReason[\s\S]*?StartTime = \$Since'
+# A diagnostic that throws would replace the real failure with its own.
+Assert-TextMatches -Name 'the crash lookup cannot itself fail the run' `
+    -Text $setupAdapter -Pattern "(?s)function Get-NodePilotServiceCrashReason[\s\S]*?catch \{ return '' \}"
 
 # One emitter serving both the probe and the standalone mode. Two copies would drift into different
 # field orders behind a Pascal reader that splits on position and has no way to notice.

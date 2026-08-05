@@ -858,6 +858,8 @@ $preflightResults = Invoke-NodePilotPreflight `
     -CertificateThumbprint $NormalizedThumbprint `
     -DbProvider $DbProvider `
     -IsLocalSystem $isLocalSystem `
+    -HttpsPort $HttpsPort `
+    -HttpPort $HttpPort `
     -ServiceAccount $ServiceAccount `
     -ComputerAccount $ComputerAccount `
     -SqlPrincipal $SqlPrincipal `

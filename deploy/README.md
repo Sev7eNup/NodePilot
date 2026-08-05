@@ -25,7 +25,7 @@ Der Dienst läuft wahlweise unter:
 | [Build-Artifact.ps1](Build-Artifact.ps1) | Baut `out\NodePilot-<version>.zip` aus dem Repo (dotnet publish + PS-Modul-Staging nach `<stage>\Modules` + npm build + Template) und signiert das Manifest (detached CMS) |
 | [Install-NodePilot.ps1](Install-NodePilot.ps1) | Hauptinstaller — Service, ACLs, Firewall, Cert-Key-Access |
 | [ArtifactSecurity.ps1](ArtifactSecurity.ps1) | Geteilte Signier-/Verifikationslogik (Manifest + `.p7s`); wird von Build/Install/Update dot-sourced |
-| [Preflight.ps1](Preflight.ps1) | Geteilte **seiteneffektfreie** Readiness-Checks (Runtime, Zertifikat, gMSA, DB-Erreichbarkeit, TDS-8.0-Version, Dienstidentität, Domänenmitgliedschaft); wird von Install dot-sourced |
+| [Preflight.ps1](Preflight.ps1) | Geteilte **seiteneffektfreie** Readiness-Checks (Runtime, Zertifikat, **HTTP/HTTPS-Ports bindbar**, gMSA, DB-Erreichbarkeit, TDS-8.0-Version, Dienstidentität, Domänenmitgliedschaft); wird von Install dot-sourced |
 | [ServiceControl.ps1](ServiceControl.ps1) | Wartet nach dem Dienststopp auf das Ende der Prozesse im Install-Verzeichnis und beendet Nachzügler; wird von Install und Update dot-sourced |
 | [SetupContract.ps1](SetupContract.ps1) | Answer-File-Vertrag des GUI-Setups: Schema, Splat-Abbildung auf `Install-NodePilot.ps1`, SecureString-Aufbau, INI-Ergebnisdatei |
 | [Invoke-NodePilotSetup.ps1](Invoke-NodePilotSetup.ps1) | Adapter zwischen Wizard und Skripten (`InitSession`/`Probe`/`Provision`/`Apply`/`Cleanup`) |

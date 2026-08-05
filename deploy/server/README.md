@@ -15,7 +15,9 @@ nutzbar und ist weiterhin die Referenz; das Setup ruft genau dieses Skript auf.
 | **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
 | **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), PostgreSQL-Rolle anlegen (kein PG-Client im Payload), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
 
-Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird. Jede Zeile trägt rechts ein
+Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — neun Zeilen: .NET-Runtime,
+Kestrel-Zertifikat, **HTTP/HTTPS-Ports**, gMSA, Dienstidentität, Domänenmitgliedschaft,
+DB-Erreichbarkeit, DB-Version, DB-Login. Jede Zeile trägt rechts ein
 Statuszeichen — Haken, Kreuz, Ausrufezeichen oder Gedankenstrich — und ist zusätzlich eingefärbt.
 Das Zeichen ist nicht Dekoration: Farbe allein sagt niemandem etwas, der dieses Grün nicht von
 diesem Rot unterscheidet, und in einem Screenshot in einem Ticket schon gar nicht. Rote
@@ -31,6 +33,35 @@ die Anleitung aus dem Wizard herauszubekommen.
 Die Zeilen werden erst positioniert, wenn ihr Text steht. Vorher reservierte jede der acht
 Zeilen 16 px für eine Auto-Fix-Checkbox, die fast nie sichtbar ist — 128 px einer 309 px hohen
 Fläche für nichts.
+
+## Port-Prüfung
+
+Die Ports werden **vor** der Installation auf Bindbarkeit geprüft — gemessen an dem, was ohne diese
+Prüfung passiert: Auf einem ConfigMgr-Standortserver reserviert HTTP.SYS die Ports 80 und 443, also
+scheiterte Kestrel beim Start mit `SocketException 10013`. Sichtbar war davon nichts. Der Installer
+hatte da bereits alles kopiert, den Dienst registriert, wartete 180 Sekunden auf `/healthz/ready`,
+rollte dann zurück und meldete „did not report /healthz/ready" — drei Minuten für eine Aussage, mit
+der niemand etwas anfangen kann.
+
+Zwei Dinge unterscheidet die Prüfung, die eine naive Version nicht unterscheiden würde:
+
+- **`10013` heißt nicht „belegt".** Windows liefert das für eine HTTP.SYS-Reservierung oder einen
+  ausgeschlossenen Portbereich — es gibt **keinen Listener**, den man finden könnte. Eine Meldung
+  „Port in Benutzung" schickt den Operator hinter einen Prozess her, den es nicht gibt. Die
+  Anleitung nennt deshalb `netsh interface ipv4 show excludedportrange protocol=tcp`.
+- **Der eigene Dienst zählt nicht als Konflikt.** Wird NodePilot über sich selbst installiert, hält
+  der zu ersetzende Dienst den Port. Das als Fehler zu melden hieße, jemanden für eine korrekte
+  Erstinstallation zu bestrafen.
+
+Gebunden wird auf `IPAddress.Any` — dieselbe Adresse wie Kestrel (`AnyIPListenOptions.BindAsync`).
+Ein Test gegen `127.0.0.1` würde einen Port durchwinken, der auf der Wildcard-Adresse reserviert ist.
+Gebunden und sofort wieder freigegeben: eine Sonde, keine Änderung, sonst wäre sie hinter dem
+„Check again"-Knopf nicht zulässig.
+
+Schlägt die Installation trotzdem fehl, steht die **Ursache jetzt im Dialog**: der Adapter holt die
+letzte `.NET Runtime`-Ausnahme des Laufs aus dem Application-Log und hängt sie an die Meldung
+(`SocketException (10013): …`). Vorher stand dort nur der Symptomsatz, und die Ursache lag in einer
+Logdatei, die niemand öffnet.
 
 ## Zertifikatsauswahl (TLS-Seite)
 
@@ -350,6 +381,8 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 15 | Update über laufenden Dienst | wartet den Prozess ab statt abzubrechen |
 | 16 | TLS-Seite, Zertifikat aus der Liste gewählt | Thumbprint steht im Feld darüber, Readiness-Zeile grün |
 | 17 | TLS-Seite, leerer Zertifikatsspeicher | Hinweiszeile statt Auswahl, „Weiter" bleibt möglich |
+| 18 | HTTP-Port 80 auf einem Host mit IIS | Readiness-Zeile rot mit „reserved by Windows", „Weiter" gesperrt |
+| 19 | HTTP-Port 0 | Zeile grün, „HTTP disabled" |
 
 Stand: 1, 3, 5, 9 und 10 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server 2022 CU
-gelaufen. 2, 4, 6, 7, 8 und 11 bis 17 nicht.
+gelaufen. 2, 4, 6, 7, 8 und 11 bis 19 nicht.

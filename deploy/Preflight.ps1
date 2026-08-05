@@ -188,6 +188,125 @@ function Get-NodePilotCertificateInventory {
         Select-Object Thumbprint, Subject, @{n = 'HasKey'; e = { $_.HasPrivateKey } }, NotAfter
 }
 
+function Get-NodePilotPortStatus {
+    <#
+      Whether Kestrel will be able to bind one port, and if not, why.
+
+      Binds and releases immediately. That is a probe, not a change, so it stays safe behind the
+      re-check button - see the rule at the top of this file.
+
+      Bound to IPAddress.Any because that is what Kestrel does: the crash this check exists to
+      predict came out of AnyIPListenOptions.BindAsync. Probing 127.0.0.1 instead would pass on a
+      port that is reserved on the wildcard address.
+    #>
+    param(
+        [Parameter(Mandatory)][int]$Port,
+        [string]$ServiceName = 'NodePilot'
+    )
+
+    # An existing listener is the ordinary case when NodePilot is reinstalled over itself: the port
+    # is held by the very service about to be replaced. Calling that a conflict would send the
+    # operator hunting a problem they created by installing correctly the first time.
+    $listener = $null
+    try {
+        $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    } catch { }
+
+    if ($listener) {
+        $owner = $null
+        try { $owner = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue } catch { }
+        $service = $null
+        try {
+            $escaped = $ServiceName.Replace("'", "''")
+            $service = Get-CimInstance Win32_Service -Filter "Name='$escaped'" -ErrorAction SilentlyContinue
+        } catch { }
+
+        if ($service -and $service.ProcessId -eq $listener.OwningProcess) {
+            return [pscustomobject]@{
+                Port = $Port; IsBlocked = $false
+                Detail = "held by the $ServiceName service being replaced"
+            }
+        }
+        $name = if ($owner) { "$($owner.Name) (PID $($listener.OwningProcess))" } else { "PID $($listener.OwningProcess)" }
+        return [pscustomobject]@{ Port = $Port; IsBlocked = $true; Detail = "already in use by $name" }
+    }
+
+    try {
+        $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $Port)
+        try { $probe.Start() } finally { $probe.Stop() }
+        return [pscustomobject]@{ Port = $Port; IsBlocked = $false; Detail = 'free' }
+    }
+    catch {
+        $socketError = $null
+        $exception = $_.Exception
+        while ($exception -and -not $socketError) {
+            if ($exception -is [System.Net.Sockets.SocketException]) { $socketError = $exception.SocketErrorCode }
+            $exception = $exception.InnerException
+        }
+        # 10013 is the one that matters here, and it does NOT mean "in use". Windows returns it for a
+        # port held by an HTTP.SYS reservation or sitting inside an excluded range - IIS, WinRM and
+        # WSUS all create those - and nothing appears in any listener list to explain it.
+        if ($socketError -eq [System.Net.Sockets.SocketError]::AccessDenied) {
+            return [pscustomobject]@{
+                Port = $Port; IsBlocked = $true
+                Detail = 'reserved by Windows (an HTTP.SYS reservation or an excluded port range), not held by a listener'
+            }
+        }
+        return [pscustomobject]@{ Port = $Port; IsBlocked = $true; Detail = $_.Exception.Message }
+    }
+}
+
+function Test-NodePilotListenPorts {
+    <#
+      The check that turns a three-minute silence into one red line. Without it, a port Kestrel
+      cannot bind is discovered only after the installer has copied everything, registered the
+      service, waited out a 180-second health probe and rolled the whole thing back - leaving
+      "did not report /healthz/ready" on screen and the real reason in a log nobody opens.
+    #>
+    param(
+        [Parameter(Mandatory)][int]$HttpsPort,
+        [int]$HttpPort = 0,
+        [string]$ServiceName = 'NodePilot'
+    )
+
+    $title = 'HTTP/HTTPS ports'
+    $blocked = @()
+    $fine = @()
+
+    foreach ($candidate in @(
+        [pscustomobject]@{ Label = 'HTTPS'; Port = $HttpsPort },
+        [pscustomobject]@{ Label = 'HTTP';  Port = $HttpPort })) {
+
+        # 0 is how the wizard says "no HTTP redirect". That is a configuration, not a problem.
+        if ($candidate.Port -le 0) {
+            $fine += "$($candidate.Label) disabled"
+            continue
+        }
+        $status = Get-NodePilotPortStatus -Port $candidate.Port -ServiceName $ServiceName
+        if ($status.IsBlocked) { $blocked += "$($candidate.Label) $($candidate.Port) $($status.Detail)" }
+        else { $fine += "$($candidate.Label) $($candidate.Port) $($status.Detail)" }
+    }
+
+    if ($blocked.Count -eq 0) {
+        return New-NodePilotPreflightResult -Id 'ports' -Title $title -Status 'Pass' -Required $true `
+            -Detail ($fine -join ', ')
+    }
+
+    New-NodePilotPreflightResult -Id 'ports' -Title $title -Status 'Fail' -Required $true `
+        -Detail ($blocked -join '; ') `
+        -RemediationHint 'Pick a free port, or set the HTTP port to 0 to drop the redirect.' `
+        -Remediation ("See what Windows has reserved:`r`n" +
+                      "netsh interface ipv4 show excludedportrange protocol=tcp`r`n`r`n" +
+                      "See who is listening:`r`n" +
+                      "Get-NetTCPConnection -State Listen | Sort-Object LocalPort`r`n`r`n" +
+                      'On a server running IIS - a ConfigMgr site server, for instance - ports 80 and 443 ' +
+                      'belong to HTTP.SYS and Kestrel cannot bind them at all. Set the HTTP port to 0 to ' +
+                      'drop the redirect, or move both ports somewhere free.') `
+        -AbortMessage ('Kestrel cannot bind: ' + ($blocked -join '; ') +
+                       '. The service would start and immediately fail with SocketException 10013 or 10048.')
+}
+
 function Test-NodePilotTlsCertificate {
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Thumbprint)
 
@@ -493,6 +612,8 @@ function Invoke-NodePilotPreflight {
         [Parameter(Mandatory)][AllowEmptyString()][string]$CertificateThumbprint,
         [Parameter(Mandatory)][ValidateSet('sqlserver', 'postgres')][string]$DbProvider,
         [Parameter(Mandatory)][bool]$IsLocalSystem,
+        [int]$HttpsPort = 443,
+        [int]$HttpPort = 0,
         [string]$ServiceAccount,
         [string]$ComputerAccount,
         [string]$SqlPrincipal,
@@ -511,6 +632,7 @@ function Invoke-NodePilotPreflight {
     $results = @()
     $results += Test-NodePilotDotNetRuntime
     $results += Test-NodePilotTlsCertificate -Thumbprint $CertificateThumbprint
+    $results += Test-NodePilotListenPorts -HttpsPort $HttpsPort -HttpPort $HttpPort -ServiceName $ServiceName
 
     if ($IsLocalSystem) {
         $results += New-NodePilotPreflightResult -Id 'gmsa' -Title 'Service identity' -Status 'Skipped' `
