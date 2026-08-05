@@ -128,6 +128,8 @@ function Add-NodePilotCheckResults {
         Set-NodePilotResult -Buffer $result -Section $section -Name 'required' -Value $(if ($check.Required) { 1 } else { 0 })
         Set-NodePilotResult -Buffer $result -Section $section -Name 'canAutoFix' -Value $(if ($check.CanAutoFix) { 1 } else { 0 })
         Set-NodePilotResult -Buffer $result -Section $section -Name 'autoFixLabel' -Value $check.AutoFixLabel
+        Set-NodePilotResult -Buffer $result -Section $section -Name 'autoFixDefault' `
+            -Value $(if ($check.AutoFixDefault) { 1 } else { 0 })
     }
 }
 
@@ -501,6 +503,29 @@ function Invoke-SetupInstall {
     . (Join-Path $scriptDirectory 'ArtifactSecurity.ps1')
 
     $splat = ConvertTo-NodePilotInstallParameters -Answers $answers
+
+    # A certificate created by an earlier Provision in this same session has a thumbprint the
+    # answer file cannot possibly contain. The wizard learns it from provision.ini and writes it
+    # back onto its own TLS page; the unattended path has no page to write to, so the value is
+    # picked up here instead. Without this, a silent run that asks for a self-signed certificate
+    # creates one, orphans it in LocalMachine\My, and installs against whatever thumbprint the
+    # answer file happened to carry.
+    #
+    # Only when the answer file names no certificate of its own. Leaving that field empty is how
+    # an answer file says "generate one"; a file that names a thumbprint has made a choice, and
+    # the wizard reaching this same code after the operator generated one and then typed a
+    # different thumbprint must not have that choice overwritten behind it.
+    if ($splat['CertThumbprint'] -notmatch '^[0-9A-Fa-f]{40}$') {
+        $provisionIni = Join-Path (Split-Path -Parent $AnswerFile) 'provision.ini'
+        if (Test-Path -LiteralPath $provisionIni -PathType Leaf) {
+            $generated = @(Get-Content -LiteralPath $provisionIni -Encoding UTF8 |
+                Select-String -Pattern '^thumbprint=([0-9A-Fa-f]{40})$')
+            if ($generated.Count -eq 1) {
+                $splat['CertThumbprint'] = $generated[0].Matches[0].Groups[1].Value
+            }
+        }
+    }
+
     $splat['ArtifactPath'] = $ArtifactPath
     $splat['TrustedArtifactSignerThumbprint'] = $TrustedArtifactSignerThumbprint
     # Generated here, not left to the installer: it prints the key exactly once, to a console that

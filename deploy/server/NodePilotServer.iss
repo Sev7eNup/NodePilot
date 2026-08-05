@@ -141,6 +141,11 @@ var
   CheckLabels: array[0..CheckCount - 1] of TNewStaticText;
   CheckMarks: array[0..CheckCount - 1] of TNewStaticText;
   CheckFixes: array[0..CheckCount - 1] of TNewCheckBox;
+  // Whether a fix that arrives pre-ticked has already had its default applied. Applied ONCE per
+  // run, never re-applied: a probe runs again after every fix attempt, and a default that came
+  // back each time would re-tick a box the operator had just cleared - Next would then run the
+  // same failing fix again and never leave the page.
+  CheckFixDefaulted: array[0..CheckCount - 1] of Boolean;
   RemediationBox: TNewMemo;
   RemediationText: String;
   RecheckButton: TNewButton;
@@ -453,7 +458,11 @@ begin
     AddLine(Lines, Count, '  "provisioning": {');
     AddLine(Lines, Count, '    "installDotnetRuntime": ' + JsonBool(IsFixRequested('dotnet')) + ',');
     AddLine(Lines, Count, '    "generateSelfSignedCertificate": ' + JsonBool(IsFixRequested('certificate')) + ',');
-    AddLine(Lines, Count, '    "createDatabaseAndLogin": ' + JsonBool(IsFixRequested('database')) + ',');
+    // Two rows, one key: Provision-NodePilotDatabase.ps1 is existence-guarded end to end, so the
+    // same run covers "nothing exists yet" and "everything exists except the service identity's
+    // grant" without being told which it is.
+    AddLine(Lines, Count, '    "createDatabaseAndLogin": ' +
+      JsonBool(IsFixRequested('database') or IsFixRequested('databaseServiceLogin')) + ',');
     AddLine(Lines, Count, '    "trustArtifactSigner": false');
     AddLine(Lines, Count, '  }');
   end;
@@ -668,7 +677,16 @@ begin
       (AutoFixLabel <> '');
     CheckFixes[I].Caption := AutoFixLabel;
     if not CheckFixes[I].Visible then
-      CheckFixes[I].Checked := False;
+      CheckFixes[I].Checked := False
+    // Some fixes arrive ticked - see AutoFixDefault in Preflight.ps1. The box is still shown and
+    // still clearable; the default only spares the operator a click for work that is part of
+    // installing rather than a decision about their SQL Server.
+    else if (not CheckFixDefaulted[I]) and
+      (GetIniString('check.' + CheckIds[I], 'autoFixDefault', '0', Ini) = '1') then
+    begin
+      CheckFixes[I].Checked := True;
+      CheckFixDefaulted[I] := True;
+    end;
   end;
 
   ProbeRan := True;
@@ -1426,6 +1444,14 @@ begin
       Thumbprint := GetIniString('provision.certificate', 'thumbprint', '', ProvisionIni);
       if Thumbprint <> '' then
         NetworkPage.Values[4] := Thumbprint;
+
+      // Every tick is spent, whether or not it worked. Without this a fix that keeps failing -
+      // no permission on the SQL Server is the realistic one - stays ticked, so Next runs it
+      // again and returns to this page again, and the only way off is to notice the box and
+      // clear it. The probe below is what says whether it took.
+      for I := 0 to CheckCount - 1 do
+        CheckFixes[I].Checked := False;
+
       // Never assume a fix worked.
       RunProbe();
       Result := False;
@@ -1537,7 +1563,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
-  AnswerMode, Arguments, ResultIni, Extra: String;
+  AnswerMode, Arguments, ResultIni, ProvisionIni, Extra: String;
 begin
   Result := EnsureSession();
   if Result <> '' then Exit;
@@ -1551,6 +1577,27 @@ begin
   if IsUpdateSelected() then AnswerMode := 'update' else AnswerMode := 'install';
   WriteAnswerFile(AnswerMode, False);
   ResultIni := SessionDir + '\result.ini';
+
+  // Silent runs get their provisioning here, because the readiness page - the only thing that
+  // ever ran it - does not exist on this path. Without this the provisioning keys were dead
+  // weight in an unattended answer file: accepted, validated, and then quietly ignored, which is
+  // exactly how a fleet rollout ends up with a service that starts and answers 503 because the
+  // computer account was never granted db_owner.
+  //
+  // Run unconditionally rather than after parsing the file for a "does it ask for anything"
+  // flag: Pascal Script has no JSON reader, the adapter already has one, and a run with nothing
+  // requested performs no action and exits 0.
+  if WizardSilent() and (AnswerMode = 'install') then
+  begin
+    ProvisionIni := SessionDir + '\provision.ini';
+    if not RunPowerShell('-Mode Provision -AnswerFile "' + AnswerFilePath() + '" -OutFile "' +
+      ProvisionIni + '"', ResultCode) or (ResultCode <> 0) then
+    begin
+      Result := 'The provisioning requested by the answer file could not be applied (exit code ' +
+        IntToStr(ResultCode) + '). Log: ' + ExpandConstant('{%TEMP}') + '\nodepilot-server-setup.log';
+      Exit;
+    end;
+  end;
 
   // -Mode Apply, not Install or Update: the answer file already declares which it is, and a
   // second place to say so is a second place for them to disagree. That matters most with

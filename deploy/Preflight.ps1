@@ -47,7 +47,13 @@ function New-NodePilotPreflightResult {
         [string]$AbortMessage = '',
         [bool]$Required = $false,
         [bool]$CanAutoFix = $false,
-        [string]$AutoFixLabel = ''
+        [string]$AutoFixLabel = '',
+        # Whether the wizard should arrive with this fix already ticked. Reserved for work that is
+        # part of installing rather than a decision about someone else's server: granting the
+        # service identity access to a database that already exists is the former, CREATE DATABASE
+        # on a production instance is the latter. The box stays visible either way, so a default of
+        # $true is "one fewer click", never "done behind your back".
+        [bool]$AutoFixDefault = $false
     )
     [pscustomobject]@{
         Id              = $Id
@@ -60,6 +66,7 @@ function New-NodePilotPreflightResult {
         Required        = $Required
         CanAutoFix      = $CanAutoFix
         AutoFixLabel    = $AutoFixLabel
+        AutoFixDefault  = $AutoFixDefault
     }
 }
 
@@ -101,15 +108,20 @@ function Resolve-NodePilotSqlProbeConnectionString {
 function Get-NodePilotSqlRemediationScript {
     param(
         [Parameter(Mandatory)][string]$Principal,
-        [Parameter(Mandatory)][string]$Database
+        [Parameter(Mandatory)][string]$Database,
+        # Dropped when the caller has already proven the database is there. Handing a DBA a
+        # CREATE DATABASE for a database they can see invites them to read the rest of the script
+        # as equally wrong.
+        [switch]$SkipCreateDatabase
     )
-    @(
-        "CREATE LOGIN [$Principal] FROM WINDOWS;"
-        "CREATE DATABASE [$Database];"
+    $lines = @("CREATE LOGIN [$Principal] FROM WINDOWS;")
+    if (-not $SkipCreateDatabase) { $lines += "CREATE DATABASE [$Database];" }
+    $lines += @(
         "USE [$Database];"
         "CREATE USER [$Principal] FOR LOGIN [$Principal];"
         "ALTER ROLE db_owner ADD MEMBER [$Principal];"
-    ) -join [Environment]::NewLine
+    )
+    $lines -join [Environment]::NewLine
 }
 
 function Get-NodePilotPostgresRemediationScript {
@@ -487,21 +499,129 @@ function Test-NodePilotSqlReachable {
         -Detail "SQL reachable: $Server/$Database"
 }
 
-function Test-NodePilotSqlServiceLogin {
+function New-NodePilotSqlServiceLoginResult {
     <#
-      Not a probe - a standing caveat, emitted only for LocalSystem. The reachability check
-      above authenticated as the installing admin; at runtime the service authenticates as the
-      COMPUTER account. That login is a separate grant and its absence shows up as a 503 on
-      /healthz/ready long after "Install complete".
+      The verdict, separated from the connection that produces it. Split out so every branch is
+      reachable from a test host with no SQL Server on it - which is every test host we have.
     #>
     param(
-        [Parameter(Mandatory)][string]$ComputerAccount,
-        [Parameter(Mandatory)][string]$Database
+        [Parameter(Mandatory)][string]$Principal,
+        [Parameter(Mandatory)][string]$Database,
+        [Parameter(Mandatory)][bool]$LoginExists,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$UserName,
+        [Parameter(Mandatory)][bool]$IsDbOwner,
+        [Parameter(Mandatory)][bool]$IsSysadmin
     )
-    New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title 'SQL login for the service identity' -Status 'Warn' `
-        -Detail "NOTE: reachability was tested with your admin identity. At runtime the service connects as the computer account $ComputerAccount." `
-        -RemediationHint "Ensure that login exists with db_owner on [$Database]:" `
-        -Remediation (Get-NodePilotSqlRemediationScript -Principal $ComputerAccount -Database $Database)
+
+    $title = 'SQL login for the service identity'
+
+    if ($IsSysadmin) {
+        return New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title $title -Status 'Pass' `
+            -Detail "$Principal is sysadmin on this instance and needs no grant on [$Database]."
+    }
+    if ($LoginExists -and $UserName -and $IsDbOwner) {
+        # dbo lands here too: a service identity that owns the database is a member of db_owner.
+        return New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title $title -Status 'Pass' `
+            -Detail "$Principal has a login and is db_owner on [$Database] (as [$UserName])."
+    }
+
+    $missing = if (-not $LoginExists) {
+        "$Principal has no SQL login on this instance."
+    }
+    elseif (-not $UserName) {
+        "$Principal has a login but no user in [$Database]."
+    }
+    else {
+        "$Principal maps to [$UserName] in [$Database] but is not a member of db_owner."
+    }
+
+    # Not Required. The install works - it is the first request AFTER it that fails - and the
+    # console path has always let this through with the statements printed. Failing here instead
+    # would turn a repairable gap into a refused install on hosts where a DBA is standing by.
+    New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title $title -Status 'Fail' `
+        -Detail "$missing Without it the service starts and /healthz/ready answers 503." `
+        -RemediationHint "The service will connect as $Principal. On the SQL Server:" `
+        -Remediation (Get-NodePilotSqlRemediationScript -Principal $Principal -Database $Database -SkipCreateDatabase) `
+        -CanAutoFix $true -AutoFixDefault $true `
+        -AutoFixLabel "Create that login and grant it db_owner on [$Database] now"
+}
+
+function Test-NodePilotSqlServiceLogin {
+    <#
+      Whether the SERVICE identity can use the database - which is not what the reachability
+      check above established. That one authenticated as the installing admin; at runtime the
+      service authenticates as its own principal (the computer account under LocalSystem, the
+      gMSA otherwise), and that grant is separate. Its absence shows up as a 503 on
+      /healthz/ready long after "Install complete", which is the worst possible time to learn it.
+
+      This used to be a standing caveat printed unconditionally - correct advice, no information,
+      and shown just as loudly on the hosts where the grant was already in place. It is a query
+      now, and a red line here is one the wizard can act on.
+
+      Read-only by construction: three lookups and no DDL. The fix lives in
+      Provision-NodePilotDatabase.ps1, on the other side of the rule at the top of this file.
+
+      Runs on the connection of the installing admin, so what it can see is bounded by what that
+      account may see. A sysadmin - the account that can act on the answer anyway - sees
+      everything; a lesser account can be told "no login" about one that exists, and then the fix
+      it is offered declines on its own permission gate and prints the DDL. That is the same
+      place the old caveat left everyone, so the degradation costs nothing.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Principal,
+        [Parameter(Mandatory)][string]$Server,
+        [Parameter(Mandatory)][string]$Database,
+        [Parameter(Mandatory)][string]$CertificateHostName
+    )
+
+    $title = 'SQL login for the service identity'
+    $remediation = Get-NodePilotSqlRemediationScript -Principal $Principal -Database $Database -SkipCreateDatabase
+    $hint = "The service will connect as $Principal. On the SQL Server:"
+
+    # Names are parameters, not interpolation: this is the read path and it does not need the
+    # bracket-doubling dance that the DDL in Provision-NodePilotDatabase.ps1 does.
+    $sql = @'
+DECLARE @sid varbinary(85) = (SELECT TOP 1 sid FROM sys.server_principals WHERE name = @principal);
+DECLARE @user sysname = (SELECT TOP 1 name FROM sys.database_principals WHERE sid = @sid);
+SELECT
+    CASE WHEN @sid IS NULL THEN 0 ELSE 1 END,
+    ISNULL(@user, N''),
+    ISNULL(IS_ROLEMEMBER('db_owner', @user), 0),
+    ISNULL(IS_SRVROLEMEMBER('sysadmin', @principal), 0);
+'@
+
+    $connectionString = Resolve-NodePilotSqlProbeConnectionString `
+        -Server $Server -Database $Database -CertificateHostName $CertificateHostName
+    $conn = New-Object System.Data.SqlClient.SqlConnection $connectionString
+    try {
+        $conn.Open()
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = $sql
+        $cmd.CommandTimeout = 30
+        $parameter = $cmd.Parameters.Add('@principal', [Data.SqlDbType]::NVarChar, 128)
+        $parameter.Value = $Principal
+        $reader = $cmd.ExecuteReader()
+        try {
+            [void]$reader.Read()
+            $loginExists = [int]$reader.GetValue(0) -eq 1
+            $userName = [string]$reader.GetValue(1)
+            $isDbOwner = [int]$reader.GetValue(2) -eq 1
+            $isSysadmin = [int]$reader.GetValue(3) -eq 1
+        }
+        finally { $reader.Dispose() }
+    }
+    catch {
+        # Cannot tell either way. Falling back to the caveat is right: claiming the grant is
+        # missing would offer a fix for something that may be perfectly in order.
+        return New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title $title -Status 'Warn' `
+            -Detail ("Could not verify the service identity's access as your admin account: " +
+                     "$($_.Exception.Message) At runtime the service connects as $Principal.") `
+            -RemediationHint $hint -Remediation $remediation
+    }
+    finally { $conn.Dispose() }
+
+    New-NodePilotSqlServiceLoginResult -Principal $Principal -Database $Database `
+        -LoginExists $loginExists -UserName $userName -IsDbOwner $isDbOwner -IsSysadmin $isSysadmin
 }
 
 function Test-NodePilotSqlTds8Support {
@@ -675,9 +795,12 @@ function Invoke-NodePilotPreflight {
         # Only meaningful once the instance answered; on a failed connection the caller aborts
         # before it could act on either follow-up.
         if ($sqlResult.Status -eq 'Pass') {
-            if ($IsLocalSystem) {
-                $results += Test-NodePilotSqlServiceLogin -ComputerAccount $ComputerAccount -Database $SqlDatabase
-            }
+            # Both identities, not just LocalSystem. While this was a printed caveat there was
+            # nothing useful to say about a gMSA that the gMSA check had not already said; as a
+            # query it answers the same question for both, and the 503 it predicts does not care
+            # which kind of principal the service runs as.
+            $results += Test-NodePilotSqlServiceLogin -Principal $SqlPrincipal `
+                -Server $SqlServer -Database $SqlDatabase -CertificateHostName $SqlCertificateHostName
             $results += Test-NodePilotSqlTds8Support `
                 -Server $SqlServer -CertificateHostName $SqlCertificateHostName
         }

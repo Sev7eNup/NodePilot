@@ -206,6 +206,16 @@ ALTER ROLE db_owner ADD MEMBER [CORP\svc-nodepilot$];
 The installer enables `READ_COMMITTED_SNAPSHOT` on the database automatically (warning
 only if it lacks permission).
 
+You can skip this step if you install with `NodePilot-Server-Setup-<version>.exe` and the
+account running it is `sysadmin` (or holds `CREATE ANY DATABASE`). The readiness page checks
+the service identity's login, database user and `db_owner` membership separately from plain
+reachability — reachability is tested as *you*, the service connects as itself — and offers
+to create whatever is missing, ticked by default. Unattended, ask for it with
+`"provisioning": { "createDatabaseAndLogin": true }` in the answer file; on the console path
+`deploy\Provision-NodePilotDatabase.ps1` does the same in one call. All three are
+existence-guarded and change nothing without the permissions above, in which case they print
+the statements for a DBA.
+
 ## Step 3 — Install (target server)
 
 Trust the artifact signer and create the Kestrel HTTPS certificate:
@@ -237,7 +247,9 @@ Run the installer (elevated Windows PowerShell 5.1):
 
 - `-UseLocalSystem` replaces `-ServiceAccount` for the computer-account variant.
 - `-AllowedHosts` is fail-closed: list **every** name users will type into the browser;
-  wildcards are rejected at boot.
+  wildcards are rejected at boot. `localhost` is appended for you whether you list it or
+  not — the installer's own health probe requests `https://localhost:<port>/healthz/ready`,
+  and host filtering would answer that 400 and roll back a finished installation.
 - Postgres instead of SQL Server: `-DbProvider postgres -PostgresHost ... -PostgresUser ...`
   (see `deploy/README.md`).
 

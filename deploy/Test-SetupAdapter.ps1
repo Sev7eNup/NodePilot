@@ -656,6 +656,76 @@ try {
         Assert-NodePilotPreflight -Results $checks | Out-Null
     }
 
+    # --- the service identity's access to the database ----------------------------------------
+    # Was a caveat printed on every host whether or not the grant existed. Now a verdict, and the
+    # verdict is split from the connection precisely so these branches are reachable here: no test
+    # host has a SQL Server, and the failure this predicts (service starts, /healthz/ready 503) is
+    # otherwise only observable in a lab.
+    $svcSysadmin = New-NodePilotSqlServiceLoginResult -Principal 'CONTOSO\HOST$' -Database 'NodePilot' `
+        -LoginExists $true -UserName '' -IsDbOwner $false -IsSysadmin $true
+    Assert-True -Name 'a sysadmin service identity needs no grant' `
+        -Condition ($svcSysadmin.Status -eq 'Pass')
+    Assert-True -Name 'a passing service login offers no fix' `
+        -Condition (-not $svcSysadmin.CanAutoFix -and -not $svcSysadmin.AutoFixDefault)
+
+    $svcGranted = New-NodePilotSqlServiceLoginResult -Principal 'CONTOSO\HOST$' -Database 'NodePilot' `
+        -LoginExists $true -UserName 'CONTOSO\HOST$' -IsDbOwner $true -IsSysadmin $false
+    Assert-True -Name 'a login that is already db_owner passes' -Condition ($svcGranted.Status -eq 'Pass')
+
+    # A service identity that OWNS the database maps to dbo, not to its own name. Reading that as
+    # "no user" would offer a CREATE USER that fails with 15063 on a database that was fine.
+    $svcDbo = New-NodePilotSqlServiceLoginResult -Principal 'CONTOSO\HOST$' -Database 'NodePilot' `
+        -LoginExists $true -UserName 'dbo' -IsDbOwner $true -IsSysadmin $false
+    Assert-True -Name 'a service identity mapped to dbo passes' -Condition ($svcDbo.Status -eq 'Pass')
+
+    $svcNoLogin = New-NodePilotSqlServiceLoginResult -Principal 'CONTOSO\HOST$' -Database 'NodePilot' `
+        -LoginExists $false -UserName '' -IsDbOwner $false -IsSysadmin $false
+    Assert-True -Name 'a missing login is a failure the wizard can fix' `
+        -Condition ($svcNoLogin.Status -eq 'Fail' -and $svcNoLogin.CanAutoFix)
+    # Pre-ticked: the operator presses Next and it happens. This is the whole point of the change -
+    # copying DDL into SSMS was the step that had to go.
+    Assert-True -Name 'the service-login fix arrives ticked' -Condition ($svcNoLogin.AutoFixDefault)
+    # Never Required. The install itself succeeds without the grant; refusing to install would be a
+    # harder stop than the problem deserves, and the console path has always continued here.
+    Assert-True -Name 'a missing service login does not refuse the install' `
+        -Condition (-not $svcNoLogin.Required)
+    Assert-True -Name 'the failure says what a missing grant will cost' `
+        -Condition ($svcNoLogin.Detail -match '503')
+    # The database is proven to exist - this check only runs after reachability passed. A DBA handed
+    # a CREATE DATABASE for a database they can see reads the rest of the script as equally wrong.
+    Assert-True -Name 'the service-login remediation omits CREATE DATABASE' `
+        -Condition ($svcNoLogin.Remediation -notmatch 'CREATE DATABASE')
+    Assert-True -Name 'the service-login remediation still creates the login and the grant' `
+        -Condition ($svcNoLogin.Remediation -match 'CREATE LOGIN' -and
+                    $svcNoLogin.Remediation -match 'CREATE USER' -and
+                    $svcNoLogin.Remediation -match 'ALTER ROLE db_owner')
+
+    # Three distinct gaps, three distinct sentences: "create the login", "create the user" and
+    # "add it to db_owner" are different work, and one generic line would send an operator looking
+    # for the wrong thing.
+    $svcNoUser = New-NodePilotSqlServiceLoginResult -Principal 'CONTOSO\HOST$' -Database 'NodePilot' `
+        -LoginExists $true -UserName '' -IsDbOwner $false -IsSysadmin $false
+    Assert-True -Name 'a login without a database user says so' `
+        -Condition ($svcNoUser.Status -eq 'Fail' -and $svcNoUser.Detail -match 'no user in \[NodePilot\]')
+    $svcNoRole = New-NodePilotSqlServiceLoginResult -Principal 'CONTOSO\HOST$' -Database 'NodePilot' `
+        -LoginExists $true -UserName 'npsvc' -IsDbOwner $false -IsSysadmin $false
+    Assert-True -Name 'a user outside db_owner is named by its mapped user' `
+        -Condition ($svcNoRole.Status -eq 'Fail' -and $svcNoRole.Detail -match '\[npsvc\]')
+
+    # The full script keeps CREATE DATABASE - that one runs when nothing exists yet.
+    Assert-True -Name 'the unreachable-database remediation still creates the database' `
+        -Condition ((Get-NodePilotSqlRemediationScript -Principal 'CONTOSO\HOST$' -Database 'NodePilot') -match 'CREATE DATABASE')
+
+    # An instance that cannot be asked must not be reported as an instance that answered "no": the
+    # wizard would offer to create a login that may well be there, against a server it cannot reach.
+    $svcUnreachable = Test-NodePilotSqlServiceLogin -Principal 'CONTOSO\HOST$' `
+        -Server 'nodepilot-unreachable.invalid' -Database 'NodePilot' `
+        -CertificateHostName 'nodepilot-unreachable.invalid'
+    Assert-True -Name 'an unverifiable service login warns rather than fails' `
+        -Condition ($svcUnreachable.Status -eq 'Warn' -and -not $svcUnreachable.CanAutoFix)
+    Assert-True -Name 'the unverifiable case still names the principal and the statements' `
+        -Condition ($svcUnreachable.Detail -match 'CONTOSO\\HOST\$' -and $svcUnreachable.Remediation -match 'ALTER ROLE')
+
     # --- ServiceControl.ps1 -------------------------------------------------------------------
     # Static checks can prove the wait is CALLED; only running it proves it works. The defect this
     # covers shipped: the update aborted on the process it had just stopped, because the SCM

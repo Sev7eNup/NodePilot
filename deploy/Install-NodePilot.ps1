@@ -829,6 +829,19 @@ if (-not $PublicHostname) {
 if (-not $JwtIssuer)   { $JwtIssuer   = "nodepilot:prod:$env:COMPUTERNAME" }
 if (-not $JwtAudience) { $JwtAudience = "nodepilot:prod:$env:COMPUTERNAME" }
 if (-not $AllowedHosts) { $AllowedHosts = $PublicHostname }
+# localhost is not optional, whatever the operator asked for. UseHostFiltering rejects any Host
+# header outside this list with a 400 - and the health probe below is a request to
+# https://localhost:<port>/healthz/ready. An AllowedHosts of "nodepilot.corp.example" therefore
+# makes the installer fail its own probe and roll back a perfectly good installation, after the
+# database has been migrated, with "Service did not report /healthz/ready within 180s" as the only
+# clue. Measured on a lab host 2026-08-04.
+#
+# It costs nothing: a Host header of "localhost" is not privileged, and anyone who can send one
+# from outside can send the real name just as easily. Host filtering exists to stop an attacker
+# controlling the host NodePilot echoes back, not to make loopback unreachable.
+if (@($AllowedHosts -split ';' | ForEach-Object { $_.Trim() }) -notcontains 'localhost') {
+    $AllowedHosts = "$AllowedHosts;localhost"
+}
 if (-not $ExternalTriggerApiKey) { $ExternalTriggerApiKey = New-NodePilotRandomBase64 -ByteCount 48 }
 
 $NormalizedThumbprint = ConvertTo-NormalizedThumbprint -Raw $CertThumbprint

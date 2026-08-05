@@ -17,22 +17,43 @@ nutzbar und ist weiterhin die Referenz; das Setup ruft genau dieses Skript auf.
 
 Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — neun Zeilen: .NET-Runtime,
 Kestrel-Zertifikat, **HTTP/HTTPS-Ports**, gMSA, Dienstidentität, Domänenmitgliedschaft,
-DB-Erreichbarkeit, DB-Version, DB-Login. Jede Zeile trägt rechts ein
+DB-Erreichbarkeit, DB-Version, **DB-Zugriff der Dienst-Identität**. Jede Zeile trägt rechts ein
 Statuszeichen — Haken, Kreuz, Ausrufezeichen oder Gedankenstrich — und ist zusätzlich eingefärbt.
 Das Zeichen ist nicht Dekoration: Farbe allein sagt niemandem etwas, der dieses Grün nicht von
 diesem Rot unterscheidet, und in einem Screenshot in einem Ticket schon gar nicht. Rote
 Pflicht-Zeilen blockieren „Weiter" — der Installer würde ohnehin abbrechen, und ein Wizard, der
 einen in ein garantiertes Scheitern hineinführt, ist schlechter als einer, der stoppt.
 
-Ein Klick auf eine Zeile zeigt die zugehörige Anleitung darunter. Das ist ein **Label**, kein
-Eingabefeld: als `TNewMemo` blieb dafür nach acht Prüfzeilen genau eine Zeile Höhe übrig, mitsamt
-Scrollleiste — das sah aus wie ein kaputtes Textfeld. Der Preis ist, dass der Text nicht mehr
-markierbar ist; Inno-Pascal hat keine Clipboard-API, deshalb bleibt „In Datei speichern…" der Weg,
-die Anleitung aus dem Wizard herauszubekommen.
+Ein Klick auf eine Zeile zeigt die zugehörige Anleitung darunter — ein **schreibgeschütztes,
+scrollendes `TNewMemo`**. Das war einmal ein Label, weil ein Memo neben acht fest reservierten
+Prüfzeilen nur eine Zeile hoch wurde und wie ein kaputtes Eingabefeld aussah; seit die Zeilen
+dynamisch liegen, gilt der Grund nicht mehr, und eine Anleitung ist nicht nach fünf Zeilen zu Ende:
+ein DB-Fix ist ein `CREATE LOGIN` / `CREATE USER` / `ALTER ROLE`-Block. Nebeneffekt, der die
+Umstellung ohnehin gerechtfertigt hätte: der Text ist wieder markierbar. „In Datei speichern…"
+bleibt trotzdem, weil Inno-Pascal keine Clipboard-API hat.
 
 Die Zeilen werden erst positioniert, wenn ihr Text steht. Vorher reservierte jede der acht
 Zeilen 16 px für eine Auto-Fix-Checkbox, die fast nie sichtbar ist — 128 px einer 309 px hohen
 Fläche für nichts.
+
+### Auto-Fixes
+
+Rote Zeilen, die der Adapter selbst reparieren kann, tragen eine Checkbox. Anhaken + „Weiter"
+führt den Fix aus und **prüft danach neu** — ein Fix gilt nie als gelungen, nur weil er gelaufen
+ist. Der Haken ist mit dem Versuch verbraucht: er wird danach gelöscht, sonst hinge ein
+dauerhaft scheiternder Fix (typisch: keine Rechte am SQL Server) in einer Schleife aus „Weiter →
+gleiche rote Zeile".
+
+Eine Zeile kommt **vorangehakt**: der DB-Zugriff der Dienst-Identität. Der Pre-Flight testet die
+Erreichbarkeit mit der Identität des installierenden Admins — zur Laufzeit meldet sich aber der
+Dienst an, unter dem Computer-Konto (LocalSystem) bzw. dem gMSA. Diese Zeile fragt genau das ab
+(Login vorhanden? Benutzer in der Ziel-DB? `db_owner`?) und legt es bei Bedarf an. Das ist Teil
+des Installierens, kein Eingriff in fremde Infrastruktur — anders als `CREATE DATABASE`, das
+opt-in bleibt. Sichtbar und abwählbar ist der Haken trotzdem.
+
+Der Fix läuft über `Provision-NodePilotDatabase.ps1`: erst Rechte-Gate (`sysadmin` oder
+`CREATE ANY DATABASE`), dann existenzgeprüft Login → Datenbank → Benutzer → `db_owner`. Fehlen
+die Rechte, wird **nichts** verändert und der Wizard zeigt die Anweisungen für den DBA.
 
 ## Schlüsselfertiger Rollout (unbeaufsichtigt, ohne Token-Eingabe)
 
@@ -325,9 +346,9 @@ abgelehnt, damit eine veraltete Datei nicht halb angewendet wird.
 |---|---|
 | `serviceDisplayName` | Anzeigename des Dienstes |
 | `database.sqlCertificateHostName` | leer lassen → Installer leitet ihn aus `sqlServer` ab |
-| `network.allowedHosts`, `network.knownProxyIps` | Host-Filter und vertrauenswürdige Proxy-IPs |
+| `network.allowedHosts`, `network.knownProxyIps` | Host-Filter und vertrauenswürdige Proxy-IPs. `localhost` hängt der Installer immer an — seine eigene Health-Probe geht dorthin |
 | `certificate.source` | rein dokumentarisch |
-| `provisioning.installDotnetRuntime`, `.createDatabaseAndLogin`, `.generateSelfSignedCertificate`, `.trustArtifactSigner` | die Auto-Fixes der Readiness-Seite. **Im Silent-Modus wirkungslos** — sie werden nur ausgeführt, wenn jemand sie auf der Prüfseite anhakt. |
+| `provisioning.installDotnetRuntime`, `.createDatabaseAndLogin`, `.generateSelfSignedCertificate`, `.trustArtifactSigner` | dieselben Auto-Fixes wie auf der Readiness-Seite, **auch im Silent-Modus** — dort ist die Answer-File die einzige Stelle, an der sie angefordert werden können. Laufen vor der Installation, nicht danach. |
 | `bootstrap.adminUsername` | legt den ersten Admin an, Kennwort zufällig (siehe [Schlüsselfertiger Rollout](#schlüsselfertiger-rollout-unbeaufsichtigt-ohne-token-eingabe)) |
 | `bootstrap.credentialOutputPath` | wohin die Zugangsdaten geschrieben werden. Default `<dataPath>\bootstrap-admin.json` |
 | `seed.backupPath` | `.npbackup`, das beim ersten Start eingespielt wird |
@@ -337,6 +358,15 @@ abgelehnt, damit eine veraltete Datei nicht halb angewendet wird.
 `bootstrap` und `seed` schließen einander nicht aus, aber nur einer greift: bringt der Seed Benutzer
 mit, gibt es kein Token, und `bootstrap` läuft ins Leere. Ohne beide bleibt es beim Token auf der
 Abschlussseite.
+
+**Für einen Rollout auf einen frischen SQL Server gehört `provisioning.createDatabaseAndLogin` in
+die Answer-File.** Der Schlüssel deckt beides ab, was ein unbeaufsichtigter Lauf sonst offen lässt:
+Datenbank und Login anlegen, und der Dienst-Identität (Computer-Konto bzw. gMSA) `db_owner` geben.
+Ohne ihn startet der Dienst und antwortet auf `/healthz/ready` mit 503, weil er sich an der
+Datenbank nicht anmelden kann. Existenzgeprüft — auf einer Maschine, wo alles schon da ist,
+verändert der Lauf nichts. Ausgeführt wird er mit den Rechten des Kontos, das das Setup startet;
+ohne `sysadmin` bzw. `CREATE ANY DATABASE` bleibt alles unverändert und der Grund steht im Log.
+Interaktiv braucht es den Schlüssel nicht — dort hakt die Readiness-Seite die Zeile selbst an.
 
 **Das Passwort steht im Klartext in der Datei.** Geschützt ist sie über die DACL ihres
 Verzeichnisses (SYSTEM + Administratoren + installierender Benutzer, atomar beim Anlegen gesetzt).
@@ -540,11 +570,31 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 24 | Unbeaufsichtigt mit `seed`-Gruppe, leere Instanz | Anmeldung mit einem Benutzer **aus dem Backup**, kein Token, keine Zugangsdatei, Seed-Datei gelöscht |
 | 25 | Derselbe Seed gegen eine befüllte Instanz | nichts passiert, keine Duplikate, Seed-Datei bleibt liegen |
 | 26 | Falsche Seed-Passphrase | Dienst startet **nicht**, Meldung nennt die Passphrase, kein Teilbestand in der DB |
+| 27 | SQL Server ohne Login für die Dienst-Identität | Zeile rot **und vorangehakt**, „Weiter" legt Login + Benutzer + `db_owner` an, danach grün |
+| 28 | Derselbe Lauf mit bereits vorhandenem Login | Zeile grün ohne Checkbox, nichts wird verändert |
+| 29 | Fix ohne `sysadmin` | nichts verändert, Meldung nennt den Grund, Haken danach gelöscht (keine Schleife) |
+| 30 | Unbeaufsichtigt mit `provisioning.createDatabaseAndLogin` | Exit 0, Datenbank + Login angelegt, `/healthz/ready` 200 |
 
-Stand: 1, 3, 5, 9, 10, 22 und 23 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server
-2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21 sowie 24 bis 26 nicht.
+Stand: 1, 3, 5, 9, 10, 22, 23 und 30 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und SQL Server
+2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26 sowie 27 bis 29 nicht.
 
 Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
 `httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,
 `healthz` durchgehend 200 —, `httpPort: 0` installiert mit Exit 0 durch. Die Port-Zeile der
 Readiness-**Seite** (18/19) ist damit noch nicht geklickt, nur der Check dahinter.
+
+Zusatz 2026-08-05: Der DB-Zugriffs-Check gegen echten SQL Server 2022, alle drei Verdikte —
+vorhandener `db_owner` → grün (auch bei abweichender Groß-/Kleinschreibung des Benutzernamens, weil
+über SID aufgelöst wird), Login ohne Rolle → rot mit Fix-Angebot, Login gar nicht vorhanden → rot.
+`autoFixDefault=1` kommt nachweislich in der `probe.ini` an. Der Fix selbst zweimal hintereinander
+gefahren: beim zweiten Mal `Pass` ohne Änderung. Fall 30 end-to-end: Datenbank existierte nicht,
+`/VERYSILENT /ANSWERFILE` mit `createDatabaseAndLogin` → Exit 0, Datenbank + Login + `db_owner`
+angelegt, 36 Tabellen migriert, `healthz` 200. Gegenprobe ohne den Schlüssel: Exit 7 im Pre-Flight,
+nichts angefasst. Was weiter fehlt, ist die **Seite** (27–29): die Checkbox ist nie geklickt worden.
+
+Dabei gefunden und behoben: eine `AllowedHosts`-Liste ohne `localhost` ließ die Installation an
+ihrer **eigenen** Health-Probe scheitern — `UseHostFiltering` antwortet auf `Host: localhost` mit
+400, die Probe geht aber an `https://localhost:<port>/healthz/ready`. Ergebnis war ein Rollback
+nach erfolgreicher Migration, mit „did not report /healthz/ready within 180s" als einzigem Hinweis.
+Der Installer hängt `localhost` jetzt immer an. Fremde Hosts bleiben abgewiesen (nachgemessen:
+`Host: evil.example` → 400).

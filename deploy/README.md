@@ -146,7 +146,9 @@ ALTER ROLE db_owner ADD MEMBER [CONTOSO\NPSRV01$];
 > FROM sys.dm_os_wait_stats WHERE wait_type = 'RESOURCE_SEMAPHORE';
 > ```
 
-> Der Installer-Pre-Flight prüft die SQL-Erreichbarkeit mit der Identität des **installierenden Admins**, nicht mit der Dienst-Identität. Bei LocalSystem gibt er nach erfolgreichem Check zusätzlich genau das `CREATE LOGIN [<host>$]`-Snippet aus, das der laufende Dienst braucht — fehlt der Login, startet der Dienst, scheitert aber an `/healthz/ready` (503).
+> Der Installer-Pre-Flight prüft die SQL-Erreichbarkeit mit der Identität des **installierenden Admins**, nicht mit der Dienst-Identität. Deshalb gibt es dahinter eine zweite Prüfung, die genau die Dienst-Identität nachschlägt — Computer-Konto bei LocalSystem, sonst den gMSA: Login vorhanden? Benutzer in der Ziel-DB? `db_owner`? Fehlt eines davon, startet der Dienst und scheitert an `/healthz/ready` (503), und der Pre-Flight sagt es vorher statt hinterher.
+>
+> Das Setup-Programm legt es auf Wunsch selbst an (Readiness-Seite; die Zeile kommt vorangehakt, unbeaufsichtigt über `provisioning.createDatabaseAndLogin` in der Answer-File). Auf dem Konsolenpfad ist `Provision-NodePilotDatabase.ps1` dasselbe in einem Aufruf. Beides ist existenzgeprüft und macht ohne `sysadmin` bzw. `CREATE ANY DATABASE` gar nichts — dann bleibt das SQL oben für den DBA.
 
 **RCSI (Read-Committed-Snapshot-Isolation)** wird vom Installer automatisch aktiviert (`Enable-SqlReadCommittedSnapshot` im Pre-Flight). Das ist das SQL-Server-Pendant zu Postgres-MVCC: ohne RCSI blockieren langlaufende Reader (Stats-Refresh, Retention-Sweeps) jeden parallelen `INSERT` in `WorkflowExecutions`/`StepExecutions` unter dem Default-2PL-Locking. Falls der Installer-Schritt am Permission-Check scheitert (Login hat kein `ALTER DATABASE`), zeigt er die T-SQL-Anweisung für den DBA an. Manuelle Aktivierung:
 
@@ -379,7 +381,7 @@ Nach erfolgreichem Install steht in der Konsole:
 | `-ExternalTriggerApiKey` | | auto-generiert (48 bytes base64) |
 | `-JwtIssuer` | | `nodepilot:prod:<machine>` |
 | `-JwtAudience` | | `nodepilot:prod:<machine>` |
-| `-AllowedHosts` | | PublicHostname |
+| `-AllowedHosts` | | PublicHostname. `localhost` wird immer angehängt — die Health-Probe des Installers geht an `https://localhost:<port>/healthz/ready`, und `UseHostFiltering` würde sie sonst mit 400 abweisen und eine fertige Installation zurückrollen |
 | `-KnownProxyIps` | | leer (nur Loopback wird vertraut); bei HAProxy jede direkte Transport-IP angeben |
 | `-SkipSqlConnectivityCheck` | | off |
 | `-SkipGmsaCheck` | | off |

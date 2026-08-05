@@ -463,6 +463,14 @@ Assert-TextMatches -Name 'the installer pre-flights the ports it is installing o
     -Text $installerScript `
     -Pattern '(?s)Invoke-NodePilotPreflight[\s\S]{0,600}-HttpsPort \$HttpsPort[\s\S]{0,80}-HttpPort \$HttpPort'
 
+# UseHostFiltering answers 400 to any Host outside AllowedHosts, and the installer's own health
+# probe is a request to https://localhost:<port>/healthz/ready. An AllowedHosts of just the public
+# name therefore fails the probe and rolls the installation back - after the database has been
+# migrated - leaving "did not report /healthz/ready within 180s" as the only clue. Measured on a
+# lab host 2026-08-04, on an answer file that was correct in every other respect.
+Assert-TextMatches -Name 'the rendered AllowedHosts always admits localhost' `
+    -Text $installerScript -Pattern "(?s)-notcontains 'localhost'[\s\S]{0,120}AllowedHosts = "
+
 # The marker is how any later tool finds this installation. Leaving it behind on uninstall makes
 # every subsequent fresh install look like an upgrade.
 Assert-TextMatches -Name 'installer records a machine-wide installation marker' `
@@ -955,6 +963,31 @@ Assert-TextMatches -Name 'the port probe releases what it binds' `
 # for is invisible, which is indistinguishable from not having written it.
 Assert-TextMatches -Name 'the readiness page asks for the port check' `
     -Text $serverIss -Pattern "CheckIds\[\d\] := 'ports';"
+
+# --- the service identity's access to the database -----------------------------------------------
+# This was a caveat printed unconditionally: correct advice, no information, and shown just as
+# loudly on the hosts where the grant was already in place. A sentence nobody can act on trains
+# people to skip the page. It is a query now.
+$serviceLoginStart = $preflightStripped.IndexOf('function Test-NodePilotSqlServiceLogin')
+$serviceLoginEnd = $preflightStripped.IndexOf('function Test-NodePilotSqlTds8Support', $serviceLoginStart)
+if ($serviceLoginStart -lt 0 -or $serviceLoginEnd -le $serviceLoginStart) {
+    throw 'Deployment template check failed: could not delimit Test-NodePilotSqlServiceLogin.'
+}
+$serviceLoginCode = $preflightStripped.Substring($serviceLoginStart, $serviceLoginEnd - $serviceLoginStart)
+Assert-TextMatches -Name 'the service-login check actually asks the server' `
+    -Text $serviceLoginCode -Pattern 'ExecuteReader\(\)'
+Assert-TextMatches -Name 'the service-login check resolves the login through to db_owner' `
+    -Text $serviceLoginCode -Pattern "(?s)sys\.server_principals[\s\S]{0,400}sys\.database_principals[\s\S]{0,400}IS_ROLEMEMBER"
+# The principal comes from the caller's answer file. Interpolating it into the batch would put a
+# text box on the far side of a SQL parser; the read path has no reason to go near that.
+Assert-TextMatches -Name 'the probed principal is a parameter, not interpolated' `
+    -Text $serviceLoginCode -Pattern "Parameters\.Add\('@principal'"
+# Both identities, not just LocalSystem. The 503 this predicts does not care whether the service
+# runs as a computer account or as a gMSA, and while this was a printed caveat there was nothing
+# useful to say about a gMSA that the gMSA check had not already said.
+Assert-TextMatches -Name 'the service-login check runs for the gMSA as well' `
+    -Text $preflightStripped `
+    -Pattern '(?s)Test-NodePilotSqlServiceLogin -Principal \$SqlPrincipal'
 # Auto-fixes are looked up by check id, never by position. Reading CheckFixes[5] for the database
 # fix was correct until the port check was inserted at index 2 and pushed every later row down by
 # one: the tick then landed on a row that offers no fix, the answer file said false, provisioning
@@ -984,7 +1017,7 @@ foreach ($fixId in $referencedFixIds) {
 # these the wizard re-probes to the same red line and says nothing, which is what made the fixed
 # index above invisible for a whole build.
 $fixStart = $serverIss.IndexOf('if WantsFix then')
-$fixEnd = $serverIss.IndexOf('// A generated certificate', $fixStart)
+$fixEnd = $serverIss.IndexOf('// Never assume a fix worked.', $fixStart)
 if ($fixStart -lt 0 -or $fixEnd -le $fixStart) {
     throw 'Deployment template check failed: could not delimit the auto-fix branch in the server setup.'
 }
@@ -993,6 +1026,41 @@ Assert-TextMatches -Name 'a provisioning run that changed nothing says so' `
     -Text $fixBranch -Pattern "(?s)actionsPerformed[\s\S]{0,200}MsgBox"
 Assert-TextMatches -Name 'a database that could not be prepared says why' `
     -Text $fixBranch -Pattern "(?s)GetIniString\('provision\.database', 'status'[\s\S]{0,400}MsgBox"
+# A tick is spent by the attempt, not by its success. Left set, a fix that keeps failing - no
+# permission on the SQL Server is the realistic one - runs again on every Next and returns to this
+# page every time, and the only way forward is to spot the box and clear it by hand.
+Assert-TextMatches -Name 'a provisioning run clears the ticks it acted on' `
+    -Text $fixBranch -Pattern 'CheckFixes\[I\]\.Checked := False'
+
+# Granting the service identity access to a database that already exists is part of installing, so
+# that one row arrives ticked and Next does it. Applied ONCE per run: the probe runs again after
+# every attempt, and a default that came back each time would re-tick a box the operator had just
+# cleared - Next would run the same failing fix again and never leave the page.
+Assert-TextMatches -Name 'a pre-ticked fix is defaulted only once' `
+    -Text $serverIss -Pattern '(?s)not CheckFixDefaulted\[I\][\s\S]{0,300}CheckFixDefaulted\[I\] := True'
+Assert-TextMatches -Name 'the pre-tick comes from the adapter, not from the wizard' `
+    -Text $serverIss -Pattern "'autoFixDefault', '0', Ini\) = '1'"
+# Two rows can ask for the same provisioning run. Provision-NodePilotDatabase.ps1 is
+# existence-guarded end to end, so one run covers "nothing exists yet" and "everything exists
+# except the service identity's grant" without being told which it is - but only if the wizard
+# actually forwards the second row's tick.
+Assert-TextMatches -Name 'either database row can request the provisioning run' `
+    -Text $serverIss -Pattern "IsFixRequested\('database'\) or IsFixRequested\('databaseServiceLogin'\)"
+
+# The readiness page is the ONLY thing that ever ran that provisioning, and /ANSWERFILE skips every
+# wizard page. Without a silent equivalent the provisioning keys are dead weight in an unattended
+# file - accepted, validated, then ignored - which is how a fleet rollout ends up with a service
+# that starts and answers 503 because the computer account was never granted db_owner.
+Assert-TextMatches -Name 'a silent install runs the provisioning its answer file asks for' `
+    -Text $serverIss -Pattern "(?s)WizardSilent\(\) and \(AnswerMode = 'install'\)[\s\S]{0,600}-Mode Provision"
+# Before the install, not after it: everything provisioning does - the runtime, the certificate,
+# the database grant - is a precondition of the install rather than a follow-up to it.
+$silentProvisionIndex = $serverIss.IndexOf("WizardSilent() and (AnswerMode = 'install')")
+$applyIndex = $serverIss.IndexOf("Arguments := '-Mode Apply'")
+if ($silentProvisionIndex -lt 0 -or $applyIndex -lt 0 -or $silentProvisionIndex -gt $applyIndex) {
+    throw ('Deployment template check failed: the silent provisioning step does not run before ' +
+           'the install it is a precondition of.')
+}
 
 $declaredCheckCount = [int]([regex]::Match($serverIss, 'CheckCount\s*=\s*(\d+)').Groups[1].Value)
 $assignedCheckIds = @([regex]::Matches($serverIss, "CheckIds\[\d+\] := '")).Count
@@ -1177,6 +1245,24 @@ Assert-TextDoesNotMatch -Name 'listing certificates needs no answer file' `
 # on the 443 default while the operator installs on 8443.
 Assert-TextMatches -Name 'the configured ports reach the pre-flight' `
     -Text $setupAdapter -Pattern "(?s)function ConvertTo-NodePilotPreflightParameters[\s\S]*?HttpsPort\s*=\s*\[int\]\`$Answers\['network\.httpsPort'\]"
+
+# Which fixes arrive ticked is the adapter's call, not the wizard's - the wizard has no idea what
+# any of these checks mean. Unpublished, the flag never reaches the page and the pre-tick silently
+# stops happening.
+Assert-TextMatches -Name 'the adapter publishes which fixes arrive ticked' `
+    -Text $setupAdapter -Pattern "Name 'autoFixDefault'"
+
+# A certificate generated moments ago has a thumbprint no answer file can contain. The wizard
+# writes it back onto its own TLS page; the unattended path has no page, so the adapter carries it
+# across - otherwise a silent run that asks for one creates it, orphans it in LocalMachine\My, and
+# installs against whatever thumbprint the answer file happened to hold.
+Assert-TextMatches -Name 'a generated certificate reaches the unattended install' `
+    -Text $setupAdapter -Pattern "(?s)provision\.ini[\s\S]{0,500}\`$splat\['CertThumbprint'\] ="
+# Only when the answer file named none of its own. A file that names a thumbprint has made a
+# choice, and so has an operator who generated one on the readiness page and then went back and
+# typed a different one.
+Assert-TextMatches -Name 'a thumbprint the answer file names is never overwritten' `
+    -Text $setupAdapter -Pattern "\`$splat\['CertThumbprint'\] -notmatch"
 
 # "Service did not report /healthz/ready within 180s" names a symptom. The cause is one line in the
 # Application log, and without it the operator is left with a rollback and no reason for it.

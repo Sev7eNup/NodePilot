@@ -90,6 +90,10 @@ Test-ADServiceAccount -Identity svc-nodepilot
 
 Das erwartete Testergebnis ist `True`. Für SQL Server wird das gMSA analog zum Computerkonto als Login und Datenbankbenutzer mit `db_owner` angelegt.
 
+### Beides kann das Setup übernehmen
+
+Wer mit `NodePilot-Server-Setup-<version>.exe` installiert, kann das SQL oben überspringen, sofern das ausführende Konto `sysadmin` ist (oder `CREATE ANY DATABASE` besitzt). Die Readiness-Seite prüft den Datenbank-Zugriff der **Dienst-Identität** getrennt von der reinen Erreichbarkeit — erreichbar wird als *installierender Admin* getestet, angemeldet wird zur Laufzeit der Dienst — und legt Login, Benutzer und `db_owner` bei Bedarf an. Die Zeile kommt vorangehakt; unbeaufsichtigt fordert `"provisioning": { "createDatabaseAndLogin": true }` in der Answer-File dasselbe an. Existenzgeprüft: ist alles vorhanden, passiert nichts. Fehlen die Rechte, wird nichts verändert und die Anweisungen für den DBA werden angezeigt.
+
 ## 2. Datenbank vorbereiten
 
 ### SQL Server
