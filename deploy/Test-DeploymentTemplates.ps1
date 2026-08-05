@@ -1203,6 +1203,22 @@ Assert-TextDoesNotMatch -Name 'the seed passphrase is never rendered into appset
     -Text $appSettingsTemplate -Pattern 'SeedBackupPassphrase'
 # Same treatment the database secret gets: the key is locked down BEFORE the value lands in it,
 # not afterwards, so there is no window where the plaintext sits under a default ACL.
+# Get-Acl/Set-Acl -LiteralPath resolve a registry path against the CURRENT provider rather than the
+# drive qualifier in the string, so from a filesystem location 'HKLM:\SYSTEM\...' comes back as
+# "Cannot find path" while Test-Path on the same string says True. That aborted an install on the
+# lab host between registering the service and writing its Environment value.
+# Checked against the comment-stripped source: the comment explaining this rule names the very
+# switch it forbids, and this file has been caught by that four times before.
+$installerCode = Remove-CommentLines -Text $installerScript
+$registryAclStart = $installerCode.IndexOf('function Set-ServiceRegistryAclForSecrets')
+$registryAclEnd = $installerCode.IndexOf('function Grant-CertPrivateKeyAccess', $registryAclStart)
+if ($registryAclStart -lt 0 -or $registryAclEnd -le $registryAclStart) {
+    throw 'Deployment template check failed: could not delimit Set-ServiceRegistryAclForSecrets.'
+}
+Assert-TextDoesNotMatch -Name 'the registry ACL is never addressed with -LiteralPath' `
+    -Text $installerCode.Substring($registryAclStart, $registryAclEnd - $registryAclStart) `
+    -Pattern '-LiteralPath'
+
 Assert-TextMatches -Name 'the service registry key is restricted before the passphrase is written' `
     -Text $installerScript `
     -Pattern '(?s)if \(\$SeedBackupPassphrase\) \{[\s\S]{0,400}Set-ServiceRegistryAclForSecrets[\s\S]{0,400}Provisioning__SeedBackupPassphrase'

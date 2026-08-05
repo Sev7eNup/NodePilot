@@ -408,7 +408,14 @@ function Set-ServiceRegistryAclForSecrets {
     #>
     param([Parameter(Mandatory)][string]$Path)
 
-    $acl = Get-Acl -LiteralPath $Path
+    # -Path, not -LiteralPath. On a registry path Get-Acl/Set-Acl -LiteralPath resolves against the
+    # CURRENT provider instead of the drive qualifier in the string, so from a filesystem location
+    # 'HKLM:\SYSTEM\...' comes back as "Cannot find path" while Test-Path on the very same string
+    # says True. Measured on the lab host: this aborted an installation between registering the
+    # service and writing its Environment value, and it would have done so on every PostgreSQL
+    # install - the one path that called this before now, and the one case the smoke matrix has
+    # never run.
+    $acl = Get-Acl -Path $Path
     $acl.SetAccessRuleProtection($true, $false)
     @($acl.Access) | ForEach-Object { [void]$acl.RemoveAccessRule($_) }
     foreach ($identity in @(
@@ -421,7 +428,7 @@ function Set-ServiceRegistryAclForSecrets {
             [Security.AccessControl.PropagationFlags]::None,
             [Security.AccessControl.AccessControlType]::Allow)))
     }
-    Set-Acl -LiteralPath $Path -AclObject $acl
+    Set-Acl -Path $Path -AclObject $acl
 }
 
 function Grant-CertPrivateKeyAccess {
