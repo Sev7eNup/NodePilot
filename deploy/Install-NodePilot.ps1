@@ -173,6 +173,14 @@ param(
     [string]$ServiceName = 'NodePilot',
     [string]$ServiceDisplayName = 'NodePilot Orchestrator',
     [string]$ExternalTriggerApiKey,
+    # Pins which username may consume the one-shot setup token. Empty by default: an interactive
+    # installer cannot know the answer, and pinning the wrong name would lock the operator out of
+    # their own bootstrap. An unattended install does know it, and passes it.
+    [string]$BootstrapAdminUsername,
+    # A configuration backup to restore on first start. The file is copied into DataPath and the
+    # passphrase goes into the service's Environment value, never into appsettings.
+    [string]$SeedBackupPath,
+    [SecureString]$SeedBackupPassphrase,
     [string]$JwtIssuer,
     [string]$JwtAudience,
     [string]$AllowedHosts,
@@ -218,6 +226,7 @@ $previousPostgresRootCertificateAcl = $null
 $postgresRootCertificatePreviouslyExisted = $false
 $postgresRootCertificateTouched = $false
 $installMutationStarted = $false
+$dataAclApplied = $false
 try {
     if (-not (Test-Path -LiteralPath $ArtifactPath -PathType Leaf)) { throw "Artifact not found: $ArtifactPath" }
     $ArtifactPath = (Resolve-Path -LiteralPath $ArtifactPath).Path
@@ -331,6 +340,14 @@ function Set-DirectoryAclForService {
     $acl = Get-Acl $Path
     $acl.SetAccessRuleProtection($true, $false)
 
+    # Owner, not just the ACEs. The API refuses to read its bootstrap token when any directory on
+    # the way to it has an owner it does not trust, and a data directory that survived a previous
+    # life carries whoever last took ownership of it - which the uninstaller's own -PurgeData does,
+    # by design, to delete owner-only files. Fixing the ACEs and leaving that owner in place
+    # produced an installation that looked perfect and could never create its first admin.
+    # A fresh directory already comes out owned by Administrators; this only repairs the rest.
+    $acl.SetOwner([System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))
+
     # Wipe inherited ACEs that SetAccessRuleProtection preserved-as-explicit.
     $acl.Access | ForEach-Object { $acl.RemoveAccessRule($_) | Out-Null }
 
@@ -392,7 +409,14 @@ function Set-ServiceRegistryAclForSecrets {
     #>
     param([Parameter(Mandatory)][string]$Path)
 
-    $acl = Get-Acl -LiteralPath $Path
+    # -Path, not -LiteralPath. On a registry path Get-Acl/Set-Acl -LiteralPath resolves against the
+    # CURRENT provider instead of the drive qualifier in the string, so from a filesystem location
+    # 'HKLM:\SYSTEM\...' comes back as "Cannot find path" while Test-Path on the very same string
+    # says True. Measured on the lab host: this aborted an installation between registering the
+    # service and writing its Environment value, and it would have done so on every PostgreSQL
+    # install - the one path that called this before now, and the one case the smoke matrix has
+    # never run.
+    $acl = Get-Acl -Path $Path
     $acl.SetAccessRuleProtection($true, $false)
     @($acl.Access) | ForEach-Object { [void]$acl.RemoveAccessRule($_) }
     foreach ($identity in @(
@@ -405,7 +429,7 @@ function Set-ServiceRegistryAclForSecrets {
             [Security.AccessControl.PropagationFlags]::None,
             [Security.AccessControl.AccessControlType]::Allow)))
     }
-    Set-Acl -LiteralPath $Path -AclObject $acl
+    Set-Acl -Path $Path -AclObject $acl
 }
 
 function Grant-CertPrivateKeyAccess {
@@ -806,6 +830,19 @@ if (-not $PublicHostname) {
 if (-not $JwtIssuer)   { $JwtIssuer   = "nodepilot:prod:$env:COMPUTERNAME" }
 if (-not $JwtAudience) { $JwtAudience = "nodepilot:prod:$env:COMPUTERNAME" }
 if (-not $AllowedHosts) { $AllowedHosts = $PublicHostname }
+# localhost is not optional, whatever the operator asked for. UseHostFiltering rejects any Host
+# header outside this list with a 400 - and the health probe below is a request to
+# https://localhost:<port>/healthz/ready. An AllowedHosts of "nodepilot.corp.example" therefore
+# makes the installer fail its own probe and roll back a perfectly good installation, after the
+# database has been migrated, with "Service did not report /healthz/ready within 180s" as the only
+# clue. Measured on a lab host 2026-08-04.
+#
+# It costs nothing: a Host header of "localhost" is not privileged, and anyone who can send one
+# from outside can send the real name just as easily. Host filtering exists to stop an attacker
+# controlling the host NodePilot echoes back, not to make loopback unreachable.
+if (@($AllowedHosts -split ';' | ForEach-Object { $_.Trim() }) -notcontains 'localhost') {
+    $AllowedHosts = "$AllowedHosts;localhost"
+}
 if (-not $ExternalTriggerApiKey) { $ExternalTriggerApiKey = New-NodePilotRandomBase64 -ByteCount 48 }
 
 $NormalizedThumbprint = ConvertTo-NormalizedThumbprint -Raw $CertThumbprint
@@ -858,6 +895,9 @@ $preflightResults = Invoke-NodePilotPreflight `
     -CertificateThumbprint $NormalizedThumbprint `
     -DbProvider $DbProvider `
     -IsLocalSystem $isLocalSystem `
+    -PublicHostname $PublicHostname `
+    -HttpsPort $HttpsPort `
+    -HttpPort $HttpPort `
     -ServiceAccount $ServiceAccount `
     -ComputerAccount $ComputerAccount `
     -SqlPrincipal $SqlPrincipal `
@@ -962,6 +1002,41 @@ if (Test-Path $InstallPath) {
 New-Item -ItemType Directory -Path $DataPath -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $DataPath 'logs') -Force | Out-Null
 Set-DirectoryAclForService -Path $DataPath -ServiceAccount $AclIdentity -SkipServiceRule:$isLocalSystem
+# From here on the data directory carries an ACE for the identity being installed. If anything
+# below fails, the rollback has to take it off again - see the catch block.
+$dataAclApplied = $true
+
+# The two files the SERVICE writes for itself, owned by whoever it was at the time: a single ACE,
+# FullControl, protected. Change the service identity and the new one cannot open them, while the
+# old one is gone - so a fresh install with a different identity used to fail at the first start
+# with "the file, its owner, or its ACL could not be verified" (lab 2026-08-05, LocalSystem then
+# gMSA). Deleting them is not an option: the JWT key signs live sessions, and the setup token is
+# the only way into a not-yet-provisioned instance. They are handed over instead.
+foreach ($identityBoundSecret in @('jwt-secret.key', 'admin-setup.token')) {
+    $secretPath = Join-Path $DataPath $identityBoundSecret
+    if (Test-Path -LiteralPath $secretPath -PathType Leaf) {
+        Set-NodePilotServiceOwnedFileAcl -Path $secretPath -ServiceAccount $AclIdentity
+        Write-Info "  Handed $identityBoundSecret over to $AccountLabel."
+    }
+}
+
+# Provisioning seed: copied in rather than referenced where the operator left it, because the API
+# reads it as the service account at first start and a deployment share is not reachable then.
+# It carries credentials, so it lands with the same restricted ACL as the configuration itself and
+# the service deletes it once it has been consumed.
+$seedTargetPath = ''
+if ($SeedBackupPath) {
+    if (-not (Test-Path -LiteralPath $SeedBackupPath -PathType Leaf)) {
+        throw "SeedBackupPath '$SeedBackupPath' does not exist."
+    }
+    $seedTargetPath = Join-Path $DataPath 'seed.npbackup'
+    Write-NodePilotRestrictedFile `
+        -Path $seedTargetPath `
+        -Content ([IO.File]::ReadAllBytes($SeedBackupPath)) `
+        -ServiceAccount $AclIdentity `
+        -SkipServiceRule:$isLocalSystem
+    Write-Info "  Provisioning seed staged: $seedTargetPath"
+}
 
 $installedPostgresRootCertificate = $null
 if ($DbProvider -eq 'postgres') {
@@ -1081,6 +1156,10 @@ $rendered = $rendered.Replace('{{HTTP_PORT}}',                  $HttpPort.ToStri
 $rendered = $rendered.Replace('{{BIND_HTTP_JSON}}',             $BindHttpJson)
 $rendered = $rendered.Replace('{{DATA_PATH_ESCAPED}}',          $dataEscaped)
 $rendered = $rendered.Replace('{{EXTERNAL_TRIGGER_API_KEY}}',   (ConvertTo-JsonInnerLocal $ExternalTriggerApiKey))
+$rendered = $rendered.Replace('{{BOOTSTRAP_ADMIN_USERNAME}}',   (ConvertTo-JsonInnerLocal $BootstrapAdminUsername))
+# Only the PATH goes into the configuration file. The passphrase that unlocks it is placed in the
+# service's Environment value instead, next to the database secret and behind the same ACL.
+$rendered = $rendered.Replace('{{SEED_BACKUP_PATH}}',           (ConvertTo-JsonInnerLocal $seedTargetPath))
 $rendered = $rendered.Replace('{{ALLOWED_HOSTS}}',              (ConvertTo-JsonInnerLocal $AllowedHosts))
 $rendered = $rendered.Replace('{{KNOWN_PROXIES_JSON}}',         (ConvertTo-Json -InputObject @($normalizedKnownProxyIps) -Compress))
 
@@ -1225,7 +1304,17 @@ if ($DbProvider -eq 'postgres') {
     Set-ServiceRegistryAclForSecrets -Path $envRegPath
     $envValues += "ConnectionStrings__Postgres=$postgresServiceConnStr"
 }
+if ($SeedBackupPassphrase) {
+    # Same reasoning as the connection string above: this unlocks a file containing every
+    # credential the reference machine had, so it never reaches appsettings.Production.json. The
+    # key is restricted BEFORE the value is written, not after.
+    Set-ServiceRegistryAclForSecrets -Path $envRegPath
+    $seedPassphrasePlain = [Runtime.InteropServices.Marshal]::PtrToStringBSTR(
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SeedBackupPassphrase))
+    $envValues += "Provisioning__SeedBackupPassphrase=$seedPassphrasePlain"
+}
 New-ItemProperty -Path $envRegPath -Name 'Environment' -PropertyType MultiString -Value $envValues -Force | Out-Null
+if ($SeedBackupPassphrase) { $seedPassphrasePlain = $null }
 if ($DbProvider -eq 'postgres') {
     $pgPwPlain = $null
     $postgresServiceConnStr = $null
@@ -1473,6 +1562,27 @@ catch {
                 }
                 elseif (Test-Path -LiteralPath $postgresRootCertificateTarget) {
                     Remove-Item -LiteralPath $postgresRootCertificateTarget -Force -ErrorAction Stop
+                }
+            }
+            # The data directory's ACL is part of what was changed, and until now it was the one
+            # part the rollback left behind. That is not cosmetic: the ACE for the identity being
+            # installed is an UNTRUSTED principal from the restored identity's point of view, and
+            # RestrictedFileWriter refuses to read the JWT key when its parent directory grants
+            # mutation rights to one. So a failed identity switch did not just fail - it took the
+            # working installation it was replacing down with it, with "parent directory
+            # 'C:\ProgramData\NodePilot' grants mutation rights to an untrusted principal" on a
+            # service that had been running five minutes earlier. Reproduced in the lab
+            # 2026-08-05: the rollback restored the LocalSystem service and then could not start
+            # it ("ROLLBACK ALSO FAILED").
+            if ($dataAclApplied -and (Test-Path -LiteralPath $DataPath -PathType Container)) {
+                Set-DirectoryAclForService `
+                    -Path $DataPath `
+                    -ServiceAccount $previousAclIdentity `
+                    -SkipServiceRule:($previousAclIdentity -eq 'NT AUTHORITY\SYSTEM')
+                foreach ($identityBoundSecret in @('jwt-secret.key', 'admin-setup.token')) {
+                    Set-NodePilotServiceOwnedFileAcl `
+                        -Path (Join-Path $DataPath $identityBoundSecret) `
+                        -ServiceAccount $previousAclIdentity
                 }
             }
             if ($previousService) {

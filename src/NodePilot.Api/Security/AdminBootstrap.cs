@@ -105,20 +105,65 @@ public static class AdminBootstrap
     /// an admin silently).
     /// </summary>
     public static bool Validate(IHostEnvironment env, string? presented, IConfiguration? config = null)
+        => Validate(env, presented, config, out _);
+
+    /// <summary>
+    /// As <see cref="Validate(IHostEnvironment, string?, IConfiguration?)"/>, additionally
+    /// reporting why a rejection happened.
+    /// </summary>
+    /// <remarks>
+    /// The reason matters because one of the failure modes is invisible from outside and
+    /// unrecoverable by trying again: if anything grants a named user access to the directory
+    /// holding the token - which is what Windows Explorer's "You don't currently have permission
+    /// to access this folder / Continue" button does - the file stops validating and every
+    /// correct token is refused for the rest of the installation's life. Reported as a plain
+    /// mismatch, that sends the operator to check the one thing that is not wrong.
+    /// </remarks>
+    public static bool Validate(
+        IHostEnvironment env,
+        string? presented,
+        IConfiguration? config,
+        out string? rejectionReason)
     {
-        if (string.IsNullOrEmpty(presented)) return false;
+        rejectionReason = null;
+        if (string.IsNullOrEmpty(presented))
+        {
+            rejectionReason = "no setup token was presented";
+            return false;
+        }
         var path = ResolveTokenPath(env, config);
-        if (!File.Exists(path)) return false;
+        if (!File.Exists(path))
+        {
+            rejectionReason = $"the bootstrap token file '{path}' does not exist";
+            return false;
+        }
         string? expected;
         try
         {
             var read = RestrictedFileWriter.ReadValidatedText(path);
-            if (!read.Security.IsSecure && !env.IsDevelopment()) return false;
+            if (!read.Security.IsSecure && !env.IsDevelopment())
+            {
+                rejectionReason =
+                    $"the bootstrap token file '{path}' failed its security validation: " +
+                    $"{read.Security.Reason}. The presented token was not even compared. " +
+                    "Restore the directory to SYSTEM and Administrators only, then retry.";
+                return false;
+            }
             expected = read.Content?.Trim();
         }
-        catch { return false; }
-        if (string.IsNullOrEmpty(expected)) return false;
-        return SecretComparer.FixedTimeEquals(presented, expected);
+        catch (Exception ex)
+        {
+            rejectionReason = $"the bootstrap token file could not be read: {ex.Message}";
+            return false;
+        }
+        if (string.IsNullOrEmpty(expected))
+        {
+            rejectionReason = "the bootstrap token file is empty";
+            return false;
+        }
+        if (SecretComparer.FixedTimeEquals(presented, expected)) return true;
+        rejectionReason = "the presented setup token does not match the token file";
+        return false;
     }
 
     /// <summary>

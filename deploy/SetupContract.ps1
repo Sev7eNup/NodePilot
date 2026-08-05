@@ -35,6 +35,12 @@ $script:NodePilotAnswerFileKeys = @{
             'certificate.source',
             'provisioning.installDotnetRuntime', 'provisioning.createDatabaseAndLogin',
             'provisioning.generateSelfSignedCertificate', 'provisioning.trustArtifactSigner',
+            # PostgreSQL has no equivalent of Trusted_Connection, so createDatabaseAndLogin needs
+            # credentials there that the SQL Server path gets for free from the installing admin's
+            # own Windows identity. Provisioning-only: the service never sees them.
+            'provisioning.postgresSuperUser', 'provisioning.postgresSuperPassword',
+            'bootstrap.adminUsername', 'bootstrap.credentialOutputPath',
+            'seed.backupPath', 'seed.passphrase',
             'skips.databaseCheck', 'skips.gmsaCheck'
         )
     }
@@ -233,7 +239,55 @@ function ConvertTo-NodePilotInstallParameters {
     if ([bool](& $optional 'skips.databaseCheck' $false)) { $splat['SkipSqlConnectivityCheck'] = $true }
     if ([bool](& $optional 'skips.gmsaCheck' $false)) { $splat['SkipGmsaCheck'] = $true }
 
+    # Pins which username may consume the one-shot setup token. The guard has existed in
+    # AuthController since H12 and nothing has ever set it; an unattended install is the first
+    # caller that knows the answer in advance, so a token intercepted between service start and
+    # the adapter's login can no longer be spent on a name of the interceptor's choosing.
+    $bootstrapAdmin = & $optional 'bootstrap.adminUsername'
+    if ($bootstrapAdmin) { $splat['BootstrapAdminUsername'] = [string]$bootstrapAdmin }
+
+    # A configuration backup to restore on first start. The passphrase travels as a SecureString for
+    # the same reason -PostgresPassword does: it cannot cross a powershell.exe -File boundary any
+    # other way, and it unlocks a file holding every credential the reference machine had.
+    $seedPath = & $optional 'seed.backupPath'
+    if ($seedPath) {
+        $splat['SeedBackupPath'] = [string]$seedPath
+        $splat['SeedBackupPassphrase'] = ConvertTo-NodePilotSecureString `
+            -PlainText ([string]$Answers['seed.passphrase'])
+    }
+
     return $splat
+}
+
+function New-NodePilotBootstrapPassword {
+    <#
+      The first admin's password, random per machine.
+
+      A fixed default would be the one thing worth avoiding: NodePilot runs PowerShell on every
+      machine it manages, Kestrel binds all interfaces in Server mode, and a known value is found
+      by scanning rather than guessing. Random costs the same to automate and has none of that.
+
+      24 bytes of CSPRNG - 32 base64 characters. The server's policy is length-only
+      (MinPasswordLength 8, MaxPasswordBytes 72, no complexity rule), so this clears it with room
+      at both ends; the upper bound exists because BCrypt silently truncates past 72 bytes, which
+      would make the extra characters decorative.
+    #>
+    return New-NodePilotRandomBase64 -ByteCount 24
+}
+
+function Get-NodePilotBootstrapCredentialPath {
+    <#
+      Where the generated credentials are left for the automation to collect. Inside DataPath by
+      default, because that is the one directory the installer has already locked down to SYSTEM
+      and Administrators - and because a silent installation has nowhere else to put it that the
+      caller can predict.
+    #>
+    param(
+        [Parameter(Mandatory)][System.Collections.IDictionary]$Answers
+    )
+    $configured = [string]$Answers['bootstrap.credentialOutputPath']
+    if (-not [string]::IsNullOrWhiteSpace($configured)) { return $configured }
+    return (Join-Path ([string]$Answers['dataPath']) 'bootstrap-admin.json')
 }
 
 function Remove-NodePilotAnswerFile {
@@ -272,6 +326,164 @@ function ConvertTo-NodePilotIniValue {
     param([AllowNull()]$Value)
     if ($null -eq $Value) { return '' }
     return ([string]$Value) -replace "`r`n", '\n' -replace "`n", '\n' -replace "`r", '\n'
+}
+
+# The installer's own phases, in the order it prints them, with the percentage each one STARTS at.
+# Mirrors the Write-Step calls in Install-NodePilot.ps1 - Test-DeploymentTemplates.ps1 pins that
+# every entry here still exists there, because a renamed step would silently produce a bar that
+# never moves past the phase before it.
+#
+# The percentages are not equal slices. Extracting the artifact and starting the service are where
+# the wall-clock goes (the service start alone waits up to 180 s on the health probe), so they get
+# the room. A bar that races to 90% and then sits there for two minutes is worse than no bar.
+$script:NodePilotInstallPhases = @(
+    [pscustomobject]@{ Step = 'NodePilot installer';                     Percent = 2;  Text = 'Starting the installer' }
+    [pscustomobject]@{ Step = 'Pre-flight checks';                       Percent = 8;  Text = 'Checking prerequisites' }
+    [pscustomobject]@{ Step = 'Preparing directories';                   Percent = 15; Text = 'Preparing directories' }
+    [pscustomobject]@{ Step = 'Extracting artifact';                     Percent = 25; Text = 'Extracting and verifying the signed artifact' }
+    [pscustomobject]@{ Step = 'Generating appsettings.Production.json';  Percent = 55; Text = 'Writing the configuration' }
+    [pscustomobject]@{ Step = 'Applying ACLs';                           Percent = 62; Text = 'Applying permissions' }
+    [pscustomobject]@{ Step = 'Firewall rules';                          Percent = 68; Text = 'Adding firewall rules' }
+    [pscustomobject]@{ Step = 'Registering Windows Service';             Percent = 74; Text = 'Registering the Windows service' }
+    [pscustomobject]@{ Step = "Granting 'Log on as a service' to";       Percent = 77; Text = 'Granting the service logon right' }
+    [pscustomobject]@{ Step = 'Starting service';                        Percent = 80; Text = 'Starting the service - this can take up to three minutes' }
+)
+
+# The updater's four phases. The probe here waits 60 s, not the installer's 180, so the last
+# caption promises less.
+$script:NodePilotUpdatePhases = @(
+    [pscustomobject]@{ Step = 'Backing up current install';   Percent = 20; Text = 'Backing up the current installation' }
+    [pscustomobject]@{ Step = 'Stopping service';             Percent = 40; Text = 'Stopping the service' }
+    [pscustomobject]@{ Step = 'Installing verified artifact'; Percent = 55; Text = 'Installing the verified artifact' }
+    [pscustomobject]@{ Step = 'Starting service';             Percent = 75; Text = 'Starting the service - this can take up to a minute' }
+)
+
+function Get-NodePilotInstallPhases {
+    # Exposed so the tests and the drift contract read the same tables the translation uses.
+    return $script:NodePilotInstallPhases
+}
+
+function Get-NodePilotUpdatePhases {
+    return $script:NodePilotUpdatePhases
+}
+
+function Get-NodePilotPhaseProgress {
+    <#
+      Translates one line of installer or updater output into a progress position, or $null when
+      the line is not a phase heading.
+
+      Matched on a prefix, because several headings interpolate a value into themselves
+      ("Stopping service 'NodePilot'", "Granting 'Log on as a service' to CORP\svc$"). An exact
+      comparison cannot express those at all - which is how three of them went unrecognised, and
+      why the bar stood still through half of an update.
+
+      A prefix is safe here for a reason worth stating: Write-Step prints its heading flush, while
+      Write-Info indents every detail line underneath it. A detail line therefore begins with
+      whitespace and cannot be the prefix of any phase name.
+
+      Returning $null for everything else is the behaviour that matters most: an unrecognised line
+      has to leave the bar where it is rather than reset it.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Line)
+
+    if ($Line -cmatch '^\[install\]\s(.*)$') {
+        return Find-NodePilotPhase -Text $matches[1] -Phases $script:NodePilotInstallPhases
+    }
+    if ($Line -cmatch '^\[update\]\s(.*)$') {
+        return Find-NodePilotPhase -Text $matches[1] -Phases $script:NodePilotUpdatePhases
+    }
+    return $null
+}
+
+function Find-NodePilotPhase {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Text,
+        [Parameter(Mandatory)][object[]]$Phases
+    )
+    # StartsWith, not -clike: the wildcard operator would read '[', ']' and '*' in a phase name as
+    # pattern syntax and stop matching without saying so - the same silent class of failure this
+    # whole table exists to avoid.
+    foreach ($phase in $Phases) {
+        if ($Text.StartsWith($phase.Step, [System.StringComparison]::Ordinal)) {
+            return [pscustomobject]@{ Percent = $phase.Percent; Text = $phase.Text }
+        }
+    }
+    return $null
+}
+
+function Get-NodePilotBootstrapToken {
+    <#
+      Reads admin-setup.token for display on the wizard's finish page.
+
+      The service writes that file with a single ACE for its own identity, so an elevated
+      installing admin is DENIED a plain read whenever the service runs as someone else - which is
+      always, for both LocalSystem and a gMSA. Test-Path still returns true, because Administrators
+      own the directory, so the naive version looked like it worked and silently produced nothing:
+      the finish page showed no token, the operator went looking for the file by hand, and granting
+      themselves access on the folder is what then broke the bootstrap outright.
+
+      robocopy /B copies through the backup semantics an elevated administrator already holds - the
+      same mechanism the installer prints as a hint for the scripted path. The copy lands in the
+      caller's ACL-protected session directory and is shredded immediately after reading.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$DataPath,
+        [Parameter(Mandatory)][string]$StagingDirectory
+    )
+
+    $tokenPath = Join-Path $DataPath 'admin-setup.token'
+    if (-not (Test-Path -LiteralPath $tokenPath)) { return '' }
+
+    # Direct read first: it succeeds when the installer and the service share an identity, and it
+    # avoids putting a second copy of the secret on disk when it does.
+    try { return (Get-Content -LiteralPath $tokenPath -Raw -ErrorAction Stop).Trim() } catch { }
+
+    $scratch = Join-Path $StagingDirectory ([Guid]::NewGuid().ToString('N'))
+    try {
+        [void](New-Item -ItemType Directory -Path $scratch -ErrorAction Stop)
+        # /B is the whole point; /NJH /NJS /NP keep robocopy's banner out of the transcript.
+        & robocopy.exe $DataPath $scratch 'admin-setup.token' /B /NJH /NJS /NP | Out-Null
+        $copy = Join-Path $scratch 'admin-setup.token'
+        if (-not (Test-Path -LiteralPath $copy)) { return '' }
+        return (Get-Content -LiteralPath $copy -Raw -ErrorAction Stop).Trim()
+    }
+    catch { return '' }
+    finally {
+        # The copy is a live credential; it must not outlive this call.
+        if (Test-Path -LiteralPath $scratch) {
+            foreach ($file in @(Get-ChildItem -LiteralPath $scratch -File -ErrorAction SilentlyContinue)) {
+                Remove-NodePilotAnswerFile -Path $file.FullName
+            }
+            Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+function Format-NodePilotCertificateLine {
+    <#
+      One certificate from the machine store as a single INI value, for the wizard's picker:
+
+          <thumbprint>|<subject>|<hasPrivateKey>|<yyyy-MM-dd>
+
+      The thumbprint comes first and unpadded because it is the only field the wizard puts to
+      work - everything after it is label text for the operator. A pipe inside the subject would
+      shift the remaining fields, so it is folded to a slash here rather than assumed not to
+      occur: an X.500 attribute value may legally contain one.
+
+      The date is formatted against the invariant culture, not the machine's. 'yyyy' resolves
+      against the culture's default CALENDAR, so on a server set to Arabic (Saudi Arabia) the same
+      call returns a Hijri year - a date in the picker that matches nothing the operator can
+      compare it against.
+    #>
+    param([Parameter(Mandatory)]$Certificate)
+
+    $subject = [string]$Certificate.Subject
+    if ([string]::IsNullOrWhiteSpace($subject)) { $subject = '(no subject)' }
+    return '{0}|{1}|{2}|{3}' -f `
+        $Certificate.Thumbprint,
+        ($subject -replace '\|', '/'),
+        $(if ($Certificate.HasKey) { '1' } else { '0' }),
+        $Certificate.NotAfter.ToString('yyyy-MM-dd', [Globalization.CultureInfo]::InvariantCulture)
 }
 
 function New-NodePilotResultBuffer {

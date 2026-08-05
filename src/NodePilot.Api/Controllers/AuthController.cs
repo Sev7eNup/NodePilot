@@ -61,6 +61,7 @@ public class AuthController : ControllerBase
     private readonly ExternalLoginThrottle _externalLoginThrottle;
     private readonly ActiveDirectoryAuthenticationConfiguration? _activeDirectoryAuthentication;
     private readonly ILdapConnectionAdapter? _directoryAdapter;
+    private readonly ILogger<AuthController>? _logger;
 
     public AuthController(NodePilotDbContext db, IConfiguration config, IAuditWriter audit,
         NodePilot.Api.Security.IAuthSessionIssuer sessionIssuer,
@@ -72,8 +73,13 @@ public class AuthController : ControllerBase
         ActiveAuthenticationConfiguration? activeAuthentication = null,
         ExternalLoginThrottle? externalLoginThrottle = null,
         ActiveDirectoryAuthenticationConfiguration? activeDirectoryAuthentication = null,
-        ILdapConnectionAdapter? directoryAdapter = null)
+        ILdapConnectionAdapter? directoryAdapter = null,
+        // Optional for the same reason as everything above it: these tests construct the
+        // controller directly, against a service provider they build by hand. Requiring a logger
+        // would make a login fail on hosts where only the diagnostics are missing.
+        ILogger<AuthController>? logger = null)
     {
+        _logger = logger;
         _db = db;
         _config = config;
         _audit = audit;
@@ -347,8 +353,12 @@ public class AuthController : ControllerBase
             {
                 var env = HttpContext.RequestServices.GetRequiredService<IHostEnvironment>();
                 var presented = Request.Headers[NodePilot.Api.Security.AdminBootstrap.TokenHeader].ToString();
-                if (!NodePilot.Api.Security.AdminBootstrap.Validate(env, presented, _config))
+                if (!NodePilot.Api.Security.AdminBootstrap.Validate(env, presented, _config, out var bootstrapRejection))
                 {
+                    // Logged, because one of these reasons is otherwise undiscoverable: a stray ACE
+                    // on the data directory stops the token file validating, and the operator is
+                    // told to check a token that is perfectly correct. The reason names no secret.
+                    _logger?.LogWarning("Admin bootstrap rejected: {Reason}", bootstrapRejection);
                     _ = BCrypt.Net.BCrypt.Verify(request.Password, DummyHash); // keep timing stable
                     await _audit.LogAsync(AuditActions.LoginFailed, "User", null,
                         AuditDetails.Json(

@@ -90,6 +90,12 @@ Test-ADServiceAccount -Identity svc-nodepilot
 
 Das erwartete Testergebnis ist `True`. Für SQL Server wird das gMSA analog zum Computerkonto als Login und Datenbankbenutzer mit `db_owner` angelegt.
 
+### Beides kann das Setup übernehmen
+
+Wer mit `NodePilot-Server-Setup-<version>.exe` installiert, kann das SQL oben überspringen, sofern das ausführende Konto `sysadmin` ist (oder `CREATE ANY DATABASE` besitzt). Die Readiness-Seite prüft den Datenbank-Zugriff der **Dienst-Identität** getrennt von der reinen Erreichbarkeit — erreichbar wird als *installierender Admin* getestet, angemeldet wird zur Laufzeit der Dienst — und legt Login, Benutzer und `db_owner` bei Bedarf an. Die Zeile kommt vorangehakt; unbeaufsichtigt fordert `"provisioning": { "createDatabaseAndLogin": true }` in der Answer-File dasselbe an. Existenzgeprüft: ist alles vorhanden, passiert nichts. Fehlen die Rechte, wird nichts verändert und die Anweisungen für den DBA werden angezeigt.
+
+**PostgreSQL ebenso, mit einem Unterschied.** Das Setup bringt `psql` mit, meldet sich im Pre-Flight als NodePilot-Rolle an (`sslmode=verify-full` gegen das angegebene Root-Zertifikat) und legt Rolle und Datenbank auf Wunsch an. Weil PostgreSQL kein Gegenstück zu `Trusted_Connection` hat, verlangt das **Superuser-Zugangsdaten**: zwei zusätzliche Felder auf der Credentials-Seite bzw. `provisioning.postgresSuperUser` / `.postgresSuperPassword` in der Answer-File. Ohne sie bleibt die Zeile eine Diagnose ohne Knopf. Das Passwort einer bereits vorhandenen Rolle wird dabei **nie** überschrieben.
+
 ## 2. Datenbank vorbereiten
 
 ### SQL Server
@@ -177,10 +183,34 @@ Kapiteln 1 bis 4 **bevor** es etwas verändert, und zeigt jede als grün, gelb o
 kopierbarer Anleitung. Auf Wunsch installiert es die Runtime, legt SQL-Login und Datenbank an oder
 erzeugt ein Laborzertifikat.
 
+Für das Kestrel-Zertifikat verlangt es nur den Thumbprint — und bietet unter dem Eingabefeld die
+Zertifikate aus `Cert:\LocalMachine\My` zur Auswahl an, sortiert nach Ablauf. Das gilt für ein
+PKI-Zertifikat aus der eigenen CA genauso wie für ein selbstsigniertes: importieren, auswählen,
+fertig. Ein Zertifikat ohne privaten Schlüssel steht mit entsprechender Markierung in der Liste,
+statt kommentarlos zu fehlen.
+
 Die Abschlussseite zeigt alles, was für den ersten Zugriff nötig ist: Adresse, Setup-Token für die
 erste Anmeldung, External-Trigger-API-Key, Zertifikats-Thumbprint sowie Dienstname und Pfade. Der
 API-Key erscheint **nur dort** — er ist danach nicht mehr rekonstruierbar. Der Text ist markierbar,
 und „Save this summary…" legt ihn als Datei ab.
+
+**Schlüsselfertig ohne Token-Eingabe.** Zwei Wege, die sich gegenseitig ausschließen:
+
+- **`bootstrap`-Gruppe mit `adminUsername`** — das Setup legt den ersten Administrator selbst an.
+  Kennwort pro Maschine zufällig erzeugt und in einer ACL-geschützten Datei unter
+  `<DataPath>\bootstrap-admin.json` hinterlegt (nur SYSTEM und Administratoren). Feste
+  Standard-Zugangsdaten gibt es bewusst nicht: sie wären über alle Maschinen gleich und würden
+  gefunden statt geraten.
+- **`seed`-Gruppe mit `backupPath` und `passphrase`** — eine Referenzmaschine einmal einrichten,
+  `np backup export`, und jede weitere Installation spielt diesen Stand beim ersten Start ein:
+  Benutzer, Workflows, Maschinen, Credentials und Einstellungen. Dann entsteht gar kein Token. Die
+  Passphrase landet im Dienstschlüssel, nie in der Konfigurationsdatei; die Seed-Datei wird nach dem
+  Einspielen gelöscht.
+
+Der Seed gewinnt: bringt er Benutzer mit, gibt es nichts einzulösen. Er füllt außerdem **nur** eine
+leere Instanz — eine Maschine im Betrieb behält alles, was sie hat. Und er ist fail-closed: eine
+falsche Passphrase lässt den Dienst nicht starten, statt eine scheinbar provisionierte, in Wahrheit
+leere Instanz zu hinterlassen.
 
 Unbeaufsichtigt für SCCM oder GPO:
 

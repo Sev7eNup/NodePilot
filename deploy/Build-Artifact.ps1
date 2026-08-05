@@ -35,8 +35,11 @@
     Needs Inno Setup 6 and a PostgreSQL binaries folder; when either is missing the desktop
     step is SKIPPED with a warning and the server zip is still produced.
 .PARAMETER PgBinariesPath
-    PostgreSQL 16 "pgsql" directory (from the EDB zip distribution), passed through to the
-    desktop installer build. Only read when -IncludeDesktopInstaller is set.
+    PostgreSQL 16 "pgsql" directory (from the EDB zip distribution). The desktop installer bundles
+    the whole server runtime from it; the server setup lifts only the psql CLIENT (seven files,
+    ~8 MB) so its wizard can create a PostgreSQL role and database the way it already creates a
+    SQL Server login. Optional for the server setup - without it that installer is built exactly
+    as before and says so on its readiness page. Release builds pass it.
 .PARAMETER IsccPath
     Inno Setup 6 compiler, passed through to the desktop installer build. Only read when
     -IncludeDesktopInstaller is set; defaults to the desktop script's own default.
@@ -409,6 +412,11 @@ if ($buildServerInstaller) {
     }
     if ($IsccPath) { $serverArgs['IsccPath'] = $IsccPath }
     if ($RuntimePayloadPath) { $serverArgs['RuntimeInstallerPath'] = $RuntimePayloadPath }
+    # The same input the desktop build takes, and optional here: the server setup only lifts the
+    # psql CLIENT out of it so the wizard can create a PostgreSQL role and database the way it
+    # already creates a SQL Server login. Without it the installer is built exactly as before and
+    # says on its readiness page that the fix is unavailable in this build.
+    if ($PgBinariesPath) { $serverArgs['PgBinariesPath'] = $PgBinariesPath }
     & $ServerBuildScript @serverArgs | Out-Null
 
     $serverOut = Join-Path (Split-Path $ServerBuildScript -Parent) "out\NodePilot-Server-Setup-$Version.exe"

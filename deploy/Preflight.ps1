@@ -47,7 +47,13 @@ function New-NodePilotPreflightResult {
         [string]$AbortMessage = '',
         [bool]$Required = $false,
         [bool]$CanAutoFix = $false,
-        [string]$AutoFixLabel = ''
+        [string]$AutoFixLabel = '',
+        # Whether the wizard should arrive with this fix already ticked. Reserved for work that is
+        # part of installing rather than a decision about someone else's server: granting the
+        # service identity access to a database that already exists is the former, CREATE DATABASE
+        # on a production instance is the latter. The box stays visible either way, so a default of
+        # $true is "one fewer click", never "done behind your back".
+        [bool]$AutoFixDefault = $false
     )
     [pscustomobject]@{
         Id              = $Id
@@ -60,6 +66,7 @@ function New-NodePilotPreflightResult {
         Required        = $Required
         CanAutoFix      = $CanAutoFix
         AutoFixLabel    = $AutoFixLabel
+        AutoFixDefault  = $AutoFixDefault
     }
 }
 
@@ -101,15 +108,20 @@ function Resolve-NodePilotSqlProbeConnectionString {
 function Get-NodePilotSqlRemediationScript {
     param(
         [Parameter(Mandatory)][string]$Principal,
-        [Parameter(Mandatory)][string]$Database
+        [Parameter(Mandatory)][string]$Database,
+        # Dropped when the caller has already proven the database is there. Handing a DBA a
+        # CREATE DATABASE for a database they can see invites them to read the rest of the script
+        # as equally wrong.
+        [switch]$SkipCreateDatabase
     )
-    @(
-        "CREATE LOGIN [$Principal] FROM WINDOWS;"
-        "CREATE DATABASE [$Database];"
+    $lines = @("CREATE LOGIN [$Principal] FROM WINDOWS;")
+    if (-not $SkipCreateDatabase) { $lines += "CREATE DATABASE [$Database];" }
+    $lines += @(
         "USE [$Database];"
         "CREATE USER [$Principal] FOR LOGIN [$Principal];"
         "ALTER ROLE db_owner ADD MEMBER [$Principal];"
-    ) -join [Environment]::NewLine
+    )
+    $lines -join [Environment]::NewLine
 }
 
 function Get-NodePilotPostgresRemediationScript {
@@ -177,13 +189,209 @@ function Get-NodePilotCertificateInventory {
     <#
       What is actually available in LocalMachine\My. The installer prints this when a
       thumbprint does not normalize; the wizard fills its certificate picker from it.
+
+      Sorted by expiry, latest first, and sorted HERE rather than in either caller: a renewed
+      certificate sits in the store beside the one it replaces, under the same subject, and the
+      only thing separating them is that date. Newest-first puts the renewal at the top of the
+      picker and sinks anything already expired to the bottom, where it belongs.
     #>
     Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
+        Sort-Object -Property NotAfter -Descending |
         Select-Object Thumbprint, Subject, @{n = 'HasKey'; e = { $_.HasPrivateKey } }, NotAfter
 }
 
+function Get-NodePilotPortStatus {
+    <#
+      Whether Kestrel will be able to bind one port, and if not, why.
+
+      Binds and releases immediately. That is a probe, not a change, so it stays safe behind the
+      re-check button - see the rule at the top of this file.
+
+      Bound to IPAddress.Any because that is what Kestrel does: the crash this check exists to
+      predict came out of AnyIPListenOptions.BindAsync. Probing 127.0.0.1 instead would pass on a
+      port that is reserved on the wildcard address.
+    #>
+    param(
+        [Parameter(Mandatory)][int]$Port,
+        [string]$ServiceName = 'NodePilot'
+    )
+
+    # An existing listener is the ordinary case when NodePilot is reinstalled over itself: the port
+    # is held by the very service about to be replaced. Calling that a conflict would send the
+    # operator hunting a problem they created by installing correctly the first time.
+    $listener = $null
+    try {
+        $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    } catch { }
+
+    if ($listener) {
+        $owner = $null
+        try { $owner = Get-Process -Id $listener.OwningProcess -ErrorAction SilentlyContinue } catch { }
+        $service = $null
+        try {
+            $escaped = $ServiceName.Replace("'", "''")
+            $service = Get-CimInstance Win32_Service -Filter "Name='$escaped'" -ErrorAction SilentlyContinue
+        } catch { }
+
+        if ($service -and $service.ProcessId -eq $listener.OwningProcess) {
+            return [pscustomobject]@{
+                Port = $Port; IsBlocked = $false
+                Detail = "held by the $ServiceName service being replaced"
+            }
+        }
+        # PID 4 is the System process, and that is what an HTTP.SYS reservation looks like from
+        # here. Reporting "in use by System (PID 4)" is true and useless: it sends the operator
+        # after a process that cannot be stopped or moved. Measured on the lab host, where IIS
+        # reserves 80 and 443 exactly this way - the kernel driver holds the listener, so this
+        # branch is reached instead of the AccessDenied one below.
+        if ($listener.OwningProcess -le 4) {
+            return [pscustomobject]@{
+                Port = $Port; IsBlocked = $true
+                Detail = 'reserved by Windows HTTP.SYS (IIS, WinRM or WSUS) - no ordinary process holds it'
+            }
+        }
+        $name = if ($owner) { "$($owner.Name) (PID $($listener.OwningProcess))" } else { "PID $($listener.OwningProcess)" }
+        return [pscustomobject]@{ Port = $Port; IsBlocked = $true; Detail = "already in use by $name" }
+    }
+
+    try {
+        $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $Port)
+        try { $probe.Start() } finally { $probe.Stop() }
+        return [pscustomobject]@{ Port = $Port; IsBlocked = $false; Detail = 'free' }
+    }
+    catch {
+        $socketError = $null
+        $exception = $_.Exception
+        while ($exception -and -not $socketError) {
+            if ($exception -is [System.Net.Sockets.SocketException]) { $socketError = $exception.SocketErrorCode }
+            $exception = $exception.InnerException
+        }
+        # 10013 is the one that matters here, and it does NOT mean "in use". Windows returns it for a
+        # port held by an HTTP.SYS reservation or sitting inside an excluded range - IIS, WinRM and
+        # WSUS all create those - and nothing appears in any listener list to explain it.
+        if ($socketError -eq [System.Net.Sockets.SocketError]::AccessDenied) {
+            return [pscustomobject]@{
+                Port = $Port; IsBlocked = $true
+                Detail = 'reserved by Windows (an HTTP.SYS reservation or an excluded port range), not held by a listener'
+            }
+        }
+        return [pscustomobject]@{ Port = $Port; IsBlocked = $true; Detail = $_.Exception.Message }
+    }
+}
+
+function Test-NodePilotListenPorts {
+    <#
+      The check that turns a three-minute silence into one red line. Without it, a port Kestrel
+      cannot bind is discovered only after the installer has copied everything, registered the
+      service, waited out a 180-second health probe and rolled the whole thing back - leaving
+      "did not report /healthz/ready" on screen and the real reason in a log nobody opens.
+    #>
+    param(
+        [Parameter(Mandatory)][int]$HttpsPort,
+        [int]$HttpPort = 0,
+        [string]$ServiceName = 'NodePilot'
+    )
+
+    $title = 'HTTP/HTTPS ports'
+    $blocked = @()
+    $fine = @()
+
+    foreach ($candidate in @(
+        [pscustomobject]@{ Label = 'HTTPS'; Port = $HttpsPort },
+        [pscustomobject]@{ Label = 'HTTP';  Port = $HttpPort })) {
+
+        # 0 is how the wizard says "no HTTP redirect". That is a configuration, not a problem.
+        if ($candidate.Port -le 0) {
+            $fine += "$($candidate.Label) disabled"
+            continue
+        }
+        $status = Get-NodePilotPortStatus -Port $candidate.Port -ServiceName $ServiceName
+        if ($status.IsBlocked) { $blocked += "$($candidate.Label) $($candidate.Port) $($status.Detail)" }
+        else { $fine += "$($candidate.Label) $($candidate.Port) $($status.Detail)" }
+    }
+
+    if ($blocked.Count -eq 0) {
+        return New-NodePilotPreflightResult -Id 'ports' -Title $title -Status 'Pass' -Required $true `
+            -Detail ($fine -join ', ')
+    }
+
+    New-NodePilotPreflightResult -Id 'ports' -Title $title -Status 'Fail' -Required $true `
+        -Detail ($blocked -join '; ') `
+        -RemediationHint 'Pick a free port, or set the HTTP port to 0 to drop the redirect.' `
+        -Remediation ("See what Windows has reserved:`r`n" +
+                      "netsh interface ipv4 show excludedportrange protocol=tcp`r`n`r`n" +
+                      "See who is listening:`r`n" +
+                      "Get-NetTCPConnection -State Listen | Sort-Object LocalPort`r`n`r`n" +
+                      'On a server running IIS - a ConfigMgr site server, for instance - ports 80 and 443 ' +
+                      'belong to HTTP.SYS and Kestrel cannot bind them at all. Set the HTTP port to 0 to ' +
+                      'drop the redirect, or move both ports somewhere free.') `
+        -AbortMessage ('Kestrel cannot bind: ' + ($blocked -join '; ') +
+                       '. The service would start and immediately fail with SocketException 10013 or 10048.')
+}
+
+function Test-NodePilotCertificateNameMatch {
+    <#
+      Whether a certificate presents the name operators are going to type. Split from the store
+      lookup so every branch is reachable from a test host, the same reason
+      New-NodePilotSqlServiceLoginResult is separate from its connection.
+
+      Callers pass DnsNameList rather than the raw SAN extension on purpose: X509Extension.Format()
+      renders "DNS Name=" in the machine's UI language, so a parser built against it works on an
+      English host and silently finds nothing on a German one. PowerShell's certificate provider
+      hands over the decoded list instead.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Names,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$PublicHostname
+    )
+
+    # Nothing to compare against is not a mismatch. The console path can be called without a
+    # public hostname, and inventing a complaint there would be noise.
+    if ([string]::IsNullOrWhiteSpace($PublicHostname)) { return $true }
+
+    foreach ($name in $Names) {
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if ($name -eq $PublicHostname) { return $true }
+        # A wildcard covers exactly one label (RFC 6125): *.corp.example matches np.corp.example
+        # but neither corp.example itself nor a.np.corp.example.
+        if ($name.StartsWith('*.')) {
+            $suffix = $name.Substring(1)
+            if ($PublicHostname.Length -gt $suffix.Length -and
+                $PublicHostname.EndsWith($suffix, [StringComparison]::OrdinalIgnoreCase)) {
+                $label = $PublicHostname.Substring(0, $PublicHostname.Length - $suffix.Length)
+                if (-not $label.Contains('.')) { return $true }
+            }
+        }
+    }
+    return $false
+}
+
+function Get-NodePilotCertificateNames {
+    <#
+      Every name a certificate claims, SAN first. The CN fallback is for certificates old enough
+      to carry no SAN at all - browsers stopped honouring those years ago, but they still turn up
+      in internal PKIs, and without it the check would report a mismatch that is really "no SAN".
+    #>
+    param([Parameter(Mandatory)]$Certificate)
+
+    $names = @()
+    if ($Certificate.PSObject.Properties.Name -contains 'DnsNameList') {
+        $names = @($Certificate.DnsNameList | ForEach-Object { [string]$_.Unicode } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    }
+    if ($names.Count -eq 0) {
+        $commonName = [regex]::Match([string]$Certificate.Subject, 'CN=([^,]+)').Groups[1].Value.Trim()
+        if ($commonName) { $names = @($commonName) }
+    }
+    return $names
+}
+
 function Test-NodePilotTlsCertificate {
-    param([Parameter(Mandatory)][AllowEmptyString()][string]$Thumbprint)
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Thumbprint,
+        [AllowEmptyString()][string]$PublicHostname = ''
+    )
 
     $title = 'Kestrel TLS certificate'
     $cert = Get-ChildItem Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
@@ -205,12 +413,70 @@ function Test-NodePilotTlsCertificate {
             -AbortMessage "Cert $Thumbprint has no private key. Re-import with -KeyStorageFlags MachineKeySet|PersistKeySet|Exportable."
     }
 
-    $expiryWarning = ''
-    if ($cert.NotAfter -lt (Get-Date).AddDays(30)) {
-        $expiryWarning = " Expires $($cert.NotAfter.ToString('yyyy-MM-dd'))."
+    New-NodePilotCertificateVerdict -Certificate $cert -Thumbprint $Thumbprint `
+        -PublicHostname $PublicHostname -Now (Get-Date)
+}
+
+function New-NodePilotCertificateVerdict {
+    <#
+      Everything that can be decided about a certificate once it has been found in the store,
+      separated from finding it. -Now is a parameter for the same reason: "expired" and "not yet
+      valid" are the two branches that matter here and neither is reachable from a test host that
+      may not install certificates.
+    #>
+    param(
+        [Parameter(Mandatory)]$Certificate,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Thumbprint,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$PublicHostname,
+        [Parameter(Mandatory)][datetime]$Now
+    )
+
+    $title = 'Kestrel TLS certificate'
+    $importHint = 'Import a current certificate into Cert:\LocalMachine\My (MachineKeySet|PersistKeySet), then re-check.'
+    $importCommand = 'Import-PfxCertificate -FilePath <file>.pfx -CertStoreLocation Cert:\LocalMachine\My -Password (Read-Host -AsSecureString)'
+
+    # Validity is a hard stop, not a note in the margin. The expiry used to be rendered into the
+    # green line as text with nothing acting on it, so an expired certificate installed cleanly
+    # and surfaced as a browser warning to the first user - after the rollout, on someone else's
+    # screen. Deliberately NOT auto-fixable: offering the self-signed generator here would answer
+    # "your PKI certificate expired" with "here, have a lab certificate instead".
+    if ($Certificate.NotAfter -lt $Now) {
+        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("Certificate $($Certificate.Subject) expired on $($Certificate.NotAfter.ToString('yyyy-MM-dd')). " +
+                     'Kestrel will serve it and every client will refuse it.') `
+            -RemediationHint $importHint -Remediation $importCommand `
+            -AbortMessage "Cert $Thumbprint expired on $($Certificate.NotAfter.ToString('yyyy-MM-dd'))."
     }
+    if ($Certificate.NotBefore -gt $Now) {
+        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("Certificate $($Certificate.Subject) is not valid until $($Certificate.NotBefore.ToString('yyyy-MM-dd')). " +
+                     'Clients will refuse it until then.') `
+            -RemediationHint $importHint -Remediation $importCommand `
+            -AbortMessage "Cert $Thumbprint is not valid until $($Certificate.NotBefore.ToString('yyyy-MM-dd'))."
+    }
+
+    $expiryWarning = ''
+    if ($Certificate.NotAfter -lt $Now.AddDays(30)) {
+        $expiryWarning = " Expires $($Certificate.NotAfter.ToString('yyyy-MM-dd'))."
+    }
+
+    # A warning, never a stop. A certificate whose SAN does not name this host is wrong far more
+    # often than it is deliberate - but behind a reverse proxy, or on a host reached under an
+    # alias, it is exactly right, and refusing the install would be refusing a valid setup.
+    $names = @(Get-NodePilotCertificateNames -Certificate $Certificate)
+    if (-not (Test-NodePilotCertificateNameMatch -Names $names -PublicHostname $PublicHostname)) {
+        $claimed = if ($names.Count -gt 0) { $names -join ', ' } else { '(no host name at all)' }
+        return New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Warn' -Required $true `
+            -Detail ("Cert found: $($Certificate.Subject)$expiryWarning It is issued for " +
+                     "$claimed - not for $PublicHostname.") `
+            -RemediationHint ('Browsers will show a name mismatch unless something in front of NodePilot ' +
+                              "terminates TLS under that name. Either use a certificate naming " +
+                              "$PublicHostname, or set the public host name to one the certificate covers.") `
+            -Remediation $importCommand
+    }
+
     New-NodePilotPreflightResult -Id 'certificate' -Title $title -Status 'Pass' -Required $true `
-        -Detail "Cert found: $($cert.Subject)$expiryWarning"
+        -Detail "Cert found: $($Certificate.Subject)$expiryWarning"
 }
 
 function Test-NodePilotGmsa {
@@ -351,21 +617,129 @@ function Test-NodePilotSqlReachable {
         -Detail "SQL reachable: $Server/$Database"
 }
 
-function Test-NodePilotSqlServiceLogin {
+function New-NodePilotSqlServiceLoginResult {
     <#
-      Not a probe - a standing caveat, emitted only for LocalSystem. The reachability check
-      above authenticated as the installing admin; at runtime the service authenticates as the
-      COMPUTER account. That login is a separate grant and its absence shows up as a 503 on
-      /healthz/ready long after "Install complete".
+      The verdict, separated from the connection that produces it. Split out so every branch is
+      reachable from a test host with no SQL Server on it - which is every test host we have.
     #>
     param(
-        [Parameter(Mandatory)][string]$ComputerAccount,
-        [Parameter(Mandatory)][string]$Database
+        [Parameter(Mandatory)][string]$Principal,
+        [Parameter(Mandatory)][string]$Database,
+        [Parameter(Mandatory)][bool]$LoginExists,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$UserName,
+        [Parameter(Mandatory)][bool]$IsDbOwner,
+        [Parameter(Mandatory)][bool]$IsSysadmin
     )
-    New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title 'SQL login for the service identity' -Status 'Warn' `
-        -Detail "NOTE: reachability was tested with your admin identity. At runtime the service connects as the computer account $ComputerAccount." `
-        -RemediationHint "Ensure that login exists with db_owner on [$Database]:" `
-        -Remediation (Get-NodePilotSqlRemediationScript -Principal $ComputerAccount -Database $Database)
+
+    $title = 'SQL login for the service identity'
+
+    if ($IsSysadmin) {
+        return New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title $title -Status 'Pass' `
+            -Detail "$Principal is sysadmin on this instance and needs no grant on [$Database]."
+    }
+    if ($LoginExists -and $UserName -and $IsDbOwner) {
+        # dbo lands here too: a service identity that owns the database is a member of db_owner.
+        return New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title $title -Status 'Pass' `
+            -Detail "$Principal has a login and is db_owner on [$Database] (as [$UserName])."
+    }
+
+    $missing = if (-not $LoginExists) {
+        "$Principal has no SQL login on this instance."
+    }
+    elseif (-not $UserName) {
+        "$Principal has a login but no user in [$Database]."
+    }
+    else {
+        "$Principal maps to [$UserName] in [$Database] but is not a member of db_owner."
+    }
+
+    # Not Required. The install works - it is the first request AFTER it that fails - and the
+    # console path has always let this through with the statements printed. Failing here instead
+    # would turn a repairable gap into a refused install on hosts where a DBA is standing by.
+    New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title $title -Status 'Fail' `
+        -Detail "$missing Without it the service starts and /healthz/ready answers 503." `
+        -RemediationHint "The service will connect as $Principal. On the SQL Server:" `
+        -Remediation (Get-NodePilotSqlRemediationScript -Principal $Principal -Database $Database -SkipCreateDatabase) `
+        -CanAutoFix $true -AutoFixDefault $true `
+        -AutoFixLabel "Create that login and grant it db_owner on [$Database] now"
+}
+
+function Test-NodePilotSqlServiceLogin {
+    <#
+      Whether the SERVICE identity can use the database - which is not what the reachability
+      check above established. That one authenticated as the installing admin; at runtime the
+      service authenticates as its own principal (the computer account under LocalSystem, the
+      gMSA otherwise), and that grant is separate. Its absence shows up as a 503 on
+      /healthz/ready long after "Install complete", which is the worst possible time to learn it.
+
+      This used to be a standing caveat printed unconditionally - correct advice, no information,
+      and shown just as loudly on the hosts where the grant was already in place. It is a query
+      now, and a red line here is one the wizard can act on.
+
+      Read-only by construction: three lookups and no DDL. The fix lives in
+      Provision-NodePilotDatabase.ps1, on the other side of the rule at the top of this file.
+
+      Runs on the connection of the installing admin, so what it can see is bounded by what that
+      account may see. A sysadmin - the account that can act on the answer anyway - sees
+      everything; a lesser account can be told "no login" about one that exists, and then the fix
+      it is offered declines on its own permission gate and prints the DDL. That is the same
+      place the old caveat left everyone, so the degradation costs nothing.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Principal,
+        [Parameter(Mandatory)][string]$Server,
+        [Parameter(Mandatory)][string]$Database,
+        [Parameter(Mandatory)][string]$CertificateHostName
+    )
+
+    $title = 'SQL login for the service identity'
+    $remediation = Get-NodePilotSqlRemediationScript -Principal $Principal -Database $Database -SkipCreateDatabase
+    $hint = "The service will connect as $Principal. On the SQL Server:"
+
+    # Names are parameters, not interpolation: this is the read path and it does not need the
+    # bracket-doubling dance that the DDL in Provision-NodePilotDatabase.ps1 does.
+    $sql = @'
+DECLARE @sid varbinary(85) = (SELECT TOP 1 sid FROM sys.server_principals WHERE name = @principal);
+DECLARE @user sysname = (SELECT TOP 1 name FROM sys.database_principals WHERE sid = @sid);
+SELECT
+    CASE WHEN @sid IS NULL THEN 0 ELSE 1 END,
+    ISNULL(@user, N''),
+    ISNULL(IS_ROLEMEMBER('db_owner', @user), 0),
+    ISNULL(IS_SRVROLEMEMBER('sysadmin', @principal), 0);
+'@
+
+    $connectionString = Resolve-NodePilotSqlProbeConnectionString `
+        -Server $Server -Database $Database -CertificateHostName $CertificateHostName
+    $conn = New-Object System.Data.SqlClient.SqlConnection $connectionString
+    try {
+        $conn.Open()
+        $cmd = $conn.CreateCommand()
+        $cmd.CommandText = $sql
+        $cmd.CommandTimeout = 30
+        $parameter = $cmd.Parameters.Add('@principal', [Data.SqlDbType]::NVarChar, 128)
+        $parameter.Value = $Principal
+        $reader = $cmd.ExecuteReader()
+        try {
+            [void]$reader.Read()
+            $loginExists = [int]$reader.GetValue(0) -eq 1
+            $userName = [string]$reader.GetValue(1)
+            $isDbOwner = [int]$reader.GetValue(2) -eq 1
+            $isSysadmin = [int]$reader.GetValue(3) -eq 1
+        }
+        finally { $reader.Dispose() }
+    }
+    catch {
+        # Cannot tell either way. Falling back to the caveat is right: claiming the grant is
+        # missing would offer a fix for something that may be perfectly in order.
+        return New-NodePilotPreflightResult -Id 'databaseServiceLogin' -Title $title -Status 'Warn' `
+            -Detail ("Could not verify the service identity's access as your admin account: " +
+                     "$($_.Exception.Message) At runtime the service connects as $Principal.") `
+            -RemediationHint $hint -Remediation $remediation
+    }
+    finally { $conn.Dispose() }
+
+    New-NodePilotSqlServiceLoginResult -Principal $Principal -Database $Database `
+        -LoginExists $loginExists -UserName $userName -IsDbOwner $isDbOwner -IsSysadmin $isSysadmin
 }
 
 function Test-NodePilotSqlTds8Support {
@@ -432,12 +806,125 @@ function Test-NodePilotSqlTds8Support {
         -Detail "SQL Server $productVersion supports TDS 8.0 (>= 2022 CU1)."
 }
 
+function New-NodePilotPostgresResult {
+    <#
+      The verdict for the Postgres row, separated from the connection that produces it - same
+      split as New-NodePilotSqlServiceLoginResult, and for the same reason: no test host has a
+      PostgreSQL server on it.
+
+      -PsqlOutcome is what the login attempt produced: $null when no client was available (then
+      this degrades to the TCP verdict the check has always given), otherwise an object with
+      Succeeded and Error.
+
+      -RoleExists / -DatabaseExists come from a SECOND connection, as the superuser, and are $null
+      when there were no superuser credentials to make it with. They exist because psql's messages
+      are localised: a German server answers "Rolle »nodepilot« existiert nicht", so matching on
+      "role ... does not exist" classifies correctly on an English host and silently falls through
+      to "refused" everywhere else. Measured on a de-DE cluster while building this. Asking
+      pg_roles and pg_database is the same question in every locale.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$HostName,
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$User,
+        [Parameter(Mandatory)][string]$Database,
+        [Parameter(Mandatory)][bool]$TcpReachable,
+        [AllowEmptyString()][string]$TcpError = '',
+        $PsqlOutcome = $null,
+        $RoleExists = $null,
+        $DatabaseExists = $null,
+        [bool]$CanProvision = $false
+    )
+
+    $title = 'PostgreSQL reachable'
+    $remediation = Get-NodePilotPostgresRemediationScript -User $User -Database $Database
+
+    if (-not $TcpReachable) {
+        $suffix = if ($TcpError) { ": $TcpError" } else { '. Check DNS, firewall, and pg_hba.conf.' }
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
+            -Detail "Postgres reachability FAILED: TCP probe failed to ${HostName}:${Port}$suffix" `
+            -RemediationHint "Cannot reach ${HostName}:${Port} from this host. Verify DNS, firewall, and that Postgres is listening on the external interface. Role setup on the DB server:" `
+            -Remediation $remediation `
+            -AbortMessage 'Aborted: Postgres pre-flight failed.'
+    }
+
+    # No client bundled: the port answered and that is all anyone can say. This is what the check
+    # did for its whole life, and it is why a missing role or a wrong password used to cost a full
+    # install and a 180-second health probe before anybody found out.
+    if ($null -eq $PsqlOutcome) {
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Warn' -Required $true `
+            -Detail ("Postgres TCP reachable: ${HostName}:${Port}. This build carries no PostgreSQL " +
+                     "client, so whether '$User' can actually log in to [$Database] is untested - a " +
+                     'missing role or a wrong password will surface as a failed service start.') `
+            -RemediationHint 'Verify on the database server that the role and database exist:' `
+            -Remediation $remediation
+    }
+    if ($PsqlOutcome.Succeeded) {
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Pass' -Required $true `
+            -Detail "Postgres reachable and '$User' can log in to [$Database] on ${HostName}:${Port}."
+    }
+
+    # What the server said, verbatim and unparsed. Useful to a human in any language, and the only
+    # thing there is to go on when nobody could ask the catalogue.
+    # Not $error: that is a PowerShell automatic variable, and writing to it would clobber the
+    # session's error history for everything downstream.
+    $psqlError = ([string]$PsqlOutcome.Error) -replace '\s+', ' '
+
+    $missing = @()
+    if ($RoleExists -eq $false) { $missing += "the role '$User' does not exist" }
+    if ($DatabaseExists -eq $false) { $missing += "the database [$Database] does not exist" }
+
+    if ($missing.Count -gt 0) {
+        # Only these two are something creating anything would help with, and they are exactly what
+        # the fix creates.
+        $label = if ($CanProvision) { "Create the role and database on $HostName now" } else { '' }
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("Postgres answered on ${HostName}:${Port} but $($missing -join ' and '). " +
+                     'The service would start and fail its first query.') `
+            -RemediationHint 'On the database server:' -Remediation $remediation `
+            -CanAutoFix $CanProvision -AutoFixLabel $label `
+            -AbortMessage "Aborted: Postgres pre-flight failed - $($missing -join ' and ')."
+    }
+
+    if ($null -ne $RoleExists -and $null -ne $DatabaseExists) {
+        # Both there, still refused. Creating them again would change nothing, and the fix
+        # deliberately never rewrites an existing role's password - so no button.
+        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("Postgres answered on ${HostName}:${Port} and both the role '$User' and the " +
+                     "database [$Database] exist, but the login was refused: $psqlError " +
+                     'That is the password, pg_hba.conf, or the TLS trust chain - not something ' +
+                     'missing that could be created.') `
+            -RemediationHint 'Check the password in this answer file, then pg_hba.conf on the server:' `
+            -Remediation $remediation `
+            -AbortMessage 'Aborted: Postgres pre-flight failed - the login was refused.'
+    }
+
+    # Nobody could ask the catalogue: no superuser credentials were given. The message is repeated
+    # as-is rather than guessed at.
+    New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
+        -Detail ("Postgres answered on ${HostName}:${Port} but '$User' could not log in to " +
+                 "[$Database]: $psqlError The service would start and fail its first query.") `
+        -RemediationHint ('Without a PostgreSQL superuser the setup cannot tell a missing role from ' +
+                          'a wrong password. On the database server:') `
+        -Remediation $remediation `
+        -AbortMessage 'Aborted: Postgres pre-flight failed - the login was refused.'
+}
+
 function Test-NodePilotPostgresReachable {
     <#
-      TCP port probe against the Postgres endpoint. We do not attempt a full auth + query
-      because Npgsql is not shipped with the installer and pulling it in would bloat the
-      bootstrap. A "cannot even connect" is the common failure mode we want to catch before
-      starting the service; role/password errors surface in the health-probe step.
+      Two probes, the second only when a client is available.
+
+      The TCP probe has always been here and stays: "cannot even connect" is the common failure
+      and it needs no credentials. What it could never answer is whether the SERVICE will get in,
+      and on the Postgres path that is the whole question - unlike SQL Server there is no Windows
+      identity to fall back on, so a typo in the role password looks exactly like a healthy
+      install right up to the moment the service starts and the installer rolls it back 180
+      seconds later.
+
+      With psql from the installer payload the check logs in as the NodePilot role itself, in the
+      runtime's own TLS shape (sslmode=verify-full against the configured root certificate). When
+      that is refused AND superuser credentials were supplied, it asks the catalogue what is
+      actually missing - rather than reading psql's message, which is localised.
 
       Param is named HostName (not Host) because $Host is a reserved PowerShell automatic
       variable (PSAvoidAssignmentToAutomaticVariable).
@@ -446,30 +933,249 @@ function Test-NodePilotPostgresReachable {
         [Parameter(Mandatory)][string]$HostName,
         [Parameter(Mandatory)][int]$Port,
         [Parameter(Mandatory)][string]$User,
-        [Parameter(Mandatory)][string]$Database
+        [Parameter(Mandatory)][string]$Database,
+        [System.Security.SecureString]$Password,
+        [AllowEmptyString()][string]$RootCertificate = '',
+        [AllowEmptyString()][string]$PsqlPath = '',
+        [AllowEmptyString()][string]$SuperUser = '',
+        [System.Security.SecureString]$SuperPassword,
+        [bool]$CanProvision = $false
     )
 
-    $title = 'PostgreSQL reachable'
     $reachable = $false
-    $detail = ''
+    $tcpError = ''
     try {
         $tnc = Test-NetConnection -ComputerName $HostName -Port $Port -WarningAction SilentlyContinue
         $reachable = [bool]$tnc.TcpTestSucceeded
     } catch {
-        $detail = $_.Exception.Message
+        $tcpError = $_.Exception.Message
     }
 
-    if (-not $reachable) {
-        $suffix = if ($detail) { ": $detail" } else { '. Check DNS, firewall, and pg_hba.conf.' }
-        return New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Fail' -Required $true `
-            -Detail "Postgres reachability FAILED: TCP probe failed to ${HostName}:${Port}$suffix" `
-            -RemediationHint "Cannot reach ${HostName}:${Port} from this host. Verify DNS, firewall, and that Postgres is listening on the external interface. Role setup on the DB server:" `
-            -Remediation (Get-NodePilotPostgresRemediationScript -User $User -Database $Database) `
-            -AbortMessage 'Aborted: Postgres pre-flight failed.'
+    $clientUsable = $reachable -and
+        -not [string]::IsNullOrWhiteSpace($PsqlPath) -and (Test-Path -LiteralPath $PsqlPath -PathType Leaf) -and
+        -not [string]::IsNullOrWhiteSpace($RootCertificate) -and (Test-Path -LiteralPath $RootCertificate -PathType Leaf)
+
+    $outcome = $null
+    if ($clientUsable -and $null -ne $Password -and $Password.Length -gt 0) {
+        $outcome = Invoke-NodePilotPsqlLogin -PsqlPath $PsqlPath -HostName $HostName -Port $Port `
+            -User $User -Password $Password -Database $Database -RootCertificate $RootCertificate
     }
 
-    New-NodePilotPreflightResult -Id 'database' -Title $title -Status 'Pass' -Required $true `
-        -Detail "Postgres TCP reachable: ${HostName}:${Port}"
+    # Only when the service's own login failed: on the happy path there is nothing to diagnose, and
+    # a superuser connection nobody needs is a superuser connection not worth making.
+    $roleExists = $null
+    $databaseExists = $null
+    if ($clientUsable -and $null -ne $outcome -and -not $outcome.Succeeded -and
+        -not [string]::IsNullOrWhiteSpace($SuperUser) -and
+        $null -ne $SuperPassword -and $SuperPassword.Length -gt 0) {
+        $catalogue = Invoke-NodePilotPsqlCatalogue -PsqlPath $PsqlPath -HostName $HostName -Port $Port `
+            -SuperUser $SuperUser -SuperPassword $SuperPassword -RootCertificate $RootCertificate `
+            -User $User -Database $Database
+        if ($null -ne $catalogue) {
+            $roleExists = $catalogue.RoleExists
+            $databaseExists = $catalogue.DatabaseExists
+        }
+    }
+
+    New-NodePilotPostgresResult -HostName $HostName -Port $Port -User $User -Database $Database `
+        -TcpReachable $reachable -TcpError $tcpError -PsqlOutcome $outcome `
+        -RoleExists $roleExists -DatabaseExists $databaseExists -CanProvision $CanProvision
+}
+
+function Invoke-NodePilotPsqlCatalogue {
+    <#
+      Asks pg_roles and pg_database whether the two things the service needs are there. Read-only,
+      and the answer is the same in every locale - which reading psql's error message is not.
+
+      Returns $null when the superuser connection itself fails: "I could not find out" is a
+      different answer from "they are not there", and offering to create a role because the
+      superuser password was wrong would be the worse of the two mistakes.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$PsqlPath,
+        [Parameter(Mandatory)][string]$HostName,
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$SuperUser,
+        [Parameter(Mandatory)][System.Security.SecureString]$SuperPassword,
+        [Parameter(Mandatory)][string]$RootCertificate,
+        [Parameter(Mandatory)][string]$User,
+        [Parameter(Mandatory)][string]$Database
+    )
+
+    $sql = "SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '$($User.Replace("'", "''"))')," +
+           " EXISTS (SELECT 1 FROM pg_database WHERE datname = '$($Database.Replace("'", "''"))');"
+
+    $result = Invoke-NodePilotPsql -PsqlPath $PsqlPath -Arguments @(
+            '-w'
+            '-h', $HostName
+            '-p', "$Port"
+            '-U', $SuperUser
+            '-d', 'postgres'
+            '-v', 'ON_ERROR_STOP=1'
+            '-tA'
+        ) -Sql $sql -Environment (Get-NodePilotPsqlEnvironment `
+            -Secret (ConvertFrom-NodePilotSecureString -Value $SuperPassword) `
+            -RootCertificate $RootCertificate)
+
+    if (-not $result.Succeeded) { return $null }
+    $fields = ([string]$result.Output).Trim() -split '\|'
+    if ($fields.Count -lt 2) { return $null }
+    return [pscustomobject]@{
+        RoleExists     = ($fields[0] -eq 't')
+        DatabaseExists = ($fields[1] -eq 't')
+    }
+}
+
+function ConvertTo-NodePilotCommandLineArgument {
+    <#
+      One argument, quoted the way CommandLineToArgvW parses it back.
+
+      Windows PowerShell 5.1 runs on .NET Framework, where ProcessStartInfo has no ArgumentList -
+      only a single Arguments string - so the quoting has to be done here rather than by the
+      runtime. This is Microsoft's own ArgvQuote algorithm: backslashes are literal EXCEPT when
+      they precede a quote, where they double.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Value)
+
+    if ($Value -ne '' -and $Value -notmatch '[ \t\n\v"]') { return $Value }
+
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    for ($index = 0; $index -lt $Value.Length; $index++) {
+        $backslashes = 0
+        while ($index -lt $Value.Length -and $Value[$index] -eq '\') { $index++; $backslashes++ }
+        if ($index -eq $Value.Length) {
+            # Trailing backslashes would escape the closing quote, so they double.
+            [void]$builder.Append('\', $backslashes * 2)
+            break
+        }
+        if ($Value[$index] -eq '"') {
+            [void]$builder.Append('\', $backslashes * 2 + 1)
+            [void]$builder.Append('"')
+        }
+        else {
+            [void]$builder.Append('\', $backslashes)
+            [void]$builder.Append($Value[$index])
+        }
+    }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Invoke-NodePilotPsql {
+    <#
+      Runs the bundled psql client and hands back exit code, stdout and stderr.
+
+      Plumbing only - it decides nothing and issues no SQL of its own; the caller supplies the
+      statement, and in THIS file the only caller supplies a SELECT. The provisioning script is
+      where statements that change something live.
+
+      The SQL goes in on STDIN, never as -c. A CREATE ROLE carries the new role's password, and an
+      argument is visible in the process list to every user on the machine for as long as the call
+      runs. psql with neither -c nor -f reads its input from stdin, so this costs nothing.
+
+      System.Diagnostics.Process rather than the call operator, for three reasons that all bite:
+        * The connection secrets go into this ONE process's environment block. Setting them on the
+          current process would leave PGPASSWORD readable by anything else running in it.
+        * psql writes ordinary refusals ("role does not exist") to stderr, which Windows PowerShell
+          turns into a terminating NativeCommandError under $ErrorActionPreference = 'Stop'.
+        * No temporary file, so a readiness check that must not touch the machine does not have to
+          create and delete one to read an error message.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$PsqlPath,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Sql,
+        [Parameter(Mandatory)][hashtable]$Environment
+    )
+
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $PsqlPath
+    $startInfo.Arguments = (($Arguments | ForEach-Object {
+        ConvertTo-NodePilotCommandLineArgument -Value $_
+    }) -join ' ')
+    $startInfo.UseShellExecute = $false
+    $startInfo.CreateNoWindow = $true
+    $startInfo.RedirectStandardInput = $true
+    $startInfo.RedirectStandardOutput = $true
+    $startInfo.RedirectStandardError = $true
+    foreach ($name in $Environment.Keys) {
+        $startInfo.EnvironmentVariables[$name] = [string]$Environment[$name]
+    }
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $startInfo
+    try {
+        [void]$process.Start()
+        $process.StandardInput.Write($Sql)
+        $process.StandardInput.Close()
+        # stdout asynchronously, stderr synchronously: reading both to the end in sequence
+        # deadlocks the moment either pipe buffer fills.
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        return [pscustomobject]@{
+            Succeeded = ($process.ExitCode -eq 0)
+            Output    = ([string]$stdout.Result).Trim()
+            Error     = ([string]$stderr).Trim()
+        }
+    }
+    finally { $process.Dispose() }
+}
+
+function ConvertFrom-NodePilotSecureString {
+    param([Parameter(Mandatory)][System.Security.SecureString]$Value)
+    $pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Value)
+    try { return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($pointer) }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($pointer) }
+}
+
+function Get-NodePilotPsqlEnvironment {
+    <#
+      The connection settings every psql call gets, in the runtime's own TLS shape. Shared so the
+      check and the fix cannot drift into connecting differently - a fix that succeeds over a
+      laxer path than the service will use has proven nothing.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Secret,
+        [Parameter(Mandatory)][string]$RootCertificate
+    )
+    return @{
+        PGPASSWORD        = $Secret
+        PGSSLMODE         = 'verify-full'
+        PGSSLROOTCERT     = $RootCertificate
+        PGCONNECT_TIMEOUT = '10'
+    }
+}
+
+function Invoke-NodePilotPsqlLogin {
+    <#
+      One login attempt as the NodePilot role. SELECT 1 and nothing else - this file may not
+      mutate, and that rule does not stop at PowerShell cmdlets.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$PsqlPath,
+        [Parameter(Mandatory)][string]$HostName,
+        [Parameter(Mandatory)][int]$Port,
+        [Parameter(Mandatory)][string]$User,
+        [Parameter(Mandatory)][System.Security.SecureString]$Password,
+        [Parameter(Mandatory)][string]$Database,
+        [Parameter(Mandatory)][string]$RootCertificate
+    )
+
+    # -w on every call so psql fails instead of prompting: there is no console behind a hidden
+    # Exec, and a prompt there is a wizard that hangs until its own timeout.
+    return Invoke-NodePilotPsql -PsqlPath $PsqlPath -Arguments @(
+            '-w'
+            '-h', $HostName
+            '-p', "$Port"
+            '-U', $User
+            '-d', $Database
+            '-v', 'ON_ERROR_STOP=1'
+            '-tA'
+        ) -Sql 'SELECT 1;' -Environment (Get-NodePilotPsqlEnvironment `
+            -Secret (ConvertFrom-NodePilotSecureString -Value $Password) `
+            -RootCertificate $RootCertificate)
 }
 
 # ---------------------------------------------------------------------------
@@ -487,6 +1193,11 @@ function Invoke-NodePilotPreflight {
         [Parameter(Mandatory)][AllowEmptyString()][string]$CertificateThumbprint,
         [Parameter(Mandatory)][ValidateSet('sqlserver', 'postgres')][string]$DbProvider,
         [Parameter(Mandatory)][bool]$IsLocalSystem,
+        # Only used to tell the operator that the certificate names a different host. Optional,
+        # because the console path can be invoked without one and a missing name is not a finding.
+        [AllowEmptyString()][string]$PublicHostname = '',
+        [int]$HttpsPort = 443,
+        [int]$HttpPort = 0,
         [string]$ServiceAccount,
         [string]$ComputerAccount,
         [string]$SqlPrincipal,
@@ -497,6 +1208,15 @@ function Invoke-NodePilotPreflight {
         [int]$PostgresPort = 5432,
         [string]$PostgresUser,
         [string]$PostgresDatabase,
+        # Only the Postgres row uses these, and only to answer the question the TCP probe never
+        # could: can the SERVICE log in. Absent, that row degrades to the reachability answer it
+        # has always given.
+        [System.Security.SecureString]$PostgresPassword,
+        [AllowEmptyString()][string]$PostgresRootCertificate = '',
+        [AllowEmptyString()][string]$PsqlPath = '',
+        [AllowEmptyString()][string]$PostgresSuperUser = '',
+        [System.Security.SecureString]$PostgresSuperPassword,
+        [bool]$CanProvisionPostgres = $false,
         [string]$ServiceName = 'NodePilot',
         [switch]$SkipDatabaseCheck,
         [switch]$SkipGmsaCheck
@@ -504,11 +1224,15 @@ function Invoke-NodePilotPreflight {
 
     $results = @()
     $results += Test-NodePilotDotNetRuntime
-    $results += Test-NodePilotTlsCertificate -Thumbprint $CertificateThumbprint
+    $results += Test-NodePilotTlsCertificate -Thumbprint $CertificateThumbprint -PublicHostname $PublicHostname
+    $results += Test-NodePilotListenPorts -HttpsPort $HttpsPort -HttpPort $HttpPort -ServiceName $ServiceName
 
     if ($IsLocalSystem) {
+        # The detail must not repeat the title: the wizard renders "<Title>: <Detail>", so a detail
+        # that opens with its own title produced "Service identity: Service identity: LocalSystem -
+        # ..." on screen and wrapped a line further than it needed to.
         $results += New-NodePilotPreflightResult -Id 'gmsa' -Title 'Service identity' -Status 'Skipped' `
-            -Detail "Service identity: LocalSystem - network identity is the computer account $ComputerAccount."
+            -Detail "LocalSystem - network identity is the computer account $ComputerAccount."
     } elseif ($SkipGmsaCheck) {
         $results += New-NodePilotPreflightResult -Id 'gmsa' -Title 'Group managed service account' -Status 'Skipped' `
             -Detail 'gMSA check skipped by -SkipGmsaCheck.'
@@ -533,16 +1257,22 @@ function Invoke-NodePilotPreflight {
         # Only meaningful once the instance answered; on a failed connection the caller aborts
         # before it could act on either follow-up.
         if ($sqlResult.Status -eq 'Pass') {
-            if ($IsLocalSystem) {
-                $results += Test-NodePilotSqlServiceLogin -ComputerAccount $ComputerAccount -Database $SqlDatabase
-            }
+            # Both identities, not just LocalSystem. While this was a printed caveat there was
+            # nothing useful to say about a gMSA that the gMSA check had not already said; as a
+            # query it answers the same question for both, and the 503 it predicts does not care
+            # which kind of principal the service runs as.
+            $results += Test-NodePilotSqlServiceLogin -Principal $SqlPrincipal `
+                -Server $SqlServer -Database $SqlDatabase -CertificateHostName $SqlCertificateHostName
             $results += Test-NodePilotSqlTds8Support `
                 -Server $SqlServer -CertificateHostName $SqlCertificateHostName
         }
     } else {
         $results += Test-NodePilotPostgresReachable `
             -HostName $PostgresHost -Port $PostgresPort `
-            -User $PostgresUser -Database $PostgresDatabase
+            -User $PostgresUser -Database $PostgresDatabase `
+            -Password $PostgresPassword -RootCertificate $PostgresRootCertificate `
+            -PsqlPath $PsqlPath -SuperUser $PostgresSuperUser -SuperPassword $PostgresSuperPassword `
+            -CanProvision $CanProvisionPostgres
     }
 
     return $results

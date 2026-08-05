@@ -339,6 +339,9 @@ Vollständige Operator-Doku: [deploy/README.md](deploy/README.md). Zweites Shipp
 | `Jwt:RotateInsecureKeyFile` | Einmalige, explizite Rotation einer unsicheren bestehenden Key-Datei; danach wieder auf `false` setzen. Invalidiert alle Sessions. | `false` |
 | `Database:AllowInsecureTls` | Escape-Hatch der strikten DB-TLS-Prüfung (`DatabaseTlsBootValidator`). Wirkt **nur** bei Loopback-DB-Host **und** (Development-Env **oder** `Deployment:Mode=Desktop`) — auf einem Produktions-Server bricht der Boot trotz `true` ab. | `false` |
 | `Security:AdminSetupTokenPath` | Absoluter Pfad für `admin-setup.token` | `{ContentRoot}/admin-setup.token` |
+| `NodePilot:BootstrapAdminUsername` | Nur dieses Konto darf das einmalige Setup-Token einlösen. Vom Installer gesetzt, wenn die Answer-File `bootstrap.adminUsername` trägt. | leer = jeder Name |
+| `Provisioning:SeedBackupPath` | `.npbackup`, das `ProvisioningSeeder` beim Start **in eine leere Instanz** einspielt (vor `EnsureBootstrapTokenIfNeeded`, also entsteht dann gar kein Token). Bei vorhandenen Benutzern passiert nichts. Datei wird nach Erfolg gelöscht. | leer = kein Seed |
+| `Provisioning:SeedBackupPassphrase` | Passphrase dazu. Vom Installer in den `Environment`-Wert des Dienstschlüssels geschrieben, **nie** in die JSON. Falsch oder fehlend → Boot bricht ab (fail closed). | — |
 | `Logging:File:Path` | Absoluter Pfad für Serilog-Rolling-File | `{ContentRoot}/logs/nodepilot-.log` |
 | `Kestrel:Https:*` | Kestrel-direct-HTTPS aus Windows Cert Store | No-op → Default-Binding |
 

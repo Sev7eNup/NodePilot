@@ -76,9 +76,17 @@ skip the `Root` imports.
 > **Shortcut: the GUI setup.** `NodePilot-Server-Setup-<version>.exe` performs exactly the
 > installation described below, driven by a wizard. It bundles the signed artifact and the ASP.NET
 > Core runtime, checks every prerequisite before it changes anything, and can create the SQL login
-> and database for you if your account may. That collapses Step 1 to "download one file" and
-> Step 3 to "click Next". It also runs unattended:
-> `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json`.
+> and database for you if your account may. For the Kestrel certificate it asks only for the
+> thumbprint and offers the machine store's certificates in a list below the field, so a PKI
+> certificate from your own CA needs importing and picking, nothing typed — and it refuses to
+> install against one that has expired instead of leaving that for the first user to discover in a
+> browser, while a certificate issued for a different name warns without blocking. The installation itself
+> reports the phase it is in rather than sitting on a blank page for the couple of minutes it takes.
+> That collapses Step 1 to "download one file" and Step 3 to "click Next". It also runs unattended:
+> `Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json` — and with a `bootstrap` group
+> in that answer file it creates the first administrator itself, with a password generated per
+> machine and written to an ACL-protected file, so a rollout does not end waiting for someone to
+> type a setup token into a browser.
 >
 > This guide keeps the scripted path as the reference, because it is what the wizard runs and what
 > you will want for automation and for troubleshooting. See
@@ -200,6 +208,21 @@ ALTER ROLE db_owner ADD MEMBER [CORP\svc-nodepilot$];
 The installer enables `READ_COMMITTED_SNAPSHOT` on the database automatically (warning
 only if it lacks permission).
 
+The same applies on PostgreSQL, where the setup ships `psql` and can create the role and the
+database — but PostgreSQL has no counterpart to `Trusted_Connection`, so that one needs superuser
+credentials (`provisioning.postgresSuperUser` / `.postgresSuperPassword`, or the two extra fields
+on the credentials page). It never overwrites an existing role's password.
+
+You can skip this step if you install with `NodePilot-Server-Setup-<version>.exe` and the
+account running it is `sysadmin` (or holds `CREATE ANY DATABASE`). The readiness page checks
+the service identity's login, database user and `db_owner` membership separately from plain
+reachability — reachability is tested as *you*, the service connects as itself — and offers
+to create whatever is missing, ticked by default. Unattended, ask for it with
+`"provisioning": { "createDatabaseAndLogin": true }` in the answer file; on the console path
+`deploy\Provision-NodePilotDatabase.ps1` does the same in one call. All three are
+existence-guarded and change nothing without the permissions above, in which case they print
+the statements for a DBA.
+
 ## Step 3 — Install (target server)
 
 Trust the artifact signer and create the Kestrel HTTPS certificate:
@@ -231,7 +254,9 @@ Run the installer (elevated Windows PowerShell 5.1):
 
 - `-UseLocalSystem` replaces `-ServiceAccount` for the computer-account variant.
 - `-AllowedHosts` is fail-closed: list **every** name users will type into the browser;
-  wildcards are rejected at boot.
+  wildcards are rejected at boot. `localhost` is appended for you whether you list it or
+  not — the installer's own health probe requests `https://localhost:<port>/healthz/ready`,
+  and host filtering would answer that 400 and roll back a finished installation.
 - Postgres instead of SQL Server: `-DbProvider postgres -PostgresHost ... -PostgresUser ...`
   (see `deploy/README.md`).
 
@@ -302,6 +327,7 @@ Logs: `C:\ProgramData\NodePilot\logs\` (CMTrace-formatted). Firewall rule:
 | SQL preflight: SSL handshake error / `The wait operation timed out` | no TLS certificate assigned to SQL Server, or the certificate's key is CNG instead of `KeySpec=KeyExchange`, or the cert isn't trusted on the NodePilot server | redo [Step 2](#step-2--prepare-sql-server) |
 | Preflight: `SQL version pre-flight FAILED` — or, on older installer versions, the service boot-loops with TDS **error 8005** (`The parameter name is invalid`) | SQL Server 2022 RTM (or 2019 and older) cannot serve `Encrypt=Strict` | install the latest SQL Server 2022 CU (≥ 16.0.4003.1) |
 | Service starts, `/healthz/ready` stays 503, log shows `Login failed for user 'DOMAIN\...$'` | service identity has no SQL login / no DB user | grant it as in [Step 2](#step-2--prepare-sql-server) |
+| Install waits out the full 180 s health probe and rolls back; Application log shows `SocketException (10013)` from `AnyIPListenOptions.BindAsync` | Kestrel cannot bind a configured port. **10013 is not "in use"** — Windows returns it for an HTTP.SYS reservation, and on any host running IIS (a ConfigMgr site server, for example) ports 80 and 443 are reserved with no listener to find | set `-HttpPort 0` to drop the redirect, or move the ports. `netsh interface ipv4 show excludedportrange protocol=tcp` lists every reservation. The GUI setup checks this on its Prerequisites page before installing |
 | After a reboot the service is still stopped, then comes up on its own | artifacts built before 2026-08-03 registered the service as *Automatic (Delayed Start)*, which idles ~120 s after boot before starting anything | expected on those builds — nothing is broken. Current builds start immediately and wait for the database instead; the boot log names what it is waiting for |
 | Boot log repeats `Waiting for the database to accept connections (n/120s)` | the database is not answering yet — a remote SQL Server still recovering, a DC not yet reachable for Kerberos, or a wrong host | let it finish; it proceeds either way and then reports the real connection error. Raise `Database:StartupWaitSeconds` (max 600) if the database routinely needs longer |
 | Event log 7000 *the service did not start due to a logon failure*, gMSA identity, only on boot | the service tried to log on before Netlogon could fetch the gMSA password from a DC | current builds set `depend= Netlogon` for gMSA services; on older ones `sc.exe config NodePilot depend= Netlogon` fixes it in place |

@@ -98,6 +98,101 @@ function New-NodePilotRestrictedFileSecurity {
     return $security
 }
 
+function Set-NodePilotServiceOwnedFileAcl {
+    <#
+      Hands a secret the SERVICE wrote for itself over to a new service identity.
+
+      RestrictedFileWriter creates jwt-secret.key and admin-setup.token owned by whoever the
+      service was at the time, protected, with exactly one ACE: that identity, FullControl. It
+      then refuses to use a file it cannot verify - which is correct, and which is why an
+      installation that changes the service identity leaves both files behind as rubble: the new
+      identity cannot open them, and the old one no longer runs.
+
+      This writes the same descriptor the service itself would have written, for the identity it
+      is about to become. Owner AND the single ACE, because the validator checks both.
+
+      Applied unconditionally rather than only when the identity changed: it is idempotent, and a
+      machine that is already stuck in that state is repaired by installing over it.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ServiceAccount
+    )
+
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
+
+    # Well-known SIDs, never localised names: BUILTIN\Administrators and NT AUTHORITY\SYSTEM do
+    # not resolve on a German Windows, which is the rule the rest of this file already follows.
+    $normalized = $ServiceAccount.Trim().ToLowerInvariant()
+    $identity = if ($normalized -in @('localsystem', '.\localsystem', 'system', 'nt authority\system', 's-1-5-18')) {
+        [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18')
+    }
+    elseif ($normalized -match '^s-\d+(?:-\d+)+$') {
+        [System.Security.Principal.SecurityIdentifier]::new($ServiceAccount.Trim())
+    }
+    else {
+        ([System.Security.Principal.NTAccount]::new($ServiceAccount.Trim())).Translate(
+            [System.Security.Principal.SecurityIdentifier])
+    }
+
+    $security = New-Object System.Security.AccessControl.FileSecurity
+    $security.SetOwner($identity)
+    $security.SetAccessRuleProtection($true, $false)
+    $security.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $identity, 'FullControl', 'None', 'None', 'Allow')))
+    Set-Acl -LiteralPath $Path -AclObject $security
+}
+
+function Write-NodePilotBootstrapCredentialFile {
+    <#
+      Leaves the generated first-admin credentials where an unattended rollout can collect them.
+
+      This is the whole point of the random-password path: a silent installation has nobody to show
+      a password to, so it has to be written down somewhere predictable. ACL-before-content through
+      the same primitive the signed-artifact staging uses - the file exists with SYSTEM +
+      Administrators and nothing else from its very first byte, never briefly inheriting from
+      DataPath and never existing unprotected with content in it.
+
+      It is a live credential and is deliberately NOT deleted afterwards: a rollout that has not
+      collected it yet would otherwise be left with an account nobody can use. Retrieving it,
+      removing it and rotating the password is the operator's step, and the documentation says so.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSAvoidUsingPlainTextForPassword', 'Password',
+        Justification = 'The file exists precisely so the automation can read this value.')]
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Username,
+        [Parameter(Mandatory)][string]$Password,
+        [Parameter(Mandatory)][string]$Url
+    )
+
+    $directory = Split-Path -Parent $Path
+    if ($directory -and -not (Test-Path -LiteralPath $directory)) {
+        [void](New-Item -ItemType Directory -Path $directory -Force)
+    }
+    # CreateNew below refuses an existing file; a re-run must replace, not fail.
+    if (Test-Path -LiteralPath $Path) { Remove-Item -LiteralPath $Path -Force }
+
+    $payload = [ordered]@{
+        username   = $Username
+        password   = $Password
+        url        = $Url
+        createdUtc = (Get-Date).ToUniversalTime().ToString('o')
+        note       = 'Live credential. Collect it, delete this file, then rotate the password.'
+    } | ConvertTo-Json
+
+    $security = New-NodePilotRestrictedFileSecurity -ServiceAccount 'NT AUTHORITY\SYSTEM' -SkipServiceRule
+    $stream = New-NodePilotAclProtectedFileStream -Path $Path -Security $security
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes($payload)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+    }
+    finally { $stream.Dispose() }
+}
+
 function New-NodePilotAclProtectedFileStream {
     <#
       Windows PowerShell 5.1 exposes the ACL-aware FileStream constructor directly. Modern

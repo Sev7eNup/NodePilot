@@ -9,7 +9,7 @@ Turnkey installer für NodePilot als Windows-Service auf einem domain-joined Win
 > dieselben Skripte auf, die hier beschrieben sind — der ZIP-Weg bleibt unverändert die Referenz
 > und ist für Automatisierung weiterhin der direktere. Das Setup nimmt vor allem die
 > Vertrauenszeremonie ab (ein Asset statt fünf, kein manueller Thumbprint-Abgleich) und prüft die
-> Voraussetzungen, bevor es etwas verändert. `/SILENT /ANSWERFILE=` deckt SCCM/GPO ab.
+> Voraussetzungen, bevor es etwas verändert. `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=` deckt SCCM/GPO ab.
 
 > **Nur eine Maschine, kein Team-Zugriff nötig?** Dann ist die **Desktop-App** der deutlich schnellere Weg: ein `.exe`-Installer, der PostgreSQL und .NET-Laufzeit mitbringt, ohne Zertifikat, Datenbank oder AD-Vorarbeit — siehe [`desktop/README.md`](desktop/README.md). Sie bindet dafür ausschließlich Loopback: **kein Netzwerkzugriff, keine eingehenden Webhooks, kein SSO, keine HA**.
 
@@ -25,11 +25,12 @@ Der Dienst läuft wahlweise unter:
 | [Build-Artifact.ps1](Build-Artifact.ps1) | Baut `out\NodePilot-<version>.zip` aus dem Repo (dotnet publish + PS-Modul-Staging nach `<stage>\Modules` + npm build + Template) und signiert das Manifest (detached CMS) |
 | [Install-NodePilot.ps1](Install-NodePilot.ps1) | Hauptinstaller — Service, ACLs, Firewall, Cert-Key-Access |
 | [ArtifactSecurity.ps1](ArtifactSecurity.ps1) | Geteilte Signier-/Verifikationslogik (Manifest + `.p7s`); wird von Build/Install/Update dot-sourced |
-| [Preflight.ps1](Preflight.ps1) | Geteilte **seiteneffektfreie** Readiness-Checks (Runtime, Zertifikat, gMSA, DB-Erreichbarkeit, TDS-8.0-Version, Dienstidentität, Domänenmitgliedschaft); wird von Install dot-sourced |
+| [Preflight.ps1](Preflight.ps1) | Geteilte **seiteneffektfreie** Readiness-Checks (Runtime, Zertifikat, **HTTP/HTTPS-Ports bindbar**, gMSA, DB-Erreichbarkeit, TDS-8.0-Version, Dienstidentität, Domänenmitgliedschaft); wird von Install dot-sourced |
 | [ServiceControl.ps1](ServiceControl.ps1) | Wartet nach dem Dienststopp auf das Ende der Prozesse im Install-Verzeichnis und beendet Nachzügler; wird von Install und Update dot-sourced |
 | [SetupContract.ps1](SetupContract.ps1) | Answer-File-Vertrag des GUI-Setups: Schema, Splat-Abbildung auf `Install-NodePilot.ps1`, SecureString-Aufbau, INI-Ergebnisdatei |
 | [Invoke-NodePilotSetup.ps1](Invoke-NodePilotSetup.ps1) | Adapter zwischen Wizard und Skripten (`InitSession`/`Probe`/`Provision`/`Apply`/`Cleanup`) |
 | [Provision-NodePilotDatabase.ps1](Provision-NodePilotDatabase.ps1) | Opt-in: SQL-Login + Datenbank anlegen. Rechte-Gate **vor** jeder Mutation, sonst nur DDL-Ausgabe. Nur SQL Server |
+| [Provision-NodePilotPostgres.ps1](Provision-NodePilotPostgres.ps1) | Dasselbe für PostgreSQL: Rolle + Datenbank über das mitgelieferte `psql`. Braucht Superuser-Zugangsdaten (Postgres kennt kein `Trusted_Connection`). Setzt **kein** Passwort einer vorhandenen Rolle zurück und ändert **keinen** Datenbank-Eigentümer |
 | [New-NodePilotSelfSignedCertificate.ps1](New-NodePilotSelfSignedCertificate.ps1) | Opt-in: selbstsigniertes Kestrel-Zertifikat, zwei Jahre, **kein** automatischer Root-Import |
 | [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Bauzeit: ASP.NET-Core-Runtime holen, gegen publizierten SHA512 + eingecheckten Pin + Authenticode prüfen |
 | [Test-SetupAdapter.ps1](Test-SetupAdapter.ps1) | Verhaltenstest des Answer-File-Vertrags (non-admin, offline, ohne DB) |
@@ -146,7 +147,9 @@ ALTER ROLE db_owner ADD MEMBER [CONTOSO\NPSRV01$];
 > FROM sys.dm_os_wait_stats WHERE wait_type = 'RESOURCE_SEMAPHORE';
 > ```
 
-> Der Installer-Pre-Flight prüft die SQL-Erreichbarkeit mit der Identität des **installierenden Admins**, nicht mit der Dienst-Identität. Bei LocalSystem gibt er nach erfolgreichem Check zusätzlich genau das `CREATE LOGIN [<host>$]`-Snippet aus, das der laufende Dienst braucht — fehlt der Login, startet der Dienst, scheitert aber an `/healthz/ready` (503).
+> Der Installer-Pre-Flight prüft die SQL-Erreichbarkeit mit der Identität des **installierenden Admins**, nicht mit der Dienst-Identität. Deshalb gibt es dahinter eine zweite Prüfung, die genau die Dienst-Identität nachschlägt — Computer-Konto bei LocalSystem, sonst den gMSA: Login vorhanden? Benutzer in der Ziel-DB? `db_owner`? Fehlt eines davon, startet der Dienst und scheitert an `/healthz/ready` (503), und der Pre-Flight sagt es vorher statt hinterher.
+>
+> Das Setup-Programm legt es auf Wunsch selbst an (Readiness-Seite; die Zeile kommt vorangehakt, unbeaufsichtigt über `provisioning.createDatabaseAndLogin` in der Answer-File). Auf dem Konsolenpfad ist `Provision-NodePilotDatabase.ps1` dasselbe in einem Aufruf. Beides ist existenzgeprüft und macht ohne `sysadmin` bzw. `CREATE ANY DATABASE` gar nichts — dann bleibt das SQL oben für den DBA.
 
 **RCSI (Read-Committed-Snapshot-Isolation)** wird vom Installer automatisch aktiviert (`Enable-SqlReadCommittedSnapshot` im Pre-Flight). Das ist das SQL-Server-Pendant zu Postgres-MVCC: ohne RCSI blockieren langlaufende Reader (Stats-Refresh, Retention-Sweeps) jeden parallelen `INSERT` in `WorkflowExecutions`/`StepExecutions` unter dem Default-2PL-Locking. Falls der Installer-Schritt am Permission-Check scheitert (Login hat kein `ALTER DATABASE`), zeigt er die T-SQL-Anweisung für den DBA an. Manuelle Aktivierung:
 
@@ -164,7 +167,9 @@ CREATE ROLE nodepilot WITH LOGIN PASSWORD '<choose-strong-secret>';
 CREATE DATABASE nodepilot OWNER nodepilot;
 ```
 
-Der Installer pollt nur die TCP-Reachability (Port 5432). Auth-Probleme (falsches Passwort, pg_hba-Block) zeigen sich erst beim `/healthz/ready`-Poll nach Service-Start — dann mit der exakten Npgsql-Fehlermeldung im Serilog-Rolling-File unter `C:\ProgramData\NodePilot\logs`.
+Der **Konsolen-Pfad** pollt nur die TCP-Reachability (Port 5432) — er bringt keinen PG-Client mit. Auth-Probleme (falsches Passwort, pg_hba-Block) zeigen sich dort erst beim `/healthz/ready`-Poll nach Service-Start, dann mit der exakten Npgsql-Fehlermeldung im Serilog-Rolling-File unter `C:\ProgramData\NodePilot\logs`.
+
+Das **Setup-Programm** kann mehr: es liefert `psql` mit, meldet sich damit schon im Pre-Flight als die NodePilot-Rolle an (`sslmode=verify-full`, also genau so wie die Laufzeit) und legt Rolle und Datenbank auf Wunsch selbst an. Dafür braucht es Superuser-Zugangsdaten — bei SQL Server ist die Windows-Identität des Installierenden die Berechtigung, PostgreSQL kennt nichts Vergleichbares. Siehe [`server/README.md`](server/README.md).
 
 > **DB-TLS ist Pflicht in Produktion.** Der `DatabaseTlsBootValidator` bricht den Boot ab, wenn die DB-Verbindung den Server nicht verifiziert — SQL Server wird als `Encrypt=Strict;TrustServerCertificate=False` erzwungen (Installer setzt bei Bedarf `-SqlCertificateHostName`), Postgres als `SSL Mode=VerifyFull` gegen die per `-PostgresRootCertificate` übergebene Root-CA (PEM). Der DB-Server muss also ein von dieser CA ausgestelltes Server-Zertifikat auf den Connect-Hostnamen präsentieren. `Database:AllowInsecureTls=true` ist ein reiner Dev-Loopback-Escape und in Produktion untersagt.
 
@@ -188,6 +193,20 @@ Get-ChildItem Cert:\LocalMachine\My |
 ```
 
 Der Installer grantet dem gMSA automatisch Read-Access auf die Private-Key-Datei.
+
+**Dienst-Identität wechseln (LocalSystem ⇄ gMSA):** einfach neu installieren, das Datenverzeichnis
+bleibt erhalten. `jwt-secret.key` und `admin-setup.token` schreibt der **Dienst** für sich selbst —
+Owner und eine einzige ACE, die der Identität gehört, die sie angelegt hat. Der Installer übergibt
+beide an die neue Identität; ohne das startete der Dienst nach einem Identitätswechsel nicht mehr
+(„the file, its owner, or its ACL could not be verified"). Gelöscht wird nichts: der JWT-Key
+signiert laufende Sessions, und das Setup-Token ist der einzige Weg in eine noch nicht
+provisionierte Instanz. Der Data-Protection-Keyring braucht keine Sonderbehandlung — er erbt vom
+Verzeichnis.
+
+Der Pre-Flight prüft Gültigkeitszeitraum und Namen: ein **abgelaufenes oder noch nicht gültiges
+Zertifikat bricht die Installation ab** (früher lief sie durch und fiel erst im Browser auf).
+Passt keine SAN — bzw. ohne SAN der CN — zum `-PublicHostname`, gibt es eine **Warnung**, keinen
+Abbruch: hinter einem Reverse-Proxy oder unter einem Alias ist das legitim.
 
 ### AD SSO Preview
 
@@ -379,10 +398,20 @@ Nach erfolgreichem Install steht in der Konsole:
 | `-ExternalTriggerApiKey` | | auto-generiert (48 bytes base64) |
 | `-JwtIssuer` | | `nodepilot:prod:<machine>` |
 | `-JwtAudience` | | `nodepilot:prod:<machine>` |
-| `-AllowedHosts` | | PublicHostname |
+| `-AllowedHosts` | | PublicHostname. `localhost` wird immer angehängt — die Health-Probe des Installers geht an `https://localhost:<port>/healthz/ready`, und `UseHostFiltering` würde sie sonst mit 400 abweisen und eine fertige Installation zurückrollen |
 | `-KnownProxyIps` | | leer (nur Loopback wird vertraut); bei HAProxy jede direkte Transport-IP angeben |
 | `-SkipSqlConnectivityCheck` | | off |
 | `-SkipGmsaCheck` | | off |
+| `-BootstrapAdminUsername` | | leer. Gesetzt = **nur** dieses Konto darf das einmalige Setup-Token einlösen (`NodePilot:BootstrapAdminUsername`). Für unbeaufsichtigte Rollouts, die den Namen vorher kennen. |
+| `-SeedBackupPath` | | leer. `.npbackup`, das beim **ersten Start** in eine leere Instanz eingespielt wird — Benutzer, Workflows, Maschinen, Credentials, Settings. Die Datei wird nach `<DataPath>\seed.npbackup` kopiert und nach dem Einspielen gelöscht. |
+| `-SeedBackupPassphrase` | ✓ wenn `-SeedBackupPath` gesetzt (SecureString) | landet im `Environment`-Wert des Dienstschlüssels, **nie** in der `appsettings.Production.json` |
+
+> **Schlüsselfertig ohne Token-Eingabe.** `-BootstrapAdminUsername` und `-SeedBackupPath` sind die
+> beiden Wege, eine unbeaufsichtigte Installation benutzbar zu beenden — sonst müsste jemand das
+> Setup-Token von Hand in die Anmeldemaske tippen. Der Seed gewinnt: bringt er Benutzer mit, wird
+> gar kein Token ausgestellt. Ein falscher Seed lässt den Dienst **nicht** starten, statt eine
+> scheinbar provisionierte, in Wahrheit leere Instanz zu hinterlassen. Vollständig in
+> [`server/README.md`](server/README.md#schlüsselfertiger-rollout-unbeaufsichtigt-ohne-token-eingabe).
 
 ## HAProxy vor NodePilot
 
