@@ -762,8 +762,13 @@ keine davon `signer`), und der Fix, der seit jeher im Adapter liegt, war im Wiza
 verdrahtet. Dazu ein zweiter, unabhängiger Fehler: `Invoke-ProvisionSigner` suchte die `.cer` unter
 `signer\` — ein Ordner, den der Build nie anlegt, weil `[Files]` mit `dontcopy` **ohne**
 `recursesubdirs` alles flach nach `{tmp}` legt. Der Auto-Fix hätte also auch dann nichts gefunden,
-wenn man ihn über die Answer-File angefordert hätte. Beides behoben; die Zeilen 41/42 unten decken
-den Fall ab und sind **noch nicht** geklickt.
+wenn man ihn über die Answer-File angefordert hätte. Beides behoben — und beim ersten Lauf mit der
+neuen Zeile schlug prompt der Layout-Vorbehalt zu: Die zehnte Zeile war fünf Zeilen hoch, damit
+rutschte ihre eigene Checkbox hinter die Buttons. Ein Fix, den man sieht, erklärt bekommt und nicht
+anhaken kann. Zwei Korrekturen: die Meldung ist auf zwei Zeilen gekürzt (die Kettenbegründung des
+Betriebssystems steht jetzt im scrollbaren Anleitungsfeld), und `LayoutReadiness` zählt die
+sichtbaren Fix-Boxen vorab und garantiert jeder einen klickbaren Streifen über den Buttons. Die
+Zeilen 41/42 unten decken den Fall ab und sind **noch nicht** geklickt.
 
 Zusatz 2026-08-06: Zeile 39 ist im Feld aufgeschlagen — leeres Feld, und der Probe-Lauf starb mit
 „Answer file is missing required key 'certificate.thumbprint'", weil die Vertragsprüfung Pflicht mit

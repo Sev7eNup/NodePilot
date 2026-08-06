@@ -865,6 +865,15 @@ Assert-TextDoesNotMatch -Name 'the publisher fix is not hard-wired off' `
     -Text $serverIss -Pattern '"trustArtifactSigner": false'
 # The certificate was extracted in PrepareToInstall - after the readiness page had already run. A
 # row that reads a file which does not exist yet reports a broken setup on every host.
+# The page does not scroll, and the tenth row is the longest. Without a floor the fix checkbox of a
+# wrapped row lands behind "Check again" - present, captioned, and impossible to tick, which is how
+# the publisher fix reached the first machine that needed it.
+Assert-TextMatches -Name 'a fix checkbox is never pushed below the buttons' `
+    -Text $serverIss -Pattern 'if FixTop > FixFloor then FixTop := FixFloor;'
+# Counted first, because the guarantee is about the last box: N boxes need N strips above the
+# buttons, and clamping them all to the same line would hide all but one.
+Assert-TextMatches -Name 'the floor accounts for every fix that will be shown' `
+    -Text $serverIss -Pattern 'FixFloor := ButtonTop - ScaleY\(19\) \* FixCount;'
 Assert-TextMatches -Name 'the publisher certificate is extracted before the readiness page' `
     -Text $serverIss `
     -Pattern "(?s)ExtractTemporaryFiles\('\*\.ps1'\)[\s\S]{0,500}ExtractTemporaryFile\('nodepilot-release-signing\.cer'\)"
