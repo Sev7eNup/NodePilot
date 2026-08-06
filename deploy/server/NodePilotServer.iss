@@ -573,8 +573,21 @@ end;
 // almost never shown, which is what squeezed the remediation area down to a single line.
 procedure LayoutReadiness();
 var
-  I, Y, ButtonTop, Available: Integer;
+  I, Y, ButtonTop, FixTop, FixFloor, FixCount, Available: Integer;
 begin
+  ButtonTop := ReadinessPage.SurfaceHeight - ScaleY(24);
+
+  // Counted before anything is placed, because the guarantee below is about the LAST fix box: with
+  // N of them, the first may sit no lower than N*19 px above the buttons. Ten rows, several wrapped
+  // to three lines, push the stack past the bottom of a page that does not scroll - and a checkbox
+  // drawn behind "Check again" is a fix that cannot be ticked. That is how the publisher row
+  // shipped: visible, explained, and unreachable. Clamping overlaps the text above it, which is
+  // visibly wrong rather than invisibly missing.
+  FixCount := 0;
+  for I := 0 to CheckCount - 1 do
+    if CheckLabels[I].Visible and CheckFixes[I].Visible then FixCount := FixCount + 1;
+  FixFloor := ButtonTop - ScaleY(19) * FixCount;
+
   Y := 0;
   for I := 0 to CheckCount - 1 do
   begin
@@ -587,12 +600,16 @@ begin
 
     if CheckFixes[I].Visible then
     begin
-      CheckFixes[I].Top := Y;
+      FixTop := Y;
+      if FixTop > FixFloor then FixTop := FixFloor;
+      CheckFixes[I].Top := FixTop;
+      // Each box claims its own strip, so two clamped ones keep their order instead of landing on
+      // top of each other.
+      FixFloor := FixFloor + ScaleY(19);
       Y := Y + ScaleY(19);
     end;
   end;
 
-  ButtonTop := ReadinessPage.SurfaceHeight - ScaleY(24);
   RemediationBox.Top := Y + ScaleY(8);
   Available := ButtonTop - ScaleY(6) - RemediationBox.Top;
   // Never negative, never overlapping the buttons: with every row wrapped and every fix offered
