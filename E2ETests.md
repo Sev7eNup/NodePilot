@@ -3557,7 +3557,16 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ### Test 53.4 — AI Generate-Workflow (LLM disabled) → 503
 
-**Prüfpunkte:** 503. `code: "LLM_DISABLED"`.
+**Prüfpunkte:** 503. `code: "LLM_DISABLED"`. (Der Button ist nur bei `capabilities.llm=true` sichtbar — dieser Flow entspricht einem Config-Flip mid-session nach dem Seitenaufbau.)
+
+---
+
+### Test 53.5 — Kein nutzbarer LLM-Endpunkt → KI-Button ausgeblendet
+
+**Voraussetzung:** `Llm:Enabled=false` **oder** kein auflösbares aktives Profil (`capabilities.llm=false`).
+
+**Prüfpunkte:**
+- [ ] Auf der Workflow-Liste fehlt „KI-Workflow generieren"; der normale „Neuer Workflow"-Button bleibt sichtbar.
 
 ---
 
@@ -4136,7 +4145,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 **Prüfpunkte:**
 - [ ] Angedocktes Chat-Panel rechts öffnet sich; Antwort erscheint **ab dem ersten Token** (blinkender Cursor) und wird als Markdown gerendert.
 - [ ] Während des Streams erscheint ein **Stopp**-Button; Klick bricht ab, partielle Antwort bleibt, kein Fehler.
-- [ ] Bei `Llm:Enabled=false` → Fehleranzeige `LLM_DISABLED` im Panel.
+- [ ] Ohne nutzbaren LLM-Endpunkt (`capabilities.llm=false`) wird der „KI-Assistent"-Button **gar nicht gerendert** (gilt ebenso für den KI-Button im Script-Editor; für Viewer fehlt letzterer immer). Die `LLM_DISABLED`-Fehleranzeige im Panel ist nur noch bei einem Config-Flip mid-session erreichbar.
 
 ---
 
@@ -4486,7 +4495,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 [ ] Teil 50: Workflow Duplicate, By-Name-Lookup & Bulk-Export (50.1 — 50.6)
 [ ] Teil 51: Step Stats & Step Health (51.1 — 51.3)
 [ ] Teil 52: Folder Move — Shared Folders & Workflow Move-Folder (52.1 — 52.4)
-[ ] Teil 53: Schedule Next-Fires & AI Generate-Workflow (53.1 — 53.4)
+[ ] Teil 53: Schedule Next-Fires & AI Generate-Workflow (53.1 — 53.5)
 [ ] Teil 54: Designer-Overlays — Command Palette, Quick Switcher, Find & Replace (54.1 — 54.3)
 [ ] Teil 55: Erweiterte Keyboard-Shortcuts (55.1 — 55.4)
 [ ] Teil 56: Error-Notifications & Empty States (56.1 — 56.4)

@@ -26,6 +26,31 @@ export const MOCK_HOST = {
   domain: 'corp.example.local',
 };
 
+/** Frontend mirror of GET /api/ai/knowledge/capabilities (kept inline to avoid importing src/).
+ *  `llm` is the raw "LLM endpoint usable" flag that gates every AI button's visibility;
+ *  `enabled` additionally requires the AiKnowledge master switch and gates the AI-Chat nav. */
+export interface KnowledgeCapabilities {
+  enabled: boolean;
+  llm: boolean;
+  docs: boolean;
+  operational: boolean;
+  sourceCode: boolean;
+  db: boolean;
+}
+
+/** Default caps: everything on (Admin/Operator view of a fully enabled install). */
+export function capsJson(overrides: Partial<KnowledgeCapabilities> = {}): KnowledgeCapabilities {
+  return { enabled: true, llm: true, docs: true, operational: true, sourceCode: true, db: true, ...overrides };
+}
+
+/** Mocks GET /api/ai/knowledge/capabilities with a JSON object — overrides the suite default
+ *  from `installDefaultMocks` (Playwright resolves the most-recently-added route first). */
+export async function mockCaps(page: Page, caps: KnowledgeCapabilities) {
+  await page.route('**/api/ai/knowledge/capabilities**', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(caps) }),
+  );
+}
+
 export async function installDefaultMocks(page: Page) {
   // Pin the designer to the CLASSIC look for the whole hermetic suite. The Atelier design
   // (designStore.designerTheme, default 'atelier') re-tokenises colors/geometry the visual
@@ -72,6 +97,20 @@ export async function installDefaultMocks(page: Page) {
   // explicit object the catch-all returns `[]` and the chip (correctly) hides itself.
   await page.route('**/api/system/host-info', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_HOST) }),
+  );
+
+  // AI capabilities — an OBJECT endpoint the catch-all would answer with `[]`. The default is
+  // deliberately `llm: true, enabled: false`: `llm` gates the designer KI-Assistent, the
+  // script-editor KI button and "New AI Workflow" (all unconditionally visible before the
+  // gating existed → this keeps every spec's DOM unchanged), while `enabled` gates the AI-Chat
+  // nav entry, which the catch-all's `[]` always kept hidden. Do NOT "improve" this to
+  // all-true — the AI-Chat nav entry would appear suite-wide and break sidebar assertions.
+  // Override per test with `mockCaps(page, capsJson({...}))`.
+  await page.route('**/api/ai/knowledge/capabilities**', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(capsJson({ enabled: false, docs: false, operational: false, sourceCode: false, db: false })),
+    }),
   );
 
   // Workflows list — empty by default; tests that need a specific workflow

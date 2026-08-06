@@ -7,8 +7,7 @@ import {
   Star, Search, OverflowMenuHorizontal,
 } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
-import { getKnowledgeCapabilities } from '../../api/ai';
+import { useAiCapabilities } from '../../hooks/useAiCapabilities';
 import { useAuthStore } from '../../stores/authStore';
 import { useThemeStore, THEMES, type Theme } from '../../stores/themeStore';
 import { useLangStore } from '../../stores/langStore';
@@ -80,11 +79,7 @@ export function Sidebar({ mobileOpen = false, onClose }: Readonly<{ mobileOpen?:
   const isMobile = useIsMobile();
   const badges = useSidebarBadges();
   // Gates the AI-Chat nav entry: hidden until both master switches (Llm + AiKnowledge) are on.
-  const { data: aiCaps } = useQuery({
-    queryKey: ['ai-knowledge-capabilities'],
-    queryFn: getKnowledgeCapabilities,
-    staleTime: 60_000,
-  });
+  const { data: aiCaps } = useAiCapabilities();
 
   // Inside the drawer the icon-only rail makes no sense — always show the full layout.
   // The persisted `collapsed` preference only applies to the static desktop sidebar.

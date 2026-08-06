@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
+import { installDefaultMocks, MOCK_USER, capsJson, mockCaps } from './fixtures/mockApi';
 
 /**
  * E2ETests.md — Global "AI Chat" knowledge assistant (/ai-chat). Read-only Q&A over NodePilot
@@ -11,22 +11,11 @@ import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
  * with `text/event-stream` body frames — same pattern as ai-assistant.spec.ts). SPA renders
  * ENGLISH under Playwright. No SignalR, no canvas, no real LLM.
  *
- * IMPORTANT: `installDefaultMocks`'s predicate catch-all returns `[]` (200) for any unmocked
- * /api/* endpoint. `/api/ai/knowledge/capabilities` is an OBJECT endpoint — `[]` parses to an
- * array, `caps.enabled` → undefined → the page's `caps && !caps.enabled` guard renders the
- * disabled-state card. So EVERY test must install its own capabilities mock (or the disabled
- * variant) — otherwise the composer never mounts.
+ * IMPORTANT: `installDefaultMocks` now installs a default capabilities object, but with
+ * `enabled: false` — the page's `caps && !caps.enabled` guard renders the disabled-state card.
+ * So every test that wants the composer must still install `mockCaps(page, capsJson({...}))`
+ * (per-test routes override the default); only the disabled-state test relies on the default.
  */
-
-// ---- Types (frontend mirrors of backend DTOs, kept inline to avoid importing src/) --------
-
-interface KnowledgeCapabilities {
-  enabled: boolean;
-  docs: boolean;
-  operational: boolean;
-  sourceCode: boolean;
-  db: boolean;
-}
 
 interface ChatDoneMeta {
   model: string;
@@ -39,18 +28,6 @@ interface ChatDoneMeta {
 }
 
 // ---- Mock-factory helpers ---------------------------------------------------------------
-
-/** Default caps: everything on (Admin/Operator view). */
-function capsJson(overrides: Partial<KnowledgeCapabilities> = {}): KnowledgeCapabilities {
-  return { enabled: true, docs: true, operational: true, sourceCode: true, db: true, ...overrides };
-}
-
-/** Mocks GET /api/ai/knowledge/capabilities with a JSON object. */
-async function mockCaps(page: Page, caps: KnowledgeCapabilities) {
-  await page.route('**/api/ai/knowledge/capabilities**', (route) =>
-    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(caps) }),
-  );
-}
 
 /** Mocks POST /api/ai/knowledge/ask with a concatenation of prebuilt SSE frames. */
 async function mockAsk(page: Page, frames: string[]) {

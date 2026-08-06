@@ -23,6 +23,12 @@ alongside `dotnet test` and `npm run test:run`.
   `/login`. It also mocks `/api/auth/me` (`MOCK_USER` = admin), `/hubs/**` (404), and empty
   lists. Add per-test `page.route(...)` AFTER it for specific data (last-registered wins;
   match query-string URLs with a trailing `**`).
+- `installDefaultMocks` also mocks `/api/ai/knowledge/capabilities` with `llm: true,
+  enabled: false`: `llm` gates the visibility of every AI button (designer KI-Assistent,
+  script-editor KI, "New AI Workflow"), `enabled` gates the AI-Chat nav entry. This exact
+  combination keeps the pre-existing DOM of every spec (buttons visible, nav entry hidden) —
+  do NOT change it to all-true, or the AI-Chat nav appears suite-wide. Override per test with
+  `mockCaps(page, capsJson({...}))` (both exported from `fixtures/mockApi.ts`).
 - `installDefaultMocks` also **pins the designer to the CLASSIC look** (localStorage seed
   `designerTheme: 'classic'`) — the Atelier design (default for fresh real profiles) re-tokenises
   colors/geometry the existing visual assertions were written against. The seed is skipped once

@@ -12,6 +12,7 @@ import { EnvOverrideBadge } from './EnvOverrideBadge';
 import { EtagConflictDialog } from './EtagConflictDialog';
 import { TestProbeModal } from './TestProbeModal';
 import { HotReloadHint } from './SectionFormHelpers';
+import { refreshAiCapabilities } from '../../hooks/useAiCapabilities';
 
 type SmtpDto = {
   host: string;
@@ -383,6 +384,9 @@ function LlmCard() {
     onSuccess: (fresh) => {
       queryClient.setQueryData(['admin-settings', 'Llm'], fresh);
       queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
+      // The AI entry points across the SPA gate on this — refresh so enabling/disabling
+      // the LLM shows/hides them without a reload.
+      refreshAiCapabilities(queryClient);
     },
     onError: (err: unknown) => {
       if (err instanceof SettingsApiError && err.status === 412 && err.body?.current) {
@@ -510,7 +514,10 @@ function LlmCard() {
           queryClient.setQueryData(['admin-settings', 'Llm'], conflict);
           setConflict(null);
           adminSettings.putSection<LlmDto>('Llm', buildPayload(), conflict.etag)
-            .then((fresh) => queryClient.setQueryData(['admin-settings', 'Llm'], fresh))
+            .then((fresh) => {
+              queryClient.setQueryData(['admin-settings', 'Llm'], fresh);
+              refreshAiCapabilities(queryClient);
+            })
             .catch((e: unknown) => setError([e instanceof Error ? e.message : String(e)]));
         }}
         onTakeTheirs={() => {

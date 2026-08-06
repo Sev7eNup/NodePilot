@@ -63,7 +63,8 @@ public sealed class AiKnowledgeController : ControllerBase
     /// <summary>
     /// Effective capabilities for the current user — which knowledge sources the chat can draw from
     /// right now (both master switches on, per-source toggles, and the source-code role gate). Drives
-    /// the sidebar nav visibility and the page's source badges. All roles.
+    /// the sidebar nav visibility and the page's source badges; the raw <c>llm</c> flag additionally
+    /// gates the visibility of every AI entry point in the SPA. All roles.
     /// </summary>
     [HttpGet("knowledge/capabilities")]
     public ActionResult<KnowledgeCapabilitiesDto> Capabilities()
@@ -71,12 +72,14 @@ public sealed class AiKnowledgeController : ControllerBase
         var k = _knowledgeOptions.CurrentValue;
         // "Usable" = kill-switch on AND an active profile resolves — without one every call would
         // 503 anyway, so reporting the sources as available would be a lie.
-        var enabled = _llmOptions.CurrentValue.IsUsable && k.Enabled;
+        var llmUsable = _llmOptions.CurrentValue.IsUsable;
+        var enabled = llmUsable && k.Enabled;
         var toolSourcesEnabled = enabled
                                  && _llmOptions.CurrentValue.TryResolveActiveProfile(out var activeProfile)
                                  && activeProfile.EnableToolCalling;
         return Ok(new KnowledgeCapabilitiesDto(
             Enabled: enabled,
+            Llm: llmUsable,
             Docs: toolSourcesEnabled && k.DocsEnabled,
             Operational: toolSourcesEnabled && k.OperationalEnabled,
             SourceCode: toolSourcesEnabled && k.SourceCodeEnabled && User.IsPrivileged(),
@@ -301,5 +304,11 @@ public sealed class AiKnowledgeController : ControllerBase
             bodyExcerpt is null ? (object)new { code, message } : new { code, message, bodyExcerpt });
 }
 
-/// <summary>Effective knowledge-chat capabilities for the current user (drives nav visibility + source badges).</summary>
-public sealed record KnowledgeCapabilitiesDto(bool Enabled, bool Docs, bool Operational, bool SourceCode, bool Db);
+/// <summary>
+/// Effective knowledge-chat capabilities for the current user (drives nav visibility + source badges).
+/// <see cref="Llm"/> is the raw "LLM usable" signal (kill-switch on + active profile resolves) independent
+/// of the AiKnowledge master switch — the SPA gates every AI entry point's visibility on it (designer
+/// assistant, script-editor generate, AI workflow generation), while <see cref="Enabled"/> keeps gating
+/// only the knowledge chat itself.
+/// </summary>
+public sealed record KnowledgeCapabilitiesDto(bool Enabled, bool Llm, bool Docs, bool Operational, bool SourceCode, bool Db);

@@ -253,9 +253,18 @@ beim Startup eine Hardening-Warnung in den Logs aus.
 
 ## Sicherheit
 
+- **Sichtbarkeits-Gating**: Alle KI-Einstiegspunkte im UI (Designer-„KI-Assistent", KI-Button im
+  Script-Editor, „KI-Workflow generieren" auf der Workflow-Liste, AI-Chat-Navigation) werden nur
+  eingeblendet, wenn `GET /api/ai/knowledge/capabilities` `llm: true` meldet — das rohe
+  „LLM nutzbar"-Signal (`Llm:Enabled` + auflösbares aktives Profil), unabhängig vom
+  AiKnowledge-Master-Switch. Ohne konfigurierten Endpunkt existieren die Buttons nicht;
+  die 503-Fehlerpfade sind nur noch bei einem Config-Flip mid-session erreichbar.
+  Frontend-seitig läuft das über den geteilten Hook `useAiCapabilities` (eine Query, ein Cache);
+  LLM-/AiKnowledge-Saves in den Admin-Settings refreshen die Query sofort.
 - **Rollen**: Die Generierungs-Endpoints (`POST /api/ai/generate-script`, `POST /api/ai/generate-workflow`)
   sind nur für `Admin` und `Operator` zugänglich. Der Chat-Assistent (`POST /api/ai/chat`) ist für alle Rollen
-  lesbar (Erklären), aber das **Anwenden** von Vorschlägen bleibt Admin/Operator. Viewer sehen die Schreib-KI-Buttons im UI nicht.
+  lesbar (Erklären), aber das **Anwenden** von Vorschlägen bleibt Admin/Operator. Viewer sehen die Schreib-KI-Buttons im UI nicht
+  (der Script-Editor-KI-Button wird für Viewer zusätzlich zum LLM-Gating ausgeblendet).
 - **Rate-Limit**: 20 Anfragen/Min pro IP — schützt gegen Cost-Runaway bei Cloud-Modellen
   und gegen versehentliche Spam-Loops im UI.
 - **SSRF-Block**: Beim Startup wird die `BaseUrl` **jedes** Profils gegen Cloud-Metadata-IPs

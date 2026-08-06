@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router';
 import { WorkflowDesignerIcon } from '../WorkflowDesignerIcon';
 import { useDesignStore } from '../../../stores/designStore';
+import { useAiCapabilities } from '../../../hooks/useAiCapabilities';
 
 /**
  * Left identity zone of the editor header (shared by both toolbar layouts): back navigation,
@@ -19,6 +20,7 @@ export function EditorIdentity({ aiChatOpen, onToggleAiChat }: Readonly<{
   const fromWorkflow = (location.state as { fromWorkflow?: { id: string; name: string } } | null)?.fromWorkflow;
   const designerMode = useDesignStore((s) => s.designerMode);
   const setDesignerMode = useDesignStore((s) => s.setDesignerMode);
+  const llmUsable = useAiCapabilities().data?.llm === true;
 
   const handleBack = () => {
     // Workflow-to-workflow entries carry fromWorkflow state and can safely use the browser
@@ -66,23 +68,27 @@ export function EditorIdentity({ aiChatOpen, onToggleAiChat }: Readonly<{
           </button>
         ))}
       </div>
-      {/* AI workflow assistant — purple, next to the Standard/Expert toggle. Visible to all
-          roles; when Llm:Enabled=false the panel shows a 503 error. */}
-      <button
-        type="button"
-        onClick={onToggleAiChat}
-        aria-pressed={aiChatOpen}
-        data-testid="toggle-ai-assistant"
-        className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-label font-semibold shadow-sm transition-all shrink-0 ${
-          aiChatOpen
-            ? 'bg-primary-container text-on-primary-container shadow-inner'
-            : 'bg-gradient-to-br from-primary to-primary-container text-on-primary hover:shadow'
-        }`}
-        title={t('ai:chat.buttonTitle')}
-      >
-        <ChatBot size={15} />
-        <span className="hidden xl:inline">{t('ai:chat.buttonLabel')}</span>
-      </button>
+      {/* AI workflow assistant — purple, next to the Standard/Expert toggle. Only rendered when
+          an LLM endpoint is usable (capabilities.llm); all roles may open it (asking is read-only,
+          applying proposals stays RBAC-gated in the panel). A mid-session config flip can still
+          surface a 503 inside an already-open panel. */}
+      {llmUsable && (
+        <button
+          type="button"
+          onClick={onToggleAiChat}
+          aria-pressed={aiChatOpen}
+          data-testid="toggle-ai-assistant"
+          className={`flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[10px] font-label font-semibold shadow-sm transition-all shrink-0 ${
+            aiChatOpen
+              ? 'bg-primary-container text-on-primary-container shadow-inner'
+              : 'bg-gradient-to-br from-primary to-primary-container text-on-primary hover:shadow'
+          }`}
+          title={t('ai:chat.buttonTitle')}
+        >
+          <ChatBot size={15} />
+          <span className="hidden xl:inline">{t('ai:chat.buttonLabel')}</span>
+        </button>
+      )}
     </div>
   );
 }
