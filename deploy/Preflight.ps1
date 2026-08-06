@@ -434,39 +434,47 @@ function Test-NodePilotTlsCertificate {
 
 function Test-NodePilotArtifactSignerTrust {
     <#
-      Whether this machine trusts the publisher of the artifact the setup carries.
+      The publisher of the artifact the setup carries.
 
-      Install-NodePilot.ps1 verifies the detached CMS signature with CheckSignature($false) - the
-      $false means "validate the certificate chain too". On a host that does not know the publisher
-      that throws, the install aborts and rolls back. Without this row that was the first thing an
-      operator learned about it: nine green checks, Next, exit code 4.
+      Install-NodePilot.ps1 no longer requires the publisher to be trusted on the target: it
+      verifies the signature and compares the signer against a pinned thumbprint, so an untrusted
+      publisher is a note, not a blocker. What it DOES still reject is a certificate that is
+      expired, not yet valid, or not permitted to sign code - and those must not be reported here
+      as an optional yellow line, or this row would promise an installation that then fails.
 
-      Mirrors what the installer does, with one deliberate difference: revocation is not checked. A
-      self-signed publisher has no CRL distribution point, so an online revocation check fails for
-      the absence of a CRL rather than the absence of trust - and this row would then send the
-      operator after a problem that is not theirs.
+      So the order matters: everything the installer will reject is decided first and blocks; the
+      chain is asked last, and only a failure that is exclusively about trust is optional.
+
+      The certificate purpose is checked here as well as in ArtifactSecurity.ps1 rather than shared:
+      this file is dot-sourced on its own by both the installer and the setup adapter, and pulling
+      the security layer in behind it would be a heavier coupling than two small checks. A contract
+      test keeps the pair from drifting.
+
+      Revocation is deliberately not checked: a self-signed publisher has no CRL distribution point,
+      so an online check fails for the absence of a CRL rather than the absence of trust, and this
+      row would send the operator after a problem that is not theirs.
     #>
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$CertificatePath,
         [Parameter(Mandatory)][AllowEmptyString()][string]$ExpectedThumbprint
     )
 
-    $title = 'Artifact publisher trusted'
+    $title = 'Artifact publisher'
     $brokenSetupHint = 'The setup is incomplete or has been altered. Download it again from the release.'
 
+    # Not required any more: the installation verifies the certificate that travels inside the
+    # signature, not this file. Missing, it only costs the convenience of the import offer.
     if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
-        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Warn' `
             -Detail "The publisher certificate is missing from the setup payload ($CertificatePath)." `
-            -RemediationHint $brokenSetupHint `
-            -AbortMessage 'Publisher certificate missing from the setup payload.'
+            -RemediationHint $brokenSetupHint
     }
 
     try { $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath) }
     catch {
-        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Warn' `
             -Detail "The publisher certificate in the setup payload cannot be read: $($_.Exception.Message)" `
-            -RemediationHint $brokenSetupHint `
-            -AbortMessage 'Publisher certificate in the setup payload is unreadable.'
+            -RemediationHint $brokenSetupHint
     }
 
     $actual = (($certificate.Thumbprint -replace '[^0-9A-Fa-f]', '')).ToUpperInvariant()
@@ -482,6 +490,48 @@ function Test-NodePilotArtifactSignerTrust {
             -AbortMessage "Payload publisher $actual does not match the expected $expected."
     }
 
+    # --- the three the installer will reject on, so they block here too ------------------------
+    $now = Get-Date
+    if ($certificate.NotAfter -lt $now -or $certificate.NotBefore -gt $now) {
+        $when = if ($certificate.NotAfter -lt $now) {
+            "expired on $($certificate.NotAfter.ToString('yyyy-MM-dd'))"
+        } else {
+            "is not valid until $($certificate.NotBefore.ToString('yyyy-MM-dd'))"
+        }
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+            -Detail "The publisher certificate ($actual) $when, so the artifact signature will be rejected." `
+            -RemediationHint 'A release signed with an out-of-date certificate has to be re-signed and re-published.' `
+            -AbortMessage "Artifact publisher $actual $when."
+    }
+
+    $codeSigningOid = '1.3.6.1.5.5.7.3.3'
+    $ekus = @($certificate.Extensions | Where-Object {
+        $_ -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]
+    })
+    if ($ekus.Count -eq 0 -or -not ($ekus.EnhancedKeyUsages.Value -contains $codeSigningOid)) {
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+            -Detail "The publisher certificate ($actual) is not valid for code signing." `
+            -RemediationHint $brokenSetupHint `
+            -AbortMessage "Artifact publisher $actual is not valid for code signing."
+    }
+
+    # Absent means unrestricted in X.509, so only a present extension can reject anything.
+    $signingUsages = [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor
+                     [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::NonRepudiation
+    foreach ($keyUsage in @($certificate.Extensions | Where-Object {
+        $_ -is [Security.Cryptography.X509Certificates.X509KeyUsageExtension]
+    })) {
+        if (($keyUsage.KeyUsages -band $signingUsages) -eq 0) {
+            return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+                -Detail ("The publisher certificate ($actual) carries a KeyUsage that permits neither " +
+                         "DigitalSignature nor NonRepudiation, so it may not sign code.") `
+                -RemediationHint $brokenSetupHint `
+                -AbortMessage "Artifact publisher $actual may not sign code (KeyUsage: $($keyUsage.KeyUsages))."
+        }
+    }
+
+    # --- and only now the question that is genuinely optional ----------------------------------
+    $trustOnly = $false
     $reasons = ''
     $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
     try {
@@ -490,25 +540,36 @@ function Test-NodePilotArtifactSignerTrust {
             return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Pass' `
                 -Detail "Publisher $($certificate.Subject) is trusted on this machine ($actual)."
         }
+        $flags = @($chain.ChainStatus | ForEach-Object { $_.Status })
         $reasons = @($chain.ChainStatus | ForEach-Object { $_.StatusInformation.Trim() }) -join ' '
+        # Exclusively about the missing trust anchor. Anything else the chain objects to is not
+        # something an import fixes, and is reported as a failure rather than waved through.
+        $trustOnly = $flags.Count -gt 0 -and -not (@($flags | Where-Object {
+            $_ -ne [Security.Cryptography.X509Certificates.X509ChainStatusFlags]::UntrustedRoot -and
+            $_ -ne [Security.Cryptography.X509Certificates.X509ChainStatusFlags]::PartialChain
+        }).Count)
     }
     finally { $chain.Dispose() }
 
-    # Offered, never pre-ticked. LocalMachine\Root is a machine-wide statement, and the deployment
-    # guide asks the operator to compare the thumbprint out of band first - so the thumbprint is in
-    # the message they read before they tick anything.
-    #
-    # The detail is kept to two lines and the chain engine's own sentence goes into the hint. The
-    # readiness page does not scroll: this row rendered five lines deep, which pushed its own
-    # checkbox off the bottom of the page.
-    New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+    if (-not $trustOnly) {
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+            -Detail "The publisher certificate ($actual) is not usable: $reasons" `
+            -RemediationHint $brokenSetupHint `
+            -AbortMessage "Artifact publisher $actual failed certificate validation: $reasons"
+    }
+
+    # Offered, never pre-ticked, and never required: the installation verifies the signature against
+    # the pinned thumbprint and does not care whether this machine trusts the publisher. What the
+    # import adds is that Windows itself will validate the installers' own Authenticode signature
+    # from then on - it does not authenticate the setup that is already running.
+    New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Warn' `
         -CanAutoFix $true -AutoFixLabel 'Trust the publisher certificate (adds it to LocalMachine\Root)' `
-        -Detail "Publisher $($certificate.Subject) ($actual) is not trusted on this machine." `
-        -RemediationHint (("Without it the artifact signature cannot be verified and the installation " +
-                           "would abort and roll back. $reasons").Trim() + ' Compare the thumbprint against ' +
-                          'the one published with the release before trusting it - it applies to the whole machine.') `
-        -Remediation "Import-Certificate -FilePath '$CertificatePath' -CertStoreLocation Cert:\LocalMachine\Root" `
-        -AbortMessage "Artifact publisher $actual is not trusted in LocalMachine\Root."
+        -Detail ("Publisher $($certificate.Subject) ($actual) is not trusted on this machine. " +
+                 'The installation does not need it.') `
+        -RemediationHint ('Optional. Trusting it makes Windows validate the signature of this and future ' +
+                          'NodePilot installers; it applies to the whole machine, so compare the thumbprint ' +
+                          'against the one published with the release first.') `
+        -Remediation "Import-Certificate -FilePath '$CertificatePath' -CertStoreLocation Cert:\LocalMachine\Root"
 }
 
 function New-NodePilotCertificateVerdict {

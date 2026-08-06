@@ -815,22 +815,52 @@ try {
         -Condition ($noneGiven.Detail -match 'No certificate selected' -and $noneGiven.Detail -notmatch 'is not present')
 
     # --- the publisher of the artifact the setup carries --------------------------------------
-    # The requirement the readiness page could not see. Install-NodePilot.ps1 verifies the detached
-    # CMS signature with the chain included, so a host that does not know the publisher showed nine
-    # green rows and then failed at CheckSignature with exit code 4 and a rollback.
+    # The installation no longer requires the publisher to be trusted here: it verifies the CMS
+    # signature and compares the signer against a pinned thumbprint. So "not trusted" is a note.
+    #
+    # What it still rejects - expired, not yet valid, not permitted to sign code - must NOT be
+    # reported as an optional yellow line, or this row would promise an installation that then
+    # fails. That is the whole point of the ordering below, and these assertions are what hold it.
     #
     # Certificates are built in memory rather than with New-SelfSignedCertificate: this suite writes
     # to no certificate store on the machine it runs on.
     function New-TestPublisherCertificateFile {
-        param([Parameter(Mandatory)][string]$FileName, [string]$Subject = 'CN=NodePilot Test Publisher')
+        param(
+            [Parameter(Mandatory)][string]$FileName,
+            [string]$Subject = 'CN=NodePilot Test Publisher',
+            [int]$ValidFromDays = -1,
+            [int]$ValidToDays = 365,
+            [switch]$WithoutCodeSigningEku,
+            [switch]$WithoutKeyUsage,
+            [switch]$WithUnknownCriticalExtension,
+            [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]$KeyUsage = 'DigitalSignature'
+        )
         $rsa = [System.Security.Cryptography.RSA]::Create(2048)
         try {
             $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
                 $Subject, $rsa,
                 [System.Security.Cryptography.HashAlgorithmName]::SHA256,
                 [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+            if (-not $WithoutCodeSigningEku) {
+                $oids = New-Object System.Security.Cryptography.OidCollection
+                [void]$oids.Add((New-Object System.Security.Cryptography.Oid '1.3.6.1.5.5.7.3.3'))
+                $request.CertificateExtensions.Add(
+                    (New-Object System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension $oids, $true))
+            }
+            if (-not $WithoutKeyUsage) {
+                $request.CertificateExtensions.Add(
+                    (New-Object System.Security.Cryptography.X509Certificates.X509KeyUsageExtension $KeyUsage, $true))
+            }
+            if ($WithUnknownCriticalExtension) {
+                # Gives X509Chain something to object to that importing the certificate would not
+                # fix: it reports HasNotSupportedCriticalExtension and InvalidExtension alongside
+                # UntrustedRoot. That is the only way to reach the "not only trust" branch.
+                $request.CertificateExtensions.Add(
+                    (New-Object System.Security.Cryptography.X509Certificates.X509Extension `
+                        '1.3.6.1.4.1.99999.1', ([byte[]](4, 2, 1, 2)), $true))
+            }
             $certificate = $request.CreateSelfSigned(
-                [DateTimeOffset]::UtcNow.AddDays(-1), [DateTimeOffset]::UtcNow.AddYears(1))
+                [DateTimeOffset]::UtcNow.AddDays($ValidFromDays), [DateTimeOffset]::UtcNow.AddDays($ValidToDays))
             $path = Join-Path $workingDirectory $FileName
             [IO.File]::WriteAllBytes($path, $certificate.Export('Cert'))
             return [pscustomobject]@{ Path = $path; Thumbprint = $certificate.Thumbprint }
@@ -838,20 +868,29 @@ try {
         finally { $rsa.Dispose() }
     }
 
+    # Missing costs the convenience of the import offer and nothing else: the installation reads the
+    # certificate out of the signature, not out of this file.
     $absent = Test-NodePilotArtifactSignerTrust `
         -CertificatePath (Join-Path $workingDirectory 'no-such-publisher.cer') -ExpectedThumbprint ('B' * 40)
-    Assert-True -Name 'a publisher certificate missing from the payload blocks the install' `
-        -Condition ($absent.Status -eq 'Fail' -and $absent.Required)
-    # Nothing to repair: the setup itself is incomplete. Offering to import a file that is not
-    # there would be a button that cannot work.
+    Assert-True -Name 'a publisher certificate missing from the payload does not block the install' `
+        -Condition ($absent.Status -eq 'Warn' -and -not $absent.Required)
     Assert-True -Name 'a missing payload certificate carries no auto-fix' -Condition (-not $absent.CanAutoFix)
+
+    $unreadable = Join-Path $workingDirectory 'unreadable-publisher.cer'
+    [IO.File]::WriteAllBytes($unreadable, [byte[]](1, 2, 3, 4, 5))
+    $garbled = Test-NodePilotArtifactSignerTrust -CertificatePath $unreadable -ExpectedThumbprint ('B' * 40)
+    Assert-True -Name 'an unreadable payload certificate does not block the install either' `
+        -Condition ($garbled.Status -eq 'Warn' -and -not $garbled.Required)
+    Assert-True -Name 'an unreadable payload certificate carries no auto-fix' -Condition (-not $garbled.CanAutoFix)
 
     $untrusted = New-TestPublisherCertificateFile -FileName 'untrusted-publisher.cer'
     $verdict = Test-NodePilotArtifactSignerTrust `
         -CertificatePath $untrusted.Path -ExpectedThumbprint $untrusted.Thumbprint
-    Assert-True -Name 'an untrusted publisher blocks the install' `
-        -Condition ($verdict.Status -eq 'Fail' -and $verdict.Required)
-    Assert-True -Name 'an untrusted publisher is offered for trusting' `
+    # THE change: an untrusted publisher is a note, not a gate. The signature is verified against the
+    # pinned thumbprint either way.
+    Assert-True -Name 'an untrusted publisher no longer blocks the install' `
+        -Condition ($verdict.Status -eq 'Warn' -and -not $verdict.Required)
+    Assert-True -Name 'an untrusted publisher is still offered for trusting' `
         -Condition ($verdict.CanAutoFix -and $verdict.AutoFixLabel -match 'Trust the publisher')
     # Offered, never pre-ticked: LocalMachine\Root is a machine-wide statement, and the deployment
     # guide asks for the thumbprint to be compared out of band first.
@@ -859,6 +898,9 @@ try {
     # Which is only possible if the thumbprint is in the text the operator reads before ticking.
     Assert-True -Name 'the message names the thumbprint that would become trusted' `
         -Condition ($verdict.Detail -match $untrusted.Thumbprint)
+    # Nothing to abort on, because nothing aborts.
+    Assert-True -Name 'an untrusted publisher carries no abort message' `
+        -Condition ([string]::IsNullOrEmpty($verdict.AbortMessage))
 
     # A certificate that is not the publisher this setup was built against. The one case where the
     # offer must disappear: the box would make a foreign issuer trusted for the whole machine.
@@ -871,25 +913,66 @@ try {
     Assert-True -Name 'the mismatch names both thumbprints' `
         -Condition ($mismatch.Detail -match $foreign.Thumbprint -and $mismatch.Detail -match ('A' * 40))
 
-    # The green case, read from this machine's own trust store rather than written to it: a root CA
-    # chains to itself and validates, which is exactly the state the auto-fix produces.
-    $trustedRoot = $null
-    foreach ($candidate in (Get-ChildItem Cert:\LocalMachine\Root -ErrorAction SilentlyContinue)) {
-        if ($candidate.NotAfter -le (Get-Date) -or $candidate.NotBefore -gt (Get-Date)) { continue }
-        $probe = [Security.Cryptography.X509Certificates.X509Chain]::new()
-        try {
-            $probe.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
-            if ($probe.Build($candidate)) { $trustedRoot = $candidate; break }
-        }
-        finally { $probe.Dispose() }
-    }
-    if (-not $trustedRoot) { throw 'Setup adapter check failed: no valid trusted root certificate on this machine.' }
-    $trustedPath = Join-Path $workingDirectory 'trusted-publisher.cer'
-    [IO.File]::WriteAllBytes($trustedPath, $trustedRoot.Export('Cert'))
-    $trusted = Test-NodePilotArtifactSignerTrust `
-        -CertificatePath $trustedPath -ExpectedThumbprint $trustedRoot.Thumbprint
-    Assert-True -Name 'a trusted publisher passes' -Condition ($trusted.Status -eq 'Pass')
-    Assert-True -Name 'a passing publisher row offers nothing to fix' -Condition (-not $trusted.CanAutoFix)
+    # --- the three the installer rejects on: they have to stay red and offerless ---------------
+    # Reported yellow-and-optional, they would send the operator into an installation that aborts
+    # after the readiness page said it was fine.
+    $expired = New-TestPublisherCertificateFile -FileName 'expired-publisher.cer' `
+        -ValidFromDays -400 -ValidToDays -1
+    $expiredVerdict = Test-NodePilotArtifactSignerTrust `
+        -CertificatePath $expired.Path -ExpectedThumbprint $expired.Thumbprint
+    Assert-True -Name 'an expired publisher certificate blocks the install' `
+        -Condition ($expiredVerdict.Status -eq 'Fail' -and $expiredVerdict.Required)
+    Assert-True -Name 'an expired publisher is not offered for import' -Condition (-not $expiredVerdict.CanAutoFix)
+    # Not just "red for some reason": an expired certificate also fails the chain, so without an
+    # explicit check the row would still go red - and say the wrong thing about why.
+    Assert-True -Name 'an expired publisher is reported as expired, not as a chain problem' `
+        -Condition ($expiredVerdict.Detail -match 'expired on')
+
+    $notYet = New-TestPublisherCertificateFile -FileName 'future-publisher.cer' `
+        -ValidFromDays 10 -ValidToDays 400
+    $notYetVerdict = Test-NodePilotArtifactSignerTrust `
+        -CertificatePath $notYet.Path -ExpectedThumbprint $notYet.Thumbprint
+    Assert-True -Name 'a publisher certificate that is not valid yet blocks the install' `
+        -Condition ($notYetVerdict.Status -eq 'Fail' -and $notYetVerdict.Required)
+    Assert-True -Name 'a not-yet-valid publisher says so' `
+        -Condition ($notYetVerdict.Detail -match 'not valid until')
+
+    $noEku = New-TestPublisherCertificateFile -FileName 'no-eku-publisher.cer' -WithoutCodeSigningEku
+    $noEkuVerdict = Test-NodePilotArtifactSignerTrust `
+        -CertificatePath $noEku.Path -ExpectedThumbprint $noEku.Thumbprint
+    Assert-True -Name 'a publisher certificate without the code-signing purpose blocks the install' `
+        -Condition ($noEkuVerdict.Status -eq 'Fail' -and $noEkuVerdict.Required)
+
+    # The one the chain used to catch for us: the EKU says what the certificate is FOR, KeyUsage
+    # says what the key MAY DO. Code-signing EKU with a KeyUsage that forbids signing is a
+    # certificate that may not sign code, and CheckSignature($true) will not notice.
+    $wrongUsage = New-TestPublisherCertificateFile -FileName 'wrong-usage-publisher.cer' `
+        -KeyUsage ([System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::KeyEncipherment)
+    $wrongUsageVerdict = Test-NodePilotArtifactSignerTrust `
+        -CertificatePath $wrongUsage.Path -ExpectedThumbprint $wrongUsage.Thumbprint
+    Assert-True -Name 'a publisher whose KeyUsage forbids signing blocks the install' `
+        -Condition ($wrongUsageVerdict.Status -eq 'Fail' -and $wrongUsageVerdict.Required)
+    Assert-True -Name 'a publisher that may not sign is not offered for import' `
+        -Condition (-not $wrongUsageVerdict.CanAutoFix)
+
+    # A chain that fails for something an import would not cure. The import offer has to disappear
+    # and the row has to block: waving this through as "just missing trust" is exactly the mistake
+    # that would put a broken certificate behind a yellow, skippable line.
+    $criticalExt = New-TestPublisherCertificateFile -FileName 'critical-ext-publisher.cer' `
+        -WithUnknownCriticalExtension
+    $criticalVerdict = Test-NodePilotArtifactSignerTrust `
+        -CertificatePath $criticalExt.Path -ExpectedThumbprint $criticalExt.Thumbprint
+    Assert-True -Name 'a chain failure that is not about trust blocks the install' `
+        -Condition ($criticalVerdict.Status -eq 'Fail' -and $criticalVerdict.Required)
+    Assert-True -Name 'a certificate an import cannot fix is not offered for import' `
+        -Condition (-not $criticalVerdict.CanAutoFix)
+
+    # The Pass branch is deliberately not exercised here. It needs a code-signing certificate that
+    # actually chains, which on PS 5.1 means putting one into a trust store: LocalMachine\Root needs
+    # admin and is the very change this suite must not make, and CurrentUser\Root raises an
+    # interactive confirmation that would hang an unattended run. The branch is two lines
+    # (Build -> Pass) and its failure is loud - the row would never go green - and it is covered by
+    # rows 41/42 of the smoke matrix in deploy/server/README.md.
 
     # --- the service identity's access to the database ----------------------------------------
     # Was a caveat printed on every host whether or not the grant existed. Now a verdict, and the

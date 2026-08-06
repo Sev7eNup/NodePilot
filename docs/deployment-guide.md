@@ -69,16 +69,16 @@ skip the `Root` imports.
 
 | Purpose | Created on | Must end up in | Requirements |
 |---|---|---|---|
-| **Artifact signing** (code signing) | build host | public `.cer` in `LocalMachine\Root` of the NodePilot server | chain must validate on the target |
+| **Artifact signing** (code signing) | build host | nowhere — the installer pins the thumbprint. Importing the public `.cer` into `LocalMachine\Root` is optional | code-signing EKU, a KeyUsage that permits signing, currently valid |
 | **Kestrel HTTPS** | NodePilot server | `LocalMachine\My` + (self-signed) `LocalMachine\Root` there and on browser clients | CN/SAN = public hostname |
 | **SQL Server TLS** | SQL server | `LocalMachine\My` on the SQL server + (self-signed) `LocalMachine\Root` on the NodePilot server | RSA with `KeySpec=KeyExchange`, CN/SAN = SQL host FQDN |
 
 > **Shortcut: the GUI setup.** `NodePilot-Server-Setup-<version>.exe` performs exactly the
 > installation described below, driven by a wizard. It bundles the signed artifact and the ASP.NET
 > Core runtime, checks every prerequisite before it changes anything, and can create the SQL login
-> and database for you if your account may. Step 1 below - trusting the publisher - is one of the
-> checks: the wizard reports whether this machine already trusts `CN=NodePilot Release Signing`,
-> shows you the thumbprint, and offers to import it into `LocalMachine\Root` for you. For the Kestrel certificate it asks only for the
+> and database for you if your account may. It does not need the publisher to be trusted here - the
+> signature is checked against a thumbprint compiled into the setup - and the readiness page shows
+> that thumbprint with an optional offer to import it into `LocalMachine\Root` anyway. For the Kestrel certificate it asks only for the
 > thumbprint and offers the machine store's certificates in a list below the field, so a PKI
 > certificate from your own CA needs importing and picking, nothing typed. Leaving the field empty
 > is allowed and means "I have none yet": the prerequisite page then offers to create a self-signed
@@ -116,27 +116,41 @@ Take these from the [latest release](https://github.com/Sev7eNup/NodePilot/relea
 - `SHA256SUMS.txt`
 - `nodepilot-release-signing.cer` — the public signing certificate
 
-Verify the download, then trust the publisher on the target server:
+Verify the download:
 
 ```powershell
 # 1. Checksums (compare against SHA256SUMS.txt)
 Get-FileHash .\NodePilot-1.1.2.zip -Algorithm SHA256 | Format-List
 
-# 2. The certificate you are about to trust is the one named in the release notes
+# 2. The publisher you are about to pin is the one named in the release notes
 (Get-PfxCertificate .\nodepilot-release-signing.cer).Thumbprint
-
-# 3. Import it so the signature chain validates on this machine (elevated)
-Import-Certificate -FilePath .\nodepilot-release-signing.cer -CertStoreLocation Cert:\LocalMachine\Root
 ```
 
 The thumbprint printed in step 2 is what you pass as `-TrustedArtifactSignerThumbprint`. **Compare
-it against the value published in the release notes before importing** — importing a certificate
-into `LocalMachine\Root` makes that publisher trusted for the whole machine.
+it against the value published in the release notes** — that comparison is the trust decision, and
+it is why the value is published out of band.
+
+**You do not have to import anything.** The installer verifies the signature and requires the
+signer to be exactly that thumbprint; it also checks that the certificate is valid for code signing
+and currently valid. It does *not* require the publisher to be trusted on the machine, because for
+a self-signed publisher the trust anchor is the same certificate — so importing it would only
+restate the thumbprint you already compared, at the price of a permanent, machine-wide change.
+
+Optionally, and for a different reason:
+
+```powershell
+# Makes Windows validate the Authenticode signature of the NodePilot installers themselves
+Import-Certificate -FilePath .\nodepilot-release-signing.cer -CertStoreLocation Cert:\LocalMachine\Root
+```
+
+That affects how Windows treats *future* NodePilot binaries on this machine; it does not
+retroactively authenticate anything already running, and it does not silence SmartScreen.
 
 > The published artifact is signed with a **self-signed** publisher certificate, not one issued by
 > a public CA. That is why the thumbprint is published and why you verify it out-of-band. If your
-> organisation will not trust a self-signed publisher, use Option B and sign with your own
-> enterprise code-signing certificate.
+> organisation wants a chain it already trusts, use Option B and sign with your own enterprise
+> code-signing certificate — note that the installer does not validate the chain either way, so
+> that choice is about your own policy rather than about what the installer will accept.
 
 ### Option B — build it yourself (build host)
 
