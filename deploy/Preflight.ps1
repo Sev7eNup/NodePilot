@@ -497,12 +497,16 @@ function Test-NodePilotArtifactSignerTrust {
     # Offered, never pre-ticked. LocalMachine\Root is a machine-wide statement, and the deployment
     # guide asks the operator to compare the thumbprint out of band first - so the thumbprint is in
     # the message they read before they tick anything.
+    #
+    # The detail is kept to two lines and the chain engine's own sentence goes into the hint. The
+    # readiness page does not scroll: this row rendered five lines deep, which pushed its own
+    # checkbox off the bottom of the page.
     New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
         -CanAutoFix $true -AutoFixLabel 'Trust the publisher certificate (adds it to LocalMachine\Root)' `
-        -Detail ("Publisher $($certificate.Subject) ($actual) is not trusted on this machine. The artifact " +
-                 "signature cannot be verified, so the installation would abort and roll back. $reasons").Trim() `
-        -RemediationHint ('Compare that thumbprint against the one published with the release before ' +
-                          'trusting it - trusting a publisher applies to the whole machine.') `
+        -Detail "Publisher $($certificate.Subject) ($actual) is not trusted on this machine." `
+        -RemediationHint (("Without it the artifact signature cannot be verified and the installation " +
+                           "would abort and roll back. $reasons").Trim() + ' Compare the thumbprint against ' +
+                          'the one published with the release before trusting it - it applies to the whole machine.') `
         -Remediation "Import-Certificate -FilePath '$CertificatePath' -CertStoreLocation Cert:\LocalMachine\Root" `
         -AbortMessage "Artifact publisher $actual is not trusted in LocalMachine\Root."
 }
