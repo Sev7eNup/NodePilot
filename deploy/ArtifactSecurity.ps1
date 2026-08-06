@@ -489,13 +489,38 @@ function Assert-NodePilotExtractedFiles {
 }
 
 function Assert-NodePilotCodeSigningCertificate {
+    <#
+      What the certificate is for, and what its key is allowed to do. Two different questions, and
+      until Assert-NodePilotSignedArtifact stopped validating the chain, only the first one was
+      asked here - the chain engine's default policy answered the second on our behalf: where a
+      KeyUsage extension is present it must permit DigitalSignature or NonRepudiation.
+
+      CheckSignature($true) verifies the signature and nothing else. Without the check below, a
+      certificate carrying the code-signing EKU while its KeyUsage forbade signing would have
+      passed: the EKU says what the certificate is FOR, KeyUsage says what the key MAY DO, and only
+      both together answer "may this key sign code".
+    #>
     param([Parameter(Mandatory)][System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate)
+
     $codeSigningOid = '1.3.6.1.5.5.7.3.3'
     $ekuExtensions = @($Certificate.Extensions | Where-Object {
         $_ -is [System.Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]
     })
     if ($ekuExtensions.Count -eq 0 -or -not ($ekuExtensions.EnhancedKeyUsages.Value -contains $codeSigningOid)) {
         throw "Artifact signer certificate $($Certificate.Thumbprint) is not valid for Code Signing."
+    }
+
+    # An absent KeyUsage extension means unrestricted in X.509, so only a present one can reject
+    # anything - looping over what is there rather than demanding it be there.
+    $signingUsages = [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor
+                     [System.Security.Cryptography.X509Certificates.X509KeyUsageFlags]::NonRepudiation
+    foreach ($keyUsage in @($Certificate.Extensions | Where-Object {
+        $_ -is [System.Security.Cryptography.X509Certificates.X509KeyUsageExtension]
+    })) {
+        if (($keyUsage.KeyUsages -band $signingUsages) -eq 0) {
+            throw ("Artifact signer certificate $($Certificate.Thumbprint) has a KeyUsage extension that " +
+                   "permits neither DigitalSignature nor NonRepudiation (KeyUsage: $($keyUsage.KeyUsages)).")
+        }
     }
 }
 
@@ -575,15 +600,47 @@ function Assert-NodePilotSignedArtifact {
     $cms = New-Object System.Security.Cryptography.Pkcs.SignedCms -ArgumentList $content, $true
     $cms.Decode([IO.File]::ReadAllBytes($signaturePath))
     if ($cms.SignerInfos.Count -ne 1) { throw "Artifact manifest must contain exactly one signer." }
-    $cms.CheckSignature($false) # validate signature and the certificate chain
+
+    # $true = verify the signature, do NOT validate the certificate chain.
+    #
+    # The publisher is self-signed, so the trust anchor of its chain IS the signing certificate:
+    # validating the chain only confirms what the thumbprint comparison below already establishes,
+    # and it does so by demanding that an administrator first import that certificate into
+    # LocalMachine\Root - a permanent, machine-wide change on every target, for no gain in
+    # authenticity. Requiring it made the first installation on any untouched host fail.
+    #
+    # What the chain policy did enforce beyond trust is now enforced here, explicitly and in one
+    # place: the key usage (Assert-NodePilotCodeSigningCertificate) and the validity window below.
+    #
+    # Deliberately given up, and worth knowing before anyone signs with a CA-issued certificate
+    # instead: the trust anchor, time nesting across a chain, basic/name/policy constraints, and
+    # revocation. For a self-signed end-entity certificate with no CRL distribution point only the
+    # first of those was ever real - and that one is the point of this change.
+    $cms.CheckSignature($true)
 
     $signerCertificate = $cms.SignerInfos[0].Certificate
     if (-not $signerCertificate) { throw "Artifact signature did not include the signer certificate." }
     Assert-NodePilotCodeSigningCertificate $signerCertificate
     $actualSigner = Normalize-NodePilotThumbprint $signerCertificate.Thumbprint
     $expectedSigner = Normalize-NodePilotThumbprint $TrustedSignerThumbprint
+    # The thumbprint is a SHA-1 hash of the certificate - "the expected publisher", not "provably
+    # this exact certificate and no other". Good enough against a fixed, published value; a SHA-256
+    # pin over RawData would be the stronger form and is a change of its own, because the pinned
+    # value is compiled into the setup and printed in every release note.
     if ($actualSigner -ne $expectedSigner) {
         throw "Artifact was signed by untrusted certificate $actualSigner; expected $expectedSigner."
+    }
+
+    # Was implicit in the chain validation. Checked after the pin so that the wrong certificate is
+    # reported as the wrong certificate rather than as an expired one.
+    $now = [DateTime]::UtcNow
+    if ($signerCertificate.NotBefore.ToUniversalTime() -gt $now) {
+        throw ("Artifact signer certificate $actualSigner is not valid until " +
+               "$($signerCertificate.NotBefore.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')) UTC.")
+    }
+    if ($signerCertificate.NotAfter.ToUniversalTime() -lt $now) {
+        throw ("Artifact signer certificate $actualSigner expired on " +
+               "$($signerCertificate.NotAfter.ToUniversalTime().ToString('yyyy-MM-dd HH:mm:ss')) UTC.")
     }
 
     try { $manifest = [Text.Encoding]::UTF8.GetString($manifestBytes) | ConvertFrom-Json -ErrorAction Stop }

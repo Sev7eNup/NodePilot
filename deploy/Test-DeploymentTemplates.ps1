@@ -551,6 +551,36 @@ Assert-TextMatches -Name 'the handover protects the file from inheritance' `
 Assert-TextMatches -Name 'LocalSystem is resolved by well-known SID, not by name' `
     -Text $handoverFunction -Pattern "SecurityIdentifier\]::new\('S-1-5-18'\)"
 
+# --- artifact signature: what replaced the certificate chain --------------------------------------
+# The chain is deliberately no longer validated: the publisher is self-signed, so its trust anchor
+# is the signing certificate itself and the thumbprint comparison already establishes what the chain
+# would confirm - at the price of a permanent, machine-wide import on every target. Requiring it
+# made the first installation on any untouched host fail.
+Assert-TextMatches -Name 'the signature is verified without the certificate chain' `
+    -Text $artifactSecurity -Pattern '\$cms\.CheckSignature\(\$true\)'
+Assert-TextDoesNotMatch -Name 'nothing brings the chain requirement back' `
+    -Text $artifactSecurity -Pattern '\$cms\.CheckSignature\(\$false\)'
+# The three that must survive the chain going away, because they are what the chain also enforced.
+# Dropping the chain without these would be a straight weakening, and the pin is what makes the
+# whole model work - it is the one line this change stands or falls on.
+Assert-TextMatches -Name 'the pinned signer is still compared' `
+    -Text $artifactSecurity -Pattern '\$actualSigner -ne \$expectedSigner'
+Assert-TextMatches -Name 'the signer validity window is checked explicitly' `
+    -Text $artifactSecurity -Pattern '(?s)\$signerCertificate\.NotBefore[\s\S]{0,600}\$signerCertificate\.NotAfter'
+Assert-TextMatches -Name 'the signer key usage is checked explicitly' `
+    -Text $artifactSecurity -Pattern 'X509KeyUsageFlags\]::DigitalSignature -bor'
+# The readiness row repeats those checks rather than dot-sourcing the security layer behind a file
+# that both the installer and the setup adapter load on its own. Cheap, but only if both sides keep
+# checking the same things - hardening one and forgetting the other is exactly the drift to catch.
+Assert-TextMatches -Name 'the readiness row checks the code-signing purpose too' `
+    -Text $preflightScript -Pattern "1\.3\.6\.1\.5\.5\.7\.3\.3"
+Assert-TextMatches -Name 'the readiness row checks the key usage too' `
+    -Text $preflightScript -Pattern 'X509KeyUsageFlags\]::DigitalSignature -bor'
+# And only a failure that is exclusively about the missing trust anchor may be optional. An expired
+# certificate reported as a yellow, skippable line would promise an installation that then aborts.
+Assert-TextMatches -Name 'only a missing trust anchor makes the publisher row optional' `
+    -Text $preflightScript -Pattern '(?s)X509ChainStatusFlags\]::UntrustedRoot[\s\S]{0,200}PartialChain'
+
 # The marker is how any later tool finds this installation. Leaving it behind on uninstall makes
 # every subsequent fresh install look like an upgrade.
 Assert-TextMatches -Name 'installer records a machine-wide installation marker' `
@@ -889,6 +919,11 @@ Assert-TextMatches -Name 'a fix checkbox is never pushed below the buttons' `
 # buttons, and clamping them all to the same line would hide all but one.
 Assert-TextMatches -Name 'the floor accounts for every fix that will be shown' `
     -Text $serverIss -Pattern 'FixFloor := ButtonTop - ScaleY\(19\) \* FixCount;'
+# The publisher row is a note now, not a gate - and a checkbox limited to red rows would have
+# disappeared with the red. canAutoFix and the label stay the gate, so no row grows a box that has
+# no fix behind it.
+Assert-TextMatches -Name 'a yellow row can still carry its fix' `
+    -Text $serverIss -Pattern "\(\(Status = 'Fail'\) or \(Status = 'Warn'\)\) and"
 Assert-TextMatches -Name 'the publisher certificate is extracted before the readiness page' `
     -Text $serverIss `
     -Pattern "(?s)ExtractTemporaryFiles\('\*\.ps1'\)[\s\S]{0,500}ExtractTemporaryFile\('nodepilot-release-signing\.cer'\)"

@@ -253,11 +253,14 @@ des Publishers, dem vertraut werden soll.
 
 **Fertiges Release herunterladen.** Am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest)
 hängen `NodePilot-<version>.zip`, `.manifest.json`, `.manifest.json.p7s`, `SHA256SUMS.txt` und das
-öffentliche Signaturzertifikat `nodepilot-release-signing.cer`. Prüfsummen vergleichen, den
-Thumbprint gegen die Release-Notes abgleichen, dann das Zertifikat auf dem Zielserver nach
-`Cert:\LocalMachine\Root` importieren. Ablauf im Detail: [`docs/deployment-guide.md`](../docs/deployment-guide.md),
-Schritt 1 Option A. Am selben Release hängt `NodePilot-Server-Setup-<version>.exe` — es trägt
-dieses Artefakt bereits in sich, dieser Abschnitt entfällt dann komplett.
+öffentliche Signaturzertifikat `nodepilot-release-signing.cer`. Prüfsummen vergleichen und den
+Thumbprint gegen die Release-Notes abgleichen — **dieser Abgleich ist die Vertrauensentscheidung**;
+der Installer verlangt genau diesen Signierer und prüft Codesignatur-Zweck und Gültigkeit, aber
+**nicht**, ob die Maschine dem Herausgeber vertraut. Ein Import nach `Cert:\LocalMachine\Root` ist
+optional und bewirkt nur, dass Windows die Authenticode-Signatur der Installer selbst validiert.
+Ablauf im Detail: [`docs/deployment-guide.md`](../docs/deployment-guide.md), Schritt 1 Option A. Am
+selben Release hängt `NodePilot-Server-Setup-<version>.exe` — es trägt dieses Artefakt bereits in
+sich, dieser Abschnitt entfällt dann komplett.
 
 **Selbst bauen.** Auf einem Build-Host mit .NET 10 SDK + Node (Versionen aus `global.json` bzw.
 den `engines`-Feldern):

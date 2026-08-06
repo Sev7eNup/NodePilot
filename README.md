@@ -223,9 +223,11 @@ verify it against `SHA256SUMS.txt`, then:
 ```
 
 The installer **refuses unsigned or tampered artifacts** — `-TrustedArtifactSignerThumbprint` is
-mandatory and the signature chain is verified, not just the hash. If you build the artifact
-yourself you also sign it yourself; `docs/deployment-guide.md` walks through creating the
-self-signed code-signing certificate and trusting it.
+mandatory, and the signature, the signer's identity, its code-signing eligibility and its validity
+are all verified, not just the hash. It does **not** require the publisher to be trusted on the
+target machine: pinning the thumbprint is the trust decision, so there is nothing to import before
+installing. If you build the artifact yourself you also sign it yourself;
+`docs/deployment-guide.md` walks through creating the self-signed code-signing certificate.
 
 **Full walkthrough** — certificates, SQL TLS, first login, troubleshooting:
 [docs/deployment-guide.md](docs/deployment-guide.md). **Operator reference** — gMSA setup, every
