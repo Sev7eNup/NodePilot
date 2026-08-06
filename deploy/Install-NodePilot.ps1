@@ -666,11 +666,18 @@ function Remove-ExistingService {
         # Explicit rather than reached out of the script scope: the wait below is about this
         # directory's binaries, and a function that silently depends on an ambient variable is
         # one refactor away from waiting on the wrong path.
-        [Parameter(Mandatory)][string]$InstallPath
+        [Parameter(Mandatory)][string]$InstallPath,
+        # What to say when a service is found. The rollback calls this to remove the service THIS
+        # run registered a minute earlier, and the default wording turned a failed first
+        # installation into "Existing service 'NodePilot' found - stopping and removing" on a
+        # machine that had never had one. The operator read it as the installer destroying
+        # something that was already there.
+        [string]$FoundMessage = ''
     )
     $svc = Get-Service -Name $Name -ErrorAction SilentlyContinue
     if (-not $svc) { return }
-    Write-Info "Existing service '$Name' found - stopping and removing."
+    if (-not $FoundMessage) { $FoundMessage = "Existing service '$Name' found - stopping and removing." }
+    Write-Info $FoundMessage
     if ($svc.Status -ne 'Stopped') {
         Stop-Service -Name $Name -Force -ErrorAction Stop
         $deadline = (Get-Date).AddSeconds(30)
@@ -1529,8 +1536,25 @@ catch {
     Write-Host "[install] FAILED: $($installError.Exception.Message)" -ForegroundColor Red
     if ($installMutationStarted) {
         try {
-            Write-Host "[install] Restoring the previous installation..." -ForegroundColor Yellow
-            Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath
+            # Two different situations, and until now both were narrated as the first one. Over an
+            # existing installation this really does put something back. On a machine that never
+            # had NodePilot there is nothing to put back: the rollback removes what this run
+            # created and leaves the host as it found it. Both of the messages below used to claim
+            # a restore either way, which is exactly how a failed first install reads as though the
+            # installer had eaten something that was already there.
+            #
+            # The wording is deliberately not repeated in this comment: the template test delimits
+            # this block by searching the source for those two phrases, and a comment that quotes
+            # them collapses the block to nothing.
+            $hadPreviousInstallation = [bool]$previousService
+            if ($hadPreviousInstallation) {
+                Write-Host "[install] Restoring the previous installation..." -ForegroundColor Yellow
+                Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath
+            } else {
+                Write-Host "[install] Undoing this installation - nothing was here before..." -ForegroundColor Yellow
+                Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath `
+                    -FoundMessage "Removing the service '$ServiceName' that this run registered."
+            }
             if (-not (Test-Path -LiteralPath $InstallPath -PathType Container)) {
                 New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
             } else {
@@ -1588,7 +1612,11 @@ catch {
             if ($previousService) {
                 Restore-ServiceRollbackSnapshot -Snapshot $previousService
             }
-            Write-Host "[install] Previous installation restored." -ForegroundColor Yellow
+            if ($hadPreviousInstallation) {
+                Write-Host "[install] Previous installation restored." -ForegroundColor Yellow
+            } else {
+                Write-Host "[install] Nothing left behind - the machine is as it was." -ForegroundColor Yellow
+            }
         }
         catch {
             Write-Host "[install] ROLLBACK ALSO FAILED: $($_.Exception.Message). Binary backup: $installRollbackDir" -ForegroundColor Red

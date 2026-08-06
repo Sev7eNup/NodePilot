@@ -504,7 +504,10 @@ Assert-TextDoesNotMatch -Name 'identity-bound secrets are handed over, never del
 # behind does not merely fail - it takes the installation being replaced down with it, because
 # from the restored identity's point of view that ACE is an untrusted principal with mutation
 # rights on the JWT key's parent. The lab run reported exactly that: "ROLLBACK ALSO FAILED".
-$rollbackStart = $installerScript.IndexOf('Restoring the previous installation')
+# Delimited from the guard rather than from the first message in it: the rollback now decides which
+# story to tell before it tells it, and anchoring on one of the two messages put that decision
+# outside the block being checked.
+$rollbackStart = $installerScript.IndexOf('if ($installMutationStarted)')
 $rollbackEnd = $installerScript.IndexOf('Previous installation restored', $rollbackStart)
 if ($rollbackStart -lt 0 -or $rollbackEnd -le $rollbackStart) {
     throw 'Deployment template check failed: could not delimit the install rollback.'
@@ -512,6 +515,18 @@ if ($rollbackStart -lt 0 -or $rollbackEnd -le $rollbackStart) {
 $rollbackBlock = $installerScript.Substring($rollbackStart, $rollbackEnd - $rollbackStart)
 Assert-TextMatches -Name 'the rollback puts the data directory ACL back' `
     -Text $rollbackBlock -Pattern '(?s)Set-DirectoryAclForService[\s\S]{0,200}\$previousAclIdentity'
+# A first installation that fails has nothing to put back - it has something to undo. Narrating it
+# as a restore told an operator whose machine had never held NodePilot that the installer had found
+# an installation, stopped it and put it back. The distinction already exists in the code as
+# $previousService; it just was not spoken.
+Assert-TextMatches -Name 'the rollback knows whether there was anything to go back to' `
+    -Text $rollbackBlock -Pattern '\$hadPreviousInstallation = \[bool\]\$previousService'
+Assert-TextMatches -Name 'a failed first install is narrated as an undo' `
+    -Text $rollbackBlock -Pattern 'Undoing this installation - nothing was here before'
+# And the service removal says which service it is removing and why, instead of borrowing the
+# wording written for an upgrade.
+Assert-TextMatches -Name 'the rollback names the service it registered itself' `
+    -Text $rollbackBlock -Pattern "FoundMessage `"Removing the service '\`$ServiceName' that this run registered\.`""
 Assert-TextMatches -Name 'the rollback hands the secrets back to the previous identity too' `
     -Text $rollbackBlock -Pattern '(?s)Set-NodePilotServiceOwnedFileAcl[\s\S]{0,200}\$previousAclIdentity'
 # Guarded, so a failure before the ACL was ever touched does not rewrite a directory this run had
@@ -1578,6 +1593,14 @@ Assert-TextDoesNotMatch -Name 'nothing looks for the certificate in a folder the
     -Text $setupAdapter -Pattern "signer\\nodepilot-release-signing\.cer"
 # The readiness row only exists on the setup path: the scripted installer has no payload to read a
 # certificate from, and its operator was told to import it in step 1 of the deployment guide.
+# Write-Host reaches the host - and so the transcript - whether or not the information stream is
+# redirected. Writing the line out again put every single installer line into
+# nodepilot-server-setup.log twice, which reads as though each step had been performed twice.
+Assert-TextDoesNotMatch -Name 'installer output is not written to the log a second time' `
+    -Text $setupAdapter -Pattern 'Write-NodePilotPhaseProgress -Line \$_; Write-Host \$_'
+# Still consumed, though: the phase text on the progress page comes from these very lines.
+Assert-TextMatches -Name 'the installer output still drives the progress page' `
+    -Text $setupAdapter -Pattern 'ForEach-Object \{ Write-NodePilotPhaseProgress -Line \$_ \}'
 Assert-TextMatches -Name 'the probe passes the publisher certificate to the pre-flight' `
     -Text $setupAdapter -Pattern "ArtifactSignerCertificatePath'\] = Get-NodePilotSignerCertificatePath"
 Assert-TextMatches -Name 'the pre-flight emits the publisher row only when it is given one' `

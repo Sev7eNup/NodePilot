@@ -770,6 +770,15 @@ Betriebssystems steht jetzt im scrollbaren Anleitungsfeld), und `LayoutReadiness
 sichtbaren Fix-Boxen vorab und garantiert jeder einen klickbaren Streifen über den Buttons. Die
 Zeilen 41/42 unten decken den Fall ab und sind **noch nicht** geklickt.
 
+Aus demselben Feldlauf drei Lesbarkeitsfehler im Log, alle behoben: Der Adapter schrieb jede
+Installer-Zeile ein zweites Mal (`Write-Host` erreicht die Transkript-Aufzeichnung auch dann, wenn
+der Informationsstrom umgeleitet ist — jede Zeile stand doppelt drin und las sich, als sei jeder
+Schritt zweimal gelaufen). Und der Rollback erzählte auf einer **frischen** Maschine vom
+Wiederherstellen einer Installation, die es nie gab: „Restoring the previous installation" plus
+„Existing service found - stopping and removing" für den Dienst, den derselbe Lauf zwei Minuten
+vorher selbst registriert hatte. Die Handlung war jeweils richtig, nur die Worte stammten aus dem
+Upgrade-Fall. Unterschieden wird jetzt an `$previousService`.
+
 Zusatz 2026-08-06: Zeile 39 ist im Feld aufgeschlagen — leeres Feld, und der Probe-Lauf starb mit
 „Answer file is missing required key 'certificate.thumbprint'", weil die Vertragsprüfung Pflicht mit
 nicht-leer gleichsetzte. Behoben; danach mit einer echten Answer-File (leerer Thumbprint) gegen
