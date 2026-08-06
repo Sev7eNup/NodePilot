@@ -96,9 +96,15 @@ public static class LlmServiceCollectionExtensions
         // instance at all. Same helper the settings boot-validator uses, so an accepted save can
         // never produce a config that refuses to boot.
         var enabled = configuration.GetValue<bool>($"{LlmOptions.SectionName}:Enabled");
-        var endpointIssues = LlmProfileValidation.ValidateProfileEndpoints(configuration);
+        var endpointIssues = LlmProfileValidation.ValidateProfileEndpoints(configuration)
+            .Concat(LlmProfileValidation.ValidateProxy(configuration))
+            .ToList();
         if (endpointIssues.Count > 0)
             throw new InvalidOperationException(string.Join(" ", endpointIssues.Select(i => i.Message)));
+
+        // Singleton: it is handed to the primary handler, which outlives any scope, and it holds
+        // the cached custom WebProxy.
+        services.AddSingleton<LlmConfiguredProxy>();
 
         services.AddHttpClient(LlmHttpClient.Name, client =>
             {
@@ -111,17 +117,26 @@ public static class LlmServiceCollectionExtensions
                 // controls the timeout.
                 client.Timeout = Timeout.InfiniteTimeSpan;
             })
-            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
             {
                 // Local endpoints (Ollama, llama.cpp) speak plaintext HTTP on 127.0.0.1.
                 // Cloud endpoints speak HTTPS — the default SocketsHttpHandler validates that
-                // normally. No forcing HTTPS, no proxy auto-discovery (local endpoints should
-                // ignore the Windows system proxy).
-                UseProxy = false,
+                // normally. No forcing HTTPS.
+                //
+                // Proxying is decided per request by LlmConfiguredProxy from Llm:Proxy:*, NOT
+                // here: this handler is built once per handler lifetime, so reading the config at
+                // this point would make the whole Llm settings section restart-required. The
+                // default (Llm:Proxy:Mode=Off) bypasses every destination, which is exactly the
+                // direct connection this client made before proxy support existed — no proxy
+                // auto-discovery unless an operator opts in.
+                UseProxy = true,
+                Proxy = sp.GetRequiredService<LlmConfiguredProxy>(),
                 AllowAutoRedirect = false,
                 // L-4: SSRF guard at TCP-connect time. Closes the DNS-rebinding window
                 // between IsCloudMetadataEndpoint (literal-host check at boot) and the
-                // actual outbound connect on every request.
+                // actual outbound connect on every request. NB: with a proxy in the path this
+                // callback sees the proxy endpoint, not the LLM host — see LlmConfiguredProxy
+                // for why that trade-off is accepted here.
                 ConnectCallback = LlmConnectGuard.ConnectAsync,
             });
 

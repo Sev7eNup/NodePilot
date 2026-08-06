@@ -174,6 +174,31 @@ Je Profil:
 | `EnableToolCalling` | erlaubt den Chats, freigegebene lesende Analyse- und Wissensquellen zu verwenden |
 | `ToolCallMaxDepth` | maximale Anzahl aufeinanderfolgender Tool-Aufrufe pro Frage |
 
+### Ausgehender Proxy
+
+In Unternehmensnetzen ist ausgehender Verkehr oft nur über einen Proxy erlaubt. Die Einstellungen
+dafür liegen unter `Llm:Proxy` und gelten für **alle** AI-Aufrufe — beide Chats, die
+Script- und Workflow-Generierung, die `llmQuery`-Aktivität und die Verbindungsprüfung in den
+Einstellungen. Es ist bewusst ein Block für die gesamte Installation und nicht einer je Profil:
+der gemischte Fall — Cloud-Modell über den Proxy, lokales Modell direkt — wird über die
+Ausnahmeliste abgebildet.
+
+| Einstellung | Bedeutung |
+|---|---|
+| `Mode` | `Off` verbindet direkt (Voreinstellung), `System` übernimmt den Proxy des Dienstkontos samt dessen Ausnahmeregeln, `Custom` verwendet die Adresse unten |
+| `Address` | Adresse des Proxys, z. B. `http://proxy.firma.local:8080`; bei `Custom` erforderlich |
+| `BypassList` | Hosts, die direkt erreicht werden; Platzhalter erlaubt, etwa `localhost` oder `*.firma.local` |
+| `Username` | Benutzername für Proxys mit einfacher Anmeldung |
+| `Password` | zugehöriges Kennwort; besser über die Umgebungsvariable `Llm__Proxy__Password` setzen |
+| `UseDefaultCredentials` | meldet sich mit den Windows-Anmeldedaten des Dienstkontos am Proxy an — der Normalfall bei domänenintegrierten Proxys |
+
+Zu beachten: Läuft der Verkehr über einen Proxy, löst dieser die Zieladresse auf. Die zusätzliche
+Prüfung, die NodePilot sonst unmittelbar vor dem Verbindungsaufbau vornimmt, greift dann nur noch
+für den Proxy selbst; die Base-URL wird weiterhin beim Speichern und beim Start geprüft.
+
+Änderungen am Proxy wirken ohne Dienstneustart. Einzige Ausnahme ist `System`: Änderungen an den
+Windows-Proxy-Einstellungen selbst werden erst nach einem Neustart des Dienstes übernommen.
+
 ### Anfrageformat (ergibt sich aus der Base-URL)
 
 OpenAI betreibt zwei Anfrageformate nebeneinander: das klassische **Chat Completions** und die

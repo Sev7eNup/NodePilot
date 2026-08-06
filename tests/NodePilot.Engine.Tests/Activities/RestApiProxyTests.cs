@@ -228,19 +228,6 @@ public class RestApiProxyTests
     }
 
     [Fact]
-    public void ConvertBypassToRegex_HandlesWildcardsAndLiterals()
-    {
-        // WebProxy.BypassList matches patterns against the full URI; the helper wraps the
-        // host pattern with scheme/port/path suffixes so plain hostnames still bypass.
-        RestApiHttpClientProvider.ConvertBypassToRegex("*.internal")
-            .Should().Be(@"^https?://.*\.internal(:\d+)?(/.*)?$");
-        RestApiHttpClientProvider.ConvertBypassToRegex("localhost")
-            .Should().Be(@"^https?://localhost(:\d+)?(/.*)?$");
-        RestApiHttpClientProvider.ConvertBypassToRegex("10.0.0.1")
-            .Should().Be(@"^https?://10\.0\.0\.1(:\d+)?(/.*)?$");
-    }
-
-    [Fact]
     public void StepProxyMode_InvalidAddress_Throws()
     {
         var provider = CreateProvider();

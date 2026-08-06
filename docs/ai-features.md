@@ -74,6 +74,12 @@ Neu-Eintippen.
         "MaxTokens": 32768,
         "TimeoutSeconds": 300
       }
+    },
+    "Proxy": {
+      "Mode": "Custom",
+      "Address": "http://proxy.firma.local:8080",
+      "BypassList": ["localhost"],
+      "UseDefaultCredentials": true
     }
   }
 }
@@ -100,8 +106,35 @@ Neu-Eintippen.
 | `EnableToolCalling` | `false` | Opt-in. Lässt die Chat-Assistenten read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. **Pro Profil**, weil das eine Eigenschaft des Modells ist, nicht der Installation: beim Umschalten auf ein kleines lokales Modell wandert die Fähigkeit mit. |
 | `ToolCallMaxDepth` | `6` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Lässt bei text2sql nach Schema-Discovery noch Raum für SQL-Korrekturen. In der letzten erlaubten Runde sendet der Server **keine** `tools` → erzwingt eine Text-Antwort. |
 
-**Restart erforderlich**: nein — die Sektion ist hot-reloadable. Ein Save in der Admin-UI (inkl.
-Profilwechsel) greift beim nächsten Aufruf.
+**Outbound-Proxy (`Llm:Proxy:*`):**
+
+Gilt für **alle** ausgehenden LLM-Aufrufe — Script-/Workflow-Generierung, beide Chats, die
+`llmQuery`-Activity und den „Testen"-Button in den Settings. Ein Block pro Installation, nicht pro
+Profil: der Fall „Cloud-Profil über den Proxy, lokales Ollama direkt" wird über `BypassList`
+gelöst, und ein Handler bedeutet einen Connection-Pool.
+
+| Key | Default | Erklärung |
+|---|---|---|
+| `Mode` | `Off` | `Off` = Direktverbindung (Verhalten vor Einführung des Proxys). `System` = der Proxy, mit dem das **Dienstkonto** konfiguriert ist (Windows: WinHTTP/WinINET), inklusive dessen eigener Ausnahmeliste. `Custom` = `Address` unten. |
+| `Address` | `""` | Proxy-URL, z. B. `http://proxy.firma.local:8080`. **Pflicht bei `Custom`**, sonst ignoriert. Ein leerer Wert bei `Custom` wird schon beim Speichern abgelehnt, nicht erst beim nächsten Start. |
+| `BypassList` | `[]` | Hosts, die am Proxy vorbei erreicht werden. Shell-Globs erlaubt (`localhost`, `*.intern`, `10.0.0.1`). Nur bei `Custom` — bei `System` gilt die Ausnahmeliste des Betriebssystems, weil ein Mischbetrieb die Frage „warum ging das nicht über den Proxy" unbeantwortbar machen würde. |
+| `Username` | `null` | Für Proxies mit Basic-Auth. |
+| `Password` | `null` | Verschlüsselt gespeichert wie jedes andere Settings-Secret. Klartext in der Config löst eine Startup-Hardening-Warnung aus; **empfohlen: Env-Var `Llm__Proxy__Password`**. |
+| `UseDefaultCredentials` | `false` | Authentifiziert mit den Windows-Anmeldedaten des Dienstkontos (NTLM/Kerberos) statt mit `Username`/`Password` — der Normalfall bei domänenintegrierten Unternehmens-Proxies. Gilt für `System` **und** `Custom`. |
+
+> **Sicherheitshinweis.** Sobald ein Proxy im Pfad liegt, löst **er** das Ziel-DNS auf, nicht mehr
+> NodePilot. Der Connect-Zeit-SSRF-Guard (`LlmConnectGuard`) sieht dann nur noch den
+> Proxy-Endpunkt; das Ziel ist weiterhin durch die Literal-Prüfung der `BaseUrl` geschützt, die bei
+> jedem Speichern und beim Boot läuft. Bewusst **keine** Pflicht-Allow-Liste wie bei `restApi`: die
+> LLM-`BaseUrl` ist ein einzelner, Admin-only konfigurierter Wert und keine aus Trigger-Payloads
+> zusammengesetzte Per-Step-URL.
+
+**Restart erforderlich**: nein — die Sektion ist hot-reloadable, inklusive `Llm:Proxy:*`. Ein Save
+in der Admin-UI (inkl. Profilwechsel und Proxy-Umstellung) greift beim nächsten Aufruf. Der Proxy
+wird pro Request aus der laufenden Konfiguration aufgelöst statt beim Bau des HTTP-Handlers —
+genau deshalb bleibt die Sektion hot-reloadable, wo `RestApi` (Proxy fest im Handler) es nicht ist.
+Eine Ausnahme bleibt `Mode: System`: Änderungen an den **Windows-Proxy-Einstellungen** selbst
+greifen erst nach einem Dienst-Neustart, weil .NET die Systemkonfiguration prozessweit cacht.
 
 ### Wire-Dialekt (aus der `BaseUrl` abgeleitet)
 

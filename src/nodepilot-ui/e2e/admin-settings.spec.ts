@@ -50,6 +50,10 @@ const LLM_PAYLOAD = {
       enableToolCalling: false, toolCallMaxDepth: 6, managedBy: null,
     },
   ],
+  proxy: {
+    mode: 'off', address: '', bypassList: [], username: null, password: null,
+    useDefaultCredentials: false,
+  },
 };
 const RETENTION_PAYLOAD = {
   executions: { enabled: true, maxAgeDays: 30, intervalMinutes: 60, batchSize: 500, archivePath: null },

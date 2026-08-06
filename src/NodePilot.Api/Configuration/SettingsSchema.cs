@@ -61,9 +61,12 @@ public static class SettingsSchema
             OptionsType: typeof(LlmOptions),
             DtoType: typeof(LlmSettingsDto),
             // '*' matches every profile id — the keys are operator-defined, so the path can't be literal.
-            SecretFieldPaths: ImmutableArray.Create("Profiles.*.ApiKey"),
+            SecretFieldPaths: ImmutableArray.Create("Profiles.*.ApiKey", "Proxy.Password"),
             // Hot-reload: ILlmClientFactory + the controller gates read IOptionsMonitor<LlmOptions>.CurrentValue
             // per use, so a Settings-UI save (incl. the Llm:Enabled kill-switch) takes effect without a restart.
+            // Llm:Proxy:* is live too — LlmConfiguredProxy resolves it per request rather than at
+            // handler-construction time, which is precisely why this section stayed hot-reloadable
+            // where RestApi (proxy bound into the handler at boot) could not.
             IsHotReloadable: true,
             AuditCode: AuditActions.SettingsLlmUpdated),
         new SettingsSectionDescriptor(

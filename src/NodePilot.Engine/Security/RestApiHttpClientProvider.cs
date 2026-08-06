@@ -3,9 +3,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using NodePilot.Core.Net;
 using NodePilot.Engine.Options;
 
 namespace NodePilot.Engine.Security;
@@ -273,21 +273,6 @@ public sealed class RestApiHttpClientProvider
         }
     }
 
-    /// <summary>
-    /// Convert a user-friendly host pattern ("*.internal", "api.corp", "10.0.0.1") to a
-    /// regex suitable for <see cref="WebProxy.BypassList"/>. WebProxy matches patterns
-    /// against the full request URI (scheme + host + port + path), not just the host, so
-    /// the emitted regex anchors on scheme and wraps the host pattern with optional
-    /// port/path suffixes.
-    /// </summary>
-    internal static string ConvertBypassToRegex(string pattern)
-    {
-        var escaped = Regex.Escape(pattern.Trim());
-        // Regex.Escape turns "*" into "\*" — re-interpret as ".*" to support shell globs.
-        escaped = escaped.Replace("\\*", ".*");
-        return $@"^https?://{escaped}(:\d+)?(/.*)?$";
-    }
-
     private static WebProxy CreateProxy(
         string address,
         string[] bypassPatterns,
@@ -310,7 +295,7 @@ public sealed class RestApiHttpClientProvider
         string? username,
         string? password)
     {
-        var regexPatterns = bypassPatterns.Select(ConvertBypassToRegex).ToArray();
+        var regexPatterns = bypassPatterns.Select(ProxyBypassPattern.ToRegex).ToArray();
         var proxy = new WebProxy(proxyUri, BypassOnLocal: false, BypassList: regexPatterns);
         if (!string.IsNullOrEmpty(username))
             proxy.Credentials = new NetworkCredential(username, password ?? "");

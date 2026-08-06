@@ -226,7 +226,12 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             "validation must fail before any file is written, otherwise a partially-saved override file could survive");
     }
 
-    /// <summary>A single-profile LLM PUT body. <paramref name="apiKey"/> is raw JSON (so a caller can pass null, a string, or the sentinel).</summary>
+    /// <summary>
+    /// A single-profile LLM PUT body. <paramref name="apiKey"/> is raw JSON (so a caller can pass
+    /// null, a string, or the sentinel); <paramref name="proxy"/> is a raw <c>"Proxy": {…},</c>
+    /// fragment including its trailing comma, empty by default so the body keeps the shape every
+    /// pre-proxy caller sends.
+    /// </summary>
     private static string LlmBody(
         string baseUrl = "http://localhost:1234/v1",
         string model = "gpt",
@@ -234,11 +239,13 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         bool enableToolCalling = false,
         int toolCallMaxDepth = 6,
         string profileId = "p1",
-        string activeProfileId = "p1")
+        string activeProfileId = "p1",
+        string proxy = "")
         => $$"""
             {
               "Enabled": true,
               "ActiveProfileId": "{{activeProfileId}}",
+              {{proxy}}
               "Profiles": [
                 {
                   "Id": "{{profileId}}",
@@ -755,6 +762,147 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         sources.Should().ContainKey("Llm:ActiveProfileId");
         sources.Should().ContainKey("Llm:Profiles:alpha:BaseUrl");
         sources.Should().ContainKey("Llm:Profiles:beta:ApiKey");
+        // The proxy block is section-level, so its keys are present regardless of the profiles.
+        sources.Should().ContainKey("Llm:Proxy:Mode");
+        sources.Should().ContainKey("Llm:Proxy:Address");
+        sources.Should().ContainKey("Llm:Proxy:Password");
+    }
+
+    [Fact]
+    public void GetSection_Llm_MasksProxyPassword_AndReportsModeLowerCased()
+    {
+        var llm = LlmTestOptions.WithProfile();
+        llm.Proxy = new LlmProxyOptions
+        {
+            Mode = LlmProxyMode.Custom,
+            Address = "http://proxy.corp.local:8080",
+            BypassList = ["localhost"],
+            Username = "svc",
+            Password = "proxy-secret",
+        };
+        var (controller, _, _, _) = NewController(initialLlm: llm);
+
+        var result = controller.GetSection("Llm") as OkObjectResult;
+        var payload = result!.Value!.GetType().GetProperty("Payload")!.GetValue(result.Value) as LlmSettingsDto;
+
+        // Masking matters twice over: this payload is also what SettingsKnowledgeReader hands the
+        // LLM as context.
+        payload!.Proxy.Password.Should().Be("********");
+        payload.Proxy.Password.Should().NotBe("proxy-secret");
+        payload.Proxy.Mode.Should().Be("custom");
+        payload.Proxy.Address.Should().Be("http://proxy.corp.local:8080");
+        payload.Proxy.BypassList.Should().Equal("localhost");
+        payload.Proxy.Username.Should().Be("svc");
+    }
+
+    [Fact]
+    public void GetSection_Llm_NoProxyConfigured_ReportsOff()
+    {
+        var (controller, _, _, _) = NewController(initialLlm: LlmTestOptions.WithProfile());
+
+        var result = controller.GetSection("Llm") as OkObjectResult;
+        var payload = result!.Value!.GetType().GetProperty("Payload")!.GetValue(result.Value) as LlmSettingsDto;
+
+        payload!.Proxy.Mode.Should().Be("off");
+        payload.Proxy.Password.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_PersistsProxy_AndEncryptsItsPassword()
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse(LlmBody(proxy: """
+            "Proxy": { "Mode": "custom", "Address": "http://proxy.corp.local:8080",
+                       "BypassList": ["localhost", "*.intern"], "Username": "svc",
+                       "Password": "proxy-secret", "UseDefaultCredentials": false },
+            """)).RootElement;
+
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        var fileContent = File.ReadAllText(writer.OverridesPath);
+        fileContent.Should().NotContain("proxy-secret",
+            "the proxy password must go through the secret protector like every other settings secret");
+
+        var proxy = JsonNode.Parse(fileContent)!["Llm"]!["Proxy"]!.AsObject();
+        // Persisted in the enum's own casing so a hand-read config file matches LlmProxyMode.
+        proxy["Mode"]!.GetValue<string>().Should().Be("Custom");
+        proxy["Address"]!.GetValue<string>().Should().Be("http://proxy.corp.local:8080");
+        proxy["BypassList"]!.AsArray().Select(n => n!.GetValue<string>()).Should().Equal("localhost", "*.intern");
+        proxy["Username"]!.GetValue<string>().Should().Be("svc");
+        proxy["Password"]!.GetValue<string>().Should().StartWith("enc:v1:");
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_UnchangedProxyPassword_KeepsTheStoredValue()
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        await controller.PutSection("Llm", JsonDocument.Parse(LlmBody(proxy: """
+            "Proxy": { "Mode": "custom", "Address": "http://p:8080", "BypassList": [],
+                       "Username": "svc", "Password": "original", "UseDefaultCredentials": false },
+            """)).RootElement, CancellationToken.None);
+        var stored = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Proxy"]!["Password"]!.GetValue<string>();
+
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+        await controller.PutSection("Llm", JsonDocument.Parse(LlmBody(proxy: """
+            "Proxy": { "Mode": "custom", "Address": "http://p:8080", "BypassList": [],
+                       "Username": "svc", "Password": "__unchanged__", "UseDefaultCredentials": false },
+            """)).RootElement, CancellationToken.None);
+
+        JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Proxy"]!["Password"]!
+            .GetValue<string>().Should().Be(stored);
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_ProxyCustomWithoutAddress_Returns400_NoFileWrite()
+    {
+        // Two layers reject this — the DTO's own Validate and the boot validator running against
+        // the simulated merged config. Either way the operator finds out before the restart does.
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse(LlmBody(proxy: """
+            "Proxy": { "Mode": "custom", "Address": "", "BypassList": [],
+                       "Username": null, "Password": null, "UseDefaultCredentials": false },
+            """)).RootElement;
+
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        File.Exists(writer.OverridesPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_UnknownProxyMode_Returns400()
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse(LlmBody(proxy: """
+            "Proxy": { "Mode": "sometimes", "Address": "", "BypassList": [],
+                       "Username": null, "Password": null, "UseDefaultCredentials": false },
+            """)).RootElement;
+
+        (await controller.PutSection("Llm", body, CancellationToken.None))
+            .Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task PutSection_Llm_WithoutProxyBlock_DefaultsToOff()
+    {
+        // Every pre-existing payload shape omits Proxy entirely; it must stay valid and mean
+        // "no proxy" rather than failing the [Required] on the nested object.
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var result = await controller.PutSection("Llm", JsonDocument.Parse(LlmBody()).RootElement, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Proxy"]!["Mode"]!
+            .GetValue<string>().Should().Be("Off");
     }
 
     [Fact]

@@ -290,7 +290,19 @@
     "profileNotDeletable": "In \"{{source}}\" definiert — hier editierbar, entfernen lässt es sich nur in dieser Konfigurationsquelle.",
     "noProfiles": "Noch kein LLM-Profil. Lege eines an und wähle es aus, um die KI-Features zu nutzen.",
     "newProfileName": "Neues Profil",
-    "activeProfileRequired": "Wähle ein aktives Profil oder deaktiviere die LLM-Integration."
+    "activeProfileRequired": "Wähle ein aktives Profil oder deaktiviere die LLM-Integration.",
+    "proxy": "Outbound-Proxy",
+    "proxyMode": "Modus",
+    "proxyModeOff": "Kein Proxy (Direktverbindung)",
+    "proxyModeSystem": "System-Proxy verwenden",
+    "proxyModeCustom": "Eigener Proxy",
+    "proxyModeHint": "Gilt für alle KI-Aufrufe — Chat, Generierung und die llmQuery-Activity. Die Änderung greift sofort; zum Testen erst speichern, dann den Testen-Button nutzen.",
+    "proxyModeSystemHint": "Nutzt die Proxy-Einstellungen des Dienstkontos, unter dem NodePilot läuft (Windows: WinHTTP/WinINET) — inklusive dessen eigener Ausnahmeliste. Änderungen an den Windows-Einstellungen greifen erst nach einem Neustart des Dienstes.",
+    "proxyAddress": "Adresse",
+    "proxyBypassList": "Ausnahmen (kein Proxy)",
+    "proxyBypassListHint": "Hosts, die direkt erreicht werden. Platzhalter erlaubt, z. B. localhost oder *.firma.local — so bleibt ein lokales Ollama am Proxy vorbei erreichbar.",
+    "proxyUseDefaultCredentials": "Windows-Anmeldedaten des Dienstkontos verwenden",
+    "proxyUseDefaultCredentialsHint": "Für domänenintegrierte Proxies mit NTLM/Kerberos. Ersetzt Benutzername und Passwort."
   },
   "retention": {
     "auditLogCardTitle": "Audit-Log",

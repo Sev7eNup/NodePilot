@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using NodePilot.Ai;
 
 namespace NodePilot.Api.Dtos.Settings;
 
@@ -103,6 +104,80 @@ public sealed class LlmProfileProbeDto
 }
 
 /// <summary>
+/// Outbound-proxy settings for every LLM call. Mirrors <see cref="NodePilot.Ai.LlmProxyOptions"/>.
+/// One block per installation, not per profile — the "cloud through the proxy, local Ollama
+/// direct" case is what <see cref="BypassList"/> is for.
+/// </summary>
+public sealed class LlmProxyDto : IValidatableObject
+{
+    /// <summary>Upper bound on bypass entries. Generous — the point is to stop runaway payloads.</summary>
+    public const int MaxBypassEntries = 128;
+
+    /// <summary>
+    /// <c>off</c> (default, direct connection) / <c>system</c> (the OS proxy of the service
+    /// account) / <c>custom</c> (<see cref="Address"/>). Compared case-insensitively against
+    /// <see cref="NodePilot.Ai.LlmProxyMode"/>.
+    /// </summary>
+    [Required(AllowEmptyStrings = false)]
+    [StringLength(16)]
+    public string Mode { get; set; } = nameof(LlmProxyMode.Off).ToLowerInvariant();
+
+    /// <summary>Proxy URL. Required when <see cref="Mode"/> is <c>custom</c>, ignored otherwise.</summary>
+    [StringLength(2048)]
+    public string Address { get; set; } = "";
+
+    /// <summary>Host patterns that skip the proxy (shell globs). Only used in <c>custom</c> mode.</summary>
+    public List<string> BypassList { get; set; } = new();
+
+    [StringLength(255)]
+    public string? Username { get; set; }
+
+    /// <summary>SecretField semantics — <c>"__unchanged__"</c> keeps, plaintext rotates, null/empty clears.</summary>
+    public string? Password { get; set; }
+
+    /// <summary>Authenticate against the proxy with the service account's Windows credentials.</summary>
+    public bool UseDefaultCredentials { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (!Enum.TryParse<LlmProxyMode>(Mode?.Trim() ?? "", ignoreCase: true, out var mode))
+        {
+            yield return new ValidationResult(
+                "Proxy mode must be one of 'off', 'system', or 'custom'.", new[] { nameof(Mode) });
+            yield break;
+        }
+
+        // Null-guarded: a literal "BypassList": null in the body nulls the property, and an NRE
+        // here would turn an operator typo into a 500 instead of a field-level 400.
+        if ((BypassList?.Count ?? 0) > MaxBypassEntries)
+        {
+            yield return new ValidationResult(
+                $"At most {MaxBypassEntries} proxy bypass entries are supported.", new[] { nameof(BypassList) });
+        }
+
+        // Only meaningful for 'custom'; validating it in the other modes would reject a parked
+        // address the operator kept around while temporarily switching to 'system'.
+        if (mode != LlmProxyMode.Custom) yield break;
+
+        var address = Address?.Trim() ?? "";
+        if (address.Length == 0)
+        {
+            yield return new ValidationResult(
+                "Proxy mode 'custom' requires a proxy address (e.g. http://proxy.corp.local:8080).",
+                new[] { nameof(Address) });
+            yield break;
+        }
+
+        if (!Uri.TryCreate(address, UriKind.Absolute, out var uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            yield return new ValidationResult(
+                $"'{address}' is not a valid http(s) proxy URL.", new[] { nameof(Address) });
+        }
+    }
+}
+
+/// <summary>
 /// LLM section DTO for the Admin Settings API. Mirrors <see cref="NodePilot.Ai.LlmOptions"/> —
 /// the operator-tunable knobs only, the per-feature constants (<c>MaxUpstreamVariables</c>,
 /// <c>MaxJsonRetries</c>) stay code-side and aren't exposed through the UI.
@@ -122,6 +197,9 @@ public sealed class LlmSettingsDto : IValidatableObject
 
     public List<LlmProfileSettingsDto> Profiles { get; set; } = new();
 
+    /// <summary>How outbound LLM traffic reaches the network. Defaults to no proxy.</summary>
+    [Required] public LlmProxyDto Proxy { get; set; } = new();
+
     /// <summary>
     /// <para><b>Why this exists:</b> <c>Validator.TryValidateObject</c> — which the generic settings
     /// adapter calls — does <i>not</i> recurse into collection elements. Without validating each
@@ -129,10 +207,28 @@ public sealed class LlmSettingsDto : IValidatableObject
     /// <see cref="LlmProfileSettingsDto"/> would be dead metadata.</para>
     ///
     /// <para>Member names are reported as <c>Profiles[i].Field</c> so the UI can point at the
-    /// offending row.</para>
+    /// offending row. The same applies to the nested <see cref="Proxy"/> object, whose members are
+    /// reported as <c>Proxy.Field</c>.</para>
     /// </summary>
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        if (Proxy is null)
+        {
+            yield return new ValidationResult("Proxy is required.", new[] { nameof(Proxy) });
+        }
+        else
+        {
+            var proxyResults = new List<ValidationResult>();
+            Validator.TryValidateObject(Proxy, new ValidationContext(Proxy), proxyResults, validateAllProperties: true);
+            foreach (var r in proxyResults)
+            {
+                var members = r.MemberNames.Any()
+                    ? r.MemberNames.Select(m => $"{nameof(Proxy)}.{m}").ToArray()
+                    : new[] { nameof(Proxy) };
+                yield return new ValidationResult(r.ErrorMessage, members);
+            }
+        }
+
         if (Profiles.Count > MaxProfiles)
         {
             yield return new ValidationResult(

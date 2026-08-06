@@ -74,6 +74,92 @@ public class LlmProfileValidationTests
         issues.Should().BeEmpty();
     }
 
+    [Fact]
+    public void ValidateProxy_Disabled_ChecksNothing()
+    {
+        // Same gate as the profile check: an untouched block must never block a boot.
+        LlmProfileValidation.ValidateProxy(Config(
+            ("Llm:Enabled", "false"),
+            ("Llm:Proxy:Mode", "Custom")))
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateProxy_ModeOffOrSystem_NeedsNoAddress()
+    {
+        LlmProfileValidation.ValidateProxy(Config(
+            ("Llm:Enabled", "true"), ("Llm:Proxy:Mode", "Off"))).Should().BeEmpty();
+        LlmProfileValidation.ValidateProxy(Config(
+            ("Llm:Enabled", "true"), ("Llm:Proxy:Mode", "System"))).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateProxy_NoModeConfigured_ReturnsNoIssues()
+    {
+        LlmProfileValidation.ValidateProxy(Config(("Llm:Enabled", "true"))).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ValidateProxy_UnknownMode_IsReported()
+    {
+        var issues = LlmProfileValidation.ValidateProxy(Config(
+            ("Llm:Enabled", "true"),
+            ("Llm:Proxy:Mode", "sometimes")));
+
+        issues.Should().ContainSingle();
+        issues[0].ConfigKey.Should().Be("Llm:Proxy:Mode");
+    }
+
+    [Fact]
+    public void ValidateProxy_CustomWithoutAddress_IsReported()
+    {
+        var issues = LlmProfileValidation.ValidateProxy(Config(
+            ("Llm:Enabled", "true"),
+            ("Llm:Proxy:Mode", "Custom")));
+
+        issues.Should().ContainSingle();
+        issues[0].ConfigKey.Should().Be("Llm:Proxy:Address");
+        issues[0].Message.Should().Contain("no proxy address is set");
+    }
+
+    [Theory]
+    [InlineData("not a url")]
+    [InlineData("ftp://proxy.corp.local:21")]
+    [InlineData("proxy.corp.local:8080")]
+    public void ValidateProxy_CustomWithNonHttpAddress_IsReported(string address)
+    {
+        var issues = LlmProfileValidation.ValidateProxy(Config(
+            ("Llm:Enabled", "true"),
+            ("Llm:Proxy:Mode", "Custom"),
+            ("Llm:Proxy:Address", address)));
+
+        issues.Should().ContainSingle();
+        issues[0].ConfigKey.Should().Be("Llm:Proxy:Address");
+    }
+
+    [Fact]
+    public void ValidateProxy_CustomWithMetadataAddress_IsReported()
+    {
+        // A proxy address is an outbound destination too — the metadata block applies to it.
+        var issues = LlmProfileValidation.ValidateProxy(Config(
+            ("Llm:Enabled", "true"),
+            ("Llm:Proxy:Mode", "Custom"),
+            ("Llm:Proxy:Address", "http://169.254.169.254:8080")));
+
+        issues.Should().ContainSingle();
+        issues[0].Message.Should().Contain("cloud-metadata");
+    }
+
+    [Fact]
+    public void ValidateProxy_CustomWithValidAddress_ReturnsNoIssues()
+    {
+        LlmProfileValidation.ValidateProxy(Config(
+            ("Llm:Enabled", "true"),
+            ("Llm:Proxy:Mode", "custom"), // parsed case-insensitively, like the config binder
+            ("Llm:Proxy:Address", "http://proxy.corp.local:8080")))
+            .Should().BeEmpty();
+    }
+
     [Theory]
     [InlineData("a", true)]
     [InlineData("A", true)] // ids are matched case-insensitively

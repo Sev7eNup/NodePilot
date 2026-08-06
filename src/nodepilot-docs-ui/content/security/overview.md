@@ -45,6 +45,15 @@ Per-IP, Sliding-Window — siehe [Authentifizierung](../api/authentication).
 
 `RestApi:Proxy:Enabled` (default `false`). Per-Step-Override via `proxyMode` (`default`/`direct`/`custom`).
 
+## LLM-Proxy
+
+`Llm:Proxy:Mode` (default `Off`) — getrennt vom REST-API-Proxy, weil AI-Verkehr und
+Workflow-Verkehr in Unternehmensnetzen unterschiedlich behandelt werden. `System` übernimmt den
+Proxy des Dienstkontos, `Custom` eine eigene Adresse mit Ausnahmeliste. Läuft der Verkehr über
+einen Proxy, löst dieser die Zieladresse auf — die Prüfung unmittelbar vor dem Verbindungsaufbau
+greift dann nur noch für den Proxy selbst, die Base-URL wird weiterhin beim Speichern und beim
+Start geprüft. Details: [AI-Funktionen](../ai-features).
+
 ## Hardening-Flags
 
 Die vollständige Liste der Guard-Flags mit Defaults: [Hardening-Flags](./hardening).

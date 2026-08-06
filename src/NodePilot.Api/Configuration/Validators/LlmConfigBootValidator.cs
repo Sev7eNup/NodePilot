@@ -32,6 +32,11 @@ public sealed class LlmConfigBootValidator : IBootValidator
         foreach (var issue in LlmProfileValidation.ValidateProfileEndpoints(configuration))
             issues.Add(new BootValidationIssue(Name, BootValidationSeverity.Error, issue.ConfigKey, issue.Message));
 
+        // Same deal for Llm:Proxy:*. A "Custom" mode without an address builds no proxy, so the
+        // first LLM call after a restart would fail on a value the save could have rejected.
+        foreach (var issue in LlmProfileValidation.ValidateProxy(configuration))
+            issues.Add(new BootValidationIssue(Name, BootValidationSeverity.Error, issue.ConfigKey, issue.Message));
+
         // Deliberately a Warning, not an Error: the AI features are opt-in, and a half-finished
         // profile setup must not keep the service from booting. The endpoints answer
         // 503 LLM_NO_ACTIVE_PROFILE instead.
