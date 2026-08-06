@@ -432,6 +432,81 @@ function Test-NodePilotTlsCertificate {
         -PublicHostname $PublicHostname -Now (Get-Date)
 }
 
+function Test-NodePilotArtifactSignerTrust {
+    <#
+      Whether this machine trusts the publisher of the artifact the setup carries.
+
+      Install-NodePilot.ps1 verifies the detached CMS signature with CheckSignature($false) - the
+      $false means "validate the certificate chain too". On a host that does not know the publisher
+      that throws, the install aborts and rolls back. Without this row that was the first thing an
+      operator learned about it: nine green checks, Next, exit code 4.
+
+      Mirrors what the installer does, with one deliberate difference: revocation is not checked. A
+      self-signed publisher has no CRL distribution point, so an online revocation check fails for
+      the absence of a CRL rather than the absence of trust - and this row would then send the
+      operator after a problem that is not theirs.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string]$CertificatePath,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$ExpectedThumbprint
+    )
+
+    $title = 'Artifact publisher trusted'
+    $brokenSetupHint = 'The setup is incomplete or has been altered. Download it again from the release.'
+
+    if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+            -Detail "The publisher certificate is missing from the setup payload ($CertificatePath)." `
+            -RemediationHint $brokenSetupHint `
+            -AbortMessage 'Publisher certificate missing from the setup payload.'
+    }
+
+    try { $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath) }
+    catch {
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+            -Detail "The publisher certificate in the setup payload cannot be read: $($_.Exception.Message)" `
+            -RemediationHint $brokenSetupHint `
+            -AbortMessage 'Publisher certificate in the setup payload is unreadable.'
+    }
+
+    $actual = (($certificate.Thumbprint -replace '[^0-9A-Fa-f]', '')).ToUpperInvariant()
+    $expected = (($ExpectedThumbprint -replace '[^0-9A-Fa-f]', '')).ToUpperInvariant()
+    if ($expected -and $actual -ne $expected) {
+        # No auto-fix here, on purpose. The box would import a certificate that is NOT the publisher
+        # this setup was built against and make it trusted for the entire machine - the one outcome
+        # worse than refusing to install.
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+            -Detail ("The certificate in the payload ($actual) is not the publisher this setup was built " +
+                     "against ($expected). Nothing will be trusted and nothing will be installed.") `
+            -RemediationHint $brokenSetupHint `
+            -AbortMessage "Payload publisher $actual does not match the expected $expected."
+    }
+
+    $reasons = ''
+    $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+    try {
+        $chain.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+        if ($chain.Build($certificate)) {
+            return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Pass' `
+                -Detail "Publisher $($certificate.Subject) is trusted on this machine ($actual)."
+        }
+        $reasons = @($chain.ChainStatus | ForEach-Object { $_.StatusInformation.Trim() }) -join ' '
+    }
+    finally { $chain.Dispose() }
+
+    # Offered, never pre-ticked. LocalMachine\Root is a machine-wide statement, and the deployment
+    # guide asks the operator to compare the thumbprint out of band first - so the thumbprint is in
+    # the message they read before they tick anything.
+    New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+        -CanAutoFix $true -AutoFixLabel 'Trust the publisher certificate (adds it to LocalMachine\Root)' `
+        -Detail ("Publisher $($certificate.Subject) ($actual) is not trusted on this machine. The artifact " +
+                 "signature cannot be verified, so the installation would abort and roll back. $reasons").Trim() `
+        -RemediationHint ('Compare that thumbprint against the one published with the release before ' +
+                          'trusting it - trusting a publisher applies to the whole machine.') `
+        -Remediation "Import-Certificate -FilePath '$CertificatePath' -CertStoreLocation Cert:\LocalMachine\Root" `
+        -AbortMessage "Artifact publisher $actual is not trusted in LocalMachine\Root."
+}
+
 function New-NodePilotCertificateVerdict {
     <#
       Everything that can be decided about a certificate once it has been found in the store,
@@ -1233,11 +1308,20 @@ function Invoke-NodePilotPreflight {
         [System.Security.SecureString]$PostgresSuperPassword,
         [bool]$CanProvisionPostgres = $false,
         [string]$ServiceName = 'NodePilot',
+        # Only the setup passes these: it carries the publisher certificate in its payload and knows
+        # the thumbprint it was built against. Absent - the scripted path, which has no payload - the
+        # row is not emitted at all, exactly as the Postgres credentials degrade.
+        [AllowEmptyString()][string]$ArtifactSignerCertificatePath = '',
+        [AllowEmptyString()][string]$ExpectedSignerThumbprint = '',
         [switch]$SkipDatabaseCheck,
         [switch]$SkipGmsaCheck
     )
 
     $results = @()
+    if ($ArtifactSignerCertificatePath) {
+        $results += Test-NodePilotArtifactSignerTrust `
+            -CertificatePath $ArtifactSignerCertificatePath -ExpectedThumbprint $ExpectedSignerThumbprint
+    }
     $results += Test-NodePilotDotNetRuntime
     $results += Test-NodePilotTlsCertificate -Thumbprint $CertificateThumbprint -PublicHostname $PublicHostname
     $results += Test-NodePilotListenPorts -HttpsPort $HttpsPort -HttpPort $HttpPort -ServiceName $ServiceName

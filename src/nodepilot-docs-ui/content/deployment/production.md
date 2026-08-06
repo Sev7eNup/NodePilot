@@ -189,6 +189,12 @@ Kapiteln 1 bis 4 **bevor** es etwas verändert, und zeigt jede als grün, gelb o
 kopierbarer Anleitung. Auf Wunsch installiert es die Runtime, legt SQL-Login und Datenbank an oder
 erzeugt ein Laborzertifikat.
 
+Dazu gehört die Vertrauensfrage aus Kapitel 4: Das Setup prüft, ob diese Maschine den Herausgeber
+`CN=NodePilot Release Signing` bereits kennt, nennt den Thumbprint und bietet den Import nach
+`LocalMachine\Root` an — angeboten, nicht vorangehakt, damit der Thumbprint vorher gegen die
+Release-Notes gehalten werden kann. Ohne diese Zeile scheitert die Installation auf einem frischen
+Host mitten im Lauf an der Signaturprüfung des Artefakts und wird zurückgerollt.
+
 Für das Kestrel-Zertifikat verlangt es nur den Thumbprint — und bietet unter dem Eingabefeld die
 Zertifikate aus `Cert:\LocalMachine\My` zur Auswahl an, sortiert nach Ablauf. Das gilt für ein
 PKI-Zertifikat aus der eigenen CA genauso wie für ein selbstsigniertes: importieren, auswählen,

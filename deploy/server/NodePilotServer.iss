@@ -106,7 +106,7 @@ const
   ExitProbeFailed = 2;
   ExitAnswerFileInvalid = 3;
   ExitInstallFailed = 4;
-  CheckCount = 9;
+  CheckCount = 10;
 
   // How long to keep waiting for the adapter before giving up on it. Generous on purpose: the
   // longest legitimate run measured is about three minutes, and the only thing this guards against
@@ -506,7 +506,7 @@ begin
       AddLine(Lines, Count, '    "postgresSuperUser": ' + JsonString(Trim(PostgresAuthPage.Values[3])) + ',');
       AddLine(Lines, Count, '    "postgresSuperPassword": ' + JsonString(PostgresAuthPage.Values[4]) + ',');
     end;
-    AddLine(Lines, Count, '    "trustArtifactSigner": false');
+    AddLine(Lines, Count, '    "trustArtifactSigner": ' + JsonBool(IsFixRequested('signer')));
     AddLine(Lines, Count, '  }');
   end;
   AddLine(Lines, Count, '}');
@@ -1092,9 +1092,18 @@ begin
   CheckIds[6] := 'database';
   CheckIds[7] := 'databaseVersion';
   CheckIds[8] := 'databaseServiceLogin';
+  // Last in the list, first thing the installation does. Without this row a host that does not
+  // trust the publisher showed nine green checks and then failed at CheckSignature with exit
+  // code 4 and a rollback - the one requirement the page could not see.
+  CheckIds[9] := 'signer';
 
   // Before anything can call the adapter, and that is every phase of this wizard.
   ExtractTemporaryFiles('*.ps1');
+  // The publisher certificate used to be extracted in PrepareToInstall, which is after the
+  // readiness page has already run. The page now reports whether this machine trusts that
+  // publisher, so it has to be able to read it - a kilobyte, extracted once, at the only moment
+  // that is earlier than every phase.
+  ExtractTemporaryFile('nodepilot-release-signing.cer');
 
   DetectExistingInstallation();
   ForceFullReinstall := ExpandConstant('{param:FULLREINSTALL|0}') <> '0';

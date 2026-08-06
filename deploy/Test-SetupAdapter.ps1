@@ -814,6 +814,83 @@ try {
     Assert-True -Name 'the message says none was selected instead of naming an empty one' `
         -Condition ($noneGiven.Detail -match 'No certificate selected' -and $noneGiven.Detail -notmatch 'is not present')
 
+    # --- the publisher of the artifact the setup carries --------------------------------------
+    # The requirement the readiness page could not see. Install-NodePilot.ps1 verifies the detached
+    # CMS signature with the chain included, so a host that does not know the publisher showed nine
+    # green rows and then failed at CheckSignature with exit code 4 and a rollback.
+    #
+    # Certificates are built in memory rather than with New-SelfSignedCertificate: this suite writes
+    # to no certificate store on the machine it runs on.
+    function New-TestPublisherCertificateFile {
+        param([Parameter(Mandatory)][string]$FileName, [string]$Subject = 'CN=NodePilot Test Publisher')
+        $rsa = [System.Security.Cryptography.RSA]::Create(2048)
+        try {
+            $request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new(
+                $Subject, $rsa,
+                [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+                [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+            $certificate = $request.CreateSelfSigned(
+                [DateTimeOffset]::UtcNow.AddDays(-1), [DateTimeOffset]::UtcNow.AddYears(1))
+            $path = Join-Path $workingDirectory $FileName
+            [IO.File]::WriteAllBytes($path, $certificate.Export('Cert'))
+            return [pscustomobject]@{ Path = $path; Thumbprint = $certificate.Thumbprint }
+        }
+        finally { $rsa.Dispose() }
+    }
+
+    $absent = Test-NodePilotArtifactSignerTrust `
+        -CertificatePath (Join-Path $workingDirectory 'no-such-publisher.cer') -ExpectedThumbprint ('B' * 40)
+    Assert-True -Name 'a publisher certificate missing from the payload blocks the install' `
+        -Condition ($absent.Status -eq 'Fail' -and $absent.Required)
+    # Nothing to repair: the setup itself is incomplete. Offering to import a file that is not
+    # there would be a button that cannot work.
+    Assert-True -Name 'a missing payload certificate carries no auto-fix' -Condition (-not $absent.CanAutoFix)
+
+    $untrusted = New-TestPublisherCertificateFile -FileName 'untrusted-publisher.cer'
+    $verdict = Test-NodePilotArtifactSignerTrust `
+        -CertificatePath $untrusted.Path -ExpectedThumbprint $untrusted.Thumbprint
+    Assert-True -Name 'an untrusted publisher blocks the install' `
+        -Condition ($verdict.Status -eq 'Fail' -and $verdict.Required)
+    Assert-True -Name 'an untrusted publisher is offered for trusting' `
+        -Condition ($verdict.CanAutoFix -and $verdict.AutoFixLabel -match 'Trust the publisher')
+    # Offered, never pre-ticked: LocalMachine\Root is a machine-wide statement, and the deployment
+    # guide asks for the thumbprint to be compared out of band first.
+    Assert-True -Name 'trusting a publisher is never the default tick' -Condition (-not $verdict.AutoFixDefault)
+    # Which is only possible if the thumbprint is in the text the operator reads before ticking.
+    Assert-True -Name 'the message names the thumbprint that would become trusted' `
+        -Condition ($verdict.Detail -match $untrusted.Thumbprint)
+
+    # A certificate that is not the publisher this setup was built against. The one case where the
+    # offer must disappear: the box would make a foreign issuer trusted for the whole machine.
+    $foreign = New-TestPublisherCertificateFile -FileName 'foreign-publisher.cer' -Subject 'CN=Somebody Else'
+    $mismatch = Test-NodePilotArtifactSignerTrust `
+        -CertificatePath $foreign.Path -ExpectedThumbprint ('A' * 40)
+    Assert-True -Name 'a payload certificate that is not the expected publisher blocks the install' `
+        -Condition ($mismatch.Status -eq 'Fail' -and $mismatch.Required)
+    Assert-True -Name 'a foreign publisher is never offered for import' -Condition (-not $mismatch.CanAutoFix)
+    Assert-True -Name 'the mismatch names both thumbprints' `
+        -Condition ($mismatch.Detail -match $foreign.Thumbprint -and $mismatch.Detail -match ('A' * 40))
+
+    # The green case, read from this machine's own trust store rather than written to it: a root CA
+    # chains to itself and validates, which is exactly the state the auto-fix produces.
+    $trustedRoot = $null
+    foreach ($candidate in (Get-ChildItem Cert:\LocalMachine\Root -ErrorAction SilentlyContinue)) {
+        if ($candidate.NotAfter -le (Get-Date) -or $candidate.NotBefore -gt (Get-Date)) { continue }
+        $probe = [Security.Cryptography.X509Certificates.X509Chain]::new()
+        try {
+            $probe.ChainPolicy.RevocationMode = [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+            if ($probe.Build($candidate)) { $trustedRoot = $candidate; break }
+        }
+        finally { $probe.Dispose() }
+    }
+    if (-not $trustedRoot) { throw 'Setup adapter check failed: no valid trusted root certificate on this machine.' }
+    $trustedPath = Join-Path $workingDirectory 'trusted-publisher.cer'
+    [IO.File]::WriteAllBytes($trustedPath, $trustedRoot.Export('Cert'))
+    $trusted = Test-NodePilotArtifactSignerTrust `
+        -CertificatePath $trustedPath -ExpectedThumbprint $trustedRoot.Thumbprint
+    Assert-True -Name 'a trusted publisher passes' -Condition ($trusted.Status -eq 'Pass')
+    Assert-True -Name 'a passing publisher row offers nothing to fix' -Condition (-not $trusted.CanAutoFix)
+
     # --- the service identity's access to the database ----------------------------------------
     # Was a caveat printed on every host whether or not the grant existed. Now a verdict, and the
     # verdict is split from the connection precisely so these branches are reachable here: no test

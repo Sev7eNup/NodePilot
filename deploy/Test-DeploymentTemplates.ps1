@@ -847,6 +847,28 @@ Assert-TextMatches -Name 'a malformed entry is dropped rather than offered' `
 Assert-TextMatches -Name 'each offered certificate shows the thumbprint it will fill in' `
     -Text $loaderCode -Pattern 'Entry := Subject \+ [^\r\n]*Thumbprint'
 
+# --- the publisher of the artifact ----------------------------------------------------------------
+# The page checked nine things and the installation died on a tenth: Install-NodePilot.ps1 verifies
+# the artifact signature with the certificate chain included, so on a host that does not know the
+# publisher every row went green and the install then failed at CheckSignature with exit code 4 and
+# a rollback. The row has to exist, and the fix that has been sitting in the adapter all along has
+# to be reachable from it.
+Assert-TextMatches -Name 'the readiness page has a row for the artifact publisher' `
+    -Text $serverIss -Pattern "CheckIds\[9\] := 'signer';"
+Assert-TextMatches -Name 'the check array has room for that row' `
+    -Text $serverIss -Pattern 'CheckCount = 10;'
+# It used to be written as the constant false, which is why ticking it was impossible: the answer
+# file said "do not trust the publisher" no matter what the operator chose.
+Assert-TextMatches -Name 'trusting the publisher follows the tick, not a constant' `
+    -Text $serverIss -Pattern 'trustArtifactSigner[^\r\n]*JsonBool\(IsFixRequested\(''signer''\)\)'
+Assert-TextDoesNotMatch -Name 'the publisher fix is not hard-wired off' `
+    -Text $serverIss -Pattern '"trustArtifactSigner": false'
+# The certificate was extracted in PrepareToInstall - after the readiness page had already run. A
+# row that reads a file which does not exist yet reports a broken setup on every host.
+Assert-TextMatches -Name 'the publisher certificate is extracted before the readiness page' `
+    -Text $serverIss `
+    -Pattern "(?s)ExtractTemporaryFiles\('\*\.ps1'\)[\s\S]{0,500}ExtractTemporaryFile\('nodepilot-release-signing\.cer'\)"
+
 # An empty field means "I have none yet", which is the answer a fresh host gives and the one the
 # answer file has always accepted (Invoke-NodePilotSetup treats a thumbprint that is not 40 hex
 # characters as "use the certificate the Provision step generated"). The page demanded 40
@@ -1536,6 +1558,21 @@ Assert-TextMatches -Name 'a thumbprint that is present is still checked for shap
 # they actually have.
 Assert-TextMatches -Name 'installing without any certificate names both ways out' `
     -Text $setupAdapter -Pattern 'No TLS certificate to install with'
+
+# Both readers of the publisher certificate - the readiness row and the fix - take the path from one
+# function. They drifted once: the fix looked under 'signer\', a folder the build never creates
+# (payload files are extracted flat, [Files] uses dontcopy without recursesubdirs), so it answered
+# "no publisher certificate found in the payload" for a file sitting right next to it.
+Assert-TextMatches -Name 'the publisher certificate path has one definition' `
+    -Text $setupAdapter -Pattern "function Get-NodePilotSignerCertificatePath"
+Assert-TextDoesNotMatch -Name 'nothing looks for the certificate in a folder the build never makes' `
+    -Text $setupAdapter -Pattern "signer\\nodepilot-release-signing\.cer"
+# The readiness row only exists on the setup path: the scripted installer has no payload to read a
+# certificate from, and its operator was told to import it in step 1 of the deployment guide.
+Assert-TextMatches -Name 'the probe passes the publisher certificate to the pre-flight' `
+    -Text $setupAdapter -Pattern "ArtifactSignerCertificatePath'\] = Get-NodePilotSignerCertificatePath"
+Assert-TextMatches -Name 'the pre-flight emits the publisher row only when it is given one' `
+    -Text $preflightScript -Pattern '(?s)if \(\$ArtifactSignerCertificatePath\) \{[\s\S]{0,200}Test-NodePilotArtifactSignerTrust'
 
 # --- provisioning seed ---------------------------------------------------------------------------
 # The seed unlocks a file holding every credential the reference machine had, so where its

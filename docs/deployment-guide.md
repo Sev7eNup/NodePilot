@@ -76,7 +76,9 @@ skip the `Root` imports.
 > **Shortcut: the GUI setup.** `NodePilot-Server-Setup-<version>.exe` performs exactly the
 > installation described below, driven by a wizard. It bundles the signed artifact and the ASP.NET
 > Core runtime, checks every prerequisite before it changes anything, and can create the SQL login
-> and database for you if your account may. For the Kestrel certificate it asks only for the
+> and database for you if your account may. Step 1 below - trusting the publisher - is one of the
+> checks: the wizard reports whether this machine already trusts `CN=NodePilot Release Signing`,
+> shows you the thumbprint, and offers to import it into `LocalMachine\Root` for you. For the Kestrel certificate it asks only for the
 > thumbprint and offers the machine store's certificates in a list below the field, so a PKI
 > certificate from your own CA needs importing and picking, nothing typed. Leaving the field empty
 > is allowed and means "I have none yet": the prerequisite page then offers to create a self-signed
