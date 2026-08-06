@@ -28,7 +28,9 @@ unsigned or tampered artifacts, so a code-signing certificate is part of the set
   both scripts.
 - **ASP.NET Core Runtime 10 (x64)** — the plain runtime, **not** the Hosting Bundle. The
   bundle rewires IIS and restarts W3SVC, which you do not want on a shared host (e.g. an
-  SCCM site server).
+  SCCM site server). The `x64` is a requirement, not a preference: NodePilot ships as
+  `win-x64`, a 32-bit runtime cannot start the service, and the pre-flight rejects one by
+  name instead of waving it through.
 - **SQL Server 2022 CU1 or later** (build ≥ `16.0.4003.1`) or PostgreSQL. NodePilot
   connects with `Encrypt=Strict` (TDS 8.0) and refuses to boot with anything weaker:
   SQL Server 2019 and older cannot speak TDS 8.0 at all, and 2022 **RTM** has a TDS 8.0

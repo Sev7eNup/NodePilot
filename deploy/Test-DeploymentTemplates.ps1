@@ -354,6 +354,9 @@ Assert-TextDoesNotMatch -Name 'an update must not reconfigure identity, dependen
 # "re-check" button. That shared use is the entire reason for the split, and it only holds while
 # the file stays free of side effects.
 $preflightScript = Get-Content -LiteralPath $PreflightScriptPath -Raw
+# Several contracts below are worded exactly like the comments that explain the rule they enforce -
+# "must not parse --info", for one - so they have to look at code only.
+$preflightStripped = Remove-CommentLines -Text $preflightScript
 
 # The near-miss this guards against, concretely: Enable-SqlReadCommittedSnapshot used to sit
 # INSIDE the SQL reachability try/catch. Moving the pre-flight block wholesale would have carried
@@ -423,6 +426,26 @@ Assert-TextMatches -Name 'preflight exposes an asserting entry point' `
 # wizard's "install the runtime for me" action look broken.
 Assert-TextMatches -Name 'the dotnet probe falls back to the machine-wide install location' `
     -Text $preflightScript -Pattern 'dotnet\\dotnet\.exe'
+
+# NodePilot publishes --runtime win-x64 and installs an apphost that a 32-bit runtime cannot host,
+# so the row has to establish the architecture rather than accept whichever dotnet answers first.
+# The architecture comes out of the PE machine field, NOT out of 'dotnet --info': that command does
+# report the host architecture, but its labels are localised, so a parse of the English text would
+# silently find nothing on a German server and every machine would look 32-bit - or, worse, be
+# waved through.
+Assert-TextMatches -Name 'the dotnet probe reads the PE machine type for x64' `
+    -Text $preflightStripped -Pattern '0x8664'
+Assert-TextDoesNotMatch -Name 'the dotnet probe must not parse localisable CLI text for the architecture' `
+    -Text $preflightStripped -Pattern '--info'
+# Taking only the first PATH hit is how a machine with both runtimes installed gets the wrong
+# answer - in either direction, depending on PATH order.
+Assert-TextDoesNotMatch -Name 'the dotnet probe must not settle for the first PATH hit' `
+    -Text $preflightStripped -Pattern '(?s)Get-Command dotnet[\s\S]{0,200}Select-Object -First 1'
+# And the version question must be put to the host that was established as 64-bit, not to any other.
+# Anchored on the invocation itself: a proximity match would be satisfied by the enclosing
+# "if ($x64Path)" and would still pass with a bare "& dotnet --list-runtimes" inside it.
+Assert-TextMatches -Name 'the runtime list is read from the resolved 64-bit host' `
+    -Text $preflightStripped -Pattern '&\s+\$x64Path\s+--list-runtimes'
 
 $installerScript = Get-Content -LiteralPath $InstallerPath -Raw
 Assert-TextMatches -Name 'installer dot-sources the shared pre-flight helper' `
@@ -1100,7 +1123,6 @@ if ($overfullPages.Count -gt 0) {
 # any host running IIS, so the service crashed at startup and the operator watched a 180-second
 # health probe expire followed by a rollback. The checks covered .NET, the certificate, the gMSA and
 # the database - everything except whether the thing could listen.
-$preflightStripped = Remove-CommentLines -Text (Get-Content -LiteralPath $PreflightScriptPath -Raw)
 Assert-TextMatches -Name 'the pre-flight checks whether the ports can be bound' `
     -Text $preflightStripped -Pattern '(?s)function Invoke-NodePilotPreflight[\s\S]*?Test-NodePilotListenPorts'
 # 10013 is not "in use" - Windows returns it for a reservation with no listener behind it, so a

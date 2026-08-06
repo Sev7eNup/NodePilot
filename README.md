@@ -192,7 +192,8 @@ directories so in-place upgrades can roll back.
 - **Windows Server 2022 or 2025**, domain-joined for the gMSA path — `-UseLocalSystem` works
   without a domain
 - **ASP.NET Core Runtime 10 (x64)** — the plain runtime, **not** the Hosting Bundle (that one
-  wires up IIS and restarts W3SVC)
+  wires up IIS and restarts W3SVC). NodePilot ships as `win-x64`; a 32-bit runtime cannot host it
+  and the pre-flight says so rather than passing the row
 - **PostgreSQL 16+** or **SQL Server 2022 CU1+** (build ≥ 16.0.4003.1 — earlier builds cannot serve
   the `Encrypt=Strict` / TDS 8.0 connections NodePilot opens, and are rejected)
 - a **TLS certificate** in `Cert:\LocalMachine\My` with its private key

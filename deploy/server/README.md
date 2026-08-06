@@ -97,9 +97,12 @@ Die Deinstallation fasst die **Datenbank nie** an; das Datenverzeichnis nur mit 
 | **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, **PostgreSQL-Rolle und -Datenbank anlegen**, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
 | **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
 
-Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — neun Zeilen: .NET-Runtime,
+Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — zehn Zeilen: .NET-Runtime,
 Kestrel-Zertifikat, **HTTP/HTTPS-Ports**, gMSA, Dienstidentität, Domänenmitgliedschaft,
-DB-Erreichbarkeit, DB-Version, **DB-Zugriff der Dienst-Identität**. Jede Zeile trägt rechts ein
+DB-Erreichbarkeit, DB-Version, **DB-Zugriff der Dienst-Identität**, **Herausgeber des Artefakts**.
+Die Runtime-Zeile prüft dabei ausdrücklich die **64-Bit**-Runtime: NodePilot wird als `win-x64`
+veröffentlicht, und ein 32-Bit-Host kann den Apphost nicht starten — eine Zeile, die jede beliebige
+Architektur durchgehen lässt, wäre grün und der Dienst käme trotzdem nicht hoch. Jede Zeile trägt rechts ein
 Statuszeichen — Haken, Kreuz, Ausrufezeichen oder Gedankenstrich — und ist zusätzlich eingefärbt.
 Das Zeichen ist nicht Dekoration: Farbe allein sagt niemandem etwas, der dieses Grün nicht von
 diesem Rot unterscheidet, und in einem Screenshot in einem Ticket schon gar nicht. Rote
@@ -760,11 +763,22 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 41 | Host, der den Herausgeber nicht kennt | Zeile „Artifact publisher" **gelb**, „Weiter" bleibt frei, Installation läuft **ohne** Import durch |
 | 42 | Derselbe Fall, Angebot angehakt | Haken + „Weiter" importiert nach `LocalMachine\Root`, Neuprüfung grün, danach meldet `Get-AuthenticodeSignature` auf der Setup-`.exe` `Valid` |
 | 43 | Abgelaufenes Herausgeber-Zertifikat | Zeile **rot**, „Weiter" gesperrt, **kein** Angebot (ein Import repariert es nicht) |
+| 44 | Nur die **32-Bit**-Runtime installiert | Zeile „ASP.NET Core 10 runtime" **rot** und nennt 32-Bit samt Pfad (nicht „not found"), Angebot vorhanden |
+| 45 | x64-Runtime da, x86 zuerst im `PATH` | Zeile **grün** und nennt den 64-Bit-Host, den sie gefragt hat |
 
 Stand: 1, 3, 5, 9, 10, 22, 23, 30, 37 und 38 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und
-SQL Server 2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29, 31 bis 36 sowie 39 bis 43 nicht —
-wobei die **Logik** hinter 33 bis 35 gegen einen echten PostgreSQL 16 mit TLS gefahren wurde (siehe
-unten); was dort fehlt, ist die Seite.
+SQL Server 2022 CU gelaufen. Am **2026-08-06** kam die **Logik** hinter 39, 40, 41, 43 und 44 dazu —
+über den Adapter gegen die laufende CM1-Installation (`InitSession` → `Probe` → `Certificates` →
+`Cleanup`, Zertifikate als In-Memory-Fixtures, kein Store-Schreibzugriff): alle zehn Zeilen grün,
+Answer-File mit leerem Thumbprint akzeptiert und Exit 2, mit zwölf Zeichen abgelehnt und Exit 3,
+`Cleanup` ließ weder Session-Verzeichnis noch Answer-File zurück, Dienst danach weiter `Running` und
+`/healthz/ready` 200. Was dort fehlt, ist wie bei 33 bis 35 die **Seite**.
+
+Offen: 2, 4, 6, 7, 8, 11 bis 21, 24 bis 29, 31 bis 36, 42 und 45. 42 schriebe maschinenweit nach
+`LocalMachine\Root`; 45 braucht einen Host mit **beiden** Runtimes — auf dem Entwicklungsrechner
+nachgewiesen (x86 zuerst im `PATH`, Zeile bleibt grün und nennt den x64-Host), im Lab gibt es keine
+32-Bit-Runtime. Die **Logik** hinter 33 bis 35 lief gegen einen echten PostgreSQL 16 mit TLS (siehe
+unten).
 
 Zusatz 2026-08-06 (zweiter Befund): Auf einem frischen Host waren **alle** Zeilen grün und die
 Installation brach danach mit Exit 4 und Rollback ab — `CheckSignature` scheiterte an der Kette des

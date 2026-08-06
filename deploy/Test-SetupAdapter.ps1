@@ -626,6 +626,110 @@ try {
     Assert-True -Name 'an empty line is handled rather than thrown on' `
         -Condition ($null -eq (Get-NodePilotPhaseProgress -Line ''))
 
+    # --- the .NET runtime row -----------------------------------------------------------------
+    # The field failure: the readiness page was green and the service still would not start. The row
+    # asked "is there a dotnet reporting Microsoft.AspNetCore.App 10.x" and never asked which
+    # architecture answered - while NodePilot publishes --runtime win-x64 and installs an apphost
+    # that a 32-bit runtime cannot host. Both directions of that blindness are covered here.
+    #
+    # Architecture is read out of the PE header rather than parsed from 'dotnet --info', whose labels
+    # are localised. Tested against real binaries: every 64-bit Windows carries a 64-bit cmd.exe in
+    # System32 and a 32-bit one in SysWOW64, so this needs no fixture and no store.
+    $system32Cmd = Join-Path $env:WINDIR 'System32\cmd.exe'
+    if (Test-Path -LiteralPath $system32Cmd -PathType Leaf) {
+        Assert-True -Name 'a 64-bit image is recognised as x64' `
+            -Condition ((Get-NodePilotPeArchitecture -Path $system32Cmd) -eq 'x64')
+    }
+    $wow64Cmd = Join-Path $env:WINDIR 'SysWOW64\cmd.exe'
+    if (Test-Path -LiteralPath $wow64Cmd -PathType Leaf) {
+        Assert-True -Name 'a 32-bit image is recognised as x86' `
+            -Condition ((Get-NodePilotPeArchitecture -Path $wow64Cmd) -eq 'x86')
+    }
+    # Anything that is not a PE image must answer "no idea" rather than throw: the classifier runs
+    # over whatever happens to sit at a dotnet.exe path, and a throw here would take the whole
+    # readiness page with it. One fixture per guard, because a single short junk file would satisfy
+    # all three assertions on the length check alone and prove nothing about the other two.
+    $truncated = Join-Path $workingDirectory 'truncated-image.bin'
+    [IO.File]::WriteAllBytes($truncated, [byte[]](1, 2, 3, 4, 5, 6, 7, 8))
+    Assert-True -Name 'a file too short to hold a PE header classifies as unknown' `
+        -Condition ($null -eq (Get-NodePilotPeArchitecture -Path $truncated))
+
+    # 512 bytes of 0x41: the header offset at 0x3C reads as 0x41414141, far past the end of the file.
+    $outOfBounds = Join-Path $workingDirectory 'out-of-bounds-image.bin'
+    [IO.File]::WriteAllBytes($outOfBounds, ([byte[]](, 0x41 * 512)))
+    Assert-True -Name 'a PE header offset pointing past the file classifies as unknown' `
+        -Condition ($null -eq (Get-NodePilotPeArchitecture -Path $outOfBounds))
+
+    # A well-formed offset that leads to something which is not the PE signature.
+    $bogusSignature = [byte[]]::new(512)
+    $bogusSignature[0x3C] = 0x80
+    [Array]::Copy([Text.Encoding]::ASCII.GetBytes('NOPE'), 0, $bogusSignature, 0x80, 4)
+    $notAnImage = Join-Path $workingDirectory 'not-an-image.bin'
+    [IO.File]::WriteAllBytes($notAnImage, $bogusSignature)
+    Assert-True -Name 'a file without the PE signature classifies as unknown rather than guessing' `
+        -Condition ($null -eq (Get-NodePilotPeArchitecture -Path $notAnImage))
+
+    Assert-True -Name 'a path that does not exist classifies as unknown rather than throwing' `
+        -Condition ($null -eq (Get-NodePilotPeArchitecture -Path (Join-Path $workingDirectory 'no-such-host.exe')))
+
+    # The verdict is a pure function of the discovered state, which is what makes these four rows
+    # assertable on any machine regardless of what it happens to have installed.
+    $x64WithTen = [pscustomobject]@{
+        X64Path           = 'C:\Program Files\dotnet\dotnet.exe'
+        Runtimes          = @('Microsoft.NETCore.App 10.0.8 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]',
+                              'Microsoft.AspNetCore.App 10.0.8 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]')
+        OtherPath         = $null
+        OtherArchitecture = ''
+    }
+    $green = Test-NodePilotDotNetRuntime -State $x64WithTen
+    Assert-True -Name 'a 64-bit host carrying ASP.NET Core 10 passes' -Condition ($green.Status -eq 'Pass')
+    # Which host answered is the one fact that makes a disputed row resolvable from a screenshot.
+    Assert-True -Name 'the passing row names the host it asked' `
+        -Condition ($green.Detail -match 'Program Files\\dotnet' -and $green.Detail -match 'x64')
+
+    $x64WithoutTen = [pscustomobject]@{
+        X64Path           = 'C:\Program Files\dotnet\dotnet.exe'
+        Runtimes          = @('Microsoft.AspNetCore.App 8.0.27 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]')
+        OtherPath         = $null
+        OtherArchitecture = ''
+    }
+    $oldOnly = Test-NodePilotDotNetRuntime -State $x64WithoutTen
+    Assert-True -Name 'a 64-bit host without the 10.x runtime is a required failure' `
+        -Condition ($oldOnly.Status -eq 'Fail' -and $oldOnly.Required)
+    Assert-True -Name 'a missing 10.x runtime is offered for installation' `
+        -Condition ($oldOnly.CanAutoFix -and $oldOnly.AutoFixLabel -match 'bundled ASP.NET Core 10 runtime')
+
+    # THE case this change exists for. It used to be green.
+    $x86Only = [pscustomobject]@{
+        X64Path           = $null
+        Runtimes          = @()
+        OtherPath         = 'C:\Program Files (x86)\dotnet\dotnet.exe'
+        OtherArchitecture = 'x86'
+    }
+    $wrongBitness = Test-NodePilotDotNetRuntime -State $x86Only
+    Assert-True -Name 'a 32-bit-only .NET installation is a required failure, not a pass' `
+        -Condition ($wrongBitness.Status -eq 'Fail' -and $wrongBitness.Required)
+    Assert-True -Name 'the bundled x64 runtime is offered as the fix for wrong bitness' `
+        -Condition ($wrongBitness.CanAutoFix -and $wrongBitness.AutoFixLabel -match 'bundled ASP.NET Core 10 runtime')
+    # "not found on PATH" in front of an operator who can see dotnet on PATH is the misdiagnosis this
+    # replaces, so the wording is part of the contract, not decoration.
+    Assert-True -Name 'the wrong-bitness row says what was found and why it does not count' `
+        -Condition ($wrongBitness.Detail -match '32-bit' -and
+                    $wrongBitness.Detail -match '64-bit application' -and
+                    $wrongBitness.Detail -match 'Program Files \(x86\)')
+    Assert-True -Name 'the wrong-bitness row must not claim nothing was found' `
+        -Condition ($wrongBitness.Detail -notmatch 'not found' -and $wrongBitness.AbortMessage -notmatch 'not found on PATH')
+    # An unattended install renders no page, so the same distinction has to survive into the abort.
+    Assert-True -Name 'an unattended install aborts on wrong bitness with the same reason' `
+        -Condition ($wrongBitness.AbortMessage -match '32-bit' -and $wrongBitness.AbortMessage -match '64-bit ASP.NET Core 10')
+
+    $nothing = [pscustomobject]@{ X64Path = $null; Runtimes = @(); OtherPath = $null; OtherArchitecture = '' }
+    $absent = Test-NodePilotDotNetRuntime -State $nothing
+    Assert-True -Name 'no .NET host at all is a required failure' `
+        -Condition ($absent.Status -eq 'Fail' -and $absent.Required)
+    Assert-True -Name 'no .NET host at all still reads as nothing found' `
+        -Condition ($absent.Detail -match 'not found' -and $absent.Detail -notmatch '32-bit')
+
     # --- listen ports -------------------------------------------------------------------------
     # The defect this covers cost three minutes of silence on the lab host: Kestrel could not bind
     # port 80 - reserved by HTTP.SYS because IIS runs there - so the service crashed on startup,

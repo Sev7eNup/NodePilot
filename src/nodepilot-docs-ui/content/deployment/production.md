@@ -48,7 +48,7 @@ abbrechen lässt — behoben ab CU1. Der Installer prüft den Patchstand im Pref
 - Windows Server 2022 oder 2025
 - Domain-Mitgliedschaft
 - PowerShell 5.1 oder PowerShell 7
-- ASP.NET Core Runtime 10 (x64) — die reine Runtime genügt, Kestrel hostet selbst; das Hosting Bundle nur bei bewusstem IIS-Einsatz (es konfiguriert IIS um und startet W3SVC neu)
+- ASP.NET Core Runtime 10 (x64) — die reine Runtime genügt, Kestrel hostet selbst; das Hosting Bundle nur bei bewusstem IIS-Einsatz (es konfiguriert IIS um und startet W3SVC neu). Das `(x64)` ist verbindlich: NodePilot wird als `win-x64` ausgeliefert, eine 32-Bit-Runtime kann den Dienst nicht starten, und der Preflight weist sie mit Pfad und Architektur zurück
 - Netzwerkzugriff zur Datenbank
 - TLS-Zertifikat mit privatem Schlüssel in `LocalMachine\My`
 - Lokale Administratorrechte für die Installation
