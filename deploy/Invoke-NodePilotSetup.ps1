@@ -638,8 +638,13 @@ function Invoke-SetupInstall {
     # 6>&1 because every operator-visible line in the installer is Write-Host, i.e. the
     # information stream. The same pass that logs a line also translates it into progress - the
     # installer announces each phase it enters, so nothing there had to change.
+    #
+    # The line is NOT written out again here. Write-Host reaches the host - and therefore the
+    # transcript - whether or not the information stream is redirected, so re-emitting it wrote
+    # every line into nodepilot-server-setup.log twice. Reading a doubled log is worse than
+    # reading a short one: it invites the question of whether the installer did the thing twice.
     & (Join-Path $scriptDirectory 'Install-NodePilot.ps1') @splat 6>&1 |
-        ForEach-Object { Write-NodePilotPhaseProgress -Line $_; Write-Host $_ }
+        ForEach-Object { Write-NodePilotPhaseProgress -Line $_ }
 
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'url' -Value (
         'https://{0}:{1}/' -f $answers['network.publicHostname'], $answers['network.httpsPort'])
@@ -725,8 +730,10 @@ function Invoke-SetupUpdate {
     if ($answers.Contains('dataPath') -and $answers['dataPath']) {
         $splat['DataPath'] = [string]$answers['dataPath']
     }
+    # Not re-emitted, for the same reason as the install path above: Write-Host has already
+    # reached the transcript, and writing it again doubles every line of the log.
     & (Join-Path $scriptDirectory 'Update-NodePilot.ps1') @splat 6>&1 |
-        ForEach-Object { Write-NodePilotPhaseProgress -Line $_; Write-Host $_ }
+        ForEach-Object { Write-NodePilotPhaseProgress -Line $_ }
 
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'installPath' -Value $splat['InstallPath']
     Set-NodePilotResult -Buffer $result -Section 'result' -Name 'serviceName' -Value $splat['ServiceName']
