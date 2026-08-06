@@ -1,7 +1,7 @@
 {
   "name": "nodepilot-desktop",
   "productName": "NodePilot",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "NodePilot desktop shell — a thin Electron viewer for the locally-hosted NodePilot backend.",
   "private": true,
   "license": "Apache-2.0",

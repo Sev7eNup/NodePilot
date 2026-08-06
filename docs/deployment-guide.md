@@ -76,7 +76,9 @@ skip the `Root` imports.
 > **Shortcut: the GUI setup.** `NodePilot-Server-Setup-<version>.exe` performs exactly the
 > installation described below, driven by a wizard. It bundles the signed artifact and the ASP.NET
 > Core runtime, checks every prerequisite before it changes anything, and can create the SQL login
-> and database for you if your account may. For the Kestrel certificate it asks only for the
+> and database for you if your account may. Step 1 below - trusting the publisher - is one of the
+> checks: the wizard reports whether this machine already trusts `CN=NodePilot Release Signing`,
+> shows you the thumbprint, and offers to import it into `LocalMachine\Root` for you. For the Kestrel certificate it asks only for the
 > thumbprint and offers the machine store's certificates in a list below the field, so a PKI
 > certificate from your own CA needs importing and picking, nothing typed. Leaving the field empty
 > is allowed and means "I have none yet": the prerequisite page then offers to create a self-signed
@@ -118,7 +120,7 @@ Verify the download, then trust the publisher on the target server:
 
 ```powershell
 # 1. Checksums (compare against SHA256SUMS.txt)
-Get-FileHash .\NodePilot-1.1.1.zip -Algorithm SHA256 | Format-List
+Get-FileHash .\NodePilot-1.1.2.zip -Algorithm SHA256 | Format-List
 
 # 2. The certificate you are about to trust is the one named in the release notes
 (Get-PfxCertificate .\nodepilot-release-signing.cer).Thumbprint
@@ -164,12 +166,12 @@ when you want something else:
 
 Copy **four files** to the target server (e.g. `C:\Temp`):
 
-- `out\NodePilot-1.1.1.zip`
-- `out\NodePilot-1.1.1.zip.manifest.json`
-- `out\NodePilot-1.1.1.zip.manifest.json.p7s`
+- `out\NodePilot-1.1.2.zip`
+- `out\NodePilot-1.1.2.zip.manifest.json`
+- `out\NodePilot-1.1.2.zip.manifest.json.p7s`
 - `nodepilot-signer.cer`
 
-`out\NodePilot-1.1.1.SHA256SUMS.txt` covers everything the run produced, if you want to verify the
+`out\NodePilot-1.1.2.SHA256SUMS.txt` covers everything the run produced, if you want to verify the
 transfer.
 
 plus the `deploy\` folder itself (`Install-NodePilot.ps1` + `ArtifactSecurity.ps1`).
@@ -357,7 +359,7 @@ Logs: `C:\ProgramData\NodePilot\logs\` (CMTrace-formatted). Firewall rule:
 
 ```powershell
 .\Update-NodePilot.ps1 `
-    -ArtifactPath C:\Temp\NodePilot-1.1.1.zip `
+    -ArtifactPath C:\Temp\NodePilot-1.1.2.zip `
     -TrustedArtifactSignerThumbprint '<signer thumbprint>'
 ```
 

@@ -164,14 +164,14 @@ $releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
 Ergebnis:
 
 ```text
-out\NodePilot-1.1.1.zip
-out\NodePilot-1.1.1.zip.manifest.json
-out\NodePilot-1.1.1.zip.manifest.json.p7s
-out\NodePilot-1.1.1.SHA256SUMS.txt
+out\NodePilot-1.1.2.zip
+out\NodePilot-1.1.2.zip.manifest.json
+out\NodePilot-1.1.2.zip.manifest.json.p7s
+out\NodePilot-1.1.2.SHA256SUMS.txt
 ```
 
-Mit `-IncludeServerInstaller` entsteht im selben Lauf zusätzlich `NodePilot-Server-Setup-1.1.1.exe`,
-mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` außerdem `NodePilot-Desktop-Setup-1.1.1.exe`
+Mit `-IncludeServerInstaller` entsteht im selben Lauf zusätzlich `NodePilot-Server-Setup-1.1.2.exe`,
+mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` außerdem `NodePilot-Desktop-Setup-1.1.2.exe`
 — alles unter derselben Version. `-InstallerSigningCertificateThumbprint <tp>` signiert beide
 Installer als Teil des Laufs, was zwingend vor der Prüfsummenbildung passieren muss.
 
@@ -188,6 +188,12 @@ signierte Artefakt und die ASP.NET-Core-Runtime mit, prüft sämtliche Vorausset
 Kapiteln 1 bis 4 **bevor** es etwas verändert, und zeigt jede als grün, gelb oder rot mit
 kopierbarer Anleitung. Auf Wunsch installiert es die Runtime, legt SQL-Login und Datenbank an oder
 erzeugt ein Laborzertifikat.
+
+Dazu gehört die Vertrauensfrage aus Kapitel 4: Das Setup prüft, ob diese Maschine den Herausgeber
+`CN=NodePilot Release Signing` bereits kennt, nennt den Thumbprint und bietet den Import nach
+`LocalMachine\Root` an — angeboten, nicht vorangehakt, damit der Thumbprint vorher gegen die
+Release-Notes gehalten werden kann. Ohne diese Zeile scheitert die Installation auf einem frischen
+Host mitten im Lauf an der Signaturprüfung des Artefakts und wird zurückgerollt.
 
 Für das Kestrel-Zertifikat verlangt es nur den Thumbprint — und bietet unter dem Eingabefeld die
 Zertifikate aus `Cert:\LocalMachine\My` zur Auswahl an, sortiert nach Ablauf. Das gilt für ein
@@ -228,7 +234,7 @@ leere Instanz zu hinterlassen.
 Unbeaufsichtigt für SCCM oder GPO:
 
 ```powershell
-NodePilot-Server-Setup-1.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+NodePilot-Server-Setup-1.1.2.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
 Ein erneuter Lauf erkennt eine vorhandene Installation und bietet drei Wege an: per Default ein

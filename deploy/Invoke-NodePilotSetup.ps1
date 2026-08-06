@@ -291,6 +291,14 @@ function ConvertTo-NodePilotPreflightParameters {
         HttpsPort             = [int]$Answers['network.httpsPort']
         HttpPort              = [int]$Answers['network.httpPort']
     }
+
+    # The publisher of the artifact this setup carries. Only the setup can answer this - it holds
+    # both the certificate and the thumbprint it was built against - and it is the one requirement
+    # whose failure used to arrive AFTER the readiness page, as a rolled-back installation.
+    if ($PayloadRoot) {
+        $splat['ArtifactSignerCertificatePath'] = Get-NodePilotSignerCertificatePath
+        $splat['ExpectedSignerThumbprint'] = [string]$TrustedArtifactSignerThumbprint
+    }
     if ($splat['IsLocalSystem']) {
         $splat['ComputerAccount'] = "$env:USERDOMAIN\$env:COMPUTERNAME`$"
         $splat['SqlPrincipal'] = $splat['ComputerAccount']
@@ -380,8 +388,21 @@ function Invoke-ProvisionRuntime {
         })
 }
 
+function Get-NodePilotSignerCertificatePath {
+    <#
+      One definition, because there are now two readers: the readiness check that reports whether
+      this machine trusts the publisher, and the fix that makes it. They drifted once already -
+      this function used to look under 'signer\', a folder the build never creates. Every payload
+      file is extracted flat into {tmp} ([Files] uses dontcopy without recursesubdirs), so the
+      certificate sits directly in PayloadRoot, and the fix reported "no publisher certificate
+      found in the payload" for a file that was right there.
+    #>
+    if (-not $PayloadRoot) { return '' }
+    return (Join-Path $PayloadRoot 'nodepilot-release-signing.cer')
+}
+
 function Invoke-ProvisionSigner {
-    $certificateFile = Join-Path $PayloadRoot 'signer\nodepilot-release-signing.cer'
+    $certificateFile = Get-NodePilotSignerCertificatePath
     if (-not (Test-Path -LiteralPath $certificateFile -PathType Leaf)) {
         Set-NodePilotResult -Buffer $result -Section 'provision.signer' -Name 'status' -Value 'Fail'
         Set-NodePilotResult -Buffer $result -Section 'provision.signer' -Name 'detail' `
@@ -594,6 +615,16 @@ function Invoke-SetupInstall {
                 $splat['CertThumbprint'] = $generated[0].Matches[0].Groups[1].Value
             }
         }
+    }
+
+    # Still nothing: an answer file that left the field empty and asked for no certificate to be
+    # created. Said here, where both halves of the choice can be named. Left alone it binds an
+    # empty string to a mandatory parameter, and the operator gets PowerShell's wording about
+    # argument binding for a decision they made three pages earlier.
+    if ($splat['CertThumbprint'] -notmatch '^[0-9A-Fa-f]{40}$') {
+        throw ('No TLS certificate to install with. Either name one in certificate.thumbprint, or ' +
+               'set provisioning.generateSelfSignedCertificate to have a self-signed one created ' +
+               'first. Kestrel terminates TLS itself and will not start without a certificate.')
     }
 
     $splat['ArtifactPath'] = $ArtifactPath

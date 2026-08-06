@@ -54,7 +54,7 @@ Zielserver. Den Zugriff auf den privaten Schlüssel des Zertifikats erledigt der
 | 6a | SQL Server | Server, Datenbank, Zertifikats-Hostname (leer = wird aus dem Server abgeleitet) |
 | 6b | PostgreSQL | Host/Port/Datenbank, dann User, Passwort, Root-Zertifikat — optional Superuser + Passwort, damit Rolle und Datenbank angelegt werden können |
 | 7 | Netzwerk und TLS | Public-Hostname, HTTPS-Port, HTTP-Port (**`0`** = kein Redirect), Allowed Hosts, Thumbprint — die Liste darunter füllt das Feld, **leer** heißt „habe ich noch nicht" |
-| 8 | Prerequisites | neun Prüfzeilen; rote Pflicht-Zeilen sperren „Weiter". Wo eine Checkbox erscheint: anhaken, „Weiter" führt den Fix aus und **prüft neu** |
+| 8 | Prerequisites | zehn Prüfzeilen; rote Pflicht-Zeilen sperren „Weiter". Wo eine Checkbox erscheint: anhaken, „Weiter" führt den Fix aus und **prüft neu** |
 | 9 | Installation | läuft mit Fortschritt und Phasentext, 2–3 Minuten |
 | 10 | Abschluss | URL, Zugangsdaten bzw. Setup-Token, Pfade, Zertifikat — und der **External-Trigger-API-Key, der nur hier steht** |
 
@@ -125,6 +125,16 @@ führt den Fix aus und **prüft danach neu** — ein Fix gilt nie als gelungen, 
 ist. Der Haken ist mit dem Versuch verbraucht: er wird danach gelöscht, sonst hinge ein
 dauerhaft scheiternder Fix (typisch: keine Rechte am SQL Server) in einer Schleife aus „Weiter →
 gleiche rote Zeile".
+
+**Herausgeber-Vertrauen** ist die Zeile, die am ehesten rot ist und am wenigsten damit zu tun hat,
+was jemand konfiguriert hat: `Install-NodePilot.ps1` prüft die Signatur des mitgebrachten Artefakts
+**samt Zertifikatskette**, und `CN=NodePilot Release Signing` ist selbstsigniert. Auf einem Host,
+der ihn nicht kennt, scheitert das — und zwar erst mitten in der Installation, mit Rollback. Die
+Zeile nimmt das vorweg und bietet den Import nach `LocalMachine\Root` an: angeboten, **nicht**
+vorangehakt, und der Thumbprint steht in der Meldung, damit er vor dem Haken gegen die
+Release-Notes gehalten werden kann. Passt das Zertifikat im Payload nicht zu dem Thumbprint, gegen
+den das Setup gebaut wurde, verschwindet das Angebot ersatzlos — ein Knopf, der eine fremde CA
+maschinenweit vertrauenswürdig macht, wäre schlimmer als eine verweigerte Installation.
 
 Ein leeres Thumbprint-Feld ist der Weg zu genau einem dieser Fixes: die Zertifikatszeile meldet
 dann „No certificate selected" statt eines nicht gefundenen Thumbprints und bietet die Erzeugung
@@ -434,7 +444,7 @@ gar nichts — ein Parser in Pascal wären ~120 Zeilen, die kein Test erreicht.
 ## Unbeaufsichtigt (SCCM, GPO)
 
 ```powershell
-NodePilot-Server-Setup-1.1.1.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+NodePilot-Server-Setup-1.1.2.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
 | Schalter | Wirkung |
@@ -481,6 +491,9 @@ in der Installation zuschlägt.
 `identity.type` ist `localSystem` oder `gmsa` (dann ist `identity.account` Pflicht).
 `database.provider` ist `sqlserver` (dann `sqlServer` + `sqlDatabase`) oder `postgres` (dann
 `postgresHost`, `postgresDatabase`, `postgresUser`, `postgresPassword`, `postgresRootCertificate`).
+`certificate.thumbprint` ist der einzige Pflichtschlüssel, der **leer** sein darf: leer heißt „noch
+keins vorhanden" und verlangt dann `provisioning.generateSelfSignedCertificate`. Steht etwas drin,
+müssen es 40 Hex-Zeichen sein — sonst bricht der Lauf hier ab statt später in der Kestrel-Config.
 Für `"mode": "update"` genügen `installPath` und `serviceName`; jeder weitere Schlüssel wird
 abgelehnt, damit eine veraltete Datei nicht halb angewendet wird.
 
@@ -609,7 +622,7 @@ Uninstaller **benennt** sie am Ende namentlich.
 ```powershell
 # Einzeln:
 .\deploy\server\Build-ServerInstaller.ps1 `
-    -ArtifactPath .\out\NodePilot-1.1.1.zip `
+    -ArtifactPath .\out\NodePilot-1.1.2.zip `
     -TrustedSignerThumbprint 277EAB317A581C88302CE92BE805938C86B4650D
 
 # Als Teil des Release-Builds (empfohlen — signiert und in SHA256SUMS):
@@ -734,11 +747,31 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 38 | Fehlschlag **nach** dem ACL-Schritt | Rollback stellt Dienst **und** Verzeichnis-ACL wieder her, die vorherige Installation läuft weiter |
 | 39 | Thumbprint-Feld leer gelassen | „Weiter" führt auf die Prüfseite, Zeile rot mit „No certificate selected" + **nicht** vorangehaktem Angebot; Haken + „Weiter" erzeugt eins, schreibt den Thumbprint ins Feld zurück, Neuprüfung grün |
 | 40 | Feld mit 12 Zeichen gefüllt | Meldung „40 hexadecimal characters", Seite bleibt stehen |
+| 41 | Host, der den Herausgeber nicht kennt | Zeile „Artifact publisher trusted" rot mit Thumbprint in der Meldung und **nicht** vorangehaktem Angebot; Haken + „Weiter" importiert nach `LocalMachine\Root`, Neuprüfung grün, Installation läuft durch |
+| 42 | Derselbe Host nach dem Import | Zeile grün ohne Checkbox, nichts wird verändert |
 
 Stand: 1, 3, 5, 9, 10, 22, 23, 30, 37 und 38 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und
-SQL Server 2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29, 31 bis 36 sowie 39/40 nicht —
+SQL Server 2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29, 31 bis 36 sowie 39 bis 42 nicht —
 wobei die **Logik** hinter 33 bis 35 gegen einen echten PostgreSQL 16 mit TLS gefahren wurde (siehe
 unten); was dort fehlt, ist die Seite.
+
+Zusatz 2026-08-06 (zweiter Befund): Auf einem frischen Host waren **alle** Zeilen grün und die
+Installation brach danach mit Exit 4 und Rollback ab — `CheckSignature` scheiterte an der Kette des
+selbstsignierten Herausgebers. Die Prüfseite kannte diese Anforderung schlicht nicht (neun IDs,
+keine davon `signer`), und der Fix, der seit jeher im Adapter liegt, war im Wizard hart auf `false`
+verdrahtet. Dazu ein zweiter, unabhängiger Fehler: `Invoke-ProvisionSigner` suchte die `.cer` unter
+`signer\` — ein Ordner, den der Build nie anlegt, weil `[Files]` mit `dontcopy` **ohne**
+`recursesubdirs` alles flach nach `{tmp}` legt. Der Auto-Fix hätte also auch dann nichts gefunden,
+wenn man ihn über die Answer-File angefordert hätte. Beides behoben; die Zeilen 41/42 unten decken
+den Fall ab und sind **noch nicht** geklickt.
+
+Zusatz 2026-08-06: Zeile 39 ist im Feld aufgeschlagen — leeres Feld, und der Probe-Lauf starb mit
+„Answer file is missing required key 'certificate.thumbprint'", weil die Vertragsprüfung Pflicht mit
+nicht-leer gleichsetzte. Behoben; danach mit einer echten Answer-File (leerer Thumbprint) gegen
+`-Mode Probe` nachgestellt: Exit 2 (`ExitProbeFailed`, die erwartete Antwort für eine rote
+Pflicht-Zeile), `check.certificate` meldet „No certificate selected" mit `canAutoFix=1` und
+`autoFixDefault=0`. Was damit **noch nicht** geklickt ist: der Haken selbst und das Zurückschreiben
+des erzeugten Thumbprints in das Feld — also die zweite Hälfte von Zeile 39.
 
 Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
 `httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,
