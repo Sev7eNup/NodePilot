@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Controllers;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
 using NodePilot.Engine;

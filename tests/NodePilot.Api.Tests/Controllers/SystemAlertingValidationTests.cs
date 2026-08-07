@@ -14,6 +14,7 @@ using NodePilot.Data.Security;
 using NodePilot.Scheduler.SystemAlerts;
 using NodePilot.Scheduler.SystemAlerts.Sources;
 using NodePilot.TestCommons;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;

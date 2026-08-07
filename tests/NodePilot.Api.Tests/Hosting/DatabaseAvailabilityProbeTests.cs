@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Hosting;
 using NodePilot.Data.Availability;
+using NodePilot.TestCommons;
 using Npgsql;
 using Xunit;
 
@@ -527,21 +528,5 @@ public sealed class DatabaseAvailabilityProbeTests
                     return;
             }
         }
-    }
-
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        private readonly ConcurrentQueue<(LogLevel Level, string Message)> _entries = new();
-        public IReadOnlyCollection<(LogLevel Level, string Message)> Entries => _entries.ToArray();
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter) =>
-            _entries.Enqueue((logLevel, formatter(state, exception)));
     }
 }

@@ -12,6 +12,7 @@ using NodePilot.Api.Security;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
 using NodePilot.TestCommons;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;

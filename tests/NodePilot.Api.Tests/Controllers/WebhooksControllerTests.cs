@@ -14,6 +14,7 @@ using NodePilot.Api.Security;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Security;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;
@@ -49,13 +50,13 @@ public class WebhooksControllerTests
             scopeFactory,
             new OutputRedactor(config),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             NullLogger<ExecutionDispatchService>.Instance);
 
         var controller = new WebhooksController(
             db, dispatchService, NullLogger<WebhooksController>.Instance, config,
             audit ?? NoopAuditWriter.Instance,
-            maintenance ?? NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll);
+            maintenance ?? NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll);
 
         var httpCtx = new DefaultHttpContext();
         httpCtx.Request.Method = method;
@@ -116,7 +117,7 @@ public class WebhooksControllerTests
         // gate; the window then blocks and we expect the uniform hidden 404 (anti-enumeration).
         var controller = CreateController(db, body: "{}",
             headers: new Dictionary<string, string> { ["X-Webhook-Secret"] = "s3cret" },
-            maintenance: NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.Blocking("PatchWindow"));
+            maintenance: NodePilot.TestCommons.StubMaintenanceWindowEvaluator.Blocking("PatchWindow"));
 
         var result = await controller.Hit("Gated", "hook", CancellationToken.None);
 

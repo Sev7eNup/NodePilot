@@ -11,6 +11,7 @@ using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -57,11 +58,6 @@ public sealed class AuthControllerExtraTests : IDisposable
         };
         if (extra is not null) foreach (var kv in extra) dict[kv.Key] = kv.Value;
         return new ConfigurationBuilder().AddInMemoryCollection(dict).Build();
-    }
-
-    private sealed class TestJwtKeyProvider : IJwtKeyProvider
-    {
-        public string Key => "NodePilot-Test-Secret-Key-Minimum-32-Characters!";
     }
 
     private DefaultHttpContext HttpCtx(string? setupToken = null, ClaimsPrincipal? user = null)

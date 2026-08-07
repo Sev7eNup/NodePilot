@@ -11,6 +11,7 @@ using NodePilot.Data;
 using NodePilot.Data.Security;
 using NodePilot.Engine.Cluster;
 using NodePilot.Scheduler;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Notifications;
@@ -27,17 +28,6 @@ public class NotificationLongRunningTests
         var k = new byte[32];
         for (var i = 0; i < k.Length; i++) k[i] = (byte)(i + 3);
         return k;
-    }
-
-    private sealed class RecordingSink(NotificationChannel channel) : INotificationSink
-    {
-        public NotificationChannel Channel { get; } = channel;
-        public List<NotificationContext> Sends { get; } = [];
-        public Task<NotificationSendResult> SendAsync(NotificationContext ctx, string target, string? secret, CancellationToken ct)
-        {
-            Sends.Add(ctx);
-            return Task.FromResult(NotificationSendResult.Ok);
-        }
     }
 
     private static (NodePilotDbContext db, IServiceScopeFactory factory, SqliteConnection conn) CreateEnv()
@@ -121,9 +111,9 @@ public class NotificationLongRunningTests
             await dispatcher.DispatchOnceAsync(CancellationToken.None); // still running → existence-check dedups
 
             email.Sends.Should().ContainSingle("one alert per running execution, deduped across passes");
-            email.Sends[0].EventType.Should().Be(NotificationEventType.ExecutionRunningLong);
-            email.Sends[0].EventKey.Should().Be($"runlong:{execId:N}");
-            email.Sends[0].DurationMs.Should().BeGreaterThan(0);
+            email.Sends[0].ctx.EventType.Should().Be(NotificationEventType.ExecutionRunningLong);
+            email.Sends[0].ctx.EventKey.Should().Be($"runlong:{execId:N}");
+            email.Sends[0].ctx.DurationMs.Should().BeGreaterThan(0);
         }
         finally { conn.Dispose(); }
     }
@@ -199,7 +189,7 @@ public class NotificationLongRunningTests
             await Build(factory, TimeSpan.FromSeconds(60), email).DispatchOnceAsync(CancellationToken.None);
 
             email.Sends.Should().ContainSingle("only the in-scope workflow's long-runner alerts");
-            email.Sends[0].WorkflowName.Should().Be("A");
+            email.Sends[0].ctx.WorkflowName.Should().Be("A");
         }
         finally { conn.Dispose(); }
     }
@@ -254,9 +244,9 @@ public class NotificationLongRunningTests
             await dispatcher.DispatchOnceAsync(CancellationToken.None);
 
             email.Sends.Should().ContainSingle("one alert per pending execution, deduped across passes");
-            email.Sends[0].EventType.Should().Be(NotificationEventType.ExecutionQueuedLong);
-            email.Sends[0].EventKey.Should().Be($"queuedlong:{execId:N}");
-            email.Sends[0].Status.Should().Be("Pending");
+            email.Sends[0].ctx.EventType.Should().Be(NotificationEventType.ExecutionQueuedLong);
+            email.Sends[0].ctx.EventKey.Should().Be($"queuedlong:{execId:N}");
+            email.Sends[0].ctx.Status.Should().Be("Pending");
         }
         finally { conn.Dispose(); }
     }
@@ -277,7 +267,7 @@ public class NotificationLongRunningTests
             await Build(factory, TimeSpan.FromSeconds(60), email).DispatchOnceAsync(CancellationToken.None);
 
             email.Sends.Should().ContainSingle("only the in-scope workflow's queued execution alerts");
-            email.Sends[0].WorkflowName.Should().Be("A");
+            email.Sends[0].ctx.WorkflowName.Should().Be("A");
         }
         finally { conn.Dispose(); }
     }

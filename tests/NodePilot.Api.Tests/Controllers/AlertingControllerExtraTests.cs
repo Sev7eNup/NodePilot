@@ -11,6 +11,7 @@ using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Data.Security;
 using NodePilot.TestCommons;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;
@@ -27,13 +28,6 @@ public class AlertingControllerExtraTests
         var k = new byte[32];
         for (var i = 0; i < k.Length; i++) k[i] = (byte)(i + 11);
         return k;
-    }
-
-    private sealed class RecordingSink(NotificationChannel channel) : INotificationSink
-    {
-        public NotificationChannel Channel { get; } = channel;
-        public Task<NotificationSendResult> SendAsync(NotificationContext ctx, string target, string? secret, CancellationToken ct)
-            => Task.FromResult(NotificationSendResult.Ok);
     }
 
     private static AlertingController NewController(NodePilotDbContext db, NotificationRuleStore store, bool withSinks)

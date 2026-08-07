@@ -14,6 +14,7 @@ using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Api.Security.Ldap;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
@@ -84,21 +85,6 @@ public sealed class AuthControllerLdapTests : IDisposable
 
     private const string TestSecret = "NodePilot-Test-Secret-Key-Minimum-32-Characters!";
 
-    private sealed class FakeAdapter : ILdapConnectionAdapter
-    {
-        public LdapAuthResult? Result { get; set; }
-        public bool ThrowInfra { get; set; }
-        public Exception? ExceptionToThrow { get; set; }
-        public int Calls { get; private set; }
-        public Task<LdapAuthResult?> AuthenticateAsync(string upn, string password, CancellationToken ct)
-        {
-            Calls++;
-            if (ExceptionToThrow is not null) throw ExceptionToThrow;
-            if (ThrowInfra) throw new LdapInfrastructureException("simulated DC offline");
-            return Task.FromResult(Result);
-        }
-    }
-
     private sealed class SlowRejectingAdapter : ILdapConnectionAdapter
     {
         private int _calls;
@@ -110,11 +96,6 @@ public sealed class AuthControllerLdapTests : IDisposable
             await Task.Delay(100, ct);
             return null;
         }
-    }
-
-    private sealed class TestJwtKeyProvider : IJwtKeyProvider
-    {
-        public string Key => TestSecret;
     }
 
     private static IConfiguration NewConfig() => new ConfigurationBuilder()
@@ -138,7 +119,7 @@ public sealed class AuthControllerLdapTests : IDisposable
         ],
     };
 
-    private (AuthController controller, FakeAdapter adapter) NewController(
+    private (AuthController controller, FakeLdapConnectionAdapter adapter) NewController(
         LdapOptions? options = null, CapturingAuditWriter? audit = null)
     {
         var cfg = NewConfig();
@@ -147,7 +128,7 @@ public sealed class AuthControllerLdapTests : IDisposable
         var issuer = new AuthSessionIssuer(cfg, key, auditWriter);
 
         var optsMonitor = new StaticOptionsMonitor<LdapOptions>(options ?? EnabledOptions());
-        var adapter = new FakeAdapter();
+        var adapter = new FakeLdapConnectionAdapter();
         var breaker = new LdapCircuitBreaker();
         var ldapAuth = new LdapAuthenticator(optsMonitor, adapter, breaker, NullLogger<LdapAuthenticator>.Instance);
         var mapper = new ExternalUserMapper(_db, optsMonitor, auditWriter,

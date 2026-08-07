@@ -5,6 +5,7 @@ using Moq;
 using NodePilot.Api.Security;
 using NodePilot.Api.Security.Oidc;
 using NodePilot.Api.Security.Scim;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
@@ -210,13 +211,4 @@ public sealed class ScimProvisioningServiceTests : IDisposable
         auditStager ?? new AuditStager(),
         workflowEngine: workflowEngine);
 
-    private sealed class ThrowingAuditStager : IAuditStager
-    {
-        public AuditLogEntry Build(
-            string action,
-            AuditActor actor,
-            string? resourceType = null,
-            Guid? resourceId = null,
-            string? details = null) => throw new InvalidOperationException("audit staging failed");
-    }
 }

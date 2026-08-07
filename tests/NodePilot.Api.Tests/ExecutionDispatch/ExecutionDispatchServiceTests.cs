@@ -83,7 +83,7 @@ public class ExecutionDispatchServiceTests
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             cluster,
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
 
         var startedBy = Guid.NewGuid();
@@ -133,7 +133,7 @@ public class ExecutionDispatchServiceTests
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
 
         using var cancelledRequest = new CancellationTokenSource();
@@ -196,7 +196,7 @@ public class ExecutionDispatchServiceTests
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
 
         await service.EnqueueAsync(
@@ -244,7 +244,7 @@ public class ExecutionDispatchServiceTests
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
 
         WorkflowDispatchSuppression? suppression = null;
@@ -345,7 +345,7 @@ public class ExecutionDispatchServiceTests
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
 
         await service.EnqueueAsync(
@@ -418,7 +418,7 @@ public class ExecutionDispatchServiceTests
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             NullLogger<ExecutionDispatchService>.Instance,
             availability);
         var worker = new ExecutionDispatchWorker(
@@ -503,7 +503,7 @@ public class ExecutionDispatchServiceTests
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             NullLogger<ExecutionDispatchService>.Instance,
             availability);
         var worker = new ExecutionDispatchWorker(

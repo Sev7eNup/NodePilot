@@ -7,6 +7,7 @@ using NodePilot.Api.Dtos;
 using NodePilot.Core.Models;
 using NodePilot.TestCommons;
 using Serilog.Events;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;

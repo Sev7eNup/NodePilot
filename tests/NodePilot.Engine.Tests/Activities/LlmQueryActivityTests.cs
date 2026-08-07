@@ -228,9 +228,4 @@ public sealed class LlmQueryActivityTests
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("No active LLM profile");
     }
-
-    private sealed class StubHttpClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new();
-    }
 }

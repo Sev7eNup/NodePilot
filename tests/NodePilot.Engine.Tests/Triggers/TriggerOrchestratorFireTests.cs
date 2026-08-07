@@ -13,6 +13,7 @@ using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Data.Availability;
 using NodePilot.Scheduler;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Triggers;
@@ -30,7 +31,7 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
     private readonly NodePilotDbContext _db;
     private readonly ServiceProvider _services;
     private readonly RecordingDispatcher _dispatcher = new();
-    private readonly StubMaintenanceEvaluator _maintenance = new();
+    private readonly StubMaintenanceWindowEvaluator _maintenance = new();
 
     public TriggerOrchestratorFireTests()
     {
@@ -260,24 +261,6 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
                 TriggeredBy = intent.TriggeredBy,
             });
         }
-    }
-
-    private sealed class StubMaintenanceEvaluator : IMaintenanceWindowEvaluator
-    {
-        public MaintenanceEvaluation Verdict { get; set; } = MaintenanceEvaluation.Allowed;
-
-        public Action? OnEvaluate { get; set; }
-
-        public MaintenanceEvaluation Evaluate(Guid workflowId, Guid folderId, DateTime nowUtc)
-        {
-            OnEvaluate?.Invoke();
-            return Verdict;
-        }
-
-        public IReadOnlyList<MaintenanceWindowSummary> GetWindowsAffecting(
-            Guid workflowId, Guid folderId, DateTime nowUtc) => [];
-
-        public Task RefreshAsync(CancellationToken ct) => Task.CompletedTask;
     }
 
     private sealed class FollowerClusterState : IClusterStateProvider

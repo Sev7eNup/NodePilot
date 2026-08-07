@@ -10,6 +10,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Activities;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Activities;
@@ -399,14 +400,4 @@ public sealed class StartWorkflowActivityWaitModeTests : IDisposable
             .ReturnsAsync((Workflow wf, string _, CancellationToken _, Dictionary<string, string>? _,
                            int? _, bool _, Guid? _, Guid? _, int _, Guid? _, bool _) =>
                 new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = wf.Id, Status = ExecutionStatus.Succeeded });
-
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        public readonly List<(LogLevel Level, string Message, Exception? Exception)> Entries = new();
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
-            => Entries.Add((logLevel, formatter(state, exception), exception));
-    }
 }

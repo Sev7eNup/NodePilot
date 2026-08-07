@@ -14,6 +14,7 @@ using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos.Settings;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.Api.Services;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Options;
 using NodePilot.Scheduler.Options;
@@ -54,11 +55,6 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
                 : throw new InvalidOperationException("Unknown blob.");
     }
 
-    private sealed class StubHttpFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new HttpClient();
-    }
-
     private (AdminSettingsController controller, RuntimeOverridesWriter writer, CapturingAuditWriter audit, IConfigurationRoot cfg) NewController(SmtpOptions? initialSmtp = null, LlmOptions? initialLlm = null, RetentionOptions? initialRetention = null, LdapOptions? initialLdap = null, WindowsAuthOptions? initialWindows = null)
     {
         var overridesPath = Path.Combine(_tempDir, "appsettings.runtime.json");
@@ -91,7 +87,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         }
         var cfg = new ConfigurationBuilder().AddInMemoryCollection(configValues).Build();
         var audit = new CapturingAuditWriter();
-        var probe = new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpFactory());
+        var probe = new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpClientFactory());
 
         var controller = new AdminSettingsController(
             writer,
@@ -109,17 +105,6 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             new NoopClusterState());
         controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
         return (controller, writer, audit, cfg);
-    }
-
-    private sealed class NoopClusterState : IClusterStateProvider
-    {
-        public bool IsLeader => true;
-        public string NodeId => "test-node";
-        public DateTime? LeaseExpiresAt => null;
-        public long LeaseEpoch => 0;
-        public DateTime? LastSuccessfulRenewAt => null;
-        public event Action<long>? OnLeadershipAcquired { add { } remove { } }
-        public event Action? OnLeadershipLost           { add { } remove { } }
     }
 
     [Fact]
@@ -920,7 +905,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         try
         {
             // Rebuild the controller against a config root that observes the env-var.
-            var probe = new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpFactory());
+            var probe = new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpClientFactory());
             var envCfg = new ConfigurationBuilder()
                 .AddInMemoryCollection(cfg.AsEnumerable())
                 .AddEnvironmentVariables(envPrefix)

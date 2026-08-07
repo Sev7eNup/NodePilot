@@ -15,6 +15,7 @@ using NodePilot.Data.Security;
 using NodePilot.Scheduler.SystemAlerts;
 using NodePilot.Scheduler.SystemAlerts.Sources;
 using NodePilot.TestCommons;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;
@@ -26,17 +27,6 @@ public class SystemAlertingControllerTests
         var k = new byte[32];
         for (var i = 0; i < k.Length; i++) k[i] = (byte)(i + 5);
         return k;
-    }
-
-    private sealed class RecordingSink(NotificationChannel channel) : INotificationSink
-    {
-        public NotificationChannel Channel { get; } = channel;
-        public List<NotificationContext> Sends { get; } = [];
-        public Task<NotificationSendResult> SendAsync(NotificationContext ctx, string target, string? secret, CancellationToken ct)
-        {
-            Sends.Add(ctx);
-            return Task.FromResult(NotificationSendResult.Ok);
-        }
     }
 
     private static (SystemAlertingController ctrl, NotificationRuleStore store, RecordingSink sink) Build(NodePilotDbContext db)
@@ -237,7 +227,7 @@ public class SystemAlertingControllerTests
             .Subject.Value.Should().BeOfType<TestFireResponse>().Subject;
 
         resp.AllSucceeded.Should().BeTrue();
-        sink.Sends.Should().ContainSingle().Which.EventType.Should().Be(NotificationEventType.SystemAlert);
+        sink.Sends.Should().ContainSingle().Which.ctx.EventType.Should().Be(NotificationEventType.SystemAlert);
         db.NotificationDeliveryAttempts.Should().ContainSingle().Which.IsTest.Should().BeTrue();
     }
 }

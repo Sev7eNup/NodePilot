@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Security.Ldap;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 using NodePilot.TestCommons;
 
@@ -11,7 +12,7 @@ public class LdapAuthenticatorTests
     [Fact]
     public async Task Disabled_ReturnsUnavailable_WithoutCallingAdapter()
     {
-        var adapter = new FakeAdapter();
+        var adapter = new FakeLdapConnectionAdapter();
         var auth = NewAuthenticator(new LdapOptions { Enabled = false }, adapter);
 
         var outcome = await auth.AuthenticateAsync("alice", "pw", default);
@@ -25,7 +26,7 @@ public class LdapAuthenticatorTests
     public async Task Success_ReturnsResult_AndKeepsCircuitClosed()
     {
         var canned = new LdapAuthResult("guid-123", "alice@firma.de", "Alice Example", new[] { "S-1-5-21-1" });
-        var adapter = new FakeAdapter { Result = canned };
+        var adapter = new FakeLdapConnectionAdapter { Result = canned };
         var breaker = new LdapCircuitBreaker(failureThreshold: 2);
         var auth = NewAuthenticator(EnabledOptions(), adapter, breaker);
 
@@ -46,7 +47,7 @@ public class LdapAuthenticatorTests
         // accepts with LDAP_SUCCESS. It must be rejected as invalid credentials BEFORE the
         // adapter's Bind is ever reached — otherwise "knowing a username" bypasses the password.
         // Whitespace-only is folded in as belt-and-suspenders.
-        var adapter = new FakeAdapter { Result = Sample("alice@firma.de") };
+        var adapter = new FakeLdapConnectionAdapter { Result = Sample("alice@firma.de") };
         var breaker = new LdapCircuitBreaker(failureThreshold: 2);
         var auth = NewAuthenticator(EnabledOptions(), adapter, breaker);
 
@@ -63,7 +64,7 @@ public class LdapAuthenticatorTests
     [Fact]
     public async Task UpnNormalization_PassesUpnToAdapter()
     {
-        var adapter = new FakeAdapter { Result = Sample("alice@firma.de") };
+        var adapter = new FakeLdapConnectionAdapter { Result = Sample("alice@firma.de") };
         var auth = NewAuthenticator(EnabledOptions(), adapter);
 
         await auth.AuthenticateAsync(@"FIRMA\Alice", "pw", default);
@@ -74,7 +75,7 @@ public class LdapAuthenticatorTests
     [Fact]
     public async Task NullResultFromAdapter_TreatedAsInvalidCredentials_KeepsCircuitClosed()
     {
-        var adapter = new FakeAdapter { Result = null };
+        var adapter = new FakeLdapConnectionAdapter { Result = null };
         var breaker = new LdapCircuitBreaker(failureThreshold: 2);
         var auth = NewAuthenticator(EnabledOptions(), adapter, breaker);
 
@@ -87,7 +88,7 @@ public class LdapAuthenticatorTests
     [Fact]
     public async Task InfrastructureFailure_TripsBreaker_AfterThreshold()
     {
-        var adapter = new FakeAdapter { ThrowInfra = true };
+        var adapter = new FakeLdapConnectionAdapter { ThrowInfra = true };
         var breaker = new LdapCircuitBreaker(failureThreshold: 2);
         var auth = NewAuthenticator(EnabledOptions(), adapter, breaker);
 
@@ -116,7 +117,7 @@ public class LdapAuthenticatorTests
         // search finds no object. That is a per-account data problem, so it must never be
         // counted as an outage — otherwise one broken account trips the breaker and blocks
         // LDAP logins for every user. Repeat past the failure threshold to prove it.
-        var adapter = new FakeAdapter { ThrowUserObjectMissing = true };
+        var adapter = new FakeLdapConnectionAdapter { ThrowUserObjectMissing = true };
         var breaker = new LdapCircuitBreaker(failureThreshold: 2);
         var auth = NewAuthenticator(EnabledOptions(), adapter, breaker);
 
@@ -135,7 +136,7 @@ public class LdapAuthenticatorTests
     [Fact]
     public async Task MalformedUsername_ReturnsInvalidCredentials_DoesNotTripBreaker()
     {
-        var adapter = new FakeAdapter();
+        var adapter = new FakeLdapConnectionAdapter();
         var breaker = new LdapCircuitBreaker(failureThreshold: 2);
         var auth = NewAuthenticator(new LdapOptions { Enabled = true, UpnSuffix = null }, adapter, breaker);
 
@@ -149,7 +150,7 @@ public class LdapAuthenticatorTests
     [Fact]
     public async Task Cancellation_PropagatesAsTaskCanceled_NotAsUnavailable()
     {
-        var adapter = new FakeAdapter { ThrowCancellation = true };
+        var adapter = new FakeLdapConnectionAdapter { ThrowCancellation = true };
         var breaker = new LdapCircuitBreaker(failureThreshold: 2);
         var auth = NewAuthenticator(EnabledOptions(), adapter, breaker);
 
@@ -180,26 +181,5 @@ public class LdapAuthenticatorTests
             adapter,
             breaker ?? new LdapCircuitBreaker(failureThreshold: 2),
             NullLogger<LdapAuthenticator>.Instance);
-
-    private sealed class FakeAdapter : ILdapConnectionAdapter
-    {
-        public LdapAuthResult? Result { get; set; }
-        public bool ThrowInfra { get; set; }
-        public bool ThrowUserObjectMissing { get; set; }
-        public bool ThrowCancellation { get; set; }
-        public int Calls { get; private set; }
-        public string? LastUpn { get; private set; }
-
-        public Task<LdapAuthResult?> AuthenticateAsync(string upn, string password, CancellationToken ct)
-        {
-            Calls++;
-            LastUpn = upn;
-            if (ThrowCancellation) throw new OperationCanceledException(ct);
-            if (ThrowUserObjectMissing)
-                throw new LdapUserObjectNotFoundException("simulated missing userPrincipalName");
-            if (ThrowInfra) throw new LdapInfrastructureException("simulated DC offline");
-            return Task.FromResult(Result);
-        }
-    }
 
 }

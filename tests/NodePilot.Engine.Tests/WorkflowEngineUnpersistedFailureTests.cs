@@ -15,6 +15,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Data.Availability;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Engine.Tests;
@@ -269,15 +270,6 @@ public class WorkflowEngineUnpersistedFailureTests
         }
     }
 
-    private sealed class CapturingLogger<T> : ILogger<T>
-    {
-        public readonly List<(LogLevel Level, string Message, Exception? Exception)> Entries = new();
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
-            Func<TState, Exception?, string> formatter)
-            => Entries.Add((logLevel, formatter(state, exception), exception));
-    }
 
     /// <summary>
     /// Fails every save that carries a <see cref="ExecutionStatus.Cancelled"/> step with a

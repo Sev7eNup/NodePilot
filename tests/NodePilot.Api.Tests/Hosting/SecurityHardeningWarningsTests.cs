@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
 using NodePilot.Api.Hosting;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Hosting;
@@ -15,16 +16,6 @@ namespace NodePilot.Api.Tests.Hosting;
 /// </summary>
 public class SecurityHardeningWarningsTests
 {
-    private sealed class StubEnvironment : IWebHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = "Production";
-        public string ApplicationName { get; set; } = "NodePilot.Api.Tests";
-        public string WebRootPath { get; set; } = "";
-        public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
-        public string ContentRootPath { get; set; } = "";
-        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
-    }
-
     private static IConfiguration BuildConfig(Dictionary<string, string?> kv) =>
         new ConfigurationBuilder().AddInMemoryCollection(kv).Build();
 

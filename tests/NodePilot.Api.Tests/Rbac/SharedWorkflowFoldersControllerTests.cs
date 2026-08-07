@@ -8,6 +8,7 @@ using NodePilot.Api.Security;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.TestCommons;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Rbac;

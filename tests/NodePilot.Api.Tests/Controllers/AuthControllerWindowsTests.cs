@@ -14,6 +14,7 @@ using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Api.Security.Ldap;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -74,11 +75,6 @@ public sealed class AuthControllerWindowsTests : IDisposable
     }
 
     private const string TestSecret = "NodePilot-Test-Secret-Key-Minimum-32-Characters!";
-
-    private sealed class TestJwtKeyProvider : IJwtKeyProvider
-    {
-        public string Key => TestSecret;
-    }
 
     private static IConfiguration NewConfig() => new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>

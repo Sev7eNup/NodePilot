@@ -11,6 +11,7 @@ using NodePilot.Api.Configuration;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.Api.Services;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Options;
 using NodePilot.Scheduler.Options;
@@ -190,7 +191,7 @@ public sealed class AdminSettingsRemainingSectionsTests : IDisposable
             cfg,
             new PassthroughProtector(),
             audit,
-            new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpFactory()),
+            new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, StubHttpFactory()),
             new StaticOptionsMonitor<SmtpOptions>(new SmtpOptions()),
             new StaticOptionsMonitor<LlmOptions>(new LlmOptions()),
             new StaticOptionsMonitor<RetentionOptions>(new RetentionOptions()),
@@ -216,26 +217,7 @@ public sealed class AdminSettingsRemainingSectionsTests : IDisposable
         }
     }
 
-    private sealed class StubHttpFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new(new StubHandler());
-
-        private sealed class StubHandler : HttpMessageHandler
-        {
-            protected override Task<HttpResponseMessage> SendAsync(
-                HttpRequestMessage request, CancellationToken cancellationToken)
-                => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
-        }
-    }
-
-    private sealed class NoopClusterState : IClusterStateProvider
-    {
-        public bool IsLeader => true;
-        public string NodeId => "test-node";
-        public DateTime? LeaseExpiresAt => null;
-        public long LeaseEpoch => 0;
-        public DateTime? LastSuccessfulRenewAt => null;
-        public event Action<long>? OnLeadershipAcquired { add { } remove { } }
-        public event Action? OnLeadershipLost { add { } remove { } }
-    }
+    /// <summary>Factory whose clients answer every request with a bare 200 OK.</summary>
+    private static StubHttpClientFactory StubHttpFactory() =>
+        new(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)));
 }
