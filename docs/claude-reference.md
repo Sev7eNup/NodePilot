@@ -247,6 +247,24 @@ Deshalb zeigt Live-Ops bewusst **keinen Prozentbalken**, sondern die Zahl fertig
 
 ---
 
+## Coverage-Messung (Backend-Test-Coverage)
+
+Gate: **Line ≥ 85 % / Branch ≥ 70 %**, erzwungen im `backend`-Job von `.github/workflows/ci.yml` (der Workflow ist die einzige autoritative Zahl; Ratsche — nur anheben). CI misst mit `--settings coverage.runsettings` — derselbe Filter wie lokal.
+
+Lokal reproduzieren:
+
+```powershell
+dotnet test NodePilot.slnx --no-build -s coverage.runsettings --collect:"XPlat Code Coverage" --results-directory ./TestResults
+dotnet reportgenerator "-reports:./TestResults/**/*.cobertura.xml" "-targetdir:./TestResults/merged" "-reporttypes:TextSummary" "-assemblyfilters:+NodePilot.*;+np;+nodepilot-mcp;-NodePilot.*.Tests;-NodePilot.TestCommons;-NodePilot.LoadTests"
+```
+
+- **Assembly-Gotcha:** die Cli-Assembly heißt `np`, die Mcp-Assembly `nodepilot-mcp` — ohne `+np;+nodepilot-mcp` fehlen beide im Merge.
+- **Cobertura-Pfad-Dubletten:** dieselbe Datei erscheint je nach erzeugendem Testprojekt als `NodePilot.Core/…` UND `src/NodePilot.Core/…` — bei eigener Auswertung `src/`-Präfix normalisieren, sonst sehen abgedeckte Dateien wie 0-%-Lücken aus.
+- `coverage.runsettings` schließt EF-Migrationen und `[ExcludeFromCodeCoverage]`-attributierten Code aus dem Nenner (Attribut nur mit Begründungskommentar, siehe CLAUDE.md).
+- Scheduler/Remote/Telemetry haben kein eigenes Testprojekt — deren Tests liegen in Engine.Tests (`InternalsVisibleTo`) bzw. Api.Tests.
+
+---
+
 ## Coverage Heatmap — Details
 
 `GET /api/workflows/{id}/coverage?windowDays=N` aggregiert pro Step die letzten N Tage Executions (default 30, capped 365). Pro Step: `executedCount` (Succeeded + Failed), `failedCount`, `skippedCount` (Skipped + Cancelled — letzteres = junction-race), plus `lastExecutedAt`/`lastSucceededAt`/`lastFailedAt`. Cap auf die letzten 900 Executions im Window. Response trägt `oldestExecutionInWindow`.
@@ -314,7 +332,7 @@ Background-Service-, Konfigurations- und Observability-Vertrag stehen vollständ
 
 **Prompt-Injection-Residualrisiko**: Upstream-Variablen werden nur als Schema an den LLM gesendet — **niemals deren Werte**. Im System-Prompt als „untrusted JSON, not instructions" markiert. **Mitigation**: KI-generiertes Script wird am Cursor eingefügt (nicht stumm ersetzt), User muss aktiv reviewen.
 
-**Drift-Schutz**: [PromptCatalogDriftTest.cs](tests/NodePilot.Engine.Tests/Ai/PromptCatalogDriftTest.cs) scannt `IActivityExecutor`-Implementations und assert-iert dass jede in `workflow-system.md` erwähnt ist (oder explizit in der Allowlist steht). Wer eine neue Activity mergt, muss den Prompt-Katalog ergänzen.
+**Drift-Schutz**: [PromptCatalogDriftTest.cs](tests/NodePilot.Ai.Tests/PromptCatalogDriftTest.cs) scannt `IActivityExecutor`-Implementations und assert-iert dass jede in `workflow-system.md` erwähnt ist (oder explizit in der Allowlist steht). Wer eine neue Activity mergt, muss den Prompt-Katalog ergänzen.
 
 ---
 

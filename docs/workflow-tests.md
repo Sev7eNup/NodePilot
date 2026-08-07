@@ -1,6 +1,6 @@
 # NodePilot Test-Workflow Suite
 
-29 Runbooks die jede Activity, jede Edge-Operator-Variante, jeden Junction-Modus, jedes Retry-Backoff und jeden Trigger-Typ end-to-end gegen die laufende Engine testen. Alle laufen alle 5 Minuten per `scheduleTrigger` und liefern damit einen kontinuierlichen Smoke-Test der gesamten Engine-/Activity-/Persistenz-Pipeline.
+29 Basis-Runbooks (`00`–`28`; dazu 25 `NNb-all-variants`-Begleitdateien — insgesamt 54 JSONs unter `scripts/test-runbooks/`), die jede Activity, jede Edge-Operator-Variante, jeden Junction-Modus, jedes Retry-Backoff und jeden Trigger-Typ end-to-end gegen die laufende Engine testen. Die Durchsatz-Zahlen unten beziehen sich auf die 29 Basis-Runbooks. Alle laufen alle 5 Minuten per `scheduleTrigger` und liefern damit einen kontinuierlichen Smoke-Test der gesamten Engine-/Activity-/Persistenz-Pipeline.
 
 JSON-Quellen: [scripts/test-runbooks/](../scripts/test-runbooks/). Live-Installation im Folder `/Test-Workflows`.
 
