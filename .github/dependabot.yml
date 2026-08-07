@@ -10,6 +10,16 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # Known-incompatible upgrades, each verified against this codebase — do not re-offer:
+    # Microsoft.OpenApi 3.x breaks the OpenAPI pipeline; Spectre.Console 0.57.x breaks the
+    # CLI rendering stack. Revisit deliberately, not via routine bumps.
+    ignore:
+      - dependency-name: "Microsoft.OpenApi"
+        versions: [">=3.0.0"]
+      - dependency-name: "Spectre.Console"
+        versions: [">=0.57.0"]
+      - dependency-name: "Spectre.Console.Json"
+        versions: [">=0.57.0"]
     groups:
       microsoft-extensions:
         patterns:
@@ -34,6 +44,11 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # TypeScript 7 is a verified-incompatible major (typescript-eslint peer range caps at
+    # the previous major; ERESOLVE on npm ci). Same rule on all three npm roots.
+    ignore:
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
     groups:
       react:
         patterns:
@@ -57,6 +72,9 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
 
   # Electron shell: package.json pins three overrides into Forge's own tree (see the
   # "//overrides" note there). Review those before accepting a Forge bump.
@@ -66,6 +84,9 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 3
+    ignore:
+      - dependency-name: "typescript"
+        versions: [">=7.0.0"]
 
   - package-ecosystem: github-actions
     directory: "/"
