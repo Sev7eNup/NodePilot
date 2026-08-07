@@ -28,11 +28,28 @@ public class DatabaseTriggerSource : ITriggerSource
 {
     public string ActivityType => "databaseTrigger";
 
+    /// <summary>
+    /// The poll loop IS the subscription: if that task ended while the orchestrator still holds
+    /// this source, nothing will ever poll again and the trigger is silently dead. The loop
+    /// swallows per-iteration exceptions itself, so a completed task means it exited for a reason
+    /// it could not handle. Pure field reads — no I/O, per the <see cref="ITriggerSource.Health"/>
+    /// contract.
+    /// </summary>
+    public TriggerHealth Health =>
+        _disposed || _loopTask is null or { IsCompleted: false }
+            ? TriggerHealth.Healthy
+            : TriggerHealth.Faulted($"poll loop ended ({_loopTask.Status})");
+
     private readonly ILogger<DatabaseTriggerSource> _logger;
     private readonly IConfiguration _config;
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
     private TriggerContext? _ctx;
+
+    // Set by DisposeAsync so a torn-down source never reports unhealthy — the orchestrator
+    // disposes on its own teardown paths (leadership loss, shutdown, config change) and must
+    // not see those as faults worth re-registering.
+    private volatile bool _disposed;
 
     // Test hook: invoked after every poll completes (success or error). Lets the
     // unit-tests deterministically wait for the first poll to seed `lastSentinel`
@@ -196,6 +213,7 @@ public class DatabaseTriggerSource : ITriggerSource
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         if (_cts is not null) { await _cts.CancelAsync(); try { if (_loopTask is not null) await _loopTask; } catch { /* ignore */ } _cts.Dispose(); }
     }
 }

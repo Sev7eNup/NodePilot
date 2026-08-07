@@ -283,4 +283,133 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
         audits.Should().HaveCount(1);
         audits[0].Details.Should().Contain("workflow_deleted");
     }
+
+    // ---- health eviction: a source that died after starting must be re-created ----
+    //
+    // Driven through the SourceFactory seam with a fake, because no real source can be made to
+    // report unhealthy on demand from a test — the one failure this covers (FileSystemWatcher
+    // whose UNC share vanished) needs a genuine native-handle failure to reproduce.
+
+    private sealed class FakeTriggerSource : ITriggerSource
+    {
+        public string ActivityType => "scheduleTrigger";
+        public TriggerHealth HealthValue = TriggerHealth.Healthy;
+        public bool ThrowOnHealthRead;
+        public bool ThrowOnStart;
+        public int DisposeCount;
+        public int StartCount;
+
+        public TriggerHealth Health => ThrowOnHealthRead
+            ? throw new InvalidOperationException("Health was read for a source that is being removed anyway")
+            : HealthValue;
+
+        public Task StartAsync(TriggerContext context, CancellationToken ct)
+        {
+            StartCount++;
+            return ThrowOnStart
+                ? Task.FromException(new InvalidOperationException("simulated registration failure"))
+                : Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            DisposeCount++;
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    /// <summary>Substitutes the source factory and records every instance it hands out.</summary>
+    private List<FakeTriggerSource> UseFakeSources()
+    {
+        var created = new List<FakeTriggerSource>();
+        _orchestrator.SourceFactory = _ =>
+        {
+            var src = new FakeTriggerSource();
+            created.Add(src);
+            return src;
+        };
+        return created;
+    }
+
+    [Fact]
+    public async Task SyncAsync_DisposesAndRecreatesSource_WhenSourceReportsUnhealthy()
+    {
+        // The headline case. Before this, a source whose config hash still matched was skipped by
+        // the add-loop forever, so a watcher killed by a vanished share never came back — not even
+        // once the share returned.
+        var created = UseFakeSources();
+        await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
+
+        await _orchestrator.SyncAsync(CancellationToken.None);
+        created.Should().HaveCount(1);
+
+        created[0].HealthValue = TriggerHealth.Faulted("share vanished");
+        await _orchestrator.SyncAsync(CancellationToken.None);
+
+        created[0].DisposeCount.Should().Be(1);
+        created.Should().HaveCount(2);
+        created[1].StartCount.Should().Be(1);
+        created[1].DisposeCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SyncAsync_DoesNotEvict_WhenSourceReportsHealthy()
+    {
+        // No-churn pin: eviction must key off the source's verdict, not run every tick.
+        var created = UseFakeSources();
+        await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
+
+        await _orchestrator.SyncAsync(CancellationToken.None);
+        await _orchestrator.SyncAsync(CancellationToken.None);
+        await _orchestrator.SyncAsync(CancellationToken.None);
+
+        created.Should().HaveCount(1);
+        created[0].DisposeCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SyncAsync_BacksOffRecreate_WhenRegistrationAfterEvictionFails()
+    {
+        // The whole point of routing eviction back through the add-loop is inheriting its
+        // exponential backoff: while the share stays gone, re-registration must not be retried
+        // on every 5-second tick.
+        var created = UseFakeSources();
+        await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
+
+        await _orchestrator.SyncAsync(CancellationToken.None);
+        created[0].HealthValue = TriggerHealth.Faulted("share vanished");
+
+        _orchestrator.SourceFactory = _ =>
+        {
+            var src = new FakeTriggerSource { ThrowOnStart = true };
+            created.Add(src);
+            return src;
+        };
+
+        await _orchestrator.SyncAsync(CancellationToken.None); // evicts, re-registration fails → backoff
+        await _orchestrator.SyncAsync(CancellationToken.None); // still inside the 5s cool-down
+
+        created.Should().HaveCount(2);
+        created[1].StartCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SyncAsync_DoesNotReadHealth_ForSourcesBeingRemovedAnyway()
+    {
+        // Health is contractually cheap, but asking a source we are already disposing is pointless
+        // and would couple removal to a source's ability to answer. The fake throws to pin it.
+        var created = UseFakeSources();
+        var wf = await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
+
+        await _orchestrator.SyncAsync(CancellationToken.None);
+        created[0].ThrowOnHealthRead = true;
+
+        wf.IsEnabled = false;
+        await _db.SaveChangesAsync();
+
+        var act = () => _orchestrator.SyncAsync(CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
+        created[0].DisposeCount.Should().Be(1);
+    }
 }

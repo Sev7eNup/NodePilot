@@ -162,6 +162,7 @@ public sealed class TriggerOrchestratorLeaderGatingTests : IAsyncDisposable
     {
         public string ActivityType => "test";
         public int DisposeCalls { get; private set; }
+        public TriggerHealth Health => TriggerHealth.Healthy;
         public Task StartAsync(TriggerContext context, CancellationToken ct) => Task.CompletedTask;
         public ValueTask DisposeAsync()
         {

@@ -24,11 +24,29 @@ public class FileWatcherTriggerSource : ITriggerSource
 {
     public string ActivityType => "fileWatcherTrigger";
 
+    /// <summary>
+    /// Faulted once the watcher is provably dead. Pure field read — no I/O, per the
+    /// <see cref="ITriggerSource.Health"/> contract.
+    ///
+    /// Deliberately NOT derived from <c>_watcher.EnableRaisingEvents</c>: in the runtime's
+    /// <c>Monitor()</c> re-issue failure path the directory handle is disposed but <c>_enabled</c>
+    /// is never cleared, so the property still reads <c>true</c> on a corpse. Worse, the setter
+    /// early-returns when the value is unchanged, so assigning <c>true</c> again cannot revive it.
+    /// Only a fresh <see cref="FileSystemWatcher"/> instance works — which is why the verdict goes
+    /// to the orchestrator instead of being handled locally.
+    /// </summary>
+    public TriggerHealth Health =>
+        _faultReason is { } reason ? TriggerHealth.Faulted(reason) : TriggerHealth.Healthy;
+
     private readonly ILogger<FileWatcherTriggerSource> _logger;
     private readonly IConfiguration _config;
     private FileSystemWatcher? _watcher;
     private TriggerContext? _ctx;
     private string? _directory;
+
+    // null == healthy. Written by OnWatcherError (and, from the health probe, by ProbeLoopAsync);
+    // read by the orchestrator's sync pass on a different thread, hence volatile.
+    private volatile string? _faultReason;
 
     // M-28: per-path debounce. A single DateTime was wrong because two simultaneous writes
     // to different files ("a.log" + "b.log") would suppress one of them. Keep a tiny map
@@ -42,7 +60,7 @@ public class FileWatcherTriggerSource : ITriggerSource
         _config = config;
     }
 
-    public Task StartAsync(TriggerContext context, CancellationToken ct)
+    public async Task StartAsync(TriggerContext context, CancellationToken ct)
     {
         _ctx = context;
         var cfg = context.Config;
@@ -52,15 +70,92 @@ public class FileWatcherTriggerSource : ITriggerSource
 
         ValidateDirectory(dir);
 
-        if (!Directory.Exists(dir))
-            throw new DirectoryNotFoundException($"FileWatcherTrigger: directory '{dir}' does not exist");
-
         var filter = cfg.TryGetProperty("filter", out var f) ? f.GetString() ?? "*" : "*";
         var watchType = (cfg.TryGetProperty("watchType", out var wt) ? wt.GetString() : null)?.ToLowerInvariant() ?? "created";
         var includeSub = cfg.TryGetProperty("includeSubdirectories", out var is_) && is_.ValueKind == JsonValueKind.True;
 
         _directory = dir;
-        _watcher = new FileSystemWatcher(dir, filter)
+
+        // Every filesystem touch below happens off this thread under a hard deadline. Three calls
+        // can block on the SMB redirector for tens of seconds against an unreachable host — the
+        // explicit Directory.Exists, the FileSystemWatcher constructor (CheckPathValidity does its
+        // own Directory.Exists), and the arming assignment (which opens the directory handle).
+        // The orchestrator's sync pass registers triggers sequentially, so an unbounded start on
+        // one dead UNC path stalls trigger reconciliation for the whole installation.
+        // Bounding at the orchestrator's call site would not work: this method does its work
+        // inline, so by the time a Task exists to WaitAsync on, the blocking already happened.
+        var pathTimeout = TimeSpan.FromSeconds(
+            Math.Max(1, _config.GetValue<int?>("Trigger:FileWatcher:PathTimeoutSeconds") ?? 5));
+
+        FileSystemWatcher watcher;
+        try
+        {
+            watcher = await RunBoundedAsync(
+                () => BuildAndArmWatcher(dir, filter, watchType, includeSub),
+                pathTimeout, static w => w.Dispose(), ct);
+        }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException(
+                $"FileWatcherTrigger: directory '{dir}' did not respond within {pathTimeout.TotalSeconds:F0}s " +
+                "(unreachable share or hung SMB redirector).");
+        }
+
+        // Publishes the instance the event handlers gate on. Between the arming inside
+        // BuildAndArmWatcher and this assignment there is a sub-millisecond window in which an
+        // event is dropped by that identity guard — the safe direction, and the same class of
+        // gap as the failover window documented in docs/ha-active-passive.md.
+        Volatile.Write(ref _watcher, watcher);
+
+        _logger.LogInformation("FileWatcher: watching {Dir} filter={Filter} type={Type} sub={Sub}",
+            dir, filter, watchType, includeSub);
+    }
+
+    /// <summary>
+    /// Runs a blocking filesystem call off the caller's thread under a hard deadline.
+    ///
+    /// TRADEOFF: on timeout the work is abandoned but its thread stays blocked in the OS call
+    /// until that call returns — there is no way to cancel a pending SMB operation. Bounded in
+    /// practice: at most one orphan per registration attempt or probe tick. If the abandoned work
+    /// still produces a result, <paramref name="disposeAbandoned"/> releases it — an armed
+    /// FileSystemWatcher nobody owns would otherwise keep firing workflows forever.
+    ///
+    /// Internal so the deadline and the abandon-cleanup are testable without a hung network path.
+    /// </summary>
+    internal static async Task<T> RunBoundedAsync<T>(
+        Func<T> work, TimeSpan timeout, Action<T>? disposeAbandoned, CancellationToken ct)
+    {
+        var task = Task.Run(work, CancellationToken.None);
+        try
+        {
+            return await task.WaitAsync(timeout, ct);
+        }
+        catch (TimeoutException)
+        {
+            _ = task.ContinueWith(
+                t =>
+                {
+                    if (t.IsCompletedSuccessfully) disposeAbandoned?.Invoke(t.Result);
+                    else _ = t.Exception; // observe, so an abandoned failure isn't an unobserved fault
+                },
+                CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Constructs, subscribes and arms the watcher. Runs on a thread-pool thread under the
+    /// caller's deadline — everything here may block on an unreachable path.
+    /// </summary>
+    private FileSystemWatcher BuildAndArmWatcher(string dir, string filter, string watchType, bool includeSub)
+    {
+        // Kept even though the FileSystemWatcher constructor checks the path itself: this
+        // produces the friendly DirectoryNotFoundException that callers and tests rely on,
+        // where CheckPathValidity would throw a raw ArgumentException.
+        if (!Directory.Exists(dir))
+            throw new DirectoryNotFoundException($"FileWatcherTrigger: directory '{dir}' does not exist");
+
+        var watcher = new FileSystemWatcher(dir, filter)
         {
             IncludeSubdirectories = includeSub,
             EnableRaisingEvents = false,
@@ -71,12 +166,17 @@ public class FileWatcherTriggerSource : ITriggerSource
             InternalBufferSize = 65536,
         };
 
-        // Subscribe to Error so a buffer overflow or native-handle failure is at least
-        // logged instead of silently dropping everything until the next file event.
-        _watcher.Error += OnWatcherError;
+        // Subscribe to Error so a buffer overflow is logged and a fatal handle failure marks this
+        // source unhealthy — the orchestrator then disposes and re-creates it.
+        watcher.Error += OnWatcherError;
 
         void HandleEvent(string action, string path)
         {
+            // Identity guard: a build whose deadline expired is abandoned but may still finish
+            // and arm itself on its orphaned thread. Only the instance StartAsync published may
+            // fire — otherwise a timed-out registration attempt would keep triggering workflows.
+            if (!ReferenceEquals(watcher, Volatile.Read(ref _watcher))) return;
+
             // Count every raw FSW event before debounce — operators chasing "trigger fires too
             // often" need to see whether the noise is the watcher itself or our dispatch.
             SchedulerMetrics.TriggerEvents.Add(1,
@@ -109,18 +209,16 @@ public class FileWatcherTriggerSource : ITriggerSource
                 _logger, ActivityType, _ctx.WorkflowId, _ctx.NodeId);
         }
 
-        if (watchType is "created" or "any") _watcher.Created += (_, e) => HandleEvent("created", e.FullPath);
-        if (watchType is "changed" or "any") _watcher.Changed += (_, e) => HandleEvent("changed", e.FullPath);
-        if (watchType is "deleted" or "any") _watcher.Deleted += (_, e) => HandleEvent("deleted", e.FullPath);
+        if (watchType is "created" or "any") watcher.Created += (_, e) => HandleEvent("created", e.FullPath);
+        if (watchType is "changed" or "any") watcher.Changed += (_, e) => HandleEvent("changed", e.FullPath);
+        if (watchType is "deleted" or "any") watcher.Deleted += (_, e) => HandleEvent("deleted", e.FullPath);
         // B3: "renamed" first-class plus "any" covers it for the UI's "All Changes" option.
         // Previously the UI offered "renamed"/"all" labels but the source had no Renamed
         // subscription — the "All Changes" workflow lost every rename event silently.
-        if (watchType is "renamed" or "any") _watcher.Renamed += (_, e) => HandleEvent("renamed", e.FullPath);
+        if (watchType is "renamed" or "any") watcher.Renamed += (_, e) => HandleEvent("renamed", e.FullPath);
 
-        _watcher.EnableRaisingEvents = true;
-        _logger.LogInformation("FileWatcher: watching {Dir} filter={Filter} type={Type} sub={Sub}",
-            dir, filter, watchType, includeSub);
-        return Task.CompletedTask;
+        watcher.EnableRaisingEvents = true;
+        return watcher;
     }
 
     public ValueTask DisposeAsync()
@@ -137,18 +235,50 @@ public class FileWatcherTriggerSource : ITriggerSource
     }
 
     /// <summary>
-    /// FSW raises Error when its internal buffer overflows or the underlying native handle
-    /// hits a fatal condition. Default behavior is to silently drop subsequent events,
-    /// which turns this trigger into a ticking time bomb. Logging makes overflow diagnosable.
+    /// Maps an FSW Error-event exception to a fault reason, or null when the watcher survives it.
+    ///
+    /// Verified against the runtime's FileSystemWatcher.Windows.cs: a buffer overflow raises
+    /// <see cref="InternalBufferOverflowException"/> and the read callback's finally block
+    /// unconditionally re-issues ReadDirectoryChangesW, so the watcher keeps running. Treating
+    /// that as a fault would make the source flap under sustained churn — dispose/re-create in a
+    /// loop, losing more events than the overflow did.
+    ///
+    /// Every other completion error is terminal: the callback either clears EnableRaisingEvents
+    /// or the re-issue path disposes the directory handle, in both cases BEFORE raising Error.
+    /// Such a watcher never recovers on its own and cannot be re-armed in place (see
+    /// <see cref="Health"/>), so the verdict has to travel to the orchestrator.
+    ///
+    /// Internal + static so the decision is unit-testable without owning a live watcher.
     /// </summary>
-    private void OnWatcherError(object sender, ErrorEventArgs e)
+    internal static string? ClassifyWatcherError(Exception ex) =>
+        ex is InternalBufferOverflowException ? null : $"{ex.GetType().Name}: {ex.Message}";
+
+    /// <summary>
+    /// Internal rather than private so tests can drive a fault without provoking a real
+    /// native-handle failure. Production only ever reaches this via the FSW Error event.
+    /// </summary>
+    internal void OnWatcherError(object sender, ErrorEventArgs e)
     {
+        var ex = e.GetException();
         SchedulerMetrics.TriggerPollErrors.Add(1,
             new KeyValuePair<string, object?>("trigger_type", "fileWatcherTrigger"),
-            new KeyValuePair<string, object?>("error_class", e.GetException().GetType().Name));
-        _logger.LogError(e.GetException(),
-            "FileWatcher error on directory '{Dir}' — buffer overflow or native handle failure. " +
-            "Subsequent events may be lost until the next event fires.", _directory);
+            new KeyValuePair<string, object?>("error_class", ex.GetType().Name));
+
+        if (ClassifyWatcherError(ex) is { } fault)
+        {
+            // First fault wins — later noise on the way down must not rewrite the reason the
+            // operator gets to see.
+            _faultReason ??= fault;
+            _logger.LogError(ex,
+                "FileWatcher on '{Dir}' faulted and is dead ({Reason}). The orchestrator will dispose " +
+                "and re-create it; while the path stays unreachable, registration backs off up to 5 minutes.",
+                _directory, fault);
+            return;
+        }
+
+        _logger.LogWarning(ex,
+            "FileWatcher buffer overflow on '{Dir}' — events were dropped, but the watcher keeps running.",
+            _directory);
     }
 
     // ValidateDirectory is factored out into FileWatcherPathGuard so the manual executor

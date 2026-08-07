@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
@@ -12,10 +13,19 @@ namespace NodePilot.Engine.Tests.Triggers;
 /// Black-box tests for <see cref="FileWatcherTriggerSource"/>. Validation paths are pure
 /// (no FS interaction) and covered fully. The happy-path uses a real temp directory so
 /// FileSystemWatcher actually fires — no good way to mock that without rewriting the source.
+///
+/// The liveness tests below do not need a real native-handle failure: the exception-to-verdict
+/// decision lives in the pure <c>ClassifyWatcherError</c>, and <c>OnWatcherError</c> is internal
+/// so the Error event can be driven directly. Likewise the start deadline is tested through
+/// <c>RunBoundedAsync</c> rather than against a genuinely unreachable share, which would make the
+/// suite depend on how the CI runner's network stack fails.
 /// </summary>
 public class FileWatcherTriggerSourceTests
 {
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement.Clone();
+
+    /// <summary>Escapes a Windows path for embedding in a JSON string literal.</summary>
+    private static string Esc(string path) => path.Replace("\\", "\\\\");
 
     private static IConfiguration EmptyConfig() =>
         new ConfigurationBuilder().AddInMemoryCollection().Build();
@@ -211,6 +221,150 @@ public class FileWatcherTriggerSourceTests
         await Task.Delay(750); // longer than the 500ms debounce; if the watcher is alive we'd see at least one fire.
 
         fireCount.Should().Be(0);
+    }
+
+    // ---- liveness: a watcher whose path died must report itself unhealthy ----
+
+    [Fact]
+    public void ClassifyWatcherError_ReturnsNull_ForInternalBufferOverflow()
+    {
+        // Overflow is survivable: the runtime re-issues ReadDirectoryChangesW, so the watcher
+        // keeps running. Faulting here would make the orchestrator dispose and re-create the
+        // source in a loop under sustained churn — losing more events than the overflow did.
+        FileWatcherTriggerSource.ClassifyWatcherError(new InternalBufferOverflowException("full"))
+            .Should().BeNull();
+    }
+
+    [Fact]
+    public void ClassifyWatcherError_ReturnsReason_ForNativeHandleFailure()
+    {
+        // ERROR_NETNAME_DELETED (64) — what Windows reports when a watched UNC share vanishes.
+        var reason = FileWatcherTriggerSource.ClassifyWatcherError(new Win32Exception(64));
+
+        reason.Should().NotBeNull();
+        reason.Should().Contain(nameof(Win32Exception));
+    }
+
+    [Fact]
+    public async Task Health_IsHealthy_AfterSuccessfulStart()
+    {
+        using var tempDir = new TempDirectory();
+        var src = new FileWatcherTriggerSource(NullLogger<FileWatcherTriggerSource>.Instance, EmptyConfig());
+
+        try
+        {
+            await src.StartAsync(Ctx($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""), CancellationToken.None);
+
+            src.Health.IsHealthy.Should().BeTrue();
+            src.Health.Reason.Should().BeNull();
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task OnWatcherError_MarksUnhealthy_ForNativeHandleFailure()
+    {
+        // The scenario this whole mechanism exists for: the share disappears at runtime, FSW
+        // raises Error, the watcher is dead. Without the fault flag the orchestrator would keep
+        // the corpse registered forever and never notice the share coming back.
+        using var tempDir = new TempDirectory();
+        var src = new FileWatcherTriggerSource(NullLogger<FileWatcherTriggerSource>.Instance, EmptyConfig());
+
+        try
+        {
+            await src.StartAsync(Ctx($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""), CancellationToken.None);
+
+            src.OnWatcherError(this, new ErrorEventArgs(new Win32Exception(64)));
+
+            src.Health.IsHealthy.Should().BeFalse();
+            src.Health.Reason.Should().Contain(nameof(Win32Exception));
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task OnWatcherError_StaysHealthy_ForBufferOverflow()
+    {
+        // Anti-flap pin: an overflow must never cost the source its registration.
+        using var tempDir = new TempDirectory();
+        var src = new FileWatcherTriggerSource(NullLogger<FileWatcherTriggerSource>.Instance, EmptyConfig());
+
+        try
+        {
+            await src.StartAsync(Ctx($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""), CancellationToken.None);
+
+            src.OnWatcherError(this, new ErrorEventArgs(new InternalBufferOverflowException("full")));
+
+            src.Health.IsHealthy.Should().BeTrue();
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task OnWatcherError_KeepsFirstFaultReason_WhenErrorsRepeat()
+    {
+        // The first fault is the diagnostic one. Later noise on the way down must not overwrite
+        // what the operator sees in the eviction log line.
+        using var tempDir = new TempDirectory();
+        var src = new FileWatcherTriggerSource(NullLogger<FileWatcherTriggerSource>.Instance, EmptyConfig());
+
+        try
+        {
+            await src.StartAsync(Ctx($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""), CancellationToken.None);
+
+            src.OnWatcherError(this, new ErrorEventArgs(new Win32Exception(64)));
+            var first = src.Health.Reason;
+            src.OnWatcherError(this, new ErrorEventArgs(new IOException("later noise")));
+
+            src.Health.Reason.Should().Be(first);
+            src.Health.Reason.Should().NotContain("later noise");
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    // ---- bounded start: an unreachable share must not stall trigger reconciliation ----
+
+    [Fact]
+    public async Task RunBoundedAsync_ReturnsResult_WhenWorkCompletesInTime()
+    {
+        var result = await FileWatcherTriggerSource.RunBoundedAsync(
+            () => 42, TimeSpan.FromSeconds(30), disposeAbandoned: null, CancellationToken.None);
+
+        result.Should().Be(42);
+    }
+
+    [Fact]
+    public async Task RunBoundedAsync_Throws_AndDisposesAbandonedResult_WhenWorkExceedsDeadline()
+    {
+        // Stands in for a Directory.Exists / CreateFile hanging on a dead SMB redirector: the
+        // orchestrator registers triggers sequentially, so this must fail fast rather than block
+        // every other workflow's triggers. And whatever the abandoned work eventually produces
+        // has to be released — an armed watcher nobody owns would keep firing forever.
+        using var release = new ManualResetEventSlim(false);
+        var disposed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var act = () => FileWatcherTriggerSource.RunBoundedAsync(
+            () => { release.Wait(TimeSpan.FromSeconds(30)); return new object(); },
+            TimeSpan.FromMilliseconds(50),
+            _ => disposed.TrySetResult(),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<TimeoutException>();
+
+        release.Set();
+        await disposed.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     /// <summary>
