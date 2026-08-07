@@ -10,14 +10,39 @@ namespace NodePilot.Core.Audit;
 /// </summary>
 public static class AuditEventForwarder
 {
+    /// <summary>
+    /// Allowlist of audit actions that are additionally mirrored into the support log —
+    /// the SINGLE copy for both the HTTP AuditWriter and every background/atomic forwarder
+    /// call site (coherence audit 2026-08: this set and the AuditWriter previously carried
+    /// two diverging literal copies). Extended by an "outcome=failure" fallthrough rule —
+    /// every failed audit entry lands in the support log regardless of the allowlist.
+    /// Deliberately left out: <c>CREDENTIAL_DECRYPTED</c> (fires N times per workflow run;
+    /// only its failures arrive via the outcome fallthrough), <c>TOKEN_REFRESHED</c> (fires
+    /// every 12h per user), <c>WORKFLOW_CREATED/UPDATED/DUPLICATED/LOCKED/UNLOCKED/MOVED</c>
+    /// (routine editor activity), <c>EXECUTION_*</c> (reported separately by the
+    /// WorkflowEngine lifecycle helper with duration + step counts).
+    /// Membership references the <see cref="AuditActions"/> catalog — never a raw literal.
+    /// </summary>
     private static readonly HashSet<string> SupportLogActions = new(StringComparer.Ordinal)
     {
-        "LOGIN_SUCCESS", "LOGIN_FAILED", "LOGIN_LOCKED", "LOGOUT",
-        "USER_CREATED", "USER_CREATED_BOOTSTRAP", "USER_DELETED", "USER_ROLE_CHANGED",
-        "USER_PASSWORD_RESET", "USER_ACTIVATED", "USER_DEACTIVATED",
-        "WORKFLOW_PUBLISHED", "WORKFLOW_DELETED", "WORKFLOW_FORCE_UNLOCKED",
-        "EXTERNAL_TRIGGER_FIRED", "WEBHOOK_TRIGGERED", "TRIGGER_FIRE_SUPPRESSED",
-        "SECRETS_REENCRYPTED",
+        // Auth
+        AuditActions.LoginSuccess, AuditActions.BreakGlassLoginSuccess,
+        AuditActions.LoginFailed, AuditActions.LoginLocked, AuditActions.Logout,
+        // User-Mgmt
+        AuditActions.UserCreated, AuditActions.UserCreatedBootstrap, AuditActions.UserDeleted,
+        AuditActions.UserRoleChanged, AuditActions.UserBreakGlassChanged,
+        AuditActions.UserPasswordReset, AuditActions.UserActivated, AuditActions.UserDeactivated,
+        AuditActions.UserDirectoryAccessRefused, AuditActions.UserAuthorizationStale,
+        AuditActions.UserExternalIdentityResolved,
+        AuditActions.UserScimProvisioned, AuditActions.UserScimUpdated, AuditActions.UserScimDeprovisioned,
+        AuditActions.ScimGroupProvisioned, AuditActions.ScimGroupUpdated,
+        AuditActions.ScimGroupDeprovisioned, AuditActions.ScimGroupReactivated,
+        // Workflow productive events
+        AuditActions.WorkflowPublished, AuditActions.WorkflowDeleted, AuditActions.WorkflowForceUnlocked,
+        // Trigger events
+        AuditActions.ExternalTriggerFired, AuditActions.WebhookTriggered, AuditActions.TriggerFireSuppressed,
+        // Secrets
+        AuditActions.SecretsReencrypted,
     };
 
     public static void ForwardCommitted(ILogger? logger, AuditLogEntry entry)
