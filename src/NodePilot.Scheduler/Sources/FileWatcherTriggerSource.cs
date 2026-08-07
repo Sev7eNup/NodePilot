@@ -44,9 +44,26 @@ public class FileWatcherTriggerSource : ITriggerSource
     private TriggerContext? _ctx;
     private string? _directory;
 
-    // null == healthy. Written by OnWatcherError (and, from the health probe, by ProbeLoopAsync);
-    // read by the orchestrator's sync pass on a different thread, hence volatile.
+    // null == healthy. Written by OnWatcherError and ProbeLoopAsync; read by the orchestrator's
+    // sync pass on a different thread, hence volatile.
     private volatile string? _faultReason;
+
+    private CancellationTokenSource? _probeCts;
+    private Task? _probeTask;
+
+    // A single failed probe must never evict a healthy watcher — that would cause exactly the
+    // event loss the probe exists to prevent. Not configurable: the cost is only detection
+    // latency (<= 2x the probe interval) against a baseline of "dead forever".
+    private const int ProbeFailuresBeforeFault = 2;
+
+    /// <summary>
+    /// Test-only seam for the reachability check. The case the probe exists for cannot be staged
+    /// locally: deleting a watched directory DOES raise an FSW Error (Win32Exception, access
+    /// denied), so the primary fault path fires first and masks the probe entirely. Only a host
+    /// that vanishes hard enough to leave the pending change notification uncompleted reaches the
+    /// probe, and that needs a real network. Production never assigns this.
+    /// </summary>
+    internal Func<string, bool> DirectoryProbe { get; set; } = Directory.Exists;
 
     // M-28: per-path debounce. A single DateTime was wrong because two simultaneous writes
     // to different files ("a.log" + "b.log") would suppress one of them. Keep a tiny map
@@ -107,8 +124,69 @@ public class FileWatcherTriggerSource : ITriggerSource
         // gap as the failover window documented in docs/ha-active-passive.md.
         Volatile.Write(ref _watcher, watcher);
 
+        var probeSeconds = _config.GetValue<int?>("Trigger:FileWatcher:HealthProbeSeconds") ?? 60;
+        if (probeSeconds > 0)
+        {
+            _probeCts = new CancellationTokenSource();
+            _probeTask = ProbeLoopAsync(dir, TimeSpan.FromSeconds(probeSeconds), pathTimeout, _probeCts.Token);
+        }
+
         _logger.LogInformation("FileWatcher: watching {Dir} filter={Filter} type={Type} sub={Sub}",
             dir, filter, watchType, includeSub);
+    }
+
+    /// <summary>
+    /// Catches the watcher dying without raising Error: when the host behind a share goes away
+    /// hard, the pending ReadDirectoryChangesW is simply never completed by the redirector, so no
+    /// fault is ever delivered and the watcher is silently deaf. This is strictly a backstop —
+    /// measured behavior is that both a vanishing share and a deleted local directory normally do
+    /// raise Error, which faults the source within milliseconds instead of within a probe interval.
+    ///
+    /// KNOWN GAP: this does not catch an SMB session that reconnects without re-arming the
+    /// server-side change notification — Directory.Exists returns true in that state. Detecting
+    /// that would need an active canary (writing a sentinel file into a user's directory, which
+    /// would also fire the trigger), which is not worth it.
+    ///
+    /// Runs on its own task, never on the orchestrator's sync pass: Directory.Exists against a
+    /// dead UNC path can block for the SMB timeout, and stalling here only delays this source's
+    /// own next probe.
+    /// </summary>
+    private async Task ProbeLoopAsync(string dir, TimeSpan interval, TimeSpan timeout, CancellationToken ct)
+    {
+        var consecutiveFailures = 0;
+        using var timer = new PeriodicTimer(interval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                // Already faulted through the Error event — the orchestrator owns the case now.
+                if (_faultReason is not null) return;
+
+                bool reachable;
+                try
+                {
+                    reachable = await RunBoundedAsync(
+                        () => DirectoryProbe(dir), timeout, disposeAbandoned: null, ct);
+                }
+                catch (TimeoutException)
+                {
+                    reachable = false;
+                }
+
+                if (reachable) { consecutiveFailures = 0; continue; }
+                if (++consecutiveFailures < ProbeFailuresBeforeFault) continue;
+
+                _faultReason ??= $"directory '{dir}' unreachable on {consecutiveFailures} consecutive health probes";
+                SchedulerMetrics.TriggerPollErrors.Add(1,
+                    new KeyValuePair<string, object?>("trigger_type", "fileWatcherTrigger"),
+                    new KeyValuePair<string, object?>("error_class", "HealthProbeUnreachable"));
+                _logger.LogWarning(
+                    "FileWatcher health probe: {Reason}. Marking the source faulted so the orchestrator re-creates it.",
+                    _faultReason);
+                return; // one verdict is enough; the orchestrator takes it from here
+            }
+        }
+        catch (OperationCanceledException) { /* disposal */ }
     }
 
     /// <summary>
@@ -221,8 +299,17 @@ public class FileWatcherTriggerSource : ITriggerSource
         return watcher;
     }
 
-    public ValueTask DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
+        if (_probeCts is not null)
+        {
+            await _probeCts.CancelAsync();
+            try { if (_probeTask is not null) await _probeTask; } catch { /* ignore */ }
+            _probeCts.Dispose();
+            _probeCts = null;
+            _probeTask = null;
+        }
+
         if (_watcher is not null)
         {
             _watcher.EnableRaisingEvents = false;
@@ -231,7 +318,6 @@ public class FileWatcherTriggerSource : ITriggerSource
             _watcher = null;
         }
         _lastFirePerPath.Clear();
-        return ValueTask.CompletedTask;
     }
 
     /// <summary>

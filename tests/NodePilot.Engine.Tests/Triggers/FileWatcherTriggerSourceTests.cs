@@ -367,6 +367,154 @@ public class FileWatcherTriggerSourceTests
         await disposed.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
+    // ---- health probe: catches a path that vanished without the watcher raising Error ----
+
+    /// <summary>Polls <see cref="FileWatcherTriggerSource.Health"/> until it faults or time runs out.</summary>
+    private static async Task<TriggerHealth> WaitForFaultAsync(FileWatcherTriggerSource src, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!src.Health.IsHealthy) return src.Health;
+            await Task.Delay(25);
+        }
+        return src.Health;
+    }
+
+    /// <summary>
+    /// Starts a source whose reachability check is driven by <paramref name="reachable"/> instead
+    /// of the real filesystem. The scenario the probe covers — a host gone so hard the pending
+    /// change notification is never completed — cannot be staged locally: deleting the watched
+    /// directory raises an FSW Error, so the primary fault path fires first and hides the probe.
+    /// </summary>
+    private static async Task<FileWatcherTriggerSource> StartWithProbeAsync(
+        TempDirectory tempDir, int probeSeconds, Func<string, bool> reachable)
+    {
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            ConfigWith(("Trigger:FileWatcher:HealthProbeSeconds", probeSeconds.ToString())))
+        {
+            DirectoryProbe = reachable,
+        };
+        await src.StartAsync(Ctx($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""), CancellationToken.None);
+        return src;
+    }
+
+    [Fact]
+    public async Task Health_BecomesUnhealthy_WhenWatchedDirectoryDisappears_WithoutTheProbe()
+    {
+        // End-to-end pin of the real mechanism against an actual FileSystemWatcher: pulling the
+        // watched directory out from under it raises Error, which must fault the source. The probe
+        // is off, so only the Error path can produce this — the same path a vanishing UNC share
+        // takes, without needing a network in the test suite.
+        var tempDir = new TempDirectory();
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            ConfigWith(("Trigger:FileWatcher:HealthProbeSeconds", "0")));
+
+        try
+        {
+            await src.StartAsync(Ctx($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""), CancellationToken.None);
+            src.Health.IsHealthy.Should().BeTrue();
+
+            tempDir.Dispose();
+
+            var health = await WaitForFaultAsync(src, TimeSpan.FromSeconds(10));
+
+            health.IsHealthy.Should().BeFalse();
+            health.Reason.Should().NotBeNullOrWhiteSpace();
+        }
+        finally
+        {
+            await src.DisposeAsync();
+            tempDir.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task HealthProbe_MarksUnhealthy_AfterPathBecomesUnreachable()
+    {
+        // Without this backstop, a watcher that went deaf without raising Error would report
+        // healthy forever while nothing watches the drop folder any more.
+        using var tempDir = new TempDirectory();
+        var src = await StartWithProbeAsync(tempDir, probeSeconds: 1, reachable: _ => false);
+
+        try
+        {
+            var health = await WaitForFaultAsync(src, TimeSpan.FromSeconds(20));
+
+            health.IsHealthy.Should().BeFalse();
+            health.Reason.Should().Contain("unreachable");
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task HealthProbe_StaysHealthy_ForSingleTransientFailure()
+    {
+        // One failed probe must not evict a healthy watcher — that would cause exactly the event
+        // loss the probe exists to prevent. Only ProbeFailuresBeforeFault in a row counts.
+        using var tempDir = new TempDirectory();
+        var probes = 0;
+        var src = await StartWithProbeAsync(tempDir, probeSeconds: 1,
+            reachable: _ => Interlocked.Increment(ref probes) != 1); // only the first probe fails
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(4)); // several ticks past the transient failure
+
+            probes.Should().BeGreaterThan(2, "the probe should have run past the single failure");
+            src.Health.IsHealthy.Should().BeTrue();
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task DisposeAsync_StopsHealthProbe()
+    {
+        // A probe surviving disposal would keep a timer alive per re-created source and keep
+        // touching a path the orchestrator has long moved on from.
+        using var tempDir = new TempDirectory();
+        var probes = 0;
+        var src = await StartWithProbeAsync(tempDir, probeSeconds: 1,
+            reachable: _ => { Interlocked.Increment(ref probes); return true; });
+
+        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        await src.DisposeAsync();
+        var afterDispose = Volatile.Read(ref probes);
+
+        await Task.Delay(TimeSpan.FromSeconds(2.5));
+
+        Volatile.Read(ref probes).Should().Be(afterDispose);
+    }
+
+    [Fact]
+    public async Task StartAsync_SkipsHealthProbe_WhenIntervalIsZero()
+    {
+        using var tempDir = new TempDirectory();
+        var probes = 0;
+        var src = await StartWithProbeAsync(tempDir, probeSeconds: 0,
+            reachable: _ => { Interlocked.Increment(ref probes); return false; });
+
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2));
+
+            Volatile.Read(ref probes).Should().Be(0);
+            src.Health.IsHealthy.Should().BeTrue();
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
     /// <summary>
     /// Disposable temp directory wrapper. Cleans up the directory tree on Dispose, even
     /// when the test threw mid-way — important because per-test temp dirs accumulate
