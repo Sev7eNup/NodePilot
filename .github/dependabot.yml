@@ -1,0 +1,73 @@
+version: 2
+
+# Four package ecosystems (nuget + three npm roots), feeding the five CI jobs. NuGet resolves through Central Package
+# Management, so every bump lands in Directory.Packages.props rather than in individual
+# csproj files. Grouped so a framework bump arrives as one reviewable PR instead of a dozen.
+updates:
+  - package-ecosystem: nuget
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      microsoft-extensions:
+        patterns:
+          - "Microsoft.Extensions.*"
+          - "Microsoft.AspNetCore.*"
+          - "Microsoft.EntityFrameworkCore*"
+      opentelemetry:
+        patterns:
+          - "OpenTelemetry*"
+      test-stack:
+        patterns:
+          - "xunit*"
+          - "Microsoft.NET.Test.Sdk"
+          - "coverlet.*"
+          - "FluentAssertions"
+          - "Moq"
+          - "NBomber*"
+
+  - package-ecosystem: npm
+    directory: "/src/nodepilot-ui"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+      opentelemetry:
+        patterns:
+          - "@opentelemetry/*"
+      tooling:
+        patterns:
+          - "vite"
+          - "vitest"
+          - "@vitejs/*"
+          - "eslint*"
+          - "typescript*"
+
+  - package-ecosystem: npm
+    directory: "/src/nodepilot-docs-ui"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+
+  # Electron shell: package.json pins three overrides into Forge's own tree (see the
+  # "//overrides" note there). Review those before accepting a Forge bump.
+  - package-ecosystem: npm
+    directory: "/src/nodepilot-desktop"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
