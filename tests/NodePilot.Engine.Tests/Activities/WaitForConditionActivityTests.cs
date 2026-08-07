@@ -36,6 +36,10 @@ public sealed class WaitForConditionActivityTests : IDisposable
             ["WaitForCondition:AllowedHosts:0"] = "db.internal",
             ["WaitForCondition:AllowedHosts:1"] = "api",
             ["WaitForCondition:AllowedHosts:2"] = "x",
+            ["WaitForCondition:AllowedHosts:3"] = "localhost",
+            // Production posture, deliberately: this is the config under which httpOk used to
+            // be rejected by the restApi SSRF guard before the probe list was ever consulted.
+            ["RestApi:BlockPrivateNetworks"] = "true",
         })
         .Build();
     private readonly ManagedMachine _machine;
@@ -357,6 +361,26 @@ public sealed class WaitForConditionActivityTests : IDisposable
     }
 
     [Fact]
+    public void BuildConditionExpression_PortOpen_AcceptsTemplatedPortAsNumericString()
+    {
+        // The resolver substitutes {{...}} textually inside the raw config JSON, so a templated
+        // port always arrives quoted. Rejecting it would make `port` the one typed sub-mode
+        // field that silently cannot be templated, contrary to what the class doc promises.
+        var expr = WaitForConditionActivity.BuildConditionExpression(
+            ParseConfig("{\"conditionType\":\"portOpen\",\"host\":\"db.internal\",\"port\":\"5432\"}"));
+        expr.Should().Contain("ConnectAsync('db.internal', 5432)");
+    }
+
+    [Fact]
+    public void BuildConditionExpression_PortOpen_NonNumericPortString_Throws()
+    {
+        // An unresolved template or a typo must still fail closed, not land in the PS script.
+        Action act = () => WaitForConditionActivity.BuildConditionExpression(
+            ParseConfig("{\"conditionType\":\"portOpen\",\"host\":\"db.internal\",\"port\":\"{{manual.probePort}}\"}"));
+        act.Should().Throw<InvalidOperationException>().WithMessage("*'port'*required*");
+    }
+
+    [Fact]
     public void BuildConditionExpression_PortOpen_MissingHost_Throws()
     {
         Action act = () => WaitForConditionActivity.BuildConditionExpression(
@@ -410,6 +434,41 @@ public sealed class WaitForConditionActivityTests : IDisposable
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("explicitly allowed");
         _invocationCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_HttpOkToAllowlistedLoopback_ReachesThePollLoop()
+    {
+        // The regression this suite missed: httpOk ran through NetworkGuard.ValidateUrl — the
+        // restApi SSRF guard — before its own probe check. With RestApi:BlockPrivateNetworks
+        // on (the production default, set in the fixture) that rejected the probe outright,
+        // so WaitForCondition:AllowedHosts=["localhost"] never got a say and the operator was
+        // told to edit a restart-required restApi key that governs something else entirely.
+        var config = ParseConfig(
+            "{\"conditionType\":\"httpOk\",\"url\":\"http://localhost:5000/healthz/live\",\"intervalSeconds\":1,\"timeoutSeconds\":2}");
+
+        var result = await CreateActivity().ExecuteAsync(CreateContext(), config, CancellationToken.None);
+
+        _invocationCount.Should().BeGreaterThan(0, "the probe must actually run, not fail validation");
+        result.ErrorOutput.Should().NotContain("REST API");
+        result.ErrorOutput.Should().NotContain("BlockPrivateNetworks");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_PortOpenTimeout_NamesTargetAndExecutionPath()
+    {
+        // Every typed sub-mode collapses its failure modes into the same opaque
+        // ###NODEPILOT_COND:False###, and "localhost" means the *remote* box on the WinRM path.
+        // Without the target in the message, a probe pointed at the wrong port is
+        // indistinguishable from a broken product.
+        var config = ParseConfig(
+            "{\"conditionType\":\"portOpen\",\"host\":\"localhost\",\"port\":5000,\"intervalSeconds\":1,\"timeoutSeconds\":2}");
+
+        var result = await CreateActivity().ExecuteAsync(CreateContext(), config, CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("probing localhost:5000");
+        result.ErrorOutput.Should().Contain("host.example.net", "the probe ran over WinRM, not on the API host");
     }
 
     [Fact]

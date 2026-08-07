@@ -2154,12 +2154,25 @@
               "activityType": "manualTrigger",
               "config": {
                 "title": "Parameter",
+                "description": "probePort/probeUrl zielen auf die eigene NodePilot-API und sind auf den Dev-Port 5000 vorbelegt. Auf einer Installation hoert Kestrel auf dem beim Setup gewaehlten HTTPS-Port — dann hier den Port bzw. https://localhost:<HTTPS-Port>/healthz/live eintragen, sonst laufen die beiden Proben korrekt in den Timeout. Der Host muss in WaitForCondition:AllowedHosts stehen (Default: localhost).",
                 "parameters": [
                   {
                     "name": "input",
                     "type": "string",
                     "required": false,
                     "default": "muster"
+                  },
+                  {
+                    "name": "probePort",
+                    "type": "string",
+                    "required": false,
+                    "default": "5000"
+                  },
+                  {
+                    "name": "probeUrl",
+                    "type": "string",
+                    "required": false,
+                    "default": "http://localhost:5000/healthz/live"
                   }
                 ]
               }
@@ -2230,13 +2243,13 @@
               "y": 260
             },
             "data": {
-              "label": "wait: portOpen",
+              "label": "wait: portOpen (Ziel via Parameter)",
               "activityType": "waitForCondition",
               "targetMachineId": "localhost",
               "config": {
                 "conditionType": "portOpen",
                 "host": "localhost",
-                "port": 5000,
+                "port": "{{manual.probePort}}",
                 "intervalSeconds": 1,
                 "timeoutSeconds": 10
               }
@@ -2250,12 +2263,12 @@
               "y": 260
             },
             "data": {
-              "label": "wait: httpOk",
+              "label": "wait: httpOk (Ziel via Parameter)",
               "activityType": "waitForCondition",
               "targetMachineId": "localhost",
               "config": {
                 "conditionType": "httpOk",
-                "url": "http://localhost:5000/healthz/live",
+                "url": "{{manual.probeUrl}}",
                 "intervalSeconds": 1,
                 "timeoutSeconds": 10
               }

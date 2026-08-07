@@ -9,7 +9,7 @@ Ausnahme: `PrometheusScrapeAllowAnonymous` ist eine Relaxation und defaultet auf
 | `Remote:RequireWinRmSsl` | `true` | WinRM ohne SSL → Exception (Dev: `false`) |
 | `RestApi:BlockPrivateNetworks` | `true` | Blockt RFC1918/Loopback in `restApi` (Dev: `false`) |
 | `RestApi:AllowedHosts` | `[]` | Exakte Host-/IP-Liste für tatsächlich proxied `restApi`-Ziele/Redirects — Ausnahme von `BlockPrivateNetworks`; Link-Local/Metadata bleibt immer gesperrt |
-| `WaitForCondition:AllowedHosts` | `["localhost"]` | Eigene Liste für die PowerShell-Probes `portOpen`/`httpOk`; leere Liste lehnt jede Probe ab. Getrennt von `RestApi:AllowedHosts`, damit eine erlaubte Probe nicht zugleich `restApi` zu Loopback öffnet |
+| `WaitForCondition:AllowedHosts` | `["localhost"]` | Eigene Liste für die PowerShell-Probes `portOpen`/`httpOk`; leere Liste lehnt jede Probe ab. Getrennt von `RestApi:AllowedHosts`, damit eine erlaubte Probe nicht zugleich `restApi` zu Loopback öffnet — und umgekehrt allein ausschlaggebend: `RestApi:*` wird für Proben nicht mitgeprüft |
 | `FileSystemOperation:RejectTraversal` | `true` | Rejects `..` in Filesystem-Op-Paths (Dev: `false`) |
 | `SqlActivity:RequireConnectionRef` | `true` | Nur named `connectionRef` statt inline `connectionString` (Dev: `false`) |
 | `StartProgram:DisallowShellExecute` | `true` | Verwirft `useShellExecute=true` (Dev: `false`) |
