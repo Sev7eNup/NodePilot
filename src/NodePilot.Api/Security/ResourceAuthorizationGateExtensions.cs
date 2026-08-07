@@ -6,10 +6,13 @@ namespace NodePilot.Api.Security;
 
 /// <summary>
 /// Shared folder-RBAC gate for workflow-/folder-shaped endpoints — the single implementation
-/// behind <c>WorkflowsControllerBase.RequireWorkflowAccessAsync</c> and the controllers that
-/// don't inherit that base (<c>ExecutionsController</c>, <c>AiChatController</c>,
-/// <c>WorkflowTelemetryController</c>). Previously each of those carried a verbatim copy;
-/// the copies drifted into review debt, so the gate now lives here once.
+/// behind <c>WorkflowsControllerBase.RequireWorkflowAccessAsync</c> and every controller that
+/// doesn't inherit that base (<c>ExecutionsController</c>, <c>AiChatController</c>,
+/// <c>WorkflowTelemetryController</c>, <c>SharedWorkflowFoldersController</c>,
+/// <c>SharedFolderPermissionsController</c>, <c>ExecutionDebugController</c>). Previously
+/// several of those carried verbatim or subtly-diverging copies; the copies drifted into
+/// review debt, so the gate lives here once — no controller hand-rolls the
+/// read-mask-then-op sequence anymore.
 ///
 /// <para>Semantics: returns <c>null</c> when access is permitted (caller continues the
 /// action). Returns 404 when the caller cannot even read the folder — masking existence so
@@ -28,14 +31,15 @@ public static class ResourceAuthorizationGateExtensions
         IResourceAuthorizationService authz,
         Workflow workflow,
         ResourceOp op,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? forbiddenMessage = null)
     {
         var canRead = await authz.CanAccessWorkflowAsync(controller.User, workflow.FolderId, ResourceOp.Read, ct);
         if (!canRead) return controller.NotFound();
         if (op == ResourceOp.Read) return null;
 
         var canDoOp = await authz.CanAccessWorkflowAsync(controller.User, workflow.FolderId, op, ct);
-        if (!canDoOp) return InsufficientFolderPermissions();
+        if (!canDoOp) return InsufficientFolderPermissions(forbiddenMessage);
         return null;
     }
 
@@ -45,18 +49,24 @@ public static class ResourceAuthorizationGateExtensions
         IResourceAuthorizationService authz,
         Guid folderId,
         ResourceOp op,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? forbiddenMessage = null)
     {
         var canRead = await authz.CanAccessFolderAsync(controller.User, folderId, ResourceOp.Read, ct);
         if (!canRead) return controller.NotFound();
         if (op == ResourceOp.Read) return null;
 
         var canDoOp = await authz.CanAccessFolderAsync(controller.User, folderId, op, ct);
-        if (!canDoOp) return InsufficientFolderPermissions();
+        if (!canDoOp) return InsufficientFolderPermissions(forbiddenMessage);
         return null;
     }
 
-    private static ObjectResult InsufficientFolderPermissions()
-        => new(new { message = "Insufficient folder permissions for this operation" })
+    /// <summary>
+    /// <paramref name="message"/> lets multi-folder operations (move: source vs destination)
+    /// keep their differentiated 403 text while still flowing through the one gate — pass
+    /// nothing for the canonical body.
+    /// </summary>
+    private static ObjectResult InsufficientFolderPermissions(string? message = null)
+        => new(new { message = message ?? "Insufficient folder permissions for this operation" })
         { StatusCode = StatusCodes.Status403Forbidden };
 }

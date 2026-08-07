@@ -155,8 +155,9 @@ tmp_*
 !prometheus.yml
 !appsettings.loadtests.json
 !samples/**/*.yml
-!.github/workflows/*.yml
-!.github/workflows/*.yaml
+# All GitHub config (workflows, dependabot, issue templates, release.yml) must stay addable
+!.github/**/*.yml
+!.github/**/*.yaml
 # Bundled UI assets — negate the *.png rule above for Vite's public/ folder
 !src/nodepilot-ui/public/*.png
 # Docs site brand logos (imported by the docs SPA, not a public/ folder)
@@ -182,8 +183,16 @@ src/nodepilot-ui/coverage-sonar/
 
 # Claude Code internal task state
 .claude/scheduled_tasks.lock
-# Local, per-developer Claude Code permissions/settings — must not be committed
+# Local, per-developer Claude Code permissions/settings and one-off plan files —
+# machine-local session artifacts, must not be committed (public repo)
 .claude/settings.local.json
+.claude/settings.json
+.claude/plans/
+
+# Codex CLI scratch artifacts
+.codex-artifacts/
 
 # Local presentations / slide decks (not part of the product)
 presentations/
+# ...except the one deliberately published deck
+!presentations/nodepilot-presentation.html

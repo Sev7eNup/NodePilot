@@ -113,15 +113,17 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task Create_AsStranger_OnRoot_Returns403()
+    public async Task Create_AsStranger_OnRoot_MasksAs404()
     {
+        // Create now runs through the shared RBAC gate (ResourceAuthorizationGateExtensions),
+        // which masks folders the caller cannot even READ as 404 — the same 403/404
+        // differential rule every other folder endpoint follows. Previously this action
+        // hand-rolled an Edit-only check and answered 403, leaking that the parent exists.
         var ctrl = NewCtrl(_strangerId, "Operator");
         var result = await ctrl.Create(
             new CreateSharedFolderRequest(SharedWorkflowFolder.RootFolderId, "Stuff"),
             CancellationToken.None);
-        var obj = result.Result as ObjectResult;
-        obj.Should().NotBeNull();
-        obj!.StatusCode.Should().Be(403);
+        result.Result.Should().BeOfType<NotFoundResult>();
     }
 
     [Fact]

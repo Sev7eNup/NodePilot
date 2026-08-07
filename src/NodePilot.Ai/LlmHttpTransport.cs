@@ -82,12 +82,12 @@ internal sealed class LlmHttpTransport
         catch (OperationCanceledException) when (!caller.IsCancellationRequested)
         {
             throw new LlmException(LlmErrorKind.Timeout,
-                $"LLM-Endpoint hat innerhalb von {_config.TimeoutSeconds}s nicht geantwortet ({_config.Endpoint.PostUrl}).");
+                $"LLM endpoint did not respond within {_config.TimeoutSeconds}s ({_config.Endpoint.PostUrl}).");
         }
         catch (HttpRequestException ex)
         {
             throw new LlmException(LlmErrorKind.Unreachable,
-                $"LLM-Endpoint nicht erreichbar ({_config.Endpoint.PostUrl}): {ex.Message}", inner: ex);
+                $"LLM endpoint unreachable ({_config.Endpoint.PostUrl}): {ex.Message}", inner: ex);
         }
 
         if (!resp.IsSuccessStatusCode)
@@ -187,7 +187,7 @@ internal sealed class LlmHttpTransport
             catch (OperationCanceledException) when (!caller.IsCancellationRequested)
             {
                 throw new LlmException(LlmErrorKind.Timeout,
-                    $"LLM-Stream lieferte innerhalb von {_config.TimeoutSeconds}s nicht weiter ({_config.Endpoint.PostUrl}).");
+                    $"LLM stream stalled for more than {_config.TimeoutSeconds}s ({_config.Endpoint.PostUrl}).");
             }
             if (line is null) break;
 

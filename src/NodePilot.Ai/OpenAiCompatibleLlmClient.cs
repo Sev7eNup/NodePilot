@@ -307,12 +307,7 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
             }
 
             // Attach the accumulated tool calls (if the model requested any) to the Done event.
-            IReadOnlyList<LlmToolCall>? finalToolCalls = toolAcc.Count > 0
-                ? toolAcc.OrderBy(kv => kv.Key)
-                    .Select(kv => new LlmToolCall(kv.Value.Id, kv.Value.Name, kv.Value.Arguments.ToString()))
-                    .Where(t => t.Name.Length > 0).ToList()
-                : null;
-            if (finalToolCalls is { Count: 0 }) finalToolCalls = null;
+            var finalToolCalls = ToolCallAccumulator.Materialize(toolAcc);
 
             var generationMs = firstOutputTs is long outputStart
                 ? (int)Stopwatch.GetElapsedTime(outputStart).TotalMilliseconds
@@ -483,10 +478,4 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         }
     }
 
-    private sealed class ToolCallAccumulator
-    {
-        public string Id = "";
-        public string Name = "";
-        public System.Text.StringBuilder Arguments { get; } = new();
-    }
 }

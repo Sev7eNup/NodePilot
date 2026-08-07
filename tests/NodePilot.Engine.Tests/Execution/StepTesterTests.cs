@@ -436,6 +436,76 @@ public class StepTesterTests
     }
 
     /// <summary>
+    /// Step-test must assemble its variables through VariableResolver.BuildStepVariables —
+    /// the same path as the production StepRunner — so alias semantics and the M-23
+    /// short-name denylist match a real run: a mocked upstream param gets its unqualified
+    /// alias (`hostName`), an auth-bearing name (`Authorization`) does NOT, `.success`
+    /// derives automatically, and non-step-shaped mock keys (globals overrides) still land
+    /// verbatim. The dict was previously hand-built and skipped all of that.
+    /// </summary>
+    [Fact]
+    public async Task TestStepAsync_MockStepParams_FollowProductionAliasAndDenylistSemantics()
+    {
+        using var db = TestDbFactory.Create();
+        var workflowId = Guid.NewGuid();
+        var def = JsonSerializer.Serialize(new
+        {
+            nodes = new[]
+            {
+                new
+                {
+                    id = "step-a",
+                    type = "activity",
+                    position = new { x = 0, y = 0 },
+                    data = new { activityType = "captureVars", config = new { } }
+                }
+            },
+            edges = Array.Empty<object>()
+        });
+        db.Workflows.Add(new Workflow { Id = workflowId, Name = "wf", DefinitionJson = def });
+        await db.SaveChangesAsync();
+
+        var capture = new CaptureVariablesActivity();
+        var registry = new ActivityRegistry(new IActivityExecutor[] { capture });
+        var sp = new ServiceCollection().BuildServiceProvider();
+        var tester = new StepTester(db, registry, new StubGlobalVariableStore(), sp, new OutputRedactor());
+
+        var mocks = new Dictionary<string, string>
+        {
+            ["up.param.hostName"] = "web01",
+            ["up.param.Authorization"] = "secret-token",
+            ["globals.SITE"] = "mock-site",
+        };
+        var result = await tester.TestStepAsync(
+            workflowId, "step-a", DefaultAuthorizationSnapshot, mocks, null, default);
+
+        result.Success.Should().BeTrue();
+        capture.SeenVariables.Should().NotBeNull();
+        var vars = capture.SeenVariables!;
+        vars["up.param.hostName"].Should().Be("web01");
+        vars["hostName"].Should().Be("web01", "benign short-name aliases must exist in step-test exactly like in a production run");
+        vars.Should().NotContainKey("Authorization", "M-23: auth-bearing names are never aliased unqualified");
+        vars["up.param.Authorization"].Should().Be("secret-token", "the fully-qualified form must still resolve");
+        vars["up.success"].Should().Be("true", "success derives from the mocked step result");
+        vars["globals.SITE"].Should().Be("mock-site", "non-step-shaped mock keys keep their verbatim mock-wins semantics");
+    }
+
+    /// <summary>
+    /// Records the variables dict an executor receives, so tests can assert on the exact
+    /// assembly semantics without going through activity output.
+    /// </summary>
+    private sealed class CaptureVariablesActivity : IActivityExecutor
+    {
+        public Dictionary<string, string>? SeenVariables { get; private set; }
+        public string ActivityType => "captureVars";
+        public Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
+        {
+            SeenVariables = new Dictionary<string, string>(context.Variables, StringComparer.OrdinalIgnoreCase);
+            return Task.FromResult(new ActivityResult { Success = true, Output = "captured" });
+        }
+    }
+
+    /// <summary>
     /// Activity that emits known token-shaped strings on stdout and as an output parameter.
     /// Used to verify <see cref="OutputRedactor"/> is wired into the step-test return path.
     /// </summary>

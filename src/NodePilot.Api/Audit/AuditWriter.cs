@@ -21,36 +21,6 @@ namespace NodePilot.Api.Audit;
 /// </summary>
 public class AuditWriter : IAuditWriter
 {
-    /// <summary>
-    /// Allowlist of audit actions that are additionally mirrored into the support log.
-    /// Extended by an "outcome=failure" fallthrough rule — every failed audit entry lands
-    /// in the support log regardless of whether it's on the allowlist. Deliberately left
-    /// out: <c>CREDENTIAL_DECRYPTED</c> (fires N times per workflow run; only its failures
-    /// arrive via the outcome fallthrough), <c>TOKEN_REFRESHED</c> (fires every 12h per
-    /// user), <c>WORKFLOW_CREATED/UPDATED/DUPLICATED/LOCKED/UNLOCKED/MOVED</c> (routine
-    /// editor activity), <c>EXECUTION_*</c> (reported separately by the WorkflowEngine
-    /// lifecycle helper, which includes duration + step counts instead of just a resource id).
-    /// </summary>
-    private static readonly HashSet<string> SupportLogActions = new(StringComparer.Ordinal)
-    {
-        // Auth
-        "LOGIN_SUCCESS", "BREAK_GLASS_LOGIN_SUCCESS", "LOGIN_FAILED", "LOGIN_LOCKED", "LOGOUT",
-        // User-Mgmt
-        "USER_CREATED", "USER_CREATED_BOOTSTRAP", "USER_DELETED", "USER_ROLE_CHANGED", "USER_BREAK_GLASS_CHANGED",
-        "USER_PASSWORD_RESET", "USER_ACTIVATED", "USER_DEACTIVATED",
-        "USER_DIRECTORY_ACCESS_REFUSED", "USER_AUTHORIZATION_STALE",
-        "USER_EXTERNAL_IDENTITY_RESOLVED",
-        "USER_SCIM_PROVISIONED", "USER_SCIM_UPDATED", "USER_SCIM_DEPROVISIONED",
-        "SCIM_GROUP_PROVISIONED", "SCIM_GROUP_UPDATED", "SCIM_GROUP_DEPROVISIONED",
-        "SCIM_GROUP_REACTIVATED",
-        // Workflow Productive-Events
-        "WORKFLOW_PUBLISHED", "WORKFLOW_DELETED", "WORKFLOW_FORCE_UNLOCKED",
-        // Trigger-Events
-        "EXTERNAL_TRIGGER_FIRED", "WEBHOOK_TRIGGERED", "TRIGGER_FIRE_SUPPRESSED",
-        // Secrets
-        "SECRETS_REENCRYPTED",
-    };
-
     private readonly NodePilotDbContext _db;
     private readonly IHttpContextAccessor _httpContextAccessor;
     private readonly ILogger<AuditWriter> _logger;
@@ -91,51 +61,10 @@ public class AuditWriter : IAuditWriter
 
             // SIEM forward: emit the audit row as a structured log line so a SIEM that
             // tails the JSON log file sees mutations in real time without polling the DB.
-            // The properties below use ECS-standard names (event.action, event.category,
-            // user.id, source.ip, audit.id) so out-of-the-box SIEM detection rules
-            // (Sigma, Sentinel analytics, Elastic-detection) match without custom field
-            // mapping. The redacted details JSON is also forwarded so investigators can
-            // pivot from "WORKFLOW_PUBLISHED" to the named workflow without joining back
-            // to the AuditLog table.
-            var outcome = AuditEventClassification.Outcome(action, entry.Details);
-            // Support-log mirror: on the allowlist (Auth/User-Mgmt/Publish/Trigger/Secrets)
-            // OR any failure outcome — this way brute-force attempts, failed decryptions,
-            // and other `_FAILED/_SUPPRESSED/_REJECTED` actions land in the support log
-            // automatically without the allowlist needing to know about them individually.
-            var supportLog = SupportLogActions.Contains(action) || outcome == "failure";
-
-            using (_logger.BeginScope(new Dictionary<string, object?>
-            {
-                ["support.event_type"] = "AUDIT",
-                ["support.message"] = $"{action} user={actor.Username ?? "-"} resource={resourceType ?? "-"}/{resourceId?.ToString() ?? "-"} ip={actor.IpAddress ?? "-"}",
-                ["event.action"]   = action,
-                ["event.category"] = AuditEventClassification.Category(action),
-                ["event.kind"]     = "event",
-                ["event.outcome"]  = outcome,
-                ["event.dataset"]  = "nodepilot.audit",
-                ["event.id"]       = entry.Id.ToString(),
-                ["event.original"] = entry.Details,
-                ["user.id"]        = actor.UserId?.ToString(),
-                ["user.name"]      = actor.Username,
-                ["source.ip"]      = actor.IpAddress,
-                ["AuditResourceType"] = resourceType,
-                ["AuditResourceId"]   = resourceId?.ToString(),
-                ["SupportLog"]     = supportLog,
-            }))
-            {
-                if (supportLog)
-                {
-                    _logger.LogInformation(
-                        "AUDIT {Action} user={UserName} resource={ResourceType}/{ResourceId} ip={RemoteIp}",
-                        action, actor.Username ?? "-", resourceType ?? "-", resourceId?.ToString() ?? "-", actor.IpAddress ?? "-");
-                }
-                else
-                {
-                    _logger.LogInformation(
-                        "audit.{Action} resource={ResourceType}/{ResourceId} actor={UserId} ip={RemoteIp}",
-                        action, resourceType, resourceId, actor.UserId, actor.IpAddress);
-                }
-            }
+            // Delegated to AuditEventForwarder — the ONE implementation of the ECS scope
+            // shape and the support-log allowlist, shared with all background/atomic audit
+            // call sites (this class previously carried a diverging inline copy of both).
+            AuditEventForwarder.ForwardCommitted(_logger, entry);
         }
         catch (Exception ex)
         {

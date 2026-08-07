@@ -3,8 +3,8 @@ using System.Reflection;
 namespace NodePilot.Ai;
 
 /// <summary>
-/// Loads the static system prompts and the workflow example from embedded resources in the API
-/// assembly. Singleton — the resources are read once at startup and then kept in memory. There is
+/// Loads the static system prompts and the workflow example from embedded resources in THIS
+/// (Ai) assembly. Singleton — the resources are read once at startup and then kept in memory. There is
 /// no file-override path: prompts are part of the build and are versioned together with the code
 /// that consumes them.
 ///

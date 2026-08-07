@@ -81,5 +81,5 @@ ist eine flache runScript-Variable und bleibt in Configs Literal — daher nutze
 
 ## Kreative Demo-Workflows (hand-gebaut)
 
-`dog-care-workflow.json`, `rose-garden-care-workflow.json`, `example-uboot-workflow.json`,
-`decorative-flower.json`, `male-health-workflow.json`.
+`example-uboot-workflow.json`, `decorative-flower.json`.
+(Weitere lokale Demo-Workflows sind bewusst gitignored und nicht Teil des Repos.)

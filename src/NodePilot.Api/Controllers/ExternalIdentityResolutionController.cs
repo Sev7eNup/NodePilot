@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
@@ -11,31 +12,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 
-using System.Text.Json.Serialization;
 namespace NodePilot.Api.Controllers;
-
-public sealed record ResolveAdIdentityConflictRequest(
-    string CanonicalSid,
-    string LegacyLdapObjectGuid,
-    [property: JsonRequired] Guid WinnerUserId);
-
-public sealed record ResolveUpgradeIdentityConflictRequest(
-    [property: JsonRequired] AuthProvider Provider,
-    string ConflictExternalId,
-    [property: JsonRequired] Guid WinnerUserId,
-    IReadOnlyCollection<Guid> LoserUserIds);
-
-public sealed record UpgradeIdentityConflictCandidate(
-    Guid Id,
-    string Username,
-    UserRole Role,
-    bool IsActive,
-    bool IsTombstoned);
-
-public sealed record UpgradeIdentityConflict(
-    AuthProvider Provider,
-    string ConflictExternalId,
-    IReadOnlyList<UpgradeIdentityConflictCandidate> Candidates);
 
 /// <summary>
 /// Explicit, auditable resolution for pre-upgrade LDAP-objectGUID and Windows-SID rows

@@ -107,7 +107,7 @@ public class ExternalTriggerController : ControllerBase
     [AllowAnonymous]
     // H-1: without this policy, an attacker who discovers the API key (or a legitimate
     // integration with a bug) can fire workflows at unlimited RPS — every trigger spawns
-    // engine/DB work. The "trigger" policy (30/min per IP) is defined in Program.cs.
+    // engine/DB work. The "trigger" policy (30/min per IP) is defined in RateLimitingSetup.cs.
     [EnableRateLimiting("trigger")]
     public async Task<ActionResult<ExecutionResponse>> ExternalTrigger(
         string workflowNameOrId,

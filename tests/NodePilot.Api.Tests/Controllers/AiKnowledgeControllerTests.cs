@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Ai;
 using NodePilot.Ai.Knowledge;
 using NodePilot.Api.Controllers;
+using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
