@@ -140,102 +140,68 @@ public sealed class WorkflowAssistantService
         var definition = new StringBuilder();      // everything after the delimiter
         var proseFlushedLen = 0;
         var inDefinition = false;
-        string? model = null;
-        int? promptTokens = null, completionTokens = null, generationMs = null;
 
-        for (var iteration = 0; ; iteration++)
+        // Prose/definition splitting is THIS service's specialty; the bounded tool-loop
+        // mechanics (final round without tools, presence-based tool execution, usage
+        // accumulation) live once in AgenticToolLoop, shared with the knowledge assistant.
+        IEnumerable<ChatStreamEvent> OnDelta(string delta)
         {
-            // On the LAST allowed round, offer no tools at all: this guarantees the model returns
-            // a text answer instead of emitting yet more tool_calls at the depth cap (which the
-            // loop would then discard → an empty final answer). Deliberately NOT
-            // `tool_choice:"none"` — some local endpoints (llama.cpp/vLLM) reject that literal
-            // with HTTP 400; omitting tools entirely avoids the problem altogether. The tool
-            // results are already present in the conversation history anyway.
-            var isFinalRound = iteration >= maxDepth - 1;
-            var roundTools = isFinalRound ? null : tools;
-            var llmRequest = new LlmRequest(systemPrompt, UserPrompt: string.Empty, JsonMode: false,
-                Conversation: conversation, Tools: roundTools, ToolChoice: roundTools is not null ? "auto" : null);
-
-            var assistantText = new StringBuilder(); // prose from THIS round (for the conversation turn)
-            IReadOnlyList<LlmToolCall>? toolCalls = null;
-
-            await foreach (var evt in llm.StreamAsync(llmRequest, ct))
+            var events = new List<ChatStreamEvent>(2);
+            if (inDefinition)
             {
-                if (evt.Done)
-                {
-                    model = evt.Model;
-                    // ADD UP across multiple tool rounds (never overwrite) — otherwise the usage
-                    // footer would only count the last LLM round. Stays null if usage is never reported.
-                    if (evt.PromptTokens is int pt) promptTokens = (promptTokens ?? 0) + pt;
-                    if (evt.CompletionTokens is int cpt) completionTokens = (completionTokens ?? 0) + cpt;
-                    // Same accumulation for the generation window, so it stays the matching
-                    // denominator for the summed completion tokens.
-                    if (evt.GenerationMs is int gm) generationMs = (generationMs ?? 0) + gm;
-                    toolCalls = evt.ToolCalls;
-                    break;
-                }
-                if (evt.ContentDelta is not { Length: > 0 } delta) continue;
-                assistantText.Append(delta);
-
-                if (inDefinition)
-                {
-                    definition.Append(delta);
-                    if (definition.Length > MaxDefinitionBytes)
-                        throw new LlmException(LlmErrorKind.MalformedResponse, "Definition-Puffer überschreitet 5 MiB.");
-                    continue;
-                }
-
-                raw.Append(delta);
-                if (raw.Length > MaxDefinitionBytes)
-                    throw new LlmException(LlmErrorKind.MalformedResponse, "Prosa-Puffer überschreitet 5 MiB.");
-
-                var text = raw.ToString();
-                var idx = text.IndexOf(DefinitionDelimiter, proseFlushedLen, StringComparison.Ordinal);
-                if (idx >= 0)
-                {
-                    if (idx > proseFlushedLen)
-                        yield return ChatStreamEvent.Delta(text[proseFlushedLen..idx]);
-                    inDefinition = true;
-                    // No more prose deltas from here on — the definition is being buffered.
-                    // Tell the client generation is still in progress ("Building change…").
-                    yield return ChatStreamEvent.Building();
-                    definition.Append(text[(idx + DefinitionDelimiter.Length)..]);
-                    proseFlushedLen = idx;
-                }
-                else
-                {
-                    // Hold back the last (delimiter.Length-1) chars so a partial delimiter never leaks through.
-                    var safeEnd = text.Length - (DefinitionDelimiter.Length - 1);
-                    if (safeEnd > proseFlushedLen)
-                    {
-                        yield return ChatStreamEvent.Delta(text[proseFlushedLen..safeEnd]);
-                        proseFlushedLen = safeEnd;
-                    }
-                }
+                definition.Append(delta);
+                if (definition.Length > MaxDefinitionBytes)
+                    throw new LlmException(LlmErrorKind.MalformedResponse, "Definition-Puffer überschreitet 5 MiB.");
+                return events;
             }
 
-            // Execute tool calls, play their results back as tool-role turns, then stream again —
-            // as long as we're not already inside the definition and the depth cap hasn't been hit.
-            // Precedence: if the model emits BOTH a definition (inDefinition) and tool_calls in the
-            // same round, the definition wins — the tool_calls are deliberately dropped (no further round trip).
-            // Execute on the PRESENCE of tool_calls, not the finish_reason string: local endpoints
-            // (LM Studio, llama.cpp) often report "stop"/null even on a tool-call round, which the old
-            // exact-string gate silently dropped — capping such models at a single tool call.
-            var canCallTools = !inDefinition && toolContext is not null && toolCalls is { Count: > 0 } && iteration < maxDepth - 1;
-            if (canCallTools)
+            raw.Append(delta);
+            if (raw.Length > MaxDefinitionBytes)
+                throw new LlmException(LlmErrorKind.MalformedResponse, "Prosa-Puffer überschreitet 5 MiB.");
+
+            var text = raw.ToString();
+            var idx = text.IndexOf(DefinitionDelimiter, proseFlushedLen, StringComparison.Ordinal);
+            if (idx >= 0)
             {
-                conversation.Add(new LlmMessage("assistant", assistantText.ToString(), ToolCalls: toolCalls));
-                foreach (var call in toolCalls!)
-                {
-                    yield return ChatStreamEvent.ToolCall(call.Name, call.Id, call.ArgumentsJson);
-                    var result = await _tools.ExecuteAsync(call.Name, call.ArgumentsJson, toolContext!, ct);
-                    yield return ChatStreamEvent.ToolResult(call.Id, call.Name, result);
-                    conversation.Add(new LlmMessage("tool", result, ToolCallId: call.Id));
-                }
-                continue; // next LLM round, now with the tool results
+                if (idx > proseFlushedLen)
+                    events.Add(ChatStreamEvent.Delta(text[proseFlushedLen..idx]));
+                inDefinition = true;
+                // No more prose deltas from here on — the definition is being buffered.
+                // Tell the client generation is still in progress ("Building change…").
+                events.Add(ChatStreamEvent.Building());
+                definition.Append(text[(idx + DefinitionDelimiter.Length)..]);
+                proseFlushedLen = idx;
             }
-            break; // final answer (or the depth cap was reached)
+            else
+            {
+                // Hold back the last (delimiter.Length-1) chars so a partial delimiter never leaks through.
+                var safeEnd = text.Length - (DefinitionDelimiter.Length - 1);
+                if (safeEnd > proseFlushedLen)
+                {
+                    events.Add(ChatStreamEvent.Delta(text[proseFlushedLen..safeEnd]));
+                    proseFlushedLen = safeEnd;
+                }
+            }
+            return events;
         }
+
+        var loop = new AgenticToolLoop();
+        await foreach (var evt in loop.RunAsync(
+            llm, systemPrompt, conversation, tools, maxDepth,
+            OnDelta,
+            (call, token) => _tools.ExecuteAsync(call.Name, call.ArgumentsJson, toolContext!, token),
+            // Precedence: if the model emits BOTH a definition (inDefinition) and tool_calls in
+            // the same round, the definition wins — the tool_calls are deliberately dropped.
+            suppressToolCalls: () => inDefinition,
+            ct))
+        {
+            yield return evt;
+        }
+
+        var model = loop.Model;
+        var promptTokens = loop.PromptTokens;
+        var completionTokens = loop.CompletionTokens;
+        var generationMs = loop.GenerationMs;
 
         // Flush whatever prose is left (no delimiter ever showed up, or a held-back tail remains).
         if (!inDefinition)
