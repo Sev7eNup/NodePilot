@@ -8,7 +8,8 @@ version: 2
 # block bundles its minor+patch updates into ONE collective PR and carries
 # open-pull-requests-limit: 1, so majors queue behind the collective PR instead of fanning
 # out. The first live run in 2026-08 opened 21 individual PRs at once; that noise level is
-# deliberately not allowed to repeat.
+# deliberately not allowed to repeat. (Note: any edit to this file makes Dependabot
+# re-run every block and supersede open singles with the collective PRs.)
 updates:
   - package-ecosystem: nuget
     directory: "/"
