@@ -69,8 +69,7 @@ export function RetentionSection() {
         return;
       }
       if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setErrors(err.body.errors.map((e: any) => {
+        setErrors(err.body.errors.map((e) => {
           const fieldHint = e.fields?.length ? `${e.fields.join(', ')}: ` : '';
           return `${fieldHint}${e.message ?? JSON.stringify(e)}`;
         }));

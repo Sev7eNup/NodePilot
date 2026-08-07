@@ -36,4 +36,3 @@ export function CopyButton({
   );
 }
 
-export default CopyButton;

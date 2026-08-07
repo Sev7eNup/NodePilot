@@ -35,6 +35,7 @@ Der Dienst läuft wahlweise unter:
 | [Get-DotnetRuntimePayload.ps1](Get-DotnetRuntimePayload.ps1) | Bauzeit: ASP.NET-Core-Runtime holen, gegen publizierten SHA512 + eingecheckten Pin + Authenticode prüfen |
 | [Test-SetupAdapter.ps1](Test-SetupAdapter.ps1) | Verhaltenstest des Answer-File-Vertrags (non-admin, offline, ohne DB) |
 | [server/](server/README.md) | GUI-Installer für die Server-Installation (Inno Setup 6) |
+| [desktop/](desktop/README.md) | Desktop-App-Installer (Electron, offline Win-11-x64; alles als Boot-Start-Dienste) — volle Doku im Ordner-README |
 | [Test-ArtifactSecurity.ps1](Test-ArtifactSecurity.ps1) | Selbsttest der Artefakt-Signaturkette (Tamper-Erkennung, Signer-Pinning) |
 | [Update-NodePilot.ps1](Update-NodePilot.ps1) | In-Place-Upgrade, erhält appsettings + SQL-DB, rollt bei Fehler zurück |
 | [Uninstall-NodePilot.ps1](Uninstall-NodePilot.ps1) | Stoppt Dienst, entfernt Binaries, Firewall-Regeln und den Installations-Marker. DB bleibt unberührt |

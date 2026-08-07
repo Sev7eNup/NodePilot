@@ -1,5 +1,5 @@
 {
-  "_comment": "Showcase workflow: every activity type + every edge-condition kind (Always / On Success / On Failure / disabled / conditionExpression comparison/group/not with unary+binary ops). Follows the LTR Showcase Styleguide in CLAUDE.md (x-step 340, y-lane 200, main lane y=400).",
+  "_comment": "Showcase workflow: 17 of the activity types + every edge-condition kind (Always / On Success / On Failure / disabled / conditionExpression comparison/group/not with unary+binary ops). Not exhaustive — newer activities (llmQuery, generateText, textFileEdit, waitForCondition, zipOperation, fileHash, powerManagement, scheduledTask, folderOperation, forEach, decision) are not included. Layout follows docs/workflow-styleguide.md (x-step 340, y-lane 200, main lane y=400).",
   "nodes": [
     {
       "id": "trigger-schedule",

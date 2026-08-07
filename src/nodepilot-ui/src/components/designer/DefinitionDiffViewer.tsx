@@ -80,4 +80,3 @@ function edgeLabel(def: WorkflowDefinition, id: string): string {
   return e ? `${e.source} → ${e.target}` : id;
 }
 
-export default DefinitionDiffViewer;

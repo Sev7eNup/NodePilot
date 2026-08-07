@@ -114,7 +114,8 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
   });
 
   test('4.1 — pre-seeded edge renders, is selectable and shows source→target (create-by-drag skipped)', async ({ page }) => {
-    test.skip(false, 'create-edge-by-handle-drag is not synthesizable in React Flow; pre-seeded edge covers render/select/label');
+    // Deliberate scope note (NOT a skip): create-edge-by-handle-drag is not synthesizable
+    // in React Flow; the pre-seeded edge covers render/select/label.
     await page.route(`**/api/workflows/${WF_ID}`, (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() }),
     );

@@ -40,4 +40,3 @@ export function CopyableId({ id, className }: Readonly<{ id: string; className?:
   );
 }
 
-export default CopyableId;

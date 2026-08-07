@@ -1050,4 +1050,3 @@ function ChangeIcon({ kind }: Readonly<{ kind: ChangelogEntry['kind'] }>) {
   return <Edit size={11} className="shrink-0 text-amber-600 dark:text-amber-400" />;
 }
 
-export default AiWorkflowChatPanel;

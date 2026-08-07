@@ -149,4 +149,3 @@ export function Markdown({ children, size = 'sm' }: Readonly<{ children: string;
   );
 }
 
-export default Markdown;

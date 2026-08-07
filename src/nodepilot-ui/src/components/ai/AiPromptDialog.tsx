@@ -166,4 +166,3 @@ export function AiPromptDialog({
   );
 }
 
-export default AiPromptDialog;

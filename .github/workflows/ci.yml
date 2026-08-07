@@ -67,7 +67,11 @@ jobs:
         run: dotnet tool restore
 
       - name: Test with coverage
-        run: dotnet test --configuration Release --no-build --logger "trx;LogFileName=test_results.trx" --collect:"XPlat Code Coverage" --results-directory TestResults
+        # --settings applies coverage.runsettings (excludes EF migrations and
+        # [ExcludeFromCodeCoverage]-attributed code from the denominator) — the same filter
+        # the local measurement uses. Previously CI measured without it, so the enforced
+        # number and the documented measurement procedure disagreed.
+        run: dotnet test --configuration Release --no-build --settings coverage.runsettings --logger "trx;LogFileName=test_results.trx" --collect:"XPlat Code Coverage" --results-directory TestResults
 
       - name: Generate coverage report
         if: always()
@@ -249,7 +253,9 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browsers
-        # ~200 MB download, but cached by setup-node + actions/cache; subsequent runs are fast.
+        # ~200 MB download on every run — there is deliberately NO browser cache step here
+        # (setup-node's npm cache does not cover ~/.cache/ms-playwright). Add actions/cache
+        # keyed on the playwright version if this ever becomes the bottleneck.
         run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests

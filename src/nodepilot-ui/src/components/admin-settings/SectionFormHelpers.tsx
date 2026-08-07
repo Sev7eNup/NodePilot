@@ -65,8 +65,7 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
         return;
       }
       if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setErrors(err.body.errors.map((e: any) => {
+        setErrors(err.body.errors.map((e) => {
           const fields = e.fields?.length ? `${e.fields.join(', ')}: ` : '';
           return `${fields}${e.message ?? JSON.stringify(e)}`;
         }));

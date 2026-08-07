@@ -85,7 +85,9 @@ cd src/nodepilot-ui && npm run test:e2e         # hermetic Playwright e2e (no ba
 
 - **Tests are mandatory.** Every behavioral change ships with matching tests in the same PR.
   Naming: `MethodName_Scenario_ExpectedResult`. The remote/WinRM layer is always mocked; DB
-  tests use in-memory SQLite. Coverage gates: backend ≥ 45 % line, frontend per `vitest.config.ts`.
+  tests use in-memory SQLite. Coverage gates: backend ≥ 85 % line / ≥ 70 % branch (enforced
+  in `.github/workflows/ci.yml` — the workflow is the single authoritative number), frontend
+  per `vitest.config.ts`.
 - **Models and interfaces live in `NodePilot.Core`** (which has no project dependencies).
 - **i18n:** every user-visible string goes through `react-i18next` in **both** `de` and `en`
   locale files. The default UI language is German.
@@ -101,7 +103,7 @@ cd src/nodepilot-ui && npm run test:e2e         # hermetic Playwright e2e (no ba
 1. Branch off `main` (never commit directly to `main`).
 2. Keep commits focused; write clear messages describing the *why*.
 3. Open a PR using the template. Ensure CI is green (backend build+test, frontend lint+build+test,
-   docs-ui build, e2e).
+   docs-ui build, desktop typecheck+test, e2e).
 4. Architectural decisions of lasting consequence get an ADR under `docs/adr/` — see
    [`docs/adr/README.md`](docs/adr/README.md) for when one is warranted and the template.
 

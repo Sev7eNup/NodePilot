@@ -330,4 +330,3 @@ function prettifyJson(raw: string): string {
   }
 }
 
-export default WorkflowGenerationDialog;
