@@ -152,8 +152,7 @@ function SmtpCard() {
         return;
       }
       if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setError(err.body.errors.map((e: any) => e.message ?? JSON.stringify(e)));
+        setError(err.body.errors.map((e) => e.message ?? JSON.stringify(e)));
         return;
       }
       setError([err instanceof Error ? err.message : String(err)]);
@@ -394,8 +393,7 @@ function LlmCard() {
         return;
       }
       if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        setError(err.body.errors.map((e: any) => e.message ?? JSON.stringify(e)));
+        setError(err.body.errors.map((e) => e.message ?? JSON.stringify(e)));
         return;
       }
       setError([err instanceof Error ? err.message : String(err)]);

@@ -161,7 +161,8 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
   });
 
   test('3.3 — node position is saved (keyboard nudge; literal mouse-drag skipped)', async ({ page }) => {
-    test.skip(false, 'mouse-drag move is not synthesizable in React Flow; keyboard nudge covers persistence');
+    // Deliberate scope note (NOT a skip): mouse-drag move is not synthesizable in React
+    // Flow; the keyboard nudge covers persistence.
     let putBody: { definitionJson?: string } | null = null;
     await page.route(`**/api/workflows/${WF_ID}`, (route) => {
       if (route.request().method() === 'PUT') {
@@ -223,7 +224,8 @@ test.describe('Designer Node-Operationen (Teil 3)', () => {
   });
 
   test('3.5 — multi-select via Ctrl+A opens the bulk-edit panel (marquee drag skipped)', async ({ page }) => {
-    test.skip(false, 'marquee drag-box is not synthesizable in React Flow; Ctrl+A covers multi-select');
+    // Deliberate scope note (NOT a skip): marquee drag-box is not synthesizable in React
+    // Flow; Ctrl+A covers multi-select.
     await page.route(`**/api/workflows/${WF_ID}`, (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: workflowJson() }),
     );

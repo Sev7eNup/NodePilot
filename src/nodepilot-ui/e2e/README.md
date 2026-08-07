@@ -2,7 +2,7 @@
 
 Hermetic Playwright specs for the React SPA. They mock every API call with `page.route`
 (no backend, no Postgres, no WinRM) and run against a `vite preview` build. The full
-`E2ETests.md` catalogue (78 Teile) is the source of truth; this suite is the **automated
+`E2ETests.md` catalogue (81 Teile) is the source of truth; this suite is the **automated
 UI subset**. Backend-only and environment-bound scenarios are covered elsewhere (noted below).
 
 ## Running
@@ -53,6 +53,9 @@ alongside `dotnet test` and `npm run test:run`.
   live channel.
 
 ## Coverage map (E2ETests.md Teil → spec)
+
+Not in the map (no Teil): `_all-screens.spec.ts` — the screenshot-capture spec that renders
+every main screen into `__screens__/*.png`; it documents visuals, it asserts nothing.
 
 | Teil | Topic | Spec |
 |---|---|---|

@@ -77,6 +77,15 @@ export type SettingsTestProbeResult = {
 };
 
 /**
+ * Error body the settings API returns for non-2xx responses. 400 carries `errors`
+ * (validation details); 412 carries `current` (the latest server snapshot to rebase onto);
+ * other statuses may carry only code/message.
+ */
+export type SettingsErrorBody = SettingsValidationErrorResponse & {
+  current?: SettingsSectionResponse<unknown>;
+};
+
+/**
  * Thrown for non-2xx responses from the admin settings API. Carries enough metadata for
  * the UI to disambiguate between the documented status codes:
  *  - 400 → validation problem; `body.errors` populated
@@ -86,10 +95,8 @@ export type SettingsTestProbeResult = {
  */
 export class SettingsApiError extends Error {
   public readonly status: number;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  public readonly body: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  constructor(message: string, status: number, body: any) {
+  public readonly body: SettingsErrorBody | null;
+  constructor(message: string, status: number, body: SettingsErrorBody | null) {
     super(message);
     this.name = 'SettingsApiError';
     this.status = status;
@@ -104,8 +111,8 @@ async function readJson<T>(response: Response): Promise<T> {
 
 async function expectOk<T>(response: Response): Promise<T> {
   if (response.ok) return readJson<T>(response);
-  let body: unknown = null;
-  try { body = await response.json(); }
+  let body: SettingsErrorBody | null = null;
+  try { body = (await response.json()) as SettingsErrorBody; }
   catch { /* response had no JSON body */ }
   throw new SettingsApiError(
     `Admin Settings API returned ${response.status}`,
