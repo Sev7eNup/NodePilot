@@ -1,18 +1,18 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
+using NodePilot.Core.Telemetry;
 
 namespace NodePilot.Scheduler;
 
 /// <summary>
-/// Scheduler / trigger-orchestrator metrics and the shared ActivitySource.
-/// Uses literal names to keep this project decoupled from NodePilot.Telemetry
-/// (kept in sync with <c>TelemetryConstants.Sources.Scheduler</c> /
-/// <c>TelemetryConstants.Meters.Scheduler</c>).
+/// Scheduler / trigger-orchestrator metrics and the shared ActivitySource. Identifier
+/// names come from <see cref="TelemetryConstants"/> (Core) like every other per-project
+/// metrics registry — no "keep in sync" literal.
 /// </summary>
 public static class SchedulerMetrics
 {
-    public static readonly ActivitySource Source = new("NodePilot.Scheduler");
-    public static readonly Meter Meter = new("NodePilot.Scheduler", "1.0.0");
+    public static readonly ActivitySource Source = new(TelemetryConstants.Sources.Scheduler);
+    public static readonly Meter Meter = new(TelemetryConstants.Meters.Scheduler, "1.0.0");
 
     /// <summary>
     /// Fires actually observed by active trigger sources and dropped because the database was

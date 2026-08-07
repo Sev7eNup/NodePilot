@@ -57,7 +57,8 @@ public sealed class TokenStore
     }
 
     // Must match the CLI's entropy so a session written by `np auth login` is readable here.
-    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes("NodePilot.Cli/v1");
+    // Shared constant in Core — no more hand-kept sync between the two executables.
+    private static readonly byte[] Entropy = Encoding.UTF8.GetBytes(NodePilot.Core.Clients.ClientSessionSecurity.DpapiSessionEntropy);
 
     private static string Sanitize(string profile)
     {

@@ -24,15 +24,21 @@ public sealed class CliSessionInteropTests
         Path.Combine("src", "NodePilot.Mcp", "Auth", "TokenStore.cs");
 
     [Fact]
-    public void DpapiEntropy_IsIdenticalInBothStores()
+    public void DpapiEntropy_ComesFromTheSharedCoreConstant_InBothStores()
     {
-        var cli = ExtractEntropy(CliTokenStore);
-        var mcp = ExtractEntropy(McpTokenStore);
+        // Since the coherence-audit fix the entropy lives ONCE in Core
+        // (ClientSessionSecurity.DpapiSessionEntropy). Both stores must reference that
+        // constant — a hand-restored literal would reintroduce the silent-breakage coupling.
+        ExtractEntropyExpression(CliTokenStore).Should().Contain("ClientSessionSecurity.DpapiSessionEntropy",
+            "die CLI muss die geteilte Core-Konstante nutzen, kein eigenes Literal");
+        ExtractEntropyExpression(McpTokenStore).Should().Contain("ClientSessionSecurity.DpapiSessionEntropy",
+            "der MCP-Server muss die geteilte Core-Konstante nutzen, kein eigenes Literal");
 
-        mcp.Should().Be(cli,
-            "die DPAPI-Entropie ist Teil des Schlüssels — weicht sie ab, kann der MCP-Server " +
-            "die von `np auth login` geschriebene Session nicht mehr entschlüsseln und meldet " +
-            "irreführend 'nicht angemeldet'");
+        // And the constant itself is part of the ON-DISK format: changing it orphans every
+        // existing `np auth login` session. Pin the value.
+        NodePilot.Core.Clients.ClientSessionSecurity.DpapiSessionEntropy.Should().Be("NodePilot.Cli/v1",
+            "die Entropie ist Teil des Session-Blob-Formats — eine Änderung macht alle " +
+            "bestehenden Sessions unlesbar (Symptom: irreführendes 'nicht angemeldet')");
     }
 
     [Fact]
@@ -56,12 +62,12 @@ public sealed class CliSessionInteropTests
             "Session, die der MCP-Server nie findet");
     }
 
-    private static string ExtractEntropy(string relativePath)
+    private static string ExtractEntropyExpression(string relativePath)
     {
         var source = ReadRepoFile(relativePath);
-        var match = Regex.Match(source, @"Entropy\s*=\s*Encoding\.UTF8\.GetBytes\(""(?<value>[^""]+)""\)");
-        match.Success.Should().BeTrue($"{relativePath} must declare the DPAPI entropy as a UTF-8 literal");
-        return match.Groups["value"].Value;
+        var match = Regex.Match(source, @"Entropy\s*=\s*Encoding\.UTF8\.GetBytes\((?<expr>[^)]+)\)");
+        match.Success.Should().BeTrue($"{relativePath} must declare the DPAPI entropy via Encoding.UTF8.GetBytes(…)");
+        return match.Groups["expr"].Value;
     }
 
     private static string ExtractScope(string relativePath)
