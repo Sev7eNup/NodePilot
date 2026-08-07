@@ -131,17 +131,73 @@ public static class NetworkGuard
     }
 
     /// <summary>
+    /// Full policy check for the <c>httpOk</c> probe: URL shape, scheme, and probe admission.
+    ///
+    /// <para>Deliberately does <b>not</b> consult <c>RestApi:BlockPrivateNetworks</c> or
+    /// <c>RestApi:AllowedHosts</c>. Routing the probe through <see cref="ValidateUrl"/> — as it
+    /// did until 2026-08-07 — meant "check whether my own service is up" additionally required
+    /// the restApi loopback exception, the exact coupling the two lists exist to prevent: the
+    /// shipped default <c>WaitForCondition:AllowedHosts=["localhost"]</c> was inert on every
+    /// non-Development instance, and the remediation the operator was shown named the wrong key.
+    /// The mismatch also crossed a reload boundary — the probe list is hot-reloadable, the
+    /// <c>RestApi</c> section is restart-required.</para>
+    /// </summary>
+    internal static void ValidateProbeUrl(IConfiguration config, string url, string operation)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
+            throw new InvalidOperationException($"{operation}: url '{url}' is not a valid absolute URI");
+
+        // Same unconditional scheme rule as ValidateUrl: file://, gopher://, ftp:// are never
+        // safe to hand to Invoke-WebRequest regardless of which allow-list admitted the host.
+        if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            throw new InvalidOperationException($"{operation}: url scheme '{uri.Scheme}' is not allowed");
+
+        RequireExplicitlyAllowlistedHost(config, uri.Host, operation);
+    }
+
+    /// <summary>
     /// Network probes executed by PowerShell cannot use HttpClient's guarded ConnectCallback.
     /// They therefore require an exact, administrator-controlled host allow-list entry rather
     /// than accepting an externally supplied host that merely resolves safely once.
+    ///
+    /// <para>Link-local/cloud-metadata stays unreachable through <i>any</i> allow-list, matching
+    /// <see cref="AssertAddressAllowed"/> and <see cref="EnforceConnect"/>: an allow-listed DNS
+    /// name can be rebound to 169.254.169.254. The lookup is best-effort — see
+    /// <see cref="TryResolve"/>.</para>
     /// </summary>
     internal static void RequireExplicitlyAllowlistedHost(IConfiguration config, string host, string operation)
     {
-        if (IsProbeHostAllowlisted(config, host)) return;
-        throw new InvalidOperationException(
-            $"{operation}: host '{host}' is not explicitly allowed. Add the exact host to WaitForCondition:AllowedHosts; " +
-            "PowerShell-backed network probes reject all dynamic destinations by default to prevent SSRF and DNS rebinding. " +
-            "Note this is a separate list from RestApi:AllowedHosts, which only governs restApi's loopback/private-network exception.");
+        if (!IsProbeHostAllowlisted(config, host))
+            throw new InvalidOperationException(
+                $"{operation}: host '{host}' is not explicitly allowed. Add the exact host to WaitForCondition:AllowedHosts; " +
+                "PowerShell-backed network probes reject all dynamic destinations by default to prevent SSRF and DNS rebinding. " +
+                "Note this is a separate list from RestApi:AllowedHosts, which only governs restApi's loopback/private-network exception.");
+
+        foreach (var ip in TryResolve(host))
+        {
+            if (IsLinkLocal(ip))
+                throw new InvalidOperationException(
+                    $"{operation}: host '{host}' resolves to a link-local address ({NormalizeAddress(ip)}); this range " +
+                    "(including the cloud metadata endpoint 169.254.169.254) is always blocked and cannot be enabled " +
+                    "through WaitForCondition:AllowedHosts.");
+        }
+    }
+
+    /// <summary>
+    /// Best-effort address lookup for the probe guard. An unresolvable name yields an empty set
+    /// instead of an error: <c>waitForCondition</c> is a <i>wait</i> activity, and a host that
+    /// does not resolve yet is the normal case for "poll until the service comes up". The
+    /// allow-list — not this lookup — is the authorization; the link-local check on top of it is
+    /// defense in depth, so failing open on DNS cannot widen who may be probed.
+    /// </summary>
+    private static IPAddress[] TryResolve(string host)
+    {
+        var candidate = host.Trim();
+        if (candidate.Length > 2 && candidate[0] == '[' && candidate[^1] == ']')
+            candidate = candidate[1..^1];
+        if (IPAddress.TryParse(candidate, out var direct)) return [direct];
+        try { return Dns.GetHostAddresses(candidate); }
+        catch (Exception) { return []; }
     }
 
     private static bool ShouldBlockPrivateNetworks(IConfiguration config)

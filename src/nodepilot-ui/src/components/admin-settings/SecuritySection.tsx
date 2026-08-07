@@ -147,6 +147,11 @@ function RestApiCard() {
 // probes; RestApi:AllowedHosts is the loopback exception for restApi calls. Merging
 // them would mean "let a workflow check whether my own service is up" silently also
 // opens outbound HTTP to loopback — whose URLs can come from trigger payloads.
+//
+// The separation only became true end-to-end in 2026-08: httpOk additionally ran
+// through the restApi SSRF guard, so this card was inert for loopback targets on
+// every hardened instance while still advertising hot-reload — the RestApi section
+// it silently depended on is restart-required.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type WaitForConditionDto = { allowedHosts: string[] };

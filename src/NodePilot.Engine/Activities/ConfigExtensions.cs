@@ -41,4 +41,25 @@ internal static class ConfigExtensions
     /// </summary>
     public static int? GetOptionalPositiveInt(this JsonElement config, string key)
         => config.TryGetProperty(key, out var p) && p.TryGetInt32(out var v) && v > 0 ? v : null;
+
+    /// <summary>
+    /// Reads an integer that may have arrived as a JSON string. The engine's variable resolver
+    /// substitutes <c>{{...}}</c> textually inside the raw config JSON, so a templated numeric
+    /// field always comes back quoted — <c>"port": "{{manual.probePort}}"</c> resolves to
+    /// <c>"5000"</c>, not <c>5000</c>. Without this, numeric fields silently opt out of the
+    /// templating the typed sub-modes otherwise promise.
+    /// </summary>
+    public static bool TryGetIntOrNumericString(this JsonElement config, string key, out int value)
+    {
+        value = 0;
+        if (!config.TryGetProperty(key, out var p)) return false;
+        return p.ValueKind switch
+        {
+            JsonValueKind.Number => p.TryGetInt32(out value),
+            JsonValueKind.String => int.TryParse(
+                p.GetString(), System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out value),
+            _ => false,
+        };
+    }
 }
