@@ -29,7 +29,7 @@ public class SupportEventRetentionServiceTests
 
     private static SupportEventRetentionService Service(IServiceScopeFactory factory, RetentionOptions? options = null)
         => new(factory, new StaticOptionsMonitor<RetentionOptions>(options ?? new RetentionOptions()),
-            new SingleNodeClusterStateProvider(), NullLogger<SupportEventRetentionService>.Instance);
+            new SingleNodeClusterStateProvider(), NullLogger<SupportEventRetentionService>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
     private static void AddEvent(NodePilotDbContext db, DateTime timestamp)
         => db.SupportEvents.Add(new SupportEvent

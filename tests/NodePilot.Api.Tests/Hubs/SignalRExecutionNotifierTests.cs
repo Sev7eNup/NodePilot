@@ -406,4 +406,70 @@ public sealed class SignalRExecutionNotifierTests : IDisposable
         releaseSends.SetResult();
         await flush.WaitAsync(TimeSpan.FromSeconds(2));
     }
+
+    [Fact]
+    public async Task ExecuteAsync_OpsFeedFolderLookupThrows_LoopSurvivesAndKeepsSending()
+    {
+        // The regression this pins, byte for byte: every per-group send was already wrapped
+        // (SendGroupSafeAsync), but the ops-feed folder lookup - `await _resolveFolder(...)` -
+        // was a bare await inside SendBatchAsync, and ExecuteAsync's outer catch only handled
+        // OperationCanceledException. With BackgroundServiceExceptionBehavior at its repo-wide
+        // default of StopHost, one database exception raised there while a status event flowed
+        // took the WHOLE HOST down - during a database outage, with ops-feed watchers online,
+        // that is not a corner case but the common case.
+        var sendCalls = 0;
+        var proxy = new Mock<IClientProxy>();
+        proxy.Setup(p => p.SendCoreAsync(It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
+             .Returns(() => { Interlocked.Increment(ref sendCalls); return Task.CompletedTask; });
+
+        var clients = new Mock<IHubClients>();
+        clients.Setup(c => c.Groups(It.IsAny<IReadOnlyList<string>>())).Returns(proxy.Object);
+        clients.Setup(c => c.Clients(It.IsAny<IReadOnlyList<string>>())).Returns(proxy.Object);
+        var hub = new Mock<IHubContext<ExecutionHub>>();
+        hub.SetupGet(h => h.Clients).Returns(clients.Object);
+
+        // An ops-feed watcher is online, and the folder lookup dies the way a database outage
+        // makes it die.
+        ExecutionHub.RegisterOpsFeedForTest("conn-1", unrestricted: true, folderIds: []);
+        var lookupCalls = 0;
+        var notifier = new SignalRExecutionNotifier(
+            hub.Object,
+            hasSubscribers: (_, _) => true,
+            folderResolver: (_, _) =>
+            {
+                Interlocked.Increment(ref lookupCalls);
+                throw new InvalidOperationException("NpgsqlException: the database is gone");
+            });
+
+        await notifier.StartAsync(CancellationToken.None);
+        try
+        {
+            var executionId = Guid.NewGuid();
+            var workflowId = Guid.NewGuid();
+
+            await notifier.ExecutionStatusChangedAsync(executionId, workflowId, ExecutionStatus.Running, null, null);
+            await WaitForAsync(() => Volatile.Read(ref lookupCalls) >= 1);
+
+            notifier.ExecuteTask!.IsFaulted.Should().BeFalse(
+                "a failed folder lookup must never escape ExecuteAsync - with StopHost semantics that kills the process");
+
+            // The loop is still alive: the per-watcher sends of a second event keep flowing even
+            // though its own folder lookup keeps throwing.
+            var sendsBefore = Volatile.Read(ref sendCalls);
+            await notifier.ExecutionStatusChangedAsync(executionId, workflowId, ExecutionStatus.Succeeded, null, DateTime.UtcNow);
+            await WaitForAsync(() => Volatile.Read(ref sendCalls) > sendsBefore);
+        }
+        finally
+        {
+            await notifier.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private static async Task WaitForAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(25);
+        condition().Should().BeTrue("condition not reached within 5s");
+    }
 }

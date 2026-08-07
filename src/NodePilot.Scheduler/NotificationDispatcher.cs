@@ -10,6 +10,7 @@ using NodePilot.Data;
 using NodePilot.Engine.Notifications;
 using NodePilot.Scheduler.Notifications;
 using NodePilot.Scheduler.SystemAlerts;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Scheduler;
 
@@ -20,7 +21,9 @@ namespace NodePilot.Scheduler;
 /// AND the <see cref="NodePilot.Scheduler.SystemAlerts.SystemAlertEvaluator"/> for SYSTEM policies —
 /// both through the SHARED match → suppress → persist-Pending → send pipeline: a Pending
 /// <see cref="NotificationDeliveryAttempt"/> per route (idempotent on (rule,route,eventKey)) persisted
-/// BEFORE any network I/O, and only then send.
+/// BEFORE any network I/O, and only then send. Delivery is intentionally at-least-once: a crash
+/// after the receiver accepted a request but before the Sent update committed leaves a Pending
+/// attempt which the next leader sends again. Receivers use EventKey to deduplicate.
 ///
 /// <para>Infra/signal alerts (backlog, machine health, credential expiry, schedule health, …) are no
 /// longer a legacy gauge collector: they are modular <c>ISystemAlertSource</c>s evaluated per system
@@ -69,13 +72,16 @@ public class NotificationDispatcher : BackgroundService
         set => _queuedLongCollector.Threshold = value;
     }
 
+    private readonly IDatabaseAvailability _availability;
+
     public NotificationDispatcher(
         IServiceScopeFactory scopeFactory,
         IClusterStateProvider cluster,
         IEnumerable<INotificationSink> sinks,
         ISystemAlertCatalog systemAlertCatalog,
         IConfiguration configuration,
-        ILogger<NotificationDispatcher> logger)
+        ILogger<NotificationDispatcher> logger,
+        IDatabaseAvailability availability)
     {
         _scopeFactory = scopeFactory;
         _cluster = cluster;
@@ -84,6 +90,7 @@ public class NotificationDispatcher : BackgroundService
         var map = new Dictionary<NotificationChannel, INotificationSink>();
         foreach (var s in sinks) map[s.Channel] = s;
         _sinks = map;
+        _availability = availability;
         _logger = logger;
         _interval = TimeSpan.FromSeconds(30);
 
@@ -105,6 +112,13 @@ public class NotificationDispatcher : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate, deliberately ABOVE the leader check: during a database outage no
+            // node can renew its cluster lease, so every node reads as a follower - gating on
+            // IsLeader first would park for the right reason and log the wrong one.
+            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
+            // is left at its default StopHost, so an escaping cancellation would stop the host).
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             if (!_cluster.IsLeader)
             {
                 try { await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken); }
@@ -131,11 +145,16 @@ public class NotificationDispatcher : BackgroundService
     // Exposed for tests: one full pass (recover leftovers + collect/match/send new).
     internal async Task<int> DispatchOnceAsync(CancellationToken ct)
     {
+        if (!_cluster.IsLeader) return 0;
+        var leaseEpoch = _cluster.LeaseEpoch;
+        if (!StillOwnsLease(leaseEpoch)) return 0;
+
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
         var store = scope.ServiceProvider.GetRequiredService<INotificationRuleStore>();
 
-        var total = await RecoverPendingAsync(db, store, ct);
+        var total = await RecoverPendingAsync(db, store, leaseEpoch, ct);
+        if (!StillOwnsLease(leaseEpoch)) return total;
 
         var rules = await store.GetEnabledAsync(ct);
         foreach (var collector in _collectors)
@@ -145,10 +164,12 @@ public class NotificationDispatcher : BackgroundService
             if (collection is null) continue;
 
             var suppressionCache = new Dictionary<(Guid, string), NotificationSuppressionState>();
-            total += await MatchAndSendAsync(db, store, collection.Rules, collection.Contexts, suppressionCache, now, ct);
+            total += await MatchAndSendAsync(
+                db, store, collection.Rules, collection.Contexts, suppressionCache, now, leaseEpoch, ct);
+            if (!StillOwnsLease(leaseEpoch)) return total;
         }
 
-        total += await DispatchSystemAlertsAsync(db, store, rules, ct);
+        total += await DispatchSystemAlertsAsync(db, store, rules, leaseEpoch, ct);
         return total;
     }
 
@@ -156,7 +177,11 @@ public class NotificationDispatcher : BackgroundService
     // state), then deliver every fire through the shared suppress → persist-Pending → send primitives. The
     // single SaveChanges flushes the evaluator's state mutations together with the Pending attempts.
     private async Task<int> DispatchSystemAlertsAsync(
-        NodePilotDbContext db, INotificationRuleStore store, IReadOnlyList<NotificationRule> rules, CancellationToken ct)
+        NodePilotDbContext db,
+        INotificationRuleStore store,
+        IReadOnlyList<NotificationRule> rules,
+        long leaseEpoch,
+        CancellationToken ct)
     {
         var systemPolicies = rules.Where(r => r.Kind == NotificationRuleKind.System).ToList();
         await _systemEvaluator.PruneOrphanedStateAsync(db, systemPolicies.Select(p => p.Id).ToList(), ct);
@@ -200,7 +225,8 @@ public class NotificationDispatcher : BackgroundService
         var sent = 0;
         foreach (var (attempt, route, ctx) in toSend)
         {
-            await SendOneAsync(db, store, attempt, route, ctx, now, ct);
+            if (!StillOwnsLease(leaseEpoch)) break;
+            await SendOneAsync(db, store, attempt, route, ctx, now, leaseEpoch, ct);
             if (attempt.Status == NotificationDeliveryStatus.Sent) sent++;
         }
         if (toSend.Count > 0) await db.SaveChangesAsync(ct);
@@ -216,7 +242,10 @@ public class NotificationDispatcher : BackgroundService
     private async Task<int> MatchAndSendAsync(
         NodePilotDbContext db, INotificationRuleStore store, IReadOnlyList<NotificationRule> rules,
         IReadOnlyList<NotificationContext> contexts,
-        Dictionary<(Guid, string), NotificationSuppressionState> suppressionCache, DateTime now, CancellationToken ct)
+        Dictionary<(Guid, string), NotificationSuppressionState> suppressionCache,
+        DateTime now,
+        long leaseEpoch,
+        CancellationToken ct)
     {
         var toSend = new List<(NotificationDeliveryAttempt attempt, NotificationRoute route, NotificationContext ctx)>();
         foreach (var ctx in contexts)
@@ -262,7 +291,8 @@ public class NotificationDispatcher : BackgroundService
         var sent = 0;
         foreach (var (attempt, route, ctx) in toSend)
         {
-            await SendOneAsync(db, store, attempt, route, ctx, now, ct);
+            if (!StillOwnsLease(leaseEpoch)) break;
+            await SendOneAsync(db, store, attempt, route, ctx, now, leaseEpoch, ct);
             if (attempt.Status == NotificationDeliveryStatus.Sent) sent++;
         }
         if (toSend.Count > 0) await db.SaveChangesAsync(ct);
@@ -272,7 +302,11 @@ public class NotificationDispatcher : BackgroundService
     // Re-send Pending attempts orphaned by a crash between persist and send. Context is re-derived
     // by the collector that owns the attempt's EventKey shape; if the source row is gone
     // (retention), the attempt is failed out so it doesn't loop forever.
-    private async Task<int> RecoverPendingAsync(NodePilotDbContext db, INotificationRuleStore store, CancellationToken ct)
+    private async Task<int> RecoverPendingAsync(
+        NodePilotDbContext db,
+        INotificationRuleStore store,
+        long leaseEpoch,
+        CancellationToken ct)
     {
         var pending = await db.NotificationDeliveryAttempts
             .Where(a => a.Status == NotificationDeliveryStatus.Pending && !a.IsTest && a.Attempt < MaxAttempts)
@@ -289,6 +323,7 @@ public class NotificationDispatcher : BackgroundService
         var sent = 0;
         foreach (var attempt in pending)
         {
+            if (!StillOwnsLease(leaseEpoch)) break;
             if (!routes.TryGetValue(attempt.NotificationRouteId, out var route))
             {
                 attempt.Status = NotificationDeliveryStatus.Failed;
@@ -302,7 +337,7 @@ public class NotificationDispatcher : BackgroundService
                 attempt.Error = "source execution no longer available";
                 continue;
             }
-            await SendOneAsync(db, store, attempt, route, ctx, now, ct);
+            await SendOneAsync(db, store, attempt, route, ctx, now, leaseEpoch, ct);
             if (attempt.Status == NotificationDeliveryStatus.Sent) sent++;
         }
         await db.SaveChangesAsync(ct);
@@ -321,12 +356,17 @@ public class NotificationDispatcher : BackgroundService
         return await _systemEvaluator.TryReconstructContextAsync(db, eventKey, ct);
     }
 
-    private async Task SendOneAsync(NodePilotDbContext db, INotificationRuleStore store,
-        NotificationDeliveryAttempt attempt, NotificationRoute route, NotificationContext ctx, DateTime now, CancellationToken ct)
+    private async Task SendOneAsync(
+        NodePilotDbContext db,
+        INotificationRuleStore store,
+        NotificationDeliveryAttempt attempt,
+        NotificationRoute route,
+        NotificationContext ctx,
+        DateTime now,
+        long leaseEpoch,
+        CancellationToken ct)
     {
-        attempt.Attempt++;
-        attempt.SentAt = now;
-        attempt.Summary = $"{ctx.EventType} → {route.Channel}:{route.Target}";
+        if (!StillOwnsLease(leaseEpoch)) return;
 
         if (!_sinks.TryGetValue(route.Channel, out var sink))
         {
@@ -337,15 +377,32 @@ public class NotificationDispatcher : BackgroundService
         }
 
         NotificationSendResult result;
+        var attemptStarted = false;
         try
         {
             var secret = string.IsNullOrEmpty(route.Secret) ? null : await store.GetRouteSecretAsync(route.Id, ct);
+
+            // The secret read can outlive a lease. Fence at the last possible point before
+            // external side effects; a stale leader leaves the durable Pending row untouched
+            // for the current leader to recover.
+            if (!StillOwnsLease(leaseEpoch)) return;
+
+            attempt.Attempt++;
+            attemptStarted = true;
+            attempt.SentAt = now;
+            attempt.Summary = $"{ctx.EventType} → {route.Channel}:{route.Target}";
             result = await sink.SendAsync(ctx, route.Target, secret, ct);
         }
         catch (Exception ex)
         {
             // A throwing secret-decrypt (corrupt cipher / key rotation) must not abort the whole pass
             // or wedge the dispatcher — treat it as a bounded-retry failure like any other.
+            if (!attemptStarted)
+            {
+                attempt.Attempt++;
+                attempt.SentAt = now;
+                attempt.Summary = $"{ctx.EventType} → {route.Channel}:{route.Target}";
+            }
             result = NotificationSendResult.Fail(ex.Message);
         }
 
@@ -359,6 +416,9 @@ public class NotificationDispatcher : BackgroundService
             : attempt.Attempt >= MaxAttempts ? NotificationDeliveryStatus.Failed : NotificationDeliveryStatus.Pending;
         _ = db; // attempt is tracked; caller saves.
     }
+
+    private bool StillOwnsLease(long leaseEpoch)
+        => _cluster.IsLeader && _cluster.LeaseEpoch == leaseEpoch;
 
     private async Task<NotificationSuppressionState> GetSuppressionAsync(
         NodePilotDbContext db, Dictionary<(Guid, string), NotificationSuppressionState> cache,

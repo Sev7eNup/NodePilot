@@ -94,3 +94,13 @@ The convention, matching what `CapacityExceptionHandler` had already established
   instead. Tests must exercise the handler directly rather than through a Development-hosted
   `WebApplicationFactory`, which would pass while proving nothing.
 
+## Amendment (2026-08-07): `DATABASE_UNAVAILABLE` — und die Grenze zu ADR 0011
+
+Der Database-Availability-Breaker ([ADR 0011](0011-database-availability-breaker.md)) ergänzt den
+zweiten stabilen Datenbank-Code: **`DATABASE_UNAVAILABLE`** (Breaker offen, Body
+`{code, message, retryAfterSeconds, reason, retryable}`, ein Writer: `DatabaseUnavailableResponse`
+— bewusst kein ProblemDetails, weil der Result-Filter dieser ADR bei einem Middleware-Kurzschluss
+nicht läuft). `DATABASE_TIMEOUT` behält seine Bedeutung „eine Abfrage war langsam, Breaker zu".
+Arbeitsteilung: **diese ADR regelt die Form der Fehlerantwort, ADR 0011 das Verhalten unter der
+ausgefallenen Abhängigkeit.** Das SPA verzweigt ausschließlich auf `code`; `message` ist Diagnostik
+und wird nie gerendert.

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Telemetry;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Api.Security;
 
@@ -22,13 +23,17 @@ public class RevokedTokensCleanupService : BackgroundService
     private readonly TimeSpan _interval;
     private readonly NodePilot.Core.Interfaces.IClusterStateProvider _cluster;
 
+    private readonly IDatabaseAvailability _availability;
+
     public RevokedTokensCleanupService(
         IServiceScopeFactory scopeFactory,
         ILogger<RevokedTokensCleanupService> logger,
         IConfiguration config,
-        NodePilot.Core.Interfaces.IClusterStateProvider cluster)
+        NodePilot.Core.Interfaces.IClusterStateProvider cluster,
+        IDatabaseAvailability availability)
     {
         _scopeFactory = scopeFactory;
+        _availability = availability;
         _logger = logger;
         _cluster = cluster;
         // Default: once a day. Not time-critical — expired rows just take a little space until
@@ -45,6 +50,11 @@ public class RevokedTokensCleanupService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate, deliberately ABOVE the leader check: during a database outage no
+            // node can renew its cluster lease, so every node reads as a follower - gating on
+            // IsLeader first would park for the right reason and log the wrong one.
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             // HA gate: leader-only — both nodes deleting the same expired rows is just wasted IO.
             if (!_cluster.IsLeader)
             {

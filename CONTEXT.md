@@ -64,6 +64,10 @@ _Avoid_: Script snippet, command builder
 The static calling shape of a Workflow: manual inputs, return data outputs, and system outputs.
 _Avoid_: Sub-workflow API
 
+**Database Availability (Breaker)**:
+The process-wide runtime state of the application database: `Booting`, `Available`, `Armed` (one command timeout seen, probe adjudicating - still served), `Unavailable` (breaker open - `/api` answers `503 DATABASE_UNAVAILABLE` without touching the database). Only the probe (`SELECT 1` on a dedicated unpooled connection) may publish `Available`; interceptors may only degrade. A slow query is not an outage.
+_Avoid_: circuit breaker tripped/reset terminology in user-facing copy - the UI says "database unreachable / reconnecting".
+
 ## Relationships
 
 - A **Workflow** contains exactly one **Workflow Definition**.

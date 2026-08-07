@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Interfaces;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Scheduler;
 
@@ -19,11 +20,15 @@ public sealed class MaintenanceWindowSnapshotService : BackgroundService
     private readonly IMaintenanceWindowEvaluator _evaluator;
     private readonly ILogger<MaintenanceWindowSnapshotService> _logger;
 
+    private readonly IDatabaseAvailability _availability;
+
     public MaintenanceWindowSnapshotService(
         IMaintenanceWindowEvaluator evaluator,
-        ILogger<MaintenanceWindowSnapshotService> logger)
+        ILogger<MaintenanceWindowSnapshotService> logger,
+        IDatabaseAvailability availability)
     {
         _evaluator = evaluator;
+        _availability = availability;
         _logger = logger;
     }
 
@@ -33,6 +38,10 @@ public sealed class MaintenanceWindowSnapshotService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate. This service has no leader gate, so it runs on every node - which
+            // makes it one of the loudest offenders during an outage.
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             try
             {
                 await _evaluator.RefreshAsync(stoppingToken);

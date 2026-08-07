@@ -72,12 +72,20 @@
     "connected": "verbunden",
     "unreachable": "nicht erreichbar",
     "checking": "prüfe…",
-    "tooltip": "Backend-Verbindungsstatus — alle 15s via /healthz/live geprüft"
+    "tooltip": "Backend-Verbindungsstatus — alle 15s via /healthz/live geprüft",
+    "databaseUnreachable": "Datenbank nicht erreichbar"
   },
   "host": {
     "label": "Server",
     "machine": "Host",
     "fqdn": "FQDN",
     "tooltip": "API-Server, mit dem diese Sitzung verbunden ist"
+  },
+  "databaseOutage": {
+    "title": "Datenbank nicht erreichbar",
+    "reconnecting": "NodePilot prüft weiter und nimmt den Betrieb automatisch wieder auf, sobald die Datenbank antwortet.",
+    "persistent": "Weiterhin keine Antwort – bitte den Datenbankdienst auf dem Server prüfen.",
+    "rejected": "Die Datenbank lehnt die Verbindung ab (Zugangsdaten, fehlende Datenbank oder TLS). Das muss ein Administrator beheben – Warten hilft hier nicht.",
+    "recovered": "Datenbankverbindung wiederhergestellt."
   }
 }

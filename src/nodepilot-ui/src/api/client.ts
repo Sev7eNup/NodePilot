@@ -1,6 +1,45 @@
 import { csrfHeaders } from './csrf';
+import { reportDatabaseOutageSuspected } from '../stores/dbHealthStore';
 
 const BASE_URL = '/api';
+
+/**
+ * Error thrown for every non-OK API response, carrying the machine-readable parts the display
+ * string used to swallow: HTTP status, the server's stable `code` (ADR 0007) and the Retry-After
+ * hint. `super(message)` receives the exact string `new Error(...)` used to carry, so every
+ * existing `instanceof Error` guard and `.message` read keeps working unchanged — but callers can
+ * now branch on `status`/`code` instead of substring-matching prose.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code?: string;
+  readonly retryAfterSeconds?: number;
+
+  constructor(message: string, status: number, code?: string, retryAfterSeconds?: number) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+/**
+ * The breaker is open: the database is gone and the outage banner is on screen owning that message.
+ * Deliberately NOT including DATABASE_TIMEOUT — see isDatabaseSlowError.
+ */
+export function isDatabaseOutageError(err: unknown): boolean {
+  return err instanceof ApiError && err.code === 'DATABASE_UNAVAILABLE';
+}
+
+/**
+ * The database answered too slowly while the breaker stayed CLOSED (one slow query, not an outage).
+ * No banner is shown for this state by design, so it must stay visible as an ordinary error: the
+ * bug this whole area exists to prevent is a busy database rendering as an empty installation.
+ */
+export function isDatabaseSlowError(err: unknown): boolean {
+  return err instanceof ApiError && err.code === 'DATABASE_TIMEOUT';
+}
 
 /**
  * Shared auth + error-handling shell for every API call (introduced by a security-audit
@@ -34,13 +73,14 @@ async function authedFetch(path: string, options?: RequestInit): Promise<Respons
     // the server's 401 payloads (wrong password vs. the SETUP_TOKEN_REQUIRED bootstrap
     // gate) instead of seeing an opaque "Unauthorized".
     globalThis.location.href = '/login';
-    throw new Error('Unauthorized');
+    throw new ApiError('Unauthorized', 401);
   }
 
   if (!response.ok) {
     // Cap body + strip probable stack-frame artifacts so that leaked server exceptions
     // don't blow up toast UIs or expose internal paths to end users.
     let error = await response.text();
+    let code: string | undefined;
 
     // Structured server errors have the shape `{code, message, bodyExcerpt?}` (see
     // AiController, MapLlmException, etc.). If the body parses as JSON and matches that
@@ -57,6 +97,7 @@ async function authedFetch(path: string, options?: RequestInit): Promise<Respons
           title?: string;
         };
         const msg = parsed.detail ?? parsed.message ?? parsed.error ?? parsed.title;
+        code = parsed.code;
         if (msg) {
           const display = parsed.code && parsed.code !== msg ? `${msg} (${parsed.code})` : msg;
           error = parsed.bodyExcerpt
@@ -71,7 +112,22 @@ async function authedFetch(path: string, options?: RequestInit): Promise<Respons
     if (error && error.length > 500) error = error.slice(0, 500) + '... [truncated]';
     error = error.replaceAll(/(?:\s+at\s+[^\n]+\n?)+/g, ' [stack hidden] ');
     error = error.replaceAll(/System\.\w+Exception:[^\n]+/g, '[exception hidden]');
-    throw new Error(error || response.statusText || `HTTP ${response.status}`);
+
+    const retryAfterRaw = Number(response.headers.get('Retry-After'));
+    const apiError = new ApiError(
+      error || response.statusText || `HTTP ${response.status}`,
+      response.status,
+      code,
+      Number.isFinite(retryAfterRaw) && retryAfterRaw > 0 ? retryAfterRaw : undefined);
+
+    // Central observation point: every DATABASE_* 503 flows through here, no matter which page or
+    // mutation triggered it. BOTH codes raise suspicion — a timeout is the earliest hint that
+    // something is wrong, often before the breaker has decided anything, which is exactly when a
+    // faster poll pays off. Suspicion only accelerates the health poll; the poll's own probe stays
+    // the single authority on whether the banner goes up (one slow query must not raise it).
+    if (isDatabaseOutageError(apiError) || isDatabaseSlowError(apiError)) reportDatabaseOutageSuspected();
+
+    throw apiError;
   }
 
   return response;

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router';
 import { LoginPage } from '../../pages/LoginPage';
 import { useAuthStore } from '../../stores/authStore';
-import { api } from '../../api/client';
+import { api, ApiError } from '../../api/client';
 
 function renderLoginPage() {
   return render(
@@ -79,7 +79,9 @@ describe('LoginPage', () => {
     const user = userEvent.setup();
     const loginMock = vi
       .fn()
-      .mockRejectedValueOnce(new Error('Admin bootstrap required. (SETUP_TOKEN_REQUIRED)'))
+      // The page now branches on ApiError.code, not on prose in the message - reject with the
+      // shape the real api client throws.
+      .mockRejectedValueOnce(new ApiError('Admin bootstrap required. (SETUP_TOKEN_REQUIRED)', 400, 'SETUP_TOKEN_REQUIRED'))
       .mockResolvedValueOnce(undefined);
     useAuthStore.setState({ login: loginMock });
 

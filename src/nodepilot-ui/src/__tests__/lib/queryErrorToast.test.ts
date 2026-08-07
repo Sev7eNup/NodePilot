@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { Query } from '@tanstack/react-query';
 import { handleQueryError, shouldToastQueryError } from '../../lib/queryErrorToast';
 import { useToastStore } from '../../stores/toastStore';
+import { ApiError } from '../../api/client';
 
 /**
  * Builds the smallest object the policy actually reads. The real `Query` carries far more, and
@@ -85,5 +86,36 @@ describe('handleQueryError', () => {
     const query = fakeQuery({ silentError: true });
     for (let poll = 0; poll < 10; poll++) handleQueryError(new Error('status 502'), query);
     expect(useToastStore.getState().toasts).toHaveLength(0);
+  });
+});
+
+describe('handleQueryError — database codes', () => {
+  beforeEach(() => useToastStore.setState({ toasts: [] }));
+
+  it('handleQueryError_databaseUnavailable_doesNotToast', () => {
+    // The outage banner is on screen owning this message, and this handler fires once per failed
+    // query — during an outage that is every visible query at once.
+    handleQueryError(
+      new ApiError('The database is not reachable right now. (DATABASE_UNAVAILABLE)', 503, 'DATABASE_UNAVAILABLE'),
+      fakeQuery());
+
+    expect(useToastStore.getState().toasts).toHaveLength(0);
+  });
+
+  it('handleQueryError_databaseTimeout_stillToasts', () => {
+    // The regression this pins: DATABASE_TIMEOUT means the breaker stayed CLOSED, so no banner is
+    // rendered for it anywhere. Suppressing it left a page that reads only `data`/`isLoading`
+    // showing an empty list for a busy database — verbatim the defect this handler exists to fix.
+    handleQueryError(
+      new ApiError('The database did not answer in time. (DATABASE_TIMEOUT)', 503, 'DATABASE_TIMEOUT'),
+      fakeQuery());
+
+    expect(useToastStore.getState().toasts).toHaveLength(1);
+    expect(useToastStore.getState().toasts[0].message).toContain('DATABASE_TIMEOUT');
+  });
+
+  it('handleQueryError_ordinaryError_stillToasts', () => {
+    handleQueryError(new ApiError('Workflow is locked', 423, 'WORKFLOW_LOCKED'), fakeQuery());
+    expect(useToastStore.getState().toasts).toHaveLength(1);
   });
 });

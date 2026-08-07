@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NodePilot.Data;
 using NodePilot.Scheduler.Options;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Scheduler;
 
@@ -30,15 +31,19 @@ public class SupportEventRetentionService : BackgroundService
     // Resolved per pass from the live monitor — never cached across passes.
     private SupportEventsRetentionOptions Opts => _opts.CurrentValue.SupportEvents;
 
+    private readonly IDatabaseAvailability _availability;
+
     public SupportEventRetentionService(
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<RetentionOptions> opts,
         NodePilot.Core.Interfaces.IClusterStateProvider cluster,
-        ILogger<SupportEventRetentionService> logger)
+        ILogger<SupportEventRetentionService> logger,
+        IDatabaseAvailability availability)
     {
         _scopeFactory = scopeFactory;
         _opts = opts;
         _cluster = cluster;
+        _availability = availability;
         _logger = logger;
     }
 
@@ -51,6 +56,13 @@ public class SupportEventRetentionService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate, deliberately ABOVE the leader check: during a database outage no
+            // node can renew its cluster lease, so every node reads as a follower - gating on
+            // IsLeader first would park for the right reason and log the wrong one.
+            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
+            // is left at its default StopHost, so an escaping cancellation would stop the host).
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             // HA gate: leader-only.
             if (!_cluster.IsLeader)
             {

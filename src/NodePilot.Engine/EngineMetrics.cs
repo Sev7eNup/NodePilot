@@ -89,11 +89,11 @@ public static class EngineMetrics
     // Support-event DB projection: this drop counter is the only way to see that the
     // web viewer is falling behind (DB outage, flush loop overloaded, or the
     // 1024-item channel is full). Tag `reason` distinguishes the cause (channel_full =
-    // the sink couldn't write; db_insert_failed = the flush loop couldn't complete
-    // SaveChanges).
+    // the sink couldn't write; database_unavailable = the flush loop deliberately skipped
+    // DB I/O behind an open breaker; db_insert_failed = an otherwise-served SaveChanges failed).
     public static readonly Counter<long> SupportEventsDropped = Meter.CreateCounter<long>(
         "nodepilot.support.events.dropped", unit: "1",
-        description: "Support-Log DB-Projektion: verworfene Events (Channel-Voll oder DB-Failure).");
+        description: "Support-log DB projection events dropped by channel backpressure, a known outage, or an insert failure.");
 
     public static readonly Counter<long> SupportEventsWritten = Meter.CreateCounter<long>(
         "nodepilot.support.events.written", unit: "1",

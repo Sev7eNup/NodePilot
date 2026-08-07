@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Api.Security;
 
@@ -8,7 +9,8 @@ namespace NodePilot.Api.Security;
 public sealed class AuthSessionCleanupService(
     IServiceScopeFactory scopeFactory,
     ILogger<AuthSessionCleanupService> logger,
-    IClusterStateProvider cluster) : BackgroundService
+    IClusterStateProvider cluster,
+    IDatabaseAvailability availability) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -17,6 +19,11 @@ public sealed class AuthSessionCleanupService(
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate, deliberately ABOVE the leader check: during a database outage no
+            // node can renew its cluster lease, so every node reads as a follower - gating on
+            // IsLeader first would park for the right reason and log the wrong one.
+            if (!await availability.WaitUntilServableAsync(stoppingToken)) break;
+
             if (cluster.IsLeader)
             {
                 try

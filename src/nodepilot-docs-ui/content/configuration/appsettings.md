@@ -15,6 +15,9 @@ Beispiel: `ConnectionStrings__Postgres` entspricht `ConnectionStrings:Postgres`.
 
 `noop`-Remote muss quittiert werden (`Remote:AllowNoop=true` bzw. `NODEPILOT_ALLOW_NOOP_REMOTE=1`), sonst Boot-Abbruch.
 
+Provider-Verbindungen, Timeout-Budgets und das Verhalten bei Datenbank-Ausfällen beschreibt
+[Datenbank-Provider](./database).
+
 ## Connection Strings
 
 | Provider | Key |

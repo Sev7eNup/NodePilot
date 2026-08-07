@@ -87,7 +87,8 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
             _services.GetRequiredService<IServiceScopeFactory>(),
             _services,
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NullLogger<TriggerOrchestrator>.Instance);
+            NullLogger<TriggerOrchestrator>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
     }
 
     private sealed class NoopWorkflowExecutionDispatcher : IWorkflowExecutionDispatcher

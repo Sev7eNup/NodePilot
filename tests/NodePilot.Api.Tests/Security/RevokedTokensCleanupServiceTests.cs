@@ -31,7 +31,8 @@ public class RevokedTokensCleanupServiceTests
         new(factory,
             NullLogger<RevokedTokensCleanupService>.Instance,
             new ConfigurationBuilder().Build(),
-            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider());
+            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
     private static RevokedToken Token(DateTime expiresAt, string? jti = null) => new()
     {

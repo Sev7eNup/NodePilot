@@ -9,6 +9,8 @@ import { AppLayout } from './components/layout/AppLayout';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ConfirmHost } from './components/common/ConfirmHost';
 import { ToastHost } from './components/common/ToastHost';
+import { DatabaseOutageBanner } from './components/layout/DatabaseOutageBanner';
+import { useDatabaseHealth } from './hooks/useDatabaseHealth';
 import { DashboardPage } from './pages/DashboardPage';
 import { WorkflowsPage } from './pages/WorkflowsPage';
 import { LoginPage } from './pages/LoginPage';
@@ -109,6 +111,16 @@ function ThemeWatcher() {
   return null;
 }
 
+/**
+ * Owns the single database-health poll and the outage banner. A component rather than a bare hook
+ * call in App so it sits inside the QueryClientProvider, and rendered as a sibling of the router
+ * so the banner exists on EVERY route - including the designer, which bypasses the layout shell.
+ */
+function DatabaseHealthWatcher() {
+  useDatabaseHealth();
+  return <DatabaseOutageBanner />;
+}
+
 const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   {
@@ -147,6 +159,7 @@ export default function App() {
     <ErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <ThemeWatcher />
+        <DatabaseHealthWatcher />
         <ToastHost />
         <ConfirmHost />
         <Suspense

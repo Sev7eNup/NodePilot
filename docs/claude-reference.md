@@ -174,7 +174,12 @@ Impl: [WorkflowEngine.cs](src/NodePilot.Engine/WorkflowEngine.cs) (`failureSumma
 
 `StepsTotal`/`StepsCompleted`/`FailedSteps` werden vom Listen-Endpoint `GET /api/executions` **und** von `GET /api/executions/{id}` befüllt (`Execute`/`Retry` lassen die Defaults stehen — eine frische `Pending`-Zeile hat noch keine Steps). `FailedSteps` ist nach `(StartedAt, Id)` sortiert; `StartedAt` allein ist bei parallelen Zweigen kein stabiler Sortierschlüssel.
 
-**Für einen laufenden Lauf sind die Zahlen kein Fortschritt.** `Engine:DeferRunningStateWrite` ist default `true` ([WorkflowEngine.cs](src/NodePilot.Engine/WorkflowEngine.cs)): die `StepExecution`-Zeile wird in [StepRunner.cs](src/NodePilot.Engine/Execution/StepRunner.cs) zwar beim Step-Start `Add`-ed, aber erst im terminalen Zustand gespeichert — ein gerade laufender Step hat **gar keine Zeile**. Daraus folgt für einen laufenden Lauf: `StepsTotal` zählt nur die bereits **fertigen** Steps, `StepsCompleted/StepsTotal` liest sich durchgehend als „100 %", und der seit zehn Minuten hängende Step ist unsichtbar.
+**Für einen laufenden Lauf sind die Zahlen kein Fortschritts-Prozentwert.** Seit ADR 0011 wird die
+`StepExecution`-Zeile mit stabiler GUID und Status `Running` zwingend vor der Activity gespeichert;
+`Engine:DeferRunningStateWrite=true` ist veraltet, wird ignoriert und einmalig gewarnt. Ein aktiver
+Step ist damit sichtbar, aber `StepsTotal` bleibt die Zahl der **bislang materialisierten**
+Step-Zeilen, nicht die Größe des noch auszuführenden Graphen. Loops und erst später erreichte Zweige
+können den Nenner weiter verändern, während `StepsCompleted` den laufenden Step noch nicht mitzählt.
 
 Deshalb zeigt Live-Ops bewusst **keinen Prozentbalken**, sondern die Zahl fertiger Steps plus Stagnations-Alter. Auch `Workflow.ActivityCount` taugt nicht als Ersatz-Nenner: es zählt Trigger und deaktivierte Nodes nicht mit ([WorkflowDefinitionDocument.cs](src/NodePilot.Core/WorkflowDefinitions/WorkflowDefinitionDocument.cs), `BuildMetadata`), während `StepExecution`-Zeilen ausgeführte Trigger und `Skipped`-Zeilen enthalten — dazu kommen dynamische Loop-Iterationen.
 
@@ -219,7 +224,14 @@ Drei opt-in Helfer (Default `Llm:Enabled=false`):
 
 **Auth/Rate-Limit**: generate-Endpoints `[Authorize(Roles = "Admin,Operator")]`, chat `[Authorize]` (alle Rollen); `[EnableRateLimiting("ai-generate")]` (20/min/IP, hardcoded in [RateLimitingSetup.cs](src/NodePilot.Api/Hosting/RateLimitingSetup.cs)) sitzt auf allen drei AI-Controllern — `AiController`, `AiChatController` **und** `AiKnowledgeController` —, gilt also auch für `/api/ai/knowledge/ask`.
 
-**DB-Timeout → 503 `DATABASE_TIMEOUT`**: Ein Command-Timeout ist ein transienter Lastzustand, kein Bug — `DatabaseTimeoutExceptionHandler` liefert 503 + `Retry-After` statt eines anonymen 500 (Erkennung provider-agnostisch über `DbErrorClassifier.IsCommandTimeout`: SQL Server `-2`, Postgres `57014`, `TimeoutException`; die Kette wird über `InnerException` abgelaufen, weil EF und seine Retry-Strategie doppelt wrappen). Die interaktive Workflow-Liste setzt zusätzlich ein eigenes 15-s-Command-Timeout statt der 120 s aus `Database:CommandTimeoutSeconds` — EF behandelt Timeouts als transient und wiederholt sie, aus einem langsamen Query wurden sonst bis zu sechs volle Timeouts hintereinander. Frontend-Seite: der globale `QueryCache.onError` toastet jeden fehlgeschlagenen Query (opt-out per `meta.silentError`), weil eine Seite, die nur `data`/`isLoading` liest, einen Fehler sonst als leere Liste rendert. Siehe ADR 0007, Amendment 2026-08-03.
+**DB-Timeout → 503 `DATABASE_TIMEOUT`**: Ein Command-Timeout ist ein transienter Lastzustand, kein Bug — `DatabaseTimeoutExceptionHandler` liefert 503 + `Retry-After` statt eines anonymen 500 (Erkennung provider-agnostisch über `DbErrorClassifier.Classify`; die Kette wird über `InnerException` abgelaufen, weil EF und seine Retry-Strategie doppelt wrappen). Die interaktive Workflow-Liste setzt zusätzlich ein eigenes 15-s-Command-Timeout (`DatabaseCommandBudget`) statt der 120 s aus `Database:CommandTimeoutSeconds`. Frontend-Seite: der globale `QueryCache.onError` toastet jeden fehlgeschlagenen Query (opt-out per `meta.silentError`). Siehe ADR 0007, Amendments 2026-08-03/07.
+
+**DB-Ausfall → 503 `DATABASE_UNAVAILABLE`**: Der prozessweite Breaker hält die SPA-Shell erreichbar,
+kappt DB-abhängige HTTP-/Hub-Flächen vor Auth und erholt sich über eine eigene `SELECT 1`-Sonde.
+`/healthz/live` bleibt 200, `/healthz/ready` gatet `Armed`/`Unavailable` mit 503 und
+`/healthz/database` berichtet für SPA/CLI immer mit 200. Zustandsautomat, Recovery-, Engine-,
+Background-Service-, Konfigurations- und Observability-Vertrag stehen vollständig in
+[ADR 0011](adr/0011-database-availability-breaker.md).
 
 **Disabled-Antwort**: Wenn `Llm:Enabled=false` → 503 mit `code: LLM_DISABLED`; wenn an, aber `Llm:ActiveProfileId` kein vorhandenes Profil benennt → 503 `LLM_NO_ACTIVE_PROFILE` (`LlmAvailability` in [LlmAvailability.cs](src/NodePilot.Api/Configuration/LlmAvailability.cs)). Andere Fehlerklassen siehe `LlmErrorKind` in [LlmException.cs](src/NodePilot.Ai/LlmException.cs).
 
@@ -298,6 +310,7 @@ Globale Flags: `--server`, `--profile`, `-o table|json|yaml`, `--no-color`, `-v`
 - `BACKUP_EXPORTED|BACKUP_RESTORED` (System-Configuration Backup, ADR 0001)
 - `AUDIT_LOG_EXPORTED` | `SUPPORT_EVENTS_EXPORTED` | `SUPPORT_LOG_DOWNLOADED` (sensible Diagnose-/Compliance-Exporte)
 - `CLUSTER_LEADERSHIP_ACQUIRED` (HA-Lease mit Node-ID und Fencing-Epoch)
+- `DATABASE_RECOVERED` (genau einmal pro echter `Unavailable -> Available`-Episode; kein Trip-Audit, da die Datenbank dabei nicht schreibbar ist)
 - `SETTINGS_{SMTP|LLM|RETENTION|AUTHENTICATION|LOGGING|OPENTELEMETRY|STATS|DBADMIN}_UPDATED` (Admin-Settings, ein Code pro Section)
 
 **Audit-Write-Pipeline (Phase 3):** Jeder Audit-Write läuft durch `IAuditStager` (in [NodePilot.Core/Audit/](src/NodePilot.Core/Audit/)), inkl. der drei ehemals direkten Bypass-Pfade. HTTP-Controller nutzen `IAuditWriter` (in [NodePilot.Api/Audit/](src/NodePilot.Api/Audit/AuditWriter.cs)); der wrappt den Stager mit `HttpContextAccessor`-Actor-Resolution + ECS-Log-Forward + Support-Log-Whitelist-Check. Redaction + 4 KiB-Cap gelten überall einheitlich.
@@ -508,10 +521,14 @@ Endpoints: siehe CLAUDE.md "API Endpoints" (Maintenance Windows-Zeile). CLI: `np
 
 ## Background Services — Inventar
 
+> DB-pollende Dienste parken bei einem Ausfall über `WaitUntilServableAsync`; Ausnahmen, Drop- und
+> Recovery-Semantik definiert [ADR 0011](adr/0011-database-availability-breaker.md).
+
 Alle Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](src/NodePilot.Api/Hosting/BackgroundServicesSetup.cs) registriert (+ Cluster-Services in `ClusterSetup.cs`, SignalR-Bridge in `Program.cs`). Gating: **always-on** | **opt-in** (Config-Flag) | **leader-only** (nur im A/P-Leader aktiv).
 
 | Service | Zweck | Gating |
 |---|---|---|
+| `DatabaseRecoveryAuditService` | Persistiert `DATABASE_RECOVERED` idempotent je lokaler Outage-Episode | always-on |
 | `TriggerOrchestrator` + Quartz | Trigger-Scan (5 s) + Quartz-Cron für `scheduleTrigger` | leader-only (im Cluster) |
 | `ExecutionDispatchWorker` | Channel-basierter Dispatch der `Pending`-Executions an die Engine | always-on |
 | `MaintenanceWindowSnapshotService` | Hält den Maintenance-Window-Snapshot pro Knoten aktuell | always-on (nicht leader-gated) |

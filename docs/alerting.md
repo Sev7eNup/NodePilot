@@ -61,12 +61,20 @@ so in an HA cluster only the leader dispatches. Each pass:
    (`MinOccurrences` within `OccurrenceWindowMinutes`).
 5. **Persist** a Pending `NotificationDeliveryAttempt` per route **before any network I/O**
    (idempotent on `(RuleId, RouteId, EventKey)`), advance the watermark in the same save, **then**
-   send. A crash between persist and send leaves a replayable Pending row → at-least-once delivery,
-   exactly-once per `(rule, route, occurrence)`.
+   send. Delivery is **at-least-once**: a crash after the receiver accepted the message but before
+   the final `Sent` update committed leaves a replayable Pending row and can produce a duplicate.
+   `EventKey` is included in generic-webhook JSON and in `X-NodePilot-Event-Key`, so receivers can
+   deduplicate. The unique ledger key prevents creating a second attempt for the same occurrence;
+   it cannot make external network I/O exactly-once.
 
 The dispatcher writes a `SystemHealthWriter` heartbeat (`NotificationDispatcher`) each pass, so the
 dashboard's service-freshness view tracks it like the other scheduler services. Execution and gauge
 contexts share one `MatchAndSendAsync` pipeline (match → suppress → persist-Pending → send).
+
+**Database outages are monitored externally, not by a system-alert source:** rules and the delivery
+ledger need the unavailable database themselves. Use `/healthz/database` or the
+`nodepilot.database.*` Prometheus metrics; rationale and recovery audit are in
+[ADR 0011](adr/0011-database-availability-breaker.md).
 
 ### Signal events → system policies (ADR 0008)
 
@@ -84,8 +92,9 @@ values (`ServiceStale`, `BacklogHigh`, …) remain as an append-only persisted c
 A third collector (`LongRunningExecutionCollector`) alerts on a **still-running** execution that has been
 running longer than `Alerting:LongRunningSeconds` (default 600) — a **live** signal, unlike the
 after-the-fact `durationMs` filter on terminal events. It scans `Running` rows and emits one context
-per execution keyed `runlong:{executionId}`; the per-`(rule,route,EventKey)` existence-check makes each
-execution alert **exactly once** (no re-alert every pass, no per-execution signal-state row to leak).
+per execution keyed `runlong:{executionId}`; the per-`(rule,route,EventKey)` existence-check creates one
+durable attempt per execution (no new alert every pass, no per-execution signal-state row to leak),
+with the at-least-once transport semantics above.
 Unlike gauge events it is **execution-scoped** — it carries a real `WorkflowId`, so a rule may be
 `Global`, `Folders`, or `Workflows`. `durationMs` = elapsed ms. The scan is skipped when no enabled rule
 references `ExecutionRunningLong`.
@@ -227,7 +236,7 @@ Delivered so far (foundation phase, non-destructive — the custom rules above a
   source + normalized parameters, samples each source once, and runs each policy's condition + sustain window
   against every applicable observation — keeping per-(policy, source, instance) match/episode state and
   emitting through the shared suppress → persist-Pending → send pipeline (episode-keyed `system:` EventKeys,
-  exactly-once + crash-recovery reconstruction). Event sources honour a per-policy `ActivatedAt` watermark so
+  including crash recovery). Event sources honour a per-policy `ActivatedAt` watermark so
   a late-activated policy never back-alerts history; recovery is silent (no "resolved" alert in v1).
   `NotificationRetentionService` prunes stale `SystemAlertPolicyStates` (unobserved instances), and the
   evaluator drops state for disabled/removed policies each pass.
@@ -271,9 +280,9 @@ into a **workflow** is a committed roadmap item, not a follow-up.
 
 ## Delivery ledger & retention
 
-Every send writes a `NotificationDeliveryAttempt` row (the exactly-once guard + the audit trail of
-what fired). A **bounded retry** keeps a failed attempt `Pending` and retries it on later dispatcher
-passes until `MaxAttempts` (5), then marks it `Failed`. The ledger is read via `GET /api/alerting/deliveries`
+Every occurrence writes the at-least-once ledger row described under [Matching + dispatch](#matching--dispatch).
+A **bounded retry** keeps a failed attempt `Pending` and retries it on later dispatcher passes until
+`MaxAttempts` (5), then marks it `Failed`. The ledger is read via `GET /api/alerting/deliveries`
 (UI **Deliveries** modal, `np alerting deliveries`, MCP `list_alerting_deliveries`). To keep the table
 from growing unbounded, `NotificationRetentionService` (leader-gated, config `Retention:Notifications:*`,
 default 90 days / every 6 h, opt-out via `Enabled:false`) deletes terminal attempts past the cutoff and

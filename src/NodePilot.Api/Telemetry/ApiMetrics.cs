@@ -19,6 +19,14 @@ public static class ApiMetrics
 
     // Webhook ingress — counts every hit, tagged by accept/reject and reason. Lets ops
     // distinguish "nobody is calling us" from "everyone hits the wrong path/secret".
+    /// <summary>Requests answered 503 by the availability middleware without touching the database.</summary>
+    public static readonly Counter<long> DatabaseRequestsRejected = Meter.CreateCounter<long>(
+        "nodepilot.database.requests_rejected");
+
+    /// <summary>Breaker transitions into Unavailable. Outage duration is on the recovery log line.</summary>
+    public static readonly Counter<long> DatabaseOutages = Meter.CreateCounter<long>(
+        "nodepilot.database.outages");
+
     public static readonly Counter<long> WebhookRequests = Meter.CreateCounter<long>(
         "nodepilot.webhook.requests", unit: "1",
         description: "Webhook hits, tagged by result (accepted/rejected) and reason.");

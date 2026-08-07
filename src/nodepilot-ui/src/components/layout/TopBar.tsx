@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { systemApi } from '../../api/system';
 import { useAuthStore } from '../../stores/authStore';
+import { useDbHealthStore } from '../../stores/dbHealthStore';
 import { resolveBreadcrumbs } from '../../lib/breadcrumbs';
 
 /**
@@ -130,36 +131,27 @@ function Field({ label, value }: Readonly<{ label: string; value: string }>) {
 function BackendStatus() {
   const { t } = useTranslation(['common']);
 
-  const { data: online, isLoading, isError } = useQuery({
-    queryKey: ['backend-health'],
-    queryFn: async () => {
-      // Raw fetch (not the /api client): the health endpoint lives at /healthz/live.
-      // AbortSignal.timeout keeps a hung backend from leaving the pill stuck on "checking".
-      const res = await fetch('/healthz/live', {
-        cache: 'no-store',
-        signal: AbortSignal.timeout(5000),
-      });
-      if (!res.ok) throw new Error(`status ${res.status}`);
-      return true;
-    },
-    refetchInterval: 15_000,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: true,
-    retry: false,
-    staleTime: 10_000,
-    // The pill below IS this query's error UI, and it never holds data while the backend is
-    // down â€” so without this it would toast "status 502" every 15 seconds, forever, saying
-    // exactly what the red dot next to it already says.
-    meta: { silentError: true },
-  });
+  // Fed by the single useDatabaseHealth poll mounted in App — no own query. The old pill probed
+  // /healthz/live, which by design stays 200 through a complete database outage: it showed green
+  // while every data query failed, the exact misleading indicator this feature removes.
+  // /healthz/database is strictly more information at the same cost: a network failure against it
+  // still means "process down" (offline), and it additionally distinguishes "database gone".
+  const status = useDbHealthStore((s) => s.status);
 
-  // First load (no prior data) reads as "checking"; after that, error â†’ offline.
-  const state: 'checking' | 'online' | 'offline' =
-    isLoading && online === undefined ? 'checking' : (isError || !online) ? 'offline' : 'online';
+  const state: 'checking' | 'online' | 'dbDown' | 'offline' =
+    status === 'unknown' ? 'checking'
+      : status === 'offline' ? 'offline'
+        : status === 'unavailable' ? 'dbDown'
+          : 'online';
 
+  // 'armed' deliberately renders as online: it means one query was slow, which is not a state the
+  // operator can act on, and a flickering pill trains people to ignore it.
   const meta = {
     checking: { icon: 'text-amber-500 animate-pulse', label: t('common:backend.checking') },
     online: { icon: 'text-green-500', label: t('common:backend.connected') },
+    // Orange, not amber: amber+pulse is the checking state. Distinct from red because the message
+    // is different — the process answers, its database does not.
+    dbDown: { icon: 'text-orange-600 dark:text-orange-400', label: t('common:backend.databaseUnreachable') },
     offline: { icon: 'text-red-500 dark:text-red-400', label: t('common:backend.unreachable') },
   }[state];
 
@@ -167,7 +159,7 @@ function BackendStatus() {
     <span
       aria-label={`API: ${meta.label}`}
       className="inline-flex items-center gap-1.5 text-xs font-label"
-      title={t('common:backend.tooltip')}
+      title={meta.label}
     >
       <Plug size={14} strokeWidth={2.25} className={meta.icon} aria-hidden="true" />
       <span className="text-on-surface-variant font-semibold tracking-wide">API</span>

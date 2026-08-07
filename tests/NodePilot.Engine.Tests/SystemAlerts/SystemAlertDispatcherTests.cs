@@ -71,7 +71,7 @@ public class SystemAlertDispatcherTests
     private static NotificationDispatcher Build(IServiceScopeFactory factory, StubSource source, RecordingSink sink)
         => new(factory, new SingleNodeClusterStateProvider(), new INotificationSink[] { sink },
             new SystemAlertCatalog([source]),
-            new ConfigurationBuilder().Build(), NullLogger<NotificationDispatcher>.Instance);
+            new ConfigurationBuilder().Build(), NullLogger<NotificationDispatcher>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
     private static void SeedPolicy(NodePilotDbContext db, string filterJson)
     {

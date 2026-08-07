@@ -28,7 +28,8 @@ public class ExecutionDispatchWorkerTests
             queue,
             Options.Create(new ExecutionDispatchOptions { WorkerCount = 1 }),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NullLogger<ExecutionDispatchWorker>.Instance);
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         using var stopCts = new CancellationTokenSource();
         await worker.StartAsync(stopCts.Token);
@@ -66,7 +67,8 @@ public class ExecutionDispatchWorkerTests
             queue,
             Options.Create(new ExecutionDispatchOptions { WorkerCount = 1 }),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NullLogger<ExecutionDispatchWorker>.Instance);
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         using var stopCts = new CancellationTokenSource();
         await worker.StartAsync(stopCts.Token);
@@ -89,7 +91,8 @@ public class ExecutionDispatchWorkerTests
             queue,
             Options.Create(new ExecutionDispatchOptions { WorkerCount = 2 }),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NullLogger<ExecutionDispatchWorker>.Instance);
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         using var stopCts = new CancellationTokenSource();
         await worker.StartAsync(stopCts.Token);
@@ -130,7 +133,8 @@ public class ExecutionDispatchWorkerTests
             queue,
             Options.Create(new ExecutionDispatchOptions { WorkerCount = 1 }),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NullLogger<ExecutionDispatchWorker>.Instance);
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         using var stopCts = new CancellationTokenSource();
         await worker.StartAsync(stopCts.Token);
@@ -154,5 +158,123 @@ public class ExecutionDispatchWorkerTests
         var queue = NewQueue();
         var act = async () => await queue.EnqueueAsync(null!, CancellationToken.None);
         await act.Should().ThrowAsync<ArgumentNullException>();
+    }
+
+    [Fact]
+    public async Task Worker_WhileDatabaseUnavailable_ParksInsteadOfDequeuing()
+    {
+        // A work item pulled during an outage burns its one chance against a dead server and
+        // leaves its execution row stuck in Pending until the next restart - so the gate must sit
+        // BEFORE the dequeue, and the item must run untouched once the probe reports recovery.
+        var queue = NewQueue();
+        var processed = Channel.CreateUnbounded<int>();
+
+        var tracker = new NodePilot.Data.Availability.DatabaseAvailabilityTracker(
+            NullLogger<NodePilot.Data.Availability.DatabaseAvailabilityTracker>.Instance,
+            probeSuccessesToRecover: 1);
+        tracker.MarkBootComplete();
+        tracker.ReportUnreachable(NodePilot.Data.Availability.DatabaseOutageReason.Unreachable);
+
+        var worker = new ExecutionDispatchWorker(
+            queue,
+            Options.Create(new ExecutionDispatchOptions { WorkerCount = 1 }),
+            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            tracker);
+
+        using var stopCts = new CancellationTokenSource();
+        await worker.StartAsync(stopCts.Token);
+
+        await queue.EnqueueAsync(_ =>
+        {
+            processed.Writer.TryWrite(1);
+            return Task.CompletedTask;
+        }, CancellationToken.None);
+
+        // Parked: nothing may be processed while the breaker is open. A short real-time window is
+        // the only way to assert "did not happen"; 300 ms is far above the worker's hot path.
+        await Task.Delay(300);
+        processed.Reader.TryRead(out _).Should().BeFalse("the worker must not dequeue during an outage");
+
+        // Recovery: the probe closes the breaker, the parked worker wakes and the item runs.
+        tracker.ReportProbeSucceeded();
+
+        using var readCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        (await processed.Reader.ReadAsync(readCts.Token)).Should().Be(1);
+
+        await stopCts.CancelAsync();
+        await worker.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Worker_RetryBeforeStartOutcome_RequeuesUntilDatabaseRecovery()
+    {
+        var queue = NewQueue();
+        var tracker = new NodePilot.Data.Availability.DatabaseAvailabilityTracker(
+            NullLogger<NodePilot.Data.Availability.DatabaseAvailabilityTracker>.Instance,
+            probeSuccessesToRecover: 1);
+        tracker.MarkBootComplete();
+        var firstAttempt = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var attempts = 0;
+
+        await queue.EnqueueOutcomeAsync(_ =>
+        {
+            if (Interlocked.Increment(ref attempts) == 1)
+            {
+                tracker.ReportUnreachable(NodePilot.Data.Availability.DatabaseOutageReason.Unreachable);
+                firstAttempt.TrySetResult();
+                return Task.FromResult(ExecutionDispatchOutcome.RetryBeforeStart);
+            }
+
+            completed.TrySetResult();
+            return Task.FromResult(ExecutionDispatchOutcome.Completed);
+        }, CancellationToken.None, ExecutionDispatchPriority.Interactive);
+
+        var worker = new ExecutionDispatchWorker(
+            queue,
+            Options.Create(new ExecutionDispatchOptions { WorkerCount = 1 }),
+            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+            NullLogger<ExecutionDispatchWorker>.Instance,
+            tracker);
+        using var stopCts = new CancellationTokenSource();
+        await worker.StartAsync(stopCts.Token);
+
+        await firstAttempt.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.Delay(150);
+        attempts.Should().Be(1, "the requeued item must park behind the shared outage gate");
+
+        tracker.ReportProbeSucceeded();
+        await completed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        attempts.Should().Be(2, "the same before-start work item must run again after recovery");
+
+        await stopCts.CancelAsync();
+        await worker.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Requeue_DoesNotDeadlockWhenProducerClaimsReleasedCapacity()
+    {
+        var queue = new ExecutionDispatchQueue(
+            Options.Create(new ExecutionDispatchOptions { Capacity = 1, WorkerCount = 1 }));
+        await queue.EnqueueOutcomeAsync(
+            _ => Task.FromResult(ExecutionDispatchOutcome.RetryBeforeStart),
+            CancellationToken.None);
+        var retryItem = await queue.DequeueWorkItemAsync(CancellationToken.None);
+
+        // A producer can claim the slot released by dequeue before the worker observes the retry
+        // outcome. Requeue is a durability operation and must not wait for the sole worker to
+        // dequeue that producer's item, because that worker is the one currently requeueing.
+        await queue.EnqueueAsync(_ => Task.CompletedTask, CancellationToken.None);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+
+        var act = async () => await queue.RequeueAsync(retryItem, timeout.Token);
+
+        await act.Should().NotThrowAsync(
+            "a retry item must not be lost or deadlock behind newly enqueued work");
+
+        _ = await queue.DequeueWorkItemAsync(CancellationToken.None);
+        _ = await queue.DequeueWorkItemAsync(CancellationToken.None);
+        await queue.EnqueueAsync(_ => Task.CompletedTask, CancellationToken.None);
     }
 }

@@ -29,9 +29,11 @@ public class NotificationDispatcherTests
         public NotificationChannel Channel { get; } = channel;
         public List<(NotificationContext ctx, string target, string? secret)> Sends { get; } = [];
         public Func<NotificationSendResult>? Behavior { get; set; }
+        public Action? BeforeSend { get; set; }
 
         public Task<NotificationSendResult> SendAsync(NotificationContext ctx, string target, string? secret, CancellationToken ct)
         {
+            BeforeSend?.Invoke();
             Sends.Add((ctx, target, secret));
             return Task.FromResult(Behavior?.Invoke() ?? NotificationSendResult.Ok);
         }
@@ -53,12 +55,19 @@ public class NotificationDispatcherTests
     }
 
     private static NotificationDispatcher Build(IServiceScopeFactory factory, params INotificationSink[] sinks)
+        => Build(factory, new SingleNodeClusterStateProvider(), sinks);
+
+    private static NotificationDispatcher Build(
+        IServiceScopeFactory factory,
+        IClusterStateProvider cluster,
+        params INotificationSink[] sinks)
     {
         var d = new NotificationDispatcher(
-            factory, new SingleNodeClusterStateProvider(), sinks,
+            factory, cluster, sinks,
             new NodePilot.Scheduler.SystemAlerts.SystemAlertCatalog(Array.Empty<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource>()),
             new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
-            NullLogger<NotificationDispatcher>.Instance);
+            NullLogger<NotificationDispatcher>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
         d.ScanSafetyLag = TimeSpan.Zero; // tests seed executions at "now"; disable the commit-visibility lag
         return d;
     }
@@ -69,7 +78,8 @@ public class NotificationDispatcherTests
         var d = new NotificationDispatcher(
             factory, new SingleNodeClusterStateProvider(), sinks,
             new NodePilot.Scheduler.SystemAlerts.SystemAlertCatalog(Array.Empty<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource>()),
-            config, NullLogger<NotificationDispatcher>.Instance);
+            config, NullLogger<NotificationDispatcher>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
         d.ScanSafetyLag = TimeSpan.Zero;
         return d;
     }
@@ -354,6 +364,43 @@ public class NotificationDispatcherTests
     }
 
     [Fact]
+    public async Task LeaseEpochChangesDuringSend_DoesNotStartAnotherExternalSend()
+    {
+        var (db, factory, conn) = CreateEnv();
+        try
+        {
+            var wf = SeedWorkflow(db);
+            SeedWatermark(db, DateTime.UtcNow.AddHours(-1));
+            SeedRule(db, "ExecutionFailed",
+                Route(NotificationChannel.Email, "first@x", order: 0),
+                Route(NotificationChannel.Email, "second@x", order: 1));
+            SeedExecution(db, wf, ExecutionStatus.Failed, DateTime.UtcNow);
+            var cluster = new MutableClusterState();
+            var first = true;
+            var email = new RecordingSink(NotificationChannel.Email)
+            {
+                BeforeSend = () =>
+                {
+                    if (!first) return;
+                    first = false;
+                    cluster.ReacquireWithNextEpoch();
+                },
+            };
+
+            await Build(factory, cluster, email).DispatchOnceAsync(CancellationToken.None);
+
+            email.Sends.Should().ContainSingle(
+                "the old leader may finish the already-started send but must start nothing under a stale epoch");
+            var attempts = await db.NotificationDeliveryAttempts.AsNoTracking()
+                .OrderBy(attempt => attempt.CreatedAt)
+                .ToListAsync();
+            attempts.Should().ContainSingle(attempt => attempt.Status == NotificationDeliveryStatus.Sent);
+            attempts.Should().ContainSingle(attempt => attempt.Status == NotificationDeliveryStatus.Pending);
+        }
+        finally { conn.Dispose(); }
+    }
+
+    [Fact]
     public async Task PersistentFailure_GivesUpAsFailed_AfterMaxAttempts()
     {
         var (db, factory, conn) = CreateEnv();
@@ -588,5 +635,23 @@ public class NotificationDispatcherTests
             email.Sends.Should().ContainSingle();
         }
         finally { conn.Dispose(); }
+    }
+
+    private sealed class MutableClusterState : IClusterStateProvider
+    {
+        public bool IsLeader => true;
+        public string NodeId => "mutable";
+        public DateTime? LeaseExpiresAt => DateTime.UtcNow.AddMinutes(1);
+        public long LeaseEpoch { get; private set; } = 11;
+        public DateTime? LastSuccessfulRenewAt => DateTime.UtcNow;
+        public event Action<long>? OnLeadershipAcquired;
+        public event Action? OnLeadershipLost;
+
+        public void ReacquireWithNextEpoch()
+        {
+            OnLeadershipLost?.Invoke();
+            LeaseEpoch++;
+            OnLeadershipAcquired?.Invoke(LeaseEpoch);
+        }
     }
 }

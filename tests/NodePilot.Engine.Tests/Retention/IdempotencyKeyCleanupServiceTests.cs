@@ -40,7 +40,8 @@ public class IdempotencyKeyCleanupServiceTests
             var svc = new IdempotencyKeyCleanupService(
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<IdempotencyKeyCleanupService>.Instance);
+                NullLogger<IdempotencyKeyCleanupService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             using var cts = new CancellationTokenSource();
             var startTask = svc.StartAsync(cts.Token);
@@ -100,7 +101,8 @@ public class IdempotencyKeyCleanupServiceTests
             var svc = new IdempotencyKeyCleanupService(
                 sp.GetRequiredService<IServiceScopeFactory>(),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<IdempotencyKeyCleanupService>.Instance);
+                NullLogger<IdempotencyKeyCleanupService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await svc.PurgeOnceAsync(CancellationToken.None);
 

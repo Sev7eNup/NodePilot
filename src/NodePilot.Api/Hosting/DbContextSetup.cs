@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 using Serilog;
 
 namespace NodePilot.Api.Hosting;
@@ -32,8 +33,24 @@ internal static class DbContextSetup
         var dbProvider = (configuration["Database:Provider"] ?? "postgres").ToLowerInvariant();
         var dbPoolSize = configuration.GetValue<int?>("Database:PoolSize") ?? 1024;
 
-        services.AddDbContextPool<NodePilotDbContext>(options =>
+        // The (sp, options) overload is required, not cosmetic: the interceptors and the retry strategy
+        // all need the singleton breaker, and there is no other way to reach the container from here.
+        services.AddDbContextPool<NodePilotDbContext>((sp, options) =>
         {
+            var availability = sp.GetRequiredService<IDatabaseAvailability>();
+            // Connect timeout sits on the critical path TWICE for every command timeout against a
+            // wedged server. Resolve it from the same immutable, startup-validated snapshot used by
+            // auth, readiness and the dedicated probe; configuration reloads take effect together on
+            // the next process start rather than splitting the four safety budgets.
+            var dbConnectTimeout = sp.GetRequiredService<DatabaseAvailabilityOptions>()
+                .ConnectTimeoutSeconds;
+
+            // Singletons, reused across the whole pool: AddDbContextPool shares one options object, and
+            // EF expects interceptor instances to be reused rather than allocated per context.
+            options.AddInterceptors(
+                sp.GetRequiredService<DatabaseConnectionAvailabilityInterceptor>(),
+                sp.GetRequiredService<DatabaseCommandAvailabilityInterceptor>());
+
             // Defaults shared between SQL Server and Postgres branches:
             //   - MaxBatchSize 200: EF default is 42 (SqlServer) / unbounded (Npgsql, but
             //     practically server-protocol-limited). The engine bursts StepExecution INSERTs
@@ -49,26 +66,36 @@ internal static class DbContextSetup
 
             if (dbProvider == "sqlserver")
                 options.UseSqlServer(
-                    configuration.GetConnectionString("DefaultConnection"),
-                    // EnableRetryOnFailure absorbs transient SQL Server errors (deadlocks, brief
-                    // network blips, login timeouts during restart). Without it, EF Core throws
-                    // "An exception has been raised that is likely due to a transient failure"
-                    // and the step fails permanently. Combined with the PK-violation catch in
-                    // WorkflowDbWriteMetrics.SaveChangesMeasuredAsync, retries become idempotent:
-                    // if the original INSERT actually committed before the network blip, the
-                    // retry's PK violation is silently absorbed.
+                    DatabaseConnectionString.EnsureConnectTimeout(
+                        dbProvider, configuration.GetConnectionString("DefaultConnection"), dbConnectTimeout),
+                    // Retry absorbs transient SQL Server errors (deadlocks, brief network blips, login
+                    // timeouts during restart). Without it, EF Core throws "An exception has been raised
+                    // that is likely due to a transient failure" and the step fails permanently.
+                    // Combined with the PK-violation catch in
+                    // WorkflowDbWriteMetrics.SaveChangesMeasuredAsync, retries become idempotent: if the
+                    // original INSERT actually committed before the network blip, the retry's PK
+                    // violation is silently absorbed.
+                    //
+                    // BreakerAware... instead of EnableRetryOnFailure: both write the same option slot,
+                    // so this REPLACES the built-in strategy rather than layering on it. The subclass
+                    // keeps the provider's transient-error list verbatim and only vetoes two cases -
+                    // a command timeout (retrying a statement that already blew its budget turns one
+                    // slow query into 6 x 120 s) and anything at all while the breaker is open.
                     sqlOpts =>
                     {
-                        sqlOpts.EnableRetryOnFailure(
+                        sqlOpts.ExecutionStrategy(deps => new BreakerAwareSqlServerExecutionStrategy(
+                            deps,
                             maxRetryCount: 5,
                             maxRetryDelay: TimeSpan.FromSeconds(10),
-                            errorNumbersToAdd: null);
+                            errorNumbersToAdd: null,
+                            availability));
                         sqlOpts.CommandTimeout(dbCommandTimeoutSeconds);
                         sqlOpts.MaxBatchSize(dbMaxBatchSize);
                     });
             else if (dbProvider is "postgres" or "postgresql" or "npgsql")
                 options.UseNpgsql(
-                    configuration.GetConnectionString("Postgres"),
+                    DatabaseConnectionString.EnsureConnectTimeout(
+                        dbProvider, configuration.GetConnectionString("Postgres"), dbConnectTimeout),
                     // Same rationale as the SQL Server branch above: under load (e.g. 500-parallel
                     // stress test) Postgres can reject connections with SQLSTATE 53300
                     // ("remaining connection slots are reserved for roles with the SUPERUSER
@@ -80,10 +107,14 @@ internal static class DbContextSetup
                     // become idempotent.
                     npgOpts =>
                     {
-                        npgOpts.EnableRetryOnFailure(
+                        // See the SQL Server branch: this replaces EnableRetryOnFailure (same option
+                        // slot) and keeps Npgsql's transient list intact.
+                        npgOpts.ExecutionStrategy(deps => new BreakerAwareNpgsqlExecutionStrategy(
+                            deps,
                             maxRetryCount: 5,
                             maxRetryDelay: TimeSpan.FromSeconds(10),
-                            errorCodesToAdd: null);
+                            errorCodesToAdd: null,
+                            availability));
                         npgOpts.CommandTimeout(dbCommandTimeoutSeconds);
                         npgOpts.MaxBatchSize(dbMaxBatchSize);
                     });

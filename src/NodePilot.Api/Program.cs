@@ -7,6 +7,8 @@ using NodePilot.Api.Configuration;
 using NodePilot.Api.Hosting;
 using NodePilot.Telemetry;
 using Microsoft.AspNetCore.HostFiltering;
+// For HubOptions.AddFilter<T> — the hub-filter registration extension lives in this namespace.
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Serilog;
@@ -85,6 +87,34 @@ builder.ConfigureKestrelFromWindowsCertStore();
 // OpenTelemetry (traces, metrics, bridged logs via built-in ILogger)
 builder.Services.AddNodePilotTelemetry(builder.Configuration, builder.Environment);
 
+// Run every pure configuration validator before materialising typed options. In particular this must
+// precede DatabaseAvailabilityOptions.FromConfiguration: GetValue<int> throws on the first malformed
+// value, while the validator pipeline reports every invalid key in one startup failure.
+BootValidatorRunner.RunAll(
+    builder.Configuration,
+    warningLogger: msg => Log.Warning("{Message}", msg));
+
+// Database availability breaker. Registered before the DbContext because the pooled context's
+// interceptors and retry strategy resolve it.
+//
+// The forwarding registrations are mandatory rather than stylistic: AddHostedService<T>() alongside
+// AddSingleton<IFace, T>() produces TWO instances, and the interceptors would then arm a probe that is
+// not the one running. Same pattern as ClusterSetup.
+var databaseAvailabilityOptions = DatabaseAvailabilityOptions.FromConfiguration(builder.Configuration);
+builder.Services.AddSingleton(databaseAvailabilityOptions);
+builder.Services.AddSingleton<NodePilot.Data.Availability.DatabaseAvailabilityTracker>(sp =>
+{
+    var options = sp.GetRequiredService<DatabaseAvailabilityOptions>();
+    return new NodePilot.Data.Availability.DatabaseAvailabilityTracker(
+        sp.GetRequiredService<ILogger<NodePilot.Data.Availability.DatabaseAvailabilityTracker>>(),
+        probeSuccessesToRecover: options.SuccessesToRecover,
+        probeFailuresToOpen: options.FailureThreshold);
+});
+builder.Services.AddSingleton<NodePilot.Data.Availability.IDatabaseAvailability>(sp =>
+    sp.GetRequiredService<NodePilot.Data.Availability.DatabaseAvailabilityTracker>());
+builder.Services.AddSingleton<NodePilot.Data.Availability.DatabaseConnectionAvailabilityInterceptor>();
+builder.Services.AddSingleton<NodePilot.Data.Availability.DatabaseCommandAvailabilityInterceptor>();
+
 // Database: PostgreSQL (default) or SQL Server. SQLite is not supported as an app DB
 // provider — it's only used in tests as an in-memory backend (see DbContextSetup).
 builder.Services.AddNodePilotDbContext(builder.Configuration);
@@ -113,6 +143,11 @@ builder.Services.AddProblemDetails();
 // registered BEFORE the default handler, otherwise the generic ProblemDetails mapping
 // wins first and the client sees a 500 instead of the correct 503.
 builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.CapacityExceptionHandler>();
+// Ordered before the timeout handler on purpose: while the breaker is open, a command timeout is a
+// symptom of the outage, and "the database is unreachable" is the more actionable answer than "it was
+// slow". Both handlers write the same body shape (DatabaseUnavailableResponse) so the SPA has one
+// branch, not two.
+builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.DatabaseUnavailableExceptionHandler>();
 // A database command timeout is a transient load condition, not a bug: 503 + Retry-After +
 // DATABASE_TIMEOUT rather than an anonymous 500 the client cannot act on.
 builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.DatabaseTimeoutExceptionHandler>();
@@ -122,8 +157,12 @@ builder.Services.AddExceptionHandler<NodePilot.Api.Hosting.DatabaseTimeoutExcept
 // Docker probes don't need a JWT. The DB-reachability tag separates the two probes: liveness
 // stays green even when the DB is down so the orchestrator doesn't restart us, while
 // readiness flips red and traffic routes elsewhere.
+// DatabaseReadyHealthCheck rather than AddDbContextCheck: the latter calls CanConnectAsync with no
+// timeout of its own, so against a hung server readiness takes minutes and the load balancer hits its
+// own timeout instead of receiving a clean 503. This one answers from memory when the breaker is open
+// and otherwise runs a bounded SELECT 1.
 builder.Services.AddHealthChecks()
-    .AddDbContextCheck<NodePilotDbContext>("database", tags: new[] { "ready" })
+    .AddCheck<NodePilot.Api.HealthChecks.DatabaseReadyHealthCheck>("database", tags: new[] { "ready" })
     .AddCheck<NodePilot.Api.Security.Ldap.LdapHealthCheck>("ldap", tags: new[] { "directory" });
 
 // Core services
@@ -294,7 +333,14 @@ builder.Services.AddSingleton<NodePilot.Engine.Security.RestApiHttpClientProvide
 // block local endpoints (e.g. Ollama at 127.0.0.1:11434). Master switch is Llm:Enabled (default false).
 builder.Services.AddNodePilotAi(builder.Configuration);
 
-builder.Services.AddSignalR();
+builder.Services.AddSingleton<NodePilot.Api.Hubs.DatabaseAvailabilityHubFilter>();
+builder.Services.AddSignalR(options =>
+{
+    // Established connections survive an outage on purpose (they carry the recovery moment to the
+    // SPA), but their method INVOCATIONS read the database - fail those fast with the stable code
+    // instead of letting them hang for the command-timeout budget against a wedged server.
+    options.AddFilter<NodePilot.Api.Hubs.DatabaseAvailabilityHubFilter>();
+});
 builder.Services.AddControllers(opt =>
 {
     opt.Filters.Add<NodePilot.Api.Filters.ApiProblemDetailsResultFilter>();
@@ -320,14 +366,6 @@ builder.Services.AddNodePilotBackgroundServices();
 // single-node mode and the real lease-managing BackgroundService in cluster mode. Every
 // component that gates on "am I the leader" reads IClusterStateProvider.
 //
-// Boot-validator pipeline replaces the old standalone ClusterConfigValidator.Validate call.
-// All boot-validators (Cluster, SecretsConsistency, LoggingFormat, ...) are auto-discovered
-// via reflection and aggregated so the operator sees every misconfiguration in one shot
-// instead of fixing-restarting-fixing one-at-a-time. The Settings API reuses the same
-// pipeline against the simulated post-save config so a bad Save is rejected with 400.
-BootValidatorRunner.RunAll(
-    builder.Configuration,
-    warningLogger: msg => Log.Warning("{Message}", msg));
 builder.Services.AddNodePilotCluster(builder.Configuration);
 
 // Loud-on-boot warnings for permissive defaults that need attention in production.
@@ -455,6 +493,17 @@ using (var scope = app.Services.CreateScope())
         db, builder.Configuration);
     NodePilot.Api.Security.AdminBootstrap.EnsureBootstrapTokenIfNeeded(
         app.Environment, usersExist, bootstrapLogger, builder.Configuration);
+
+    // Boot succeeded: the schema is migrated, recovery has run and the admin invariant holds. Only now
+    // may the availability breaker start reacting to failures.
+    //
+    // Until this point the interceptors are inert on purpose. DatabaseReadinessGate exists precisely
+    // because the database is routinely late at boot, and if its failed connection probes opened the
+    // breaker, the migration that follows would run with retries disabled — turning a slow start into
+    // a failed one. Everything above this line is also the reason the boot block is NOT deferred on an
+    // outage: it carries StartupRecovery, the enterprise recovery invariant and the admin bootstrap
+    // token, and re-running or skipping any of them is worse than failing to start.
+    app.Services.GetRequiredService<NodePilot.Data.Availability.IDatabaseAvailability>().MarkBootComplete();
 }
 
 // Production-only pipeline hardening: global exception handler + HSTS + CSP + standard
@@ -483,6 +532,14 @@ app.UseNodePilotHttpsRedirection();
 
 app.UseStaticFiles();
 app.UseRateLimiter();
+// Seal /api, the entire hub HTTP surface, /signin-oidc and protected /metrics with 503 while the
+// database is gone, before anything downstream can touch it. Existing WebSockets do not re-enter
+// this pipeline; SSE/Long-Polling reconnect after recovery. Keep this after the rate limiter so a
+// reconnecting SPA's 503 storm stays throttled, but before UseAuthentication because OidcTicketStore
+// resolves a DbContext there and before TokenValidityMiddleware's bounded session/revocation reads.
+// Also before the leader fence: during a shared-database outage every node self-demotes, which is a
+// symptom that must not hide the actual dependency failure.
+app.UseMiddleware<NodePilot.Api.Hosting.DatabaseAvailabilityMiddleware>();
 // The OIDC remote handler consumes /signin-oidc inside UseAuthentication and therefore
 // never reaches the normal post-auth leader firewall. Fence it first so a directly-hit
 // follower cannot exchange a code or persist an external authentication ticket.
@@ -544,6 +601,16 @@ app.MapHealthChecks("/healthz/ready", new Microsoft.AspNetCore.Diagnostics.Healt
 {
     Predicate = check => check.Tags.Contains("ready"),
 }).AllowAnonymous();
+
+// Database availability, answered from memory — no database call, so it stays fast and truthful
+// exactly when the database is not.
+//
+// Always 200, including during an outage: this is what the SPA polls, and a 503 here would be
+// indistinguishable from "the process is gone" — re-creating the misleading-indicator bug this feature
+// exists to fix (/healthz/live staying green while the product was dead). /healthz/ready keeps the 503
+// convention for load balancers; this endpoint reports rather than gates. Two conventions, on purpose.
+app.MapGet("/healthz/database", (NodePilot.Data.Availability.IDatabaseAvailability availability) =>
+    NodePilot.Api.Hosting.DatabaseHealthEndpoint.Compute(availability)).AllowAnonymous();
 
 // Directory dependency status is separate from service readiness. A DC outage must fail
 // external authorization closed, but it must not remove every HA node from traffic and

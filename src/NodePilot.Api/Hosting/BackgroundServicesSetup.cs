@@ -12,6 +12,13 @@ public static class BackgroundServicesSetup
 {
     public static IServiceCollection AddNodePilotBackgroundServices(this IServiceCollection services)
     {
+        // Writes one durable, episode-correlated audit row after each real database recovery.
+        // There is deliberately no trip audit: the database cannot accept it while unavailable.
+        services.AddHostedService<DatabaseRecoveryAuditService>();
+        // Hosted services start in registration order. Keep the probe after the audit subscriber so
+        // even a recovery during the first probe iteration has an attached, episode-aware consumer.
+        services.AddHostedService<DatabaseAvailabilityProbe>();
+
         // Trigger infrastructure: Quartz (for scheduleTrigger) + orchestrator. The per-type
         // ITriggerSource instances are NOT registered here — the orchestrator constructs them
         // itself (see TriggerOrchestrator.CreateSource). They are IAsyncDisposable with an

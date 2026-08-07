@@ -77,7 +77,8 @@ public sealed class ExternalAuthorizationStalenessServiceTests : IDisposable
                 MaxAuthorizationStalenessMinutes = 15,
             }),
             cluster.Object,
-            NullLogger<ExternalAuthorizationStalenessService>.Instance);
+            NullLogger<ExternalAuthorizationStalenessService>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         (await service.SweepOnceAsync(now, default)).Should().Be(1);
 
@@ -156,7 +157,8 @@ public sealed class ExternalAuthorizationStalenessServiceTests : IDisposable
                 MaxAuthorizationStalenessMinutes = 15,
             }),
             cluster.Object,
-            NullLogger<ExternalAuthorizationStalenessService>.Instance);
+            NullLogger<ExternalAuthorizationStalenessService>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         (await service.SweepOnceAsync(now, default)).Should().Be(2);
 
@@ -205,7 +207,8 @@ public sealed class ExternalAuthorizationStalenessServiceTests : IDisposable
             provider.GetRequiredService<IServiceScopeFactory>(),
             Options.Create(new AuthenticationPolicyOptions()),
             Mock.Of<IClusterStateProvider>(),
-            NullLogger<ExternalAuthorizationStalenessService>.Instance);
+            NullLogger<ExternalAuthorizationStalenessService>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         (await service.SweepOnceAsync(now, default)).Should().Be(0);
     }
@@ -264,7 +267,8 @@ public sealed class ExternalAuthorizationStalenessServiceTests : IDisposable
                 MaxAuthorizationStalenessMinutes = 15,
             }),
             cluster.Object,
-            NullLogger<ExternalAuthorizationStalenessService>.Instance);
+            NullLogger<ExternalAuthorizationStalenessService>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         (await service.SweepOnceAsync(now, default)).Should().Be(1);
 
@@ -325,7 +329,8 @@ public sealed class ExternalAuthorizationStalenessServiceTests : IDisposable
                 MaxAuthorizationStalenessMinutes = 15,
             }),
             staleCluster.Object,
-            NullLogger<ExternalAuthorizationStalenessService>.Instance);
+            NullLogger<ExternalAuthorizationStalenessService>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         (await service.SweepOnceAsync(now, default)).Should().Be(0);
 

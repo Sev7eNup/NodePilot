@@ -13,6 +13,7 @@ using NodePilot.Core.Exceptions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 using NodePilot.TestCommons;
 using Xunit;
 
@@ -118,6 +119,39 @@ public sealed class BackgroundServiceAndDiagnosticsTests
         var stored = await db.SupportEvents.OrderBy(x => x.Message)
             .ToListAsync(TestContext.Current.CancellationToken);
         stored.Select(x => x.Message).Should().Equal("first", "second");
+    }
+
+    [Fact]
+    public async Task SupportEventFlush_KnownOutage_DropsWithoutDbWrite_ThenPersistsOneRecoverySummary()
+    {
+        var (connection, readContext) = TestDbFactory.CreateWithConnection();
+        using var _ = connection;
+        using var db = readContext;
+        using var serviceDb = new NodePilotDbContext(
+            new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(connection).Options);
+        var availability = new DatabaseAvailabilityTracker(
+            NullLogger<DatabaseAvailabilityTracker>.Instance);
+        availability.MarkBootComplete();
+        availability.ReportUnreachable(DatabaseOutageReason.Unreachable);
+        var channel = new SupportEventChannel();
+        channel.TryWrite(Event("lost-one"));
+        channel.TryWrite(Event("lost-two"));
+        var service = FlushService(serviceDb, channel, availability);
+
+        await service.StartAsync(CancellationToken.None);
+        await WaitForAsync(() => Task.FromResult(service.DroppedDuringCurrentOutage == 2));
+        (await db.SupportEvents.CountAsync(TestContext.Current.CancellationToken)).Should().Be(0,
+            "a known outage must not generate another doomed database write");
+
+        availability.ReportProbeSucceeded();
+        availability.ReportProbeSucceeded();
+        await WaitForAsync(async () =>
+            await db.SupportEvents.CountAsync(TestContext.Current.CancellationToken) == 1);
+        await service.StopAsync(CancellationToken.None);
+
+        var summary = await db.SupportEvents.SingleAsync(TestContext.Current.CancellationToken);
+        summary.EventType.Should().Be("DATABASE_OUTAGE_RECOVERED");
+        summary.Message.Should().Contain("2");
     }
 
     // ---------------------------------------------------------------- SupportLogFileResolver
@@ -264,9 +298,13 @@ public sealed class BackgroundServiceAndDiagnosticsTests
     private static AuthSessionCleanupService Cleanup(NodePilotDbContext db) => new(
         ScopeFactoryFor(db),
         NullLogger<AuthSessionCleanupService>.Instance,
-        new LeaderClusterState());
+        new LeaderClusterState(),
+        NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
-    private static SupportEventFlushService FlushService(NodePilotDbContext db, SupportEventChannel channel)
+    private static SupportEventFlushService FlushService(
+        NodePilotDbContext db,
+        SupportEventChannel channel,
+        IDatabaseAvailability? availability = null)
     {
         var services = new ServiceCollection();
         // Singleton, not Scoped: a scoped registration makes the container own the context and
@@ -274,7 +312,10 @@ public sealed class BackgroundServiceAndDiagnosticsTests
         // test instance mid-run.
         services.AddSingleton(db);
         return new SupportEventFlushService(
-            channel, services.BuildServiceProvider(), NullLogger<SupportEventFlushService>.Instance);
+            channel,
+            services.BuildServiceProvider(),
+            NullLogger<SupportEventFlushService>.Instance,
+            availability ?? NodePilot.TestCommons.TestDatabaseAvailability.Available);
     }
 
     /// <summary>Polls a condition instead of sleeping a fixed span — keeps the loop tests fast and stable.</summary>

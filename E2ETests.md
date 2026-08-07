@@ -4440,6 +4440,70 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ---
 
+## Teil 82: Datenbank-Ausfall zur Laufzeit (Banner, Fail-Fast, Selbstheilung)
+
+> Backend-Verhalten: ADR 0011. Die UI lernt den Ausfall über `/healthz/database` (Poll 15 s, bei
+> Verdacht/Ausfall 3 s) plus die `DATABASE_*`-503-Bodies. Manuelle End-to-End-Probe auf der
+> Dev-Maschine: `pg_ctl stop -m immediate` (echter Ausfall) bzw. `pssuspend postgres` (hängender
+> Server — der Fall, den `CanConnectAsync` NICHT erkennen würde), danach `pg_ctl start -w`.
+
+### Test 82.1 — Banner + kein Toast-Sturm
+1. Bei laufender Session die Datenbank stoppen.
+- [ ] Innerhalb weniger Sekunden erscheint oben mittig das Banner „Datenbank nicht erreichbar" mit
+      „verbindet automatisch neu"-Text; `/api`-Aufrufe antworten sofort 503 `DATABASE_UNAVAILABLE`.
+- [ ] KEIN Fehler-Toast pro fehlgeschlagenem Query (das Banner besitzt die Meldung); gewöhnliche,
+      nicht-DB-Fehler toasten weiterhin.
+- [ ] TopBar-Ampel: oranger Zustand „Datenbank nicht erreichbar" (nicht rot = Prozess weg).
+
+### Test 82.2 — Erholung
+1. Datenbank wieder starten.
+- [ ] Banner verschwindet von selbst (≤ ~10 s), Erfolgs-Toast „Datenbankverbindung wiederhergestellt",
+      alle sichtbaren Listen laden neu; Log zeigt genau eine WRN- (Öffnen) und eine INF-Zeile (Schließen).
+
+### Test 82.3 — Designer + Reload
+- [ ] Banner ist auch im Workflow-Designer (`/workflows/:id`) sichtbar (Route ohne Layout-Shell).
+- [ ] Ein Seiten-Reload mit gültigem Cookie während des Ausfalls liefert die App-Shell (mit Banner) —
+      NICHT rohes 503-JSON und NICHT den Login mit „Ungültige Zugangsdaten".
+
+### Test 82.4 — Gegenprobe (darf NICHT auslösen)
+1. In `psql`: `BEGIN; LOCK TABLE "Workflows" IN ACCESS EXCLUSIVE MODE;` und die Workflow-Liste laden.
+- [ ] Antwort ist `DATABASE_TIMEOUT` + Inline-Fehler der Seite — **kein** Banner, kein Breaker
+      (eine langsame Abfrage ist kein Ausfall; die Sonde adjudiziert). `ROLLBACK;` räumt auf.
+
+### Test 82.5 — Echter Provider-/Recovery-Gate (PostgreSQL **und** SQL Server)
+
+Dieser Gate wird je Provider gegen eine separate Testinstallation ausgeführt; SQLite und gemockte
+Connections zählen hier ausdrücklich nicht. Vor jedem Fall mindestens eine normale API-Abfrage
+ausführen, damit der Application-Pool warm ist.
+
+1. **Stop/Start:** PostgreSQL (`pg_ctl stop -m immediate` / `pg_ctl start -w`) beziehungsweise den
+   SQL-Server-Dienst stoppen und wieder starten.
+2. **Wedged Transport:** den DB-Port über einen TCP-Proxy führen, der bestehende Verbindungen offen
+   lässt, aber Bytes in beide Richtungen nicht mehr weiterleitet; anschließend den Proxy freigeben.
+3. **Credentials-Rejection:** das Passwort der NodePilot-Rolle serverseitig vorübergehend ändern,
+   neue Verbindungen erzwingen und danach das ursprüngliche Passwort wiederherstellen.
+4. **Pool-Sättigung:** mit kleinem Test-`Maximum Pool Size` alle Application-Slots belegen und einen
+   weiteren normalen Request absetzen; danach die Halter freigeben.
+5. Nach jedem echten Ausfall als **erste** Nutzlast nach `status:ok` eine normale
+   `GET /api/workflows`-Abfrage senden (nicht nur die ungepoolte Sonde).
+
+Prüfpunkte je Provider/Fall:
+
+- [ ] Gegatete Requests antworten in unter 500 ms mit dem gemeinsamen 503-Vertrag.
+- [ ] Stop und Wedge öffnen den Breaker; Rejection liefert `reason:RejectedByServer` und
+      `retryable:false`; reine lokale Pool-Sättigung öffnet ihn nicht.
+- [ ] Nach Freigabe/Start sind Sonde **und der erste gepoolte App-Request** erfolgreich; kein
+      wiederholtes Flapping durch alte Pool-Connectoren.
+- [ ] Pro Episode genau ein Open-/Reason-Wechsel-/Close-Log, kein Error pro Probe-/Readiness-Tick.
+- [ ] Ein parallel laufender Workflow startet keinen Nachfolger, bevor sein terminaler Step-Zustand
+      nach der Erholung dauerhaft gespeichert ist.
+
+> Automatisiert: `e2e/database-outage.spec.ts` (82.1–82.3, hermetisch — Health + 503s via
+> `page.route`); 82.4/82.5 und die echten Stop/Suspend-/Proxy-Zyklen sind providergebundene
+> Freigabe-Gates und laufen nur in einer Umgebung mit beiden Datenbanken.
+
+---
+
 ## Checkliste für vollständigen E2E-Test-Run
 
 ```
@@ -4524,6 +4588,7 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 [ ] Teil 79: Toolbar-Layout-Umschalter (79.1 — 79.4)
 [ ] Teil 80: Globaler AI-Chat (80.1 — 80.9)
 [ ] Teil 81: Custom Activities (81.1 — 81.9)
+[ ] Teil 82: Datenbank-Ausfall zur Laufzeit (82.1 — 82.4)
 ```
 
 ---

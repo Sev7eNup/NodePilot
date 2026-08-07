@@ -12,7 +12,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore } from '../stores/authStore';
-import { api } from '../api/client';
+import { api, ApiError, isDatabaseOutageError } from '../api/client';
 import { BrandLogo } from '../components/BrandLogo';
 import type { AuthMethodsResponse, LoginResponse } from '../types/api';
 
@@ -62,9 +62,14 @@ export function LoginPage() {
       // On success we navigate away, so we deliberately leave `submitting` set to keep
       // the button in its busy state until the route unmounts the page.
     } catch (err) {
-      if (err instanceof Error && err.message.includes('SETUP_TOKEN_REQUIRED')) {
+      // Branch on the machine-readable code, not on prose in the message (no-backcompat cutover
+      // from the old substring match). The third branch matters during a database outage: before
+      // it, a 503 rendered as "invalid credentials" - blaming the user for an infrastructure state.
+      if (err instanceof ApiError && err.code === 'SETUP_TOKEN_REQUIRED') {
         setShowSetupToken(true);
         setError(t('auth:setupTokenRequired'));
+      } else if (isDatabaseOutageError(err) || (err instanceof ApiError && err.status === 503)) {
+        setError(t('auth:databaseUnavailable'));
       } else {
         setError(t('auth:invalidCredentials'));
       }

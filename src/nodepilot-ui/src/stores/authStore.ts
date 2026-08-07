@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { api } from '../api/client';
+import { api, ApiError } from '../api/client';
 import type { LoginResponse } from '../types/api';
 import { useAiChatStore } from './aiChatStore';
+import { useDbHealthStore } from './dbHealthStore';
 
 /**
  * Auth store (rewritten by a security-audit fix): the JWT now lives in an httpOnly `np_auth` cookie
@@ -87,7 +88,22 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const me = await api.get<{ id: string; username: string; role: string }>('/auth/me');
       set({ userId: me.id, username: me.username, role: me.role, isAuthenticated: true });
-    } catch {
+    } catch (err) {
+      // A database outage or an unreachable process says NOTHING about this user's session — the
+      // cookie may be perfectly valid. The old bare catch signed the user out, so a page reload
+      // during an outage ejected them to a login form that itself answers 503 (and, before it
+      // carried a third branch, blamed their credentials). Instead: stay in the loading shell
+      // (isAuthenticated stays null) and re-ask the moment the health probe reports recovery.
+      const outage = (err instanceof ApiError && (err.status === 503 || err.code?.startsWith('DATABASE_')))
+        || err instanceof TypeError; // fetch network failure — process unreachable/restarting
+      if (outage) {
+        const unsubscribe = useDbHealthStore.subscribe((state) => {
+          if (state.status !== 'ok') return;
+          unsubscribe();
+          void useAuthStore.getState().initialize();
+        });
+        return;
+      }
       set({ userId: null, username: null, role: null, isAuthenticated: false });
     }
   },

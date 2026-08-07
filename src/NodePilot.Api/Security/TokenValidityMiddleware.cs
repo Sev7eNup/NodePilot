@@ -4,8 +4,11 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using NodePilot.Api.Hosting;
 using NodePilot.Core.Enums;
+using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Api.Security;
 
@@ -29,9 +32,24 @@ public class TokenValidityMiddleware
     internal const string InvalidatedPrincipalItem = "NodePilot.Security.InvalidatedPrincipal";
     private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
 
-    private readonly RequestDelegate _next;
+    /// <summary>
+    /// Named rather than anonymous so the query can sit inside its own command-budget block while the
+    /// result stays usable in the enclosing scope — an anonymous type cannot be declared ahead of the
+    /// block that produces it.
+    /// </summary>
+    private sealed record ActiveSessionProjection(
+        DateTime? RevokedAt, DateTime ExpiresAt, int AuthorizationVersion, string CurrentJti);
 
-    public TokenValidityMiddleware(RequestDelegate next) { _next = next; }
+    private readonly RequestDelegate _next;
+    private readonly int _authReadTimeoutSeconds;
+
+    public TokenValidityMiddleware(
+        RequestDelegate next,
+        DatabaseAvailabilityOptions databaseAvailability)
+    {
+        _next = next;
+        _authReadTimeoutSeconds = databaseAvailability.AuthReadTimeoutSeconds;
+    }
 
     public async Task Invoke(
         HttpContext ctx,
@@ -40,6 +58,39 @@ public class TokenValidityMiddleware
         IOptions<AuthenticationPolicyOptions>? authenticationPolicy = null,
         ExternalAuthorizationEvaluator? externalAuthorization = null)
     {
+        // The health endpoints are the one surface that must answer while the database is in trouble -
+        // /healthz/database is what the SPA polls to learn an outage is happening. Running the two
+        // uncached reads below first would make the outage banner's own probe pay a full auth budget
+        // per tick, which is the chicken-and-egg that endpoint exists to break. No health endpoint
+        // reads ctx.User.
+        if (ctx.Request.Path.StartsWithSegments("/healthz"))
+        {
+            await _next(ctx);
+            return;
+        }
+
+        // DatabaseAvailabilityMiddleware runs before authentication and marks an authenticated
+        // browser navigation while the breaker is open. Authentication has populated ctx.User by the
+        // time we get here, so strip it and serve the static SPA shell without touching RevokedTokens,
+        // AuthSessions or Users. API, OIDC, metrics and the entire hub HTTP surface are sealed by the
+        // outer middleware and can never reach this branch.
+        if (ctx.Items.ContainsKey(
+                Hosting.DatabaseAvailabilityMiddleware.AnonymizeSpaPrincipalItem))
+        {
+            if (ctx.User?.Identity?.IsAuthenticated == true)
+                await RejectOrAnonymizeAsync(ctx, allowAnonymous: true);
+            else
+                await _next(ctx);
+            return;
+        }
+
+        // Why this exists at all: these reads run on EVERY authenticated request, before any
+        // controller. At the 120 s context default, a hung database parks each of them for
+        // 120 s + 2 x connect timeout - so the interactive budgets controllers set for themselves are
+        // never even reached. A short budget here is what makes a command timeout - and therefore the
+        // probe arming - happen in seconds instead of minutes. It comes from the same immutable,
+        // startup-validated DatabaseAvailabilityOptions snapshot as every other breaker budget.
+
         var endpoint = ctx.GetEndpoint();
         // Anonymize instead of reject on everything that is not the protected API surface.
         // The SPA fallback endpoint (index.html for /login, /workflows, …) carries no
@@ -91,7 +142,36 @@ public class TokenValidityMiddleware
                     && cachedRevoked;
                 if (!revoked)
                 {
-                    revoked = await db.RevokedTokens.AsNoTracking().AnyAsync(r => r.Jti == jti);
+                    // Scoped per call rather than around the whole branch: RejectOrAnonymizeAsync calls
+                    // _next on its anonymize path, and a budget that spanned it would silently run the
+                    // entire downstream pipeline at 3 seconds. The context is pooled, so a leaked
+                    // override would outlive the request and poison an unrelated one later.
+                    //
+                    // The catch below (and its two siblings further down) closes a hole the outage
+                    // banner depends on: `/`, `/login` and every other SPA route are allowAnonymous
+                    // here, but an authenticated browser still triggers these reads — and an
+                    // unhandled database failure would hand the DOCUMENT request to the exception
+                    // handler, which answers 503 JSON. The user reloading during an outage then saw
+                    // raw JSON instead of the app shell, and the banner that explains the outage
+                    // could never render. Anonymize-and-continue serves the shell; the API surface
+                    // (allowAnonymous == false) deliberately keeps propagating so the handlers can
+                    // answer with the DATABASE_UNAVAILABLE contract. Narrow catches on purpose: a
+                    // catch spanning RejectOrAnonymizeAsync would swallow downstream pipeline
+                    // exceptions and run _next twice.
+                    try
+                    {
+                        using (DatabaseCommandBudget.Apply(db, _authReadTimeoutSeconds))
+                        {
+                            revoked = await db.RevokedTokens.AsNoTracking()
+                                .AnyAsync(r => r.Jti == jti, ctx.RequestAborted);
+                        }
+                    }
+                    catch (Exception ex) when (allowAnonymous
+                        && DbErrorClassifier.Classify(ex) is not DbFailureKind.None)
+                    {
+                        await RejectOrAnonymizeAsync(ctx, allowAnonymous: true);
+                        return;
+                    }
                     if (revoked)
                         cache.Set(revokedKey, true, CacheTtl);
                 }
@@ -106,16 +186,28 @@ public class TokenValidityMiddleware
                 if (Guid.TryParse(sessionIdValue, out sessionId))
                 {
                     var now = DateTime.UtcNow;
-                    var activeSession = await db.AuthSessions.AsNoTracking()
-                        .Where(s => s.Id == sessionId && s.UserId == userId)
-                        .Select(s => new
+                    // Block-scoped, NOT `using var`: the enclosing block contains the
+                    // RejectOrAnonymizeAsync calls below, which invoke _next on their anonymize path.
+                    // A `using var` here would run the whole downstream pipeline at the auth budget.
+                    ActiveSessionProjection? activeSession;
+                    try
+                    {
+                        using (DatabaseCommandBudget.Apply(db, _authReadTimeoutSeconds))
                         {
-                            s.RevokedAt,
-                            s.ExpiresAt,
-                            s.AuthorizationVersion,
-                            s.CurrentJti,
-                        })
-                        .FirstOrDefaultAsync();
+                            activeSession = await db.AuthSessions.AsNoTracking()
+                                .Where(s => s.Id == sessionId && s.UserId == userId)
+                                .Select(s => new ActiveSessionProjection(
+                                    s.RevokedAt, s.ExpiresAt, s.AuthorizationVersion, s.CurrentJti))
+                                .FirstOrDefaultAsync(ctx.RequestAborted);
+                        }
+                    }
+                    catch (Exception ex) when (allowAnonymous
+                        && DbErrorClassifier.Classify(ex) is not DbFailureKind.None)
+                    {
+                        // See the revocation read above: the SPA shell must load during an outage.
+                        await RejectOrAnonymizeAsync(ctx, allowAnonymous: true);
+                        return;
+                    }
                     if (activeSession is null
                         || activeSession.RevokedAt is not null
                         || activeSession.ExpiresAt <= now
@@ -137,11 +229,20 @@ public class TokenValidityMiddleware
                     1,
                     15);
                 var userKey = UserSessionInvalidation.UserStateCacheKey(userId);
-                var userState = await cache.GetOrCreateAsync(userKey, async entry =>
+                UserStateSnapshot? userState;
+                try
                 {
+                    userState = await cache.GetOrCreateAsync(userKey, async entry =>
+                    {
                     entry.AbsoluteExpirationRelativeToNow = CacheTtl;
-                    var u = await db.Users.AsNoTracking().FirstOrDefaultAsync(x => x.Id == userId);
-                    if (u is null) return null;
+                    User? found;
+                    using (DatabaseCommandBudget.Apply(db, _authReadTimeoutSeconds))
+                    {
+                        found = await db.Users.AsNoTracking()
+                            .FirstOrDefaultAsync(x => x.Id == userId, ctx.RequestAborted);
+                    }
+                    if (found is null) return null;
+                    var u = found;
                     var authorizationCurrent = true;
                     DateTime? authorizationValidUntil = null;
                     if (u.Provider != AuthProvider.Local)
@@ -177,7 +278,16 @@ public class TokenValidityMiddleware
                         u.DirectorySyncStatus,
                         authorizationCurrent,
                         authorizationValidUntil);
-                });
+                    });
+                }
+                catch (Exception ex) when (allowAnonymous
+                    && DbErrorClassifier.Classify(ex) is not DbFailureKind.None)
+                {
+                    // Third sibling of the revocation-read catch: the user lookup inside the cache
+                    // factory surfaces its database failure from THIS await.
+                    await RejectOrAnonymizeAsync(ctx, allowAnonymous: true);
+                    return;
+                }
 
                 if (userState is null || !userState.IsActive || userState.IsTombstoned)
                 {

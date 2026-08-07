@@ -1,5 +1,6 @@
 import type { Query } from '@tanstack/react-query';
 import { toast } from '../stores/toastStore';
+import { isDatabaseOutageError } from '../api/client';
 import i18n from '../i18n';
 
 /**
@@ -22,6 +23,14 @@ type CachedQuery = Query<unknown, unknown, unknown, readonly unknown[]>;
  */
 export function handleQueryError(error: unknown, query: CachedQuery): void {
   if (!shouldToastQueryError(query)) return;
+  // Database OUTAGE only: the global banner owns that message (with live state and recovery), and
+  // this handler fires once per failed query — during an outage that is every visible query at once.
+  // DATABASE_TIMEOUT is deliberately NOT suppressed: the breaker stays closed for it, so no banner
+  // is shown, and a page that reads only `data`/`isLoading` would render a busy database as an empty
+  // list with nothing to act on. That is the original defect this handler exists to prevent.
+  // Precise object check here; the toast sink additionally filters by message for the mutation
+  // call sites this handler never sees.
+  if (isDatabaseOutageError(error)) return;
   const message = error instanceof Error && error.message ? error.message : undefined;
   toast.error(message ?? i18n.t('common:loadError'));
 }

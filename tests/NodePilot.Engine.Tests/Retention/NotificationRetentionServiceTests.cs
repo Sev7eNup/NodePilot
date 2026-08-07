@@ -30,7 +30,7 @@ public class NotificationRetentionServiceTests
 
     private static NotificationRetentionService Service(IServiceScopeFactory factory, RetentionOptions? options = null)
         => new(factory, new StaticOptionsMonitor<RetentionOptions>(options ?? new RetentionOptions()),
-            new SingleNodeClusterStateProvider(), NullLogger<NotificationRetentionService>.Instance);
+            new SingleNodeClusterStateProvider(), NullLogger<NotificationRetentionService>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
     private static void AddAttempt(NodePilotDbContext db, NotificationDeliveryStatus status, DateTime createdAt)
         => db.NotificationDeliveryAttempts.Add(new NotificationDeliveryAttempt

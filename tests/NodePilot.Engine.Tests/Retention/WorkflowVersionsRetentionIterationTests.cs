@@ -125,7 +125,8 @@ public sealed class WorkflowVersionsRetentionIterationTests : IAsyncDisposable
                 },
             }),
             new SingleNodeClusterStateProvider(),
-            NullLogger<WorkflowVersionsRetentionService>.Instance);
+            NullLogger<WorkflowVersionsRetentionService>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
         await provider.DisposeAsync();
 
         var act = () => service.RunIterationAsync(TestContext.Current.CancellationToken);
@@ -172,5 +173,5 @@ public sealed class WorkflowVersionsRetentionIterationTests : IAsyncDisposable
         _services.GetRequiredService<IServiceScopeFactory>(),
         new StaticOptionsMonitor<RetentionOptions>(new RetentionOptions { WorkflowVersions = options }),
         new SingleNodeClusterStateProvider(),
-        NullLogger<WorkflowVersionsRetentionService>.Instance);
+        NullLogger<WorkflowVersionsRetentionService>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
 }

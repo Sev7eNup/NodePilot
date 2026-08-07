@@ -27,14 +27,32 @@ public sealed class HealthCommand : BaseCommand<GlobalSettings>
                 return ExitCodes.Error;
             }
             var api = ClientFactory.Create(session, requireAuth: false);
-            var (live, ready, detail, leaderStatus) = await api.HealthAsync(ct);
+            var (live, ready, detail, leaderStatus, databaseStatus, databaseReason) = await api.HealthAsync(ct);
 
-            writer.WriteData(new { Live = live, Ready = ready, Detail = detail, Leader = leaderStatus }, (console, v) =>
+            writer.WriteData(
+                new { Live = live, Ready = ready, Detail = detail, Leader = leaderStatus, Database = databaseStatus, DatabaseReason = databaseReason },
+                (console, v) =>
             {
                 console.MarkupLine($"Live  : {(v.Live ? "[green]ok[/]" : "[red]down[/]")}");
                 console.MarkupLine($"Ready : {(v.Ready ? "[green]ok[/]" : "[red]down[/]")}");
                 if (!v.Ready && !string.IsNullOrEmpty(v.Detail))
                     console.MarkupLine($"[grey]{Spectre.Console.Markup.Escape(v.Detail)}[/]");
+                // Database line: before it existed, an outage printed only "Ready: down" — the CLI
+                // twin of the SPA's formerly-green pill. Display-only, never folded into the exit
+                // code (`ready` already flips on an outage; see the comment below).
+                if (!string.IsNullOrEmpty(v.Database))
+                {
+                    var dbColor = v.Database switch
+                    {
+                        "ok" => "green",
+                        "armed" => "yellow",
+                        _ => "red",
+                    };
+                    var reasonSuffix = string.IsNullOrEmpty(v.DatabaseReason)
+                        ? string.Empty
+                        : $" [grey]({Spectre.Console.Markup.Escape(v.DatabaseReason)})[/]";
+                    console.MarkupLine($"DB    : [{dbColor}]{Spectre.Console.Markup.Escape(v.Database)}[/]{reasonSuffix}");
+                }
                 if (!string.IsNullOrEmpty(v.Leader))
                 {
                     var color = v.Leader switch

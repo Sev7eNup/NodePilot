@@ -88,6 +88,18 @@ export async function installDefaultMocks(page: Page) {
     (route) => emptyArray(route),
   );
 
+  // Database health — polled app-wide by useDatabaseHealth (mounted once in App). It lives
+  // under /healthz, NOT /api, so the predicate catch-all never answers it; without this mock
+  // the vite preview serves index.html (200, text/html) for the path, the probe's
+  // content-type guard reads that as "process unreachable", and the whole suite renders the
+  // TopBar pill red. Outage specs override this route after install (last-registered wins).
+  await page.route('**/healthz/database', (route) =>
+    route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ status: 'ok', sinceUtc: null, reason: null }),
+    }),
+  );
+
   // Auth — mimic a logged-in admin via the cookie-based H-5 flow.
   await page.route('**/api/auth/me', (route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MOCK_USER) }),

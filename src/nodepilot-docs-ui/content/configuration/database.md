@@ -9,6 +9,30 @@ NodePilot unterstützt PostgreSQL und SQL Server. `Database:Provider` wählt den
 
 SQLite wird ausschließlich als In-Memory-Backend in Tests verwendet.
 
+## Ausfall im laufenden Betrieb
+
+Fällt die Datenbank nach dem Start aus oder hängt sie, bleibt NodePilot erreichbar: Datenbankabhängige
+Requests antworten schnell mit `503 DATABASE_UNAVAILABLE`, die UI zeigt den Ausfall und laufende
+Workflows warten an dauerhaften Schrittgrenzen. Eine separate Sonde prüft `SELECT 1`; nach erfolgreicher
+Erholung laufen Requests und Hintergrunddienste ohne Neustart weiter.
+
+`RejectedByServer` bedeutet dagegen fehlerhafte Zugangsdaten, Datenbankauswahl oder TLS-Konfiguration.
+Dieser Zustand benötigt einen Administrator und ist nicht durch Warten behebbar. Nach serverseitiger
+Korrektur greift die Sonde automatisch; geänderte NodePilot-Verbindungsdaten benötigen einen Neustart.
+Einzelne langsame Abfragen liefern `DATABASE_TIMEOUT` und öffnen den globalen Ausfall-Breaker nicht sofort.
+
+| Einstellung | Default | Zweck |
+|---|---:|---|
+| `Database:ConnectTimeoutSeconds` | `5` | Verbindungsbudget der Anwendung |
+| `Database:AuthReadTimeoutSeconds` / `ReadinessProbeTimeoutSeconds` | `3` / `5` | Kurze Budgets für Authentifizierung und Readiness |
+| `Database:Probe:ConnectTimeoutSeconds` / `CommandTimeoutSeconds` | `2` / `2` | Harte Budgets der Recovery-Sonde |
+| `Database:Probe:IdleIntervalSeconds` / `OutageIntervalSeconds` | `5` / `5` | Prüfintervall im Normal- und Ausfallzustand |
+| `Database:Probe:SuccessesToRecover` / `FailureThreshold` | `2` / `2` | Bestätigung vor Recovery beziehungsweise Breaker-Öffnung |
+
+Alle Werte sind positive, restart-pflichtige Boot-Konfiguration. `0` wird abgelehnt, weil Provider
+damit teilweise einen unbegrenzten Timeout aktivieren. Status liefern `/healthz/ready` (Traffic-Gate)
+und `/healthz/database` (immer HTTP 200, Zustand im Body).
+
 ## Migrationen
 
 - **Ein gemeinsames Migration-Set**, provider-agnostisch (ohne `type:`-Strings). Bootstrap via `db.Database.Migrate()`.

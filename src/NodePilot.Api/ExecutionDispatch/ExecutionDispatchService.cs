@@ -6,6 +6,7 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 using NodePilot.Engine.Security;
 using NodePilot.Api.Security;
 
@@ -20,6 +21,7 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
     private readonly IClusterStateProvider _cluster;
     private readonly IMaintenanceWindowEvaluator _maintenance;
     private readonly ILogger<ExecutionDispatchService> _logger;
+    private readonly IDatabaseAvailability? _availability;
 
     public ExecutionDispatchService(
         NodePilotDbContext db,
@@ -28,7 +30,8 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
         OutputRedactor redactor,
         IClusterStateProvider cluster,
         IMaintenanceWindowEvaluator maintenance,
-        ILogger<ExecutionDispatchService> logger)
+        ILogger<ExecutionDispatchService> logger,
+        IDatabaseAvailability? availability = null)
     {
         _db = db;
         _dispatchQueue = dispatchQueue;
@@ -37,6 +40,7 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
         _cluster = cluster;
         _maintenance = maintenance;
         _logger = logger;
+        _availability = availability;
     }
 
     public WorkflowExecution AddPendingExecution(WorkflowDispatchIntent intent)
@@ -94,10 +98,22 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
             // MaxConcurrentExecutions caps are a sanity upper-bound for pathological
             // cases (sub-workflow cascades, trigger loops) and are sized well above
             // WorkerCount so they never trip in normal operation.
-            await _dispatchQueue.EnqueueAsync(
-                workerCt => RunDispatchedExecutionAsync(pending, request, workerCt),
-                CancellationToken.None,
-                request.Priority);
+            if (_dispatchQueue is ExecutionDispatchQueue outcomeQueue)
+            {
+                await outcomeQueue.EnqueueOutcomeAsync(
+                    workerCt => RunDispatchedExecutionAsync(pending, request, workerCt),
+                    CancellationToken.None,
+                    request.Priority);
+            }
+            else
+            {
+                // Compatibility adapter for alternate queue implementations. Production uses the
+                // concrete queue above so RetryBeforeStart remains an explicit worker outcome.
+                await _dispatchQueue.EnqueueAsync(
+                    async workerCt => _ = await RunDispatchedExecutionAsync(pending, request, workerCt),
+                    CancellationToken.None,
+                    request.Priority);
+            }
         }
         catch
         {
@@ -113,11 +129,12 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
     /// for the entire engine.ExecuteAsync lifetime. All pre-ownership exceptions are
     /// translated to a Failed/Cancelled execution row.
     /// </summary>
-    private async Task RunDispatchedExecutionAsync(
+    private async Task<ExecutionDispatchOutcome> RunDispatchedExecutionAsync(
         WorkflowExecution pending,
         WorkflowDispatchIntent request,
         CancellationToken workerCt)
     {
+        var engineStarted = false;
         try
         {
             await using var scope = _scopeFactory.CreateAsyncScope();
@@ -125,7 +142,7 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
             try
             {
                 if (!await IsPendingExecutionAsync(db, pending.Id, workerCt))
-                    return;
+                    return ExecutionDispatchOutcome.Completed;
 
                 var engine = scope.ServiceProvider.GetRequiredService<IWorkflowEngine>();
                 var workflow = await db.Workflows.FindAsync([request.WorkflowId], workerCt);
@@ -138,7 +155,7 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                         request.MissingWorkflowMessage,
                         CancellationToken.None);
                     await NotifyDispatchSuppressedAsync(request, reason, CancellationToken.None);
-                    return;
+                    return ExecutionDispatchOutcome.Completed;
                 }
 
                 // Authoritative maintenance-window gate. Catches every admission path and closes
@@ -166,7 +183,7 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                             .Where(k => k.ExecutionId == pending.Id)
                             .ExecuteDeleteAsync(CancellationToken.None);
                         await NotifyDispatchSuppressedAsync(request, "maintenance_window_blocked", CancellationToken.None);
-                        return;
+                        return ExecutionDispatchOutcome.Completed;
                     }
                 }
 
@@ -177,9 +194,12 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                     await MarkPendingExecutionTerminalAsync(db, pending.Id, ExecutionStatus.Cancelled,
                         $"Execution principal rejected: {principalFailure}.", CancellationToken.None);
                     await NotifyDispatchSuppressedAsync(request, principalFailure, CancellationToken.None);
-                    return;
+                    return ExecutionDispatchOutcome.Completed;
                 }
 
+                // Crossing this line transfers ownership to the engine. Any exception afterwards has
+                // unknown side effects/claim state and must never cause an automatic second start.
+                engineStarted = true;
                 await engine.ExecuteAsync(
                     workflow,
                     request.TriggeredBy,
@@ -190,31 +210,56 @@ public sealed class ExecutionDispatchService : IWorkflowExecutionDispatcher
                     request.StartedByUserId,
                     executionIdOverride: pending.Id,
                     interactiveRun: request.Priority == ExecutionDispatchPriority.Interactive);
+                return ExecutionDispatchOutcome.Completed;
             }
             catch (OperationCanceledException) when (workerCt.IsCancellationRequested)
             {
                 // Host shutdown — engine has its own finally that marks the row as Cancelled.
+                return ExecutionDispatchOutcome.Completed;
             }
             catch (Exception ex)
             {
+                if (!engineStarted && IsConfirmedDatabaseOutage(ex))
+                {
+                    _logger.LogWarning(ex,
+                        "Dispatch for execution {ExecutionId} paused before engine start; requeueing for database recovery.",
+                        pending.Id);
+                    return ExecutionDispatchOutcome.RetryBeforeStart;
+                }
+
                 _logger.LogError(ex,
-                    "Dispatched workflow execution {ExecutionId} failed before engine ownership.",
-                    pending.Id);
+                    "Dispatched workflow execution {ExecutionId} failed {OwnershipPhase}.",
+                    pending.Id,
+                    engineStarted ? "after engine start" : "before engine ownership");
                 await MarkPendingExecutionTerminalAsync(db, pending.Id, ExecutionStatus.Failed,
                     $"{request.PreOwnershipFailurePrefix}: {ex.Message}",
                     CancellationToken.None);
                 await NotifyDispatchSuppressedAsync(request, "dispatch_exception", CancellationToken.None);
+                return ExecutionDispatchOutcome.Completed;
             }
         }
         catch (Exception fatal)
         {
+            if (!engineStarted && IsConfirmedDatabaseOutage(fatal))
+            {
+                _logger.LogWarning(fatal,
+                    "Dispatch scope for execution {ExecutionId} failed before engine start; requeueing for database recovery.",
+                    pending.Id);
+                return ExecutionDispatchOutcome.RetryBeforeStart;
+            }
+
             // Last-resort: scope creation itself threw, or MarkPendingExecutionTerminalAsync
             // failed. The pending row stays Pending until the startup reconciler sweeps it.
             _logger.LogError(fatal,
                 "Unrecoverable dispatch failure for execution {ExecutionId}; row may stay Pending until reconciler runs.",
                 pending.Id);
+            return ExecutionDispatchOutcome.Completed;
         }
     }
+
+    private bool IsConfirmedDatabaseOutage(Exception exception)
+        => _availability is { IsServable: false }
+           && DbErrorClassifier.Classify(exception) is not DbFailureKind.None;
 
     private async Task NotifyDispatchSuppressedAsync(
         WorkflowDispatchIntent request,

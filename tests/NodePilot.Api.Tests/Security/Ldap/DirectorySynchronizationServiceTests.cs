@@ -433,7 +433,8 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
             provider.GetRequiredService<IServiceScopeFactory>(),
             new StaticOptionsMonitor<LdapOptions>(options),
             effectiveCluster,
-            NullLogger<DirectorySynchronizationService>.Instance);
+            NullLogger<DirectorySynchronizationService>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
     }
 
     private static LdapOptions Options(

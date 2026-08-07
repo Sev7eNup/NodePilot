@@ -1043,7 +1043,11 @@ Beyond Grafana, the API also exposes:
 - **Prometheus scrape endpoint** at `GET /metrics` (anonymous when `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous: true`)
 - **Native Metrics UI** at `/metrics/mission-control`: all metric panels and PromQL targets from the 10 provisioned Grafana dashboards, rendered in the NodePilot design for every signed-in role. The dashboard JSON files are embedded as the shared source of truth. Configure `OpenTelemetry:GrafanaBaseUrl` for optional Grafana drill-down links.
 - **Built-in observability page** at `/observability` — query Prometheus from inside NodePilot without leaving the UI
-- **Health endpoints** — `GET /healthz/live` and `GET /healthz/ready` (anonymous)
+- **Health endpoints** — `GET /healthz/live`, `GET /healthz/ready` and `GET /healthz/database` (anonymous). The database endpoint always returns 200 with the breaker state and reason; readiness returns 503 while a timeout is being adjudicated or an outage is open.
+
+### Database-outage resilience
+
+During a runtime PostgreSQL or SQL Server outage, NodePilot stays up: APIs fail fast with `503 DATABASE_UNAVAILABLE`, background work pauses, the UI shows an outage banner, and operation resumes automatically after successful probes. Workflows do not cross a step edge until the terminal state is durable; trigger fires observed during the outage are counted and discarded without catch-up. `RejectedByServer` requires an operator to fix credentials, database selection or TLS, plus a service restart when NodePilot-side connection settings changed. An isolated slow query remains `503 DATABASE_TIMEOUT`. See [ADR 0011](docs/adr/0011-database-availability-breaker.md).
 
 ---
 
@@ -1143,6 +1147,10 @@ All settings live in [`src/NodePilot.Api/appsettings.json`](src/NodePilot.Api/ap
 | `Database:Provider` | `postgres` | `postgres` *(default)* or `sqlserver`. SQLite is **not** supported as an app DB. |
 | `ConnectionStrings:Postgres` | — | Postgres connection (used when `Database:Provider=postgres`) |
 | `ConnectionStrings:DefaultConnection` | — | SQL Server connection (used when `Database:Provider=sqlserver`) |
+| `Database:ConnectTimeoutSeconds` | `5` | Application connection timeout; positive, restart required |
+| `Database:AuthReadTimeoutSeconds` | `3` | Hard limit for session, revocation and user reads |
+| `Database:ReadinessProbeTimeoutSeconds` | `5` | Hard limit for the readiness query |
+| `Database:Probe:*` | connect/command/cleanup `2`; intervals `5`; thresholds `2` | Dedicated recovery-probe limits and cadence; all values must be positive |
 | `Jwt:Key` | *(auto-generated)* | HS256 signing key — replace for production (env var `Jwt__Key` or User Secrets) |
 | `Jwt:Issuer` / `Jwt:Audience` | `NodePilot` | Token validation — change for production |
 | `Remote:Provider` | `winrm` | `winrm` or `noop` (load-test stub) |
@@ -1304,7 +1312,7 @@ The full OpenAPI spec is served at `GET /openapi/v1.json`; Swagger UI at `GET /s
 | External trigger | `POST /api/trigger/{workflowNameOrId}` *(`X-Api-Key` header, optional `Idempotency-Key`)* |
 | Webhooks | `POST /api/webhooks/{workflow}/{path}` *(secret via `X-Webhook-Secret` or versioned NodePilot HMAC v2 over freshness metadata + method + path + canonical query + body)* |
 | Observability | `GET /api/observability/config\|query\|query_range\|summary` |
-| Health | `GET /healthz/live`, `GET /healthz/ready` *(anonymous)* |
+| Health | `GET /healthz/live`, `GET /healthz/ready`, `GET /healthz/database` *(anonymous)* |
 
 ---
 

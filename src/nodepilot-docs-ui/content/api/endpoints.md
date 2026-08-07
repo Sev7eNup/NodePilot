@@ -339,13 +339,33 @@ curl -s -b cookie.jar -X POST "$NP/api/ai/generate-workflow" -H 'Content-Type: a
 | Endpoint | Zweck |
 |---|---|
 | `GET /healthz/live` | Liveness |
-| `GET /healthz/ready` | DB-Readiness; bewusst ohne Directory-Abhängigkeit |
+| `GET /healthz/ready` | DB-Readiness; bei `armed` oder `unavailable` sofort 503, ohne Directory-Abhängigkeit |
+| `GET /healthz/database` | DB-Statusbericht für die UI: immer 200 mit `{status: ok\|armed\|unavailable, sinceUtc, reason}` |
 | `GET /healthz/directory` | separater LDAPS-/Service-Bind-Status |
 | `GET /healthz/leader` | HA-Leader-Probe (fail-closed) |
+
+Bei offenem DB-Breaker werden `/api`, neue Hub-Transporte, der OIDC-Callback und geschützte Metrics
+vor DB- oder Auth-Zugriffen beendet. Diese HTTP-Pfade verwenden 503, `Retry-After` und denselben Body:
+
+```json
+{
+  "code": "DATABASE_UNAVAILABLE",
+  "message": "...",
+  "retryAfterSeconds": 15,
+  "reason": "Unreachable",
+  "retryable": true
+}
+```
+
+`reason` ist `Unknown`, `Unreachable`, `Wedged` oder `RejectedByServer`; letzteres setzt
+`retryable: false`. Ein einzelner Command-Timeout verwendet denselben Vertrag mit
+`code: DATABASE_TIMEOUT`, fünf Sekunden Retry-Abstand und ohne `reason`. Auf einem bereits
+etablierten Hub liefern Methoden dieselben Codes als SignalR-Fehler.
 
 ```bash
 curl -s "$NP/healthz/live"  ; echo
 curl -s "$NP/healthz/ready" ; echo
+curl -s "$NP/healthz/database"; echo
 curl -s "$NP/healthz/directory"; echo
 curl -s "$NP/healthz/leader"; echo   # HA-Leader-Probe, Anonymous
 ```

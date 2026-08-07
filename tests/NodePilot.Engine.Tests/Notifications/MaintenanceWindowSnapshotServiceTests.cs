@@ -22,7 +22,7 @@ public class MaintenanceWindowSnapshotServiceTests
         eval.Setup(e => e.RefreshAsync(It.IsAny<CancellationToken>()))
             .Returns(() => { refreshed.TrySetResult(); return Task.CompletedTask; });
 
-        var svc = new MaintenanceWindowSnapshotService(eval.Object, NullLogger<MaintenanceWindowSnapshotService>.Instance);
+        var svc = new MaintenanceWindowSnapshotService(eval.Object, NullLogger<MaintenanceWindowSnapshotService>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         await svc.StartAsync(CancellationToken.None);
         var completed = await Task.WhenAny(refreshed.Task, Task.Delay(TimeSpan.FromSeconds(5)));
@@ -44,7 +44,7 @@ public class MaintenanceWindowSnapshotServiceTests
                 throw new InvalidOperationException("db unreachable");
             });
 
-        var svc = new MaintenanceWindowSnapshotService(eval.Object, NullLogger<MaintenanceWindowSnapshotService>.Instance);
+        var svc = new MaintenanceWindowSnapshotService(eval.Object, NullLogger<MaintenanceWindowSnapshotService>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         await svc.StartAsync(CancellationToken.None);
         await attempted.Task.WaitAsync(TimeSpan.FromSeconds(5)); // refresh attempted and threw internally

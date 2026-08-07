@@ -42,6 +42,7 @@ public static class NotificationRenderer
     public static string WebhookJson(NotificationContext c)
         => JsonSerializer.Serialize(new
         {
+            eventKey = c.EventKey,
             eventType = c.EventType.ToString(),
             severity = c.Severity.ToString(),
             title = Title(c),
