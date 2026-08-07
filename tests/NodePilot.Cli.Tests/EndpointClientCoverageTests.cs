@@ -35,16 +35,11 @@ public sealed class EndpointClientCoverageTests
     private const string SpaBootstrap = "DELIBERATE: SPA-internal bootstrap/UI surface, not an automation target";
     private const string InteractiveAiSse = "DELIBERATE: interactive SSE surface for the designer/knowledge chat UI; clients have no streaming UX";
     private const string WebhookIngress = "DELIBERATE: external webhook ingress — callers are third-party systems, not our clients";
-    private const string IdentityRepair = "no client surface AND no docs — audit finding F12, pending decision: document+expose or delete";
     private const string CustomActivityGap = "audit finding F1: the custom-activities surface has NO client — close by adding np custom-activity + MCP tools";
 
     private static readonly Dictionary<string, string> KnownCliGaps = new(StringComparer.OrdinalIgnoreCase)
     {
         ["api/activity-catalog"] = "np renders no activity palette; the MCP server serves the catalog in-proc from Core",
-        ["api/admin/external-identities"] = IdentityRepair,
-        ["api/admin/external-identities/resolve-ad-conflict"] = IdentityRepair,
-        ["api/admin/external-identities/resolve-upgrade-conflict"] = IdentityRepair,
-        ["api/admin/external-identities/upgrade-conflicts"] = IdentityRepair,
         ["api/admin/scim-groups/*/reactivate"] = "SCIM tombstone administration is a UI-only surface",
         ["api/admin/scim-groups/tombstones"] = "SCIM tombstone administration is a UI-only surface",
         ["api/admin/settings/test/ldap"] = "np settings has smtp/llm probes but no LDAP probe",
@@ -95,10 +90,6 @@ public sealed class EndpointClientCoverageTests
     private static readonly Dictionary<string, string> KnownMcpGaps = new(StringComparer.OrdinalIgnoreCase)
     {
         ["api/activity-catalog"] = "the MCP server serves the catalog in-proc from NodePilot.Core instead",
-        ["api/admin/external-identities"] = IdentityRepair,
-        ["api/admin/external-identities/resolve-ad-conflict"] = IdentityRepair,
-        ["api/admin/external-identities/resolve-upgrade-conflict"] = IdentityRepair,
-        ["api/admin/external-identities/upgrade-conflicts"] = IdentityRepair,
         ["api/admin/scim-groups/*/reactivate"] = "SCIM tombstone administration is a UI-only surface",
         ["api/admin/scim-groups/tombstones"] = "SCIM tombstone administration is a UI-only surface",
         ["api/admin/settings"] = "no MCP admin-settings tools — settings mutation via agent considered too destructive",

@@ -153,7 +153,6 @@ public static class AuditActions
     public const string UserDirectorySynced = "USER_DIRECTORY_SYNCED";
     public const string UserDirectoryDeprovisioned = "USER_DIRECTORY_DEPROVISIONED";
     public const string UserAuthorizationStale = "USER_AUTHORIZATION_STALE";
-    public const string UserExternalIdentityResolved = "USER_EXTERNAL_IDENTITY_RESOLVED";
     public const string UserScimProvisioned = "USER_SCIM_PROVISIONED";
     public const string UserScimUpdated = "USER_SCIM_UPDATED";
     public const string UserScimDeprovisioned = "USER_SCIM_DEPROVISIONED";
