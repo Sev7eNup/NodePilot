@@ -8,7 +8,7 @@ namespace NodePilot.Ai;
 
 /// <summary>
 /// L-4 (security audit 2026-05-15): the literal-host SSRF check in
-/// <see cref="LlmServiceCollectionExtensions.IsCloudMetadataEndpoint"/> only fires when the
+/// <see cref="LlmEndpointGuard.IsCloudMetadataEndpoint"/> only fires when the
 /// configured <c>Llm:BaseUrl</c> already names a metadata endpoint. It does nothing against
 /// a hostname that resolves to <c>169.254.169.254</c> at TCP-connect time (DNS rebinding,
 /// or simply a misconfigured DNS pointing internal-* names at metadata IPs). This callback

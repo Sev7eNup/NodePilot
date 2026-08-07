@@ -9,6 +9,7 @@ using NodePilot.Ai;
 using NodePilot.Api.Configuration;
 using NodePilot.Ai.Knowledge;
 using NodePilot.Api.Ai;
+using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Api.Telemetry;
 using NodePilot.Core.Audit;
@@ -91,12 +92,12 @@ public sealed class AiKnowledgeController : ControllerBase
     public async Task<IActionResult> Ask(KnowledgeAskRequest request, CancellationToken ct)
     {
         if (!_llmOptions.CurrentValue.Enabled)
-            return ServiceUnavailable("LLM_DISABLED", "AI ist deaktiviert. Setze Llm:Enabled=true in der Konfiguration.");
+            return this.LlmServiceUnavailable("LLM_DISABLED", "AI ist deaktiviert. Setze Llm:Enabled=true in der Konfiguration.");
         if (LlmAvailability.IsMissingActiveProfile(_llmOptions.CurrentValue))
-            return ServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
+            return this.LlmServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
         var k = _knowledgeOptions.CurrentValue;
         if (!k.Enabled)
-            return ServiceUnavailable("KNOWLEDGE_DISABLED", "Der KI-Chat ist deaktiviert. Aktiviere ihn in den Admin-Einstellungen (AI-Wissen).");
+            return this.LlmServiceUnavailable("KNOWLEDGE_DISABLED", "Der KI-Chat ist deaktiviert. Aktiviere ihn in den Admin-Einstellungen (AI-Wissen).");
 
         if (request is null || string.IsNullOrWhiteSpace(request.Question))
             return BadRequest(new { code = "PROMPT_EMPTY", message = "Question must not be empty." });
@@ -126,7 +127,7 @@ public sealed class AiKnowledgeController : ControllerBase
         catch (LlmException ex)
         {
             RecordError(ex);
-            return MapLlmException(ex);
+            return this.MapLlmException(_logger, ex, "LLM knowledge call");
         }
         catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
         {
@@ -274,41 +275,4 @@ public sealed class AiKnowledgeController : ControllerBase
                 new(TelemetryConstants.Attributes.LlmModel, model), new("token_type", "completion"));
     }
 
-    private ActionResult MapLlmException(LlmException ex)
-    {
-        _logger.LogWarning(ex, "LLM knowledge call failed: {Kind}", ex.Kind);
-        return ex.Kind switch
-        {
-            LlmErrorKind.Unreachable => ServiceUnavailable("LLM_UNREACHABLE", ex.Message),
-            LlmErrorKind.Timeout => ServiceUnavailable("LLM_TIMEOUT", ex.Message),
-            LlmErrorKind.Unauthorized => ServiceUnavailable("LLM_UNAUTHORIZED",
-                "LLM endpoint rejected the configured API key. Check Llm:ApiKey."),
-            LlmErrorKind.RateLimited => ServiceUnavailable("LLM_RATE_LIMITED",
-                "LLM endpoint rate-limited the request. Try again shortly."),
-            LlmErrorKind.MalformedResponse => BadGateway("LLM_MALFORMED_RESPONSE", ex.Message, ex.BodyExcerpt),
-            LlmErrorKind.UpstreamError => BadGateway("LLM_UPSTREAM_ERROR",
-                // Not every upstream error is an HTTP status: the Responses API reports a failed
-                // run inside an HTTP 200 body, and "returned HTTP ." helps nobody.
-                ex.HttpStatus is int status ? $"LLM endpoint returned HTTP {status}." : ex.Message,
-                ex.BodyExcerpt),
-            _ => StatusCode(StatusCodes.Status500InternalServerError,
-                new { code = "LLM_UNKNOWN", message = ex.Message }),
-        };
-    }
-
-    private ObjectResult ServiceUnavailable(string code, string message)
-        => StatusCode(StatusCodes.Status503ServiceUnavailable, new { code, message });
-
-    private ObjectResult BadGateway(string code, string message, string? bodyExcerpt = null)
-        => StatusCode(StatusCodes.Status502BadGateway,
-            bodyExcerpt is null ? (object)new { code, message } : new { code, message, bodyExcerpt });
 }
-
-/// <summary>
-/// Effective knowledge-chat capabilities for the current user (drives nav visibility + source badges).
-/// <see cref="Llm"/> is the raw "LLM usable" signal (kill-switch on + active profile resolves) independent
-/// of the AiKnowledge master switch — the SPA gates every AI entry point's visibility on it (designer
-/// assistant, script-editor generate, AI workflow generation), while <see cref="Enabled"/> keeps gating
-/// only the knowledge chat itself.
-/// </summary>
-public sealed record KnowledgeCapabilitiesDto(bool Enabled, bool Llm, bool Docs, bool Operational, bool SourceCode, bool Db);

@@ -53,11 +53,11 @@ public sealed class AiController : ControllerBase
     public async Task<IActionResult> GenerateScript(GenerateScriptRequest request, CancellationToken ct)
     {
         if (!_options.CurrentValue.Enabled)
-            return ServiceUnavailable("LLM_DISABLED",
+            return this.LlmServiceUnavailable("LLM_DISABLED",
                 "AI assistant is disabled. Set Llm:Enabled=true in configuration.");
 
         if (LlmAvailability.IsMissingActiveProfile(_options.CurrentValue))
-            return ServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
+            return this.LlmServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
 
         if (string.IsNullOrWhiteSpace(request.Prompt))
             return BadRequest(new { code = "PROMPT_EMPTY", message = "Prompt must not be empty." });
@@ -72,7 +72,7 @@ public sealed class AiController : ControllerBase
         catch (LlmException ex)
         {
             RecordScriptError(ex);
-            return MapLlmException(ex);
+            return this.MapLlmException(_logger, ex, "LLM call");
         }
         catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
         {
@@ -180,11 +180,11 @@ public sealed class AiController : ControllerBase
         GenerateWorkflowRequest request, CancellationToken ct)
     {
         if (!_options.CurrentValue.Enabled)
-            return ServiceUnavailable("LLM_DISABLED",
+            return this.LlmServiceUnavailable("LLM_DISABLED",
                 "AI assistant is disabled. Set Llm:Enabled=true in configuration.");
 
         if (LlmAvailability.IsMissingActiveProfile(_options.CurrentValue))
-            return ServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
+            return this.LlmServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
 
         if (string.IsNullOrWhiteSpace(request.Prompt))
             return BadRequest(new { code = "PROMPT_EMPTY", message = "Prompt must not be empty." });
@@ -230,48 +230,7 @@ public sealed class AiController : ControllerBase
             ApiMetrics.LlmErrors.Add(1,
                 new(TelemetryConstants.Attributes.LlmKind, "workflow"),
                 new(TelemetryConstants.Attributes.LlmErrorKind, ex.Kind.ToString()));
-            return MapLlmException(ex);
+            return this.MapLlmException(_logger, ex, "LLM call");
         }
     }
-
-    /// <summary>
-    /// Maps <see cref="LlmException"/> kinds to the appropriate HTTP response.
-    /// Problems on our side reaching the endpoint (unreachable, timeout, bad API key) → 503;
-    /// weaknesses in the upstream response (malformed body, invalid JSON) → 502.
-    ///
-    /// <see cref="LlmException.BodyExcerpt"/> is included in the response for
-    /// <c>UpstreamError</c> so the user sees the real upstream error message in the frontend
-    /// (e.g. "context_length_exceeded" or "model does not support response_format")
-    /// instead of just "LLM endpoint returned HTTP 400".
-    /// </summary>
-    private ActionResult MapLlmException(LlmException ex)
-    {
-        _logger.LogWarning(ex, "LLM call failed: {Kind}", ex.Kind);
-        return ex.Kind switch
-        {
-            LlmErrorKind.Unreachable => ServiceUnavailable("LLM_UNREACHABLE", ex.Message),
-            LlmErrorKind.Timeout => ServiceUnavailable("LLM_TIMEOUT", ex.Message),
-            LlmErrorKind.Unauthorized => ServiceUnavailable("LLM_UNAUTHORIZED",
-                "LLM endpoint rejected the configured API key. Check Llm:ApiKey."),
-            LlmErrorKind.RateLimited => ServiceUnavailable("LLM_RATE_LIMITED",
-                "LLM endpoint rate-limited the request. Try again shortly."),
-            LlmErrorKind.MalformedResponse => BadGateway("LLM_MALFORMED_RESPONSE", ex.Message, ex.BodyExcerpt),
-            LlmErrorKind.UpstreamError => BadGateway("LLM_UPSTREAM_ERROR",
-                // Not every upstream error is an HTTP status: the Responses API reports a failed
-                // run inside an HTTP 200 body, and "returned HTTP ." helps nobody.
-                ex.HttpStatus is int status ? $"LLM endpoint returned HTTP {status}." : ex.Message,
-                ex.BodyExcerpt),
-            _ => StatusCode(StatusCodes.Status500InternalServerError,
-                new { code = "LLM_UNKNOWN", message = ex.Message }),
-        };
-    }
-
-    private ObjectResult ServiceUnavailable(string code, string message)
-        => StatusCode(StatusCodes.Status503ServiceUnavailable, new { code, message });
-
-    private ObjectResult BadGateway(string code, string message, string? bodyExcerpt = null)
-        => StatusCode(StatusCodes.Status502BadGateway,
-            bodyExcerpt is null
-                ? (object)new { code, message }
-                : new { code, message, bodyExcerpt });
 }

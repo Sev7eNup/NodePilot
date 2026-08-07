@@ -157,7 +157,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
                 yield return new LlmStreamEvent(delta, Model: model);
         }
 
-        var finalToolCalls = Materialize(toolAcc);
+        var finalToolCalls = ToolCallAccumulator.Materialize(toolAcc);
         var generationMs = firstOutputTs is long outputStart
             ? (int)Stopwatch.GetElapsedTime(outputStart).TotalMilliseconds
             : (int?)null;
@@ -357,15 +357,6 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         return slot;
     }
 
-    private static IReadOnlyList<LlmToolCall>? Materialize(Dictionary<int, ToolCallAccumulator> acc)
-    {
-        if (acc.Count == 0) return null;
-        var calls = acc.OrderBy(kv => kv.Key)
-            .Select(kv => new LlmToolCall(kv.Value.Id, kv.Value.Name, kv.Value.Arguments.ToString()))
-            .Where(t => t.Name.Length > 0).ToList();
-        return calls.Count > 0 ? calls : null;
-    }
-
     private static string? ReadString(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString() : null;
@@ -374,10 +365,4 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
             ? value.GetInt32() : null;
 
-    private sealed class ToolCallAccumulator
-    {
-        public string Id = "";
-        public string Name = "";
-        public StringBuilder Arguments { get; } = new();
-    }
 }
