@@ -6,7 +6,7 @@ using NodePilot.Engine.Execution;
 using NodePilot.TestCommons;
 using Xunit;
 
-namespace NodePilot.Engine.Tests;
+namespace NodePilot.Engine.Tests.Execution;
 
 /// <summary>
 /// Single-node (reconciler) semantics for <see cref="StartupRecovery"/>. The single-node path
