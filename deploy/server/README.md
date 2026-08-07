@@ -97,9 +97,9 @@ Die Deinstallation fasst die **Datenbank nie** an; das Datenverzeichnis nur mit 
 | **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, **PostgreSQL-Rolle und -Datenbank anlegen**, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
 | **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
 
-Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — neun Zeilen: .NET-Runtime,
+Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — zehn Zeilen: .NET-Runtime,
 Kestrel-Zertifikat, **HTTP/HTTPS-Ports**, gMSA, Dienstidentität, Domänenmitgliedschaft,
-DB-Erreichbarkeit, DB-Version, **DB-Zugriff der Dienst-Identität**. Jede Zeile trägt rechts ein
+DB-Erreichbarkeit, DB-Version, **DB-Zugriff der Dienst-Identität**, **Herausgeber-Vertrauen**. Jede Zeile trägt rechts ein
 Statuszeichen — Haken, Kreuz, Ausrufezeichen oder Gedankenstrich — und ist zusätzlich eingefärbt.
 Das Zeichen ist nicht Dekoration: Farbe allein sagt niemandem etwas, der dieses Grün nicht von
 diesem Rot unterscheidet, und in einem Screenshot in einem Ticket schon gar nicht. Rote
