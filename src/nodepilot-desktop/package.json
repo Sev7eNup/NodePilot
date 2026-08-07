@@ -52,7 +52,7 @@
     "@electron-forge/maker-zip": "^7.10.0",
     "@types/node": "^24.13.3",
     "electron": "43.2.0",
-    "typescript": "~6.0.2",
+    "typescript": "~7.0.2",
     "vitest": "^4.1.4"
   }
 }
