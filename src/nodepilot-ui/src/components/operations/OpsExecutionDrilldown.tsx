@@ -4,6 +4,7 @@ import { Edit, Misuse, Close, ArrowUpLeft, TreeView, Restart, StopFilledAlt, War
 import { getExecution } from '../../api/operations';
 import { npStatusFromExecution, rawStatusLabelKey, STATUS_BADGE_CLASS } from '../../lib/statusTokens';
 import { formatDuration } from '../../lib/opsTimeline';
+import { formatTime } from '../../lib/format';
 import { CopyButton } from '../common/CopyButton';
 
 // Slide-over drilldown for a single execution (timeline bar / ticker click). Fetches the
@@ -96,13 +97,13 @@ export function OpsExecutionDrilldown({ executionId, workflowName, folderPath, c
           {startMs !== null && (
             <div className="flex items-center justify-between gap-2">
               <dt className="text-on-surface-variant">{t('operations:drilldown.started')}</dt>
-              <dd className="tabular-nums text-on-surface">{new Date(startMs).toLocaleTimeString()}</dd>
+              <dd className="tabular-nums text-on-surface">{formatTime(startMs)}</dd>
             </div>
           )}
           {endMs !== null && (
             <div className="flex items-center justify-between gap-2">
               <dt className="text-on-surface-variant">{t('operations:drilldown.completed')}</dt>
-              <dd className="tabular-nums text-on-surface">{new Date(endMs).toLocaleTimeString()}</dd>
+              <dd className="tabular-nums text-on-surface">{formatTime(endMs)}</dd>
             </div>
           )}
           {durationMs !== null && (

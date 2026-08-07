@@ -22,6 +22,7 @@ import { PausedVariablesInspector } from '../debug/PausedVariablesInspector';
 import { ActivityTypeIcon, ExecutionStatusBadge, OutputBlock, StepInputBlock, StepOutputParametersBlock, StepStatusIcon, formatMs } from './ExecutionPanelParts';
 import { LiveOverview } from '../live/LiveOverview';
 import { ResizeHandle } from '../library/NodeLibrary';
+import { formatTime } from '../../../lib/format';
 
 export function LiveTab({ executionsLive, simulation, workflowId, executions, panelHeight, onJoinExecution, onLeaveExecution }: Readonly<{
   execution: LiveExecution | null;
@@ -219,7 +220,7 @@ const LiveExecutionAccordionItem = memo(function LiveExecutionAccordionItem({ ex
         <div className="min-w-0 flex-1 flex items-center gap-1.5">
           <span className="font-mono text-[10px] text-on-surface-variant shrink-0">{shortId}</span>
           <span className="font-label text-[11px] text-on-surface-variant shrink-0 whitespace-nowrap">
-            {started.toLocaleTimeString(undefined, { hour12: false })} · {done}/{executedSteps.length}
+            {formatTime(started, { hour12: false })} · {done}/{executedSteps.length}
           </span>
           {hasPaused && (
             <span className="font-label text-[10px] font-semibold text-orange-700 dark:text-orange-400 bg-orange-100 dark:bg-orange-900/40 rounded px-1 shrink-0">{t('execution.live.paused')}</span>
@@ -451,11 +452,11 @@ function LiveExecutionDetail({ execution, workflowId, historyExecutions }: Reado
               {selected.startedAt && (
                 <div className="flex items-center gap-4 text-[10px] font-label text-outline flex-wrap">
                   <span className="flex items-center gap-1" title={new Date(selected.startedAt).toISOString()}>
-                    <Time size={10} /> {t('execution.inspector.started', { time: `${new Date(selected.startedAt).toLocaleTimeString(undefined, { hour12: false })}.${String(new Date(selected.startedAt).getMilliseconds()).padStart(3, '0')}` })}
+                    <Time size={10} /> {t('execution.inspector.started', { time: `${formatTime(selected.startedAt, { hour12: false })}.${String(new Date(selected.startedAt).getMilliseconds()).padStart(3, '0')}` })}
                   </span>
                   {selected.completedAt && (
                     <span className="flex items-center gap-1" title={new Date(selected.completedAt).toISOString()}>
-                      <Time size={10} /> {t('execution.inspector.ended', { time: `${new Date(selected.completedAt).toLocaleTimeString(undefined, { hour12: false })}.${String(new Date(selected.completedAt).getMilliseconds()).padStart(3, '0')}` })}
+                      <Time size={10} /> {t('execution.inspector.ended', { time: `${formatTime(selected.completedAt, { hour12: false })}.${String(new Date(selected.completedAt).getMilliseconds()).padStart(3, '0')}` })}
                     </span>
                   )}
                   {execution && (

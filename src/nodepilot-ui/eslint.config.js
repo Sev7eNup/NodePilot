@@ -48,4 +48,19 @@ export default defineConfig([
       '@typescript-eslint/no-explicit-any': 'off',
     },
   },
+  // All user-visible date/time/number formatting must go through lib/format.ts: its helpers
+  // resolve the locale from the active i18n language, while a direct toLocale*() call hardcodes
+  // or omits the locale and silently ignores the UI language switch. format.ts itself is the
+  // one place allowed to call the primitives; tests may build locale-dependent EXPECTED values
+  // with toLocale*() to stay independent of the runtime locale.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/lib/format.ts', 'src/**/*.test.{ts,tsx}', 'src/**/__tests__/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-syntax': ['error', {
+        selector: "MemberExpression[property.name=/^toLocale(String|DateString|TimeString)$/]",
+        message: 'Do not call toLocaleString/toLocaleDateString/toLocaleTimeString directly — use the i18n-aware helpers in src/lib/format.ts (formatDate, formatDateOnly, formatTime, formatNumber) so output follows the UI language.',
+      }],
+    },
+  },
 ])

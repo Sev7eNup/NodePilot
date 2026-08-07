@@ -561,7 +561,7 @@ function TopWorkflowsList({ items, onOpen }: Readonly<{ items: TopWorkflow[]; on
               </span>
             </div>
             <div className="flex items-center gap-1 pl-6 text-[10px] text-outline/70 tabular-nums">
-              <span>{w.runCount.toLocaleString()} runs</span>
+              <span>{formatNumber(w.runCount)} runs</span>
               {w.avgDurationMs != null && <span>· {t('dashboard:avgDuration', { duration: formatDuration(w.avgDurationMs) })}</span>}
               {w.p95DurationMs != null && <span>· {t('dashboard:p95', { duration: formatDuration(w.p95DurationMs) })}</span>}
             </div>

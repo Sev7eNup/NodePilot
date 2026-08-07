@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Plane, Tools } from '@carbon/icons-react';
 import type { OpsArmedTrigger } from '../../api/operations';
 import { formatDuration } from '../../lib/opsTimeline';
+import { formatTime } from '../../lib/format';
 import { STATUS_TEXT_CLASS } from '../../lib/statusTokens';
 
 // Next-fires "departure board": upcoming scheduled starts, soonest first, split-flap style.
@@ -58,7 +59,7 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
                 <tr key={`${trigger.workflowId}-${trigger.nextFireUtc ?? 'none'}`} className="np-ops-flap text-on-surface" title={blockedTitle}>
                   <td className={`py-0.5 pr-4 tabular-nums ${blocked ? `${STATUS_TEXT_CLASS.warning} line-through decoration-2` : 'text-primary'}`}>
                     {fireMs !== null
-                      ? new Date(fireMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      ? formatTime(fireMs, { hour: '2-digit', minute: '2-digit' })
                       : '—'}
                   </td>
                   <td className="max-w-0 truncate py-0.5 pr-4 font-sans" title={trigger.workflowName}>

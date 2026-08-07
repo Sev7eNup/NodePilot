@@ -29,6 +29,7 @@ import { UsageFooter } from './UsageFooter';
 import { useAiChatStore, aiChatScopeKey, aiChatFullKey, type ChatMessage, type ChatThreadMeta } from '../../stores/aiChatStore';
 import { useAuthStore } from '../../stores/authStore';
 import { buildChatMarkdown, chatFilenameSlug, downloadTextFile } from '../../lib/chatExport';
+import { formatDate } from '../../lib/format';
 
 const EMPTY_THREAD: ChatMessage[] = [];
 const EMPTY_THREADS: ChatThreadMeta[] = [];
@@ -688,7 +689,7 @@ function MessageBubble({
 
 /** Header dropdown: workflow-scoped AI activity log (asked/applied) — loaded lazily on open. */
 function ActivityMenu({ workflowId }: Readonly<{ workflowId: string }>) {
-  const { t, i18n } = useTranslation(['ai']);
+  const { t } = useTranslation(['ai']);
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState<ChatActivityEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -743,7 +744,7 @@ function ActivityMenu({ workflowId }: Readonly<{ workflowId: string }>) {
                   </span>
                   {e.username && <span className="text-on-surface-variant"> · {e.username}</span>}
                 </span>
-                <span className="shrink-0 text-[10px] text-on-surface-variant">{new Date(e.timestamp).toLocaleString(i18n.language)}</span>
+                <span className="shrink-0 text-[10px] text-on-surface-variant">{formatDate(e.timestamp)}</span>
               </div>
             ))}
           </div>

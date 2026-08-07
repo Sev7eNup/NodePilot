@@ -3,6 +3,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Field, type ConfigProps } from '../shared';
 import { previewSchedule, relativeFromNow } from '../../../../lib/cronPreview';
+import { formatDate } from '../../../../lib/format';
 
 export function ScheduleTriggerConfig({ config, onUpdate }: Readonly<ConfigProps>) {
   const { t } = useTranslation(['triggers', 'common']);
@@ -62,7 +63,7 @@ export function ScheduleTriggerConfig({ config, onUpdate }: Readonly<ConfigProps
             <ul className="space-y-0.5">
               {preview.fireTimes.map((d, i) => (
                 <li key={i} className="flex items-center justify-between gap-2 text-[11px] font-mono tabular-nums">
-                  <span className="text-on-surface">{d.toLocaleString(undefined, { hour12: false })}</span>
+                  <span className="text-on-surface">{formatDate(d, { hour12: false })}</span>
                   <span className="text-on-surface-variant text-[10px]">{relativeFromNow(d)}</span>
                 </li>
               ))}

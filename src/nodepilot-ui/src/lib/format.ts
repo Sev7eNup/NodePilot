@@ -52,12 +52,28 @@ export function formatRelativeFuture(iso: string, now: number = Date.now()): str
   });
 }
 
-export function formatDate(iso: string, opts?: Intl.DateTimeFormatOptions): string {
-  return new Date(iso).toLocaleString(currentLocale(), opts);
+/**
+ * Accepted input for the date/time helpers: ISO string, epoch milliseconds, or an
+ * already-constructed Date. Call sites deal in all three shapes; normalizing here keeps
+ * them from re-wrapping values in `new Date(...)` just to satisfy the helper.
+ */
+export type DateInput = string | number | Date;
+
+export function formatDate(value: DateInput, opts?: Intl.DateTimeFormatOptions): string {
+  return new Date(value).toLocaleString(currentLocale(), opts);
 }
 
-export function formatDateOnly(iso: string, opts?: Intl.DateTimeFormatOptions): string {
-  return new Date(iso).toLocaleDateString(currentLocale(), opts);
+export function formatDateOnly(value: DateInput, opts?: Intl.DateTimeFormatOptions): string {
+  return new Date(value).toLocaleDateString(currentLocale(), opts);
+}
+
+/**
+ * Time-only variant (clock labels on timelines, step timestamps, …). Components must use
+ * this instead of calling toLocaleTimeString directly (lint-enforced): a bare or `[]`
+ * locale argument falls back to the browser locale and ignores the UI language.
+ */
+export function formatTime(value: DateInput, opts?: Intl.DateTimeFormatOptions): string {
+  return new Date(value).toLocaleTimeString(currentLocale(), opts);
 }
 
 export function formatNumber(value: number, opts?: Intl.NumberFormatOptions): string {

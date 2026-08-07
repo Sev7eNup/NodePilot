@@ -2,6 +2,7 @@ import { Filter, Pause, Play, WarningAltFilled } from '@carbon/icons-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LiveExecution, StepUpdate } from '../../../hooks/useSignalR';
+import { formatNumber } from '../../../lib/format';
 
 interface Props {
   execution: LiveExecution;
@@ -133,7 +134,7 @@ export function LiveConsole({ execution, onSelectStep }: Readonly<Props>) {
           <>
             {truncated && (
               <div className="px-3 py-1 bg-warning-container/60 border-b border-warning/30 text-[10px] font-label text-on-warning-container">
-                {t('live.console.earlierLinesHidden', { count: filtered.length - MAX_LINES, cap: MAX_LINES.toLocaleString() })}
+                {t('live.console.earlierLinesHidden', { count: filtered.length - MAX_LINES, cap: formatNumber(MAX_LINES) })}
               </div>
             )}
             {visible.map((l) => (

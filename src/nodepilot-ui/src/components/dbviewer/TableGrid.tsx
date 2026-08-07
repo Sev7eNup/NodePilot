@@ -17,6 +17,7 @@ import { ResizeHandle, useResizableColumns, type ResizableColumn } from './useRe
 import type { DbAdminTableInfo, DbAdminColumnInfo } from '../../api/dbadmin';
 import { toast } from '../../stores/toastStore';
 import { confirmDialog } from '../../stores/confirmStore';
+import { formatDate } from '../../lib/format';
 
 interface Props {
   table: DbAdminTableInfo;
@@ -323,7 +324,7 @@ function PagBtn({ disabled, onClick, title, children }: Readonly<{
 
 function formatDateTime(s: string): string {
   try {
-    return new Date(s).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'medium' });
+    return formatDate(s, { dateStyle: 'short', timeStyle: 'medium' });
   } catch {
     return s;
   }

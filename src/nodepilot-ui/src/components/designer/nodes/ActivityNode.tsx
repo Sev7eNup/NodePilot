@@ -9,6 +9,7 @@ import { summarizeActivityConfig } from '../../../lib/activityConfigFacts';
 import { TRIGGER_ACTIVITY_TYPES } from '../../../lib/activityCatalog.generated';
 import { ACTIVITY_ICON_COMPONENTS, FALLBACK_ACTIVITY_ICON } from '../../../lib/activityIcons';
 import { previewSchedule, relativeFromNow } from '../../../lib/cronPreview';
+import { formatDate } from '../../../lib/format';
 import { EDGE_PORT_SIDES, portToPosition, type EdgePortSide } from '../../../lib/edgePorts';
 import { getNodeShape, getNodeSizeMultiplier, getIconScaleMultiplier, getBadgePositions, getHandleInset, getIconOffsetX, getIconOffsetY, getBackingClip, isControlFlowShape, SHAPE_CLIP_PATHS, type NodeShape, type BadgePosition } from './shapes';
 import { NodeScaleOverrideContext } from '../nodeScaleContext';
@@ -182,7 +183,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
       const p = previewSchedule(cronExpression, 1);
       if (p.error || p.fireTimes.length === 0) return null;
       const next = p.fireTimes[0];
-      return { paused: false as const, relative: relativeFromNow(next), absolute: next.toLocaleString(undefined, { hour12: false }) };
+      return { paused: false as const, relative: relativeFromNow(next), absolute: formatDate(next, { hour12: false }) };
     }, [activityType, workflowDisabled, cronExpression]);
   // Author-disabled: the engine treats this node as "skipped" (see WorkflowEngine.ExecuteAsync
   // → disabledNodeIds). We signal that visually with dimmed opacity, a dashed border, and an

@@ -7,6 +7,7 @@ import { api } from '../../../api/client';
 import { stripRuntimeDefinition } from '../../../lib/workflowDefinitionSanitizer';
 import { DefinitionDiffViewer } from '../DefinitionDiffViewer';
 import { confirmDialog } from '../../../stores/confirmStore';
+import { formatDate } from '../../../lib/format';
 
 type WorkflowVersionRow = {
   version: number;
@@ -130,7 +131,7 @@ export function WorkflowDiffModal({ workflowId, currentDefinition, canRestore = 
                   {t('diff.version', { version: v.version })}
                 </div>
                 <div className="font-label text-[10px] text-on-surface-variant">
-                  {v.createdAt ? new Date(v.createdAt).toLocaleString() : ''}
+                  {v.createdAt ? formatDate(v.createdAt) : ''}
                   {v.createdBy ? ` - ${v.createdBy}` : ''}
                 </div>
                 {v.changeNote && (
