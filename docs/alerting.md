@@ -214,10 +214,25 @@ window, scope, and routes. See [ADR 0008](adr/0008-modular-system-alert-sources.
 (source / observation / policy, source-vs-policy state separation, one-pipeline decision, phasing) and the
 rationale for choosing compiled modules over a text query language.
 
-The catalog currently ships **12** sources: `backlog`, `pending`, `cancel-rate`, `machine-unreachable`,
+The catalog currently ships **13** sources: `backlog`, `pending`, `cancel-rate`, `machine-unreachable`,
 `service-stale`, `credential-expiring`, `workflow-no-recent-success`, `schedule-missed`, `execution-result`,
 `execution-stuck` (live-hang detection), `workflow-health` (rolling failure-rate / p95 from `WorkflowStats`),
-and `alert-delivery-failed` (self-monitoring: the alarm about broken alarms).
+`alert-delivery-failed` (self-monitoring: the alarm about broken alarms), and `trigger-unhealthy`.
+
+`trigger-unhealthy` reports triggers the orchestrator cannot keep registered — a `fileWatcherTrigger`
+whose UNC share went away, a cron the scheduler rejects — exposing `unhealthySeconds`,
+`consecutiveFailures` and `triggerType`, scoped to the owning workflow. Nothing else sees this state:
+`schedule-missed` only walks cron triggers and needs an expected fire time, which an event-driven
+trigger has none of, and `service-stale` only measures heartbeat age — the orchestrator keeps beating
+because its own sync pass succeeds even while every trigger it manages is broken. The shipped preset
+fires at `unhealthySeconds > 60`, past the point where a share restart or a brief network blip
+explains it. Runtime mechanics: see the trigger-liveness section in `docs/claude-reference.md`.
+
+> **Two caveats specific to this source.** It is the only one reading process memory instead of the
+> database, because trigger registrations are process-local: a persisted row would outlive the
+> process that owns it. Consequence in an HA pair: the catalog and the policy preview are served by
+> whichever node answers the request, so a **follower** — which runs no triggers — shows this source
+> as *unavailable* even while the leader alerts correctly. Single-node deployments never see this.
 
 Delivered so far (foundation phase, non-destructive — the custom rules above are unchanged):
 

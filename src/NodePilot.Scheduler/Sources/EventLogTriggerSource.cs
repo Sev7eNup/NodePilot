@@ -23,6 +23,16 @@ public class EventLogTriggerSource : ITriggerSource
 {
     public string ActivityType => "eventLogTrigger";
 
+    /// <summary>
+    /// Always healthy — a deliberate limitation, not an oversight. <see cref="EventLog"/> has no
+    /// Error/fault channel at all, so a subscription killed by a log clear or an EventLog-service
+    /// restart goes silently deaf with no in-memory signal to read. The only real probe
+    /// (<c>_log.Entries.Count</c>) is RPC to the EventLog service, which the
+    /// <see cref="ITriggerSource.Health"/> contract forbids inline and which would need its own
+    /// probe loop. Revisit if a dead eventLogTrigger is ever actually reported (docs/roadmap.md).
+    /// </summary>
+    public TriggerHealth Health => TriggerHealth.Healthy;
+
     private readonly ILogger<EventLogTriggerSource> _logger;
     private readonly IConfiguration _config;
     private EventLog? _log;

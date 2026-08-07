@@ -65,18 +65,26 @@ public class TriggerOrchestrator : BackgroundService
 
     private readonly IDatabaseAvailability _availability;
 
+    // Mirrors the broken half of _backoff into a shape the alerting pipeline can observe. Kept
+    // separate rather than exposing _backoff itself: this carries the reason and the "since" the
+    // alert needs, and it survives an eviction that has not yet produced a failed retry.
+    private readonly TriggerHealthRegistry _health;
+
     public TriggerOrchestrator(
         IServiceScopeFactory scopeFactory,
         IServiceProvider rootServices,
         IClusterStateProvider cluster,
         ILogger<TriggerOrchestrator> logger,
-        IDatabaseAvailability availability)
+        IDatabaseAvailability availability,
+        TriggerHealthRegistry health)
     {
         _scopeFactory = scopeFactory;
         _rootServices = rootServices;
         _cluster = cluster;
         _availability = availability;
+        _health = health;
         _logger = logger;
+        SourceFactory = CreateSource;
         // Wake the sync loop immediately on leadership transitions so a freshly-promoted
         // node activates its triggers within milliseconds instead of waiting up to 5 s for
         // the next regular tick.
@@ -145,6 +153,9 @@ public class TriggerOrchestrator : BackgroundService
         await DisposeActiveSourcesAsync();
         _parseCache.Clear();
         _backoff.Clear();
+        // A follower owns no triggers, so it has no broken ones to report. Leaving stale entries
+        // would make this node alert on the leader's triggers.
+        _health.Clear();
     }
 
     private async Task<bool> WaitUntilServableOrLeadershipChangeAsync(CancellationToken stoppingToken)
@@ -210,7 +221,13 @@ public class TriggerOrchestrator : BackgroundService
         {
             await SyncInnerAsync(ct);
             syncActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
-            await WriteHeartbeat(ct, status: "ok");
+            // The pass itself succeeding says nothing about the triggers it manages: a trigger
+            // that cannot register (missing directory, unreachable share) is caught per-trigger
+            // and lands in _backoff, which covers both "never started" and "died and was evicted".
+            // Reporting plain "ok" while a drop folder goes unwatched is the false green this
+            // whole change exists to remove.
+            var retrying = _backoff.Count;
+            await WriteHeartbeat(ct, status: retrying == 0 ? "ok" : $"degraded: {retrying} trigger(s) retrying");
         }
         catch (Exception ex)
         {
@@ -255,6 +272,9 @@ public class TriggerOrchestrator : BackgroundService
                 await DisposeActiveSourcesAsync();
                 _parseCache.Clear();
                 _backoff.Clear();
+                // A follower owns no triggers, so it has no broken ones to report. Leaving stale
+                // entries would make this node alert on the leader's triggers.
+                _health.Clear();
             }
             return;
         }
@@ -320,17 +340,45 @@ public class TriggerOrchestrator : BackgroundService
                 desired[$"{v.Id}:{d.NodeId}"] = (v.Id, d.NodeId, d.ActivityType, d.Config, d.Hash);
         }
 
-        // Remove obsolete / changed
+        // Remove obsolete / changed / dead
         foreach (var key in _active.Keys.ToList())
         {
+            if (!_active.TryGetValue(key, out var current)) continue;
+
             var isGone = !desired.TryGetValue(key, out var want);
-            var changed = !isGone && want.hash != _active[key].configHash;
-            if ((isGone || changed) && _active.TryRemove(key, out var old))
+            var changed = !isGone && want.hash != current.configHash;
+
+            // A source that started fine and later died — a FileSystemWatcher whose UNC share
+            // vanished, a poll loop that exited — keeps a matching config hash forever, so
+            // neither branch above ever evicts it and the add-loop below skips it as "already
+            // registered". Evicting on the source's own liveness verdict routes it back through
+            // that add-loop, which already retries with exponential backoff and heals by itself
+            // once the underlying resource returns.
+            // Short-circuited for sources being removed anyway: Health is contractually a pure
+            // in-memory read, but there is no reason to ask a corpse we are already burying.
+            var health = isGone || changed ? TriggerHealth.Healthy : current.source.Health;
+
+            if ((isGone || changed || !health.IsHealthy) && _active.TryRemove(key, out var old))
             {
+                if (!health.IsHealthy)
+                    _logger.LogWarning(
+                        "Evicting unhealthy {Type} trigger {Key}: {Reason}. Re-registering; while the " +
+                        "underlying resource stays unavailable, registration backs off up to 5 minutes.",
+                        old.source.ActivityType, key, health.Reason);
+                else
+                    // Deleted, disabled or reconfigured — whatever was wrong with it is moot now.
+                    // (No health write on the unhealthy branch: the add-loop below re-registers in
+                    // this same pass, so it always resolves to either MarkHealthy on success or
+                    // MarkUnhealthy with a real failure count. A marker here would only ever be
+                    // overwritten a few lines later.)
+                    _health.MarkHealthy(key);
+
                 try { await old.source.DisposeAsync(); }
                 catch (Exception ex) { _logger.LogWarning(ex, "Failed disposing trigger {Key}", key); }
                 SchedulerMetrics.OrchestratorSyncChanges.Add(1,
-                    new KeyValuePair<string, object?>("change", changed ? "update" : "remove"));
+                    new KeyValuePair<string, object?>("change",
+                        !health.IsHealthy ? "evict-unhealthy" : changed ? "update" : "remove"),
+                    new KeyValuePair<string, object?>("trigger_type", old.source.ActivityType));
             }
         }
 
@@ -338,7 +386,10 @@ public class TriggerOrchestrator : BackgroundService
         // memory for deleted workflows.
         foreach (var bkey in _backoff.Keys.ToList())
             if (!desired.ContainsKey(bkey))
+            {
                 _backoff.TryRemove(bkey, out _);
+                _health.MarkHealthy(bkey);
+            }
 
         // Add new
         foreach (var (key, want) in desired)
@@ -353,7 +404,7 @@ public class TriggerOrchestrator : BackgroundService
                 && DateTime.UtcNow < bo.notBefore)
                 continue;
 
-            ITriggerSource? src = CreateSource(want.activityType);
+            ITriggerSource? src = SourceFactory(want.activityType);
             if (src is null) continue;
             var ctx = new TriggerContext
             {
@@ -366,7 +417,12 @@ public class TriggerOrchestrator : BackgroundService
             {
                 await src.StartAsync(ctx, ct);
                 _active[key] = (src, want.hash);
+                // Clearing the backoff HERE, on success, is what lets a health-evicted source be
+                // re-created immediately: no _active entry can ever have a live _backoff entry,
+                // so the eviction above always lands in an add-loop that is free to retry at once.
+                // Moving this line would silently break re-arming after an eviction.
                 _backoff.TryRemove(key, out _);
+                _health.MarkHealthy(key);
                 _logger.LogInformation("Registered {Type} trigger for workflow {Wf} node {Node}",
                     want.activityType, want.wfId, want.nodeId);
                 SchedulerMetrics.OrchestratorSyncChanges.Add(1,
@@ -382,6 +438,8 @@ public class TriggerOrchestrator : BackgroundService
                 var failures = previousFailures + 1;
                 var delaySeconds = Math.Min(300, 5 * (int)Math.Pow(2, Math.Min(failures - 1, 6)));
                 _backoff[key] = (DateTime.UtcNow.AddSeconds(delaySeconds), failures, want.hash);
+                _health.MarkUnhealthy(key, want.wfId, want.nodeId, want.activityType,
+                    $"{ex.GetType().Name}: {ex.Message}", failures, DateTime.UtcNow);
 
                 // Log at Warning for the first failure (admin attention), Debug for subsequent
                 // ones while backing off — prevents log-spam for a persistently-broken trigger.
@@ -425,6 +483,13 @@ public class TriggerOrchestrator : BackgroundService
     /// shutdown. The orchestrator owns each source's lifetime and disposes it in
     /// <see cref="SyncInnerAsync"/> / <see cref="ExecuteAsync"/>; the container must stay out of it.
     /// </summary>
+    /// <summary>
+    /// Test-only seam. The orchestrator MUST build its own sources (see <see cref="CreateSource"/>);
+    /// this only lets a test substitute the factory to drive reconcile scenarios no real source can
+    /// produce on demand — chiefly "a registered source reports unhealthy". Production never assigns it.
+    /// </summary>
+    internal Func<string, ITriggerSource?> SourceFactory { get; set; }
+
     private ITriggerSource? CreateSource(string activityType) => activityType switch
     {
         "scheduleTrigger" => new Sources.ScheduleTriggerSource(

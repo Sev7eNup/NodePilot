@@ -29,7 +29,7 @@ public static class SchedulerMetrics
         "nodepilot.trigger.orchestrator.sync.duration", unit: "ms", description: "Duration of a single TriggerOrchestrator sync pass.");
 
     public static readonly Counter<long> OrchestratorSyncChanges = Meter.CreateCounter<long>(
-        "nodepilot.trigger.orchestrator.sync.changes", unit: "1", description: "Add/update/remove changes applied per orchestrator sync pass, tagged by change type.");
+        "nodepilot.trigger.orchestrator.sync.changes", unit: "1", description: "Changes applied per orchestrator sync pass, tagged by change type (add/update/remove/evict-unhealthy) and trigger_type. 'evict-unhealthy' means a registered source reported itself dead and is being re-created.");
 
     public static readonly Counter<long> OrchestratorSyncFailures = Meter.CreateCounter<long>(
         "nodepilot.trigger.orchestrator.sync.failures", unit: "1", description: "Orchestrator sync passes that threw an exception.");

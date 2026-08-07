@@ -26,6 +26,9 @@ public static class BackgroundServicesSetup
         // provider would be retained by the container until process exit.
         services.AddQuartz();
         services.AddQuartzHostedService(q => q.WaitForJobsToComplete = true);
+        // Shared with TriggerUnhealthySource below: the orchestrator writes which triggers it
+        // cannot keep registered, the alerting pipeline reads it.
+        services.AddSingleton<NodePilot.Scheduler.TriggerHealthRegistry>();
         services.AddHostedService<NodePilot.Scheduler.TriggerOrchestrator>();
         services.AddHostedService<NodePilot.Api.ExecutionDispatch.ExecutionDispatchWorker>();
 
@@ -80,6 +83,11 @@ public static class BackgroundServicesSetup
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.StuckExecutionSource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.WorkflowHealthSource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.AlertDeliveryFailureSource>();
+        // Unlike its twelve siblings this one reads process memory, not the database: trigger
+        // registrations are process-local, so their health has no meaningful DB representation
+        // (see TriggerHealthRegistry). The orchestrator writes it, the evaluator reads it, and
+        // both are leader-gated in this process.
+        services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.TriggerUnhealthySource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertCatalog, NodePilot.Scheduler.SystemAlerts.SystemAlertCatalog>();
 
         // Trims the alerting delivery ledger (terminal NotificationDeliveryAttempt + stale suppression

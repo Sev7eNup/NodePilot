@@ -147,7 +147,8 @@
       "execution-stuck": "Hängende Ausführung",
       "workflow-health": "Workflow-Gesundheit",
       "alert-delivery-failed": "Alarm-Zustellung fehlgeschlagen",
-      "schedule-missed": "Zeitplan verpasst"
+      "schedule-missed": "Zeitplan verpasst",
+      "trigger-unhealthy": "Trigger nicht registriert"
     },
     "editor": {
       "name": "Name",

@@ -188,6 +188,16 @@ Jeder Posten trägt seine Auslösebedingung. Ohne Trigger wird nicht gestartet.
 - Im HA-Passive-Knoten darf nichts doppelt feuern → externe Trigger leader-gaten.
 - Trigger-Daten landen als `manual.*` (+ `param.*` des Trigger-Nodes) — **kein** `trigger.*`-Namespace.
 - Trigger-Läufe brauchen `Workflow.PublishedByUserId` → der Workflow muss *published* sein, nicht nur enabled.
+- **`Health` beantworten.** Der Orchestrator wertet es sequenziell für *jeden* Trigger im 5-s-Pass
+  aus → **reiner In-Memory-Read**, kein I/O, kein Lock. Wer echtes I/O braucht, probt auf eigenem
+  Timer und cached das Urteil. Konstant `Healthy` ist erlaubt, aber nur mit Kommentar, der die
+  Lücke benennt (Muster: `EventLogTriggerSource`). Ohne das bleibt eine Quelle, die im Betrieb
+  stirbt, für immer registriert und feuert nie wieder.
+
+| Trigger-gated Posten | Auslöser |
+|---|---|
+| Echte Health für `eventLogTrigger` (eigene Probe-Schleife statt konstant `Healthy`) | Erster gemeldeter Fall einer stillen toten `eventLogTrigger`-Subscription. `EventLog` hat keinen Fault-Kanal; die einzige Probe wäre RPC an den EventLog-Dienst. |
+| Lese-API für Laufzeit-Trigger-State (`GET /api/triggers/status` + CLI + MCP) | Operator will Live-Zustand inspizieren, ohne auf einen Alert zu warten. Die System-Policy `trigger-unhealthy` deckt „sag mir Bescheid" bereits ab; das hier wäre „lass mich stöbern". |
 
 ### KI
 

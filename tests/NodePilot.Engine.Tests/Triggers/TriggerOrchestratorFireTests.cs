@@ -181,7 +181,8 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
             _services,
             cluster,
             NullLogger<TriggerOrchestrator>.Instance,
-            NodePilot.TestCommons.TestDatabaseAvailability.Unavailable);
+            NodePilot.TestCommons.TestDatabaseAvailability.Unavailable,
+            new TriggerHealthRegistry());
 
         var act = () => orchestrator.FireAsync(Guid.NewGuid(), "scheduleTrigger", []);
 
@@ -202,7 +203,8 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
             _services,
             cluster,
             NullLogger<TriggerOrchestrator>.Instance,
-            NodePilot.TestCommons.TestDatabaseAvailability.Available);
+            NodePilot.TestCommons.TestDatabaseAvailability.Available,
+            new TriggerHealthRegistry());
 
         await orchestrator.FireAsync(workflowId, "scheduleTrigger", []);
 
@@ -239,7 +241,8 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
         isLeader
             ? new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider()
             : new FollowerClusterState(),
-        NullLogger<TriggerOrchestrator>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
+        NullLogger<TriggerOrchestrator>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available,
+        new TriggerHealthRegistry());
 
     private sealed class RecordingDispatcher : IWorkflowExecutionDispatcher
     {
