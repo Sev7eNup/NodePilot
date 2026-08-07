@@ -41,11 +41,14 @@ function wireSectionEndpoints() {
 
 function renderSection() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={qc}>
-      <IntegrationsSection />
-    </QueryClientProvider>,
-  );
+  return {
+    qc,
+    ...render(
+      <QueryClientProvider client={qc}>
+        <IntegrationsSection />
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 /** The LLM card's Save is the last one on the page (SMTP renders first). */
@@ -194,6 +197,21 @@ describe('IntegrationsSection — LLM card', () => {
       expect(body.Profiles[0].EnableToolCalling).toBe(false);
       expect(body.Profiles[0].ToolCallMaxDepth).toBe(4);
     });
+  });
+
+  it('successful save refreshes the AI-capabilities query (gates every AI entry point)', async () => {
+    server.use(http.put('/api/admin/settings/Llm', () =>
+      HttpResponse.json({ ...llmSnapshot, etag: '"llm-2"' })));
+
+    const { qc } = renderSection();
+    await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+
+    clickLlmSave();
+
+    // The delayed second invalidation (IOptionsMonitor grace) is pinned in useAiCapabilities.test.
+    await waitFor(() =>
+      expect(invalidate).toHaveBeenCalledWith({ queryKey: ['ai-knowledge-capabilities'] }));
   });
 
   it('sends __unchanged__ for a stored API key the operator did not retype', async () => {

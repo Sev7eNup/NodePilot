@@ -51,12 +51,14 @@ interface Props {
   outputVariableName?: string;
   title?: string;
   /**
-   * When set: an AI-generate button is shown in the toolbar. The callback **streams** the
-   * generated script: `onToken` is called for each token; `signal` aborts the stream
-   * (cancel/stop). The prompt dialog closes immediately after "Generate"; generation happens
-   * directly in the editor (a waiting indicator, then code typing in live). Errors (both
-   * pre-token and mid-stream) appear as a banner in the editor. Default insert mode is "insert
-   * at cursor"; the user can switch to "replace the whole editor content" in the prompt dialog.
+   * When set: an AI-generate button is shown in the toolbar. Callers leave it unset when AI is
+   * unavailable — `useAiScriptStream` returns `undefined` when no LLM endpoint is usable or the
+   * user is a Viewer, which hides the button. The callback **streams** the generated script:
+   * `onToken` is called for each token; `signal` aborts the stream (cancel/stop). The prompt
+   * dialog closes immediately after "Generate"; generation happens directly in the editor
+   * (a waiting indicator, then code typing in live). Errors (both pre-token and mid-stream)
+   * appear as a banner in the editor. Default insert mode is "insert at cursor"; the user can
+   * switch to "replace the whole editor content" in the prompt dialog.
    */
   onAiGenerate?: (prompt: string, currentScript: string, onToken: (text: string) => void, signal: AbortSignal) => Promise<void>;
 }

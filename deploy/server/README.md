@@ -93,13 +93,16 @@ Die Deinstallation fasst die **Datenbank nie** an; das Datenverzeichnis nur mit 
 
 | | |
 |---|---|
-| **Nimmt ab** | Fünf Release-Assets herunterladen, Prüfsumme vergleichen, Signer-Thumbprint out-of-band abgleichen, `.cer` nach `LocalMachine\Root` importieren, neun Parameter fehlerfrei tippen, den Kestrel-Thumbprint aus der Zertifikats-MMC heraussuchen. Ein Asset, ein Doppelklick. |
+| **Nimmt ab** | Fünf Release-Assets herunterladen, Prüfsumme vergleichen, Signer-Thumbprint out-of-band abgleichen, neun Parameter fehlerfrei tippen, den Kestrel-Thumbprint aus der Zertifikats-MMC heraussuchen. Ein Asset, ein Doppelklick. |
 | **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, **PostgreSQL-Rolle und -Datenbank anlegen**, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
 | **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
 
-Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — neun Zeilen: .NET-Runtime,
+Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — zehn Zeilen: .NET-Runtime,
 Kestrel-Zertifikat, **HTTP/HTTPS-Ports**, gMSA, Dienstidentität, Domänenmitgliedschaft,
-DB-Erreichbarkeit, DB-Version, **DB-Zugriff der Dienst-Identität**. Jede Zeile trägt rechts ein
+DB-Erreichbarkeit, DB-Version, **DB-Zugriff der Dienst-Identität**, **Herausgeber des Artefakts**.
+Die Runtime-Zeile prüft dabei ausdrücklich die **64-Bit**-Runtime: NodePilot wird als `win-x64`
+veröffentlicht, und ein 32-Bit-Host kann den Apphost nicht starten — eine Zeile, die jede beliebige
+Architektur durchgehen lässt, wäre grün und der Dienst käme trotzdem nicht hoch. Jede Zeile trägt rechts ein
 Statuszeichen — Haken, Kreuz, Ausrufezeichen oder Gedankenstrich — und ist zusätzlich eingefärbt.
 Das Zeichen ist nicht Dekoration: Farbe allein sagt niemandem etwas, der dieses Grün nicht von
 diesem Rot unterscheidet, und in einem Screenshot in einem Ticket schon gar nicht. Rote
@@ -126,15 +129,25 @@ ist. Der Haken ist mit dem Versuch verbraucht: er wird danach gelöscht, sonst h
 dauerhaft scheiternder Fix (typisch: keine Rechte am SQL Server) in einer Schleife aus „Weiter →
 gleiche rote Zeile".
 
-**Herausgeber-Vertrauen** ist die Zeile, die am ehesten rot ist und am wenigsten damit zu tun hat,
-was jemand konfiguriert hat: `Install-NodePilot.ps1` prüft die Signatur des mitgebrachten Artefakts
-**samt Zertifikatskette**, und `CN=NodePilot Release Signing` ist selbstsigniert. Auf einem Host,
-der ihn nicht kennt, scheitert das — und zwar erst mitten in der Installation, mit Rollback. Die
-Zeile nimmt das vorweg und bietet den Import nach `LocalMachine\Root` an: angeboten, **nicht**
-vorangehakt, und der Thumbprint steht in der Meldung, damit er vor dem Haken gegen die
-Release-Notes gehalten werden kann. Passt das Zertifikat im Payload nicht zu dem Thumbprint, gegen
-den das Setup gebaut wurde, verschwindet das Angebot ersatzlos — ein Knopf, der eine fremde CA
-maschinenweit vertrauenswürdig macht, wäre schlimmer als eine verweigerte Installation.
+**Herausgeber** ist die Zeile mit der ungewöhnlichsten Geschichte. Sie war einmal rot und
+blockierend, weil `Install-NodePilot.ps1` die Signatur **samt Zertifikatskette** prüfte und
+`CN=NodePilot Release Signing` selbstsigniert ist: Auf jedem Host, der ihn nicht kannte — also bei
+jeder Erstinstallation — scheiterte das mitten im Lauf, mit Rollback. Die Zeile nahm das vorweg.
+
+Inzwischen prüft der Installer die Signatur **ohne Kette** gegen den einkompilierten Thumbprint
+(plus Codesignatur-EKU, KeyUsage und Gültigkeit explizit — das ist der Teil, den die Kette
+mitgeliefert hatte). Bei einem selbstsignierten Herausgeber ist der Vertrauensanker dasselbe
+Zertifikat, die Kette bestätigte also nur, was der Pin ohnehin sagt. Damit ist die Zeile **gelb und
+optional**: Der Import nach `LocalMachine\Root` bewirkt nur noch, dass Windows die
+Authenticode-Signatur der Installer selbst validiert — angeboten, **nicht** vorangehakt, mit dem
+Thumbprint in der Meldung.
+
+Was die Zeile weiterhin **rot** macht, ist alles, was der Installer selbst ablehnen wird:
+Thumbprint ≠ Pin, abgelaufen oder noch nicht gültig, fehlende Codesignatur-EKU, eine KeyUsage ohne
+`DigitalSignature`/`NonRepudiation`, oder ein Kettenfehler, der **nicht** bloß das fehlende
+Vertrauen ist. In all diesen Fällen verschwindet das Angebot — ein Import repariert nichts davon,
+und ein Knopf, der eine fremde CA maschinenweit vertrauenswürdig macht, wäre schlimmer als eine
+verweigerte Installation.
 
 Ein leeres Thumbprint-Feld ist der Weg zu genau einem dieser Fixes: die Zertifikatszeile meldet
 dann „No certificate selected" statt eines nicht gefundenen Thumbprints und bietet die Erzeugung
@@ -747,13 +760,25 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 38 | Fehlschlag **nach** dem ACL-Schritt | Rollback stellt Dienst **und** Verzeichnis-ACL wieder her, die vorherige Installation läuft weiter |
 | 39 | Thumbprint-Feld leer gelassen | „Weiter" führt auf die Prüfseite, Zeile rot mit „No certificate selected" + **nicht** vorangehaktem Angebot; Haken + „Weiter" erzeugt eins, schreibt den Thumbprint ins Feld zurück, Neuprüfung grün |
 | 40 | Feld mit 12 Zeichen gefüllt | Meldung „40 hexadecimal characters", Seite bleibt stehen |
-| 41 | Host, der den Herausgeber nicht kennt | Zeile „Artifact publisher trusted" rot mit Thumbprint in der Meldung und **nicht** vorangehaktem Angebot; Haken + „Weiter" importiert nach `LocalMachine\Root`, Neuprüfung grün, Installation läuft durch |
-| 42 | Derselbe Host nach dem Import | Zeile grün ohne Checkbox, nichts wird verändert |
+| 41 | Host, der den Herausgeber nicht kennt | Zeile „Artifact publisher" **gelb**, „Weiter" bleibt frei, Installation läuft **ohne** Import durch |
+| 42 | Derselbe Fall, Angebot angehakt | Haken + „Weiter" importiert nach `LocalMachine\Root`, Neuprüfung grün, danach meldet `Get-AuthenticodeSignature` auf der Setup-`.exe` `Valid` |
+| 43 | Abgelaufenes Herausgeber-Zertifikat | Zeile **rot**, „Weiter" gesperrt, **kein** Angebot (ein Import repariert es nicht) |
+| 44 | Nur die **32-Bit**-Runtime installiert | Zeile „ASP.NET Core 10 runtime" **rot** und nennt 32-Bit samt Pfad (nicht „not found"), Angebot vorhanden |
+| 45 | x64-Runtime da, x86 zuerst im `PATH` | Zeile **grün** und nennt den 64-Bit-Host, den sie gefragt hat |
 
 Stand: 1, 3, 5, 9, 10, 22, 23, 30, 37 und 38 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und
-SQL Server 2022 CU gelaufen. 2, 4, 6, 7, 8, 11 bis 21, 24 bis 26, 27 bis 29, 31 bis 36 sowie 39 bis 42 nicht —
-wobei die **Logik** hinter 33 bis 35 gegen einen echten PostgreSQL 16 mit TLS gefahren wurde (siehe
-unten); was dort fehlt, ist die Seite.
+SQL Server 2022 CU gelaufen. Am **2026-08-06** kam die **Logik** hinter 39, 40, 41, 43 und 44 dazu —
+über den Adapter gegen die laufende CM1-Installation (`InitSession` → `Probe` → `Certificates` →
+`Cleanup`, Zertifikate als In-Memory-Fixtures, kein Store-Schreibzugriff): alle zehn Zeilen grün,
+Answer-File mit leerem Thumbprint akzeptiert und Exit 2, mit zwölf Zeichen abgelehnt und Exit 3,
+`Cleanup` ließ weder Session-Verzeichnis noch Answer-File zurück, Dienst danach weiter `Running` und
+`/healthz/ready` 200. Was dort fehlt, ist wie bei 33 bis 35 die **Seite**.
+
+Offen: 2, 4, 6, 7, 8, 11 bis 21, 24 bis 29, 31 bis 36, 42 und 45. 42 schriebe maschinenweit nach
+`LocalMachine\Root`; 45 braucht einen Host mit **beiden** Runtimes — auf dem Entwicklungsrechner
+nachgewiesen (x86 zuerst im `PATH`, Zeile bleibt grün und nennt den x64-Host), im Lab gibt es keine
+32-Bit-Runtime. Die **Logik** hinter 33 bis 35 lief gegen einen echten PostgreSQL 16 mit TLS (siehe
+unten).
 
 Zusatz 2026-08-06 (zweiter Befund): Auf einem frischen Host waren **alle** Zeilen grün und die
 Installation brach danach mit Exit 4 und Rollback ab — `CheckSignature` scheiterte an der Kette des
@@ -769,6 +794,22 @@ anhaken kann. Zwei Korrekturen: die Meldung ist auf zwei Zeilen gekürzt (die Ke
 Betriebssystems steht jetzt im scrollbaren Anleitungsfeld), und `LayoutReadiness` zählt die
 sichtbaren Fix-Boxen vorab und garantiert jeder einen klickbaren Streifen über den Buttons. Die
 Zeilen 41/42 unten decken den Fall ab und sind **noch nicht** geklickt.
+
+Nachtrag zur Konsequenz: Die Zeile hat ihre Sperrwirkung inzwischen wieder verloren — nicht weil sie
+falsch war, sondern weil die **Anforderung** falsch war. `Install-NodePilot.ps1` prüft die Signatur
+jetzt ohne Kette gegen den einkompilierten Thumbprint und ersetzt explizit, was die Kette
+mitgeliefert hatte (Codesignatur-EKU, KeyUsage, Gültigkeitsfenster). Damit braucht keine
+Erstinstallation mehr einen Root-Import; die Zeile ist gelb und das Angebot optional. Rot bleibt
+sie für alles, was der Installer selbst ablehnt.
+
+Aus demselben Feldlauf drei Lesbarkeitsfehler im Log, alle behoben: Der Adapter schrieb jede
+Installer-Zeile ein zweites Mal (`Write-Host` erreicht die Transkript-Aufzeichnung auch dann, wenn
+der Informationsstrom umgeleitet ist — jede Zeile stand doppelt drin und las sich, als sei jeder
+Schritt zweimal gelaufen). Und der Rollback erzählte auf einer **frischen** Maschine vom
+Wiederherstellen einer Installation, die es nie gab: „Restoring the previous installation" plus
+„Existing service found - stopping and removing" für den Dienst, den derselbe Lauf zwei Minuten
+vorher selbst registriert hatte. Die Handlung war jeweils richtig, nur die Worte stammten aus dem
+Upgrade-Fall. Unterschieden wird jetzt an `$previousService`.
 
 Zusatz 2026-08-06: Zeile 39 ist im Feld aufgeschlagen — leeres Feld, und der Probe-Lauf starb mit
 „Answer file is missing required key 'certificate.thumbprint'", weil die Vertragsprüfung Pflicht mit

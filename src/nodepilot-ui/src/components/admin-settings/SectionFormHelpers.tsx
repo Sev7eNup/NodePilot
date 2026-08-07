@@ -8,6 +8,7 @@ import {
   type SettingsSectionResponse,
 } from '../../api/adminSettings';
 import { EnvOverrideBadge } from './EnvOverrideBadge';
+import { refreshAiCapabilities } from '../../hooks/useAiCapabilities';
 import { EtagConflictDialog } from './EtagConflictDialog';
 
 // Shared form helpers used by SecuritySection and PerformanceSection — both consist
@@ -53,6 +54,10 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
     onSuccess: (fresh) => {
       queryClient.setQueryData(['admin-settings', section], fresh);
       queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
+      // These sections drive the visibility of the AI entry points (buttons + AI-Chat nav) —
+      // refresh so a save takes effect without a reload. ('Llm' saves through its own mutation
+      // in IntegrationsSection, listed here so a future move onto this helper keeps the refresh.)
+      if (section === 'AiKnowledge' || section === 'Llm') refreshAiCapabilities(queryClient);
     },
     onError: (err: unknown) => {
       if (err instanceof SettingsApiError && err.status === 412 && err.body?.current) {
@@ -85,7 +90,10 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
         queryClient.setQueryData(['admin-settings', section], conflict);
         setConflict(null);
         adminSettings.putSection<T>(section, form, conflict.etag)
-          .then((fresh) => queryClient.setQueryData(['admin-settings', section], fresh))
+          .then((fresh) => {
+            queryClient.setQueryData(['admin-settings', section], fresh);
+            if (section === 'AiKnowledge' || section === 'Llm') refreshAiCapabilities(queryClient);
+          })
           .catch((e: unknown) => setErrors([e instanceof Error ? e.message : String(e)]));
       }}
       onTakeTheirs={() => {

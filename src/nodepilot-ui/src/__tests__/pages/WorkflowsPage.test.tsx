@@ -36,6 +36,10 @@ import { confirmDialog } from '../../stores/confirmStore';
 const server = setupServer(
   http.get(`${BASE}/api/workflows/folders`, () =>
     HttpResponse.json({ folders: [], assignments: [] })
+  ),
+  // llm: true keeps the "New AI Workflow" button visible for the tests that use it.
+  http.get(`${BASE}/api/ai/knowledge/capabilities`, () =>
+    HttpResponse.json({ enabled: false, llm: true, docs: false, operational: false, sourceCode: false, db: false })
   )
 );
 
@@ -824,7 +828,7 @@ describe('WorkflowsPage — AI workflow generation', () => {
     server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByText(/No workflows yet/)).toBeInTheDocument());
-    expect(screen.getByRole('button', { name: /New AI Workflow/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /New AI Workflow/i })).toBeInTheDocument();
   });
 
   it('KI-Generieren button hidden for Viewer', async () => {
@@ -834,12 +838,26 @@ describe('WorkflowsPage — AI workflow generation', () => {
     expect(screen.queryByRole('button', { name: /New AI Workflow/i })).not.toBeInTheDocument();
   });
 
+  it('KI-Generieren button hidden when no LLM endpoint is usable', async () => {
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.get(`${BASE}/api/ai/knowledge/capabilities`, () =>
+        HttpResponse.json({ enabled: false, llm: false, docs: false, operational: false, sourceCode: false, db: false })
+      ),
+    );
+    renderPage('Admin');
+    await waitFor(() => expect(screen.getByText(/No workflows yet/)).toBeInTheDocument());
+    // The plain "New Workflow" button stays — only the AI entry point is gated on the LLM.
+    expect(screen.getByRole('button', { name: /^New Workflow$/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /New AI Workflow/i })).not.toBeInTheDocument();
+  });
+
   it('clicking KI-Generieren opens the WorkflowGenerationDialog', async () => {
     server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
     renderPage('Admin');
     await waitFor(() => expect(screen.getByText(/No workflows yet/)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /New AI Workflow/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /New AI Workflow/i }));
 
     expect(screen.getByText(/Workflow per KI generieren/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Workflow prompt')).toBeInTheDocument();
@@ -874,7 +892,7 @@ describe('WorkflowsPage — AI workflow generation', () => {
     renderPage('Admin');
     await waitFor(() => expect(screen.getByText(/No workflows yet/)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /New AI Workflow/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /New AI Workflow/i }));
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'a workflow' } });
     fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
 
@@ -902,7 +920,7 @@ describe('WorkflowsPage — AI workflow generation', () => {
     renderPage('Admin');
     await waitFor(() => expect(screen.getByText(/No workflows yet/)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /New AI Workflow/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /New AI Workflow/i }));
     fireEvent.change(screen.getByLabelText('Workflow prompt'), { target: { value: 'a workflow' } });
     fireEvent.click(screen.getByRole('button', { name: /^generieren$/i }));
 

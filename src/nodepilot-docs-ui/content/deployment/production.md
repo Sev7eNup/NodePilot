@@ -48,7 +48,7 @@ abbrechen lässt — behoben ab CU1. Der Installer prüft den Patchstand im Pref
 - Windows Server 2022 oder 2025
 - Domain-Mitgliedschaft
 - PowerShell 5.1 oder PowerShell 7
-- ASP.NET Core Runtime 10 (x64) — die reine Runtime genügt, Kestrel hostet selbst; das Hosting Bundle nur bei bewusstem IIS-Einsatz (es konfiguriert IIS um und startet W3SVC neu)
+- ASP.NET Core Runtime 10 (x64) — die reine Runtime genügt, Kestrel hostet selbst; das Hosting Bundle nur bei bewusstem IIS-Einsatz (es konfiguriert IIS um und startet W3SVC neu). Das `(x64)` ist verbindlich: NodePilot wird als `win-x64` ausgeliefert, eine 32-Bit-Runtime kann den Dienst nicht starten, und der Preflight weist sie mit Pfad und Architektur zurück
 - Netzwerkzugriff zur Datenbank
 - TLS-Zertifikat mit privatem Schlüssel in `LocalMachine\My`
 - Lokale Administratorrechte für die Installation
@@ -145,8 +145,11 @@ beiden Fällen ein signiertes Artefakt und den Thumbprint des Publishers.
 
 **Variante A — Release herunterladen.** Am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest)
 hängen das Zip, `manifest.json`, `.p7s`, `SHA256SUMS.txt` und das öffentliche Signaturzertifikat.
-Prüfsummen vergleichen, Thumbprint gegen die Release-Notes abgleichen, Zertifikat auf dem
-Zielserver nach `Cert:\LocalMachine\Root` importieren.
+Prüfsummen vergleichen und den Thumbprint gegen die Release-Notes abgleichen — dieser Abgleich
+**ist** die Vertrauensentscheidung. Der Installer verlangt genau diesen Signierer und prüft
+Codesignatur-Zweck, KeyUsage und Gültigkeit; ob die Maschine dem Herausgeber vertraut, spielt keine
+Rolle. Ein Import nach `Cert:\LocalMachine\Root` ist optional und bewirkt nur, dass Windows die
+Authenticode-Signatur der Installer selbst validiert.
 
 > Wer mit dem GUI-Setup installiert (Kapitel 5, Variante A), braucht aus diesem Kapitel nichts:
 > `NodePilot-Server-Setup-<version>.exe` hängt am selben Release, trägt das signierte Artefakt in
@@ -189,11 +192,13 @@ Kapiteln 1 bis 4 **bevor** es etwas verändert, und zeigt jede als grün, gelb o
 kopierbarer Anleitung. Auf Wunsch installiert es die Runtime, legt SQL-Login und Datenbank an oder
 erzeugt ein Laborzertifikat.
 
-Dazu gehört die Vertrauensfrage aus Kapitel 4: Das Setup prüft, ob diese Maschine den Herausgeber
-`CN=NodePilot Release Signing` bereits kennt, nennt den Thumbprint und bietet den Import nach
-`LocalMachine\Root` an — angeboten, nicht vorangehakt, damit der Thumbprint vorher gegen die
-Release-Notes gehalten werden kann. Ohne diese Zeile scheitert die Installation auf einem frischen
-Host mitten im Lauf an der Signaturprüfung des Artefakts und wird zurückgerollt.
+Dazu gehört die Vertrauensfrage aus Kapitel 4 — allerdings als **gelbe, optionale** Zeile: Das
+Setup nennt den Thumbprint des Herausgebers `CN=NodePilot Release Signing` und bietet den Import
+nach `LocalMachine\Root` an, angeboten und nicht vorangehakt. Die Installation braucht ihn nicht;
+sie verifiziert die Signatur gegen den einkompilierten Thumbprint. Der Import bewirkt nur, dass
+Windows die Authenticode-Signatur der Installer selbst validiert. **Rot** wird die Zeile dagegen
+bei allem, was der Installer selbst ablehnt: falscher Thumbprint, abgelaufenes oder noch nicht
+gültiges Zertifikat, fehlende Codesignatur-Eignung.
 
 Für das Kestrel-Zertifikat verlangt es nur den Thumbprint — und bietet unter dem Eingabefeld die
 Zertifikate aus `Cert:\LocalMachine\My` zur Auswahl an, sortiert nach Ablauf. Das gilt für ein

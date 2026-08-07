@@ -148,6 +148,10 @@ const server = setupServer(
   http.get(/\/api\/shared-workflow-folders/, () => HttpResponse.json([])),
   http.get(/\/api\/workflows\/.+\/versions/, () => HttpResponse.json([])),
   http.get(/\/api\/global-variables/, () => HttpResponse.json([])),
+  // llm: true keeps the AI-assistant toggle visible — several tests below click it.
+  http.get(`${BASE}/api/ai/knowledge/capabilities`, () =>
+    HttpResponse.json({ enabled: false, llm: true, docs: false, operational: false, sourceCode: false, db: false })
+  ),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
@@ -1194,7 +1198,7 @@ describe('WorkflowEditorPage — AI chat vs. Properties (shared right panel)', (
     renderPage();
     await waitFor(() => expect(screen.getAllByText(/Selected/).length).toBeGreaterThan(0));
 
-    fireEvent.click(screen.getByTestId('toggle-ai-assistant'));
+    fireEvent.click(await screen.findByTestId('toggle-ai-assistant'));
 
     await waitFor(() => expect(aiPanel()).toBeInTheDocument());
     expect(screen.queryByText(/Log Message|Nachricht protokollieren/)).not.toBeInTheDocument();
@@ -1205,7 +1209,7 @@ describe('WorkflowEditorPage — AI chat vs. Properties (shared right panel)', (
     renderPage();
     await waitForCanvasReady();
 
-    fireEvent.click(screen.getByTestId('toggle-ai-assistant'));
+    fireEvent.click(await screen.findByTestId('toggle-ai-assistant'));
     await waitFor(() => expect(aiPanel()).toBeInTheDocument());
 
     // Re-clicking the ALREADY selected node changes nothing in ReactFlow's selection — this is
@@ -1220,7 +1224,7 @@ describe('WorkflowEditorPage — AI chat vs. Properties (shared right panel)', (
     renderPage();
     await waitForCanvasReady();
 
-    fireEvent.click(screen.getByTestId('toggle-ai-assistant'));
+    fireEvent.click(await screen.findByTestId('toggle-ai-assistant'));
     await waitFor(() => expect(aiPanel()).toBeInTheDocument());
 
     // Non-canvas selection path (jumpToNode) — covered by the selection effect, not onNodeClick.
@@ -1237,7 +1241,7 @@ describe('WorkflowEditorPage — AI chat vs. Properties (shared right panel)', (
     renderPage();
     await waitForCanvasReady();
 
-    fireEvent.click(screen.getByTestId('toggle-ai-assistant'));
+    fireEvent.click(await screen.findByTestId('toggle-ai-assistant'));
     await waitFor(() => expect(aiPanel()).toBeInTheDocument());
 
     // Shift-click adds step-b to the already-selected step-a → 2 nodes selected. The chat shows

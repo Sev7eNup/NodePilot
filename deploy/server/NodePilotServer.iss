@@ -736,7 +736,12 @@ begin
     // A fix is only offered for a red row that the adapter says it can act on. Ticking one and
     // clicking Next runs Provision and then re-runs this probe - the fix is never assumed to
     // have worked.
-    CheckFixes[I].Visible := (Status = 'Fail') and
+    // Yellow rows can carry a fix too. The publisher row is optional - the installation verifies
+    // the signature against a pinned thumbprint and does not need the machine to trust anyone - but
+    // the import is still worth offering, and limiting the box to red rows would have hidden it the
+    // moment the row stopped blocking. canAutoFix and the label stay the gate, so nothing grows a
+    // checkbox that has no fix behind it.
+    CheckFixes[I].Visible := ((Status = 'Fail') or (Status = 'Warn')) and
       (GetIniString('check.' + CheckIds[I], 'canAutoFix', '0', Ini) = '1') and
       (AutoFixLabel <> '');
     CheckFixes[I].Caption := AutoFixLabel;

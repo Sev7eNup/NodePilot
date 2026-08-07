@@ -354,6 +354,9 @@ Assert-TextDoesNotMatch -Name 'an update must not reconfigure identity, dependen
 # "re-check" button. That shared use is the entire reason for the split, and it only holds while
 # the file stays free of side effects.
 $preflightScript = Get-Content -LiteralPath $PreflightScriptPath -Raw
+# Several contracts below are worded exactly like the comments that explain the rule they enforce -
+# "must not parse --info", for one - so they have to look at code only.
+$preflightStripped = Remove-CommentLines -Text $preflightScript
 
 # The near-miss this guards against, concretely: Enable-SqlReadCommittedSnapshot used to sit
 # INSIDE the SQL reachability try/catch. Moving the pre-flight block wholesale would have carried
@@ -423,6 +426,26 @@ Assert-TextMatches -Name 'preflight exposes an asserting entry point' `
 # wizard's "install the runtime for me" action look broken.
 Assert-TextMatches -Name 'the dotnet probe falls back to the machine-wide install location' `
     -Text $preflightScript -Pattern 'dotnet\\dotnet\.exe'
+
+# NodePilot publishes --runtime win-x64 and installs an apphost that a 32-bit runtime cannot host,
+# so the row has to establish the architecture rather than accept whichever dotnet answers first.
+# The architecture comes out of the PE machine field, NOT out of 'dotnet --info': that command does
+# report the host architecture, but its labels are localised, so a parse of the English text would
+# silently find nothing on a German server and every machine would look 32-bit - or, worse, be
+# waved through.
+Assert-TextMatches -Name 'the dotnet probe reads the PE machine type for x64' `
+    -Text $preflightStripped -Pattern '0x8664'
+Assert-TextDoesNotMatch -Name 'the dotnet probe must not parse localisable CLI text for the architecture' `
+    -Text $preflightStripped -Pattern '--info'
+# Taking only the first PATH hit is how a machine with both runtimes installed gets the wrong
+# answer - in either direction, depending on PATH order.
+Assert-TextDoesNotMatch -Name 'the dotnet probe must not settle for the first PATH hit' `
+    -Text $preflightStripped -Pattern '(?s)Get-Command dotnet[\s\S]{0,200}Select-Object -First 1'
+# And the version question must be put to the host that was established as 64-bit, not to any other.
+# Anchored on the invocation itself: a proximity match would be satisfied by the enclosing
+# "if ($x64Path)" and would still pass with a bare "& dotnet --list-runtimes" inside it.
+Assert-TextMatches -Name 'the runtime list is read from the resolved 64-bit host' `
+    -Text $preflightStripped -Pattern '&\s+\$x64Path\s+--list-runtimes'
 
 $installerScript = Get-Content -LiteralPath $InstallerPath -Raw
 Assert-TextMatches -Name 'installer dot-sources the shared pre-flight helper' `
@@ -504,7 +527,10 @@ Assert-TextDoesNotMatch -Name 'identity-bound secrets are handed over, never del
 # behind does not merely fail - it takes the installation being replaced down with it, because
 # from the restored identity's point of view that ACE is an untrusted principal with mutation
 # rights on the JWT key's parent. The lab run reported exactly that: "ROLLBACK ALSO FAILED".
-$rollbackStart = $installerScript.IndexOf('Restoring the previous installation')
+# Delimited from the guard rather than from the first message in it: the rollback now decides which
+# story to tell before it tells it, and anchoring on one of the two messages put that decision
+# outside the block being checked.
+$rollbackStart = $installerScript.IndexOf('if ($installMutationStarted)')
 $rollbackEnd = $installerScript.IndexOf('Previous installation restored', $rollbackStart)
 if ($rollbackStart -lt 0 -or $rollbackEnd -le $rollbackStart) {
     throw 'Deployment template check failed: could not delimit the install rollback.'
@@ -512,6 +538,18 @@ if ($rollbackStart -lt 0 -or $rollbackEnd -le $rollbackStart) {
 $rollbackBlock = $installerScript.Substring($rollbackStart, $rollbackEnd - $rollbackStart)
 Assert-TextMatches -Name 'the rollback puts the data directory ACL back' `
     -Text $rollbackBlock -Pattern '(?s)Set-DirectoryAclForService[\s\S]{0,200}\$previousAclIdentity'
+# A first installation that fails has nothing to put back - it has something to undo. Narrating it
+# as a restore told an operator whose machine had never held NodePilot that the installer had found
+# an installation, stopped it and put it back. The distinction already exists in the code as
+# $previousService; it just was not spoken.
+Assert-TextMatches -Name 'the rollback knows whether there was anything to go back to' `
+    -Text $rollbackBlock -Pattern '\$hadPreviousInstallation = \[bool\]\$previousService'
+Assert-TextMatches -Name 'a failed first install is narrated as an undo' `
+    -Text $rollbackBlock -Pattern 'Undoing this installation - nothing was here before'
+# And the service removal says which service it is removing and why, instead of borrowing the
+# wording written for an upgrade.
+Assert-TextMatches -Name 'the rollback names the service it registered itself' `
+    -Text $rollbackBlock -Pattern "FoundMessage `"Removing the service '\`$ServiceName' that this run registered\.`""
 Assert-TextMatches -Name 'the rollback hands the secrets back to the previous identity too' `
     -Text $rollbackBlock -Pattern '(?s)Set-NodePilotServiceOwnedFileAcl[\s\S]{0,200}\$previousAclIdentity'
 # Guarded, so a failure before the ACL was ever touched does not rewrite a directory this run had
@@ -535,6 +573,36 @@ Assert-TextMatches -Name 'the handover protects the file from inheritance' `
 # BUILTIN\Administrators and NT AUTHORITY\SYSTEM do not resolve on a German Windows.
 Assert-TextMatches -Name 'LocalSystem is resolved by well-known SID, not by name' `
     -Text $handoverFunction -Pattern "SecurityIdentifier\]::new\('S-1-5-18'\)"
+
+# --- artifact signature: what replaced the certificate chain --------------------------------------
+# The chain is deliberately no longer validated: the publisher is self-signed, so its trust anchor
+# is the signing certificate itself and the thumbprint comparison already establishes what the chain
+# would confirm - at the price of a permanent, machine-wide import on every target. Requiring it
+# made the first installation on any untouched host fail.
+Assert-TextMatches -Name 'the signature is verified without the certificate chain' `
+    -Text $artifactSecurity -Pattern '\$cms\.CheckSignature\(\$true\)'
+Assert-TextDoesNotMatch -Name 'nothing brings the chain requirement back' `
+    -Text $artifactSecurity -Pattern '\$cms\.CheckSignature\(\$false\)'
+# The three that must survive the chain going away, because they are what the chain also enforced.
+# Dropping the chain without these would be a straight weakening, and the pin is what makes the
+# whole model work - it is the one line this change stands or falls on.
+Assert-TextMatches -Name 'the pinned signer is still compared' `
+    -Text $artifactSecurity -Pattern '\$actualSigner -ne \$expectedSigner'
+Assert-TextMatches -Name 'the signer validity window is checked explicitly' `
+    -Text $artifactSecurity -Pattern '(?s)\$signerCertificate\.NotBefore[\s\S]{0,600}\$signerCertificate\.NotAfter'
+Assert-TextMatches -Name 'the signer key usage is checked explicitly' `
+    -Text $artifactSecurity -Pattern 'X509KeyUsageFlags\]::DigitalSignature -bor'
+# The readiness row repeats those checks rather than dot-sourcing the security layer behind a file
+# that both the installer and the setup adapter load on its own. Cheap, but only if both sides keep
+# checking the same things - hardening one and forgetting the other is exactly the drift to catch.
+Assert-TextMatches -Name 'the readiness row checks the code-signing purpose too' `
+    -Text $preflightScript -Pattern "1\.3\.6\.1\.5\.5\.7\.3\.3"
+Assert-TextMatches -Name 'the readiness row checks the key usage too' `
+    -Text $preflightScript -Pattern 'X509KeyUsageFlags\]::DigitalSignature -bor'
+# And only a failure that is exclusively about the missing trust anchor may be optional. An expired
+# certificate reported as a yellow, skippable line would promise an installation that then aborts.
+Assert-TextMatches -Name 'only a missing trust anchor makes the publisher row optional' `
+    -Text $preflightScript -Pattern '(?s)X509ChainStatusFlags\]::UntrustedRoot[\s\S]{0,200}PartialChain'
 
 # The marker is how any later tool finds this installation. Leaving it behind on uninstall makes
 # every subsequent fresh install look like an upgrade.
@@ -874,6 +942,11 @@ Assert-TextMatches -Name 'a fix checkbox is never pushed below the buttons' `
 # buttons, and clamping them all to the same line would hide all but one.
 Assert-TextMatches -Name 'the floor accounts for every fix that will be shown' `
     -Text $serverIss -Pattern 'FixFloor := ButtonTop - ScaleY\(19\) \* FixCount;'
+# The publisher row is a note now, not a gate - and a checkbox limited to red rows would have
+# disappeared with the red. canAutoFix and the label stay the gate, so no row grows a box that has
+# no fix behind it.
+Assert-TextMatches -Name 'a yellow row can still carry its fix' `
+    -Text $serverIss -Pattern "\(\(Status = 'Fail'\) or \(Status = 'Warn'\)\) and"
 Assert-TextMatches -Name 'the publisher certificate is extracted before the readiness page' `
     -Text $serverIss `
     -Pattern "(?s)ExtractTemporaryFiles\('\*\.ps1'\)[\s\S]{0,500}ExtractTemporaryFile\('nodepilot-release-signing\.cer'\)"
@@ -1050,7 +1123,6 @@ if ($overfullPages.Count -gt 0) {
 # any host running IIS, so the service crashed at startup and the operator watched a 180-second
 # health probe expire followed by a rollback. The checks covered .NET, the certificate, the gMSA and
 # the database - everything except whether the thing could listen.
-$preflightStripped = Remove-CommentLines -Text (Get-Content -LiteralPath $PreflightScriptPath -Raw)
 Assert-TextMatches -Name 'the pre-flight checks whether the ports can be bound' `
     -Text $preflightStripped -Pattern '(?s)function Invoke-NodePilotPreflight[\s\S]*?Test-NodePilotListenPorts'
 # 10013 is not "in use" - Windows returns it for a reservation with no listener behind it, so a
@@ -1578,6 +1650,14 @@ Assert-TextDoesNotMatch -Name 'nothing looks for the certificate in a folder the
     -Text $setupAdapter -Pattern "signer\\nodepilot-release-signing\.cer"
 # The readiness row only exists on the setup path: the scripted installer has no payload to read a
 # certificate from, and its operator was told to import it in step 1 of the deployment guide.
+# Write-Host reaches the host - and so the transcript - whether or not the information stream is
+# redirected. Writing the line out again put every single installer line into
+# nodepilot-server-setup.log twice, which reads as though each step had been performed twice.
+Assert-TextDoesNotMatch -Name 'installer output is not written to the log a second time' `
+    -Text $setupAdapter -Pattern 'Write-NodePilotPhaseProgress -Line \$_; Write-Host \$_'
+# Still consumed, though: the phase text on the progress page comes from these very lines.
+Assert-TextMatches -Name 'the installer output still drives the progress page' `
+    -Text $setupAdapter -Pattern 'ForEach-Object \{ Write-NodePilotPhaseProgress -Line \$_ \}'
 Assert-TextMatches -Name 'the probe passes the publisher certificate to the pre-flight' `
     -Text $setupAdapter -Pattern "ArtifactSignerCertificatePath'\] = Get-NodePilotSignerCertificatePath"
 Assert-TextMatches -Name 'the pre-flight emits the publisher row only when it is given one' `

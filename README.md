@@ -192,7 +192,8 @@ directories so in-place upgrades can roll back.
 - **Windows Server 2022 or 2025**, domain-joined for the gMSA path — `-UseLocalSystem` works
   without a domain
 - **ASP.NET Core Runtime 10 (x64)** — the plain runtime, **not** the Hosting Bundle (that one
-  wires up IIS and restarts W3SVC)
+  wires up IIS and restarts W3SVC). NodePilot ships as `win-x64`; a 32-bit runtime cannot host it
+  and the pre-flight says so rather than passing the row
 - **PostgreSQL 16+** or **SQL Server 2022 CU1+** (build ≥ 16.0.4003.1 — earlier builds cannot serve
   the `Encrypt=Strict` / TDS 8.0 connections NodePilot opens, and are rejected)
 - a **TLS certificate** in `Cert:\LocalMachine\My` with its private key
@@ -223,9 +224,11 @@ verify it against `SHA256SUMS.txt`, then:
 ```
 
 The installer **refuses unsigned or tampered artifacts** — `-TrustedArtifactSignerThumbprint` is
-mandatory and the signature chain is verified, not just the hash. If you build the artifact
-yourself you also sign it yourself; `docs/deployment-guide.md` walks through creating the
-self-signed code-signing certificate and trusting it.
+mandatory, and the signature, the signer's identity, its code-signing eligibility and its validity
+are all verified, not just the hash. It does **not** require the publisher to be trusted on the
+target machine: pinning the thumbprint is the trust decision, so there is nothing to import before
+installing. If you build the artifact yourself you also sign it yourself;
+`docs/deployment-guide.md` walks through creating the self-signed code-signing certificate.
 
 **Full walkthrough** — certificates, SQL TLS, first login, troubleshooting:
 [docs/deployment-guide.md](docs/deployment-guide.md). **Operator reference** — gMSA setup, every

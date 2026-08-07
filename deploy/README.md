@@ -69,7 +69,7 @@ vermessene Profil. Der Schalter ist restart-pflichtig. Formeln, Grenzen und Mess
 
 - Windows Server 2022 oder 2025, Domain-joined
 - PowerShell ≥ 5.1 (Windows PowerShell) oder 7+ (empfohlen)
-- **ASP.NET Core Runtime 10 (x64)** — Download unter <https://dotnet.microsoft.com/download>. Die reine Runtime genügt (Kestrel hostet selbst); das **Hosting Bundle nur, wenn bewusst IIS im Spiel ist** — es verdrahtet IIS und startet W3SVC neu, auf geteilten Hosts (SCCM/WSUS) unerwünscht
+- **ASP.NET Core Runtime 10 (x64)** — Download unter <https://dotnet.microsoft.com/download>. Die reine Runtime genügt (Kestrel hostet selbst); das **Hosting Bundle nur, wenn bewusst IIS im Spiel ist** — es verdrahtet IIS und startet W3SVC neu, auf geteilten Hosts (SCCM/WSUS) unerwünscht. Das `(x64)` ist keine Empfehlung: NodePilot wird als `win-x64` veröffentlicht, eine 32-Bit-Runtime kann den Dienst nicht starten, und der Preflight weist sie ausdrücklich zurück statt sie durchzuwinken
 - Zielserver kann den SQL Server auf Port 1433 erreichen
 - Antiviren-Ausschlüsse sind mit der Security-Abteilung abgestimmt — Liste in [`docs/av-exclusions.md`](../docs/av-exclusions.md)
 
@@ -253,11 +253,14 @@ des Publishers, dem vertraut werden soll.
 
 **Fertiges Release herunterladen.** Am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest)
 hängen `NodePilot-<version>.zip`, `.manifest.json`, `.manifest.json.p7s`, `SHA256SUMS.txt` und das
-öffentliche Signaturzertifikat `nodepilot-release-signing.cer`. Prüfsummen vergleichen, den
-Thumbprint gegen die Release-Notes abgleichen, dann das Zertifikat auf dem Zielserver nach
-`Cert:\LocalMachine\Root` importieren. Ablauf im Detail: [`docs/deployment-guide.md`](../docs/deployment-guide.md),
-Schritt 1 Option A. Am selben Release hängt `NodePilot-Server-Setup-<version>.exe` — es trägt
-dieses Artefakt bereits in sich, dieser Abschnitt entfällt dann komplett.
+öffentliche Signaturzertifikat `nodepilot-release-signing.cer`. Prüfsummen vergleichen und den
+Thumbprint gegen die Release-Notes abgleichen — **dieser Abgleich ist die Vertrauensentscheidung**;
+der Installer verlangt genau diesen Signierer und prüft Codesignatur-Zweck und Gültigkeit, aber
+**nicht**, ob die Maschine dem Herausgeber vertraut. Ein Import nach `Cert:\LocalMachine\Root` ist
+optional und bewirkt nur, dass Windows die Authenticode-Signatur der Installer selbst validiert.
+Ablauf im Detail: [`docs/deployment-guide.md`](../docs/deployment-guide.md), Schritt 1 Option A. Am
+selben Release hängt `NodePilot-Server-Setup-<version>.exe` — es trägt dieses Artefakt bereits in
+sich, dieser Abschnitt entfällt dann komplett.
 
 **Selbst bauen.** Auf einem Build-Host mit .NET 10 SDK + Node (Versionen aus `global.json` bzw.
 den `engines`-Feldern):

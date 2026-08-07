@@ -139,50 +139,164 @@ function Get-NodePilotPostgresRemediationScript {
 # Individual checks
 # ---------------------------------------------------------------------------
 
-function Get-NodePilotDotNetCommand {
+function Get-NodePilotPeArchitecture {
     <#
-      Resolving 'dotnet' by PATH alone is not enough. A clean Windows Server has no dotnet on
-      PATH at all, and - the case that actually bites - a process that installed the runtime
-      itself still carries the PATH it was started with, so PATH stays stale until it restarts.
-      Fall back to the well-known machine-wide location.
+      The machine type out of a PE file's COFF header: 'x64', 'x86', 'arm64', or $null when the
+      file cannot be read or is not a PE image at all.
+
+      Deliberately not 'dotnet --info', which also reports the host architecture: its labels are
+      localised, so on a German server it prints "Architektur:" and any parse of the English text
+      quietly finds nothing. 'dotnet --list-runtimes' is not localised, which is why that one stays
+      for the version question - but it says nothing about architecture, so this reads the bytes.
+
+      Opened with FileShare ReadWrite: dotnet.exe may be running while we look at it.
     #>
-    $onPath = Get-Command dotnet -CommandType Application -ErrorAction SilentlyContinue |
-        Select-Object -First 1
-    if ($onPath) { return $onPath.Source }
-    foreach ($root in @($env:ProgramFiles, "$env:ProgramW6432")) {
-        if ([string]::IsNullOrWhiteSpace($root)) { continue }
-        $candidate = Join-Path $root 'dotnet\dotnet.exe'
-        if (Test-Path -LiteralPath $candidate -PathType Leaf) { return $candidate }
+    param([Parameter(Mandatory)][string]$Path)
+
+    try {
+        $stream = [IO.File]::Open($Path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
     }
-    return $null
+    catch { return $null }
+
+    try {
+        # A file too short, or a header offset pointing past the end, runs into the reader and is
+        # answered by the catch below. No separate length guard: it would be a branch no test could
+        # tell apart from the catch, which is how dead code gets in.
+        $reader = New-Object IO.BinaryReader($stream)
+        $stream.Position = 0x3C
+        $stream.Position = $reader.ReadInt32()
+        # This one is not redundant. Without it, anything at all would be read as a machine type and
+        # some junk file would classify as a perfectly good x64 host.
+        if ($reader.ReadUInt32() -ne 0x00004550) { return $null }   # 'PE\0\0'
+        switch ($reader.ReadUInt16()) {
+            0x8664 { return 'x64' }
+            0x014C { return 'x86' }
+            0xAA64 { return 'arm64' }
+            default { return 'unknown' }
+        }
+    }
+    catch { return $null }
+    finally { $stream.Dispose() }
+}
+
+function Get-NodePilotDotNetHostCandidates {
+    <#
+      Every dotnet.exe this machine might offer, most-likely first.
+
+      PATH alone is not enough on two counts. A clean Windows Server has no dotnet on PATH at all,
+      and - the case that actually bites - a process that installed the runtime itself still carries
+      the PATH it was started with, so PATH stays stale until it restarts. Hence the well-known
+      machine-wide locations as a fallback.
+
+      All PATH hits, not the first: a machine with both runtimes installed can easily have the x86
+      one earlier in PATH, and taking only the first hit would answer for a dotnet that is not the
+      one NodePilot's service will use.
+
+      The registry (HKLM\SOFTWARE\dotnet\Setup\InstalledVersions\x64\InstallLocation) is what the
+      apphost itself consults and is deliberately not read here: over PATH plus ProgramW6432 it only
+      adds installations in unusual places, which PATH already covers, and a registry view redirected
+      under WOW64 would be a new way to be wrong.
+    #>
+    $candidates = New-Object System.Collections.Generic.List[string]
+    foreach ($command in @(Get-Command dotnet -CommandType Application -ErrorAction SilentlyContinue)) {
+        $candidates.Add($command.Source)
+    }
+    foreach ($root in @("$env:ProgramW6432", $env:ProgramFiles, ${env:ProgramFiles(x86)})) {
+        if ([string]::IsNullOrWhiteSpace($root)) { continue }
+        $candidates.Add((Join-Path $root 'dotnet\dotnet.exe'))
+    }
+
+    $seen = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
+    $result = @()
+    foreach ($candidate in $candidates) {
+        if (-not $seen.Add($candidate)) { continue }
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) { $result += $candidate }
+    }
+    $result
+}
+
+function Get-NodePilotDotNetHostState {
+    <#
+      What is actually installed, as data: the 64-bit host (if any) with the runtimes it reports,
+      plus one host of a different architecture to name in the message. The verdict is a separate,
+      side-effect-free function so it can be exercised without installing runtimes.
+    #>
+    $x64Path = $null
+    $otherPath = $null
+    $otherArchitecture = ''
+
+    foreach ($candidate in @(Get-NodePilotDotNetHostCandidates)) {
+        $architecture = Get-NodePilotPeArchitecture -Path $candidate
+        if ($architecture -eq 'x64') { $x64Path = $candidate; break }
+        # Only architectures worth naming. An unreadable or exotic image says nothing the operator
+        # could act on, so it falls through to the plain "nothing found" verdict.
+        if (-not $otherPath -and @('x86', 'arm64') -contains $architecture) {
+            $otherPath = $candidate
+            $otherArchitecture = $architecture
+        }
+    }
+
+    $runtimes = @()
+    if ($x64Path) {
+        try { $runtimes = @(& $x64Path --list-runtimes 2>$null) } catch { $runtimes = @() }
+    }
+
+    [pscustomobject]@{
+        X64Path           = $x64Path
+        Runtimes          = $runtimes
+        OtherPath         = $otherPath
+        OtherArchitecture = $otherArchitecture
+    }
 }
 
 function Test-NodePilotDotNetRuntime {
+    <#
+      NodePilot publishes with --runtime win-x64 and installs the NodePilot.Api.exe apphost, which a
+      32-bit runtime cannot host. A check that accepts any architecture goes green on a machine where
+      the service then refuses to start - which is exactly what happened in the field.
+    #>
+    param([object]$State = (Get-NodePilotDotNetHostState))
+
     $title = 'ASP.NET Core 10 runtime'
     $hint = 'Install the ASP.NET Core 10 runtime (x64) - the plain runtime, not the Hosting Bundle, which also wires up IIS.'
     $link = 'https://dotnet.microsoft.com/download/dotnet/10.0'
+    $fixLabel = 'Install the bundled ASP.NET Core 10 runtime now'
 
-    $dotnet = Get-NodePilotDotNetCommand
-    if (-not $dotnet) {
+    if (-not $State.X64Path) {
+        # Two different stories, and telling them apart is the point: "nothing found" sends the
+        # operator looking for an installer, while "found, but 32-bit" tells them why the dotnet they
+        # can plainly see on PATH does not count.
+        if ($State.OtherPath) {
+            $found = switch ($State.OtherArchitecture) {
+                'x86' { '32-bit (x86)' }
+                'arm64' { 'ARM64' }
+                default { $State.OtherArchitecture }
+            }
+            return New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Fail' -Required $true `
+                -CanAutoFix $true -AutoFixLabel $fixLabel `
+                -Detail ("Only a $found .NET host was found ($($State.OtherPath)). " +
+                         'NodePilot is a 64-bit application and needs the x64 runtime.') `
+                -RemediationHint $hint -Remediation $link `
+                -AbortMessage ("Only a $found .NET host was found ($($State.OtherPath)). " +
+                               "Install the 64-bit ASP.NET Core 10 runtime from $link.")
+        }
         return New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Fail' -Required $true `
-            -CanAutoFix $true -AutoFixLabel 'Install the bundled ASP.NET Core 10 runtime now' `
+            -CanAutoFix $true -AutoFixLabel $fixLabel `
             -Detail 'dotnet was not found on PATH or under Program Files.' `
             -RemediationHint $hint -Remediation $link `
             -AbortMessage ".NET Runtime not found on PATH. Install the ASP.NET Core 10 runtime from $link."
     }
 
-    $lines = @()
-    try { $lines = @(& $dotnet --list-runtimes 2>$null) } catch { $lines = @() }
-    if (-not ($lines -match '^Microsoft\.AspNetCore\.App 10\.')) {
+    if (-not (@($State.Runtimes) -match '^Microsoft\.AspNetCore\.App 10\.')) {
         return New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Fail' -Required $true `
-            -CanAutoFix $true -AutoFixLabel 'Install the bundled ASP.NET Core 10 runtime now' `
-            -Detail "No Microsoft.AspNetCore.App 10.x runtime reported by '$dotnet --list-runtimes'." `
+            -CanAutoFix $true -AutoFixLabel $fixLabel `
+            -Detail "No Microsoft.AspNetCore.App 10.x runtime reported by '$($State.X64Path) --list-runtimes'." `
             -RemediationHint $hint -Remediation $link `
             -AbortMessage ".NET 10 ASP.NET Core Runtime not found. Install the ASP.NET Core 10 runtime ($link)."
     }
 
     New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Pass' -Required $true `
-        -Detail '.NET 10 ASP.NET Core runtime found.'
+        -Detail ".NET 10 ASP.NET Core runtime found (x64, $($State.X64Path))."
 }
 
 function Get-NodePilotCertificateInventory {
@@ -434,39 +548,47 @@ function Test-NodePilotTlsCertificate {
 
 function Test-NodePilotArtifactSignerTrust {
     <#
-      Whether this machine trusts the publisher of the artifact the setup carries.
+      The publisher of the artifact the setup carries.
 
-      Install-NodePilot.ps1 verifies the detached CMS signature with CheckSignature($false) - the
-      $false means "validate the certificate chain too". On a host that does not know the publisher
-      that throws, the install aborts and rolls back. Without this row that was the first thing an
-      operator learned about it: nine green checks, Next, exit code 4.
+      Install-NodePilot.ps1 no longer requires the publisher to be trusted on the target: it
+      verifies the signature and compares the signer against a pinned thumbprint, so an untrusted
+      publisher is a note, not a blocker. What it DOES still reject is a certificate that is
+      expired, not yet valid, or not permitted to sign code - and those must not be reported here
+      as an optional yellow line, or this row would promise an installation that then fails.
 
-      Mirrors what the installer does, with one deliberate difference: revocation is not checked. A
-      self-signed publisher has no CRL distribution point, so an online revocation check fails for
-      the absence of a CRL rather than the absence of trust - and this row would then send the
-      operator after a problem that is not theirs.
+      So the order matters: everything the installer will reject is decided first and blocks; the
+      chain is asked last, and only a failure that is exclusively about trust is optional.
+
+      The certificate purpose is checked here as well as in ArtifactSecurity.ps1 rather than shared:
+      this file is dot-sourced on its own by both the installer and the setup adapter, and pulling
+      the security layer in behind it would be a heavier coupling than two small checks. A contract
+      test keeps the pair from drifting.
+
+      Revocation is deliberately not checked: a self-signed publisher has no CRL distribution point,
+      so an online check fails for the absence of a CRL rather than the absence of trust, and this
+      row would send the operator after a problem that is not theirs.
     #>
     param(
         [Parameter(Mandatory)][AllowEmptyString()][string]$CertificatePath,
         [Parameter(Mandatory)][AllowEmptyString()][string]$ExpectedThumbprint
     )
 
-    $title = 'Artifact publisher trusted'
+    $title = 'Artifact publisher'
     $brokenSetupHint = 'The setup is incomplete or has been altered. Download it again from the release.'
 
+    # Not required any more: the installation verifies the certificate that travels inside the
+    # signature, not this file. Missing, it only costs the convenience of the import offer.
     if (-not (Test-Path -LiteralPath $CertificatePath -PathType Leaf)) {
-        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Warn' `
             -Detail "The publisher certificate is missing from the setup payload ($CertificatePath)." `
-            -RemediationHint $brokenSetupHint `
-            -AbortMessage 'Publisher certificate missing from the setup payload.'
+            -RemediationHint $brokenSetupHint
     }
 
     try { $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath) }
     catch {
-        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Warn' `
             -Detail "The publisher certificate in the setup payload cannot be read: $($_.Exception.Message)" `
-            -RemediationHint $brokenSetupHint `
-            -AbortMessage 'Publisher certificate in the setup payload is unreadable.'
+            -RemediationHint $brokenSetupHint
     }
 
     $actual = (($certificate.Thumbprint -replace '[^0-9A-Fa-f]', '')).ToUpperInvariant()
@@ -482,6 +604,48 @@ function Test-NodePilotArtifactSignerTrust {
             -AbortMessage "Payload publisher $actual does not match the expected $expected."
     }
 
+    # --- the three the installer will reject on, so they block here too ------------------------
+    $now = Get-Date
+    if ($certificate.NotAfter -lt $now -or $certificate.NotBefore -gt $now) {
+        $when = if ($certificate.NotAfter -lt $now) {
+            "expired on $($certificate.NotAfter.ToString('yyyy-MM-dd'))"
+        } else {
+            "is not valid until $($certificate.NotBefore.ToString('yyyy-MM-dd'))"
+        }
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+            -Detail "The publisher certificate ($actual) $when, so the artifact signature will be rejected." `
+            -RemediationHint 'A release signed with an out-of-date certificate has to be re-signed and re-published.' `
+            -AbortMessage "Artifact publisher $actual $when."
+    }
+
+    $codeSigningOid = '1.3.6.1.5.5.7.3.3'
+    $ekus = @($certificate.Extensions | Where-Object {
+        $_ -is [Security.Cryptography.X509Certificates.X509EnhancedKeyUsageExtension]
+    })
+    if ($ekus.Count -eq 0 -or -not ($ekus.EnhancedKeyUsages.Value -contains $codeSigningOid)) {
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+            -Detail "The publisher certificate ($actual) is not valid for code signing." `
+            -RemediationHint $brokenSetupHint `
+            -AbortMessage "Artifact publisher $actual is not valid for code signing."
+    }
+
+    # Absent means unrestricted in X.509, so only a present extension can reject anything.
+    $signingUsages = [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::DigitalSignature -bor
+                     [Security.Cryptography.X509Certificates.X509KeyUsageFlags]::NonRepudiation
+    foreach ($keyUsage in @($certificate.Extensions | Where-Object {
+        $_ -is [Security.Cryptography.X509Certificates.X509KeyUsageExtension]
+    })) {
+        if (($keyUsage.KeyUsages -band $signingUsages) -eq 0) {
+            return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+                -Detail ("The publisher certificate ($actual) carries a KeyUsage that permits neither " +
+                         "DigitalSignature nor NonRepudiation, so it may not sign code.") `
+                -RemediationHint $brokenSetupHint `
+                -AbortMessage "Artifact publisher $actual may not sign code (KeyUsage: $($keyUsage.KeyUsages))."
+        }
+    }
+
+    # --- and only now the question that is genuinely optional ----------------------------------
+    $trustOnly = $false
     $reasons = ''
     $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
     try {
@@ -490,25 +654,36 @@ function Test-NodePilotArtifactSignerTrust {
             return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Pass' `
                 -Detail "Publisher $($certificate.Subject) is trusted on this machine ($actual)."
         }
+        $flags = @($chain.ChainStatus | ForEach-Object { $_.Status })
         $reasons = @($chain.ChainStatus | ForEach-Object { $_.StatusInformation.Trim() }) -join ' '
+        # Exclusively about the missing trust anchor. Anything else the chain objects to is not
+        # something an import fixes, and is reported as a failure rather than waved through.
+        $trustOnly = $flags.Count -gt 0 -and -not (@($flags | Where-Object {
+            $_ -ne [Security.Cryptography.X509Certificates.X509ChainStatusFlags]::UntrustedRoot -and
+            $_ -ne [Security.Cryptography.X509Certificates.X509ChainStatusFlags]::PartialChain
+        }).Count)
     }
     finally { $chain.Dispose() }
 
-    # Offered, never pre-ticked. LocalMachine\Root is a machine-wide statement, and the deployment
-    # guide asks the operator to compare the thumbprint out of band first - so the thumbprint is in
-    # the message they read before they tick anything.
-    #
-    # The detail is kept to two lines and the chain engine's own sentence goes into the hint. The
-    # readiness page does not scroll: this row rendered five lines deep, which pushed its own
-    # checkbox off the bottom of the page.
-    New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+    if (-not $trustOnly) {
+        return New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Fail' -Required $true `
+            -Detail "The publisher certificate ($actual) is not usable: $reasons" `
+            -RemediationHint $brokenSetupHint `
+            -AbortMessage "Artifact publisher $actual failed certificate validation: $reasons"
+    }
+
+    # Offered, never pre-ticked, and never required: the installation verifies the signature against
+    # the pinned thumbprint and does not care whether this machine trusts the publisher. What the
+    # import adds is that Windows itself will validate the installers' own Authenticode signature
+    # from then on - it does not authenticate the setup that is already running.
+    New-NodePilotPreflightResult -Id 'signer' -Title $title -Status 'Warn' `
         -CanAutoFix $true -AutoFixLabel 'Trust the publisher certificate (adds it to LocalMachine\Root)' `
-        -Detail "Publisher $($certificate.Subject) ($actual) is not trusted on this machine." `
-        -RemediationHint (("Without it the artifact signature cannot be verified and the installation " +
-                           "would abort and roll back. $reasons").Trim() + ' Compare the thumbprint against ' +
-                          'the one published with the release before trusting it - it applies to the whole machine.') `
-        -Remediation "Import-Certificate -FilePath '$CertificatePath' -CertStoreLocation Cert:\LocalMachine\Root" `
-        -AbortMessage "Artifact publisher $actual is not trusted in LocalMachine\Root."
+        -Detail ("Publisher $($certificate.Subject) ($actual) is not trusted on this machine. " +
+                 'The installation does not need it.') `
+        -RemediationHint ('Optional. Trusting it makes Windows validate the signature of this and future ' +
+                          'NodePilot installers; it applies to the whole machine, so compare the thumbprint ' +
+                          'against the one published with the release first.') `
+        -Remediation "Import-Certificate -FilePath '$CertificatePath' -CertStoreLocation Cert:\LocalMachine\Root"
 }
 
 function New-NodePilotCertificateVerdict {

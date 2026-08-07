@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
+import { installDefaultMocks, MOCK_USER, capsJson, mockCaps } from './fixtures/mockApi';
 
 /**
  * E2ETests.md Part 53 — Schedule Next-Fires & AI Generate-Workflow (lines 3469-3498).
@@ -157,6 +157,8 @@ test.describe('Schedule Next-Fires & AI Generate-Workflow (Teil 53)', () => {
   });
 
   test('53.4 — LLM disabled: 503 { code:"LLM_DISABLED" } surfaces in the dialog error alert', async ({ page }) => {
+    // The button only renders when capabilities said llm: true (the suite default), so this
+    // visible-button-then-503 flow now represents a mid-session config flip after page load.
     await page.route('**/api/ai/generate-workflow', (route) =>
       route.fulfill({
         status: 503, contentType: 'application/json',
@@ -175,5 +177,13 @@ test.describe('Schedule Next-Fires & AI Generate-Workflow (Teil 53)', () => {
 
     // Stayed on Stage 1 (no preview) — the Name field is absent because generation failed.
     await expect(page.getByLabel(/workflow name/i)).toHaveCount(0);
+  });
+
+  test('53.5 — no usable LLM endpoint: "New AI Workflow" is hidden, "New Workflow" stays', async ({ page }) => {
+    await mockCaps(page, capsJson({ llm: false, enabled: false, docs: false, operational: false, sourceCode: false, db: false }));
+
+    await page.goto('/workflows');
+    await expect(page.getByRole('button', { name: /^new workflow$/i })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: /new ai workflow/i })).toHaveCount(0);
   });
 });

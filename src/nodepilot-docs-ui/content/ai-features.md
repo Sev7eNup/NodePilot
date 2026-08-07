@@ -2,7 +2,7 @@
 
 NodePilot bindet ein OpenAI-kompatibles Sprachmodell ein. Unterstützt werden Cloud-Dienste und lokale Endpunkte wie Ollama, LM Studio, vLLM, LocalAI oder llama.cpp.
 
-Die AI-Funktionen sind standardmäßig deaktiviert. Generierte Inhalte werden nie automatisch veröffentlicht oder ausgeführt.
+Die AI-Funktionen sind standardmäßig deaktiviert. Die zugehörigen Schaltflächen (Script-Editor, Workflow-Designer, AI-Chat) erscheinen erst, wenn in den Admin-Einstellungen ein LLM-Profil konfiguriert und aktiviert wurde. Generierte Inhalte werden nie automatisch veröffentlicht oder ausgeführt.
 
 ## Einsatzbereiche
 
@@ -14,7 +14,7 @@ Die AI-Funktionen sind standardmäßig deaktiviert. Generierte Inhalte werden ni
 
 ## Script-Editor
 
-**Ort:** `runScript`-Activity öffnen, Script-Editor maximieren und die AI-Funktion über das Sparkles-Symbol starten.
+**Ort:** `runScript`-Activity öffnen, Script-Editor maximieren und die AI-Funktion über das Sparkles-Symbol starten. Die Schaltfläche steht nur den Rollen Admin und Operator zur Verfügung.
 
 **Geeignet für:**
 

@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
 import {
   Add, BareMetalServer, ChartColumn, Chat, Checkbox, Checkmark, ChevronDown, CircleDash, Code,
   DataBase, DataShare, Debug, Document, Download, Edit, Email, Events, FlowModeler, InProgress,
   Locked, Renew, Reset, Save, Send, Time, Tools, TrashCan, UserRole, WarningAlt,
 } from '@carbon/icons-react';
 import {
-  askStream, getKnowledgeCapabilities,
+  askStream,
   type AiChatTurn, type KnowledgeCapabilities,
 } from '../api/ai';
+import { useAiCapabilities } from '../hooks/useAiCapabilities';
 import { Markdown } from '../components/common/Markdown';
 import { CopyButton } from '../components/common/CopyButton';
 import { UsageFooter } from '../components/ai/UsageFooter';
@@ -94,11 +94,7 @@ function finalizeStreaming(prev: ChatMessage[]): ChatMessage[] {
 export function AiChatPage() {
   const { t } = useTranslation(['ai', 'common']);
 
-  const capsQuery = useQuery({
-    queryKey: ['ai-knowledge-capabilities'],
-    queryFn: getKnowledgeCapabilities,
-    staleTime: 60_000,
-  });
+  const capsQuery = useAiCapabilities();
   const caps = capsQuery.data;
 
   const userId = useAuthStore((s) => s.userId);

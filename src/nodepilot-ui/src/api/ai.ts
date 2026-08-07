@@ -186,6 +186,9 @@ export interface KnowledgeAskRequest {
 /** Effective knowledge-chat capabilities for the current user (drives nav visibility + source badges). */
 export interface KnowledgeCapabilities {
   enabled: boolean;
+  /** Raw `LlmOptions.IsUsable` (kill-switch on + active profile resolves), independent of the
+   *  AiKnowledge master switch — gates the visibility of every AI entry point in the SPA. */
+  llm: boolean;
   docs: boolean;
   operational: boolean;
   sourceCode: boolean;

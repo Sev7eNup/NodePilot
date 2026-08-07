@@ -2,8 +2,10 @@ import { useEffect } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { EditorHeader } from '../../../components/designer/EditorHeader';
 import type { Workflow } from '../../../types/api';
+import type { KnowledgeCapabilities } from '../../../api/ai';
 import { useDesignStore } from '../../../stores/designStore';
 import { useThemeStore, THEMES } from '../../../stores/themeStore';
 
@@ -94,17 +96,33 @@ function LocationSpy() {
   return null;
 }
 
+const defaultCaps: KnowledgeCapabilities = {
+  enabled: false, llm: true, docs: false, operational: false, sourceCode: false, db: false,
+};
+
+// EditorIdentity gates the AI-assistant button on the shared capabilities query. Seeding the
+// cache (fresh data → no fetch at mount) keeps these tests deterministic without MSW; the
+// default `llm: true` preserves the pre-gating DOM for every existing test.
+function makeClient(caps: KnowledgeCapabilities | null = defaultCaps) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  if (caps) qc.setQueryData(['ai-knowledge-capabilities'], caps);
+  return qc;
+}
+
 // Render with a MemoryRouter that provides location.state
 function renderWithState(
   state: Record<string, unknown> | undefined,
   entries: Parameters<typeof MemoryRouter>[0]['initialEntries'] = [{ pathname: '/workflows/wf-current', state }],
   initialIndex?: number,
+  caps: KnowledgeCapabilities | null = defaultCaps,
 ) {
   return render(
-    <MemoryRouter initialEntries={entries} initialIndex={initialIndex}>
-      <EditorHeader {...defaultProps()} />
-      <LocationSpy />
-    </MemoryRouter>,
+    <QueryClientProvider client={makeClient(caps)}>
+      <MemoryRouter initialEntries={entries} initialIndex={initialIndex}>
+        <EditorHeader {...defaultProps()} />
+        <LocationSpy />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -220,9 +238,11 @@ describe.each(['compact', 'classic'] as const)('EditorHeader — role contract (
 
   it('viewer_seesNeitherRunNorLifecycle', () => {
     render(
-      <MemoryRouter initialEntries={[{ pathname: '/workflows/wf-current' }]}>
-        <EditorHeader {...defaultProps({ roleCanWrite: false, canWrite: false })} />
-      </MemoryRouter>,
+      <QueryClientProvider client={makeClient()}>
+        <MemoryRouter initialEntries={[{ pathname: '/workflows/wf-current' }]}>
+          <EditorHeader {...defaultProps({ roleCanWrite: false, canWrite: false })} />
+        </MemoryRouter>
+      </QueryClientProvider>,
     );
     expect(screen.queryByRole('button', { name: 'Test run' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Disable' })).not.toBeInTheDocument();
@@ -260,5 +280,28 @@ describe('EditorHeader — color-skin switcher', () => {
     fireEvent.click(opts[1]);
     expect(useThemeStore.getState().theme).toBe(THEMES[1].id);
     expect(screen.queryAllByRole('menuitemradio')).toHaveLength(0);
+  });
+});
+
+describe('EditorHeader — AI assistant visibility (capabilities.llm)', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    useDesignStore.setState({ designerMode: 'expert' });
+  });
+
+  it('llmUsable_rendersTheAssistantToggle', () => {
+    renderWithState(undefined);
+    expect(screen.getByTestId('toggle-ai-assistant')).toBeInTheDocument();
+  });
+
+  it('llmNotUsable_hidesTheAssistantToggle', () => {
+    renderWithState(undefined, undefined, undefined, { ...defaultCaps, llm: false });
+    expect(screen.queryByTestId('toggle-ai-assistant')).not.toBeInTheDocument();
+  });
+
+  it('capabilitiesNotLoaded_hidesTheAssistantToggle', () => {
+    // Empty cache = the query is still loading (or failed) → hidden, same as the sidebar nav.
+    renderWithState(undefined, undefined, undefined, null);
+    expect(screen.queryByTestId('toggle-ai-assistant')).not.toBeInTheDocument();
   });
 });

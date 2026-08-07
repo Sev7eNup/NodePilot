@@ -19,11 +19,14 @@ public class AiKnowledgeControllerTests
 {
     private static (AiKnowledgeController controller, CapturingAuditWriter audit, FakeLlmClient llm, MemoryStream body)
         Build(bool llmEnabled = true, bool knowledgeEnabled = true, bool docs = true, bool op = true, bool src = false,
-              string role = "Operator", bool enableToolCalling = false, bool db = false)
+              string role = "Operator", bool enableToolCalling = false, bool db = false, bool withProfile = true)
     {
-        var llmOptions = new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile(
-            enabled: llmEnabled, baseUrl: "http://localhost/v1", model: "test-model",
-            maxTokens: 100, timeoutSeconds: 30, enableToolCalling: enableToolCalling));
+        // withProfile: false = Llm:Enabled on but no resolvable active profile (LLM_NO_ACTIVE_PROFILE state).
+        var llmOptions = new StaticOptionsMonitor<LlmOptions>(withProfile
+            ? LlmTestOptions.WithProfile(
+                enabled: llmEnabled, baseUrl: "http://localhost/v1", model: "test-model",
+                maxTokens: 100, timeoutSeconds: 30, enableToolCalling: enableToolCalling)
+            : LlmTestOptions.EnabledWithoutProfile());
         var kOptions = new StaticOptionsMonitor<AiKnowledgeOptions>(new AiKnowledgeOptions
         {
             Enabled = knowledgeEnabled, DocsEnabled = docs, OperationalEnabled = op, SourceCodeEnabled = src, DbEnabled = db,
@@ -263,6 +266,7 @@ public class AiKnowledgeControllerTests
         var (controller, _, _, _) = Build(src: true, db: true, role: "Admin", enableToolCalling: true);
         var caps = Caps(controller);
         caps.Enabled.Should().BeTrue();
+        caps.Llm.Should().BeTrue();
         caps.Docs.Should().BeTrue();
         caps.Operational.Should().BeTrue();
         caps.SourceCode.Should().BeTrue();
@@ -275,10 +279,30 @@ public class AiKnowledgeControllerTests
         var (controller, _, _, _) = Build(llmEnabled: false, src: true, db: true, role: "Admin");
         var caps = Caps(controller);
         caps.Enabled.Should().BeFalse();
+        caps.Llm.Should().BeFalse();
         caps.Docs.Should().BeFalse();
         caps.Operational.Should().BeFalse();
         caps.SourceCode.Should().BeFalse();
         caps.Db.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Capabilities_LlmUsableButKnowledgeDisabled_LlmTrueEnabledFalse()
+    {
+        // The state that shows the designer/script/workflow-gen AI buttons while the AI-Chat nav stays hidden.
+        var (controller, _, _, _) = Build(knowledgeEnabled: false);
+        var caps = Caps(controller);
+        caps.Llm.Should().BeTrue();
+        caps.Enabled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Capabilities_EnabledButNoActiveProfile_LlmFalse()
+    {
+        var (controller, _, _, _) = Build(withProfile: false);
+        var caps = Caps(controller);
+        caps.Llm.Should().BeFalse();
+        caps.Enabled.Should().BeFalse();
     }
 
     [Fact]

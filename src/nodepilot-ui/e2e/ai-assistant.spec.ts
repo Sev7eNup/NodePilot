@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
+import { installDefaultMocks, MOCK_USER, capsJson, mockCaps } from './fixtures/mockApi';
 
 /**
  * E2ETests.md — AI workflow assistant (explain + edit). The violet toolbar button
@@ -81,6 +81,17 @@ async function openEditor(page: Page) {
 test.describe('KI-Workflow-Assistent', () => {
   test.beforeEach(async ({ page }) => {
     await installDefaultMocks(page);
+  });
+
+  test('assistant button is hidden when no LLM endpoint is usable', async ({ page }) => {
+    // Overrides the suite default (llm: true) — without a usable LLM the toolbar button never
+    // renders; the 503-in-panel state is only reachable via a mid-session config flip.
+    await mockCaps(page, capsJson({ llm: false, enabled: false, docs: false, operational: false, sourceCode: false, db: false }));
+    await openEditor(page);
+
+    await expect(page.getByTestId('toggle-ai-assistant')).toHaveCount(0);
+    // The neighbouring designer-mode toggle proves the header itself rendered.
+    await expect(page.getByRole('button', { name: 'Standard' })).toBeVisible();
   });
 
   test('opens the panel and shows a Markdown explanation', async ({ page }) => {

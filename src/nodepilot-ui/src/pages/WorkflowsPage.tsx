@@ -22,6 +22,7 @@ import { ROOT_FOLDER_ID, sharedFoldersApi, type SharedFolder } from '../api/shar
 import { ResizeHandle, CornerResizeHandle } from '../components/designer/library/NodeLibrary';
 import { useResizable } from '../hooks/useResizable';
 import { useIsMobile } from '../hooks/useMediaQuery';
+import { useAiCapabilities } from '../hooks/useAiCapabilities';
 import { MobileCardList } from '../components/common/MobileCardList';
 import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
@@ -96,6 +97,7 @@ export function WorkflowsPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { canWrite, canDelete, isAdmin } = useRole();
+  const llmUsable = useAiCapabilities().data?.llm === true;
   const currentUserId = useAuthStore((s) => s.userId);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
@@ -588,7 +590,7 @@ export function WorkflowsPage() {
           >
             <Download size={16} /> <span className="hidden sm:inline">{t('common:exportAll')}</span>
           </button>
-          {canWrite && (
+          {canWrite && llmUsable && (
             <button
               onClick={() => setShowAiGenerate(true)}
               className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white rounded-md hover:bg-violet-700 transition-colors text-sm"
