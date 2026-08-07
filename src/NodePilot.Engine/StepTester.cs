@@ -155,17 +155,26 @@ public class StepTester : IStepTester
 
         Guid? credentialId = Guid.TryParse(node.Data.CredentialRaw, out var credId) ? credId : null;
 
-        // Build variables: globals first, mock values override
         var globalVars = await _globals.GetAllResolvedAsync(ct);
-        var variables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (k, v) in globalVars)
-            variables[$"globals.{k}"] = v;
-        if (mockVariables is not null)
-            foreach (var (k, v) in mockVariables)
-                variables[k] = v;
 
         // Convert flat mock dict to ActivityResult dict for JSON config resolution
         var fakeResults = BuildFakeResults(mockVariables ?? []);
+
+        // Build the variables dict through the SAME assembly path as the production
+        // StepRunner (VariableResolver.BuildStepVariables) so step-test inherits its full
+        // semantics: `.success` derivation, alias/stepId dual keys, and — security-relevant —
+        // the M-23 short-name denylist (an upstream param called `Authorization` is never
+        // aliased unqualified). A hand-built dict here previously skipped all of that.
+        // Mock entries are then re-applied verbatim on top so non-step-shaped keys
+        // (`globals.X` / `manual.X` overrides, ad-hoc names) keep their mock-wins semantics.
+        var variables = VariableResolver.BuildStepVariables(
+            inputParameters: null,
+            globalVariables: globalVars,
+            previousResults: fakeResults,
+            outputNameByStepId: definition.OutputNameByStepId);
+        if (mockVariables is not null)
+            foreach (var (k, v) in mockVariables)
+                variables[k] = v;
 
         IActivityExecutor executor;
         try { executor = _registry.GetExecutor(node.Type, _serviceProvider); }
