@@ -33,7 +33,6 @@ public static class AuditEventForwarder
         AuditActions.UserRoleChanged, AuditActions.UserBreakGlassChanged,
         AuditActions.UserPasswordReset, AuditActions.UserActivated, AuditActions.UserDeactivated,
         AuditActions.UserDirectoryAccessRefused, AuditActions.UserAuthorizationStale,
-        AuditActions.UserExternalIdentityResolved,
         AuditActions.UserScimProvisioned, AuditActions.UserScimUpdated, AuditActions.UserScimDeprovisioned,
         AuditActions.ScimGroupProvisioned, AuditActions.ScimGroupUpdated,
         AuditActions.ScimGroupDeprovisioned, AuditActions.ScimGroupReactivated,
