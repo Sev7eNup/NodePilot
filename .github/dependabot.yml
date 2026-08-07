@@ -1,15 +1,21 @@
 version: 2
 
-# Four package ecosystems (nuget + three npm roots), feeding the five CI jobs. NuGet resolves through Central Package
-# Management, so every bump lands in Directory.Packages.props rather than in individual
-# csproj files. Grouped so a framework bump arrives as one reviewable PR instead of a dozen.
+# Five update blocks (nuget + three npm roots + github-actions). NuGet resolves through
+# Central Package Management, so every bump lands in Directory.Packages.props rather than
+# in individual csproj files.
+#
+# PR-budget policy (see CLAUDE.md): at most 5 Dependabot PRs exist at any time — every
+# block bundles its minor+patch updates into ONE collective PR and carries
+# open-pull-requests-limit: 1, so majors queue behind the collective PR instead of fanning
+# out. The first live run in 2026-08 opened 21 individual PRs at once; that noise level is
+# deliberately not allowed to repeat.
 updates:
   - package-ecosystem: nuget
     directory: "/"
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     # Known-incompatible upgrades, each verified against this codebase — do not re-offer:
     # Microsoft.OpenApi 3.x breaks the OpenAPI pipeline; Spectre.Console 0.57.x breaks the
     # CLI rendering stack. Revisit deliberately, not via routine bumps.
@@ -21,60 +27,48 @@ updates:
       - dependency-name: "Spectre.Console.Json"
         versions: [">=0.57.0"]
     groups:
-      microsoft-extensions:
+      nuget-minor-patch:
         patterns:
-          - "Microsoft.Extensions.*"
-          - "Microsoft.AspNetCore.*"
-          - "Microsoft.EntityFrameworkCore*"
-      opentelemetry:
-        patterns:
-          - "OpenTelemetry*"
-      test-stack:
-        patterns:
-          - "xunit*"
-          - "Microsoft.NET.Test.Sdk"
-          - "coverlet.*"
-          - "FluentAssertions"
-          - "Moq"
-          - "NBomber*"
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: npm
     directory: "/src/nodepilot-ui"
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 1
     # TypeScript 7 is a verified-incompatible major (typescript-eslint peer range caps at
     # the previous major; ERESOLVE on npm ci). Same rule on all three npm roots.
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
     groups:
-      react:
+      npm-minor-patch:
         patterns:
-          - "react"
-          - "react-dom"
-          - "@types/react*"
-      opentelemetry:
-        patterns:
-          - "@opentelemetry/*"
-      tooling:
-        patterns:
-          - "vite"
-          - "vitest"
-          - "@vitejs/*"
-          - "eslint*"
-          - "typescript*"
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: npm
     directory: "/src/nodepilot-docs-ui"
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 1
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
+    groups:
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Electron shell: package.json pins three overrides into Forge's own tree (see the
   # "//overrides" note there). Review those before accepting a Forge bump.
@@ -83,12 +77,26 @@ updates:
     schedule:
       interval: weekly
       day: monday
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 1
     ignore:
       - dependency-name: "typescript"
         versions: [">=7.0.0"]
+    groups:
+      npm-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: monthly
+    open-pull-requests-limit: 1
+    # Actions bump majors routinely (checkout v4→v7 etc.) — bundle EVERYTHING into one PR;
+    # the SHA-pinned usages make the diff reviewable regardless of semver jump size.
+    groups:
+      actions-all:
+        patterns:
+          - "*"

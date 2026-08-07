@@ -78,6 +78,7 @@ ist nicht nötig. **Immer erst `pg_ctl start`, dann `dotnet run`.**
 ## Arbeitsweise für Claude
 
 - **Branching:** Nicht-triviale Arbeit auf einem neuen Branch beginnen, **bevor** editiert wird; nachfragen nur, wenn der Branch-Name unklar ist. Triviale Einzeiler (z. B. `.gitignore`) bekommen **keinen** eigenen Branch/PR — in die laufende Arbeit einfalten.
+- **PR-Budget: maximal 5 PRs gleichzeitig.** Gilt für eigene Arbeits-Batches (größere Vorhaben in ≤5 PRs schneiden) genauso wie für Dependabot (`.github/dependabot.yml`: Minor/Patch pro Ökosystem in einem Sammel-PR gebündelt, `open-pull-requests-limit: 1` je Block → hartes Gesamtlimit 5; Majors warten hinter dem Sammel-PR).
 - **Scope:** Minimaler Root-Cause-Fix. Würde ein Fix deutlich mehr Dateien anfassen als das benannte Problem → stoppen und den geplanten Scope in 3 Bullets nennen, bevor editiert wird.
 - **PowerShell 5.1 / Windows:** Kein Inline-SQL durch PowerShell-Quoting — Query in eine `.sql`-Datei schreiben und per `psql -f` ausführen. Dateien als UTF-8 **ohne** BOM schreiben. Keine `sed`/Regex-Zeilen-Edits auf Source-Dateien (CRLF bricht sie) — Edit-Tool verwenden. Kein `$args`-Splatting; explizite benannte Parameter.
 - **Reporting:** Knapp berichten — was geändert, was verifiziert, was offen. Keine Per-File-Walkthroughs, kein Plan-Nacherzählen. Interaktive Rückfragen nur, wenn die Antwort wirklich blockiert.
