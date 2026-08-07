@@ -53,11 +53,8 @@ public class ExecutionDebugController : ControllerBase
         if (execution is null) return NotFound();
         // RBAC: caller needs Run on the workflow's folder. The follow-up
         // StartedByUserId-ownership check below is unchanged — both gates apply.
-        if (!await _authz.CanAccessWorkflowAsync(User, execution.Workflow.FolderId, NodePilot.Core.Interfaces.ResourceOp.Read, ct))
-            return NotFound();
-        if (!await _authz.CanAccessWorkflowAsync(User, execution.Workflow.FolderId, NodePilot.Core.Interfaces.ResourceOp.Run, ct))
-            return new ObjectResult(new { message = "Insufficient folder permissions" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        if (await this.RequireWorkflowAccessAsync(_authz, execution.Workflow,
+                NodePilot.Core.Interfaces.ResourceOp.Run, ct) is { } runDenied) return runDenied;
 
         // C-2: Debug-Session-Ownership. Only the user who started the debug run (or an
         // Admin) may step/continue/stop it. Without this, any Operator could interfere
@@ -136,8 +133,8 @@ public class ExecutionDebugController : ControllerBase
             .Include(e => e.Workflow)
             .FirstOrDefaultAsync(e => e.Id == id, ct);
         if (execution is null) return NotFound();
-        if (!await _authz.CanAccessWorkflowAsync(User, execution.Workflow.FolderId, NodePilot.Core.Interfaces.ResourceOp.Read, ct))
-            return NotFound();
+        if (await this.RequireWorkflowAccessAsync(_authz, execution.Workflow,
+                NodePilot.Core.Interfaces.ResourceOp.Read, ct) is { } readDenied) return readDenied;
         return Ok(_engine.GetPausedSteps(id));
     }
 

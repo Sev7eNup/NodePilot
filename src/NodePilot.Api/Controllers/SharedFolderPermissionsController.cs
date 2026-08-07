@@ -44,13 +44,10 @@ public class SharedFolderPermissionsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<List<SharedFolderPermissionResponse>>> GetAll(Guid folderId, CancellationToken ct)
     {
-        if (!await _authz.CanAccessFolderAsync(User, folderId, ResourceOp.Read, ct))
-            return NotFound();
         // Only Admin-on-folder can SEE the permission list (otherwise a FolderViewer
         // could enumerate every user with access — info-leak about other principals).
-        if (!await _authz.CanAccessFolderAsync(User, folderId, ResourceOp.Admin, ct))
-            return new ObjectResult(new { message = "Insufficient folder permissions to view grants" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        if (await this.RequireFolderAccessAsync(_authz, folderId, ResourceOp.Admin, ct,
+                "Insufficient folder permissions to view grants") is { } listDenied) return listDenied;
 
         var rows = await _db.SharedFolderPermissions.AsNoTracking()
             .Where(p => p.FolderId == folderId)
@@ -95,11 +92,8 @@ public class SharedFolderPermissionsController : ControllerBase
     public async Task<ActionResult<SharedFolderPermissionResponse>> Grant(
         Guid folderId, GrantSharedFolderPermissionRequest req, CancellationToken ct)
     {
-        if (!await _authz.CanAccessFolderAsync(User, folderId, ResourceOp.Read, ct))
-            return NotFound();
-        if (!await _authz.CanAccessFolderAsync(User, folderId, ResourceOp.Admin, ct))
-            return new ObjectResult(new { message = "Insufficient folder permissions" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        if (await this.RequireFolderAccessAsync(_authz, folderId, ResourceOp.Admin, ct) is { } grantDenied)
+            return grantDenied;
 
         // V1 accepts User and Group. Role-typed grants remain reserved.
         if (req.PrincipalType == FolderPrincipalType.Role)
@@ -231,9 +225,10 @@ public class SharedFolderPermissionsController : ControllerBase
     public async Task<IActionResult> Update(Guid folderId, Guid permissionId,
         UpdateSharedFolderPermissionRequest req, CancellationToken ct)
     {
-        if (!await _authz.CanAccessFolderAsync(User, folderId, ResourceOp.Admin, ct))
-            return new ObjectResult(new { message = "Insufficient folder permissions" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        // Gate adds the 404 existence-mask this action previously lacked — a caller without
+        // Read on the folder can no longer distinguish "no folder" from "no permission".
+        if (await this.RequireFolderAccessAsync(_authz, folderId, ResourceOp.Admin, ct) is { } updateDenied)
+            return updateDenied;
 
         var perm = await _db.SharedFolderPermissions
             .FirstOrDefaultAsync(p => p.Id == permissionId && p.FolderId == folderId, ct);
@@ -261,9 +256,9 @@ public class SharedFolderPermissionsController : ControllerBase
     [HttpDelete("{permissionId:guid}")]
     public async Task<IActionResult> Revoke(Guid folderId, Guid permissionId, CancellationToken ct)
     {
-        if (!await _authz.CanAccessFolderAsync(User, folderId, ResourceOp.Admin, ct))
-            return new ObjectResult(new { message = "Insufficient folder permissions" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        // Same 404 existence-mask as Update — see comment there.
+        if (await this.RequireFolderAccessAsync(_authz, folderId, ResourceOp.Admin, ct) is { } revokeDenied)
+            return revokeDenied;
 
         var perm = await _db.SharedFolderPermissions
             .FirstOrDefaultAsync(p => p.Id == permissionId && p.FolderId == folderId, ct);

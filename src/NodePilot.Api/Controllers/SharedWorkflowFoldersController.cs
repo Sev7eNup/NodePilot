@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Audit;
+using NodePilot.Api.Security;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Interfaces;
@@ -78,9 +79,8 @@ public class SharedWorkflowFoldersController : ControllerBase
         var parentId = req.ParentFolderId ?? SharedWorkflowFolder.RootFolderId;
         var parent = await _db.SharedWorkflowFolders.AsNoTracking().FirstOrDefaultAsync(f => f.Id == parentId, ct);
         if (parent is null) return BadRequest(new { message = "Parent folder not found" });
-        if (!await _authz.CanAccessFolderAsync(User, parentId, ResourceOp.Edit, ct))
-            return new ObjectResult(new { message = "Insufficient folder permissions on the parent folder" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        if (await this.RequireFolderAccessAsync(_authz, parentId, ResourceOp.Edit, ct,
+                "Insufficient folder permissions on the parent folder") is { } createDenied) return createDenied;
 
         if (parent.Depth + 1 > SharedWorkflowFolder.MaxDepth)
             return BadRequest(new { message = $"Folder depth limit ({SharedWorkflowFolder.MaxDepth}) would be exceeded" });
@@ -129,10 +129,7 @@ public class SharedWorkflowFoldersController : ControllerBase
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
-        if (!await _authz.CanAccessFolderAsync(User, id, ResourceOp.Read, ct)) return NotFound();
-        if (!await _authz.CanAccessFolderAsync(User, id, ResourceOp.Edit, ct))
-            return new ObjectResult(new { message = "Insufficient folder permissions" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        if (await this.RequireFolderAccessAsync(_authz, id, ResourceOp.Edit, ct) is { } renameDenied) return renameDenied;
 
         // Sibling-name uniqueness check before save.
         var clash = await _db.SharedWorkflowFolders
@@ -161,17 +158,14 @@ public class SharedWorkflowFoldersController : ControllerBase
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
-        if (!await _authz.CanAccessFolderAsync(User, id, ResourceOp.Read, ct)) return NotFound();
-        if (!await _authz.CanAccessFolderAsync(User, id, ResourceOp.Edit, ct))
-            return new ObjectResult(new { message = "Insufficient permissions on source folder" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        if (await this.RequireFolderAccessAsync(_authz, id, ResourceOp.Edit, ct,
+                "Insufficient permissions on source folder") is { } sourceDenied) return sourceDenied;
 
         var newParentId = req.NewParentFolderId ?? SharedWorkflowFolder.RootFolderId;
         if (newParentId == folder.Id)
             return BadRequest(new { message = "A folder cannot be its own parent" });
-        if (!await _authz.CanAccessFolderAsync(User, newParentId, ResourceOp.Edit, ct))
-            return new ObjectResult(new { message = "Insufficient permissions on destination folder" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        if (await this.RequireFolderAccessAsync(_authz, newParentId, ResourceOp.Edit, ct,
+                "Insufficient permissions on destination folder") is { } destDenied) return destDenied;
 
         var newParent = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == newParentId, ct);
         if (newParent is null) return BadRequest(new { message = "Destination folder not found" });
@@ -226,10 +220,7 @@ public class SharedWorkflowFoldersController : ControllerBase
 
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
-        if (!await _authz.CanAccessFolderAsync(User, id, ResourceOp.Read, ct)) return NotFound();
-        if (!await _authz.CanAccessFolderAsync(User, id, ResourceOp.Edit, ct))
-            return new ObjectResult(new { message = "Insufficient folder permissions" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        if (await this.RequireFolderAccessAsync(_authz, id, ResourceOp.Edit, ct) is { } deleteDenied) return deleteDenied;
 
         // Delete is allowed only if the folder is empty (no workflows, no sub-folders).
         // Forces the operator to move/delete contents explicitly — better than
@@ -255,13 +246,10 @@ public class SharedWorkflowFoldersController : ControllerBase
     {
         var workflow = await _db.Workflows.AsNoTracking().FirstOrDefaultAsync(w => w.Id == workflowId, ct);
         if (workflow is null) return NotFound();
-        if (!await _authz.CanAccessWorkflowAsync(User, workflow.FolderId, ResourceOp.Read, ct)) return NotFound();
-        if (!await _authz.CanAccessWorkflowAsync(User, workflow.FolderId, ResourceOp.Edit, ct))
-            return new ObjectResult(new { message = "Insufficient permissions on source folder" })
-            { StatusCode = StatusCodes.Status403Forbidden };
-        if (!await _authz.CanAccessFolderAsync(User, req.TargetFolderId, ResourceOp.Edit, ct))
-            return new ObjectResult(new { message = "Insufficient permissions on destination folder" })
-            { StatusCode = StatusCodes.Status403Forbidden };
+        if (await this.RequireWorkflowAccessAsync(_authz, workflow, ResourceOp.Edit, ct,
+                "Insufficient permissions on source folder") is { } wfSourceDenied) return wfSourceDenied;
+        if (await this.RequireFolderAccessAsync(_authz, req.TargetFolderId, ResourceOp.Edit, ct,
+                "Insufficient permissions on destination folder") is { } wfDestDenied) return wfDestDenied;
 
         var callerId = this.GetCurrentUserId();
         if (workflow.CheckedOutByUserId is not null && workflow.CheckedOutByUserId != callerId)
@@ -297,13 +285,8 @@ public class SharedWorkflowFoldersController : ControllerBase
             var current = await _db.Workflows.AsNoTracking()
                 .FirstOrDefaultAsync(w => w.Id == workflowId, ct);
             if (current is null) return NotFound();
-            if (!await _authz.CanAccessWorkflowAsync(User, current.FolderId, ResourceOp.Read, ct))
-                return NotFound();
-            if (!await _authz.CanAccessWorkflowAsync(User, current.FolderId, ResourceOp.Edit, ct))
-            {
-                return new ObjectResult(new { message = "Insufficient permissions on the workflow's current folder" })
-                { StatusCode = StatusCodes.Status403Forbidden };
-            }
+            if (await this.RequireWorkflowAccessAsync(_authz, current, ResourceOp.Edit, ct,
+                    "Insufficient permissions on the workflow's current folder") is { } bulkDenied) return bulkDenied;
             if (current.CheckedOutByUserId is not null && current.CheckedOutByUserId != callerId)
             {
                 return new ObjectResult(new
