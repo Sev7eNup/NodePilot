@@ -149,9 +149,9 @@
          and it pins Spectre.Console to its own version. Splitting the two would pair a 0.57
          core with a CLI built against 0.55 — on a 0.x library that is a real risk, so the
          whole family moves together and waits for Spectre.Console.Cli 1.0. -->
-    <PackageVersion Include="Spectre.Console" Version="0.55.0" />
+    <PackageVersion Include="Spectre.Console" Version="0.57.2" />
     <PackageVersion Include="Spectre.Console.Cli" Version="0.55.0" />
-    <PackageVersion Include="Spectre.Console.Json" Version="0.55.0" />
+    <PackageVersion Include="Spectre.Console.Json" Version="0.57.2" />
     <PackageVersion Include="Spectre.Console.Testing" Version="0.55.0" />
     <!-- CommandAppTester left Spectre.Console.Testing when the CLI split into its own
          package; the test harness needs this alongside the plain console test helpers. -->
