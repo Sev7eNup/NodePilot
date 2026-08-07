@@ -11,6 +11,7 @@ import { useCallback, useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../../../api/client';
+import { formatDate } from '../../../lib/format';
 import type {
   StepTestResult,
   StepTestContextResponse,
@@ -237,7 +238,7 @@ function RunPicker({
       >
         <option value="">{t('test.selectRun')}</option>
         {runs.map((r) => {
-          const date = new Date(r.startedAt).toLocaleString();
+          const date = formatDate(r.startedAt);
           const stepRanBadge = r.stepRan ? '' : ` (${t('test.stepDidNotRun')})`;
           return (
             <option key={r.executionId} value={r.executionId}>
@@ -279,7 +280,7 @@ function ContextPreview({
           {isFetching && <CircleDash size={10} className="animate-spin" />}
           {context?.executedAt
             ? t('test.contextFromRun', {
-                date: new Date(context.executedAt).toLocaleString(),
+                date: formatDate(context.executedAt),
                 status: context.status ?? '?',
               })
             : t('test.contextSchemaOnly')}

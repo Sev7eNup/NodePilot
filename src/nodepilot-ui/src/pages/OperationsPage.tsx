@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { WarningAltFilled, Pause, Play } from '@carbon/icons-react';
 import { STATUS_BADGE_CLASS } from '../lib/statusTokens';
 import { OPS_WINDOW_MINUTES, type OpsWindowMinutes } from '../lib/opsTimeline';
+import { formatTime } from '../lib/format';
 import {
   getOperationsGraph, getOpsDashboardStats, cancelExecution,
   retryExecution, cancelAllForWorkflow, quarantineWorkflow,
@@ -273,7 +274,7 @@ export function OperationsPage() {
               data-testid="ops-frozen-badge"
             >
               {t('operations:freeze.badge', {
-                time: new Date(nowMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+                time: formatTime(nowMs, { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
               })}
             </span>
           )}

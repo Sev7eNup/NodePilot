@@ -1,6 +1,7 @@
 import { Checkbox, Debug, Edit, Play, Reset, SkipForward } from '@carbon/icons-react';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { formatTime } from '../../../lib/format';
 
 /**
  * Debug panel for a step that's paused at a breakpoint. Reads the variable snapshot from
@@ -92,7 +93,7 @@ export function PausedVariablesInspector(props: Readonly<PausedVariablesInspecto
             <span>·</span>
             <span>{reason === 'stepOver' ? t('debug.stepOverTrigger') : t('debug.breakpoint')}</span>
             <span>·</span>
-            <span className="font-mono tabular-nums">{new Date(pausedAt).toLocaleTimeString(undefined, { hour12: false })}</span>
+            <span className="font-mono tabular-nums">{formatTime(pausedAt, { hour12: false })}</span>
             {dirtyCount > 0 && (
               <>
                 <span>·</span>

@@ -8,6 +8,7 @@ import { api } from '../../../api/client';
 import type { WorkflowExecution, StepExecution } from '../../../types/api';
 import { ActivityTypeIcon, DurationBar, ExecutionStatusBadge, ExtrasCell, OutputBlock, StepInputBlock, StepOutputParametersBlock, StepStatusIcon, TriggerCell, firstLine, formatClock, formatMs, timeDiff } from './ExecutionPanelParts';
 import { GanttChart, type GanttRow } from '../timeline/GanttChart';
+import { formatDate } from '../../../lib/format';
 
 /* ---- History Tab ---- */
 
@@ -363,11 +364,11 @@ const HistoryRow = memo(function HistoryRow({ execution, scope, workflowName, is
             : <span className="text-outline">—</span>}
         </div>
         <div className="px-2 py-0.5 font-label text-[11px] text-on-surface-variant whitespace-nowrap" title={new Date(execution.startedAt).toISOString()}>
-          {new Date(execution.startedAt).toLocaleString()}
+          {formatDate(execution.startedAt)}
         </div>
         <div className="px-2 py-0.5 font-label text-[11px] text-on-surface-variant whitespace-nowrap" title={execution.completedAt ?? t('execution.history.notYetFinished')}>
           {execution.completedAt
-            ? new Date(execution.completedAt).toLocaleString()
+            ? formatDate(execution.completedAt)
             : execution.status === 'Running'
               ? <span className="text-blue-500 flex items-center gap-1"><CircleDash size={10} className="animate-spin" /> {t('execution.history.running')}</span>
               : '—'}

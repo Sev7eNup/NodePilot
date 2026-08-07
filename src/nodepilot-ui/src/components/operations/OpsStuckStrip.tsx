@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WarningAltFilled } from '@carbon/icons-react';
 import { formatDuration, type PlacedBar } from '../../lib/opsTimeline';
+import { formatTime } from '../../lib/format';
 import { STATUS_TEXT_CLASS } from '../../lib/statusTokens';
 
 // Overdue runs, lifted out of the timeline into one line above it.
@@ -67,7 +68,7 @@ export function OpsStuckStrip({ bars, nowMs, nameFor, onSelect }: Readonly<{
             ) : (
               <span className="tabular-nums text-on-surface-variant">
                 {t('operations:stuck.startedAt', {
-                  value: new Date(bar.startedAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  value: formatTime(bar.startedAtMs, { hour: '2-digit', minute: '2-digit' }),
                 })}
               </span>
             )}

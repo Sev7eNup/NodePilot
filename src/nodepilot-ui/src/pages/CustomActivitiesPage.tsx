@@ -24,6 +24,7 @@ import { nodePilotCodeMirrorTheme } from '../lib/codeMirrorTheme';
 import { api } from '../api/client';
 import { ModalShell } from '../components/common/ModalShell';
 import { useRole } from '../lib/rbac';
+import { formatDate } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
 import { useThemeStore, resolveTheme } from '../stores/themeStore';
@@ -554,7 +555,7 @@ function VersionsModal({ entry, canRollback, onClose }: Readonly<{
               {(versions ?? []).map((v) => (
                 <tr key={v.version} className="hover:bg-surface-low">
                   <td className="px-3 py-2 text-sm font-medium text-on-surface tabular-nums">v{v.version}</td>
-                  <td className="px-3 py-2 text-xs text-on-surface-variant whitespace-nowrap">{new Date(v.createdAt).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-xs text-on-surface-variant whitespace-nowrap">{formatDate(v.createdAt)}</td>
                   <td className="px-3 py-2 text-xs text-on-surface-variant">{v.createdBy ?? '—'}</td>
                   <td className="px-3 py-2 text-xs text-on-surface-variant">{v.changeNote ?? '—'}</td>
                   <td className="px-3 py-2 text-right">

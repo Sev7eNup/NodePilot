@@ -2,6 +2,7 @@ import { WarningFilled } from '@carbon/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { adminSettings } from '../../api/adminSettings';
+import { formatDate } from '../../lib/format';
 
 /**
  * Polls <c>/api/admin/settings/status</c> every 30s and renders an orange banner when
@@ -15,7 +16,7 @@ import { adminSettings } from '../../api/adminSettings';
  * a dozen open Settings tabs don't flood the API.</para>
  */
 export function RestartBanner() {
-  const { t, i18n } = useTranslation(['adminSettings']);
+  const { t } = useTranslation(['adminSettings']);
 
   const { data } = useQuery({
     queryKey: ['admin-settings', 'status'],
@@ -30,7 +31,7 @@ export function RestartBanner() {
   if (!data?.restartRequired) return null;
 
   const sinceLabel = data.restartRequiredSince
-    ? new Date(data.restartRequiredSince).toLocaleString(i18n.language)
+    ? formatDate(data.restartRequiredSince)
     : '';
 
   return (

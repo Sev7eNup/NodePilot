@@ -8,6 +8,7 @@ import { buildGrafanaDashboardUrl, useMetricsDashboard, useObservabilityConfig }
 import type { MetricsDataSeries, MetricsWidget } from '../types/api';
 import { metricsSections } from '../lib/navigation';
 import { DEFAULT_CHART_TOKENS, useChartTokens, type ChartTokens } from '../lib/chartTheme';
+import { formatTime } from '../lib/format';
 const HOURS = [1, 24, 168, 720] as const;
 const HOUR_LABEL: Record<number, string> = { 1: '1 h', 24: '24 h', 168: '7 d', 720: '30 d' };
 
@@ -120,7 +121,7 @@ export function buildMetricsChartOption(widget: MetricsWidget, tokens: ChartToke
     const max = Math.max(1, ...values.map((value) => Number(value[2])));
     // A heatmap encodes magnitude, so it takes a single-hue sequential ramp keyed to
     // the skin accent — never the categorical palette and never a rainbow.
-    return { tooltip: tooltipStyle, grid: base.grid, xAxis: { type: 'category', data: timestamps.map((timestamp) => new Date(timestamp * 1000).toLocaleTimeString()), axisLabel }, yAxis: { type: 'category', data: buckets, axisLabel }, visualMap: { min: 0, max, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, textStyle: { color: axis }, inRange: { color: [surfaceHigh, tokens.primaryContainer, tokens.primary] } }, series: [{ type: 'heatmap', data: values }] };
+    return { tooltip: tooltipStyle, grid: base.grid, xAxis: { type: 'category', data: timestamps.map((timestamp) => formatTime(timestamp * 1000)), axisLabel }, yAxis: { type: 'category', data: buckets, axisLabel }, visualMap: { min: 0, max, calculable: true, orient: 'horizontal', left: 'center', bottom: 0, textStyle: { color: axis }, inRange: { color: [surfaceHigh, tokens.primaryContainer, tokens.primary] } }, series: [{ type: 'heatmap', data: values }] };
   }
   return { ...base, xAxis: { type: 'time', axisLabel }, yAxis: { type: 'value', axisLabel, splitLine: { lineStyle: { color: gridLine } } }, series: widget.data.map((series, index) => ({ name: series.label, type: 'line', smooth: true, showSymbol: false, lineStyle: { width: 2 }, areaStyle: { opacity: widget.data.length === 1 ? .12 : 0 }, itemStyle: { color: seriesColor(index) }, data: series.points.filter((point) => point.value != null).map((point) => [point.timestamp * 1000, point.value]) })) };
 }

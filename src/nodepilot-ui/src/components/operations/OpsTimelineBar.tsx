@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { npStatusFromExecution, STATUS_COLOR_VAR } from '../../lib/statusTokens';
 import { formatDuration, isActiveBarStatus, type PlacedBar } from '../../lib/opsTimeline';
+import { formatTime } from '../../lib/format';
 
 // One execution bar on the live timeline. Absolutely positioned by the parent-provided
 // geometry; horizontal motion between clock ticks is carried by the CSS linear transition
@@ -56,7 +57,7 @@ export const OpsTimelineBar = memo(function OpsTimelineBar({ bar, topPx, nowMs, 
   // like a 21-minute one. The only other cue is a mask-image fade, which is easy to miss —
   // state the actual start time instead.
   const startedBefore = bar.clippedLeft
-    ? new Date(bar.startedAtMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ? formatTime(bar.startedAtMs, { hour: '2-digit', minute: '2-digit' })
     : null;
 
   return (

@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ModalShell } from '../common/ModalShell';
 import { alertingApi } from '../../api/alerting';
+import { formatDate } from '../../lib/format';
 
 /**
  * Read-only delivery ledger: recent notification delivery attempts (newest first), filterable by
@@ -53,7 +54,7 @@ export function DeliveriesModal({ onClose }: Readonly<{ onClose: () => void }>) 
             <tbody className="divide-y divide-outline-variant/30">
               {rows.map((d) => (
                 <tr key={d.id} className="hover:bg-surface-low">
-                  <td className="px-3 py-2 text-xs text-on-surface-variant whitespace-nowrap">{new Date(d.createdAt).toLocaleString()}</td>
+                  <td className="px-3 py-2 text-xs text-on-surface-variant whitespace-nowrap">{formatDate(d.createdAt)}</td>
                   <td className="px-3 py-2 text-on-surface-variant">
                     {d.ruleName ?? '—'}{d.isTest && <span className="ml-1 text-[10px] text-outline">[test]</span>}
                   </td>

@@ -16,6 +16,7 @@ import { ModalShell } from '../components/common/ModalShell';
 import { MobileCardList } from '../components/common/MobileCardList';
 import { sharedFoldersApi } from '../api/sharedFolders';
 import { useRole } from '../lib/rbac';
+import { formatDate } from '../lib/format';
 import { useIsMobile } from '../hooks/useMediaQuery';
 import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
@@ -200,7 +201,7 @@ export function MaintenanceWindowsPage() {
 
   const describeWhen = (w: MaintenanceWindow): string => {
     if (w.recurrence === 'OneTime')
-      return `${w.oneTimeStartUtc ? new Date(w.oneTimeStartUtc).toLocaleString() : '?'} → ${w.oneTimeEndUtc ? new Date(w.oneTimeEndUtc).toLocaleString() : '?'}`;
+      return `${w.oneTimeStartUtc ? formatDate(w.oneTimeStartUtc) : '?'} → ${w.oneTimeEndUtc ? formatDate(w.oneTimeEndUtc) : '?'}`;
     if (w.recurrence === 'Weekly')
       return `${daysFromMask(w.weeklyDaysMask, DAY_KEYS)} ${minuteToHhmm(w.weeklyStartMinuteOfDay)}–${minuteToHhmm(w.weeklyEndMinuteOfDay)} (${w.timeZoneId})`;
     if (w.recurrence === 'Cron')

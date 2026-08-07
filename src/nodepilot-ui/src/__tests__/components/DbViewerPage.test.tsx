@@ -6,6 +6,7 @@ import { MemoryRouter, Routes, Route, Navigate } from 'react-router';
 import { DbViewerPage } from '../../pages/DbViewerPage';
 import { useAuthStore } from '../../stores/authStore';
 import { dbAdminApi } from '../../api/dbadmin';
+import { formatNumber } from '../../lib/format';
 import type { DbAdminTableInfo, DbAdminRowsResponse } from '../../api/dbadmin';
 
 vi.mock('../../api/dbadmin', () => ({
@@ -107,9 +108,10 @@ describe('DbViewerPage', () => {
 
     await waitFor(() => expect(screen.getByText('Workflows')).toBeInTheDocument());
     expect(screen.getByText('Audit Log')).toBeInTheDocument();
-    // Row counts rendered by TableList — use toLocaleString() to match runtime locale
-    expect(screen.getByText((3).toLocaleString())).toBeInTheDocument();
-    expect(screen.getByText((1200).toLocaleString())).toBeInTheDocument();
+    // Row counts rendered by TableList — build the expectation through the same i18n-aware
+    // formatNumber helper the component uses, so the test is independent of the runtime locale.
+    expect(screen.getByText(formatNumber(3))).toBeInTheDocument();
+    expect(screen.getByText(formatNumber(1200))).toBeInTheDocument();
   });
 
   it('readOnly_tables_showLockIcon', async () => {

@@ -1,6 +1,7 @@
 import { Add, Locked, Terminal } from '@carbon/icons-react';
 import { useTranslation } from 'react-i18next';
 import type { DbAdminTableInfo } from '../../api/dbadmin';
+import { formatNumber } from '../../lib/format';
 
 interface Props {
   tables: DbAdminTableInfo[];
@@ -94,7 +95,7 @@ export function TableList({
                 <span className="truncate">{table.displayName}</span>
               </button>
               <span className="shrink-0 text-[10px] font-mono text-outline tabular-nums">
-                {table.rowCount.toLocaleString()}
+                {formatNumber(table.rowCount)}
               </span>
               {queryActive && onInsertTableName && (
                 <button

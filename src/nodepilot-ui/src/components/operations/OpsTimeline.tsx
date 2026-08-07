@@ -9,6 +9,7 @@ import {
   buildDensityCells, isActiveBarStatus, isOverdue, isStalled, tickStepFor, formatDuration,
   type DensityCell, type PlacedBar,
 } from '../../lib/opsTimeline';
+import { formatTime } from '../../lib/format';
 import { OpsTimelineBar, OPS_ROW_H, OPS_MIN_BAR_PX, OPS_INSIDE_LABEL_PX } from './OpsTimelineBar';
 import { OpsStuckStrip } from './OpsStuckStrip';
 import { EmptyState } from '../common/EmptyState';
@@ -263,7 +264,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
   };
 
   const clockLabel = (ms: number) =>
-    new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    formatTime(ms, { hour: '2-digit', minute: '2-digit' });
 
   // Failed/cancelled are appended only when non-zero: a slice that reads "· 0 failed" trains the
   // eye to skip the very part of the label that matters when it is not zero.
@@ -288,7 +289,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
         {nextStart && (
           <p className="text-sm text-on-surface-variant">
             {t('operations:timeline.nextStart', {
-              time: new Date(nextStart.atMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              time: formatTime(nextStart.atMs, { hour: '2-digit', minute: '2-digit' }),
               name: nextStart.name,
             })}
           </p>
@@ -375,7 +376,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
                 className="np-ops-nohistory"
                 style={{ width: historyGapPx }}
                 title={t('operations:timeline.historyGap', {
-                  time: new Date(historyFromMs!).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  time: formatTime(historyFromMs!, { hour: '2-digit', minute: '2-digit' }),
                 })}
                 data-testid="ops-history-gap"
               />
@@ -473,7 +474,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
             className="absolute -translate-x-1/2 text-[10px] tabular-nums text-outline"
             style={{ left: tick.xPx }}
           >
-            {new Date(tick.atMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {formatTime(tick.atMs, { hour: '2-digit', minute: '2-digit' })}
           </span>
         ))}
         <span
