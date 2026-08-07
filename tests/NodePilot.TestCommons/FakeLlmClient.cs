@@ -30,6 +30,16 @@ public sealed class FakeLlmClient : ILlmClient
         return this;
     }
 
+    /// <summary>
+    /// Enqueues a fully-specified response (token usage, finish reason) for tests that assert
+    /// on usage propagation, where <see cref="EnqueueContent"/> is too coarse.
+    /// </summary>
+    public FakeLlmClient EnqueueResponse(LlmResponse response)
+    {
+        _responses.Enqueue(_ => Task.FromResult(response));
+        return this;
+    }
+
     public FakeLlmClient EnqueueException(LlmException ex)
     {
         _responses.Enqueue(_ => Task.FromException<LlmResponse>(ex));

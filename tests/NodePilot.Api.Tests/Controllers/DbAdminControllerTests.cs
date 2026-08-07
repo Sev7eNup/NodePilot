@@ -35,7 +35,7 @@ public class DbAdminControllerTests
         services.AddSingleton(db);
         var scopeFactory = services.BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
         var meta = new DbAdminMetadataService(scopeFactory);
-        var executor = new DbAdminQueryExecutor(db, new TestOptionsMonitor<DbAdminOptions>(options ?? new DbAdminOptions()));
+        var executor = new DbAdminQueryExecutor(db, new StaticOptionsMonitor<DbAdminOptions>(options ?? new DbAdminOptions()));
         var controller = new DbAdminController(db, meta, executor, new DbAdminSecretColumns(meta),
             new AuditStager(),
             new MemoryCache(new MemoryCacheOptions()), NullLogger<DbAdminController>.Instance);
@@ -1074,16 +1074,4 @@ public class DbAdminControllerTests
         bad.Value.Should().BeOfType<DbAdminQueryError>().Subject.Code.Should().Be("no_keyword");
     }
 
-    /// <summary>
-    /// Tiny test stand-in for <see cref="IOptionsMonitor{T}"/>. The executor was
-    /// switched from IOptions to IOptionsMonitor so Settings-UI edits take effect
-    /// without an API restart; in tests we just hand it a fixed value.
-    /// </summary>
-    private sealed class TestOptionsMonitor<T> : IOptionsMonitor<T>
-    {
-        public TestOptionsMonitor(T value) { CurrentValue = value; }
-        public T CurrentValue { get; }
-        public T Get(string? name) => CurrentValue;
-        public IDisposable? OnChange(Action<T, string?> listener) => null;
-    }
 }
