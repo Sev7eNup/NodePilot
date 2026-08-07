@@ -386,15 +386,21 @@ public class FileWatcherTriggerSourceTests
     /// of the real filesystem. The scenario the probe covers — a host gone so hard the pending
     /// change notification is never completed — cannot be staged locally: deleting the watched
     /// directory raises an FSW Error, so the primary fault path fires first and hides the probe.
+    ///
+    /// The registration check goes through the same seam, so this absorbs that first call and
+    /// answers it reachable. <paramref name="reachable"/> therefore only ever sees probe calls,
+    /// and a test can express "healthy at start, gone afterwards" as a plain constant.
     /// </summary>
     private static async Task<FileWatcherTriggerSource> StartWithProbeAsync(
         TempDirectory tempDir, int probeSeconds, Func<string, bool> reachable)
     {
+        var startupCheckDone = 0;
         var src = new FileWatcherTriggerSource(
             NullLogger<FileWatcherTriggerSource>.Instance,
             ConfigWith(("Trigger:FileWatcher:HealthProbeSeconds", probeSeconds.ToString())))
         {
-            DirectoryProbe = reachable,
+            DirectoryProbe = dir =>
+                Interlocked.Exchange(ref startupCheckDone, 1) == 0 || reachable(dir),
         };
         await src.StartAsync(Ctx($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""), CancellationToken.None);
         return src;
@@ -448,6 +454,72 @@ public class FileWatcherTriggerSourceTests
         }
         finally
         {
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task StartAsync_Throws_WhenReachabilityCheckExceedsDeadline()
+    {
+        // A path that hangs instead of answering — an unreachable SMB host does not send a reset,
+        // so the redirector just blocks. Registration must give up rather than hold the
+        // orchestrator's sequential sync pass hostage on behalf of one workflow.
+        using var tempDir = new TempDirectory();
+        using var release = new ManualResetEventSlim(false);
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            ConfigWith(("Trigger:FileWatcher:PathTimeoutSeconds", "1")))
+        {
+            DirectoryProbe = _ => { release.Wait(TimeSpan.FromSeconds(30)); return true; },
+        };
+
+        try
+        {
+            var act = () => src.StartAsync(Ctx($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""), CancellationToken.None);
+
+            await act.Should().ThrowAsync<TimeoutException>().WithMessage("*did not respond within*");
+        }
+        finally
+        {
+            release.Set(); // let the abandoned thread unwind before the test process moves on
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task HealthProbe_TreatsATimedOutCheckAsUnreachable()
+    {
+        // Same hang, but after the watcher is already running: the probe must not sit there
+        // forever, and a check that never answers is exactly as bad as one that answers "gone".
+        using var tempDir = new TempDirectory();
+        using var release = new ManualResetEventSlim(false);
+        var calls = 0;
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            ConfigWith(
+                ("Trigger:FileWatcher:HealthProbeSeconds", "1"),
+                ("Trigger:FileWatcher:PathTimeoutSeconds", "1")))
+        {
+            // First call is the registration check; every probe afterwards hangs.
+            DirectoryProbe = _ =>
+            {
+                if (Interlocked.Increment(ref calls) > 1) release.Wait(TimeSpan.FromSeconds(30));
+                return true;
+            },
+        };
+
+        try
+        {
+            await src.StartAsync(Ctx($$"""{"directory":"{{Esc(tempDir.Path)}}"}"""), CancellationToken.None);
+
+            var health = await WaitForFaultAsync(src, TimeSpan.FromSeconds(25));
+
+            health.IsHealthy.Should().BeFalse();
+            health.Reason.Should().Contain("unreachable");
+        }
+        finally
+        {
+            release.Set();
             await src.DisposeAsync();
         }
     }

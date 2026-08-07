@@ -57,11 +57,13 @@ public class FileWatcherTriggerSource : ITriggerSource
     private const int ProbeFailuresBeforeFault = 2;
 
     /// <summary>
-    /// Test-only seam for the reachability check. The case the probe exists for cannot be staged
-    /// locally: deleting a watched directory DOES raise an FSW Error (Win32Exception, access
-    /// denied), so the primary fault path fires first and masks the probe entirely. Only a host
-    /// that vanishes hard enough to leave the pending change notification uncompleted reaches the
-    /// probe, and that needs a real network. Production never assigns this.
+    /// How this source decides a path is reachable — used both when registering and by the health
+    /// probe, so there is one answer to that question.
+    ///
+    /// Test-only seam. Neither case can be staged against the real filesystem: deleting a watched
+    /// directory DOES raise an FSW Error (Win32Exception, access denied), so the primary fault path
+    /// fires first and masks the probe entirely, and a path that hangs instead of answering needs a
+    /// genuinely unreachable host. Production never assigns this.
     /// </summary>
     internal Func<string, bool> DirectoryProbe { get; set; } = Directory.Exists;
 
@@ -230,7 +232,7 @@ public class FileWatcherTriggerSource : ITriggerSource
         // Kept even though the FileSystemWatcher constructor checks the path itself: this
         // produces the friendly DirectoryNotFoundException that callers and tests rely on,
         // where CheckPathValidity would throw a raw ArgumentException.
-        if (!Directory.Exists(dir))
+        if (!DirectoryProbe(dir))
             throw new DirectoryNotFoundException($"FileWatcherTrigger: directory '{dir}' does not exist");
 
         var watcher = new FileSystemWatcher(dir, filter)
