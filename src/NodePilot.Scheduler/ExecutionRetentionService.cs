@@ -9,6 +9,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Scheduler.Options;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Scheduler;
 
@@ -48,15 +49,19 @@ public class ExecutionRetentionService : BackgroundService
     // Resolved per pass from the live monitor — never cached across passes.
     private ExecutionsRetentionOptions Opts => _opts.CurrentValue.Executions;
 
+    private readonly IDatabaseAvailability _availability;
+
     public ExecutionRetentionService(
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<RetentionOptions> opts,
         IClusterStateProvider cluster,
-        ILogger<ExecutionRetentionService> logger)
+        ILogger<ExecutionRetentionService> logger,
+        IDatabaseAvailability availability)
     {
         _scopeFactory = scopeFactory;
         _opts = opts;
         _cluster = cluster;
+        _availability = availability;
         _logger = logger;
     }
 
@@ -71,6 +76,13 @@ public class ExecutionRetentionService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate, deliberately ABOVE the leader check: during a database outage no
+            // node can renew its cluster lease, so every node reads as a follower - gating on
+            // IsLeader first would park for the right reason and log the wrong one.
+            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
+            // is left at its default StopHost, so an escaping cancellation would stop the host).
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             // HA gate: only the leader may run retention sweeps. Otherwise a follower would
             // contend on the same DELETEs and double the IO cost on the shared DB.
             if (!_cluster.IsLeader)

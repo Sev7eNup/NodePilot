@@ -10,6 +10,7 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 using NodePilot.Core.Telemetry;
 
 namespace NodePilot.Api.Controllers;
@@ -162,18 +163,12 @@ public class WorkflowsController : WorkflowsControllerBase
             // exceeds this budget the cause is contention on the database, not the statement, and
             // waiting longer does not fix contention.
             const int InteractiveReadTimeoutSeconds = 15;
-            var previousTimeout = _db.Database.GetCommandTimeout();
-            _db.Database.SetCommandTimeout(InteractiveReadTimeoutSeconds);
             List<WorkflowExecutionListRowRaw> raw;
-            try
+            using (DatabaseCommandBudget.Apply(_db, InteractiveReadTimeoutSeconds))
             {
                 raw = await _db.Database
                     .SqlQueryRaw<WorkflowExecutionListRowRaw>(sql, sqlParams)
                     .ToListAsync(ct);
-            }
-            finally
-            {
-                _db.Database.SetCommandTimeout(previousTimeout);
             }
 
             executionWindow = raw

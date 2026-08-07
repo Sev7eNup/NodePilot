@@ -78,6 +78,68 @@ Trigger-Sources seeden ihre Event-Daten als `manual.*`-Variablen in den Run (`Va
 
 **webhookTrigger-Verifizierung:** Default = Shared-Secret-Header (`X-Webhook-Secret` == `secret`). Der explizit versionierte Modus `signatureMode: "nodepilot-hmac-v2"` verlangt ein per CSPRNG erzeugtes Secret mit mindestens 32 UTF-8-Bytes, `X-NodePilot-Timestamp` (UNIX-Sekunden) und eine eindeutige `X-NodePilot-Delivery-Id`. Signiert wird `"NodePilot-HMAC-v2\n" + timestamp + "\n" + deliveryId + "\n" + METHOD + "\n" + escapedPath + "\n" + canonicalQuery + "\n" + rawBody` mit HMAC-SHA256. Query-Kanonisierung: jedes Key/Value-Paar separat, UTF-8/RFC3986-Percent-Encoding, ordinal nach encodetem Key sortiert; die Reihenfolge doppelter Werte bleibt erhalten; mit `&` verbunden. `{signaturePrefix}{hex}` (Default `sha256=…`) steht im `signatureHeader` (Default `X-NodePilot-Signature`). Freshness-Fenster = fünf Minuten; Delivery-IDs werden über den gemeinsamen DB-Unique-Guard clusterweit nur einmal akzeptiert. V2 übernimmt keine beliebigen Request-Header in Execution-Parameter, weil sie nicht signiert sind. **Breaking:** Legacy-`signatureMode: "hmac"` und Provider-native Body-only-HMACs werden abgelehnt; GitHub/GitLab/Alertmanager sind nicht direkt wire-kompatibel und benötigen einen verifizierenden Adapter. Constant-time-Vergleich; Fehlversuche kollabieren ins uniforme 404. `fieldMappings` (`[{name, path}]`, max 32, Werte auf 4096 Zeichen gekappt) extrahiert Body-Felder als eigene Params (`{{manual.<name>}}`); non-JSON-Body/nicht-matchende Pfade degradieren zu Leerstring statt Reject; `__`-Prefix + `webhook*`-Systemkeys sind reserviert.
 
+### Trigger-Liveness — was passiert, wenn eine Quelle im Betrieb stirbt
+
+Der Orchestrator hielt eine Quelle für gesund, solange ihr Config-Hash passte. Ein
+`fileWatcherTrigger`, dessen UNC-Freigabe zur Laufzeit verschwindet, blieb damit als Leiche in
+`_active` liegen: die Remove-Schleife greift nur bei gelöscht/disabled/Hash-Änderung, die
+Add-Schleife steigt bei `_active.ContainsKey(key)` aus. Der Trigger feuerte nie wieder — auch nicht,
+wenn die Freigabe zurückkam. Sichtbar war das praktisch nicht: der Heartbeat schrieb weiter `ok`
+(der Sync-Pass gelingt ja), das Dashboard zeigte „Armed" (aus `TriggerTypesJson`, nicht aus
+Laufzeit-State), und es gab genau eine `LogError`-Zeile.
+
+**Mechanik heute:** `ITriggerSource.Health` liefert `TriggerHealth` (`IsHealthy` + `Reason`).
+Meldet eine registrierte Quelle `unhealthy`, evictet die Remove-Schleife sie (Metrik
+`nodepilot.trigger.orchestrator.sync.changes` mit `change=evict-unhealthy`), und der **bestehende**
+Add-Pfad baut sie im selben Pass neu auf. Scheitert das, greift der vorhandene Backoff (5→10→…→300 s,
+unbegrenzt) — genau der Pfad, der eine beim Start fehlende Freigabe schon immer korrekt geheilt hat.
+`_backoff` brauchte dafür keine Änderung: es wird bei jeder erfolgreichen Registrierung geleert, ein
+`_active`-Eintrag kann also nie einen lebenden Backoff-Eintrag haben.
+
+**Vertrag:** `Health` ist ein reiner In-Memory-Read. Der Orchestrator fragt sequenziell jeden
+Trigger im 5-s-Pass ab; ein blockierender Probe dort (`Directory.Exists` auf totem UNC-Pfad hängt
+bis zum SMB-Timeout) stoppt die Reconciliation **aller** Workflows. Quellen, die echtes I/O
+brauchen, laufen auf eigenem Timer und cachen das Urteil.
+
+**FileSystemWatcher-Spezifika** (gegen die Runtime-Quelle verifiziert):
+
+- **Nicht in-place re-armbar.** Im `Monitor()`-Re-Issue-Fehlerpfad disposed die Runtime den
+  Directory-Handle, ohne `_enabled` zu löschen → `EnableRaisingEvents` liest auf der Leiche noch
+  `true`, und der Setter steigt bei unverändertem Wert aus. Nur eine frische Instanz hilft — deshalb
+  Fault-Flag + Dispose/Recreate statt lokalem Re-Arm. `EnableRaisingEvents` taugt **nicht** als
+  Health-Check.
+- **Buffer-Overflow ist kein Fault.** Bei `InternalBufferOverflowException` stellt die Runtime den
+  Read neu aus, der Watcher lebt weiter. Evicten würde unter Dauerlast flappen und mehr Events
+  kosten als der Overflow. Klassifizierung in `FileWatcherTriggerSource.ClassifyWatcherError`.
+- **Gemessen:** sowohl eine verschwindende Freigabe als auch ein gelöschtes lokales Verzeichnis
+  feuern normalerweise `Error` (`Win32Exception`), der Fault steht also in Millisekunden fest.
+- **Backstop-Probe** für den Fall, dass gar kein `Error` kommt (Host hart weg → ausstehende
+  Change-Notification wird nie completed): eigener Timer pro Quelle, zwei aufeinanderfolgende
+  Fehlschläge = Fault. **Bekannte Lücke:** eine SMB-Session, die reconnected ohne die serverseitige
+  Notification neu zu armen, liefert `Directory.Exists == true` — das erkennt die Probe nicht;
+  dafür bräuchte es eine Sentinel-Datei im Nutzerverzeichnis, die selbst den Trigger auslöst.
+- **Registrierung ist gedeckelt.** Konstruktor, `Directory.Exists` und das Armen blockieren alle
+  drei auf einem toten Redirector; sie laufen unter `Trigger:FileWatcher:PathTimeoutSeconds`. Ein
+  abgehängter Build wird disposed (sonst feuerte ein herrenloser Watcher ewig weiter), und ein
+  Identitäts-Guard in `HandleEvent` lässt nur die publizierte Instanz feuern.
+
+**Andere Quellen:** `databaseTrigger` meldet ein beendetes Poll-Loop als Fault. `scheduleTrigger`
+meldet konstant gesund (Quartz besitzt Job-Liveness prozessweit). `eventLogTrigger` ebenfalls — und
+das ist eine bewusste Grenze: `EventLog` hat gar keinen Fault-Kanal, die einzige echte Probe wäre
+RPC an den EventLog-Dienst.
+
+**Config (`Trigger:FileWatcher:*`, keine `SettingsSchema`-Sektion → keine Admin-UI, kein
+Hot-Reload, keine Zeile in der Hardening-Tabelle):**
+
+| Key | Default | Wirkung |
+|---|---|---|
+| `PathTimeoutSeconds` | `5` | Deadline für die Filesystem-Calls bei der Registrierung. Überschreitung → `TimeoutException` → Backoff. |
+| `HealthProbeSeconds` | `60` | Intervall der Backstop-Probe. `0` schaltet sie ab. |
+
+**Sichtbarkeit:** Der Heartbeat meldet `degraded: N trigger(s) retrying` statt `ok`, solange
+irgendein Trigger im Backoff ist (erreicht `/api/dashboard`, wird von der UI aber nicht gerendert).
+Der operative Weg ist die System-Policy `trigger-unhealthy` — siehe `docs/alerting.md`.
+
 ---
 
 ## Edit-Lifecycle — UX-Flow & Button-States
@@ -174,7 +236,12 @@ Impl: [WorkflowEngine.cs](src/NodePilot.Engine/WorkflowEngine.cs) (`failureSumma
 
 `StepsTotal`/`StepsCompleted`/`FailedSteps` werden vom Listen-Endpoint `GET /api/executions` **und** von `GET /api/executions/{id}` befüllt (`Execute`/`Retry` lassen die Defaults stehen — eine frische `Pending`-Zeile hat noch keine Steps). `FailedSteps` ist nach `(StartedAt, Id)` sortiert; `StartedAt` allein ist bei parallelen Zweigen kein stabiler Sortierschlüssel.
 
-**Für einen laufenden Lauf sind die Zahlen kein Fortschritt.** `Engine:DeferRunningStateWrite` ist default `true` ([WorkflowEngine.cs](src/NodePilot.Engine/WorkflowEngine.cs)): die `StepExecution`-Zeile wird in [StepRunner.cs](src/NodePilot.Engine/Execution/StepRunner.cs) zwar beim Step-Start `Add`-ed, aber erst im terminalen Zustand gespeichert — ein gerade laufender Step hat **gar keine Zeile**. Daraus folgt für einen laufenden Lauf: `StepsTotal` zählt nur die bereits **fertigen** Steps, `StepsCompleted/StepsTotal` liest sich durchgehend als „100 %", und der seit zehn Minuten hängende Step ist unsichtbar.
+**Für einen laufenden Lauf sind die Zahlen kein Fortschritts-Prozentwert.** Seit ADR 0011 wird die
+`StepExecution`-Zeile mit stabiler GUID und Status `Running` zwingend vor der Activity gespeichert;
+`Engine:DeferRunningStateWrite=true` ist veraltet, wird ignoriert und einmalig gewarnt. Ein aktiver
+Step ist damit sichtbar, aber `StepsTotal` bleibt die Zahl der **bislang materialisierten**
+Step-Zeilen, nicht die Größe des noch auszuführenden Graphen. Loops und erst später erreichte Zweige
+können den Nenner weiter verändern, während `StepsCompleted` den laufenden Step noch nicht mitzählt.
 
 Deshalb zeigt Live-Ops bewusst **keinen Prozentbalken**, sondern die Zahl fertiger Steps plus Stagnations-Alter. Auch `Workflow.ActivityCount` taugt nicht als Ersatz-Nenner: es zählt Trigger und deaktivierte Nodes nicht mit ([WorkflowDefinitionDocument.cs](src/NodePilot.Core/WorkflowDefinitions/WorkflowDefinitionDocument.cs), `BuildMetadata`), während `StepExecution`-Zeilen ausgeführte Trigger und `Skipped`-Zeilen enthalten — dazu kommen dynamische Loop-Iterationen.
 
@@ -219,7 +286,14 @@ Drei opt-in Helfer (Default `Llm:Enabled=false`):
 
 **Auth/Rate-Limit**: generate-Endpoints `[Authorize(Roles = "Admin,Operator")]`, chat `[Authorize]` (alle Rollen); `[EnableRateLimiting("ai-generate")]` (20/min/IP, hardcoded in [RateLimitingSetup.cs](src/NodePilot.Api/Hosting/RateLimitingSetup.cs)) sitzt auf allen drei AI-Controllern — `AiController`, `AiChatController` **und** `AiKnowledgeController` —, gilt also auch für `/api/ai/knowledge/ask`.
 
-**DB-Timeout → 503 `DATABASE_TIMEOUT`**: Ein Command-Timeout ist ein transienter Lastzustand, kein Bug — `DatabaseTimeoutExceptionHandler` liefert 503 + `Retry-After` statt eines anonymen 500 (Erkennung provider-agnostisch über `DbErrorClassifier.IsCommandTimeout`: SQL Server `-2`, Postgres `57014`, `TimeoutException`; die Kette wird über `InnerException` abgelaufen, weil EF und seine Retry-Strategie doppelt wrappen). Die interaktive Workflow-Liste setzt zusätzlich ein eigenes 15-s-Command-Timeout statt der 120 s aus `Database:CommandTimeoutSeconds` — EF behandelt Timeouts als transient und wiederholt sie, aus einem langsamen Query wurden sonst bis zu sechs volle Timeouts hintereinander. Frontend-Seite: der globale `QueryCache.onError` toastet jeden fehlgeschlagenen Query (opt-out per `meta.silentError`), weil eine Seite, die nur `data`/`isLoading` liest, einen Fehler sonst als leere Liste rendert. Siehe ADR 0007, Amendment 2026-08-03.
+**DB-Timeout → 503 `DATABASE_TIMEOUT`**: Ein Command-Timeout ist ein transienter Lastzustand, kein Bug — `DatabaseTimeoutExceptionHandler` liefert 503 + `Retry-After` statt eines anonymen 500 (Erkennung provider-agnostisch über `DbErrorClassifier.Classify`; die Kette wird über `InnerException` abgelaufen, weil EF und seine Retry-Strategie doppelt wrappen). Die interaktive Workflow-Liste setzt zusätzlich ein eigenes 15-s-Command-Timeout (`DatabaseCommandBudget`) statt der 120 s aus `Database:CommandTimeoutSeconds`. Frontend-Seite: der globale `QueryCache.onError` toastet jeden fehlgeschlagenen Query (opt-out per `meta.silentError`). Siehe ADR 0007, Amendments 2026-08-03/07.
+
+**DB-Ausfall → 503 `DATABASE_UNAVAILABLE`**: Der prozessweite Breaker hält die SPA-Shell erreichbar,
+kappt DB-abhängige HTTP-/Hub-Flächen vor Auth und erholt sich über eine eigene `SELECT 1`-Sonde.
+`/healthz/live` bleibt 200, `/healthz/ready` gatet `Armed`/`Unavailable` mit 503 und
+`/healthz/database` berichtet für SPA/CLI immer mit 200. Zustandsautomat, Recovery-, Engine-,
+Background-Service-, Konfigurations- und Observability-Vertrag stehen vollständig in
+[ADR 0011](adr/0011-database-availability-breaker.md).
 
 **Disabled-Antwort**: Wenn `Llm:Enabled=false` → 503 mit `code: LLM_DISABLED`; wenn an, aber `Llm:ActiveProfileId` kein vorhandenes Profil benennt → 503 `LLM_NO_ACTIVE_PROFILE` (`LlmAvailability` in [LlmAvailability.cs](src/NodePilot.Api/Configuration/LlmAvailability.cs)). Andere Fehlerklassen siehe `LlmErrorKind` in [LlmException.cs](src/NodePilot.Ai/LlmException.cs).
 
@@ -298,6 +372,7 @@ Globale Flags: `--server`, `--profile`, `-o table|json|yaml`, `--no-color`, `-v`
 - `BACKUP_EXPORTED|BACKUP_RESTORED` (System-Configuration Backup, ADR 0001)
 - `AUDIT_LOG_EXPORTED` | `SUPPORT_EVENTS_EXPORTED` | `SUPPORT_LOG_DOWNLOADED` (sensible Diagnose-/Compliance-Exporte)
 - `CLUSTER_LEADERSHIP_ACQUIRED` (HA-Lease mit Node-ID und Fencing-Epoch)
+- `DATABASE_RECOVERED` (genau einmal pro echter `Unavailable -> Available`-Episode; kein Trip-Audit, da die Datenbank dabei nicht schreibbar ist)
 - `SETTINGS_{SMTP|LLM|RETENTION|AUTHENTICATION|LOGGING|OPENTELEMETRY|STATS|DBADMIN}_UPDATED` (Admin-Settings, ein Code pro Section)
 
 **Audit-Write-Pipeline (Phase 3):** Jeder Audit-Write läuft durch `IAuditStager` (in [NodePilot.Core/Audit/](src/NodePilot.Core/Audit/)), inkl. der drei ehemals direkten Bypass-Pfade. HTTP-Controller nutzen `IAuditWriter` (in [NodePilot.Api/Audit/](src/NodePilot.Api/Audit/AuditWriter.cs)); der wrappt den Stager mit `HttpContextAccessor`-Actor-Resolution + ECS-Log-Forward + Support-Log-Whitelist-Check. Redaction + 4 KiB-Cap gelten überall einheitlich.
@@ -485,7 +560,7 @@ Die Guard-Flags sind **hardened by default**: appsettings.json shippt sie als `t
 | `Remote:RequireWinRmSsl` | `true` | WinRM ohne SSL → Exception (Dev: `false`) |
 | `RestApi:BlockPrivateNetworks` | `true` | Blockiert RFC1918/Loopback in `restApi` (Dev: `false`) |
 | `RestApi:AllowedHosts` | `[]` | Exakte Host-/IP-Allow-Liste für tatsächlich proxied `restApi`-Ziele/Redirects — die Ausnahme von `BlockPrivateNetworks`. Link-Local/Cloud-Metadata bleibt immer gesperrt (Dev: `localhost`/`127.0.0.1`/`::1`) |
-| `WaitForCondition:AllowedHosts` | `["localhost"]` | **Eigene** Liste für die PowerShell-Probes `portOpen`/`httpOk`. Diese können das Ziel beim Connect nicht erneut prüfen (kein `ConnectCallback`), akzeptieren deshalb nur exakt gelistete Hosts; leere Liste lehnt jede Probe ab. Bewusst getrennt von `RestApi:AllowedHosts`, damit „eigenen Dienst prüfen" nicht zugleich `restApi` zu Loopback öffnet — dessen URLs können aus Trigger-Payloads stammen. Vergleich exakt: `127.0.0.1` deckt `localhost` nicht ab (Dev: alle drei Schreibweisen) |
+| `WaitForCondition:AllowedHosts` | `["localhost"]` | **Eigene** Liste für die PowerShell-Probes `portOpen`/`httpOk`. Diese können das Ziel beim Connect nicht erneut prüfen (kein `ConnectCallback`), akzeptieren deshalb nur exakt gelistete Hosts; leere Liste lehnt jede Probe ab. Bewusst getrennt von `RestApi:AllowedHosts`, damit „eigenen Dienst prüfen" nicht zugleich `restApi` zu Loopback öffnet — dessen URLs können aus Trigger-Payloads stammen. **Alleinige Autorität für beide Probe-Typen:** `httpOk` lief bis 2026-08-07 zusätzlich durch `NetworkGuard.ValidateUrl` (den restApi-SSRF-Guard) und war damit auf Loopback/RFC1918 unabhängig von dieser Liste blockiert — der ausgelieferte `localhost`-Default war auf jeder Nicht-Dev-Instanz wirkungslos und die Fehlermeldung nannte den falschen Key (`RestApi:BlockPrivateNetworks`, dazu restart-pflichtig). Heute prüft `NetworkGuard.ValidateProbeUrl` nur URL-Form, Scheme und diese Liste. Link-Local/Cloud-Metadata bleibt für beide Typen ungeachtet der Liste gesperrt. Vergleich exakt: `127.0.0.1` deckt `localhost` nicht ab (Dev: alle drei Schreibweisen) |
 | `FileSystemOperation:RejectTraversal` | `true` | Lehnt `..` in File-System-Op-Paths ab (Dev: `false`) |
 | `SqlActivity:RequireConnectionRef` | `true` | Nur benannte `connectionRef` statt inline `connectionString` (Dev: `false`) |
 | `StartProgram:DisallowShellExecute` | `true` | Verwirft `useShellExecute=true` (Dev: `false`) |
@@ -508,10 +583,14 @@ Endpoints: siehe CLAUDE.md "API Endpoints" (Maintenance Windows-Zeile). CLI: `np
 
 ## Background Services — Inventar
 
+> DB-pollende Dienste parken bei einem Ausfall über `WaitUntilServableAsync`; Ausnahmen, Drop- und
+> Recovery-Semantik definiert [ADR 0011](adr/0011-database-availability-breaker.md).
+
 Alle Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](src/NodePilot.Api/Hosting/BackgroundServicesSetup.cs) registriert (+ Cluster-Services in `ClusterSetup.cs`, SignalR-Bridge in `Program.cs`). Gating: **always-on** | **opt-in** (Config-Flag) | **leader-only** (nur im A/P-Leader aktiv).
 
 | Service | Zweck | Gating |
 |---|---|---|
+| `DatabaseRecoveryAuditService` | Persistiert `DATABASE_RECOVERED` idempotent je lokaler Outage-Episode | always-on |
 | `TriggerOrchestrator` + Quartz | Trigger-Scan (5 s) + Quartz-Cron für `scheduleTrigger` | leader-only (im Cluster) |
 | `ExecutionDispatchWorker` | Channel-basierter Dispatch der `Pending`-Executions an die Engine | always-on |
 | `MaintenanceWindowSnapshotService` | Hält den Maintenance-Window-Snapshot pro Knoten aktuell | always-on (nicht leader-gated) |
@@ -590,7 +669,7 @@ Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (hängt
 | `Stats` | ✓ | `WorkflowStatsRefresher` liest `IConfiguration.GetValue` pro Pass |
 | `Threading` | ✓ | `ThreadPoolTuningService` re-appliert `ThreadPool.SetMinThreads` bei Start + `ChangeToken.OnChange` (Boot-Call bleibt für Cold-Start-Prewarm). **Nur bei `Performance:ManualTuning=true`** — unter Auto-Dimensionierung folgt der Service dem Boot-Plan, sonst würde ein Reload allein den ThreadPool in einen anderen Modus ziehen als Runspace-Pool und Dispatch-Queue |
 | `FileSystemOperation` | ✓ | `PathGuard` liest `FileSystemOperation:RejectTraversal`/`AllowedRoots` pro Use aus `IConfiguration` |
-| `WaitForCondition` | ✓ | `NetworkGuard.RequireExplicitlyAllowlistedHost` liest `WaitForCondition:AllowedHosts` aus der Live-`IConfiguration` bei jedem Probe-Aufruf — gilt sofort ohne Restart |
+| `WaitForCondition` | ✓ | `NetworkGuard.RequireExplicitlyAllowlistedHost` liest `WaitForCondition:AllowedHosts` aus der Live-`IConfiguration` bei jedem Probe-Aufruf — gilt sofort ohne Restart. Gilt auch für `httpOk` (über `ValidateProbeUrl`); die restart-pflichtige `RestApi`-Sektion liegt nicht mehr im Pfad, sonst hätte eine hot-reload beworbene Karte einen Restart erzwungen |
 | `SqlActivity` | ✓ | `SqlActivity` liest `SqlActivity:RequireConnectionRef` pro Use aus `IConfiguration` |
 | `StartProgram` | ✓ | `StartProgramActivity` liest `StartProgram:DisallowShellExecute` pro Use aus `IConfiguration` |
 | `Webhook` | ✓ | `WebhooksController` liest `Webhook:RequireSecret` pro Request aus `IConfiguration` |

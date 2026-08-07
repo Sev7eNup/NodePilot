@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Routes, Route } from 'react-router';
 import { AppLayout } from '../../../components/layout/AppLayout';
 import { useAuthStore } from '../../../stores/authStore';
+import { useDbHealthStore } from '../../../stores/dbHealthStore';
 
 const originalMatchMedia = window.matchMedia;
 
@@ -39,7 +40,8 @@ function getAside(container: HTMLElement): HTMLElement {
 }
 
 beforeEach(() => {
-  // TopBar polls /healthz/live and /api/system host-info; keep them quiet.
+  // TopBar reads the health store; /api/system host-info still goes through fetch - keep it quiet.
+  useDbHealthStore.setState({ status: 'ok' });
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
   useAuthStore.setState({ userId: 'u1', username: 'admin', role: 'Admin', isAuthenticated: true });
 });

@@ -14,6 +14,14 @@ public static class SchedulerMetrics
     public static readonly ActivitySource Source = new("NodePilot.Scheduler");
     public static readonly Meter Meter = new("NodePilot.Scheduler", "1.0.0");
 
+    /// <summary>
+    /// Fires actually observed by active trigger sources and dropped because the database was
+    /// unavailable. This is not a count of source events missed while sources were disposed and it
+    /// is never replayed after recovery.
+    /// </summary>
+    public static readonly Counter<long> TriggersDroppedDbUnavailable = Meter.CreateCounter<long>(
+        "nodepilot.scheduler.triggers.dropped_db_unavailable");
+
     public static readonly Counter<long> TriggersFired = Meter.CreateCounter<long>(
         "nodepilot.triggers.fired", unit: "1", description: "Number of times a trigger fired a workflow execution (tagged by trigger_type).");
 
@@ -21,7 +29,7 @@ public static class SchedulerMetrics
         "nodepilot.trigger.orchestrator.sync.duration", unit: "ms", description: "Duration of a single TriggerOrchestrator sync pass.");
 
     public static readonly Counter<long> OrchestratorSyncChanges = Meter.CreateCounter<long>(
-        "nodepilot.trigger.orchestrator.sync.changes", unit: "1", description: "Add/update/remove changes applied per orchestrator sync pass, tagged by change type.");
+        "nodepilot.trigger.orchestrator.sync.changes", unit: "1", description: "Changes applied per orchestrator sync pass, tagged by change type (add/update/remove/evict-unhealthy) and trigger_type. 'evict-unhealthy' means a registered source reported itself dead and is being re-created.");
 
     public static readonly Counter<long> OrchestratorSyncFailures = Meter.CreateCounter<long>(
         "nodepilot.trigger.orchestrator.sync.failures", unit: "1", description: "Orchestrator sync passes that threw an exception.");

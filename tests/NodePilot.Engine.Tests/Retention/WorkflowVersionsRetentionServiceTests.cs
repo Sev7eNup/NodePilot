@@ -66,7 +66,8 @@ public class WorkflowVersionsRetentionServiceTests
             var service = new WorkflowVersionsRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<WorkflowVersionsRetentionService>.Instance);
+                NullLogger<WorkflowVersionsRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(maxVersionsPerWorkflow: 5, batchSize: 100, CancellationToken.None);
 
@@ -91,7 +92,8 @@ public class WorkflowVersionsRetentionServiceTests
             var service = new WorkflowVersionsRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<WorkflowVersionsRetentionService>.Instance);
+                NullLogger<WorkflowVersionsRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(maxVersionsPerWorkflow: 5, batchSize: 100, CancellationToken.None);
 
@@ -117,7 +119,8 @@ public class WorkflowVersionsRetentionServiceTests
             var service = new WorkflowVersionsRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<WorkflowVersionsRetentionService>.Instance);
+                NullLogger<WorkflowVersionsRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(maxVersionsPerWorkflow: 5, batchSize: 100, CancellationToken.None);
 
@@ -143,7 +146,8 @@ public class WorkflowVersionsRetentionServiceTests
             var service = new WorkflowVersionsRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<WorkflowVersionsRetentionService>.Instance);
+                NullLogger<WorkflowVersionsRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(maxVersionsPerWorkflow: 10, batchSize: 25, CancellationToken.None);
 
@@ -162,7 +166,8 @@ public class WorkflowVersionsRetentionServiceTests
             var service = new WorkflowVersionsRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<WorkflowVersionsRetentionService>.Instance);
+                NullLogger<WorkflowVersionsRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(50, 100, CancellationToken.None);
 

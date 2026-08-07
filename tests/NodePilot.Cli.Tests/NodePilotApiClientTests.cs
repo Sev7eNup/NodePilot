@@ -576,7 +576,7 @@ public sealed class NodePilotApiClientTests : IDisposable
         _server.Given(Request.Create().WithPath("/healthz/live").UsingGet()).RespondWith(Response.Create().WithStatusCode(200));
         _server.Given(Request.Create().WithPath("/healthz/ready").UsingGet()).RespondWith(Response.Create().WithStatusCode(200));
 
-        var (live, ready, _, _) = await _client.HealthAsync(CancellationToken.None);
+        var (live, ready, _, _, _, _) = await _client.HealthAsync(CancellationToken.None);
         live.Should().BeTrue();
         ready.Should().BeTrue();
     }
@@ -587,7 +587,7 @@ public sealed class NodePilotApiClientTests : IDisposable
         _server.Given(Request.Create().WithPath("/healthz/live").UsingGet()).RespondWith(Response.Create().WithStatusCode(200));
         _server.Given(Request.Create().WithPath("/healthz/ready").UsingGet()).RespondWith(Response.Create().WithStatusCode(503).WithBody("db unreachable"));
 
-        var (live, ready, detail, _) = await _client.HealthAsync(CancellationToken.None);
+        var (live, ready, detail, _, _, _) = await _client.HealthAsync(CancellationToken.None);
         live.Should().BeTrue();
         ready.Should().BeFalse();
         detail.Should().Contain("db");
@@ -601,7 +601,7 @@ public sealed class NodePilotApiClientTests : IDisposable
         _server.Given(Request.Create().WithPath("/healthz/leader").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new { status = "leader", nodeId = "NODE-A" }));
 
-        var (_, _, _, leader) = await _client.HealthAsync(CancellationToken.None);
+        var (_, _, _, leader, _, _) = await _client.HealthAsync(CancellationToken.None);
         leader.Should().Be("leader");
     }
 
@@ -613,7 +613,7 @@ public sealed class NodePilotApiClientTests : IDisposable
         _server.Given(Request.Create().WithPath("/healthz/leader").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(503).WithBodyAsJson(new { status = "follower", nodeId = "NODE-B", reason = "not_leader" }));
 
-        var (live, ready, _, leader) = await _client.HealthAsync(CancellationToken.None);
+        var (live, ready, _, leader, _, _) = await _client.HealthAsync(CancellationToken.None);
         live.Should().BeTrue();
         ready.Should().BeTrue();
         leader.Should().Be("follower");
@@ -627,8 +627,28 @@ public sealed class NodePilotApiClientTests : IDisposable
         _server.Given(Request.Create().WithPath("/healthz/leader").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(404).WithBody("not here"));
 
-        var (_, _, _, leader) = await _client.HealthAsync(CancellationToken.None);
+        var (_, _, _, leader, _, _) = await _client.HealthAsync(CancellationToken.None);
         leader.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task HealthAsync_DatabaseUnavailable_SurfacesStatusAndReasonWithoutFoldingIntoReady()
+    {
+        // /healthz/database answers 200 in every state by design (memory-only breaker view) -
+        // the STATUS FIELD carries the outage, and it must stay display-only: `ready` already
+        // flips on a database outage, so folding this in would double-count the same condition.
+        _server.Given(Request.Create().WithPath("/healthz/live").UsingGet()).RespondWith(Response.Create().WithStatusCode(200));
+        _server.Given(Request.Create().WithPath("/healthz/ready").UsingGet()).RespondWith(Response.Create().WithStatusCode(503));
+        _server.Given(Request.Create().WithPath("/healthz/database").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithBodyAsJson(new { status = "unavailable", sinceUtc = "2026-08-07T07:00:00Z", reason = "Unreachable" }));
+
+        var (live, ready, _, _, database, reason) = await _client.HealthAsync(CancellationToken.None);
+
+        live.Should().BeTrue();
+        ready.Should().BeFalse();
+        database.Should().Be("unavailable");
+        reason.Should().Be("Unreachable");
     }
 
     // ---- Generic plumbing ---------------------------------------------------

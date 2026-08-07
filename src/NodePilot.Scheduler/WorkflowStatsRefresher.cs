@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Scheduler;
 
@@ -41,15 +42,19 @@ public class WorkflowStatsRefresher : BackgroundService
     private readonly NodePilot.Core.Interfaces.IClusterStateProvider _cluster;
     private readonly ILogger<WorkflowStatsRefresher> _logger;
 
+    private readonly IDatabaseAvailability _availability;
+
     public WorkflowStatsRefresher(
         IServiceScopeFactory scopeFactory,
         IConfiguration config,
         NodePilot.Core.Interfaces.IClusterStateProvider cluster,
-        ILogger<WorkflowStatsRefresher> logger)
+        ILogger<WorkflowStatsRefresher> logger,
+        IDatabaseAvailability availability)
     {
         _scopeFactory = scopeFactory;
         _config = config;
         _cluster = cluster;
+        _availability = availability;
         _logger = logger;
     }
 
@@ -63,6 +68,13 @@ public class WorkflowStatsRefresher : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate, deliberately ABOVE the leader check: during a database outage no
+            // node can renew its cluster lease, so every node reads as a follower - gating on
+            // IsLeader first would park for the right reason and log the wrong one.
+            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
+            // is left at its default StopHost, so an escaping cancellation would stop the host).
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             // HA gate: leader-only.
             if (!_cluster.IsLeader)
             {

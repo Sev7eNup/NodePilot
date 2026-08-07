@@ -109,6 +109,18 @@ if (typeof globalThis !== 'undefined' && !('DOMMatrixReadOnly' in globalThis)) {
   globalThis.DOMMatrixReadOnly = class { m11=1; m22=1; e=0; f=0; };
 }
 
+// ECharts uses the SVG renderer in unit tests, but zrender still creates a 2D canvas solely to
+// measure text. jsdom deliberately leaves getContext() unimplemented and writes to stderr on every
+// call. A deterministic measureText-only context is the complete surface this SVG path needs.
+const canvasMeasureContext = {
+  measureText: (text: string) => ({ width: String(text).length * 8 }),
+} as unknown as CanvasRenderingContext2D;
+Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+  configurable: true,
+  writable: true,
+  value: vi.fn(() => canvasMeasureContext),
+});
+
 // `@tanstack/react-virtual` measures the scroll container via getBoundingClientRect /
 // offsetHeight to decide which items are in the viewport. jsdom returns 0 for both,
 // which means a virtualised list renders nothing and assertions that look for items

@@ -41,6 +41,8 @@ public static class AuditActions
     public const string CredentialDeleted = "CREDENTIAL_DELETED";
     public const string CredentialUpdated = "CREDENTIAL_UPDATED";
 
+    public const string DatabaseRecovered = "DATABASE_RECOVERED";
+
     public const string CustomActivityCreated = "CUSTOM_ACTIVITY_CREATED";
     public const string CustomActivityDeleted = "CUSTOM_ACTIVITY_DELETED";
     public const string CustomActivityDisabled = "CUSTOM_ACTIVITY_DISABLED";

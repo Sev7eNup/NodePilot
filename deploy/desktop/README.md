@@ -42,6 +42,13 @@ because both race the same way at boot — Desktop against the bundled Postgres 
 against a remote database still recovering. The bound is `Database:StartupWaitSeconds` (default
 120 s). Only reachability is retried; a migration/schema error surfaces immediately.
 
+> **Runtime outages:** If the bundled `NodePilotDb` service stops or hangs, the API stays up and
+> answers `503 DATABASE_UNAVAILABLE`; `/healthz/ready` returns 503 while `/healthz/database` reports
+> the state and reason. The UI shows a banner and resumes automatically after Postgres recovers.
+> Running workflows pause at a durable step boundary, and trigger fires observed during the outage
+> are not replayed. `RejectedByServer` requires fixing the local credentials, database or TLS setup;
+> restart the service when its connection settings changed.
+
 Everything else stays hardened. `Deployment:Mode` defaults to `Server`; an unknown value is a boot error.
 
 ### desktop.json — installer → shell handoff (no secrets)

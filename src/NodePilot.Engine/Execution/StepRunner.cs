@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Activities;
@@ -25,7 +26,6 @@ internal sealed class StepRunner
     private readonly DebugCoordinator _debugCoordinator;
     private readonly bool _stepDetailEnabled;
     private readonly int _stepDetailMaxChars;
-    private readonly bool _deferRunningStateWrite;
 
     // H-1 (security-audit finding): top-level config fields that must NOT be touched by the {{var}} resolver.
     // The activity executor then enforces "no {{...}}" on the passthrough text so an
@@ -75,8 +75,7 @@ internal sealed class StepRunner
         ILogger logger,
         OutputRedactor redactor,
         bool stepDetailEnabled,
-        int stepDetailMaxChars,
-        bool deferRunningStateWrite)
+        int stepDetailMaxChars)
     {
         _serviceProvider = serviceProvider;
         _notifier = notifier;
@@ -85,8 +84,13 @@ internal sealed class StepRunner
         _debugCoordinator = new DebugCoordinator(redactor, notifier);
         _stepDetailEnabled = stepDetailEnabled;
         _stepDetailMaxChars = stepDetailMaxChars;
-        _deferRunningStateWrite = deferRunningStateWrite;
+        // GetService, not GetRequiredService: engine unit tests build minimal providers without the
+        // breaker, and the engine must keep working without one (null → no step-boundary gate).
+        _availability = serviceProvider.GetService(typeof(NodePilot.Data.Availability.IDatabaseAvailability))
+            as NodePilot.Data.Availability.IDatabaseAvailability;
     }
+
+    private readonly NodePilot.Data.Availability.IDatabaseAvailability? _availability;
 
     internal async Task<ActivityResult> ExecuteAsync(
         WorkflowExecution execution,
@@ -100,11 +104,24 @@ internal sealed class StepRunner
         IReadOnlyDictionary<string, RetryPolicy> retryPolicies,
         DebugHandle? debug,
         CancellationTokenSource executionCts,
-        CancellationToken ct)
+        CancellationToken ct,
+        CancellationToken durabilityCancellation)
     {
+        // Step-boundary pause: while the database is known to be gone, no NEW activity starts. An
+        // already-running activity is never interrupted (its side effects are in flight), but starting
+        // the next one would execute real work — WinRM commands, file operations — whose step rows
+        // cannot be persisted, i.e. side effects with no audit trail. Waiting here means an in-flight
+        // execution parks at its next step edge and resumes by itself on recovery, which is exactly
+        // the contract the breaker gives everything else. The execution's own cancellation (timeout,
+        // user cancel, junction loss) still fires through ct: WaitUntilServableAsync returns false on
+        // cancellation, and the throw below routes into the existing cancellation handling.
+        if (_availability is not null && !await _availability.WaitUntilServableAsync(ct))
+            ct.ThrowIfCancellationRequested();
+
         var stepStopwatch = Stopwatch.StartNew();
         var activityTypeTag = new KeyValuePair<string, object?>("activity_type", node.Type);
         var finalStatus = "Failed";
+        var terminalPersistenceInProgress = false;
 
         using var stepActivity = WorkflowEngine.EngineActivitySource.StartActivity("workflow.step", ActivityKind.Internal);
         stepActivity?.SetTag(TelemetryConstants.Attributes.StepId, node.Id);
@@ -130,13 +147,10 @@ internal sealed class StepRunner
         var resolvedTargetMachine = VariableResolver.ResolveStringValue(node.Data.TargetMachineRaw, previousResults, outputVariableToStepId, globalVariables);
         var resolvedCredential = VariableResolver.ResolveStringValue(node.Data.CredentialRaw, previousResults, outputVariableToStepId, globalVariables);
 
-        var resolvedMachine = await MachineResolver.ResolveAsync(stepDb, resolvedTargetMachine, _logger, ct);
-        var targetMachineId = resolvedMachine?.Id != Guid.Empty ? resolvedMachine?.Id : null;
         var credentialId = Guid.TryParse(resolvedCredential, out var credGuid) ? credGuid : (Guid?)null;
 
         if (!string.IsNullOrEmpty(resolvedTargetMachine))
             stepActivity?.SetTag(TelemetryConstants.Attributes.StepTargetMachine, resolvedTargetMachine);
-        stepActivity?.SetTag(TelemetryConstants.Attributes.StepHasCredential, credentialId.HasValue || resolvedMachine?.DefaultCredentialId is not null);
         if (!string.IsNullOrEmpty(node.Data.OutputVariable))
             stepActivity?.SetTag(TelemetryConstants.Attributes.StepOutputVariable, node.Data.OutputVariable);
 
@@ -153,11 +167,25 @@ internal sealed class StepRunner
         };
 
         stepDb.StepExecutions.Add(stepExecution);
-        if (!_deferRunningStateWrite)
-            // CancellationToken.None deliberately — see the note on the terminal write below.
-            await stepDb.SaveChangesMeasuredAsync("step.running", CancellationToken.None);
+        // This is a durability barrier, not an optional live-view optimisation: no activity may
+        // produce an external side effect before its stable step id and Running state are committed.
+        // CancellationToken.None deliberately — see the note on the terminal write below.
+        await PersistStepStateDurablyAsync(
+            stepDb, stepExecution, "step.running", durabilityCancellation);
 
         await _notifier.StepStartedAsync(execution.Id, execution.WorkflowId, node.Id, node.Data.Label, node.Type ?? "unknown", stepExecution.StartedAt ?? DateTime.UtcNow);
+
+        // Machine lookup deliberately AFTER the durability barrier. It is a real database read, and
+        // before the barrier it sat in the one window nothing guards: past the step-boundary
+        // availability gate, before the Running row exists, and outside the try below. A failure
+        // there escaped StepRunner entirely and failed the whole run WITHOUT ever writing a step
+        // row - the exact inversion the barrier exists to prevent, one line too early. The Running
+        // row does not need it (it persists the resolved target STRING), so moving it costs nothing.
+        var resolvedMachine = await MachineResolver.ResolveAsync(stepDb, resolvedTargetMachine, _logger, ct);
+        var targetMachineId = resolvedMachine?.Id != Guid.Empty ? resolvedMachine?.Id : null;
+        stepActivity?.SetTag(
+            TelemetryConstants.Attributes.StepHasCredential,
+            credentialId.HasValue || resolvedMachine?.DefaultCredentialId is not null);
 
         try
         {
@@ -267,7 +295,13 @@ internal sealed class StepRunner
             // command server-side on cancel, so nothing was committed to collide with.
             // The two error handlers below already used CancellationToken.None for the same
             // reason; this write was the inconsistent one.
-            await stepDb.SaveChangesMeasuredAsync("step.terminal", CancellationToken.None);
+            // Do not return the activity result until its terminal row is durable. While the shared
+            // breaker confirms an outage this parks on recovery and retries with a fresh context;
+            // other persistence failures propagate instead of silently changing graph control flow.
+            terminalPersistenceInProgress = true;
+            await PersistStepStateDurablyAsync(
+                stepDb, stepExecution, "step.terminal", durabilityCancellation);
+            terminalPersistenceInProgress = false;
 
             stepActivity?.SetTag(TelemetryConstants.Attributes.StepStatus, stepExecution.Status.ToString());
             if (result.Success)
@@ -287,16 +321,38 @@ internal sealed class StepRunner
 
             return result;
         }
+        catch (Exception) when (terminalPersistenceInProgress)
+        {
+            // A terminal persistence exception is not an activity failure. Let WorkflowEngine abort
+            // the graph and apply its execution-level failure/cancellation policy; otherwise this
+            // method would route a successful side effect down the workflow's failure edge.
+            throw;
+        }
         catch (OperationCanceledException) when (!executionCts.IsCancellationRequested && ct.IsCancellationRequested)
         {
             const string message = "Step cancelled because another branch already satisfied the workflow junction.";
             stepExecution.Status = ExecutionStatus.Cancelled;
             stepExecution.ErrorOutput = message;
             stepExecution.CompletedAt = DateTime.UtcNow;
-            // DB write in error path: swallow any secondary failure — a cancelled step must
-            // never abort the scheduler loop by propagating a DB exception.
-            try { await stepDb.SaveChangesMeasuredAsync("step.cancelled", CancellationToken.None); }
-            catch (Exception dbEx) { _logger.LogWarning(dbEx, "Failed to persist Cancelled status for step {StepId}.", node.Id); }
+            // Outage barrier kept, but a NON-outage failure is swallowed on this path only.
+            // Rationale: this branch runs for the LOSING branches of a junction, and the Cancelled
+            // row is load-bearing for nothing — the run's verdict counts Failed rows exclusively.
+            // Letting a deadlock (40P01 classifies as None, i.e. not a confirmed outage) or a stray
+            // command timeout escape here fails the whole execution, including the branch that WON
+            // the junction and succeeded, and abandons the remaining in-flight steps.
+            // step.running (the durability barrier) and step.failed (already failing the run) keep
+            // propagating on purpose — only this one is cosmetic.
+            try
+            {
+                await PersistStepStateDurablyAsync(
+                    stepDb, stepExecution, "step.cancelled", durabilityCancellation);
+            }
+            catch (Exception dbEx) when (dbEx is not OperationCanceledException)
+            {
+                _logger.LogWarning(dbEx,
+                    "Failed to persist Cancelled status for step {StepId}; the run's verdict is unaffected.",
+                    node.Id);
+            }
 
             stepActivity?.SetTag(TelemetryConstants.Attributes.StepStatus, "Cancelled");
             stepActivity?.SetStatus(ActivityStatusCode.Ok);
@@ -321,11 +377,8 @@ internal sealed class StepRunner
             stepExecution.Status = ExecutionStatus.Failed;
             stepExecution.ErrorOutput = TruncateForPersist(sanitizedError);
             stepExecution.CompletedAt = DateTime.UtcNow;
-            // DB write in error path: swallow any secondary failure — a failed step's DB
-            // write must never propagate out of StepRunner and abort the scheduler loop,
-            // leaving all downstream steps permanently Skipped with a wrong timestamp.
-            try { await stepDb.SaveChangesMeasuredAsync("step.failed", CancellationToken.None); }
-            catch (Exception dbEx) { _logger.LogWarning(dbEx, "Failed to persist Failed status for step {StepId}.", node.Id); }
+            await PersistStepStateDurablyAsync(
+                stepDb, stepExecution, "step.failed", durabilityCancellation);
 
             stepActivity?.SetTag(TelemetryConstants.Attributes.StepStatus, "Failed");
             stepActivity?.SetStatus(ActivityStatusCode.Error, sanitizedError);
@@ -351,6 +404,95 @@ internal sealed class StepRunner
             EngineMetrics.StepDuration.Record(stepStopwatch.Elapsed.TotalMilliseconds, activityTypeTag, statusTag);
         }
     }
+
+    /// <summary>
+    /// Commits a step lifecycle state before control advances. Only a
+    /// database-shaped failure accompanied by the process-wide open breaker is retried: this avoids
+    /// hiding programming/model errors behind an outage wait. Recovery always uses a fresh context,
+    /// and the stable Guid is loaded before update so an unknown first-commit outcome is idempotent.
+    /// </summary>
+    private async Task PersistStepStateDurablyAsync(
+        NodePilotDbContext primaryDb,
+        StepExecution snapshot,
+        string operation,
+        CancellationToken durabilityCancellation)
+    {
+        try
+        {
+            await SaveTrackedStepStateAsync(primaryDb, operation);
+            return;
+        }
+        catch (Exception ex) when (IsConfirmedDatabaseOutage(ex))
+        {
+            _logger.LogWarning(ex,
+                "Lifecycle write for step {StepId} paused until database recovery.", snapshot.StepId);
+        }
+
+        var uniqueCollisionRetries = 0;
+        while (true)
+        {
+            if (_availability is null
+                || !await _availability.WaitUntilServableAsync(durabilityCancellation))
+            {
+                throw new OperationCanceledException(
+                    "Host stopped while waiting to make step lifecycle state durable.",
+                    durabilityCancellation);
+            }
+
+            try
+            {
+                await using var recoveryScope = _serviceProvider.CreateAsyncScope();
+                var recoveryDb = recoveryScope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+                var durable = await recoveryDb.StepExecutions
+                    .SingleOrDefaultAsync(candidate => candidate.Id == snapshot.Id, CancellationToken.None);
+
+                if (durable is null)
+                {
+                    durable = new StepExecution { Id = snapshot.Id };
+                    recoveryDb.Entry(durable).CurrentValues.SetValues(snapshot);
+                    recoveryDb.StepExecutions.Add(durable);
+                }
+                else
+                {
+                    recoveryDb.Entry(durable).CurrentValues.SetValues(snapshot);
+                }
+
+                await SaveTrackedStepStateAsync(recoveryDb, operation);
+                // A failed INSERT leaves the original context's entity Added even if a recovery
+                // scope has now inserted (or discovered) the stable Guid. Reset it so the later
+                // terminal write becomes an UPDATE instead of reissuing a duplicate INSERT.
+                primaryDb.Entry(snapshot).State = EntityState.Unchanged;
+                return;
+            }
+            catch (DbUpdateException ex)
+                when (DbErrorClassifier.IsUniqueConstraintViolation(ex) && uniqueCollisionRetries++ == 0)
+            {
+                // The first attempt may have committed and then lost its acknowledgement, or another
+                // retry may have inserted the same stable Guid. A brand-new scope will now load it.
+            }
+            catch (Exception ex) when (IsConfirmedDatabaseOutage(ex))
+            {
+                // The probe may have closed the breaker just before this attempt and the database
+                // disappeared again. Loop through the shared recovery gate; never spin on Armed.
+            }
+        }
+    }
+
+    private bool IsConfirmedDatabaseOutage(Exception exception)
+        => _availability is { IsServable: false }
+           && DbErrorClassifier.Classify(exception) is not DbFailureKind.None;
+
+    // Keep operation names explicit: besides stable metrics, the source-level cancellation
+    // invariant verifies that no lifecycle write ever uses the branch cancellation token.
+    private static Task<int> SaveTrackedStepStateAsync(NodePilotDbContext db, string operation)
+        => operation switch
+        {
+            "step.running" => db.SaveChangesMeasuredAsync("step.running", CancellationToken.None),
+            "step.terminal" => db.SaveChangesMeasuredAsync("step.terminal", CancellationToken.None),
+            "step.cancelled" => db.SaveChangesMeasuredAsync("step.cancelled", CancellationToken.None),
+            "step.failed" => db.SaveChangesMeasuredAsync("step.failed", CancellationToken.None),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Unknown step state operation."),
+        };
 
     private async Task<(ActivityResult result, int attemptsUsed)> RunWithRetryAsync(
         WorkflowNode node,

@@ -5,9 +5,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging.Abstractions;
+using NodePilot.Api.Hosting;
 using NodePilot.Api.Security;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
+using NodePilot.Data.Availability;
 using NodePilot.TestCommons;
 using Xunit;
 
@@ -96,6 +99,52 @@ public class TokenValidityMiddlewareTests
     // and sharing a static instance between tests would leak state across them.
     private static IMemoryCache NewCache() => new MemoryCache(new MemoryCacheOptions());
 
+    private static TokenValidityMiddleware CreateMiddleware(RequestDelegate next) =>
+        new(next, new DatabaseAvailabilityOptions());
+
+    [Theory]
+    [InlineData("GET")]
+    [InlineData("HEAD")]
+    public async Task Invoke_SpaNavigationWithCookieDuringOutage_ServesShellWithoutDatabaseReads(
+        string method)
+    {
+        var db = TestDbFactory.Create();
+        var ctx = MakeContext(
+            jti: Guid.NewGuid().ToString("N"),
+            userId: Guid.NewGuid(),
+            secStamp: 7,
+            role: UserRole.Admin,
+            sessionId: Guid.NewGuid());
+        ctx.Request.Method = method;
+        ctx.Request.Path = "/workflows/any-client-route";
+        ctx.Request.Headers.Cookie = "np_auth=still-signature-valid";
+
+        // A disposed context is an observable tripwire: touching RevokedTokens, AuthSessions or Users
+        // throws. During an open breaker an SPA navigation must be anonymized before any of them run.
+        db.Dispose();
+
+        var tracker = new DatabaseAvailabilityTracker(
+            NullLogger<DatabaseAvailabilityTracker>.Instance);
+        tracker.MarkBootComplete();
+        tracker.ReportUnreachable(DatabaseOutageReason.Unreachable);
+
+        var nextCalled = false;
+        var tokenValidity = CreateMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+        var outageGate = new DatabaseAvailabilityMiddleware(
+            inner => tokenValidity.Invoke(inner, db, NewCache()), tracker);
+
+        await outageGate.InvokeAsync(ctx);
+
+        nextCalled.Should().BeTrue("the static SPA shell is the outage user interface");
+        ctx.User.Identity!.IsAuthenticated.Should().BeFalse();
+        ctx.Items[TokenValidityMiddleware.InvalidatedPrincipalItem]
+            .Should().BeOfType<ClaimsPrincipal>();
+    }
+
     [Fact]
     public async Task Invoke_ValidToken_CallsNext()
     {
@@ -107,7 +156,7 @@ public class TokenValidityMiddlewareTests
         var jti = Guid.NewGuid().ToString();
         var ctx = MakeContext(jti: jti, userId: userId, db: db);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -134,7 +183,7 @@ public class TokenValidityMiddlewareTests
 
         var ctx = MakeContext(jti: jti, userId: userId, db: db);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -164,7 +213,7 @@ public class TokenValidityMiddlewareTests
         var ctx = MakeContext(jti: jti, userId: userId, db: db);
         ctx.Request.Path = "/login";
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
 
         await middleware.Invoke(ctx, db, NewCache());
 
@@ -193,7 +242,7 @@ public class TokenValidityMiddlewareTests
         var ctx = MakeContext(jti: jti, userId: userId, db: db);
         ctx.Request.Path = "/hubs/execution";
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
 
         await middleware.Invoke(ctx, db, NewCache());
 
@@ -220,7 +269,7 @@ public class TokenValidityMiddlewareTests
             new EndpointMetadataCollection(new AllowAnonymousAttribute()),
             "anonymous-test"));
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ =>
+        var middleware = CreateMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -248,7 +297,7 @@ public class TokenValidityMiddlewareTests
             _ => Task.CompletedTask,
             new EndpointMetadataCollection(new AllowAnonymousAttribute()),
             "anonymous-test"));
-        var middleware = new TokenValidityMiddleware(_ => Task.CompletedTask);
+        var middleware = CreateMiddleware(_ => Task.CompletedTask);
 
         await middleware.Invoke(ctx, db, NewCache());
 
@@ -264,7 +313,7 @@ public class TokenValidityMiddlewareTests
         await db.SaveChangesAsync();
 
         var jti = Guid.NewGuid().ToString();
-        var middleware = new TokenValidityMiddleware(_ => Task.CompletedTask);
+        var middleware = CreateMiddleware(_ => Task.CompletedTask);
         var cache = NewCache();
 
         await middleware.Invoke(MakeContext(jti: jti, userId: userId, db: db), db, cache);
@@ -295,7 +344,7 @@ public class TokenValidityMiddlewareTests
         var jti = Guid.NewGuid().ToString();
         var ctx = MakeContext(jti: jti, userId: userId, db: db);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -316,7 +365,7 @@ public class TokenValidityMiddlewareTests
         // no jti passed
         var ctx = MakeContext(authenticated: true, jti: null, userId: userId);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -331,7 +380,7 @@ public class TokenValidityMiddlewareTests
         var db = TestDbFactory.Create();
         var ctx = MakeContext(authenticated: false);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -354,7 +403,7 @@ public class TokenValidityMiddlewareTests
         var iatMs = new DateTimeOffset(tokenIssuedAt).ToUnixTimeMilliseconds();
         var ctx = MakeContext(jti: Guid.NewGuid().ToString(), userId: userId, iatMs: iatMs, db: db);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -377,7 +426,7 @@ public class TokenValidityMiddlewareTests
         var iatMs = new DateTimeOffset(tokenIssuedAt).ToUnixTimeMilliseconds();
         var ctx = MakeContext(jti: Guid.NewGuid().ToString(), userId: userId, iatMs: iatMs, db: db);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -403,7 +452,7 @@ public class TokenValidityMiddlewareTests
 
         var ctx = MakeContext(jti: jti, userId: userId, db: db);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -426,7 +475,7 @@ public class TokenValidityMiddlewareTests
 
         var ctx = MakeContext(jti: Guid.NewGuid().ToString(), userId: userId, secStamp: 4, db: db);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -446,7 +495,7 @@ public class TokenValidityMiddlewareTests
 
         var ctx = MakeContext(jti: Guid.NewGuid().ToString(), userId: userId, secStamp: 7, db: db);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -471,7 +520,7 @@ public class TokenValidityMiddlewareTests
             db: db);
         var nextCalled = false;
 
-        await new TokenValidityMiddleware(_ =>
+        await CreateMiddleware(_ =>
             {
                 nextCalled = true;
                 return Task.CompletedTask;
@@ -495,7 +544,7 @@ public class TokenValidityMiddlewareTests
             new Claim(ClaimTypes.Role, UserRole.Admin.ToString()));
         var nextCalled = false;
 
-        await new TokenValidityMiddleware(_ =>
+        await CreateMiddleware(_ =>
             {
                 nextCalled = true;
                 return Task.CompletedTask;
@@ -521,7 +570,7 @@ public class TokenValidityMiddlewareTests
 
         var ctx = MakeContext(jti: Guid.NewGuid().ToString(), userId: userId); // no secStamp
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -544,7 +593,7 @@ public class TokenValidityMiddlewareTests
         var iatSec = new DateTimeOffset(tokenIssuedAt).ToUnixTimeSeconds();
         var ctx = MakeContext(jti: Guid.NewGuid().ToString(), userId: userId, iatSeconds: iatSec, db: db);
         var nextCalled = false;
-        var middleware = new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
+        var middleware = CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; });
         var cache = NewCache();
 
         await middleware.Invoke(ctx, db, cache);
@@ -566,7 +615,7 @@ public class TokenValidityMiddlewareTests
         var ctx = MakeContext(userId: user.Id, secStamp: user.SecurityStamp, db: db);
         var nextCalled = false;
 
-        await new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; })
+        await CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; })
             .Invoke(ctx, db, NewCache());
 
         nextCalled.Should().BeFalse();
@@ -600,7 +649,7 @@ public class TokenValidityMiddlewareTests
             sessionId: session.Id);
         var nextCalled = false;
 
-        await new TokenValidityMiddleware(_ => { nextCalled = true; return Task.CompletedTask; })
+        await CreateMiddleware(_ => { nextCalled = true; return Task.CompletedTask; })
             .Invoke(ctx, db, NewCache());
 
         nextCalled.Should().BeFalse();

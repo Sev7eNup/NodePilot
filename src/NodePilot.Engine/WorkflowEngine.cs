@@ -1,15 +1,18 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Configuration;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 using NodePilot.Engine.Debug;
 using NodePilot.Engine.Execution;
 using NodePilot.Core.Telemetry;
@@ -26,13 +29,15 @@ public class WorkflowEngine : IWorkflowEngine
     private readonly NodePilot.Engine.Security.OutputRedactor _redactor;
     private readonly StepRunner _stepRunner;
     private readonly string? _dbProviderTag;
-    private readonly bool _deferRunningStateWrite;
     private readonly NodePilot.Core.Interfaces.IClusterStateProvider? _cluster;
+    private readonly IDatabaseAvailability? _availability;
+    private readonly CancellationToken _hostStopping;
 
     internal static readonly ActivitySource EngineActivitySource = new(TelemetryConstants.Sources.Engine);
     public static readonly ActivitySource ActivitiesSource = new(TelemetryConstants.Sources.EngineActivities);
 
     private static readonly ConcurrentDictionary<Guid, CancellationTokenSource> _runningExecutions = new();
+    private static readonly ConditionalWeakTable<IConfiguration, object> DeferredStepWriteWarnings = new();
     // Cancel attribution: a caller (e.g. the manual-cancel controller) records WHO cancelled here
     // BEFORE tripping the token, so the engine's single OperationCanceledException catch — which is
     // also reached by timeouts and host shutdown — can stamp the reason onto the execution row.
@@ -103,21 +108,43 @@ public class WorkflowEngine : IWorkflowEngine
         // output in the log file for debugging turn the flag on explicitly.
         var stepDetailEnabled = configuration?.GetValue("Logging:StepDetail:Enabled", false) ?? false;
         var stepDetailMaxChars = configuration?.GetValue("Logging:StepDetail:MaxOutputChars", 10_000) ?? 10_000;
-        // StepExecution write strategy: default is "defer" (only *one* SaveChanges per
-        // step, at its terminal state). The earlier double-write (an insert when the step
-        // went Running, then an update at completion) doubled the DB round-trip cost per
-        // step. Deployments that need to see the Running row live via REST polling
-        // (instead of SignalR) can switch back to the old two-phase behavior via
-        // Engine:DeferRunningStateWrite=false. The SignalR StepStarted event still fires
-        // in both modes.
-        var deferRunningStateWrite = configuration?.GetValue("Engine:DeferRunningStateWrite", true) ?? true;
-        _deferRunningStateWrite = deferRunningStateWrite;
+        // This legacy throughput option is intentionally ignored. Persisting Running is a
+        // durability barrier: an activity must not create external side effects before its stable
+        // step id is committed. Warn once per configuration root so an old deployment setting is
+        // visible without producing one warning per scoped engine instance.
+        const string deferRunningStateWriteKey = "Engine:DeferRunningStateWrite";
+        var deferSetting = configuration?[deferRunningStateWriteKey];
+        var shouldWarnForDeferredWrites = configuration is not null
+            && bool.TryParse(deferSetting, out var deferRunningStateWrite)
+            && deferRunningStateWrite;
+        if (shouldWarnForDeferredWrites)
+        {
+            var shouldLog = false;
+            lock (DeferredStepWriteWarnings)
+            {
+                if (!DeferredStepWriteWarnings.TryGetValue(configuration!, out _))
+                {
+                    DeferredStepWriteWarnings.Add(configuration!, new object());
+                    shouldLog = true;
+                }
+            }
+
+            if (shouldLog)
+            {
+                logger.LogWarning(
+                    "Engine:DeferRunningStateWrite=true is ignored because Running step state must be durable before activity execution.");
+            }
+        }
         _configuration = configuration;
         // Resolve cluster state provider lazily — registered in single-node mode as a no-op
         // (NodeId = MachineName) and in cluster mode as the real ClusterLeaderService.
         // GetService (not GetRequiredService) so test harnesses without DI for cluster work.
         _cluster = serviceProvider.GetService(typeof(NodePilot.Core.Interfaces.IClusterStateProvider))
             as NodePilot.Core.Interfaces.IClusterStateProvider;
+        _availability = serviceProvider.GetService(typeof(IDatabaseAvailability))
+            as IDatabaseAvailability;
+        _hostStopping = (serviceProvider.GetService(typeof(IHostApplicationLifetime))
+            as IHostApplicationLifetime)?.ApplicationStopping ?? CancellationToken.None;
         _redactor = new NodePilot.Engine.Security.OutputRedactor(configuration);
         _stepRunner = new StepRunner(
             _serviceProvider,
@@ -125,8 +152,7 @@ public class WorkflowEngine : IWorkflowEngine
             _logger,
             _redactor,
             stepDetailEnabled,
-            stepDetailMaxChars,
-            deferRunningStateWrite);
+            stepDetailMaxChars);
         // Snap the active EF provider into a short tag so we don't pay the EF reflection
         // cost on every workflow.execute span. The app's DB provider in production is
         // "sqlserver" or "postgres" (matches the Database:Provider config key); "sqlite"
@@ -380,7 +406,8 @@ public class WorkflowEngine : IWorkflowEngine
         KeyValuePair<string, object?> WorkflowNameTag,
         int CallDepth,
         string? ExpectedOwnerNodeId,
-        long ExpectedLeaseEpoch);
+        long ExpectedLeaseEpoch,
+        CancellationToken DurabilityCancellation);
 
     /// <summary>
     /// Orchestrates one workflow run. The phases live in dedicated methods (create/reset row,
@@ -475,11 +502,11 @@ public class WorkflowEngine : IWorkflowEngine
         var execution = CreateOrResetExecution(existingExecution, workflow, executionId, triggeredBy,
             inputParameters, startedByUserId, parentExecutionId, callDepth, activity);
         var run = new ExecutionRun(workflow, execution, activity, executionStopwatch,
-            workflowIdTag, workflowNameTag, callDepth, expectedOwnerNodeId, expectedLeaseEpoch);
+            workflowIdTag, workflowNameTag, callDepth, expectedOwnerNodeId, expectedLeaseEpoch, _hostStopping);
 
         // Interactive runs need the Pending→Running transition to land in the DB immediately
         // so dashboard/list views don't show "queued" while the engine is already executing.
-        var persistExecutionStart = existingExecution is null || debugEnabled || !_deferRunningStateWrite || interactiveRun;
+        var persistExecutionStart = existingExecution is null || debugEnabled || interactiveRun;
         if (persistExecutionStart)
             await _db.SaveChangesMeasuredAsync("execution.start", ct);
 
@@ -668,18 +695,17 @@ public class WorkflowEngine : IWorkflowEngine
     }
 
     /// <summary>
-    /// Writes the terminal execution state and GUARANTEES it lands — this is what makes an
-    /// execution's completion reliable by construction. Two properties:
+    /// Writes the terminal execution state as a durability barrier. Three properties:
     ///  1) it is cancellation-independent (<see cref="CancellationToken.None"/>) — finalization is
     ///     exactly the operation that must complete even for a cancelled/timed-out run, so it must
     ///     never ride the run's own (possibly-tripped) token;
     ///  2) if the run's own <see cref="_db"/> is unusable (a prior write was cancelled/faulted and
     ///     poisoned the pooled connection, or the scope is torn down at host shutdown), the CAS is
     ///     retried on a FRESH DI scope + fresh <see cref="NodePilotDbContext"/>.
-    /// The single-node CAS predicate and the cluster write-fence are preserved on BOTH attempts,
-    /// so this never clobbers a row a new leader legitimately owns. The only path that can still
-    /// leave a Running row is total DB unavailability on both attempts — logged loudly, and the
-    /// boot reconciler terminalizes it on the next startup.
+    ///  3) a confirmed outage waits and retries until probe recovery; only host shutdown releases
+    ///     that wait. Non-outage failures propagate to the caller instead of silently leaving Running.
+    /// The single-node CAS predicate and cluster write-fence are preserved on every attempt, so this
+    /// never clobbers a row a new leader legitimately owns.
     /// </summary>
     private async Task PersistTerminalStateResilientAsync(
         ExecutionRun run, ExecutionStatus desiredStatus, string? errorMessage, string? cancelledBy, string operation)
@@ -699,53 +725,151 @@ public class WorkflowEngine : IWorkflowEngine
             _logger.LogWarning(ex,
                 "Terminal write for execution {ExecutionId} failed on the run context; retrying on a fresh scope",
                 run.Execution.Id);
+
+            if (IsConfirmedDatabaseOutage(ex)
+                && !await WaitForTerminalWriteRecoveryAsync(run))
+            {
+                return;
+            }
         }
 
         // Resilient path: a standalone CAS on a brand-new context, independent of _db's state.
         // Only the execution row is written here — Skipped-step rows are cosmetic UI state and are
         // best-effort on the fast path; the invariant that matters is that the run reaches terminal.
-        try
+        while (true)
         {
-            await using var scope = _serviceProvider.CreateAsyncScope();
-            var freshDb = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-            var candidates = freshDb.WorkflowExecutions
-                .Where(c => c.Id == run.Execution.Id
-                         && c.WorkflowId == run.Execution.WorkflowId
-                         && (c.Status == ExecutionStatus.Running || c.Status == ExecutionStatus.Paused));
-            candidates = ApplyExecutionWriteFence(freshDb, candidates, run.ExpectedOwnerNodeId, run.ExpectedLeaseEpoch);
-            var updated = await candidates.ExecuteUpdateAsync(setters => setters
-                .SetProperty(c => c.Status, desiredStatus)
-                .SetProperty(c => c.CompletedAt, completedAt)
-                .SetProperty(c => c.ErrorMessage, errorMessage)
-                .SetProperty(c => c.CancelledBy, cancelledBy), CancellationToken.None);
-            if (updated == 1)
+            try
             {
-                // Reflect the committed values on the tracked entity so the caller's notify + logs
-                // see the true terminal state.
-                run.Execution.Status = desiredStatus;
-                run.Execution.CompletedAt = completedAt;
-                run.Execution.ErrorMessage = errorMessage;
-                run.Execution.CancelledBy = cancelledBy;
-            }
-            else
-            {
-                // 0 rows: the row is already terminal (a concurrent authoritative write won) or the
-                // fence legitimately rejected us (another cluster owner). Import the committed state.
-                var current = await freshDb.WorkflowExecutions.AsNoTracking()
-                    .FirstOrDefaultAsync(c => c.Id == run.Execution.Id, CancellationToken.None);
-                if (current is not null)
+                await using var scope = _serviceProvider.CreateAsyncScope();
+                var freshDb = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+                var candidates = freshDb.WorkflowExecutions
+                    .Where(c => c.Id == run.Execution.Id
+                             && c.WorkflowId == run.Execution.WorkflowId
+                             && (c.Status == ExecutionStatus.Running || c.Status == ExecutionStatus.Paused));
+                candidates = ApplyExecutionWriteFence(freshDb, candidates, run.ExpectedOwnerNodeId, run.ExpectedLeaseEpoch);
+                var updated = await candidates.ExecuteUpdateAsync(setters => setters
+                    .SetProperty(c => c.Status, desiredStatus)
+                    .SetProperty(c => c.CompletedAt, completedAt)
+                    .SetProperty(c => c.ErrorMessage, errorMessage)
+                    .SetProperty(c => c.CancelledBy, cancelledBy), CancellationToken.None);
+                if (updated == 1)
                 {
-                    run.Execution.Status = current.Status;
-                    run.Execution.CompletedAt = current.CompletedAt;
+                    // Reflect the committed values on the tracked entity so notifications and logs
+                    // see the true terminal state.
+                    run.Execution.Status = desiredStatus;
+                    run.Execution.CompletedAt = completedAt;
+                    run.Execution.ErrorMessage = errorMessage;
+                    run.Execution.CancelledBy = cancelledBy;
                 }
+                else
+                {
+                    // 0 rows: the row is already terminal (a concurrent authoritative write won) or
+                    // the fence legitimately rejected us (another cluster owner). Import that state.
+                    var current = await freshDb.WorkflowExecutions.AsNoTracking()
+                        .FirstOrDefaultAsync(c => c.Id == run.Execution.Id, CancellationToken.None);
+                    if (current is not null)
+                    {
+                        run.Execution.Status = current.Status;
+                        run.Execution.CompletedAt = current.CompletedAt;
+                    }
+                }
+
+                return;
+            }
+            catch (Exception ex) when (IsConfirmedDatabaseOutage(ex))
+            {
+                _logger.LogWarning(ex,
+                    "Terminal write for execution {ExecutionId} lost the database again; waiting for recovery",
+                    run.Execution.Id);
+                if (!await WaitForTerminalWriteRecoveryAsync(run))
+                    return;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Terminal write for execution {ExecutionId} failed on a fresh scope with a non-outage error; propagating",
+                    run.Execution.Id);
+                throw;
             }
         }
-        catch (Exception ex)
+    }
+
+    private bool IsConfirmedDatabaseOutage(Exception exception)
+        => _availability is { IsServable: false }
+           && DbErrorClassifier.Classify(exception) is not DbFailureKind.None;
+
+    /// <summary>The compact triage facts the workflow-level failure summary needs.</summary>
+    private sealed record StepFailureSummary(string StepId, string? StepName, string? ErrorOutput);
+
+    /// <summary>
+    /// Reads the run's terminal verdict — how many steps failed, and the first of them — with the
+    /// same confirmed-outage barrier the terminal WRITE uses.
+    ///
+    /// <para>Returns <c>null</c> only when the host stopped before the answer could be obtained. The
+    /// caller must then leave the execution non-terminal: a verdict that cannot be read is not a
+    /// verdict of success, and the startup reconciler exists for exactly this state.</para>
+    ///
+    /// <para>Runs on a fresh scope per attempt, like the resilient write: <c>_db</c> may hold a
+    /// faulted connection and tracked Skipped rows, and neither belongs in a retry.</para>
+    /// </summary>
+    private async Task<(int FailedStepCount, StepFailureSummary? FirstFailure)?>
+        ReadTerminalVerdictResilientAsync(ExecutionRun run)
+    {
+        while (true)
         {
-            _logger.LogError(ex,
-                "Guaranteed terminal write for execution {ExecutionId} failed on a fresh scope too; the row may remain Running until the next startup reconcile",
+            try
+            {
+                await using var scope = _serviceProvider.CreateAsyncScope();
+                var freshDb = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+
+                // Count instead of Any: same index seek on WorkflowExecutionId, but it also gives the
+                // exact failure count for the support log and the workflow-level summary.
+                var failedStepCount = await freshDb.StepExecutions
+                    .AsNoTracking()
+                    .CountAsync(
+                        s => s.WorkflowExecutionId == run.Execution.Id && s.Status == ExecutionStatus.Failed,
+                        CancellationToken.None);
+
+                if (failedStepCount == 0) return (0, null);
+
+                // ErrorOutput remains authoritative on StepExecution. WorkflowExecution.ErrorMessage
+                // carries only a compact triage summary for lists, notifications, and sub-workflow
+                // callers. StartedAt + Id makes the selected failure deterministic when branches fail
+                // concurrently.
+                var firstFailure = await freshDb.StepExecutions
+                    .AsNoTracking()
+                    .Where(s => s.WorkflowExecutionId == run.Execution.Id && s.Status == ExecutionStatus.Failed)
+                    .OrderBy(s => s.StartedAt)
+                    .ThenBy(s => s.Id)
+                    .Select(s => new StepFailureSummary(s.StepId, s.StepName, s.ErrorOutput))
+                    .FirstAsync(CancellationToken.None);
+
+                return (failedStepCount, firstFailure);
+            }
+            catch (Exception ex) when (IsConfirmedDatabaseOutage(ex))
+            {
+                _logger.LogWarning(ex,
+                    "Terminal verdict for execution {ExecutionId} lost the database; waiting for recovery",
+                    run.Execution.Id);
+                if (!await WaitForTerminalWriteRecoveryAsync(run)) return null;
+            }
+        }
+    }
+
+    private async Task<bool> WaitForTerminalWriteRecoveryAsync(ExecutionRun run)
+    {
+        if (_availability is null)
+            return false;
+
+        var recovered = await _availability.WaitUntilServableAsync(run.DurabilityCancellation);
+        if (!recovered)
+        {
+            _logger.LogInformation(
+                "Host stopped while execution {ExecutionId} was waiting to persist terminal state; startup recovery will reconcile it",
                 run.Execution.Id);
         }
+
+        return recovered;
     }
 
     private static IQueryable<WorkflowExecution> ApplyExecutionWriteFence(
@@ -948,7 +1072,8 @@ public class WorkflowEngine : IWorkflowEngine
             (node, stepCt) => _stepRunner.ExecuteAsync(execution, workflow.Name, node,
                 ScopeResultsToAncestors(results, ancestorsByNode, node.Id),
                 outputNameByStepId, outputVariableToStepId,
-                inputParameters, globalVariables, compiledDefinition.RetryPolicies, debug, cts, stepCt),
+                inputParameters, globalVariables, compiledDefinition.RetryPolicies, debug, cts, stepCt,
+                run.DurabilityCancellation),
             _logger,
             cts.Token,
             globalVariables,
@@ -990,29 +1115,28 @@ public class WorkflowEngine : IWorkflowEngine
             _db.StepExecutions.Add(stepExec);
             skippedForNotify.Add((skippedNode.Id, skippedNode.Data.Label, skippedNode.Type));
         }
-        // Determine overall status. Using Count instead of Any: it uses the same query
-        // plan (an index seek on WorkflowExecutionId), but also gives us the exact
-        // failure count for the support log and the compact workflow-level failure summary.
-        var failedStepCount = await _db.StepExecutions
-            .AsNoTracking()
-            .CountAsync(s => s.WorkflowExecutionId == execution.Id && s.Status == ExecutionStatus.Failed, CancellationToken.None);
+        // The verdict is READ from the database, so it needs the same outage barrier as the writes
+        // around it. Unguarded, a connection that dies between the last step's terminal commit and
+        // this query throws into the generic catch of the caller, which reliably persists Failed —
+        // inverting the verdict of a run in which every step succeeded. A command timeout is enough
+        // to trigger it: that only Arms the breaker, and Armed is servable, so nothing would park.
+        var verdict = await ReadTerminalVerdictResilientAsync(run);
+        if (verdict is null)
+        {
+            // Host stopped before the verdict could be determined. Deliberately leave the execution
+            // row non-terminal rather than guess: the startup reconciler owns that state, and
+            // guessing here is exactly the failure mode this method now guards against.
+            _logger.LogInformation(
+                "Host stopped before the terminal verdict for execution {ExecutionId} could be read; startup recovery will reconcile it",
+                execution.Id);
+            return execution;
+        }
 
+        var (failedStepCount, firstFailure) = verdict.Value;
         var desiredStatus = failedStepCount > 0 ? ExecutionStatus.Failed : ExecutionStatus.Succeeded;
         string? failureSummary = null;
-        if (failedStepCount > 0)
+        if (failedStepCount > 0 && firstFailure is not null)
         {
-            // ErrorOutput remains authoritative on StepExecution. WorkflowExecution.ErrorMessage
-            // carries only a compact triage summary for lists, notifications, and sub-workflow
-            // callers. StartedAt + Id makes the selected failure deterministic when branches fail
-            // concurrently.
-            var firstFailure = await _db.StepExecutions
-                .AsNoTracking()
-                .Where(s => s.WorkflowExecutionId == execution.Id && s.Status == ExecutionStatus.Failed)
-                .OrderBy(s => s.StartedAt)
-                .ThenBy(s => s.Id)
-                .Select(s => new { s.StepId, s.StepName, s.ErrorOutput })
-                .FirstAsync(CancellationToken.None);
-
             var stepLabel = string.IsNullOrWhiteSpace(firstFailure.StepName)
                 ? firstFailure.StepId
                 : firstFailure.StepName;

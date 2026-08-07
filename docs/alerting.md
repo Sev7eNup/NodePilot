@@ -61,12 +61,20 @@ so in an HA cluster only the leader dispatches. Each pass:
    (`MinOccurrences` within `OccurrenceWindowMinutes`).
 5. **Persist** a Pending `NotificationDeliveryAttempt` per route **before any network I/O**
    (idempotent on `(RuleId, RouteId, EventKey)`), advance the watermark in the same save, **then**
-   send. A crash between persist and send leaves a replayable Pending row → at-least-once delivery,
-   exactly-once per `(rule, route, occurrence)`.
+   send. Delivery is **at-least-once**: a crash after the receiver accepted the message but before
+   the final `Sent` update committed leaves a replayable Pending row and can produce a duplicate.
+   `EventKey` is included in generic-webhook JSON and in `X-NodePilot-Event-Key`, so receivers can
+   deduplicate. The unique ledger key prevents creating a second attempt for the same occurrence;
+   it cannot make external network I/O exactly-once.
 
 The dispatcher writes a `SystemHealthWriter` heartbeat (`NotificationDispatcher`) each pass, so the
 dashboard's service-freshness view tracks it like the other scheduler services. Execution and gauge
 contexts share one `MatchAndSendAsync` pipeline (match → suppress → persist-Pending → send).
+
+**Database outages are monitored externally, not by a system-alert source:** rules and the delivery
+ledger need the unavailable database themselves. Use `/healthz/database` or the
+`nodepilot.database.*` Prometheus metrics; rationale and recovery audit are in
+[ADR 0011](adr/0011-database-availability-breaker.md).
 
 ### Signal events → system policies (ADR 0008)
 
@@ -84,8 +92,9 @@ values (`ServiceStale`, `BacklogHigh`, …) remain as an append-only persisted c
 A third collector (`LongRunningExecutionCollector`) alerts on a **still-running** execution that has been
 running longer than `Alerting:LongRunningSeconds` (default 600) — a **live** signal, unlike the
 after-the-fact `durationMs` filter on terminal events. It scans `Running` rows and emits one context
-per execution keyed `runlong:{executionId}`; the per-`(rule,route,EventKey)` existence-check makes each
-execution alert **exactly once** (no re-alert every pass, no per-execution signal-state row to leak).
+per execution keyed `runlong:{executionId}`; the per-`(rule,route,EventKey)` existence-check creates one
+durable attempt per execution (no new alert every pass, no per-execution signal-state row to leak),
+with the at-least-once transport semantics above.
 Unlike gauge events it is **execution-scoped** — it carries a real `WorkflowId`, so a rule may be
 `Global`, `Folders`, or `Workflows`. `durationMs` = elapsed ms. The scan is skipped when no enabled rule
 references `ExecutionRunningLong`.
@@ -205,10 +214,25 @@ window, scope, and routes. See [ADR 0008](adr/0008-modular-system-alert-sources.
 (source / observation / policy, source-vs-policy state separation, one-pipeline decision, phasing) and the
 rationale for choosing compiled modules over a text query language.
 
-The catalog currently ships **12** sources: `backlog`, `pending`, `cancel-rate`, `machine-unreachable`,
+The catalog currently ships **13** sources: `backlog`, `pending`, `cancel-rate`, `machine-unreachable`,
 `service-stale`, `credential-expiring`, `workflow-no-recent-success`, `schedule-missed`, `execution-result`,
 `execution-stuck` (live-hang detection), `workflow-health` (rolling failure-rate / p95 from `WorkflowStats`),
-and `alert-delivery-failed` (self-monitoring: the alarm about broken alarms).
+`alert-delivery-failed` (self-monitoring: the alarm about broken alarms), and `trigger-unhealthy`.
+
+`trigger-unhealthy` reports triggers the orchestrator cannot keep registered — a `fileWatcherTrigger`
+whose UNC share went away, a cron the scheduler rejects — exposing `unhealthySeconds`,
+`consecutiveFailures` and `triggerType`, scoped to the owning workflow. Nothing else sees this state:
+`schedule-missed` only walks cron triggers and needs an expected fire time, which an event-driven
+trigger has none of, and `service-stale` only measures heartbeat age — the orchestrator keeps beating
+because its own sync pass succeeds even while every trigger it manages is broken. The shipped preset
+fires at `unhealthySeconds > 60`, past the point where a share restart or a brief network blip
+explains it. Runtime mechanics: see the trigger-liveness section in `docs/claude-reference.md`.
+
+> **Two caveats specific to this source.** It is the only one reading process memory instead of the
+> database, because trigger registrations are process-local: a persisted row would outlive the
+> process that owns it. Consequence in an HA pair: the catalog and the policy preview are served by
+> whichever node answers the request, so a **follower** — which runs no triggers — shows this source
+> as *unavailable* even while the leader alerts correctly. Single-node deployments never see this.
 
 Delivered so far (foundation phase, non-destructive — the custom rules above are unchanged):
 
@@ -227,7 +251,7 @@ Delivered so far (foundation phase, non-destructive — the custom rules above a
   source + normalized parameters, samples each source once, and runs each policy's condition + sustain window
   against every applicable observation — keeping per-(policy, source, instance) match/episode state and
   emitting through the shared suppress → persist-Pending → send pipeline (episode-keyed `system:` EventKeys,
-  exactly-once + crash-recovery reconstruction). Event sources honour a per-policy `ActivatedAt` watermark so
+  including crash recovery). Event sources honour a per-policy `ActivatedAt` watermark so
   a late-activated policy never back-alerts history; recovery is silent (no "resolved" alert in v1).
   `NotificationRetentionService` prunes stale `SystemAlertPolicyStates` (unobserved instances), and the
   evaluator drops state for disabled/removed policies each pass.
@@ -271,9 +295,9 @@ into a **workflow** is a committed roadmap item, not a follow-up.
 
 ## Delivery ledger & retention
 
-Every send writes a `NotificationDeliveryAttempt` row (the exactly-once guard + the audit trail of
-what fired). A **bounded retry** keeps a failed attempt `Pending` and retries it on later dispatcher
-passes until `MaxAttempts` (5), then marks it `Failed`. The ledger is read via `GET /api/alerting/deliveries`
+Every occurrence writes the at-least-once ledger row described under [Matching + dispatch](#matching--dispatch).
+A **bounded retry** keeps a failed attempt `Pending` and retries it on later dispatcher passes until
+`MaxAttempts` (5), then marks it `Failed`. The ledger is read via `GET /api/alerting/deliveries`
 (UI **Deliveries** modal, `np alerting deliveries`, MCP `list_alerting_deliveries`). To keep the table
 from growing unbounded, `NotificationRetentionService` (leader-gated, config `Retention:Notifications:*`,
 default 90 days / every 6 h, opt-out via `Enabled:false`) deletes terminal attempts past the cutoff and

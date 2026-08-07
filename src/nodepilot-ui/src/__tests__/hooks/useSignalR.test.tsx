@@ -23,32 +23,50 @@ const renderHook: typeof rtlRenderHook = ((callback, options) =>
 // SignalR mock: capture event handlers per connection so tests can drive events
 // without spinning up a real WebSocket. We expose the captured handlers via
 // `__currentConnection` so each test can read the latest mock and emit events.
-type Handler = (...args: unknown[]) => void;
+type Handler = (...args: unknown[]) => unknown;
 type MockConnection = {
   handlers: Map<string, Handler>;
+  lifecycle: Map<string, Handler>;
+  state: string;
   start: ReturnType<typeof vi.fn>;
   stop: ReturnType<typeof vi.fn>;
   on: ReturnType<typeof vi.fn>;
   onreconnected: ReturnType<typeof vi.fn>;
+  onreconnecting: ReturnType<typeof vi.fn>;
+  onclose: ReturnType<typeof vi.fn>;
   invoke: ReturnType<typeof vi.fn>;
   emit: (event: string, payload: unknown) => void;
+  transition: (event: 'reconnecting' | 'reconnected' | 'close') => unknown;
 };
 
 let __currentConnection: MockConnection | null = null;
 
 function createMockConnection(): MockConnection {
   const handlers = new Map<string, Handler>();
+  const lifecycle = new Map<string, Handler>();
   const conn: MockConnection = {
     handlers,
-    start: vi.fn().mockResolvedValue(undefined),
+    lifecycle,
+    state: 'Disconnected',
+    start: vi.fn(async () => { conn.state = 'Connected'; }),
     stop: vi.fn().mockResolvedValue(undefined),
     on: vi.fn((event: string, handler: Handler) => { handlers.set(event, handler); }),
-    onreconnected: vi.fn(),
+    onreconnected: vi.fn((handler: Handler) => { lifecycle.set('reconnected', handler); }),
+    onreconnecting: vi.fn((handler: Handler) => { lifecycle.set('reconnecting', handler); }),
+    onclose: vi.fn((handler: Handler) => { lifecycle.set('close', handler); }),
     invoke: vi.fn().mockResolvedValue(undefined),
     emit: (event, payload) => {
       const h = handlers.get(event);
       if (!h) throw new Error(`No handler registered for '${event}'`);
       h(payload);
+    },
+    transition: (event) => {
+      conn.state = event === 'reconnected' ? 'Connected'
+        : event === 'reconnecting' ? 'Reconnecting'
+          : 'Disconnected';
+      const handler = lifecycle.get(event);
+      if (!handler) throw new Error(`No lifecycle handler registered for '${event}'`);
+      return handler();
     },
   };
   return conn;
@@ -68,15 +86,36 @@ vi.mock('@microsoft/signalr', () => {
 });
 
 import { useWorkflowSignalR, COMPLETED_EXECUTION_TTL_MS, MAX_ACTIVE_DISPLAYED, MAX_AUTO_HYDRATE } from '../../hooks/useSignalR';
+import { resetDbHealth, useDbHealthStore } from '../../stores/dbHealthStore';
+
+/**
+ * useWorkflowSignalR intentionally backfills snapshots over HTTP as soon as a transport connects.
+ * Tests that only exercise SignalR events still need an explicit empty API, otherwise Node's native
+ * fetch tries to resolve browser-relative URLs and produces misleading network stderr.
+ */
+function installDefaultFetchMock() {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })));
+}
 
 async function waitForLiveExecution(result: ReturnType<typeof renderHook<ReturnType<typeof useWorkflowSignalR>, []>>['result']) {
-  await waitFor(() => expect(result.current.liveExecution).not.toBeNull());
+  await waitFor(() => expect(result.current.liveExecution?.steps.length).toBeGreaterThan(0));
   return result.current.liveExecution!;
 }
 
 describe('useWorkflowSignalR', () => {
-  beforeEach(() => { __currentConnection = null; });
-  afterEach(() => { vi.clearAllMocks(); });
+  beforeEach(() => {
+    __currentConnection = null;
+    resetDbHealth();
+    installDefaultFetchMock();
+  });
+  afterEach(() => {
+    vi.clearAllMocks();
+    // Keep late cleanup/hydration continuations away from the real network too.
+    installDefaultFetchMock();
+  });
 
   it('does not open a connection when workflowId is undefined', () => {
     renderHook(() => useWorkflowSignalR(undefined));
@@ -97,6 +136,61 @@ describe('useWorkflowSignalR', () => {
     const { result } = renderHook(() => useWorkflowSignalR('wf-1'));
 
     await waitFor(() => expect(result.current.connected).toBe(true));
+  });
+
+  it('marks itself disconnected as soon as automatic reconnect starts', async () => {
+    const { result } = renderHook(() => useWorkflowSignalR('wf-1'));
+    await waitFor(() => expect(result.current.connected).toBe(true));
+
+    act(() => { __currentConnection!.transition('reconnecting'); });
+
+    await waitFor(() => expect(result.current.connected).toBe(false));
+  });
+
+  it('remembers a failed execution-group join and retries it when the database recovers', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const value = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
+      return new Response(value.includes('/steps') ? '[]' : '[]', {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+
+    try {
+      const { result } = renderHook(() => useWorkflowSignalR('wf-1'));
+      await waitFor(() => expect(result.current.connected).toBe(true));
+
+      __currentConnection!.invoke.mockImplementation(async (method: string) => {
+        if (method === 'JoinExecution') throw new Error('DATABASE_UNAVAILABLE');
+      });
+
+      await act(async () => {
+        await expect(result.current.joinExecution('exec-outage', 'wf-1')).resolves.toBeUndefined();
+      });
+      expect(warn).toHaveBeenCalledWith(
+        '[useWorkflowSignalR] JoinExecution failed',
+        expect.objectContaining({ message: 'DATABASE_UNAVAILABLE' }),
+      );
+
+      __currentConnection!.invoke.mockReset().mockResolvedValue(undefined);
+      act(() => {
+        useDbHealthStore.getState().reportProbeResult({
+          status: 'unavailable', sinceUtc: new Date().toISOString(), reason: 'Unreachable',
+        });
+        useDbHealthStore.getState().reportProbeResult({
+          status: 'ok', sinceUtc: null, reason: null,
+        });
+      });
+
+      await waitFor(() => {
+        expect(__currentConnection!.invoke).toHaveBeenCalledWith('JoinWorkflow', 'wf-1');
+        expect(__currentConnection!.invoke).toHaveBeenCalledWith('JoinExecution', 'exec-outage');
+      });
+    } finally {
+      warn.mockRestore();
+      installDefaultFetchMock();
+    }
   });
 
   it('StepStarted creates a Running step inside a fresh LiveExecution', async () => {
@@ -259,7 +353,10 @@ describe('useWorkflowSignalR', () => {
     });
 
     // Step-a should still be Running because StepCompleted was for a different exec.
-    await waitFor(() => expect(result.current.liveExecutions).toHaveLength(2));
+    await waitFor(() => {
+      expect(result.current.liveExecutions).toHaveLength(2);
+      expect(result.current.liveExecution?.steps[0]?.status).toBe('Running');
+    });
     expect(result.current.liveExecution!.steps[0].status).toBe('Running');
     const other = result.current.liveExecutions.find((e) => e.executionId === 'exec-OTHER')!;
     expect(other.steps[0].status).toBe('Succeeded');
@@ -282,7 +379,11 @@ describe('useWorkflowSignalR', () => {
       });
     });
 
-    await waitFor(() => expect(result.current.liveExecutions).toHaveLength(2));
+    await waitFor(() => {
+      expect(result.current.liveExecutions).toHaveLength(2);
+      expect(result.current.liveExecutions.find((e) => e.executionId === 'exec-1')?.steps[0]?.stepName).toBe('Alpha');
+      expect(result.current.liveExecutions.find((e) => e.executionId === 'exec-2')?.steps[0]?.stepName).toBe('Beta');
+    });
     expect(result.current.liveExecutions.find((e) => e.executionId === 'exec-1')!.steps[0].stepName).toBe('Alpha');
     expect(result.current.liveExecutions.find((e) => e.executionId === 'exec-2')!.steps[0].stepName).toBe('Beta');
   });
@@ -350,6 +451,7 @@ describe('useWorkflowSignalR', () => {
         stepId: 'step-a', stepType: 'runScript', startedAt: '2026-04-26T12:00:00Z',
       });
     });
+    await waitFor(() => expect(result.current.liveExecution?.steps).toHaveLength(1));
     act(() => { result.current.clearLive(); });
 
     expect(result.current.liveExecution).toBeNull();
@@ -501,7 +603,7 @@ describe('useWorkflowSignalR', () => {
       expect(result.current.liveExecutions).toHaveLength(0);
     } finally {
       vi.useRealTimers();
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -539,7 +641,7 @@ describe('useWorkflowSignalR', () => {
       expect(result.current.liveExecutions).toHaveLength(0);
     } finally {
       vi.useRealTimers();
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -552,7 +654,9 @@ describe('useWorkflowSignalR', () => {
     const MAX_OBSERVED_CAP = 4;
     let inFlight = 0;
     let peakInFlight = 0;
-    const releaseHandles: Array<() => void> = [];
+    let stepFetches = 0;
+    let releaseAll!: () => void;
+    const barrier = new Promise<void>((resolve) => { releaseAll = resolve; });
 
     const fetchMock = vi.fn(async (url: string | URL | Request) => {
       const u = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url;
@@ -560,9 +664,10 @@ describe('useWorkflowSignalR', () => {
         return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
       if (u.includes('/steps')) {
+        stepFetches++;
         inFlight++;
         if (inFlight > peakInFlight) peakInFlight = inFlight;
-        await new Promise<void>((resolve) => { releaseHandles.push(resolve); });
+        await barrier;
         inFlight--;
         return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
@@ -587,15 +692,15 @@ describe('useWorkflowSignalR', () => {
       await waitFor(() => expect(inFlight).toBe(MAX_OBSERVED_CAP));
       expect(peakInFlight).toBeLessThanOrEqual(MAX_OBSERVED_CAP);
 
-      while (releaseHandles.length > 0) {
-        const next = releaseHandles.shift()!;
-        next();
-        await Promise.resolve();
-      }
+      releaseAll();
+      await waitFor(() => {
+        expect(stepFetches).toBe(100);
+        expect(inFlight).toBe(0);
+      });
       expect(peakInFlight).toBeLessThanOrEqual(MAX_OBSERVED_CAP);
     } finally {
-      while (releaseHandles.length > 0) releaseHandles.shift()!();
-      vi.unstubAllGlobals();
+      releaseAll();
+      installDefaultFetchMock();
     }
   });
 
@@ -675,7 +780,7 @@ describe('useWorkflowSignalR', () => {
       ).length;
       expect(stepsCallsAfter).toBe(stepsCallsBefore);
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -718,7 +823,7 @@ describe('useWorkflowSignalR', () => {
       // No /steps calls for terminal runs — they are listing-only on initial mount.
       expect(stepsFetchCount).toBe(0);
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -767,7 +872,7 @@ describe('useWorkflowSignalR', () => {
       expect(stepsFetched).not.toContain('exec-0');
       expect(stepsFetched).not.toContain(`exec-${RUN_COUNT - MAX_AUTO_HYDRATE - 1}`);
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -814,7 +919,7 @@ describe('useWorkflowSignalR', () => {
       expect(result.current.liveExecution?.databus['disk-step.param.status']?.value).toBe('ok');
       expect(result.current.liveExecution?.databus['diskCheck.param.status']?.value).toBe('ok');
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -876,7 +981,7 @@ describe('useWorkflowSignalR', () => {
       const exec0After = result.current.liveExecutions.find((e) => e.executionId === 'exec-0')!;
       expect(exec0After.steps[0].stepId).toBe('step-x');
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -945,7 +1050,7 @@ describe('useWorkflowSignalR', () => {
         expect(exec?.steps).toHaveLength(5);
       });
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -976,7 +1081,7 @@ describe('useWorkflowSignalR', () => {
       expect(result.current.liveExecutions).toHaveLength(RUN_COUNT);
       expect(MAX_ACTIVE_DISPLAYED).toBe(Number.POSITIVE_INFINITY);
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -1019,7 +1124,7 @@ describe('useWorkflowSignalR', () => {
       // The run transitions from active to completed → liveActiveCount decrements.
       await waitFor(() => expect(result.current.liveActiveCount).toBe(RUN_COUNT - 1));
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -1070,7 +1175,7 @@ describe('useWorkflowSignalR', () => {
       expect(result.current.liveExecutions.every((e) => e.status === 'Succeeded')).toBe(true);
       expect(result.current.liveExecutions.length).toBeGreaterThan(0);
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -1124,7 +1229,7 @@ describe('useWorkflowSignalR', () => {
       expect(stepsFetchCount).toBeLessThanOrEqual(MAX_AUTO_HYDRATE);
     } finally {
       vi.useRealTimers();
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 
@@ -1150,7 +1255,7 @@ describe('useWorkflowSignalR', () => {
 
       expect(capturedUrl).toContain('activeOnly=true');
     } finally {
-      vi.unstubAllGlobals();
+      installDefaultFetchMock();
     }
   });
 });

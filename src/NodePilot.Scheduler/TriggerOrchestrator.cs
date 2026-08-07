@@ -8,6 +8,7 @@ using NodePilot.Core.Audit;
 using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
+using NodePilot.Data.Availability;
 using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Data;
 
@@ -62,23 +63,47 @@ public class TriggerOrchestrator : BackgroundService
 
     private readonly IClusterStateProvider _cluster;
 
+    private readonly IDatabaseAvailability _availability;
+
+    // Mirrors the broken half of _backoff into a shape the alerting pipeline can observe. Kept
+    // separate rather than exposing _backoff itself: this carries the reason and the "since" the
+    // alert needs, and it survives an eviction that has not yet produced a failed retry.
+    private readonly TriggerHealthRegistry _health;
+
     public TriggerOrchestrator(
         IServiceScopeFactory scopeFactory,
         IServiceProvider rootServices,
         IClusterStateProvider cluster,
-        ILogger<TriggerOrchestrator> logger)
+        ILogger<TriggerOrchestrator> logger,
+        IDatabaseAvailability availability,
+        TriggerHealthRegistry health)
     {
         _scopeFactory = scopeFactory;
         _rootServices = rootServices;
         _cluster = cluster;
+        _availability = availability;
+        _health = health;
         _logger = logger;
+        SourceFactory = CreateSource;
         // Wake the sync loop immediately on leadership transitions so a freshly-promoted
         // node activates its triggers within milliseconds instead of waiting up to 5 s for
         // the next regular tick.
-        _cluster.OnLeadershipAcquired += _ => _wakeSync.TrySetResult();
+        _cluster.OnLeadershipAcquired += OnLeadershipAcquired;
+        _cluster.OnLeadershipLost += OnLeadershipLost;
     }
 
-    private TaskCompletionSource _wakeSync = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly SemaphoreSlim _wakeSync = new(0, 1);
+
+    private void OnLeadershipAcquired(long _) => WakeSyncLoop();
+
+    private void OnLeadershipLost() => WakeSyncLoop();
+
+    private void WakeSyncLoop()
+    {
+        if (_wakeSync.CurrentCount != 0) return;
+        try { _wakeSync.Release(); }
+        catch (SemaphoreFullException) { /* another transition already queued */ }
+    }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -86,25 +111,92 @@ public class TriggerOrchestrator : BackgroundService
         _logger.LogInformation("TriggerOrchestrator starting");
         while (!stoppingToken.IsCancellationRequested)
         {
+            // A leadership-loss transition must tear sources down even while the database gate
+            // is closed. The event wakes this loop; no database access is needed for disposal.
+            await DisposeSourcesIfFollowerAsync();
+
+            // Availability gate, deliberately ABOVE any leadership consideration: during an outage no
+            // node can renew its cluster lease, so every node reads as a follower — gating on IsLeader
+            // first would park for the right reason and report the wrong one.
+            //
+            // Returns false only on shutdown, and never throws: BackgroundServiceExceptionBehavior is
+            // left at its default StopHost, so an escaping OperationCanceledException here would take
+            // the whole host down on every service stop.
+            if (!await WaitUntilServableOrLeadershipChangeAsync(stoppingToken)) break;
+
             try { await SyncAsync(stoppingToken); }
-            catch (Exception ex) { _logger.LogError(ex, "Trigger sync failed"); }
+            catch (Exception ex)
+            {
+                // The breaker already logged the outage once, with a classified reason. Repeating it
+                // here every 5 seconds for the whole outage is what trained operators to ignore this
+                // log in the first place.
+                if (_availability.IsServable) _logger.LogError(ex, "Trigger sync failed");
+                else _logger.LogDebug(ex, "Trigger sync failed while the database is unavailable");
+            }
 
             // Wait for either the regular tick OR an immediate wake-up from the cluster
             // (leadership acquired). When the wake fires, swap the TCS so subsequent
             // acquisitions can wake us again.
-            var delay = Task.Delay(SyncInterval, stoppingToken);
-            var wake = _wakeSync.Task;
-            var triggered = await Task.WhenAny(delay, wake);
-            if (triggered == wake)
-            {
-                _wakeSync = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            }
-            if (stoppingToken.IsCancellationRequested) break;
+            if (!await WaitForTickOrLeadershipChangeAsync(stoppingToken)) break;
         }
 
         // Tear down all active sources on shutdown
         await DisposeActiveSourcesAsync();
         _logger.LogInformation("TriggerOrchestrator stopped");
+    }
+
+    private async Task DisposeSourcesIfFollowerAsync()
+    {
+        if (_cluster.IsLeader || _active.IsEmpty) return;
+
+        _logger.LogInformation("Lost leadership — disposing {N} active trigger sources", _active.Count);
+        await DisposeActiveSourcesAsync();
+        _parseCache.Clear();
+        _backoff.Clear();
+        // A follower owns no triggers, so it has no broken ones to report. Leaving stale entries
+        // would make this node alert on the leader's triggers.
+        _health.Clear();
+    }
+
+    private async Task<bool> WaitUntilServableOrLeadershipChangeAsync(CancellationToken stoppingToken)
+    {
+        while (!_availability.IsServable && !stoppingToken.IsCancellationRequested)
+        {
+            using var iteration = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            var available = _availability.WaitUntilServableAsync(iteration.Token);
+            var leadershipChanged = _wakeSync.WaitAsync(iteration.Token);
+            var completed = await Task.WhenAny(available, leadershipChanged);
+            iteration.Cancel();
+
+            if (completed == leadershipChanged)
+            {
+                await ObserveCancellationAsync(available);
+                await DisposeSourcesIfFollowerAsync();
+                continue;
+            }
+
+            await ObserveCancellationAsync(leadershipChanged);
+            if (!await available) return false;
+        }
+
+        return !stoppingToken.IsCancellationRequested;
+    }
+
+    private async Task<bool> WaitForTickOrLeadershipChangeAsync(CancellationToken stoppingToken)
+    {
+        using var iteration = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+        var delay = Task.Delay(SyncInterval, iteration.Token);
+        var leadershipChanged = _wakeSync.WaitAsync(iteration.Token);
+        var completed = await Task.WhenAny(delay, leadershipChanged);
+        iteration.Cancel();
+        await ObserveCancellationAsync(completed == delay ? leadershipChanged : delay);
+        return !stoppingToken.IsCancellationRequested;
+    }
+
+    private static async Task ObserveCancellationAsync(Task task)
+    {
+        try { await task; }
+        catch (OperationCanceledException) { }
     }
 
     /// <summary>
@@ -129,7 +221,13 @@ public class TriggerOrchestrator : BackgroundService
         {
             await SyncInnerAsync(ct);
             syncActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok);
-            await WriteHeartbeat(ct, status: "ok");
+            // The pass itself succeeding says nothing about the triggers it manages: a trigger
+            // that cannot register (missing directory, unreachable share) is caught per-trigger
+            // and lands in _backoff, which covers both "never started" and "died and was evicted".
+            // Reporting plain "ok" while a drop folder goes unwatched is the false green this
+            // whole change exists to remove.
+            var retrying = _backoff.Count;
+            await WriteHeartbeat(ct, status: retrying == 0 ? "ok" : $"degraded: {retrying} trigger(s) retrying");
         }
         catch (Exception ex)
         {
@@ -174,6 +272,9 @@ public class TriggerOrchestrator : BackgroundService
                 await DisposeActiveSourcesAsync();
                 _parseCache.Clear();
                 _backoff.Clear();
+                // A follower owns no triggers, so it has no broken ones to report. Leaving stale
+                // entries would make this node alert on the leader's triggers.
+                _health.Clear();
             }
             return;
         }
@@ -239,17 +340,45 @@ public class TriggerOrchestrator : BackgroundService
                 desired[$"{v.Id}:{d.NodeId}"] = (v.Id, d.NodeId, d.ActivityType, d.Config, d.Hash);
         }
 
-        // Remove obsolete / changed
+        // Remove obsolete / changed / dead
         foreach (var key in _active.Keys.ToList())
         {
+            if (!_active.TryGetValue(key, out var current)) continue;
+
             var isGone = !desired.TryGetValue(key, out var want);
-            var changed = !isGone && want.hash != _active[key].configHash;
-            if ((isGone || changed) && _active.TryRemove(key, out var old))
+            var changed = !isGone && want.hash != current.configHash;
+
+            // A source that started fine and later died — a FileSystemWatcher whose UNC share
+            // vanished, a poll loop that exited — keeps a matching config hash forever, so
+            // neither branch above ever evicts it and the add-loop below skips it as "already
+            // registered". Evicting on the source's own liveness verdict routes it back through
+            // that add-loop, which already retries with exponential backoff and heals by itself
+            // once the underlying resource returns.
+            // Short-circuited for sources being removed anyway: Health is contractually a pure
+            // in-memory read, but there is no reason to ask a corpse we are already burying.
+            var health = isGone || changed ? TriggerHealth.Healthy : current.source.Health;
+
+            if ((isGone || changed || !health.IsHealthy) && _active.TryRemove(key, out var old))
             {
+                if (!health.IsHealthy)
+                    _logger.LogWarning(
+                        "Evicting unhealthy {Type} trigger {Key}: {Reason}. Re-registering; while the " +
+                        "underlying resource stays unavailable, registration backs off up to 5 minutes.",
+                        old.source.ActivityType, key, health.Reason);
+                else
+                    // Deleted, disabled or reconfigured — whatever was wrong with it is moot now.
+                    // (No health write on the unhealthy branch: the add-loop below re-registers in
+                    // this same pass, so it always resolves to either MarkHealthy on success or
+                    // MarkUnhealthy with a real failure count. A marker here would only ever be
+                    // overwritten a few lines later.)
+                    _health.MarkHealthy(key);
+
                 try { await old.source.DisposeAsync(); }
                 catch (Exception ex) { _logger.LogWarning(ex, "Failed disposing trigger {Key}", key); }
                 SchedulerMetrics.OrchestratorSyncChanges.Add(1,
-                    new KeyValuePair<string, object?>("change", changed ? "update" : "remove"));
+                    new KeyValuePair<string, object?>("change",
+                        !health.IsHealthy ? "evict-unhealthy" : changed ? "update" : "remove"),
+                    new KeyValuePair<string, object?>("trigger_type", old.source.ActivityType));
             }
         }
 
@@ -257,7 +386,10 @@ public class TriggerOrchestrator : BackgroundService
         // memory for deleted workflows.
         foreach (var bkey in _backoff.Keys.ToList())
             if (!desired.ContainsKey(bkey))
+            {
                 _backoff.TryRemove(bkey, out _);
+                _health.MarkHealthy(bkey);
+            }
 
         // Add new
         foreach (var (key, want) in desired)
@@ -272,7 +404,7 @@ public class TriggerOrchestrator : BackgroundService
                 && DateTime.UtcNow < bo.notBefore)
                 continue;
 
-            ITriggerSource? src = CreateSource(want.activityType);
+            ITriggerSource? src = SourceFactory(want.activityType);
             if (src is null) continue;
             var ctx = new TriggerContext
             {
@@ -285,7 +417,12 @@ public class TriggerOrchestrator : BackgroundService
             {
                 await src.StartAsync(ctx, ct);
                 _active[key] = (src, want.hash);
+                // Clearing the backoff HERE, on success, is what lets a health-evicted source be
+                // re-created immediately: no _active entry can ever have a live _backoff entry,
+                // so the eviction above always lands in an add-loop that is free to retry at once.
+                // Moving this line would silently break re-arming after an eviction.
                 _backoff.TryRemove(key, out _);
+                _health.MarkHealthy(key);
                 _logger.LogInformation("Registered {Type} trigger for workflow {Wf} node {Node}",
                     want.activityType, want.wfId, want.nodeId);
                 SchedulerMetrics.OrchestratorSyncChanges.Add(1,
@@ -301,6 +438,8 @@ public class TriggerOrchestrator : BackgroundService
                 var failures = previousFailures + 1;
                 var delaySeconds = Math.Min(300, 5 * (int)Math.Pow(2, Math.Min(failures - 1, 6)));
                 _backoff[key] = (DateTime.UtcNow.AddSeconds(delaySeconds), failures, want.hash);
+                _health.MarkUnhealthy(key, want.wfId, want.nodeId, want.activityType,
+                    $"{ex.GetType().Name}: {ex.Message}", failures, DateTime.UtcNow);
 
                 // Log at Warning for the first failure (admin attention), Debug for subsequent
                 // ones while backing off — prevents log-spam for a persistently-broken trigger.
@@ -344,6 +483,13 @@ public class TriggerOrchestrator : BackgroundService
     /// shutdown. The orchestrator owns each source's lifetime and disposes it in
     /// <see cref="SyncInnerAsync"/> / <see cref="ExecuteAsync"/>; the container must stay out of it.
     /// </summary>
+    /// <summary>
+    /// Test-only seam. The orchestrator MUST build its own sources (see <see cref="CreateSource"/>);
+    /// this only lets a test substitute the factory to drive reconcile scenarios no real source can
+    /// produce on demand — chiefly "a registered source reports unhealthy". Production never assigns it.
+    /// </summary>
+    internal Func<string, ITriggerSource?> SourceFactory { get; set; }
+
     private ITriggerSource? CreateSource(string activityType) => activityType switch
     {
         "scheduleTrigger" => new Sources.ScheduleTriggerSource(
@@ -364,11 +510,26 @@ public class TriggerOrchestrator : BackgroundService
 
     internal async Task FireAsync(Guid workflowId, string triggerType, Dictionary<string, string> parameters)
     {
+        // Availability deliberately precedes leadership. During a confirmed outage the lease
+        // will normally already have demoted, but fires observed by still-active sources are
+        // nevertheless outage drops and must remain visible in the counter.
+        if (!_availability.IsServable)
+        {
+            SchedulerMetrics.TriggersDroppedDbUnavailable.Add(1,
+                new KeyValuePair<string, object?>("trigger_type", triggerType));
+            _logger.LogDebug(
+                "Dropping {TriggerType} fire for workflow {WorkflowId}: the database is unavailable.",
+                triggerType, workflowId);
+            return;
+        }
+
         // Defensive race-protection: Quartz / FileSystemWatcher / EventLog can deliver a
         // pending fire microseconds AFTER we lost leadership and started disposing
         // sources. Dropping it here is the cheapest way to keep the "follower never fires"
         // invariant intact.
         if (!_cluster.IsLeader) return;
+        var leaseEpoch = _cluster.LeaseEpoch;
+        if (!StillOwnsLease(leaseEpoch)) return;
 
         using var fireActivity = SchedulerMetrics.Source.StartActivity("trigger.fire", System.Diagnostics.ActivityKind.Producer);
         fireActivity?.SetTag("nodepilot.trigger.type", triggerType);
@@ -386,7 +547,8 @@ public class TriggerOrchestrator : BackgroundService
             var reason = wf is null ? "workflow_deleted" : "workflow_disabled";
             _logger.LogWarning("Trigger fired for {Type} but workflow {Wf} is missing or disabled", triggerType, workflowId);
             fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, "workflow missing or disabled");
-            await AppendSuppressionAudit(db, workflowId, triggerType, reason);
+            if (StillOwnsLease(leaseEpoch))
+                await AppendSuppressionAudit(db, workflowId, triggerType, reason);
             return;
         }
 
@@ -406,7 +568,8 @@ public class TriggerOrchestrator : BackgroundService
                 fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Ok, "maintenance window");
                 SchedulerMetrics.MaintenanceWindowBlocks.Add(1,
                     new KeyValuePair<string, object?>("trigger_type", triggerType));
-                await AppendMaintenanceBlockAudit(db, workflowId, triggerType, verdict);
+                if (StillOwnsLease(leaseEpoch))
+                    await AppendMaintenanceBlockAudit(db, workflowId, triggerType, verdict);
                 return;
             }
         }
@@ -416,6 +579,10 @@ public class TriggerOrchestrator : BackgroundService
             : new Dictionary<string, string>(parameters, StringComparer.OrdinalIgnoreCase);
         try
         {
+            // Fence immediately before DispatchAsync persists its Pending execution. A node
+            // that lost and re-acquired leadership has a different epoch and may not reuse a
+            // fire observed under the old lease.
+            if (!StillOwnsLease(leaseEpoch)) return;
             var dispatcher = scope.ServiceProvider.GetRequiredService<IWorkflowExecutionDispatcher>();
             await dispatcher.DispatchAsync(
                 new WorkflowDispatchIntent(
@@ -441,9 +608,13 @@ public class TriggerOrchestrator : BackgroundService
         {
             _logger.LogError(ex, "Trigger-started execution of {Wf} failed to enqueue", workflowId);
             fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
-            await AppendSuppressionAudit(db, workflowId, triggerType, "dispatch_exception");
+            if (StillOwnsLease(leaseEpoch))
+                await AppendSuppressionAudit(db, workflowId, triggerType, "dispatch_exception");
         }
     }
+
+    private bool StillOwnsLease(long leaseEpoch)
+        => _cluster.IsLeader && _cluster.LeaseEpoch == leaseEpoch;
 
     /// <summary>
     /// Persists an audit row for a trigger fire that did NOT produce a WorkflowExecution —

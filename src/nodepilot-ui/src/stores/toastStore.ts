@@ -20,9 +20,27 @@ let nextId = 0;
  * Ephemeral (non-persisted) toast queue. Errors linger longer than success/info
  * so a failure toast can't slip by unnoticed while the user looks elsewhere.
  */
+/**
+ * The api client formats every structured server error as `message (CODE)`, so the code is reliably
+ * present in the display string — the only thing the ~50 mutation `onError` call sites hand to
+ * `toast.error(...)`. Matching here, at the sink, suppresses them all without touching a call site.
+ *
+ * ONLY the outage code is suppressed, and only because the banner is on screen saying the same
+ * thing. `DATABASE_TIMEOUT` deliberately still toasts: the breaker is closed for it, so no banner
+ * exists, and swallowing it silently would reproduce the original defect — a busy database looking
+ * exactly like an empty installation, with nothing on screen to act on.
+ */
+function isDatabaseOutageMessage(message: string): boolean {
+  return message.includes('DATABASE_UNAVAILABLE');
+}
+
 export const useToastStore = create<ToastStore>()((set) => ({
   toasts: [],
   push: (kind, message, timeoutMs) => {
+    // Contract note: a suppressed push returns -1, an id that never exists — dismiss(-1) is a
+    // harmless no-op. Only error toasts are filtered; an outage must not eat success messages.
+    if (kind === 'error' && isDatabaseOutageMessage(message)) return -1;
+
     const id = ++nextId;
     set((s) => ({ toasts: [...s.toasts, { id, kind, message }] }));
     const ttl = timeoutMs ?? (kind === 'error' ? 8000 : 4000);

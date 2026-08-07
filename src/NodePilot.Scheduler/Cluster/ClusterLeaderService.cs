@@ -7,6 +7,7 @@ using NodePilot.Core.Audit;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Scheduler.Cluster;
 
@@ -31,6 +32,7 @@ public sealed class ClusterLeaderService : BackgroundService, IClusterStateProvi
     private readonly TimeSpan _dbTimeout;
     private readonly TimeSpan _renewGrace;
     private readonly TimeProvider _timeProvider;
+    private readonly IDatabaseAvailability _availability;
 
     private readonly object _stateLock = new();
     private bool _isLeader;
@@ -67,10 +69,12 @@ public sealed class ClusterLeaderService : BackgroundService, IClusterStateProvi
         IServiceScopeFactory scopeFactory,
         IConfiguration configuration,
         ILogger<ClusterLeaderService> logger,
+        IDatabaseAvailability availability,
         TimeProvider? timeProvider = null)
     {
         _scopeFactory = scopeFactory;
         _logger = logger;
+        _availability = availability;
         _timeProvider = timeProvider ?? TimeProvider.System;
 
         var configuredNodeId = configuration["Cluster:NodeId"];
@@ -95,6 +99,23 @@ public sealed class ClusterLeaderService : BackgroundService, IClusterStateProvi
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Demote BEFORE parking. Parking is the right behaviour (retrying every renew interval
+            // would turn one database failure into a cluster-wide connection storm), but the only
+            // producer of OnLeadershipLost — and therefore the only trigger for ClusterFencingHost's
+            // CancelAllLocalAsync — sits in the catch below, past this gate. Parking first meant a
+            // leader that lost the database never ticked, never demoted and never fenced: the new
+            // leader would cancel its runs while this node's parked steps resumed on recovery and
+            // executed real WinRM/file activities for executions the cluster had already declared
+            // Cancelled, leaving only a fenced terminal write as evidence.
+            //
+            // ApplyLeadershipChange raises only on a real true→false edge, so this is idempotent and
+            // a no-op on a follower. IsLeader is time-based and decays silently, which is exactly why
+            // the explicit demotion is needed: decay alone raises nothing.
+            if (!_availability.IsServable)
+                ApplyLeadershipChange(isLeader: false, leaseExpiresAt: null, epoch: null);
+
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             try
             {
                 await TickAsync(stoppingToken);

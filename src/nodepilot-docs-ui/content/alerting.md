@@ -52,6 +52,7 @@ System-Alarme überwachen von NodePilot bereitgestellte Messwerte. Für eine Que
 | Systemzustand | Maschine nicht erreichbar | fehlgeschlagener gespeicherter Verbindungstest |
 | Systemzustand | Dienst-Heartbeat veraltet | ausbleibender Status eines Hintergrunddienstes |
 | Systemzustand | Alarm-Zustellung fehlgeschlagen | wiederholte Fehler beim E-Mail- oder Webhook-Versand |
+| Systemzustand | Trigger nicht registriert | Trigger, der nicht aktiv werden kann, etwa wegen eines unerreichbaren Verzeichnisses |
 | Zeitplan | Zeitplan verpasst | erwarteter geplanter Start ohne passende Ausführung |
 | Zeitplan | Kein aktueller Workflow-Erfolg | geplanter Workflow ohne aktuellen erfolgreichen Lauf |
 | Credentials | Credential läuft ab | bevorstehendes oder bereits erreichtes Ablaufdatum |
@@ -61,6 +62,7 @@ Eine Quelle kann als **Nicht verfügbar** erscheinen, wenn die benötigten Daten
 - Maschinen ohne bisherigen Verbindungstest werden nicht als nicht erreichbar bewertet.
 - Credentials ohne gepflegtes Ablaufdatum werden nicht überwacht.
 - Workflow-bezogene Quellen benötigen vorhandene Ausführungs- oder Zeitplandaten.
+- „Trigger nicht registriert" ist nur verfügbar, solange tatsächlich ein Trigger betroffen ist. Im Hochverfügbarkeits-Betrieb kennt nur der aktive Knoten diesen Zustand; auf dem passiven Knoten erscheint die Quelle als nicht verfügbar, obwohl der aktive Knoten korrekt alarmiert.
 
 ### Policy konfigurieren
 

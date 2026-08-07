@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 using NodePilot.Scheduler.Cluster;
 using Xunit;
 
@@ -57,7 +58,10 @@ public sealed class ClusterLeaderServiceTests : IDisposable
     }
 
     private (ClusterLeaderService svc, IServiceScopeFactory scopeFactory) BuildService(string nodeId,
-        int ttlSec = 30, int renewSec = 10, TimeProvider? timeProvider = null)
+        int ttlSec = 30,
+        int renewSec = 10,
+        TimeProvider? timeProvider = null,
+        IDatabaseAvailability? availability = null)
     {
         var services = new ServiceCollection();
         services.AddDbContext<NodePilotDbContext>(opts => opts.UseSqlite(_connection),
@@ -79,6 +83,7 @@ public sealed class ClusterLeaderServiceTests : IDisposable
             sp.GetRequiredService<IServiceScopeFactory>(),
             config,
             NullLogger<ClusterLeaderService>.Instance,
+            availability ?? NodePilot.TestCommons.TestDatabaseAvailability.Available,
             timeProvider);
         return (svc, sp.GetRequiredService<IServiceScopeFactory>());
     }
@@ -190,6 +195,23 @@ public sealed class ClusterLeaderServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task ExecuteAsync_DatabaseUnavailable_ParksWithoutLeaseAttempt()
+    {
+        var (service, _) = BuildService(
+            "node-a",
+            availability: NodePilot.TestCommons.TestDatabaseAvailability.Unavailable);
+
+        await service.StartAsync(CancellationToken.None);
+        await Task.Delay(100);
+        await service.StopAsync(CancellationToken.None);
+
+        service.IsLeader.Should().BeFalse();
+        _seedContext.ChangeTracker.Clear();
+        _seedContext.ClusterLeaders.AsNoTracking().Single().OwnerNodeId.Should().BeEmpty(
+            "a demoted node must wait for the shared recovery signal instead of polling the database");
+    }
+
+    [Fact]
     public async Task IsLeader_FailsClosedWhenLocalLeaseExpiresDuringVmPause()
     {
         var clock = new ManualTimeProvider(DateTimeOffset.UtcNow);
@@ -231,6 +253,46 @@ public sealed class ClusterLeaderServiceTests : IDisposable
         {
             _utcNow += elapsed;
             _timestamp += elapsed.Ticks;
+        }
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_BreakerOpenWhileLeader_DemotesBeforeParking()
+    {
+        // The regression this pins: parking on the availability signal is correct, but the ONLY
+        // producer of OnLeadershipLost sits in the tick's catch block — past the gate. Parking first
+        // meant a leader that lost the database never ticked, never demoted and never fenced, while
+        // the surviving node took over and cancelled its executions. This node's parked steps would
+        // then resume on recovery and run real WinRM/file activities for executions the cluster had
+        // already declared Cancelled.
+        var tracker = new DatabaseAvailabilityTracker(
+            NullLogger<DatabaseAvailabilityTracker>.Instance,
+            probeSuccessesToRecover: 1);
+        tracker.MarkBootComplete();
+
+        var (svc, _) = BuildService("node-a", availability: tracker);
+
+        // Become leader through the normal path so IsLeader is genuinely true.
+        await TickAsync(svc);
+        svc.IsLeader.Should().BeTrue();
+
+        var demoted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        svc.OnLeadershipLost += () => demoted.TrySetResult();
+
+        // Database goes away before the loop's first iteration.
+        tracker.ReportUnreachable(DatabaseOutageReason.Unreachable);
+
+        await svc.StartAsync(CancellationToken.None);
+        try
+        {
+            // Must fire WITHOUT the breaker ever closing: the demotion has to happen on the way in,
+            // not after recovery.
+            await demoted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            svc.IsLeader.Should().BeFalse("a node that cannot reach the database is not the leader");
+        }
+        finally
+        {
+            await svc.StopAsync(CancellationToken.None);
         }
     }
 }

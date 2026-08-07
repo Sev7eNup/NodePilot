@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api } from '../api/client';
+import { api, ApiError } from '../api/client';
 import type { WorkflowContractResponse } from '../types/api';
 
 /**
@@ -43,10 +43,10 @@ export function useWorkflowContract(workflowNameOrId: string) {
           ? await api.get<WorkflowContractResponse>(`/workflows/${trimmed}/contract`)
           : await api.get<WorkflowContractResponse>(`/workflows/by-name/${encodeURIComponent(trimmed)}/contract`);
       } catch (err) {
-        // 404 → no contract is a normal state, not an error. The api client throws
-        // `new Error(error || response.statusText)`, so 404 with empty body becomes
-        // an Error("Not Found"). We swallow that one shape; anything else propagates.
-        if (err instanceof Error && /not found/i.test(err.message)) return null;
+        // 404 → no contract is a normal state, not an error. Branch on the status the ApiError
+        // now carries instead of regex-matching the display string, which broke the moment the
+        // server phrased "not found" differently.
+        if (err instanceof ApiError && err.status === 404) return null;
         throw err;
       }
     },

@@ -142,7 +142,7 @@
     "outboundAllowedHostsHint": "Exception to \"block private networks\" for restApi targets and redirects. Enter exact hosts or IPs only. Link-local/cloud metadata can never be allowed. Wait for Condition network probes have their own list — see the card below.",
     "waitForConditionCardTitle": "Network Probes (Wait for Condition)",
     "probeAllowedHosts": "Hosts allowed for portOpen/httpOk",
-    "probeAllowedHostsHint": "These probes run through PowerShell and cannot re-validate the destination at connect time, so they admit only exactly listed hosts — an empty list rejects every probe. Deliberately separate from the outbound allow-list above: permitting \"check my own service\" must not also open restApi to loopback. Matching is exact; \"127.0.0.1\" does not cover \"localhost\".",
+    "probeAllowedHostsHint": "These probes run through PowerShell and cannot re-validate the destination at connect time, so they admit only exactly listed hosts — an empty list rejects every probe. Deliberately separate from the outbound allow-list above: permitting \"check my own service\" must not also open restApi to loopback. Matching is exact; \"127.0.0.1\" does not cover \"localhost\". This list alone decides — the outbound allow-list above is not consulted for probes. Link-local/cloud-metadata (169.254.…) stays blocked regardless.",
     "outboundProxy": "Outbound Proxy",
     "proxyAddress": "Address",
     "bypassList": "Bypass list (host/IP patterns)",

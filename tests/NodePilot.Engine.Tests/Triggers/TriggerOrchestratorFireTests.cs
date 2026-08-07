@@ -11,6 +11,7 @@ using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 using NodePilot.Scheduler;
 using Xunit;
 
@@ -171,6 +172,46 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
             "a follower must stay completely silent — no dispatch, no audit noise");
     }
 
+    [Fact]
+    public async Task FireAsync_DatabaseUnavailable_DropsBeforeReadingLeadership()
+    {
+        var cluster = new ThrowingClusterState();
+        var orchestrator = new TriggerOrchestrator(
+            _services.GetRequiredService<IServiceScopeFactory>(),
+            _services,
+            cluster,
+            NullLogger<TriggerOrchestrator>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Unavailable,
+            new TriggerHealthRegistry());
+
+        var act = () => orchestrator.FireAsync(Guid.NewGuid(), "scheduleTrigger", []);
+
+        await act.Should().NotThrowAsync(
+            "an outage fire is counted and discarded even after lease demotion; leadership must not hide it");
+        cluster.IsLeaderReads.Should().Be(0);
+        _dispatcher.Intents.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task FireAsync_LeaseEpochChangesAfterRead_DoesNotDispatch()
+    {
+        var workflowId = SeedWorkflow(enabled: true);
+        var cluster = new MutableClusterState();
+        _maintenance.OnEvaluate = cluster.ReacquireWithNextEpoch;
+        var orchestrator = new TriggerOrchestrator(
+            _services.GetRequiredService<IServiceScopeFactory>(),
+            _services,
+            cluster,
+            NullLogger<TriggerOrchestrator>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available,
+            new TriggerHealthRegistry());
+
+        await orchestrator.FireAsync(workflowId, "scheduleTrigger", []);
+
+        _dispatcher.Intents.Should().BeEmpty(
+            "a fire observed under an old lease must not persist or dispatch after a hand-off");
+    }
+
     // ---------------------------------------------------------------- helpers
 
     private Guid SeedWorkflow(bool enabled)
@@ -200,7 +241,8 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
         isLeader
             ? new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider()
             : new FollowerClusterState(),
-        NullLogger<TriggerOrchestrator>.Instance);
+        NullLogger<TriggerOrchestrator>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available,
+        new TriggerHealthRegistry());
 
     private sealed class RecordingDispatcher : IWorkflowExecutionDispatcher
     {
@@ -224,7 +266,13 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
     {
         public MaintenanceEvaluation Verdict { get; set; } = MaintenanceEvaluation.Allowed;
 
-        public MaintenanceEvaluation Evaluate(Guid workflowId, Guid folderId, DateTime nowUtc) => Verdict;
+        public Action? OnEvaluate { get; set; }
+
+        public MaintenanceEvaluation Evaluate(Guid workflowId, Guid folderId, DateTime nowUtc)
+        {
+            OnEvaluate?.Invoke();
+            return Verdict;
+        }
 
         public IReadOnlyList<MaintenanceWindowSummary> GetWindowsAffecting(
             Guid workflowId, Guid folderId, DateTime nowUtc) => [];
@@ -241,5 +289,42 @@ public sealed class TriggerOrchestratorFireTests : IAsyncDisposable
         public DateTime? LastSuccessfulRenewAt => null;
         public event Action<long>? OnLeadershipAcquired { add { } remove { } }
         public event Action? OnLeadershipLost { add { } remove { } }
+    }
+
+    private sealed class ThrowingClusterState : IClusterStateProvider
+    {
+        public int IsLeaderReads { get; private set; }
+        public bool IsLeader
+        {
+            get
+            {
+                IsLeaderReads++;
+                throw new InvalidOperationException("leadership must not be inspected");
+            }
+        }
+        public string NodeId => "throwing";
+        public DateTime? LeaseExpiresAt => null;
+        public long LeaseEpoch => 1;
+        public DateTime? LastSuccessfulRenewAt => null;
+        public event Action<long>? OnLeadershipAcquired { add { } remove { } }
+        public event Action? OnLeadershipLost { add { } remove { } }
+    }
+
+    private sealed class MutableClusterState : IClusterStateProvider
+    {
+        public bool IsLeader => true;
+        public string NodeId => "mutable";
+        public DateTime? LeaseExpiresAt => DateTime.UtcNow.AddMinutes(1);
+        public long LeaseEpoch { get; private set; } = 41;
+        public DateTime? LastSuccessfulRenewAt => DateTime.UtcNow;
+        public event Action<long>? OnLeadershipAcquired;
+        public event Action? OnLeadershipLost;
+
+        public void ReacquireWithNextEpoch()
+        {
+            OnLeadershipLost?.Invoke();
+            LeaseEpoch++;
+            OnLeadershipAcquired?.Invoke(LeaseEpoch);
+        }
     }
 }

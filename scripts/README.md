@@ -18,6 +18,21 @@ auf dem API-Host, sind also ohne WinRM-Ziel real ausführbar.
 (braucht SMTP), `llmQuery` (braucht `Llm:Enabled=true`), `scheduledTask` (braucht funktionierende
 Task-Scheduler-CIM auf dem Ziel).
 
+**Selbstprobe der eigenen API — Port beachten.** Die beiden Netzwerk-Proben in
+`Test — waitForCondition` (`portOpen` / `httpOk`) zielen auf die eigene NodePilot-API. Ihre Ziele
+liegen als Trigger-Parameter `probePort`/`probeUrl` am Workflow und sind auf den **Dev**-Port `5000`
+vorbelegt (`launchSettings.json`). Auf einer Installation hört Kestrel auf dem beim Setup gewählten
+HTTPS-Port — beim Ausführen also z. B. `probeUrl = https://localhost:<HTTPS-Port>/healthz/live` und
+`probePort = <HTTPS-Port>` setzen, sonst laufen beide Steps korrekterweise in den Timeout. Der Host
+muss zusätzlich in `WaitForCondition:AllowedHosts` stehen (Default: `localhost`); `RestApi:*` ist
+für diese Proben **nicht** zuständig.
+
+Die `restApi`-Nodes von `Test — restApi` zielen aus demselben Grund auf `http://localhost:5000`.
+Sie sind auf einer gehärteten Installation **absichtlich** geblockt: `RestApi:BlockPrivateNetworks`
+steht produktiv auf `true` und `RestApi:AllowedHosts` ist leer. Wer sie dort laufen lassen will,
+trägt den Host bewusst in `RestApi:AllowedHosts` ein (restart-pflichtig) — das öffnet outbound-HTTP
+auf Loopback und ist deshalb eine eigene Entscheidung, keine Nebenwirkung der Probe-Liste.
+
 **Bewusst nicht enthaltene Varianten** — sie wären auf einem normalen Host ein dauerhaft roter Schritt
 statt eines Tests:
 

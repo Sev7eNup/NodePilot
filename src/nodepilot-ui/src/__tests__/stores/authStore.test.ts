@@ -3,13 +3,29 @@ import { useAuthStore } from '../../stores/authStore';
 
 // Mock the api module — `post`, `get` and `postWithHeaders` (setup-token login) are
 // used by the auth flow now.
-vi.mock('../../api/client', () => ({
-  api: {
-    post: vi.fn(),
-    get: vi.fn(),
-    postWithHeaders: vi.fn(),
-  },
-}));
+vi.mock('../../api/client', () => {
+  // The store branches on `err instanceof ApiError`, so the mock must export a real class —
+  // an auto-mocked undefined would crash the instanceof check itself.
+  class ApiError extends Error {
+    status: number;
+    code?: string;
+    constructor(message: string, status: number, code?: string) {
+      super(message);
+      this.status = status;
+      this.code = code;
+    }
+  }
+  return {
+    api: {
+      post: vi.fn(),
+      get: vi.fn(),
+      postWithHeaders: vi.fn(),
+    },
+    ApiError,
+    isDatabaseOutageError: (err: unknown) =>
+      err instanceof ApiError && (err.code === 'DATABASE_UNAVAILABLE' || err.code === 'DATABASE_TIMEOUT'),
+  };
+});
 
 import { api } from '../../api/client';
 

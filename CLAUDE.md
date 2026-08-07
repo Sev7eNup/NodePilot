@@ -73,6 +73,15 @@ ist nicht nötig. **Immer erst `pg_ctl start`, dann `dotnet run`.**
 
 **Für Claude:** Dev-Mode verwenden. **API-Neustarts (stop+rebuild+start) sind jederzeit ohne Rückfrage erlaubt** — DLL-Locks sind normal. Vorab PID via `Get-NetTCPConnection -LocalPort 5000` finden, dann `Stop-Process` + Rebuild + Start. `npm run dev` kaputt → `npm install`. Deploy-Skripte unter `deploy/` **niemals** ausführen.
 
+**Langlaufende Prozesse (API + Vite):** detached/als Background-Prozess starten (z. B. `Start-Process` mit umgeleiteten Logs), damit sie Tool-Call-Grenzen überleben. „Läuft" erst melden nach vollem Port-Check (`Get-NetTCPConnection -LocalPort 5000` **ohne** `-First N` — Truncation hat schon zu Fehldiagnosen geführt) **und** HTTP-Health-Probe. Vor jedem Kill verifizieren, dass es die Dev-Instanz ist — **nie** den installierten Windows-Dienst treffen.
+
+## Arbeitsweise für Claude
+
+- **Branching:** Nicht-triviale Arbeit auf einem neuen Branch beginnen, **bevor** editiert wird; nachfragen nur, wenn der Branch-Name unklar ist. Triviale Einzeiler (z. B. `.gitignore`) bekommen **keinen** eigenen Branch/PR — in die laufende Arbeit einfalten.
+- **Scope:** Minimaler Root-Cause-Fix. Würde ein Fix deutlich mehr Dateien anfassen als das benannte Problem → stoppen und den geplanten Scope in 3 Bullets nennen, bevor editiert wird.
+- **PowerShell 5.1 / Windows:** Kein Inline-SQL durch PowerShell-Quoting — Query in eine `.sql`-Datei schreiben und per `psql -f` ausführen. Dateien als UTF-8 **ohne** BOM schreiben. Keine `sed`/Regex-Zeilen-Edits auf Source-Dateien (CRLF bricht sie) — Edit-Tool verwenden. Kein `$args`-Splatting; explizite benannte Parameter.
+- **Reporting:** Knapp berichten — was geändert, was verifiziert, was offen. Keine Per-File-Walkthroughs, kein Plan-Nacherzählen. Interaktive Rückfragen nur, wenn die Antwort wirklich blockiert.
+
 ## Datenbank
 
 Zwei Provider, umschaltbar über `Database:Provider`:
@@ -93,6 +102,12 @@ Zwei Provider, umschaltbar über `Database:Provider`:
 - **DB-TLS strikt (default):** `DatabaseTlsBootValidator` bricht den Boot ab, wenn die Connection den Server nicht verifiziert (`Encrypt=Strict`/`TrustServerCertificate=False` bzw. `SSL Mode=VerifyFull`). Escape `Database:AllowInsecureTls=true` nur bei Loopback-Host **und** entweder Development-Env **oder** `Deployment:Mode=Desktop` (Desktop-Posture, siehe Production Deployment).
 
 Retention-Services im Scheduler: Execution (30d), AuditLog (365d), WorkflowVersions (50/Workflow), SupportEvents (90d), Notifications (90d) — opt-out via `Retention:*:Enabled: false`. IdempotencyKeys (24h, fixe TTL) läuft immer.
+
+### Datenbank-Verfügbarkeit (Laufzeit-Ausfall, ADR 0011)
+
+Prozessweiter In-Memory-Breaker (`NodePilot.Data.Availability`): fällt die DB zur Laufzeit aus, antwortet `/api` sofort `503 DATABASE_UNAVAILABLE` (+ `Retry-After`, `reason`, `retryable`) statt Minuten zu hängen; eine Sonde (`SELECT 1` auf eigener ungepoolter Verbindung — **nie** `CanConnectAsync`, ein hängender Server besteht das) erkennt und schließt; Erholung automatisch nach 2 Erfolgen inkl. gezieltem `ClearPool`. **Einzelschreiber-Regel: nur die Sonde publiziert `Available`, EF-Interceptors degradieren nur.** Ein Command-Timeout öffnet nie direkt — er *armt* die Sonde (`Armed`-Zustand; eine langsame Abfrage ist kein Ausfall und bleibt `DATABASE_TIMEOUT`). Klassifizierung in `DbErrorClassifier.Classify` (geordnete Präzedenz; **Kontext schlägt Form** — Npgsql liefert Connect- und Command-Timeout in identischer Exception-Gestalt). `BreakerAware*ExecutionStrategy` ersetzt `EnableRetryOnFailure` (wiederholt nie Command-Timeouts, global; 53300/Deadlock-Retry bleibt). Hintergrunddienste parken via `WaitUntilServableAsync` (wirft nie; Gate **über** der Leader-Prüfung), Trigger-Fires werden gezählt gedroppt statt gepuffert; Engine pausiert vor jedem *neuen* Step und korrigiert die zeilenzählende Finalisierung per In-Memory-Flag (sonst würde eine gescheiterte Activity nach Erholung als Succeeded finalisiert). Health: `/healthz/ready` = schneller 503 fürs LB, `/healthz/database` = **immer 200** mit Status fürs SPA (Banner + TopBar-Ampel; Poll 15 s/3 s). Boot bleibt fail-closed (`Database:StartupWaitSeconds`) — der Boot-Block wird bewusst **nicht** nachgeholt (StartupRecovery/Setup-Token, siehe ADR). Config `Database:Probe:*`, `Database:ConnectTimeoutSeconds` (liegt gemessen **doppelt** auf dem kritischen Pfad), `Database:AuthReadTimeoutSeconds` (wie alle Availability-Budgets typisierte, restart-pflichtige Boot-Config; bewusst **kein** `SettingsSchema`-Eintrag — der Connection-String gehört auf keine HTTP-Fläche). Details: `docs/adr/0011-*.md` + `docs/claude-reference.md`.
+
+**Bekannte Falle (bewusst so):** `HostOptions.BackgroundServiceExceptionBehavior` bleibt auf `StopHost`, und die sechs Retention-Dienste haben ihren breiten Catch eine Ebene *unter* der host-fatalen Grenze — Code, der in deren `RunIterationAsync` außerhalb des inneren `try` landet, kann den Host töten.
 
 ## API Endpoints
 
@@ -157,7 +172,7 @@ User-definierte Regeln, die bei passenden Ereignissen über Kanäle (SMTP / Gene
 
 - **Neue Activity:** Klasse in `Engine/Activities/`, `IActivityExecutor` implementieren — Auto-Discovery via `AddNodePilotActivities()` (scannt `NodePilot.Engine`), **keine** DI-Verdrahtung in `Program.cs` nötig. Die UI-Seite (Palette-Eintrag, `*Config`-Komponente, handgepflegter Katalog-Spiegel) ist Pflichtteil derselben Änderung — Mechanik in `src/nodepilot-ui/CLAUDE.md`. **Ebenfalls Pflicht:** ein Eintrag in `src/NodePilot.Core/Activities/Embedded/activity-config-reference.json` (Purpose + Config-Keys + optionale `promptNotes`). Daraus werden AI-Prompt-Katalog *und* MCP-Config-Tools gespeist; `ActivityConfigReferenceTests` prüft Vollständigkeit **und** dass jeder dokumentierte Key vom Executor wirklich gelesen wird — ein erfundener Key erzeugt sonst Nodes, die korrekt aussehen und nichts tun.
 - **Neuer API Controller:** In `Api/Controllers/`, DTOs in `Api/Dtos/`. **Immer parallel** CLI-Command *und* MCP-Tool anlegen — Mechanik in `src/NodePilot.Cli/CLAUDE.md` bzw. `src/NodePilot.Mcp/CLAUDE.md`.
-- **Frontend:** Seiten/Nodes/i18n/State-Konventionen in `src/nodepilot-ui/CLAUDE.md`.
+- **Frontend:** Seiten/Nodes/i18n/State-Konventionen in `src/nodepilot-ui/CLAUDE.md`. **Farben immer über Design-Tokens/CSS-Variablen** — nie Tailwind-Farbliterale hardcoden (`text-gray-900`, `bg-white` brechen die Dark-Skins). Natives `<select>`: `option:hover` ist in Chromium nicht stylbar → Custom-Dropdown-Komponente verwenden.
 - **Models/Interfaces:** Immer in `NodePilot.Core`
 - **Doc-Sync:** Feature-Änderungen halten alle Doku-Flächen synchron — README, `docs/*.md`, `E2ETests.md` + `e2e/README.md` und die Doku-Website `src/nodepilot-docs-ui/content/` (eigener kuratierter Korpus, kein Render von `docs/`).
 
@@ -237,6 +252,8 @@ Contract-Derivation: `GET /{id}/contract` liefert Inputs aus `manualTrigger.para
 
 `TriggerOrchestrator` scannt alle 5 s. Trigger-Daten landen als `manual.*`-Variablen im Run (`{{manual.<name>}}`) + als `param.*` des Trigger-Nodes — **kein** `trigger.*`-Namespace. Key-Namen pro Trigger-Typ: siehe `docs/claude-reference.md`.
 
+**Selbstheilung (Laufzeit-Tod einer Quelle):** Jede `ITriggerSource` beantwortet `Health` — vertraglich ein **reiner In-Memory-Read** (der Orchestrator wertet ihn sequenziell für *jeden* Trigger im 5-s-Pass aus; ein blockierender Probe dort legt die Reconciliation aller Workflows lahm). Meldet eine Quelle `unhealthy`, wirft der Orchestrator sie raus und der vorhandene Add-Pfad baut sie mit Exponential-Backoff (5 s→300 s, unbegrenzt) neu auf — ein `fileWatcherTrigger`, dessen UNC-Freigabe verschwindet, läuft also von selbst wieder an, sobald der Pfad zurück ist. Ein `FileSystemWatcher` lässt sich dabei **nicht** in-place re-armen (`EnableRaisingEvents` liest auf der Leiche noch `true`, der Setter ist ein No-Op) — nur eine frische Instanz hilft. Buffer-Overflow gilt bewusst **nicht** als Fault (Runtime stellt den Read neu aus, Evicten würde flappen). Alertbar über die System-Policy `trigger-unhealthy`; Details + Config-Keys: `docs/claude-reference.md`.
+
 **webhookTrigger-Hardening:** Verifizierung per `signatureMode` — `header` (default, `X-Webhook-Secret`) oder `nodepilot-hmac-v2` (HMAC-SHA256 über Freshness-Metadaten + Methode + Pfad + kanonische Query + Raw-Body; verlangt CSPRNG-Secret ≥32 Bytes, `X-NodePilot-Timestamp` und einmalige `X-NodePilot-Delivery-Id` mit clusterweitem Replay-Guard/5-min-Fenster). Legacy `hmac` (Body-only, GitHub/GitLab/Alertmanager-nativ) wird abgelehnt → Adapter nötig. `fieldMappings` extrahiert JSON-Body-Felder per JSONPath als eigene `manual.*`-Params. Details: `docs/claude-reference.md`.
 
 ## WorkflowEngine — Execution-Modell
@@ -297,7 +314,7 @@ Initial-Admin: erster Login bei leerer DB (One-Shot-Token `admin-setup.token`).
 - **SignalR-Auth:** httpOnly `np_auth`-Cookie wird beim WebSocket-Upgrade automatisch mitgeschickt (nur `/hubs/`); kein `?access_token=`-Querystring.
 - **REST-API-Proxy:** `RestApi:Proxy:Enabled` (default `false`). Per-Step-Override via `proxyMode`.
 
-Hardening-Flags: `Remote:RequireWinRmSsl`, `RestApi:BlockPrivateNetworks`, `RestApi:AllowedHosts` (exakte Outbound-Allow-Liste für proxied `restApi`-Ziele/Redirects; Ausnahme von `BlockPrivateNetworks`), `WaitForCondition:AllowedHosts` (**eigene** Liste für die PowerShell-Probes `portOpen`/`httpOk` — bewusst getrennt, damit „eigenen Dienst prüfen" nicht zugleich `restApi` zu Loopback öffnet; default `["localhost"]`), `FileSystemOperation:RejectTraversal`, `SqlActivity:RequireConnectionRef`, `StartProgram:DisallowShellExecute`, `Trigger:Database:RequireConnectionRef`, `Security:StrictAllowedHosts`, `Webhook:RequireSecret` — **default `true`** (hardened; fehlender Key liest als `true`, `appsettings.Development.json` relaxt auf `false`). `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` + `Database:AllowInsecureTls` default `false`. Details: `docs/claude-reference.md`.
+Hardening-Flags: `Remote:RequireWinRmSsl`, `RestApi:BlockPrivateNetworks`, `RestApi:AllowedHosts` (exakte Outbound-Allow-Liste für proxied `restApi`-Ziele/Redirects; Ausnahme von `BlockPrivateNetworks`), `WaitForCondition:AllowedHosts` (**eigene** Liste für die PowerShell-Probes `portOpen`/`httpOk` — bewusst getrennt, damit „eigenen Dienst prüfen" nicht zugleich `restApi` zu Loopback öffnet; default `["localhost"]`; **alleinige** Autorität für beide Probe-Typen, `RestApi:*` wird nicht mitgeprüft — Link-Local bleibt gesperrt), `FileSystemOperation:RejectTraversal`, `SqlActivity:RequireConnectionRef`, `StartProgram:DisallowShellExecute`, `Trigger:Database:RequireConnectionRef`, `Security:StrictAllowedHosts`, `Webhook:RequireSecret` — **default `true`** (hardened; fehlender Key liest als `true`, `appsettings.Development.json` relaxt auf `false`). `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` + `Database:AllowInsecureTls` default `false`. Details: `docs/claude-reference.md`.
 
 ## Admin-Settings Hot-Reload
 

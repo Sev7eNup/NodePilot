@@ -110,6 +110,14 @@ Konfigurierbar sind:
 
 Der Pfad bezieht sich auf das Dateisystem des Rechners, auf dem NodePilot ausgeführt wird. Das Verzeichnis muss vorhanden sein, erreichbar sein und innerhalb der serverseitig erlaubten Pfade liegen.
 
+### Verhalten bei unerreichbarem Verzeichnis
+
+Wird das überwachte Verzeichnis unerreichbar — etwa weil eine Netzwerkfreigabe durch einen Neustart oder eine gelöschte Freigabe wegfällt — erkennt NodePilot das und versucht die Überwachung regelmäßig neu aufzubauen. Die Abstände wachsen dabei bis auf fünf Minuten. Sobald das Verzeichnis wieder erreichbar ist, läuft die Überwachung selbsttätig weiter; ein Neustart oder ein manueller Eingriff ist nicht nötig.
+
+Dateien, die während der Unterbrechung im Verzeichnis landen, lösen den Workflow **nicht** nachträglich aus. Sie bleiben liegen und werden erst durch eine spätere Änderung erfasst. Wer eine lückenlose Verarbeitung braucht, sollte den Workflow so bauen, dass er beim Start das gesamte Verzeichnis abarbeitet statt nur die gemeldete Datei.
+
+Damit eine solche Unterbrechung nicht unbemerkt bleibt, kann unter [Alarme](./alerting) eine System-Policy auf die Quelle **Trigger nicht registriert** angelegt werden.
+
 Ausgabedaten:
 
 - `fileAction`: Art der Änderung

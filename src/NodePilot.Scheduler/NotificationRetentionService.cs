@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using NodePilot.Core.Enums;
 using NodePilot.Data;
 using NodePilot.Scheduler.Options;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Scheduler;
 
@@ -37,15 +38,19 @@ public class NotificationRetentionService : BackgroundService
     // Resolved per pass from the live monitor — never cached across passes.
     private NotificationsRetentionOptions Opts => _opts.CurrentValue.Notifications;
 
+    private readonly IDatabaseAvailability _availability;
+
     public NotificationRetentionService(
         IServiceScopeFactory scopeFactory,
         IOptionsMonitor<RetentionOptions> opts,
         NodePilot.Core.Interfaces.IClusterStateProvider cluster,
-        ILogger<NotificationRetentionService> logger)
+        ILogger<NotificationRetentionService> logger,
+        IDatabaseAvailability availability)
     {
         _scopeFactory = scopeFactory;
         _opts = opts;
         _cluster = cluster;
+        _availability = availability;
         _logger = logger;
     }
 
@@ -58,6 +63,13 @@ public class NotificationRetentionService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate, deliberately ABOVE the leader check: during a database outage no
+            // node can renew its cluster lease, so every node reads as a follower - gating on
+            // IsLeader first would park for the right reason and log the wrong one.
+            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
+            // is left at its default StopHost, so an escaping cancellation would stop the host).
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             // HA gate: leader-only.
             if (!_cluster.IsLeader)
             {

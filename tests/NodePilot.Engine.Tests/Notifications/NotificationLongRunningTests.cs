@@ -59,7 +59,8 @@ public class NotificationLongRunningTests
         var d = new NotificationDispatcher(
             factory, new SingleNodeClusterStateProvider(), sinks,
             new NodePilot.Scheduler.SystemAlerts.SystemAlertCatalog(Array.Empty<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource>()),
-            new ConfigurationBuilder().Build(), NullLogger<NotificationDispatcher>.Instance);
+            new ConfigurationBuilder().Build(), NullLogger<NotificationDispatcher>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
         d.ScanSafetyLag = TimeSpan.Zero;
         d.LongRunningThreshold = threshold;
         d.QueuedLongThreshold = threshold;

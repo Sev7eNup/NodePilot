@@ -21,6 +21,7 @@ public sealed class DirectorySynchronizationService(
     IOptionsMonitor<LdapOptions> options,
     IClusterStateProvider cluster,
     ILogger<DirectorySynchronizationService> logger,
+    NodePilot.Data.Availability.IDatabaseAvailability availability,
     ActiveDirectoryAuthenticationConfiguration? activeConfiguration = null) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -30,6 +31,13 @@ public sealed class DirectorySynchronizationService(
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate ABOVE the cycle timestamp, so an outage does not consume the sync
+            // interval budget - and above the leader check, because during an outage no node can
+            // renew its lease and every node reads as a follower. A sync pass without a database
+            // cannot persist its freshness anyway; the fail-closed staleness deadline already
+            // handles prolonged unavailability.
+            if (!await availability.WaitUntilServableAsync(stoppingToken)) break;
+
             var cycleStartedAt = DateTime.UtcNow;
             var current = activeConfiguration?.Ldap ?? options.CurrentValue;
             var directorySyncEnabled = activeConfiguration?.DirectorySyncEnabled ?? current.Enabled;

@@ -47,7 +47,9 @@ public class SchedulerMetricsTests
 
         _orchestrator = new TriggerOrchestrator(_scopeFactory, _rootServices,
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NullLogger<TriggerOrchestrator>.Instance);
+            NullLogger<TriggerOrchestrator>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available,
+            new TriggerHealthRegistry());
     }
 
     private sealed class NoopExecutionDispatchQueue : IExecutionDispatchQueue

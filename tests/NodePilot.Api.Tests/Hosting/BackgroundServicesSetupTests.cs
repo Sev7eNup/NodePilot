@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using NodePilot.Api.Hosting;
 using NodePilot.Scheduler;
 using Xunit;
@@ -32,5 +33,30 @@ public sealed class BackgroundServicesSetupTests
 
         triggerSources.Should().BeEmpty(
             "trigger sources are owned and disposed by the TriggerOrchestrator, not by the container");
+    }
+
+    [Fact]
+    public void AddNodePilotBackgroundServices_RegistersExactlyOneDatabaseRecoveryAuditService()
+    {
+        var services = new ServiceCollection().AddNodePilotBackgroundServices();
+
+        services.Should().ContainSingle(descriptor =>
+            descriptor.ServiceType == typeof(IHostedService)
+            && descriptor.ImplementationType == typeof(DatabaseRecoveryAuditService));
+    }
+
+    [Fact]
+    public void AddNodePilotBackgroundServices_StartsRecoveryAuditSubscriberBeforeDatabaseProbe()
+    {
+        var services = new ServiceCollection().AddNodePilotBackgroundServices();
+        var hostedTypes = services
+            .Where(descriptor => descriptor.ServiceType == typeof(IHostedService))
+            .Select(descriptor => descriptor.ImplementationType)
+            .ToList();
+
+        hostedTypes.Should().Contain(typeof(DatabaseAvailabilityProbe));
+        hostedTypes.IndexOf(typeof(DatabaseRecoveryAuditService)).Should().BeLessThan(
+            hostedTypes.IndexOf(typeof(DatabaseAvailabilityProbe)),
+            "the audit subscriber must be attached before the probe can publish an early recovery");
     }
 }

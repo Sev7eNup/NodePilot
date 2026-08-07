@@ -342,6 +342,29 @@ Erwartete Ergebnisse:
 
 Bei aktivierter Verzeichnisanbindung ist `/healthz/directory` separat zu prüfen. Die allgemeine Readiness bleibt absichtlich auf die Datenbank beschränkt.
 
+### Verhalten bei Datenbank-Ausfall im laufenden Betrieb
+
+Bei einem Laufzeit-Ausfall bleibt der Dienst oben; DB-abhängige HTTP-Aufrufe antworten schnell mit
+dem gemeinsamen `503 DATABASE_UNAVAILABLE`-Vertrag, SignalR-Aufrufe mit demselben Fehlercode. Die UI
+bleibt erreichbar, zeigt Banner und Status-Ampel und verbindet sich nach erfolgreicher
+`SELECT 1`-Recovery automatisch neu — inklusive SignalR-Gruppen, ohne Dienst-Neustart.
+`RejectedByServer` bedeutet dagegen falsche
+Zugangsdaten, Datenbankauswahl oder TLS-Konfiguration (`retryable: false`): Hier muss ein
+Administrator die Konfiguration korrigieren. Wurden NodePilot-Verbindungsdaten geändert, ist danach
+ein Dienst-Neustart erforderlich; serverseitige Korrekturen erkennt die Sonde automatisch.
+
+| Endpoint | Verhalten im Ausfall |
+|---|---|
+| `/healthz/live` | HTTP 200; kein Prozess-Restart |
+| `/healthz/ready` | schneller HTTP 503; Traffic wegrouten |
+| `/healthz/database` | HTTP 200 mit `status` und `reason`; Statusbericht statt Gate |
+
+Laufende Workflows warten an der dauerhaften Step-Grenze. Nur von aktiven Trigger-Sources beobachtete
+Fires werden gezählt verworfen und nicht nachgeholt. Notifications sind at-least-once; Empfänger
+sollten mit `eventKey` aus JSON beziehungsweise `X-NodePilot-Event-Key` deduplizieren. Timeout- und
+Probe-Defaults stehen unter [Datenbank-Provider](../configuration/database), das genaue HTTP-Schema
+unter [API-Endpunkte](../api/endpoints#health).
+
 ## 8. Ersten Admin-Account anlegen
 
 Der Installer zeigt den einmaligen Setup-Token aus `C:\ProgramData\NodePilot\admin-setup.token` an. Im Browser mit Wunsch-Benutzername und Passwort anmelden: Beim ersten Versuch blendet die Login-Seite ein **Setup-Token-Feld** ein — Token einfügen, erneut anmelden. Danach ist das Admin-Konto angelegt und der Token gelöscht.

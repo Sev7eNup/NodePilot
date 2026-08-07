@@ -20,11 +20,8 @@ namespace NodePilot.Api.Hosting;
 /// </summary>
 public sealed class DatabaseTimeoutExceptionHandler : IExceptionHandler
 {
-    /// <summary>Deliberately short. The condition that causes this clears in seconds, not minutes.</summary>
-    private const int RetryAfterSeconds = 5;
-
     /// <summary>Stable, machine-readable, SCREAMING_SNAKE_CASE - the convention from ADR 0007.</summary>
-    public const string ErrorCode = "DATABASE_TIMEOUT";
+    public const string ErrorCode = DatabaseUnavailableResponse.TimeoutCode;
 
     private readonly ILogger<DatabaseTimeoutExceptionHandler> _logger;
 
@@ -34,7 +31,13 @@ public sealed class DatabaseTimeoutExceptionHandler : IExceptionHandler
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext, Exception exception, CancellationToken cancellationToken)
     {
-        if (!DbErrorClassifier.IsCommandTimeout(exception)) return false;
+        // CapacityBackpressure joins CommandTimeout here: PostgreSQL 53300 and SQL Server 10928 mean
+        // "alive but out of resources", which is the same answer to the user as "busy, try again".
+        // They used to reach this handler by accident, via the old unqualified TimeoutException catch;
+        // now that the classifier separates them properly they are named explicitly rather than
+        // silently demoted to a 500.
+        if (DbErrorClassifier.Classify(exception)
+            is not (DbFailureKind.CommandTimeout or DbFailureKind.CapacityBackpressure)) return false;
 
         // Logged as a warning, not an error: the service is healthy, the database is busy. Logging
         // it at error level would train operators to ignore the level.
@@ -43,16 +46,8 @@ public sealed class DatabaseTimeoutExceptionHandler : IExceptionHandler
             "Database command timed out serving {Method} {Path}; returning 503 {Code}.",
             httpContext.Request.Method, httpContext.Request.Path, ErrorCode);
 
-        httpContext.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
-        httpContext.Response.Headers["Retry-After"] = RetryAfterSeconds.ToString();
-        await httpContext.Response.WriteAsJsonAsync(
-            new
-            {
-                code = ErrorCode,
-                message = "The database did not answer in time. It is most likely under load - "
-                        + "please try again in a moment.",
-            },
-            cancellationToken);
+        // One writer for both database 503s, so the SPA branches on `code` once instead of twice.
+        await DatabaseUnavailableResponse.WriteTimeoutAsync(httpContext, cancellationToken);
         return true;
     }
 }

@@ -31,6 +31,15 @@ Für Betriebs- und Ticketdiagnose stehen `GET /api/diagnostics/support-log|suppo
 
 ## Metrics (Auszug)
 
+- `nodepilot.database.requests_rejected` — Requests, die der offene Datenbank-Breaker sofort mit 503 beendet.
+- `nodepilot.database.outages` — bestätigte Ausfall-Episoden.
+- `nodepilot.database.probe_cleanup_timeouts` — abgebrochene Cleanup-Schritte der Recovery-Sonde.
+- `nodepilot.scheduler.triggers.dropped_db_unavailable` — während eines bekannten Ausfalls beobachtete und verworfene Trigger-Fires.
 - `nodepilot.audit_archive.hash_drift` — Audit-Archive-Drift.
 - `nodepilot_credential_crypto_calls{operation,result}` — `encrypt`/`decrypt` × `success`/`failure`.
 - `nodepilot_credential_crypto_legacy_reads` — Decrypts aus Legacy-Provider (Migration-Window).
+
+Für Monitoring gilt: `/healthz/ready` ist das Traffic-Gate und liefert bei `Armed` oder `Unavailable`
+503. `/healthz/database` antwortet immer 200 und berichtet `ok`, `armed` oder `unavailable` inklusive
+grober Ursache. Pro Erholung entsteht genau ein Audit-Eintrag `DATABASE_RECOVERED`; ein Trip-Audit ist
+während des Ausfalls nicht zuverlässig schreibbar.

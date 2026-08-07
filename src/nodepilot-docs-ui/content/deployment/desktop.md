@@ -37,6 +37,12 @@ PostgreSQL 16 auf 127.0.0.1
 
 Die Dienste starten beim Systemstart. Das Schließen des Electron-Fensters beendet keine Workflows oder Trigger.
 
+Stoppt oder hängt `NodePilotDb` im laufenden Betrieb, bleibt die API erreichbar und die Oberfläche
+zeigt einen Datenbank-Ausfall. Datenbankzugriffe antworten schnell mit 503, Workflows warten an
+dauerhaften Schrittgrenzen und der Betrieb wird nach erfolgreicher PostgreSQL-Prüfung automatisch
+fortgesetzt. Diagnose: `/healthz/ready` und `/healthz/database`. Details und Timeout-Einstellungen:
+[Datenbank-Provider](../configuration/database).
+
 Fenster- und Infobereichssymbol übernehmen die Farbe des in der Oberfläche gewählten Skins. Das Symbol der Programmdatei, des Installers und des Startmenüeintrags bleibt beim blauen Standard, da Windows diese Symbole aus der Datei selbst auflöst.
 
 ## Installierte Pfade

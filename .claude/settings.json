@@ -347,7 +347,12 @@
       "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/swashbuckle.aspnetcore.swaggergen/10.1.7/swashbuckle.aspnetcore.swaggergen.nuspec\")",
       "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/bcrypt.net-next/4.2.0/bcrypt.net-next.nuspec\")",
       "Bash(curl -s \"https://api.nuget.org/v3-flatcontainer/quartz/3.19.0/quartz.nuspec\")",
-      "PowerShell($errs = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile\\('e:\\\\NodePilot\\\\deploy\\\\Install-NodePilot.ps1', [ref]$null, [ref]$errs\\); \"Install-NodePilot.ps1: $\\($errs.Count\\) parse errors\"; $errs | ForEach-Object { $_.Message }; $errs2 = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile\\('e:\\\\NodePilot\\\\deploy\\\\Build-Artifact.ps1', [ref]$null, [ref]$errs2\\); \"Build-Artifact.ps1: $\\($errs2.Count\\) parse errors\"; $errs2 | ForEach-Object { $_.Message })"
+      "PowerShell($errs = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile\\('e:\\\\NodePilot\\\\deploy\\\\Install-NodePilot.ps1', [ref]$null, [ref]$errs\\); \"Install-NodePilot.ps1: $\\($errs.Count\\) parse errors\"; $errs | ForEach-Object { $_.Message }; $errs2 = $null; $null = [System.Management.Automation.Language.Parser]::ParseFile\\('e:\\\\NodePilot\\\\deploy\\\\Build-Artifact.ps1', [ref]$null, [ref]$errs2\\); \"Build-Artifact.ps1: $\\($errs2.Count\\) parse errors\"; $errs2 | ForEach-Object { $_.Message })",
+      "PowerShell(.\\\\deploy\\\\Test-DeploymentTemplates.ps1)",
+      "PowerShell($f = 'e:\\\\NodePilot\\\\deploy\\\\Preflight.ps1'; $orig = Get-Content -LiteralPath $f -Raw; try { Set-Content -LiteralPath $f -Encoding utf8 -NoNewline -Value \\($orig -replace '-CommandType Application -All ', '-CommandType Application '\\); .\\\\deploy\\\\Test-DeploymentTemplates.ps1 } finally { Set-Content -LiteralPath $f -Encoding utf8 -NoNewline -Value $orig })",
+      "PowerShell(git checkout -- deploy/Preflight.ps1)",
+      "PowerShell(dotnet build --nologo -v q 2>$null; \"BUILD EXIT: $LASTEXITCODE\")",
+      "PowerShell(dotnet test tests/NodePilot.Data.Tests --no-build --nologo -v q; \"TEST EXIT: $LASTEXITCODE\")"
     ],
     "additionalDirectories": [
       "e:\\NodePilot",

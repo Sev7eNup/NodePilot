@@ -107,7 +107,37 @@ internal static class LoggingSetup
         ("Microsoft.EntityFrameworkCore.Database.Connection", LogEventLevel.Warning),
         ("Microsoft.EntityFrameworkCore.Infrastructure", LogEventLevel.Warning),
         ("Microsoft.AspNetCore", LogEventLevel.Warning),
+        // The health-check service logs at Error for every failing check, and /healthz/ready is polled
+        // continuously by load balancers and orchestrators - so a database outage produces one line per
+        // poll for its whole duration, while the availability breaker has already reported the same
+        // outage once with a classified reason.
+        //
+        // The explicit event filter below removes only repeated failures for the `database`
+        // registration. This category override still pins the broader health-check namespace so an
+        // operator can tune other checks without knowing the internal implementation type.
+        ("Microsoft.Extensions.Diagnostics.HealthChecks", LogEventLevel.Warning),
     ];
+
+    /// <summary>
+    /// The readiness endpoint is polled continuously and the framework emits an Error for the
+    /// <c>database</c> registration on every unhealthy poll. The breaker already owns the
+    /// transition log (including classified reason and recovery), so retaining these identical
+    /// framework events would reintroduce an unbounded outage log storm. Other health checks stay
+    /// visible, and lower-level diagnostics are untouched.
+    /// </summary>
+    internal static bool ShouldSuppressRepeatedDatabaseHealthFailure(LogEvent logEvent)
+    {
+        if (logEvent.Level < LogEventLevel.Error) return false;
+        if (!logEvent.Properties.TryGetValue("SourceContext", out var source)
+            || source is not ScalarValue { Value: string sourceName }
+            || !sourceName.StartsWith(
+                "Microsoft.Extensions.Diagnostics.HealthChecks", StringComparison.Ordinal))
+            return false;
+
+        return logEvent.Properties.TryGetValue("HealthCheckName", out var check)
+            && check is ScalarValue { Value: string checkName }
+            && string.Equals(checkName, "database", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>
     /// Translates the <c>Logging:LogLevel:*</c> section into Serilog minimum levels:
@@ -238,6 +268,7 @@ internal static class LoggingSetup
             // (SettingsSections.LogLevel), which used to mean an operator could change a level,
             // get a success response, and see no effect. Translate them explicitly instead.
             ApplyConfiguredLevels(cfg, ctx.Configuration);
+            cfg.Filter.ByExcluding(ShouldSuppressRepeatedDatabaseHealthFailure);
 
             cfg
                 .Enrich.FromLogContext()

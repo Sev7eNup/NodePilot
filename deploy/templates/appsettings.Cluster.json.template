@@ -20,7 +20,19 @@
   },
   "Database": {
     "Provider": "sqlserver",
-    "//": "Or 'postgres'. The DB itself MUST be HA-replicated separately (AlwaysOn AG / Patroni / RDS Multi-AZ)."
+    "//": "Or 'postgres'. The DB itself MUST be HA-replicated separately (AlwaysOn AG / Patroni / RDS Multi-AZ).",
+    "ConnectTimeoutSeconds": 5,
+    "AuthReadTimeoutSeconds": 3,
+    "ReadinessProbeTimeoutSeconds": 5,
+    "Probe": {
+      "ConnectTimeoutSeconds": 2,
+      "CommandTimeoutSeconds": 2,
+      "CleanupTimeoutSeconds": 2,
+      "IdleIntervalSeconds": 5,
+      "OutageIntervalSeconds": 5,
+      "SuccessesToRecover": 2,
+      "FailureThreshold": 2
+    }
   },
   "ConnectionStrings": {
     "DefaultConnection": "Server={{SQL_VIP_HOSTNAME}};Database=NodePilot;Trusted_Connection=True;Encrypt=Strict;TrustServerCertificate=False;HostNameInCertificate={{SQL_VIP_HOSTNAME}}"

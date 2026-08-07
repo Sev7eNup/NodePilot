@@ -62,7 +62,7 @@ public class WorkflowStatsRefresherTests
     private static WorkflowStatsRefresher CreateService(IServiceScopeFactory factory, IConfiguration config) =>
         new(factory, config,
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NullLogger<WorkflowStatsRefresher>.Instance);
+            NullLogger<WorkflowStatsRefresher>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
     private static IConfiguration ConfigWith(params (string Key, string Value)[] values) =>
         new ConfigurationBuilder()

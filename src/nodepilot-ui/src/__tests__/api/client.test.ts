@@ -199,4 +199,47 @@ describe('API Client', () => {
     const { api } = await import('../../api/client');
     await expect(api.get('/broken')).rejects.toThrow('Internal Server Error');
   });
+
+  it('get_503WithCode_throwsApiErrorCarryingStatusCodeAndRetryAfter', async () => {
+    // The whole outage UX branches on these fields instead of substring-matching prose - if they
+    // stop being carried, the banner, the login third-branch and the auth re-probe all regress
+    // to guessing from display strings.
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => {
+        return HttpResponse.json(
+          { code: 'DATABASE_UNAVAILABLE', message: 'The database is not reachable right now.' },
+          { status: 503, headers: { 'Retry-After': '15' } },
+        );
+      })
+    );
+    patchFetch();
+
+    const { api, ApiError, isDatabaseOutageError } = await import('../../api/client');
+    const err = await api.get('/workflows').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ApiError);
+    const apiErr = err as InstanceType<typeof ApiError>;
+    expect(apiErr.status).toBe(503);
+    expect(apiErr.code).toBe('DATABASE_UNAVAILABLE');
+    expect(apiErr.retryAfterSeconds).toBe(15);
+    // The display string keeps its established "message (CODE)" shape for everything that still
+    // renders err.message.
+    expect(apiErr.message).toContain('DATABASE_UNAVAILABLE');
+    expect(isDatabaseOutageError(apiErr)).toBe(true);
+  });
+
+  it('get_404_throwsApiErrorWithStatus', async () => {
+    server.use(
+      http.get(`${BASE}/api/workflows/nope/contract`, () => {
+        return new HttpResponse('Not Found', { status: 404 });
+      })
+    );
+    patchFetch();
+
+    const { api, ApiError } = await import('../../api/client');
+    const err = await api.get('/workflows/nope/contract').catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(ApiError);
+    expect((err as InstanceType<typeof ApiError>).status).toBe(404);
+  });
 });

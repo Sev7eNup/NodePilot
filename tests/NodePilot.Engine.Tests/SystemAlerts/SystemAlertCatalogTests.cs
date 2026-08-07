@@ -33,6 +33,7 @@ public class SystemAlertCatalogTests
         new StuckExecutionSource(),
         new WorkflowHealthSource(),
         new AlertDeliveryFailureSource(),
+        new TriggerUnhealthySource(new NodePilot.Scheduler.TriggerHealthRegistry()),
     ];
 
     [Fact]
@@ -43,7 +44,7 @@ public class SystemAlertCatalogTests
         catalog.Descriptors.Select(d => d.SourceId).Should().Equal(
             "alert-delivery-failed", "backlog", "cancel-rate", "credential-expiring", "execution-result",
             "execution-stuck", "machine-unreachable", "pending", "schedule-missed", "service-stale",
-            "workflow-health", "workflow-no-recent-success");
+            "trigger-unhealthy", "workflow-health", "workflow-no-recent-success");
     }
 
     [Fact]

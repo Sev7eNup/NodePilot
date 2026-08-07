@@ -200,6 +200,24 @@ if (-not [string]::IsNullOrEmpty([string]$emptySettings.ConnectionStrings.Postgr
     throw 'Deployment template check failed: the Postgres secret must not be rendered into production JSON.'
 }
 
+$databaseOutageDefaults = [ordered]@{
+    'Database.ConnectTimeoutSeconds' = $emptySettings.Database.ConnectTimeoutSeconds
+    'Database.AuthReadTimeoutSeconds' = $emptySettings.Database.AuthReadTimeoutSeconds
+    'Database.ReadinessProbeTimeoutSeconds' = $emptySettings.Database.ReadinessProbeTimeoutSeconds
+    'Database.Probe.ConnectTimeoutSeconds' = $emptySettings.Database.Probe.ConnectTimeoutSeconds
+    'Database.Probe.CommandTimeoutSeconds' = $emptySettings.Database.Probe.CommandTimeoutSeconds
+    'Database.Probe.CleanupTimeoutSeconds' = $emptySettings.Database.Probe.CleanupTimeoutSeconds
+    'Database.Probe.IdleIntervalSeconds' = $emptySettings.Database.Probe.IdleIntervalSeconds
+    'Database.Probe.OutageIntervalSeconds' = $emptySettings.Database.Probe.OutageIntervalSeconds
+    'Database.Probe.SuccessesToRecover' = $emptySettings.Database.Probe.SuccessesToRecover
+    'Database.Probe.FailureThreshold' = $emptySettings.Database.Probe.FailureThreshold
+}
+foreach ($databaseOutageDefault in $databaseOutageDefaults.GetEnumerator()) {
+    if ([int]$databaseOutageDefault.Value -le 0) {
+        throw "Deployment template check failed: $($databaseOutageDefault.Key) must be present and positive."
+    }
+}
+
 $proxySettings = Render-AppSettingsTemplate -KnownProxiesJson '["10.0.1.5","2001:db8::5"]'
 $renderedProxies = @($proxySettings.ForwardedHeaders.KnownProxies)
 if ($renderedProxies.Count -ne 2 -or
@@ -438,9 +456,12 @@ Assert-TextMatches -Name 'the dotnet probe reads the PE machine type for x64' `
 Assert-TextDoesNotMatch -Name 'the dotnet probe must not parse localisable CLI text for the architecture' `
     -Text $preflightStripped -Pattern '--info'
 # Taking only the first PATH hit is how a machine with both runtimes installed gets the wrong
-# answer - in either direction, depending on PATH order.
+# answer - in either direction, depending on PATH order. Banning 'Select-Object -First 1' is not
+# enough: without -All, Get-Command itself returns only the first PATH match for an application.
 Assert-TextDoesNotMatch -Name 'the dotnet probe must not settle for the first PATH hit' `
     -Text $preflightStripped -Pattern '(?s)Get-Command dotnet[\s\S]{0,200}Select-Object -First 1'
+Assert-TextMatches -Name 'the dotnet probe enumerates every PATH hit via -All' `
+    -Text $preflightStripped -Pattern 'Get-Command\s+dotnet\s+-CommandType\s+Application\s+-All\b'
 # And the version question must be put to the host that was established as 64-bit, not to any other.
 # Anchored on the invocation itself: a proximity match would be satisfied by the enclosing
 # "if ($x64Path)" and would still pass with a bare "& dotnet --list-runtimes" inside it.

@@ -62,7 +62,8 @@ public sealed class HubRevocationSweeperTests : IDisposable
             ScopeFactoryFor(db),
             hub.Object,
             NullLogger<HubRevocationSweeper>.Instance,
-            new ConfigurationBuilder().Build());
+            new ConfigurationBuilder().Build(),
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
         return (sweeper, hub, proxy, clients);
     }

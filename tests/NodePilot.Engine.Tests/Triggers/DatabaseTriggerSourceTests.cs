@@ -276,4 +276,54 @@ public class DatabaseTriggerSourceTests
         // Should not throw even though StartAsync was never called.
         await src.DisposeAsync();
     }
+
+    // ---- liveness ----
+
+    [Fact]
+    public async Task Health_IsHealthy_WhilePollLoopRuns()
+    {
+        var dbName = "trg-health-" + Guid.NewGuid().ToString("N");
+        var connStr = $"DataSource={dbName};Mode=Memory;Cache=Shared";
+        await using var holder = new SqliteConnection(connStr);
+        await holder.OpenAsync();
+        await using (var ddl = holder.CreateCommand())
+        {
+            ddl.CommandText = "CREATE TABLE Marker (Id INTEGER PRIMARY KEY); INSERT INTO Marker VALUES (1);";
+            await ddl.ExecuteNonQueryAsync();
+        }
+
+        var src = new DatabaseTriggerSource(
+            NullLogger<DatabaseTriggerSource>.Instance,
+            WithRegisteredConnection("Marker", connStr));
+        var ctx = new TriggerContext
+        {
+            WorkflowId = Guid.NewGuid(),
+            NodeId = "trg",
+            Config = ParseConfig("""{"connectionRef":"Marker","provider":"sqlite","query":"SELECT MAX(Id) FROM Marker","intervalSeconds":5}"""),
+            OnFire = _ => Task.CompletedTask,
+        };
+
+        await src.StartAsync(ctx, CancellationToken.None);
+        try
+        {
+            src.Health.IsHealthy.Should().BeTrue();
+        }
+        finally
+        {
+            await src.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Health_IsHealthy_AfterDispose()
+    {
+        // The poll loop is completed after disposal, which the liveness check must not read as a
+        // fault — the orchestrator disposes on its own teardown paths (leadership loss, shutdown,
+        // config change) and would otherwise try to re-register everything it just tore down.
+        var src = new DatabaseTriggerSource(NullLogger<DatabaseTriggerSource>.Instance, EmptyConfig());
+
+        await src.DisposeAsync();
+
+        src.Health.IsHealthy.Should().BeTrue();
+    }
 }

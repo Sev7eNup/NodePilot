@@ -198,7 +198,7 @@ function Get-NodePilotDotNetHostCandidates {
       under WOW64 would be a new way to be wrong.
     #>
     $candidates = New-Object System.Collections.Generic.List[string]
-    foreach ($command in @(Get-Command dotnet -CommandType Application -ErrorAction SilentlyContinue)) {
+    foreach ($command in @(Get-Command dotnet -CommandType Application -All -ErrorAction SilentlyContinue)) {
         $candidates.Add($command.Source)
     }
     foreach ($root in @("$env:ProgramW6432", $env:ProgramFiles, ${env:ProgramFiles(x86)})) {

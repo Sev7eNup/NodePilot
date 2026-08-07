@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Security;
 using NodePilot.Core.Enums;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Api.Hubs;
 
@@ -30,14 +31,18 @@ public class HubRevocationSweeper : BackgroundService
     private readonly ILogger<HubRevocationSweeper> _logger;
     private readonly TimeSpan _interval;
 
+    private readonly IDatabaseAvailability _availability;
+
     public HubRevocationSweeper(
         IServiceScopeFactory scopeFactory,
         IHubContext<ExecutionHub> hub,
         ILogger<HubRevocationSweeper> logger,
-        IConfiguration config)
+        IConfiguration config,
+        IDatabaseAvailability availability)
     {
         _scopeFactory = scopeFactory;
         _hub = hub;
+        _availability = availability;
         _logger = logger;
         _interval = TimeSpan.FromSeconds(
             config.GetValue<int?>("Security:HubRevocationSweepSeconds") ?? 30);
@@ -51,6 +56,10 @@ public class HubRevocationSweeper : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate. This service has no leader gate, so it runs on every node - which
+            // makes it one of the loudest offenders during an outage.
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             try
             {
                 await SweepOnceAsync(stoppingToken);

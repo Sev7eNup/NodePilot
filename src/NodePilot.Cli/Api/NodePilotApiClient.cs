@@ -648,10 +648,10 @@ public sealed class NodePilotApiClient
         return await ParseAsync<NextFiresResponse>(res, ct);
     }
 
-    public async Task<(bool Live, bool Ready, string? ReadyDetail, string? LeaderStatus)> HealthAsync(CancellationToken ct)
+    public async Task<(bool Live, bool Ready, string? ReadyDetail, string? LeaderStatus, string? DatabaseStatus, string? DatabaseReason)> HealthAsync(CancellationToken ct)
     {
         bool live = false, ready = false;
-        string? readyDetail = null, leaderStatus = null;
+        string? readyDetail = null, leaderStatus = null, databaseStatus = null, databaseReason = null;
         try
         {
             using var liveRes = await _http.GetAsync("healthz/live", ct);
@@ -683,7 +683,25 @@ public sealed class NodePilotApiClient
         }
         catch (HttpRequestException) { leaderStatus = null; }
 
-        return (live, ready, readyDetail, leaderStatus);
+        // /healthz/database answers 200 in EVERY state (memory-only breaker view) — during an
+        // outage the body says `unavailable` with a coarse reason. Display-only, like Leader:
+        // the exit code stays live+ready, because `ready` already flips on a database outage and
+        // folding this in twice would change the documented contract for nothing.
+        try
+        {
+            using var dbRes = await _http.GetAsync("healthz/database", ct);
+            var body = await dbRes.Content.ReadAsStringAsync(ct);
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
+                databaseStatus = doc.RootElement.TryGetProperty("status", out var s) ? s.GetString() : null;
+                databaseReason = doc.RootElement.TryGetProperty("reason", out var r) ? r.GetString() : null;
+            }
+            catch (System.Text.Json.JsonException) { databaseStatus = null; }
+        }
+        catch (HttpRequestException) { databaseStatus = null; }
+
+        return (live, ready, readyDetail, leaderStatus, databaseStatus, databaseReason);
     }
 
     // ---- Auth: methods discovery -------------------------------------------

@@ -55,6 +55,7 @@ describe('MaintenanceWindowsPage — mobile', () => {
   it('renders cards instead of a table at the mobile breakpoint', async () => {
     server.use(http.get(`${BASE}/api/maintenance-windows`, () => HttpResponse.json(WINDOWS)));
     server.use(http.get(`${BASE}/api/shared-folders`, () => HttpResponse.json([])));
+    server.use(http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json([])));
     server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])));
     renderPage();
 

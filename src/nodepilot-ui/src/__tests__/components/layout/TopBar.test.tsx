@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { TopBar } from '../../../components/layout/TopBar';
 import { useAuthStore } from '../../../stores/authStore';
+import { useDbHealthStore, resetDbHealth } from '../../../stores/dbHealthStore';
 
 function renderAt(path: string) {
   useAuthStore.setState({ isAuthenticated: true, username: 'u', role: 'Admin' });
@@ -17,7 +18,10 @@ function renderAt(path: string) {
   );
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  resetDbHealth();
+});
 
 describe('TopBar', () => {
   it('shows the section title for the current route', async () => {
@@ -46,23 +50,32 @@ describe('TopBar', () => {
 
   // The BackendStatus pill shows a compact "API" label + a colour-coded plug icon; the
   // connection state lives in the accessible name (aria-label "API: <state>"), not as visible
-  // text — so assert via the accessible label.
-  it('reports the backend as connected when /healthz/live is ok', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
+  // text — so assert via the accessible label. The pill no longer runs its own poll: it renders
+  // whatever the app-wide database-health probe (useDatabaseHealth, mounted once in App) wrote
+  // into the store — so the tests drive the store, which is the pill's actual input.
+  it('reports the backend as connected when the health probe says ok', async () => {
+    useDbHealthStore.setState({ status: 'ok' });
     renderAt('/');
     await waitFor(() => expect(screen.getByLabelText(/API:\s*connected/i)).toBeInTheDocument());
-    expect(fetchSpy).toHaveBeenCalledWith('/healthz/live', expect.objectContaining({ cache: 'no-store' }));
   });
 
-  it('reports the backend as unreachable on a network error', async () => {
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network down'));
+  it('reports the backend as unreachable when the probe request itself fails', async () => {
+    useDbHealthStore.setState({ status: 'offline' });
     renderAt('/');
     await waitFor(() => expect(screen.getByLabelText(/API:\s*unreachable/i)).toBeInTheDocument());
   });
 
-  it('reports the backend as unreachable on a non-2xx response', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 503 }));
+  it('reports the database as unreachable distinctly from the process being down', async () => {
+    // The old pill probed /healthz/live, which stays 200 through a database outage — it showed
+    // green while every data query failed. This state is the fix for that misleading indicator.
+    useDbHealthStore.setState({ status: 'unavailable', reason: 'Unreachable' });
     renderAt('/');
-    await waitFor(() => expect(screen.getByLabelText(/API:\s*unreachable/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByLabelText(/API:\s*database unreachable/i)).toBeInTheDocument());
+  });
+
+  it('renders the armed state as connected — one slow query is not an outage', async () => {
+    useDbHealthStore.setState({ status: 'armed' });
+    renderAt('/');
+    await waitFor(() => expect(screen.getByLabelText(/API:\s*connected/i)).toBeInTheDocument());
   });
 });

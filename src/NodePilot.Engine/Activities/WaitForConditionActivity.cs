@@ -174,10 +174,18 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         var lastTrimmed = lastOutput?.Trim();
         if (lastTrimmed is { Length: > MaxLastOutputChars })
             lastTrimmed = lastTrimmed[..MaxLastOutputChars] + "…(truncated)";
+        // Name the probe target and where it ran. Every failure mode of the typed sub-modes —
+        // closed port, wrong host, name that does not resolve — collapses into the same opaque
+        // `###NODEPILOT_COND:False###`, and "localhost" means the *remote* machine's loopback on
+        // the WinRM path. Without this, a probe pointed at the wrong port is indistinguishable
+        // from a broken product.
+        var probeContext = DescribeProbeTarget(config) is { } target
+            ? $" probing {target} [{(isLocalhost ? "local" : machine!.Hostname)}]"
+            : "";
         return new ActivityResult
         {
             Success = false,
-            ErrorOutput = $"Timeout after {timeout}s ({attempts} attempts). Last script output: {lastTrimmed ?? "(none)"}",
+            ErrorOutput = $"Timeout after {timeout}s ({attempts} attempts){probeContext}. Last script output: {lastTrimmed ?? "(none)"}",
             Duration = sw.Elapsed,
             OutputParameters = new Dictionary<string, string>
             {
@@ -189,6 +197,26 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
     }
 
     private const int MaxLastOutputChars = 2 * 1024;
+
+    /// <summary>
+    /// Human-readable target of a typed sub-mode for the timeout message. Returns null for
+    /// <c>script</c>, whose expression is already the diagnostic and may contain secrets that
+    /// the wrapper's own output redaction handles but this string would bypass.
+    /// </summary>
+    private static string? DescribeProbeTarget(JsonElement config)
+    {
+        var conditionType = (config.GetStringOrNull("conditionType") ?? "script").Trim().ToLowerInvariant();
+        return conditionType switch
+        {
+            "portopen" => config.TryGetIntOrNumericString("port", out var port)
+                ? $"{config.GetStringOrNull("host")}:{port}"
+                : config.GetStringOrNull("host"),
+            "httpok" => config.GetStringOrNull("url"),
+            "pathexists" => config.GetStringOrNull("path"),
+            "servicerunning" => config.GetStringOrNull("serviceName"),
+            _ => null,
+        };
+    }
 
     private void ValidateNetworkTarget(JsonElement config)
     {
@@ -208,9 +236,10 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
             var url = config.GetStringOrNull("url")!; // presence is validated by the builder first
             var configuration = _configuration
                 ?? throw new InvalidOperationException("WaitForCondition: network policy configuration is unavailable.");
-            NetworkGuard.ValidateUrl(configuration, url);
-            var uri = new Uri(url, UriKind.Absolute);
-            NetworkGuard.RequireExplicitlyAllowlistedHost(configuration, uri.Host, "WaitForCondition httpOk");
+            // Probe policy only — NOT NetworkGuard.ValidateUrl. That is the restApi SSRF guard;
+            // running httpOk through it made WaitForCondition:AllowedHosts inert for exactly the
+            // loopback/RFC1918 targets it ships enabled for. See NetworkGuard.ValidateProbeUrl.
+            NetworkGuard.ValidateProbeUrl(configuration, url, "WaitForCondition httpOk");
         }
     }
 
@@ -314,7 +343,9 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         if (string.IsNullOrWhiteSpace(host))
             throw new InvalidOperationException(
                 "WaitForCondition: 'host' is required when conditionType='portOpen'.");
-        if (!config.TryGetProperty("port", out var portEl) || !portEl.TryGetInt32(out var port))
+        // Numeric-string tolerant: a templated port ({{manual.probePort}}) arrives quoted
+        // because the resolver substitutes inside the raw config JSON. See TryGetIntOrNumericString.
+        if (!config.TryGetIntOrNumericString("port", out var port))
             throw new InvalidOperationException(
                 "WaitForCondition: 'port' (integer) is required when conditionType='portOpen'.");
         if (port < 1 || port > 65535)

@@ -18,6 +18,14 @@ public class ScheduleTriggerSource : ITriggerSource
 {
     public string ActivityType => "scheduleTrigger";
 
+    /// <summary>
+    /// Always healthy: Quartz owns job liveness process-wide, not per source. A scheduler that
+    /// shut down is not a per-trigger condition — it would take every schedule trigger down at
+    /// once, and re-creating them one by one against a dead scheduler would not help. There is
+    /// deliberately no per-job probe here.
+    /// </summary>
+    public TriggerHealth Health => TriggerHealth.Healthy;
+
     private readonly ISchedulerFactory _schedulerFactory;
     private readonly ILogger<ScheduleTriggerSource> _logger;
     private readonly IConfiguration _config;

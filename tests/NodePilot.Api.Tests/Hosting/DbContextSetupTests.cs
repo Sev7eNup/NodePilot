@@ -6,6 +6,8 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using NodePilot.Api.Hosting;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
+using Microsoft.Extensions.Logging.Abstractions;
 using System.Text;
 using Xunit;
 
@@ -51,6 +53,7 @@ public class DbContextSetupTests
         });
 
         var services = new ServiceCollection();
+        AddAvailability(services, config);
         services.AddNodePilotDbContext(config);
 
         var descriptor = services.FirstOrDefault(d => d.ServiceType == typeof(NodePilotDbContext));
@@ -67,6 +70,7 @@ public class DbContextSetupTests
         });
 
         var services = new ServiceCollection();
+        AddAvailability(services, config);
         services.AddNodePilotDbContext(config);
 
         services.Any(d => d.ServiceType == typeof(NodePilotDbContext)).Should().BeTrue();
@@ -87,6 +91,7 @@ public class DbContextSetupTests
             });
 
             var services = new ServiceCollection();
+            AddAvailability(services, config);
             services.AddNodePilotDbContext(config);
 
             // Resolving the context forces options-builder execution. If the alias
@@ -107,6 +112,7 @@ public class DbContextSetupTests
         });
 
         var services = new ServiceCollection();
+        AddAvailability(services, config);
         services.AddNodePilotDbContext(config);
 
         // The throw happens inside the DbContextOptions builder, which is invoked
@@ -131,12 +137,38 @@ public class DbContextSetupTests
         });
 
         var services = new ServiceCollection();
+        AddAvailability(services, config);
         services.AddNodePilotDbContext(config);
 
         using var sp = services.BuildServiceProvider();
         using var scope = sp.CreateScope();
         FluentActions.Invoking(() => scope.ServiceProvider.GetRequiredService<NodePilotDbContext>())
             .Should().NotThrow();
+    }
+
+    [Fact]
+    public void AddNodePilotDbContext_AppliesCentralDatabaseConnectTimeout()
+    {
+        var config = BuildConfig(new Dictionary<string, string?>
+        {
+            ["Database:Provider"] = "postgres",
+            ["Database:ConnectTimeoutSeconds"] = "7",
+            ["ConnectionStrings:Postgres"] =
+                "Host=127.0.0.1;Database=t;Username=u;Password=p",
+        });
+        var services = new ServiceCollection();
+        var availabilityOptions = DatabaseAvailabilityOptions.FromConfiguration(config);
+        AddAvailability(services, availabilityOptions);
+        config[DatabaseAvailabilityOptions.ConnectTimeoutKey] = "17";
+        ((IConfigurationRoot)config).Reload();
+        services.AddNodePilotDbContext(config);
+
+        using var sp = services.BuildServiceProvider();
+        using var scope = sp.CreateScope();
+        using var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+        var connectionString = db.Database.GetDbConnection().ConnectionString;
+
+        new Npgsql.NpgsqlConnectionStringBuilder(connectionString).Timeout.Should().Be(7);
     }
 
     [Fact]
@@ -195,5 +227,27 @@ public class DbContextSetupTests
         {
             Environment.SetEnvironmentVariable(key, null);
         }
+    }
+
+    /// <summary>
+    /// The pooled DbContext resolves the availability breaker and both interceptors while building its
+    /// options, so a bare ServiceCollection no longer suffices. Registered here rather than made
+    /// optional in production: an interceptor that silently does not run would turn the breaker into a
+    /// component that exists but never trips.
+    /// </summary>
+    private static void AddAvailability(
+        IServiceCollection services,
+        IConfiguration configuration) =>
+        AddAvailability(services, DatabaseAvailabilityOptions.FromConfiguration(configuration));
+
+    private static void AddAvailability(
+        IServiceCollection services,
+        DatabaseAvailabilityOptions options)
+    {
+        services.AddSingleton(options);
+        services.AddSingleton<IDatabaseAvailability>(
+            new DatabaseAvailabilityTracker(NullLogger<DatabaseAvailabilityTracker>.Instance));
+        services.AddSingleton<DatabaseConnectionAvailabilityInterceptor>();
+        services.AddSingleton<DatabaseCommandAvailabilityInterceptor>();
     }
 }

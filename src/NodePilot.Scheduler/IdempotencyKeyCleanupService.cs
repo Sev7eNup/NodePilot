@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Scheduler;
 
@@ -22,13 +23,17 @@ public class IdempotencyKeyCleanupService : BackgroundService
     private readonly ILogger<IdempotencyKeyCleanupService> _logger;
     private static readonly TimeSpan SweepInterval = TimeSpan.FromMinutes(30);
 
+    private readonly IDatabaseAvailability _availability;
+
     public IdempotencyKeyCleanupService(
         IServiceScopeFactory scopeFactory,
         NodePilot.Core.Interfaces.IClusterStateProvider cluster,
-        ILogger<IdempotencyKeyCleanupService> logger)
+        ILogger<IdempotencyKeyCleanupService> logger,
+        IDatabaseAvailability availability)
     {
         _scopeFactory = scopeFactory;
         _cluster = cluster;
+        _availability = availability;
         _logger = logger;
     }
 
@@ -39,6 +44,13 @@ public class IdempotencyKeyCleanupService : BackgroundService
 
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate, deliberately ABOVE the leader check: during a database outage no
+            // node can renew its cluster lease, so every node reads as a follower - gating on
+            // IsLeader first would park for the right reason and log the wrong one.
+            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
+            // is left at its default StopHost, so an escaping cancellation would stop the host).
+            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
+
             // HA gate: leader-only.
             if (!_cluster.IsLeader)
             {

@@ -1,8 +1,11 @@
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using Moq;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Engine.Notifications;
+using NodePilot.Engine.Security;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Notifications;
@@ -54,6 +57,7 @@ public class NotificationRendererTests
     {
         using var doc = JsonDocument.Parse(NotificationRenderer.WebhookJson(Sample()));
         var root = doc.RootElement;
+        root.GetProperty("eventKey").GetString().Should().Be("exec:abc:ExecutionFailed");
         root.GetProperty("eventType").GetString().Should().Be("ExecutionFailed");
         root.GetProperty("severity").GetString().Should().Be("Warning");
         root.GetProperty("workflowName").GetString().Should().Be("Nightly Backup");
@@ -94,5 +98,45 @@ public class NotificationRendererTests
         root.GetProperty("sourceKey").GetString().Should().Be("backlog");
         root.GetProperty("signalValue").GetInt64().Should().Be(750);
         root.GetProperty("targetMachine").GetString().Should().Be("WEB01");
+    }
+
+    [Fact]
+    public async Task WebhookSink_SendsEventKeyAsHeader()
+    {
+        var handler = new CapturingHandler();
+        var client = new HttpClient(handler);
+        var factory = new Mock<IHttpClientFactory>();
+        factory.Setup(value => value.CreateClient("NodePilot")).Returns(client);
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["RestApi:AllowedHosts:0"] = "127.0.0.1",
+            })
+            .Build();
+        var sink = new WebhookNotificationSink(
+            new RestApiHttpClientProvider(factory.Object, configuration),
+            configuration);
+
+        var result = await sink.SendAsync(
+            Sample(),
+            "http://127.0.0.1/hook",
+            secret: null,
+            TestContext.Current.CancellationToken);
+
+        result.Success.Should().BeTrue();
+        handler.EventKey.Should().Be("exec:abc:ExecutionFailed");
+    }
+
+    private sealed class CapturingHandler : HttpMessageHandler
+    {
+        public string? EventKey { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            EventKey = request.Headers.GetValues("X-NodePilot-Event-Key").Single();
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
+        }
     }
 }

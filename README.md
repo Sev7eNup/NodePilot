@@ -744,6 +744,13 @@ Backoff modes: `fixed` (always `initialDelayMs`), `linear` (delay × attempt), `
 | `databaseTrigger` | Polling SELECT | `connectionString`, `provider`, `query`, `intervalSeconds` | `{{manual.dbSentinel}}`, `.dbPrevious` |
 | `eventLogTrigger` | `EventLog.EntryWritten` | `logName`, `source`, `entryType`, `messagePattern` | `{{manual.eventSource}}`, `.eventEntryType`, `.eventId`, `.eventMessage`, `.eventTimeWritten` |
 
+A trigger source that dies at runtime — most visibly a `fileWatcherTrigger` whose UNC share goes
+away — is detected, torn down and re-created with exponential backoff (5 s to 5 min, indefinitely),
+so it resumes on its own once the path is reachable again; events that occurred during the gap are
+not replayed. Configure the reachability check via `Trigger:FileWatcher:HealthProbeSeconds`
+(default 60, `0` disables) and the registration deadline via `Trigger:FileWatcher:PathTimeoutSeconds`
+(default 5). Alert on it with the `trigger-unhealthy` system-alert source.
+
 `nodepilot-hmac-v2` webhooks require a CSPRNG-generated secret of at least 32 UTF-8 bytes,
 `X-NodePilot-Timestamp` (UNIX seconds), and a unique `X-NodePilot-Delivery-Id`. The HMAC-SHA256
 input is the exact byte concatenation below; the HTTP method is uppercase and the path is the
@@ -1043,7 +1050,11 @@ Beyond Grafana, the API also exposes:
 - **Prometheus scrape endpoint** at `GET /metrics` (anonymous when `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous: true`)
 - **Native Metrics UI** at `/metrics/mission-control`: all metric panels and PromQL targets from the 10 provisioned Grafana dashboards, rendered in the NodePilot design for every signed-in role. The dashboard JSON files are embedded as the shared source of truth. Configure `OpenTelemetry:GrafanaBaseUrl` for optional Grafana drill-down links.
 - **Built-in observability page** at `/observability` — query Prometheus from inside NodePilot without leaving the UI
-- **Health endpoints** — `GET /healthz/live` and `GET /healthz/ready` (anonymous)
+- **Health endpoints** — `GET /healthz/live`, `GET /healthz/ready` and `GET /healthz/database` (anonymous). The database endpoint always returns 200 with the breaker state and reason; readiness returns 503 while a timeout is being adjudicated or an outage is open.
+
+### Database-outage resilience
+
+During a runtime PostgreSQL or SQL Server outage, NodePilot stays up: APIs fail fast with `503 DATABASE_UNAVAILABLE`, background work pauses, the UI shows an outage banner, and operation resumes automatically after successful probes. Workflows do not cross a step edge until the terminal state is durable; trigger fires observed during the outage are counted and discarded without catch-up. `RejectedByServer` requires an operator to fix credentials, database selection or TLS, plus a service restart when NodePilot-side connection settings changed. An isolated slow query remains `503 DATABASE_TIMEOUT`. See [ADR 0011](docs/adr/0011-database-availability-breaker.md).
 
 ---
 
@@ -1072,7 +1083,7 @@ The file-system / network / SQL / shell / WinRM guards below ship **enabled** in
 | `Remote:RequireWinRmSsl` | Reject WinRM connections without SSL |
 | `RestApi:BlockPrivateNetworks` | Block RFC 1918 / loopback targets in `restApi` |
 | `RestApi:AllowedHosts` | Exact host/IP allow-list — the exception to `BlockPrivateNetworks` for `restApi` targets and redirects |
-| `WaitForCondition:AllowedHosts` | Separate exact host/IP allow-list for the `portOpen`/`httpOk` network probes. Ships with `localhost`; kept apart from the entry above so permitting a local probe does not also open `restApi` to loopback |
+| `WaitForCondition:AllowedHosts` | Separate exact host/IP allow-list for the `portOpen`/`httpOk` network probes. Ships with `localhost`; kept apart from the entry above so permitting a local probe does not also open `restApi` to loopback — and it is the sole authority for both probe types, `RestApi:*` is not consulted |
 | `FileSystemOperation:RejectTraversal` | Reject `..` in file/folder operation paths |
 | `SqlActivity:RequireConnectionRef` | Only allow named connection references (no inline strings) |
 | `StartProgram:DisallowShellExecute` | Disallow `useShellExecute=true` in `startProgram` |
@@ -1143,6 +1154,10 @@ All settings live in [`src/NodePilot.Api/appsettings.json`](src/NodePilot.Api/ap
 | `Database:Provider` | `postgres` | `postgres` *(default)* or `sqlserver`. SQLite is **not** supported as an app DB. |
 | `ConnectionStrings:Postgres` | — | Postgres connection (used when `Database:Provider=postgres`) |
 | `ConnectionStrings:DefaultConnection` | — | SQL Server connection (used when `Database:Provider=sqlserver`) |
+| `Database:ConnectTimeoutSeconds` | `5` | Application connection timeout; positive, restart required |
+| `Database:AuthReadTimeoutSeconds` | `3` | Hard limit for session, revocation and user reads |
+| `Database:ReadinessProbeTimeoutSeconds` | `5` | Hard limit for the readiness query |
+| `Database:Probe:*` | connect/command/cleanup `2`; intervals `5`; thresholds `2` | Dedicated recovery-probe limits and cadence; all values must be positive |
 | `Jwt:Key` | *(auto-generated)* | HS256 signing key — replace for production (env var `Jwt__Key` or User Secrets) |
 | `Jwt:Issuer` / `Jwt:Audience` | `NodePilot` | Token validation — change for production |
 | `Remote:Provider` | `winrm` | `winrm` or `noop` (load-test stub) |
@@ -1304,7 +1319,7 @@ The full OpenAPI spec is served at `GET /openapi/v1.json`; Swagger UI at `GET /s
 | External trigger | `POST /api/trigger/{workflowNameOrId}` *(`X-Api-Key` header, optional `Idempotency-Key`)* |
 | Webhooks | `POST /api/webhooks/{workflow}/{path}` *(secret via `X-Webhook-Secret` or versioned NodePilot HMAC v2 over freshness metadata + method + path + canonical query + body)* |
 | Observability | `GET /api/observability/config\|query\|query_range\|summary` |
-| Health | `GET /healthz/live`, `GET /healthz/ready` *(anonymous)* |
+| Health | `GET /healthz/live`, `GET /healthz/ready`, `GET /healthz/database` *(anonymous)* |
 
 ---
 

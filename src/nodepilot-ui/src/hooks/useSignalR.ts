@@ -12,6 +12,7 @@ import {
   normalizeBatchItem,
   sortLiveExecutions,
 } from './signalrReducer';
+import { connectPersistently } from '../lib/signalrConnect';
 import {
   COMPLETED_EXECUTION_TTL_MS,
   LIVE_EVENT_FLUSH_MS,
@@ -83,6 +84,10 @@ async function rateLimitedHydration<T>(fetcher: () => Promise<T>): Promise<T> {
 export function useWorkflowSignalR(workflowId: string | undefined) {
   const connectionRef = useRef<signalR.HubConnection | null>(null);
   const workflowIdRef = useRef<string | undefined>(workflowId);
+  // Desired, not merely confirmed, execution-group memberships. A JoinExecution invocation can be
+  // rejected while the DB breaker is open even though the WebSocket stays connected; retaining the
+  // intent lets the health recovery transition replay it without user interaction.
+  const desiredExecutionGroupsRef = useRef<Set<string>>(new Set());
   const pendingEventsRef = useRef<LiveEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const evictionTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -129,6 +134,19 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
   const mountedRef = useRef<boolean>(true);
   const [liveExecutionsById, setLiveExecutionsById] = useState<LiveExecutionsById>({});
   const [connected, setConnected] = useState(false);
+
+  /** Handles every hub invocation promise at the shared choke point. */
+  const invokeSafely = useCallback(async (method: string, ...args: unknown[]): Promise<boolean> => {
+    const connection = connectionRef.current;
+    if (!connection) return false;
+    try {
+      await connection.invoke(method, ...args);
+      return true;
+    } catch (err) {
+      console.warn(`[useWorkflowSignalR] ${method} failed`, err);
+      return false;
+    }
+  }, []);
 
   const liveExecutionsSorted = useMemo(
     () => workflowId
@@ -449,6 +467,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     evictionTimersRef.current.clear();
     hydratedExecsRef.current.clear();
     listedExecsRef.current.clear();
+    desiredExecutionGroupsRef.current.clear();
     setLiveExecutionsById({});
   }, []);
 
@@ -460,7 +479,8 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
    * Idempotent: if the execution is already fully hydrated the HTTP call is skipped.
    */
   const joinExecution = useCallback(async (executionId: string, execWorkflowId: string) => {
-    await connectionRef.current?.invoke('JoinExecution', executionId);
+    desiredExecutionGroupsRef.current.add(executionId);
+    if (!await invokeSafely('JoinExecution', executionId)) return;
     // Always refetch on explicit expand — the auto-hydration snapshot (taken at mount)
     // only captured steps that existed at that moment. Steps that started between mount
     // and this expand arrived on the execution-only SignalR group, which the frontend
@@ -468,12 +488,33 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     // fresh fetch that covers the gap.
     hydratedExecsRef.current.delete(executionId);
     await hydrateStepsForExecution(executionId, execWorkflowId);
-  }, [hydrateStepsForExecution]);
+  }, [hydrateStepsForExecution, invokeSafely]);
 
   /** Leaves the per-execution SignalR group when the user collapses a run. */
   const leaveExecution = useCallback(async (executionId: string) => {
-    await connectionRef.current?.invoke('LeaveExecution', executionId);
-  }, []);
+    desiredExecutionGroupsRef.current.delete(executionId);
+    await invokeSafely('LeaveExecution', executionId);
+  }, [invokeSafely]);
+
+  /**
+   * Restores all desired subscriptions after either a transport reconnect or a database-only
+   * recovery. Group joins are idempotent server-side. Hydrating desired executions closes the gap
+   * for joins that failed while the hub filter was returning DATABASE_UNAVAILABLE.
+   */
+  const reconcileSubscriptions = useCallback(async (wfid: string) => {
+    if (!mountedRef.current || workflowIdRef.current !== wfid) return;
+
+    await invokeSafely('JoinWorkflow', wfid);
+    const desired = Array.from(desiredExecutionGroupsRef.current);
+    await Promise.all(desired.map(async (executionId) => {
+      if (await invokeSafely('JoinExecution', executionId))
+        await hydrateStepsForExecution(executionId, wfid);
+    }));
+
+    if (!mountedRef.current || workflowIdRef.current !== wfid) return;
+    await hydrateActive(wfid);
+    scheduleQueryInvalidate(wfid);
+  }, [hydrateActive, hydrateStepsForExecution, invokeSafely, scheduleQueryInvalidate]);
 
   useEffect(() => {
     workflowIdRef.current = workflowId;
@@ -528,28 +569,27 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
       }
     });
 
-    // After automatic reconnect (e.g. backend restart, brief network blip) the hub group
-    // memberships are lost. Re-join so the client starts receiving workflow events again,
-    // then hydrate to recover any steps that arrived while the connection was down.
-    connection.onreconnected(async () => {
-      if (!mountedRef.current) return;
-      connection.invoke('JoinWorkflow', workflowId);
-      await hydrateActive(workflowId);
-      // Closes the reconnect gap in the React Query caches: SignalR-driven
-      // invalidation only works while the connection is up. Status events that fire
-      // during the reconnect window are missed, so a one-time refetch of the list
-      // caches restores consistency.
-      scheduleQueryInvalidate(workflowId);
-    });
-
-    connection.start().then(async () => {
-      if (!mountedRef.current) return;
-      setConnected(true);
-      connection.invoke('JoinWorkflow', workflowId);
-      // Hydrate current running executions so steps that started before this connection
-      // (e.g. after F5) are visible immediately.
-      await hydrateActive(workflowId);
-    }).catch((err) => { if (mountedRef.current) console.error('SignalR connect failed:', err); });
+    // One body for BOTH fresh connects and automatic reconnects, run by connectPersistently.
+    // Merging the two previous handlers is a behaviour change on purpose: after a full close +
+    // start(), onreconnected never fires and hub group memberships are gone, so the re-join,
+    // hydration AND the cache invalidation must all happen on every kind of (re)connect - and
+    // the green dot must flip on every one of them, not only on the first.
+    const persistent = connectPersistently(
+      connection,
+      async () => {
+        if (!mountedRef.current) return;
+        setConnected(true);
+        await reconcileSubscriptions(workflowId);
+      },
+      () => {
+        // The automatic-reconnect policy gave up - the dot must stop claiming "connected".
+        // Before this, `connected` was only ever set false on unmount, so the indicator stayed
+        // green through a dropped connection indefinitely.
+        if (mountedRef.current) setConnected(false);
+      },
+      // The WebSocket may survive a DB outage. Replay groups on unavailable -> ok even without a
+      // transport lifecycle event; connectPersistently calls this only while state === Connected.
+      () => reconcileSubscriptions(workflowId));
 
     // Periodic refresh: catches new executions whose initial SignalR event we missed
     // (rare — the Hub is reliable, but JoinWorkflow timing or a transient drop could
@@ -575,10 +615,11 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
       }
       for (const timer of evictionTimersRef.current.values()) clearTimeout(timer);
       evictionTimersRef.current.clear();
+      persistent.dispose();
       connection.stop();
       setConnected(false);
     };
-  }, [enqueueLiveEvent, workflowId, hydrateActive, hydrateStepsForExecution, scheduleQueryInvalidate]);
+  }, [enqueueLiveEvent, workflowId, hydrateActive, hydrateStepsForExecution, reconcileSubscriptions, scheduleQueryInvalidate]);
 
   return { liveExecution, liveExecutions, liveActiveCount, connected, clearLive, joinExecution, leaveExecution };
 }

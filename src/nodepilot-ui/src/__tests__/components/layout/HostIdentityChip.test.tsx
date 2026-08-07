@@ -6,6 +6,7 @@ import { TopBar } from '../../../components/layout/TopBar';
 import { systemApi } from '../../../api/system';
 import type { HostInfo } from '../../../api/system';
 import { useAuthStore } from '../../../stores/authStore';
+import { useDbHealthStore, resetDbHealth } from '../../../stores/dbHealthStore';
 
 // The chip isn't exported on its own, so we exercise it through <TopBar />.
 vi.mock('../../../api/system', () => ({
@@ -27,12 +28,15 @@ function renderTopBar() {
 
 describe('TopBar host-identity chip', () => {
   beforeEach(() => {
-    // BackendStatus polls /healthz/live via raw fetch — keep it off the network.
+    // BackendStatus reads the app-wide health store now (the poll lives in useDatabaseHealth,
+    // mounted once in App) — drive the store instead of stubbing its old fetch.
+    useDbHealthStore.setState({ status: 'ok' });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 200 }));
     useAuthStore.setState({ isAuthenticated: true, role: 'Admin', userId: 'u1', username: 'admin' });
   });
 
   afterEach(() => {
+    resetDbHealth();
     useAuthStore.setState({ isAuthenticated: null, role: null, userId: null, username: null });
     mockGetHostInfo.mockReset();
     vi.restoreAllMocks();

@@ -3,6 +3,7 @@ import * as signalR from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
 import { useOperationsStore } from '../stores/operationsStore';
 import { readCsrfToken } from '../api/csrf';
+import { connectPersistently } from '../lib/signalrConnect';
 
 // A LiveEventsBatch item is { Type|type, Event|evt }. We only care about ExecutionStatusChanged.
 interface StatusEvt {
@@ -70,13 +71,14 @@ export function useOperationsFeed() {
     });
 
     const join = () => { connection.invoke('JoinOperationsFeed').catch(() => { /* RBAC reject / transient */ }); };
-    connection.onreconnected(() => { if (!disposed) join(); });
-    connection.start()
-      .then(() => { if (!disposed) join(); })
-      .catch(() => { /* offline / hub unavailable — snapshot polling still works */ });
+    // connectPersistently retries forever with capped backoff: the bare onreconnected +
+    // one-shot start() gave up for good after ~40 s of outage (and never retried a failed
+    // FIRST start at all), silently degrading this feed to snapshot polling until a reload.
+    const persistent = connectPersistently(connection, () => { if (!disposed) join(); });
 
     return () => {
       disposed = true;
+      persistent.dispose();
       if (invalidateTimer.current !== null) clearTimeout(invalidateTimer.current);
       connection.invoke('LeaveOperationsFeed').catch(() => { /* ignore */ });
       void connection.stop();

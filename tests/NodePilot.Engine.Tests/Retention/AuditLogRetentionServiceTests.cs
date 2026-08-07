@@ -81,7 +81,8 @@ public class AuditLogRetentionServiceTests
             var svc = new AuditLogRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<AuditLogRetentionService>.Instance);
+                NullLogger<AuditLogRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await svc.PurgeOnceAsync(maxAgeDays: 365, batchSize: 100, CancellationToken.None);
             deleted.Should().Be(1);
@@ -107,7 +108,8 @@ public class AuditLogRetentionServiceTests
             var svc = new AuditLogRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<AuditLogRetentionService>.Instance);
+                NullLogger<AuditLogRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await svc.PurgeOnceAsync(maxAgeDays: 365, batchSize: 3, CancellationToken.None);
             deleted.Should().Be(8);
@@ -145,7 +147,8 @@ public class AuditLogRetentionServiceTests
             var svc = new AuditLogRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(opts),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<AuditLogRetentionService>.Instance);
+                NullLogger<AuditLogRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await svc.PurgeOnceAsync(maxAgeDays: 365, batchSize: 100, CancellationToken.None);
 
@@ -216,7 +219,8 @@ public class AuditLogRetentionServiceTests
             var svc = new AuditLogRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(opts),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<AuditLogRetentionService>.Instance);
+                NullLogger<AuditLogRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             await Assert.ThrowsAsync<DbUpdateException>(() =>
                 svc.PurgeOnceAsync(maxAgeDays: 365, batchSize: 100, CancellationToken.None));
@@ -272,7 +276,8 @@ public class AuditLogRetentionServiceTests
             var svc = new AuditLogRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(opts),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<AuditLogRetentionService>.Instance);
+                NullLogger<AuditLogRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             await svc.PurgeOnceAsync(maxAgeDays: 365, batchSize: 100, CancellationToken.None);
             var act = async () => await svc.VerifyArchiveIntegrityAsync(archiveDir, maxFiles: 100, CancellationToken.None);
@@ -315,7 +320,8 @@ public class AuditLogRetentionServiceTests
             var svc = new AuditLogRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(opts),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                capturingLogger);
+                capturingLogger,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             await svc.PurgeOnceAsync(maxAgeDays: 365, batchSize: 100, CancellationToken.None);
             var gzFile = Directory.GetFiles(archiveDir, "audit-*.ndjson.gz").Single();
@@ -375,7 +381,8 @@ public class AuditLogRetentionServiceTests
             });
             var svc = new AuditLogRetentionService(factory, monitor,
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<AuditLogRetentionService>.Instance);
+                NullLogger<AuditLogRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             // First pass: broken archive path → ArchiveAsync fails → PurgeOnceAsync breaks out
             // WITHOUT deleting. Compliance: audit rows stay in-DB until the archive works.

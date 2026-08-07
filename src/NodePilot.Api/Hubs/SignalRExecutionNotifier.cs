@@ -27,6 +27,7 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier
     private readonly Channel<QueuedLiveEvent> _events;
     private readonly Func<Guid, Guid, bool> _hasSubscribers;
     private readonly IServiceScopeFactory? _scopeFactory;
+    private readonly NodePilot.Data.Availability.IDatabaseAvailability? _availability;
     private readonly Func<Guid, CancellationToken, Task<Guid?>> _resolveFolder;
     private readonly OutputRedactor _redactor;
 
@@ -42,12 +43,14 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier
         Func<Guid, Guid, bool>? hasSubscribers = null,
         IServiceScopeFactory? scopeFactory = null,
         Func<Guid, CancellationToken, Task<Guid?>>? folderResolver = null,
-        OutputRedactor? redactor = null)
+        OutputRedactor? redactor = null,
+        NodePilot.Data.Availability.IDatabaseAvailability? availability = null)
     {
         _hub = hub;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<SignalRExecutionNotifier>.Instance;
         _hasSubscribers = hasSubscribers ?? ExecutionHub.HasSubscribers;
         _scopeFactory = scopeFactory;
+        _availability = availability;
         _resolveFolder = folderResolver ?? DefaultResolveFolderAsync;
         _redactor = redactor ?? new OutputRedactor();
         // DropNewest instead of DropOldest: under burst load (large workflows with many
@@ -175,7 +178,27 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier
                 }
 
                 DrainAvailable(batch);
-                await SendBatchAsync(batch, stoppingToken);
+
+                // The catch is the fix, not decoration. SendBatchAsync reaches the database through
+                // the ops-feed folder lookup, and BackgroundServiceExceptionBehavior is left at its
+                // default StopHost repo-wide — before this guard, one NpgsqlException raised while a
+                // status event flowed during a database outage took the WHOLE HOST down. The send
+                // loop is also what carries the recovery moment to the SPA, so it must outlive any
+                // single failed batch.
+                try
+                {
+                    await SendBatchAsync(batch, stoppingToken);
+                }
+                catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex,
+                        "Failed to fan out a live-event batch of {Count} events; dropping the batch.",
+                        batch.Count);
+                }
             }
         }
         catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -289,15 +312,35 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier
         if (_scopeFactory is null)
             return null;
 
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-        var folderId = await db.Workflows.AsNoTracking()
-            .Where(w => w.Id == workflowId)
-            .Select(w => (Guid?)w.FolderId)
-            .FirstOrDefaultAsync(ct);
-        if (folderId is not null)
-            _workflowFolderCache[workflowId] = folderId.Value;
-        return folderId;
+        // Best-effort by design: null degrades to "no ops-feed fan-out for this event", while the
+        // per-execution and per-workflow sends keep flowing — those are what let the SPA see the
+        // recovery happen. So while the breaker is open the lookup is skipped outright rather than
+        // burning a failed connect per status event, and an unexpected failure is swallowed for the
+        // same reason the send loop above swallows: fan-out must never take down live updates.
+        if (_availability is { IsServable: false })
+            return null;
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
+            var folderId = await db.Workflows.AsNoTracking()
+                .Where(w => w.Id == workflowId)
+                .Select(w => (Guid?)w.FolderId)
+                .FirstOrDefaultAsync(ct);
+            if (folderId is not null)
+                _workflowFolderCache[workflowId] = folderId.Value;
+            return folderId;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Ops-feed folder lookup failed for workflow {WorkflowId}; skipping fan-out.", workflowId);
+            return null;
+        }
     }
 
     private static (string? TraceId, string? SpanId) CurrentContext()

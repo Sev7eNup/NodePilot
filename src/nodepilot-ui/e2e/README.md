@@ -123,6 +123,7 @@ alongside `dotnet test` and `npm run test:run`.
 | — (new) | Atelier-Designsprache: Scope-Klassen + Token-Adaption, Skin-Adaption, Header-Umschalter (role=switch), Persistenz über Reload, Classic-Suite-Pin | `designer-atelier.spec.ts` |
 | 80 | Global AI Chat (`/ai-chat`) — SSE Q&A over docs, operational context, source code, DB/text2sql; tool-call indicators, thread persistence, export-to-Markdown, regenerate, role-gated source badges (DB/source Admin/Operator only) | `ai-chat.spec.ts` |
 | 81 | Custom Activities (`/custom-activities`) — CRUD lifecycle: create/edit/delete (Admin+Operator while disabled), enable/disable (Admin only), export/import, rollback; draft-state enforcement, role-gating | `custom-activities.spec.ts` |
+| 82 | Database outage (runtime) — banner appears/escalates, no toast storm, recovery clears + refetches + success toast, banner visible in the bare-Outlet designer route; driven via `**/healthz/database` + `DATABASE_*` 503 mocks | `database-outage.spec.ts` |
 | — (new) | Maintenance windows CRUD (Blackout / AllowOnly, weekly schedule, create/edit/delete, Admin-only gate) | `maintenance-windows.spec.ts` |
 | — (new) | Editor-header stacking-context regression: header popovers above canvas-local breadcrumb overlay | `designer-header-layering.spec.ts` |
 | — (new) | SPA smoke: unauthenticated redirect → /login, authenticated landing → dashboard | `smoke.spec.ts` |

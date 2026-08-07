@@ -72,12 +72,20 @@
     "connected": "connected",
     "unreachable": "unreachable",
     "checking": "checking…",
-    "tooltip": "Backend connection status — polled every 15s via /healthz/live"
+    "tooltip": "Backend connection status — polled every 15s via /healthz/live",
+    "databaseUnreachable": "database unreachable"
   },
   "host": {
     "label": "Server",
     "machine": "Host",
     "fqdn": "FQDN",
     "tooltip": "API server this session is connected to"
+  },
+  "databaseOutage": {
+    "title": "Database unreachable",
+    "reconnecting": "NodePilot keeps checking and resumes on its own as soon as the database answers.",
+    "persistent": "Still no answer - check the database service on the server.",
+    "rejected": "The database rejects the connection (credentials, missing database or TLS). An administrator has to fix the configuration; waiting will not.",
+    "recovered": "Database connection restored."
   }
 }

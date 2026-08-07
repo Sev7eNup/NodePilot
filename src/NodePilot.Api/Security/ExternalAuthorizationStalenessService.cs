@@ -5,6 +5,7 @@ using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
+using NodePilot.Data.Availability;
 
 namespace NodePilot.Api.Security;
 
@@ -18,7 +19,8 @@ public sealed class ExternalAuthorizationStalenessService(
     IServiceScopeFactory scopeFactory,
     IOptions<AuthenticationPolicyOptions> policy,
     IClusterStateProvider cluster,
-    ILogger<ExternalAuthorizationStalenessService> logger) : BackgroundService
+    ILogger<ExternalAuthorizationStalenessService> logger,
+    IDatabaseAvailability availability) : BackgroundService
 {
     internal static readonly TimeSpan SweepInterval = TimeSpan.FromSeconds(15);
     internal static readonly TimeSpan DeadlineSafetyMargin = TimeSpan.FromSeconds(30);
@@ -27,6 +29,11 @@ public sealed class ExternalAuthorizationStalenessService(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
+            // Availability gate, deliberately ABOVE the leader check: during a database outage no
+            // node can renew its cluster lease, so every node reads as a follower - gating on
+            // IsLeader first would park for the right reason and log the wrong one.
+            if (!await availability.WaitUntilServableAsync(stoppingToken)) break;
+
             if (cluster.IsLeader)
             {
                 try

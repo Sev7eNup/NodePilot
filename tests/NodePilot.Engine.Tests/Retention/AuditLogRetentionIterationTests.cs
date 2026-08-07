@@ -118,7 +118,8 @@ public sealed class AuditLogRetentionIterationTests : IAsyncDisposable
                 },
             }),
             new SingleNodeClusterStateProvider(),
-            NullLogger<AuditLogRetentionService>.Instance);
+            NullLogger<AuditLogRetentionService>.Instance,
+            NodePilot.TestCommons.TestDatabaseAvailability.Available);
         await provider.DisposeAsync();
 
         var act = () => service.RunIterationAsync(TestContext.Current.CancellationToken);
@@ -153,5 +154,5 @@ public sealed class AuditLogRetentionIterationTests : IAsyncDisposable
         _services.GetRequiredService<IServiceScopeFactory>(),
         new StaticOptionsMonitor<RetentionOptions>(new RetentionOptions { AuditLog = options }),
         new SingleNodeClusterStateProvider(),
-        NullLogger<AuditLogRetentionService>.Instance);
+        NullLogger<AuditLogRetentionService>.Instance, NodePilot.TestCommons.TestDatabaseAvailability.Available);
 }

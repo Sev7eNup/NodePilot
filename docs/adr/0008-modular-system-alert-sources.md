@@ -47,7 +47,8 @@ Introduce three code-owned concepts and one central evaluator.
   descriptor-validated condition AST, descriptor-validated source parameters, a sustain duration, severity,
   scope, throttle, and routes. Policies are stored on the existing `NotificationRule` table
   (`Kind = System`) so they reuse the proven, crash-safe delivery pipeline (persist-Pending-before-send,
-  the `(RuleId, RouteId, EventKey)` exactly-once ledger, leader-gated dispatch, cooldown/flap suppression).
+  the `(RuleId, RouteId, EventKey)` duplicate-attempt guard, at-least-once external delivery,
+  leader/lease-epoch-gated dispatch, cooldown/flap suppression).
 
 **One pipeline, not two.** The eight legacy `IGaugeSignalProvider`s and the `GaugeSignalCollector` were
 **removed** once the `ISystemAlertSource` catalog covered them (12 sources today). Infra/signal alerts —

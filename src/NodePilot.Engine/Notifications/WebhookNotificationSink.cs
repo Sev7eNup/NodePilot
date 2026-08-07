@@ -46,6 +46,7 @@ public sealed class WebhookNotificationSink : INotificationSink
             {
                 Content = new StringContent(body, Encoding.UTF8, "application/json"),
             };
+            req.Headers.Add("X-NodePilot-Event-Key", ctx.EventKey);
             if (!string.IsNullOrEmpty(secret))
             {
                 using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));

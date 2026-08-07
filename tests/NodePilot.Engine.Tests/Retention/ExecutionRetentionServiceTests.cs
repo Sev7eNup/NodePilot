@@ -86,7 +86,8 @@ public class ExecutionRetentionServiceTests
             var service = new ExecutionRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<ExecutionRetentionService>.Instance);
+                NullLogger<ExecutionRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(maxAgeDays: 30, batchSize: 100, CancellationToken.None);
 
@@ -115,7 +116,8 @@ public class ExecutionRetentionServiceTests
             var service = new ExecutionRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<ExecutionRetentionService>.Instance);
+                NullLogger<ExecutionRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(30, 100, CancellationToken.None);
 
@@ -138,7 +140,8 @@ public class ExecutionRetentionServiceTests
             var service = new ExecutionRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<ExecutionRetentionService>.Instance);
+                NullLogger<ExecutionRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(maxAgeDays: 30, batchSize: 3, CancellationToken.None);
 
@@ -161,7 +164,8 @@ public class ExecutionRetentionServiceTests
             var service = new ExecutionRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(new NodePilot.Scheduler.Options.RetentionOptions()),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<ExecutionRetentionService>.Instance);
+                NullLogger<ExecutionRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(30, 100, CancellationToken.None);
 
@@ -193,7 +197,8 @@ public class ExecutionRetentionServiceTests
             var service = new ExecutionRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(opts),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<ExecutionRetentionService>.Instance);
+                NullLogger<ExecutionRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(maxAgeDays: 30, batchSize: 100, CancellationToken.None);
 
@@ -244,7 +249,8 @@ public class ExecutionRetentionServiceTests
             var service = new ExecutionRetentionService(factory,
                 new StaticOptionsMonitor<NodePilot.Scheduler.Options.RetentionOptions>(opts),
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<ExecutionRetentionService>.Instance);
+                NullLogger<ExecutionRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             var deleted = await service.PurgeOnceAsync(maxAgeDays: 30, batchSize: 100, CancellationToken.None);
 
@@ -281,7 +287,8 @@ public class ExecutionRetentionServiceTests
                 });
             var service = new ExecutionRetentionService(factory, monitor,
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<ExecutionRetentionService>.Instance);
+                NullLogger<ExecutionRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             // Disabled: the pass parks without deleting.
             await service.RunIterationAsync(CancellationToken.None);
@@ -323,7 +330,8 @@ public class ExecutionRetentionServiceTests
                 });
             var service = new ExecutionRetentionService(factory, monitor,
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<ExecutionRetentionService>.Instance);
+                NullLogger<ExecutionRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             // MaxAgeDays=50 → only the 60-day row is past the cutoff.
             await service.RunIterationAsync(CancellationToken.None);
@@ -368,7 +376,8 @@ public class ExecutionRetentionServiceTests
                 });
             var service = new ExecutionRetentionService(factory, monitor,
                 new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-                NullLogger<ExecutionRetentionService>.Instance);
+                NullLogger<ExecutionRetentionService>.Instance,
+                NodePilot.TestCommons.TestDatabaseAvailability.Available);
 
             // First pass: broken archive path → deletes but writes no archive.
             await service.RunIterationAsync(CancellationToken.None);

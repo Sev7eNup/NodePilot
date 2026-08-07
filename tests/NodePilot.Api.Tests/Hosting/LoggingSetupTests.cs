@@ -1,6 +1,8 @@
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using NodePilot.Api.Hosting;
+using Serilog.Events;
+using Serilog.Parsing;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Hosting;
@@ -77,4 +79,27 @@ public class LoggingSetupTests
             Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", null);
         }
     }
+
+    [Fact]
+    public void RepeatedDatabaseHealthFailure_IsSuppressedButOtherHealthFailuresRemainVisible()
+    {
+        var databaseFailure = HealthEvent("database", LogEventLevel.Error);
+        var directoryFailure = HealthEvent("ldap", LogEventLevel.Error);
+        var databaseDiagnostic = HealthEvent("database", LogEventLevel.Debug);
+
+        LoggingSetup.ShouldSuppressRepeatedDatabaseHealthFailure(databaseFailure).Should().BeTrue();
+        LoggingSetup.ShouldSuppressRepeatedDatabaseHealthFailure(directoryFailure).Should().BeFalse();
+        LoggingSetup.ShouldSuppressRepeatedDatabaseHealthFailure(databaseDiagnostic).Should().BeFalse();
+    }
+
+    private static LogEvent HealthEvent(string checkName, LogEventLevel level) => new(
+        DateTimeOffset.UtcNow,
+        level,
+        exception: null,
+        new MessageTemplate("health", Array.Empty<MessageTemplateToken>()),
+        [
+            new LogEventProperty("SourceContext",
+                new ScalarValue("Microsoft.Extensions.Diagnostics.HealthChecks.DefaultHealthCheckService")),
+            new LogEventProperty("HealthCheckName", new ScalarValue(checkName)),
+        ]);
 }

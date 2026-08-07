@@ -1,6 +1,18 @@
 {
   "Database": {
-    "Provider": "{{DB_PROVIDER}}"
+    "Provider": "{{DB_PROVIDER}}",
+    "ConnectTimeoutSeconds": 5,
+    "AuthReadTimeoutSeconds": 3,
+    "ReadinessProbeTimeoutSeconds": 5,
+    "Probe": {
+      "ConnectTimeoutSeconds": 2,
+      "CommandTimeoutSeconds": 2,
+      "CleanupTimeoutSeconds": 2,
+      "IdleIntervalSeconds": 5,
+      "OutageIntervalSeconds": 5,
+      "SuccessesToRecover": 2,
+      "FailureThreshold": 2
+    }
   },
   "ConnectionStrings": {
     "DefaultConnection": "{{SQLSERVER_CONNECTION_STRING}}",
