@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Controllers;
 using NodePilot.TestCommons;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;

@@ -9,6 +9,7 @@ using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos.Settings;
 using NodePilot.Api.Security.Ldap;
 using NodePilot.Api.Services;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Options;
 using NodePilot.Scheduler.Options;
@@ -46,22 +47,6 @@ public sealed class AdminSettingsControllerStatusTests : IDisposable
         public string Unprotect(byte[] blob) => Encoding.UTF8.GetString(blob);
     }
 
-    private sealed class StubHttpFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new HttpClient();
-    }
-
-    private sealed class NoopClusterState : IClusterStateProvider
-    {
-        public bool IsLeader => true;
-        public string NodeId => "test-node";
-        public DateTime? LeaseExpiresAt => null;
-        public long LeaseEpoch => 0;
-        public DateTime? LastSuccessfulRenewAt => null;
-        public event Action<long>? OnLeadershipAcquired { add { } remove { } }
-        public event Action? OnLeadershipLost           { add { } remove { } }
-    }
-
     private (AdminSettingsController controller, RuntimeOverridesWriter writer) NewController()
     {
         var path = Path.Combine(_tempDir, "appsettings.runtime.json");
@@ -72,7 +57,7 @@ public sealed class AdminSettingsControllerStatusTests : IDisposable
             cfg,
             new NullProtector(),
             NoopAuditWriter.Instance,
-            new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpFactory()),
+            new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpClientFactory()),
             new StaticOptionsMonitor<SmtpOptions>(new SmtpOptions()),
             new StaticOptionsMonitor<LlmOptions>(new LlmOptions()),
             new StaticOptionsMonitor<RetentionOptions>(new RetentionOptions()),

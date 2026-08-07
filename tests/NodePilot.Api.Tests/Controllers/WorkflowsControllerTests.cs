@@ -7,6 +7,7 @@ using NodePilot.Api.Dtos;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;

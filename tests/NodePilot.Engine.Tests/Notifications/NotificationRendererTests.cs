@@ -6,6 +6,7 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Engine.Notifications;
 using NodePilot.Engine.Security;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Notifications;
@@ -103,7 +104,7 @@ public class NotificationRendererTests
     [Fact]
     public async Task WebhookSink_SendsEventKeyAsHeader()
     {
-        var handler = new CapturingHandler();
+        var handler = new StubHttpMessageHandler(_ => new HttpResponseMessage(System.Net.HttpStatusCode.OK));
         var client = new HttpClient(handler);
         var factory = new Mock<IHttpClientFactory>();
         factory.Setup(value => value.CreateClient("NodePilot")).Returns(client);
@@ -124,19 +125,7 @@ public class NotificationRendererTests
             TestContext.Current.CancellationToken);
 
         result.Success.Should().BeTrue();
-        handler.EventKey.Should().Be("exec:abc:ExecutionFailed");
-    }
-
-    private sealed class CapturingHandler : HttpMessageHandler
-    {
-        public string? EventKey { get; private set; }
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-        {
-            EventKey = request.Headers.GetValues("X-NodePilot-Event-Key").Single();
-            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK));
-        }
+        handler.Requests.Single().Headers.GetValues("X-NodePilot-Event-Key").Single()
+            .Should().Be("exec:abc:ExecutionFailed");
     }
 }

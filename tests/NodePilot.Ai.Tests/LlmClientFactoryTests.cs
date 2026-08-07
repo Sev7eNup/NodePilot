@@ -7,11 +7,6 @@ namespace NodePilot.Ai.Tests;
 
 public sealed class LlmClientFactoryTests
 {
-    private sealed class StubHttpClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new();
-    }
-
     private static LlmOptions OptionsWith(
         string baseUrl = "https://api.openai.com/v1",
         string model = "gpt-4o-mini",

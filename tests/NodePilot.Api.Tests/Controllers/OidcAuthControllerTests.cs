@@ -12,6 +12,7 @@ using NodePilot.Api.Security;
 using NodePilot.Api.Security.Oidc;
 using NodePilot.Core.Audit;
 using NodePilot.TestCommons;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;

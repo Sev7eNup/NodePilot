@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Controllers;
 using NodePilot.Telemetry;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;
@@ -21,16 +22,11 @@ public class ObservabilityControllerPromQlTests
     /// Prometheus instance, while still letting validator-rejection failures show
     /// up as BadRequestObjectResult before the handler runs.
     /// </summary>
-    private sealed class StubHandler : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+    private static StubHttpMessageHandler StubHandler() =>
+        new(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent("""{"status":"success","data":{"resultType":"vector","result":[]}}"""),
-            });
-        }
-    }
+            Content = new StringContent("""{"status":"success","data":{"resultType":"vector","result":[]}}"""),
+        });
 
     private static ObservabilityController CreateController(string[]? allowedPrefixes = null)
     {
@@ -43,7 +39,7 @@ public class ObservabilityControllerPromQlTests
             },
             AllowedMetricPrefixes = allowedPrefixes ?? Array.Empty<string>(),
         };
-        var prom = new PrometheusClient(new HttpClient(new StubHandler()), options);
+        var prom = new PrometheusClient(new HttpClient(StubHandler()), options);
         return new ObservabilityController(options, prom, NullLogger<ObservabilityController>.Instance);
     }
 

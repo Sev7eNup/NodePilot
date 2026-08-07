@@ -15,6 +15,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Security;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;
@@ -44,7 +45,7 @@ public class ExecutionsControllerTests
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
     }
 
@@ -61,7 +62,7 @@ public class ExecutionsControllerTests
             db, engine, CreateDispatchService(db, engine, dispatchQueue), new OutputRedactor(null),
             audit ?? NoopAuditWriter.Instance,
             new AlwaysAllowAuthorizationService(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll);
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll);
         var principal = new System.Security.Claims.ClaimsPrincipal(
             new System.Security.Claims.ClaimsIdentity(
                 new[] { new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "Admin") },
@@ -460,7 +461,7 @@ public class ExecutionsControllerTests
     {
         var controller = new ExternalTriggerController(
             db, CreateDispatchService(db, engine, dispatchQueue), audit ?? NoopAuditWriter.Instance,
-            maintenance ?? NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            maintenance ?? NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             redactor ?? new NodePilot.Engine.Security.OutputRedactor());
         var httpCtx = new DefaultHttpContext();
         if (presentedKey is not null)
@@ -648,7 +649,7 @@ public class ExecutionsControllerTests
 
         var queue = new CountingNoopExecutionDispatchQueue();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue,
-            maintenance: NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.Blocking("PatchWindow"));
+            maintenance: NodePilot.TestCommons.StubMaintenanceWindowEvaluator.Blocking("PatchWindow"));
         controller.HttpContext.Request.Headers["Idempotency-Key"] = "blocked-request";
 
         var result = await controller.ExternalTrigger("Enabled", null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);

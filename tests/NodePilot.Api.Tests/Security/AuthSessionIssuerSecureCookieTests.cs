@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using NodePilot.Api.Security;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.TestCommons;
@@ -24,11 +25,6 @@ namespace NodePilot.Api.Tests.Security;
 /// </summary>
 public class AuthSessionIssuerSecureCookieTests
 {
-    private sealed class TestJwtKeyProvider : IJwtKeyProvider
-    {
-        public string Key => "NodePilot-Test-Secret-Key-Minimum-32-Characters!";
-    }
-
     private sealed class FakeEnvironment : IHostEnvironment
     {
         public string EnvironmentName { get; set; } = Environments.Development;

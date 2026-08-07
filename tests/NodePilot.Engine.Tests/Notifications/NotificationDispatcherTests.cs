@@ -11,6 +11,7 @@ using NodePilot.Data;
 using NodePilot.Data.Security;
 using NodePilot.Engine.Cluster;
 using NodePilot.Scheduler;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Notifications;
@@ -22,21 +23,6 @@ public class NotificationDispatcherTests
         var k = new byte[32];
         for (var i = 0; i < k.Length; i++) k[i] = (byte)(i + 3);
         return k;
-    }
-
-    private sealed class RecordingSink(NotificationChannel channel) : INotificationSink
-    {
-        public NotificationChannel Channel { get; } = channel;
-        public List<(NotificationContext ctx, string target, string? secret)> Sends { get; } = [];
-        public Func<NotificationSendResult>? Behavior { get; set; }
-        public Action? BeforeSend { get; set; }
-
-        public Task<NotificationSendResult> SendAsync(NotificationContext ctx, string target, string? secret, CancellationToken ct)
-        {
-            BeforeSend?.Invoke();
-            Sends.Add((ctx, target, secret));
-            return Task.FromResult(Behavior?.Invoke() ?? NotificationSendResult.Ok);
-        }
     }
 
     private static (NodePilotDbContext db, IServiceScopeFactory factory, SqliteConnection conn) CreateEnv()

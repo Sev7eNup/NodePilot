@@ -9,6 +9,7 @@ using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
@@ -70,14 +71,6 @@ public sealed class AuthControllerTests : IDisposable
                 ["Authentication:LocalLoginMode"] = "Enabled",
             })
             .Build();
-    }
-
-    // Security-audit finding M-2: tests used to rely on AuthController reading Jwt:Key from
-    // IConfiguration per request. The production path now injects IJwtKeyProvider (validated once at startup).
-    // TestJwtKeyProvider mirrors that contract with the same key value CreateConfig emits.
-    private sealed class TestJwtKeyProvider : IJwtKeyProvider
-    {
-        public string Key => "NodePilot-Test-Secret-Key-Minimum-32-Characters!";
     }
 
     [Fact]

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using NodePilot.Api.Hosting;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Hosting;
@@ -171,19 +172,7 @@ public sealed class AuthenticationSetupSchemeTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IConfiguration>(configuration);
-        services.AddNodePilotAuthentication(configuration, new StubEnvironment(root));
+        services.AddNodePilotAuthentication(configuration, new StubEnvironment(root, "Development"));
         return services.BuildServiceProvider();
-    }
-
-    private sealed class StubEnvironment(string contentRoot) : IWebHostEnvironment
-    {
-        public string WebRootPath { get; set; } = contentRoot;
-        public Microsoft.Extensions.FileProviders.IFileProvider WebRootFileProvider { get; set; } =
-            new Microsoft.Extensions.FileProviders.NullFileProvider();
-        public string ApplicationName { get; set; } = "NodePilot.Api";
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
-            new Microsoft.Extensions.FileProviders.NullFileProvider();
-        public string ContentRootPath { get; set; } = contentRoot;
-        public string EnvironmentName { get; set; } = "Development";
     }
 }

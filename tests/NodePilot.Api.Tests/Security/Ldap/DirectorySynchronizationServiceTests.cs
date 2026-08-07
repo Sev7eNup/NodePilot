@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NodePilot.Api.Security.Ldap;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
@@ -51,7 +52,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
         }, new DirectoryMembership { UserId = user.Id, GroupKey = oldGroup }, session,
             workflow, pendingExecution);
         await _db.SaveChangesAsync();
-        var adapter = new FakeAdapter
+        var adapter = new FakeLdapConnectionAdapter
         {
             Snapshot = new LdapDirectorySnapshot(subject, true, user.Username, user.Username, [newGroup]),
         };
@@ -91,7 +92,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
-        await Service(new FakeAdapter
+        await Service(new FakeLdapConnectionAdapter
             {
                 Snapshots = new Dictionary<string, LdapDirectorySnapshot?>
                 {
@@ -124,7 +125,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
-        await Service(new FakeAdapter { Snapshot = null }, Options("S-1-5-21-1-2-3-2001"))
+        await Service(new FakeLdapConnectionAdapter { Snapshot = null }, Options("S-1-5-21-1-2-3-2001"))
             .SyncOnceAsync(default);
 
         _db.ChangeTracker.Clear();
@@ -149,7 +150,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
         });
         await _db.SaveChangesAsync();
 
-        await Service(new FakeAdapter { ThrowInfrastructure = true }, Options("S-1-5-21-1-2-3-2001"))
+        await Service(new FakeLdapConnectionAdapter { ThrowInfrastructureOnLookup = true }, Options("S-1-5-21-1-2-3-2001"))
             .SyncOnceAsync(default);
 
         _db.ChangeTracker.Clear();
@@ -171,7 +172,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
             Authority = ExternalIdentity.ActiveDirectoryAuthority, Subject = subject,
         });
         await _db.SaveChangesAsync();
-        var adapter = new FakeAdapter
+        var adapter = new FakeLdapConnectionAdapter
         {
             Snapshot = new LdapDirectorySnapshot(
                 subject, true, user.Username, user.Username, [allowedGroup]),
@@ -198,7 +199,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
         });
         await _db.SaveChangesAsync();
         var cluster = new MutableCluster { IsLeader = true, LeaseEpoch = 7 };
-        var adapter = new FakeAdapter
+        var adapter = new FakeLdapConnectionAdapter
         {
             Snapshot = new LdapDirectorySnapshot(subject, true, user.Username, user.Username, [group]),
             OnLookup = () => { cluster.IsLeader = false; cluster.LeaseEpoch = 8; },
@@ -232,7 +233,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
         }, workflow, execution);
         await _db.SaveChangesAsync();
         var staleCluster = new MutableCluster { IsLeader = true, LeaseEpoch = 7 };
-        var adapter = new FakeAdapter
+        var adapter = new FakeLdapConnectionAdapter
         {
             Snapshot = new LdapDirectorySnapshot(
                 subject, true, user.Username, user.Username, [group]),
@@ -291,7 +292,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
                 cluster.LeaseEpoch = 8;
                 return Task.FromResult(false);
             });
-        var adapter = new FakeAdapter
+        var adapter = new FakeLdapConnectionAdapter
         {
             Snapshot = new LdapDirectorySnapshot(subject, true, user.Username, user.Username, [group]),
         };
@@ -339,7 +340,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
             },
             session, workflow, execution);
         await _db.SaveChangesAsync();
-        var adapter = new FakeAdapter
+        var adapter = new FakeLdapConnectionAdapter
         {
             Snapshot = new LdapDirectorySnapshot(
                 subject, true, user.Username, user.Username, [newGroup]),
@@ -398,7 +399,7 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
     }
 
     private DirectorySynchronizationService Service(
-        FakeAdapter adapter,
+        FakeLdapConnectionAdapter adapter,
         LdapOptions options,
         IClusterStateProvider? clusterState = null,
         IWorkflowEngine? engine = null,
@@ -465,25 +466,6 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
         CurrentJti = Guid.NewGuid().ToString("N"),
     };
 
-    private sealed class FakeAdapter : ILdapConnectionAdapter
-    {
-        public LdapDirectorySnapshot? Snapshot { get; init; }
-        public IReadOnlyDictionary<string, LdapDirectorySnapshot?>? Snapshots { get; init; }
-        public bool ThrowInfrastructure { get; init; }
-        public Action? OnLookup { get; init; }
-        public Task<LdapAuthResult?> AuthenticateAsync(string upn, string password, CancellationToken ct) =>
-            Task.FromResult<LdapAuthResult?>(null);
-        public Task<LdapDirectorySnapshot?> LookupBySubjectAsync(string subject, CancellationToken ct)
-        {
-            OnLookup?.Invoke();
-            if (ThrowInfrastructure) throw new LdapInfrastructureException("offline");
-            return Task.FromResult(
-                Snapshots is not null && Snapshots.TryGetValue(subject, out var snapshot)
-                    ? snapshot
-                    : Snapshot);
-        }
-    }
-
     private sealed class MutableCluster : IClusterStateProvider
     {
         public bool IsLeader { get; set; }
@@ -495,14 +477,4 @@ public sealed class DirectorySynchronizationServiceTests : IDisposable
         public event Action? OnLeadershipLost { add { } remove { } }
     }
 
-    private sealed class ThrowingAuditStager : IAuditStager
-    {
-        public AuditLogEntry Build(
-            string action,
-            AuditActor actor,
-            string? resourceType = null,
-            Guid? resourceId = null,
-            string? details = null) =>
-            throw new InvalidOperationException("audit staging failed");
-    }
 }

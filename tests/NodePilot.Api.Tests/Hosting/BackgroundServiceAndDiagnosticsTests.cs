@@ -9,6 +9,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Diagnostics;
 using NodePilot.Api.Hosting;
 using NodePilot.Api.Security;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Exceptions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
@@ -338,7 +339,7 @@ public sealed class BackgroundServiceAndDiagnosticsTests
     private static ISupportLogFileResolver Resolver(string contentRoot)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection([]).Build();
-        return new SupportLogFileResolver(configuration, new StubEnvironment(contentRoot));
+        return new SupportLogFileResolver(configuration, new StubEnvironment(contentRoot, "Test"));
     }
 
     private sealed class LeaderClusterState : IClusterStateProvider
@@ -350,17 +351,5 @@ public sealed class BackgroundServiceAndDiagnosticsTests
         public DateTime? LastSuccessfulRenewAt => null;
         public event Action<long>? OnLeadershipAcquired { add { } remove { } }
         public event Action? OnLeadershipLost { add { } remove { } }
-    }
-
-    private sealed class StubEnvironment(string contentRoot) : IWebHostEnvironment
-    {
-        public string WebRootPath { get; set; } = contentRoot;
-        public Microsoft.Extensions.FileProviders.IFileProvider WebRootFileProvider { get; set; } =
-            new Microsoft.Extensions.FileProviders.NullFileProvider();
-        public string ApplicationName { get; set; } = "NodePilot.Api";
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
-            new Microsoft.Extensions.FileProviders.NullFileProvider();
-        public string ContentRootPath { get; set; } = contentRoot;
-        public string EnvironmentName { get; set; } = "Test";
     }
 }

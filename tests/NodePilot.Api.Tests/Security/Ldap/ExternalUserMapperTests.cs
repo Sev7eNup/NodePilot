@@ -10,6 +10,7 @@ using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security.Ldap;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
@@ -1137,17 +1138,6 @@ public sealed class ExternalUserMapperTests : IDisposable
         outcome.Result.Should().Be(ExternalUserMapResult.RefusedTombstoned);
         outcome.User.Should().BeNull();
         (await _db.Users.CountAsync()).Should().Be(1);
-    }
-
-    private sealed class ThrowingAuditStager : IAuditStager
-    {
-        public AuditLogEntry Build(
-            string action,
-            AuditActor actor,
-            string? resourceType = null,
-            Guid? resourceId = null,
-            string? details = null) =>
-            throw new InvalidOperationException("audit staging failed");
     }
 
     private sealed class BlockingAuditWriter : IAuditWriter

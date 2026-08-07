@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Data.Tests;
@@ -299,17 +300,5 @@ public sealed class MigrationBootstrapperTests : IDisposable
         applied.Should().BeSubsetOf(available,
             "applied migrations must be a subset of those defined in NodePilot.Data — " +
             "anything else means a stray migration was picked up from a sibling assembly");
-    }
-
-    /// <summary>Tiny ILogger that captures formatted messages for assertion.</summary>
-    private sealed class CapturingLogger : ILogger
-    {
-        public List<string> Messages { get; } = new();
-        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullLogger.Instance.BeginScope(state);
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            Messages.Add(formatter(state, exception));
-        }
     }
 }

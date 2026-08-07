@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Moq;
 using NodePilot.Api.Security.Oidc;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
@@ -347,7 +348,7 @@ public sealed class OidcIdentityMapperTests : IDisposable
         await _db.SaveChangesAsync();
         var auditCount = await _db.AuditLog.CountAsync();
 
-        var act = () => Mapper(auditStager: new ThrowingAuditStager()).MapAsync(
+        var act = () => Mapper(auditStager: new ThrowingAuditStager(() => new InjectedReconciliationException())).MapAsync(
             Principal("subject-rollback", "rollback@example.test", AllowedGroup), default);
 
         await act.Should().ThrowAsync<InjectedReconciliationException>();
@@ -394,16 +395,6 @@ public sealed class OidcIdentityMapperTests : IDisposable
         StartedByUserId = userId, Status = status, StartedAt = DateTime.UtcNow,
         TriggeredBy = "test",
     };
-
-    private sealed class ThrowingAuditStager : IAuditStager
-    {
-        public AuditLogEntry Build(
-            string action,
-            AuditActor actor,
-            string? resourceType = null,
-            Guid? resourceId = null,
-            string? details = null) => throw new InjectedReconciliationException();
-    }
 
     private sealed class InjectedReconciliationException : Exception;
 

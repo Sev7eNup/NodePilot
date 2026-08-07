@@ -14,6 +14,7 @@ using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Api.Security.Ldap;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -77,25 +78,6 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
     }
 
     private const string TestSecret = "NodePilot-Test-Secret-Key-Minimum-32-Characters!";
-
-    private sealed class TestJwtKeyProvider : IJwtKeyProvider
-    {
-        public string Key => TestSecret;
-    }
-
-    private sealed class FakeAdapter : ILdapConnectionAdapter
-    {
-        public LdapAuthResult? Result { get; set; }
-        public LdapDirectorySnapshot? Snapshot { get; set; }
-        public int AuthenticateCalls { get; private set; }
-        public Task<LdapAuthResult?> AuthenticateAsync(string upn, string password, CancellationToken ct)
-        {
-            AuthenticateCalls++;
-            return Task.FromResult(Result);
-        }
-        public Task<LdapDirectorySnapshot?> LookupBySubjectAsync(string subject, CancellationToken ct)
-            => Task.FromResult(Snapshot);
-    }
 
     private static IConfiguration NewConfig() => new ConfigurationBuilder()
         .AddInMemoryCollection(new Dictionary<string, string?>
@@ -308,7 +290,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
             new Claim(ClaimTypes.PrimarySid, "S-1-5-21-1-1-1-1001"),
             new Claim(ClaimTypes.Name, @"FIRMA\alice"),
         }, authenticationType: "Kerberos", ClaimTypes.Name, ClaimTypes.Role));
-        var directory = new FakeAdapter
+        var directory = new FakeLdapConnectionAdapter
         {
             Snapshot = new LdapDirectorySnapshot(
                 "S-1-5-21-1-1-1-1001", true, "alice@firma.de", "Alice",
@@ -363,7 +345,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
             AllowedGroupSids = ["S-1-5-21-1-1-1-9999"],
         };
         var ldapMonitor = new StaticOptionsMonitor<LdapOptions>(ldapOpts);
-        var adapter = new FakeAdapter
+        var adapter = new FakeLdapConnectionAdapter
         {
             Result = new LdapAuthResult(
                 "guid-aaa", "alice@firma.de", "Alice", ["S-1-5-21-1-1-1-9999"]),
@@ -396,7 +378,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
     public async Task LdapLogin_EmptyPassword_Rejected_EvenIfDirectoryWouldAcceptBind(string password)
     {
         // Auth-bypass regression: AD answers a simple-bind with a populated UPN + empty
-        // password as an *unauthenticated bind* (LDAP_SUCCESS), not error 49. The FakeAdapter
+        // password as an *unauthenticated bind* (LDAP_SUCCESS), not error 49. The FakeLdapConnectionAdapter
         // here is configured to RETURN SUCCESS for any bind — i.e. it simulates that
         // vulnerable directory. The login must still be rejected because the empty/blank
         // password is refused before the adapter is ever consulted, so no session is minted
@@ -413,7 +395,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
             UpnSuffix = "firma.de",
         };
         var ldapMonitor = new StaticOptionsMonitor<LdapOptions>(ldapOpts);
-        var adapter = new FakeAdapter
+        var adapter = new FakeLdapConnectionAdapter
         {
             Result = new LdapAuthResult("guid-eve", "eve@firma.de", "Eve", Array.Empty<string>()),
         };
@@ -450,7 +432,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
             UpnSuffix = "firma.de",
         };
         var monitor = new StaticOptionsMonitor<LdapOptions>(ldapOpts);
-        var adapter = new FakeAdapter { Result = null };
+        var adapter = new FakeLdapConnectionAdapter { Result = null };
         var authenticator = new LdapAuthenticator(
             monitor, adapter, new LdapCircuitBreaker(), NullLogger<LdapAuthenticator>.Instance);
         var mapper = new ExternalUserMapper(_db, monitor, audit,
@@ -476,7 +458,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
 
         (await controller.Login(new LoginRequest(@"D\alice", "wrong-password"), default)).Result
             .Should().BeOfType<UnauthorizedObjectResult>();
-        adapter.AuthenticateCalls.Should().Be(5,
+        adapter.Calls.Should().Be(5,
             "the sixth alias must hit the shared canonical pre-JIT throttle before AD bind");
         audit.Calls.Should().Contain(call => call.Action == "LOGIN_LOCKED"
                                              && call.Details!.Contains("alice@firma.de"));
@@ -513,7 +495,7 @@ public sealed class AuthControllerLdapReviewFixTests : IDisposable
             UpnSuffix = "firma.de",
         };
         var ldapMonitor = new StaticOptionsMonitor<LdapOptions>(ldapOpts);
-        var adapter = new FakeAdapter
+        var adapter = new FakeLdapConnectionAdapter
         {
             Result = new LdapAuthResult("guid-aaa", "alice@firma.de", "Alice", Array.Empty<string>()),
         };

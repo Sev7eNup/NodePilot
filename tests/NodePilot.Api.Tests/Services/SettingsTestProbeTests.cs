@@ -77,14 +77,14 @@ public sealed class SettingsTestProbeTests
     [Fact]
     public async Task TestLlmAsync_EndpointAccepts_ReportsSuccess()
     {
-        var handler = new StubHandler(HttpStatusCode.OK, "{\"data\":[]}");
+        var handler = StubHandler(HttpStatusCode.OK, "{\"data\":[]}");
 
         var result = await Probe(handler).TestLlmAsync(
             Llm("http://127.0.0.1:1234/v1"),
             TestContext.Current.CancellationToken);
 
         result.Ok.Should().BeTrue();
-        handler.LastRequest!.RequestUri!.ToString().Should().Be("http://127.0.0.1:1234/v1/models",
+        handler.Requests.Single().RequestUri!.ToString().Should().Be("http://127.0.0.1:1234/v1/models",
             "the probe uses the cheap model listing rather than a chat completion");
     }
 
@@ -95,44 +95,44 @@ public sealed class SettingsTestProbeTests
     {
         // A BaseUrl that already names the endpoint must not get /models nested underneath it —
         // that path exists on neither dialect and made the Test button fail on a working profile.
-        var handler = new StubHandler(HttpStatusCode.OK, "{\"data\":[]}");
+        var handler = StubHandler(HttpStatusCode.OK, "{\"data\":[]}");
 
         var result = await Probe(handler).TestLlmAsync(
             Llm(baseUrl), TestContext.Current.CancellationToken);
 
         result.Ok.Should().BeTrue();
-        handler.LastRequest!.RequestUri!.ToString().Should().Be("http://127.0.0.1:1234/v1/models");
+        handler.Requests.Single().RequestUri!.ToString().Should().Be("http://127.0.0.1:1234/v1/models");
     }
 
     [Fact]
     public async Task TestLlmAsync_SendsTheApiKeyAsABearerToken()
     {
-        var handler = new StubHandler(HttpStatusCode.OK, "{}");
+        var handler = StubHandler(HttpStatusCode.OK, "{}");
 
         await Probe(handler).TestLlmAsync(
             Llm("http://127.0.0.1:1234/v1", apiKey: "sk-secret"),
             TestContext.Current.CancellationToken);
 
-        handler.LastRequest!.Headers.Authorization!.Scheme.Should().Be("Bearer");
-        handler.LastRequest.Headers.Authorization.Parameter.Should().Be("sk-secret");
+        handler.Requests.Single().Headers.Authorization!.Scheme.Should().Be("Bearer");
+        handler.Requests.Single().Headers.Authorization!.Parameter.Should().Be("sk-secret");
     }
 
     [Fact]
     public async Task TestLlmAsync_WithoutApiKey_SendsNoAuthorizationHeader()
     {
-        var handler = new StubHandler(HttpStatusCode.OK, "{}");
+        var handler = StubHandler(HttpStatusCode.OK, "{}");
 
         await Probe(handler).TestLlmAsync(
             Llm("http://127.0.0.1:1234/v1", apiKey: null),
             TestContext.Current.CancellationToken);
 
-        handler.LastRequest!.Headers.Authorization.Should().BeNull();
+        handler.Requests.Single().Headers.Authorization.Should().BeNull();
     }
 
     [Fact]
     public async Task TestLlmAsync_NonSuccessStatus_ReportsTheStatusAndBody()
     {
-        var handler = new StubHandler(HttpStatusCode.Unauthorized, "invalid api key");
+        var handler = StubHandler(HttpStatusCode.Unauthorized, "invalid api key");
 
         var result = await Probe(handler).TestLlmAsync(
             Llm("http://127.0.0.1:1234/v1"),
@@ -146,7 +146,7 @@ public sealed class SettingsTestProbeTests
     [Fact]
     public async Task TestLlmAsync_LongErrorBody_IsTruncated()
     {
-        var handler = new StubHandler(HttpStatusCode.InternalServerError, new string('x', 500));
+        var handler = StubHandler(HttpStatusCode.InternalServerError, new string('x', 500));
 
         var result = await Probe(handler).TestLlmAsync(
             Llm("http://127.0.0.1:1234/v1"),
@@ -160,7 +160,7 @@ public sealed class SettingsTestProbeTests
     [Fact]
     public async Task TestLlmAsync_TransportFailure_ReportsFailureInsteadOfThrowing()
     {
-        var handler = new ThrowingHandler(new HttpRequestException("connection refused"));
+        var handler = new StubHttpMessageHandler(_ => throw new HttpRequestException("connection refused"));
 
         var result = await Probe(handler).TestLlmAsync(
             Llm("http://127.0.0.1:1234/v1"),
@@ -177,13 +177,13 @@ public sealed class SettingsTestProbeTests
     [InlineData("http://169.254.169.254/latest")]
     public async Task TestLlmAsync_BaseUrlRejectedByTheGuard_NeverReachesTheTransport(string baseUrl)
     {
-        var handler = new StubHandler(HttpStatusCode.OK, "{}");
+        var handler = StubHandler(HttpStatusCode.OK, "{}");
 
         var result = await Probe(handler).TestLlmAsync(
             Llm(baseUrl), TestContext.Current.CancellationToken);
 
         result.Ok.Should().BeFalse();
-        handler.LastRequest.Should().BeNull(
+        handler.Requests.Should().BeEmpty(
             "the shared LlmEndpointGuard rejects the URL before any connect is attempted");
     }
 
@@ -288,32 +288,10 @@ public sealed class SettingsTestProbeTests
         HttpMessageHandler? handler = null,
         LdapOptions? ldapOptions = null) => new(
         NullLogger<SettingsTestProbe>.Instance,
-        new StubHttpClientFactory(handler ?? new StubHandler(HttpStatusCode.OK, "{}")),
+        new StubHttpClientFactory(handler ?? StubHandler(HttpStatusCode.OK, "{}")),
         ldapOptions is null ? null : new StaticOptionsMonitor<LdapOptions>(ldapOptions));
 
-    private sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
-    }
-
-    private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler
-    {
-        public HttpRequestMessage? LastRequest { get; private set; }
-
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            LastRequest = request;
-            return Task.FromResult(new HttpResponseMessage(status)
-            {
-                Content = new StringContent(body),
-            });
-        }
-    }
-
-    private sealed class ThrowingHandler(Exception exception) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request, CancellationToken cancellationToken) => throw exception;
-    }
+    /// <summary>Fixed status/body responder on the shared func-based handler.</summary>
+    private static StubHttpMessageHandler StubHandler(HttpStatusCode status, string body) =>
+        new(_ => new HttpResponseMessage(status) { Content = new StringContent(body) });
 }

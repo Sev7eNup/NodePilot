@@ -15,6 +15,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Engine.Security;
 using NodePilot.TestCommons;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Rbac;
@@ -85,14 +86,14 @@ public sealed class ExecutionsControllerRbacTests : IDisposable
             new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll,
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             NullLogger<ExecutionDispatchService>.Instance);
 
         var ctrl = new ExecutionsController(
             _db, Mock.Of<IWorkflowEngine>(), dispatchService,
             new OutputRedactor(null), NoopAuditWriter.Instance,
             new ResourceAuthorizationService(_db),
-            NodePilot.Api.Tests.TestSupport.StubMaintenanceWindowEvaluator.AllowAll);
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll);
         ctrl.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } };
         return ctrl;
     }

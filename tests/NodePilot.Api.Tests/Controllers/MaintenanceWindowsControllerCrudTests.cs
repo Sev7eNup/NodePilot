@@ -8,6 +8,7 @@ using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Data;
 using NodePilot.TestCommons;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;

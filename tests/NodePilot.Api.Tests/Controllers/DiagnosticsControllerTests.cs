@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Diagnostics;
 using NodePilot.Api.Dtos;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Controllers;

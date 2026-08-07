@@ -12,6 +12,7 @@ using NodePilot.Data.Security;
 using NodePilot.Engine.Cluster;
 using NodePilot.Scheduler;
 using NodePilot.Scheduler.SystemAlerts;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.SystemAlerts;
@@ -29,17 +30,6 @@ public class SystemAlertDispatcherTests
         var k = new byte[32];
         for (var i = 0; i < k.Length; i++) k[i] = (byte)(i + 7);
         return k;
-    }
-
-    private sealed class RecordingSink : INotificationSink
-    {
-        public NotificationChannel Channel => NotificationChannel.Email;
-        public List<NotificationContext> Sends { get; } = [];
-        public Task<NotificationSendResult> SendAsync(NotificationContext ctx, string target, string? secret, CancellationToken ct)
-        {
-            Sends.Add(ctx);
-            return Task.FromResult(NotificationSendResult.Ok);
-        }
     }
 
     private sealed class StubSource : ISystemAlertSource
@@ -106,9 +96,9 @@ public class SystemAlertDispatcherTests
 
             await dispatcher.DispatchOnceAsync(CancellationToken.None);
             sink.Sends.Should().ContainSingle();
-            sink.Sends[0].EventType.Should().Be(NotificationEventType.SystemAlert);
-            sink.Sends[0].SourceId.Should().Be("stub");
-            sink.Sends[0].SignalValue.Should().Be(600);
+            sink.Sends[0].ctx.EventType.Should().Be(NotificationEventType.SystemAlert);
+            sink.Sends[0].ctx.SourceId.Should().Be("stub");
+            sink.Sends[0].ctx.SignalValue.Should().Be(600);
 
             db.ChangeTracker.Clear();
             var attempts = db.NotificationDeliveryAttempts.AsNoTracking().ToList();

@@ -6,6 +6,7 @@ using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
 using NodePilot.Api.Security.Ldap;
+using NodePilot.Api.Tests.TestSupport;
 using NodePilot.Data;
 using Xunit;
 using NodePilot.TestCommons;
@@ -29,11 +30,6 @@ public sealed class AuthControllerMethodsTests : IDisposable
         _db.Dispose();
         _conn.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
-    }
-
-    private sealed class TestJwtKeyProvider : IJwtKeyProvider
-    {
-        public string Key => "NodePilot-Test-Secret-Key-Minimum-32-Characters!";
     }
 
     private static IConfiguration NewConfig() => new ConfigurationBuilder()

@@ -9,6 +9,7 @@ using NodePilot.Api.Controllers;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Interfaces;
 using System.Security.Claims;
+using NodePilot.Api.Tests.TestSupport;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Ai;
