@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Text;
 using Microsoft.Extensions.Options;
 using NodePilot.Core.Interfaces;
 
@@ -22,10 +21,10 @@ public sealed record KnowledgeAskRequest(
 /// Streams one turn of the global "AI Chat" knowledge assistant. Parallel to
 /// <see cref="WorkflowAssistantService"/> but <b>canvas-free</b>: no workflow JSON, no
 /// redact/merge, no proposal — a read-only Q&amp;A over docs / operational data / source code via the
-/// source-gated <see cref="IKnowledgeToolRegistry"/>. Reuses the same bounded tool-loop mechanics
-/// (final round offers no tools; reads the active LLM profile and <c>AiKnowledge:*</c> live via
-/// <see cref="IOptionsMonitor{T}"/>). Emits <c>Delta</c> / <c>ToolCall</c> / <c>ToolResult</c> and a
-/// closing <c>Done</c>.
+/// source-gated <see cref="IKnowledgeToolRegistry"/>. The bounded tool-loop mechanics are the
+/// shared <see cref="AgenticToolLoop"/> (final round offers no tools; reads the active LLM
+/// profile and <c>AiKnowledge:*</c> live via <see cref="IOptionsMonitor{T}"/>). Emits
+/// <c>Delta</c> / <c>ToolCall</c> / <c>ToolResult</c> and a closing <c>Done</c>.
 ///
 /// <para>Takes <see cref="ILlmClientFactory"/> rather than a pre-built client: resolving the active
 /// profile can fail, and that has to surface as the controller's 503 — not as a DI error.</para>
@@ -90,65 +89,22 @@ public sealed class KnowledgeAssistantService(
             }
         }
 
-        string? model = null;
-        int? promptTokens = null, completionTokens = null, generationMs = null;
-
-        for (var iteration = 0; ; iteration++)
+        // The bounded tool-loop mechanics live once in AgenticToolLoop (shared with the
+        // workflow assistant); this caller's per-delta translation is the trivial one.
+        var loop = new AgenticToolLoop();
+        await foreach (var evt in loop.RunAsync(
+            llm, systemPrompt, conversation, toolDefs, maxDepth,
+            delta => new[] { ChatStreamEvent.Delta(delta) },
+            (call, token) => tools.ExecuteAsync(call.Name, call.ArgumentsJson, toolContext!, token),
+            suppressToolCalls: null,
+            ct))
         {
-            // On the LAST allowed round, offer no tools — guarantees a text answer instead of yet
-            // more tool_calls at the depth cap. Deliberately NOT tool_choice:"none" (some local
-            // endpoints reject it); the tool results are already in the conversation history.
-            var isFinalRound = iteration >= maxDepth - 1;
-            var roundTools = isFinalRound ? null : toolDefs;
-            var llmRequest = new LlmRequest(systemPrompt, UserPrompt: string.Empty, JsonMode: false,
-                Conversation: conversation, Tools: roundTools, ToolChoice: roundTools is not null ? "auto" : null);
-
-            var assistantText = new StringBuilder();
-            IReadOnlyList<LlmToolCall>? toolCalls = null;
-
-            await foreach (var evt in llm.StreamAsync(llmRequest, ct))
-            {
-                if (evt.Done)
-                {
-                    model = evt.Model;
-                    if (evt.PromptTokens is int pt) promptTokens = (promptTokens ?? 0) + pt;
-                    if (evt.CompletionTokens is int cpt) completionTokens = (completionTokens ?? 0) + cpt;
-                    // Accumulated like the token counts, so it stays the matching denominator:
-                    // the wall clock below also covers prefill and tool execution, which is why
-                    // dividing completion tokens by it produces a nonsensically low throughput.
-                    if (evt.GenerationMs is int gm) generationMs = (generationMs ?? 0) + gm;
-                    toolCalls = evt.ToolCalls;
-                    break;
-                }
-                if (evt.ContentDelta is { Length: > 0 } delta)
-                {
-                    assistantText.Append(delta);
-                    yield return ChatStreamEvent.Delta(delta);
-                }
-            }
-
-            // Execute whenever the model emitted tool calls — their presence is authoritative, not the
-            // finish_reason string. OpenAI sets finish_reason "tool_calls", but local endpoints (LM Studio,
-            // llama.cpp) frequently report "stop"/null on a round that still carries tool_calls; gating on
-            // the exact string would silently drop those calls and cap local models at a single tool call.
-            var canCallTools = toolContext is not null && toolCalls is { Count: > 0 } && iteration < maxDepth - 1;
-            if (canCallTools)
-            {
-                conversation.Add(new LlmMessage("assistant", assistantText.ToString(), ToolCalls: toolCalls));
-                foreach (var call in toolCalls!)
-                {
-                    yield return ChatStreamEvent.ToolCall(call.Name, call.Id, call.ArgumentsJson);
-                    var result = await tools.ExecuteAsync(call.Name, call.ArgumentsJson, toolContext!, ct);
-                    yield return ChatStreamEvent.ToolResult(call.Id, call.Name, result);
-                    conversation.Add(new LlmMessage("tool", result, ToolCallId: call.Id));
-                }
-                continue; // next LLM round, now with the tool results
-            }
-            break; // final answer (or the depth cap was reached)
+            yield return evt;
         }
 
         sw.Stop();
-        yield return ChatStreamEvent.Done(model ?? "unknown", (int)sw.ElapsedMilliseconds, promptTokens, completionTokens, generationMs);
+        yield return ChatStreamEvent.Done(loop.Model ?? "unknown", (int)sw.ElapsedMilliseconds,
+            loop.PromptTokens, loop.CompletionTokens, loop.GenerationMs);
     }
 
     private static IReadOnlyList<LlmMessage> BuildConversation(KnowledgeAskRequest request)
