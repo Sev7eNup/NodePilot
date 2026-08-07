@@ -167,14 +167,14 @@ $releaseSigner = "0123456789ABCDEF0123456789ABCDEF01234567"
 Ergebnis:
 
 ```text
-out\NodePilot-1.1.2.zip
-out\NodePilot-1.1.2.zip.manifest.json
-out\NodePilot-1.1.2.zip.manifest.json.p7s
-out\NodePilot-1.1.2.SHA256SUMS.txt
+out\NodePilot-1.2.0.zip
+out\NodePilot-1.2.0.zip.manifest.json
+out\NodePilot-1.2.0.zip.manifest.json.p7s
+out\NodePilot-1.2.0.SHA256SUMS.txt
 ```
 
-Mit `-IncludeServerInstaller` entsteht im selben Lauf zusätzlich `NodePilot-Server-Setup-1.1.2.exe`,
-mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` außerdem `NodePilot-Desktop-Setup-1.1.2.exe`
+Mit `-IncludeServerInstaller` entsteht im selben Lauf zusätzlich `NodePilot-Server-Setup-1.2.0.exe`,
+mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` außerdem `NodePilot-Desktop-Setup-1.2.0.exe`
 — alles unter derselben Version. `-InstallerSigningCertificateThumbprint <tp>` signiert beide
 Installer als Teil des Laufs, was zwingend vor der Prüfsummenbildung passieren muss.
 
@@ -239,7 +239,7 @@ leere Instanz zu hinterlassen.
 Unbeaufsichtigt für SCCM oder GPO:
 
 ```powershell
-NodePilot-Server-Setup-1.1.2.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+NodePilot-Server-Setup-1.2.0.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
 Ein erneuter Lauf erkennt eine vorhandene Installation und bietet drei Wege an: per Default ein
