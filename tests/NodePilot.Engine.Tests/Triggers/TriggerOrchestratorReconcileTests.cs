@@ -37,6 +37,7 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
     private readonly Mock<IScheduler> _scheduler;
     private readonly Mock<ISchedulerFactory> _schedulerFactory;
     private readonly TriggerOrchestrator _orchestrator;
+    private readonly TriggerHealthRegistry _healthRegistry = new();
 
     public TriggerOrchestratorReconcileTests()
     {
@@ -88,7 +89,8 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
             _services,
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             NullLogger<TriggerOrchestrator>.Instance,
-            NodePilot.TestCommons.TestDatabaseAvailability.Available);
+            NodePilot.TestCommons.TestDatabaseAvailability.Available,
+            _healthRegistry);
     }
 
     private sealed class NoopWorkflowExecutionDispatcher : IWorkflowExecutionDispatcher
@@ -391,6 +393,73 @@ public class TriggerOrchestratorReconcileTests : IAsyncDisposable
 
         created.Should().HaveCount(2);
         created[1].StartCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SyncAsync_RecordsUnhealthyTrigger_InHealthRegistry()
+    {
+        // What makes the outage alertable instead of silent: the sync pass keeps succeeding while
+        // the trigger is broken, so nothing else in the system notices. The entry is written by
+        // the failed re-registration — an eviction whose retry succeeds was never an outage.
+        var created = UseFakeSources();
+        var wf = await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
+
+        await _orchestrator.SyncAsync(CancellationToken.None);
+        _healthRegistry.Snapshot().Should().BeEmpty();
+
+        created[0].HealthValue = TriggerHealth.Faulted("share vanished");
+        _orchestrator.SourceFactory = _ =>
+        {
+            var src = new FakeTriggerSource { ThrowOnStart = true };
+            created.Add(src);
+            return src;
+        };
+        await _orchestrator.SyncAsync(CancellationToken.None);
+
+        var entry = _healthRegistry.Snapshot().Should().ContainSingle().Subject;
+        entry.WorkflowId.Should().Be(wf.Id);
+        entry.NodeId.Should().Be("trg1");
+        entry.TriggerType.Should().Be("scheduleTrigger");
+        entry.ConsecutiveFailures.Should().Be(1);
+        entry.Reason.Should().Contain("simulated registration failure");
+    }
+
+    [Fact]
+    public async Task SyncAsync_ClearsHealthRegistry_OnceTriggerRegistersAgain()
+    {
+        var created = UseFakeSources();
+        await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
+
+        await _orchestrator.SyncAsync(CancellationToken.None);
+        created[0].HealthValue = TriggerHealth.Faulted("share vanished");
+        await _orchestrator.SyncAsync(CancellationToken.None); // evicted + re-registered in one pass
+
+        _healthRegistry.Snapshot().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SyncAsync_ClearsHealthRegistry_WhenWorkflowIsDisabled()
+    {
+        // A trigger that no longer exists is not a broken trigger — it must stop alerting.
+        var created = UseFakeSources();
+        var wf = await InsertWorkflowAsync(DefinitionWithSchedule("trg1", "0 0/1 * * * ?"));
+
+        await _orchestrator.SyncAsync(CancellationToken.None);
+        created[0].HealthValue = TriggerHealth.Faulted("share vanished");
+        _orchestrator.SourceFactory = _ =>
+        {
+            var src = new FakeTriggerSource { ThrowOnStart = true };
+            created.Add(src);
+            return src;
+        };
+        await _orchestrator.SyncAsync(CancellationToken.None);
+        _healthRegistry.Snapshot().Should().HaveCount(1);
+
+        wf.IsEnabled = false;
+        await _db.SaveChangesAsync();
+        await _orchestrator.SyncAsync(CancellationToken.None);
+
+        _healthRegistry.Snapshot().Should().BeEmpty();
     }
 
     [Fact]

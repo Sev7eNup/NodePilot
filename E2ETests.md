@@ -1649,6 +1649,20 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 **Erwartung:** FileWatcher funktioniert
 
+**Selbstheilung nach Pfad-Verlust** (braucht eine Freigabe, lokal reicht `net share`):
+
+6. `net share drop=C:\temp\watch`, Trigger auf `\\<host>\drop` zeigen lassen, Datei ablegen → feuert
+7. `net share drop /delete` → binnen ~5 s Log: `Evicting unhealthy fileWatcherTrigger …`, danach
+   `Failed to register trigger … retrying in 5s`
+8. Freigabe wieder anlegen → binnen ≤ 300 s Log: `Registered fileWatcherTrigger …`; Datei ablegen → feuert
+
+**Prüfpunkte:**
+- [ ] Nach Schritt 7 wird das Log **still** (keine Warning-Wiederholung alle 5 s)
+- [ ] `nodepilot.trigger.orchestrator.sync.duration` p99 steigt nicht an (kein Stall auf totem Pfad)
+- [ ] Schritt 8 heilt ohne Neustart, ohne Disable/Enable, ohne Config-Edit
+- [ ] Anti-Flap: 20k Dateien in ein **lokales** Watch-Verzeichnis → `buffer overflow … keeps running`, **null** Evictions
+- [ ] System-Policy auf Quelle `trigger-unhealthy` (`unhealthySeconds > 60`) schlägt während Schritt 7 an
+
 ---
 
 ### Test 14.4 — `databaseTrigger`

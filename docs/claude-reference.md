@@ -78,6 +78,68 @@ Trigger-Sources seeden ihre Event-Daten als `manual.*`-Variablen in den Run (`Va
 
 **webhookTrigger-Verifizierung:** Default = Shared-Secret-Header (`X-Webhook-Secret` == `secret`). Der explizit versionierte Modus `signatureMode: "nodepilot-hmac-v2"` verlangt ein per CSPRNG erzeugtes Secret mit mindestens 32 UTF-8-Bytes, `X-NodePilot-Timestamp` (UNIX-Sekunden) und eine eindeutige `X-NodePilot-Delivery-Id`. Signiert wird `"NodePilot-HMAC-v2\n" + timestamp + "\n" + deliveryId + "\n" + METHOD + "\n" + escapedPath + "\n" + canonicalQuery + "\n" + rawBody` mit HMAC-SHA256. Query-Kanonisierung: jedes Key/Value-Paar separat, UTF-8/RFC3986-Percent-Encoding, ordinal nach encodetem Key sortiert; die Reihenfolge doppelter Werte bleibt erhalten; mit `&` verbunden. `{signaturePrefix}{hex}` (Default `sha256=…`) steht im `signatureHeader` (Default `X-NodePilot-Signature`). Freshness-Fenster = fünf Minuten; Delivery-IDs werden über den gemeinsamen DB-Unique-Guard clusterweit nur einmal akzeptiert. V2 übernimmt keine beliebigen Request-Header in Execution-Parameter, weil sie nicht signiert sind. **Breaking:** Legacy-`signatureMode: "hmac"` und Provider-native Body-only-HMACs werden abgelehnt; GitHub/GitLab/Alertmanager sind nicht direkt wire-kompatibel und benötigen einen verifizierenden Adapter. Constant-time-Vergleich; Fehlversuche kollabieren ins uniforme 404. `fieldMappings` (`[{name, path}]`, max 32, Werte auf 4096 Zeichen gekappt) extrahiert Body-Felder als eigene Params (`{{manual.<name>}}`); non-JSON-Body/nicht-matchende Pfade degradieren zu Leerstring statt Reject; `__`-Prefix + `webhook*`-Systemkeys sind reserviert.
 
+### Trigger-Liveness — was passiert, wenn eine Quelle im Betrieb stirbt
+
+Der Orchestrator hielt eine Quelle für gesund, solange ihr Config-Hash passte. Ein
+`fileWatcherTrigger`, dessen UNC-Freigabe zur Laufzeit verschwindet, blieb damit als Leiche in
+`_active` liegen: die Remove-Schleife greift nur bei gelöscht/disabled/Hash-Änderung, die
+Add-Schleife steigt bei `_active.ContainsKey(key)` aus. Der Trigger feuerte nie wieder — auch nicht,
+wenn die Freigabe zurückkam. Sichtbar war das praktisch nicht: der Heartbeat schrieb weiter `ok`
+(der Sync-Pass gelingt ja), das Dashboard zeigte „Armed" (aus `TriggerTypesJson`, nicht aus
+Laufzeit-State), und es gab genau eine `LogError`-Zeile.
+
+**Mechanik heute:** `ITriggerSource.Health` liefert `TriggerHealth` (`IsHealthy` + `Reason`).
+Meldet eine registrierte Quelle `unhealthy`, evictet die Remove-Schleife sie (Metrik
+`nodepilot.trigger.orchestrator.sync.changes` mit `change=evict-unhealthy`), und der **bestehende**
+Add-Pfad baut sie im selben Pass neu auf. Scheitert das, greift der vorhandene Backoff (5→10→…→300 s,
+unbegrenzt) — genau der Pfad, der eine beim Start fehlende Freigabe schon immer korrekt geheilt hat.
+`_backoff` brauchte dafür keine Änderung: es wird bei jeder erfolgreichen Registrierung geleert, ein
+`_active`-Eintrag kann also nie einen lebenden Backoff-Eintrag haben.
+
+**Vertrag:** `Health` ist ein reiner In-Memory-Read. Der Orchestrator fragt sequenziell jeden
+Trigger im 5-s-Pass ab; ein blockierender Probe dort (`Directory.Exists` auf totem UNC-Pfad hängt
+bis zum SMB-Timeout) stoppt die Reconciliation **aller** Workflows. Quellen, die echtes I/O
+brauchen, laufen auf eigenem Timer und cachen das Urteil.
+
+**FileSystemWatcher-Spezifika** (gegen die Runtime-Quelle verifiziert):
+
+- **Nicht in-place re-armbar.** Im `Monitor()`-Re-Issue-Fehlerpfad disposed die Runtime den
+  Directory-Handle, ohne `_enabled` zu löschen → `EnableRaisingEvents` liest auf der Leiche noch
+  `true`, und der Setter steigt bei unverändertem Wert aus. Nur eine frische Instanz hilft — deshalb
+  Fault-Flag + Dispose/Recreate statt lokalem Re-Arm. `EnableRaisingEvents` taugt **nicht** als
+  Health-Check.
+- **Buffer-Overflow ist kein Fault.** Bei `InternalBufferOverflowException` stellt die Runtime den
+  Read neu aus, der Watcher lebt weiter. Evicten würde unter Dauerlast flappen und mehr Events
+  kosten als der Overflow. Klassifizierung in `FileWatcherTriggerSource.ClassifyWatcherError`.
+- **Gemessen:** sowohl eine verschwindende Freigabe als auch ein gelöschtes lokales Verzeichnis
+  feuern normalerweise `Error` (`Win32Exception`), der Fault steht also in Millisekunden fest.
+- **Backstop-Probe** für den Fall, dass gar kein `Error` kommt (Host hart weg → ausstehende
+  Change-Notification wird nie completed): eigener Timer pro Quelle, zwei aufeinanderfolgende
+  Fehlschläge = Fault. **Bekannte Lücke:** eine SMB-Session, die reconnected ohne die serverseitige
+  Notification neu zu armen, liefert `Directory.Exists == true` — das erkennt die Probe nicht;
+  dafür bräuchte es eine Sentinel-Datei im Nutzerverzeichnis, die selbst den Trigger auslöst.
+- **Registrierung ist gedeckelt.** Konstruktor, `Directory.Exists` und das Armen blockieren alle
+  drei auf einem toten Redirector; sie laufen unter `Trigger:FileWatcher:PathTimeoutSeconds`. Ein
+  abgehängter Build wird disposed (sonst feuerte ein herrenloser Watcher ewig weiter), und ein
+  Identitäts-Guard in `HandleEvent` lässt nur die publizierte Instanz feuern.
+
+**Andere Quellen:** `databaseTrigger` meldet ein beendetes Poll-Loop als Fault. `scheduleTrigger`
+meldet konstant gesund (Quartz besitzt Job-Liveness prozessweit). `eventLogTrigger` ebenfalls — und
+das ist eine bewusste Grenze: `EventLog` hat gar keinen Fault-Kanal, die einzige echte Probe wäre
+RPC an den EventLog-Dienst.
+
+**Config (`Trigger:FileWatcher:*`, keine `SettingsSchema`-Sektion → keine Admin-UI, kein
+Hot-Reload, keine Zeile in der Hardening-Tabelle):**
+
+| Key | Default | Wirkung |
+|---|---|---|
+| `PathTimeoutSeconds` | `5` | Deadline für die Filesystem-Calls bei der Registrierung. Überschreitung → `TimeoutException` → Backoff. |
+| `HealthProbeSeconds` | `60` | Intervall der Backstop-Probe. `0` schaltet sie ab. |
+
+**Sichtbarkeit:** Der Heartbeat meldet `degraded: N trigger(s) retrying` statt `ok`, solange
+irgendein Trigger im Backoff ist (erreicht `/api/dashboard`, wird von der UI aber nicht gerendert).
+Der operative Weg ist die System-Policy `trigger-unhealthy` — siehe `docs/alerting.md`.
+
 ---
 
 ## Edit-Lifecycle — UX-Flow & Button-States

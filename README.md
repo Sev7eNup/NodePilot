@@ -744,6 +744,13 @@ Backoff modes: `fixed` (always `initialDelayMs`), `linear` (delay × attempt), `
 | `databaseTrigger` | Polling SELECT | `connectionString`, `provider`, `query`, `intervalSeconds` | `{{manual.dbSentinel}}`, `.dbPrevious` |
 | `eventLogTrigger` | `EventLog.EntryWritten` | `logName`, `source`, `entryType`, `messagePattern` | `{{manual.eventSource}}`, `.eventEntryType`, `.eventId`, `.eventMessage`, `.eventTimeWritten` |
 
+A trigger source that dies at runtime — most visibly a `fileWatcherTrigger` whose UNC share goes
+away — is detected, torn down and re-created with exponential backoff (5 s to 5 min, indefinitely),
+so it resumes on its own once the path is reachable again; events that occurred during the gap are
+not replayed. Configure the reachability check via `Trigger:FileWatcher:HealthProbeSeconds`
+(default 60, `0` disables) and the registration deadline via `Trigger:FileWatcher:PathTimeoutSeconds`
+(default 5). Alert on it with the `trigger-unhealthy` system-alert source.
+
 `nodepilot-hmac-v2` webhooks require a CSPRNG-generated secret of at least 32 UTF-8 bytes,
 `X-NodePilot-Timestamp` (UNIX seconds), and a unique `X-NodePilot-Delivery-Id`. The HMAC-SHA256
 input is the exact byte concatenation below; the HTTP method is uppercase and the path is the

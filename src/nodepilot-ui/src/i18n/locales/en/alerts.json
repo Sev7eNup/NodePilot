@@ -147,7 +147,8 @@
       "execution-stuck": "Stuck execution",
       "workflow-health": "Workflow health",
       "alert-delivery-failed": "Alert delivery failing",
-      "schedule-missed": "Schedule missed"
+      "schedule-missed": "Schedule missed",
+      "trigger-unhealthy": "Trigger not registered"
     },
     "editor": {
       "name": "Name",

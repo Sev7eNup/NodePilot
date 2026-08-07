@@ -65,17 +65,24 @@ public class TriggerOrchestrator : BackgroundService
 
     private readonly IDatabaseAvailability _availability;
 
+    // Mirrors the broken half of _backoff into a shape the alerting pipeline can observe. Kept
+    // separate rather than exposing _backoff itself: this carries the reason and the "since" the
+    // alert needs, and it survives an eviction that has not yet produced a failed retry.
+    private readonly TriggerHealthRegistry _health;
+
     public TriggerOrchestrator(
         IServiceScopeFactory scopeFactory,
         IServiceProvider rootServices,
         IClusterStateProvider cluster,
         ILogger<TriggerOrchestrator> logger,
-        IDatabaseAvailability availability)
+        IDatabaseAvailability availability,
+        TriggerHealthRegistry health)
     {
         _scopeFactory = scopeFactory;
         _rootServices = rootServices;
         _cluster = cluster;
         _availability = availability;
+        _health = health;
         _logger = logger;
         SourceFactory = CreateSource;
         // Wake the sync loop immediately on leadership transitions so a freshly-promoted
@@ -146,6 +153,9 @@ public class TriggerOrchestrator : BackgroundService
         await DisposeActiveSourcesAsync();
         _parseCache.Clear();
         _backoff.Clear();
+        // A follower owns no triggers, so it has no broken ones to report. Leaving stale entries
+        // would make this node alert on the leader's triggers.
+        _health.Clear();
     }
 
     private async Task<bool> WaitUntilServableOrLeadershipChangeAsync(CancellationToken stoppingToken)
@@ -262,6 +272,9 @@ public class TriggerOrchestrator : BackgroundService
                 await DisposeActiveSourcesAsync();
                 _parseCache.Clear();
                 _backoff.Clear();
+                // A follower owns no triggers, so it has no broken ones to report. Leaving stale
+                // entries would make this node alert on the leader's triggers.
+                _health.Clear();
             }
             return;
         }
@@ -352,6 +365,13 @@ public class TriggerOrchestrator : BackgroundService
                         "Evicting unhealthy {Type} trigger {Key}: {Reason}. Re-registering; while the " +
                         "underlying resource stays unavailable, registration backs off up to 5 minutes.",
                         old.source.ActivityType, key, health.Reason);
+                else
+                    // Deleted, disabled or reconfigured — whatever was wrong with it is moot now.
+                    // (No health write on the unhealthy branch: the add-loop below re-registers in
+                    // this same pass, so it always resolves to either MarkHealthy on success or
+                    // MarkUnhealthy with a real failure count. A marker here would only ever be
+                    // overwritten a few lines later.)
+                    _health.MarkHealthy(key);
 
                 try { await old.source.DisposeAsync(); }
                 catch (Exception ex) { _logger.LogWarning(ex, "Failed disposing trigger {Key}", key); }
@@ -366,7 +386,10 @@ public class TriggerOrchestrator : BackgroundService
         // memory for deleted workflows.
         foreach (var bkey in _backoff.Keys.ToList())
             if (!desired.ContainsKey(bkey))
+            {
                 _backoff.TryRemove(bkey, out _);
+                _health.MarkHealthy(bkey);
+            }
 
         // Add new
         foreach (var (key, want) in desired)
@@ -399,6 +422,7 @@ public class TriggerOrchestrator : BackgroundService
                 // so the eviction above always lands in an add-loop that is free to retry at once.
                 // Moving this line would silently break re-arming after an eviction.
                 _backoff.TryRemove(key, out _);
+                _health.MarkHealthy(key);
                 _logger.LogInformation("Registered {Type} trigger for workflow {Wf} node {Node}",
                     want.activityType, want.wfId, want.nodeId);
                 SchedulerMetrics.OrchestratorSyncChanges.Add(1,
@@ -414,6 +438,8 @@ public class TriggerOrchestrator : BackgroundService
                 var failures = previousFailures + 1;
                 var delaySeconds = Math.Min(300, 5 * (int)Math.Pow(2, Math.Min(failures - 1, 6)));
                 _backoff[key] = (DateTime.UtcNow.AddSeconds(delaySeconds), failures, want.hash);
+                _health.MarkUnhealthy(key, want.wfId, want.nodeId, want.activityType,
+                    $"{ex.GetType().Name}: {ex.Message}", failures, DateTime.UtcNow);
 
                 // Log at Warning for the first failure (admin attention), Debug for subsequent
                 // ones while backing off — prevents log-spam for a persistently-broken trigger.

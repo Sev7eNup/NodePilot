@@ -67,7 +67,8 @@ public sealed class TriggerOrchestratorLeaderGatingTests : IAsyncDisposable
             _services,
             new FollowerCluster(),
             NullLogger<TriggerOrchestrator>.Instance,
-            NodePilot.TestCommons.TestDatabaseAvailability.Available);
+            NodePilot.TestCommons.TestDatabaseAvailability.Available,
+            new TriggerHealthRegistry());
 
         // Act — a sync tick on a follower must early-out and leave no sources registered.
         await orchestrator.SyncAsync(CancellationToken.None);
@@ -86,7 +87,8 @@ public sealed class TriggerOrchestratorLeaderGatingTests : IAsyncDisposable
             _services,
             new FollowerCluster(),
             NullLogger<TriggerOrchestrator>.Instance,
-            NodePilot.TestCommons.TestDatabaseAvailability.Available);
+            NodePilot.TestCommons.TestDatabaseAvailability.Available,
+            new TriggerHealthRegistry());
 
         // Even if a source somehow fired (race during disposal), FireAsync must drop it
         // because the cluster gate flipped to follower.
@@ -105,7 +107,8 @@ public sealed class TriggerOrchestratorLeaderGatingTests : IAsyncDisposable
             _services,
             cluster,
             NullLogger<TriggerOrchestrator>.Instance,
-            NodePilot.TestCommons.TestDatabaseAvailability.Unavailable);
+            NodePilot.TestCommons.TestDatabaseAvailability.Unavailable,
+            new TriggerHealthRegistry());
         var source = new RecordingSource();
         var activeField = typeof(TriggerOrchestrator).GetField("_active",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
