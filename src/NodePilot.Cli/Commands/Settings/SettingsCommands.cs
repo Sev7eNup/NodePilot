@@ -106,6 +106,62 @@ public sealed class SettingsSystemInfoCommand : BaseCommand<GlobalSettings>
     }
 }
 
+// ---- np settings effective-sizing ------------------------------------------
+
+/// <summary>
+/// The sizing the process actually booted with. Separate command rather than a column on
+/// <c>system-info</c> because with <c>Performance:ManualTuning=false</c> (the default) the
+/// Engine/Threading/ExecutionDispatch values in configuration are an inert preset — reading them
+/// back with <c>np settings get Engine</c> reports numbers the process is not running on.
+/// </summary>
+[SupportedOSPlatform("windows")]
+public sealed class SettingsEffectiveSizingCommand : BaseCommand<GlobalSettings>
+{
+    public SettingsEffectiveSizingCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
+    protected override async Task<int> RunAsync(CommandContext _, GlobalSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
+    {
+        var api = ClientFactory.Create(session);
+        var sizing = await api.GetEffectiveSizingAsync(ct);
+        writer.WriteData(sizing, (console, value) =>
+        {
+            var grid = new Grid().AddColumn().AddColumn();
+            grid.AddRow("Mode", value.ManualTuning ? "manual" : "automatic (hardware-adaptive)");
+            // Only shown when it differs: an operator who has not touched the switch should not
+            // have to reason about two modes to read their own numbers.
+            if (value.DesiredManualTuning != value.ManualTuning)
+            {
+                grid.AddRow(
+                    "  Pending",
+                    string.Format(
+                        "[yellow]{0} after restart[/]",
+                        value.DesiredManualTuning ? "manual" : "automatic"));
+            }
+            grid.AddRow("Processors", value.ProcessorCount.ToString());
+            grid.AddRow(
+                "Usable Memory",
+                value.UsableMemoryBytes is { } bytes
+                    ? string.Format("{0:N1} GB", bytes / 1024d / 1024d / 1024d)
+                    // Detection failing is not an error: sizing falls back to CPU only, and saying
+                    // so is the difference between "0 GB" and "this plan ignored RAM".
+                    : "(not detected - CPU-only sizing)");
+            grid.AddRow("Deployment Mode", value.IsDesktop ? "Desktop" : "Server");
+            console.Write(grid);
+            console.WriteLine();
+
+            var table = new Table().Border(TableBorder.Rounded);
+            table.AddColumn("Key");
+            table.AddColumn(new TableColumn("Value").RightAligned());
+            table.AddColumn("Bound By");
+            foreach (var v in value.Values)
+            {
+                table.AddRow(Markup.Escape(v.Key), v.Value.ToString(), Markup.Escape(v.Bound));
+            }
+            console.Write(table);
+        });
+        return ExitCodes.Success;
+    }
+}
+
 // ---- np settings get [section] ---------------------------------------------
 
 public sealed class SettingsGetSettings : GlobalSettings

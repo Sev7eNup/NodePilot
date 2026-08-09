@@ -114,6 +114,21 @@ public sealed record SystemInfoResponse(
     string JwtIssuer,
     string JwtAudience);
 
+// Mirrors Api/Dtos/Settings/EffectiveSizingDto.cs. Under automatic tuning the numbers in the
+// Engine/Threading/ExecutionDispatch sections are inert, so `np settings get Engine` reports a
+// preset rather than what the process runs on — this is the only honest read of the sizing.
+// DesiredManualTuning differs from ManualTuning after a save until the process restarts.
+public sealed record EffectiveSizingResponse(
+    bool ManualTuning,
+    bool DesiredManualTuning,
+    int ProcessorCount,
+    long? UsableMemoryBytes,
+    bool IsDesktop,
+    IReadOnlyList<SizedValueResponse> Values);
+
+/// <summary>One resolved knob: configuration key, value in force, and the constraint that produced it.</summary>
+public sealed record SizedValueResponse(string Key, int Value, string Bound);
+
 public sealed record SettingsTestProbeResult(
     bool Ok,
     string Message,

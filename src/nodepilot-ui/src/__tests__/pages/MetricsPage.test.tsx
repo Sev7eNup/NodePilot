@@ -84,6 +84,40 @@ describe('MetricsPage', () => {
     expect(option.series?.map((s) => s.itemStyle?.color)).toEqual(['#aaaaaa', '#bbbbbb']);
   });
 
+  it('ordersHeatmapTimestampsNumericallyNotLexicographically', () => {
+    // The axis used to be built from a bare .sort(), which compares stringified numbers:
+    // [1, 2, 10] came out as [1, 10, 2], so every heatmap covering a window that crosses a
+    // digit boundary drew its columns out of order and put each cell under the wrong time.
+    // The single-timestamp fixtures above cannot see this - the bug needs at least three.
+    const widget: MetricsWidget = {
+      id: 102, title: 'Failures over time', description: null, type: 'heatmap', unit: 'short',
+      grid: { x: 0, y: 0, width: 12, height: 8 }, error: null,
+      data: [{
+        label: 'bucket',
+        labels: {},
+        // Deliberately supplied out of order, so the assertion pins the sort rather than
+        // the order the points happened to arrive in.
+        points: [
+          { timestamp: 10, value: 3 },
+          { timestamp: 1, value: 1 },
+          { timestamp: 2, value: 2 },
+        ],
+      }],
+    };
+    const option = buildMetricsChartOption(widget) as {
+      xAxis?: { data?: string[] };
+      series?: Array<{ data?: Array<[number, number, number]> }>;
+    };
+
+    // Three distinct columns, and the value at each x index belongs to the timestamp that
+    // index stands for: x=0 -> ts 1 -> value 1, x=1 -> ts 2 -> value 2, x=2 -> ts 10 -> value 3.
+    expect(option.xAxis?.data).toHaveLength(3);
+    const byIndex = new Map(option.series?.[0]?.data?.map(([x, , value]) => [x, value]));
+    expect(byIndex.get(0)).toBe(1);
+    expect(byIndex.get(1)).toBe(2);
+    expect(byIndex.get(2)).toBe(3);
+  });
+
   it('assignsSeriesColoursBySlotOrderWithoutCycling', () => {
     const widget: MetricsWidget = {
       id: 101, title: 'Two series', description: null, type: 'timeseries', unit: 'short',

@@ -781,6 +781,12 @@ public sealed class NodePilotApiClient
         return await ParseAsync<SystemInfoResponse>(res, ct);
     }
 
+    public async Task<EffectiveSizingResponse> GetEffectiveSizingAsync(CancellationToken ct)
+    {
+        using var res = await _http.GetAsync("api/admin/settings/effective-sizing", ct);
+        return await ParseAsync<EffectiveSizingResponse>(res, ct);
+    }
+
     /// <summary>
     /// Returns the snapshot of every section as a raw JsonDocument. The CLI does not
     /// parse the per-section DTOs — it forwards them as JSON to the operator — so we
