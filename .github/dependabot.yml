@@ -17,15 +17,19 @@ updates:
       day: monday
     open-pull-requests-limit: 1
     # Known-incompatible upgrades, each verified against this codebase — do not re-offer:
-    # Microsoft.OpenApi 3.x breaks the OpenAPI pipeline; Spectre.Console 0.57.x breaks the
-    # CLI rendering stack. Revisit deliberately, not via routine bumps.
+    # Microsoft.OpenApi 3.x breaks the OpenAPI pipeline. Spectre.Console must move as a
+    # FAMILY: Spectre.Console.Cli's stable line stops at 0.55.0 and pins Spectre.Console to
+    # its own version, so any bump of the other packages pairs a newer core with a CLI built
+    # against 0.55 — on a 0.x library that is a real risk (see the comment in
+    # Directory.Packages.props). The wildcard and the 0.56.0 floor are both deliberate: the
+    # previous rule named only Spectre.Console and Spectre.Console.Json at >=0.57.0, which
+    # let a grouped run bump the core to 0.56.0 and Spectre.Console.Testing to 0.57.2 while
+    # the CLI stayed at 0.55.0. Lift this when Spectre.Console.Cli 1.0 ships.
     ignore:
       - dependency-name: "Microsoft.OpenApi"
         versions: [">=3.0.0"]
-      - dependency-name: "Spectre.Console"
-        versions: [">=0.57.0"]
-      - dependency-name: "Spectre.Console.Json"
-        versions: [">=0.57.0"]
+      - dependency-name: "Spectre.Console*"
+        versions: [">=0.56.0"]
     groups:
       nuget-minor-patch:
         patterns:
