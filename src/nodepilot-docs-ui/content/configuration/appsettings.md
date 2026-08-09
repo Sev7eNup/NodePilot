@@ -73,6 +73,10 @@ Details: [AD SSO Preview](../enterprise/ldap-windows-sso), [Authentifizierung](.
 
 Opt-out via `Retention:*:Enabled: false`. Idempotency-Keys (24 h, fixe TTL) laufen **immer**. Details: [Retention-Services](./retention).
 
+## Performance
+
+`Performance:ManualTuning` (default `false`, restart-pflichtig). Mit `false` leitet NodePilot `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` und `ExecutionDispatch:*` aus erkannter CPU + RAM ab — die Zahlen dieser Sektionen in der Config sind dann ein **inertes Preset**. Was wirklich in Kraft ist: `GET /api/admin/settings/effective-sizing` bzw. `np settings effective-sizing`. Details: [Performance-Dimensionierung](./performance).
+
 ## Hardening
 
 Default `true` (hardened), `appsettings.Development.json` relaxt auf `false`. Details: [Hardening-Flags](../security/hardening).

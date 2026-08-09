@@ -3,7 +3,7 @@ import {
   Api, Apps, Archive, BareMetalServer, Catalog, ChartLine,
   ChartRelationship, Chat, CloudMonitoring, DataBase, DecisionTree, Deploy, Document,
   Download, Draw, Firewall, Flow, FlowModeler, Folder, Group, Idea, Json, Laptop,
-  Layers, Lightning, ListChecked, Notification, Password, PlayFilledAlt, Plug,
+  Layers, Lightning, ListChecked, Meter, Notification, Password, PlayFilledAlt, Plug,
   Replicate, Rocket, Screen, Security, SecurityServices, Settings, SettingsAdjust,
   Terminal, Time, UserRole, ValueVariable,
 } from '@carbon/icons-react'
@@ -90,6 +90,7 @@ export const navGroups: NavGroup[] = [
       { path: 'configuration/remote-execution', title: 'Remote-Execution', icon: Screen },
       { path: 'configuration/logging', title: 'Logging', icon: Document },
       { path: 'configuration/retention', title: 'Retention-Services', icon: Time },
+      { path: 'configuration/performance', title: 'Performance-Dimensionierung', icon: Meter },
     ],
   },
   {
