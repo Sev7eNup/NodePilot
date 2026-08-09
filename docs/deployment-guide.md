@@ -249,16 +249,25 @@ the statements for a DBA.
 
 ## Step 3 — Install (target server)
 
-Trust the artifact signer and create the Kestrel HTTPS certificate:
+Create the Kestrel HTTPS certificate:
 
 ```powershell
-Import-Certificate -FilePath C:\Temp\nodepilot-signer.cer -CertStoreLocation Cert:\LocalMachine\Root
-
 $tls = New-SelfSignedCertificate -DnsName 'nodepilot.corp.example.com' `
     -CertStoreLocation Cert:\LocalMachine\My -NotAfter (Get-Date).AddYears(5)
 # Self-signed → trust it locally too (repeat the Root import on every browser client):
 Export-Certificate -Cert $tls -FilePath "$env:TEMP\nodepilot-tls.cer" | Out-Null
 Import-Certificate -FilePath "$env:TEMP\nodepilot-tls.cer" -CertStoreLocation Cert:\LocalMachine\Root | Out-Null
+```
+
+**Nothing needs to be imported for the artifact check.** As Step 1 says, the installer pins the
+signer thumbprint you pass on the command line and builds no certificate chain, so the publisher
+certificate does not have to be trusted on this machine. Importing it is optional and does one
+unrelated thing — it makes Windows validate the Authenticode signature of the NodePilot installers
+themselves:
+
+```powershell
+# Optional. Not required by -TrustedArtifactSignerThumbprint; does not silence SmartScreen.
+Import-Certificate -FilePath C:\Temp\nodepilot-signer.cer -CertStoreLocation Cert:\LocalMachine\Root
 ```
 
 Run the installer (elevated Windows PowerShell 5.1):

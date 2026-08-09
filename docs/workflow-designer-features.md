@@ -41,7 +41,7 @@ Vollständige Auflistung sämtlicher Features des NodePilot-Workflow-Designers (
 - **Zoom to Selection (Expert):** `Ctrl+Shift+E` zoomt auf die selektierten Nodes (20 % Padding).
 - **MiniMap:** Pan-/zoombar, Node-Farbe nach Live-Status (Running=Amber, Paused=Orange, Succeeded=Grün, Failed=Rot, Skipped=Grau), Fallback auf letzte historische Health bzw. Activity-Typ-Farbe.
 - **Controls-Panel:** Standard React-Flow-Controls (Zoom in/out, Fit, Lock).
-- **Hintergrund-Varianten:** Klassisches Punkt-Raster (20 px) oder **Premium-Canvas** mit zweistufigem Crosshatch (80 px Major + 16 px Minor); Snap-Grid-Variante.
+- **Hintergrund:** Ein **Punkt-Raster** (Gap 24 px, Dot-Größe 1.6) — identisch in Premium **und** Classic, der frühere zweistufige Crosshatch ist ersatzlos entfallen. Die Deckkraft ist skin-abhängig: helle Skins tragen einen deutlich stärkeren Alpha, weil das Raster auf hellem Grund mehr Kontrast braucht als auf dunklem. Bei aktivem Snap-to-Grid ersetzt ein **Linien**-Raster auf der Snap-Schrittweite das Punkt-Raster.
 - **Snap-to-Grid (Expert):** `G` togglet Raster-Snapping (Standard 20 px, konfigurierbar).
 - **Node-Skalierung:** 8 Größen-Presets (XS … 4XL, Default SM); `Ctrl+Shift+>` / `Ctrl+Shift+<` (Expert) ändern Node-Größe, `Ctrl+Alt+.` / `Ctrl+Alt+,` die Label-Schriftgröße (nur Classic-Node-Stil).
 - **Fullscreen / Distraction-Free:** `F11` blendet Sidebar, Panels und Banner aus, behält Header + Canvas + Exit-Pill.
@@ -352,7 +352,7 @@ Alle Darstellungs-Einstellungen liegen im **`designStore`** (Zustand + persist, 
 | `coverageWindowDays` | 30 | 1–365 | Zeitfenster der Coverage-Heatmap |
 | `criticalPathEnabled` | false | bool | Längsten Pfad hervorheben + Slack-Badges (`C`) |
 | `dataFlowOverlayEnabled` | false | bool | Variablen-Fluss auf Kanten visualisieren |
-| `premiumCanvas` | true | bool | Tiefenschatten, Glaseffekt, farbige Pfeile, Glow |
+| `premiumCanvas` | true | bool | Tiefenschatten, Glaseffekt, farbige Pfeile, Glow. **Nicht** der Canvas-Hintergrund — das Punkt-Raster ist in beiden Modi dasselbe (siehe [1. Canvas & Viewport](#1-canvas--viewport)) |
 | `designRefresh` | true | bool | Neues Designer-Design an/aus (Kopfleisten-Toggle; aus = klassischer Look) |
 
 - **Coverage-Heatmap:** liest `GET /workflows/{id}/coverage?windowDays=N` → Node-Annotation `__coverage` (`never`/`rare`/`common` + roter Punkt bei Fehlern).

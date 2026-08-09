@@ -4,11 +4,28 @@ Dokumentiert alle umgesetzten Performance-Optimierungen.
 
 ---
 
-## Aktueller Stand (Stand 2026-05-07)
+## Manual-Tuning-Preset (Stand 2026-05-07)
 
-Single source of truth für die Live-Konfiguration. Alle weiter unten dokumentierten Sessions sind chronologische Historie und können von diesen Werten abweichen — bei Konflikt zählt diese Sektion.
+> **Das sind nicht zwangsläufig die Werte, mit denen dein Prozess läuft.** Seit der
+> hardware-adaptiven Dimensionierung ist `Performance:ManualTuning` per Default **`false`**; die
+> Zahlen unten sind dann ein **inertes Preset** in der Config-Datei, während `PerformancePlanFactory`
+> die tatsächlich wirksamen Werte beim Boot aus erkannter CPU + RAM ableitet. Erst mit
+> `Performance:ManualTuning: true` gilt diese Sektion wörtlich.
+>
+> **Was wirklich in Kraft ist**, beantwortet der Prozess selbst — inklusive der Angabe, welcher
+> Constraint (`Cpu`/`Ram`/`Floor`/`Ceiling`/`Manual`) jeden Wert erzeugt hat:
+>
+> ```powershell
+> np settings effective-sizing
+> # bzw. GET /api/admin/settings/effective-sizing
+> ```
+>
+> Ausgenommen bleibt `Engine:MaxConcurrentExecutions:*` — ein Sicherheits-Cap, kein Tuning-Wert,
+> und damit in **beiden** Modi wirksam.
 
-**Live in [`appsettings.json`](../src/NodePilot.Api/appsettings.json):**
+Single source of truth für das konfigurierte Preset. Alle weiter unten dokumentierten Sessions sind chronologische Historie und können von diesen Werten abweichen — bei Konflikt zählt diese Sektion.
+
+**Konfiguriert in [`appsettings.json`](../src/NodePilot.Api/appsettings.json):**
 
 ```json
 "ExecutionDispatch":      { "Capacity": 2048, "WorkerCount": 600 },
@@ -34,7 +51,7 @@ shared_buffers  = 512MB
 
 **Live im Code:** Default-Cap **128** gleichzeitige Sub-Workflow-Aufrufe (geteilt zwischen `startWorkflow` und `forEach`), über die injizierte [`ISubWorkflowGate`](../src/NodePilot.Core/Interfaces/ISubWorkflowGate.cs) / [`InMemorySubWorkflowGate`](../src/NodePilot.Engine/Activities/InMemorySubWorkflowGate.cs) — **kein** prozess-weiter statischer Semaphore mehr (frühere `SubWorkflowLimiter`-Klasse; die Session-Logs unten beschreiben den damaligen Stand).
 
-Ausgelegt für **bis zu 500 parallele Workflows** auf einem 20-Core-Host. Skalierungs-Heuristiken für andere Topologien siehe [Default-Tuning für 500-par.-WF-Topologie](#default-tuning-für-500-par-wf-topologie) weiter unten.
+Das Preset ist ausgelegt für **bis zu 500 parallele Workflows** auf einem 20-Core-Host — das ist die Topologie, für die es gemessen wurde, nicht die, auf der es zwangsläufig läuft. Skalierungs-Heuristiken für andere Topologien siehe [Default-Tuning für 500-par.-WF-Topologie](#default-tuning-für-500-par-wf-topologie) weiter unten.
 
 ---
 
