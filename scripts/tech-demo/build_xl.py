@@ -65,8 +65,8 @@ N("trg-filewatch", 0, 420, "File Watcher (disabled)", "fileWatcherTrigger",
 N("trg-database", 0, 540, "DB Trigger (disabled)", "databaseTrigger",
   disabled=True,
   config={"provider": "sqlite", "connectionString": "Data Source=:memory:",
-          "query": "SELECT id FROM queue WHERE processed = 0",
-          "intervalSeconds": 30})
+          "query": "SELECT MAX(id) FROM queue WHERE processed = 0",
+          "pollingIntervalSeconds": 30})
 
 N("trg-eventlog", 0, 660, "EventLog Trigger (disabled)", "eventLogTrigger",
   disabled=True,

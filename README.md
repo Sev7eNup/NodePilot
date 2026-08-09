@@ -741,8 +741,8 @@ Backoff modes: `fixed` (always `initialDelayMs`), `linear` (delay × attempt), `
 | `scheduleTrigger` | Quartz.NET cron | `cronExpression` (7-field Quartz format) | `{{manual.firedAt}}`, `{{manual.nextFireAt}}` |
 | `webhookTrigger` | `POST /api/webhooks/{name}/{path}` | `path`, `method`, `secret`, `signatureMode` (`header`\|`nodepilot-hmac-v2`), `signatureHeader`, `signaturePrefix`, `fieldMappings[]` | `{{manual.webhookBody}}`, `.webhookMethod`, `.webhookPath`, `.webhookQuery_<key>`; header mode also exposes safe `.webhookHeader_<key>` values; one param per `fieldMappings` entry |
 | `fileWatcherTrigger` | `FileSystemWatcher` | `directory`, `filter`, `watchType`, `includeSubdirectories` | `{{manual.fileAction}}`, `.filePath`, `.fileName` |
-| `databaseTrigger` | Polling SELECT | `connectionString`, `provider`, `query`, `intervalSeconds` | `{{manual.dbSentinel}}`, `.dbPrevious` |
-| `eventLogTrigger` | `EventLog.EntryWritten` | `logName`, `source`, `entryType`, `messagePattern` | `{{manual.eventSource}}`, `.eventEntryType`, `.eventId`, `.eventMessage`, `.eventTimeWritten` |
+| `databaseTrigger` | Polling SELECT — fires when the query's first column of the first row changes | `connectionRef` (preferred), `connectionString`, `provider` (`sqlserver`\|`sqlite`), `query`, `pollingIntervalSeconds` (default 30, min 5; alias `intervalSeconds`) | `{{manual.dbSentinel}}`, `.dbPrevious` |
+| `eventLogTrigger` | `EventLog.EntryWritten` | `logName`, `source`, `eventId`, `entryType` (alias `level`), `messagePattern`, `lookbackMinutes` (manual test run only) | `{{manual.eventSource}}`, `.eventEntryType`, `.eventId`, `.eventMessage`, `.eventTimeWritten` |
 
 A trigger source that dies at runtime — most visibly a `fileWatcherTrigger` whose UNC share goes
 away — is detected, torn down and re-created with exponential backoff (5 s to 5 min, indefinitely),

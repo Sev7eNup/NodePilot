@@ -71,7 +71,7 @@ public class DatabaseTriggerSourceTests
         };
 
         var act = () => src.StartAsync(ctx, CancellationToken.None);
-        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*either 'connectionString' or 'connectionRef'*");
+        await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("*either 'connectionRef'*");
     }
 
     [Fact]
@@ -147,7 +147,7 @@ public class DatabaseTriggerSourceTests
         {
             WorkflowId = Guid.NewGuid(),
             NodeId = "trg",
-            Config = ParseConfig($$"""{"connectionString":"{{connStr}}","provider":"sqlite","query":"SELECT MAX(Id) FROM Marker","intervalSeconds":5}"""),
+            Config = ParseConfig($$"""{"connectionString":"{{connStr}}","provider":"sqlite","query":"SELECT MAX(Id) FROM Marker","pollingIntervalSeconds":5}"""),
             OnFire = _ => Task.CompletedTask,
         };
 
@@ -196,7 +196,7 @@ public class DatabaseTriggerSourceTests
         {
             WorkflowId = Guid.NewGuid(),
             NodeId = "trg",
-            Config = ParseConfig("""{"connectionRef":"Marker","provider":"sqlite","query":"SELECT MAX(Id) FROM Marker","intervalSeconds":5}"""),
+            Config = ParseConfig("""{"connectionRef":"Marker","provider":"sqlite","query":"SELECT MAX(Id) FROM Marker","pollingIntervalSeconds":5}"""),
             OnFire = _ => Task.CompletedTask,
         };
 
@@ -220,7 +220,7 @@ public class DatabaseTriggerSourceTests
         var fires = new List<Dictionary<string, string>>();
         var fireGate = new SemaphoreSlim(0, 1);
 
-        // intervalSeconds is clamped to a 5s minimum by the source. We use the
+        // pollingIntervalSeconds is clamped to a 5s minimum by the shared settings. We use the
         // OnPollCompletedForTest hook to wait deterministically until the first poll
         // has seeded lastSentinel — mutating the table only AFTER that — so the
         // total wall time is dominated by a single 5s poll-interval, not by a
@@ -236,7 +236,7 @@ public class DatabaseTriggerSourceTests
         {
             WorkflowId = Guid.NewGuid(),
             NodeId = "trg",
-            Config = ParseConfig($$"""{"connectionString":"{{connStr}}","provider":"sqlite","query":"SELECT MAX(Id) FROM Q","intervalSeconds":5}"""),
+            Config = ParseConfig($$"""{"connectionString":"{{connStr}}","provider":"sqlite","query":"SELECT MAX(Id) FROM Q","pollingIntervalSeconds":5}"""),
             OnFire = parameters =>
             {
                 lock (fires) fires.Add(parameters);
@@ -299,7 +299,7 @@ public class DatabaseTriggerSourceTests
         {
             WorkflowId = Guid.NewGuid(),
             NodeId = "trg",
-            Config = ParseConfig("""{"connectionRef":"Marker","provider":"sqlite","query":"SELECT MAX(Id) FROM Marker","intervalSeconds":5}"""),
+            Config = ParseConfig("""{"connectionRef":"Marker","provider":"sqlite","query":"SELECT MAX(Id) FROM Marker","pollingIntervalSeconds":5}"""),
             OnFire = _ => Task.CompletedTask,
         };
 

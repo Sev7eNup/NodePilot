@@ -5624,10 +5624,10 @@
               "activityType": "databaseTrigger",
               "outputVariable": "trg",
               "config": {
-                "query": "SELECT id FROM t",
+                "query": "SELECT MAX(id) FROM t",
                 "provider": "sqlite",
                 "connectionString": "Data Source=muster.db",
-                "intervalSeconds": 60
+                "pollingIntervalSeconds": 60
               }
             }
           },

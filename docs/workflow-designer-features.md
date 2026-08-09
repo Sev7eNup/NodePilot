@@ -199,8 +199,8 @@ Eigene Config-Komponente je Activity-Typ (`properties/activities/`, registriert 
 | `scheduleTrigger` | **cronExpression** + 4 Presets (`0 */5 * * * ?`, `0 0 * * * ?`, `0 0 6 * * ?`, `0 0 8 ? * MON-FRI`), **Live-Vorschau der nächsten 5 Fire-Zeiten** (client-seitig, Quartz→cron-parser normalisiert, relative Zeiten, rote Parse-Fehler), Description |
 | `webhookTrigger` | **HTTP-Methode** (POST/PUT/GET), **Webhook-Pfad** (Template-fähig), optionales **Secret** (Passwort-Feld, HMAC) |
 | `fileWatcherTrigger` | **directory**, **fileFilter** (Std. `*.*`, komma-separierte Globs), **watchType** (created/changed/deleted/renamed/any), **includeSubdirectories** |
-| `databaseTrigger` | **connectionRef** (Verweis auf `Trigger:Database:Connections`), **pollingIntervalSeconds** (Std. 60, min 5), **query** (multiline, SQL-Template-Warnung bei `{{`) |
-| `eventLogTrigger` | **logName** (Application/System/Security/Setup), **entryType** (any/Error/Warning/Information/SuccessAudit/FailureAudit), **source** (optional), **eventId** (optional), **lookbackMinutes** (Std. 5) |
+| `databaseTrigger` | **connectionRef** (Verweis auf `Trigger:Database:Connections`), **pollingIntervalSeconds** (Std. 30, min 5; Alias `intervalSeconds`), **query** (multiline, SQL-Template-Warnung bei `{{`) |
+| `eventLogTrigger` | **logName** (Application/System/Security/Setup), **entryType** (any/Error/Warning/Information/SuccessAudit/FailureAudit), **source** (optional), **eventId** (optional), **messagePattern** (optional, Regex auf den Meldungstext), **lookbackMinutes** (Std. 5, gilt nur für den manuellen Testlauf) |
 
 > Trigger-Daten landen im Lauf als `manual.*`-Variablen (`{{manual.<name>}}`) bzw. als `param.*` des Trigger-Nodes — es gibt **keinen** `trigger.*`-Namespace.
 

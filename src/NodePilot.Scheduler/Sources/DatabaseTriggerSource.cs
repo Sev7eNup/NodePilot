@@ -3,26 +3,21 @@ using Microsoft.Data.SqlClient;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using NodePilot.Core.Triggers;
 
 namespace NodePilot.Scheduler.Sources;
 
 /// <summary>
-/// Polls a database query on a fixed interval. Fires when the first column of the first row
-/// changes compared to the previous poll (so the query should return a sentinel like
-/// MAX(Id) or a row-count). Config keys:
-///   connectionString (optional) — inline connection string; blocked unless
-///     <c>Trigger:Database:RequireConnectionRef</c>=false.
-///   connectionRef (optional) — name of a pre-registered connection string stored under
-///     <c>Trigger:Database:Connections:{name}</c> in appsettings. Preferred over inline.
-///   provider (optional) — "sqlserver" | "sqlite", default "sqlserver"
-///   query (required)
-///   intervalSeconds (optional, default 30, min 5)
+/// Polls a database query on a fixed interval and fires when the first column of the first row
+/// changes compared to the previous poll — so the query should return a sentinel such as MAX(Id)
+/// or a row count.
 ///
-/// H-13: When <c>Trigger:Database:RequireConnectionRef</c> is missing or true, inline connectionStrings
-/// are rejected so a workflow author cannot embed plaintext DB credentials in a trigger
-/// config. Admins whitelist connection strings in appsettings via
-/// <c>Trigger:Database:Connections:Prod="Server=..."</c>, and workflows reference them
-/// by name: <c>{ "connectionRef": "Prod" }</c>. Mirrors the SqlActivity model.
+/// <para>Config parsing, defaults, validation and connection resolution live in
+/// <see cref="DatabaseTriggerSettings"/>, shared with the node executor
+/// (<c>NodePilot.Engine.Triggers.DatabaseTrigger</c>) so a documented key cannot be honoured by one
+/// runtime and silently dropped by the other. This source used to read its interval from
+/// <c>intervalSeconds</c> while the designer, the docs and the node executor all wrote
+/// <c>pollingIntervalSeconds</c> — the configured interval never reached the poll loop.</para>
 /// </summary>
 public class DatabaseTriggerSource : ITriggerSource
 {
@@ -67,70 +62,21 @@ public class DatabaseTriggerSource : ITriggerSource
     public Task StartAsync(TriggerContext context, CancellationToken ct)
     {
         _ctx = context;
-        var cfg = context.Config;
-        var connInline = cfg.TryGetProperty("connectionString", out var cs) ? cs.GetString() : null;
-        var connRef = cfg.TryGetProperty("connectionRef", out var cr) ? cr.GetString() : null;
-        var query = cfg.TryGetProperty("query", out var q) ? q.GetString() : null;
-        if (string.IsNullOrWhiteSpace(query))
-            throw new InvalidOperationException("DatabaseTrigger: 'query' is required");
-
-        // H-1 (security audit 2026-05-15): {{var}} templates in the trigger query are
-        // always a workflow-author mistake — the trigger fires *outside* a workflow run,
-        // so there is no upstream step or manual-trigger parameter to substitute. A residue
-        // would either land literally in CommandText (and break the DB syntax) or, if the
-        // engine ever grows pre-fire resolution, become an injection vector. Reject the
-        // template at registration time so the operator sees the misuse immediately.
-        if (query.Contains("{{", StringComparison.Ordinal) && query.Contains("}}", StringComparison.Ordinal))
-            throw new InvalidOperationException(
-                "DatabaseTrigger: 'query' must not contain {{...}} templates. Trigger queries run before any "
-                + "workflow step exists and have no variable context. Embed literal SQL only — pass dynamic "
-                + "values through the workflow definition instead.");
-
-        var requireRef = RequireConnectionRef();
-        string connStr = ResolveConnectionString(connRef, connInline, requireRef);
-
-        var provider = (cfg.TryGetProperty("provider", out var p) ? p.GetString() : null)?.ToLowerInvariant() ?? "sqlserver";
-        var interval = Math.Max(5, cfg.TryGetProperty("intervalSeconds", out var i) && i.TryGetInt32(out var iv) ? iv : 30);
+        var settings = DatabaseTriggerSettings.Parse(context.Config);
+        var connStr = settings.ResolveConnectionString(
+            name => _config[$"Trigger:Database:Connections:{name}"],
+            RequireConnectionRef());
 
         _cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         // Own the poll loop as a tracked task on the source itself instead of spawning an
         // unmanaged Task.Run wrapper. DisposeAsync awaits this task for shutdown.
-        _loopTask = PollLoopAsync(connStr, provider, query!, TimeSpan.FromSeconds(interval), _cts.Token);
+        _loopTask = PollLoopAsync(
+            connStr, settings.Provider, settings.Query,
+            TimeSpan.FromSeconds(settings.PollingIntervalSeconds), _cts.Token);
         _logger.LogInformation("DatabaseTrigger: poll {Interval}s provider={Provider} source={Source}",
-            interval, provider, !string.IsNullOrWhiteSpace(connRef) ? $"ref:{connRef}" : "inline");
+            settings.PollingIntervalSeconds, settings.Provider,
+            !string.IsNullOrWhiteSpace(settings.ConnectionRef) ? $"ref:{settings.ConnectionRef}" : "inline");
         return Task.CompletedTask;
-    }
-
-    /// <summary>
-    /// Resolves the DB connection string from either a config-whitelisted <c>connectionRef</c>
-    /// or (when allowed) an inline <c>connectionString</c>. When <c>requireRef</c> is true,
-    /// inline values are rejected outright so workflow JSON can't smuggle plaintext
-    /// credentials into the running process.
-    /// </summary>
-    private string ResolveConnectionString(string? connRef, string? connInline, bool requireRef)
-    {
-        if (!string.IsNullOrWhiteSpace(connRef))
-        {
-            var fromConfig = _config[$"Trigger:Database:Connections:{connRef}"];
-            if (string.IsNullOrWhiteSpace(fromConfig))
-                throw new InvalidOperationException(
-                    $"DatabaseTrigger: connectionRef '{connRef}' is not defined in " +
-                    "Trigger:Database:Connections.");
-            return fromConfig;
-        }
-
-        if (!string.IsNullOrWhiteSpace(connInline))
-        {
-            if (requireRef)
-                throw new InvalidOperationException(
-                    "DatabaseTrigger: inline connectionString is disabled " +
-                    "(Trigger:Database:RequireConnectionRef=true). Use connectionRef with a " +
-                    "name registered under Trigger:Database:Connections.");
-            return connInline;
-        }
-
-        throw new InvalidOperationException(
-            "DatabaseTrigger: either 'connectionString' or 'connectionRef' is required.");
     }
 
     private bool RequireConnectionRef()

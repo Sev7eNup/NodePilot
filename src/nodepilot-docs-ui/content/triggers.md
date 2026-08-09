@@ -151,7 +151,10 @@ Konfigurierbar sind:
 - Ereignistyp
 - optionale Quelle
 - optionale Ereignis-ID
+- optionales Meldungsmuster (regulärer Ausdruck gegen den Meldungstext)
 - Suchzeitraum
+
+Der Suchzeitraum gilt nur für den manuellen Testlauf des Trigger-Nodes: er bestimmt, wie weit die Beispielsuche zurückblickt. Der laufende Trigger spielt keine zurückliegenden Ereignisse nach.
 
 `Application` und `System` sind standardmäßig erlaubt. Weitere Protokolle, insbesondere `Security`, müssen administrativ freigegeben werden. Der Trigger ist nur auf Windows verfügbar.
 

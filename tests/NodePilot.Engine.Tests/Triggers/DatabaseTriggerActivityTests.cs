@@ -57,7 +57,8 @@ public class DatabaseTriggerActivityTests
         var result = await trigger.ExecuteAsync(ctx, Cfg("""{}"""), CancellationToken.None);
 
         result.Success.Should().BeFalse();
-        result.ErrorOutput.Should().Contain("No SQL query specified");
+        // Same wording the background source produces — both parse through DatabaseTriggerSettings.
+        result.ErrorOutput.Should().Contain("'query' is required");
     }
 
     [Fact]

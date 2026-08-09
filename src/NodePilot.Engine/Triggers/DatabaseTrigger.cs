@@ -1,22 +1,29 @@
+using System.Data.Common;
 using System.Text.Json;
+using Microsoft.Data.SqlClient;
+using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.Triggers;
 
 namespace NodePilot.Engine.Triggers;
 
 /// <summary>
-/// Database trigger — polls a SQL query and fires when rows are returned.
-/// Supports SQL Server. The query should return rows only when the trigger condition is met.
-/// Example: SELECT * FROM Orders WHERE ProcessedAt IS NULL
+/// Database trigger — the node-executor half of the trigger.
 ///
-/// Connection resolution mirrors the scheduler-side source (DatabaseTriggerSource):
-/// preferred mode is <c>connectionRef</c> → name lookup under
-/// <c>Trigger:Database:Connections:{name}</c>. Inline <c>connectionString</c> is only
-/// honoured when <c>Trigger:Database:RequireConnectionRef=false</c>; otherwise it is
-/// rejected so workflow JSON cannot smuggle plaintext credentials.
+/// <para>When the orchestrator's poll loop fires the workflow, this node surfaces the sentinel
+/// change it detected. On a manual run it executes the same query once and previews what the poll
+/// loop would see: the sentinel value (first column of the first row) plus a sample of rows.</para>
+///
+/// <para>Config parsing, defaults, validation and connection resolution live in
+/// <see cref="DatabaseTriggerSettings"/>, shared with
+/// <c>NodePilot.Scheduler.Sources.DatabaseTriggerSource</c> — so the interval, provider and
+/// connection rules an author sees here are the ones the poll loop actually applies.</para>
 /// </summary>
 public class DatabaseTrigger : IActivityExecutor
 {
+    private const int MaxPreviewRows = 100;
+
     private readonly IConfiguration _config;
 
     public string ActivityType => "databaseTrigger";
@@ -44,58 +51,34 @@ public class DatabaseTrigger : IActivityExecutor
             };
         }
 
-        // Manual run: execute the query inline and report row count
-        var connectionRef = config.TryGetProperty("connectionRef", out var cr) ? cr.GetString() : null;
-        var connectionInline = config.TryGetProperty("connectionString", out var cs) ? cs.GetString() : null;
-        var query = config.TryGetProperty("query", out var q) ? q.GetString() : null;
-        var pollingIntervalSeconds = config.TryGetProperty("pollingIntervalSeconds", out var pi) ? pi.GetInt32() : 60;
-
-        if (string.IsNullOrWhiteSpace(query))
-        {
-            return new ActivityResult { Success = false, ErrorOutput = "No SQL query specified" };
-        }
-
-        if (query.Contains("{{", StringComparison.Ordinal) && query.Contains("}}", StringComparison.Ordinal))
-        {
-            return new ActivityResult
-            {
-                Success = false,
-                ErrorOutput = "DatabaseTrigger: 'query' must not contain {{...}} templates. Trigger queries run before "
-                    + "any workflow step exists and have no variable context. Use literal SQL in the trigger query.",
-            };
-        }
-
-        string? connString;
+        // Manual run: execute the query inline and preview what the poll loop would compare.
+        DatabaseTriggerSettings settings;
+        string connString;
         try
         {
-            connString = ResolveConnectionString(connectionRef, connectionInline);
+            settings = DatabaseTriggerSettings.Parse(config);
+            connString = settings.ResolveConnectionString(
+                name => _config[$"Trigger:Database:Connections:{name}"],
+                RequireConnectionRef());
         }
         catch (InvalidOperationException ex)
         {
             return new ActivityResult { Success = false, ErrorOutput = ex.Message };
         }
-        if (string.IsNullOrWhiteSpace(connString))
-        {
-            return new ActivityResult
-            {
-                Success = false,
-                ErrorOutput = "DatabaseTrigger: provide 'connectionRef' (preferred) or 'connectionString'",
-            };
-        }
 
         try
         {
-            // Execute the polling query using ADO.NET
-            using var connection = new Microsoft.Data.SqlClient.SqlConnection(connString);
+            await using var connection = CreateConnection(settings.Provider, connString);
             await connection.OpenAsync(ct);
 
-            using var command = new Microsoft.Data.SqlClient.SqlCommand(query, connection);
+            await using var command = connection.CreateCommand();
+            command.CommandText = settings.Query;
             command.CommandTimeout = 30;
 
-            using var reader = await command.ExecuteReaderAsync(ct);
+            await using var reader = await command.ExecuteReaderAsync(ct);
 
             var rows = new List<Dictionary<string, object?>>();
-            while (await reader.ReadAsync(ct) && rows.Count < 100) // Cap at 100 rows
+            while (await reader.ReadAsync(ct) && rows.Count < MaxPreviewRows)
             {
                 var row = new Dictionary<string, object?>();
                 for (int i = 0; i < reader.FieldCount; i++)
@@ -103,18 +86,21 @@ public class DatabaseTrigger : IActivityExecutor
                 rows.Add(row);
             }
 
-            if (rows.Count == 0)
-            {
-                return new ActivityResult
-                {
-                    Success = true,
-                    Output = $"Query returned 0 rows (trigger not fired)\nPolling interval: {pollingIntervalSeconds}s"
-                };
-            }
+            // The poll loop compares the first column of the first row against the previous poll.
+            // Spell that out here so a manual run cannot leave the author believing the trigger
+            // fires per returned row.
+            var sentinel = rows.Count > 0 ? rows[0].Values.FirstOrDefault()?.ToString() ?? "" : "";
+            var header =
+                $"Poll interval: {settings.PollingIntervalSeconds}s (provider: {settings.Provider})\n" +
+                $"Sentinel (first column of first row): {(rows.Count > 0 ? $"'{sentinel}'" : "(no rows)")}\n" +
+                "The trigger fires when this value CHANGES between polls.\n" +
+                $"Rows returned: {rows.Count}\n";
 
-            var output = $"Query returned {rows.Count} row(s)\n";
-            // Serialize first few rows as output
-            output += System.Text.Json.JsonSerializer.Serialize(rows.Take(10), new JsonSerializerOptions { WriteIndented = true });
+            if (rows.Count == 0)
+                return new ActivityResult { Success = true, Output = header.TrimEnd() };
+
+            var output = header + "\n" + JsonSerializer.Serialize(
+                rows.Take(10), new JsonSerializerOptions { WriteIndented = true });
 
             return new ActivityResult { Success = true, Output = output };
         }
@@ -124,31 +110,11 @@ public class DatabaseTrigger : IActivityExecutor
         }
     }
 
-    private string ResolveConnectionString(string? connectionRef, string? connectionInline)
+    private static DbConnection CreateConnection(string provider, string connStr) => provider switch
     {
-        // connectionRef wins. Same whitelist model as DatabaseTriggerSource so manual
-        // runs cannot smuggle inline credentials when the source-side would refuse.
-        if (!string.IsNullOrWhiteSpace(connectionRef))
-        {
-            var fromConfig = _config[$"Trigger:Database:Connections:{connectionRef}"];
-            if (string.IsNullOrWhiteSpace(fromConfig))
-                throw new InvalidOperationException(
-                    $"DatabaseTrigger: connectionRef '{connectionRef}' is not configured under " +
-                    "Trigger:Database:Connections.");
-            return fromConfig;
-        }
-
-        if (!string.IsNullOrWhiteSpace(connectionInline))
-        {
-            if (RequireConnectionRef())
-                throw new InvalidOperationException(
-                    "DatabaseTrigger: this deployment requires a named connectionRef. " +
-                    "Add the target under Trigger:Database:Connections:{name} and reference it via 'connectionRef'.");
-            return connectionInline;
-        }
-
-        return string.Empty;
-    }
+        "sqlite" => new SqliteConnection(connStr),
+        _ => new SqlConnection(connStr),
+    };
 
     private bool RequireConnectionRef()
     {
