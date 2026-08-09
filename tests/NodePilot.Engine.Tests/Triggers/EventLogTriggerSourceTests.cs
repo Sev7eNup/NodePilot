@@ -41,13 +41,14 @@ public class EventLogTriggerSourceTests
     };
 
     [Fact]
-    public async Task StartAsync_Throws_WhenLogNameMissing()
+    public void Parse_DefaultsToApplication_WhenLogNameMissing()
     {
-        var src = new EventLogTriggerSource(NullLogger<EventLogTriggerSource>.Instance, EmptyConfig());
-        var act = () => src.StartAsync(Ctx("""{}"""), CancellationToken.None);
+        // The reference documents logName as optional with an Application default, and the node
+        // executor always defaulted. The source used to require it — asserted here (rather than
+        // through StartAsync) so the test never opens a real Windows EventLog.
+        var settings = NodePilot.Core.Triggers.EventLogTriggerSettings.Parse(ParseConfig("""{}"""));
 
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*'logName' is required*");
+        settings.LogName.Should().Be("Application");
     }
 
     [Fact]

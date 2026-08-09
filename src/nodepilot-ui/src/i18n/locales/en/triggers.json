@@ -60,7 +60,8 @@
   "databaseTrigger": {
     "connectionRef": "Connection Ref",
     "pollingInterval": "Polling Interval (s)",
-    "sqlQuery": "SQL Query"
+    "sqlQuery": "SQL Query",
+    "sentinelHint": "The trigger compares the first column of the first row against the previous poll and fires when that value changes. A query that keeps returning the same rows never fires."
   },
   "eventLogTrigger": {
     "logName": "Log Name",
@@ -72,7 +73,10 @@
     "sourcePlaceholder": "e.g. MSSQLSERVER, Service Control Manager",
     "eventIdOptional": "Event ID (optional)",
     "eventIdPlaceholder": "e.g. 4625",
-    "lookbackMinutes": "Lookback (minutes)"
+    "messagePattern": "Message Pattern (optional)",
+    "messagePatternPlaceholder": "Regex, e.g. disk.*full",
+    "lookbackMinutes": "Lookback (minutes)",
+    "lookbackHint": "Manual test run only: how far back the sample scan looks. The live trigger never replays past events."
   },
   "fileWatcherTrigger": {
     "directory": "Directory",

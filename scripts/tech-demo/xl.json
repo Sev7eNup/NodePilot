@@ -115,8 +115,8 @@
         "config": {
           "provider": "sqlite",
           "connectionString": "Data Source=:memory:",
-          "query": "SELECT id FROM queue WHERE processed = 0",
-          "intervalSeconds": 30
+          "query": "SELECT MAX(id) FROM queue WHERE processed = 0",
+          "pollingIntervalSeconds": 30
         }
       }
     },

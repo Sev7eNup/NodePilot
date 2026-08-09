@@ -17,10 +17,15 @@ export function DatabaseTriggerConfig({ config, onUpdate, upstreamVars = [] }: R
           />
         </Field>
         <Field label={t('databaseTrigger.pollingInterval')}>
+          {/* Falls back to the legacy `intervalSeconds` spelling so opening (and saving) an
+              imported definition cannot drop a cadence the poll loop is honouring. 30 is the
+              backend default — the field used to show 60 while the loop ran at 30. */}
           <input
             type="number"
-            value={(config.pollingIntervalSeconds as number) || 60}
-            onChange={(e) => onUpdate({ pollingIntervalSeconds: parseInt(e.target.value) || 60 })}
+            value={
+              (config.pollingIntervalSeconds as number) ?? (config.intervalSeconds as number) ?? 30
+            }
+            onChange={(e) => onUpdate({ pollingIntervalSeconds: parseInt(e.target.value) || 30 })}
             className="input-field"
             min={5}
           />
@@ -33,9 +38,10 @@ export function DatabaseTriggerConfig({ config, onUpdate, upstreamVars = [] }: R
         upstreamVars={upstreamVars}
         multiline
         rows={5}
-        placeholder="SELECT * FROM Orders WHERE ProcessedAt IS NULL"
+        placeholder="SELECT MAX(Id) FROM Orders WHERE ProcessedAt IS NULL"
         mono
       />
+      <p className="font-body text-xs text-on-surface-variant">{t('databaseTrigger.sentinelHint')}</p>
     </>
   );
 }

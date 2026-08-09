@@ -78,6 +78,38 @@ Trigger-Sources seeden ihre Event-Daten als `manual.*`-Variablen in den Run (`Va
 
 **webhookTrigger-Verifizierung:** Default = Shared-Secret-Header (`X-Webhook-Secret` == `secret`). Der explizit versionierte Modus `signatureMode: "nodepilot-hmac-v2"` verlangt ein per CSPRNG erzeugtes Secret mit mindestens 32 UTF-8-Bytes, `X-NodePilot-Timestamp` (UNIX-Sekunden) und eine eindeutige `X-NodePilot-Delivery-Id`. Signiert wird `"NodePilot-HMAC-v2\n" + timestamp + "\n" + deliveryId + "\n" + METHOD + "\n" + escapedPath + "\n" + canonicalQuery + "\n" + rawBody` mit HMAC-SHA256. Query-Kanonisierung: jedes Key/Value-Paar separat, UTF-8/RFC3986-Percent-Encoding, ordinal nach encodetem Key sortiert; die Reihenfolge doppelter Werte bleibt erhalten; mit `&` verbunden. `{signaturePrefix}{hex}` (Default `sha256=…`) steht im `signatureHeader` (Default `X-NodePilot-Signature`). Freshness-Fenster = fünf Minuten; Delivery-IDs werden über den gemeinsamen DB-Unique-Guard clusterweit nur einmal akzeptiert. V2 übernimmt keine beliebigen Request-Header in Execution-Parameter, weil sie nicht signiert sind. **Breaking:** Legacy-`signatureMode: "hmac"` und Provider-native Body-only-HMACs werden abgelehnt; GitHub/GitLab/Alertmanager sind nicht direkt wire-kompatibel und benötigen einen verifizierenden Adapter. Constant-time-Vergleich; Fehlversuche kollabieren ins uniforme 404. `fieldMappings` (`[{name, path}]`, max 32, Werte auf 4096 Zeichen gekappt) extrahiert Body-Felder als eigene Params (`{{manual.<name>}}`); non-JSON-Body/nicht-matchende Pfade degradieren zu Leerstring statt Reject; `__`-Prefix + `webhook*`-Systemkeys sind reserviert.
 
+### Trigger-Config-Vertrag — eine Vokabel, zwei Laufzeiten
+
+Ein Trigger-Node wird von **zwei** unabhängigen Laufzeiten gelesen: dem Node-Executor in
+`NodePilot.Engine/Triggers/` (manueller Lauf — Diagnose-Sample) und der Hintergrundquelle in
+`NodePilot.Scheduler/Sources/` (was den Workflow tatsächlich feuert). Beide parsen dieselbe Config
+über die geteilte Schicht **`NodePilot.Core/Triggers/`** (`EventLogTriggerSettings`,
+`DatabaseTriggerSettings`): Key-Namen, Defaults, Validierung, Filter-Matching und
+Connection-Auflösung liegen dort **einmal**.
+
+Der Grund ist gemessene Drift: Die Quelle las nie `eventLogTrigger.eventId` (ein im Designer
+gesetzter Ereignis-ID-Filter wurde ignoriert → der Workflow feuerte bei *jedem* Eintrag des
+Protokolls), und der Poll-Loop las `intervalSeconds`, während Designer, Doku und Node-Executor
+`pollingIntervalSeconds` schrieben → das konfigurierte Intervall war tot. Beides passierte den
+alten Key-Guard, weil der nur die Engine-Datei ansah.
+
+**Nichts wurde dabei abgeschaltet.** `intervalSeconds` bleibt ein dokumentierter Alias und wird von
+beiden Pfaden gelesen (exakter Key gewinnt) — dasselbe Muster wie `level` → `entryType`; eine
+handgeschriebene oder importierte Definition verliert ihre Taktung nicht. Der Default bleibt bei den
+real wirksamen **30 s**: der Designer *zeigte* für einen fehlenden Key 60 an, während der Loop mit 30
+lief — korrigiert wurde die Anzeige, nicht das Intervall.
+
+**Regel für neue Trigger-Keys:** Key in die geteilte Settings-Klasse, Eintrag in
+`activity-config-reference.json`, Feld im Designer. Zwei Guards halten das zusammen —
+`ActivityConfigReferenceTests` (jeder dokumentierte Key wird gelesen) und
+`TriggerContractParityTests` (kein Laufzeitpfad liest einen *un*dokumentierten Key; beide
+Laufzeiten parsen über die geteilte Klasse).
+
+Zwei bewusste Asymmetrien: `lookbackMinutes` gilt nur für den manuellen Lauf (ein Startup-Replay
+würde bei jedem Source-Rebuild dieselben Ereignisse erneut feuern), und die Zeilenliste des
+manuellen `databaseTrigger`-Laufs ist eine Vorschau — gefeuert wird bei **Sentinel-Änderung**
+(erste Spalte der ersten Zeile), nicht pro Zeile.
+
 ### Trigger-Liveness — was passiert, wenn eine Quelle im Betrieb stirbt
 
 Der Orchestrator hielt eine Quelle für gesund, solange ihr Config-Hash passte. Ein

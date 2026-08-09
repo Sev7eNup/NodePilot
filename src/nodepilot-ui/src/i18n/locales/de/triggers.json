@@ -60,7 +60,8 @@
   "databaseTrigger": {
     "connectionRef": "Verbindungs-Ref",
     "pollingInterval": "Abfrageintervall (s)",
-    "sqlQuery": "SQL-Abfrage"
+    "sqlQuery": "SQL-Abfrage",
+    "sentinelHint": "Der Trigger vergleicht die erste Spalte der ersten Zeile mit der vorherigen Abfrage und feuert, wenn sich dieser Wert ändert. Eine Abfrage, die immer dieselben Zeilen liefert, feuert nie."
   },
   "eventLogTrigger": {
     "logName": "Protokollname",
@@ -72,7 +73,10 @@
     "sourcePlaceholder": "z. B. MSSQLSERVER, Service Control Manager",
     "eventIdOptional": "Ereignis-ID (optional)",
     "eventIdPlaceholder": "z. B. 4625",
-    "lookbackMinutes": "Rückblick (Minuten)"
+    "messagePattern": "Meldungsmuster (optional)",
+    "messagePatternPlaceholder": "Regex, z. B. Datenträger.*voll",
+    "lookbackMinutes": "Rückblick (Minuten)",
+    "lookbackHint": "Gilt nur für den manuellen Testlauf: So weit blickt die Beispielsuche zurück. Der laufende Trigger spielt keine alten Ereignisse nach."
   },
   "fileWatcherTrigger": {
     "directory": "Verzeichnis",

@@ -56,7 +56,8 @@ public class EventLogTriggerActivityTests
             ctx, Cfg("""{"logName":"Security"}"""), CancellationToken.None);
 
         result.Success.Should().BeFalse();
-        result.ErrorOutput.Should().Contain("not in the allow-list");
+        // Same wording the background listener produces — both go through EventLogTriggerSettings.
+        result.ErrorOutput.Should().Contain("is not allowed");
         result.ErrorOutput.Should().Contain("Security");
     }
 

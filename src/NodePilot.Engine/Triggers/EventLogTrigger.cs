@@ -2,19 +2,24 @@ using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.Triggers;
 
 namespace NodePilot.Engine.Triggers;
 
 /// <summary>
-/// Windows Event Log trigger — monitors the event log for specific events.
-/// When executed as a node (manual run), it queries recent matching events.
-/// Background listener uses EventLog.EntryWritten subscription.
-/// Config: logName (Application, System, Security), source, eventId, level
+/// Windows Event Log trigger — the node-executor half of the trigger.
+///
+/// <para>When the orchestrator fires the workflow, this node just surfaces the event metadata the
+/// listener captured. On a manual run it scans the log itself and reports a sample of matching
+/// entries, so an author can check the filters without waiting for a real event.</para>
+///
+/// <para>Config parsing, filter semantics and the log allow-list live in
+/// <see cref="EventLogTriggerSettings"/>, shared with
+/// <c>NodePilot.Scheduler.Sources.EventLogTriggerSource</c> — the sample scan and the live listener
+/// therefore apply the same filters to the same keys.</para>
 /// </summary>
 public class EventLogTrigger : IActivityExecutor
 {
-    private static readonly string[] DefaultAllowedLogs = { "Application", "System" };
-
     // D9: hard cap on how many EventLogEntry objects the manual-run scan inspects per
     // execution. Without this a GB-class Application log on a busy server can pin
     // a worker thread for minutes — and the trigger's purpose is "show me a sample",
@@ -32,17 +37,6 @@ public class EventLogTrigger : IActivityExecutor
 
     public Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
     {
-        var logName = config.TryGetProperty("logName", out var ln) ? ln.GetString() : "Application";
-        var source = config.TryGetProperty("source", out var s) ? s.GetString() : null;
-        var eventIdFilter = config.TryGetProperty("eventId", out var eid) ? eid.GetInt32() : (int?)null;
-        // Field name aligned with the scheduler-side source (EventLogTriggerSource expects
-        // `entryType`). The legacy `level` key is still read as a fallback so workflows
-        // saved against the old vocabulary keep matching until they're re-saved.
-        var entryType = config.TryGetProperty("entryType", out var et) ? et.GetString() : null;
-        if (string.IsNullOrEmpty(entryType))
-            entryType = config.TryGetProperty("level", out var lv) ? lv.GetString() : null;
-        var lookbackMinutes = config.TryGetProperty("lookbackMinutes", out var lb) ? lb.GetInt32() : 5;
-
         // If the orchestrator fired this trigger, event metadata is in context.Variables as manual.*
         var orchestratorParams = new Dictionary<string, string>();
         foreach (var (k, v) in context.Variables)
@@ -52,12 +46,23 @@ public class EventLogTrigger : IActivityExecutor
         if (orchestratorParams.TryGetValue("eventId", out var triggeredEventId))
         {
             var triggeredMessage = orchestratorParams.GetValueOrDefault("eventMessage", "");
+            var triggeredLog = orchestratorParams.GetValueOrDefault("eventSource", "");
             return Task.FromResult(new ActivityResult
             {
                 Success = true,
-                Output = $"Event Log trigger fired\nLog: {logName}\nEvent ID: {triggeredEventId}\nMessage: {triggeredMessage}",
+                Output = $"Event Log trigger fired\nSource: {triggeredLog}\nEvent ID: {triggeredEventId}\nMessage: {triggeredMessage}",
                 OutputParameters = orchestratorParams,
             });
+        }
+
+        EventLogTriggerSettings settings;
+        try
+        {
+            settings = EventLogTriggerSettings.Parse(config);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Task.FromResult(new ActivityResult { Success = false, ErrorOutput = ex.Message });
         }
 
         // Manual execution: query recent events
@@ -65,36 +70,33 @@ public class EventLogTrigger : IActivityExecutor
         {
             // L-11: even on manual-run the log name is attacker-controllable via workflow JSON.
             // Opening "Security" unprivileged or a non-existent log throws, but that's still a
-            // useful reconnaissance signal — enforce an allow-list. Admins can extend via
-            // Trigger:EventLog:AllowedLogs.
-            var effectiveLogName = logName ?? "Application";
-            var allowed = _config?.GetSection("Trigger:EventLog:AllowedLogs").Get<string[]>()
-                          ?? DefaultAllowedLogs;
-            if (!allowed.Any(a => string.Equals(a, effectiveLogName, StringComparison.OrdinalIgnoreCase)))
+            // useful reconnaissance signal — enforce the same allow-list the listener uses.
+            var extraAllowed = _config?.GetSection("Trigger:EventLog:AllowedLogs").Get<string[]>();
+            if (!EventLogTriggerSettings.IsLogAllowed(settings.LogName, extraAllowed))
             {
                 return Task.FromResult(new ActivityResult
                 {
                     Success = false,
-                    ErrorOutput = $"Event Log '{effectiveLogName}' is not in the allow-list. " +
-                                  "Add it to Trigger:EventLog:AllowedLogs to permit access.",
+                    ErrorOutput = EventLogTriggerSettings.DescribeRejectedLog(settings.LogName, extraAllowed),
                 });
             }
 
-            var eventLog = new EventLog(effectiveLogName);
-            var cutoff = DateTime.Now.AddMinutes(-lookbackMinutes);
+            var eventLog = new EventLog(settings.LogName);
+            var cutoff = DateTime.Now.AddMinutes(-settings.LookbackMinutes);
 
-            // D9: cap the linear scan at a sane upper bound. EventLog.Entries lazy-loads but
-            // an unfiltered LINQ pass over a GB-class Application log would still pin a worker
-            // thread for minutes. Walk newest-first explicitly (via reverse index) and stop
-            // when we have enough matches or hit the scan cap.
-            var matchingEntries = ScanEventLogNewestFirst(
-                eventLog, cutoff, source, eventIdFilter, entryType,
-                matchLimit: 20, scanLimit: MaxEventsToScanPerManualRun);
+            var scan = ScanEventLogNewestFirst(
+                eventLog, cutoff, settings, matchLimit: 20, scanLimit: MaxEventsToScanPerManualRun);
 
-            var output = $"Event Log: {logName}\nSource filter: {source ?? "(any)"}\nEvent ID filter: {eventIdFilter?.ToString() ?? "(any)"}\n" +
-                         $"Entry type: {entryType ?? "(any)"}\nLookback: {lookbackMinutes} min\nMatches: {matchingEntries.Count}\n\n";
+            var output = $"Event Log: {settings.LogName}\nSource filter: {settings.Source ?? "(any)"}\n" +
+                         $"Event ID filter: {settings.EventId?.ToString() ?? "(any)"}\n" +
+                         $"Entry type: {settings.EntryType?.ToString() ?? "(any)"}\n" +
+                         $"Message pattern: {settings.MessagePattern ?? "(any)"}\n" +
+                         $"Lookback: {settings.LookbackMinutes} min\nMatches: {scan.Matches.Count}\n";
+            if (scan.PatternTimeouts > 0)
+                output += $"Note: messagePattern timed out on {scan.PatternTimeouts} entr(ies); they were skipped.\n";
+            output += "\n";
 
-            foreach (var entry in matchingEntries.Take(10))
+            foreach (var entry in scan.Matches.Take(10))
             {
                 output += $"[{entry.TimeGenerated:HH:mm:ss}] ID:{entry.InstanceId} {entry.EntryType} - {entry.Source}\n";
                 output += $"  {entry.Message?.Split('\n').FirstOrDefault()?.Trim()}\n\n";
@@ -116,16 +118,18 @@ public class EventLogTrigger : IActivityExecutor
         }
     }
 
+    private readonly record struct ScanResult(List<EventLogEntry> Matches, int PatternTimeouts);
+
     // Walks the EventLog from newest to oldest by indexing in reverse. Stops as soon as
     // we have enough matches or we've inspected `scanLimit` entries — whichever comes
     // first. The previous Cast/Where/OrderByDescending pipeline implicitly enumerated the
     // entire collection before sorting, which on a multi-GB Application log scaled
     // catastrophically.
-    private static List<EventLogEntry> ScanEventLogNewestFirst(
-        EventLog log, DateTime cutoff, string? source, int? eventIdFilter, string? entryType,
-        int matchLimit, int scanLimit)
+    private static ScanResult ScanEventLogNewestFirst(
+        EventLog log, DateTime cutoff, EventLogTriggerSettings settings, int matchLimit, int scanLimit)
     {
         var matches = new List<EventLogEntry>(matchLimit);
+        var timeouts = 0;
         var entries = log.Entries;
         var total = entries.Count;
         var inspected = 0;
@@ -136,28 +140,24 @@ public class EventLogTrigger : IActivityExecutor
             catch (ArgumentException) { continue; } // entry was rotated out between Count and read
             inspected++;
             if (entry.TimeGenerated < cutoff) break; // sorted; older than cutoff → done
-            if (source is not null && !entry.Source.Equals(source, StringComparison.OrdinalIgnoreCase)) continue;
-            if (eventIdFilter is not null && entry.InstanceId != eventIdFilter) continue;
-            if (entryType is not null && !MatchesEntryType(entry.EntryType, entryType)) continue;
-            matches.Add(entry);
+
+            switch (settings.Matches(entry.Source, entry.InstanceId, ToFilter(entry.EntryType), entry.Message))
+            {
+                case EventLogMatch.Match: matches.Add(entry); break;
+                case EventLogMatch.PatternTimeout: timeouts++; break;
+                default: break;
+            }
         }
-        return matches;
+        return new ScanResult(matches, timeouts);
     }
 
-    // Accepts both the new `entryType` vocabulary (Error/Warning/Information/SuccessAudit/
-    // FailureAudit — matches EventLogEntryType + the scheduler-side source) and the legacy
-    // `level` aliases (error/warning/information/info/critical) so workflows saved against
-    // the old UI keep matching until they're re-saved.
-    private static bool MatchesEntryType(EventLogEntryType actual, string filter)
+    /// <summary>Maps the framework enum onto the Core filter enum used by the shared matcher.</summary>
+    internal static EventLogEntryTypeFilter ToFilter(EventLogEntryType type) => type switch
     {
-        return filter.Trim().ToLowerInvariant() switch
-        {
-            "error" or "critical" => actual == EventLogEntryType.Error,
-            "warning" => actual == EventLogEntryType.Warning,
-            "information" or "info" => actual == EventLogEntryType.Information,
-            "successaudit" or "success" => actual == EventLogEntryType.SuccessAudit,
-            "failureaudit" or "failure" => actual == EventLogEntryType.FailureAudit,
-            _ => true,
-        };
-    }
+        EventLogEntryType.Error => EventLogEntryTypeFilter.Error,
+        EventLogEntryType.Warning => EventLogEntryTypeFilter.Warning,
+        EventLogEntryType.SuccessAudit => EventLogEntryTypeFilter.SuccessAudit,
+        EventLogEntryType.FailureAudit => EventLogEntryTypeFilter.FailureAudit,
+        _ => EventLogEntryTypeFilter.Information,
+    };
 }

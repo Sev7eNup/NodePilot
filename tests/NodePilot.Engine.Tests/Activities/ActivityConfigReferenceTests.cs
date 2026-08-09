@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using FluentAssertions;
 using NodePilot.Core.Activities;
+using NodePilot.Engine.Tests.Triggers;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Activities;
@@ -150,10 +151,10 @@ public class ActivityConfigReferenceTests
     }
 
     /// <summary>
-    /// Engine + Scheduler sources. An enum value is often honoured outside the activity class:
-    /// runScript's "pwsh" lives in PowerShellEngineFactory, junction's modes in the scheduler, and
-    /// every background trigger (fileWatcher watchType, databaseTrigger, eventLog) is evaluated by
-    /// its NodePilot.Scheduler source rather than by the node executor.
+    /// Engine + Scheduler + the shared trigger contract in Core. An enum value is often honoured
+    /// outside the activity class: runScript's "pwsh" lives in PowerShellEngineFactory, junction's
+    /// modes in the scheduler, and the background triggers are evaluated by their
+    /// NodePilot.Scheduler source against settings parsed in NodePilot.Core.Triggers.
     /// </summary>
     private static string LoadAllEngineSources()
     {
@@ -168,6 +169,7 @@ public class ActivityConfigReferenceTests
                 sb.AppendLine(File.ReadAllText(file));
         }
 
+        sb.AppendLine(TriggerContractSources.LoadSharedContractText());
         return sb.ToString();
     }
 
@@ -188,7 +190,12 @@ public class ActivityConfigReferenceTests
     [Fact]
     public void SchemaVersion_IsCurrent() => ActivityConfigReference.SchemaVersion.Should().Be(2);
 
-    /// <summary>Maps activity/trigger type → the source text of the class that implements it.</summary>
+    /// <summary>
+    /// Maps activity/trigger type → the source text that must read its keys. For the background
+    /// triggers that is no longer the node executor alone: parsing moved into the shared
+    /// NodePilot.Core.Triggers settings, so the shared contract text is appended for every trigger
+    /// type. Without that this guard would flag every trigger key as phantom.
+    /// </summary>
     private static Dictionary<string, string> LoadExecutorSources()
     {
         var root = FindRepoRoot();
@@ -207,11 +214,15 @@ public class ActivityConfigReferenceTests
             }
         }
 
+        var shared = TriggerContractSources.LoadSharedContractText();
+        foreach (var type in sources.Keys.Where(k => k.EndsWith("Trigger", StringComparison.Ordinal)).ToList())
+            sources[type] += shared;
+
         sources.Should().NotBeEmpty("the executor sources must be discoverable for this guard to mean anything");
         return sources;
     }
 
-    private static string FindRepoRoot()
+    internal static string FindRepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         for (var i = 0; i < 10 && dir is not null; i++, dir = dir.Parent)

@@ -131,9 +131,11 @@ describe('DatabaseTriggerConfig', () => {
     expect(screen.getByPlaceholderText(/Trigger:Database:Connections/i)).toHaveValue('');
   });
 
-  it('pollingIntervalDefault_is60', () => {
+  // 30, not 60: the field used to display 60 for an absent key while the poll loop actually ran
+  // at 30. The display was corrected to the real backend default rather than the other way round.
+  it('pollingIntervalDefault_is30', () => {
     wrap(<DatabaseTriggerConfig config={{}} onUpdate={vi.fn()} upstreamVars={[]} />);
-    expect(screen.getByDisplayValue('60')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('30')).toBeInTheDocument();
   });
 
   it('pollingIntervalChange_emitsPatch', () => {
@@ -142,6 +144,13 @@ describe('DatabaseTriggerConfig', () => {
 
     fireEvent.change(screen.getByDisplayValue('60'), { target: { value: '30' } });
     expect(onUpdate).toHaveBeenCalledWith({ pollingIntervalSeconds: 30 });
+  });
+
+  it('legacyIntervalSecondsKey_isShownSoSavingCannotDropIt', () => {
+    // Imported definitions may carry the poll loop's original spelling. If the field ignored it,
+    // opening and saving the node would silently reset a cadence the backend is still honouring.
+    wrap(<DatabaseTriggerConfig config={{ intervalSeconds: 90 }} onUpdate={vi.fn()} upstreamVars={[]} />);
+    expect(screen.getByDisplayValue('90')).toBeInTheDocument();
   });
 });
 
@@ -169,6 +178,26 @@ describe('EventLogTriggerConfig', () => {
     fireEvent.change(eventIdInput, { target: { value: '1000' } });
 
     expect(onUpdate).toHaveBeenCalledWith({ eventId: 1000 });
+  });
+
+  it('messagePatternInput_emitsPatch_andClearsToUndefined', () => {
+    // The background listener always supported this regex filter; it had no designer field, so it
+    // was only reachable by hand-editing JSON.
+    const onUpdate = vi.fn();
+    wrap(<EventLogTriggerConfig config={{}} onUpdate={onUpdate} upstreamVars={[]} />);
+
+    fireEvent.change(screen.getByPlaceholderText(/Regex/i), { target: { value: 'disk.*full' } });
+    expect(onUpdate).toHaveBeenCalledWith({ messagePattern: 'disk.*full' });
+  });
+
+  it('messagePatternCleared_emitsUndefinedSoTheKeyIsDropped', () => {
+    // Same convention as entryType: an empty field must remove the key, not save an empty regex
+    // (which would match every message).
+    const onUpdate = vi.fn();
+    wrap(<EventLogTriggerConfig config={{ messagePattern: 'boom' }} onUpdate={onUpdate} upstreamVars={[]} />);
+
+    fireEvent.change(screen.getByDisplayValue('boom'), { target: { value: '' } });
+    expect(onUpdate).toHaveBeenCalledWith({ messagePattern: undefined });
   });
 
   it('eventIdInput_emptyString_clearsField', () => {

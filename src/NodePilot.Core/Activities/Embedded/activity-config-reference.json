@@ -391,26 +391,35 @@
       ]
     },
     "databaseTrigger": {
-      "description": "Timer + SELECT-polling trigger — fires per row returned by the query (SQL Server).",
+      "description": "Timer + SELECT-polling trigger — fires when the query's sentinel value changes between polls.",
       "promptNotes": [
-        "The trigger query must be literal SQL — {{...}} templates are rejected, because trigger queries run before any step exists and have no variable context."
+        "The trigger query must be literal SQL — {{...}} templates are rejected, because trigger queries run before any step exists and have no variable context.",
+        "Change detection is sentinel-based, not row-based: the poll loop compares the FIRST COLUMN OF THE FIRST ROW against the previous poll and fires when it differs. Write a query that returns a changing scalar (MAX(Id), COUNT(*), MAX(UpdatedAt)); a query that keeps returning the same rows never fires.",
+        "The trigger's own outputs are {{step.param.dbSentinel}} (new value) and {{step.param.dbPrevious}} (previous value) — the matched rows themselves are not passed to downstream steps."
       ],
       "configKeys": [
-        { "key": "query", "type": "string", "required": true, "description": "SELECT to poll." },
+        { "key": "query", "type": "string", "required": true, "description": "SELECT to poll; its first column of the first row is the sentinel." },
         { "key": "connectionRef", "type": "string", "required": false, "description": "Named connection ref (preferred; may be required by Trigger:Database:RequireConnectionRef)." },
         { "key": "connectionString", "type": "string", "required": false, "description": "Raw connection string (secret; dev/legacy only)." },
-        { "key": "pollingIntervalSeconds", "type": "number", "required": false, "description": "Poll interval." }
+        { "key": "provider", "type": "string", "required": false, "description": "Database provider: sqlserver (default) | sqlite." },
+        { "key": "pollingIntervalSeconds", "type": "number", "required": false, "description": "Poll interval in seconds (default 30, minimum 5)." },
+        { "key": "intervalSeconds", "type": "number", "required": false, "description": "Alias for pollingIntervalSeconds." }
       ]
     },
     "eventLogTrigger": {
       "description": "Windows Event Log trigger (EventLog.EntryWritten).",
+      "promptNotes": [
+        "Only Application and System are readable by default; any other log must be added to Trigger:EventLog:AllowedLogs by an admin.",
+        "The trigger's outputs are {{step.param.eventId}}, {{step.param.eventSource}}, {{step.param.eventEntryType}}, {{step.param.eventMessage}} and {{step.param.eventTimeWritten}}."
+      ],
       "configKeys": [
         { "key": "logName", "type": "string", "required": false, "description": "Log name (default Application)." },
         { "key": "eventId", "type": "number", "required": false, "description": "Match a specific event id." },
         { "key": "entryType", "type": "string", "required": false, "description": "Information | Warning | Error | …" },
         { "key": "level", "type": "string", "required": false, "description": "Alias for entryType." },
         { "key": "source", "type": "string", "required": false, "description": "Event source filter." },
-        { "key": "lookbackMinutes", "type": "number", "required": false, "description": "On startup, replay entries from the last N minutes." }
+        { "key": "messagePattern", "type": "string", "required": false, "description": "Regex the event message must match (500 ms per-match timeout; a timing-out entry is skipped)." },
+        { "key": "lookbackMinutes", "type": "number", "required": false, "description": "Manual-run only: how far back the sample scan looks (default 5). The live listener never replays history." }
       ]
     }
   }

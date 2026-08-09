@@ -63,6 +63,16 @@ export function EventLogTriggerConfig({ config, onUpdate }: Readonly<ConfigProps
           />
         </Field>
       </FieldGrid>
+      <p className="font-body text-xs text-on-surface-variant">{t('eventLogTrigger.lookbackHint')}</p>
+      <Field label={t('eventLogTrigger.messagePattern')}>
+        <input
+          type="text"
+          value={(config.messagePattern as string) || ''}
+          onChange={(e) => onUpdate({ messagePattern: e.target.value || undefined })}
+          className="input-field font-mono"
+          placeholder={t('eventLogTrigger.messagePatternPlaceholder')}
+        />
+      </Field>
     </>
   );
 }
