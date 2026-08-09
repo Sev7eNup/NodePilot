@@ -236,6 +236,12 @@ try {
             Remove-Item -Recurse -Force -ErrorAction Stop
         Copy-DirectoryContents -Source $artifactStage -Destination $InstallPath
         Assert-NodePilotExtractedFiles -RootPath $InstallPath
+        # H-18: an installation made before the installer hardened this directory keeps its
+        # inherited ACL forever - replacing the binaries on every upgrade would never notice that
+        # a non-administrator can replace them right back, with the service account executing the
+        # result. No -RequireProtectedRules here: inheriting a safe ACL from Program Files is fine,
+        # only effective write access by an untrusted principal is not.
+        Assert-NodePilotInstallRootHardened -Path $InstallPath
         Write-RestrictedSettings -Path $settingsPath -Content $settingsBytes -ServiceAccount $svcAccount
 
         # Normalise the start type. Installations made before the API waited for the database

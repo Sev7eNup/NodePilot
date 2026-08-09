@@ -346,6 +346,7 @@ Der Installer macht alles Weitere:
 4. `C:\ProgramData\NodePilot\logs` anlegen
 5. `appsettings.Production.json` aus Template erzeugen
 6. ACLs setzen (Service-Identität = gMSA bzw. `NT AUTHORITY\SYSTEM` bei LocalSystem):
+   - InstallPath: Service = **ReadAndExecute**, Admins/SYSTEM = Full, Vererbung aus. Der Dienst führt die Binaries aus, er überschreibt sie nie — Schreibrecht dort wäre Code-Ausführung als Dienstkonto (H-18). Der Pfad wird vorher validiert (lokal, NTFS/ReFS, keine Reparse Points) und nach dem Kopieren erneut geprüft.
    - DataPath: Service = Modify, Admins/SYSTEM = Full, sonst nichts. Bei LocalSystem deckt die SYSTEM-Full-ACE den Dienst bereits ab — keine zusätzliche ACE.
    - `appsettings.Production.json`: Service = Read, Admins/SYSTEM = Full (bei LocalSystem analog von SYSTEM-Full abgedeckt)
    - Cert Private Key: gMSA = Read; bei LocalSystem übersprungen (SYSTEM hat Read auf MachineKeys per Default)
@@ -398,7 +399,7 @@ Nach erfolgreichem Install steht in der Konsole:
 | `-PublicHostname` | | Machine-FQDN |
 | `-HttpsPort` | | `443` |
 | `-HttpPort` | | `80` (0 = kein HTTP-Binding) |
-| `-InstallPath` | | `C:\Program Files\NodePilot` |
+| `-InstallPath` | | `C:\Program Files\NodePilot`. Muss ein lokaler, absoluter Pfad auf **NTFS oder ReFS** sein, ohne Junction/Symlink irgendwo im Pfad (UNC und FAT/exFAT werden abgewiesen). Der Installer setzt darauf eine geschützte ACL — SYSTEM + Administratoren `FullControl`, das Dienstkonto nur `ReadAndExecute` — und prüft nach dem Kopieren nach, dass kein anderer Principal Schreibrechte hat. Grund: die Binaries dort werden vom Dienst als LocalSystem/gMSA ausgeführt, ein abweichender Pfad erbt sonst z. B. `BUILTIN\Benutzer:(M)` vom Volume-Root (H-18) |
 | `-DataPath` | | `C:\ProgramData\NodePilot` |
 | `-ServiceName` | | `NodePilot` |
 | `-ServiceDisplayName` | | `NodePilot Orchestrator` |

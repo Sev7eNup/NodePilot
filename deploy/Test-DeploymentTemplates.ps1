@@ -505,6 +505,50 @@ Assert-TextMatches -Name 'the data directory gets a trusted owner, not just trus
     -Text $installerScript.Substring($aclFunctionStart, $aclFunctionEnd - $aclFunctionStart) `
     -Pattern 'SetOwner\('
 
+# H-18. The install directory is the image path of a service running as LocalSystem or a gMSA, so
+# write access to it is code execution as that account. Only DataPath used to be hardened;
+# InstallPath was created with a plain New-Item -Force and inherited whatever the parent allowed -
+# under the Program Files default that is safe, under a custom root such as D:\NodePilot it is
+# BUILTIN\Users:(M) off the volume root. Three separate guarantees, each with its own regression:
+# validate the location before writing, apply a protected read-only-for-service DACL, and re-verify
+# after the copy (the hash manifest proves the files are ours now, not that they stay ours).
+Assert-TextMatches -Name 'the installer validates the install root before creating it' `
+    -Text $installerScript `
+    -Pattern '(?s)Write-Step "Preparing directories"[\s\S]{0,400}Assert-SafeInstallRoot -Path \$InstallPath'
+
+Assert-TextMatches -Name 'the install root rejects non-ACL file systems' `
+    -Text $installerScript `
+    -Pattern "(?s)function Assert-SafeInstallRoot[\s\S]{0,4000}FileSystemType -notin @\('NTFS', 'ReFS'\)"
+
+Assert-TextMatches -Name 'the install root rejects reparse points on the way to it' `
+    -Text $installerScript `
+    -Pattern '(?s)function Assert-SafeInstallRoot[\s\S]{0,4000}FileAttributes\]::ReparsePoint'
+
+Assert-TextMatches -Name 'the install directory gets a protected, read-only-for-service DACL' `
+    -Text $installerScript `
+    -Pattern '(?s)Set-DirectoryAclForService -Path \$InstallPath[\s\S]{0,200}-ReadOnlyForService'
+
+Assert-TextMatches -Name 'the install directory is re-verified after the artifact is copied in' `
+    -Text $installerScript `
+    -Pattern '(?s)Assert-NodePilotExtractedFiles -RootPath \$InstallPath[\s\S]{0,500}Assert-NodePilotInstallRootHardened -Path \$InstallPath -RequireProtectedRules'
+
+# An installation predating the hardening keeps its inherited ACL forever unless the updater looks.
+Assert-TextMatches -Name 'the updater re-verifies the install directory it just refilled' `
+    -Text $updateScript `
+    -Pattern '(?s)Assert-NodePilotExtractedFiles -RootPath \$InstallPath[\s\S]{0,600}Assert-NodePilotInstallRootHardened -Path \$InstallPath'
+
+Assert-TextMatches -Name 'the install-root check refuses write access by untrusted principals' `
+    -Text (Get-Content -LiteralPath $ArtifactSecurityPath -Raw) `
+    -Pattern '(?s)function Assert-NodePilotInstallRootHardened[\s\S]{0,4000}trusted -notcontains \$sid'
+
+# Everything the SERVICE writes at runtime has to live under DataPath, or the read-only install
+# DACL above turns into an outage on first save. These four are the ones that would break.
+foreach ($runtimeWritten in @('KeyPath', 'KeyRingPath', 'AdminSetupTokenPath', 'RuntimeOverridesPath')) {
+    Assert-TextMatches -Name "$runtimeWritten points at DataPath, not the read-only install directory" `
+        -Text $appSettingsTemplate `
+        -Pattern ('"{0}": "\{{\{{DATA_PATH_ESCAPED\}}\}}' -f $runtimeWritten)
+}
+
 # The unattended path never shows the readiness page - with /ANSWERFILE every wizard page is
 # skipped, so nothing calls the probe. The port check reaches a silent installation only through
 # THIS call, and only if it is handed the ports actually being installed. Dropping these two

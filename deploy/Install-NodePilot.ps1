@@ -375,6 +375,63 @@ function Set-DirectoryAclForService {
     Set-Acl -Path $Path -AclObject $acl
 }
 
+function Assert-SafeInstallRoot {
+    <#
+      H-18. The install directory holds the service binaries and is registered as the image path
+      of a LocalSystem/gMSA service, so write access to it IS SYSTEM code execution. Only DataPath
+      used to be hardened; InstallPath was created with a plain New-Item -Force and inherited
+      whatever the parent allowed - on a custom root such as D:\NodePilot that is
+      BUILTIN\Users:(M) straight off the volume root. The default under Program Files was never
+      affected, which is exactly why this went unnoticed.
+
+      Validate the LOCATION here, before anything is copied in. The DACL itself is applied by
+      Set-DirectoryAclForService and re-checked by Assert-InstallRootHardened after the copy.
+    #>
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not [System.IO.Path]::IsPathRooted($Path)) {
+        throw "InstallPath must be an absolute path. Got '$Path'."
+    }
+
+    $full = [System.IO.Path]::GetFullPath($Path)
+
+    # A UNC install root cannot carry a local DACL we control, and it puts the service binaries
+    # behind SMB where a spoofed share answers for them.
+    if ($full.StartsWith('\\')) {
+        throw "InstallPath must be a local path. '$full' is a UNC location: it cannot be secured with a local ACL and would place the service binaries behind SMB."
+    }
+
+    $root = [System.IO.Path]::GetPathRoot($full)
+    if ($root -notmatch '^[A-Za-z]:\\$') {
+        throw "InstallPath must sit on a drive letter. Got root '$root' for '$full'."
+    }
+
+    # An ACL-less file system silently discards every rule Set-DirectoryAclForService applies, so
+    # the install would report success and still leave the binaries world-writable.
+    $volume = Get-Volume -DriveLetter $root.Substring(0, 1) -ErrorAction SilentlyContinue
+    if ($null -eq $volume) {
+        throw "InstallPath '$full' is not on a volume this host can inspect. Choose a local NTFS or ReFS location."
+    }
+    if ($volume.FileSystemType -notin @('NTFS', 'ReFS')) {
+        throw "InstallPath '$full' is on a $($volume.FileSystemType) volume. NodePilot needs an ACL-capable file system (NTFS or ReFS) because the service binaries must not be writable by non-administrators."
+    }
+
+    # A junction or symlink anywhere on the way lets whoever controls the link target swap the
+    # binaries without ever touching the ACL we set on the final directory.
+    $probe = $full
+    while (-not [string]::IsNullOrEmpty($probe)) {
+        if (Test-Path -LiteralPath $probe) {
+            $item = Get-Item -LiteralPath $probe -Force -ErrorAction SilentlyContinue
+            if ($null -ne $item -and ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+                throw "InstallPath '$full' traverses a reparse point at '$probe'. Junctions and symlinks let the link target be redirected after installation; use a real directory."
+            }
+        }
+        $parent = Split-Path -Path $probe -Parent
+        if ($parent -eq $probe) { break }
+        $probe = $parent
+    }
+}
+
 function Set-FileAclForService {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -1000,6 +1057,9 @@ $installMutationStarted = $true
 Remove-ExistingService -Name $ServiceName -InstallPath $InstallPath
 
 Write-Step "Preparing directories"
+# H-18: validate the location before creating anything in it - an unsuitable root (UNC, FAT/exFAT,
+# behind a junction) cannot be secured after the fact.
+Assert-SafeInstallRoot -Path $InstallPath
 if (Test-Path $InstallPath) {
     # Empty install path but do NOT touch DataPath.
     Get-ChildItem $InstallPath -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
@@ -1008,6 +1068,11 @@ if (Test-Path $InstallPath) {
 }
 New-Item -ItemType Directory -Path $DataPath -Force | Out-Null
 New-Item -ItemType Directory -Path (Join-Path $DataPath 'logs') -Force | Out-Null
+# H-18: the binaries are read-only for the service - it executes them, it never rewrites them.
+# Inheritance is dropped here too, so a permissive parent (a custom root on D:\ inherits
+# BUILTIN\Users:(M) from the volume) cannot reach the files the service starts from.
+Set-DirectoryAclForService -Path $InstallPath -ServiceAccount $AclIdentity `
+    -ReadOnlyForService -SkipServiceRule:$isLocalSystem
 Set-DirectoryAclForService -Path $DataPath -ServiceAccount $AclIdentity -SkipServiceRule:$isLocalSystem
 # From here on the data directory carries an ACE for the identity being installed. If anything
 # below fails, the rollback has to take it off again - see the catch block.
@@ -1070,6 +1135,11 @@ Get-ChildItem -LiteralPath $artifactStage -Force | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $InstallPath -Recurse -Force
 }
 Assert-NodePilotExtractedFiles -RootPath $InstallPath
+# H-18: the hash check above proves the files are ours right now; this proves they cannot be
+# swapped before the service (LocalSystem/gMSA) executes them. Copy-Item into a freshly ACL'd
+# directory does not re-introduce inheritance, but the whole point of the finding is that nobody
+# was checking - so check.
+Assert-NodePilotInstallRootHardened -Path $InstallPath -RequireProtectedRules
 
 $ApiExe = Join-Path $InstallPath 'NodePilot.Api.exe'
 if (-not (Test-Path $ApiExe)) { throw "Artifact did not contain NodePilot.Api.exe at $ApiExe" }

@@ -488,6 +488,69 @@ function Assert-NodePilotExtractedFiles {
     }
 }
 
+function Assert-NodePilotInstallRootHardened {
+    <#
+      H-18. The install directory is the image path of a service running as LocalSystem or a gMSA,
+      so write access to it IS code execution as that account. Assert-NodePilotExtractedFiles proves
+      the files are the ones we shipped at this instant; this proves nobody can replace them
+      afterwards, which is the actual hijack window - the service starts later, and again on every
+      boot.
+
+      Lives here rather than in the installer because the updater has to answer the same question:
+      an installation made before this check exists keeps its inherited ACL forever otherwise, and
+      replacing the binaries on every upgrade would never notice.
+
+      -RequireProtectedRules is for the installer, which has just applied a protected DACL and can
+      insist on it. The updater deliberately does not: an older installation under Program Files
+      inherits a perfectly safe ACL from its parent, and failing that would block upgrades on hosts
+      that are not actually exposed.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [switch]$RequireProtectedRules
+    )
+
+    $acl = Get-Acl -Path $Path
+    if ($RequireProtectedRules -and -not $acl.AreAccessRulesProtected) {
+        throw "Install directory '$Path' still inherits ACEs from its parent. Refusing to register a service whose binaries are governed by an inherited ACL."
+    }
+
+    # SYSTEM, Administrators and TrustedInstaller are the principals a machine administrator already
+    # trusts with the binaries; anything else holding a write-shaped right is a hijack primitive.
+    $trusted = @('S-1-5-18', 'S-1-5-32-544', 'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464')
+    $writeMask =
+        [System.Security.AccessControl.FileSystemRights]::WriteData -bor
+        [System.Security.AccessControl.FileSystemRights]::AppendData -bor
+        [System.Security.AccessControl.FileSystemRights]::Delete -bor
+        [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles -bor
+        [System.Security.AccessControl.FileSystemRights]::ChangePermissions -bor
+        [System.Security.AccessControl.FileSystemRights]::TakeOwnership
+
+    foreach ($ace in $acl.Access) {
+        if ($ace.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
+        if (($ace.FileSystemRights -band $writeMask) -eq 0) { continue }
+
+        $sid = $null
+        try {
+            $sid = if ($ace.IdentityReference -is [System.Security.Principal.SecurityIdentifier]) {
+                $ace.IdentityReference.Value
+            } else {
+                $ace.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+            }
+        } catch {
+            $sid = $null
+        }
+
+        if ($null -eq $sid -or $trusted -notcontains $sid) {
+            throw ("Install directory '$Path' grants write access to '$($ace.IdentityReference)'. " +
+                   "The binaries there are executed by the NodePilot service, so a non-administrator " +
+                   "who can write to them gains code execution as the service account. Re-run " +
+                   "Install-NodePilot.ps1, or remove the ACE and restrict the directory to " +
+                   "SYSTEM/Administrators FullControl plus read-and-execute for the service account.")
+        }
+    }
+}
+
 function Assert-NodePilotCodeSigningCertificate {
     <#
       What the certificate is for, and what its key is allowed to do. Two different questions, and
