@@ -66,7 +66,7 @@
          The 3.x line ships SQLite 3.50.4+ (via SourceGear.sqlite3) and closes the CVE —
          referenced directly by every project that references a *Sqlite package so the
          transitive graph resolves to the fixed native build. -->
-    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
+    <PackageVersion Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
   </ItemGroup>
 
   <!-- Remote execution / scheduling -->
@@ -76,8 +76,8 @@
     <PackageVersion Include="System.Management.Automation" Version="7.6.4" />
     <!-- Quartz + Quartz.Extensions.Hosting pinned to the same version so the Cron evaluator
          (Data, maintenance windows) and the scheduler host (Scheduler) never drift. -->
-    <PackageVersion Include="Quartz" Version="3.19.0" />
-    <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.19.0" />
+    <PackageVersion Include="Quartz" Version="3.19.1" />
+    <PackageVersion Include="Quartz.Extensions.Hosting" Version="3.19.1" />
   </ItemGroup>
 
   <!-- Serilog logging -->
@@ -129,7 +129,7 @@
          2.9.0 is still 2.x so Swashbuckle's Models namespace stays compatible — do NOT take
          Microsoft.OpenApi 3.x while Swashbuckle 10.x asks for the 2.x surface.
          Also forced in Api.Tests over WireMock.Net.OpenApiParser's 2.4.1. -->
-    <PackageVersion Include="Microsoft.OpenApi" Version="2.9.0" />
+    <PackageVersion Include="Microsoft.OpenApi" Version="2.11.0" />
   </ItemGroup>
 
   <!-- Security-pinned floors over vulnerable transitives -->
@@ -178,7 +178,7 @@
     <!-- 2.x asks for Scriban.Signed 7.2.5 itself, so the forced floor that used to sit here
          for GHSA-24c8-4792-22hx is gone — keeping it would only cap a future Scriban bump
          that WireMock wants. The Microsoft.OpenApi floor above is still load-bearing. -->
-    <PackageVersion Include="WireMock.Net" Version="2.13.0" />
+    <PackageVersion Include="WireMock.Net" Version="2.14.0" />
     <PackageVersion Include="NBomber" Version="6.*" />
     <PackageVersion Include="NBomber.Http" Version="6.*" />
   </ItemGroup>
