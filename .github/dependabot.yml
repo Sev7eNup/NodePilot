@@ -26,11 +26,18 @@ updates:
     # previous rule named only Spectre.Console and Spectre.Console.Json at >=0.57.0, which
     # let a grouped run bump the core to 0.56.0 and Spectre.Console.Testing to 0.57.2 while
     # the CLI stayed at 0.55.0. Lift this when Spectre.Console.Cli 1.0 ships.
+    #
+    # The floor is >0.55.0, not >=0.56.0, because the split starts one patch earlier than it
+    # looks (measured against nuget.org 2026-08-09): Spectre.Console, .Json and .Testing all
+    # publish 0.55.1 and 0.55.2, while Spectre.Console.Cli and .Cli.Testing have exactly one
+    # stable release ever - 0.55.0. A >=0.56.0 floor therefore still let a grouped run offer
+    # 0.55.2 for three of the five packages and leave the two CLI ones behind, which is the
+    # same family split in patch clothing.
     ignore:
       - dependency-name: "Microsoft.OpenApi"
         versions: [">=3.0.0"]
       - dependency-name: "Spectre.Console*"
-        versions: [">=0.56.0"]
+        versions: [">0.55.0"]
     groups:
       nuget-minor-patch:
         patterns:
