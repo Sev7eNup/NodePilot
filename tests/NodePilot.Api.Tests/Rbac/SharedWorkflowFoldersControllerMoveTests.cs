@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
+using NodePilot.Api.Hubs;
 using NodePilot.Api.Security;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
@@ -29,14 +30,17 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
         NodePilotDbContext db,
         IResourceAuthorizationService? authz = null,
         IAuditWriter? audit = null,
-        Guid? userId = null)
+        Guid? userId = null,
+        RecordingHubContext? hub = null,
+        RecordingFolderProjection? folderProjection = null)
     {
         var principal = new ClaimsPrincipal(new ClaimsIdentity([
             new Claim(ClaimTypes.NameIdentifier, (userId ?? Guid.NewGuid()).ToString()),
             new Claim(ClaimTypes.Role, "Admin"),
         ], "test"));
         var ctrl = new SharedWorkflowFoldersController(
-            db, audit ?? NoopAuditWriter.Instance, authz ?? new ResourceAuthorizationService(db));
+            db, audit ?? NoopAuditWriter.Instance, authz ?? new ResourceAuthorizationService(db),
+            hub ?? new RecordingHubContext(), folderProjection ?? new RecordingFolderProjection());
         ctrl.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } };
         return ctrl;
     }
@@ -230,6 +234,98 @@ public sealed class SharedWorkflowFoldersControllerMoveTests
 
         db.ChangeTracker.Clear();
         (await db.Workflows.FindAsync(wf.Id))!.FolderId.Should().Be(d);
+    }
+
+    [Fact]
+    public async Task MoveWorkflow_RevokesLiveSubscriptionsForThatWorkflowOnly()
+    {
+        // M-33: JoinExecution/JoinWorkflow authorize once, at join, and the notifier fans out to
+        // the group without re-checking. After a move the REST surface 404s for a viewer who lost
+        // Read while the already-joined socket kept streaming step output — so the move has to
+        // evict the membership. A bystander workflow's subscribers must survive.
+        await using var db = TestDbFactory.Create();
+        var root = SharedWorkflowFolder.RootFolderId;
+        var source = AddFolder(db, root, "A", "/A", 1);
+        var destination = AddFolder(db, root, "D", "/D", 1);
+
+        var moved = new Workflow { Id = Guid.NewGuid(), Name = "moved", DefinitionJson = "{}", FolderId = source };
+        var bystander = new Workflow { Id = Guid.NewGuid(), Name = "bystander", DefinitionJson = "{}", FolderId = source };
+        db.Workflows.AddRange(moved, bystander);
+        var watchedRun = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = moved.Id, Status = ExecutionStatus.Running };
+        var bystanderRun = new WorkflowExecution { Id = Guid.NewGuid(), WorkflowId = bystander.Id, Status = ExecutionStatus.Running };
+        db.WorkflowExecutions.AddRange(watchedRun, bystanderRun);
+        await db.SaveChangesAsync();
+
+        ExecutionHub.ClearGroupsForTest();
+        try
+        {
+            ExecutionHub.RegisterGroupForTest("viewer-conn", $"workflow-{moved.Id}");
+            ExecutionHub.RegisterGroupForTest("viewer-conn", watchedRun.Id.ToString());
+            ExecutionHub.RegisterGroupForTest("other-conn", $"workflow-{bystander.Id}");
+            ExecutionHub.RegisterGroupForTest("other-conn", bystanderRun.Id.ToString());
+
+            var hub = new RecordingHubContext();
+            var projection = new RecordingFolderProjection();
+
+            var result = await NewCtrl(db, hub: hub, folderProjection: projection)
+                .MoveWorkflow(moved.Id, new MoveWorkflowToFolderRequest(destination), CancellationToken.None);
+
+            result.Should().BeOfType<NoContentResult>();
+
+            hub.Removed.Should().BeEquivalentTo(new[]
+            {
+                ("viewer-conn", $"workflow-{moved.Id}"),
+                ("viewer-conn", watchedRun.Id.ToString()),
+            }, "both the workflow channel and the watched execution stream lose their basis");
+
+            hub.Removed.Should().NotContain(r => r.ConnectionId == "other-conn",
+                "a workflow that did not move keeps its subscribers");
+
+            projection.Invalidated.Should().ContainSingle(
+                    "the notifier's cached workflow-to-folder mapping would otherwise route "
+                    + "live-ops events to the old folder's watchers forever")
+                .Which.Should().Be(moved.Id);
+        }
+        finally
+        {
+            ExecutionHub.ClearGroupsForTest();
+        }
+    }
+
+    [Fact]
+    public async Task Move_FolderSubtree_RevokesLiveSubscriptionsForEveryWorkflowBelowIt()
+    {
+        // Moving a folder re-parents inherited permissions for the whole subtree, so every
+        // workflow underneath changes reader set — not just the ones directly in it.
+        await using var db = TestDbFactory.Create();
+        var root = SharedWorkflowFolder.RootFolderId;
+        var parent = AddFolder(db, root, "P", "/P", 1);
+        var child = AddFolder(db, parent, "C", "/P/C", 2);
+        var newHome = AddFolder(db, root, "N", "/N", 1);
+
+        var deep = new Workflow { Id = Guid.NewGuid(), Name = "deep", DefinitionJson = "{}", FolderId = child };
+        db.Workflows.Add(deep);
+        await db.SaveChangesAsync();
+
+        ExecutionHub.ClearGroupsForTest();
+        try
+        {
+            ExecutionHub.RegisterGroupForTest("viewer-conn", $"workflow-{deep.Id}");
+
+            var hub = new RecordingHubContext();
+            var projection = new RecordingFolderProjection();
+
+            var result = await NewCtrl(db, hub: hub, folderProjection: projection)
+                .Move(parent, new MoveSharedFolderRequest(newHome), CancellationToken.None);
+
+            result.Should().BeOfType<NoContentResult>();
+            hub.Removed.Should().Contain(("viewer-conn", $"workflow-{deep.Id}"));
+            projection.Invalidated.Should().Contain(deep.Id);
+        }
+        finally
+        {
+            ExecutionHub.ClearGroupsForTest();
+        }
     }
 
     [Fact]

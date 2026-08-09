@@ -49,6 +49,15 @@ public class ExternalTriggerController : ControllerBase
     // value in appsettings.json does not silently become a weak secret.
     internal const int MinExternalApiKeyBytes = 32;
 
+    // M-32: caps on the anonymous-reachable trigger payload. Every parameter is copied into the
+    // execution's variable dictionary and resolved into each step's config, so an unbounded
+    // dictionary is engine work, not just bytes. The ceilings are far above any realistic runbook
+    // (a webhook-style fan-in tops out at a few dozen fields) and exist to bound the worst case.
+    internal const int MaxTriggerBodyBytes = 256 * 1024;
+    internal const int MaxTriggerParameterCount = 200;
+    internal const int MaxTriggerParameterKeyLength = 200;
+    internal const int MaxTriggerParameterValueLength = 8 * 1024;
+
     // L-7 (security audit 2026-05-15): the external-trigger surface is API-key-authenticated and
     // therefore carries no role. ExecutionsController redacts ErrorMessage / ReturnData /
     // InputParametersJson for every caller below Admin/Operator; the API-key holder must get the
@@ -109,6 +118,11 @@ public class ExternalTriggerController : ControllerBase
     // integration with a bug) can fire workflows at unlimited RPS — every trigger spawns
     // engine/DB work. The "trigger" policy (30/min per IP) is defined in RateLimitingSetup.cs.
     [EnableRateLimiting("trigger")]
+    // M-32: the body is model-bound in full BEFORE the X-Api-Key comparison below, so an
+    // unauthenticated caller decides how much the server allocates per attempt. The rate limiter
+    // bounds requests per minute, never bytes per request, and without an endpoint limit this
+    // inherits Kestrel's 30 MiB default.
+    [RequestSizeLimit(MaxTriggerBodyBytes)]
     public async Task<ActionResult<ExecutionResponse>> ExternalTrigger(
         string workflowNameOrId,
         [FromBody] ExecuteWorkflowRequest? request,
@@ -205,6 +219,23 @@ public class ExternalTriggerController : ControllerBase
         var parameters = request?.Parameters is null
             ? null
             : new Dictionary<string, string>(request.Parameters);
+        // M-32: shape first, then semantics. Bound count and per-entry length before the
+        // reserved-key scan so neither this check nor anything downstream walks an unbounded map.
+        if (parameters is not null)
+        {
+            if (parameters.Count > MaxTriggerParameterCount)
+                return BadRequest(new { message = $"At most {MaxTriggerParameterCount} input parameters are allowed." });
+
+            foreach (var (key, value) in parameters)
+            {
+                // Do not echo an oversized key back — the length is the whole complaint.
+                if (key.Length > MaxTriggerParameterKeyLength)
+                    return BadRequest(new { message = $"Input parameter names must be {MaxTriggerParameterKeyLength} characters or less." });
+                if (value is not null && value.Length > MaxTriggerParameterValueLength)
+                    return BadRequest(new { message = $"Input parameter '{key}' exceeds {MaxTriggerParameterValueLength} characters." });
+            }
+        }
+
         if (parameters is not null
             && NodePilot.Engine.Activities.WorkflowRecursion.FindReservedKey(parameters.Keys) is { } reservedKey)
         {

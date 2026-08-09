@@ -43,6 +43,13 @@ public class AuthController : ControllerBase
     // they have a stronger secret than they actually do (L1).
     internal const int MaxPasswordBytes = 72;
 
+    // M-32: /api/auth/login is AllowAnonymous, so its body is bound in full before any
+    // credential is checked. Without an endpoint limit it inherits Kestrel's 30 MiB default —
+    // the rate limiter caps requests per minute, never bytes per request. A login payload is a
+    // username (<= 200 chars) plus a password (<= MaxPasswordBytes); 8 KiB leaves generous room
+    // for JSON framing and multi-byte characters while removing the amplifier.
+    internal const int MaxLoginBodyBytes = 8 * 1024;
+
     private readonly NodePilotDbContext _db;
     private readonly IConfiguration _config;
     private readonly IAuditWriter _audit;
@@ -304,19 +311,28 @@ public class AuthController : ControllerBase
     [HttpPost("login")]
     [AllowAnonymous]
     [EnableRateLimiting("login")]
+    [RequestSizeLimit(MaxLoginBodyBytes)]
     public async Task<ActionResult<LoginResponse>> Login(LoginRequest request, CancellationToken ct)
     {
         // Reject before LDAP normalization, Unicode case conversion, or DB lookup. Besides
         // matching the persisted User.Username length, this prevents an anonymous caller from
         // using a multi-megabyte JSON string as a CPU/allocation amplifier in the throttle.
-        if (string.IsNullOrWhiteSpace(request.Username)
-            || request.Username.Length > ExternalLoginThrottle.MaximumUsernameLength)
+        var invalidUsername = string.IsNullOrWhiteSpace(request.Username)
+            || request.Username.Length > ExternalLoginThrottle.MaximumUsernameLength;
+        // M-32: every password-setting path already runs ValidatePasswordPolicy, which caps at
+        // MaxPasswordBytes, so no stored hash can correspond to a longer secret — a longer login
+        // password is unauthenticatable by construction and only exists to make the server work.
+        // Checking it here keeps the bound explicit at the entry point instead of relying on
+        // BCrypt's internal 72-byte truncation to absorb it.
+        var invalidPassword =
+            System.Text.Encoding.UTF8.GetByteCount(request.Password ?? string.Empty) > MaxPasswordBytes;
+        if (invalidUsername || invalidPassword)
         {
             _ = BCrypt.Net.BCrypt.Verify(request.Password, DummyHash);
             await _audit.LogAsync(AuditActions.LoginFailed, "User", null,
                 AuditDetails.Json(
                     ("username", SafeUsernameForAudit(request.Username)),
-                    ("reason", "invalid_username_length")), ct);
+                    ("reason", invalidUsername ? "invalid_username_length" : "invalid_password_length")), ct);
             return Unauthorized(new { message = "Invalid credentials" });
         }
 

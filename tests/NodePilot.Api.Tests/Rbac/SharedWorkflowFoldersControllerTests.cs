@@ -61,7 +61,9 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
             new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
             new Claim(ClaimTypes.Role, role),
         ], "test"));
-        var ctrl = new SharedWorkflowFoldersController(_db, NoopAuditWriter.Instance, new ResourceAuthorizationService(_db));
+        var ctrl = new SharedWorkflowFoldersController(
+            _db, NoopAuditWriter.Instance, new ResourceAuthorizationService(_db),
+            new RecordingHubContext(), new RecordingFolderProjection());
         ctrl.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } };
         return ctrl;
     }

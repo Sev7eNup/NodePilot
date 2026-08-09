@@ -1,7 +1,9 @@
+using System.Net;
 using FluentAssertions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpsPolicy;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -96,5 +98,83 @@ public sealed class SecurityPipelineSetupTests
 
         response.Headers.GetValues("Content-Security-Policy").Should().ContainSingle()
             .Which.Should().Be("preset-by-earlier-middleware");
+    }
+
+    /// <summary>
+    /// L-17. Mirrors the Program.cs pipeline for a TLS-terminating reverse proxy that speaks plain
+    /// HTTP to Kestrel. <c>UseHsts()</c> short-circuits on <c>!Request.IsHttps</c>, so the relative
+    /// order of ForwardedHeaders and the security headers decides whether HSTS reaches the wire at
+    /// all — a silent failure that config inspection cannot reveal.
+    /// </summary>
+    private static async Task<HttpResponseMessage> GetThroughProxiedPipelineAsync(bool forwardedHeadersFirst)
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = Environments.Production,
+        });
+        builder.WebHost.UseTestServer();
+        builder.Services.AddProblemDetails();
+        builder.Services.AddNodePilotForwardedHeaders(builder.Configuration);
+        // HstsOptions.ExcludedHosts skips localhost / 127.0.0.1 / [::1] by default, and TestServer
+        // only accepts its own host. Clearing the list is what lets the assertion see the header;
+        // it does not affect what the ordering under test decides.
+        builder.Services.Configure<HstsOptions>(o => o.ExcludedHosts.Clear());
+        var app = builder.Build();
+
+        // TestServer leaves RemoteIpAddress null, but ForwardedHeaders only honours X-Forwarded-*
+        // from a trusted peer. Loopback is the seeded default (RateLimitingSetup) and matches the
+        // common on-box-proxy deployment.
+        app.Use(async (ctx, next) =>
+        {
+            ctx.Connection.RemoteIpAddress = IPAddress.Loopback;
+            await next();
+        });
+
+        if (forwardedHeadersFirst)
+        {
+            app.UseForwardedHeaders();
+            app.UseNodePilotSecurityHeaders();
+        }
+        else
+        {
+            app.UseNodePilotSecurityHeaders();
+            app.UseForwardedHeaders();
+        }
+
+        app.MapGet("/probe", (HttpContext ctx) =>
+            Results.Text($"scheme={ctx.Request.Scheme};https={ctx.Request.IsHttps};host={ctx.Request.Host};ip={ctx.Connection.RemoteIpAddress}"));
+
+        await app.StartAsync();
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, "/probe");
+            request.Headers.Add("X-Forwarded-Proto", "https");
+            return await app.GetTestClient().SendAsync(request);
+        }
+        finally
+        {
+            await app.StopAsync();
+            await app.DisposeAsync();
+        }
+    }
+
+    [Fact]
+    public async Task ForwardedHeaders_RunningFirst_EmitsHstsForProxyTerminatedTls()
+    {
+        using var response = await GetThroughProxiedPipelineAsync(forwardedHeadersFirst: true);
+        var probe = await response.Content.ReadAsStringAsync();
+
+        response.Headers.Contains("Strict-Transport-Security").Should().BeTrue(
+            $"X-Forwarded-Proto: https must be applied before UseHsts() reads Request.IsHttps (probe saw {probe})");
+    }
+
+    [Fact]
+    public async Task ForwardedHeaders_RunningAfterSecurityHeaders_SilentlyDropsHsts()
+    {
+        // Pins the L-17 regression itself: this is exactly what the pipeline did before the fix.
+        using var response = await GetThroughProxiedPipelineAsync(forwardedHeadersFirst: false);
+
+        response.Headers.Contains("Strict-Transport-Security").Should().BeFalse(
+            "with the forwarded scheme applied too late, HSTS sees plain HTTP and emits nothing");
     }
 }

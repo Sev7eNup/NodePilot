@@ -8,6 +8,7 @@ using NodePilot.Core.Models;
 using System.Collections.Concurrent;
 using NodePilot.Engine.Activities;
 using NodePilot.Engine.Execution;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Execution;
@@ -573,6 +574,47 @@ public class WorkflowSchedulerTests
         {
             WorkflowScheduler.ResetForTests();
         }
+    }
+
+    [Fact]
+    public async Task RunAsync_FailedStep_LogsTheFailureWithoutTheRawErrorPayload()
+    {
+        // M-31. StepRunner returns the RAW ActivityResult on purpose — the data bus has to resolve
+        // {{step.error}} to the real value — and redacts only on the way out to the DB, the UI,
+        // telemetry and the support log. The scheduler used to interpolate result.ErrorOutput into
+        // a LogWarning, which made the main log (and any SIEM shipping it) the single sink that saw
+        // unredacted stderr while the UI showed "***".
+        WorkflowScheduler.ResetForTests();
+        const string secret = "Login failed for user 'sa' with password=Sup3rSecret!";
+
+        var failing = Node("boom");
+        var results = new ConcurrentDictionary<string, ActivityResult>();
+        var completed = new HashSet<string>();
+        var skipped = new HashSet<string>();
+        var logger = new CapturingLogger();
+
+        await WorkflowScheduler.RunAsync(
+            [failing],
+            new Dictionary<string, WorkflowNode> { ["boom"] = failing },
+            new Dictionary<string, List<string>> { ["boom"] = [] },
+            new Dictionary<string, List<string>> { ["boom"] = [] },
+            new Dictionary<string, List<WorkflowEdge>> { ["boom"] = [] },
+            new Dictionary<(string Source, string Target), WorkflowEdge>(),
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            results,
+            completed,
+            skipped,
+            (_, _) => Task.FromResult(new ActivityResult { Success = false, ErrorOutput = secret }),
+            logger,
+            CancellationToken.None);
+
+        results["boom"].ErrorOutput.Should().Be(secret,
+            "the graph still needs the real value so {{boom.error}} resolves downstream");
+
+        logger.Messages.Should().NotContain(m => m.Contains("Sup3rSecret", StringComparison.Ordinal),
+            "the scheduler must never echo raw activity output into the main log");
+        logger.Messages.Should().Contain(m => m.Contains("boom", StringComparison.Ordinal),
+            "the failure itself must stay visible at scheduler level");
     }
 
     /// <summary>

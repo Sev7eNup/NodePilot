@@ -664,6 +664,73 @@ public class ExecutionsControllerTests
     }
 
     [Fact]
+    public async Task ExternalTrigger_TooManyParameters_ReturnsBadRequestWithoutEnqueue()
+    {
+        // M-32: the parameter map is bound before the API key is compared and every entry is
+        // copied into the execution's variable dictionary, so an unbounded map is engine work.
+        var db = CreateContext();
+        db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true });
+        await db.SaveChangesAsync();
+
+        var queue = new CountingNoopExecutionDispatchQueue();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue);
+        var parameters = Enumerable
+            .Range(0, ExternalTriggerController.MaxTriggerParameterCount + 1)
+            .ToDictionary(i => $"p{i}", _ => "v");
+
+        var result = await controller.ExternalTrigger(
+            "Enabled", new ExecuteWorkflowRequest(parameters),
+            ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        queue.EnqueueCount.Should().Be(0);
+        (await db.WorkflowExecutions.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_OversizedParameterValue_ReturnsBadRequestWithoutEnqueue()
+    {
+        var db = CreateContext();
+        db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true });
+        await db.SaveChangesAsync();
+
+        var queue = new CountingNoopExecutionDispatchQueue();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue);
+        var parameters = new Dictionary<string, string>
+        {
+            ["payload"] = new('x', ExternalTriggerController.MaxTriggerParameterValueLength + 1),
+        };
+
+        var result = await controller.ExternalTrigger(
+            "Enabled", new ExecuteWorkflowRequest(parameters),
+            ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        queue.EnqueueCount.Should().Be(0);
+        (await db.WorkflowExecutions.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_ParametersWithinCaps_StillFires()
+    {
+        // Guards the caps against being set so tight they break ordinary runbooks.
+        var db = CreateContext();
+        db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true });
+        await db.SaveChangesAsync();
+
+        var queue = new CountingNoopExecutionDispatchQueue();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue);
+        var parameters = new Dictionary<string, string> { ["version"] = "2.1.0", ["env"] = "prod" };
+
+        var result = await controller.ExternalTrigger(
+            "Enabled", new ExecuteWorkflowRequest(parameters),
+            ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().NotBeOfType<BadRequestObjectResult>();
+        queue.EnqueueCount.Should().Be(1);
+    }
+
+    [Fact]
     public async Task ExternalTrigger_IdempotencyKey_ReplayReturnsPendingExecutionWithoutSecondEnqueue()
     {
         var db = CreateContext();
