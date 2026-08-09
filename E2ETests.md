@@ -4518,6 +4518,96 @@ Prüfpunkte je Provider/Fall:
 
 ---
 
+## Teil 83: Live-Ops Mission Control (`/operations`)
+
+> Die Seite fährt auf zwei Quellen: `GET /api/operations/graph?windowMinutes=N&folderId=…`
+> (Timeline, Density, Meta) und `GET /api/stats/dashboard` (Departure-Board, Heartbeats).
+> Poll-Intervall 5 s. Voraussetzung für die Incident-Aktionen: ein Konto mit `CanRun`/`CanEdit`
+> auf dem betroffenen Ordner — die Buttons hängen an den per-Node-Flags aus dem Graph, nicht an
+> der globalen Rolle.
+
+### Test 83.1 — Timeline aus dem Snapshot
+1. `/operations` öffnen, während mindestens ein Workflow läuft und einer im Fenster fehlgeschlagen ist.
+- [ ] Ein **wachsender** Balken für den laufenden Run, ein **abgeschlossener** Balken für den beendeten.
+- [ ] Balken-Tooltip nennt „<Workflow> · <Status>".
+- [ ] Hinter jedem Workflow-Namen steht die kopierbare Execution-Id (8-Zeichen-Präfix in Klammern).
+
+### Test 83.2 — Drilldown
+1. Auf einen laufenden Balken klicken.
+- [ ] Detail-Panel öffnet mit **Open in editor**, der vollen Execution-Id samt **Copy**-Button und dem `triggeredBy`-Wert (z. B. „schedule") aus dem nachgeladenen Execution-Detail.
+
+### Test 83.3 — Fehlgeschlagener Step wird benannt
+1. Balken eines fehlgeschlagenen Runs anklicken, dessen Execution `failedSteps` trägt.
+- [ ] Abschnitt **Failed steps** listet den Step-**Namen** (z. B. „Check Disk") — nicht nur die Fehlermeldung.
+
+### Test 83.4 — Departure-Board
+1. Board rechts betrachten, mit mindestens zwei armed Triggern unterschiedlicher Fire-Zeit.
+- [ ] Zeilen sind **nach nächstem Fire-Zeitpunkt sortiert**, frühester zuerst.
+
+### Test 83.5 — Maintenance-Window-Blackout
+1. Einen Trigger einplanen, dessen nächster Fire in ein Wartungsfenster fällt.
+- [ ] Die Zeile bleibt an ihrer Sortierposition (wird **nicht** ausgeblendet).
+- [ ] Statt des Countdowns steht der Blackout-Marker („maintenance"); der Zeilen-Tooltip nennt den Fensternamen.
+- [ ] Nicht blockierte Zeilen tragen den Marker nicht.
+
+### Test 83.6 — Stuck-Strip
+1. Einen Run laufen lassen, der älter ist als `overdueSeconds` (Default 600 s) und deutlich älter als das Zeitfenster.
+- [ ] Strip **Stuck / long-running** erscheint, nennt den Workflow und die Gesamtlaufzeit („running for 3:00").
+- [ ] Der Strip unterscheidet *lang* von *auf einem Step hängend*: Zeit seit dem letzten Fortschritt plus Name des zuletzt beendeten Steps.
+- [ ] Der Balken selbst trägt die Overdue-Behandlung (`np-ops-bar--overdue`) und ein `‹`, weil er am linken Fensterrand abgeschnitten ist — ohne das wäre ein 3-Stunden-Run von einem 21-Minuten-Run nicht zu unterscheiden.
+- [ ] Klick auf den Strip-Eintrag öffnet den Drilldown desselben Runs.
+
+### Test 83.7 — Kein Strip ohne Grund
+1. Nur Runs unterhalb der Schwelle laufen lassen.
+- [ ] Der Stuck-Strip wird gar nicht gerendert (nicht: leer gerendert).
+
+### Test 83.8 — Quarantäne: Reihenfolge ist tragend
+1. Im Drilldown eines laufenden Runs **Quarantine** klicken.
+- [ ] Bestätigungsdialog erscheint zuerst; **bis dahin ist nichts gesendet worden**.
+- [ ] Nach OK wird **erst `disable`, dann `cancel-all`** aufgerufen. Andersherum würde der noch scharfe Trigger die gerade abgebrochenen Runs sofort neu starten.
+
+### Test 83.9 — Step-Aktivität ohne Prozentangabe
+1. Laufenden Run mit `stepsFinished`/`lastCompletedStepName` betrachten.
+- [ ] Angezeigt werden **Anzahl fertiger Steps** und der zuletzt beendete Step — **keine** Prozentzahl (die Gesamt-Step-Zahl steht vor dem Lauf nicht fest; Verzweigungen und `forEach` ändern sie).
+
+### Test 83.10 — Per-Node-RBAC
+1. Als Konto anmelden, das den Ordner nur lesen darf (`canRun`/`canEdit` = false), Drilldown öffnen.
+- [ ] **Open in editor** bleibt sichtbar.
+- [ ] **Cancel** und **Quarantine** werden **gar nicht gerendert** (nicht bloß deaktiviert).
+
+### Test 83.11 — Fenster-Wahl und Freeze
+1. Window-Selector von 20 min auf 4 h stellen.
+2. **Freeze view** klicken, ~10 s warten, dann **Go live**.
+- [ ] Die Umstellung löst einen neuen Snapshot-Request mit `windowMinutes=240` aus.
+- [ ] Im Freeze erscheint das Frozen-Badge und der 5-s-Poll **stoppt** (keine weiteren Requests).
+- [ ] **Go live** entfernt das Badge und nimmt den Poll wieder auf.
+
+### Test 83.12 — Truncation-Ehrlichkeit (Density-Track)
+1. Ein 4-h-Fenster wählen, in dem der Server mehr beendete Runs hat, als er einzeln zurückgibt (`recentTruncated: true`).
+- [ ] Der Abschnitt, den die Einzelbalken nicht abdecken, zeigt **aggregierte Run-Zahlen** (Density-Zellen), nicht das frühere schraffierte „nichts zurückgekommen"-Band.
+- [ ] Der Hinweis nennt Gesamt- und Fehlerzahl (z. B. „32 finished runs", „3 failed").
+
+### Test 83.13 — Folder-Scoping
+1. Folder-Filter auf einen Ordner ohne laufende Runs stellen, danach zurückstellen.
+- [ ] Timeline **und** Departure-Board werden gemeinsam gefiltert.
+- [ ] Ohne Balken im Fenster erscheint der Idle-Zustand („Nothing is running right now."), nicht eine leere Fläche.
+- [ ] Zurückstellen bringt Balken und Board-Zeile wieder.
+
+### Test 83.14 — Retry (nur manuell)
+1. Drilldown eines **beendeten** Runs (`Succeeded`/`Failed`/`Cancelled`) öffnen, **Retry** klicken.
+2. Danach den Drilldown eines **laufenden** Runs öffnen.
+- [ ] Retry startet einen neuen Lauf und toastet; Timeline und Detail aktualisieren sich.
+- [ ] Bei einem laufenden/pausierten Run gibt es **keinen** Retry-Button.
+- [ ] Bei `TimedOut` gibt es **keinen** Retry-Button — der Endpoint lehnt diesen Zustand mit 400 ab, die UI spiegelt genau die Server-Regel.
+- [ ] Ohne `CanRun` auf dem Ordner erscheint Retry nicht.
+
+> Automatisiert: `e2e/operations.spec.ts` (83.1–83.13, hermetisch — Graph/Stats/Executions via
+> `page.route`, SignalR 404-gestubbt, damit die Seite rein vom gepollten Snapshot lebt).
+> **83.14 (Retry) ist nicht automatisiert** — die Spec deckt Cancel, Cancel-all und Quarantine ab,
+> aber keinen Retry-Pfad.
+
+---
+
 ## Checkliste für vollständigen E2E-Test-Run
 
 ```
@@ -4603,6 +4693,7 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 80: Globaler AI-Chat (80.1 — 80.9)
 [ ] Teil 81: Custom Activities (81.1 — 81.9)
 [ ] Teil 82: Datenbank-Ausfall zur Laufzeit (82.1 — 82.4)
+[ ] Teil 83: Live-Ops Mission Control (83.1 — 83.14)
 ```
 
 ---
