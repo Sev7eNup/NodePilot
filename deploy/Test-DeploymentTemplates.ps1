@@ -24,7 +24,8 @@ param(
     [string]$ServerIssPath,
     [string]$RuntimePayloadScriptPath,
     [string]$PostgresProvisionScriptPath,
-    [string]$ServerBuildScriptPath
+    [string]$ServerBuildScriptPath,
+    [string[]]$PackageLockPaths
 )
 
 $ErrorActionPreference = 'Stop'
@@ -81,6 +82,13 @@ if ([string]::IsNullOrWhiteSpace($PostgresProvisionScriptPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($ServerBuildScriptPath)) {
     $ServerBuildScriptPath = Join-Path $scriptDirectory 'server\Build-ServerInstaller.ps1'
+}
+if ($null -eq $PackageLockPaths -or $PackageLockPaths.Count -eq 0) {
+    $PackageLockPaths = @(
+        (Join-Path $scriptDirectory '..\src\nodepilot-ui\package-lock.json')
+        (Join-Path $scriptDirectory '..\src\nodepilot-desktop\package-lock.json')
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\package-lock.json')
+    )
 }
 
 function Assert-TextMatches {
@@ -298,6 +306,45 @@ if (-not $serverPreflight.Success) {
 }
 Assert-TextDoesNotMatch -Name 'server-setup pre-flight must not throw on missing prerequisites' `
     -Text $serverPreflight.Value -Pattern '\bthrow\b'
+
+# --- lockfile integrity ------------------------------------------------------------------------
+# Cutting a release bumps the version in three package.json/package-lock.json pairs. Doing that as
+# a blanket text replace of '"version": "<old>"' also rewrites every TRANSITIVE dependency pin that
+# happens to sit at the same version, leaving an entry whose "version" no longer matches the
+# tarball its "resolved" points at. That shipped on 1.1.2 (abbrev, object-keys, picocolors, cookie)
+# and is invisible in review because only the version line changes. `npm ci` reconstructs the tree
+# from the lockfile and cross-checks the tarball's own version, so the damage surfaces at install
+# time on someone else's machine. Bump only the top-level version; this check enforces the result.
+foreach ($lockPath in $PackageLockPaths) {
+    if (-not (Test-Path -LiteralPath $lockPath)) {
+        throw "Deployment template check failed: package lock not found at $lockPath"
+    }
+
+    # npm keys the root project as "" inside "packages". Windows PowerShell 5.1 cannot build a
+    # PSCustomObject with an empty property name and fails the whole parse, so rename that one key
+    # first. The root entry carries no "resolved" and is skipped below either way.
+    $lockJson = (Get-Content -LiteralPath $lockPath -Raw) -replace '(?m)^(\s*)"":\s*\{', '$1"(root)": {'
+    $lock = $lockJson | ConvertFrom-Json
+    if (-not $lock.PSObject.Properties['packages']) {
+        throw "Deployment template check failed: $lockPath has no 'packages' section (lockfileVersion too old?)."
+    }
+
+    foreach ($package in $lock.packages.PSObject.Properties) {
+        $entry = $package.Value
+        if (-not $entry.PSObject.Properties['resolved'] -or -not $entry.PSObject.Properties['version']) { continue }
+
+        $resolved = [string]$entry.resolved
+        # Git and file dependencies carry no version in the URL and are out of scope here.
+        if (-not $resolved.EndsWith('.tgz')) { continue }
+
+        if (-not $resolved.EndsWith(('-{0}.tgz' -f $entry.version))) {
+            $lockName = Split-Path -Leaf (Split-Path -Parent $lockPath)
+            throw ("Deployment template check failed: {0} pins '{1}' at version {2} but resolves {3}. " +
+                'The version was rewritten without its tarball - bump only the top-level version.') -f
+                $lockName, $package.Name, $entry.version, $resolved
+        }
+    }
+}
 
 # The setup embeds the signed zip and verifies it at install time, so an unsigned development
 # artifact would produce an installer that refuses its own payload. Skip, do not attempt.
