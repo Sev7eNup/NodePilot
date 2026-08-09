@@ -115,13 +115,13 @@ Take these from the [latest release](https://github.com/Sev7eNup/NodePilot/relea
 - `NodePilot-<version>.zip`
 - `NodePilot-<version>.zip.manifest.json`
 - `NodePilot-<version>.zip.manifest.json.p7s`
-- `SHA256SUMS.txt`
+- `NodePilot-<version>.SHA256SUMS.txt`
 - `nodepilot-release-signing.cer` — the public signing certificate
 
 Verify the download:
 
 ```powershell
-# 1. Checksums (compare against SHA256SUMS.txt)
+# 1. Checksums (compare against NodePilot-1.2.0.SHA256SUMS.txt)
 Get-FileHash .\NodePilot-1.2.0.zip -Algorithm SHA256 | Format-List
 
 # 2. The publisher you are about to pin is the one named in the release notes

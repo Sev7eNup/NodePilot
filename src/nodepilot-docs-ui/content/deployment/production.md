@@ -144,7 +144,8 @@ Entweder das veröffentlichte Release herunterladen oder selbst bauen — der In
 beiden Fällen ein signiertes Artefakt und den Thumbprint des Publishers.
 
 **Variante A — Release herunterladen.** Am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest)
-hängen das Zip, `manifest.json`, `.p7s`, `SHA256SUMS.txt` und das öffentliche Signaturzertifikat.
+hängen das Zip, `manifest.json`, `.p7s`, `NodePilot-<version>.SHA256SUMS.txt` und das öffentliche
+Signaturzertifikat.
 Prüfsummen vergleichen und den Thumbprint gegen die Release-Notes abgleichen — dieser Abgleich
 **ist** die Vertrauensentscheidung. Der Installer verlangt genau diesen Signierer und prüft
 Codesignatur-Zweck, KeyUsage und Gültigkeit; ob die Maschine dem Herausgeber vertraut, spielt keine

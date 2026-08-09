@@ -25,7 +25,8 @@ param(
     [string]$RuntimePayloadScriptPath,
     [string]$PostgresProvisionScriptPath,
     [string]$ServerBuildScriptPath,
-    [string[]]$PackageLockPaths
+    [string[]]$PackageLockPaths,
+    [string[]]$ChecksumDocPaths
 )
 
 $ErrorActionPreference = 'Stop'
@@ -88,6 +89,17 @@ if ($null -eq $PackageLockPaths -or $PackageLockPaths.Count -eq 0) {
         (Join-Path $scriptDirectory '..\src\nodepilot-ui\package-lock.json')
         (Join-Path $scriptDirectory '..\src\nodepilot-desktop\package-lock.json')
         (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\package-lock.json')
+    )
+}
+if ($null -eq $ChecksumDocPaths -or $ChecksumDocPaths.Count -eq 0) {
+    $ChecksumDocPaths = @(
+        (Join-Path $scriptDirectory '..\README.md')
+        (Join-Path $scriptDirectory '..\docs\deployment-guide.md')
+        (Join-Path $scriptDirectory 'README.md')
+        (Join-Path $scriptDirectory 'desktop\README.md')
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\deployment\production.md')
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\deployment\desktop.md')
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\getting-started\installation.md')
     )
 }
 
@@ -260,7 +272,11 @@ $requiredBuildContracts = [ordered]@{
     'the desktop build inherits the same version' = '(?s)\$desktopArgs\s*=\s*@\{[^}]*Version\s*=\s*\$Version'
     'the SPA is not rebuilt for the desktop payload' = '(?s)\$desktopArgs\s*=\s*@\{[^}]*SkipSpaBuild\s*=\s*\$true'
     'the produced installer is copied next to the server zip' = 'NodePilot-Desktop-Setup-\$Version\.exe'
-    'a checksum file is written' = 'SHA256SUMS'
+    # The exact name, not the substring: the download guides name this file for the operator, and
+    # while the check only looked for "SHA256SUMS" they were free to say "SHA256SUMS.txt" - a file
+    # that has never existed on any release. Pinning the emitted name here is what makes the
+    # documentation check below meaningful.
+    'a checksum file is written under the versioned name' = '"NodePilot-\$Version\.SHA256SUMS\.txt"'
     'checksums are SHA256' = "Get-FileHash[^`r`n]*-Algorithm SHA256"
     'missing desktop prerequisites warn instead of failing' = '(?s)\$desktopSkipReasons\.Count -eq 0.*?else\s*\{\s*Write-Warning'
     'the installers can be Authenticode-signed by the build' = '\[string\]\$InstallerSigningCertificateThumbprint'
@@ -289,6 +305,20 @@ if ($signIndex -gt $checksumIndex) {
 
 foreach ($contract in $requiredBuildContracts.GetEnumerator()) {
     Assert-TextMatches -Name $contract.Key -Text $buildScript -Pattern $contract.Value
+}
+
+# Every guide that tells an operator to fetch and verify a release must name the file the build
+# actually emits. The download instructions said "SHA256SUMS.txt" while the build has always
+# written "NodePilot-<version>.SHA256SUMS.txt", so anyone following them looked for an asset that
+# does not exist on any release - and the checksum step is exactly where a reader is least willing
+# to improvise. A bare occurrence is one not preceded by the version dot.
+foreach ($docPath in $ChecksumDocPaths) {
+    if (-not (Test-Path -LiteralPath $docPath)) {
+        throw "Deployment template check failed: checksum documentation not found at $docPath"
+    }
+
+    Assert-TextDoesNotMatch -Name ("{0} must name the versioned checksum file" -f (Split-Path -Leaf $docPath)) `
+        -Text (Get-Content -LiteralPath $docPath -Raw) -Pattern '(?<!\.)SHA256SUMS\.txt'
 }
 
 # A missing Inno Setup or Postgres distribution must never abort the server artifact, so the
