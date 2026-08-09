@@ -85,7 +85,7 @@ Credential-lose Kerberos-Delegation ist im Desktop-Modus nicht vorgesehen.
 
 ## Installer-Verfügbarkeit
 
-`NodePilot-Desktop-Setup-<version>.exe` hängt als Asset am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest); die zugehörigen Prüfsummen stehen in `SHA256SUMS.txt`.
+`NodePilot-Desktop-Setup-<version>.exe` hängt als Asset am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest); die zugehörigen Prüfsummen stehen in `NodePilot-<version>.SHA256SUMS.txt`.
 
 Der Installer bleibt daneben ein Build-Ziel des Repositorys — der Abschnitt unten beschreibt, wie er selbst erzeugt wird. Eine selbst gebaute `.exe` ist **unsigniert** und wird von SmartScreen beim ersten Start angemeldet, bis sie mit einem eigenen Authenticode-Zertifikat signiert wird.
 

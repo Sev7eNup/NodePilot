@@ -174,7 +174,8 @@ deploy\Build-Artifact.ps1 -SigningCertificateThumbprint <artifact-signer> `
 ```
 
 Sign during the build rather than afterwards: signing rewrites the `.exe` and would invalidate its
-entry in `SHA256SUMS.txt`. An unsigned installer makes SmartScreen warn on first launch. Internals,
+entry in `NodePilot-<version>.SHA256SUMS.txt`. An unsigned installer makes SmartScreen warn on
+first launch. Internals,
 service identities and the first-run handoff: [`deploy/desktop/README.md`](deploy/desktop/README.md).
 
 </details>
@@ -212,7 +213,7 @@ switches: [deploy/server/README.md](deploy/server/README.md).
 
 **With the scripts**, which is what the wizard runs and what you want for automation. Download the
 signed `NodePilot-<version>.zip` together with its `.manifest.json` and `.manifest.json.p7s`,
-verify it against `SHA256SUMS.txt`, then:
+verify it against `NodePilot-<version>.SHA256SUMS.txt`, then:
 
 ```powershell
 .\deploy\Install-NodePilot.ps1 `

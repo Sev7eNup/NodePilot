@@ -253,7 +253,8 @@ Zwei Wege — der Installer verlangt in beiden Fällen ein signiertes Artefakt u
 des Publishers, dem vertraut werden soll.
 
 **Fertiges Release herunterladen.** Am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest)
-hängen `NodePilot-<version>.zip`, `.manifest.json`, `.manifest.json.p7s`, `SHA256SUMS.txt` und das
+hängen `NodePilot-<version>.zip`, `.manifest.json`, `.manifest.json.p7s`,
+`NodePilot-<version>.SHA256SUMS.txt` und das
 öffentliche Signaturzertifikat `nodepilot-release-signing.cer`. Prüfsummen vergleichen und den
 Thumbprint gegen die Release-Notes abgleichen — **dieser Abgleich ist die Vertrauensentscheidung**;
 der Installer verlangt genau diesen Signierer und prüft Codesignatur-Zweck und Gültigkeit, aber
@@ -278,8 +279,8 @@ $releaseSigner = '0123456789ABCDEF0123456789ABCDEF01234567'   # eigenes Code-Sig
 Mit `-IncludeServerInstaller` entsteht im selben Lauf zusätzlich `NodePilot-Server-Setup-<version>.exe`,
 mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` außerdem `NodePilot-Desktop-Setup-<version>.exe`
 — alles unter derselben Version. `-InstallerSigningCertificateThumbprint <tp>` signiert beide
-Installer als Teil des Laufs; nachträglich zu signieren würde ihre `SHA256SUMS.txt`-Einträge
-ungültig machen. Fehlen Inno Setup 6 oder die PostgreSQL-Binaries, wird nur der jeweilige
+Installer als Teil des Laufs; nachträglich zu signieren würde ihre Einträge in
+`NodePilot-<version>.SHA256SUMS.txt` ungültig machen. Fehlen Inno Setup 6 oder die PostgreSQL-Binaries, wird nur der jeweilige
 Installer-Teil mit einer Warnung übersprungen — das Server-Zip entsteht trotzdem.
 
 Den Zip auf den Zielserver kopieren.
