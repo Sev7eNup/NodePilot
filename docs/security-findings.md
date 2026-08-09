@@ -131,6 +131,34 @@ clean invalid-credentials verdict, before any bind — never falling through to 
 - [LdapAuthenticator.cs:69](../src/NodePilot.Api/Security/Ldap/LdapAuthenticator.cs#L69) — primary guard at the shared choke point (`InvalidCredentials`, no breaker/network)
 - [SystemLdapConnectionAdapter.cs:47](../src/NodePilot.Api/Security/Ldap/SystemLdapConnectionAdapter.cs#L47) — defense-in-depth guard immediately before `Bind`
 
+### H-18 — Install-Directory ACL Hardening
+The install directory holds the service binaries and is registered as the image path of a
+service running as LocalSystem or a gMSA, so write access to it *is* code execution as that
+account. Only `DataPath` was hardened; `InstallPath` was created with a plain `New-Item -Force`
+and inherited whatever the parent allowed. Under the `C:\Program Files\NodePilot` default that
+is safe — which is why it went unnoticed — but a custom root such as a second data volume
+inherits `BUILTIN\Users:(M)` straight off the volume root: any local user could replace the EXE
+and own the next service start. The signed-manifest hash check proves the files are ours *at
+install time*; it says nothing about the window afterwards, which is the whole attack.
+
+Three separate guarantees, because each has its own failure mode:
+
+- [Install-NodePilot.ps1](../deploy/Install-NodePilot.ps1) — `Assert-SafeInstallRoot` validates the *location* before anything is written: absolute, non-UNC, on an ACL-capable file system (NTFS/ReFS — a FAT/exFAT target silently discards every rule), and free of reparse points anywhere along the path (a junction lets the target be redirected after installation).
+- [Install-NodePilot.ps1](../deploy/Install-NodePilot.ps1) — `Set-DirectoryAclForService -ReadOnlyForService` now runs on `InstallPath` too: inheritance dropped, SYSTEM + Administrators FullControl, the service account read-and-execute only. It executes the binaries, it never rewrites them.
+- [ArtifactSecurity.ps1](../deploy/ArtifactSecurity.ps1) — `Assert-NodePilotInstallRootHardened` re-verifies after the copy that no untrusted principal holds a write-shaped right (`WriteData`/`AppendData`/`Delete`/`DeleteSubdirectoriesAndFiles`/`ChangePermissions`/`TakeOwnership`).
+
+It lives in `ArtifactSecurity.ps1` rather than the installer because
+[Update-NodePilot.ps1](../deploy/Update-NodePilot.ps1) has to answer the same question: an
+installation made before this check keeps its inherited ACL forever, and replacing the binaries
+on every upgrade would never notice. The updater calls it **without** `-RequireProtectedRules` —
+an older installation under Program Files inherits a perfectly safe ACL, and failing that would
+block upgrades on hosts that are not actually exposed.
+
+Prerequisite for the read-only DACL: everything the *service* writes at runtime already lives
+under `DataPath` (`Jwt:KeyPath`, `DataProtection:KeyRingPath`, `Setup:AdminSetupTokenPath`,
+`Settings:RuntimeOverridesPath`, logs, archives). `Test-DeploymentTemplates.ps1` pins all four
+so a future template edit cannot quietly move one back into the now read-only install directory.
+
 ## Medium
 
 ### M-2 — JWT Key Resolved Once at Startup
@@ -274,6 +302,43 @@ least-privilege DB login without `SELECT` on the secret columns, which is still 
 - [DbAdminReadOnlySqlGuard.cs](../src/NodePilot.Api/Services/DbAdmin/DbAdminReadOnlySqlGuard.cs) — `::` emitted as a token, `ReferencesIdentifierPair` for `FOR JSON` / `FOR XML`
 - [DbAdminController.cs](../src/NodePilot.Api/Controllers/DbAdminController.cs) — `protected_row_projection` on the read path
 - [SqlKnowledgeReader.cs](../src/NodePilot.Api/Ai/SqlKnowledgeReader.cs) — same refusal for the text2sql tool
+
+### M-31 — Scheduler Logged Unredacted Step Errors
+`StepRunner` returns the **raw** `ActivityResult` on purpose — the data bus has to resolve
+`{{step.error}}` to the real value — and redacts only on the way out to the DB, the UI, telemetry
+and the support log. `WorkflowScheduler` then interpolated `result.ErrorOutput` straight into a
+`LogWarning`, which made the main log (and any SIEM shipping it) the single sink that saw
+unredacted stderr while the UI showed `***`. The reason is already logged, redacted, by
+`StepRunner`'s `STEP_FAILED` support event on every failure, so the payload was pure duplication:
+the scheduler now logs the step id and points at that event.
+
+- [WorkflowScheduler.cs](../src/NodePilot.Engine/Execution/WorkflowScheduler.cs) — failure logged without the payload
+- [StepRunner.cs](../src/NodePilot.Engine/Execution/StepRunner.cs) — `LogStepFailedAsSupport` is the redacted reason's owner
+
+### M-32 — Pre-Auth Request Bounds on the Anonymous Endpoints
+`POST /api/auth/login` and `POST /api/trigger/{name}` are `AllowAnonymous`, so their bodies are
+model-bound in full before any credential is compared. The rate limiter caps requests per minute,
+never bytes per request, and without an endpoint limit both inherited Kestrel's 30 MiB default.
+The username was already capped ([ExternalLoginThrottle.MaximumUsernameLength]); the password and
+the trigger parameter map were not.
+
+- [AuthController.cs](../src/NodePilot.Api/Controllers/AuthController.cs) — `MaxLoginBodyBytes` (8 KiB) + a `MaxPasswordBytes` check before BCrypt. Every password-setting path already runs `ValidatePasswordPolicy`, which caps at the same 72 bytes, so a longer login password cannot correspond to any stored hash — it is unauthenticatable by construction.
+- [ExternalTriggerController.cs](../src/NodePilot.Api/Controllers/ExternalTriggerController.cs) — `MaxTriggerBodyBytes` (256 KiB) plus count/key/value caps on `Parameters`. Every entry is copied into the execution's variable dictionary and resolved into each step's config, so an unbounded map is engine work, not just bytes.
+
+### M-33 — SignalR Subscriptions Survived a Folder Move
+`JoinExecution`/`JoinWorkflow` authorize once, at join, and the notifier fans out to the group
+without re-checking. Moving a workflow to another folder — or moving a folder subtree, which
+re-parents inherited permissions for everything below it — changed the RBAC basis without
+touching the live subscriptions: REST answered 404 for a viewer who had just lost Read while the
+already-joined socket kept streaming step output. Permission *revocation* was already covered
+(`UserSessionInvalidation.BumpSecurityStamp` → `HubRevocationSweeper`); moves bumped nothing.
+
+Both move paths now evict the affected memberships. The SPA's re-join re-runs the RBAC gate, so
+callers who kept access simply resubscribe and callers who lost it are refused.
+
+- [ExecutionHub.cs](../src/NodePilot.Api/Hubs/ExecutionHub.cs) — `RevokeSubscriptionsAsync` + `SubscribedExecutionIds` (narrows the "which executions are affected" query to the handful actually being watched, instead of the whole retention window)
+- [SharedWorkflowFoldersController.cs](../src/NodePilot.Api/Controllers/SharedWorkflowFoldersController.cs) — `RevokeLiveSubscriptionsAsync` on both `MoveWorkflow` and folder `Move`
+- [SignalRExecutionNotifier.cs](../src/NodePilot.Api/Hubs/SignalRExecutionNotifier.cs) — `IWorkflowFolderProjection.InvalidateWorkflowFolder`. The per-connection ops-feed scope is a documented snapshot, but the notifier's `workflowId → folderId` cache is a *server-side* mapping: left stale it routes a moved workflow's status events to the old folder's watchers indefinitely, and hides them from the new folder's.
 
 ## Low
 

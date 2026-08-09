@@ -315,7 +315,7 @@ Der Installer führt folgende Schritte aus:
 3. Binaries nach `C:\Program Files\NodePilot` installieren.
 4. Betriebsdaten unter `C:\ProgramData\NodePilot` anlegen.
 5. Produktionskonfiguration rendern.
-6. Dateisystem- und Zertifikats-ACLs setzen.
+6. Dateisystem- und Zertifikats-ACLs setzen. Das Installationsverzeichnis bekommt dabei eine geschützte ACL: SYSTEM und Administratoren `FullControl`, das Dienstkonto nur `ReadAndExecute` — es führt die Binaries aus, es überschreibt sie nie. Ein abweichender `-InstallPath` wird vorher geprüft (lokal, NTFS oder ReFS, keine Junctions im Pfad) und nach dem Kopieren erneut verifiziert; sonst würde er die Rechte seines übergeordneten Verzeichnisses erben, was auf einem eigenen Volume schreibenden Zugriff für alle Benutzer bedeuten kann.
 7. HTTPS-Firewallregel anlegen.
 8. Windows-Dienst mit Auto Start und Recovery Actions registrieren (bei einem gMSA zusätzlich abhängig von Netlogon, damit der Logon nicht vor dem DC-Kontakt scheitert). Der Dienst startet also ohne feste Verzögerung und wartet stattdessen selbst auf die Datenbank — Obergrenze `Database:StartupWaitSeconds`, Standard 120 Sekunden.
 9. Dienst starten und Readiness prüfen.
