@@ -185,6 +185,46 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
     }
 
     [Fact]
+    public async Task GetEffectiveSizingAsync_Parses()
+    {
+        _server.Given(Request.Create().WithPath("/api/admin/settings/effective-sizing").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+               {
+                   manualTuning = true, desiredManualTuning = false,
+                   processorCount = 8, usableMemoryBytes = 17179869184L, isDesktop = false,
+                   values = new[]
+                   {
+                       new { key = "Engine:Runspace:MinRunspaces", value = 256, bound = "Manual" },
+                       new { key = "Threading:MinWorkerThreads", value = 768, bound = "Ceiling" },
+                   },
+               }));
+        var sizing = await _client.GetEffectiveSizingAsync(CancellationToken.None);
+        sizing.ManualTuning.Should().BeTrue();
+        sizing.DesiredManualTuning.Should().BeFalse();
+        sizing.UsableMemoryBytes.Should().Be(17179869184L);
+        sizing.Values.Should().HaveCount(2);
+        sizing.Values[1].Key.Should().Be("Threading:MinWorkerThreads");
+        sizing.Values[1].Bound.Should().Be("Ceiling");
+    }
+
+    [Fact]
+    public async Task GetEffectiveSizingAsync_TolerantOfUndetectedMemory()
+    {
+        // Memory detection failing is a supported state (CPU-only sizing), not an error - a
+        // non-nullable mapping here would turn a degraded plan into a client-side crash.
+        _server.Given(Request.Create().WithPath("/api/admin/settings/effective-sizing").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+               {
+                   manualTuning = false, desiredManualTuning = false,
+                   processorCount = 2, usableMemoryBytes = (long?)null, isDesktop = true,
+                   values = Array.Empty<object>(),
+               }));
+        var sizing = await _client.GetEffectiveSizingAsync(CancellationToken.None);
+        sizing.UsableMemoryBytes.Should().BeNull();
+        sizing.IsDesktop.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task GetSettingsSectionAsync_ReturnsEtagFromHeader()
     {
         _server.Given(Request.Create().WithPath("/api/admin/settings/Smtp").UsingGet())

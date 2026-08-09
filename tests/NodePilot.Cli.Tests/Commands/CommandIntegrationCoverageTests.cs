@@ -376,6 +376,49 @@ public class CommandIntegrationCoverageTests
     }
 
     [Fact]
+    public void SettingsEffectiveSizing_Table_RendersPlanAndBounds()
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/admin/settings/effective-sizing").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                manualTuning = false, desiredManualTuning = false,
+                processorCount = 20, usableMemoryBytes = 34359738368L, isDesktop = false,
+                values = new[]
+                {
+                    new { key = "Engine:Runspace:MaxRunspaces", value = 768, bound = "Ram" },
+                    new { key = "Engine:MaxConcurrentSteps", value = 600, bound = "Cpu" },
+                },
+            }));
+
+        var result = h.Run("settings", "effective-sizing", "-o", "table");
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        result.Output.Should().Contain("automatic").And.Contain("Engine:MaxConcurrentSteps")
+            .And.Contain("768").And.Contain("Ram");
+    }
+
+    [Fact]
+    public void SettingsEffectiveSizing_Table_ShowsPendingModeOnlyWhenItDiffers()
+    {
+        // The switch is saved immediately but only takes effect on restart. An operator reading
+        // the plan while a restart is pending must see that the mode shown is not the mode saved.
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/admin/settings/effective-sizing").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                manualTuning = false, desiredManualTuning = true,
+                processorCount = 4, usableMemoryBytes = (long?)null, isDesktop = true,
+                values = new[] { new { key = "Engine:MaxConcurrentSteps", value = 32, bound = "Floor" } },
+            }));
+
+        var result = h.Run("settings", "effective-sizing", "-o", "table");
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        result.Output.Should().Contain("Pending").And.Contain("manual after restart");
+        // Undetected memory must not render as "0 GB" - the plan then ignored RAM entirely.
+        result.Output.Should().Contain("CPU-only").And.NotContain("0.0 GB");
+    }
+
+    [Fact]
     public void WorkflowStepTest_Table_RendersGridOutputAndParams()
     {
         using var h = new CommandTestHarness();
