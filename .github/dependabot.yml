@@ -4,12 +4,26 @@ version: 2
 # Central Package Management, so every bump lands in Directory.Packages.props rather than
 # in individual csproj files.
 #
-# PR-budget policy (see CLAUDE.md): at most 5 Dependabot PRs exist at any time — every
-# block bundles its minor+patch updates into ONE collective PR and carries
-# open-pull-requests-limit: 1, so majors queue behind the collective PR instead of fanning
-# out. The first live run in 2026-08 opened 21 individual PRs at once; that noise level is
-# deliberately not allowed to repeat. (Note: any edit to this file makes Dependabot
-# re-run every block and supersede open singles with the collective PRs.)
+# EDITING THIS FILE IMMEDIATELY RE-RUNS EVERY BLOCK. Dependabot does not wait for the
+# Monday schedule after a config change: it re-evaluates all five blocks within minutes of
+# the merge, opening new collective PRs and superseding open singles. Batch config edits into
+# one change instead of merging them one after another — on 2026-08-07 two consecutive
+# taming attempts each set off another wave, and on 2026-08-09 two separate Spectre fixes did
+# it again. The waves were the config edits, not a Dependabot malfunction.
+#
+# PR-budget policy (see CLAUDE.md): every block bundles its minor+patch updates into ONE
+# collective PR and carries open-pull-requests-limit: 1. That bounds the COLLECTIVE PRs at
+# five — one per block — but it is NOT a cap of five overall: the groups below declare
+# update-types [minor, patch] only, so every pending MAJOR falls outside them and arrives as
+# its own PR. The realistic steady state is "up to five collective PRs plus one per pending
+# major" (measured 2026-08-09: four collective + four majors = eight open).
+#
+# Majors are deliberately left ungrouped. Bundling them would make the number smaller and the
+# review worse: the 2026-08-09 grouped NuGet PR carried a Spectre.Console split past a fully
+# green CI, and it was only caught by reading the diff. A major deserves its own PR.
+#
+# The first live run in 2026-08 opened 21 individual PRs at once; that noise level is
+# deliberately not allowed to repeat.
 updates:
   - package-ecosystem: nuget
     directory: "/"
