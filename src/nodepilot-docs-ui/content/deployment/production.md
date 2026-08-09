@@ -178,7 +178,7 @@ mit `-IncludeDesktopInstaller -PgBinariesPath <pgsql>` außerdem `NodePilot-Desk
 — alles unter derselben Version. `-InstallerSigningCertificateThumbprint <tp>` signiert beide
 Installer als Teil des Laufs, was zwingend vor der Prüfsummenbildung passieren muss.
 
-Installer und Updater prüfen Signatur, Zertifikatskette, Dateiname, Länge und SHA-256-Hash vor jeder Änderung.
+Installer und Updater prüfen Signatur (Thumbprint-Pin; keine Kettenvalidierung), Codesignatur-Eignung, Gültigkeit und KeyUsage des Signaturzertifikats sowie Dateiname, Länge und SHA-256-Hash vor jeder Änderung.
 
 ## 5. NodePilot installieren
 
