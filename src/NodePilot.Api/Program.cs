@@ -296,6 +296,7 @@ builder.Services.AddSingleton<NodePilot.Api.Diagnostics.SupportEventChannel>();
 builder.Services.AddHostedService<NodePilot.Api.Diagnostics.SupportEventFlushService>();
 builder.Services.AddSingleton<NodePilot.Api.Hubs.SignalRExecutionNotifier>();
 builder.Services.AddSingleton<IExecutionNotifier>(sp => sp.GetRequiredService<NodePilot.Api.Hubs.SignalRExecutionNotifier>());
+builder.Services.AddSingleton<NodePilot.Api.Hubs.IWorkflowFolderProjection>(sp => sp.GetRequiredService<NodePilot.Api.Hubs.SignalRExecutionNotifier>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<NodePilot.Api.Hubs.SignalRExecutionNotifier>());
 
 // Activity + trigger executors are auto-discovered by scanning NodePilot.Engine for every
@@ -506,6 +507,14 @@ using (var scope = app.Services.CreateScope())
     app.Services.GetRequiredService<NodePilot.Data.Availability.IDatabaseAvailability>().MarkBootComplete();
 }
 
+// L-17: must run before ANY middleware that reads the request scheme or the client IP.
+// UseHsts() short-circuits on !Request.IsHttps, so behind a TLS-terminating reverse proxy that
+// speaks plain HTTP to Kestrel it silently emitted no Strict-Transport-Security header at all —
+// the header was "enabled" in config and absent on the wire. Also feeds the rate limiter and auth
+// via Connection.RemoteIpAddress. Safe when no proxy is present: with no matching X-Forwarded-*
+// headers (and no trusted network/proxy configured) it is a no-op.
+app.UseForwardedHeaders();
+
 // Production-only pipeline hardening: global exception handler + HSTS + CSP + standard
 // security response headers. Must be registered before other middleware so it wraps them.
 app.UseHostFiltering();
@@ -520,11 +529,6 @@ if (app.Environment.IsDevelopment())
 {
     app.UseCors("DevCors");
 }
-
-// Must run before rate-limiter + auth so Connection.RemoteIpAddress reflects the true
-// client IP behind a reverse proxy. Safe when no proxy is present — with no matching
-// X-Forwarded-* headers it's a no-op.
-app.UseForwardedHeaders();
 
 // HTTP → HTTPS redirect only active when Kestrel was configured with a cert-store binding
 // and RedirectHttpToHttps is true. No-op in dev/test.

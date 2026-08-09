@@ -328,6 +328,24 @@ public sealed class AuthControllerLdapTests : IDisposable
     }
 
     [Fact]
+    public async Task OverlongPassword_IsRejectedBeforeLdapOrThrottleWork()
+    {
+        // M-32: every password-setting path runs ValidatePasswordPolicy, which caps at
+        // MaxPasswordBytes, so no stored hash can correspond to a longer secret — an over-long
+        // login password is unauthenticatable by construction. Reject it at the entry point
+        // instead of spending a directory round-trip and a throttle slot on it.
+        var (controller, adapter) = NewController();
+
+        var result = await controller.Login(
+            new LoginRequest("alice", new string('a', AuthController.MaxPasswordBytes + 1)),
+            CancellationToken.None);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>();
+        adapter.Calls.Should().Be(0);
+        (await _db.IdempotencyKeys.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
     public async Task ParallelPreJitLogins_AcrossDbContexts_OnlyFiveReachDirectory()
     {
         var databasePath = Path.Combine(_contentRoot, "parallel-ldap.db");

@@ -237,6 +237,73 @@ public class ExecutionHub : Hub
         }
     }
 
+    /// <summary>
+    /// The execution-group ids (plain GUIDs) that currently have at least one subscriber.
+    /// Callers use this to narrow an "which executions are affected" query to the handful of
+    /// executions somebody is actually watching, instead of every row in the retention window.
+    /// </summary>
+    internal static IReadOnlyCollection<Guid> SubscribedExecutionIds()
+    {
+        var ids = new HashSet<Guid>();
+        foreach (var groupName in _groupSubscriberCounts.Keys)
+        {
+            if (Guid.TryParse(groupName, out var executionId))
+                ids.Add(executionId);
+        }
+        return ids;
+    }
+
+    /// <summary>
+    /// M-33: drops every live subscription to the given workflow / execution groups.
+    /// <see cref="JoinExecution"/> and <see cref="JoinWorkflow"/> authorize once, at join, and the
+    /// notifier fans out to the group without re-checking. When a workflow moves to another folder
+    /// its joined connections therefore keep receiving step output — including the step detail the
+    /// REST surface answers with 404 straight after the move. Evicting the membership is the
+    /// cheapest correct answer: the SPA's re-join runs the RBAC gate again and fails for anyone
+    /// who lost access, while callers who kept it simply resubscribe.
+    /// </summary>
+    internal static async Task RevokeSubscriptionsAsync(
+        IHubContext<ExecutionHub> hub,
+        IReadOnlyCollection<Guid> workflowIds,
+        IReadOnlyCollection<Guid> executionIds,
+        CancellationToken ct)
+    {
+        if (workflowIds.Count == 0 && executionIds.Count == 0) return;
+
+        var groups = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var id in workflowIds) groups.Add($"workflow-{id}");
+        foreach (var id in executionIds) groups.Add(id.ToString());
+
+        foreach (var (connectionId, joined) in _joinedGroups)
+        {
+            string[] affected;
+            lock (joined)
+            {
+                affected = joined.Where(groups.Contains).ToArray();
+            }
+
+            foreach (var group in affected)
+            {
+                // Bookkeeping first: if RemoveFromGroupAsync throws (a torn-down connection is the
+                // normal case), the local registry must not keep claiming the subscription — the
+                // notifier's HasGroupSubscribers gate reads it to decide whether to fan out at all.
+                UnregisterGroup(connectionId, group);
+                try
+                {
+                    await hub.Groups.RemoveFromGroupAsync(connectionId, group, ct);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch
+                {
+                    // Connection already gone — the membership dies with it.
+                }
+            }
+        }
+    }
+
     [ExcludeFromCodeCoverage(Justification = "Hub method; only reachable through a live SignalR connection.")]
     public async Task<object> JoinExecution(string executionId)
     {

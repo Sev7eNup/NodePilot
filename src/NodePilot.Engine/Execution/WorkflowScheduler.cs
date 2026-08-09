@@ -196,8 +196,16 @@ public static class WorkflowScheduler
             if (entry.SkipRequested || skipped.Contains(node.Id))
                 continue;
 
+            // M-31: log the failure, never its payload. StepRunner deliberately returns the RAW
+            // ActivityResult — the data bus has to resolve {{step.error}} to the real value — and
+            // redacts only on the way out to the DB, the UI, telemetry and the support log. This
+            // line used to interpolate result.ErrorOutput directly, which made the main log and any
+            // SIEM shipping it the one sink that saw unredacted stderr while the UI showed "***".
+            // The reason is already logged, redacted, by StepRunner's STEP_FAILED support event on
+            // every failure (and by LogStepDetail when Engine step detail is enabled), so nothing
+            // is lost here.
             if (!result.Success)
-                logger.LogWarning("Step {StepId} failed: {Error}", node.Id, result.ErrorOutput);
+                logger.LogWarning("Step {StepId} failed; see the STEP_FAILED event for the redacted reason.", node.Id);
 
             foreach (var successor in adjacency[node.Id])
             {

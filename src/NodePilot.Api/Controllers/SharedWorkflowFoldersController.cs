@@ -1,7 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 using NodePilot.Api.Audit;
+using NodePilot.Api.Hubs;
 using NodePilot.Api.Security;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
@@ -22,12 +24,48 @@ public class SharedWorkflowFoldersController : ControllerBase
     private readonly NodePilotDbContext _db;
     private readonly IAuditWriter _audit;
     private readonly IResourceAuthorizationService _authz;
+    private readonly IHubContext<ExecutionHub> _hub;
+    private readonly IWorkflowFolderProjection _folderProjection;
 
-    public SharedWorkflowFoldersController(NodePilotDbContext db, IAuditWriter audit, IResourceAuthorizationService authz)
+    public SharedWorkflowFoldersController(
+        NodePilotDbContext db,
+        IAuditWriter audit,
+        IResourceAuthorizationService authz,
+        IHubContext<ExecutionHub> hub,
+        IWorkflowFolderProjection folderProjection)
     {
         _db = db;
         _audit = audit;
         _authz = authz;
+        _hub = hub;
+        _folderProjection = folderProjection;
+    }
+
+    /// <summary>
+    /// M-33: a move changes the folder a workflow's RBAC is derived from. The REST surface picks
+    /// that up on the next request, but two projections do not: SignalR group membership is
+    /// authorized once at join, and the notifier caches workflow → folder for the live-ops filter.
+    /// Both are corrected here so a listener who just lost Read stops receiving step output
+    /// instead of streaming until they happen to disconnect.
+    /// </summary>
+    private async Task RevokeLiveSubscriptionsAsync(IReadOnlyCollection<Guid> workflowIds, CancellationToken ct)
+    {
+        if (workflowIds.Count == 0) return;
+
+        foreach (var workflowId in workflowIds)
+            _folderProjection.InvalidateWorkflowFolder(workflowId);
+
+        // Only executions somebody is actually watching can leak, so narrow the lookup to those
+        // instead of scanning the whole retention window for the moved workflows.
+        var watched = ExecutionHub.SubscribedExecutionIds();
+        var executionIds = watched.Count == 0
+            ? []
+            : await _db.WorkflowExecutions.AsNoTracking()
+                .Where(e => watched.Contains(e.Id) && workflowIds.Contains(e.WorkflowId))
+                .Select(e => e.Id)
+                .ToListAsync(ct);
+
+        await ExecutionHub.RevokeSubscriptionsAsync(_hub, workflowIds, executionIds, ct);
     }
 
     /// <summary>Returns the full folder tree the caller can read, plus per-folder
@@ -206,6 +244,15 @@ public class SharedWorkflowFoldersController : ControllerBase
 
         await _db.SaveChangesAsync(ct);
         _authz.InvalidateAll();
+
+        // The subtree's inherited permissions just changed, so every workflow below it may have a
+        // different reader set now (M-33).
+        var subtreeWorkflowIds = await _db.Workflows.AsNoTracking()
+            .Where(w => subtreeFolderIds.Contains(w.FolderId))
+            .Select(w => w.Id)
+            .ToListAsync(ct);
+        await RevokeLiveSubscriptionsAsync(subtreeWorkflowIds, ct);
+
         await _audit.LogAsync(AuditActions.FolderMoved, "SharedWorkflowFolder", folder.Id,
             AuditDetails.Json(("oldPath", oldPath), ("newPath", folder.Path),
                 ("newParentId", newParentId)), ct);
@@ -303,6 +350,8 @@ public class SharedWorkflowFoldersController : ControllerBase
                 message = "Workflow changed concurrently. Reload the workflow and retry the move.",
             });
         }
+
+        await RevokeLiveSubscriptionsAsync([workflowId], ct);
 
         await _audit.LogAsync(AuditActions.WorkflowMoved, "Workflow", workflow.Id,
             AuditDetails.Json(("fromFolderId", oldFolderId), ("toFolderId", req.TargetFolderId),

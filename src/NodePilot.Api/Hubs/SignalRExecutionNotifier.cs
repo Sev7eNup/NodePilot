@@ -11,7 +11,18 @@ using NodePilot.Engine.Security;
 
 namespace NodePilot.Api.Hubs;
 
-public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier
+/// <summary>
+/// The notifier's workflow → folder projection, exposed for invalidation. Split out so the
+/// folder-move endpoints depend on the invalidation contract rather than on the hosted service
+/// that happens to own the cache.
+/// </summary>
+public interface IWorkflowFolderProjection
+{
+    /// <summary>Drops the cached folder mapping for a workflow whose folder changed.</summary>
+    void InvalidateWorkflowFolder(Guid workflowId);
+}
+
+public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier, IWorkflowFolderProjection
 {
     private static readonly KeyValuePair<string, object?> StepStartedTag = new("event_type", "StepStarted");
     private static readonly KeyValuePair<string, object?> StepCompletedTag = new("event_type", "StepCompleted");
@@ -32,10 +43,18 @@ public class SignalRExecutionNotifier : BackgroundService, IExecutionNotifier
     private readonly OutputRedactor _redactor;
 
     // workflowId → folderId, so the live-ops feed's per-event RBAC filter doesn't hit the DB on
-    // every status transition. Folder moves are rare; a stale entry can at worst send a
-    // status-only event (no payload) to a connection whose scope no longer matches — acceptable
-    // for the live-ops feed, same single-snapshot RBAC posture as JoinExecution/JoinWorkflow.
+    // every status transition. Entries are invalidated by <see cref="InvalidateWorkflowFolder"/>
+    // on the move paths (M-33): unlike the per-connection scope snapshot, this is a server-side
+    // mapping, so a stale entry would keep routing a moved workflow's status events to the OLD
+    // folder's watchers indefinitely — and hide them from the new folder's — rather than merely
+    // going stale for the lifetime of one connection.
     private readonly ConcurrentDictionary<Guid, Guid> _workflowFolderCache = new();
+
+    /// <summary>
+    /// Drops the cached folder mapping for a workflow whose folder changed. Safe to call for
+    /// workflows that were never cached.
+    /// </summary>
+    public void InvalidateWorkflowFolder(Guid workflowId) => _workflowFolderCache.TryRemove(workflowId, out _);
 
     public SignalRExecutionNotifier(
         IHubContext<ExecutionHub> hub,
