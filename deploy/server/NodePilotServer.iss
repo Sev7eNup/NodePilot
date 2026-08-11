@@ -53,12 +53,23 @@ MinVersion=10.0.20348
 OutputDir={#OutputDir}
 OutputBaseFilename=NodePilot-Server-Setup-{#AppVersion}
 WizardStyle=modern
-; Default window size. WizardSizePercent=120 was tried and reverted - every page fits at 100%, and
-; the pages that are tight are tight by layout rather than by window size.
+; Bigger than default, measured rather than guessed. An earlier note here claimed "every page fits
+; at 100%" and reverted a previous attempt on that basis; the prerequisites page disproves it once
+; all ten checks report. Each row is "Title: Detail" (see the render loop), so at the default width
+; six of ten wrap to two lines, LayoutReadiness stacks ~238 px of rows into a ~309 px surface, and
+; the remediation box - which gets whatever is left - lands at ~30 px. That is one clipped line for
+; the field that has to show a CREATE LOGIN / CREATE USER block when the database check fails.
 ;
-; WizardResizable stays off regardless of that: the controls on the network and prerequisites pages
-; are positioned once, at wizard construction, and carry no anchors. A window the operator drags
-; open would grow around a certificate picker that stays where it was.
+; Width does most of the work: +25% (497 -> ~621 px) puts most rows back on one line, which shortens
+; the stack before height is even considered. Height then buys the explanation real room: +45%
+; (360 -> ~522 px, surface ~309 -> ~471 px) leaves ~210 px, about twelve lines. The window is
+; ~560 px tall including its frame and fits a 768 px server console.
+;
+; WizardResizable stays off regardless: the controls on the network and prerequisites pages are
+; positioned once, at wizard construction, and carry no anchors. A window the operator drags open
+; would grow around a certificate picker that stays where it was. A fixed larger START size is a
+; different thing and is safe - every control that must grow is already sized from SurfaceWidth.
+WizardSizePercent=125,145
 SetupIconFile={#StageDir}\setup-icon.ico
 LicenseFile={#StageDir}\LICENSE.txt
 ; A failed setup has to be diagnosable without asking the operator to reproduce it.
@@ -614,7 +625,15 @@ begin
   Available := ButtonTop - ScaleY(6) - RemediationBox.Top;
   // Never negative, never overlapping the buttons: with every row wrapped and every fix offered
   // there is little left, and a label with no room is still better than one drawn over them.
-  if Available < ScaleY(13) then Available := ScaleY(13);
+  //
+  // The floor is two lines plus the scrollbar rather than one. At one line the control reads as a
+  // broken edit field instead of an explanation - which is exactly what it looked like with ten
+  // checks before the window was enlarged. The larger window means this is not reached in
+  // practice; it is here for high-DPI scaling and for the day an eleventh check arrives.
+  //
+  // Rows still win and the box still gives: the other precedence would draw the explanation over
+  // the last checks, and a check nobody can see is worse than an explanation that has to scroll.
+  if Available < ScaleY(34) then Available := ScaleY(34);
   RemediationBox.Height := Available;
 end;
 
