@@ -290,7 +290,19 @@
     "profileNotDeletable": "Defined in \"{{source}}\" — editable here, but it can only be removed in that configuration source.",
     "noProfiles": "No LLM profile yet. Add one and select it to use the AI features.",
     "newProfileName": "New profile",
-    "activeProfileRequired": "Select an active profile, or turn the LLM integration off."
+    "activeProfileRequired": "Select an active profile, or turn the LLM integration off.",
+    "proxy": "Outbound proxy",
+    "proxyMode": "Mode",
+    "proxyModeOff": "No proxy (direct connection)",
+    "proxyModeSystem": "Use the system proxy",
+    "proxyModeCustom": "Custom proxy",
+    "proxyModeHint": "Applies to every AI call — chat, generation, and the llmQuery activity. Changes take effect immediately; save first, then use the Test button.",
+    "proxyModeSystemHint": "Uses the proxy configured for the account the NodePilot service runs under (Windows: WinHTTP/WinINET), including its own bypass rules. Changes to the Windows settings take effect after a service restart.",
+    "proxyAddress": "Address",
+    "proxyBypassList": "Bypass list (no proxy)",
+    "proxyBypassListHint": "Hosts reached directly. Wildcards allowed, e.g. localhost or *.corp.local — this is how a local Ollama keeps working alongside a proxy.",
+    "proxyUseDefaultCredentials": "Use the service account's Windows credentials",
+    "proxyUseDefaultCredentialsHint": "For domain-integrated proxies using NTLM/Kerberos. Replaces username and password."
   },
   "retention": {
     "auditLogCardTitle": "Audit Log",

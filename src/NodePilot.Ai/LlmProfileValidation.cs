@@ -52,6 +52,69 @@ public static class LlmProfileValidation
     }
 
     /// <summary>
+    /// Rules for the <c>Llm:Proxy:*</c> block. Same <c>Llm:Enabled</c> gate as
+    /// <see cref="ValidateProfileEndpoints"/>: an untouched default block must never keep an
+    /// instance from booting.
+    ///
+    /// <para>Checked here rather than only where the proxy is built, so a bad value is rejected by
+    /// the settings PUT instead of detonating on the next restart — the failure mode
+    /// <c>RestApi:Proxy</c> still has.</para>
+    /// </summary>
+    public static IReadOnlyList<ProfileIssue> ValidateProxy(IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+
+        var issues = new List<ProfileIssue>();
+        if (!configuration.GetValue<bool>($"{LlmOptions.SectionName}:Enabled"))
+            return issues;
+
+        var modeKey = $"{LlmProxyOptions.SectionName}:Mode";
+        var addressKey = $"{LlmProxyOptions.SectionName}:Address";
+
+        var rawMode = configuration[modeKey];
+        if (string.IsNullOrWhiteSpace(rawMode)) return issues;
+
+        if (!Enum.TryParse<LlmProxyMode>(rawMode.Trim(), ignoreCase: true, out var mode))
+        {
+            issues.Add(new ProfileIssue(
+                modeKey,
+                $"LLM proxy mode '{rawMode}' is not recognised. Use 'Off', 'System', or 'Custom'."));
+            return issues;
+        }
+
+        if (mode != LlmProxyMode.Custom) return issues;
+
+        var address = configuration[addressKey]?.Trim();
+        if (string.IsNullOrWhiteSpace(address))
+        {
+            issues.Add(new ProfileIssue(
+                addressKey,
+                "LLM proxy mode is 'Custom' but no proxy address is set. Enter a proxy URL "
+                + "(e.g. http://proxy.corp.local:8080), or switch the mode to 'Off' or 'System'."));
+            return issues;
+        }
+
+        if (!Uri.TryCreate(address, UriKind.Absolute, out var proxyUri)
+            || (proxyUri.Scheme != Uri.UriSchemeHttp && proxyUri.Scheme != Uri.UriSchemeHttps))
+        {
+            issues.Add(new ProfileIssue(
+                addressKey,
+                $"LLM proxy address '{address}' is not a valid http(s) URL."));
+            return issues;
+        }
+
+        if (LlmEndpointGuard.IsCloudMetadataEndpoint(address))
+        {
+            issues.Add(new ProfileIssue(
+                addressKey,
+                $"SECURITY: the LLM proxy address ('{address}') points at a cloud-metadata endpoint. "
+                + "This range (169.254.0.0/16, metadata.google.internal, metadata.azure.com) is always blocked."));
+        }
+
+        return issues;
+    }
+
+    /// <summary>
     /// True when <c>Llm:ActiveProfileId</c> names an existing profile. Read straight from
     /// configuration so it works on a simulated merged config (settings PUT) as well as at boot.
     /// </summary>

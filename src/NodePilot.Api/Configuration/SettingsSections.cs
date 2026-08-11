@@ -427,8 +427,16 @@ public static class SettingsSectionAdapters
             foreach (var field in LlmProfileFieldNames)
                 keys.Add($"Llm:Profiles:{id}:{field}");
         }
+        foreach (var field in LlmProxyFieldNames)
+            keys.Add($"Llm:Proxy:{field}");
         return keys;
     }
+
+    /// <summary>The proxy field names, in the order they are persisted.</summary>
+    private static readonly string[] LlmProxyFieldNames =
+    [
+        "Mode", "Address", "BypassList", "Username", "Password", "UseDefaultCredentials",
+    ];
 
     /// <summary>
     /// Which configuration source owns a profile besides the runtime overrides file — see
@@ -460,7 +468,27 @@ public static class SettingsSectionAdapters
                 ManagedBy = LlmProfileManagedBy(configRoot, kv.Key),
             })
             .ToList(),
+        Proxy = BuildLlmProxyDto(s.Proxy),
     };
+
+    /// <summary>
+    /// Read projection of <c>Llm:Proxy:*</c>. The password is masked here and nowhere else — the
+    /// whole section payload is also what <c>SettingsKnowledgeReader</c> hands to the LLM as
+    /// context, and its safety argument rests on this masking.
+    /// </summary>
+    private static LlmProxyDto BuildLlmProxyDto(LlmProxyOptions? p)
+    {
+        p ??= new LlmProxyOptions();
+        return new LlmProxyDto
+        {
+            Mode = p.Mode.ToString().ToLowerInvariant(),
+            Address = p.Address ?? "",
+            BypassList = new List<string>(p.BypassList ?? new List<string>()),
+            Username = p.Username,
+            Password = string.IsNullOrEmpty(p.Password) ? null : SettingsSchema.MaskedSecretDisplay,
+            UseDefaultCredentials = p.UseDefaultCredentials,
+        };
+    }
 
     private static LlmSettingsDto BuildLlmDtoFromJson(JsonObject? section, IConfigurationRoot configRoot)
     {
@@ -487,11 +515,23 @@ public static class SettingsSectionAdapters
             }
         }
 
+        var proxyObj = section["Proxy"] as JsonObject ?? new JsonObject();
         return new LlmSettingsDto
         {
             Enabled = section["Enabled"]?.GetValue<bool>() ?? false,
             ActiveProfileId = section["ActiveProfileId"]?.GetValue<string>() ?? "",
             Profiles = profiles,
+            Proxy = new LlmProxyDto
+            {
+                // Lower-cased for the DTO exactly like BuildLlmProxyDto does, so both read paths
+                // hand the UI the same token its mode picker binds to.
+                Mode = NormalizeProxyMode(proxyObj["Mode"]?.GetValue<string>()).ToLowerInvariant(),
+                Address = proxyObj["Address"]?.GetValue<string>() ?? "",
+                BypassList = ReadStringArray(proxyObj, "BypassList"),
+                Username = proxyObj["Username"]?.GetValue<string>(),
+                Password = HasNonNullValue(proxyObj, "Password") ? SettingsSchema.MaskedSecretDisplay : null,
+                UseDefaultCredentials = proxyObj["UseDefaultCredentials"]?.GetValue<bool>() ?? false,
+            },
         };
     }
 
@@ -522,13 +562,36 @@ public static class SettingsSectionAdapters
             profiles[id] = profile;
         }
 
+        var proxy = new JsonObject
+        {
+            // Persisted in the enum's own casing so a hand-read config file matches LlmProxyMode.
+            ["Mode"] = NormalizeProxyMode(dto.Proxy?.Mode),
+            ["Address"] = dto.Proxy?.Address?.Trim() ?? "",
+            ["BypassList"] = ToJsonArray(dto.Proxy?.BypassList ?? new List<string>()),
+            ["UseDefaultCredentials"] = dto.Proxy?.UseDefaultCredentials ?? false,
+        };
+        WriteOrExplicitNull(proxy, "Username", dto.Proxy?.Username);
+        WriteSecretField(proxy, "Password", dto.Proxy?.Password,
+            previousSection?["Proxy"] as JsonObject ?? new JsonObject(), protector);
+
         return new JsonObject
         {
             ["Enabled"] = dto.Enabled,
             ["ActiveProfileId"] = dto.ActiveProfileId.Trim(),
             ["Profiles"] = profiles,
+            ["Proxy"] = proxy,
         };
     }
+
+    /// <summary>
+    /// Canonical casing for the persisted proxy mode. An unparsable value can't reach here (the
+    /// DTO's Validate rejects it first), so falling back to Off is a defensive default, not a
+    /// silent correction of operator input.
+    /// </summary>
+    private static string NormalizeProxyMode(string? mode)
+        => Enum.TryParse<LlmProxyMode>(mode?.Trim() ?? "", ignoreCase: true, out var parsed)
+            ? parsed.ToString()
+            : nameof(LlmProxyMode.Off);
 
     /// <summary>
     /// Refuses a save that drops a profile the runtime overrides file doesn't own.
