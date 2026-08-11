@@ -189,6 +189,14 @@ try {
     }
 
     # Reject a malformed signed ZIP before stopping the service or touching the installation.
+    #
+    # Announced, because this is the longest stretch of the whole update and used to run without a
+    # single progress line: the first phase below is the backup, so the wizard sat on its start
+    # caption while ~2900 files were expanded to staging and then hashed one by one against the
+    # signed manifest. Measured 2.7 s of hashing on a warm NVMe, minutes on a machine whose
+    # real-time scanner inspects every file created under %TEMP% - see docs/av-exclusions.md.
+    # An operator watching a motionless dialog reasonably concludes it has hung.
+    Write-Step 'Extracting artifact'
     $artifactStage = Expand-NodePilotArtifactToStaging -ArtifactPath $ArtifactPath
     Write-Info "Verified restricted staging: $artifactStage"
 

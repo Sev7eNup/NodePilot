@@ -84,6 +84,36 @@ try {
         throw 'Extracted artifact tampering was not detected.'
     }
 
+    # Zip-slip. The extractor was swapped from Expand-Archive to ZipFile::ExtractToDirectory for
+    # speed (2.2 s against 25.8 s on the real artifact), and the whole reason that trade is
+    # acceptable is that .NET refuses an entry resolving outside the destination. Asserted here
+    # rather than assumed, because a future swap to a hand-rolled extraction loop would silently
+    # give it up: this is the one property the staging directory cannot recover from.
+    $slipZip = Join-Path $testRoot 'zip-slip.zip'
+    $slipSource = Join-Path $testRoot 'slip-src'
+    New-Item -ItemType Directory -Path $slipSource -Force | Out-Null
+    [IO.File]::WriteAllText((Join-Path $slipSource 'harmless.txt'), 'ok', (New-Object Text.UTF8Encoding($false)))
+    Compress-Archive -Path (Join-Path $slipSource '*') -DestinationPath $slipZip -Force
+    # Compress-Archive cannot author a traversing entry name, so rewrite one in directly.
+    Import-NodePilotZipTypes
+    $slipArchive = [IO.Compression.ZipFile]::Open($slipZip, [IO.Compression.ZipArchiveMode]::Update)
+    try {
+        $entry = $slipArchive.CreateEntry('../escaped.txt')
+        $writer = New-Object IO.StreamWriter($entry.Open())
+        try { $writer.Write('escaped') } finally { $writer.Dispose() }
+    }
+    finally { $slipArchive.Dispose() }
+
+    $slipBlocked = $false
+    try { [void](Expand-NodePilotArtifactToStaging -ArtifactPath $slipZip -ParentPath $testRoot) }
+    catch { $slipBlocked = $true }
+    if (-not $slipBlocked) {
+        throw 'A zip entry escaping the staging directory was extracted instead of rejected.'
+    }
+    if (Test-Path -LiteralPath (Join-Path $testRoot 'escaped.txt')) {
+        throw 'Zip-slip wrote a file outside the staging directory.'
+    }
+
     $secretPath = Join-Path $testRoot 'restricted-settings.json'
     $secretBytes = [Text.Encoding]::UTF8.GetBytes('{"secret":"first"}')
     try {

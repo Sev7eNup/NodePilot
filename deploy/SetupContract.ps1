@@ -366,9 +366,13 @@ $script:NodePilotInstallPhases = @(
     [pscustomobject]@{ Step = 'Starting service';                        Percent = 80; Text = 'Starting the service - this can take up to three minutes' }
 )
 
-# The updater's four phases. The probe here waits 60 s, not the installer's 180, so the last
+# The updater's five phases. The probe here waits 60 s, not the installer's 180, so the last
 # caption promises less.
 $script:NodePilotUpdatePhases = @(
+    # Ahead of the backup on purpose: expanding ~2900 files to staging and hashing every one of
+    # them against the signed manifest is the longest part of an update, and it used to happen
+    # with no phase of its own - the dialog stood on its start caption until the backup began.
+    [pscustomobject]@{ Step = 'Extracting artifact';          Percent = 10; Text = 'Extracting and verifying the signed artifact - this can take a few minutes' }
     [pscustomobject]@{ Step = 'Backing up current install';   Percent = 20; Text = 'Backing up the current installation' }
     [pscustomobject]@{ Step = 'Stopping service';             Percent = 40; Text = 'Stopping the service' }
     [pscustomobject]@{ Step = 'Installing verified artifact'; Percent = 55; Text = 'Installing the verified artifact' }

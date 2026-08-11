@@ -602,6 +602,7 @@ try {
     # Every phase either script announces has to be recognised - the reverse of the drift guard,
     # checked here against the real tables rather than against the scripts.
     foreach ($sample in @(
+        '[update] Extracting artifact',
         '[update] Backing up current install',
         "[update] Stopping service 'NodePilot'",
         '[update] Installing verified artifact',
@@ -609,6 +610,16 @@ try {
         Assert-True -Name "the updater phase in '$sample' is recognised" `
             -Condition ($null -ne (Get-NodePilotPhaseProgress -Line $sample))
     }
+    # Extraction has to come FIRST, and it has to exist at all. It is the longest part of an
+    # update - ~2900 files expanded to staging, then hashed one by one against the signed manifest
+    # - and it used to run with no phase of its own, so the dialog sat on its start caption for
+    # minutes while an operator reasonably concluded the upgrade had hung. A future edit that
+    # renames the heading or reorders the table past the backup brings that back.
+    $extractPhase = Get-NodePilotPhaseProgress -Line '[update] Extracting artifact'
+    $backupPhase  = Get-NodePilotPhaseProgress -Line '[update] Backing up current install'
+    Assert-True -Name 'the updater announces extraction before the backup' `
+        -Condition ($null -ne $extractPhase -and $null -ne $backupPhase -and
+                    [int]$extractPhase.Percent -lt [int]$backupPhase.Percent)
     Assert-True -Name 'an updater detail line is not a phase' `
         -Condition ($null -eq (Get-NodePilotPhaseProgress -Line '[update]   Backup: C:\x'))
     # Ascending percentages are what let the wizard refuse to ever move the bar backwards without

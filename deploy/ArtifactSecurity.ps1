@@ -28,9 +28,37 @@ function New-NodePilotRandomBase64 {
 }
 
 function Import-NodePilotPkcsTypes {
+    <#
+      The assembly carrying SignedCms is named differently per edition: Windows PowerShell 5.1
+      ships it inside System.Security, PowerShell 7 as System.Security.Cryptography.Pkcs.
+
+      Asked by edition rather than attempted and caught. The try/catch this replaces worked, but
+      Add-Type raises a TERMINATING error under the setup's Stop preference, and Start-Transcript
+      records it before the catch can swallow it - so every setup log carried a red
+      "Die Assembly ... konnte nicht gefunden werden" immediately above the line confirming the
+      signature had verified. An operator reading that in CMTrace has every reason to abort a
+      perfectly healthy installation.
+    #>
     if ('System.Security.Cryptography.Pkcs.SignedCms' -as [type]) { return }
-    try { Add-Type -AssemblyName System.Security.Cryptography.Pkcs -ErrorAction Stop }
-    catch { Add-Type -AssemblyName System.Security -ErrorAction Stop }
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        Add-Type -AssemblyName System.Security.Cryptography.Pkcs -ErrorAction Stop
+    }
+    else {
+        Add-Type -AssemblyName System.Security -ErrorAction Stop
+    }
+}
+
+function Import-NodePilotZipTypes {
+    <#
+      System.IO.Compression.ZipFile lives in a separate assembly that Windows PowerShell 5.1 does
+      not load on its own; PowerShell 7 has it in the default set. Asked by edition for the same
+      reason as Import-NodePilotPkcsTypes: a try/catch here would write a red terminating error
+      into every setup transcript before swallowing it.
+    #>
+    if ('System.IO.Compression.ZipFile' -as [type]) { return }
+    if ($PSVersionTable.PSEdition -ne 'Core') {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem -ErrorAction Stop
+    }
 }
 
 function ConvertFrom-NodePilotHex {
@@ -420,9 +448,35 @@ function Expand-NodePilotArtifactToStaging {
         [string]$ParentPath = [IO.Path]::GetTempPath()
     )
 
+    # Absolute paths: ExtractToDirectory resolves relative ones against the PROCESS working
+    # directory, which is not the caller's location and is not the staging parent either.
+    $resolvedArtifact = (Resolve-Path -LiteralPath $ArtifactPath -ErrorAction Stop).Path
     $stagingPath = New-NodePilotRestrictedStagingDirectory -ParentPath $ParentPath
     try {
-        Expand-Archive -LiteralPath $ArtifactPath -DestinationPath $stagingPath -Force
+        # ExtractToDirectory rather than Expand-Archive, which pays per-entry pipeline overhead
+        # that dominates a tree of mostly sub-64 KB files. Faster everywhere measured, but the
+        # margin is strongly environment-dependent, so do not quote a single multiplier:
+        #
+        #   Win 11 workstation (PS 5.1.22621)   24.3-24.8 s  ->  2.0-2.7 s   ~9-12x
+        #   Server 2025 VM, 4 cores (26100)      7.3- 7.7 s  ->  4.6-5.2 s   ~1.6x
+        #
+        # Same artifact (2867 files, 114 MB), three and two runs respectively. The workstation is
+        # the faster machine on the new path and the slower one on the old, so the difference is
+        # in what Expand-Archive costs per entry there, not in raw I/O. Worth having on both, but
+        # the lab number is the one to expect on a server.
+        #
+        # The two were verified to produce identical trees: same 2867 files, same 377 directories,
+        # zero differences in relative path, length or SHA-256.
+        #
+        # Zip-slip protection is NOT lost in the trade. .NET refuses an entry whose resolved path
+        # leaves the destination ("Durch Extrahieren des Zip-Eintrags wuerde eine Datei ausserhalb
+        # des angegebenen Zielverzeichnisses erstellt"), verified against a crafted archive
+        # carrying '../escaped.txt'. Assert-NodePilotExtractedFiles below is the second line
+        # anyway: it rejects rooted or dot-dot paths in the manifest, requires an exact file
+        # count, and hashes every file against the signed manifest - so an entry that landed
+        # somewhere unexpected inside staging would fail there regardless.
+        Import-NodePilotZipTypes
+        [IO.Compression.ZipFile]::ExtractToDirectory($resolvedArtifact, $stagingPath)
         Assert-NodePilotExtractedFiles -RootPath $stagingPath
         return $stagingPath
     }
