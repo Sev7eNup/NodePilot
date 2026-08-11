@@ -1,6 +1,7 @@
 using System.Net;
 using System.Reflection;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
@@ -103,5 +104,69 @@ public sealed class LlmConnectGuardTests
         // HttpRequestException with the guard's reason preserved in the exception chain.
         (await act.Should().ThrowAsync<Exception>())
             .Which.ToString().Should().Contain("SSRF guard rejected");
+    }
+
+    // ---- Stage naming: which half of "cannot reach the endpoint" actually failed ------
+
+    [Fact]
+    public async Task ConnectAsync_UnresolvableHost_FailsAtTheDnsStage()
+    {
+        // .invalid is reserved by RFC 2606 precisely so it can never resolve.
+        using var client = NewGuardedClient();
+
+        Func<Task> act = () => client.GetAsync("http://nodepilot-endpoint.invalid/v1/models");
+
+        (await act.Should().ThrowAsync<Exception>())
+            .Which.ToString().Should().Contain("LLM endpoint DNS:",
+                "name resolution and a dropped connection need different fixes and must not read alike");
+    }
+
+    [Fact]
+    public async Task ConnectAsync_ClosedPort_FailsAtTheTcpStage_AndSaysSomethingAnswered()
+    {
+        // Port 1 on loopback: refused, not dropped — the distinction an operator needs, because a
+        // refusal means the host is reachable and the listener is the problem.
+        using var client = NewGuardedClient();
+
+        Func<Task> act = () => client.GetAsync("http://127.0.0.1:1/v1/models");
+
+        var message = (await act.Should().ThrowAsync<Exception>()).Which.ToString();
+        message.Should().Contain("LLM endpoint TCP:");
+        message.Should().Contain("refused");
+        message.Should().Contain("127.0.0.1", "the addresses actually tried are the diagnostic");
+    }
+
+    [Fact]
+    public async Task ConnectAsync_ReachableEndpoint_LogsTheResolvedAddresses()
+    {
+        // The single most useful line when an endpoint "works from my machine" but not from the
+        // service: a stale AAAA record or a different DNS suffix both look identical from outside.
+        using var server = WireMockServer.Start();
+        server.Given(Request.Create().WithPath("/ping").UsingGet())
+              .RespondWith(Response.Create().WithStatusCode(200).WithBody("pong"));
+
+        var logger = new CapturingLogger();
+        using var client = new HttpClient(new SocketsHttpHandler
+        {
+            ConnectTimeout = LlmConnectGuard.HandshakeTimeout,
+            ConnectCallback = (ctx, ct) => LlmConnectGuard.ConnectAsync(ctx, logger, ct),
+        });
+
+        await client.GetAsync($"{server.Url!.TrimEnd('/')}/ping", TestContext.Current.CancellationToken);
+
+        logger.Messages.Should().Contain(m => m.Contains("resolved to"));
+        logger.Messages.Should().Contain(m => m.Contains("TCP to"));
+    }
+
+    private sealed class CapturingLogger : ILogger
+    {
+        public List<string> Messages { get; } = new();
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => Messages.Add(formatter(state, exception));
     }
 }

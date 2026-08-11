@@ -170,7 +170,7 @@ Je Profil:
 | `ApiKey` | API-Schlüssel; für lokale Modelle häufig nicht erforderlich |
 | `Model` | verwendeter Modellname |
 | `MaxTokens` | maximale Länge einer Modellantwort |
-| `TimeoutSeconds` | maximale Wartezeit auf den Modell-Endpunkt |
+| `TimeoutSeconds` | wie lange das Modell für seine Antwort brauchen darf — nicht die Wartezeit auf die Verbindung, die hat eigene, kurze Fristen |
 | `EnableToolCalling` | erlaubt den Chats, freigegebene lesende Analyse- und Wissensquellen zu verwenden |
 | `ToolCallMaxDepth` | maximale Anzahl aufeinanderfolgender Tool-Aufrufe pro Frage |
 
@@ -198,6 +198,27 @@ für den Proxy selbst; die Base-URL wird weiterhin beim Speichern und beim Start
 
 Änderungen am Proxy wirken ohne Dienstneustart. Einzige Ausnahme ist `System`: Änderungen an den
 Windows-Proxy-Einstellungen selbst werden erst nach einem Neustart des Dienstes übernommen.
+
+### Wenn der Endpunkt nicht erreichbar ist
+
+Den Endpunkt zu erreichen und auf eine Antwort zu warten sind zwei getrennte Dinge mit getrennten
+Fristen. `TimeoutSeconds` gilt nur für die Antwort des Modells; der Verbindungsaufbau scheitert
+unabhängig davon nach wenigen Sekunden. Ein großzügiges Zeitlimit für ein langsames Modell führt
+also nicht dazu, dass man bei einem unerreichbaren Endpunkt minutenlang wartet.
+
+Die Fehlermeldung benennt die Stufe, an der es gescheitert ist:
+
+| Meldung beginnt mit | Bedeutung |
+|---|---|
+| `LLM endpoint DNS:` | Der Name konnte nicht aufgelöst werden — falscher Name, falsches Suffix, oder der Namensdienst antwortet nicht. |
+| `LLM endpoint TCP:` | Der Rechner war nicht erreichbar. *Abgelehnt* heißt: der Host antwortet, aber auf diesem Port hört nichts. *Keine Antwort* heißt in aller Regel Firewall oder Netzsegment. |
+| `LLM endpoint TLS:` | Die Verbindung stand, aber die Verschlüsselung kam nicht zustande — häufig ein verlangtes Client-Zertifikat oder ein Zertifikat, dem der Server nicht vertraut. |
+| `accepted the request but sent no answer` | Alles in Ordnung, das Modell hat nur zu lange gebraucht. Hier ist ein höheres `TimeoutSeconds` die richtige Antwort. |
+
+Ein Zertifikatshinweis, der oft Zeit kostet: NodePilot prüft gegen den Zertifikatsspeicher der
+**Maschine**, nicht den des angemeldeten Benutzers. Ein internes Zertifikat, das der Browser auf
+dem Arbeitsplatz akzeptiert, muss auf dem NodePilot-Server unter den vertrauenswürdigen
+Stammzertifizierungsstellen des Computers liegen.
 
 ### Anfrageformat (ergibt sich aus der Base-URL)
 
