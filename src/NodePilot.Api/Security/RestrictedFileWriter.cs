@@ -309,7 +309,7 @@ internal static class RestrictedFileWriter
         var owner = acl.GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
         if (owner is null || !trustedSids.Contains(owner))
             return ExistingSecretFileSecurity.Invalid(
-                $"parent directory '{directory.FullName}' has an untrusted owner");
+                $"parent directory '{directory.FullName}' has an untrusted owner ({Describe(owner)})");
 
         var dangerous = FileSystemRights.Delete
                         | FileSystemRights.DeleteSubdirectoriesAndFiles
@@ -339,10 +339,38 @@ internal static class RestrictedFileWriter
 
             if ((rule.FileSystemRights & dangerous) != 0)
                 return ExistingSecretFileSecurity.Invalid(
-                    $"parent directory '{directory.FullName}' grants mutation rights to an untrusted principal");
+                    $"parent directory '{directory.FullName}' grants mutation rights to an untrusted principal "
+                    + $"({Describe(sid)})");
         }
 
         return ExistingSecretFileSecurity.Valid();
+    }
+
+    /// <summary>
+    /// Renders a SID for an operator: the account name where it still resolves, the raw SID
+    /// otherwise — and both when they differ, because the SID is what <c>icacls</c> needs.
+    ///
+    /// <para>Naming the principal is the whole point. "grants mutation rights to an untrusted
+    /// principal" is true and useless: the usual cause is a leftover ACE from an earlier
+    /// installation that ran under a different service identity, and without the name there is
+    /// nothing to search for. An orphaned SID — the account was deleted, which is exactly what a
+    /// decommissioned service account looks like — cannot be translated, and that failure is
+    /// itself the answer, so it must never turn into an exception on a boot path.</para>
+    /// </summary>
+    private static string Describe(SecurityIdentifier? sid)
+    {
+        if (sid is null) return "no owner could be read";
+        try
+        {
+            var name = ((NTAccount)sid.Translate(typeof(NTAccount))).Value;
+            return $"{name}, {sid.Value}";
+        }
+        catch (Exception ex) when (ex is IdentityNotMappedException or SystemException)
+        {
+            // Unresolvable SIDs are the interesting case, not an error: a deleted account still
+            // holds its ACE, and the raw SID is what removes it.
+            return $"{sid.Value}, unresolvable — the account no longer exists";
+        }
     }
 
     private static HashSet<SecurityIdentifier> BuildTrustedSids()

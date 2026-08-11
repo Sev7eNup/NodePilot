@@ -582,6 +582,37 @@ Assert-TextMatches -Name 'the data directory gets a trusted owner, not just trus
     -Text $installerScript.Substring($aclFunctionStart, $aclFunctionEnd - $aclFunctionStart) `
     -Pattern 'SetOwner\('
 
+# Applying the ACL and assuming it landed is not the same as the service being able to use it. A
+# leftover ACE from an installation that ran under a different service identity survives into the
+# new install, and the API - not the installer - discovers it, at the first service start, with
+# "grants mutation rights to an untrusted principal" and a rollback that the comment at the catch
+# block records as capable of failing on its own. Reported from the field on 1.2.3. The installer
+# therefore asks the same question itself, and it has to ask it BEFORE the artifact is extracted,
+# so a give-up costs nothing.
+Assert-TextMatches -Name 'the installer verifies the data directory the way the service will' `
+    -Text $installerScript `
+    -Pattern '(?s)Set-DirectoryAclForService -Path \$DataPath[\s\S]{0,2000}Assert-ServiceDirectoryAclUsable -Path \$DataPath'
+Assert-TextMatches -Name 'that verification runs before the artifact is extracted' `
+    -Text $installerScript `
+    -Pattern '(?s)Assert-ServiceDirectoryAclUsable -Path \$DataPath[\s\S]{0,4000}Write-Step "Extracting artifact"'
+# Repair-then-recheck, not repair-and-hope: the second verdict is what decides.
+$assertFunctionStart = $installerScript.IndexOf('function Assert-ServiceDirectoryAclUsable')
+$assertFunctionEnd = $installerScript.IndexOf('function Assert-SafeInstallRoot', $assertFunctionStart)
+if ($assertFunctionStart -lt 0 -or $assertFunctionEnd -le $assertFunctionStart) {
+    throw 'Deployment template check failed: could not delimit Assert-ServiceDirectoryAclUsable in the installer.'
+}
+$assertFunction = $installerScript.Substring($assertFunctionStart, $assertFunctionEnd - $assertFunctionStart)
+Assert-TextMatches -Name 'the ACL repair is re-verified and gives up loudly' `
+    -Text $assertFunction `
+    -Pattern '(?s)Set-DirectoryAclForService[\s\S]{0,600}Test-ServiceDirectoryAclTrust[\s\S]{0,600}throw'
+# The trusted set has to match BuildTrustedSids() in RestrictedFileWriter.cs, or the installer
+# blesses a directory the service then rejects - the exact failure this whole check exists for.
+foreach ($trustedSid in @('S-1-5-18', 'S-1-5-32-544', 'S-1-3-0', 'S-1-3-4')) {
+    Assert-TextMatches -Name "the installer's trusted set carries $trustedSid, like the API's" `
+        -Text $installerScript `
+        -Pattern ([regex]::Escape($trustedSid))
+}
+
 # H-18. The install directory is the image path of a service running as LocalSystem or a gMSA, so
 # write access to it is code execution as that account. Only DataPath used to be hardened;
 # InstallPath was created with a plain New-Item -Force and inherited whatever the parent allowed -
