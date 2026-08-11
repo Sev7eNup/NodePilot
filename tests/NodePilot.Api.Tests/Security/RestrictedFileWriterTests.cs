@@ -137,4 +137,48 @@ public sealed class RestrictedFileWriterTests : IDisposable
             "the writer must delete its partial file when anything in the create-then-acl-then-write " +
             "sequence fails, so a retry never reuses a half-secured artifact");
     }
+
+    [Fact]
+    public void ValidateParentDirectory_ForeignMutationAce_NamesTheOffendingPrincipal()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        // The rejection used to read "grants mutation rights to an untrusted principal" and stop
+        // there. True, and unusable: the usual cause is a leftover ACE from an earlier install
+        // that ran under a different service identity, and without the principal there is nothing
+        // to search for or hand to icacls. A server operator hit exactly this on 1.2.3 and the
+        // message pointed at the JWT key file instead of at the directory's ACL.
+        var dir = new DirectoryInfo(_tempDir);
+        var acl = dir.GetAccessControl();
+        acl.AddAccessRule(new FileSystemAccessRule(
+            new SecurityIdentifier(WellKnownSidType.WorldSid, null),
+            FileSystemRights.Modify,
+            InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+            PropagationFlags.None,
+            AccessControlType.Allow));
+        dir.SetAccessControl(acl);
+
+        var reason = ValidateParentDirectoryReason(Path.Combine(_tempDir, "jwt.key"));
+
+        reason.Should().Contain("mutation rights");
+        // The SID, not the display name: "Everyone" is localised (German Windows says "Jeder"),
+        // and the SID is the form icacls takes to remove the entry.
+        reason.Should().Contain("S-1-1-0",
+            "the operator needs to know WHICH principal to remove, and the SID is what does it");
+    }
+
+    /// <summary>
+    /// Calls the internal <c>ValidateParentDirectory</c> and returns its <c>Reason</c>. Same
+    /// reflection boundary as <see cref="WriteText"/> — the type is internal on purpose.
+    /// </summary>
+    private static string ValidateParentDirectoryReason(string path)
+    {
+        var writerType = typeof(NodePilot.Api.Security.JwtKeyResolver).Assembly
+            .GetType("NodePilot.Api.Security.RestrictedFileWriter", throwOnError: true)!;
+        var validate = writerType.GetMethod(
+            "ValidateParentDirectory", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)!;
+        var result = validate.Invoke(null, new object[] { path })!;
+        var reason = result.GetType().GetProperty("Reason")!.GetValue(result) as string;
+        return reason ?? "";
+    }
 }

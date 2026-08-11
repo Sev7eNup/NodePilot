@@ -375,6 +375,143 @@ function Set-DirectoryAclForService {
     Set-Acl -Path $Path -AclObject $acl
 }
 
+function Test-ServiceDirectoryAclTrust {
+    <#
+      Answers the one question the service will ask itself seconds later, and answers it the same
+      way: RestrictedFileWriter.ValidateWindowsDirectoryAcl refuses to read the JWT signing key
+      when the directory holding it has an owner it does not trust, or grants mutation rights to a
+      principal outside a deliberately tiny set - SYSTEM, Administrators, TrustedInstaller,
+      CreatorOwner, OwnerRights, and the identity the service is RUNNING as.
+
+      That last one is the trap this exists for. An ACE for a service account is only harmless
+      while the service runs as that account; install once as A and again as B, and A's leftover
+      ACE is a stranger with write access next to the signing key. The service then refuses to
+      start with "grants mutation rights to an untrusted principal", after the installer has
+      already replaced the binaries - so the failure lands in the rollback path instead of in a
+      check. Same rule, evaluated here, turns that into something the installer can fix.
+
+      Returns @{ IsSecure = bool; Reason = string } - never throws, so a directory this account
+      cannot read its ACL from is reported rather than crashing the install.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ServiceAccount,
+        [switch]$SkipServiceRule
+    )
+
+    try {
+        $acl = Get-Acl -LiteralPath $Path -ErrorAction Stop
+    } catch {
+        return @{ IsSecure = $false; Reason = "the ACL of '$Path' could not be read: $($_.Exception.Message)" }
+    }
+
+    # Mirrors BuildTrustedSids() on the API side. Kept as SIDs, not names, because a localised
+    # Windows calls these groups something else and a domain account resolves differently.
+    $trusted = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]@(
+            'S-1-5-18',                                                       # LocalSystem
+            'S-1-5-32-544',                                                   # Administrators
+            'S-1-5-80-956008885-3418522649-1831038044-1853292631-2271478464', # TrustedInstaller
+            'S-1-3-0',                                                        # CreatorOwner
+            'S-1-3-4'                                                         # OwnerRights
+        ),
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    # The account the service will run as. LocalSystem is already in the set above; for anything
+    # else the SID has to be resolved, and a name that no longer resolves is itself a finding.
+    if (-not $SkipServiceRule) {
+        try {
+            $svcSid = (New-Object System.Security.Principal.NTAccount($ServiceAccount)).Translate(
+                [System.Security.Principal.SecurityIdentifier]).Value
+            $null = $trusted.Add($svcSid)
+        } catch {
+            return @{ IsSecure = $false; Reason = "the service account '$ServiceAccount' could not be resolved to a SID: $($_.Exception.Message)" }
+        }
+    }
+
+    $ownerSid = $null
+    try {
+        $ownerSid = $acl.GetOwner([System.Security.Principal.SecurityIdentifier]).Value
+    } catch {
+        return @{ IsSecure = $false; Reason = "the owner of '$Path' could not be read: $($_.Exception.Message)" }
+    }
+    if (-not $trusted.Contains($ownerSid)) {
+        return @{ IsSecure = $false; Reason = "'$Path' is owned by $(Resolve-SidLabel $ownerSid), which the service does not trust" }
+    }
+
+    # Same right mask the API applies to the immediate parent of a secret.
+    $dangerous = [System.Security.AccessControl.FileSystemRights]::Delete `
+        -bor [System.Security.AccessControl.FileSystemRights]::DeleteSubdirectoriesAndFiles `
+        -bor [System.Security.AccessControl.FileSystemRights]::ChangePermissions `
+        -bor [System.Security.AccessControl.FileSystemRights]::TakeOwnership `
+        -bor [System.Security.AccessControl.FileSystemRights]::CreateFiles `
+        -bor [System.Security.AccessControl.FileSystemRights]::CreateDirectories `
+        -bor [System.Security.AccessControl.FileSystemRights]::WriteAttributes `
+        -bor [System.Security.AccessControl.FileSystemRights]::WriteExtendedAttributes
+
+    foreach ($rule in $acl.GetAccessRules($true, $true, [System.Security.Principal.SecurityIdentifier])) {
+        if ($rule.AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow) { continue }
+        if ($rule.PropagationFlags.HasFlag([System.Security.AccessControl.PropagationFlags]::InheritOnly)) { continue }
+        $sid = $rule.IdentityReference.Value
+        if ($trusted.Contains($sid)) { continue }
+        if (($rule.FileSystemRights -band $dangerous) -ne 0) {
+            return @{ IsSecure = $false; Reason = "'$Path' grants write access to $(Resolve-SidLabel $sid), which the service does not trust" }
+        }
+    }
+
+    return @{ IsSecure = $true; Reason = '' }
+}
+
+function Resolve-SidLabel {
+    <#
+      "DOMAIN\account (S-1-5-21-...)" where the SID still resolves, the bare SID otherwise. An
+      orphaned SID is the common case here - a decommissioned service account keeps its ACE - and
+      it is precisely the value icacls needs to remove it, so translation failure is an answer,
+      not an error.
+    #>
+    param([Parameter(Mandatory)][string]$Sid)
+    try {
+        $name = (New-Object System.Security.Principal.SecurityIdentifier($Sid)).Translate(
+            [System.Security.Principal.NTAccount]).Value
+        return "$name ($Sid)"
+    } catch {
+        return "$Sid (account no longer exists)"
+    }
+}
+
+function Assert-ServiceDirectoryAclUsable {
+    <#
+      Verify, repair once, verify again - then give up loudly instead of handing the service a
+      directory it will refuse. The repair is not a second mechanism: it is the same
+      Set-DirectoryAclForService the install already ran, which drops inheritance, wipes every
+      explicit ACE and forces the owner back to Administrators. Running it again is what clears a
+      stranger's ACE that predates this installation.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$ServiceAccount,
+        [switch]$SkipServiceRule,
+        [Parameter(Mandatory)][string]$Label
+    )
+
+    $verdict = Test-ServiceDirectoryAclTrust -Path $Path -ServiceAccount $ServiceAccount -SkipServiceRule:$SkipServiceRule
+    if ($verdict.IsSecure) { return }
+
+    Write-Warn "  $Label is not usable by the service yet: $($verdict.Reason)"
+    Write-Info '  Repairing it (owner, inheritance and ACEs) and re-checking.'
+    Set-DirectoryAclForService -Path $Path -ServiceAccount $ServiceAccount -SkipServiceRule:$SkipServiceRule
+
+    $verdict = Test-ServiceDirectoryAclTrust -Path $Path -ServiceAccount $ServiceAccount -SkipServiceRule:$SkipServiceRule
+    if ($verdict.IsSecure) {
+        Write-Info '  Repaired.'
+        return
+    }
+
+    throw ("$Label cannot be made usable by the service: $($verdict.Reason). " +
+           'The service would refuse to start with "JWT signing-key file security validation failed". ' +
+           "Remove that entry (icacls '$Path' /remove:g '<account>'), then run the installer again.")
+}
+
 function Assert-SafeInstallRoot {
     <#
       H-18. The install directory holds the service binaries and is registered as the image path
@@ -1091,6 +1228,13 @@ foreach ($identityBoundSecret in @('jwt-secret.key', 'admin-setup.token')) {
         Write-Info "  Handed $identityBoundSecret over to $AccountLabel."
     }
 }
+
+# Applying an ACL and assuming it landed is what let a leftover ACE from an earlier installation
+# survive all the way to the first service start, where the API - not the installer - discovered
+# it and refused to read the JWT key. Ask the same question here, while the only thing that has
+# happened is that two directories exist: the binaries are not extracted until below.
+Assert-ServiceDirectoryAclUsable -Path $DataPath -ServiceAccount $AclIdentity `
+    -SkipServiceRule:$isLocalSystem -Label "The data directory '$DataPath'"
 
 # Provisioning seed: copied in rather than referenced where the operator left it, because the API
 # reads it as the service account at first start and a deployment share is not reachable then.
