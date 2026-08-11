@@ -28,9 +28,24 @@ function New-NodePilotRandomBase64 {
 }
 
 function Import-NodePilotPkcsTypes {
+    <#
+      The assembly carrying SignedCms is named differently per edition: Windows PowerShell 5.1
+      ships it inside System.Security, PowerShell 7 as System.Security.Cryptography.Pkcs.
+
+      Asked by edition rather than attempted and caught. The try/catch this replaces worked, but
+      Add-Type raises a TERMINATING error under the setup's Stop preference, and Start-Transcript
+      records it before the catch can swallow it - so every setup log carried a red
+      "Die Assembly ... konnte nicht gefunden werden" immediately above the line confirming the
+      signature had verified. An operator reading that in CMTrace has every reason to abort a
+      perfectly healthy installation.
+    #>
     if ('System.Security.Cryptography.Pkcs.SignedCms' -as [type]) { return }
-    try { Add-Type -AssemblyName System.Security.Cryptography.Pkcs -ErrorAction Stop }
-    catch { Add-Type -AssemblyName System.Security -ErrorAction Stop }
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        Add-Type -AssemblyName System.Security.Cryptography.Pkcs -ErrorAction Stop
+    }
+    else {
+        Add-Type -AssemblyName System.Security -ErrorAction Stop
+    }
 }
 
 function ConvertFrom-NodePilotHex {

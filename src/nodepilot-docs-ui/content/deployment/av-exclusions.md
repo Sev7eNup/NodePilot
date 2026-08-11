@@ -32,6 +32,7 @@ Ein Dienst: `NodePilot` (Anzeigename `NodePilot Orchestrator`), ausgeführt als 
 | `C:\Program Files\NodePilot` | Programmverzeichnis, wird beim Update vollständig getauscht | Pflicht | Nur SYSTEM und Administratoren haben Schreibrechte. Publisher-Regel statt Pfad bevorzugen |
 | `C:\ProgramData\NodePilot` | Logs, Archive, Schlüsselmaterial, Laufzeitkonfiguration | Pflicht | Enthält Schlüssel und Tokens; deren Schutz liegt bei der ACL, nicht beim Scanner |
 | `C:\Program Files\NodePilot.rollback.*`, `…NodePilot.backup.*` | Zeitgestempelte Vorgängerstände (drei werden aufbewahrt) | Empfohlen | Auf das Wartungsfenster befristbar |
+| `%TEMP%\nodepilot-artifact-*` (Dienst: `C:\Windows\Temp\…`) | Staging des signierten Artefakts — ~2900 Dateien, davon ~2650 unter 64 KB. Die **teuerste Stelle eines Updates**: nicht die 114 MB kosten, sondern die Dateianzahl, und ein Echtzeit-Scan prüft jede Erzeugung einzeln | Empfohlen | Restriktive DACL bei der Erzeugung; der Inhalt wird direkt danach Datei für Datei gegen das signierte Manifest geprüft. Auf das Wartungsfenster befristbar |
 
 ### Prozesse
 
