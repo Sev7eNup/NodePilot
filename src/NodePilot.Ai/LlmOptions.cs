@@ -62,6 +62,12 @@ public class LlmOptions
         new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// How outbound LLM traffic reaches the network. Global rather than per profile — see
+    /// <see cref="LlmProxyOptions"/>. Defaults to no proxy, which is the pre-existing behaviour.
+    /// </summary>
+    public LlmProxyOptions Proxy { get; set; } = new();
+
+    /// <summary>
     /// Resolves <see cref="ActiveProfileId"/> against <see cref="Profiles"/>. Returns false when no
     /// profile is configured or the active id doesn't exist — callers turn that into a 503
     /// (<c>LLM_NO_ACTIVE_PROFILE</c>) rather than guessing a connection.

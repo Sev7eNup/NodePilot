@@ -1202,6 +1202,12 @@ All settings live in [`src/NodePilot.Api/appsettings.json`](src/NodePilot.Api/ap
 | `Llm:Profiles:<id>:TimeoutSeconds` | `90` | HTTP timeout |
 | `Llm:Profiles:<id>:EnableToolCalling` | `false` | Enable chat read-only tool-calling (function-calling loop). Per profile — reliable function-calling is a property of the model |
 | `Llm:Profiles:<id>:ToolCallMaxDepth` | `6` | Tool-loop depth cap (max LLM rounds with tool calls per turn, 1–10) |
+| `Llm:Proxy:Mode` | `Off` | Outbound proxy for every LLM call. `Off` = direct, `System` = the proxy the service account's OS is configured with (incl. its own bypass rules), `Custom` = `Llm:Proxy:Address` |
+| `Llm:Proxy:Address` | `""` | Proxy URL, e.g. `http://proxy.corp.local:8080`. Required for `Custom`, ignored otherwise |
+| `Llm:Proxy:BypassList` | `[]` | Hosts reached directly, shell globs (`localhost`, `*.corp.local`). `Custom` only — `System` uses the OS bypass rules |
+| `Llm:Proxy:Username` | `null` | Proxy Basic-auth user |
+| `Llm:Proxy:Password` | `null` | Proxy password; prefer the env var `Llm__Proxy__Password` |
+| `Llm:Proxy:UseDefaultCredentials` | `false` | Authenticate to the proxy with the service account's Windows credentials (NTLM/Kerberos) instead of user/password |
 
 ### Production deployment (set by the installer)
 

@@ -50,6 +50,10 @@ const LLM_PAYLOAD = {
       enableToolCalling: false, toolCallMaxDepth: 6, managedBy: null,
     },
   ],
+  proxy: {
+    mode: 'off', address: '', bypassList: [], username: null, password: null,
+    useDefaultCredentials: false,
+  },
 };
 const RETENTION_PAYLOAD = {
   executions: { enabled: true, maxAgeDays: 30, intervalMinutes: 60, batchSize: 500, archivePath: null },
@@ -186,8 +190,11 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
     await openSystemTab(page);
     await expect(page.getByRole('heading', { name: /llm/i })).toBeVisible({ timeout: 15_000 });
 
-    // The LLM card's Test button lives inside the selected profile's form.
-    await page.getByRole('button', { name: /^test$|^testen$/i }).last().click();
+    // Scope to the LLM card: its heading is already on screen while the section snapshot is
+    // still loading, so a page-wide `.last()` can resolve to SMTP's Test button in the window
+    // before the profile form mounts — and then this test would drive the wrong probe.
+    const llmCard = page.locator('.np-card', { has: page.getByRole('heading', { name: /llm/i }) });
+    await llmCard.getByRole('button', { name: /^test$|^testen$/i }).click();
     await page.getByRole('button', { name: /run test|test ausführen|test starten/i }).click();
 
     await expect.poll(() => probeHit, { timeout: 10_000 }).toBe(true);

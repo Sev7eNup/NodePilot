@@ -95,6 +95,11 @@ public static class SecurityHardeningWarnings
                         "end up in appsettings.json backups and Git history.", name, profile.Key);
         }
 
+        if (!string.IsNullOrWhiteSpace(configuration["Llm:Proxy:Password"]))
+            Log.Warning("SECURITY: Llm:Proxy:Password appears to be set in configuration. Prefer the environment variable " +
+                        "(Llm__Proxy__Password) or a secrets manager to keep the proxy password out of appsettings.json and " +
+                        "backups. On a domain-integrated proxy, Llm:Proxy:UseDefaultCredentials=true needs no password at all.");
+
         // LDAP plaintext bind is operator error: the boot validator rejects UseSsl=false for
         // enabled deployments and the adapter refuses the bind unconditionally. Warn anyway so
         // the mismatch is visible even in unvalidated configurations.

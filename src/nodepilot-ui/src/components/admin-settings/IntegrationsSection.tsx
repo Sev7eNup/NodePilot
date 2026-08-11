@@ -11,7 +11,13 @@ import { SecretField, serializeSecretField, type SecretFieldMode } from './Secre
 import { EnvOverrideBadge } from './EnvOverrideBadge';
 import { EtagConflictDialog } from './EtagConflictDialog';
 import { TestProbeModal } from './TestProbeModal';
-import { HotReloadHint } from './SectionFormHelpers';
+import {
+  GroupHeading,
+  HotReloadHint,
+  StringListEditor,
+  TextInput,
+  Toggle,
+} from './SectionFormHelpers';
 import { refreshAiCapabilities } from '../../hooks/useAiCapabilities';
 
 type SmtpDto = {
@@ -41,10 +47,28 @@ type LlmProfileDto = {
   managedBy: string | null;
 };
 
+/** Mirrors `NodePilot.Ai.LlmProxyMode` — the API sends and accepts these lower-cased. */
+type LlmProxyMode = 'off' | 'system' | 'custom';
+
+type LlmProxyDto = {
+  mode: LlmProxyMode;
+  address: string;
+  bypassList: string[];
+  username: string | null;
+  password: string | null;
+  useDefaultCredentials: boolean;
+};
+
 type LlmDto = {
   enabled: boolean;
   activeProfileId: string;
   profiles: LlmProfileDto[];
+  /** One block for the whole feature, not per profile — bypass entries cover the mixed case. */
+  proxy: LlmProxyDto;
+};
+
+const EMPTY_PROXY: LlmProxyDto = {
+  mode: 'off', address: '', bypassList: [], username: null, password: null, useDefaultCredentials: false,
 };
 
 /** Draft secret state per profile id — SecretField is stateless, the parent owns mode+value. */
@@ -289,17 +313,22 @@ function LlmCard() {
     queryFn: () => adminSettings.getSection<LlmDto>('Llm'),
   });
 
-  const [form, setForm] = useState<LlmDto>({ enabled: false, activeProfileId: '', profiles: [] });
+  const [form, setForm] = useState<LlmDto>({
+    enabled: false, activeProfileId: '', profiles: [], proxy: EMPTY_PROXY,
+  });
   const [secrets, setSecrets] = useState<Record<string, SecretDraft>>({});
+  // The proxy password is section-level, so it can't live in the profile-keyed map above.
+  const [proxySecret, setProxySecret] = useState<SecretDraft>({ mode: 'change', value: '' });
   const [selectedId, setSelectedId] = useState<string>('');
 
   useEffect(() => {
     if (!data) return;
-    setForm(data.payload);
+    setForm({ ...data.payload, proxy: data.payload.proxy ?? EMPTY_PROXY });
     // One secret draft per profile: a fresh snapshot means every pending key edit is stale.
     setSecrets(Object.fromEntries(data.payload.profiles.map((p) => [
       p.id, { mode: p.apiKey ? 'keep' : 'change', value: '' } satisfies SecretDraft,
     ])));
+    setProxySecret({ mode: data.payload.proxy?.password ? 'keep' : 'change', value: '' });
     setSelectedId((current) =>
       data.payload.profiles.some((p) => p.id === current)
         ? current
@@ -369,6 +398,14 @@ function LlmCard() {
     Enabled: form.enabled,
     ActiveProfileId: form.activeProfileId,
     Profiles: form.profiles.map(buildProfilePayload),
+    Proxy: {
+      Mode: form.proxy.mode,
+      Address: form.proxy.address,
+      BypassList: form.proxy.bypassList,
+      Username: form.proxy.username,
+      Password: serializeSecretField(proxySecret.mode, proxySecret.value),
+      UseDefaultCredentials: form.proxy.useDefaultCredentials,
+    },
   });
 
   const activeProfileMissing = form.enabled
@@ -494,6 +531,16 @@ function LlmCard() {
           />
         )}
 
+        <LlmProxyForm
+          proxy={form.proxy}
+          secret={proxySecret}
+          hasPersistedPassword={!!data.payload.proxy?.password}
+          effectiveSource={data.effectiveSource}
+          isEnvLocked={isEnvLocked}
+          onPatch={(patch) => setForm((f) => ({ ...f, proxy: { ...f.proxy, ...patch } }))}
+          onSecretChange={setProxySecret}
+        />
+
         <SaveActions
           onSave={() => saveMutation.mutate()}
           saving={saveMutation.isPending}
@@ -541,6 +588,119 @@ function LlmCard() {
           },
         })}
       />
+    </>
+  );
+}
+
+/**
+ * Outbound proxy for every LLM call. Section-level rather than per profile, so it sits below the
+ * profile list instead of inside {@link LlmProfileForm}: one connection pool, one setting.
+ *
+ * The address/credential fields only appear in `custom` mode — in `system` mode they would be
+ * inert, and a visible-but-ignored address field is exactly the kind of thing that gets filled in
+ * and then debugged for an hour.
+ */
+function LlmProxyForm({
+  proxy, secret, hasPersistedPassword, effectiveSource, isEnvLocked, onPatch, onSecretChange,
+}: Readonly<{
+  proxy: LlmProxyDto;
+  secret: SecretDraft;
+  hasPersistedPassword: boolean;
+  effectiveSource: Record<string, string>;
+  isEnvLocked: (key: string) => boolean;
+  onPatch: (patch: Partial<LlmProxyDto>) => void;
+  onSecretChange: (draft: SecretDraft) => void;
+}>) {
+  const { t } = useTranslation(['adminSettings', 'common']);
+
+  return (
+    <>
+      <GroupHeading>{t('adminSettings:integrations.proxy')}</GroupHeading>
+
+      <div className="max-w-sm">
+        <label htmlFor="llm-proxy-mode" className="text-xs font-medium text-on-surface-variant mb-1 flex items-center gap-2">
+          {t('adminSettings:integrations.proxyMode')}
+          <EnvOverrideBadge source={effectiveSource['Llm:Proxy:Mode'] ?? ''} configKey="Llm:Proxy:Mode" />
+        </label>
+        <select
+          id="llm-proxy-mode"
+          value={proxy.mode}
+          onChange={(e) => onPatch({ mode: e.target.value as LlmProxyMode })}
+          disabled={isEnvLocked('Llm:Proxy:Mode')}
+          className="w-full px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-surface-low disabled:text-on-surface-variant"
+        >
+          <option value="off">{t('adminSettings:integrations.proxyModeOff')}</option>
+          <option value="system">{t('adminSettings:integrations.proxyModeSystem')}</option>
+          <option value="custom">{t('adminSettings:integrations.proxyModeCustom')}</option>
+        </select>
+        <p className="mt-1 text-xs text-on-surface-variant">
+          {proxy.mode === 'system'
+            ? t('adminSettings:integrations.proxyModeSystemHint')
+            : t('adminSettings:integrations.proxyModeHint')}
+        </p>
+      </div>
+
+      {proxy.mode !== 'off' && (
+        <>
+          <Toggle
+            label={t('adminSettings:integrations.proxyUseDefaultCredentials')}
+            checked={proxy.useDefaultCredentials}
+            onChange={(v) => onPatch({ useDefaultCredentials: v })}
+            configKey="Llm:Proxy:UseDefaultCredentials"
+            effectiveSource={effectiveSource}
+            isEnvLocked={isEnvLocked}
+            hint={t('adminSettings:integrations.proxyUseDefaultCredentialsHint')}
+          />
+
+          {proxy.mode === 'custom' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
+              <TextInput
+                label={t('adminSettings:integrations.proxyAddress')}
+                value={proxy.address}
+                onChange={(v) => onPatch({ address: v })}
+                configKey="Llm:Proxy:Address"
+                effectiveSource={effectiveSource}
+                isEnvLocked={isEnvLocked}
+                placeholder="http://proxy.firma.local:8080"
+              />
+              <TextInput
+                label={t('common:username')}
+                value={proxy.username ?? ''}
+                onChange={(v) => onPatch({ username: v || null })}
+                configKey="Llm:Proxy:Username"
+                effectiveSource={effectiveSource}
+                isEnvLocked={isEnvLocked}
+              />
+              {!proxy.useDefaultCredentials && (
+                <div className="md:col-span-2">
+                  <SecretField
+                    inputId="llm-proxy-password"
+                    label={t('common:password')}
+                    hasPersistedValue={hasPersistedPassword}
+                    mode={secret.mode}
+                    value={secret.value}
+                    onModeChange={(mode) => onSecretChange({ ...secret, mode })}
+                    onValueChange={(value) => onSecretChange({ ...secret, value })}
+                    disabled={isEnvLocked('Llm:Proxy:Password')}
+                  />
+                  <EnvOverrideBadge source={effectiveSource['Llm:Proxy:Password'] ?? ''} configKey="Llm:Proxy:Password" />
+                </div>
+              )}
+              <div className="md:col-span-2">
+                <StringListEditor
+                  label={t('adminSettings:integrations.proxyBypassList')}
+                  value={proxy.bypassList}
+                  onChange={(v) => onPatch({ bypassList: v })}
+                  placeholder="localhost"
+                />
+                <p className="mt-1 text-xs text-on-surface-variant">
+                  {t('adminSettings:integrations.proxyBypassListHint')}
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </>
   );
 }

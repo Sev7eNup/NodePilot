@@ -5,6 +5,7 @@ using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
 using Xunit;
+using NodePilot.TestCommons;
 
 namespace NodePilot.Ai.Tests;
 
@@ -57,10 +58,19 @@ public sealed class LlmConnectGuardTests
 
     // ---- End-to-end via the real ConnectCallback -------------------------------------
 
+    /// <summary>
+    /// Mirrors the production handler from <see cref="LlmServiceCollectionExtensions.AddNodePilotAi"/>
+    /// so this suite exercises the guard in the shape it actually ships in. Production carries
+    /// <c>UseProxy = true</c> with a configured <see cref="LlmConfiguredProxy"/>; in
+    /// <see cref="LlmProxyMode.Off"/> — the default asserted here — that proxy bypasses every
+    /// destination, so the connect goes direct and the callback sees the real host. Building it
+    /// that way rather than hard-coding <c>UseProxy = false</c> keeps the copy honest.
+    /// </summary>
     private static HttpClient NewGuardedClient() =>
         new HttpClient(new SocketsHttpHandler
         {
-            UseProxy = false,
+            UseProxy = true,
+            Proxy = new LlmConfiguredProxy(new StaticOptionsMonitor<LlmOptions>(LlmTestOptions.WithProfile())),
             AllowAutoRedirect = false,
             ConnectCallback = LlmConnectGuard.ConnectAsync,
         });

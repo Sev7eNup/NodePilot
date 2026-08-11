@@ -90,6 +90,51 @@ public class LlmConfigBootValidatorTests
     }
 
     [Fact]
+    public void Enabled_ProxyCustomWithoutAddress_EmitsError()
+    {
+        // Custom mode with no address builds no proxy, so the first LLM call after a restart would
+        // fail on a value the save could have rejected outright.
+        var issues = Run(new()
+        {
+            ["Llm:Enabled"] = "true",
+            ["Llm:ActiveProfileId"] = "a",
+            ["Llm:Profiles:a:BaseUrl"] = "http://127.0.0.1:1234/v1",
+            ["Llm:Proxy:Mode"] = "Custom",
+        });
+
+        issues.Should().ContainSingle(i =>
+            i.ConfigKey == "Llm:Proxy:Address" && i.Severity == BootValidationSeverity.Error);
+    }
+
+    [Fact]
+    public void Enabled_ProxyCustomWithMetadataAddress_EmitsError()
+    {
+        var issues = Run(new()
+        {
+            ["Llm:Enabled"] = "true",
+            ["Llm:ActiveProfileId"] = "a",
+            ["Llm:Profiles:a:BaseUrl"] = "http://127.0.0.1:1234/v1",
+            ["Llm:Proxy:Mode"] = "Custom",
+            ["Llm:Proxy:Address"] = "http://169.254.169.254:8080",
+        });
+
+        issues.Should().ContainSingle(i =>
+            i.ConfigKey == "Llm:Proxy:Address" && i.Severity == BootValidationSeverity.Error);
+    }
+
+    [Fact]
+    public void Enabled_ProxySystem_NoIssues()
+    {
+        Run(new()
+        {
+            ["Llm:Enabled"] = "true",
+            ["Llm:ActiveProfileId"] = "a",
+            ["Llm:Profiles:a:BaseUrl"] = "http://127.0.0.1:1234/v1",
+            ["Llm:Proxy:Mode"] = "System",
+        }).Should().BeEmpty();
+    }
+
+    [Fact]
     public void Enabled_ActiveProfileIdPointingNowhere_EmitsWarning()
     {
         var issues = Run(new()

@@ -24,9 +24,15 @@ const llmProfile = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+const llmProxy = (over: Record<string, unknown> = {}) => ({
+  mode: 'off', address: '', bypassList: [], username: null, password: null,
+  useDefaultCredentials: false,
+  ...over,
+});
+
 const llmSnapshot = {
   sectionPath: 'Llm',
-  payload: { enabled: false, activeProfileId: 'openai', profiles: [llmProfile()] },
+  payload: { enabled: false, activeProfileId: 'openai', profiles: [llmProfile()], proxy: llmProxy() },
   etag: '"llm-1"',
   isHotReloadable: true,
   effectiveSource: {},
@@ -196,6 +202,70 @@ describe('IntegrationsSection — LLM card', () => {
       expect(body.Profiles[0].ApiKey).toBeNull();
       expect(body.Profiles[0].EnableToolCalling).toBe(false);
       expect(body.Profiles[0].ToolCallMaxDepth).toBe(4);
+      // The proxy block always rides along, defaulting to the direct connection.
+      expect(body.Proxy.Mode).toBe('off');
+      expect(body.Proxy.Address).toBe('');
+    });
+  });
+
+  it('reveals the proxy fields only in custom mode and serialises them', async () => {
+    let putBody: unknown = null;
+    server.use(http.put('/api/admin/settings/Llm', async ({ request }) => {
+      putBody = await request.json();
+      return HttpResponse.json({ ...llmSnapshot, etag: '"llm-2"' });
+    }));
+
+    renderSection();
+    await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
+
+    // Off: no address field at all — an inert-but-visible input is what gets filled in and then
+    // debugged for an hour.
+    expect(screen.queryByPlaceholderText('http://proxy.firma.local:8080')).not.toBeInTheDocument();
+
+    const mode = screen.getByLabelText(/Modus|^Mode$/i) as HTMLSelectElement;
+    fireEvent.change(mode, { target: { value: 'system' } });
+    // System mode takes the OS configuration — still no address field.
+    expect(screen.queryByPlaceholderText('http://proxy.firma.local:8080')).not.toBeInTheDocument();
+
+    fireEvent.change(mode, { target: { value: 'custom' } });
+    const address = await screen.findByPlaceholderText('http://proxy.firma.local:8080');
+    fireEvent.change(address, { target: { value: 'http://proxy.corp.local:8080' } });
+
+    clickLlmSave();
+
+    await waitFor(() => {
+
+      const body = putBody as any;
+      expect(body.Proxy.Mode).toBe('custom');
+      expect(body.Proxy.Address).toBe('http://proxy.corp.local:8080');
+    });
+  });
+
+  it('sends __unchanged__ for a stored proxy password the operator did not retype', async () => {
+    let putBody: unknown = null;
+    server.use(
+      http.get('/api/admin/settings/Llm', () => HttpResponse.json({
+        ...llmSnapshot,
+        payload: {
+          ...llmSnapshot.payload,
+          proxy: llmProxy({ mode: 'custom', address: 'http://proxy.corp.local:8080', username: 'svc', password: '********' }),
+        },
+      })),
+      http.put('/api/admin/settings/Llm', async ({ request }) => {
+        putBody = await request.json();
+        return HttpResponse.json({ ...llmSnapshot, etag: '"llm-2"' });
+      }),
+    );
+
+    renderSection();
+    await waitFor(() => expect(screen.getByDisplayValue('http://proxy.corp.local:8080')).toBeInTheDocument());
+    clickLlmSave();
+
+    await waitFor(() => {
+
+      const body = putBody as any;
+      expect(body.Proxy.Password).toBe('__unchanged__');
+      expect(body.Proxy.Username).toBe('svc');
     });
   });
 
