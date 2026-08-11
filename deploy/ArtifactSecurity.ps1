@@ -453,11 +453,20 @@ function Expand-NodePilotArtifactToStaging {
     $resolvedArtifact = (Resolve-Path -LiteralPath $ArtifactPath -ErrorAction Stop).Path
     $stagingPath = New-NodePilotRestrictedStagingDirectory -ParentPath $ParentPath
     try {
-        # ExtractToDirectory rather than Expand-Archive: measured 2.2 s against 25.8 s for this
-        # artifact (2867 files, 114 MB) - Expand-Archive pays per-entry pipeline overhead that
-        # dominates a tree of mostly sub-64 KB files. The two were verified to produce identical
-        # trees: same 2867 files, same 377 directories, zero differences in path, length or
-        # SHA-256.
+        # ExtractToDirectory rather than Expand-Archive, which pays per-entry pipeline overhead
+        # that dominates a tree of mostly sub-64 KB files. Faster everywhere measured, but the
+        # margin is strongly environment-dependent, so do not quote a single multiplier:
+        #
+        #   Win 11 workstation (PS 5.1.22621)   24.3-24.8 s  ->  2.0-2.7 s   ~9-12x
+        #   Server 2025 VM, 4 cores (26100)      7.3- 7.7 s  ->  4.6-5.2 s   ~1.6x
+        #
+        # Same artifact (2867 files, 114 MB), three and two runs respectively. The workstation is
+        # the faster machine on the new path and the slower one on the old, so the difference is
+        # in what Expand-Archive costs per entry there, not in raw I/O. Worth having on both, but
+        # the lab number is the one to expect on a server.
+        #
+        # The two were verified to produce identical trees: same 2867 files, same 377 directories,
+        # zero differences in relative path, length or SHA-256.
         #
         # Zip-slip protection is NOT lost in the trade. .NET refuses an entry whose resolved path
         # leaves the destination ("Durch Extrahieren des Zip-Eintrags wuerde eine Datei ausserhalb
