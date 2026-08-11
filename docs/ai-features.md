@@ -102,7 +102,7 @@ Neu-Eintippen.
 | `ApiKey` | `null` | OpenAI-Cloud verlangt einen Key; lokale Endpoints meist nicht. **Empfohlener Weg: Env-Var `Llm__Profiles__<id>__ApiKey`** — Klartext in der Settings-Datei löst eine Startup-Hardening-Warnung aus. |
 | `Model` | `gpt-4o-mini` | Wird für Script-, Workflow-Generierung und beide Chats verwendet. |
 | `MaxTokens` | `4096` | Cap der LLM-Antwort. Reicht für ein typisches Script und einen mittelgroßen Workflow. Bei großen Modellen (32k+ Context) gerne erhöhen. |
-| `TimeoutSeconds` | `90` | HTTP-Timeout. Großzügig für lokale Modelle, klein genug um nicht ewig zu hängen. |
+| `TimeoutSeconds` | `90` | **Antwort**-Budget: wie lange das Modell denken darf. Deckt ausdrücklich **nicht** den Verbindungsaufbau — der hat seine eigenen, kurzen Fristen (siehe unten). Großzügig setzen ist deshalb gefahrlos: ein unerreichbarer Endpunkt scheitert trotzdem in Sekunden. |
 | `EnableToolCalling` | `false` | Opt-in. Lässt die Chat-Assistenten read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. **Pro Profil**, weil das eine Eigenschaft des Modells ist, nicht der Installation: beim Umschalten auf ein kleines lokales Modell wandert die Fähigkeit mit. |
 | `ToolCallMaxDepth` | `6` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Lässt bei text2sql nach Schema-Discovery noch Raum für SQL-Korrekturen. In der letzten erlaubten Runde sendet der Server **keine** `tools` → erzwingt eine Text-Antwort. |
 
@@ -135,6 +135,39 @@ wird pro Request aus der laufenden Konfiguration aufgelöst statt beim Bau des H
 genau deshalb bleibt die Sektion hot-reloadable, wo `RestApi` (Proxy fest im Handler) es nicht ist.
 Eine Ausnahme bleibt `Mode: System`: Änderungen an den **Windows-Proxy-Einstellungen** selbst
 greifen erst nach einem Dienst-Neustart, weil .NET die Systemkonfiguration prozessweit cacht.
+
+### „Endpunkt nicht erreichbar" — welche Stufe gescheitert ist
+
+Den Endpunkt zu *erreichen* hat eigene Fristen, unabhängig von `TimeoutSeconds`. Das ist kein
+Detail, sondern der Grund, warum die Fehlermeldung überhaupt etwas aussagt: vorher deckte ein
+einziges Budget DNS, TCP, TLS **und** die Modellantwort ab, und alle vier endeten in derselben
+Zeile „did not respond within {TimeoutSeconds}s". Bei einem Profil mit 360 s hieß das sechs
+Minuten Stille und danach ein Satz, der auf das Modell zeigte, während in Wahrheit eine Firewall
+oder ein nicht vertrautes Zertifikat im Weg stand.
+
+| Stufe | Frist | Meldung beginnt mit | Typische Ursache |
+|---|---|---|---|
+| Namensauflösung | 15 s | `LLM endpoint DNS:` | Name falsch, falsches DNS-Suffix, Resolver antwortet nicht |
+| TCP-Verbindung | 15 s | `LLM endpoint TCP:` | **verworfen** = Firewall/Netzsegment; **abgelehnt** = Host da, Port/Dienst falsch |
+| TLS-Handshake | 30 s | `LLM endpoint TLS:` | Client-Zertifikat verlangt, SNI-Mismatch, Middlebox, die annimmt und nicht verhandelt |
+| Zertifikatsprüfung | — | `LLM endpoint TLS:` … `certificate` | Interne CA fehlt im **Maschinen**-Store des NodePilot-Hosts |
+| Modellantwort | `TimeoutSeconds` | `accepted the request but sent no answer` | Modell rechnet noch — hier ist Hochsetzen die richtige Antwort |
+
+Die Fristen der ersten drei Stufen sind Konstanten, keine Konfigurationsschlüssel: 15 s liegen weit
+jenseits jeder gesunden Auflösung oder eines TCP-Handshakes (Windows gibt bei unbeantwortetem SYN
+nach ~21 s von selbst auf). Ein Wert, den man hochsetzen müsste, bedeutet ein kaputtes Netz — und
+genau das sagt die Meldung jetzt.
+
+**Zertifikate:** NodePilot prüft gegen den Trust-Store der **Maschine**, nicht den des angemeldeten
+Benutzers. Ein Zertifikat, das im Browser auf dem Arbeitsplatz akzeptiert wird, ist damit für den
+Dienst noch lange nicht vertrauenswürdig — die ausstellende CA muss unter
+`LocalMachine\Root` des NodePilot-Hosts liegen.
+
+**Mehr Details im Log:** Die aufgelösten Adressen und die Dauer je Stufe stehen auf `Debug` unter
+der Kategorie `NodePilot.Ai.LlmConnect` — gezielt einschaltbar über
+`Serilog:MinimumLevel:Override`, ohne den ganzen KI-Stack gesprächig zu machen. Das ist die Zeile,
+die den Fall „funktioniert von meinem Rechner, nicht vom Dienst" auflöst: ein veralteter
+AAAA-Eintrag und ein anderes DNS-Suffix sehen von außen identisch aus.
 
 ### Wire-Dialekt (aus der `BaseUrl` abgeleitet)
 

@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
+using System.Security.Authentication;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
@@ -81,19 +82,63 @@ internal sealed class LlmHttpTransport
         }
         catch (OperationCanceledException) when (!caller.IsCancellationRequested)
         {
+            // Reaching the endpoint has its own, much shorter budget (LlmConnectGuard), so by the
+            // time this fires the request was on the wire and the model is simply still thinking.
             throw new LlmException(LlmErrorKind.Timeout,
-                $"LLM endpoint did not respond within {_config.TimeoutSeconds}s ({_config.Endpoint.PostUrl}).");
+                $"LLM endpoint accepted the request but sent no answer within {_config.TimeoutSeconds}s "
+                + $"({_config.Endpoint.PostUrl}). The connection itself was fine — raise the profile's "
+                + "timeout if the model needs longer, or pick a faster model.");
         }
         catch (HttpRequestException ex)
         {
-            throw new LlmException(LlmErrorKind.Unreachable,
-                $"LLM endpoint unreachable ({_config.Endpoint.PostUrl}): {ex.Message}", inner: ex);
+            throw new LlmException(LlmErrorKind.Unreachable, DescribeUnreachable(ex), inner: ex);
         }
 
         if (!resp.IsSuccessStatusCode)
             await ThrowUpstreamAsync(resp, io);
 
         return resp;
+    }
+
+    /// <summary>
+    /// Turns a transport failure into a message that names <b>which stage</b> failed.
+    ///
+    /// <para>Every one of these used to arrive as the same "did not respond" sentence, which is
+    /// why an unreachable endpoint and a slow model were indistinguishable from the UI. The stages
+    /// are separable because each has its own deadline: DNS and TCP fail inside
+    /// <c>LlmConnectGuard</c> with a message that already names them, certificate validation
+    /// raises <see cref="AuthenticationException"/>, and the handler's <c>ConnectTimeout</c> can
+    /// only fire <i>after</i> those two have passed — so it means the TLS handshake stalled.</para>
+    /// </summary>
+    internal string DescribeUnreachable(Exception ex)
+    {
+        var url = _config.Endpoint.PostUrl;
+
+        Exception innermost = ex;
+        while (innermost.InnerException is not null) innermost = innermost.InnerException;
+
+        if (innermost is AuthenticationException auth)
+        {
+            return $"LLM endpoint TLS ({url}): the server's certificate was rejected — {auth.Message} "
+                 + "Import the issuing CA into the machine's Trusted Root store on the NodePilot host; "
+                 + "a certificate that a browser accepts on a workstation is not automatically trusted by the service account.";
+        }
+
+        // TimeoutException here is SocketsHttpHandler.ConnectTimeout. DNS and TCP carry shorter
+        // deadlines of their own, so they can never be what expired.
+        if (innermost is TimeoutException)
+        {
+            return $"LLM endpoint TLS ({url}): the TCP connection was established but the TLS handshake did not "
+                 + $"complete within {LlmConnectGuard.HandshakeTimeout.TotalSeconds:0}s. Typical causes are an endpoint "
+                 + "demanding a client certificate, an SNI mismatch, or a middlebox that accepts the connection and "
+                 + "never negotiates.";
+        }
+
+        // Anything from the connect guard already names its own stage; don't wrap it in a second
+        // sentence that says less.
+        return innermost is IOException io && io.Message.StartsWith("LLM endpoint ", StringComparison.Ordinal)
+            ? io.Message
+            : $"LLM endpoint unreachable ({url}): {innermost.Message}";
     }
 
     /// <summary>

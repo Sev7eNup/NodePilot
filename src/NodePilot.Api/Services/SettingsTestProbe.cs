@@ -114,7 +114,11 @@ public sealed class SettingsTestProbe
             // shared LlmEndpointGuard — same validation/guard the runtime LLM calls use. Rejects
             // cloud-metadata / non-http(s) BaseUrls before any connect.
             var client = _httpFactory.CreateClient(LlmHttpClient.Name);
-            client.Timeout = TimeSpan.FromSeconds(Math.Min(request.Settings.TimeoutSeconds, 30));
+            // Deliberately above the handler's 30 s connect/TLS budget: whichever deadline fires
+            // first decides the message the operator reads, and the handler's produces a named
+            // stage ("TLS handshake did not complete") where this one only ever produces
+            // "the request was canceled due to the configured HttpClient.Timeout".
+            client.Timeout = TimeSpan.FromSeconds(Math.Min(request.Settings.TimeoutSeconds, 40));
 
             var url = LlmEndpointGuard.ResolveEndpoint(request.Settings.BaseUrl).ApiRoot + "/models";
             using var probe = new HttpRequestMessage(HttpMethod.Get, url);
@@ -140,10 +144,21 @@ public sealed class SettingsTestProbe
         {
             sw.Stop();
             _log.LogWarning(ex, "LLM test probe failed against {BaseUrl}.", request.Settings.BaseUrl);
+
+            // The operator only ever sees this string, and the useful half of it lives in the inner
+            // exception: HttpRequestException's own message is a generic "An error occurred while
+            // sending the request", while the connect guard's stage name or the certificate
+            // failure sits one or two levels down.
+            var innermost = ex;
+            while (innermost.InnerException is not null) innermost = innermost.InnerException;
+            var detail = ReferenceEquals(innermost, ex)
+                ? ex.Message
+                : $"{ex.Message} → {innermost.Message}";
+
             return SettingsTestProbeResult.Failure(
-                $"LLM probe failed: {ex.Message}",
+                $"LLM probe failed: {detail}",
                 sw.Elapsed.TotalMilliseconds,
-                ex.GetType().Name);
+                innermost.GetType().Name);
         }
     }
 
