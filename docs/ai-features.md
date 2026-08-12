@@ -108,6 +108,16 @@ Neu-Eintippen.
 
 **Outbound-Proxy (`Llm:Proxy:*`):**
 
+> **Erst die Stufe feststellen, dann konfigurieren.** Ein Proxy ist die Antwort auf „ausgehender
+> Verkehr **darf** dieses Netz nur über den Proxy verlassen" — **nicht** auf „der Endpunkt ist
+> nicht erreichbar". Liegt der Endpunkt in einem anderen Netzsegment und fehlt die
+> Firewall-Freischaltung, hilft kein Proxy; hier einen zu setzen verschiebt nur, wohin die
+> Verbindung *nicht* aufgebaut wird. Welche Stufe scheitert, sagt
+> [„Endpunkt nicht erreichbar"](#endpunkt-nicht-erreichbar--welche-stufe-gescheitert-ist) weiter
+> unten in Sekunden — das ist der billigere erste Schritt. (Real passiert: ein
+> `LLM endpoint TCP:`-Fehlschlag wurde als Proxy-Problem gelesen und kostete mehrere Runden, bis
+> die fehlende Firewall-Regel gefunden war.)
+
 Gilt für **alle** ausgehenden LLM-Aufrufe — Script-/Workflow-Generierung, beide Chats, die
 `llmQuery`-Activity und den „Testen"-Button in den Settings. Ein Block pro Installation, nicht pro
 Profil: der Fall „Cloud-Profil über den Proxy, lokales Ollama direkt" wird über `BypassList`
