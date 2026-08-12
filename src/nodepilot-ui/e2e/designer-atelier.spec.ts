@@ -45,7 +45,12 @@ async function seedAtelier(page: Page) {
     let appWritten = false;
     try { appWritten = !!raw && JSON.parse(raw).state?.nodeStyle !== undefined; } catch { /* reseed */ }
     if (!appWritten) {
-      localStorage.setItem('nodepilot-design', JSON.stringify({ state: { designerTheme: 'atelier' }, version: 1 }));
+      // Carries the node-scale pin from installDefaultMocks too: this seed replaces the whole
+      // key, so without it the Atelier specs would be the only ones running at the `lg` default
+      // and would drift away from the rest of the suite's canvas geometry.
+      localStorage.setItem('nodepilot-design', JSON.stringify({
+        state: { designerTheme: 'atelier', nodeScaleIndex: 1 }, version: 2,
+      }));
     }
   });
 }

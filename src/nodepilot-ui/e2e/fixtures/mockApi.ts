@@ -52,23 +52,34 @@ export async function mockCaps(page: Page, caps: KnowledgeCapabilities) {
 }
 
 export async function installDefaultMocks(page: Page) {
-  // Pin the designer to the CLASSIC look for the whole hermetic suite. The Atelier design
-  // (designStore.designerTheme, default 'atelier') re-tokenises colors/geometry the visual
-  // assertions in these specs were written against; the classic look must stay byte-identical,
-  // so the entire existing suite keeps running against it. Atelier gets its own dedicated
-  // specs (designer-atelier.spec.ts) that seed 'atelier' explicitly.
+  // Pin the designer to the CLASSIC look AND the small node scale for the whole hermetic suite.
+  // Both are geometry knobs the canvas assertions in these specs were written against:
+  //  - designerTheme (default 'atelier') re-tokenises colors/geometry; the classic look must stay
+  //    byte-identical, so the entire existing suite keeps running against it. Atelier gets its own
+  //    dedicated specs (designer-atelier.spec.ts) that seed 'atelier' explicitly.
+  //  - nodeScaleIndex (default 3 = `lg` since the v2 store bump) changes how much room a node
+  //    occupies, and `fitView` turns that into a different pan/zoom for the same seeded positions.
+  //    At `lg`, ai-assistant's step-b slid under the bottom-right minimap, which then swallowed the
+  //    click (the hazard e2e/README.md already warns about). Pin `sm` so a future size tweak can
+  //    never reshuffle unrelated specs' canvas coordinates; the scale itself is covered by unit
+  //    tests (designStore.test.ts, CanvasSettings.test.tsx).
+  // `version: 2` matches the store's current persist version so the seed is taken as-is — at
+  // version 1 the store's own migration would read this pinned `sm` as "still on the old default"
+  // and lift it straight back to `lg`.
   //
   // Init scripts re-run on EVERY navigation (including page.reload) — an unconditional
   // setItem would stomp state the app itself persisted mid-test (e.g. after clicking the
   // Atelier toggle) and make persistence untestable. An app write always contains the full
-  // designStore state (nodeStyle & friends); seeds only carry 1-2 keys — use that to only
+  // designStore state (nodeStyle & friends); seeds only carry a few keys — use that to only
   // seed fresh contexts.
   await page.addInitScript(() => {
     const raw = localStorage.getItem('nodepilot-design');
     let appWritten = false;
     try { appWritten = !!raw && JSON.parse(raw).state?.nodeStyle !== undefined; } catch { /* reseed */ }
     if (!appWritten) {
-      localStorage.setItem('nodepilot-design', JSON.stringify({ state: { designerTheme: 'classic' }, version: 1 }));
+      localStorage.setItem('nodepilot-design', JSON.stringify({
+        state: { designerTheme: 'classic', nodeScaleIndex: 1 }, version: 2,
+      }));
     }
   });
   // Hermetic catch-all for any REST endpoint a test doesn't explicitly mock: return an
@@ -180,17 +191,21 @@ function emptyArray(route: Route) {
  * Seed the designer into "expert" mode before the SPA boots. The default ("standard") mode hides
  * power-user affordances — node-context-menu breakpoints, the Debug-run toolbar button, and most
  * view-toggles — behind `designerMode === 'expert'` (designStore, persisted under the key
- * 'nodepilot-design', schema version 1). Specs that exercise those features must run in expert
+ * 'nodepilot-design', schema version 2). Specs that exercise those features must run in expert
  * mode. Call this BEFORE `page.goto(...)` so the init script wins over the store's default.
  */
 export async function seedExpertMode(page: Page) {
   // Init scripts run in addition order and the LAST setItem wins — this seed replaces the
-  // whole 'nodepilot-design' key, so it must re-assert the classic pin from
-  // installDefaultMocks or expert-mode specs would silently flip to the Atelier design.
+  // whole 'nodepilot-design' key, so it must re-assert BOTH pins from installDefaultMocks
+  // (classic look + small node scale) or expert-mode specs would silently flip to the Atelier
+  // design and the large node geometry.
   await page.addInitScript(() =>
     localStorage.setItem(
       'nodepilot-design',
-      JSON.stringify({ state: { designerMode: 'expert', designerTheme: 'classic' }, version: 1 }),
+      JSON.stringify({
+        state: { designerMode: 'expert', designerTheme: 'classic', nodeScaleIndex: 1 },
+        version: 2,
+      }),
     ),
   );
 }

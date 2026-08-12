@@ -29,11 +29,18 @@ alongside `dotnet test` and `npm run test:run`.
   combination keeps the pre-existing DOM of every spec (buttons visible, nav entry hidden) —
   do NOT change it to all-true, or the AI-Chat nav appears suite-wide. Override per test with
   `mockCaps(page, capsJson({...}))` (both exported from `fixtures/mockApi.ts`).
-- `installDefaultMocks` also **pins the designer to the CLASSIC look** (localStorage seed
-  `designerTheme: 'classic'`) — the Atelier design (default for fresh real profiles) re-tokenises
-  colors/geometry the existing visual assertions were written against. The seed is skipped once
-  the app itself persisted a full designStore state (so mid-test toggles survive `page.reload`).
+- `installDefaultMocks` also **pins the designer to the CLASSIC look and the SMALL node scale**
+  (localStorage seed `designerTheme: 'classic'`, `nodeScaleIndex: 1`, `version: 2`) — both are
+  geometry knobs the existing visual assertions were written against. The Atelier design (default
+  for fresh real profiles) re-tokenises colors/geometry; the node scale (default `3` = `lg`) changes
+  how much room a node takes, and `fitView` turns that into a different pan/zoom for the same seeded
+  positions — at `lg` a node can slide under the bottom-right minimap and lose its clicks. The
+  seeded `version` must match the store's persist version, or the store's own migration reads the
+  pinned `sm` as "still on the old default" and lifts it back to `lg`. The seed is skipped once the
+  app itself persisted a full designStore state (so mid-test toggles survive `page.reload`).
   Atelier-path specs live in `designer-atelier.spec.ts` and seed `'atelier'` explicitly.
+  **Any seed that replaces the whole `nodepilot-design` key must re-assert both pins** — that is why
+  `seedExpertMode` and `seedAtelier` repeat them.
 - **The preview build renders the UI in English** (i18n falls back to EN). All
   activity- and trigger-config panels are translated for both DE and EN. Prefer
   language-agnostic selectors anyway — `getByRole` with bilingual regex
