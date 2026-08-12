@@ -227,10 +227,13 @@ jobs:
         run: npm ci
 
       - name: Reject vulnerable npm dependencies
-        # Clean only because package.json pins three overrides into Forge's own tree — see the
-        # "//overrides" note there. If this goes red after a Forge bump, re-check whether an
-        # override became redundant (drop it) or a new advisory appeared (add one).
-        run: npm audit --audit-level=moderate
+        # Not a bare `npm audit`: this tree carries one advisory with no fixed release
+        # anywhere upstream (extract-zip, via Electron Forge), which no override can clear.
+        # The gate keeps the full audit and excuses single advisories by id, each with a
+        # recorded reason — see scripts/audit-gate.mjs and the "//audit" note in package.json.
+        # `--omit=dev` would be the wrong escape here: dependencies is empty and electron
+        # itself is a devDependency, so it would audit nothing at all.
+        run: npm run audit:ci
 
       - name: Type check
         run: npm run typecheck

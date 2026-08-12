@@ -10,6 +10,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    include: ['src/**/*.test.ts'],
+    // scripts/ carries the CI dependency-audit gate; its decision logic is pure and belongs
+    // under the same suite as the rest of the shell's pure logic.
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
   },
 });
