@@ -169,7 +169,7 @@ Je Profil:
 | `BaseUrl` | Adresse eines OpenAI-kompatiblen Endpunkts; der Pfad bestimmt das Anfrageformat (siehe unten) |
 | `ApiKey` | API-Schlüssel; für lokale Modelle häufig nicht erforderlich |
 | `Model` | verwendeter Modellname |
-| `MaxTokens` | maximale Länge einer Modellantwort |
+| `MaxTokens` | maximale Länge einer Modellantwort (256 bis 1.000.000) |
 | `TimeoutSeconds` | wie lange das Modell für seine Antwort brauchen darf — nicht die Wartezeit auf die Verbindung, die hat eigene, kurze Fristen |
 | `EnableToolCalling` | erlaubt den Chats, freigegebene lesende Analyse- und Wissensquellen zu verwenden |
 | `ToolCallMaxDepth` | maximale Anzahl aufeinanderfolgender Tool-Aufrufe pro Frage |
