@@ -225,7 +225,8 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         int toolCallMaxDepth = 6,
         string profileId = "p1",
         string activeProfileId = "p1",
-        string proxy = "")
+        string proxy = "",
+        int maxTokens = 4096)
         => $$"""
             {
               "Enabled": true,
@@ -237,7 +238,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
                   "Name": "Profile {{profileId}}",
                   "BaseUrl": "{{baseUrl}}",
                   "Model": "{{model}}",
-                  "MaxTokens": 4096,
+                  "MaxTokens": {{maxTokens}},
                   "TimeoutSeconds": 60,
                   "EnableToolCalling": {{(enableToolCalling ? "true" : "false")}},
                   "ToolCallMaxDepth": {{toolCallMaxDepth}},
@@ -280,6 +281,40 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var profile = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!["p1"]!.AsObject();
         profile["EnableToolCalling"]!.GetValue<bool>().Should().BeTrue();
         profile["ToolCallMaxDepth"]!.GetValue<int>().Should().Be(6);
+    }
+
+    [Theory]
+    [InlineData(256)]
+    [InlineData(200_000)]
+    [InlineData(1_000_000)]
+    public async Task PutSection_Llm_MaxTokensWithinRange_Persists(int maxTokens)
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        // Long-context models blow past the old 128k ceiling; the cap only guards against a
+        // slipped digit, so anything up to a million output tokens has to round-trip.
+        var body = JsonDocument.Parse(LlmBody(maxTokens: maxTokens)).RootElement;
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        var profile = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!["Llm"]!["Profiles"]!["p1"]!.AsObject();
+        profile["MaxTokens"]!.GetValue<int>().Should().Be(maxTokens);
+    }
+
+    [Theory]
+    [InlineData(255)]
+    [InlineData(1_000_001)]
+    public async Task PutSection_Llm_MaxTokensOutOfRange_Returns400(int maxTokens)
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("Llm");
+
+        var body = JsonDocument.Parse(LlmBody(maxTokens: maxTokens)).RootElement;
+        var result = await controller.PutSection("Llm", body, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        File.Exists(writer.OverridesPath).Should().BeFalse();
     }
 
     [Fact]
