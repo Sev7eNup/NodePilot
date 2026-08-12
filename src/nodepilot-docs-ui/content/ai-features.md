@@ -183,6 +183,13 @@ Einstellungen. Es ist bewusst ein Block für die gesamte Installation und nicht 
 der gemischte Fall — Cloud-Modell über den Proxy, lokales Modell direkt — wird über die
 Ausnahmeliste abgebildet.
 
+Ein Proxy ist dabei die Antwort auf „ausgehender Verkehr **darf** dieses Netz nur über den Proxy
+verlassen" — nicht auf „der Endpunkt ist nicht erreichbar". Liegt der Endpunkt in einem anderen
+Netzsegment und fehlt die Freischaltung in der Firewall, ändert ein Proxy daran nichts. Prüfen Sie
+deshalb zuerst, welche Stufe scheitert: der Abschnitt
+[Wenn der Endpunkt nicht erreichbar ist](#wenn-der-endpunkt-nicht-erreichbar-ist) beantwortet das
+in Sekunden.
+
 | Einstellung | Bedeutung |
 |---|---|
 | `Mode` | `Off` verbindet direkt (Voreinstellung), `System` übernimmt den Proxy des Dienstkontos samt dessen Ausnahmeregeln, `Custom` verwendet die Adresse unten |
