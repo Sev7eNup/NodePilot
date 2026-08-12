@@ -1,10 +1,17 @@
 name: CI
 
 on:
-  push:
-    branches: [main, master]
+  # Pull requests only. A merge commit on main re-tests the exact tree the PR run already
+  # covered, so a `push: [main]` trigger doubled every change's CI for no new signal — a
+  # measured ~35 job-minutes per change, with both runs drawing on the same runner pool.
+  # Coverage for the paths a PR does not take:
+  #   - direct pushes to main (release cuts) -> `workflow_dispatch`, plus the nightly suite
+  #     (`scripts/nightly-tests.ps1`, 22:00 daily) which runs all four suites against main.
+  #   - CodeQL keeps its own `push: [main]` trigger: only a run on the default branch
+  #     updates the repository's code-scanning dashboard.
   pull_request:
     branches: [main, master]
+  workflow_dispatch:
 
 jobs:
   backend:

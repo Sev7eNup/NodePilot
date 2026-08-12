@@ -6,7 +6,7 @@
 
 Design, schedule, debug, and observe multi-step automation in your browser. Run PowerShell, file/registry/service operations, REST calls, SQL, and more across your Windows estate over WinRM — no agents on the targets.
 
-[![CI](https://github.com/Sev7eNup/NodePilot/actions/workflows/ci.yml/badge.svg)](https://github.com/Sev7eNup/NodePilot/actions/workflows/ci.yml)
+[![CI](https://github.com/Sev7eNup/NodePilot/actions/workflows/ci.yml/badge.svg?event=pull_request)](https://github.com/Sev7eNup/NodePilot/actions/workflows/ci.yml)
 ![.NET 10](https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet)
 ![React 19](https://img.shields.io/badge/React-19-61DAFB?logo=react)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript)
@@ -1295,11 +1295,16 @@ dotnet test tests/NodePilot.Cli.Tests
 - The WinRM remote layer is **always mocked** — never real WinRM connections in tests.
 - Backend DB tests use **SQLite in-memory** (`DataSource=:memory:`) — only as a test backend; the production app does not support SQLite.
 
-**CI pipeline** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs three jobs on every push and PR:
+**CI pipeline** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs five jobs on every pull
+request — and on demand via `workflow_dispatch`. There is deliberately no `push` trigger: a merge
+commit re-tests the tree the PR run already covered. Direct pushes to `main` (release cuts) are
+covered by the nightly suite (`scripts/nightly-tests.ps1`).
 
-1. **Backend** *(Windows)* — restore, build Release, `dotnet test --collect:"XPlat Code Coverage"`, ReportGenerator, **45 % minimum line coverage** gate
-2. **Frontend** *(Ubuntu)* — `npm ci`, type-check + build, vitest with coverage thresholds
-3. **E2E** *(Ubuntu)* — Playwright + Chromium against the built SPA
+1. **Backend** *(Windows)* — restore, build Release, `dotnet test --collect:"XPlat Code Coverage"`, ReportGenerator, **85 % line / 70 % branch coverage** gate
+2. **Frontend** *(Ubuntu)* — `npm ci`, lint, type-check + build, vitest with coverage thresholds
+3. **Docs UI** *(Ubuntu)* — `npm ci`, lint, type-check + build
+4. **Desktop shell** *(Ubuntu)* — typecheck + the pure-logic vitest suite
+5. **E2E** *(Ubuntu)* — Playwright + Chromium against the built SPA
 
 All artifacts (test results, coverage reports, Playwright report) are uploaded.
 
