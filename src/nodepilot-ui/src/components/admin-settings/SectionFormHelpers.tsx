@@ -1,4 +1,4 @@
-import { Chip, FlashFilled } from '@carbon/icons-react';
+import { ChevronDown, ChevronRight, Chip, FlashFilled } from '@carbon/icons-react';
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -158,6 +158,53 @@ export function Card({ icon: Icon, title, children }: Readonly<{ icon: React.Com
  * a quiet micro-label look that can't be confused with the card title one level up.
  * `first:` drops both for a group that opens a card, so no card starts with a stray rule.
  */
+/**
+ * Collapsible sub-block inside a settings card. Wears the same shell as the editors it sits next
+ * to (bordered, one step up from the card surface) so it reads as a peer block rather than as
+ * something appended after the form ended — a naked heading plus one control on the bare card
+ * surface reads as a leftover.
+ *
+ * `summary` is what the header shows while collapsed and is the whole point of collapsing: the
+ * setting stays legible without being unfolded. Open/closed is owned by the caller, because the
+ * useful default is usually "open iff this block is doing something".
+ */
+export function DisclosurePanel({
+  title, summary, open, onToggle, bodyId, children,
+}: Readonly<{
+  title: string;
+  summary?: string;
+  open: boolean;
+  onToggle: () => void;
+  /** Ties the header button to the body for `aria-controls`; must be unique on the page. */
+  bodyId: string;
+  children: React.ReactNode;
+}>) {
+  return (
+    <div className="mt-4 rounded-md border border-outline-variant bg-surface-low/40">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left transition-colors hover:bg-surface-low/60"
+      >
+        {open
+          ? <ChevronDown size={12} className="shrink-0 text-on-surface-variant" />
+          : <ChevronRight size={12} className="shrink-0 text-on-surface-variant" />}
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant">
+          {title}
+        </span>
+        {summary && <span className="ml-auto truncate text-xs text-on-surface-variant">{summary}</span>}
+      </button>
+      {open && (
+        <div id={bodyId} className="border-t border-outline-variant/60 p-3">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function GroupHeading({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <h4 className="mt-7 mb-3 border-t border-outline-variant/15 pt-5 text-[11px] font-semibold uppercase tracking-wider text-on-surface-variant first:mt-0 first:border-t-0 first:pt-0">

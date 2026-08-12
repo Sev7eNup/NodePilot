@@ -12,7 +12,7 @@ import { EnvOverrideBadge } from './EnvOverrideBadge';
 import { EtagConflictDialog } from './EtagConflictDialog';
 import { TestProbeModal } from './TestProbeModal';
 import {
-  GroupHeading,
+  DisclosurePanel,
   HotReloadHint,
   StringListEditor,
   TextInput,
@@ -596,6 +596,12 @@ function LlmCard() {
  * Outbound proxy for every LLM call. Section-level rather than per profile, so it sits below the
  * profile list instead of inside {@link LlmProfileForm}: one connection pool, one setting.
  *
+ * Rendered as a disclosure panel that borrows the profile editor's shell, for two reasons. It is
+ * a peer of the profile block, not a trailing remark — on the bare card surface a lone select
+ * under a heading read as something left behind. And `off` is the mode almost every installation
+ * runs, so the panel collapses to a header plus the effective mode and stops spending vertical
+ * space on a setting that is doing nothing.
+ *
  * The address/credential fields only appear in `custom` mode — in `system` mode they would be
  * inert, and a visible-but-ignored address field is exactly the kind of thing that gets filled in
  * and then debugged for an hour.
@@ -612,11 +618,26 @@ function LlmProxyForm({
   onSecretChange: (draft: SecretDraft) => void;
 }>) {
   const { t } = useTranslation(['adminSettings', 'common']);
+  // `null` = follow the data: the card mounts this form once with the empty default and again
+  // with the loaded snapshot, so a stored proxy must still open on arrival. A click pins the
+  // state and the mode stops steering it.
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const open = manualOpen ?? proxy.mode !== 'off';
+
+  const modeLabel = proxy.mode === 'custom' ? t('adminSettings:integrations.proxyModeCustom')
+    : proxy.mode === 'system' ? t('adminSettings:integrations.proxyModeSystem')
+    : t('adminSettings:integrations.proxyModeOff');
+  // A configured address says more than the word "custom" — it is what the operator came to check.
+  const summary = proxy.mode === 'custom' && proxy.address.trim() ? proxy.address : modeLabel;
 
   return (
-    <>
-      <GroupHeading>{t('adminSettings:integrations.proxy')}</GroupHeading>
-
+    <DisclosurePanel
+      title={t('adminSettings:integrations.proxy')}
+      summary={summary}
+      open={open}
+      onToggle={() => setManualOpen(!open)}
+      bodyId="llm-proxy-body"
+    >
       <div className="max-w-sm">
         <label htmlFor="llm-proxy-mode" className="text-xs font-medium text-on-surface-variant mb-1 flex items-center gap-2">
           {t('adminSettings:integrations.proxyMode')}
@@ -701,7 +722,7 @@ function LlmProxyForm({
           )}
         </>
       )}
-    </>
+    </DisclosurePanel>
   );
 }
 
