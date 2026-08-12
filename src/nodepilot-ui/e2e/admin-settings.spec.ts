@@ -131,20 +131,33 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
   test('76.1 — all System section tabs render; Integrations shows SMTP + LLM', async ({ page }) => {
     await openSystemTab(page);
 
-    // The eight section sub-tabs are always rendered in the tab bar.
+    // The nine section sub-tabs are always rendered in the tab bar, in this order.
+    // System info is deliberately LAST — it is the only read-only tab, so it sits after
+    // every tab that edits configuration instead of splitting that run.
     const tabs = [
       /integrations/i,
+      /ai knowledge/i,
       /retention/i,
-      /system info|system-info/i,
       /authentication/i,
       /logging .* telemetry|logging & telemetry/i,
       /^security$/i,
       /^performance$/i,
       /^database$/i,
+      /system info|system-info/i,
     ];
     for (const name of tabs) {
       await expect(page.getByRole('button', { name }).first()).toBeVisible({ timeout: 15_000 });
     }
+    // Pin the order, not just the presence: the read-only tab must stay at the right edge.
+    // Three `.np-tab-list`s are on screen (Personal/System, these sub-tabs, the LLM profile
+    // strip inside Integrations) — pick ours by the one tab only it carries.
+    const tabBar = page.locator('.np-tab-list')
+      .filter({ has: page.getByRole('button', { name: /^security$/i }) });
+    const rendered = await tabBar.getByRole('button').allInnerTexts();
+    expect(rendered.map((s) => s.trim().toLowerCase())).toEqual([
+      'integrations', 'ai knowledge', 'retention', 'authentication',
+      'logging & telemetry', 'security', 'performance', 'database', 'system info',
+    ]);
 
     // Default active tab is Integrations → SMTP + LLM cards mount from their mocked snapshots.
     await expect(page.getByRole('heading', { name: /^smtp$/i })).toBeVisible();

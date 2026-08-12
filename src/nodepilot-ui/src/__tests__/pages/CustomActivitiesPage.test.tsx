@@ -283,6 +283,33 @@ describe('CustomActivitiesPage', () => {
     expect(postedBody).toMatchObject({ key: 'my-node', name: 'My Node', scriptTemplate: 'Get-PSDrive C' });
   });
 
+  it('createDialog_fieldsUseThePageDialogOutlineStyle_notTheRecessedInputField', async () => {
+    // `.input-field` is the recessed designer-panel style and needs a raised surface to sink
+    // into. ModalShell only gets that lift in the dark skins, so on `light-grey` these fields
+    // rendered as flat beige boxes on a white panel and lost their outline on focus. The fix is
+    // the outline chain every other admin dialog uses — pin it, because the class choice IS the
+    // decision here and a copy-paste from a designer panel would silently undo it.
+    seed([]);
+    renderPage('Admin');
+    await waitFor(() => expect(screen.getByRole('button', { name: /New Custom Node/i })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /New Custom Node/i }));
+
+    const dialog = screen.getByRole('heading', { name: /Create custom node/i }).parentElement as HTMLElement;
+    const fields = [...dialog.querySelectorAll('input:not([type="checkbox"]):not([type="color"]), select')];
+    expect(fields.length).toBeGreaterThan(0);
+    for (const field of fields) {
+      expect(field.className).not.toContain('input-field');
+      expect(field.className).toContain('border-outline-variant');
+    }
+
+    // The ParamEditor rows must keep their explicit widths — under `.input-field` the unlayered
+    // `width:100%` beat them and every row wrapped onto a line of its own.
+    fireEvent.click(within(dialog).getByRole('button', { name: /add input/i }));
+    const paramName = await waitFor(() => within(dialog).getByPlaceholderText(/^name$/i));
+    expect(paramName.className).toContain('w-28');
+    expect(paramName.className).not.toContain('w-full');
+  });
+
   it('defaultSort_isNameAsc', async () => {
     seed([
       entry({ id: 'a', key: 'zeta', name: 'Zeta', version: 1 }),

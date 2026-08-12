@@ -137,7 +137,7 @@ export const useDesignStore = create<DesignState>()(
       setToolbarLayout: (toolbarLayout: ToolbarLayout) => set({ toolbarLayout }),
       nodeStyle: 'classic',
       nodeIconStyle: 'shape',
-      nodeScaleIndex: 1, // sm default — xs rendered 33-node graphs as an unreadable dot cloud
+      nodeScaleIndex: 3, // lg default — sm was legible but too small to actually author in
       labelFontOffsetIndex: 2, // 0-offset — use base labelFont from NODE_SCALES
       edgesAnimated: true,
       edgeWidthIndex: 2, // 2px default — matches previous hardcoded width
@@ -190,12 +190,16 @@ export const useDesignStore = create<DesignState>()(
     }),
     {
       name: 'nodepilot-design',
-      version: 1,
+      version: 2,
       // Profiles that already used the full designer retain the previous surface. Fresh
       // profiles use the standard-mode default above.
       migrate: (persisted, version) => {
-        const state = persisted as Partial<DesignState>;
-        if (version < 1 && !state.designerMode) return { ...state, designerMode: 'expert' };
+        let state = persisted as Partial<DesignState>;
+        if (version < 1 && !state.designerMode) state = { ...state, designerMode: 'expert' };
+        // v2 raised the node-size default from sm (1) to lg (3). Only lift profiles that are
+        // still sitting on the OLD default — a stored index of anything else is a deliberate
+        // choice from the size stepper and must survive the bump.
+        if (version < 2 && state.nodeScaleIndex === 1) state = { ...state, nodeScaleIndex: 3 };
         return state;
       },
     },

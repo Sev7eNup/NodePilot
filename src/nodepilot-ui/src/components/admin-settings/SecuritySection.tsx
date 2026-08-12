@@ -49,9 +49,8 @@ export function SecuritySection() {
       <SecurityCard />
       <SecretsReencryptCard />
       <div className="bg-surface-low border border-outline-variant rounded-md p-3 text-xs text-on-surface-variant">
-        <strong>Remote (WinRM):</strong> RequireWinRmSsl, WinRm timeouts und Session-Pool werden
-        unter <em>Performance → Remote</em> bearbeitet — alle Remote-Knobs liegen dort
-        gebündelt, damit ein Save den ganzen Block atomar überschreibt.
+        <Trans i18nKey="sec.remoteNote" ns="adminSettings"
+          components={[<strong key="0" />, <em key="1" />]} />
       </div>
     </div>
   );
@@ -101,6 +100,7 @@ function RestApiCard() {
     <Card icon={Network_3} title={t('sec.restApiCardTitle')}>
       <Toggle label={t('sec.blockPrivateNetworks')} checked={form.blockPrivateNetworks}
         onChange={(v) => set({ ...form, blockPrivateNetworks: v })}
+        hint={t('sec.blockPrivateNetworksHint')}
         configKey="RestApi:BlockPrivateNetworks" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       <div className="mt-3">
         <StringListEditor label={t('sec.outboundAllowedHosts')} value={form.allowedHosts}
@@ -111,6 +111,7 @@ function RestApiCard() {
       <GroupHeading>{t('sec.outboundProxy')}</GroupHeading>
       <Toggle label={t('enabled')} checked={form.proxy.enabled}
         onChange={(v) => set({ ...form, proxy: { ...form.proxy, enabled: v } })}
+        hint={t('sec.restApiProxyEnabledHint')}
         configKey="RestApi:Proxy:Enabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
         <TextInput label={t('sec.proxyAddress')} value={form.proxy.address}
@@ -198,10 +199,12 @@ function FileSystemOperationCard() {
       <HotReloadHint isHotReloadable={data.isHotReloadable} />
       <Toggle label={t('sec.rejectTraversal')} checked={form.rejectTraversal}
         onChange={(v) => set({ ...form, rejectTraversal: v })}
+        hint={t('sec.rejectTraversalHint')}
         configKey="FileSystemOperation:RejectTraversal" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       <div className="mt-3">
         <StringListEditor label={t('sec.allowedRoots')} value={form.allowedRoots}
           onChange={(v) => set({ ...form, allowedRoots: v })} placeholder="C:\\NodePilot\\sandbox" />
+        <p className="text-xs text-on-surface-variant mt-1">{t('sec.allowedRootsHint')}</p>
       </div>
       <ErrorsAndSave errors={errors} onSave={() => save({ RejectTraversal: form.rejectTraversal, AllowedRoots: form.allowedRoots })} />
       {ui.dialog}
@@ -224,6 +227,7 @@ function SqlActivityCard() {
       <Toggle label={t('sec.requireConnectionRef')}
         checked={form.requireConnectionRef}
         onChange={(v) => set({ requireConnectionRef: v })}
+        hint={t('sec.requireConnectionRefHint')}
         configKey="SqlActivity:RequireConnectionRef" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       <ErrorsAndSave errors={errors} onSave={() => save({ RequireConnectionRef: form.requireConnectionRef })} />
       {ui.dialog}
@@ -241,6 +245,7 @@ function StartProgramCard() {
       <HotReloadHint isHotReloadable={data.isHotReloadable} />
       <Toggle label={t('sec.disallowShellExecute')} checked={form.disallowShellExecute}
         onChange={(v) => set({ disallowShellExecute: v })}
+        hint={t('sec.disallowShellExecuteHint')}
         configKey="StartProgram:DisallowShellExecute" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       <ErrorsAndSave errors={errors} onSave={() => save({ DisallowShellExecute: form.disallowShellExecute })} />
       {ui.dialog}
@@ -258,6 +263,7 @@ function WebhookCard() {
       <HotReloadHint isHotReloadable={data.isHotReloadable} />
       <Toggle label={t('sec.requireWebhookSecret')} checked={form.requireSecret}
         onChange={(v) => set({ requireSecret: v })}
+        hint={t('sec.requireWebhookSecretHint')}
         configKey="Webhook:RequireSecret" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       <ErrorsAndSave errors={errors} onSave={() => save({ RequireSecret: form.requireSecret })} />
       {ui.dialog}
@@ -362,12 +368,14 @@ function SecurityCard() {
       <Toggle label={t('sec.strictAllowedHosts')}
         checked={form.strictAllowedHosts}
         onChange={(v) => set({ ...form, strictAllowedHosts: v })}
+        hint={t('sec.strictAllowedHostsHint')}
         configKey="Security:StrictAllowedHosts" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       <div className="mt-3">
         <TextInput label={t('sec.allowedHostsField')} value={form.allowedHosts}
           onChange={(v) => set({ ...form, allowedHosts: v })}
           configKey="AllowedHosts" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
           placeholder="nodepilot.firma.local;localhost" />
+        <p className="text-xs text-on-surface-variant mt-1">{t('sec.allowedHostsFieldHint')}</p>
       </div>
       <ErrorsAndSave errors={errors} onSave={() => save({ StrictAllowedHosts: form.strictAllowedHosts, AllowedHosts: form.allowedHosts })} />
       {ui.dialog}

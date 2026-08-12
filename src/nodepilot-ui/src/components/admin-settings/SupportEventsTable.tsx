@@ -21,13 +21,15 @@ import { diagnostics, type SupportEventQuery, type SupportEventResponse } from '
  */
 const PAGE_SIZE = 200;
 // Eng-gepackte Log-Optik: 22px Zeilenhöhe gibt bei text-xs (12px) genau Single-Line +
-// 5px Top-/Bottom-Luft. Bei 540px Viewport sieht der Operator damit ~22 statt ~12 Zeilen
+// 5px Top-/Bottom-Luft. Bei 702px Viewport sieht der Operator damit ~30 Zeilen auf einmal
 // — gleiches "echtes Log"-Gefühl wie Notepad++/CMTrace.
 const ROW_HEIGHT = 22;
 const HEADER_HEIGHT = 26;
-const DEFAULT_TABLE_HEIGHT = 540;
+const DEFAULT_TABLE_HEIGHT = 702;
 const MIN_TABLE_HEIGHT = 180;
-const HEIGHT_STORAGE_KEY = 'nodepilot.supportEvents.tableHeight.v1';
+// `.v2`: der Default stieg von 540 auf 702 px. Ohne Key-Bump bliebe jeder Browser, der die
+// Seite schon offen hatte, auf seiner gespeicherten Höhe und würde den neuen Default nie sehen.
+const HEIGHT_STORAGE_KEY = 'nodepilot.supportEvents.tableHeight.v2';
 
 const LEVEL_LABELS: Record<number, string> = {
   0: 'TRACE', 1: 'DEBUG', 2: 'INFO', 3: 'WARN', 4: 'ERROR', 5: 'FATAL',

@@ -22,10 +22,10 @@ describe('useDesignStore', () => {
     useDesignStore.setState(initialState, true);
   });
 
-  it('defaults_matchClassicLayoutAndSmallestZoom', () => {
+  it('defaults_matchClassicLayoutAndLargeNodeScale', () => {
     const s = useDesignStore.getState();
     expect(s.nodeStyle).toBe('classic');
-    expect(s.nodeScaleIndex).toBe(1); // sm — new default (xs rendered large graphs unreadably small)
+    expect(s.nodeScaleIndex).toBe(3); // lg — sm was legible but too small to author in
     expect(s.edgesAnimated).toBe(true);
     expect(s.layoutMode).toBe('LR');
     expect(s.snapToGrid).toBe(false);
@@ -219,5 +219,37 @@ describe('useDesignStore', () => {
     expect(useDesignStore.getState().failureHeatmapEnabled).toBe(false);
     useDesignStore.getState().toggleFailureHeatmap();
     expect(useDesignStore.getState().failureHeatmapEnabled).toBe(true);
+  });
+
+  describe('persist migrate', () => {
+    // v2 raised the node-scale default sm(1) → lg(3). The migration has to be able to tell
+    // "never touched the stepper" from "deliberately chose sm", and the only signal available
+    // is whether the stored index still equals the OLD default. Pin both directions, plus the
+    // v1 designerMode branch that must keep working alongside it.
+    const migrate = (persisted: unknown, version: number) =>
+      useDesignStore.persist.getOptions().migrate!(persisted, version) as Partial<
+        ReturnType<typeof useDesignStore.getState>
+      >;
+
+    it('migrate_liftsOldDefaultNodeScaleToLarge', () => {
+      expect(migrate({ nodeScaleIndex: 1 }, 1).nodeScaleIndex).toBe(3);
+    });
+
+    it('migrate_keepsDeliberatelyChosenNodeScale', () => {
+      // Every index other than the old default is a stepper choice — including 0 (xs).
+      for (const chosen of [0, 2, 3, 5, 7]) {
+        expect(migrate({ nodeScaleIndex: chosen }, 1).nodeScaleIndex).toBe(chosen);
+      }
+    });
+
+    it('migrate_leavesCurrentVersionUntouched', () => {
+      expect(migrate({ nodeScaleIndex: 1 }, 2).nodeScaleIndex).toBe(1);
+    });
+
+    it('migrate_stillUpgradesPreV1DesignerModeAlongsideNodeScale', () => {
+      const out = migrate({ nodeScaleIndex: 1 }, 0);
+      expect(out.designerMode).toBe('expert');
+      expect(out.nodeScaleIndex).toBe(3);
+    });
   });
 });
