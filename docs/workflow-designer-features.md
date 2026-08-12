@@ -43,7 +43,7 @@ Vollständige Auflistung sämtlicher Features des NodePilot-Workflow-Designers (
 - **Controls-Panel:** Standard React-Flow-Controls (Zoom in/out, Fit, Lock).
 - **Hintergrund:** Ein **Punkt-Raster** (Gap 24 px, Dot-Größe 1.6) — identisch in Premium **und** Classic, der frühere zweistufige Crosshatch ist ersatzlos entfallen. Die Deckkraft ist skin-abhängig: helle Skins tragen einen deutlich stärkeren Alpha, weil das Raster auf hellem Grund mehr Kontrast braucht als auf dunklem. Bei aktivem Snap-to-Grid ersetzt ein **Linien**-Raster auf der Snap-Schrittweite das Punkt-Raster.
 - **Snap-to-Grid (Expert):** `G` togglet Raster-Snapping (Standard 20 px, konfigurierbar).
-- **Node-Skalierung:** 8 Größen-Presets (XS … 4XL, Default SM); `Ctrl+Shift+>` / `Ctrl+Shift+<` (Expert) ändern Node-Größe, `Ctrl+Alt+.` / `Ctrl+Alt+,` die Label-Schriftgröße (nur Classic-Node-Stil).
+- **Node-Skalierung:** 8 Größen-Presets (XS … 4XL, Default L); `Ctrl+Shift+>` / `Ctrl+Shift+<` (Expert) ändern Node-Größe, `Ctrl+Alt+.` / `Ctrl+Alt+,` die Label-Schriftgröße (nur Classic-Node-Stil).
 - **Fullscreen / Distraction-Free:** `F11` blendet Sidebar, Panels und Banner aus, behält Header + Canvas + Exit-Pill.
 - **Viewport-Virtualisierung:** Nur sichtbare Elemente werden gerendert (`onlyRenderVisibleElements`) — spürbar ab ~50 Nodes.
 
@@ -337,7 +337,7 @@ Alle Darstellungs-Einstellungen liegen im **`designStore`** (Zustand + persist, 
 | `designerTheme` | `atelier` | atelier / classic | Designsprache des Designers: **Atelier** (eigener Werkbank-Look — Papier/Graphit-Grund mit dem gewohnten Karo-Raster, schwebendes Karten-Chrome, ein Akzent; `styles/designer-atelier.css` mappt die `--color-*`-Tokens über eine `--wd-*`-Palettenschicht) vs. **Classic** (bisheriger Look, byte-identisch). **Farb-Skins adaptieren beide Looks:** im Atelier re-pointet jeder Skin Akzentfamilie + Grundton (`--wd-accent*`, `--wd-canvas`/`--wd-panel`), die Atelier-Geometrie bleibt universell; Status-Farben bleiben in beiden Looks skin-stabil. Umschalter (`Brush`-Icon, `role="switch"`, `data-testid="toggle-atelier-theme"`) in beiden Kopfleisten-Layouts |
 | `toolbarLayout` | `compact` | compact / classic | Kopfleisten-Layout: kompakt (gruppierte Popover-Menüs, grüner „Ausführen") vs. klassische Inline-Reihe (jeder Toggle/Tool als einzelner Button, icon-only Play). Umschalter-Button in beiden Layouts |
 | `nodeStyle` | `classic` | classic / card | Node-Darstellung (`Ctrl+Shift+N`) |
-| `nodeScaleIndex` | 1 | 0–7 (XS … 4XL) | Node-Größe |
+| `nodeScaleIndex` | 3 | 0–7 (XS … 4XL) | Node-Größe |
 | `labelFontOffsetIndex` | 2 | 0–6 (−4 … +8 px) | Label-Schriftgröße |
 | `edgesAnimated` | true | bool | Fluss-Animation der Kanten (`A`) |
 | `edgeWidthIndex` | 2 | 1.5/2/2.5/3.5/5/7 px | Kantenbreite (`Ctrl+]`/`[`) |

@@ -27,16 +27,20 @@ type SubTab = 'integrations' | 'ai-knowledge' | 'retention' | 'system-info'
 
 // Tabs are progressively activated as their section is implemented. Disabled tabs
 // keep the operator informed about what's on the roadmap.
+// `system-info` sits LAST on purpose: it is the only read-only tab here, so it belongs
+// after everything that actually edits configuration rather than splitting that run.
+// Order is presentation only — nothing indexes into this array, and `integrations`
+// stays first because it is also the default/fallback section for a bare `?tab=system`.
 const TABS: { id: SubTab; ready: boolean }[] = [
   { id: 'integrations',     ready: true },
   { id: 'ai-knowledge',     ready: true },
   { id: 'retention',        ready: true },
-  { id: 'system-info',      ready: true },
   { id: 'authentication',   ready: true },
   { id: 'logging-telemetry', ready: true },
   { id: 'security',         ready: true },
   { id: 'performance',      ready: true },
   { id: 'db-admin',         ready: true },
+  { id: 'system-info',      ready: true },
 ];
 
 const ICONS: Record<SubTab, React.ComponentType<{ size?: number }>> = {

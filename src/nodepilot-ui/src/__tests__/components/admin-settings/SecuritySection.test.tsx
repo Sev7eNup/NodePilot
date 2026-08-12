@@ -70,6 +70,36 @@ describe('SecuritySection', () => {
     expect(screen.getAllByText(/Changes apply immediately/i).length).toBe(5);
   });
 
+  it('every hardening switch carries an explanatory hint', async () => {
+    // These are security switches an operator will not touch without knowing what they do.
+    // Pin one distinctive phrase per hint so a dropped `hint` prop — or a key that silently
+    // resolves to itself — fails here instead of shipping an unexplained checkbox.
+    renderAll();
+    await waitFor(() => expect(screen.getByDisplayValue('*')).toBeInTheDocument(), { timeout: 3000 });
+    const phrases = [
+      /baseline SSRF guard/i,                          // RestApi:BlockPrivateNetworks
+      /Overridable per node via the proxyMode key/i,   // RestApi:Proxy:Enabled
+      /climb out of an allowed root/i,                 // FileSystemOperation:RejectTraversal
+      /symlinks\/junctions are followed/i,             // FileSystemOperation:AllowedRoots
+      /no database secrets in the workflow definition/i, // SqlActivity:RequireConnectionRef
+      /second injection surface/i,                     // StartProgram:DisallowShellExecute
+      /HMAC mode is always fail-closed/i,              // Webhook:RequireSecret
+      /applies at boot only/i,                         // Security:StrictAllowedHosts
+      /health probe targets/i,                         // Security:AllowedHosts
+    ];
+    for (const phrase of phrases) {
+      expect(screen.getByText(phrase)).toBeInTheDocument();
+    }
+  });
+
+  it('the Remote pointer note is translated, not hardcoded German', async () => {
+    // It used to be inline German JSX and rendered German inside the English UI.
+    renderAll();
+    await waitFor(() => expect(screen.getByDisplayValue('*')).toBeInTheDocument(), { timeout: 3000 });
+    expect(screen.getByText(/every remote switch lives there together/i)).toBeInTheDocument();
+    expect(screen.queryByText(/werden unter/i)).not.toBeInTheDocument();
+  });
+
   it('Security card Save sends StrictAllowedHosts + AllowedHosts in PascalCase', async () => {
     let putBody: unknown = null;
     server.use(http.put('/api/admin/settings/Security', async ({ request }) => {

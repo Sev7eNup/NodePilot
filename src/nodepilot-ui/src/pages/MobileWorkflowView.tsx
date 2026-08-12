@@ -20,8 +20,10 @@ import { withDefaultEdgePorts } from '../lib/edgePorts';
 import { NodeScaleOverrideContext } from '../components/designer/nodeScaleContext';
 import { useWorkflowSignalR } from '../hooks/useSignalR';
 
-// Render the read-only phone graph at the `lg` node scale (NODE_SCALES index 3) — much bigger
-// icons/labels than the desktop `xs` default, so a workflow stays legible on a small screen.
+// Render the read-only phone graph at the `lg` node scale (NODE_SCALES index 3) — big enough
+// icons/labels to keep a workflow legible on a small screen. This matches the desktop default
+// today, but stays an explicit override: the phone view must not shrink when someone steps the
+// desktop size down, since there is no size stepper on this screen to undo it.
 const MOBILE_SCALE_INDEX = 3;
 
 // Reuse the editor's node/edge renderers verbatim. ActivityNode reads everything it needs

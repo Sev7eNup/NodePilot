@@ -36,6 +36,36 @@ import { useThemeStore, resolveTheme } from '../stores/themeStore';
  * {{globals.X}}, never as inputs (there is no secret input type).
  */
 
+/**
+ * Field chrome for this page's dialogs — the outline style every other admin page dialog uses
+ * (GlobalVariablesPage, MachinesPage, UsersPage, …), so a Custom Node dialog reads identically to
+ * a Globals dialog in every skin.
+ *
+ * Deliberately NOT the shared `.input-field` class. That one is the *recessed* designer-panel
+ * style: it paints itself darker than its container and needs a raised surface to sink into.
+ * `ModalShell` only gets that lift in dark skins (`html.dark … .np-modal-panel` in index.css), so
+ * on the light skins — `light-grey` most visibly — the field rendered as a flat beige box on a
+ * white panel and went *lighter* than the panel on focus, losing its outline exactly while in use.
+ *
+ * `focus:ring-blue-500` is not a hardcoded palette literal here: index.css remaps the blue ring
+ * utilities onto `--np-accent-ring` for every non-blue skin, so the ring follows the accent.
+ *
+ * Both constants carry NO width — each call site adds `w-full` or an explicit `w-28`/`w-32`. Two
+ * conflicting utilities from the same Tailwind layer are resolved by their order in the generated
+ * stylesheet, not by the order in the class attribute, so baking a width in here and overriding it
+ * per field would be a coin flip.
+ */
+const FIELD =
+  'px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+
+/**
+ * Compact sibling for the ParamEditor rows, which must stay side by side. Under `.input-field` the
+ * per-field `w-28`/`w-32`/`text-xs` were dead: unlayered CSS beats Tailwind's `@layer utilities`,
+ * so its `width:100%` won and every parameter row wrapped onto a line of its own.
+ */
+const FIELD_COMPACT =
+  'px-2 py-1 border border-outline-variant rounded-md text-xs focus:outline-none focus:ring-2 focus:ring-blue-500';
+
 interface InputParam {
   name: string;
   label: string;
@@ -353,23 +383,26 @@ export function CustomActivitiesPage() {
           <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-3">
               <Labeled label={t('customActivities:fields.name')}>
-                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="input-field" />
+                <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={`${FIELD} w-full`} />
               </Labeled>
               <Labeled label={t('customActivities:fields.key')} hint={!form.id ? t('customActivities:fields.keyHint') : undefined}>
                 <input value={form.key} disabled={!!form.id} onChange={(e) => setForm({ ...form, key: e.target.value })}
-                  placeholder="disk-check" pattern="[A-Za-z0-9_\-]+" className="input-field font-mono disabled:opacity-60" />
+                  placeholder="disk-check" pattern="[A-Za-z0-9_\-]+" className={`${FIELD} w-full font-mono disabled:opacity-60`} />
               </Labeled>
             </div>
 
             <div className="grid grid-cols-[auto_1fr_auto] gap-3 items-end">
               <Labeled label={t('customActivities:fields.icon')}>
-                <button type="button" onClick={() => setShowIconPicker(true)} className="flex items-center gap-2 input-field">
+                {/* Same outline as the fields next to it, but no `w-full`: this sits in the `auto`
+                    column of the grid and must size to its own content. */}
+                <button type="button" onClick={() => setShowIconPicker(true)}
+                  className="flex items-center gap-2 px-3 py-2 border border-outline-variant rounded-md text-sm hover:bg-surface-container focus:outline-none focus:ring-2 focus:ring-blue-500">
                   <IconGlyph token={form.icon} size={20} color={form.color || undefined} />
                   <span className="text-xs font-mono text-on-surface-variant">{form.icon}</span>
                 </button>
               </Labeled>
               <Labeled label={t('customActivities:fields.description')}>
-                <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="input-field" />
+                <input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className={`${FIELD} w-full`} />
               </Labeled>
               <Labeled label={t('customActivities:fields.color')}>
                 <input type="color" value={form.color || '#6366f1'} onChange={(e) => setForm({ ...form, color: e.target.value })} className="h-9 w-12 rounded border border-outline-variant" />
@@ -378,26 +411,28 @@ export function CustomActivitiesPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <Labeled label={t('customActivities:fields.engine')}>
-                <select value={form.engine} onChange={(e) => setForm({ ...form, engine: e.target.value })} className="input-field">
+                {/* `bg-surface-lowest` like the Globals folder picker: a native select paints its
+                    own closed-state background and would otherwise stay UA-grey on a light skin. */}
+                <select value={form.engine} onChange={(e) => setForm({ ...form, engine: e.target.value })} className={`${FIELD} w-full bg-surface-lowest`}>
                   <option value="auto">Auto (PS7 → PS5.1)</option>
                   <option value="pwsh">PowerShell 7</option>
                   <option value="powershell">Windows PS 5.1</option>
                 </select>
               </Labeled>
               <Labeled label={t('customActivities:fields.defaultTimeout')}>
-                <input type="number" min={0} value={form.defaultTimeoutSeconds} onChange={(e) => setForm({ ...form, defaultTimeoutSeconds: e.target.value })} className="input-field" />
+                <input type="number" min={0} value={form.defaultTimeoutSeconds} onChange={(e) => setForm({ ...form, defaultTimeoutSeconds: e.target.value })} className={`${FIELD} w-full`} />
               </Labeled>
             </div>
 
             <div className="flex flex-wrap gap-4">
               <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer">
-                <input type="checkbox" checked={form.runsRemote} onChange={(e) => setForm({ ...form, runsRemote: e.target.checked })} /> {t('customActivities:fields.runsRemote')}
+                <input type="checkbox" className="rounded" checked={form.runsRemote} onChange={(e) => setForm({ ...form, runsRemote: e.target.checked })} /> {t('customActivities:fields.runsRemote')}
               </label>
               <label className="flex items-center gap-2 text-sm text-on-surface cursor-pointer">
-                <input type="checkbox" checked={form.isolated} onChange={(e) => setForm({ ...form, isolated: e.target.checked })} /> {t('customActivities:fields.isolated')}
+                <input type="checkbox" className="rounded" checked={form.isolated} onChange={(e) => setForm({ ...form, isolated: e.target.checked })} /> {t('customActivities:fields.isolated')}
               </label>
               <Labeled label={t('customActivities:fields.successExitCodes')}>
-                <input value={form.successExitCodes} onChange={(e) => setForm({ ...form, successExitCodes: e.target.value })} placeholder="0,1" className="input-field w-28 font-mono" />
+                <input value={form.successExitCodes} onChange={(e) => setForm({ ...form, successExitCodes: e.target.value })} placeholder="0,1" className={`${FIELD} w-28 font-mono`} />
               </Labeled>
             </div>
 
@@ -443,7 +478,7 @@ export function CustomActivitiesPage() {
             <button onClick={() => setShowIconPicker(false)} className="p-1 text-on-surface-variant hover:bg-surface-container rounded"><Close size={16} /></button>
           </div>
           <input value={iconSearch} onChange={(e) => setIconSearch(e.target.value)} placeholder={t('customActivities:iconPicker.search')}
-            className="input-field mb-3 font-mono" />
+            className={`${FIELD} w-full mb-3 font-mono`} />
           <div className="grid grid-cols-8 gap-1 max-h-[40vh] overflow-y-auto">
             {CUSTOM_ACTIVITY_ICON_CHOICES.filter((ic) => ic.includes(iconSearch.trim().toLowerCase())).map((ic) => (
               <button key={ic} onClick={() => { setForm({ ...form, icon: ic }); setShowIconPicker(false); }}
@@ -612,19 +647,19 @@ function ParamEditor({ kind, params, onChange, t }: Readonly<{
       <div className="space-y-1">
         {params.map((p, i) => (
           <div key={i} className="flex flex-wrap items-center gap-1">
-            <input value={p.name} onChange={(e) => update(i, { name: e.target.value })} placeholder={t('customActivities:param.name')} className="input-field w-28 font-mono text-xs" />
-            {isInput && <input value={(p as InputParam).label} onChange={(e) => update(i, { label: e.target.value })} placeholder={t('customActivities:param.label')} className="input-field w-32 text-xs" />}
-            <select value={p.type} onChange={(e) => update(i, { type: e.target.value })} className="input-field w-28 text-xs">
+            <input value={p.name} onChange={(e) => update(i, { name: e.target.value })} placeholder={t('customActivities:param.name')} className={`${FIELD_COMPACT} w-28 font-mono`} />
+            {isInput && <input value={(p as InputParam).label} onChange={(e) => update(i, { label: e.target.value })} placeholder={t('customActivities:param.label')} className={`${FIELD_COMPACT} w-32`} />}
+            <select value={p.type} onChange={(e) => update(i, { type: e.target.value })} className={`${FIELD_COMPACT} w-28 bg-surface-lowest`}>
               {(isInput ? inputTypes : outputTypes).map((ty) => <option key={ty} value={ty}>{ty}</option>)}
             </select>
             {isInput && (
               <label className="flex items-center gap-1 text-[11px] text-on-surface-variant">
-                <input type="checkbox" checked={!!(p as InputParam).required} onChange={(e) => update(i, { required: e.target.checked })} />{t('customActivities:param.required')}
+                <input type="checkbox" className="rounded" checked={!!(p as InputParam).required} onChange={(e) => update(i, { required: e.target.checked })} />{t('customActivities:param.required')}
               </label>
             )}
             {isInput && (p as InputParam).type === 'select' && (
               <input value={((p as InputParam).options ?? []).join(',')} onChange={(e) => update(i, { options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
-                placeholder={t('customActivities:param.options')} className="input-field flex-1 min-w-[140px] text-xs" />
+                placeholder={t('customActivities:param.options')} className={`${FIELD_COMPACT} flex-1 min-w-[140px]`} />
             )}
             <button onClick={() => remove(i)} className="p-1 text-red-600 hover:bg-red-500/15 rounded" title={t('customActivities:param.remove')}><TrashCan size={14} /></button>
           </div>

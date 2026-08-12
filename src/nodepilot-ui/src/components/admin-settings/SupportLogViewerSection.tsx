@@ -11,9 +11,11 @@ type ViewMode = 'table' | 'plain';
 // Höhe des Plain-Text-Log-Fensters — per Drag-Handle am unteren Rand verstellbar, in
 // localStorage persistiert. Spiegelt bewusst die resizable Höhe der DB-Tabelle
 // (SupportEventsTable) 1:1 wider, damit sich beide Views identisch anfühlen.
-const PLAIN_DEFAULT_HEIGHT = 640;
+const PLAIN_DEFAULT_HEIGHT = 832;
 const PLAIN_MIN_HEIGHT = 240;
-const PLAIN_HEIGHT_STORAGE_KEY = 'nodepilot.supportLog.plainHeight.v1';
+// `.v2`: der Default stieg von 640 auf 832 px. Der Key-Bump ist der Reset — sonst gewinnt in
+// jedem bereits benutzten Browser der alte gespeicherte Wert und der neue Default bleibt unsichtbar.
+const PLAIN_HEIGHT_STORAGE_KEY = 'nodepilot.supportLog.plainHeight.v2';
 
 /**
  * Support-Log-Viewer (standalone Page /support-log, Admin-only). Zwei View-Modes:
