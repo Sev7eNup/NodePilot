@@ -2672,6 +2672,24 @@ html:not(.dark) .np-ops-bar--running {
   border-right: 1px dashed color-mix(in srgb, var(--color-outline) 60%, transparent);
 }
 
+/* Lane-label column, and the axis strip that has to line up under it.
+
+   Width shrinks with the viewport instead of sitting at a fixed 380 px: on a 390 px phone the fixed
+   width left roughly ten pixels of track and the timeline was unusable. clamp() keeps the desktop
+   width where it was (24vw passes 380 px well before a normal desktop) and only bites once the board
+   is narrow enough that the labels would otherwise eat the whole track.
+
+   The unit is `vw`, NOT `%`, and that is the load-bearing part: the two elements sit in different
+   containing blocks — the label column inside the vertically scrolling row, the axis a level up — so
+   a percentage would resolve against boxes that differ by the scrollbar width and slide the axis a
+   few pixels out of line with the track it labels. `vw` resolves identically for both. */
+.np-ops-lane-labels {
+  width: clamp(140px, 24vw, 380px);
+}
+.np-ops-axis {
+  margin-left: clamp(140px, 24vw, 380px);
+}
+
 /* Anchored layer — TWO elements, deliberately.
 
    It holds everything frozen at the snapshot: settled bars, the density histogram, the call

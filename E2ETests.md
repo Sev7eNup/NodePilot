@@ -4592,11 +4592,15 @@ Prüfpunkte je Provider/Fall:
 - [ ] Der Hinweis nennt Gesamt- und Fehlerzahl (z. B. „32 finished runs", „3 failed") **und erklärt die Kodierung** (Säulenhöhe = Läufe, Strich unter der Linie = Fehlschlag).
 - [ ] Hover auf einer Säule nennt Zeitraum und exakte Zahlen; Prüfung in hellem **und** dunklem Skin (Säule und Grundlinie dürfen nicht verschwinden).
 
-### Test 83.12b — Tastatur und Screenreader
+### Test 83.12b — Tastatur, Screenreader und schmale Viewports
 1. Auf `/operations` mit Tab bis zur Zeitleiste, dann mit Pfeiltasten navigieren und Enter drücken.
+2. Fenster auf ~390 px Breite ziehen (DevTools-Gerätemodus, iPhone-Breite).
+3. Einen Workflow mit mehr als 12 gleichzeitigen Läufen betrachten (oder Snapshot entsprechend mocken).
 - [ ] Die Zeitleiste ist **ein** Tab-Stop: ein weiterer Tab landet im Departure-Board darunter, nicht im nächsten Balken.
 - [ ] Pfeil links/rechts wechselt den Balken, hoch/runter die Lane, Home/End springt an die Enden, Enter öffnet den Drilldown.
 - [ ] Screenreader liest Dichte-Säulen vor (Zeitraum + Lauf-Anzahl); sie sind **nicht** per Tab erreichbar.
+- [ ] Bei ~390 px bleibt der Track nutzbar (Label-Spalte schrumpft); die Achsen-Beschriftung unten sitzt **exakt** unter dem Track, nicht um ein paar Pixel versetzt.
+- [ ] Die überlaufende Lane zeigt den Marker und nennt im Titel, dass Balken sich eine Zeile teilen — es fehlt **kein** Lauf.
 
 ### Test 83.13 — Folder-Scoping
 1. Folder-Filter auf einen Ordner ohne laufende Runs stellen, danach zurückstellen.

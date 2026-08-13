@@ -3,7 +3,7 @@ import {
   windowFor, timeToX, buildTimelineBars, assignLanes, placeBar, axisTicks, isActiveBarStatus,
   pairCallConnectors, isOverdue, isStalled, tickStepFor, buildDensityCells, densityColumnHeight,
   OPS_WINDOW_MS, OPS_NOW_FRACTION, OPS_WINDOW_MINUTES,
-  OPS_DENSITY_CELL_GAP_PX, OPS_DENSITY_MAX_H, OPS_DENSITY_MIN_H,
+  OPS_DENSITY_CELL_GAP_PX, OPS_DENSITY_MAX_H, OPS_DENSITY_MIN_H, OPS_MAX_SUB_ROWS,
   type TimelineBarInput,
 } from '../../lib/opsTimeline';
 import { OPS_BAR_H } from '../../components/operations/OpsTimelineBar';
@@ -470,3 +470,38 @@ describe('buildTimelineBars — activity fields', () => {
   });
 });
 
+describe('assignLanes — sub-row ceiling', () => {
+  const nodes = new Map<string, OpsNode>([['w1', node('w1', 'Alpha')]]);
+
+  /** N runs that all overlap each other, so every one of them wants its own sub-row. */
+  const overlapping = (count: number): TimelineBarInput[] =>
+    Array.from({ length: count }, (_, i) => ({
+      executionId: `e${i}`, workflowId: 'w1', status: 'Succeeded',
+      startedAtMs: NOW - 10 * MIN, completedAtMs: NOW - MIN,
+      parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAtMs: null,
+    }));
+
+  it('stops stacking at the ceiling instead of growing a lane without bound', () => {
+    // Unbounded, a lane is a function of a workflow's concurrency: the bar cap's worth of overlapping
+    // runs would be ~152 000 px tall, and the anchored layer promotes that into one composited surface.
+    const { lanes } = assignLanes(overlapping(500), nodes);
+    expect(lanes[0].subRowCount).toBe(OPS_MAX_SUB_ROWS);
+    expect(lanes[0].subRowsCapped).toBe(true);
+  });
+
+  it('never drops a bar to stay under the ceiling', () => {
+    // Overlapping is crowded; losing a run would be a lie. Every input must come back placed, and
+    // inside the ceiling.
+    const { placed } = assignLanes(overlapping(500), nodes);
+    expect(placed).toHaveLength(500);
+    expect(new Set(placed.map((p) => p.executionId)).size).toBe(500);
+    expect(Math.max(...placed.map((p) => p.subRow))).toBeLessThan(OPS_MAX_SUB_ROWS);
+  });
+
+  it('leaves a lane below the ceiling untouched and unflagged', () => {
+    const { lanes, placed } = assignLanes(overlapping(4), nodes);
+    expect(lanes[0].subRowCount).toBe(4);
+    expect(lanes[0].subRowsCapped).toBe(false);
+    expect(placed.map((p) => p.subRow).sort()).toEqual([0, 1, 2, 3]);
+  });
+});

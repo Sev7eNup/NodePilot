@@ -14,6 +14,22 @@ export const OPS_NOW_FRACTION = 0.92;
 export const OPS_TICK_STEP_MS = 5 * 60_000;
 
 /**
+ * Most sub-rows one lane will stack before it starts packing.
+ *
+ * A lane grows a sub-row per concurrently running execution, so an unbounded lane is a function of
+ * a workflow's concurrency, not of anything the view controls: with the bar cap's worth of
+ * overlapping runs one lane would be ~152 000 px tall, and the anchored layer promotes exactly that
+ * into a single composited surface. Twelve rows is already ~456 px — most of a viewport — and past
+ * that the rows stop telling anyone anything. Independent of the window: concurrency is a property
+ * of the workflow, not of how far back the console is looking.
+ *
+ * Bars past the ceiling are NEVER dropped; they pack into the row that frees up soonest and overlap
+ * there. Losing a run would be a lie, overlapping is merely crowded — and the lane says so through
+ * `subRowsCapped`.
+ */
+export const OPS_MAX_SUB_ROWS = 12;
+
+/**
  * Selectable windows, in minutes — must match the server's clamp list
  * (`OperationsController.AllowedWindowMinutes`). The first entry is the default the page opens on.
  */
@@ -81,6 +97,8 @@ export interface TimelineLane {
   hasActive: boolean;
   /** Call-hierarchy depth: 0 = top-level, >0 = sub-workflow lane indented under its caller. */
   depth: number;
+  /** Concurrency exceeded OPS_MAX_SUB_ROWS, so some bars share a row and overlap there. */
+  subRowsCapped: boolean;
 }
 
 /** Window such that NOW sits at `nowFraction` of the track and the window spans `windowMs`. */
@@ -280,12 +298,23 @@ export function assignLanes(
     // Greedy interval stacking: place each bar in the first sub-row whose last bar ended
     // before this one starts. Running bars occupy their row until "forever".
     const rowEnds: number[] = [];
+    let subRowsCapped = false;
     for (const b of list) {
       const end = b.completedAtMs ?? Number.POSITIVE_INFINITY;
       let subRow = rowEnds.findIndex((rowEnd) => rowEnd <= b.startedAtMs);
-      if (subRow === -1) {
+      if (subRow === -1 && rowEnds.length < OPS_MAX_SUB_ROWS) {
         subRow = rowEnds.length;
         rowEnds.push(end);
+      } else if (subRow === -1) {
+        // At the ceiling: pack into the row that frees up soonest, the least crowded place left. The
+        // row stays busy until the LATER of the two ends — a short bar dropped in must not make the
+        // row read as available again.
+        subRow = 0;
+        for (let i = 1; i < rowEnds.length; i++) {
+          if (rowEnds[i] < rowEnds[subRow]) subRow = i;
+        }
+        rowEnds[subRow] = Math.max(rowEnds[subRow], end);
+        subRowsCapped = true;
       } else {
         rowEnds[subRow] = end;
       }
@@ -302,6 +331,7 @@ export function assignLanes(
       subRowCount: Math.max(rowEnds.length, 1),
       hasActive: lane.hasActive,
       depth,
+      subRowsCapped,
     });
   });
 

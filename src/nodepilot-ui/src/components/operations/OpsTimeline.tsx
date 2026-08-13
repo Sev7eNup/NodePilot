@@ -7,7 +7,7 @@ import { rawStatusLabelKey, STATUS_COLOR_VAR, STATUS_TEXT_CLASS } from '../../li
 import {
   windowFor, buildTimelineBars, assignLanes, placeBar, axisTicks, timeToX, pairCallConnectors,
   buildDensityCells, densityColumnHeight, isActiveBarStatus, isOverdue, isStalled, tickStepFor,
-  formatDuration, type DensityCell, type PlacedBar,
+  formatDuration, OPS_MAX_SUB_ROWS, type DensityCell, type PlacedBar,
 } from '../../lib/opsTimeline';
 import { formatTime } from '../../lib/format';
 import { OpsTimelineBar, OPS_ROW_H, OPS_MIN_BAR_PX, OPS_INSIDE_LABEL_PX } from './OpsTimelineBar';
@@ -24,7 +24,12 @@ import { CopyableId } from '../common/CopyableId';
 // geometry onto divs.
 
 const LANE_GAP = 8;
-const LABEL_COL_PX = 380;
+/**
+ * Lane-label column. Width lives in CSS (`.np-ops-lane-labels`) rather than here because it has to
+ * shrink: at 380 px fixed, a 390 px viewport left the track about ten pixels wide and the timeline
+ * was unusable on a phone. The axis strip below has to follow the same width, hence the shared
+ * class rather than an inline number on both.
+ */
 /** Room the out-of-bar duration text needs before it is worth drawing. */
 const OUTSIDE_LABEL_PX = 46;
 /** Distance from the bottom of a lane's first sub-row to the density baseline. */
@@ -610,7 +615,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
       )}
       <div className="flex min-h-0 flex-1 overflow-y-auto">
         {/* Lane labels */}
-        <div className="shrink-0 border-r border-outline-variant/60" style={{ width: LABEL_COL_PX }}>
+        <div className="np-ops-lane-labels shrink-0 border-r border-outline-variant/60">
           <div className="relative" style={{ height: laneTops.totalHeight }}>
             {lanes.map((lane, i) => (
               <div
@@ -635,10 +640,24 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
                   >
                     <div
                       className={`flex items-center gap-1 text-[13px] font-label font-medium leading-[16px] ${lane.hasActive ? 'text-on-surface' : 'text-on-surface-variant'}`}
-                      title={lane.name}
+                      title={lane.subRowsCapped
+                        ? `${lane.name} — ${t('operations:timeline.subRowsCapped', { rows: OPS_MAX_SUB_ROWS })}`
+                        : lane.name}
                     >
                       {lane.depth > 0 && <span className="shrink-0 text-outline" aria-hidden="true">↳</span>}
                       <span className="whitespace-nowrap">{lane.name}</span>
+                      {/* The lane ran out of sub-rows, so some bars share a row and overlap. Saying so
+                          is the difference between "crowded" and a layout that quietly misrepresents
+                          concurrency. */}
+                      {lane.subRowsCapped && (
+                        <span
+                          className="shrink-0 text-warning"
+                          aria-label={t('operations:timeline.subRowsCapped', { rows: OPS_MAX_SUB_ROWS })}
+                          data-testid="ops-lane-capped"
+                        >
+                          ⋮
+                        </span>
+                      )}
                       {rowExecId.has(idKey) && <CopyableId id={rowExecId.get(idKey)!.id} />}
                     </div>
                     {r === 0 && lane.folderPath !== '/' && (
@@ -731,7 +750,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
       </div>
 
       {/* Time axis */}
-      <div className="relative mt-1 h-5 shrink-0 border-t border-outline-variant/60" style={{ marginLeft: LABEL_COL_PX }}>
+      <div className="np-ops-axis relative mt-1 h-5 shrink-0 border-t border-outline-variant/60">
         {ticks.map((tick) => (
           <span
             key={tick.atMs}
