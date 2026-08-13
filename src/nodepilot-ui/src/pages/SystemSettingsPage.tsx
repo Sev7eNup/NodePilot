@@ -27,19 +27,27 @@ type SubTab = 'integrations' | 'ai-knowledge' | 'retention' | 'system-info'
 
 // Tabs are progressively activated as their section is implemented. Disabled tabs
 // keep the operator informed about what's on the roadmap.
-// `system-info` sits LAST on purpose: it is the only read-only tab here, so it belongs
-// after everything that actually edits configuration rather than splitting that run.
-// Order is presentation only — nothing indexes into this array, and `integrations`
-// stays first because it is also the default/fallback section for a bare `?tab=system`.
+// Order is grouped by topic, not by implementation history: outbound integrations →
+// security → operations → data. `integrations` stays first because it is also the
+// default/fallback section for a bare `?tab=system`, and `system-info` sits LAST because
+// it is the only read-only tab here — it belongs after everything that edits config
+// rather than splitting that run.
+// Order is presentation only: nothing indexes into this array and deep links address a
+// section by `?section=<id>`, so reordering breaks no bookmark.
 const TABS: { id: SubTab; ready: boolean }[] = [
+  // External connections — AI knowledge sources hang off the LLM profile configured next door.
   { id: 'integrations',     ready: true },
   { id: 'ai-knowledge',     ready: true },
-  { id: 'retention',        ready: true },
+  // Security — the two access/hardening tabs stay adjacent.
   { id: 'authentication',   ready: true },
-  { id: 'logging-telemetry', ready: true },
   { id: 'security',         ready: true },
+  // Operations.
+  { id: 'logging-telemetry', ready: true },
   { id: 'performance',      ready: true },
+  // Data lifecycle — retention is a database-side concern, so it follows the DB tab.
   { id: 'db-admin',         ready: true },
+  { id: 'retention',        ready: true },
+  // Read-only, always last.
   { id: 'system-info',      ready: true },
 ];
 

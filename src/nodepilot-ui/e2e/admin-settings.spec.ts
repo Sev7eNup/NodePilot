@@ -131,18 +131,19 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
   test('76.1 — all System section tabs render; Integrations shows SMTP + LLM', async ({ page }) => {
     await openSystemTab(page);
 
-    // The nine section sub-tabs are always rendered in the tab bar, in this order.
+    // The nine section sub-tabs are always rendered in the tab bar, in this order:
+    // integrations → security → operations → data, then the read-only tab.
     // System info is deliberately LAST — it is the only read-only tab, so it sits after
     // every tab that edits configuration instead of splitting that run.
     const tabs = [
       /integrations/i,
       /ai knowledge/i,
-      /retention/i,
       /authentication/i,
-      /logging .* telemetry|logging & telemetry/i,
       /^security$/i,
+      /logging .* telemetry|logging & telemetry/i,
       /^performance$/i,
       /^database$/i,
+      /retention/i,
       /system info|system-info/i,
     ];
     for (const name of tabs) {
@@ -155,8 +156,8 @@ test.describe('Admin Settings (Teil 38 + 76)', () => {
       .filter({ has: page.getByRole('button', { name: /^security$/i }) });
     const rendered = await tabBar.getByRole('button').allInnerTexts();
     expect(rendered.map((s) => s.trim().toLowerCase())).toEqual([
-      'integrations', 'ai knowledge', 'retention', 'authentication',
-      'logging & telemetry', 'security', 'performance', 'database', 'system info',
+      'integrations', 'ai knowledge', 'authentication', 'security',
+      'logging & telemetry', 'performance', 'database', 'retention', 'system info',
     ]);
 
     // Default active tab is Integrations → SMTP + LLM cards mount from their mocked snapshots.
