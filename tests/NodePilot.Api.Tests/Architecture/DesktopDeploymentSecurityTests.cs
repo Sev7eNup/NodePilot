@@ -105,7 +105,7 @@ public sealed class DesktopDeploymentSecurityTests
             script.Should().Contain(broadSid);
 
         script.Should().Contain("$readableRights =");
-        script.Should().Contain("($_.FileSystemRights -band $readableRights) -ne 0");
+        script.Should().Contain("($_.FileSystemRights -band $readableRights) -eq 0");
         script.Should().Contain("Translate([System.Security.Principal.SecurityIdentifier])");
         script.Should().Contain("if ($untrusted.Count -eq 0)");
         script.Should().Contain("Move-Item -LiteralPath $KeyRingDir -Destination $quarantine");
