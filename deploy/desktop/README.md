@@ -240,6 +240,15 @@ Honest inventory so nobody assumes more coverage than exists:
   for what each one is. Nothing ships from this: Forge is build-time only and `dependencies` is
   empty. Re-check the list whenever Forge is bumped; an override that Forge has caught up with is
   dead weight.
+- **One advisory cannot be overridden at all, and is excused by id.** `extract-zip`
+  (GHSA-jmr9-qjv8-65gv, high, reached through `@electron/packager`) has no patched release
+  anywhere — there is no version to point an override at, and `npm audit fix` cannot help.
+  The `desktop` job therefore runs `npm run audit:ci` (`scripts/audit-gate.mjs`) instead of a
+  bare `npm audit`: the audit stays full, and that single advisory is excused by id with its
+  reason recorded next to it. Anything else at moderate or above still fails the build, and the
+  gate prints a `stale` line once the excuse stops matching, which is the signal to delete it.
+  `--omit=dev` is deliberately not used: `dependencies` is empty and electron is a
+  devDependency, so it would audit nothing at all.
 - **The installer is unsigned unless you ask for a signature.** `Build-DesktopInstaller.ps1` alone
   never signs. Building through `deploy\Build-Artifact.ps1 -IncludeDesktopInstaller
   -InstallerSigningCertificateThumbprint <tp>` signs it as part of the run — which is where signing

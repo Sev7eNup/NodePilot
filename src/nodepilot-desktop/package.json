@@ -21,6 +21,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
+    "audit:ci": "node scripts/audit-gate.mjs",
     "start": "npm run build && electron .",
     "package": "npm run build && electron-forge package",
     "make": "npm run build && electron-forge make"
@@ -30,6 +31,13 @@
     "@types/node tracks the Node that Electron actually bundles (43.2.0 -> Node 24.18.0),",
     "not the newest release line. Bumping it past the runtime would type-check against",
     "APIs the shipped Electron does not have."
+  ],
+  "//audit": [
+    "One advisory in Forge's tree has no fixed release anywhere, so no override can clear",
+    "it. It is excused by id in scripts/audit-gate.mjs, which CI runs in place of a bare",
+    "npm audit. Read the reason recorded there before adding a second entry.",
+    "`npm audit --omit=dev` is not the escape it looks like: dependencies is empty and",
+    "electron is a devDependency, so it would audit nothing at all."
   ],
   "//overrides": [
     "Electron Forge's own dependency tree pulls three packages whose only patched",
