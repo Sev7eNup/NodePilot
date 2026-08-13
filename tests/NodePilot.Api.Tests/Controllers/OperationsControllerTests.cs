@@ -623,7 +623,7 @@ public class OperationsControllerTests
         db.Workflows.Add(Wf(wf, "W", "{}"));
         var now = DateTime.UtcNow;
         for (var i = 0; i < OperationsController.RecentCap + 5; i++)
-            db.WorkflowExecutions.Add(Settled(wf, now.AddMilliseconds(-250 * i)));
+            db.WorkflowExecutions.Add(Settled(wf, now.AddMilliseconds(-250d * i)));
         await db.SaveChangesAsync();
 
         var graph = await GetGraph(NewController(db));
@@ -751,8 +751,8 @@ public class OperationsControllerTests
         const int perFolder = OperationsController.RecentCap + 100;
         for (var i = 0; i < perFolder; i++)
         {
-            db.WorkflowExecutions.Add(Settled(visible, now.AddMilliseconds(-250 * i)));
-            db.WorkflowExecutions.Add(Settled(hidden, now.AddMilliseconds(-250 * i)));
+            db.WorkflowExecutions.Add(Settled(visible, now.AddMilliseconds(-250d * i)));
+            db.WorkflowExecutions.Add(Settled(hidden, now.AddMilliseconds(-250d * i)));
         }
         await db.SaveChangesAsync();
 
@@ -776,8 +776,8 @@ public class OperationsControllerTests
         // Together they must blow past the bar cap — the cap is global, the density is per lane.
         const int runsA = OperationsController.RecentCap / 2 + 200;
         const int runsB = OperationsController.RecentCap / 2 + 100;
-        for (var i = 0; i < runsA; i++) db.WorkflowExecutions.Add(Settled(a, now.AddMilliseconds(-250 * i)));
-        for (var i = 0; i < runsB; i++) db.WorkflowExecutions.Add(Settled(b, now.AddMilliseconds(-250 * i)));
+        for (var i = 0; i < runsA; i++) db.WorkflowExecutions.Add(Settled(a, now.AddMilliseconds(-250d * i)));
+        for (var i = 0; i < runsB; i++) db.WorkflowExecutions.Add(Settled(b, now.AddMilliseconds(-250d * i)));
         await db.SaveChangesAsync();
 
         var graph = await GetGraph(NewController(db));
@@ -796,7 +796,7 @@ public class OperationsControllerTests
         db.Workflows.Add(Wf(wf, "W", "{}"));
         var now = DateTime.UtcNow;
         const int settled = OperationsController.RecentCap + 10;
-        for (var i = 0; i < settled; i++) db.WorkflowExecutions.Add(Settled(wf, now.AddMilliseconds(-250 * i)));
+        for (var i = 0; i < settled; i++) db.WorkflowExecutions.Add(Settled(wf, now.AddMilliseconds(-250d * i)));
         db.WorkflowExecutions.Add(new WorkflowExecution
         {
             Id = Guid.NewGuid(), WorkflowId = wf, Status = ExecutionStatus.Running, StartedAt = now.AddMinutes(-2),
