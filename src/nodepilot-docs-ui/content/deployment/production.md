@@ -53,6 +53,22 @@ abbrechen lässt — behoben ab CU1. Der Installer prüft den Patchstand im Pref
 - TLS-Zertifikat mit privatem Schlüssel in `LocalMachine\My`
 - Lokale Administratorrechte für die Installation
 
+### Netzwerkpfad zu den Clients
+
+Die Live-Ansicht der Oberfläche (laufende Schritte, Ausführungsstatus, Dashboard-Zähler) hält eine
+SignalR-Verbindung auf `/hubs/execution`. Der Client handelt den Transport aus und arbeitet dabei
+eine Leiter ab: **WebSockets → Server-Sent Events → Long-Polling**.
+
+Ein Proxy oder eine TLS-Inspektion, die den `Upgrade: websocket`-Handshake verwirft, legt die
+Live-Ansicht deshalb **nicht** lahm — sie fällt selbsttätig auf Server-Sent Events zurück. Sichtbar
+wird es nur als wiederkehrender Verbindungsfehler in der Browser-Konsole, dazu etwas mehr Last pro
+Verbindung. Wer die Konsole sauber halten will, lässt den Host in Proxy bzw. PAC-Datei umgehen oder
+WebSocket-Durchlass für ihn freischalten.
+
+Der Vollständigkeit halber: Kestrel annonciert HTTP/2 per ALPN. Eine TLS-terminierende Appliance
+muss WebSockets damit als *Extended CONNECT* (RFC 8441) weiterreichen — das beherrschen längst
+nicht alle, während gewöhnliche Requests unauffällig durchgehen.
+
 ### Build-Host
 
 - .NET 10 SDK

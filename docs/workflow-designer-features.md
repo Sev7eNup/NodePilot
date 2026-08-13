@@ -361,6 +361,7 @@ Alle Darstellungs-Einstellungen liegen im **`designStore`** (Zustand + persist, 
 ## 20a. Live- & Annotations-Infrastruktur
 
 - **SignalR-Live-Stream** (`/hubs/execution`, `useSignalR` + Reducer): Events **StepStarted**, **StepCompleted**, **StepPaused**, **StepResumed**, **ExecutionStatusChanged**, **LiveEventsBatch**. Auth über httpOnly-Cookie beim WebSocket-Upgrade.
+  - **Transport-Leiter:** WebSockets → Server-Sent Events → Long-Polling. Weder Client noch Hub schränken die Transporte ein, `skipNegotiation` ist nirgends gesetzt — ein von Proxy oder TLS-Inspektion verworfener WebSocket-Upgrade ist deshalb **kein Ausfall**, sondern ein stiller Rückfall auf SSE (plus eine Fehlerzeile aus `@microsoft/signalr` in der Konsole). Diagnose: `docs/deployment-guide.md`, Abschnitt *Is the live connection healthy?*.
   - Baut den **Live-Databus** auf (`{stepId}.output/.error/.param.*` + Output-Variable-Aliase).
   - **Hydration-Concurrency:** max. 4 parallele Step-Fetches (Semaphore) gegen Thundering Herd; Auto-Hydration nur Top-10 jüngste aktive Läufe.
   - **TTL/Eviction:** abgeschlossene Läufe verschwinden nach 30 s; periodischer Refresh alle 10 s; Reconnect joint Workflow neu.
