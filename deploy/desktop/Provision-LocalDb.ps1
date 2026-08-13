@@ -149,13 +149,31 @@ function Write-RestrictedText([string] $path, [string] $content) {
     [System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+function Protect-RestrictedTree([string] $path) {
+    # A moved tree keeps every descendant's descriptor. Secure descendants explicitly before the
+    # root, and fail closed on reparse points rather than following them outside the intended tree.
+    $root = Get-Item -LiteralPath $path -Force -ErrorAction Stop
+    if (($root.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Refusing to secure protected-tree reparse point: $path"
+    }
+    $children = @(Get-ChildItem -LiteralPath $path -Recurse -Force -ErrorAction Stop |
+        Sort-Object { $_.FullName.Length } -Descending)
+    foreach ($child in $children) {
+        if (($child.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing to secure reparse point in protected tree: $($child.FullName)"
+        }
+        Set-RestrictedAcl -path $child.FullName -NoCurrentUser
+    }
+    Set-RestrictedAcl -path $path -NoCurrentUser
+}
+
 function Move-DesktopRuntimeOverridesToSecrets {
     # Releases before 1.2.5 wrote runtime settings and their rollback copies directly below
-    # DataPath or beside the installed application. Prefer the install-root primary because that
-    # was the active path in affected releases; if a protected primary already exists, preserve it
-    # and keep every legacy copy as a collision-safe backup. Lock the target first, move every
-    # possible settings artefact, then replace the DACL explicitly: a same-volume Move-Item
-    # preserves the source ACL instead of inheriting the destination directory ACL.
+    # DataPath or beside the installed application. DataPath was the active configured source in
+    # affected releases; if a protected primary already exists, preserve it and keep every legacy
+    # copy as a collision-safe backup. Lock the target first, move every possible settings
+    # artefact, then replace the DACL explicitly: a same-volume Move-Item preserves the source ACL
+    # instead of inheriting the destination directory ACL.
     Set-RestrictedAcl -path $SecretsDir -NoCurrentUser
 
     # DataPath was the authoritative configured source in affected releases; process it first so
@@ -194,20 +212,40 @@ function Move-DesktopRuntimeOverridesToSecrets {
 
 function Reset-CompromisedDataProtectionKeyRing {
     if (-not (Test-Path -LiteralPath $KeyRingDir -PathType Container)) { return }
-    $acl = Get-Acl -LiteralPath $KeyRingDir
-    $untrusted = @($acl.Access | Where-Object {
-        $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match 'S-1-5-32-545|BUILTIN\\Users|Everyone|Authenticated Users'
+    $broadSids = @('S-1-5-32-545', 'S-1-5-11', 'S-1-1-0')
+    $readableRights = [System.Security.AccessControl.FileSystemRights]'Read,ReadAndExecute,FullControl,Modify'
+    $keyRingRoot = Get-Item -LiteralPath $KeyRingDir -Force
+    if (($keyRingRoot.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw "Refusing to inspect data-protection key-ring reparse point: $KeyRingDir"
+    }
+    $keyRingEntries = @($keyRingRoot) + @(Get-ChildItem -LiteralPath $KeyRingDir -Recurse -Force -ErrorAction Stop)
+    $untrusted = @($keyRingEntries | ForEach-Object {
+        $entry = $_
+        if (($entry.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "Refusing to inspect reparse point in data-protection key ring: $($entry.FullName)"
+        }
+        (Get-Acl -LiteralPath $entry.FullName).Access | Where-Object {
+            if ($_.AccessControlType -ne 'Allow' -or ($_.FileSystemRights -band $readableRights) -eq 0) {
+                return $false
+            }
+            try {
+                $sid = $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value
+                return $broadSids -contains $sid
+            } catch {
+                return $false
+            }
+        }
     })
     if ($untrusted.Count -eq 0) {
-        Set-RestrictedAcl -path $KeyRingDir -NoCurrentUser
+        Protect-RestrictedTree -path $KeyRingDir
         return
     }
 
     # LocalMachine-DPAPI keys were readable by local users on affected installs. Preserve the
     # old ring only as an admin/SYSTEM quarantine for forensic rollback, then force fresh keys.
-    $quarantine = Join-Path $SecretsDir ('data-protection-keys.compromised.' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))
+    $quarantine = Join-Path $SecretsDir ('data-protection-keys.compromised.' + [Guid]::NewGuid().ToString('N'))
     Move-Item -LiteralPath $KeyRingDir -Destination $quarantine
-    Set-RestrictedAcl -path $quarantine -NoCurrentUser
+    Protect-RestrictedTree -path $quarantine
     New-Item -ItemType Directory -Force -Path $KeyRingDir | Out-Null
     Set-RestrictedAcl -path $KeyRingDir -NoCurrentUser
 }
@@ -467,10 +505,7 @@ Set-RestrictedAcl -path $SecretsDir -NoCurrentUser
 # an explicit read ACE above.  Do not inherit Users access into logs, key material or archives.
 Set-RestrictedAcl -path $DataPath -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser -ExtraReadNoInheritance
 foreach ($protectedDir in @($KeyRingDir, $LogsDir, $ArchiveDir)) {
-    Set-RestrictedAcl -path $protectedDir -NoCurrentUser
-    foreach ($protectedFile in @(Get-ChildItem -LiteralPath $protectedDir -Recurse -Force -File -ErrorAction SilentlyContinue)) {
-        Set-RestrictedAcl -path $protectedFile.FullName -NoCurrentUser
-    }
+    Protect-RestrictedTree -path $protectedDir
 }
 
 # --- 9. start services + health poll ---------------------------------------------------------
