@@ -135,7 +135,13 @@ function Set-RestrictedAcl([string] $path, [string[]] $extraReadPrincipals = @()
         } else {
             New-Object System.Security.Principal.NTAccount($principal)
         }
-        $read = [System.Security.AccessControl.FileSystemRights]'ReadAndExecute'
+        # The data-root grant is traverse-only and non-inheriting. Other callers (desktop.json)
+        # receive ordinary read access on that one non-secret file.
+        $read = if ($ExtraReadNoInheritance) {
+            [System.Security.AccessControl.FileSystemRights]::Traverse
+        } else {
+            [System.Security.AccessControl.FileSystemRights]'ReadAndExecute'
+        }
         $readInherit = if ($ExtraReadNoInheritance) { [System.Security.AccessControl.InheritanceFlags]::None } else { $inherit }
         $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($id, $read, $readInherit, $prop, $allow)))
     }
@@ -495,10 +501,10 @@ $handoff = [ordered]@{
     serviceName       = $ApiServiceName
 }
 [System.IO.File]::WriteAllText($DesktopJson, ($handoff | ConvertTo-Json -Depth 4), (New-Object System.Text.UTF8Encoding($false)))
-Set-RestrictedAcl -path $DesktopJson -extraReadPrincipals @('S-1-5-32-545')
+Set-RestrictedAcl -path $DesktopJson -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser
 
 # Lock DataPath (the JWT / data-protection key parent) BEFORE the API starts: SYSTEM + Admins only,
-# plus Users read/traverse so the Electron shell can reach desktop.json. NO installing-user
+# plus a non-inheriting Users traverse grant so the Electron shell can reach desktop.json. NO installing-user
 # mutation -- otherwise the backend's key-directory security check fail-closes the boot.
 Set-RestrictedAcl -path $SecretsDir -NoCurrentUser
 # The data root is a traverse-only boundary for standard users; only desktop.json receives

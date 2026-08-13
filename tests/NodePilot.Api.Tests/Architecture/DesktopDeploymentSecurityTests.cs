@@ -84,7 +84,8 @@ public sealed class DesktopDeploymentSecurityTests
         script.Should().Contain("[switch] $ExtraReadNoInheritance");
         script.Should().Contain(
             "Set-RestrictedAcl -path $DataPath -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser -ExtraReadNoInheritance");
-        script.Should().Contain("Set-RestrictedAcl -path $DesktopJson -extraReadPrincipals @('S-1-5-32-545')");
+        script.Should().Contain("Set-RestrictedAcl -path $DesktopJson -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser");
+        script.Should().Contain("[System.Security.AccessControl.FileSystemRights]::Traverse");
         script.Should().Contain("foreach ($protectedDir in @($KeyRingDir, $LogsDir, $ArchiveDir))");
         script.Should().Contain("Set-RestrictedAcl -path $protectedFile.FullName -NoCurrentUser");
 
