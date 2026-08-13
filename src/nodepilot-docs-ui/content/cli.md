@@ -35,7 +35,7 @@ np auth login --server https://nodepilot.example.com
 | `dashboard` | Stats |
 | `operations` | graph (Live-Ops-Snapshot: Workflows, Call-Graph, laufende + kürzlich beendete Executions; RBAC-folder-scoped; `--window 30\|60`) |
 | `observability` | summary/**query**/**query-range** |
-| `settings` | status/system-info/get/put/test smtp\|llm |
+| `settings` | status/system-info/effective-sizing/get/put/test smtp\|llm |
 | `secrets` | **reencrypt** |
 | `backup` | manifest/export/preview/restore |
 | `config` | get/set |
