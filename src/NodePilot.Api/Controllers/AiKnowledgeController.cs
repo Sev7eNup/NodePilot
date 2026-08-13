@@ -84,7 +84,7 @@ public sealed class AiKnowledgeController : ControllerBase
             Docs: toolSourcesEnabled && k.DocsEnabled,
             Operational: toolSourcesEnabled && k.OperationalEnabled,
             SourceCode: toolSourcesEnabled && k.SourceCodeEnabled && User.IsPrivileged(),
-            Db: toolSourcesEnabled && k.DbEnabled && User.IsPrivileged()));
+            Db: toolSourcesEnabled && k.DbEnabled && User.IsAdmin()));
     }
 
     /// <summary>Streams one knowledge-chat turn as Server-Sent Events (delta/tool_call/tool_result/done/error).</summary>
@@ -111,11 +111,12 @@ public sealed class AiKnowledgeController : ControllerBase
             return BadRequest(new { code = "HISTORY_TOO_LONG", message = $"History exceeds {MaxHistoryChars} characters." });
 
         var isPrivileged = User.IsPrivileged();
+        var isAdmin = User.IsAdmin();
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
         var normalized = new KnowledgeAskRequest(request.Question, history, request.TimeZone, request.UtcOffsetMinutes);
 
         await using var en = _assistant
-            .StreamAskAsync(normalized, accessible, isPrivileged, ct)
+            .StreamAskAsync(normalized, accessible, isPrivileged, isAdmin, ct)
             .GetAsyncEnumerator(ct);
 
         // Peek the first event: an error before streaming starts comes back as a normal HTTP status.
@@ -185,19 +186,19 @@ public sealed class AiKnowledgeController : ControllerBase
         catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
         {
             RecordResult("cancelled");
-            await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged,
+            await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged, isAdmin,
                 dbQueryFingerprints, cancelled: true);
             return new EmptyResult();
         }
 
         RecordSuccess(model, durationMs, promptTokens, completionTokens);
-        await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged,
+        await AuditAsync(model, durationMs, toolCalls, history.Count + 1, k, isPrivileged, isAdmin,
             dbQueryFingerprints, cancelled: false, ct);
         return new EmptyResult();
     }
 
     private Task AuditAsync(string model, int durationMs, int toolCalls, int turnCount,
-        AiKnowledgeOptions k, bool isPrivileged, IReadOnlyList<string> dbQueryFingerprints,
+        AiKnowledgeOptions k, bool isPrivileged, bool isAdmin, IReadOnlyList<string> dbQueryFingerprints,
         bool cancelled, CancellationToken ct = default) =>
         _audit.LogAsync(AuditActions.AiKnowledgeAsked, "AiKnowledge", null,
             AuditDetails.Json(
@@ -209,7 +210,7 @@ public sealed class AiKnowledgeController : ControllerBase
                 ("docs", k.DocsEnabled),
                 ("operational", k.OperationalEnabled),
                 ("sourceCode", k.SourceCodeEnabled && isPrivileged),
-                ("db", k.DbEnabled && isPrivileged),
+                ("db", k.DbEnabled && isAdmin),
                 // Never audit SQL text: it may contain user-supplied literals. Stable fingerprints
                 // still let operators correlate repeated/problematic queries without leaking data.
                 ("dbQueryCount", dbQueryFingerprints.Count),

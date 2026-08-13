@@ -59,6 +59,7 @@ Set-StrictMode -Version 3.0
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $deployRoot = Split-Path -Parent $scriptDirectory
 $repoRoot = Split-Path -Parent $deployRoot
+$MinimumRuntimeVersion = [version]'10.0.11'
 if ([string]::IsNullOrWhiteSpace($OutputRoot)) { $OutputRoot = Join-Path $scriptDirectory 'out' }
 
 function Write-Step { param([string]$Text) Write-Host "[server-setup] $Text" -ForegroundColor Cyan }
@@ -176,6 +177,16 @@ else {
 $stagedRuntime = Get-ChildItem -LiteralPath (Join-Path $stage 'payload') -Filter 'aspnetcore-runtime-*.exe' |
     Select-Object -First 1
 if (-not $stagedRuntime) { throw 'No ASP.NET Core runtime installer was staged.' }
+$runtimeNameMatch = [regex]::Match(
+    $stagedRuntime.Name,
+    '^aspnetcore-runtime-(?<version>\d+\.\d+\.\d+)-win-x64\.exe$')
+if (-not $runtimeNameMatch.Success) {
+    throw "Staged runtime installer has an unrecognised name: $($stagedRuntime.Name)"
+}
+$stagedRuntimeVersion = [version]$runtimeNameMatch.Groups['version'].Value
+if ($stagedRuntimeVersion -lt $MinimumRuntimeVersion) {
+    throw "Staged ASP.NET Core runtime $stagedRuntimeVersion is below the security floor $MinimumRuntimeVersion."
+}
 Write-Info "  $($stagedRuntime.Name)"
 
 # The psql CLIENT only - the seven files it actually loads, measured off its import table, not

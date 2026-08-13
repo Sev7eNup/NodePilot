@@ -1,0 +1,79 @@
+title = "NodePilot secret-scanning configuration"
+
+[extend]
+useDefault = true
+
+# Keep these exceptions rule-specific and context-specific. They suppress known
+# non-secret fixtures/protocol values without disabling any GitHub token rule.
+
+[[allowlists]]
+description = "WebSocket handshake nonce in the deployment probe"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^docs/deployment-guide\.md$''']
+regexes = ['''Sec-WebSocket-Key:''']
+
+[[allowlists]]
+description = "GitHub advisory identifiers in the central package rationale"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^Directory\.Packages\.props$''']
+regexes = ['''GHSA-8785-wc3w-h8q6''']
+
+[[allowlists]]
+description = "Configuration-key documentation, not a configured credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^src/NodePilot\.Mcp/Resources/Embedded/activity-config-reference\.json$''']
+regexes = ['''key\. Requires Llm:''']
+
+[[allowlists]]
+description = "Secret-redaction detector fixtures"
+targetRules = ["stripe-access-token", "jwt"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^tests/NodePilot\.Ai\.Tests/WorkflowSecretContentTests\.cs$''']
+regexes = ['''^\s*\[InlineData\(''']
+
+[[allowlists]]
+description = "Synthetic webhook HMAC test secrets"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^tests/NodePilot\.Api\.Tests/(?:Controllers/WebhooksControllerTests|Security/WebhookHmacSecurityTests)\.cs$''']
+regexes = ['''(?i)(?:HmacSecret|"secret")\s*[:=]''']
+
+[[allowlists]]
+description = "Synthetic JWT returned by a step-test fixture"
+targetRules = ["jwt"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^tests/NodePilot\.Engine\.Tests/Execution/StepTesterTests\.cs$''']
+regexes = ['''OutputParameters\s*=''']
+
+[[allowlists]]
+description = "UI metric key in a serialized CLI response fixture"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^tests/NodePilot\.Cli\.Tests/NodePilotApiClientResourcesTests\.cs$''']
+regexes = ['''new\s*\{\s*key\s*=''']
+
+[[allowlists]]
+description = "Documented external-trigger API-key placeholder"
+targetRules = ["curl-auth-header"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^E2ETests\.md$''']
+regexes = ['''X-Api-Key:''']
+
+[[allowlists]]
+description = "Machine-tooling bearer placeholder"
+targetRules = ["curl-auth-header"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''^\.claude/settings\.json$''']
+regexes = ['''Authorization:\s*Bearer\s+_{2}[A-Z]+_[A-Z]+_{2}''']

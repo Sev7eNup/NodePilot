@@ -94,6 +94,99 @@ Vier Stellschrauben, alle mit Config-Override. Werte sind **historische Defaults
 | `5a9b78c` | `GetStepStats` SQL-Variable-Cap | `WHERE WorkflowExecutionId IN (@execIds…)` mit > 999 Parametern crasht SQLite (`SQLITE_LIMIT_VARIABLE_NUMBER`). `OrderByDescending(StartedAt).Take(900)` cappt den IN-Set; für die p50/p95-Statistik in Designer-Hover absolut ausreichend. Crash war im Log als "An unhandled exception … too many SQL variables" sichtbar nach 5+ aufeinanderfolgenden 200-WF-Stress-Tests. |
 | `5a9b78c` | `GET /executions?activeOnly=true` | Filter auf `Running\|Pending\|Paused`. Live View (`hydrateActive` in `useSignalR.ts`) ruft den Endpunkt mit `activeOnly=true` auf statt 500 historische Rows pro Tab-Open zu laden. Spürbare Verbesserung der initialen Live-View-Ladezeit bei vielen Historie-Einträgen. |
 
+### Live-Ops-Snapshot (`GET /api/operations/graph`, Session 2026-08-13)
+
+Der Endpunkt ist der teuerste periodische Request der Anwendung: 5-s-Poll, **aus jedem offenen
+Browser**, und er liefert seit der Cap-Anhebung bis zu 4000 beendete Läufe. Drei Posten:
+
+| Bereich | Was war | Was jetzt |
+|---|---|---|
+| `OperationsController` — Workflow-Query | Selektierte `DefinitionJson` **jedes** Workflows, nur um daraus den `startWorkflow`/`forEach`-Callgraph zu parsen. Definitionen sind unbegrenzter Text inklusive aller Inline-Skripte (21–42 KB im repo-eigenen Beispielset) → ~750 KB gelesen **und** JSON-geparst pro Poll bei 24 Workflows. Die Antwort ändert sich aber nur, wenn jemand einen Workflow **speichert**. | `WorkflowCallSiteCache` (Api-Singleton) hält je Workflow die extrahierten Referenzen, gekeyt auf `UpdatedAt`. Die Poll-Query liest nur noch `(Id, Name, FolderId, IsEnabled, UpdatedAt)`; `DefinitionJson` wird ausschließlich für die tatsächlich veränderten Workflows nachgeladen — im eingeschwungenen Zustand für **keinen**. Dieselbe Lehre wie bei der Dashboard-Query (`TriggerTypesJson`), nur für den Callgraphen. |
+| Response-Compression | Gar keine — `ResponseCompression` kam im Api-Projekt nicht vor, und Produktion fährt Kestrel ohne vorgelagerten Proxy. Ein 4000-Zeilen-Snapshot sind ~900 KB GUID- und ISO-Timestamp-lastiges JSON alle 5 s. | Brotli + Gzip global, inkl. SPA-Bundle. Solches JSON komprimiert etwa eine Größenordnung. |
+| `OpsTimeline` — Overdue/Stalled | Zwei volle Scans über **alle** platzierten Balken pro Uhr-Tick (1 Hz), obwohl nur laufende Läufe überfällig sein können. | Einmal auf aktive Balken verengt, die beiden Scans laufen nur noch darauf. |
+| `OpsTimeline` — Balkenbau + Lane-Allokation | Hingen an `w`, und `w` hängt an `nowMs` → **pro Sekunde** `buildTimelineBars` (~8000 `Date.parse` auf ISO-Strings, ein frisches Objekt je Balken) + `assignLanes` (gruppieren, sortieren, Sub-Row-Belegung) + alle Folge-Memos. Nichts davon kann sich zwischen zwei Polls ändern. | `buildTimelineBars` nimmt **kein** Fenster mehr; Balken und Lanes hängen nur noch am Snapshot. Der Fenster-Filter entfällt ersatzlos — der Server fenstert `recent` bereits, und ein Balken, der zwischen zwei Polls über den linken Rand altert, wird von `placeBar` geklemmt (`clippedLeft`) statt gezeichnet zu werden. `rowExecId` liest jetzt `placed` statt platzierter Pixel. |
+| `OpsTimeline` — DOM pro Tick | 4000 `OpsTimelineBar` bekamen jede Sekunde neue Inline-Geometrie, React reconcilierte alle, der Browser rechnete für alle Layout. | **Zwei Ebenen.** Beendete Balken werden einmal pro Snapshot im Koordinatensystem dieses Snapshots platziert (`wAnchor`) und liegen in `.np-ops-shift`; ein Tick ändert nur noch deren `translateX` (Compositor). Laufende Balken bleiben außerhalb und werden live platziert — sie wachsen zur NOW-Linie, was eine Translation nicht ausdrücken kann. |
+| `OpsTimelineBar` — Prop `nowMs` | Ein beendeter Balken liest `nowMs` nie, bekam ihn aber als Prop → `memo` sah pro Sekunde ein neues Prop und rerenderte tausende eingefrorener Balken umsonst. | Prop ist jetzt `durationMs`, vom Parent vorberechnet. Für einen beendeten Balken konstant, also greift das Memo tatsächlich. |
+| `OpsTimeline` — Dichte | Blieb beim Ebenen-Umbau zurück: `densityCellsByLane` hatte `nowMs` und `w` in den Deps und baute gegen das **Live**-Fenster. Sobald der Bar-Cap greift, gibt es Dichte — 24 Lanes × bis zu 48 Buckets ≈ 1150 Zellen plus Rugs und 24 Achsen, **jede Sekunde** neu berechnet und neu gerendert, während die Balken daneben stillstanden. Das war der Rest, der sich bei weiten Fenstern träge anfühlte. | Anker-Raum wie die Balken, gezeichnet **in** `.np-ops-shift`. Die Naht fällt auf `wAnchor.nowMs` zurück statt auf die Uhr — der Zweig ist unerreichbar solange Dichte existiert (`density[]` kommt nur bei gegriffenem Cap, und der setzt gelieferte beendete Läufe voraus), aber die Uhr hier zu lesen hätte das ganze Memo umsonst wieder auf den Tick gelegt. Das „keine Historie“-Band gleich mit. |
+| `OpsTimeline` — Balken-Label | `statusLabel` lief **pro Balken**: bei vollem Cap 4000 i18next-Lookups plus 4000 Template-Strings pro Snapshot, für höchstens Lanes × Status verschiedene Ergebnisse. | Eine Map über die *distinkten* (Workflow, Status)-Paare, einmal pro Snapshot aufgebaut; `t()` läuft einmal je Status. Bewusst **eager**: ein lazy gefüllter Cache würde nach dem Render mutiert, was der React Compiler zu Recht ablehnt — er macht das Ergebnis eines Renders davon abhängig, welche Renders vorher liefen. |
+
+**`EnableForHttps = true` ist bewusst gegen den Framework-Default gesetzt.** Die BREACH-Vorbedingung, die
+dieser Default absichert, fehlt hier: das CSRF-Token liegt im Cookie `np_csrf` (`SameSite=Strict`) und
+**nie** in einem Response-Body, das Session-JWT ist ein httpOnly-Cookie, und Credential-/Secret-Felder
+werden vor der Serialisierung redigiert. Wer je ein Geheimnis neben aufrufer-kontrollierten Text in einen
+Response-Body legt, muss zuerst diese Zeile in `Program.cs` neu bewerten.
+
+**Cachebar sind Call-*Sites*, nicht Kanten.** Eine namensbasierte Referenz löst gegen die Namen **aller
+anderen** Workflows auf — ein Rename am Kind ändert die Kante des Eltern-Workflows, ohne dessen Definition
+anzufassen. Deshalb cacht `WorkflowCallSiteCache` die rohen Referenzen und
+`WorkflowCallGraphBuilder.BuildFromCallSites` löst pro Request auf (Dictionary-Lookups über eine Handvoll
+Refs). Zwei Controller-Tests pinnen genau diese beiden Richtungen: Rename des Ziels und Edit der Definition.
+
+**Der Anker ist ein Client-Zeitstempel, und das ist der zweite Anlauf.** Naheliegend war
+`recentSinceUtc` aus dem Snapshot-Meta: schon Prop, bewegt sich exakt einmal pro Poll, keine lokale Uhr
+im Spiel. Das ist falsch, und der E2E-Lauf hat es gefangen — die Ebene erbt so **jede Uhr-Differenz
+zwischen Server und Browser als rohen Pixel-Offset**. Die Translation landet den Balken zwar weiterhin an
+der richtigen Stelle, legt ihn davor aber Tausende Pixel außerhalb der Ebene ab, und das rendert und
+trefferprüft kein Browser zuverlässig: mit einem auf die Epoche gestempelten Meta waren die Balken sichtbar
+und trotzdem nicht anklickbar. Gehalten wird deshalb `nowMs` **im Moment des Datenwechsels** — damit ist der
+Offset durch das Poll-Intervall begrenzt, egal welche Uhr der Server führt.
+
+Das ist inhärent State (ein Zeitpunkt, der beim Prop-Wechsel eingefangen wird) und wird als
+Set-during-Render geschrieben — Reacts dokumentierter Weg dafür, kein `useMemo` mit absichtlich
+unvollständiger Dep-Liste, also kein Konflikt mit den React-Compiler-Regeln. Er kostet nichts extra: ein
+neues `recent` rendert ohnehin jeden Balken neu. Dass ein wirkungsloser Poll **nicht** neu ankert, liefert
+React Querys Structural Sharing gratis — bei tief gleichen Daten bleibt die Array-Identität erhalten. Genau
+diese Identität ist load-bearing; der Unit-Test-Harness musste seine Fixtures auf Modulebene ziehen, weil
+frisch gebaute Literale jeden Tick wie einen neuen Snapshot aussehen ließen und das Anchoring still
+aushebelten.
+
+**Die Verschiebung ist ehrlich, nicht bloß billig.** Anker- und Live-Fenster haben dieselbe Spanne, die
+Differenz ist deshalb eine reine Translation — dieselbe Zahl für jeden Balken der Ebene. Ein Test pinnt
+genau das: Ankerposition + `translateX` muss auf die Position fallen, die das Live-Fenster ergäbe.
+
+**Was der Umbau kostet.** Clip und Transform sitzen auf **zwei** Elementen: `.np-ops-clip` steht still
+und begrenzt die Zeichenfläche, `.np-ops-shift` bewegt sich darin. Auf einem Element würde die Clip-Box
+mit dem Transform mitwandern und am rechten Rand abschneiden. Geklemmt wird, weil die Drift die linkesten Balken
+zwischen zwei Polls einige Pixel über `x=0` hinausschiebt (~4 px bei 30 min, ~2 px bei 1 h). Die Ebene
+bildet durch `transform` einen eigenen Stacking-Context: ein ausgewählter **beendeter** Balken liegt damit
+unter der NOW-Linie statt darüber (`z-index` 3 wirkt nur noch ebenen-intern). Laufende Balken sind davon
+nicht betroffen. Außerdem sieht ein Balken, der zwischen zwei Polls über den linken Rand altert, jetzt
+höchstens ein Poll-Intervall länger — er wird geklemmt statt entfernt.
+
+**Nachtrag — Geometrie zu memoisieren war nur die halbe Miete.** Die JSX der Ebene stand weiter im
+Render-Body, also baute React bei greifender Dichte pro Uhr-Tick trotzdem ~1150 Dichte-Elemente und tausende
+Balken-Elemente neu und rief `densityTitle` für jede Zelle: zwei `toLocaleTimeString` (in `formatTime`
+**ohne** Formatter-Cache) plus bis zu drei i18n-Lookups — größenordnungsmäßig 2300 `Intl`-Formatierungen
+pro Sekunde. Der komplette Ebenen-Inhalt liegt jetzt in **einem** `useMemo` (`anchoredLayer`), dessen
+Deps ausschließlich Snapshot-Größen sind; `clockLabel`/`rowCenterY`/`densityTitle` wohnen **darin**, weil
+sie als Per-Render-Closures das Memo sofort wieder entwertet hätten. Ein Test misst das direkt: ein
+Spy auf `Date.prototype.toLocaleTimeString` vergleicht den Zuwachs pro Tick mit und ohne 40 Dichte-Buckets
+— die Differenz muss **null** sein. Die Regel dahinter: *was pro Snapshot gilt, gehört auch als JSX in
+ein Memo, nicht nur als Berechnung.*
+
+**Referenz-Stabilität ist Teil des Vertrags.** Das Memo hält nur, solange die Props es zulassen —
+`OperationsPage` leitet `scopedWorkflowIds` und `nodesById` per `useMemo` aus `scopedNodes` ab, und
+React Querys Structural Sharing hält `data` über wirkungslose Polls identisch. Im Unit-Harness mussten
+deshalb auch `scopedWorkflowIds`, `density` und `locallySettled` auf Modulebene: inline gebaute Literale
+(`locallySettled={{}}`) sahen wie ein neuer Snapshot aus und haben die Messung zunächst **verfälscht** —
+der Test schlug fehl, bevor er richtig lag.
+
+**Die Ebene trägt alles Eingefrorene**, nicht nur die Balken: Dichte-Säulen, deren Achsen und Rugs, die
+Call-Connectors und das „keine Historie“-Band. Die Regel ist „hängt es an Daten oder an der Uhr?“ — alles
+Erstere gehört hinein. Die Dichte wurde beim ersten Umbau übersehen und war danach der größte
+verbliebene Posten (siehe Tabelle); wer hier etwas ergänzt, prüft dieselbe Frage.
+
+**Noch offen und bewusst nicht angefasst:** `placeBar` läuft weiterhin für alle Balken pro Snapshot (nicht
+pro Tick) — unkritisch. Die verbleibende Tick-Arbeit sind die wenigen laufenden Balken plus ein
+`translateX`. Bleibt die Ansicht trotzdem schwer, sind die nächsten beiden Hebel **Lane-Culling**
+(nur Lanes im gescrollten Sichtbereich rendern; spart pro Poll 40–60 % der Balken, braucht
+scrollTop-Tracking und muss Label-Spalte und Track exakt gleich filtern) und **Balken-Clustering**
+(benachbarte, ohnehin ununterscheidbare Läufe zu einer Marke zusammenfassen — dicht gepackt liegen die Balken
+Balken ~2,5 px auseinander, weshalb rechts der Naht ein Streifen statt Läufen zu sehen ist; größter Gewinn,
+aber ändert die Optik und wirft die Drilldown-Frage auf). Das Endspiel wäre Canvas für die verankerte
+Ebene, kostet aber Accessibility (Balken sind `<button>`), native Tooltips und die Skin-Auflösung über
+CSS-Variablen.
+
 ### SignalR / UI
 
 | Commit | Bereich | Was wurde verbessert |

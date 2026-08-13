@@ -35,7 +35,7 @@
     "StrictAllowedHosts": true
   },
   "Settings": {
-    "RuntimeOverridesPath": "{{DATA_PATH_ESCAPED}}\\appsettings.runtime.json"
+    "RuntimeOverridesPath": "{{DATA_PATH_ESCAPED}}\\secrets\\appsettings.runtime.json"
   },
   "Kestrel": {
     "Https": {

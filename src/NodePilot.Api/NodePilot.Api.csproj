@@ -62,4 +62,27 @@
              CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Environment/local overrides can contain credentials and machine-specific security
+         relaxations.  The Web SDK discovers both through its default Content glob, including a
+         gitignored appsettings.runtime.json that happens to exist in a developer checkout, so
+         excluding them from source control is not enough to keep them out of `dotnet publish`.
+         appsettings.json intentionally keeps the SDK default and remains in every publish. -->
+    <Content Update="appsettings.Development.json;appsettings.runtime.json"
+             CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
+  <!-- Fail closed for every publish entry point, including ad-hoc `dotnet publish` calls that do
+       not go through deploy/Build-Artifact.ps1.  The explicit Content metadata above prevents the
+       files; this target proves the final publish output has the expected security boundary. -->
+  <Target Name="ValidatePublishedSettingsHygiene" AfterTargets="Publish">
+    <ItemGroup>
+      <_ForbiddenPublishedSettings Include="$(PublishDir)**/appsettings.Development.json;$(PublishDir)**/appsettings.runtime.json" />
+    </ItemGroup>
+    <Error Condition="'@(_ForbiddenPublishedSettings)' != ''"
+           Text="Publish output contains forbidden appsettings.Development.json or appsettings.runtime.json: @(_ForbiddenPublishedSettings)." />
+    <Error Condition="!Exists('$(PublishDir)appsettings.json')"
+           Text="Publish output is missing the required appsettings.json base configuration." />
+  </Target>
+
 </Project>

@@ -1,10 +1,12 @@
-﻿import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   windowFor, timeToX, buildTimelineBars, assignLanes, placeBar, axisTicks, isActiveBarStatus,
-  pairCallConnectors, isOverdue, isStalled, tickStepFor, buildDensityCells,
-  OPS_WINDOW_MS, OPS_NOW_FRACTION,
+  pairCallConnectors, isOverdue, isStalled, tickStepFor, buildDensityCells, densityColumnHeight,
+  OPS_WINDOW_MS, OPS_NOW_FRACTION, OPS_WINDOW_MINUTES,
+  OPS_DENSITY_CELL_GAP_PX, OPS_DENSITY_MAX_H, OPS_DENSITY_MIN_H, OPS_MAX_SUB_ROWS,
   type TimelineBarInput,
 } from '../../lib/opsTimeline';
+import { OPS_BAR_H } from '../../components/operations/OpsTimelineBar';
 import type { OpsNode } from '../../types/api';
 
 const NOW = Date.parse('2026-07-19T12:00:00Z');
@@ -44,7 +46,7 @@ describe('buildTimelineBars', () => {
       [{ executionId: 'run1', workflowId: 'w1', status: 'Running', startedAt: iso(NOW - 4 * MIN), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
       [{ executionId: 'done1', workflowId: 'w1', status: 'Failed', startedAt: iso(NOW - 10 * MIN), completedAt: iso(NOW - 8 * MIN), parentExecutionId: null }],
       { done1: { workflowId: 'w1', status: 'Failed', settledAtMs: NOW - 7 * MIN, startedAtMs: NOW - 10 * MIN } },
-      W, scope,
+      scope,
     );
     expect(bars).toHaveLength(2);
     const done = bars.find((b) => b.executionId === 'done1')!;
@@ -57,7 +59,7 @@ describe('buildTimelineBars', () => {
     const bars = buildTimelineBars(
       [], [],
       { fresh: { workflowId: 'w1', status: 'Succeeded', settledAtMs: NOW - 1000, startedAtMs: NOW - 2 * MIN } },
-      W, scope,
+      scope,
     );
     expect(bars).toHaveLength(1);
     expect(bars[0].completedAtMs).toBe(NOW - 1000);
@@ -67,21 +69,31 @@ describe('buildTimelineBars', () => {
     const bars = buildTimelineBars(
       [], [],
       { ghost: { workflowId: 'w1', status: 'Succeeded', settledAtMs: NOW, startedAtMs: null } },
-      W, scope,
+      scope,
     );
     expect(bars).toHaveLength(0);
   });
 
-  it('drops bars fully left of the window and out-of-scope workflows', () => {
+  it('drops out-of-scope workflows', () => {
     const bars = buildTimelineBars(
       [{ executionId: 'r-out', workflowId: 'other', status: 'Running', startedAt: iso(NOW - MIN), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
-      [
-        { executionId: 'old', workflowId: 'w1', status: 'Succeeded', startedAt: iso(NOW - 60 * MIN), completedAt: iso(NOW - 40 * MIN), parentExecutionId: null },
-        { executionId: 'in', workflowId: 'w1', status: 'Succeeded', startedAt: iso(NOW - 6 * MIN), completedAt: iso(NOW - 5 * MIN), parentExecutionId: null },
-      ],
-      {}, W, scope,
+      [{ executionId: 'in', workflowId: 'w1', status: 'Succeeded', startedAt: iso(NOW - 6 * MIN), completedAt: iso(NOW - 5 * MIN), parentExecutionId: null }],
+      {}, scope,
     );
     expect(bars.map((b) => b.executionId)).toEqual(['in']);
+  });
+
+  it('takes no window, so a clock tick cannot change its result', () => {
+    // Load-bearing for the render path: bar building and lane allocation sit on this, and both
+    // used to re-run every second only because the window they took had moved. The server already
+    // windows `recent`; a bar that ages past the left edge between two polls is clamped by
+    // placeBar, not dropped here. Feeding an ancient run through proves the filter is really gone.
+    const bars = buildTimelineBars(
+      [],
+      [{ executionId: 'old', workflowId: 'w1', status: 'Succeeded', startedAt: iso(NOW - 60 * MIN), completedAt: iso(NOW - 40 * MIN), parentExecutionId: null }],
+      {}, scope,
+    );
+    expect(bars.map((b) => b.executionId)).toEqual(['old']);
   });
 });
 
@@ -185,7 +197,8 @@ describe('assignLanes', () => {
 });
 
 describe('buildDensityCells', () => {
-  // A 4 h window bucketed at 5 min, with the bar/aggregate seam 30 min before NOW.
+  // A synthetic, no-longer-selectable 4 h window keeps the pure geometry honest for wider callers:
+  // 5-minute buckets, with the bar/aggregate seam 30 min before NOW.
   const WIDE = windowFor(NOW, 240 * MIN, 1000);
   const SINCE = NOW - 240 * MIN;
   const SEAM = NOW - 30 * MIN;
@@ -202,7 +215,15 @@ describe('buildDensityCells', () => {
     expect(cell.fromMs).toBe(SINCE + 2 * BUCKET_S * 1000);
     expect(cell.toMs).toBe(SINCE + 3 * BUCKET_S * 1000);
     expect(cell.leftPx).toBeCloseTo(timeToX(cell.fromMs, WIDE), 5);
-    expect(cell.widthPx).toBeCloseTo(timeToX(cell.toMs, WIDE) - cell.leftPx, 5);
+    // The DRAWN width is deliberately one pixel short of the time range — see the gap test below.
+    expect(cell.widthPx).toBeCloseTo(timeToX(cell.toMs, WIDE) - cell.leftPx - OPS_DENSITY_CELL_GAP_PX, 5);
+  });
+
+  it('leaves a gap between neighbouring buckets so the slices stay countable', () => {
+    // Abutting cells were half the original defect: to(i) === from(i + 1) exactly, so 48 buckets
+    // fused into one uninterrupted rectangle that read as a single long run.
+    const [first, second] = cells([{ bucketIndex: 2, total: 5 }, { bucketIndex: 3, total: 5 }]);
+    expect(second.leftPx - (first.leftPx + first.widthPx)).toBeCloseTo(OPS_DENSITY_CELL_GAP_PX, 5);
   });
 
   it('clips the bucket that straddles the seam instead of drawing over the bars', () => {
@@ -244,6 +265,36 @@ describe('buildDensityCells', () => {
     expect(buildDensityCells([{ bucketIndex: 1, total: 4, failed: 0, cancelled: 0 }], SINCE, BUCKET_S, SEAM, unmeasured)).toHaveLength(0);
     expect(cells([{ bucketIndex: 1, total: 4 }]).length).toBeGreaterThan(0);
     expect(buildDensityCells([{ bucketIndex: 1, total: 4, failed: 0, cancelled: 0 }], SINCE, 0, SEAM, WIDE)).toHaveLength(0);
+  });
+});
+
+describe('densityColumnHeight', () => {
+  it('is load-bearing that a column can never be as tall as a run bar', () => {
+    // The whole defect: a density slice drawn at (and above) bar height reads as one long run,
+    // which is the misreading the aggregate exists to prevent. Height alone must disambiguate.
+    expect(OPS_DENSITY_MAX_H).toBeLessThan(OPS_BAR_H);
+  });
+
+  it('gives the busiest slice the full height', () => {
+    expect(densityColumnHeight(500, 500)).toBe(OPS_DENSITY_MAX_H);
+  });
+
+  it('never lets a hot lane erase a quiet one', () => {
+    // Scaled against the busiest slice on the whole board, a single run beside a 500-run peak
+    // rounds to zero px — and a missing column says "nothing ran here", which is a lie.
+    expect(densityColumnHeight(1, 500)).toBe(OPS_DENSITY_MIN_H);
+  });
+
+  it('never shrinks as the run count grows', () => {
+    const heights = [1, 5, 20, 80, 250, 500].map((t) => densityColumnHeight(t, 500));
+    for (let i = 1; i < heights.length; i++) expect(heights[i]).toBeGreaterThanOrEqual(heights[i - 1]);
+  });
+
+  it('stays within its bounds for a degenerate or over-peak count', () => {
+    // peak = 0 is the first-paint / unmeasured case: a floor, never NaN.
+    expect(densityColumnHeight(4, 0)).toBe(OPS_DENSITY_MIN_H);
+    expect(densityColumnHeight(0, 500)).toBe(OPS_DENSITY_MIN_H);
+    expect(densityColumnHeight(900, 500)).toBe(OPS_DENSITY_MAX_H);
   });
 });
 
@@ -344,15 +395,28 @@ describe('isOverdue', () => {
 });
 
 describe('tickStepFor', () => {
-  it('keeps roughly four axis labels at every selectable window', () => {
-    expect(tickStepFor(20 * MIN)).toBe(5 * MIN);
+  it('keeps four to six axis labels at every selectable window', () => {
+    const labels = (windowMin: number) => (windowMin * MIN) / tickStepFor(windowMin * MIN);
+    for (const windowMin of OPS_WINDOW_MINUTES) {
+      expect(labels(windowMin)).toBeGreaterThanOrEqual(4);
+      expect(labels(windowMin)).toBeLessThanOrEqual(6);
+    }
+    expect(tickStepFor(30 * MIN)).toBe(5 * MIN);
     expect(tickStepFor(60 * MIN)).toBe(15 * MIN);
-    expect(tickStepFor(240 * MIN)).toBe(60 * MIN);
   });
 
-  it('switches step at the boundaries, not inside them', () => {
-    expect(tickStepFor(20 * MIN + 1)).toBe(15 * MIN);
-    expect(tickStepFor(60 * MIN + 1)).toBe(60 * MIN);
+  it('every step is a wall-clock divisor, so ticks land on round times', () => {
+    // axisTicks aligns to multiples of the step. A 45-minute step would put the 3 h axis on 09:45 /
+    // 10:30 for no gain over 30.
+    for (const windowMin of OPS_WINDOW_MINUTES) {
+      expect((60 * MIN) % tickStepFor(windowMin * MIN)).toBe(0);
+    }
+  });
+
+  it('switches step at the boundary, not inside it', () => {
+    expect(tickStepFor(30 * MIN + 1)).toBe(15 * MIN);
+    // Wider windows are no longer selectable; the last branch is the floor for anything handed in.
+    expect(tickStepFor(240 * MIN)).toBe(15 * MIN);
   });
 });
 
@@ -394,7 +458,7 @@ describe('buildTimelineBars — activity fields', () => {
         executionId: 'd1', workflowId: 'w1', status: 'Succeeded',
         startedAt: iso(NOW - 9 * MIN), completedAt: iso(NOW - 8 * MIN), parentExecutionId: null,
       }],
-      {}, W, new Set(['w1']),
+      {}, new Set(['w1']),
     );
     const running = bars.find((b) => b.executionId === 'r1')!;
     expect(running.stepsFinished).toBe(4);
@@ -404,5 +468,41 @@ describe('buildTimelineBars — activity fields', () => {
     const settled = bars.find((b) => b.executionId === 'd1')!;
     expect(settled.stepsFinished).toBeNull();
     expect(settled.lastProgressAtMs).toBeNull();
+  });
+});
+
+describe('assignLanes — sub-row ceiling', () => {
+  const nodes = new Map<string, OpsNode>([['w1', node('w1', 'Alpha')]]);
+
+  /** N runs that all overlap each other, so every one of them wants its own sub-row. */
+  const overlapping = (count: number): TimelineBarInput[] =>
+    Array.from({ length: count }, (_, i) => ({
+      executionId: `e${i}`, workflowId: 'w1', status: 'Succeeded',
+      startedAtMs: NOW - 10 * MIN, completedAtMs: NOW - MIN,
+      parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAtMs: null,
+    }));
+
+  it('stops stacking at the ceiling instead of growing a lane without bound', () => {
+    // Unbounded, a lane is a function of a workflow's concurrency: the bar cap's worth of overlapping
+    // runs would be ~152 000 px tall, and the anchored layer promotes that into one composited surface.
+    const { lanes } = assignLanes(overlapping(500), nodes);
+    expect(lanes[0].subRowCount).toBe(OPS_MAX_SUB_ROWS);
+    expect(lanes[0].subRowsCapped).toBe(true);
+  });
+
+  it('never drops a bar to stay under the ceiling', () => {
+    // Overlapping is crowded; losing a run would be a lie. Every input must come back placed, and
+    // inside the ceiling.
+    const { placed } = assignLanes(overlapping(500), nodes);
+    expect(placed).toHaveLength(500);
+    expect(new Set(placed.map((p) => p.executionId)).size).toBe(500);
+    expect(Math.max(...placed.map((p) => p.subRow))).toBeLessThan(OPS_MAX_SUB_ROWS);
+  });
+
+  it('leaves a lane below the ceiling untouched and unflagged', () => {
+    const { lanes, placed } = assignLanes(overlapping(4), nodes);
+    expect(lanes[0].subRowCount).toBe(4);
+    expect(lanes[0].subRowsCapped).toBe(false);
+    expect(placed.map((p) => p.subRow).sort()).toEqual([0, 1, 2, 3]);
   });
 });

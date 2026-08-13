@@ -26,7 +26,7 @@ unsigned or tampered artifacts, so a code-signing certificate is part of the set
 
 - **Windows Server** (domain-joined recommended), elevated **Windows PowerShell 5.1** for
   both scripts.
-- **ASP.NET Core Runtime 10 (x64)** — the plain runtime, **not** the Hosting Bundle. The
+- **ASP.NET Core Runtime 10.0.11 or newer in the 10.x line (x64)** — the plain runtime, **not** the Hosting Bundle. The
   bundle rewires IIS and restarts W3SVC, which you do not want on a shared host (e.g. an
   SCCM site server). The `x64` is a requirement, not a preference: NodePilot ships as
   `win-x64`, a 32-bit runtime cannot start the service, and the pre-flight rejects one by
@@ -57,6 +57,13 @@ unsigned or tampered artifacts, so a code-signing certificate is part of the set
 
 - **A free HTTPS port.** Default is 443. On a host where IIS/http.sys owns 80/443 (SCCM,
   WSUS, …), use `-HttpsPort 8443 -HttpPort 0` instead.
+
+- **A network path that passes WebSocket upgrades.** The live view opens a SignalR
+  connection to `/hubs/execution`. A proxy or TLS-inspection appliance that drops the
+  `Upgrade: websocket` handshake does **not** break the product — SignalR falls back to
+  Server-Sent Events on its own — but it fills every user's browser console with connect
+  errors and costs efficiency. Worth clearing with your network team up front; see
+  [Is the live connection healthy?](#is-the-live-connection-healthy).
 
 - **Antivirus exclusions agreed with your security team.** The service starts PowerShell
   child processes and executes generated scripts out of `%TEMP%`; without exceptions,
@@ -372,10 +379,73 @@ Logs: `C:\ProgramData\NodePilot\logs\` (CMTrace-formatted). Firewall rule:
 | Upgrade fails with *Access to the path '…\<some>.dll' is denied* | a process is still running from the install directory and keeps DLLs mapped, even though the service is stopped | `tasklist /m <dll>` names the holder; `Get-Process \| Where-Object { $_.Path -like 'C:\Program Files\NodePilot\*' } \| Stop-Process -Force`, then re-run. Current builds abort before deleting anything and print the PID |
 | Upgrade fails with *Processes are still running from … and could not be ended* | something under the install directory survived the 30-second grace period **and** could not be stopped — in practice a permissions problem or a hung kernel call | the message names the PID. Nothing was deleted and the service is untouched, so end it yourself or reboot, then re-run. Artifacts before 2026-08-03 reported this immediately after stopping the service, naming the very process they had just stopped; that was a missing wait, not a stuck process |
 | Browser shows `{"message":"Token is no longer valid"}` instead of the app | session cookie outlived `Authentication:SessionAbsoluteLifetimeHours` (8 h); artifacts built before 2026-08-02 answered SPA navigations with that 401 | clear the site's cookies to get back in; upgrade to a current artifact to stop it recurring |
+| Browser console repeats `WebSocket connection to 'wss://…/hubs/execution?id=…' failed` and `Failed to start the transport 'WebSockets'` — **but the UI still updates live** | The `?id=` proves the `negotiate` call already succeeded, so only the `Upgrade: websocket` handshake is being dropped — in practice by a proxy or a TLS-inspection appliance. SignalR then falls back to Server-Sent Events, which is why live updates keep working. Note that Kestrel advertises HTTP/2 via ALPN, so a TLS-terminating middlebox has to relay WebSockets as RFC 8441 *Extended CONNECT* — many cannot, while ordinary requests pass through unnoticed | have the host bypassed in the proxy/PAC file, or WebSocket passthrough enabled for it. Confirm the cause first with [Is the live connection healthy?](#is-the-live-connection-healthy): a server-side 503 produces the very same console message |
 | AD login fails with correct credentials; audit shows `ldap_user_object_not_found`, log says *bind succeeded but no user object found* | the account's `userPrincipalName` attribute is unset or uses another suffix — AD still binds via the implicit `samAccountName@domain`, but the lookup searches that attribute | `Set-ADUser <user> -UserPrincipalName '<user>@corp.example.com'`; also verify `BaseDn` covers the account's OU |
 | AD login fails, audit shows `local_login_policy` although LDAP is configured | LDAP was not active for that request — the settings were saved but not yet in effect | re-check that the LDAP section is enabled and saved (HTTP 200), then retry |
 | AD login fails, audit shows `no_allowed_directory_group` (`USER_DIRECTORY_ACCESS_REFUSED`) | credentials are fine, but the user is in none of the configured `AllowedGroupSids` groups | `Get-ADGroupMember 'NodePilot-Users'` and compare the SID with the configured one |
 | AD login refused with no audit row at all, HTTP 503 | directory unavailable (all endpoints failed). Artifacts before 2026-08-02 wrote no audit entry here | check `/healthz/directory` and the DC; current builds audit this case |
+
+### Is the live connection healthy?
+
+The SPA's live view (running steps, execution status, dashboard counters) rides on a SignalR
+connection to `/hubs/execution`. The client negotiates a transport and walks down a ladder —
+**WebSockets → Server-Sent Events → long polling** — so a blocked WebSocket upgrade degrades
+efficiency rather than function. The console error it prints on the way down looks alarming and
+is easy to misread as an outage.
+
+**1. Find out which transport is actually carrying the connection.** DevTools → *Network*, filter
+for `hubs/execution`, and look at what follows the `negotiate` request:
+
+| What you see after `negotiate` (200) | Meaning |
+|---|---|
+| One request answered `101 Switching Protocols` | WebSockets fine, nothing to do |
+| One long-pending `GET …?id=…` of type `text/event-stream` | Server-Sent Events fallback — the live view works, the console noise is cosmetic |
+| `GET`/`POST` pairs repeating every few seconds | long polling, the most expensive fallback |
+
+**2. Prove whether the network path is to blame.** On Windows, `curl.exe` ignores the WinINET
+proxy settings unless told otherwise — which makes it a clean A/B against the browser:
+
+```powershell
+# (a) direct, no proxy
+curl.exe -sSik --http1.1 -H "Connection: Upgrade" -H "Upgrade: websocket" `
+    -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" `
+    "https://nodepilot.corp.example.com:8443/hubs/execution?id=x"
+
+# (b) the same request through the corporate proxy
+curl.exe -sSik --http1.1 --proxy http://proxy.corp.example.com:8080 `
+    -H "Connection: Upgrade" -H "Upgrade: websocket" `
+    -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" `
+    "https://nodepilot.corp.example.com:8443/hubs/execution?id=x"
+```
+
+(a) should return a recognisable ASP.NET Core answer — `401` for the missing auth cookie, or
+`400`/`404`. Any of those prove the upgrade request reached the application. If (b) instead
+returns `200` with `index.html`, a proxy error page, or simply hangs, the proxy is the culprit.
+Cross-check by opening the same page from a client with no proxy in the path (the server itself,
+for instance): the `wss://` errors disappear there.
+
+**3. Rule out the server-side look-alikes.** Two conditions produce a byte-identical browser
+message, because they answer the upgrade request itself rather than dropping it:
+
+- **The database breaker is open.** `/hubs` is sealed with `503` while the database is
+  unreachable, deliberately including requests that already carry a connection id. Look for
+  `503` / `DATABASE_UNAVAILABLE` on `/hubs/execution` in `C:\ProgramData\NodePilot\logs\`. This
+  is ruled out whenever live updates still arrive — the fallback transports would be blocked
+  just the same.
+- **A follower node answered.** With `Cluster:Enabled`, `/hubs/` is leader-only and followers
+  reply `503`. There is no SignalR backplane and hub state is per-process, so any second serving
+  instance also breaks the connection-id affinity. Only relevant in an HA setup; check
+  `/healthz/leader`.
+
+A Content-Security-Policy problem is *not* a candidate: the browser words that differently
+(*"Refused to connect"*), and the page would not have loaded to begin with.
+
+> Unrelated console noise worth knowing about: browser extensions inject their own content
+> scripts into the page, and those log under their own file names (a bare `common.js`, for
+> example) with no relation to NodePilot. The SPA ships as a single hash-named bundle
+> (`assets/index-<hash>.js`) and loads no third-party script — the production CSP is
+> `script-src 'self'`. Re-test in a clean browser profile with extensions disabled to separate
+> the two.
 
 ## Upgrade, reinstall, uninstall
 

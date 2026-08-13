@@ -119,6 +119,12 @@ secrets protected, validate-before-save) · `create_workflow` · `duplicate_work
 `get_dashboard_stats` · `get_operations_graph` · `get_workflow_coverage` · `get_workflow_step_health` ·
 `get_workflow_step_stats` · `query_audit_log` (Admin) · `get_support_diagnostics` (Admin)
 
+`get_operations_graph` deckelt `recent` zusätzlich zum Server-Cap auf die **neuesten 200** und weist die
+Kürzung in `meta.recentToolCap` / `meta.recentWithheldByTool` aus. Der Server-Cap (4000) ist ein
+Render-Budget für eine Timeline, die jeden Balken zeichnet — für ein Agenten-Kontextfenster wären das
+~900 KB GUIDs und ISO-Zeitstempel. `running` wird **nie** gekürzt: das ist die Antwort auf „was läuft
+gerade“. Gefensterte Gesamtzahlen kommen ohnehin aus `density[]`, nicht aus der Balkenliste.
+
 ### DB / text2sql (Admin; read-only)
 `list_db_tables` · `get_db_info` · `run_readonly_sql`. Schema discovery + single read-only SQL
 statement against the NodePilot App-DB (the agent does the NL→SQL translation). Read keyword

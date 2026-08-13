@@ -1517,7 +1517,9 @@ public static class SettingsSectionAdapters
             {
                 Endpoint = t.Otlp.Endpoint ?? "http://localhost:4317",
                 Protocol = t.Otlp.Protocol ?? "grpc",
-                Headers = t.Otlp.Headers ?? "",
+                Headers = string.IsNullOrEmpty(t.Otlp.Headers)
+                    ? ""
+                    : SettingsSchema.MaskedSecretDisplay,
                 BrowserEndpoint = configRoot["OpenTelemetry:Otlp:BrowserEndpoint"] ?? "",
             },
             Sampling = new SamplingSettingsDto
@@ -1556,6 +1558,15 @@ public static class SettingsSectionAdapters
         JsonObject? previousSection,
         ISecretProtector protector)
     {
+        var prevOtlp = previousSection?["Otlp"] as JsonObject ?? new JsonObject();
+        var otlp = new JsonObject
+        {
+            ["Endpoint"] = dto.Otlp.Endpoint,
+            ["Protocol"] = dto.Otlp.Protocol,
+            ["BrowserEndpoint"] = dto.Otlp.BrowserEndpoint,
+        };
+        WriteSecretField(otlp, "Headers", dto.Otlp.Headers, prevOtlp, protector);
+
         var prevProm = previousSection?["Prometheus"] as JsonObject ?? new JsonObject();
         var prom = new JsonObject
         {
@@ -1573,13 +1584,7 @@ public static class SettingsSectionAdapters
             ["Environment"] = dto.Environment,
             ["RedactHostnames"] = dto.RedactHostnames,
             ["MetricExportIntervalSeconds"] = dto.MetricExportIntervalSeconds,
-            ["Otlp"] = new JsonObject
-            {
-                ["Endpoint"] = dto.Otlp.Endpoint,
-                ["Protocol"] = dto.Otlp.Protocol,
-                ["Headers"] = dto.Otlp.Headers,
-                ["BrowserEndpoint"] = dto.Otlp.BrowserEndpoint,
-            },
+            ["Otlp"] = otlp,
             ["Sampling"] = new JsonObject
             {
                 ["Mode"] = dto.Sampling.Mode,
@@ -1622,7 +1627,9 @@ public static class SettingsSectionAdapters
             {
                 Endpoint = otlp["Endpoint"]?.GetValue<string>() ?? "http://localhost:4317",
                 Protocol = otlp["Protocol"]?.GetValue<string>() ?? "grpc",
-                Headers = otlp["Headers"]?.GetValue<string>() ?? "",
+                Headers = HasNonNullValue(otlp, "Headers")
+                    ? SettingsSchema.MaskedSecretDisplay
+                    : "",
                 BrowserEndpoint = otlp["BrowserEndpoint"]?.GetValue<string>() ?? "",
             },
             Sampling = new SamplingSettingsDto
@@ -1722,7 +1729,13 @@ public static class SettingsSectionAdapters
         if (SettingsSchema.IsUnchangedSecretValue(incoming))
         {
             if (previousSection[key] is JsonValue prev && prev.TryGetValue(out string? prevStr))
-                section[key] = prevStr;
+            {
+                // Upgrade legacy plaintext runtime overrides when an admin round-trips the
+                // masked value. Existing ciphertext stays byte-for-byte stable.
+                section[key] = EncryptingJsonConfigurationProvider.LooksEncrypted(prevStr)
+                    ? prevStr
+                    : EncryptingJsonConfigurationProvider.EncryptForPersist(prevStr, protector);
+            }
         }
         else if (!string.IsNullOrEmpty(incoming))
         {

@@ -174,4 +174,78 @@ public class WorkflowCallGraphBuilderTests
         """;
         WorkflowCallGraphBuilder.Build([Wf(A, "Solo", def)]).Should().BeEmpty();
     }
+
+    // ---- Split derivation: extraction is definition-local and cacheable, resolution is not -----
+
+    [Fact]
+    public void ExtractCallSites_LiftsKindAndRawRef_WithoutResolvingAnything()
+    {
+        // Extraction must not need the other workflows: that independence is exactly what lets a
+        // caller cache the result against the workflow's UpdatedAt instead of re-parsing per poll.
+        var sites = WorkflowCallGraphBuilder.ExtractCallSites(StartWorkflowDef("Child"));
+
+        sites.Should().ContainSingle().Which.Should().Be(new WorkflowCallSite("startWorkflow", "Child"));
+    }
+
+    [Fact]
+    public void ExtractCallSites_TrimsTheRefAndReadsForEachToo()
+    {
+        WorkflowCallGraphBuilder.ExtractCallSites(ForEachDef("  Child  "))
+            .Should().ContainSingle().Which.Should().Be(new WorkflowCallSite("forEach", "Child"));
+    }
+
+    [Fact]
+    public void ExtractCallSites_UnparseableOrEmptyDefinition_YieldsNothing()
+    {
+        // A broken definition is not an edge, and it must not take the graph down with it.
+        WorkflowCallGraphBuilder.ExtractCallSites("{ not json").Should().BeEmpty();
+        WorkflowCallGraphBuilder.ExtractCallSites("").Should().BeEmpty();
+    }
+
+    [Fact]
+    public void BuildFromCallSites_MatchesBuild_ForTheSameDefinitions()
+    {
+        // The cached path and the parse-everything path must not be able to disagree.
+        var inputs = new[] { Wf(A, "Parent", StartWorkflowDef("Child")), Leaf(B, "Child") };
+
+        var direct = WorkflowCallGraphBuilder.Build(inputs);
+        var fromSites = WorkflowCallGraphBuilder.BuildFromCallSites(
+            inputs.Select(w => new WorkflowCallGraphIdentity(w.Id, w.Name)).ToList(),
+            inputs.ToDictionary(w => w.Id, w => WorkflowCallGraphBuilder.ExtractCallSites(w.DefinitionJson)));
+
+        fromSites.Should().BeEquivalentTo(direct);
+    }
+
+    [Fact]
+    public void BuildFromCallSites_RenamedSibling_ReResolvesFromUnchangedCallSites()
+    {
+        // The reason call SITES are the cacheable unit and edges are not: a name-based reference
+        // resolves against every OTHER workflow's name, so renaming the child changes the parent's
+        // edge while the parent's own definition — and therefore its cached call sites — is untouched.
+        var parentSites = WorkflowCallGraphBuilder.ExtractCallSites(StartWorkflowDef("Child"));
+        var sites = new Dictionary<Guid, IReadOnlyList<WorkflowCallSite>>
+        {
+            [A] = parentSites,
+            [B] = [],
+        };
+
+        var before = WorkflowCallGraphBuilder.BuildFromCallSites(
+            [new WorkflowCallGraphIdentity(A, "Parent"), new WorkflowCallGraphIdentity(B, "Child")], sites);
+        var after = WorkflowCallGraphBuilder.BuildFromCallSites(
+            [new WorkflowCallGraphIdentity(A, "Parent"), new WorkflowCallGraphIdentity(B, "Renamed")], sites);
+
+        before.Should().ContainSingle().Which.RefStatus.Should().Be(WorkflowRefStatus.Resolved);
+        after.Should().ContainSingle().Which.RefStatus.Should().Be(WorkflowRefStatus.Unresolved);
+    }
+
+    [Fact]
+    public void BuildFromCallSites_WorkflowWithoutAnEntry_ContributesNoEdges()
+    {
+        // A workflow the cache has never seen must degrade to "no outgoing calls", not throw.
+        var edges = WorkflowCallGraphBuilder.BuildFromCallSites(
+            [new WorkflowCallGraphIdentity(A, "Parent"), new WorkflowCallGraphIdentity(B, "Child")],
+            new Dictionary<Guid, IReadOnlyList<WorkflowCallSite>>());
+
+        edges.Should().BeEmpty();
+    }
 }

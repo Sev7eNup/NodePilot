@@ -4,6 +4,7 @@ using NodePilot.Cli.Api;
 using NodePilot.Cli.Api.Dtos;
 using NodePilot.Cli.Output;
 using NodePilot.Cli.Settings;
+using NodePilot.Cli.Tests.Infra;
 using Spectre.Console;
 using Spectre.Console.Testing;
 using Xunit;
@@ -16,6 +17,7 @@ namespace NodePilot.Cli.Tests.Output;
 /// strings the renderer doesn't know about) doesn't blow up the formatter, and that the
 /// output writer routes JSON/Yaml correctly when redirected from a TTY.
 /// </summary>
+[Collection(CommandTestCollection.Name)]
 public class OutputAndRenderingTests
 {
     private static TestConsole NewBuffer()

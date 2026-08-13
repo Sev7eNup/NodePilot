@@ -176,7 +176,7 @@ public sealed class SupportingAndTelemetryToolsTests
         using var api = new TestApi();
         var parent = Guid.NewGuid();
         var child = Guid.NewGuid();
-        api.Server.Given(Request.Create().WithPath("/api/operations/graph").UsingGet())
+        api.Server.Given(Request.Create().WithPath("/api/operations/graph").WithParam("windowMinutes", "30").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
                 nodes = new[]
@@ -190,7 +190,7 @@ public sealed class SupportingAndTelemetryToolsTests
                 running = new[] { new { executionId = Guid.NewGuid(), workflowId = parent, status = "Running", startedAt = DateTime.UtcNow } },
                 recent = new[] { new { executionId = Guid.NewGuid(), workflowId = parent, status = "Failed", startedAt = DateTime.UtcNow.AddMinutes(-9), completedAt = DateTime.UtcNow.AddMinutes(-8) } },
                 // On a busy window `recent` is capped and the rest arrives counted — an agent
-                // answering "how much ran in the last four hours?" reads this, not the bar list.
+                // answering "how much ran in the selected window?" reads this, not the bar list.
                 density = new[]
                 {
                     new { workflowId = parent, buckets = new[] { new { bucketIndex = 7, total = 340, failed = 5, cancelled = 0 } } },
@@ -205,6 +205,48 @@ public sealed class SupportingAndTelemetryToolsTests
         json.Should().Contain("\"status\":\"Failed\"");
         json.Should().Contain("\"total\":340");
         json.Should().Contain("\"canCancel\":true");
+    }
+
+    [Fact]
+    public async Task GetOperationsGraph_TrimsRecentToTheToolCapAndSaysSo()
+    {
+        // The server's cap is a RENDER budget for a timeline that draws every bar; an agent reads a
+        // handful and pays for the rest in context. The trim must come off the OLD end (the server
+        // orders newest-first) and must be stated in the payload, never done silently.
+        using var api = new TestApi();
+        var wf = Guid.NewGuid();
+        var newest = Guid.NewGuid();
+        var oldest = Guid.NewGuid();
+        var recent = new List<object>();
+        for (var i = 0; i < 500; i++)
+        {
+            var id = i == 0 ? newest : i == 499 ? oldest : Guid.NewGuid();
+            recent.Add(new
+            {
+                executionId = id, workflowId = wf, status = "Succeeded",
+                startedAt = DateTime.UtcNow.AddMinutes(-i - 1), completedAt = DateTime.UtcNow.AddMinutes(-i),
+            });
+        }
+
+        api.Server.Given(Request.Create().WithPath("/api/operations/graph").WithParam("windowMinutes", "60").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                nodes = Array.Empty<object>(),
+                edges = Array.Empty<object>(),
+                running = new[] { new { executionId = Guid.NewGuid(), workflowId = wf, status = "Running", startedAt = DateTime.UtcNow } },
+                recent,
+                density = Array.Empty<object>(),
+                meta = new { windowMinutes = 60, recentTruncated = true },
+            }));
+
+        var tools = new TelemetryTools(api.Client());
+        var json = JsonSerializer.Serialize(await tools.GetOperationsGraph(60));
+
+        json.Should().Contain("\"recentToolCap\":200");
+        json.Should().Contain("\"recentWithheldByTool\":300");
+        json.Should().Contain(newest.ToString());     // newest survives
+        json.Should().NotContain(oldest.ToString());  // oldest is what gets dropped
+        json.Should().Contain("\"status\":\"Running\"");   // live runs are never trimmed
     }
 
     [Fact]

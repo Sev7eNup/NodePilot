@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using NodePilot.Mcp.Api;
@@ -41,12 +42,41 @@ public sealed class TelemetryTools
         };
     }
 
+    /// <summary>
+    /// How many finished runs <c>get_operations_graph</c> hands an agent. Deliberately far below the
+    /// server's own render budget: the SPA draws every returned run, an agent reads a few and pays for
+    /// the rest in context. Truncation is reported in the payload rather than done silently.
+    /// </summary>
+    private const int RecentToolCap = 200;
+
     [McpServerTool(Name = "get_operations_graph", ReadOnly = true)]
-    [Description("Live-ops Mission-Control snapshot (RBAC-scoped): workflow nodes (name, folder, enabled, live runningCount, lastStatus, per-node canRun/canEdit), call edges between workflows (startWorkflow/forEach, with refStatus Resolved|Dynamic|Unresolved|Ambiguous), currently-running executions, and recently finished executions within the selected window. 'recent' is capped at the newest 1000; when it is, 'meta.recentTruncated' is true and 'density' carries the per-workflow run counts for the whole window in 'meta.densityBucketSeconds' buckets (bucketIndex 0 starts at meta.recentSinceUtc), each with total/failed/cancelled — so 'how much ran in the last four hours' is answerable even though not every run is listed individually. 'meta.oldestReturnedCompletedAt' marks where the individual list stops and 'meta.densityCapped' says the counts are a floor. Answers 'what is running right now, what just finished, and how do workflows call each other?'.")]
+    [Description("Live-ops Mission-Control snapshot (RBAC-scoped): workflow nodes (name, folder, enabled, live runningCount, lastStatus, per-node canRun/canEdit), call edges between workflows (startWorkflow/forEach, with refStatus Resolved|Dynamic|Unresolved|Ambiguous), currently-running executions, and recently finished executions within the selected window. The server caps 'recent' at the newest 4000 and this tool trims it further to the newest 200, reporting 'meta.recentToolCap' and 'meta.recentWithheldByTool' when it does — running executions are never trimmed. When the SERVER cap bit, when it is, 'meta.recentTruncated' is true and 'density' carries the per-workflow run counts for the whole window in 'meta.densityBucketSeconds' buckets (bucketIndex 0 starts at meta.recentSinceUtc), each with total/failed/cancelled — so 'how much ran in the selected window' is answerable even though not every run is listed individually. 'meta.oldestReturnedCompletedAt' marks where the individual list stops and 'meta.densityCapped' says the counts are a floor. Answers 'what is running right now, what just finished, and how do workflows call each other?'.")]
     public async Task<object> GetOperationsGraph(
-        [Description("Look-back window for finished runs, in minutes: 20 (default), 60 or 240. Other values clamp to 20. Running executions are always returned in full.")] int windowMinutes = 20,
+        [Description("Look-back window for finished runs, in minutes: 30 (default) or 60. Other values clamp to 30. Running executions are always returned in full.")] int windowMinutes = 30,
         CancellationToken cancellationToken = default)
-        => await ApiErrorMapper.Guard(() => _api.GetOperationsGraphAsync(cancellationToken, windowMinutes));
+    {
+        var root = await ApiErrorMapper.Guard(() => _api.GetOperationsGraphAsync(cancellationToken, windowMinutes));
+        var graph = JsonNode.Parse(root.GetRawText())!.AsObject();
+
+        // The console's budget is not an agent's. A busy 1 h window can fill 'recent' with the
+        // server cap's worth of rows -- roughly 900 KB of GUIDs and ISO timestamps -- which is a sensible
+        // payload for a timeline that draws every one of them and a waste of an agent's context, which
+        // reads a handful. Trimmed from the OLD end: the server orders newest-first, and "what just
+        // finished" is the question this list answers. 'running' is never trimmed -- it is the answer to
+        // "what is going on right now" and it is small.
+        if (graph["recent"] is JsonArray recent && recent.Count > RecentToolCap)
+        {
+            var withheld = recent.Count - RecentToolCap;
+            while (recent.Count > RecentToolCap) recent.RemoveAt(recent.Count - 1);
+            if (graph["meta"] is JsonObject meta)
+            {
+                meta["recentToolCap"] = RecentToolCap;
+                meta["recentWithheldByTool"] = withheld;
+            }
+        }
+
+        return graph;
+    }
 
     [McpServerTool(Name = "get_workflow_coverage", ReadOnly = true)]
     [Description("Per-node coverage for a workflow over the last windowDays: how often each node executed/failed/was skipped, and when it last ran. Answers 'what logic actually runs in production?'.")]

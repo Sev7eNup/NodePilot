@@ -32,6 +32,7 @@ import { api } from '../../api/client';
 describe('authStore (cookie-based, audit H-5)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     // Reset store state to a known "pre-init" shape (matches production bundle load).
     useAuthStore.setState({
       username: null,
@@ -88,6 +89,30 @@ describe('authStore (cookie-based, audit H-5)', () => {
     expect(state.username).toBeNull();
     expect(state.role).toBeNull();
     expect(api.post).toHaveBeenCalledWith('/auth/logout');
+  });
+
+  it('logout_removesLegacyWorkflowClipboardFromSessionStorage', async () => {
+    sessionStorage.setItem('np_clipboard', JSON.stringify({
+      nodes: [{ data: { config: { apiKey: 'legacy-inline-secret' } } }],
+      edges: [],
+    }));
+    vi.mocked(api.post).mockResolvedValueOnce(undefined);
+
+    await useAuthStore.getState().logout();
+
+    expect(sessionStorage.getItem('np_clipboard')).toBeNull();
+  });
+
+  it('login_removesLegacyWorkflowClipboardEvenWhenPriorLogoutWasMissed', async () => {
+    sessionStorage.setItem('np_clipboard', JSON.stringify({
+      nodes: [{ data: { config: { apiKey: 'previous-user-secret' } } }],
+      edges: [],
+    }));
+    vi.mocked(api.post).mockResolvedValueOnce({ userId: 'u-2', username: 'next', role: 'Viewer' });
+
+    await useAuthStore.getState().login('next', 'password');
+
+    expect(sessionStorage.getItem('np_clipboard')).toBeNull();
   });
 
   it('logout_serverUnreachable_stillClearsLocalState', async () => {

@@ -1,5 +1,5 @@
 // Copies non-TS runtime assets (the local setup page) into dist/ so they sit next to the
-// compiled main process and get packed into the asar by Electron Forge.
+// compiled main process and get packed into the asar by Electron Packager.
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';

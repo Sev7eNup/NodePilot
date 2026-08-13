@@ -102,7 +102,7 @@ NodePilot is a **drop-in modern alternative** for organizations stuck on legacy 
 - **Agentless remote execution** — WinRM + PowerShell SDK; localhost runs in-process without WinRM.
 - **AI-assisted authoring** — generate PowerShell scripts and entire workflows from natural language; works against OpenAI **or local Ollama / LM Studio / vLLM** for zero-egress setups.
 - **Operations CLI (`np`)** — full-featured command-line client (login, run, watch, audit, lock/publish, import/export), published as a self-contained folder you put on `PATH`.
-- **Batteries-included observability** — opt-in OpenTelemetry + Prometheus exporter, plus a turnkey **Grafana stack with 10 pre-provisioned dashboards** (Mission Control, Workflows, Activities, WinRM, Triggers, API, Runtime, Security, AI, Database).
+- **Batteries-included observability** — opt-in OpenTelemetry + Prometheus exporter, plus a hardened, loopback-bound **Grafana stack with 10 pre-provisioned dashboards** (Mission Control, Workflows, Activities, WinRM, Triggers, API, Runtime, Security, AI, Database). Startup requires a unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD`.
 - **SCOrch-style edit lock** — atomic per-user check-out / publish flow, `423 Locked` enforced by every mutating endpoint, force-unlock for admins with audit trail.
 - **Workflow versioning** — every edit is snapshotted; one-click rollback; visual diff between any two versions.
 - **JWT + RBAC** — Admin / Operator / Viewer roles, BCrypt passwords, account lockout, DPAPI-encrypted credentials, output redaction, SSRF guards, per-IP rate limits.
@@ -192,7 +192,7 @@ directories so in-place upgrades can roll back.
 
 - **Windows Server 2022 or 2025**, domain-joined for the gMSA path — `-UseLocalSystem` works
   without a domain
-- **ASP.NET Core Runtime 10 (x64)** — the plain runtime, **not** the Hosting Bundle (that one
+- **ASP.NET Core Runtime 10.0.11 or newer in the 10.x line (x64)** — the plain runtime, **not** the Hosting Bundle (that one
   wires up IIS and restarts W3SVC). NodePilot ships as `win-x64`; a 32-bit runtime cannot host it
   and the pre-flight says so rather than passing the row
 - **PostgreSQL 16+** or **SQL Server 2022 CU1+** (build ≥ 16.0.4003.1 — earlier builds cannot serve
@@ -293,7 +293,7 @@ port 5000.
 
 ```powershell
 cd grafana
-Copy-Item .env.example .env     # then set GF_SECURITY_ADMIN_PASSWORD - compose refuses to start without it
+Copy-Item .env.example .env     # then set NODEPILOT_GRAFANA_ADMIN_PASSWORD - compose refuses to start without it
 docker compose up -d
 # Grafana    -> http://localhost:3000   (user "admin", the password you just set)
 # Prometheus -> http://localhost:9090
@@ -1021,7 +1021,9 @@ Full reference incl. the complete tool catalog: [docs/mcp-server.md](docs/mcp-se
 
 ## Observability — Grafana Stack
 
-NodePilot ships a **turnkey monitoring stack** under [`grafana/`](grafana/) — `docker compose up -d` and you have Prometheus + Grafana + 10 pre-provisioned dashboards.
+NodePilot ships a hardened monitoring stack under [`grafana/`](grafana/). Copy `.env.example`, set a
+new unique `NODEPILOT_GRAFANA_ADMIN_PASSWORD`, then run `docker compose up -d` to start Prometheus,
+Grafana, and the 10 pre-provisioned dashboards. Compose fails closed while the password is missing.
 
 ```
 ┌────────────┐   scrape /metrics   ┌────────────┐   query    ┌─────────┐
@@ -1133,7 +1135,7 @@ What you get:
 ### Prerequisites (one-time)
 
 - **Windows Server 2022 or 2025**, domain-joined for the gMSA path (`-UseLocalSystem` drops the domain requirement)
-- **ASP.NET Core Runtime 10** (x64) on the target — the plain runtime, not the Hosting Bundle (Kestrel self-hosts; the bundle rewires IIS)
+- **ASP.NET Core Runtime 10.0.11 or newer in the 10.x line** (x64) on the target — the plain runtime, not the Hosting Bundle (Kestrel self-hosts; the bundle rewires IIS)
 - **gMSA** (`New-ADServiceAccount` + `Install-ADServiceAccount`) — or `-UseLocalSystem`
 - **PostgreSQL 16+** or **SQL Server 2022 CU1+** (build ≥ 16.0.4003.1; `Encrypt=Strict` needs TDS 8.0, and 2022 RTM has a TDS 8.0 bug fixed in CU1) with DDL rights for the gMSA / role
 - **TLS cert** in `Cert:\LocalMachine\My` with a private key
@@ -1264,12 +1266,27 @@ samples/                  Example workflows for the importer
 
 ## Testing
 
-```powershell
-# All backend tests
-dotnet test
+**While working on a change, run the affected tests only** — the full suite belongs to CI (every
+pull request) and to the nightly job. The backend suites alone hold ~4,600 test cases; a full local
+run repeats what CI already covers.
 
+```powershell
+# Scoped — one class or namespace (the default while iterating)
+dotnet test tests/NodePilot.Engine.Tests --filter "FullyQualifiedName~WorkflowCallGraphBuilder"
+
+# Frontend — a single file or directory
+cd src/nodepilot-ui; npx vitest run src/__tests__/lib/opsTimeline.test.ts
+
+# E2E — a single spec against a running dev server (no build)
+cd src/nodepilot-ui; npx playwright test e2e/operations.spec.ts --config=playwright.dev.config.ts
+```
+
+```powershell
 # Single project
 dotnet test tests/NodePilot.Engine.Tests
+
+# All backend tests (release cuts, dependency bumps, project-wide refactors)
+dotnet test
 
 # Frontend tests (single run)
 cd src/nodepilot-ui; npm run test:run
@@ -1289,8 +1306,12 @@ dotnet test tests/NodePilot.Cli.Tests
 
 **Conventions**
 
-- Tests are **mandatory**, not optional. Every behavior change ships with tests.
-- Coverage gates are enforced in CI: backend ≥ 45 % line coverage, frontend thresholds in `vitest.config.ts`.
+- Tests are **mandatory**, not optional. Every behavior change ships with tests. That applies to
+  *writing* them — which of them you *run* locally is scoped to the change (see above).
+- Cross-file consistency is held by guard/parity tests (catalog, DTO, migration, audit, trigger,
+  settings drift). Run the matching one whenever you touch its subject rather than falling back to
+  the full suite; the mapping lives in [`CLAUDE.md`](CLAUDE.md) under *Build & Test*.
+- Coverage gates are enforced in CI: backend ≥ 85 % line / ≥ 70 % branch, frontend thresholds in `vitest.config.ts`. Measuring coverage is a CI step, not a local one.
 - Naming: `MethodName_Scenario_ExpectedResult`.
 - The WinRM remote layer is **always mocked** — never real WinRM connections in tests.
 - Backend DB tests use **SQLite in-memory** (`DataSource=:memory:`) — only as a test backend; the production app does not support SQLite.

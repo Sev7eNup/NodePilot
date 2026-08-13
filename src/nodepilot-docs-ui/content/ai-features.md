@@ -87,7 +87,7 @@ Der Chat kann keine Workflow-Änderungen vorschlagen oder übernehmen. Antworten
 | **Dokumentation** | Inhalte der NodePilot-Dokumentation | alle authentifizierten Rollen |
 | **Workflows und Betrieb** | Workflow-Definition und statische Analyse (Admin und Operator, zusätzlich Folder-RBAC); geplante Ausführungszeitpunkte für alle Rollen | siehe Inhalt |
 | **Quellcode** | bereitgestellter NodePilot-Quellcode | Admin und Operator |
-| **Datenbank** | lesende Fragen zu Betriebsdaten | Admin und Operator |
+| **Datenbank** | lesende Fragen zu Betriebsdaten | ausschließlich globale Admins |
 
 Die Datenbankquelle führt ausschließlich lesende Abfragen aus. Schreiboperationen werden blockiert. Geschützte Spalten und erkannte Secrets werden nicht an das Modell ausgegeben.
 
@@ -124,7 +124,7 @@ Weitere Felder und Ausgaben enthält die [`llmQuery`-Referenz](activities-refere
 - Script- und Workflow-Generierung erfordern die Rolle Admin oder Operator.
 - Lesende Fragen im workflowbezogenen und globalen Chat sind für authentifizierte Rollen möglich.
 - Workflow-Vorschläge dürfen nur mit Bearbeitungsrecht und aktivem Bearbeitungs-Lock übernommen werden.
-- Quellcode- und Datenbankwissen im globalen Chat ist auf Admin und Operator beschränkt. Dasselbe gilt für Workflow-Definitionen und die statische Workflow-Analyse; ein Viewer erhält aus der Betriebsquelle nur die geplanten Ausführungszeitpunkte.
+- Quellcodewissen im globalen Chat ist auf Admin und Operator beschränkt; Datenbankwissen mit Raw-SQL steht ausschließlich globalen Admins zur Verfügung. Folder-Rechte erhöhen einen Operator nicht in diese Capability. Workflow-Definitionen und statische Workflow-Analysen bleiben Admin und Operator mit Folder-RBAC vorbehalten; ein Viewer erhält aus der Betriebsquelle nur die geplanten Ausführungszeitpunkte.
 - Folder-RBAC begrenzt den Zugriff auf Workflow-Daten.
 - Secrets werden vor Modellanfragen redigiert.
 - Generierte Scripts und Workflow-Änderungen erfordern immer eine fachliche Prüfung.
@@ -169,7 +169,7 @@ Je Profil:
 | `BaseUrl` | Adresse eines OpenAI-kompatiblen Endpunkts; der Pfad bestimmt das Anfrageformat (siehe unten) |
 | `ApiKey` | API-Schlüssel; für lokale Modelle häufig nicht erforderlich |
 | `Model` | verwendeter Modellname |
-| `MaxTokens` | maximale Länge einer Modellantwort |
+| `MaxTokens` | maximale Länge einer Modellantwort (256 bis 1.000.000) |
 | `TimeoutSeconds` | wie lange das Modell für seine Antwort brauchen darf — nicht die Wartezeit auf die Verbindung, die hat eigene, kurze Fristen |
 | `EnableToolCalling` | erlaubt den Chats, freigegebene lesende Analyse- und Wissensquellen zu verwenden |
 | `ToolCallMaxDepth` | maximale Anzahl aufeinanderfolgender Tool-Aufrufe pro Frage |

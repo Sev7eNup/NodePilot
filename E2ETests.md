@@ -1438,11 +1438,11 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 4. Wähle einen Node → **Ctrl+D** (Duplicate) → direktes Duplizieren
 
 **Prüfpunkte:**
-- [ ] Copy speichert in sessionStorage (`np_clipboard`)
+- [ ] Copy hält Nodes ausschließlich im In-Memory-Puffer des aktuellen Editors; `sessionStorage` enthält kein `np_clipboard`
 - [ ] Paste fügt Nodes mit neuen IDs ein
 - [ ] Paste erhält Edges zwischen kopierten Nodes
 - [ ] Ctrl+D dupliziert inline
-- [ ] Cross-Tab-Paste möglich (gleicher Browser)
+- [ ] Reload, Tab-Schließen oder Editor-Unmount verwirft den Puffer; Cross-Tab-Paste ist nicht möglich
 
 **Erwartung:** Clipboard-Operationen funktionieren
 
@@ -4399,7 +4399,9 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ### Test 80.9 — Rollen-Gating der Quellen
 1. Als **Viewer** `/ai-chat` öffnen.
-- [ ] Badges **Quellcode** und **Datenbank** fehlen (Admin/Operator-gated); Docs/Betrieb bleiben, Composer funktioniert.
+2. Danach als **Operator** öffnen.
+- [ ] Viewer: Badges **Quellcode** und **Datenbank** fehlen; Docs/Betrieb bleiben und der Composer funktioniert.
+- [ ] Operator: **Quellcode** ist sichtbar, **Datenbank** fehlt weiterhin. Raw-SQL/text2sql ist ausschließlich global-Admin und wird durch Folder-Rechte nicht freigeschaltet.
 
 > Automatisiert: `e2e/ai-chat.spec.ts` (80.1–80.9, hermetisch — SSE via `page.route`).
 
@@ -4576,16 +4578,31 @@ Prüfpunkte je Provider/Fall:
 - [ ] **Cancel** und **Quarantine** werden **gar nicht gerendert** (nicht bloß deaktiviert).
 
 ### Test 83.11 — Fenster-Wahl und Freeze
-1. Window-Selector von 20 min auf 4 h stellen.
+1. Window-Selector von 30 Min auf 1 Std stellen (mehr Fenster gibt es nicht).
 2. **Freeze view** klicken, ~10 s warten, dann **Go live**.
-- [ ] Die Umstellung löst einen neuen Snapshot-Request mit `windowMinutes=240` aus.
+- [ ] Die Umstellung löst einen neuen Snapshot-Request mit `windowMinutes=60` aus.
 - [ ] Im Freeze erscheint das Frozen-Badge und der 5-s-Poll **stoppt** (keine weiteren Requests).
 - [ ] **Go live** entfernt das Badge und nimmt den Poll wieder auf.
 
-### Test 83.12 — Truncation-Ehrlichkeit (Density-Track)
-1. Ein 4-h-Fenster wählen, in dem der Server mehr beendete Runs hat, als er einzeln zurückgibt (`recentTruncated: true`).
+### Test 83.12 — Truncation-Ehrlichkeit (Density-Histogramm)
+1. Das 1-h-Fenster wählen und einen Snapshot mit mehr beendeten Runs bereitstellen, als der Server einzeln zurückgibt (`recentTruncated: true`; für reproduzierbare Abnahme entsprechend mocken).
+2. Hinweis: mit `RecentCap = 4000` greift der Cap erst ab ~4.000 beendeten Läufen im Fenster — auf ruhigeren Anlagen ist Dichte nicht zu sehen und dieser Test braucht den Mock.
 - [ ] Der Abschnitt, den die Einzelbalken nicht abdecken, zeigt **aggregierte Run-Zahlen** (Density-Zellen), nicht das frühere schraffierte „nichts zurückgekommen"-Band.
-- [ ] Der Hinweis nennt Gesamt- und Fehlerzahl (z. B. „32 finished runs", „3 failed").
+- [ ] Die Zellen sind **einzeln abzählbare Säulen auf einer gestrichelten Grundlinie**, keine durchgehende Fläche — zwischen benachbarten Buckets bleibt sichtbar Luft.
+- [ ] Die **Säulenhöhe folgt der Lauf-Anzahl**; die höchste Säule ist erkennbar **kürzer als ein Lauf-Balken** und sitzt tiefer in der Lane. Eine Säule darf nie als einzelner langer Lauf lesbar sein.
+- [ ] Intervalle mit Fehlschlägen tragen einen **roten Strich unter der Grundlinie** (Abbrüche ohne Fehler: grau) — auch dann, wenn der Fehleranteil winzig ist (z. B. 65 von 2981).
+- [ ] Der Hinweis nennt Gesamt- und Fehlerzahl (z. B. „32 finished runs", „3 failed") **und erklärt die Kodierung** (Säulenhöhe = Läufe, Strich unter der Linie = Fehlschlag).
+- [ ] Hover auf einer Säule nennt Zeitraum und exakte Zahlen; Prüfung in hellem **und** dunklem Skin (Säule und Grundlinie dürfen nicht verschwinden).
+
+### Test 83.12b — Tastatur, Screenreader und schmale Viewports
+1. Auf `/operations` mit Tab bis zur Zeitleiste, dann mit Pfeiltasten navigieren und Enter drücken.
+2. Fenster auf ~390 px Breite ziehen (DevTools-Gerätemodus, iPhone-Breite).
+3. Einen Workflow mit mehr als 12 gleichzeitigen Läufen betrachten (oder Snapshot entsprechend mocken).
+- [ ] Die Zeitleiste ist **ein** Tab-Stop: ein weiterer Tab landet im Departure-Board darunter, nicht im nächsten Balken.
+- [ ] Pfeil links/rechts wechselt den Balken, hoch/runter die Lane, Home/End springt an die Enden, Enter öffnet den Drilldown.
+- [ ] Screenreader liest Dichte-Säulen vor (Zeitraum + Lauf-Anzahl); sie sind **nicht** per Tab erreichbar.
+- [ ] Bei ~390 px bleibt der Track nutzbar (Label-Spalte schrumpft); die Achsen-Beschriftung unten sitzt **exakt** unter dem Track, nicht um ein paar Pixel versetzt.
+- [ ] Die überlaufende Lane zeigt den Marker und nennt im Titel, dass Balken sich eine Zeile teilen — es fehlt **kein** Lauf.
 
 ### Test 83.13 — Folder-Scoping
 1. Folder-Filter auf einen Ordner ohne laufende Runs stellen, danach zurückstellen.

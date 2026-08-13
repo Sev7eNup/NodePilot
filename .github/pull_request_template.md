@@ -13,7 +13,9 @@
 <!-- Which suites did you run, and what did you add? Every behavioral change needs matching tests. -->
 
 - [ ] `dotnet test` (affected backend suites) green
-- [ ] `npm run test:run` / `npm run lint:ci` green (if frontend touched)
+- [ ] `npm run test:run` (affected specs) / `npm run lint:ci` green (if frontend touched)
+- [ ] Guard/parity tests run for whatever this change touches (catalog, DTO, migration, audit,
+      trigger, settings) — see `CLAUDE.md`, *Build & Test*
 - [ ] New/updated tests cover the change
 - [ ] i18n strings added to **both** `de` and `en` (if UI strings touched)
 

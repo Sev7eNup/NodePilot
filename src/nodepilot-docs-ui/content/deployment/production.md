@@ -48,10 +48,26 @@ abbrechen lässt — behoben ab CU1. Der Installer prüft den Patchstand im Pref
 - Windows Server 2022 oder 2025
 - Domain-Mitgliedschaft
 - PowerShell 5.1 oder PowerShell 7
-- ASP.NET Core Runtime 10 (x64) — die reine Runtime genügt, Kestrel hostet selbst; das Hosting Bundle nur bei bewusstem IIS-Einsatz (es konfiguriert IIS um und startet W3SVC neu). Das `(x64)` ist verbindlich: NodePilot wird als `win-x64` ausgeliefert, eine 32-Bit-Runtime kann den Dienst nicht starten, und der Preflight weist sie mit Pfad und Architektur zurück
+- ASP.NET Core Runtime 10.0.11 oder neuer in der 10.x-Linie (x64) — die reine Runtime genügt, Kestrel hostet selbst; das Hosting Bundle nur bei bewusstem IIS-Einsatz (es konfiguriert IIS um und startet W3SVC neu). Das `(x64)` ist verbindlich: NodePilot wird als `win-x64` ausgeliefert; der Preflight weist 32-Bit- und ältere verwundbare 10.x-Runtimes mit Pfad und Version zurück
 - Netzwerkzugriff zur Datenbank
 - TLS-Zertifikat mit privatem Schlüssel in `LocalMachine\My`
 - Lokale Administratorrechte für die Installation
+
+### Netzwerkpfad zu den Clients
+
+Die Live-Ansicht der Oberfläche (laufende Schritte, Ausführungsstatus, Dashboard-Zähler) hält eine
+SignalR-Verbindung auf `/hubs/execution`. Der Client handelt den Transport aus und arbeitet dabei
+eine Leiter ab: **WebSockets → Server-Sent Events → Long-Polling**.
+
+Ein Proxy oder eine TLS-Inspektion, die den `Upgrade: websocket`-Handshake verwirft, legt die
+Live-Ansicht deshalb **nicht** lahm — sie fällt selbsttätig auf Server-Sent Events zurück. Sichtbar
+wird es nur als wiederkehrender Verbindungsfehler in der Browser-Konsole, dazu etwas mehr Last pro
+Verbindung. Wer die Konsole sauber halten will, lässt den Host in Proxy bzw. PAC-Datei umgehen oder
+WebSocket-Durchlass für ihn freischalten.
+
+Der Vollständigkeit halber: Kestrel annonciert HTTP/2 per ALPN. Eine TLS-terminierende Appliance
+muss WebSockets damit als *Extended CONNECT* (RFC 8441) weiterreichen — das beherrschen längst
+nicht alle, während gewöhnliche Requests unauffällig durchgehen.
 
 ### Build-Host
 

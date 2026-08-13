@@ -12,9 +12,11 @@
     "idle": "Gerade läuft nichts.",
     "idleHint": "Sobald ein Workflow startet, wächst hier live sein Balken.",
     "nextStart": "Nächster Start {{time}} — {{name}}",
+    "trackLabel": "Lauf-Zeitleiste. Pfeiltasten wechseln zwischen Läufen, Enter öffnet den gewählten Lauf.",
+    "subRowsCapped": "Hier überlappen mehr Läufe, als {{rows}} Zeilen zeigen können — einige Balken teilen sich eine Zeile.",
     "historyGap": "Keine beendeten Läufe vor {{time}} geliefert",
-    "density": "{{runs}} beendete Läufe in diesem Fenster, {{failed}} fehlgeschlagen — ältere sind als Dichte zusammengefasst. Für einzelne Balken ein kürzeres Fenster wählen.",
-    "densityCapped": "Mehr als {{runs}} beendete Läufe in diesem Fenster — die Dichte beruht auf den neuesten {{runs}}. Für einzelne Balken ein kürzeres Fenster wählen.",
+    "density": "{{runs}} beendete Läufe in diesem Fenster, {{failed}} fehlgeschlagen. Ältere Läufe werden pro Intervall gezählt statt einzeln gezeichnet: Säulenhöhe = Läufe, Strich unter der Linie = Fehlschläge (rot) oder Abbrüche (grau). Für einzelne Balken ein kürzeres Fenster wählen.",
+    "densityCapped": "Mehr als {{runs}} beendete Läufe in diesem Fenster — die Zählung beruht auf den neuesten {{runs}}. Ältere Läufe werden pro Intervall gezählt: Säulenhöhe = Läufe, Strich unter der Linie = Fehlschläge (rot) oder Abbrüche (grau). Für einzelne Balken ein kürzeres Fenster wählen.",
     "densityCell": "{{from}}–{{to}} · {{runs}} Läufe",
     "densityCellFailed": "{{count}} fehlgeschlagen",
     "densityCellCancelled": "{{count}} abgebrochen"
@@ -22,9 +24,8 @@
   "window": {
     "label": "Zeitfenster",
     "option": {
-      "20": "20 Min",
-      "60": "1 Std",
-      "240": "4 Std"
+      "30": "30 Min",
+      "60": "1 Std"
     }
   },
   "freeze": {

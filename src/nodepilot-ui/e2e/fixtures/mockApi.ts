@@ -38,7 +38,7 @@ export interface KnowledgeCapabilities {
   db: boolean;
 }
 
-/** Default caps: everything on (Admin/Operator view of a fully enabled install). */
+/** Default caps: everything on (global-Admin view of a fully enabled install). */
 export function capsJson(overrides: Partial<KnowledgeCapabilities> = {}): KnowledgeCapabilities {
   return { enabled: true, llm: true, docs: true, operational: true, sourceCode: true, db: true, ...overrides };
 }

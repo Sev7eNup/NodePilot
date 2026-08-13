@@ -33,7 +33,7 @@ export function OperationsPage() {
   const [folderFilter, setFolderFilter] = useState<string | null>(null);
   // Window + freeze are view-local on purpose. A freeze that survived navigation would be a
   // footgun: come back an hour later and stare at an hour-old board believing it is live.
-  const [windowMinutes, setWindowMinutes] = useState<OpsWindowMinutes>(20);
+  const [windowMinutes, setWindowMinutes] = useState<OpsWindowMinutes>(OPS_WINDOW_MINUTES[0]);
   const [frozen, setFrozen] = useState(false);
 
   const liveNowMs = useOpsClock(1000, frozen);

@@ -3,10 +3,11 @@ import type { OperationsGraph, WorkflowExecution } from '../types/api';
 
 /**
  * RBAC-folder-scoped snapshot for the live-ops Mission-Control view.
- * `windowMinutes` selects how far back settled runs are returned (server clamps to 20|60|240);
+ * `windowMinutes` selects how far back settled runs are returned (server accepts 30|60 and
+ * clamps everything else to 30);
  * running executions are always returned in full, regardless of the window.
  */
-export function getOperationsGraph(windowMinutes = 20) {
+export function getOperationsGraph(windowMinutes = 30) {
   return api.get<OperationsGraph>(`/operations/graph?windowMinutes=${windowMinutes}`);
 }
 

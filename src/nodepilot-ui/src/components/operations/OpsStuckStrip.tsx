@@ -7,7 +7,7 @@ import { STATUS_TEXT_CLASS } from '../../lib/statusTokens';
 
 // Overdue runs, lifted out of the timeline into one line above it.
 //
-// Why a strip and not lane re-ordering: a run older than the 20-minute window is clamped to the
+// Why a strip and not lane re-ordering: a run older than the 30-minute default window is clamped to the
 // left edge and looks like any other long bar, so the runs that matter most are the least
 // visible. Re-sorting lanes would fix that by churning the whole layout every time a bar crosses
 // the threshold — and would invalidate the deterministic lane order assignLanes() guarantees.

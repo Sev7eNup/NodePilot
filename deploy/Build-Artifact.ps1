@@ -99,9 +99,11 @@ $StageDir = Join-Path $OutDir 'artifact'
 $TemplateSrc = Join-Path $PSScriptRoot 'templates\appsettings.Production.json.template'
 $DeploymentTemplateTest = Join-Path $PSScriptRoot 'Test-DeploymentTemplates.ps1'
 $ArtifactSecurityScript = Join-Path $PSScriptRoot 'ArtifactSecurity.ps1'
+$PublishSettingsHygieneScript = Join-Path $PSScriptRoot 'Assert-PublishSettingsHygiene.ps1'
 $DesktopBuildScript = Join-Path $PSScriptRoot 'desktop\Build-DesktopInstaller.ps1'
 $ServerBuildScript = Join-Path $PSScriptRoot 'server\Build-ServerInstaller.ps1'
 $BuildPropsPath = Join-Path $RepoRoot 'Directory.Build.props'
+$SdkPolicyScript = Join-Path $RepoRoot 'scripts\Assert-DotnetSdkPolicy.ps1'
 
 # Directory.Build.props is the single source of the product version (it also stamps the
 # assemblies). Deriving the default from it keeps the server zip, the desktop installer and
@@ -127,6 +129,9 @@ function Assert-RequiredTool {
 
 Write-Host "[build] Pre-flight checks" -ForegroundColor Cyan
 Assert-RequiredTool -Name 'dotnet' -HowToInstall 'Install the .NET 10 SDK from https://dotnet.microsoft.com/download.'
+if (-not (Test-Path -LiteralPath $SdkPolicyScript -PathType Leaf)) { throw "SDK policy helper missing: $SdkPolicyScript" }
+. $SdkPolicyScript
+Assert-NodePilotDotnetSdkPolicy -RepoRoot $RepoRoot
 if (-not $SkipFrontend) {
     Assert-RequiredTool -Name 'npm.cmd' -HowToInstall 'Install Node.js LTS from https://nodejs.org.'
 }
@@ -141,6 +146,8 @@ if (-not (Test-Path $TemplateSrc)) { throw "Template missing: $TemplateSrc" }
 if (-not (Test-Path $DeploymentTemplateTest)) { throw "Deployment template test missing: $DeploymentTemplateTest" }
 if (-not (Test-Path $ArtifactSecurityScript)) { throw "Artifact security helper missing: $ArtifactSecurityScript" }
 . $ArtifactSecurityScript
+if (-not (Test-Path $PublishSettingsHygieneScript)) { throw "Publish settings hygiene helper missing: $PublishSettingsHygieneScript" }
+. $PublishSettingsHygieneScript
 
 # --- desktop installer pre-flight ------------------------------------------------------------
 # Decided BEFORE the server build so a missing Inno Setup surfaces in second one rather than
@@ -323,7 +330,8 @@ if (Test-Path $SnapshotTar) { Remove-Item $SnapshotTar -Force }
 # terminating error. Success/failure is read from $LASTEXITCODE.
 $prevSnapEap = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
 try {
-    & git -C $RepoRoot archive --format=tar --output="$SnapshotTar" HEAD
+    & git -C $RepoRoot archive --format=tar --output="$SnapshotTar" HEAD -- . `
+        ':(exclude)src/NodePilot.Api/appsettings.Development.json'
     if ($LASTEXITCODE -ne 0) { throw "git archive failed (exit $LASTEXITCODE)" }
     & tar -x -f "$SnapshotTar" -C "$KnowledgeSource"
     if ($LASTEXITCODE -ne 0) { throw "tar extract failed (exit $LASTEXITCODE)" }
@@ -352,6 +360,7 @@ if (-not (Test-Path $IndexHtml)) {
 }
 
 Write-Host "[build] Generate extracted-file manifest" -ForegroundColor Cyan
+Assert-NodePilotPublishSettingsHygiene -RootPath $StageDir
 [void](New-NodePilotExtractedFileManifest -RootPath $StageDir)
 
 if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }

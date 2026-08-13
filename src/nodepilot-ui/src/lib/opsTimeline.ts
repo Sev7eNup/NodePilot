@@ -7,24 +7,48 @@ import type { LocalSettled } from '../stores/operationsStore';
 // positioned divs.
 
 /** Visible time span of the timeline (default window). */
-export const OPS_WINDOW_MS = 20 * 60_000;
+export const OPS_WINDOW_MS = 30 * 60_000;
 /** Horizontal fraction of the track where the NOW line sits (right gutter = growing-bar room). */
 export const OPS_NOW_FRACTION = 0.92;
 /** Axis tick spacing at the default window. */
 export const OPS_TICK_STEP_MS = 5 * 60_000;
 
-/** Selectable windows, in minutes — must match the server's clamp list. */
-export const OPS_WINDOW_MINUTES = [20, 60, 240] as const;
+/**
+ * Most sub-rows one lane will stack before it starts packing.
+ *
+ * A lane grows a sub-row per concurrently running execution, so an unbounded lane is a function of
+ * a workflow's concurrency, not of anything the view controls: with the bar cap's worth of
+ * overlapping runs one lane would be ~152 000 px tall, and the anchored layer promotes exactly that
+ * into a single composited surface. Twelve rows is already ~456 px — most of a viewport — and past
+ * that the rows stop telling anyone anything. Independent of the window: concurrency is a property
+ * of the workflow, not of how far back the console is looking.
+ *
+ * Bars past the ceiling are NEVER dropped; they pack into the row that frees up soonest and overlap
+ * there. Losing a run would be a lie, overlapping is merely crowded — and the lane says so through
+ * `subRowsCapped`.
+ */
+export const OPS_MAX_SUB_ROWS = 12;
+
+/**
+ * Selectable windows, in minutes — must match the server's clamp list
+ * (`OperationsController.AllowedWindowMinutes`). The first entry is the default the page opens on.
+ */
+export const OPS_WINDOW_MINUTES = [30, 60] as const;
 export type OpsWindowMinutes = (typeof OPS_WINDOW_MINUTES)[number];
 
 /**
- * Tick spacing that keeps roughly four labels on the axis at any window. Keeping the 5-minute
- * step at 4 h would draw 48 of them.
+ * Tick spacing that keeps four to six labels on the axis at either selectable window: six at 30 min,
+ * four at 1 h. Keeping the 5-minute step at 1 h would draw twelve.
+ *
+ * The steps are wall-clock divisors on purpose — `axisTicks` aligns ticks to multiples of the step,
+ * so anything that does not divide an hour lands the axis on ragged times.
+ *
+ * Windows wider than 1 h are no longer offered; the final branch is the floor for anything a caller
+ * hands in regardless.
  */
 export function tickStepFor(windowMs: number): number {
-  if (windowMs <= 20 * 60_000) return 5 * 60_000;
-  if (windowMs <= 60 * 60_000) return 15 * 60_000;
-  return 60 * 60_000;
+  if (windowMs <= 30 * 60_000) return 5 * 60_000;
+  return 15 * 60_000;
 }
 
 export interface TimelineWindow {
@@ -73,6 +97,8 @@ export interface TimelineLane {
   hasActive: boolean;
   /** Call-hierarchy depth: 0 = top-level, >0 = sub-workflow lane indented under its caller. */
   depth: number;
+  /** Concurrency exceeded OPS_MAX_SUB_ROWS, so some bars share a row and overlap there. */
+  subRowsCapped: boolean;
 }
 
 /** Window such that NOW sits at `nowFraction` of the track and the window spans `windowMs`. */
@@ -104,13 +130,19 @@ export function timeToX(tMs: number, w: TimelineWindow): number {
  * - `locallySettled` covers the gap between a SignalR terminal event and the next snapshot:
  *   the run has vanished from `running` but is not yet in `recent`. Entries whose start time
  *   was never observed (startedAtMs null) are skipped — there is nothing to draw.
- * - Bars entirely left of the window and out-of-scope workflows are dropped.
+ * - Out-of-scope workflows are dropped.
+ *
+ * Deliberately takes NO window: the result depends only on the snapshot, so it survives a clock
+ * tick untouched and `assignLanes` on top of it does too. That is the whole point — the previous
+ * signature took the window purely to drop bars left of it, which re-parsed every timestamp and
+ * re-allocated every bar object once a second on a board that changes once every five. The server
+ * already windows `recent`; between two polls a bar can age at most one poll interval past the
+ * left edge, and `placeBar` clamps it (`clippedLeft`) rather than drawing it out of bounds.
  */
 export function buildTimelineBars(
   running: OpsRunningExecution[],
   recent: OpsRecentExecution[],
   locallySettled: Record<string, LocalSettled>,
-  w: TimelineWindow,
   scopedWorkflowIds: Set<string>,
 ): TimelineBarInput[] {
   const bars: TimelineBarInput[] = [];
@@ -119,7 +151,6 @@ export function buildTimelineBars(
   for (const r of recent) {
     if (!scopedWorkflowIds.has(r.workflowId)) continue;
     const completedAtMs = Date.parse(r.completedAt);
-    if (completedAtMs < w.startMs) continue;
     seen.add(r.executionId);
     bars.push({
       executionId: r.executionId,
@@ -155,7 +186,6 @@ export function buildTimelineBars(
   for (const [executionId, s] of Object.entries(locallySettled)) {
     if (seen.has(executionId) || !scopedWorkflowIds.has(s.workflowId)) continue;
     if (s.startedAtMs === null) continue; // never saw it running — nothing to draw
-    if (s.settledAtMs < w.startMs) continue;
     seen.add(executionId);
     bars.push({
       executionId,
@@ -268,12 +298,23 @@ export function assignLanes(
     // Greedy interval stacking: place each bar in the first sub-row whose last bar ended
     // before this one starts. Running bars occupy their row until "forever".
     const rowEnds: number[] = [];
+    let subRowsCapped = false;
     for (const b of list) {
       const end = b.completedAtMs ?? Number.POSITIVE_INFINITY;
       let subRow = rowEnds.findIndex((rowEnd) => rowEnd <= b.startedAtMs);
-      if (subRow === -1) {
+      if (subRow === -1 && rowEnds.length < OPS_MAX_SUB_ROWS) {
         subRow = rowEnds.length;
         rowEnds.push(end);
+      } else if (subRow === -1) {
+        // At the ceiling: pack into the row that frees up soonest, the least crowded place left. The
+        // row stays busy until the LATER of the two ends — a short bar dropped in must not make the
+        // row read as available again.
+        subRow = 0;
+        for (let i = 1; i < rowEnds.length; i++) {
+          if (rowEnds[i] < rowEnds[subRow]) subRow = i;
+        }
+        rowEnds[subRow] = Math.max(rowEnds[subRow], end);
+        subRowsCapped = true;
       } else {
         rowEnds[subRow] = end;
       }
@@ -290,6 +331,7 @@ export function assignLanes(
       subRowCount: Math.max(rowEnds.length, 1),
       hasActive: lane.hasActive,
       depth,
+      subRowsCapped,
     });
   });
 
@@ -307,6 +349,49 @@ export interface DensityCell {
   total: number;
   failed: number;
   cancelled: number;
+}
+
+/**
+ * Drawn width of a density column, one pixel narrower than the time range it covers.
+ *
+ * Abutting cells were half of what made the density stretch read as a solid block: `to(i)` equals
+ * `from(i + 1)` exactly, so 48 buckets fused into one uninterrupted rectangle. `fromMs`/`toMs` keep
+ * the honest range — the pixel comes off the drawn width only.
+ */
+export const OPS_DENSITY_CELL_GAP_PX = 1;
+
+/**
+ * Tallest density column. Strictly below `OPS_BAR_H` (22) and pinned there by test: a column
+ * aggregates many runs and must never be readable as one. Everything else about the density
+ * stretch — bottom anchoring, the gap, the achromatic fill — follows from that single rule.
+ */
+export const OPS_DENSITY_MAX_H = 14;
+
+/**
+ * Shortest visible column. Columns scale against the busiest slice on the whole board, so a
+ * low-volume lane beside a hot one would otherwise round to zero and read as "nothing ran" — the
+ * exact misreading the aggregate exists to prevent.
+ */
+export const OPS_DENSITY_MIN_H = 3;
+
+/**
+ * Run count → column height, in px.
+ *
+ * Linear against `peak`, the busiest slice ANYWHERE on the board rather than within the lane: the
+ * lanes share one time axis and one grid, so "taller means more runs" has to hold across lanes too.
+ * Per-lane normalisation would draw a lane at 3 runs per slice exactly like a lane at 300 — a new
+ * lie, and a worse one, because it looks quantitative. The price is that quiet lanes bottom out,
+ * hence the floor. A sqrt/log compression would rescue them and was rejected: bar length is a
+ * linear channel, and bending it to make small numbers look bigger is the same sin one level down.
+ *
+ * No opacity ramp rides along. Height already carries the count, and the ramp this replaces
+ * (`0.28 + 0.57 * total / peak`) modulated by nothing on an evenly loaded system — every slice
+ * landed within a few percent of the same ink, which is how the strip became a flat slab.
+ */
+export function densityColumnHeight(total: number, peak: number): number {
+  if (peak <= 0 || total <= 0) return OPS_DENSITY_MIN_H;
+  const scaled = Math.round((total / peak) * OPS_DENSITY_MAX_H);
+  return Math.min(OPS_DENSITY_MAX_H, Math.max(OPS_DENSITY_MIN_H, scaled));
 }
 
 /**
@@ -334,9 +419,10 @@ export function buildDensityCells(
     const to = Math.min(recentSinceMs + (b.bucketIndex + 1) * bucketMs, seamMs);
     if (to <= from) continue;
     const leftPx = timeToX(from, w);
-    // Floored at 1 px: a slice that rounds away to nothing would read as a gap in the history,
-    // which is the opposite of what it says.
-    const widthPx = Math.max(timeToX(to, w) - leftPx, 1);
+    // One pixel comes off the right so neighbouring buckets stay countable instead of fusing into
+    // a block. Floored at 1 px after that: a slice that rounds away to nothing would read as a gap
+    // in the history, which is the opposite of what it says.
+    const widthPx = Math.max(timeToX(to, w) - leftPx - OPS_DENSITY_CELL_GAP_PX, 1);
     cells.push({
       bucketIndex: b.bucketIndex,
       fromMs: from,

@@ -56,6 +56,21 @@ public static class WorkflowSecretKeys
     /// <c>script</c>.
     /// </summary>
     public static bool IsSecretValue(string? key, string? value)
-        => !string.IsNullOrEmpty(value)
-           && ((key is not null && SecretConfigKeys.Contains(key)) || WorkflowSecretContent.LooksSecret(value));
+        => IsSecretValue(key, value, isHttpHeaderValue: false);
+
+    public static bool IsSecretValue(string? key, string? value, bool isHttpHeaderValue)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+
+        // Inside an HTTP headers object, the header policy is authoritative: non-public literal
+        // values are secrets, while template-only references and explicitly public headers remain
+        // editable. Falling through to the generic key list would mask template-only Authorization.
+        if (isHttpHeaderValue)
+            return WorkflowSecretContent.IsLiteralSecretHeaderValue(key, value);
+
+        return (key is not null && SecretConfigKeys.Contains(key))
+               || (string.Equals(key, "headers", StringComparison.OrdinalIgnoreCase)
+                   && WorkflowSecretContent.ContainsLiteralSecretHeader(value))
+               || WorkflowSecretContent.LooksSecret(value);
+    }
 }

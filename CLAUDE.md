@@ -278,6 +278,53 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 - Remote-Layer (WinRM) IMMER gemockt.
 - DB-Tests: SQLite in-memory.
 
+### Testumfang pro Änderung
+
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (~4.600 Backend-Testfälle, 197 Vitest-Dateien, 72 E2E-Specs) und liefert lokal kein neues Signal: das Netz hängt bereits zweifach — `ci.yml` auf **jedem PR** (5 Jobs inkl. Coverage-Gate + E2E) und der Nightly-Task gegen main.
+
+Default bei Feature-Arbeit:
+
+```powershell
+# Backend — ein Projekt, eine Klasse/ein Namespace
+dotnet test tests/NodePilot.Engine.Tests --filter "FullyQualifiedName~WorkflowCallGraphBuilder"
+
+# Frontend — einzelne Datei oder Verzeichnis
+cd src\nodepilot-ui; npx vitest run src/__tests__/lib/opsTimeline.test.ts
+
+# E2E — eine Spec, gegen laufenden Dev-Server (kein Build)
+cd src\nodepilot-ui; npx playwright test e2e/operations.spec.ts --config=playwright.dev.config.ts
+```
+
+**Eskalation nur bei Anlass, nie prophylaktisch:**
+
+1. **Scoped** (Default) — Filter auf die geänderte Klasse/Komponente.
+2. **Projekt-Suite** (`dotnet test tests/NodePilot.Api.Tests`) — wenn die Änderung *innerhalb* des Projekts quer liegt: geteilte Basisklasse, DI-Verdrahtung, `Program.cs`.
+3. **Voll-Suite** — nur bei (a) expliziter Bitte des Users, (b) Release-Cut/Direct-Push auf main, (c) inhärent globaler Änderung (`Directory.Packages.props`, Dependency-Bump, projektweites Refactoring).
+
+**Coverage lokal nie messen** — `--collect:"XPlat Code Coverage"` bzw. `npm run test:coverage` sind CI-Jobs, kein lokaler Schritt.
+
+**Reporting:** nicht „alle Tests grün", sondern **welche** gelaufen sind (Projekt + Filter + Anzahl). Was nicht lief, wird als „von CI abgedeckt" benannt, nicht verschwiegen.
+
+### Guard-Tests: auf Trigger, nicht auf Verdacht
+
+Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, die Konsistenz zwischen weit auseinanderliegenden Dateien erzwingen. Sie liegen über sechs Testprojekte verteilt, sind also nicht „mal eben zusammen" ausführbar. Deshalb: **eine Auslöser-Fläche angefasst → genau diesen Test fahren**, statt sicherheitshalber alles.
+
+| Angefasst | Guard-Test | Projekt |
+|---|---|---|
+| Activity + `activity-config-reference.json` + Frontend-Katalog-Spiegel | `ActivityCatalogTests`, `ActivityConfigReferenceTests`, `ActivityCatalogFrontendSyncTests` | Engine.Tests |
+| Neue EF-Migration / Designer-Postprocessing | `MigrationDriftTests` | Data.Tests |
+| `*.csproj`-Referenzen / Dep-Graph | `DependencyDirectionTests` | Api.Tests |
+| Neuer Audit-Code | `AuditActionsCatalogTests` | Api.Tests |
+| API-DTO (+ CLI-Spiegel) | `ApiDtoParityTests` | Cli.Tests |
+| Trigger-Config-Key | `TriggerContractParityTests` | Engine.Tests |
+| `SettingsSchema.cs` / Admin-Settings-UI | `AdminSettingsFrontendSyncTests` | Api.Tests |
+| AI-Prompt-Katalog | `PromptCatalogDriftTest` | Ai.Tests |
+| Alerting-Katalog / System-Policies | `AlertingCatalogFrontendSyncTests`, `SystemAlertCatalogTests` | Engine.Tests |
+| Workflow-Analyzer | `WorkflowAnalyzerFrontendParityTests` | Mcp.Tests |
+| Template-Grammatik / Variable-Resolution | `TemplateGrammarParityTests` | Engine.Tests |
+| Metrics-Dashboard-Katalog | `MetricsDashboardCatalogTests` | Api.Tests |
+| Font-Tokens / Monaco-Stack | `fontTokens.test.ts` | nodepilot-ui |
+
 **E2E (Playwright):** hermetische Specs in `src/nodepilot-ui/e2e/`, alle APIs gemockt (kein Backend/Postgres nötig). Konventionen: `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`.
 
 **Desktop-Shell:** `src/nodepilot-desktop` hat eine eigene vitest-Suite (node-Env) für die reine Logik — `config.ts` (desktop.json-Handoff-Validierung), `security.ts` (Cert-Pinning, Navigations-Containment) + `skins.ts` (Skin-Icon-Auflösung aus der Favicon-Meldung der SPA). `npm run test:run`; eigener CI-Job `desktop`.
@@ -342,7 +389,7 @@ Opt-in (`Llm:Enabled=false` default), OpenAI-kompatibler Endpunkt, Rate-Limit 20
 
 - **`POST /api/ai/generate-script`** (Admin/Op, SSE-Streaming — tippt live in Monaco) + **`POST /api/ai/generate-workflow`** (Admin/Op, JSON).
 - **`POST /api/ai/chat`** (alle Rollen, SSE) — Workflow-Assistent: erklärt/ändert den aktuellen Workflow; Proposals nur Admin/Op, Merge per Node-ID aufs unredigierte Original (Secrets/Layout erhalten). Secrets werden vor jedem LLM-Call redigiert (`WorkflowSecretRedactor`). **Tool-Calling** opt-in am aktiven Profil (`Llm:Profiles:<id>:EnableToolCalling`): read-only Analyse- + Execution-Log-Tools, gecappt via `ToolCallMaxDepth` desselben Profils. Threads/Verlauf/Export clientseitig persistent.
-- **Globaler AI-Chat / Wissens-Assistent** (`POST /api/ai/knowledge/ask`, SSE; `GET /api/ai/knowledge/capabilities`) — seitenweiter read-only Q&A in `/ai-chat`, canvas-frei. Vier admin-toggelbare Wissensquellen (Sektion `AiKnowledge`, hot-reloadbar, alle `false`-default außer Docs/Operational): **Docs** (`DocsEnabled`), **Operational** (`OperationalEnabled`, RBAC-folder-gescoped — liefert nur die Workflow-spezifische **Definition** (`get_workflow_definition`, secret-redigiert), **statische Analyse** (`analyze_workflow`) und **Cron-Voraussage** (`get_next_scheduled_fires`); reine Listen wie "welche Workflows/Läufe/Maschinen gibt es" werden über die DB-Quelle per text2sql beantwortet), **Source-Code** (`SourceCodeEnabled`, Admin/Op), **DB / text2sql** (`DbEnabled`, Admin/Op). DB-Tools (`list_db_tables`/`get_db_table`/`execute_readonly_sql`) über `ISqlKnowledgeReader`: Schema inkl. Provider/FKs ohne Secret-Spalten; zentraler Executor-Guard (64 KiB, Single-Statement, Read-only-Whitelist + Dangerous-Token/Routine-Block), geschützte Spaltenreferenzen vor Ausführung abgelehnt, Result-Masking + `IAuditDetailsRedactor`, Row-Cap 200, valides Truncation-JSON. DB-Tools Strict mit Best-Effort-Fallback; Audit nur Query-Anzahl/Fingerprint. Sources sind nur sichtbar, wenn das aktive Profil `EnableToolCalling` gesetzt hat.
+- **Globaler AI-Chat / Wissens-Assistent** (`POST /api/ai/knowledge/ask`, SSE; `GET /api/ai/knowledge/capabilities`) — seitenweiter read-only Q&A in `/ai-chat`, canvas-frei. Vier admin-toggelbare Wissensquellen (Sektion `AiKnowledge`, hot-reloadbar, alle `false`-default außer Docs/Operational): **Docs** (`DocsEnabled`), **Operational** (`OperationalEnabled`, RBAC-folder-gescoped — liefert nur die Workflow-spezifische **Definition** (`get_workflow_definition`, secret-redigiert), **statische Analyse** (`analyze_workflow`) und **Cron-Voraussage** (`get_next_scheduled_fires`); reine Listen wie "welche Workflows/Läufe/Maschinen gibt es" werden über die DB-Quelle per text2sql beantwortet), **Source-Code** (`SourceCodeEnabled`, Admin/Op), **DB / text2sql** (`DbEnabled`, ausschließlich globaler Admin). DB-Tools (`list_db_tables`/`get_db_table`/`execute_readonly_sql`) über `ISqlKnowledgeReader`: Schema inkl. Provider/FKs ohne Secret-Spalten; zentraler Executor-Guard (64 KiB, Single-Statement, Read-only-Whitelist + Dangerous-Token/Routine-Block), geschützte Spaltenreferenzen vor Ausführung abgelehnt, Result-Masking + `IAuditDetailsRedactor`, Row-Cap 200, valides Truncation-JSON. Folder-Grants erhöhen nie auf Raw-SQL; Operators behalten nur die typisierten, folder-gescopten Tools. DB-Tools Strict mit Best-Effort-Fallback; Audit nur Query-Anzahl/Fingerprint. Sources sind nur sichtbar, wenn das aktive Profil `EnableToolCalling` gesetzt hat.
 - **`llmQuery`-Activity:** Engine-lokal, Prompt→Text; per-Node-Overrides `baseUrl`/`model`/`apiKey`/`maxTokens`/`temperature`/`timeoutSeconds`/`jsonMode`, **gated durch `Llm:Enabled`** (zentraler Kill-Switch). Teilt Transport + SSRF-Guard via `ILlmClientFactory`; einziger BaseUrl-Validierungspunkt ist `LlmEndpointGuard`.
 - **Zwei Wire-Dialekte, kein Config-Key:** `LlmEndpointGuard.ResolveEndpoint` leitet aus dem `BaseUrl`-Pfad ab, wohin gepostet wird und wer antwortet — `…/responses` → `OpenAiResponsesLlmClient` (OpenAI Responses API), sonst `OpenAiCompatibleLlmClient`; endet der Pfad schon auf `/chat/completions`, wird **nichts** mehr angehängt. Gemeinsames HTTP-Plumbing in `LlmHttpTransport`. Die vier Quirk-Fallbacks (`max_tokens`→`max_completion_tokens`, `stream_options`, `response_format`, `strict`) sind Chat-Completions-only und im Responses-Client bewusst nicht vorhanden; dieser sendet immer `store: false`.
 - **Erreichbarkeit ≠ Antwortzeit:** `TimeoutSeconds` ist reines **Antwort**-Budget. Der Verbindungsaufbau hat eigene Konstanten in `LlmConnectGuard` — `ConnectPhaseTimeout` (15 s, DNS+TCP im ConnectCallback) und `HandshakeTimeout` (30 s, als `SocketsHttpHandler.ConnectTimeout`, die einzige Stelle die den TLS-Handshake binden kann). Die Ordnung `HandshakeTimeout > ConnectPhaseTimeout` ist tragend (per Test gepinnt): nur deshalb darf ein gefeuertes `ConnectTimeout` als TLS-Stufe gelesen werden. Fehler nennen die Stufe (`LLM endpoint DNS:|TCP:|TLS:`); Debug-Logging der aufgelösten Adressen unter `NodePilot.Ai.LlmConnect`. Details: `docs/claude-reference.md`.

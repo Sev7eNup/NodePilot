@@ -24,6 +24,22 @@ public enum WorkflowRefStatus
 public sealed record WorkflowCallGraphInput(Guid Id, string Name, string DefinitionJson);
 
 /// <summary>
+/// One child-workflow reference lifted out of a definition, before it is resolved against anything.
+/// <para>
+/// This is the half of the derivation that depends ONLY on the workflow's own definition, which is
+/// what makes it cacheable across snapshots: a definition changes when the workflow is saved, not
+/// every time somebody polls. Resolution is deliberately NOT baked in — a name-based reference
+/// resolves against every other workflow's name, so renaming a sibling changes the edge without
+/// touching this workflow's definition. Caching resolved edges would go stale on that rename;
+/// caching call sites cannot.
+/// </para>
+/// </summary>
+public sealed record WorkflowCallSite(string Kind, string RawRef);
+
+/// <summary>What a workflow contributes to reference resolution: its id and its name.</summary>
+public sealed record WorkflowCallGraphIdentity(Guid Id, string Name);
+
+/// <summary>
 /// A derived call relationship: workflow <see cref="SourceWorkflowId"/> invokes a child workflow
 /// via a <c>startWorkflow</c> or <c>forEach</c> node. <see cref="TargetWorkflowId"/> is set only
 /// when <see cref="RefStatus"/> is <see cref="WorkflowRefStatus.Resolved"/>; otherwise the edge is
@@ -67,8 +83,68 @@ public static class WorkflowCallGraphBuilder
     {
         ArgumentNullException.ThrowIfNull(workflows);
 
-        var byId = new Dictionary<Guid, WorkflowCallGraphInput>();
-        var byName = new Dictionary<string, List<WorkflowCallGraphInput>>(StringComparer.OrdinalIgnoreCase);
+        var callSites = new Dictionary<Guid, IReadOnlyList<WorkflowCallSite>>(workflows.Count);
+        var identities = new List<WorkflowCallGraphIdentity>(workflows.Count);
+        foreach (var wf in workflows)
+        {
+            callSites[wf.Id] = ExtractCallSites(wf.DefinitionJson);
+            identities.Add(new WorkflowCallGraphIdentity(wf.Id, wf.Name));
+        }
+
+        return BuildFromCallSites(identities, callSites);
+    }
+
+    /// <summary>
+    /// Lifts every child-workflow reference out of one definition. Pure and definition-local: the
+    /// result depends on nothing but <paramref name="definitionJson"/>, which is what lets a caller
+    /// cache it against the workflow's <c>UpdatedAt</c> instead of re-parsing 20–40 KB of JSON per
+    /// workflow on every snapshot poll. Unparseable or empty definitions yield no call sites — a
+    /// broken definition is not an edge, and it must not take the whole graph down with it.
+    /// </summary>
+    public static IReadOnlyList<WorkflowCallSite> ExtractCallSites(string definitionJson)
+    {
+        if (!WorkflowDefinitionDocument.TryParse(definitionJson, out var doc) || doc is null)
+            return [];
+
+        var sites = new List<WorkflowCallSite>();
+        foreach (var node in doc.Nodes)
+        {
+            foreach (var (type, key) in CallSites)
+            {
+                if (!string.Equals(node.Type, type, StringComparison.Ordinal))
+                    continue;
+
+                var raw = ReadConfigString(node.Data.Config, key);
+                if (string.IsNullOrWhiteSpace(raw))
+                    continue;
+
+                sites.Add(new WorkflowCallSite(type, raw.Trim()));
+            }
+        }
+
+        return sites;
+    }
+
+    /// <summary>
+    /// Resolves already-extracted call sites into edges. This is the half that depends on the whole
+    /// set — a name-based reference needs every other workflow's name — and it is cheap: dictionary
+    /// lookups over a handful of refs, no JSON in sight.
+    /// <para>
+    /// Scope still comes from the caller: only workflows present in <paramref name="workflows"/>
+    /// can be resolved against, so an RBAC-filtered set keeps an invisible workflow's existence out
+    /// of the answer. A workflow with no entry in <paramref name="callSitesByWorkflow"/> simply
+    /// contributes no outgoing edges.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<WorkflowCallEdge> BuildFromCallSites(
+        IReadOnlyCollection<WorkflowCallGraphIdentity> workflows,
+        IReadOnlyDictionary<Guid, IReadOnlyList<WorkflowCallSite>> callSitesByWorkflow)
+    {
+        ArgumentNullException.ThrowIfNull(workflows);
+        ArgumentNullException.ThrowIfNull(callSitesByWorkflow);
+
+        var byId = new Dictionary<Guid, WorkflowCallGraphIdentity>();
+        var byName = new Dictionary<string, List<WorkflowCallGraphIdentity>>(StringComparer.OrdinalIgnoreCase);
         foreach (var wf in workflows)
         {
             byId[wf.Id] = wf;
@@ -86,31 +162,20 @@ public static class WorkflowCallGraphBuilder
 
         foreach (var wf in workflows)
         {
-            if (!WorkflowDefinitionDocument.TryParse(wf.DefinitionJson, out var doc) || doc is null)
+            if (!callSitesByWorkflow.TryGetValue(wf.Id, out var sites))
                 continue;
 
-            foreach (var node in doc.Nodes)
+            foreach (var site in sites)
             {
-                foreach (var (type, key) in CallSites)
-                {
-                    if (!string.Equals(node.Type, type, StringComparison.Ordinal))
-                        continue;
+                var (status, target) = Resolve(site.RawRef, byId, byName);
+                var dedupKey = status == WorkflowRefStatus.Resolved && target.HasValue
+                    ? target.Value.ToString()
+                    : site.RawRef;
 
-                    var raw = ReadConfigString(node.Data.Config, key);
-                    if (string.IsNullOrWhiteSpace(raw))
-                        continue;
-
-                    raw = raw.Trim();
-                    var (status, target) = Resolve(raw, byId, byName);
-                    var dedupKey = status == WorkflowRefStatus.Resolved && target.HasValue
-                        ? target.Value.ToString()
-                        : raw;
-
-                    var k = (wf.Id, dedupKey, type, status);
-                    acc[k] = acc.TryGetValue(k, out var existing)
-                        ? (existing.Target, existing.Raw, existing.Count + 1)
-                        : (target, raw, 1);
-                }
+                var k = (wf.Id, dedupKey, site.Kind, status);
+                acc[k] = acc.TryGetValue(k, out var existing)
+                    ? (existing.Target, existing.Raw, existing.Count + 1)
+                    : (target, site.RawRef, 1);
             }
         }
 
@@ -122,8 +187,8 @@ public static class WorkflowCallGraphBuilder
 
     private static (WorkflowRefStatus Status, Guid? Target) Resolve(
         string raw,
-        Dictionary<Guid, WorkflowCallGraphInput> byId,
-        Dictionary<string, List<WorkflowCallGraphInput>> byName)
+        Dictionary<Guid, WorkflowCallGraphIdentity> byId,
+        Dictionary<string, List<WorkflowCallGraphIdentity>> byName)
     {
         if (raw.StartsWith("{{", StringComparison.Ordinal))
             return (WorkflowRefStatus.Dynamic, null);

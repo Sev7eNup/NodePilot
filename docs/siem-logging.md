@@ -49,7 +49,7 @@ the JSON root in their proper nested ECS shape rather than appearing under
 
 | Category | Prefixes | Example | Source |
 |---|---|---|---|
-| Host/service identity | `service.`, `host.`, `deployment.`, `agent.`, `cloud.`, `container.` | `service.name=nodepilot-api` | Serilog enricher (once per process). **Caveat:** the ECS file sink enriches only `service.name` + `deployment.environment` by default — `host.name` rides the OTLP/OTel path (`ResourceAttributes`), not the file stream; add an explicit enricher if you need `host.*` in the tailed file. |
+| Host/service identity | `service.`, `host.`, `deployment.`, `agent.`, `cloud.`, `container.` | `service.name=nodepilot-api` | Serilog enricher (once per process). **Caveat:** the ECS file sink enriches only `service.name` + `deployment.environment` by default. On the OTLP/OTel path, the secure default `OpenTelemetry:RedactHostnames=true` omits `host.name` and uses a process-stable random `service.instance.id`; setting it to `false` restores the `hostname:pid` identity. Add an explicit enricher only if you intentionally need `host.*` in the tailed file. |
 | Per-event ECS fields | `event.`, `user.`, `source.`, `trace.`, `span.`, `error.`, `client.`, `network.`, `url.`, `http.` | `event.action=WORKFLOW_PUBLISHED`, `user.id=...`, `source.ip=10.1.2.3` | per-call from AuditWriter, request middleware, etc. |
 
 Out-of-the-box SIEM detection rules (Sigma, Sentinel analytics, Elastic detection)

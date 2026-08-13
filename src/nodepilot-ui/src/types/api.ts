@@ -422,7 +422,7 @@ export interface OpsSnapshotMeta {
    * highlights a run at exactly the moment the alert would fire.
    */
   overdueSeconds: number;
-  /** Window this snapshot was built for, after the server's clamp (20 | 60 | 240). */
+  /** Window this snapshot was built for, after the server's clamp (30 | 60). */
   windowMinutes: number;
   /** Left edge the client ASKED for (now - windowMinutes). */
   recentSinceUtc: string;

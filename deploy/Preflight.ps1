@@ -257,8 +257,9 @@ function Test-NodePilotDotNetRuntime {
     #>
     param([object]$State = (Get-NodePilotDotNetHostState))
 
-    $title = 'ASP.NET Core 10 runtime'
-    $hint = 'Install the ASP.NET Core 10 runtime (x64) - the plain runtime, not the Hosting Bundle, which also wires up IIS.'
+    $minimumRuntime = [version]'10.0.11'
+    $title = 'ASP.NET Core 10.0.11+ runtime'
+    $hint = 'Install ASP.NET Core runtime 10.0.11 or newer in the .NET 10 line (x64) - the plain runtime, not the Hosting Bundle, which also wires up IIS.'
     $link = 'https://dotnet.microsoft.com/download/dotnet/10.0'
     $fixLabel = 'Install the bundled ASP.NET Core 10 runtime now'
 
@@ -287,16 +288,28 @@ function Test-NodePilotDotNetRuntime {
             -AbortMessage ".NET Runtime not found on PATH. Install the ASP.NET Core 10 runtime from $link."
     }
 
-    if (-not (@($State.Runtimes) -match '^Microsoft\.AspNetCore\.App 10\.')) {
+    $aspNetTenVersions = @(
+        foreach ($runtime in @($State.Runtimes)) {
+            if ("$runtime" -match '^Microsoft\.AspNetCore\.App (?<Version>10\.\d+\.\d+)(?:\s|$)') {
+                try { [version]$Matches.Version } catch { }
+            }
+        }
+    )
+    $patchedRuntime = @($aspNetTenVersions | Where-Object { $_ -ge $minimumRuntime } | Sort-Object -Descending | Select-Object -First 1)
+    if ($patchedRuntime.Count -eq 0) {
+        $foundDetail = if ($aspNetTenVersions.Count -gt 0) {
+            " Found vulnerable/unsupported version(s): $($aspNetTenVersions -join ', ')."
+        } else { '' }
         return New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Fail' -Required $true `
             -CanAutoFix $true -AutoFixLabel $fixLabel `
-            -Detail "No Microsoft.AspNetCore.App 10.x runtime reported by '$($State.X64Path) --list-runtimes'." `
+            -Detail ("No patched Microsoft.AspNetCore.App 10 runtime (minimum 10.0.11) was reported by " +
+                     "'$($State.X64Path) --list-runtimes'.$foundDetail") `
             -RemediationHint $hint -Remediation $link `
-            -AbortMessage ".NET 10 ASP.NET Core Runtime not found. Install the ASP.NET Core 10 runtime ($link)."
+            -AbortMessage ".NET 10 ASP.NET Core Runtime 10.0.11 or newer not found. Install the patched ASP.NET Core 10 runtime ($link)."
     }
 
     New-NodePilotPreflightResult -Id 'dotnet' -Title $title -Status 'Pass' -Required $true `
-        -Detail ".NET 10 ASP.NET Core runtime found (x64, $($State.X64Path))."
+        -Detail ".NET 10 ASP.NET Core runtime $($patchedRuntime[0]) found (x64, $($State.X64Path))."
 }
 
 function Get-NodePilotCertificateInventory {

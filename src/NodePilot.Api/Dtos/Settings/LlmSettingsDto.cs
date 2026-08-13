@@ -47,11 +47,13 @@ public sealed class LlmProfileSettingsDto
     public string Model { get; set; } = "";
 
     /// <summary>
-    /// Output-token cap per LLM call. 256–128k matches what real-world OpenAI-compatible
-    /// endpoints accept; values outside this range are almost always operator typos
-    /// (e.g. 40 instead of 4000) that would cause every LLM call to truncate or 400.
+    /// Output-token cap per LLM call. The lower bound catches the operator typo that actually
+    /// happens (40 instead of 4000 — every call truncates); the upper bound only exists to keep
+    /// a slipped digit from turning into a runaway bill. It is deliberately far above any
+    /// single model's window: endpoints reject an oversized cap themselves, and pinning this to
+    /// today's largest context would make NodePilot the thing blocking tomorrow's model.
     /// </summary>
-    [Range(256, 128_000)]
+    [Range(256, 1_000_000)]
     public int MaxTokens { get; set; } = 4096;
 
     [Range(5, 3600)]

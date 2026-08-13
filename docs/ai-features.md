@@ -101,7 +101,7 @@ Neu-Eintippen.
 | `BaseUrl` | OpenAI Cloud | Adresse des OpenAI-kompatiblen Endpunkts. Der Pfad bestimmt den Wire-Dialekt — siehe „Wire-Dialekt" unten. Für lokale Modelle siehe Tabelle weiter unten. |
 | `ApiKey` | `null` | OpenAI-Cloud verlangt einen Key; lokale Endpoints meist nicht. **Empfohlener Weg: Env-Var `Llm__Profiles__<id>__ApiKey`** — Klartext in der Settings-Datei löst eine Startup-Hardening-Warnung aus. |
 | `Model` | `gpt-4o-mini` | Wird für Script-, Workflow-Generierung und beide Chats verwendet. |
-| `MaxTokens` | `4096` | Cap der LLM-Antwort. Reicht für ein typisches Script und einen mittelgroßen Workflow. Bei großen Modellen (32k+ Context) gerne erhöhen. |
+| `MaxTokens` | `4096` | Cap der LLM-Antwort. Reicht für ein typisches Script und einen mittelgroßen Workflow. Bei großen Modellen (32k+ Context) gerne erhöhen; gültig ist `256`–`1000000`. Die Obergrenze ist **keine** Modell-Prüfung — sie fängt nur die verrutschte Stelle ab; was der Endpunkt wirklich akzeptiert, sagt der Endpunkt. |
 | `TimeoutSeconds` | `90` | **Antwort**-Budget: wie lange das Modell denken darf. Deckt ausdrücklich **nicht** den Verbindungsaufbau — der hat seine eigenen, kurzen Fristen (siehe unten). Großzügig setzen ist deshalb gefahrlos: ein unerreichbarer Endpunkt scheitert trotzdem in Sekunden. |
 | `EnableToolCalling` | `false` | Opt-in. Lässt die Chat-Assistenten read-only Analyse-Tools per OpenAI-Function-Calling callen (`tool_choice: auto`). Braucht ein Modell, das Function-Calling zuverlässig kann — viele kleine lokale Modelle nicht. **Pro Profil**, weil das eine Eigenschaft des Modells ist, nicht der Installation: beim Umschalten auf ein kleines lokales Modell wandert die Fähigkeit mit. |
 | `ToolCallMaxDepth` | `6` | Max LLM-Runden mit Tool-Calls pro Chat-Turn (Loop-Guard, gültig 1–10). Lässt bei text2sql nach Schema-Discovery noch Raum für SQL-Korrekturen. In der letzten erlaubten Runde sendet der Server **keine** `tools` → erzwingt eine Text-Antwort. |
@@ -469,10 +469,10 @@ Source-Code + DB default aus:
 |---|---|---|---|
 | Dokumentation | `DocsEnabled` | `search_docs`, `read_doc` | — |
 | Workflows & Betrieb | `OperationalEnabled` | `get_workflow_definition`, `analyze_workflow`, `get_next_scheduled_fires` | RBAC-folder-scoped |
-| Workflows & Betrieb (Listen) | via DB-Quelle | "Welche Workflows/Läufe/Maschinen gibt es" → `list_db_tables` + `execute_readonly_sql` | Admin/Operator (text2sql) |
+| Workflows & Betrieb (Listen) | via DB-Quelle | "Welche Workflows/Läufe/Maschinen gibt es" → `list_db_tables` + `execute_readonly_sql` | ausschließlich globaler Admin (text2sql) |
 | Systemkonfiguration | (immer, wenn privilegiert) | `read_settings` | Admin/Operator |
 | Quellcode | `SourceCodeEnabled` | `search_source`, `read_source` | Admin/Operator |
-| **DB / text2sql** | `DbEnabled` | `list_db_tables`, `get_db_table`, `execute_readonly_sql` | Admin/Operator |
+| **DB / text2sql** | `DbEnabled` | `list_db_tables`, `get_db_table`, `execute_readonly_sql` | ausschließlich globaler Admin |
 
 **text2sql** heißt: das LLM übersetzt die Frage in provider-spezifisches SQL, NodePilot liefert SQL-Dialekt,
 Schema, Foreign Keys und Read-Only-Ausführung.
@@ -493,7 +493,7 @@ Text2SQL ist nur als Capability sichtbar, wenn das aktive Profil `EnableToolCall
 (`ai:knowledge.examples` + `ai:knowledge.examplesLite`, je 8 Strings) und wählt anhand von `caps.db`:
 mit DB-Quelle Betriebsauswertungen (letzte Fehlläufe, hängende Runs, unerreichbare Maschinen,
 Audit-Trail), sonst Doku- und Zeitplan-Fragen. Grund: die Alltagsfragen brauchen text2sql, das per
-Default aus **und** Admin/Operator-only ist — einem Viewer würden sie nur „Quelle nicht verfügbar"
+Default aus **und** global-Admin-only ist — Operatoren und Viewern würden sie nur „Quelle nicht verfügbar"
 liefern. Das Grid rendert erst nach dem Auflösen der Capabilities, sonst blitzt das Lite-Set auf.
 
 ---

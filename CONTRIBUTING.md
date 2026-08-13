@@ -75,6 +75,20 @@ cd src/nodepilot-ui && npm run lint:ci          # frontend lint (warning-capped 
 cd src/nodepilot-ui && npm run test:e2e         # hermetic Playwright e2e (no backend needed)
 ```
 
+**While iterating, scope the run to the change** — the full suites above are what CI executes on
+every pull request, and repeating them locally on each edit buys no extra signal:
+
+```bash
+dotnet test tests/NodePilot.Engine.Tests --filter "FullyQualifiedName~WorkflowCallGraphBuilder"
+cd src/nodepilot-ui && npx vitest run src/__tests__/lib/opsTimeline.test.ts
+cd src/nodepilot-ui && npx playwright test e2e/operations.spec.ts --config=playwright.dev.config.ts
+```
+
+Run the full suites before a release cut, after a dependency bump, or for a project-wide refactor.
+When you touch something a guard/parity test watches (activity catalog, API DTOs, migrations, audit
+codes, trigger keys, settings schema), run that specific test — the mapping is in
+[`CLAUDE.md`](CLAUDE.md) under *Build & Test*.
+
 - **Package versions** are centralized in `Directory.Packages.props` (Central Package
   Management). Add a dependency by referencing it version-less in the csproj and adding a
   `<PackageVersion>` entry centrally. Shared build settings live in `Directory.Build.props`.

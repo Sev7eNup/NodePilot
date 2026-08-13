@@ -26,7 +26,8 @@
     the download is not, on its own, a pin - it just proves the download matches what that
     request was told to expect. Committing it turns it into one.
 .PARAMETER Version
-    Exact runtime version, e.g. '10.0.7'. Defaults to the latest 10.0.x in the release metadata.
+    Exact patched runtime version, e.g. '10.0.11'. Versions below 10.0.11 are rejected. Defaults
+    to the latest 10.0.x in the release metadata.
 .PARAMETER OutputDirectory
     Where the verified installer is staged. Created if missing.
 .PARAMETER CachePath
@@ -63,6 +64,7 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 }
 
 $ReleaseMetadataUrl = 'https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json'
+$MinimumSupportedRuntime = [version]'10.0.11'
 # The metadata's 'name' field is unversioned ('aspnetcore-runtime-win-x64.exe'); the versioned
 # file name lives in the URL. Match the standalone runtime exactly - dotnet-hosting-*.exe and the
 # .zip / composite / targeting-pack entries all sit in the same list.
@@ -138,6 +140,14 @@ else {
     if (-not $selected) {
         throw "Runtime version '$Version' is not in the release metadata. Available: $(($candidates.Version | Select-Object -First 8) -join ', ')."
     }
+}
+$stableVersionText = [string]$selected.Version
+if ($stableVersionText -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Runtime version '$stableVersionText' is not a stable three-part release."
+}
+$selectedVersion = [version]$stableVersionText
+if ($selectedVersion -lt $MinimumSupportedRuntime) {
+    throw "Runtime version '$selectedVersion' is below the security floor $MinimumSupportedRuntime."
 }
 Write-Info "  Selected ASP.NET Core runtime $($selected.Version) ($($selected.Name))"
 

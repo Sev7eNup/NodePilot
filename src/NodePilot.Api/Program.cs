@@ -66,7 +66,13 @@ var builder = WebApplication.CreateBuilder(args);
 // Credentials:DpapiScope must therefore be set in appsettings + EnvVars, never in the
 // override file itself — that's enforced by treating those keys as strict-bootstrap
 // in the Settings UI (read-only display in the System-Info section).
-var (runtimeOverridesPath, _) = builder.AddRuntimeOverridesJson();
+var (runtimeOverridesPath, _, migratedRuntimeSecretFiles) = builder.AddRuntimeOverridesJson();
+if (migratedRuntimeSecretFiles > 0)
+{
+    Log.Information(
+        "Encrypted legacy plaintext secrets in {MigratedFileCount} runtime-settings file(s) before configuration load.",
+        migratedRuntimeSecretFiles);
+}
 builder.Services.AddRuntimeOverridesWriter(runtimeOverridesPath);
 
 // Surface Serilog sink failures (file locked, disk full, flush error) to stderr instead
@@ -191,7 +197,7 @@ builder.Services.AddScoped<NodePilot.Core.Interfaces.IExecutionLogReader, NodePi
 builder.Services.AddScoped<NodePilot.Core.Interfaces.IOperationalKnowledgeReader, NodePilot.Data.OperationalKnowledgeReader>();
 // Secret-redacted admin-settings snapshot for the same assistant (read_settings tool, Admin/Operator).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.ISettingsKnowledgeReader, NodePilot.Api.Ai.SettingsKnowledgeReader>();
-// Read-only, cell-redacted App-DB schema + query reader for the text2sql knowledge tools (Admin/Op-gated).
+// Read-only, cell-redacted App-DB schema + query reader for the text2sql knowledge tools (global-Admin-only).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.ISqlKnowledgeReader, NodePilot.Api.Ai.SqlKnowledgeReader>();
 builder.Services.AddScoped<IMaintenanceWindowStore, MaintenanceWindowStore>();
 builder.Services.AddScoped<INotificationRuleStore, NotificationRuleStore>();
@@ -275,6 +281,35 @@ builder.Services.AddSingleton<NodePilot.Api.Services.IWorkflowContractDeriver, N
 // Host identity (machine name / FQDN / domain) for the SPA header. Resolved once from the
 // local OS network config and cached — see HostIdentityProvider. Surfaced via /api/system/host-info.
 builder.Services.AddSingleton<NodePilot.Core.Interfaces.IHostIdentityProvider, NodePilot.Api.Services.HostIdentityProvider>();
+// Live-Ops call-graph cache. Singleton by design: it is keyed by workflow id + UpdatedAt and holds
+// only extracted child-workflow refs, so it is shared safely across users and requests — see
+// WorkflowCallSiteCache for why edges are NOT what gets cached.
+builder.Services.AddSingleton<NodePilot.Api.Services.WorkflowCallSiteCache>();
+
+// Response compression. The Live-Ops snapshot alone can carry 4000 finished runs (~900 KB of
+// GUID- and ISO-timestamp-heavy JSON) on a 5 s poll, and it compresses roughly an order of
+// magnitude.
+//
+// EnableForHttps is deliberately ON, against the framework default. That default guards BREACH,
+// and BREACH needs three things at once: a secret in a COMPRESSED body, caller-controlled input
+// reflected into that same body, and the ability to make a victim's browser issue the request
+// repeatedly while watching sizes on the wire. The third leg is what is missing here, and it is the
+// one that does not depend on auditing every endpoint: BOTH auth cookies are SameSite=Strict
+// (AuthCookieOptionsBuilder.ForAuth/ForCsrf), so a foreign origin cannot cause an authenticated
+// request at all. The secret-bearing download reinforces it from the other side — the backup export
+// ships as application/octet-stream and is therefore outside ResponseCompressionDefaults.MimeTypes,
+// so it is never compressed regardless.
+//
+// Do NOT weaken this to "we have no secrets in response bodies" — that is a blanket claim over every
+// current and future endpoint and nobody has verified it. Revisit this line if an auth cookie ever
+// loses SameSite=Strict, or if a compressible response is built that puts a secret next to text the
+// caller controls.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.BrotliCompressionProvider>();
+    options.Providers.Add<Microsoft.AspNetCore.ResponseCompression.GzipCompressionProvider>();
+});
 // Perf finding 1.4: ActivityRegistry is a singleton that holds an activityType → Type map. The map is
 // built once via a bootstrap scope; per-step lookups resolve fresh executor instances from
 // the per-step scope passed into GetExecutor(string, IServiceProvider). No more per-step
@@ -533,6 +568,10 @@ if (app.Environment.IsDevelopment())
 // HTTP → HTTPS redirect only active when Kestrel was configured with a cert-store binding
 // and RedirectHttpToHttps is true. No-op in dev/test.
 app.UseNodePilotHttpsRedirection();
+
+// Before UseStaticFiles so the SPA bundle is compressed too, and before the rate limiter so a
+// throttled 429 is not worth compressing.
+app.UseResponseCompression();
 
 app.UseStaticFiles();
 app.UseRateLimiter();

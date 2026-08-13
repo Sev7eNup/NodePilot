@@ -524,7 +524,7 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
         var parent = Guid.NewGuid();
         var child = Guid.NewGuid();
         var exec = Guid.NewGuid();
-        _server.Given(Request.Create().WithPath("/api/operations/graph").UsingGet())
+        _server.Given(Request.Create().WithPath("/api/operations/graph").WithParam("windowMinutes", "30").UsingGet())
                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
                {
                    nodes = new[]

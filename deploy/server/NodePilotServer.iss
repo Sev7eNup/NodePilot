@@ -173,6 +173,11 @@ var
   // not free, and it is attempted at most once per run whether or not this build carries one.
   PgClientExtracted: Boolean;
 
+  // The runtime installer is a dontcopy payload too. Interactive auto-fix runs before
+  // PrepareToInstall, so extraction cannot be deferred to that later phase. Keep the operation
+  // idempotent because silent and interactive provisioning share the same helper.
+  RuntimePayloadExtracted: Boolean;
+
   // Drawn while the adapter installs. The wizard used to sit on "Preparing to Install" for the
   // whole run - measured 136 s healthy, 187 s when the health probe is lost - showing nothing.
   ProgressPage: TOutputProgressWizardPage;
@@ -242,6 +247,13 @@ begin
   except
     // Built without the client. The Postgres row says so on its own.
   end;
+end;
+
+procedure EnsureRuntimePayload();
+begin
+  if RuntimePayloadExtracted then Exit;
+  ExtractTemporaryFile('{#RuntimeFileName}');
+  RuntimePayloadExtracted := True;
 end;
 
 function RunPowerShell(const Arguments: String; var ResultCode: Integer): Boolean;
@@ -1525,6 +1537,7 @@ begin
     if WantsFix then
     begin
       if not IsSqlServerSelected() then EnsurePgClient();
+      EnsureRuntimePayload();
       WriteAnswerFile('install', False);
       ProvisionIni := SessionDir + '\provision.ini';
       if not RunPowerShell('-Mode Provision -AnswerFile "' + AnswerFilePath() + '" -OutFile "' +
@@ -1682,7 +1695,6 @@ begin
   ExtractTemporaryFile('{#ArtifactFileName}.manifest.json');
   ExtractTemporaryFile('{#ArtifactFileName}.manifest.json.p7s');
   ExtractTemporaryFile('nodepilot-release-signing.cer');
-  ExtractTemporaryFile('{#RuntimeFileName}');
 
   if IsUpdateSelected() then AnswerMode := 'update' else AnswerMode := 'install';
   WriteAnswerFile(AnswerMode, False);
@@ -1700,8 +1712,9 @@ begin
   if WizardSilent() and (AnswerMode = 'install') then
   begin
     // Unattended runs never reached the readiness page, so this is the first and only chance to
-    // put the client where the adapter looks for it.
+    // put lazy dontcopy payloads where the adapter looks for them.
     EnsurePgClient();
+    EnsureRuntimePayload();
     ProvisionIni := SessionDir + '\provision.ini';
     if not RunPowerShell('-Mode Provision -AnswerFile "' + AnswerFilePath() + '" -OutFile "' +
       ProvisionIni + '"', ResultCode) or (ResultCode <> 0) then

@@ -1,5 +1,5 @@
 import { Activity, ChartBar, Chip, Document } from '@carbon/icons-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -199,12 +199,15 @@ function OpenTelemetryCard() {
   const [pwValue, setPwValue] = useState('');
   const [btMode, setBtMode] = useState<SecretFieldMode>('keep');
   const [btValue, setBtValue] = useState('');
+  const [otlpHeadersMode, setOtlpHeadersMode] = useState<SecretFieldMode>('keep');
+  const [otlpHeadersValue, setOtlpHeadersValue] = useState('');
 
   useEffect(() => {
     if (ui.data) {
       setPwMode(ui.data.payload.prometheus.password ? 'keep' : 'change');
       setBtMode(ui.data.payload.prometheus.bearerToken ? 'keep' : 'change');
-      setPwValue(''); setBtValue('');
+      setOtlpHeadersMode(ui.data.payload.otlp.headers ? 'keep' : 'change');
+      setPwValue(''); setBtValue(''); setOtlpHeadersValue('');
     }
   }, [ui.data]);
 
@@ -217,7 +220,12 @@ function OpenTelemetryCard() {
     Environment: form.environment,
     RedactHostnames: form.redactHostnames,
     MetricExportIntervalSeconds: form.metricExportIntervalSeconds,
-    Otlp: { Endpoint: form.otlp.endpoint, Protocol: form.otlp.protocol, Headers: form.otlp.headers, BrowserEndpoint: form.otlp.browserEndpoint },
+    Otlp: {
+      Endpoint: form.otlp.endpoint,
+      Protocol: form.otlp.protocol,
+      Headers: serializeSecretField(otlpHeadersMode, otlpHeadersValue),
+      BrowserEndpoint: form.otlp.browserEndpoint,
+    },
     Sampling: { Mode: form.sampling.mode, Ratio: form.sampling.ratio },
     Exporters: { ...mapPascal(form.exporters) },
     TraceUi: { UrlTemplate: form.traceUi.urlTemplate, BackendName: form.traceUi.backendName },
@@ -255,8 +263,14 @@ function OpenTelemetryCard() {
         <Select label={t('otel.protocol')} value={form.otlp.protocol} options={OTLP_PROTOCOLS}
           onChange={(v) => set({ ...form, otlp: { ...form.otlp, protocol: v } })}
           configKey="OpenTelemetry:Otlp:Protocol" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
-        <TextInput label="Headers" value={form.otlp.headers} onChange={(v) => set({ ...form, otlp: { ...form.otlp, headers: v } })}
-          configKey="OpenTelemetry:Otlp:Headers" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} placeholder="x-auth=…" />
+        <div className="md:col-span-2">
+          <SecretField inputId="otlp-headers" label={t('otel.otlpHeaders')}
+            hasPersistedValue={!!data.payload.otlp.headers}
+            mode={otlpHeadersMode} value={otlpHeadersValue}
+            onModeChange={setOtlpHeadersMode} onValueChange={setOtlpHeadersValue}
+            disabled={isEnvLocked('OpenTelemetry:Otlp:Headers')} />
+          <EnvOverrideBadge source={data.effectiveSource['OpenTelemetry:Otlp:Headers'] ?? ''} configKey="OpenTelemetry:Otlp:Headers" />
+        </div>
         <TextInput label={t('otel.browserEndpoint')} value={form.otlp.browserEndpoint} onChange={(v) => set({ ...form, otlp: { ...form.otlp, browserEndpoint: v } })}
           configKey="OpenTelemetry:Otlp:BrowserEndpoint" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
       </div>
@@ -378,6 +392,7 @@ function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { loading:
   const queryClient = useQueryClient();
   const [conflict, setConflict] = useState<SettingsSectionResponse<T> | null>(null);
   const [errors, setErrors] = useState<string[] | null>(null);
+  const pendingPayloadRef = useRef<unknown>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-settings', section],
@@ -396,9 +411,11 @@ function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { loading:
     mutationFn: async (payload: unknown) => {
       setErrors(null);
       if (!data) throw new Error('No section snapshot loaded yet.');
+      pendingPayloadRef.current = payload;
       return adminSettings.putSection<T>(section, payload, data.etag);
     },
     onSuccess: (fresh) => {
+      pendingPayloadRef.current = null;
       queryClient.setQueryData(['admin-settings', section], fresh);
       queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
     },
@@ -407,6 +424,7 @@ function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { loading:
         setConflict(err.body.current as SettingsSectionResponse<T>);
         return;
       }
+      pendingPayloadRef.current = null;
       if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
         setErrors(err.body.errors.map((e) => {
           const fields = e.fields?.length ? `${e.fields.join(', ')}: ` : '';
@@ -429,11 +447,13 @@ function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { loading:
       localDraft={form}
       onKeepMine={() => {
         if (!conflict) return;
+        const retryPayload = pendingPayloadRef.current ?? form;
         queryClient.setQueryData(['admin-settings', section], conflict);
         setConflict(null);
-        adminSettings.putSection<T>(section, form, conflict.etag)
+        adminSettings.putSection<T>(section, retryPayload, conflict.etag)
           .then((fresh) => queryClient.setQueryData(['admin-settings', section], fresh))
-          .catch((e: unknown) => setErrors([e instanceof Error ? e.message : String(e)]));
+          .catch((e: unknown) => setErrors([e instanceof Error ? e.message : String(e)]))
+          .finally(() => { pendingPayloadRef.current = null; });
       }}
       onTakeTheirs={() => {
         if (!conflict) return;

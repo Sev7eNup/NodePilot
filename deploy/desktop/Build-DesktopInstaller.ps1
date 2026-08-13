@@ -6,7 +6,7 @@
 .DESCRIPTION
     Stages four payloads and compiles them with Inno Setup:
       app\     : self-contained .NET 10 API publish (win-x64) + the built SPA under wwwroot
-      desktop\ : the packaged Electron 43.2.0 shell (Chromium + Node, shipped in full)
+      desktop\ : the packaged Electron 43.4.0 shell (Chromium + Node, shipped in full)
       pgsql\   : the bundled PostgreSQL binaries (from -PgBinariesPath)
       deploy\  : the provisioning / update / uninstall scripts + the appsettings template
 
@@ -34,13 +34,15 @@ $Stage        = Join-Path $OutputRoot 'stage'
 $DesktopDir   = Join-Path $RepoRoot 'src\nodepilot-desktop'
 $UiDir        = Join-Path $RepoRoot 'src\nodepilot-ui'
 $ApiCsproj    = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
+$PublishSettingsHygieneScript = Join-Path $RepoRoot 'deploy\Assert-PublishSettingsHygiene.ps1'
+$DesktopRuntimeVersion = '10.0.11'
 
 function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Assert-Tool([string] $name, [string] $probe) {
     if (-not (Get-Command $probe -ErrorAction SilentlyContinue)) { throw "Required tool '$name' not found on PATH ($probe)." }
 }
 # Runs a native tool with stderr demoted so a warning written to stderr (e.g. vite/rolldown's
-# INVALID_ANNOTATION note, or dotnet/forge diagnostics) does not get escalated to a terminating
+# INVALID_ANNOTATION note, or dotnet/packager diagnostics) does not get escalated to a terminating
 # error under $ErrorActionPreference='Stop'. Success is decided solely by the exit code.
 function Invoke-Tool([scriptblock] $Command, [string] $FailMessage) {
     $prev = $ErrorActionPreference
@@ -53,7 +55,15 @@ function Invoke-Tool([scriptblock] $Command, [string] $FailMessage) {
 Write-Step 'Pre-flight checks'
 Assert-Tool 'dotnet' 'dotnet'
 Assert-Tool 'npm' 'npm'
+Assert-Tool 'node' 'node'
+. (Join-Path $RepoRoot 'scripts\Assert-DotnetSdkPolicy.ps1')
+Assert-NodePilotDotnetSdkPolicy -RepoRoot $RepoRoot
 . (Join-Path $PSScriptRoot 'Resolve-IsccPath.ps1')
+. (Join-Path $PSScriptRoot 'Assert-DesktopRuntimePayload.ps1')
+if (-not (Test-Path -LiteralPath $PublishSettingsHygieneScript -PathType Leaf)) {
+    throw "Publish settings hygiene helper missing: $PublishSettingsHygieneScript"
+}
+. $PublishSettingsHygieneScript
 $resolvedIscc = Resolve-NodePilotIsccPath -Explicit $IsccPath
 if (-not $resolvedIscc) {
     throw ("Inno Setup 6 compiler (ISCC.exe) not found. Install it from https://jrsoftware.org/isdl.php " +
@@ -87,10 +97,13 @@ Invoke-Tool {
 
 # --- 1. API (self-contained) -----------------------------------------------------------------
 Write-Step 'Publishing API (self-contained win-x64)'
+$appStage = Join-Path $Stage 'app'
 Invoke-Tool {
     & dotnet publish $ApiCsproj -c $Configuration -r win-x64 --self-contained true `
-        -p:UseAppHost=true -p:DebugType=embedded -o (Join-Path $Stage 'app')
+        "-p:RuntimeFrameworkVersion=$DesktopRuntimeVersion" `
+        -p:UseAppHost=true -p:DebugType=embedded -o $appStage
 } 'dotnet publish failed.'
+Assert-DesktopRuntimePayload -AppPath $appStage -MinimumVersion ([version]$DesktopRuntimeVersion)
 
 # --- 1b. PowerShell built-in modules -> <app>\Modules ----------------------------------------
 # Microsoft.PowerShell.SDK ships its built-in modules (Utility, Management, CimCmdlets, ...) under
@@ -100,7 +113,6 @@ Invoke-Tool {
 # edition" unless PowerShell 7 happens to be installed system-wide -- which the desktop package
 # must not depend on (offline, zero prerequisites).
 Write-Step 'Staging PowerShell built-in modules'
-$appStage = Join-Path $Stage 'app'
 $psModuleSource = Get-ChildItem -Path (Join-Path $appStage 'runtimes\win\lib') -Directory -ErrorAction SilentlyContinue |
     ForEach-Object { Join-Path $_.FullName 'Modules' } |
     Where-Object { Test-Path -LiteralPath $_ } |
@@ -136,12 +148,17 @@ Write-Step 'Packaging Electron shell'
 Push-Location $DesktopDir
 try {
     Invoke-Tool { & npm.cmd ci } 'npm ci (desktop) failed.'
-    Invoke-Tool { & npm.cmd run package } 'electron-forge package failed.'
+    Invoke-Tool { & npm.cmd run package } 'desktop packaging failed.'
 } finally { Pop-Location }
-$forgeOut = Join-Path $DesktopDir 'out\NodePilot-win32-x64'
-if (-not (Test-Path -LiteralPath (Join-Path $forgeOut 'NodePilot.exe'))) { throw "Electron package missing: $forgeOut\NodePilot.exe" }
-Copy-Item -Path $forgeOut -Destination (Join-Path $Stage 'desktop') -Recurse -Force
-# Forge nests output under the platform folder name; flatten to stage\desktop.
+$desktopPackageOut = Join-Path $DesktopDir 'out\NodePilot-win32-x64'
+if (-not (Test-Path -LiteralPath (Join-Path $desktopPackageOut 'NodePilot.exe'))) { throw "Electron package missing: $desktopPackageOut\NodePilot.exe" }
+$electronVersionGate = Join-Path $DesktopDir 'scripts\assert-electron-runtime-version.mjs'
+$electronManifest = Join-Path $DesktopDir 'package.json'
+Invoke-Tool {
+    & node $electronVersionGate $desktopPackageOut $electronManifest
+} 'Packaged Electron runtime version validation failed.'
+Copy-Item -Path $desktopPackageOut -Destination (Join-Path $Stage 'desktop') -Recurse -Force
+# Packager nests output under the platform folder name; flatten to stage\desktop.
 $nested = Join-Path $Stage 'desktop\NodePilot-win32-x64'
 if (Test-Path -LiteralPath $nested) {
     Copy-Item -Path (Join-Path $nested '*') -Destination (Join-Path $Stage 'desktop') -Recurse -Force
@@ -176,6 +193,7 @@ foreach ($f in @('Provision-LocalDb.ps1', 'Update-Desktop.ps1', 'Uninstall-Deskt
 }
 
 # --- 6. compile installer --------------------------------------------------------------------
+Assert-NodePilotPublishSettingsHygiene -RootPath $Stage -RequiredBaseSettingsPath 'app\appsettings.json'
 Write-Step 'Compiling installer (Inno Setup)'
 Invoke-Tool {
     & $IsccPath "/DStageDir=$Stage" "/DAppVersion=$Version" "/DOutputDir=$OutputRoot" (Join-Path $PSScriptRoot 'NodePilot.iss')

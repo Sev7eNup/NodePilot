@@ -288,10 +288,12 @@ serializer defeats both simultaneously — `SELECT to_json(u) FROM "Users" u` ne
 whole-row cast) and `SELECT * FROM Users FOR JSON AUTO` (SQL Server). The leaked values are
 BCrypt hashes, credential ciphertext and `GlobalVariable.Value`.
 
-Reachable through `/api/dbadmin/query` (Admin) and — the reason this is not merely cosmetic —
-through the AI-Chat tool `execute_readonly_sql`, whose gate is `DbEnabled && IsPrivileged`, and
-`IsPrivileged` is Admin **or Operator**. The knowledge-assistant path also audits only a SQL
-fingerprint, never the statement, so the read left no reconstructable trace.
+Reachable through `/api/dbadmin/query` (Admin) and, before the 2026-08 follow-up audit, through the
+AI-Chat tool `execute_readonly_sql` for Operators. Raw knowledge-database tools now require the
+explicit global-Admin fact at capability discovery, reader injection, tool registration and tool
+execution; folder grants never elevate an Operator. The knowledge-assistant path still audits only
+a SQL fingerprint, never the statement, so the SQL guard and result redaction remain defense in
+depth for the remaining Admin-only surface.
 
 Layer 3 refuses any statement that combines a table carrying a masked column with a whole-row
 serializer. Deliberately blunt (it also fires on `SELECT "Id"::text FROM "Users"`) and, being a

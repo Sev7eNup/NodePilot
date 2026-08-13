@@ -37,7 +37,12 @@ A self-contained Prometheus + Grafana stack with **10 pre-provisioned dashboards
 
    ```bash
    cd grafana
-   cp .env.example .env       # set GF_SECURITY_ADMIN_PASSWORD
+   cp .env.example .env
+   # Generate a unique value for NODEPILOT_GRAFANA_ADMIN_PASSWORD before continuing.
+   # PowerShell 5.1 example:
+   # $r = [Security.Cryptography.RandomNumberGenerator]::Create()
+   # $b = New-Object byte[] 32
+   # try { $r.GetBytes($b); [Convert]::ToBase64String($b) } finally { $r.Dispose(); [Array]::Clear($b, 0, $b.Length) }
    docker compose up -d
    ```
 
@@ -48,6 +53,79 @@ A self-contained Prometheus + Grafana stack with **10 pre-provisioned dashboards
    - Or jump directly: <http://localhost:3000/d/nodepilot-mission-control>
 
 > **Tip**: append `?kiosk=tv` to any dashboard URL for a full-bleed wallboard view, perfect for an ops monitor.
+
+## Network and authentication boundary
+
+The shipped Compose file binds Grafana and Prometheus to `127.0.0.1` only. Prometheus has no
+application login in this stack; Grafana requires its unique administrator password, disables
+anonymous access, and disables self-service sign-up. Do not publish ports 3000 or 9090 directly
+and do not replace the loopback host bindings with `0.0.0.0`.
+
+For remote operator access, place a host-based, authenticated TLS reverse proxy (for example IIS,
+nginx, or Caddy) in front of the loopback endpoints. The proxy must terminate HTTPS with a trusted
+certificate and require organization authentication for **both** routes; Grafana's own login remains
+enabled as defense in depth, while Prometheus depends entirely on the proxy authentication boundary.
+Restrict proxy ingress to the administration network and configure Grafana's public root URL to the
+HTTPS origin. The Compose stack itself is intentionally not an Internet-facing TLS endpoint.
+
+The `.env` file is ignored by Git. Restrict its filesystem permissions to the operator/service
+account because it contains the Grafana administrator credential. Existing deployments must replace
+the legacy `GF_SECURITY_ADMIN_PASSWORD` entry with a freshly generated
+`NODEPILOT_GRAFANA_ADMIN_PASSWORD`; the old name is intentionally ignored so previously documented
+defaults cannot survive an upgrade. Never start the stack with the example's blank value.
+
+### Rotate the password when upgrading an existing stack
+
+Grafana applies `GF_SECURITY_ADMIN_PASSWORD` only on the first start of a new database. Changing
+`.env` therefore does **not** rotate the administrator credential stored in an existing persistent
+`grafana-data` volume. Before recreating an existing stack, reset that stored credential explicitly:
+
+```powershell
+$grafanaRng = [Security.Cryptography.RandomNumberGenerator]::Create()
+$grafanaSecretBytes = New-Object byte[] 32
+try {
+  $grafanaRng.GetBytes($grafanaSecretBytes)
+  $newGrafanaAdminPassword = [Convert]::ToBase64String($grafanaSecretBytes)
+}
+finally {
+  $grafanaRng.Dispose()
+  [Array]::Clear($grafanaSecretBytes, 0, $grafanaSecretBytes.Length)
+}
+$env:NODEPILOT_GRAFANA_ADMIN_PASSWORD = $newGrafanaAdminPassword
+
+$newGrafanaAdminPassword |
+  docker compose exec -T grafana grafana cli --homepath /usr/share/grafana `
+    admin reset-admin-password --password-from-stdin
+if ($LASTEXITCODE -ne 0) { throw "Grafana password rotation failed" }
+
+$remainingLines = Get-Content -LiteralPath .env |
+  Where-Object { $_ -notmatch '^(GF_SECURITY_ADMIN_PASSWORD|NODEPILOT_GRAFANA_ADMIN_PASSWORD)=' }
+$remainingLines += "NODEPILOT_GRAFANA_ADMIN_PASSWORD=$newGrafanaAdminPassword"
+[IO.File]::WriteAllLines(
+  (Join-Path $PWD '.env'), $remainingLines, [Text.UTF8Encoding]::new($false))
+
+Remove-Item Env:NODEPILOT_GRAFANA_ADMIN_PASSWORD
+Remove-Variable newGrafanaAdminPassword
+Remove-Variable grafanaSecretBytes
+Remove-Variable grafanaRng
+docker compose up -d
+```
+
+The CLI reads the replacement from standard input, so it is not exposed in the process command
+line. If the old stack is no longer running, start the existing Grafana container without recreating
+it, perform the same reset, and only then run `docker compose up -d`. As an alternative, discard the
+volume only after exporting or intentionally abandoning all locally stored dashboards, users, and
+settings. See Grafana's [configuration](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/)
+and [administrator CLI](https://grafana.com/docs/grafana/latest/administration/cli/) documentation.
+
+## Immutable image updates
+
+Both images are pinned by a readable upstream version **and** the corresponding multi-architecture
+manifest digest. `docker compose pull` therefore retrieves only the reviewed immutable image. A
+security update is explicit: review the upstream release notes, select the new version, obtain its
+manifest-list digest from the verified publisher (`docker buildx imagetools inspect <image>:<tag>`),
+update both parts of the image reference, then run `docker compose pull` and restart the stack. Never
+replace these references with `latest` or a version tag without a digest.
 
 ## Dashboard Catalogue
 
@@ -119,7 +197,7 @@ The full validated inventory — every metric, every label key, every unit — i
 ```
 grafana/
 ├── docker-compose.yml          # prom + grafana, host.docker.internal wired up
-├── .env.example                # GF_SECURITY_ADMIN_PASSWORD template
+├── .env.example                # NODEPILOT_GRAFANA_ADMIN_PASSWORD template
 ├── README.md                   # this file
 ├── METRICS_INVENTORY.md        # validated metric catalogue
 ├── RAW_METRICS_SAMPLE.txt      # snapshot of /metrics for quick lookup
