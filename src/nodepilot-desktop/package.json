@@ -22,36 +22,23 @@
     "test": "vitest",
     "test:run": "vitest run",
     "start": "npm run build && electron .",
-    "package": "npm run build && electron-forge package",
-    "make": "npm run build && electron-forge make"
+    "package": "npm run build && node scripts/package.mjs"
   },
   "dependencies": {},
   "//types-node": [
-    "@types/node tracks the Node that Electron actually bundles (43.2.0 -> Node 24.18.0),",
-    "not the newest release line. Bumping it past the runtime would type-check against",
-    "APIs the shipped Electron does not have."
+    "Electron 43.4.0 bundles Node 24.18.1. @types/node may be newer for tooling, so",
+    "runtime-only APIs must still be checked against the embedded Node release."
   ],
-  "//overrides": [
-    "Electron Forge's own dependency tree pulls three packages whose only patched",
-    "releases sit in a newer major line than the one Forge asks for, so npm cannot",
-    "resolve them on its own (`npm audit fix` proposes downgrading Forge itself).",
-    "Forge is already on its latest release, so waiting it out is not an option either.",
-    "Nothing here ships: Forge is build-time only and `dependencies` is empty.",
-    "Drop an entry once Forge's own tree moves past it.",
-    "  tar             6.2.1  -> 7.x   arbitrary file write via hardlink path traversal (critical)",
-    "  brace-expansion 1.x/2.x-> 5.x   DoS via unbounded expansion length (high)",
-    "  tmp             0.0.33 -> 0.2.x arbitrary temp write via symlinked dir (high)"
+  "//archive-security": [
+    "Packager 18 used extract-zip 2.0.1, which has no patched release",
+    "(CVE-2026-56876 / GHSA-jmr9-qjv8-65gv). Packager 20.3.0 uses Electron's hardened native",
+    "@electron-internal/extract-zip instead. Both are pinned exactly and exercised by security tests."
   ],
-  "overrides": {
-    "tar": "^7.5.22",
-    "brace-expansion": "^5.0.8",
-    "tmp": "^0.2.7"
-  },
   "devDependencies": {
-    "@electron-forge/cli": "^7.10.0",
-    "@electron-forge/maker-zip": "^7.10.0",
+    "@electron-internal/extract-zip": "1.0.5",
+    "@electron/packager": "20.3.0",
     "@types/node": "^26.1.2",
-    "electron": "43.3.0",
+    "electron": "43.4.0",
     "typescript": "~6.0.2",
     "vitest": "^4.1.4"
   }

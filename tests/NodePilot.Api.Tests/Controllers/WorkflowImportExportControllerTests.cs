@@ -97,6 +97,27 @@ public class WorkflowImportExportControllerTests
     }
 
     [Fact]
+    public async Task ExportOne_RedactsUnknownLiteralHttpHeader()
+    {
+        var db = CreateContext();
+        var wf = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "Custom-Auth",
+            DefinitionJson =
+                """{"nodes":[{"id":"http","data":{"config":{"headers":"Accept: application/json\nX-Tenant-Token: opaque-tenant-credential"}}}],"edges":[]}""",
+        };
+        db.Workflows.Add(wf);
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db).ImportExport.ExportOne(wf.Id, CancellationToken.None);
+        var content = result.Should().BeOfType<ContentResult>().Subject;
+
+        content.Content.Should().NotContain("opaque-tenant-credential");
+        content.Content.Should().Contain("***");
+    }
+
+    [Fact]
     public async Task ExportAll_TwoWorkflows_BundleHasBoth()
     {
         var db = CreateContext();

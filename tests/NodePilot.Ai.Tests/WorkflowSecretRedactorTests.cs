@@ -101,6 +101,52 @@ public sealed class WorkflowSecretRedactorTests
     }
 
     [Fact]
+    public void Redact_RestApiObjectHeaders_MasksUnknownLiteralHeader_PreservesPublicHeaders()
+    {
+        var def = Parse("""
+        { "config": { "headers": {
+            "X-Tenant-Token": "opaque-tenant-credential",
+            "Accept": "application/json",
+            "Content-Type": "application/json"
+        } } }
+        """);
+
+        var headers = WorkflowSecretRedactor.Redact(def).AsObject()["config"]!["headers"]!.AsObject();
+
+        headers["X-Tenant-Token"]!.GetValue<string>().Should().Be("***");
+        headers["Accept"]!.GetValue<string>().Should().Be("application/json");
+        headers["Content-Type"]!.GetValue<string>().Should().Be("application/json");
+    }
+
+    [Fact]
+    public void Redact_RestApiObjectHeaders_PreservesTemplateOnlyCustomHeader()
+    {
+        var def = Parse("""
+        { "config": { "headers": {
+            "X-Tenant-Token": "{{globals.TENANT_TOKEN}}"
+        } } }
+        """);
+
+        var headers = WorkflowSecretRedactor.Redact(def).AsObject()["config"]!["headers"]!.AsObject();
+
+        headers["X-Tenant-Token"]!.GetValue<string>().Should().Be("{{globals.TENANT_TOKEN}}");
+    }
+
+    [Fact]
+    public void Redact_RestApiObjectHeaders_PreservesTemplateOnlyAuthorizationHeader()
+    {
+        var def = Parse("""
+        { "config": { "headers": {
+            "Authorization": "Bearer {{globals.API_TOKEN}}"
+        } } }
+        """);
+
+        var headers = WorkflowSecretRedactor.Redact(def).AsObject()["config"]!["headers"]!.AsObject();
+
+        headers["Authorization"]!.GetValue<string>().Should().Be("Bearer {{globals.API_TOKEN}}");
+    }
+
+    [Fact]
     public void Redact_RestApiStringHeaders_WithInlineSecret_MasksWholeValue()
     {
         // The UI persists headers as a newline "Key: Value" string; the secret lives under key
@@ -109,6 +155,18 @@ public sealed class WorkflowSecretRedactorTests
         { "config": { "headers": "Content-Type: application/json\nAuthorization: Bearer sk-live-abc123" } }
         """);
         var cfg = WorkflowSecretRedactor.Redact(def).AsObject()["config"]!.AsObject();
+        cfg["headers"]!.GetValue<string>().Should().Be("***");
+    }
+
+    [Fact]
+    public void Redact_RestApiStringHeaders_UnknownLiteralHeader_MasksWholeValue()
+    {
+        var def = Parse("""
+        { "config": { "headers": "Accept: application/json\nX_Tenant.Token: opaque-tenant-credential" } }
+        """);
+
+        var cfg = WorkflowSecretRedactor.Redact(def).AsObject()["config"]!.AsObject();
+
         cfg["headers"]!.GetValue<string>().Should().Be("***");
     }
 

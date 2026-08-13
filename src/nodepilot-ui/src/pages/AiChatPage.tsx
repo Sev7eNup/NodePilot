@@ -251,7 +251,7 @@ export function AiChatPage() {
   }, [messages, threads, threadId, t]);
 
   // Starter prompts follow the enabled sources: the ops set leans on the DB/text2sql tools, which
-  // are off by default AND privileged-only — offering "show me the last 10 failed runs" to someone
+  // are off by default AND global-Admin-only — offering "show me the last 10 failed runs" to someone
   // without that source just produces "source not available". Hold both back until `caps` resolves,
   // otherwise the lite set flashes for a beat before swapping.
   const examples = useMemo(() => {

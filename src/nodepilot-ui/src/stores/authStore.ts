@@ -4,6 +4,21 @@ import type { LoginResponse } from '../types/api';
 import { useAiChatStore } from './aiChatStore';
 import { useDbHealthStore } from './dbHealthStore';
 
+const LEGACY_WORKFLOW_CLIPBOARD_KEY = 'np_clipboard';
+
+function clearLegacyWorkflowClipboard(): void {
+  // Releases before 1.2.5 persisted complete workflow nodes (including inline credentials)
+  // in sessionStorage. New clipboard data is memory-only, but an upgrade can leave an old
+  // value behind in an already-open tab. Treat every authentication boundary as a migration
+  // point so that residue can never cross to the next identity.
+  try {
+    sessionStorage.removeItem(LEGACY_WORKFLOW_CLIPBOARD_KEY);
+  } catch {
+    // Storage can be disabled by browser policy. The current clipboard implementation never
+    // writes browser storage, so there is no new persisted secret to clean in that environment.
+  }
+}
+
 /**
  * Auth store (rewritten by a security-audit fix): the JWT now lives in an httpOnly `np_auth` cookie
  * that JS cannot read. This store holds only the user-facing fields (username, role)
@@ -42,6 +57,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: null,
 
   login: async (username: string, password: string, setupToken?: string) => {
+    clearLegacyWorkflowClipboard();
     const response = setupToken
       ? await api.postWithHeaders<LoginResponse>(
           '/auth/login',
@@ -75,12 +91,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       );
     }
     set({ userId: null, username: null, role: null, isAuthenticated: false });
+    clearLegacyWorkflowClipboard();
     // AI chat histories are per-user — clear them from memory on logout so the next
     // person to sign in on this browser never sees someone else's conversation.
     useAiChatStore.getState().clearAll();
   },
 
   initialize: async () => {
+    clearLegacyWorkflowClipboard();
     // Ask the server who we are. The browser auto-attaches np_auth if present.
     // Success → signed in. 401 → anonymous (the api client intercepts 401s and triggers
     // a /login redirect, but only when we're not already on /login, so the LoginPage

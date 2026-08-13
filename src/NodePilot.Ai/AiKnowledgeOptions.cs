@@ -34,7 +34,8 @@ public class AiKnowledgeOptions
 
     /// <summary>Whether read-only SQL access to the App-DB (text2sql) is exposed to the chat as a
     /// fourth knowledge source. Default <c>false</c> — raw SQL can read secret columns, so the source
-    /// is Admin/Operator-gated AND every result cell is secret-redacted (<c>***</c>) at the reader layer.</summary>
+    /// is restricted to global Admins AND every result cell is secret-redacted (<c>***</c>) at the reader layer.
+    /// Folder grants never elevate an Operator into this raw-SQL capability.</summary>
     public bool DbEnabled { get; set; }
 
     /// <summary>Docs corpus root. Null/empty resolves to <c>{ContentRoot}/knowledge/docs</c> (shipped via the API csproj).</summary>

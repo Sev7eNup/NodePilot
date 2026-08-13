@@ -222,6 +222,21 @@ public class WorkflowAssistantServiceTests
         userTurn.Should().NotContain("SUPER-SECRET");
     }
 
+    [Fact]
+    public async Task StreamChat_DoesNotSendUnknownLiteralHttpHeaderToLlm()
+    {
+        const string workflow =
+            """{"nodes":[{"id":"http","data":{"activityType":"restApi","config":{"headers":{"X-Tenant-Token":"opaque-tenant-credential","Accept":"application/json"}}}}],"edges":[]}""";
+        var fake = new FakeLlmClient().EnqueueStream("ok");
+
+        await Run(NewService(fake), Req("Erkläre.", workflow));
+
+        var userTurn = fake.Calls.Single().Conversation!.Last().Content;
+        userTurn.Should().NotContain("opaque-tenant-credential");
+        userTurn.Should().Contain("***");
+        userTurn.Should().Contain("application/json");
+    }
+
     // ---- Empty-canvas design mode -------------------------------------------------
 
     [Fact]

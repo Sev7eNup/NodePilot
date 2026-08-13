@@ -121,13 +121,14 @@ public static class SettingsSchema
             IsHotReloadable: false,
             AuditCode: AuditActions.SettingsLoggingUpdated),
         new SettingsSectionDescriptor(
-            // OpenTelemetry: full OTLP/Sampling/Exporters/Prometheus block. Prometheus
-            // password + bearer token are the secrets.
+            // OpenTelemetry: OTLP headers commonly contain collector credentials; treat the
+            // complete header string as opaque secret material regardless of header names.
             SectionPath: "OpenTelemetry",
             DisplayName: "OpenTelemetry",
             OptionsType: typeof(NodePilotTelemetryOptions),
             DtoType: typeof(OpenTelemetrySettingsDto),
-            SecretFieldPaths: ImmutableArray.Create("Prometheus.Password", "Prometheus.BearerToken"),
+            SecretFieldPaths: ImmutableArray.Create(
+                "Otlp.Headers", "Prometheus.Password", "Prometheus.BearerToken"),
             // Restart-required: the OTel SDK + exporters are built once at boot (NodePilot.Telemetry
             // setup); no in-process rebuild of the exporter pipeline.
             IsHotReloadable: false,

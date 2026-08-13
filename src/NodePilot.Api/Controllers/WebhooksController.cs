@@ -52,6 +52,7 @@ namespace NodePilot.Api.Controllers;
 [ApiController]
 [Route("api/webhooks")]
 [AllowAnonymous]
+[LeaderOnly]
 public class WebhooksController : ControllerBase
 {
     private readonly NodePilotDbContext _db;

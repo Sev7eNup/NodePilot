@@ -35,11 +35,19 @@ public sealed class LeaderRequiredMiddleware
         var isReadOnlyMethod = HttpMethods.IsGet(ctx.Request.Method)
             || HttpMethods.IsHead(ctx.Request.Method)
             || HttpMethods.IsOptions(ctx.Request.Method);
+        // Endpoint metadata covers semantically mutating GETs. Keep the exact webhook path
+        // fallback as defense-in-depth if routing order is ever changed and metadata is not yet
+        // available when this middleware runs.
+        var endpointRequiresLeader = ctx.GetEndpoint()?.Metadata.GetMetadata<LeaderOnlyAttribute>() is not null;
+        var isWebhookPath = path.Equals("/api/webhooks", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/api/webhooks/", StringComparison.OrdinalIgnoreCase);
         // Future-safe policy: every non-read API request is leader-only. Maintaining a
         // route allow-list inevitably lets newly added mutation surfaces drift through.
         // Hubs are always leader-only because a WebSocket can invoke mutating methods
         // after its initial GET handshake.
-        var leaderOnly = path.StartsWith("/hubs/", StringComparison.OrdinalIgnoreCase)
+        var leaderOnly = endpointRequiresLeader
+            || isWebhookPath
+            || path.StartsWith("/hubs/", StringComparison.OrdinalIgnoreCase)
             || path.Equals("/signin-oidc", StringComparison.OrdinalIgnoreCase)
             || path.StartsWith("/api/auth/oidc", StringComparison.OrdinalIgnoreCase)
             || (path.StartsWith("/api/", StringComparison.OrdinalIgnoreCase)

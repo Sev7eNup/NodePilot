@@ -685,18 +685,30 @@ try {
 
     # The verdict is a pure function of the discovered state, which is what makes these four rows
     # assertable on any machine regardless of what it happens to have installed.
-    $x64WithTen = [pscustomobject]@{
+    $x64WithPatchedTen = [pscustomobject]@{
         X64Path           = 'C:\Program Files\dotnet\dotnet.exe'
-        Runtimes          = @('Microsoft.NETCore.App 10.0.8 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]',
-                              'Microsoft.AspNetCore.App 10.0.8 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]')
+        Runtimes          = @('Microsoft.NETCore.App 10.0.11 [C:\Program Files\dotnet\shared\Microsoft.NETCore.App]',
+                              'Microsoft.AspNetCore.App 10.0.11 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]')
         OtherPath         = $null
         OtherArchitecture = ''
     }
-    $green = Test-NodePilotDotNetRuntime -State $x64WithTen
-    Assert-True -Name 'a 64-bit host carrying ASP.NET Core 10 passes' -Condition ($green.Status -eq 'Pass')
+    $green = Test-NodePilotDotNetRuntime -State $x64WithPatchedTen
+    Assert-True -Name 'a 64-bit host carrying patched ASP.NET Core 10.0.11 passes' -Condition ($green.Status -eq 'Pass')
     # Which host answered is the one fact that makes a disputed row resolvable from a screenshot.
     Assert-True -Name 'the passing row names the host it asked' `
         -Condition ($green.Detail -match 'Program Files\\dotnet' -and $green.Detail -match 'x64')
+
+    $x64WithVulnerableTen = [pscustomobject]@{
+        X64Path           = 'C:\Program Files\dotnet\dotnet.exe'
+        Runtimes          = @('Microsoft.AspNetCore.App 10.0.10 [C:\Program Files\dotnet\shared\Microsoft.AspNetCore.App]')
+        OtherPath         = $null
+        OtherArchitecture = ''
+    }
+    $vulnerable = Test-NodePilotDotNetRuntime -State $x64WithVulnerableTen
+    Assert-True -Name 'a vulnerable ASP.NET Core 10.0.10 runtime is a required failure' `
+        -Condition ($vulnerable.Status -eq 'Fail' -and $vulnerable.Required)
+    Assert-True -Name 'a vulnerable runtime is offered the bundled patched runtime' `
+        -Condition ($vulnerable.CanAutoFix -and $vulnerable.Detail -match '10\.0\.11')
 
     $x64WithoutTen = [pscustomobject]@{
         X64Path           = 'C:\Program Files\dotnet\dotnet.exe'

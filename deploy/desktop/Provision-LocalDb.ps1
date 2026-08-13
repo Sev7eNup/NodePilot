@@ -146,6 +146,42 @@ function Write-RestrictedText([string] $path, [string] $content) {
     [System.IO.File]::WriteAllText($path, $content, (New-Object System.Text.UTF8Encoding($false)))
 }
 
+function Move-DesktopRuntimeOverridesToSecrets {
+    # Releases before 1.2.5 wrote runtime settings and their rollback copies directly below
+    # DataPath. That directory intentionally grants BUILTIN\Users read/traverse for desktop.json,
+    # so LocalMachine-DPAPI ciphertext there was decryptable by any local process. Lock the target
+    # first, move every possible settings artefact, then replace the DACL explicitly: a same-volume
+    # Move-Item preserves the source ACL instead of inheriting the destination directory ACL.
+    Set-RestrictedAcl -path $SecretsDir -NoCurrentUser
+
+    $legacyFiles = @(Get-ChildItem -LiteralPath $DataPath -Filter 'appsettings.runtime.json*' -File)
+    foreach ($legacy in $legacyFiles) {
+        $destination = Join-Path $SecretsDir $legacy.Name
+        if (Test-Path -LiteralPath $destination) {
+            # Keep both copies on an interrupted/repeated upgrade without leaving the older one in
+            # the user-readable parent. The runtime writer recognises the primary collision as a
+            # normal backup and can age it out after successful future writes.
+            $suffix = [Guid]::NewGuid().ToString('N')
+            $destinationName = if ($legacy.Name -ieq 'appsettings.runtime.json') {
+                "appsettings.runtime.json.bak.legacy.$suffix"
+            } else {
+                "$($legacy.Name).legacy.$suffix"
+            }
+            $destination = Join-Path $SecretsDir $destinationName
+        }
+
+        Move-Item -LiteralPath $legacy.FullName -Destination $destination
+        # A same-volume move preserves the former broad DACL. Restrict this copy before touching
+        # the next file so a later collision/I/O failure cannot strand an exposed migrated file.
+        Set-RestrictedAcl -path $destination -NoCurrentUser
+    }
+
+    # Normalise both migrated files and any files already present from a prior partial run.
+    foreach ($protectedFile in @(Get-ChildItem -LiteralPath $SecretsDir -Filter 'appsettings.runtime.json*' -File)) {
+        Set-RestrictedAcl -path $protectedFile.FullName -NoCurrentUser
+    }
+}
+
 function Invoke-Native([string] $exe, [string[]] $arguments, [hashtable] $env = @{}) {
     $old = @{}
     foreach ($k in $env.Keys) { $old[$k] = [Environment]::GetEnvironmentVariable($k); [Environment]::SetEnvironmentVariable($k, $env[$k]) }
@@ -169,6 +205,9 @@ foreach ($svc in @($ApiServiceName, $DbServiceName)) {
         Start-Sleep -Seconds 1
     }
 }
+
+Write-Step 'Securing runtime overrides and backups'
+Move-DesktopRuntimeOverridesToSecrets
 
 # --- 1. ports --------------------------------------------------------------------------------
 Write-Step 'Selecting free loopback ports'
@@ -386,7 +425,7 @@ Set-RestrictedAcl -path $DesktopJson -extraReadPrincipals @('S-1-5-32-545')
 # Lock DataPath (the JWT / data-protection key parent) BEFORE the API starts: SYSTEM + Admins only,
 # plus Users read/traverse so the Electron shell can reach desktop.json. NO installing-user
 # mutation -- otherwise the backend's key-directory security check fail-closes the boot.
-Set-RestrictedAcl -path $SecretsDir
+Set-RestrictedAcl -path $SecretsDir -NoCurrentUser
 Set-RestrictedAcl -path $DataPath -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser
 
 # --- 9. start services + health poll ---------------------------------------------------------

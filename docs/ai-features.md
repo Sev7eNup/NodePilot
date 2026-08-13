@@ -469,10 +469,10 @@ Source-Code + DB default aus:
 |---|---|---|---|
 | Dokumentation | `DocsEnabled` | `search_docs`, `read_doc` | — |
 | Workflows & Betrieb | `OperationalEnabled` | `get_workflow_definition`, `analyze_workflow`, `get_next_scheduled_fires` | RBAC-folder-scoped |
-| Workflows & Betrieb (Listen) | via DB-Quelle | "Welche Workflows/Läufe/Maschinen gibt es" → `list_db_tables` + `execute_readonly_sql` | Admin/Operator (text2sql) |
+| Workflows & Betrieb (Listen) | via DB-Quelle | "Welche Workflows/Läufe/Maschinen gibt es" → `list_db_tables` + `execute_readonly_sql` | ausschließlich globaler Admin (text2sql) |
 | Systemkonfiguration | (immer, wenn privilegiert) | `read_settings` | Admin/Operator |
 | Quellcode | `SourceCodeEnabled` | `search_source`, `read_source` | Admin/Operator |
-| **DB / text2sql** | `DbEnabled` | `list_db_tables`, `get_db_table`, `execute_readonly_sql` | Admin/Operator |
+| **DB / text2sql** | `DbEnabled` | `list_db_tables`, `get_db_table`, `execute_readonly_sql` | ausschließlich globaler Admin |
 
 **text2sql** heißt: das LLM übersetzt die Frage in provider-spezifisches SQL, NodePilot liefert SQL-Dialekt,
 Schema, Foreign Keys und Read-Only-Ausführung.
@@ -493,7 +493,7 @@ Text2SQL ist nur als Capability sichtbar, wenn das aktive Profil `EnableToolCall
 (`ai:knowledge.examples` + `ai:knowledge.examplesLite`, je 8 Strings) und wählt anhand von `caps.db`:
 mit DB-Quelle Betriebsauswertungen (letzte Fehlläufe, hängende Runs, unerreichbare Maschinen,
 Audit-Trail), sonst Doku- und Zeitplan-Fragen. Grund: die Alltagsfragen brauchen text2sql, das per
-Default aus **und** Admin/Operator-only ist — einem Viewer würden sie nur „Quelle nicht verfügbar"
+Default aus **und** global-Admin-only ist — Operatoren und Viewern würden sie nur „Quelle nicht verfügbar"
 liefern. Das Grid rendert erst nach dem Auflösen der Capabilities, sonst blitzt das Lite-Set auf.
 
 ---

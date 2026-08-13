@@ -1,5 +1,8 @@
 using NodePilot.Core.Interfaces;
 using NodePilot.Data.Security;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace NodePilot.Api.Configuration;
 
@@ -31,7 +34,8 @@ public static class RuntimeOverridesSetup
     /// protector will then decrypt during the host's full configuration load. This
     /// breaks the chicken-and-egg between "which protector?" and "decrypted values".</para>
     /// </summary>
-    public static (string OverridesPath, ISecretProtector Protector) AddRuntimeOverridesJson(this WebApplicationBuilder builder)
+    public static (string OverridesPath, ISecretProtector Protector, int MigratedFiles) AddRuntimeOverridesJson(
+        this WebApplicationBuilder builder)
     {
         var resolved = ResolveOverridesPath(builder.Configuration, builder.Environment.ContentRootPath);
 
@@ -58,13 +62,156 @@ public static class RuntimeOverridesSetup
             .Build();
         var protector = SecretProtectorBootstrapFactory.FromConfigSnapshot(bootstrapSnapshot);
 
+        // `Otlp.Headers` only became a registered secret after the 2026 security audit. Encrypt
+        // legacy plaintext in both the active file and its rollback copies before the active
+        // provider ever loads it. A later Settings PUT also performs this upgrade, but startup is
+        // the only deterministic migration point for installations that never revisit the UI.
+        var migratedFiles = MigrateLegacyPlaintextSecrets(resolved, protector);
+
         var sources = builder.Configuration.Sources;
         var insertAt = FindInsertionIndex(sources, builder.Environment.EnvironmentName);
         var source = new EncryptingJsonConfigurationSource(
             resolved, protector, optional: true, reloadOnChange: true);
         sources.Insert(insertAt, source);
 
-        return (resolved, protector);
+        return (resolved, protector, migratedFiles);
+    }
+
+    /// <summary>
+    /// Encrypts every plaintext field registered by <see cref="SettingsSchema"/> in the active
+    /// runtime-override file and its writer-created backups. Files that contain no legacy value
+    /// are not rewritten. Each changed file is replaced from a same-directory temporary file so
+    /// a crash cannot expose a half-written JSON document.
+    /// </summary>
+    internal static int MigrateLegacyPlaintextSecrets(string overridesPath, ISecretProtector protector)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(overridesPath);
+        ArgumentNullException.ThrowIfNull(protector);
+
+        var absolutePath = Path.GetFullPath(overridesPath);
+        var directory = Path.GetDirectoryName(absolutePath);
+        var basename = Path.GetFileName(absolutePath);
+        if (string.IsNullOrEmpty(directory) || string.IsNullOrEmpty(basename)) return 0;
+
+        var candidates = new List<string>();
+        if (File.Exists(absolutePath)) candidates.Add(absolutePath);
+        if (Directory.Exists(directory))
+        {
+            candidates.AddRange(Directory.EnumerateFiles(directory, basename + ".bak.*")
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase));
+        }
+
+        var migrated = 0;
+        foreach (var path in candidates.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            JsonObject root;
+            try
+            {
+                var raw = File.ReadAllText(path);
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                root = JsonNode.Parse(raw) as JsonObject
+                    ?? throw new InvalidOperationException("the JSON root is not an object");
+            }
+            catch (Exception ex) when (ex is JsonException or IOException or UnauthorizedAccessException
+                                       or InvalidOperationException)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot securely migrate runtime-settings secrets in '{path}': {ex.Message}", ex);
+            }
+
+            var changed = false;
+            foreach (var descriptor in SettingsSchema.Sections)
+            {
+                foreach (var secretPath in descriptor.SecretFieldPaths)
+                {
+                    var segments = descriptor.SectionPath
+                        .Split([':', '.'], StringSplitOptions.RemoveEmptyEntries)
+                        .Concat(secretPath.Split('.', StringSplitOptions.RemoveEmptyEntries))
+                        .ToArray();
+                    changed |= EncryptMatchingValues(root, segments, 0, protector);
+                }
+            }
+
+            if (!changed) continue;
+            ReplaceAtomically(path, root);
+            migrated++;
+        }
+
+        return migrated;
+    }
+
+    private static bool EncryptMatchingValues(
+        JsonNode? node,
+        IReadOnlyList<string> path,
+        int depth,
+        ISecretProtector protector)
+    {
+        if (node is not JsonObject obj || depth >= path.Count) return false;
+
+        var segment = path[depth];
+        if (segment == "*")
+        {
+            var changed = false;
+            foreach (var child in obj.Select(pair => pair.Value).ToArray())
+                changed |= EncryptMatchingValues(child, path, depth + 1, protector);
+            return changed;
+        }
+
+        // IConfiguration keys are case-insensitive, while JsonObject lookups are not. Process
+        // every casing variant so a manually-authored lower-case override cannot bypass the
+        // at-rest secret policy (and so ambiguous duplicate variants fail safely at provider load).
+        var matches = obj
+            .Where(pair => pair.Key.Equals(segment, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        if (depth != path.Count - 1)
+        {
+            var changed = false;
+            foreach (var match in matches)
+                changed |= EncryptMatchingValues(match.Value, path, depth + 1, protector);
+            return changed;
+        }
+
+        var encryptedAny = false;
+        foreach (var match in matches)
+        {
+            if (match.Value is not JsonValue value
+                || !value.TryGetValue(out string? plaintext)
+                || string.IsNullOrEmpty(plaintext)
+                || EncryptingJsonConfigurationProvider.LooksEncrypted(plaintext))
+                continue;
+
+            obj[match.Key] = EncryptingJsonConfigurationProvider.EncryptForPersist(plaintext, protector);
+            encryptedAny = true;
+        }
+        return encryptedAny;
+    }
+
+    private static void ReplaceAtomically(string path, JsonObject root)
+    {
+        var temporary = path + ".migration." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllText(
+                temporary,
+                root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }),
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            try
+            {
+                File.Replace(temporary, path, destinationBackupFileName: null);
+            }
+            catch (Exception ex) when (ex is IOException or PlatformNotSupportedException
+                                       or UnauthorizedAccessException)
+            {
+                // UNC/non-NTFS fallback. The temporary lives beside the target so the move stays
+                // on one volume and inherits the same restricted directory boundary.
+                File.Move(temporary, path, overwrite: true);
+            }
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
 
     /// <summary>

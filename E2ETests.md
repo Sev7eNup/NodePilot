@@ -1438,11 +1438,11 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 4. Wähle einen Node → **Ctrl+D** (Duplicate) → direktes Duplizieren
 
 **Prüfpunkte:**
-- [ ] Copy speichert in sessionStorage (`np_clipboard`)
+- [ ] Copy hält Nodes ausschließlich im In-Memory-Puffer des aktuellen Editors; `sessionStorage` enthält kein `np_clipboard`
 - [ ] Paste fügt Nodes mit neuen IDs ein
 - [ ] Paste erhält Edges zwischen kopierten Nodes
 - [ ] Ctrl+D dupliziert inline
-- [ ] Cross-Tab-Paste möglich (gleicher Browser)
+- [ ] Reload, Tab-Schließen oder Editor-Unmount verwirft den Puffer; Cross-Tab-Paste ist nicht möglich
 
 **Erwartung:** Clipboard-Operationen funktionieren
 
@@ -4399,7 +4399,9 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ### Test 80.9 — Rollen-Gating der Quellen
 1. Als **Viewer** `/ai-chat` öffnen.
-- [ ] Badges **Quellcode** und **Datenbank** fehlen (Admin/Operator-gated); Docs/Betrieb bleiben, Composer funktioniert.
+2. Danach als **Operator** öffnen.
+- [ ] Viewer: Badges **Quellcode** und **Datenbank** fehlen; Docs/Betrieb bleiben und der Composer funktioniert.
+- [ ] Operator: **Quellcode** ist sichtbar, **Datenbank** fehlt weiterhin. Raw-SQL/text2sql ist ausschließlich global-Admin und wird durch Folder-Rechte nicht freigeschaltet.
 
 > Automatisiert: `e2e/ai-chat.spec.ts` (80.1–80.9, hermetisch — SSE via `page.route`).
 

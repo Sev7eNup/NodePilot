@@ -31,6 +31,64 @@ public class SerilogTelemetryBridgeTests
     }
 
     [Fact]
+    public void CreateResourceAttributes_RedactionEnabled_RemovesHostnameAndUsesProcessStableRandomInstanceId()
+    {
+        const string sensitiveHostname = "NODEPILOT-SENSITIVE-HOST";
+        var options = new NodePilotTelemetryOptions
+        {
+            RedactHostnames = true,
+            ServiceName = "nodepilot-test",
+            Environment = "staging",
+        };
+        var firstAttributes = SerilogTelemetryBridge.CreateResourceAttributes(
+            options,
+            Env(),
+            sensitiveHostname,
+            processId: 1234);
+        var secondAttributes = SerilogTelemetryBridge.CreateResourceAttributes(
+            options,
+            Env(),
+            "A-DIFFERENT-SENSITIVE-HOST",
+            processId: 5678);
+
+        firstAttributes.Should().NotContainKey("host.name");
+        secondAttributes.Should().NotContainKey("host.name");
+        var serviceInstanceId = firstAttributes["service.instance.id"].Should().BeOfType<string>().Subject;
+        var secondServiceInstanceId = secondAttributes["service.instance.id"].Should().BeOfType<string>().Subject;
+        serviceInstanceId.ToLowerInvariant().Should().NotContain(sensitiveHostname.ToLowerInvariant());
+        serviceInstanceId.ToLowerInvariant().Should().NotContain("a-different-sensitive-host");
+        serviceInstanceId.Should().MatchRegex("^nodepilot-[0-9a-f]{32}$");
+        serviceInstanceId.Should().Be(secondServiceInstanceId);
+    }
+
+    [Fact]
+    public void CreateResourceAttributes_RedactionDisabled_PreservesExistingHostnameAttributes()
+    {
+        const string hostname = "NODEPILOT-LEGACY-HOST";
+        var options = new NodePilotTelemetryOptions
+        {
+            RedactHostnames = false,
+            ServiceName = "nodepilot-test",
+            Environment = "staging",
+        };
+
+        var attributes = SerilogTelemetryBridge.CreateResourceAttributes(
+            options,
+            Env(),
+            hostname,
+            processId: 4321);
+
+        attributes.Should().BeEquivalentTo(new Dictionary<string, object>
+        {
+            ["service.name"] = "nodepilot-test",
+            ["deployment.environment"] = "staging",
+            ["host.name"] = hostname,
+            ["nodepilot.node.role"] = "api",
+        });
+        attributes.Should().NotContainKey("service.instance.id");
+    }
+
+    [Fact]
     public void AddNodePilotOpenTelemetry_Disabled_ReturnsConfigUnchangedAndLogsWithoutOtel()
     {
         var cfg = new LoggerConfiguration();

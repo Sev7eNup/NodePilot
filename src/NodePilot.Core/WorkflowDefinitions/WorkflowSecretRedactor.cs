@@ -24,30 +24,32 @@ public static class WorkflowSecretRedactor
     {
         var node = JsonNode.Parse(root.GetRawText())
             ?? throw new InvalidOperationException("Workflow definition is not valid JSON.");
-        return Walk(node, parentName: null);
+        return Walk(node, parentName: null, isHttpHeaderValue: false);
     }
 
-    private static JsonNode Walk(JsonNode node, string? parentName)
+    private static JsonNode Walk(JsonNode node, string? parentName, bool isHttpHeaderValue)
     {
         switch (node)
         {
             case JsonObject obj:
             {
                 var result = new JsonObject();
+                var isHeadersObject = string.Equals(parentName, "headers", StringComparison.OrdinalIgnoreCase);
                 foreach (var (name, value) in obj)
-                    result[name] = value is null ? null : Walk(value, name);
+                    result[name] = value is null ? null : Walk(value, name, isHeadersObject);
                 return result;
             }
             case JsonArray arr:
             {
                 var result = new JsonArray();
                 foreach (var item in arr)
-                    result.Add(item is null ? null : Walk(item, parentName));
+                    result.Add(item is null ? null : Walk(item, parentName, isHttpHeaderValue));
                 return result;
             }
             case JsonValue val when val.TryGetValue(out string? s) && s is not null:
             {
-                return JsonValue.Create(WorkflowSecretKeys.IsSecretValue(parentName, s) ? Mask : s);
+                var mask = WorkflowSecretKeys.IsSecretValue(parentName, s, isHttpHeaderValue);
+                return JsonValue.Create(mask ? Mask : s);
             }
             default:
                 return node.DeepClone();

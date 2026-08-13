@@ -66,7 +66,13 @@ var builder = WebApplication.CreateBuilder(args);
 // Credentials:DpapiScope must therefore be set in appsettings + EnvVars, never in the
 // override file itself — that's enforced by treating those keys as strict-bootstrap
 // in the Settings UI (read-only display in the System-Info section).
-var (runtimeOverridesPath, _) = builder.AddRuntimeOverridesJson();
+var (runtimeOverridesPath, _, migratedRuntimeSecretFiles) = builder.AddRuntimeOverridesJson();
+if (migratedRuntimeSecretFiles > 0)
+{
+    Log.Information(
+        "Encrypted legacy plaintext secrets in {MigratedFileCount} runtime-settings file(s) before configuration load.",
+        migratedRuntimeSecretFiles);
+}
 builder.Services.AddRuntimeOverridesWriter(runtimeOverridesPath);
 
 // Surface Serilog sink failures (file locked, disk full, flush error) to stderr instead
@@ -191,7 +197,7 @@ builder.Services.AddScoped<NodePilot.Core.Interfaces.IExecutionLogReader, NodePi
 builder.Services.AddScoped<NodePilot.Core.Interfaces.IOperationalKnowledgeReader, NodePilot.Data.OperationalKnowledgeReader>();
 // Secret-redacted admin-settings snapshot for the same assistant (read_settings tool, Admin/Operator).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.ISettingsKnowledgeReader, NodePilot.Api.Ai.SettingsKnowledgeReader>();
-// Read-only, cell-redacted App-DB schema + query reader for the text2sql knowledge tools (Admin/Op-gated).
+// Read-only, cell-redacted App-DB schema + query reader for the text2sql knowledge tools (global-Admin-only).
 builder.Services.AddScoped<NodePilot.Core.Interfaces.ISqlKnowledgeReader, NodePilot.Api.Ai.SqlKnowledgeReader>();
 builder.Services.AddScoped<IMaintenanceWindowStore, MaintenanceWindowStore>();
 builder.Services.AddScoped<INotificationRuleStore, NotificationRuleStore>();

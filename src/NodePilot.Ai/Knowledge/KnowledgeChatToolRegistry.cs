@@ -6,13 +6,14 @@ namespace NodePilot.Ai.Knowledge;
 
 /// <summary>
 /// Per-request context for the knowledge tools. Carries the pre-resolved folder access, the
-/// caller's privilege level, the live per-source toggles, and the (scoped) operational reader —
-/// non-null only when operational data is enabled for this request. The docs/source readers are
-/// singletons injected into the registry itself.
+/// caller's global privilege/Admin facts, the live per-source toggles, and the scoped readers.
+/// Raw database tools use the explicit Admin fact and never infer elevation from folder access.
+/// The docs/source readers are singletons injected into the registry itself.
 /// </summary>
 public sealed record KnowledgeToolContext(
     AccessibleFolderSet Accessible,
     bool IsPrivileged,
+    bool IsAdmin,
     bool DocsEnabled,
     bool OperationalEnabled,
     bool SourceCodeEnabled,
@@ -37,8 +38,9 @@ public interface IKnowledgeToolRegistry
 /// operational read tools require the operational reader; workflow-<b>content</b> tools
 /// (<c>get_workflow_definition</c>, <c>analyze_workflow</c>) additionally require
 /// <see cref="KnowledgeToolContext.IsPrivileged"/>; source-code tools require
-/// <see cref="KnowledgeToolContext.SourceCodeEnabled"/> and privilege. Stateless singleton — the
-/// per-request bits live in the context; the docs/source readers are injected singletons.
+/// <see cref="KnowledgeToolContext.SourceCodeEnabled"/> and privilege; raw database tools require
+/// global Admin independently of folder access. Stateless singleton — the per-request bits live
+/// in the context; the docs/source readers are injected singletons.
 /// </summary>
 public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
 {
@@ -56,7 +58,7 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
     private static bool OpPrivGate(KnowledgeToolContext c) => OpGate(c) && c.IsPrivileged;
     private static bool SourceGate(KnowledgeToolContext c) => c.SourceCodeEnabled && c.IsPrivileged;
     private static bool SettingsGate(KnowledgeToolContext c) => c.IsPrivileged && c.Settings is not null;
-    private static bool SqlGate(KnowledgeToolContext c) => c.DbEnabled && c.IsPrivileged && c.Sql is not null;
+    private static bool SqlGate(KnowledgeToolContext c) => c.DbEnabled && c.IsAdmin && c.Sql is not null;
 
     public KnowledgeChatToolRegistry(IDocsKnowledgeReader docs, ISourceCodeKnowledgeReader source)
     {

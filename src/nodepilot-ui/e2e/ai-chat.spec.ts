@@ -5,7 +5,7 @@ import { installDefaultMocks, MOCK_USER, capsJson, mockCaps } from './fixtures/m
  * E2ETests.md — Global "AI Chat" knowledge assistant (/ai-chat). Read-only Q&A over NodePilot
  * docs, workflows/operations, source code, and database (text2sql). SSE-streamed answers with
  * tool-call indicators, thread persistence, export-to-Markdown, regenerate, role-gated source
- * badges (Source-Code + DB require Admin/Operator via `User.IsPrivileged()`).
+ * badges (Source-Code requires Admin/Operator; DB/text2sql requires global Admin).
  *
  * Hermetic: every API call mocked via `page.route`, incl. POST /api/ai/knowledge/ask (SSE mocked
  * with `text/event-stream` body frames — same pattern as ai-assistant.spec.ts). SPA renders
@@ -268,7 +268,7 @@ test.describe('AI Knowledge Chat (/ai-chat)', () => {
         body: JSON.stringify({ ...MOCK_USER, role: 'Viewer' }),
       }),
     );
-    // Backend gates SourceCode/Db via User.IsPrivileged() (Admin/Operator only) → Viewer sees false.
+    // Backend gates SourceCode via privilege and DB via global Admin → Viewer sees both false.
     await mockCaps(page, capsJson({ sourceCode: false, db: false }));
     await mockAsk(page, [
       deltaFrame('Viewer reply.'),
@@ -293,5 +293,24 @@ test.describe('AI Knowledge Chat (/ai-chat)', () => {
     await page.getByRole('textbox', { name: /Ask about NodePilot/i }).fill('What can I see?');
     await page.getByTitle(/^Send$/i).click();
     await expect(page.getByText(/Viewer reply/i)).toBeVisible();
+  });
+
+  // 9. Operator role: typed/source knowledge stays available; raw database tools do not.
+  test('shows Source-Code but hides Database for Operator capabilities', async ({ page }) => {
+    await page.route('**/api/auth/me', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...MOCK_USER, role: 'Operator' }),
+      }),
+    );
+    await mockCaps(page, capsJson({ sourceCode: true, db: false }));
+    await openChat(page);
+
+    const main = page.locator('#np-main-scroll');
+    await expect(main.getByText(/^Source code$/i)).toBeVisible();
+    await expect(main.getByText(/^Database$/i)).toHaveCount(0);
+    await expect(main.getByRole('button', { name: /webhook trigger/i })).toBeVisible();
+    await expect(main.getByRole('button', { name: /last 10 failed runs/i })).toHaveCount(0);
   });
 });

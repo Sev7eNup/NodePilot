@@ -55,7 +55,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
                 : throw new InvalidOperationException("Unknown blob.");
     }
 
-    private (AdminSettingsController controller, RuntimeOverridesWriter writer, CapturingAuditWriter audit, IConfigurationRoot cfg) NewController(SmtpOptions? initialSmtp = null, LlmOptions? initialLlm = null, RetentionOptions? initialRetention = null, LdapOptions? initialLdap = null, WindowsAuthOptions? initialWindows = null)
+    private (AdminSettingsController controller, RuntimeOverridesWriter writer, CapturingAuditWriter audit, IConfigurationRoot cfg) NewController(SmtpOptions? initialSmtp = null, LlmOptions? initialLlm = null, RetentionOptions? initialRetention = null, LdapOptions? initialLdap = null, WindowsAuthOptions? initialWindows = null, NodePilotTelemetryOptions? initialTelemetry = null)
     {
         var overridesPath = Path.Combine(_tempDir, "appsettings.runtime.json");
         var writer = new RuntimeOverridesWriter(overridesPath, NullLogger<RuntimeOverridesWriter>.Instance);
@@ -64,6 +64,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var ret = initialRetention ?? new RetentionOptions();
         var ldap = initialLdap ?? new LdapOptions();
         var windows = initialWindows ?? new WindowsAuthOptions();
+        var telemetry = initialTelemetry ?? new NodePilotTelemetryOptions();
 
         var configValues = new Dictionary<string, string?>
             {
@@ -100,12 +101,22 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             new StaticOptionsMonitor<RetentionOptions>(ret),
             new StaticOptionsMonitor<LdapOptions>(ldap),
             new StaticOptionsMonitor<WindowsAuthOptions>(windows),
-            new StaticOptionsMonitor<NodePilotTelemetryOptions>(new NodePilotTelemetryOptions()),
+            new StaticOptionsMonitor<NodePilotTelemetryOptions>(telemetry),
             new StaticOptionsMonitor<AiKnowledgeOptions>(new AiKnowledgeOptions()),
             new NoopClusterState());
         controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
         return (controller, writer, audit, cfg);
     }
+
+    private static JsonElement OpenTelemetryPayload(string headers, string serviceName = "np-test")
+        => JsonSerializer.SerializeToElement(new OpenTelemetrySettingsDto
+        {
+            Enabled = true,
+            ServiceName = serviceName,
+            Environment = "prod",
+            RedactHostnames = true,
+            Otlp = new OtlpSettingsDto { Headers = headers },
+        });
 
     [Fact]
     public void GetSnapshot_ReturnsAllSchemaSections()
@@ -1164,7 +1175,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     }
 
     [Fact]
-    public async Task PutSection_OpenTelemetry_HappyPath_EncryptsPrometheusSecrets()
+    public async Task PutSection_OpenTelemetry_HappyPath_EncryptsAndMasksAllSecrets()
     {
         var (controller, writer, audit, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("OpenTelemetry");
@@ -1175,7 +1186,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             ""Environment"": ""prod"",
             ""RedactHostnames"": true,
             ""MetricExportIntervalSeconds"": 60,
-            ""Otlp"": { ""Endpoint"": ""https://otlp.example.com:4317"", ""Protocol"": ""grpc"", ""Headers"": ""x-key=val"", ""BrowserEndpoint"": """" },
+            ""Otlp"": { ""Endpoint"": ""https://otlp.example.com:4317"", ""Protocol"": ""grpc"", ""Headers"": ""X-Collector-Credential=otlp-header-plaintext"", ""BrowserEndpoint"": """" },
             ""Sampling"": { ""Mode"": ""ParentBasedTraceIdRatio"", ""Ratio"": 0.5 },
             ""Exporters"": { ""Traces"": true, ""Metrics"": true, ""Logs"": false, ""PrometheusScrape"": true, ""PrometheusScrapeAllowAnonymous"": false },
             ""TraceUi"": { ""UrlTemplate"": ""https://tempo/trace/{traceId}"", ""BackendName"": ""Tempo"" },
@@ -1188,14 +1199,83 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             }
         }").RootElement;
         var result = await controller.PutSection("OpenTelemetry", body, CancellationToken.None);
-        result.Should().BeOfType<OkObjectResult>();
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        var response = ok.Value.Should().BeOfType<SettingsSectionResponse<object>>().Subject;
+        var responsePayload = response.Payload.Should().BeOfType<OpenTelemetrySettingsDto>().Subject;
+        responsePayload.Otlp.Headers.Should().Be(SettingsSchema.MaskedSecretDisplay);
 
         var file = File.ReadAllText(writer.OverridesPath);
         // Both secrets must encrypt — never persist plaintext.
         file.Should().Contain("enc:v1:");
+        file.Should().NotContain("otlp-header-plaintext");
         file.Should().NotContain("prom-pass-plaintext");
         file.Should().NotContain("bearer-plaintext");
-        audit.Calls.Should().ContainSingle(c => c.Action == "SETTINGS_OPENTELEMETRY_UPDATED");
+        var auditCall = audit.Calls.Should().ContainSingle(c => c.Action == "SETTINGS_OPENTELEMETRY_UPDATED").Subject;
+        auditCall.Details.Should().NotContain("otlp-header-plaintext");
+        auditCall.Details.Should().Contain("\"Headers\":\"***\"");
+    }
+
+    [Fact]
+    public void GetSection_OpenTelemetry_MasksConfiguredOtlpHeaders()
+    {
+        var telemetry = new NodePilotTelemetryOptions
+        {
+            Otlp = new NodePilotTelemetryOptions.OtlpOptions
+            {
+                Headers = "X-Collector-Credential=never-return-this",
+            },
+        };
+        var (controller, _, _, _) = NewController(initialTelemetry: telemetry);
+
+        var ok = controller.GetSection("OpenTelemetry").Should().BeOfType<OkObjectResult>().Subject;
+        var response = ok.Value.Should().BeOfType<SettingsSectionResponse<object>>().Subject;
+        var payload = response.Payload.Should().BeOfType<OpenTelemetrySettingsDto>().Subject;
+
+        payload.Otlp.Headers.Should().Be(SettingsSchema.MaskedSecretDisplay);
+    }
+
+    [Fact]
+    public async Task PutSection_OpenTelemetry_MaskedOtlpHeaders_PreservesCiphertext()
+    {
+        var (controller, writer, _, _) = NewController();
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("OpenTelemetry");
+        await controller.PutSection(
+            "OpenTelemetry",
+            OpenTelemetryPayload("X-Custom-Collector-Token=first-secret"),
+            CancellationToken.None);
+        var firstCiphertext = writer.ReadOrEmpty()["OpenTelemetry"]!["Otlp"]!["Headers"]!.GetValue<string>();
+
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("OpenTelemetry");
+        var result = await controller.PutSection(
+            "OpenTelemetry",
+            OpenTelemetryPayload(SettingsSchema.MaskedSecretDisplay, "np-renamed"),
+            CancellationToken.None);
+        var secondCiphertext = writer.ReadOrEmpty()["OpenTelemetry"]!["Otlp"]!["Headers"]!.GetValue<string>();
+
+        result.Should().BeOfType<OkObjectResult>();
+        secondCiphertext.Should().Be(firstCiphertext);
+    }
+
+    [Fact]
+    public async Task PutSection_OpenTelemetry_MaskedLegacyPlaintextOtlpHeaders_MigratesToCiphertext()
+    {
+        const string legacySecret = "X-Legacy-Collector-Key=legacy-plaintext-value";
+        var (controller, writer, _, _) = NewController();
+        writer.MutateAndWrite(root => root["OpenTelemetry"] = new JsonObject
+        {
+            ["Otlp"] = new JsonObject { ["Headers"] = legacySecret },
+        });
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("OpenTelemetry");
+
+        var result = await controller.PutSection(
+            "OpenTelemetry",
+            OpenTelemetryPayload(SettingsSchema.MaskedSecretDisplay),
+            CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        var file = File.ReadAllText(writer.OverridesPath);
+        file.Should().Contain(EncryptingJsonConfigurationProvider.EncryptedValuePrefix);
+        file.Should().NotContain(legacySecret);
     }
 
     [Fact]

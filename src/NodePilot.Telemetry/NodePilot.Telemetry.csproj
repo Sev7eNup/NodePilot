@@ -8,6 +8,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="NodePilot.Api.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- OpenTelemetry bumped from 1.10.x → 1.15.3 to clear GHSA-8785-wc3w-h8q6
          (moderate-severity vuln in OpenTelemetry.Api 1.10.0), pull a newer
          System.Security.Cryptography.Xml that resolves GHSA-37gx-xxp4-5rgx /

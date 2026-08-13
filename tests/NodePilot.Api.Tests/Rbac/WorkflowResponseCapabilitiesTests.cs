@@ -125,6 +125,22 @@ public sealed class WorkflowResponseCapabilitiesTests : IDisposable
     }
 
     [Fact]
+    public async Task GetById_AsViewer_RedactsUnknownLiteralHttpHeader()
+    {
+        _financeWorkflow.DefinitionJson =
+            """{"nodes":[{"id":"http","data":{"config":{"headers":{"X-Tenant-Token":"opaque-tenant-credential","Accept":"application/json"}}}}],"edges":[]}""";
+        _db.SaveChanges();
+
+        var ctrl = NewCtrl(_viewerId, "Viewer");
+        var ok = (await ctrl.GetById(_financeWorkflow.Id, CancellationToken.None)).Result as OkObjectResult;
+        var dto = ok!.Value as WorkflowResponse;
+
+        dto!.DefinitionJson.Should().NotContain("opaque-tenant-credential");
+        dto.DefinitionJson.Should().Contain("\"X-Tenant-Token\":\"***\"");
+        dto.DefinitionJson.Should().Contain("application/json");
+    }
+
+    [Fact]
     public async Task GetById_AsAdmin_HasAllCapabilities()
     {
         var ctrl = NewCtrl(Guid.NewGuid(), "Admin");

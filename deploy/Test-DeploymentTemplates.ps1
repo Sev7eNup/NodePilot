@@ -1424,6 +1424,10 @@ Assert-TextMatches -Name 'the provisioning sends its statements on stdin' `
     -Text $postgresProvision -Pattern '-Sql "\$Sql;"'
 
 $serverBuild = Remove-CommentLines -Text (Get-Content -LiteralPath $ServerBuildScriptPath -Raw)
+Assert-TextMatches -Name 'server installer rejects a pre-fetched runtime below 10.0.11' `
+    -Text $serverBuild -Pattern "MinimumRuntimeVersion\s*=\s*\[version\]'10\.0\.11'"
+Assert-TextMatches -Name 'server installer validates the staged runtime filename version' `
+    -Text $serverBuild -Pattern '\$stagedRuntimeVersion\s+-lt\s+\$MinimumRuntimeVersion'
 # The client, not the distribution: a stock bin folder is 57 MB, of which 27 MB is ICU and 8 MB is
 # wxWidgets for pgAdmin, none of it reachable from psql. The seven files come off psql's own import
 # table.
@@ -1535,6 +1539,41 @@ Assert-TextMatches -Name 'the auto-fix run extracts it too' `
     -Text $serverIss -Pattern '(?s)if WantsFix then[\s\S]{0,200}EnsurePgClient\(\)'
 Assert-TextMatches -Name 'and so does the unattended path, which never sees a page' `
     -Text $serverIss -Pattern "(?s)WizardSilent\(\) and \(AnswerMode = 'install'\)[\s\S]{0,300}EnsurePgClient\(\)"
+
+# The runtime fix is offered on the readiness page, before PrepareToInstall has extracted the
+# dontcopy payload. Checking only that the runtime is extracted somewhere misses that ordering bug:
+# the adapter can be asked to install a file that does not exist in {tmp} yet. Pin both provisioning
+# call sites to an extraction in their own execution path and before the adapter is launched.
+$interactiveProvisionStart = $serverIss.IndexOf('if WantsFix then')
+$interactiveProvisionEnd = $serverIss.IndexOf("DbStatus := GetIniString('provision.database'", $interactiveProvisionStart)
+if ($interactiveProvisionStart -lt 0 -or $interactiveProvisionEnd -lt 0) {
+    throw 'Deployment template check failed: could not locate the interactive provisioning block.'
+}
+$interactiveProvisionBlock = $serverIss.Substring(
+    $interactiveProvisionStart,
+    $interactiveProvisionEnd - $interactiveProvisionStart)
+$interactiveRuntimeIndex = $interactiveProvisionBlock.IndexOf('EnsureRuntimePayload();')
+$interactiveRunIndex = $interactiveProvisionBlock.IndexOf("RunPowerShell('-Mode Provision")
+if ($interactiveRuntimeIndex -lt 0 -or $interactiveRunIndex -lt 0 -or
+    $interactiveRuntimeIndex -gt $interactiveRunIndex) {
+    throw ('Deployment template check failed: the interactive auto-fix does not extract the ' +
+           'bundled runtime before launching provisioning.')
+}
+
+$silentProvisionStart = $serverIss.IndexOf("if WizardSilent() and (AnswerMode = 'install') then")
+$silentProvisionEnd = $serverIss.IndexOf("Arguments := '-Mode Apply'", $silentProvisionStart)
+if ($silentProvisionStart -lt 0 -or $silentProvisionEnd -lt 0) {
+    throw 'Deployment template check failed: could not locate the silent provisioning block.'
+}
+$silentProvisionBlock = $serverIss.Substring(
+    $silentProvisionStart,
+    $silentProvisionEnd - $silentProvisionStart)
+$silentRuntimeIndex = $silentProvisionBlock.IndexOf('EnsureRuntimePayload();')
+$silentRunIndex = $silentProvisionBlock.IndexOf("RunPowerShell('-Mode Provision")
+if ($silentRuntimeIndex -lt 0 -or $silentRunIndex -lt 0 -or $silentRuntimeIndex -gt $silentRunIndex) {
+    throw ('Deployment template check failed: silent provisioning does not extract the bundled ' +
+           'runtime before launching the adapter.')
+}
 
 # The readiness page is the ONLY thing that ever ran that provisioning, and /ANSWERFILE skips every
 # wizard page. Without a silent equivalent the provisioning keys are dead weight in an unattended
@@ -1821,6 +1860,14 @@ Assert-TextMatches -Name 'the publisher certificate path has one definition' `
     -Text $setupAdapter -Pattern "function Get-NodePilotSignerCertificatePath"
 Assert-TextDoesNotMatch -Name 'nothing looks for the certificate in a folder the build never makes' `
     -Text $setupAdapter -Pattern "signer\\nodepilot-release-signing\.cer"
+Assert-TextMatches -Name 'the bundled runtime is resolved from the flat temporary payload' `
+    -Text $setupAdapter -Pattern 'Get-ChildItem -LiteralPath \$PayloadRoot -Filter ''aspnetcore-runtime-\*\.exe'''
+Assert-TextDoesNotMatch -Name 'nothing looks for the runtime in a folder the installer never extracts' `
+    -Text $setupAdapter -Pattern 'Join-Path \$PayloadRoot ''runtime'''
+Assert-TextMatches -Name 'the exact bundled runtime is extracted into the temporary payload root' `
+    -Text $serverIss -Pattern "ExtractTemporaryFile\('\{#RuntimeFileName\}'\)"
+Assert-TextMatches -Name 'runtime payload extraction is idempotent and only marked after success' `
+    -Text $serverIss -Pattern '(?s)procedure EnsureRuntimePayload\(\);[\s\S]{0,200}if RuntimePayloadExtracted then Exit;[\s\S]{0,200}ExtractTemporaryFile\(''\{#RuntimeFileName\}''\);[\s\S]{0,100}RuntimePayloadExtracted := True;'
 # The readiness row only exists on the setup path: the scripted installer has no payload to read a
 # certificate from, and its operator was told to import it in step 1 of the deployment guide.
 # Write-Host reaches the host - and so the transcript - whether or not the information stream is
@@ -1936,6 +1983,21 @@ Assert-TextMatches -Name 'the download must be signed by Microsoft' `
     -Text $runtimeScript -Pattern "SignerCertificate\.Subject -notmatch 'Microsoft Corporation'"
 Assert-TextDoesNotMatch -Name 'certificate validation is never relaxed for the download' `
     -Text $runtimeScript -Pattern 'SkipCertificateCheck|ServerCertificateValidationCallback|TrustAllCerts'
+Assert-TextMatches -Name 'runtime payload selection enforces the patched 10.0.11 floor' `
+    -Text $runtimeScript -Pattern "MinimumSupportedRuntime\s*=\s*\[version\]'10\.0\.11'"
+Assert-TextMatches -Name 'explicit runtime versions below the floor are rejected' `
+    -Text $runtimeScript -Pattern '\$selectedVersion\s+-lt\s+\$MinimumSupportedRuntime'
+
+$runtimeLock = Get-Content -LiteralPath (Join-Path $scriptDirectory 'server\runtime-payload.lock.json') -Raw |
+    ConvertFrom-Json
+foreach ($property in $runtimeLock.PSObject.Properties) {
+    if ($property.Name -notmatch '^aspnetcore-runtime-(?<version>\d+\.\d+\.\d+)-win-x64\.exe$') {
+        throw "Deployment template check failed: unrecognised runtime lock key '$($property.Name)'"
+    }
+    if ([version]$Matches.version -lt [version]'10.0.11') {
+        throw "Deployment template check failed: runtime lock includes vulnerable payload $($Matches.version)"
+    }
+}
 
 $ssoDocumentation = Get-Content -LiteralPath $SsoDocumentationPath -Raw
 Assert-TextMatches -Name 'SPN examples use duplicate-safe registration' `

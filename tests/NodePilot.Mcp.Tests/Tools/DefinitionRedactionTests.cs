@@ -25,7 +25,8 @@ public sealed class DefinitionRedactionTests
             { "id": "n1", "type": "activity", "data": { "activityType": "webhookTrigger",
               "config": { "secret": "super-secret-value", "method": "POST" } } },
             { "id": "n2", "type": "activity", "data": { "activityType": "restApi",
-              "config": { "apiKey": "sk-live-123", "url": "https://example.com", "password": "hunter2" } } },
+              "config": { "apiKey": "sk-live-123", "url": "https://example.com", "password": "hunter2",
+                "headers": { "X-Tenant-Token": "opaque-tenant-credential", "Accept": "application/json" } } } },
             { "id": "n3", "type": "activity", "data": { "activityType": "runScript",
               "config": { "script": "Get-PSDrive C" } } }
           ],
@@ -53,9 +54,11 @@ public sealed class DefinitionRedactionTests
         json.Should().NotContain("super-secret-value");
         json.Should().NotContain("sk-live-123");
         json.Should().NotContain("hunter2");
+        json.Should().NotContain("opaque-tenant-credential");
         json.Should().Contain("***");
         // Non-secret content preserved.
         json.Should().Contain("Get-PSDrive C");
         json.Should().Contain("https://example.com");
+        json.Should().Contain("application/json");
     }
 }

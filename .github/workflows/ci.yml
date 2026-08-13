@@ -23,7 +23,13 @@ jobs:
       - name: Setup .NET 10
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
-          dotnet-version: '10.0.x'
+          global-json-file: global.json
+
+      - name: Enforce patched .NET SDK policy
+        shell: pwsh
+        run: |
+          . ./scripts/Assert-DotnetSdkPolicy.ps1
+          Assert-NodePilotDotnetSdkPolicy -RepoRoot $PWD
 
       - name: Restore
         run: dotnet restore
@@ -227,9 +233,8 @@ jobs:
         run: npm ci
 
       - name: Reject vulnerable npm dependencies
-        # Clean only because package.json pins three overrides into Forge's own tree — see the
-        # "//overrides" note there. If this goes red after a Forge bump, re-check whether an
-        # override became redundant (drop it) or a new advisory appeared (add one).
+        # Fail closed. The packaging tree deliberately excludes Electron Forge and the legacy
+        # extract-zip package; package-contract tests keep that boundary explicit.
         run: npm audit --audit-level=moderate
 
       - name: Type check

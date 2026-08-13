@@ -360,18 +360,21 @@ function ConvertTo-NodePilotPreflightParameters {
 }
 
 function Invoke-ProvisionRuntime {
-    $runtimeDirectory = Join-Path $PayloadRoot 'runtime'
-    $installer = $null
-    if (Test-Path -LiteralPath $runtimeDirectory -PathType Container) {
-        $installer = Get-ChildItem -LiteralPath $runtimeDirectory -Filter 'aspnetcore-runtime-*.exe' `
-            -ErrorAction SilentlyContinue | Select-Object -First 1
-    }
-    if (-not $installer) {
+    # NodePilotServer.iss extracts every dontcopy payload file flat into {tmp}, and passes that
+    # directory as PayloadRoot. Resolve the runtime from that exact contract; a historical
+    # `runtime\` lookup made the offered auto-fix impossible. Refuse ambiguity instead of choosing
+    # an arbitrary installer if a malformed/tampered payload ever contains more than one.
+    $installers = @(
+        Get-ChildItem -LiteralPath $PayloadRoot -Filter 'aspnetcore-runtime-*.exe' -File `
+            -ErrorAction SilentlyContinue
+    )
+    if ($installers.Count -ne 1) {
         Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'status' -Value 'Fail'
         Set-NodePilotResult -Buffer $result -Section 'provision.runtime' -Name 'detail' `
-            -Value 'No bundled runtime installer found in the payload.'
+            -Value "Expected exactly one bundled runtime installer in the payload; found $($installers.Count)."
         return
     }
+    $installer = $installers[0]
     $process = Start-Process -FilePath $installer.FullName `
         -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
     # 3010 = installed, reboot pending. 1638 = a newer version is already present.

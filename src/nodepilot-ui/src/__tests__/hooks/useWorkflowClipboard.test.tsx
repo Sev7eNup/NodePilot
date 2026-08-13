@@ -7,7 +7,7 @@ import type { Node, Edge } from '@xyflow/react';
  * provider alone (without an actual <ReactFlow> mount) does not wire up getNodes/setNodes,
  * so we mock @xyflow/react and back the four functions with a small in-test store.
  * That keeps the tests focused on the hook's clipboard semantics — selection rules,
- * sessionStorage shape, paste-offset cadence, group/parent re-mapping — without
+ * in-memory lifetime, paste-offset cadence, group/parent re-mapping — without
  * depending on a real canvas mount.
  */
 
@@ -55,8 +55,8 @@ function setup(initialNodes: Node[], initialEdges: Edge[]) {
   });
 
   const commitHistory = vi.fn();
-  const { result } = renderHook(() => useWorkflowClipboard(commitHistory));
-  return { result, commitHistory };
+  const hook = renderHook(() => useWorkflowClipboard(commitHistory));
+  return { ...hook, commitHistory };
 }
 
 describe('useWorkflowClipboard', () => {
@@ -66,7 +66,7 @@ describe('useWorkflowClipboard', () => {
     store.edges = [];
   });
 
-  it('copySelection_writesSelectedNodesToSessionStorage', () => {
+  it('copySelection_keepsSelectedNodesOutOfBrowserStorage', () => {
     const a = makeNode('a');
     const b = makeNode('b');
     const c = makeNode('c');
@@ -77,13 +77,12 @@ describe('useWorkflowClipboard', () => {
     act(() => result.current.updateSelection({ nodeIds: ['a', 'b'], edgeIds: [] }));
     act(() => result.current.copySelection());
 
-    const raw = sessionStorage.getItem('np_clipboard');
-    expect(raw).not.toBeNull();
-    const buf = JSON.parse(raw!);
-    expect(buf.nodes.map((n: Node) => n.id)).toEqual(['a', 'b']);
-    // Edge eAB has both endpoints in the selection → kept. eBC has only one → dropped.
-    expect(buf.edges).toHaveLength(1);
-    expect(buf.edges[0].id).toBe('eAB');
+    expect(sessionStorage.getItem('np_clipboard')).toBeNull();
+
+    act(() => result.current.pasteBuffer());
+    const pastedNodes = store.nodes.filter((n) => n.selected);
+    expect(pastedNodes).toHaveLength(2);
+    expect(store.edges.filter((e) => e.selected)).toHaveLength(1);
   });
 
   it('copySelection_dropsEdgesWithEndpointsOutsideSelection', () => {
@@ -98,8 +97,9 @@ describe('useWorkflowClipboard', () => {
     act(() => result.current.updateSelection({ nodeIds: ['b'], edgeIds: ['eBC'] }));
     act(() => result.current.copySelection());
 
-    const buf = JSON.parse(sessionStorage.getItem('np_clipboard')!);
-    expect(buf.edges).toHaveLength(0);
+    act(() => result.current.pasteBuffer());
+    expect(store.edges).toHaveLength(1);
+    expect(store.edges.filter((edge) => edge.selected)).toHaveLength(0);
   });
 
   it('copySelection_emptySelection_doesNotWrite', () => {
@@ -179,6 +179,21 @@ describe('useWorkflowClipboard', () => {
 
     expect(commitHistory).not.toHaveBeenCalled();
     expect(store.nodes).toHaveLength(1);
+  });
+
+  it('clipboard_doesNotSurviveEditorUnmount', () => {
+    const first = setup([makeNode('secret-node', 'activity', {
+      data: { activityType: 'restApi', config: { apiKey: 'inline-secret' } },
+    })], []);
+    act(() => first.result.current.updateSelection({ nodeIds: ['secret-node'], edgeIds: [] }));
+    act(() => first.result.current.copySelection());
+    first.unmount();
+
+    const second = setup([makeNode('viewer-node')], []);
+    act(() => second.result.current.pasteBuffer());
+
+    expect(store.nodes).toHaveLength(1);
+    expect(sessionStorage.getItem('np_clipboard')).toBeNull();
   });
 
   it('pasteBuffer_groupNode_idMapPropagatesToChildParentId', () => {
