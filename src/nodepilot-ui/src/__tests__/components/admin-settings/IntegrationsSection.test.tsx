@@ -57,6 +57,11 @@ function renderSection() {
   };
 }
 
+/** Header of the collapsible outbound-proxy block. Its accessible name carries the summary too. */
+function proxyHeader() {
+  return screen.getByRole('button', { name: /outbound.?proxy/i });
+}
+
 /** The LLM card's Save is the last one on the page (SMTP renders first). */
 function clickLlmSave() {
   const buttons = screen.getAllByRole('button', { name: /speichern|save/i });
@@ -208,6 +213,40 @@ describe('IntegrationsSection — LLM card', () => {
     });
   });
 
+  it('collapses the proxy block while no proxy is configured, and summarises the mode', async () => {
+    renderSection();
+    await waitFor(() => expect(screen.getByDisplayValue('http://127.0.0.1:1234/v1')).toBeInTheDocument());
+
+    // Direct connection is what almost every installation runs: the block stays folded and says
+    // so in its header instead of parking an inert select on the card.
+    const header = proxyHeader();
+    expect(header).toHaveAttribute('aria-expanded', 'false');
+    expect(header).toHaveTextContent(/kein proxy|no proxy/i);
+    expect(screen.queryByLabelText(/Modus|^Mode$/i)).not.toBeInTheDocument();
+
+    fireEvent.click(header);
+    expect(proxyHeader()).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByLabelText(/Modus|^Mode$/i)).toBeInTheDocument();
+  });
+
+  it('opens the proxy block on load when one is configured and shows its address', async () => {
+    server.use(http.get('/api/admin/settings/Llm', () => HttpResponse.json({
+      ...llmSnapshot,
+      payload: {
+        ...llmSnapshot.payload,
+        proxy: llmProxy({ mode: 'custom', address: 'http://proxy.corp.local:8080' }),
+      },
+    })));
+
+    renderSection();
+
+    // The snapshot arrives after the first render, so the open state has to follow the data —
+    // a plain useState(initial) would leave a configured proxy folded away.
+    await waitFor(() => expect(proxyHeader()).toHaveAttribute('aria-expanded', 'true'));
+    expect(proxyHeader()).toHaveTextContent('http://proxy.corp.local:8080');
+    expect(screen.getByDisplayValue('http://proxy.corp.local:8080')).toBeInTheDocument();
+  });
+
   it('reveals the proxy fields only in custom mode and serialises them', async () => {
     let putBody: unknown = null;
     server.use(http.put('/api/admin/settings/Llm', async ({ request }) => {
@@ -222,6 +261,7 @@ describe('IntegrationsSection — LLM card', () => {
     // debugged for an hour.
     expect(screen.queryByPlaceholderText('http://proxy.firma.local:8080')).not.toBeInTheDocument();
 
+    fireEvent.click(proxyHeader());
     const mode = screen.getByLabelText(/Modus|^Mode$/i) as HTMLSelectElement;
     fireEvent.change(mode, { target: { value: 'system' } });
     // System mode takes the OS configuration — still no address field.
