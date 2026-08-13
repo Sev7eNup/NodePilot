@@ -278,6 +278,53 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 - Remote-Layer (WinRM) IMMER gemockt.
 - DB-Tests: SQLite in-memory.
 
+### Testumfang pro Änderung
+
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (~4.600 Backend-Testfälle, 197 Vitest-Dateien, 72 E2E-Specs) und liefert lokal kein neues Signal: das Netz hängt bereits zweifach — `ci.yml` auf **jedem PR** (5 Jobs inkl. Coverage-Gate + E2E) und der Nightly-Task gegen main.
+
+Default bei Feature-Arbeit:
+
+```powershell
+# Backend — ein Projekt, eine Klasse/ein Namespace
+dotnet test tests/NodePilot.Engine.Tests --filter "FullyQualifiedName~WorkflowCallGraphBuilder"
+
+# Frontend — einzelne Datei oder Verzeichnis
+cd src\nodepilot-ui; npx vitest run src/__tests__/lib/opsTimeline.test.ts
+
+# E2E — eine Spec, gegen laufenden Dev-Server (kein Build)
+cd src\nodepilot-ui; npx playwright test e2e/operations.spec.ts --config=playwright.dev.config.ts
+```
+
+**Eskalation nur bei Anlass, nie prophylaktisch:**
+
+1. **Scoped** (Default) — Filter auf die geänderte Klasse/Komponente.
+2. **Projekt-Suite** (`dotnet test tests/NodePilot.Api.Tests`) — wenn die Änderung *innerhalb* des Projekts quer liegt: geteilte Basisklasse, DI-Verdrahtung, `Program.cs`.
+3. **Voll-Suite** — nur bei (a) expliziter Bitte des Users, (b) Release-Cut/Direct-Push auf main, (c) inhärent globaler Änderung (`Directory.Packages.props`, Dependency-Bump, projektweites Refactoring).
+
+**Coverage lokal nie messen** — `--collect:"XPlat Code Coverage"` bzw. `npm run test:coverage` sind CI-Jobs, kein lokaler Schritt.
+
+**Reporting:** nicht „alle Tests grün", sondern **welche** gelaufen sind (Projekt + Filter + Anzahl). Was nicht lief, wird als „von CI abgedeckt" benannt, nicht verschwiegen.
+
+### Guard-Tests: auf Trigger, nicht auf Verdacht
+
+Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, die Konsistenz zwischen weit auseinanderliegenden Dateien erzwingen. Sie liegen über sechs Testprojekte verteilt, sind also nicht „mal eben zusammen" ausführbar. Deshalb: **eine Auslöser-Fläche angefasst → genau diesen Test fahren**, statt sicherheitshalber alles.
+
+| Angefasst | Guard-Test | Projekt |
+|---|---|---|
+| Activity + `activity-config-reference.json` + Frontend-Katalog-Spiegel | `ActivityCatalogTests`, `ActivityConfigReferenceTests`, `ActivityCatalogFrontendSyncTests` | Engine.Tests |
+| Neue EF-Migration / Designer-Postprocessing | `MigrationDriftTests` | Data.Tests |
+| `*.csproj`-Referenzen / Dep-Graph | `DependencyDirectionTests` | Api.Tests |
+| Neuer Audit-Code | `AuditActionsCatalogTests` | Api.Tests |
+| API-DTO (+ CLI-Spiegel) | `ApiDtoParityTests` | Cli.Tests |
+| Trigger-Config-Key | `TriggerContractParityTests` | Engine.Tests |
+| `SettingsSchema.cs` / Admin-Settings-UI | `AdminSettingsFrontendSyncTests` | Api.Tests |
+| AI-Prompt-Katalog | `PromptCatalogDriftTest` | Ai.Tests |
+| Alerting-Katalog / System-Policies | `AlertingCatalogFrontendSyncTests`, `SystemAlertCatalogTests` | Engine.Tests |
+| Workflow-Analyzer | `WorkflowAnalyzerFrontendParityTests` | Mcp.Tests |
+| Template-Grammatik / Variable-Resolution | `TemplateGrammarParityTests` | Engine.Tests |
+| Metrics-Dashboard-Katalog | `MetricsDashboardCatalogTests` | Api.Tests |
+| Font-Tokens / Monaco-Stack | `fontTokens.test.ts` | nodepilot-ui |
+
 **E2E (Playwright):** hermetische Specs in `src/nodepilot-ui/e2e/`, alle APIs gemockt (kein Backend/Postgres nötig). Konventionen: `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`.
 
 **Desktop-Shell:** `src/nodepilot-desktop` hat eine eigene vitest-Suite (node-Env) für die reine Logik — `config.ts` (desktop.json-Handoff-Validierung), `security.ts` (Cert-Pinning, Navigations-Containment) + `skins.ts` (Skin-Icon-Auflösung aus der Favicon-Meldung der SPA). `npm run test:run`; eigener CI-Job `desktop`.

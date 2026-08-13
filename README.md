@@ -1264,12 +1264,27 @@ samples/                  Example workflows for the importer
 
 ## Testing
 
-```powershell
-# All backend tests
-dotnet test
+**While working on a change, run the affected tests only** — the full suite belongs to CI (every
+pull request) and to the nightly job. The backend suites alone hold ~4,600 test cases; a full local
+run repeats what CI already covers.
 
+```powershell
+# Scoped — one class or namespace (the default while iterating)
+dotnet test tests/NodePilot.Engine.Tests --filter "FullyQualifiedName~WorkflowCallGraphBuilder"
+
+# Frontend — a single file or directory
+cd src/nodepilot-ui; npx vitest run src/__tests__/lib/opsTimeline.test.ts
+
+# E2E — a single spec against a running dev server (no build)
+cd src/nodepilot-ui; npx playwright test e2e/operations.spec.ts --config=playwright.dev.config.ts
+```
+
+```powershell
 # Single project
 dotnet test tests/NodePilot.Engine.Tests
+
+# All backend tests (release cuts, dependency bumps, project-wide refactors)
+dotnet test
 
 # Frontend tests (single run)
 cd src/nodepilot-ui; npm run test:run
@@ -1289,8 +1304,12 @@ dotnet test tests/NodePilot.Cli.Tests
 
 **Conventions**
 
-- Tests are **mandatory**, not optional. Every behavior change ships with tests.
-- Coverage gates are enforced in CI: backend ≥ 45 % line coverage, frontend thresholds in `vitest.config.ts`.
+- Tests are **mandatory**, not optional. Every behavior change ships with tests. That applies to
+  *writing* them — which of them you *run* locally is scoped to the change (see above).
+- Cross-file consistency is held by guard/parity tests (catalog, DTO, migration, audit, trigger,
+  settings drift). Run the matching one whenever you touch its subject rather than falling back to
+  the full suite; the mapping lives in [`CLAUDE.md`](CLAUDE.md) under *Build & Test*.
+- Coverage gates are enforced in CI: backend ≥ 85 % line / ≥ 70 % branch, frontend thresholds in `vitest.config.ts`. Measuring coverage is a CI step, not a local one.
 - Naming: `MethodName_Scenario_ExpectedResult`.
 - The WinRM remote layer is **always mocked** — never real WinRM connections in tests.
 - Backend DB tests use **SQLite in-memory** (`DataSource=:memory:`) — only as a test backend; the production app does not support SQLite.
