@@ -4,7 +4,9 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using FluentAssertions;
 using NodePilot.Telemetry;
+using OpenTelemetry;
 using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Xunit;
 
@@ -19,6 +21,12 @@ namespace NodePilot.Api.Tests.Telemetry;
 /// </summary>
 public class OpenTelemetryExtensionsTests
 {
+    [Fact]
+    public void Options_DefaultToHostnameRedaction()
+    {
+        new NodePilotTelemetryOptions().RedactHostnames.Should().BeTrue();
+    }
+
     private static IConfiguration Config(Dictionary<string, string?> values) =>
         new ConfigurationBuilder().AddInMemoryCollection(values).Build();
 
@@ -31,6 +39,92 @@ public class OpenTelemetryExtensionsTests
         public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
         public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } =
             new Microsoft.Extensions.FileProviders.NullFileProvider();
+    }
+
+    [Fact]
+    public void CreateResourceBuilder_RedactionEnabled_RemovesHostnameAndUsesProcessStableRandomInstanceId()
+    {
+        const string sensitiveHostname = "NODEPILOT-SENSITIVE-HOST";
+        var options = new NodePilotTelemetryOptions
+        {
+            RedactHostnames = true,
+            ServiceName = "nodepilot-test",
+            Environment = "staging",
+        };
+        var firstResource = OpenTelemetryExtensions.CreateResourceBuilder(
+            options,
+            Env(),
+            sensitiveHostname,
+            processId: 1234,
+            baseResourceBuilder: ResourceBuilder.CreateEmpty().AddAttributes(new Dictionary<string, object>
+            {
+                ["host.name"] = "ENVIRONMENT-INJECTED-HOST",
+            })).Build();
+        var secondResource = OpenTelemetryExtensions.CreateResourceBuilder(
+            options,
+            Env(),
+            "A-DIFFERENT-SENSITIVE-HOST",
+            processId: 5678).Build();
+
+        var firstAttributes = firstResource.Attributes.ToDictionary(pair => pair.Key, pair => pair.Value);
+        var secondAttributes = secondResource.Attributes.ToDictionary(pair => pair.Key, pair => pair.Value);
+
+        firstAttributes.Should().NotContainKey("host.name");
+        secondAttributes.Should().NotContainKey("host.name");
+        var serviceInstanceId = firstAttributes["service.instance.id"].Should().BeOfType<string>().Subject;
+        var secondServiceInstanceId = secondAttributes["service.instance.id"].Should().BeOfType<string>().Subject;
+        serviceInstanceId.ToLowerInvariant().Should().NotContain(sensitiveHostname.ToLowerInvariant());
+        serviceInstanceId.ToLowerInvariant().Should().NotContain("a-different-sensitive-host");
+        serviceInstanceId.Should().MatchRegex("^nodepilot-[0-9a-f]{32}$");
+        serviceInstanceId.Should().Be(secondServiceInstanceId);
+    }
+
+    [Fact]
+    public void CreateResourceBuilder_RedactionDisabled_PreservesHostnameAndProcessInstanceId()
+    {
+        const string hostname = "NODEPILOT-LEGACY-HOST";
+        var options = new NodePilotTelemetryOptions
+        {
+            RedactHostnames = false,
+            ServiceName = "nodepilot-test",
+        };
+
+        var resource = OpenTelemetryExtensions.CreateResourceBuilder(
+            options,
+            Env(),
+            hostname,
+            processId: 4321).Build();
+        var attributes = resource.Attributes.ToDictionary(pair => pair.Key, pair => pair.Value);
+
+        attributes["host.name"].Should().Be(hostname);
+        attributes["service.instance.id"].Should().Be($"{hostname}:4321");
+    }
+
+    [Fact]
+    public void AddNodePilotTelemetry_RedactionEnabled_ProviderResourceOmitsMachineName()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(Env());
+        services.AddNodePilotTelemetry(
+            Config(new()
+            {
+                ["OpenTelemetry:Enabled"] = "true",
+                ["OpenTelemetry:RedactHostnames"] = "true",
+                ["OpenTelemetry:Exporters:Traces"] = "true",
+                ["OpenTelemetry:Exporters:Metrics"] = "false",
+                ["OpenTelemetry:Exporters:Logs"] = "false",
+            }),
+            Env());
+
+        using var serviceProvider = services.BuildServiceProvider();
+        var resourceAttributes = serviceProvider.GetRequiredService<TracerProvider>()
+            .GetResource()
+            .Attributes
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+
+        resourceAttributes.Should().NotContainKey("host.name");
+        resourceAttributes["service.instance.id"].Should().BeOfType<string>()
+            .Which.ToLowerInvariant().Should().NotContain(System.Environment.MachineName.ToLowerInvariant());
     }
 
     [Fact]

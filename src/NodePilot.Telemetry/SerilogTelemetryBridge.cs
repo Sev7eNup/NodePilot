@@ -2,7 +2,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Sinks.OpenTelemetry;
-using NodePilot.Core.Telemetry;
 
 namespace NodePilot.Telemetry;
 
@@ -36,20 +35,17 @@ public static class SerilogTelemetryBridge
                 ? OtlpProtocol.HttpProtobuf
                 : OtlpProtocol.Grpc;
 
-        var serviceName = string.IsNullOrWhiteSpace(options.ServiceName) ? TelemetryConstants.ServiceName : options.ServiceName;
-        var deploymentEnv = options.Environment ?? environment.EnvironmentName;
+        var resourceAttributes = CreateResourceAttributes(
+            options,
+            environment,
+            System.Environment.MachineName,
+            System.Environment.ProcessId);
 
         return cfg.WriteTo.OpenTelemetry(o =>
         {
             o.Endpoint = endpoint;
             o.Protocol = protocol;
-            o.ResourceAttributes = new Dictionary<string, object>
-            {
-                ["service.name"] = serviceName,
-                ["deployment.environment"] = deploymentEnv,
-                ["host.name"] = System.Environment.MachineName,
-                ["nodepilot.node.role"] = "api",
-            };
+            o.ResourceAttributes = resourceAttributes;
 
             if (!string.IsNullOrWhiteSpace(options.Otlp.Headers))
             {
@@ -63,5 +59,37 @@ public static class SerilogTelemetryBridge
                 }
             }
         });
+    }
+
+    internal static Dictionary<string, object> CreateResourceAttributes(
+        NodePilotTelemetryOptions options,
+        IHostEnvironment environment,
+        string hostname,
+        int processId)
+    {
+        var identity = TelemetryResourceIdentityFactory.Create(
+            options,
+            environment,
+            hostname,
+            processId);
+        var attributes = new Dictionary<string, object>
+        {
+            ["service.name"] = identity.ServiceName,
+            ["deployment.environment"] = identity.DeploymentEnvironment,
+        };
+
+        if (!identity.RedactHostnames)
+        {
+            attributes["host.name"] = identity.Hostname;
+        }
+
+        attributes["nodepilot.node.role"] = "api";
+
+        if (identity.RedactHostnames)
+        {
+            attributes["service.instance.id"] = identity.ServiceInstanceId;
+        }
+
+        return attributes;
     }
 }

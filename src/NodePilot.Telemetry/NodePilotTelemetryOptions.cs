@@ -5,7 +5,7 @@ public sealed class NodePilotTelemetryOptions
     public bool Enabled { get; set; } = false;
     public string? ServiceName { get; set; }
     public string? Environment { get; set; }
-    public bool RedactHostnames { get; set; } = false;
+    public bool RedactHostnames { get; set; } = true;
     public int MetricExportIntervalSeconds { get; set; } = 30;
     public OtlpOptions Otlp { get; set; } = new();
     public SamplingOptions Sampling { get; set; } = new();

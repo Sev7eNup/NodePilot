@@ -119,7 +119,7 @@ and a PostgreSQL 16 binaries folder (the `pgsql` directory from the EDB zip dist
 The build generates the icons via `scripts/generate-desktop-icons.ps1` (see **Icons** below),
 publishes the API self-contained (`-r win-x64
 --self-contained true`, no single-file — the PowerShell SDK is folder-deployed), builds the SPA into
-`app\wwwroot`, packages the Electron shell with Electron Forge, stages the Postgres server runtime +
+`app\wwwroot`, packages the Electron shell with Electron Packager, stages the Postgres server runtime +
 scripts, and compiles the installer.
 
 Two build steps are load-bearing and easy to break by accident:
@@ -233,22 +233,10 @@ Honest inventory so nobody assumes more coverage than exists:
   vitest for `src/nodepilot-desktop`, and the nightly script adds a `desktop-vitest` suite; there is
   still no lint config, and `Test-DeploymentTemplates.ps1` validates the server templates only —
   `appsettings.Desktop.json.template` is never parsed by any check.
-- **Forge's dependency tree is held clean by pinned overrides, not by Forge.** Three packages in
-  Electron Forge's own tree (`tar`, `brace-expansion`, `tmp`) only have patched releases in a newer
-  major line than Forge asks for, so npm cannot resolve them by itself and `npm audit fix` proposes
-  downgrading Forge. `package.json` pins them via `overrides` — see the `"//overrides"` note there
-  for what each one is. Nothing ships from this: Forge is build-time only and `dependencies` is
-  empty. Re-check the list whenever Forge is bumped; an override that Forge has caught up with is
-  dead weight.
-- **One advisory cannot be overridden at all, and is excused by id.** `extract-zip`
-  (GHSA-jmr9-qjv8-65gv, high, reached through `@electron/packager`) has no patched release
-  anywhere — there is no version to point an override at, and `npm audit fix` cannot help.
-  The `desktop` job therefore runs `npm run audit:ci` (`scripts/audit-gate.mjs`) instead of a
-  bare `npm audit`: the audit stays full, and that single advisory is excused by id with its
-  reason recorded next to it. Anything else at moderate or above still fails the build, and the
-  gate prints a `stale` line once the excuse stops matching, which is the signal to delete it.
-  `--omit=dev` is deliberately not used: `dependencies` is empty and electron is a
-  devDependency, so it would audit nothing at all.
+- **The vulnerable legacy ZIP extractor is not installed.** Electron Packager 20.3.0 uses Electron's
+  hardened native extractor, both are pinned exactly, malicious symlink archives are tested, and a
+  final filesystem-boundary gate rejects links/reparse paths before Inno Setup can recursively copy
+  the output. The packaged shell still has zero runtime npm dependencies.
 - **The installer is unsigned unless you ask for a signature.** `Build-DesktopInstaller.ps1` alone
   never signs. Building through `deploy\Build-Artifact.ps1 -IncludeDesktopInstaller
   -InstallerSigningCertificateThumbprint <tp>` signs it as part of the run — which is where signing

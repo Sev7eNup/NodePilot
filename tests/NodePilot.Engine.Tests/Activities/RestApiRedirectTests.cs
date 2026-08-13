@@ -191,6 +191,56 @@ public class RestApiRedirectTests
     }
 
     [Fact]
+    public async Task CrossOriginRedirect_StripsUnknownCustomHeader_ButKeepsPublicHeader()
+    {
+        var (activity, handler) = CreateActivity(new[]
+        {
+            Redirect("https://192.0.2.20/secure"),
+            Ok("ok")
+        });
+
+        var config = ParseConfig("""
+            {
+              "url": "https://192.0.2.10/start",
+              "method": "GET",
+              "headers": {
+                "X-Tenant-Token": "opaque-tenant-credential",
+                "Accept": "application/json"
+              }
+            }
+            """);
+
+        await activity.ExecuteAsync(CreateContext(), config, CancellationToken.None);
+
+        handler.Requests[0].Headers.Contains("X-Tenant-Token").Should().BeTrue();
+        handler.Requests[1].Headers.Contains("X-Tenant-Token").Should().BeFalse();
+        handler.Requests[1].Headers.Accept.Should().ContainSingle(v => v.MediaType == "application/json");
+    }
+
+    [Fact]
+    public async Task CrossOriginRedirect_StripsUnknownCustomHeader_FromTextForm()
+    {
+        var (activity, handler) = CreateActivity(new[]
+        {
+            Redirect("https://192.0.2.20/secure"),
+            Ok("ok")
+        });
+        var config = ParseConfig("""
+            {
+              "url": "https://192.0.2.10/start",
+              "method": "GET",
+              "headers": "X_Tenant.Token: opaque-tenant-credential\nAccept: application/json"
+            }
+            """);
+
+        await activity.ExecuteAsync(CreateContext(), config, CancellationToken.None);
+
+        handler.Requests[0].Headers.Contains("X_Tenant.Token").Should().BeTrue();
+        handler.Requests[1].Headers.Contains("X_Tenant.Token").Should().BeFalse();
+        handler.Requests[1].Headers.Accept.Should().ContainSingle(v => v.MediaType == "application/json");
+    }
+
+    [Fact]
     public async Task SameOriginRedirect_KeepsAuthorizationHeader()
     {
         // Same host, different path — credentials should be forwarded
@@ -261,6 +311,58 @@ public class RestApiRedirectTests
 
         // 301 with POST → GET on redirect, no body
         handler.Requests[1].Method.Should().Be(HttpMethod.Get);
+        handler.Requests[1].Content.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Redirect_300WithLocation_IsNotFollowed()
+    {
+        var (activity, handler) = CreateActivity(new[]
+        {
+            Redirect("https://192.0.2.20/unexpected", HttpStatusCode.MultipleChoices),
+            Ok("must not be sent")
+        });
+
+        var result = await activity.ExecuteAsync(
+            CreateContext(),
+            ParseConfig("""
+                {
+                  "url": "https://192.0.2.10/start",
+                  "method": "POST",
+                  "body": { "credential": "body-secret" }
+                }
+                """),
+            CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        handler.Requests.Should().ContainSingle(
+            "only the explicitly supported 301/302/303/307/308 redirect statuses may be followed");
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.TemporaryRedirect)]
+    [InlineData(HttpStatusCode.PermanentRedirect)]
+    public async Task CrossOriginRedirect_307Or308_DropsSensitiveBody(HttpStatusCode statusCode)
+    {
+        var (activity, handler) = CreateActivity(new[]
+        {
+            Redirect("https://192.0.2.20/other-origin", statusCode),
+            Ok("ok")
+        });
+
+        await activity.ExecuteAsync(
+            CreateContext(),
+            ParseConfig("""
+                {
+                  "url": "https://192.0.2.10/start",
+                  "method": "POST",
+                  "body": { "credential": "body-secret" }
+                }
+                """),
+            CancellationToken.None);
+
+        handler.Requests.Should().HaveCount(2);
+        handler.Requests[1].Method.Should().Be(HttpMethod.Post);
         handler.Requests[1].Content.Should().BeNull();
     }
 }

@@ -31,7 +31,7 @@ type AiKnowledgeDto = {
  * four per-source toggles (docs / operational data / source code / database) and the two live-read
  * root paths. Hot-reloadable (the chat reads IOptionsMonitor per turn), so a save takes effect
  * without a restart. Source-code and database exposure each carry an inline confidentiality warning
- * (database = read-only SQL / text2sql, Admin/Operator-gated, secret cells redacted).
+ * (database = read-only SQL / text2sql, global-Admin-gated, secret cells redacted).
  */
 export function AiKnowledgeSection() {
   const { t } = useTranslation(['adminSettings', 'common']);

@@ -8,7 +8,8 @@ namespace NodePilot.Ai.Tests.Knowledge;
 
 public class KnowledgeChatToolRegistryTests
 {
-    // Minimal in-test readers — the registry's gating is over flags/privilege, not file IO.
+    // Minimal in-test readers — the registry's gating is over source flags and explicit role facts,
+    // not file IO.
     private sealed class FakeDocs : IDocsKnowledgeReader
     {
         public bool Available { get; set; } = true;
@@ -62,10 +63,10 @@ public class KnowledgeChatToolRegistryTests
     }
 
     private static KnowledgeToolContext Ctx(
-        bool docs = true, bool op = true, bool src = true, bool priv = true, bool db = true,
+        bool docs = true, bool op = true, bool src = true, bool priv = true, bool? admin = null, bool db = true,
         FakeOperationalKnowledgeReader? opReader = null, ISettingsKnowledgeReader? settings = null,
-        ISqlKnowledgeReader? sql = null)
-        => new(AccessibleFolderSet.Unrestricted, priv, docs, op, src, db,
+        ISqlKnowledgeReader? sql = null, AccessibleFolderSet? accessible = null)
+        => new(accessible ?? AccessibleFolderSet.Unrestricted, priv, admin ?? priv, docs, op, src, db,
                op ? (opReader ?? new FakeOperationalKnowledgeReader()) : null,
                priv ? (settings ?? new FakeSettings()) : null,
                db && priv ? (sql ?? new FakeSql()) : null);
@@ -76,7 +77,7 @@ public class KnowledgeChatToolRegistryTests
     // ---- GetTools gating matrix ----------------------------------------------------------------
 
     [Fact]
-    public void GetTools_AllEnabledPrivileged_ExposesEveryTool()
+    public void GetTools_AllEnabledAdmin_ExposesEveryTool()
     {
         var reg = Registry(out _, out _, out _);
         var names = ToolNames(reg, Ctx());
@@ -301,18 +302,41 @@ public class KnowledgeChatToolRegistryTests
 
     // ---- SQL (text2sql) tools ------------------------------------------------------------------
 
-    [Fact]
-    public void GetTools_DbRequiresEnabledAndPrivilegeAndReader()
+    public static TheoryData<string, AccessibleFolderSet> OperatorFolderAccessCases => new()
+    {
+        { "None", AccessibleFolderSet.None },
+        { "FolderViewer", new AccessibleFolderSet { FolderIds = [Guid.NewGuid()] } },
+        { "FolderOperator", new AccessibleFolderSet { FolderIds = [Guid.NewGuid()] } },
+    };
+
+    [Theory]
+    [MemberData(nameof(OperatorFolderAccessCases))]
+    public void GetTools_DbToolsRequireGlobalAdmin_OperatorFolderAccessNeverChangesGate(
+        string folderRole, AccessibleFolderSet accessible)
     {
         var reg = Registry(out _, out _, out _);
-        // All three: toggle on, privileged, reader present.
+
+        var names = ToolNames(reg, Ctx(priv: true, admin: false, accessible: accessible));
+
+        names.Should().NotContain(new[] { "list_db_tables", "get_db_table", "execute_readonly_sql" });
+        names.Should().Contain(new[]
+        {
+            "get_workflow_definition", "analyze_workflow", "get_next_scheduled_fires",
+        }, $"folder-scoped typed knowledge tools retain their existing Operator behavior with {folderRole}");
+    }
+
+    [Fact]
+    public void GetTools_DbRequiresEnabledAndAdminAndReader()
+    {
+        var reg = Registry(out _, out _, out _);
+        // All three: toggle on, global Admin, reader present.
         ToolNames(reg, Ctx(db: true, priv: true)).Should().Contain("execute_readonly_sql");
         // Toggle off → no DB tools, even for an admin.
         ToolNames(reg, Ctx(db: false, priv: true)).Should().NotContain("execute_readonly_sql").And.NotContain("list_db_tables").And.NotContain("get_db_table");
-        // Non-privileged (Viewer) → never, even with toggle on.
+        // Non-Admin (Viewer) → never, even with toggle on.
         ToolNames(reg, Ctx(db: true, priv: false)).Should().NotContain("execute_readonly_sql");
         // Reader absent (service mis-wired) → gate stays closed.
-        var ctx = new KnowledgeToolContext(AccessibleFolderSet.Unrestricted, true, true, true, true, true, new FakeOperationalKnowledgeReader(), new FakeSettings(), Sql: null);
+        var ctx = new KnowledgeToolContext(AccessibleFolderSet.Unrestricted, true, true, true, true, true, true, new FakeOperationalKnowledgeReader(), new FakeSettings(), Sql: null);
         ToolNames(reg, ctx).Should().NotContain("execute_readonly_sql");
     }
 
@@ -383,6 +407,23 @@ public class KnowledgeChatToolRegistryTests
         var r = await reg.ExecuteAsync("execute_readonly_sql", """{"sql":"SELECT 1"}""", Ctx(db: true, priv: false, src: false), CancellationToken.None);
         JsonDocument.Parse(r).RootElement.GetProperty("error").GetString().Should().Contain("nicht verfügbar");
         sql.LastSql.Should().BeNull(); // gate stops execution before the reader.
+    }
+
+    [Theory]
+    [MemberData(nameof(OperatorFolderAccessCases))]
+    public async Task ExecuteAsync_ExecuteReadonlySql_GlobalOperatorIsDeniedRegardlessOfFolderAccess(
+        string folderRole, AccessibleFolderSet accessible)
+    {
+        var reg = Registry(out _, out _, out var sql);
+
+        var result = await reg.ExecuteAsync(
+            "execute_readonly_sql", """{"sql":"SELECT 1"}""",
+            Ctx(priv: true, admin: false, accessible: accessible, sql: sql),
+            CancellationToken.None);
+
+        JsonDocument.Parse(result).RootElement.GetProperty("error").GetString()
+            .Should().NotBeNullOrWhiteSpace($"Folder access {folderRole} must not grant raw SQL");
+        sql.LastSql.Should().BeNull("the authorization gate must run before the SQL reader");
     }
 
     [Fact]

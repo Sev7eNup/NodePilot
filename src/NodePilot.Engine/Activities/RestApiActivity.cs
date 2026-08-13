@@ -13,12 +13,6 @@ public class RestApiActivity : IActivityExecutor
 
     public string ActivityType => "restApi";
 
-    // Headers that must never cross an origin boundary via a redirect. Single source of truth in
-    // Core (also drives definition redaction of a restApi headers string). Keep in sync with
-    // WebhooksController.BlockedHeaderNames so the "don't forward auth on cross-origin redirect"
-    // rule lives in one mental model.
-    private static readonly IReadOnlySet<string> CredentialHeaders = WorkflowSecretContent.CredentialHeaderNames;
-
     // Bound cross-origin redirect chains. Five hops is well above any legitimate API and
     // stops redirect-ping-pong from spinning the engine.
     private const int MaxRedirects = 5;
@@ -83,7 +77,7 @@ public class RestApiActivity : IActivityExecutor
         CancellationToken ct)
     {
         // Manual redirect loop so we can (a) re-run NetworkGuard against the new target on
-        // every hop, and (b) strip credential-bearing headers when we cross an origin.
+        // every hop, and (b) strip every non-public custom header when we cross an origin.
         var currentUrl = initialUrl;
         var currentMethod = initialMethod;
         var currentBody = initialBody;
@@ -124,7 +118,7 @@ public class RestApiActivity : IActivityExecutor
     }
 
     private static bool ShouldFollowRedirect(HttpResponseMessage response, int hops) =>
-        (int)response.StatusCode is >= 300 and < 400
+        (int)response.StatusCode is 301 or 302 or 303 or 307 or 308
         && response.Headers.Location is not null
         && hops < MaxRedirects;
 
@@ -139,10 +133,11 @@ public class RestApiActivity : IActivityExecutor
         ref HttpMethod currentMethod,
         ref string? currentBody)
     {
-        // Drop credential-bearing headers when the authority changes — the secret
-        // was issued for the original host, not for whoever 302's us.
+        // Custom headers are private by default: their semantics are application-defined and
+        // may carry credentials even when their names do not look sensitive. Only the small,
+        // centrally-defined public allow-list may cross an authority boundary.
         if (!SameAuthority(currentUrl, nextUrl))
-            effectiveHeaders.RemoveAll(h => CredentialHeaders.Contains(h.Name));
+            effectiveHeaders.RemoveAll(h => !WorkflowSecretContent.IsPublicHttpHeader(h.Name));
 
         // Per RFC 7231 §6.4.2/§6.4.3, 301/302/303 with a non-GET body "SHOULD" be
         // resubmitted as GET. We take the conservative route and drop the body on

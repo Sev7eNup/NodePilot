@@ -38,7 +38,7 @@ Die wichtigsten Node-Typen:
 - Mehrere Nodes mit `Ctrl` oder `Shift` auswählen.
 - `Ctrl+D` dupliziert die Auswahl.
 - `Delete` oder `Backspace` löscht die Auswahl.
-- `Ctrl+C` und `Ctrl+V` kopieren Nodes auch zwischen Workflows.
+- `Ctrl+C` und `Ctrl+V` verwenden nur einen In-Memory-Puffer im aktuellen Editor-Tab. Bei einem direkten Workflow-Wechsel im selben gemounteten Editor kann er weiterverwendet werden; Reload, Tab-Schließen oder Editor-Unmount löschen ihn. Es werden keine Workflow-Daten in `sessionStorage` geschrieben.
 - Bei mehreren ausgewählten Nodes können gemeinsame Werte wie Machine, Timeout oder Aktivstatus zusammen geändert werden.
 
 ## Nodes verbinden

@@ -1,10 +1,16 @@
 import { useRef, useCallback } from 'react';
 import { type Node, type Edge, useReactFlow } from '@xyflow/react';
 
+type WorkflowClipboard = { nodes: Node[]; edges: Edge[] };
+
 export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
   const { getNodes, getEdges, setNodes, setEdges } = useReactFlow();
   const pasteCountRef = useRef(0);
   const selectionRef = useRef<{ nodeIds: string[]; edgeIds: string[] }>({ nodeIds: [], edgeIds: [] });
+  // Workflow nodes can contain inline credentials. Keep the clipboard inside this hook instance
+  // so it dies when the editor unmounts (including logout/user switch) instead of persisting it in
+  // browser storage where the next signed-in user in the same tab could recover it.
+  const clipboardRef = useRef<WorkflowClipboard | null>(null);
 
   const resetPasteCount = useCallback(() => { pasteCountRef.current = 0; }, []);
 
@@ -25,16 +31,15 @@ export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
       && nodeIdSet.has(e.source) && nodeIdSet.has(e.target)
     );
     if (selectedNodes.length === 0) return;
-    sessionStorage.setItem('np_clipboard', JSON.stringify({
+    clipboardRef.current = {
       nodes: selectedNodes.map((n) => ({ ...n, data: { ...(n.data as object) } as Node['data'] })),
       edges: selectedEdges.map((e) => ({ ...e, data: e.data ? { ...(e.data as object) } : undefined })),
-    }));
+    };
     pasteCountRef.current = 0;
   }, [getNodes, getEdges]);
 
   const pasteBuffer = useCallback(() => {
-    const raw = sessionStorage.getItem('np_clipboard');
-    const buf: { nodes: Node[]; edges: Edge[] } | null = raw ? JSON.parse(raw) : null;
+    const buf = clipboardRef.current;
     if (!buf || buf.nodes.length === 0) return;
     pasteCountRef.current += 1;
     const offset = 40 * pasteCountRef.current;

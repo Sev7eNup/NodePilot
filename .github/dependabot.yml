@@ -96,8 +96,8 @@ updates:
           - "minor"
           - "patch"
 
-  # Electron shell: package.json pins three overrides into Forge's own tree (see the
-  # "//overrides" note there). Review those before accepting a Forge bump.
+  # Electron shell: archive extraction and packaging dependencies are exact-pinned because
+  # package-contract tests enforce the hardened, Forge-free packaging boundary.
   - package-ecosystem: npm
     directory: "/src/nodepilot-desktop"
     schedule:

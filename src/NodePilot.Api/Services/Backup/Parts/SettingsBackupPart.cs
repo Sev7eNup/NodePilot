@@ -10,7 +10,9 @@ namespace NodePilot.Api.Services.Backup.Parts;
 /// <c>appsettings.runtime.json</c>, never the effective merged <c>IConfiguration</c> (which would
 /// pull in host/env secrets). The transient <c>__meta</c> block (restart markers) is dropped. Any
 /// <c>enc:v1:</c>-encrypted value is decrypted with the active <see cref="ISecretProtector"/> and
-/// rewrapped under the backup passphrase so it stays portable.
+/// rewrapped under the backup passphrase so it stays portable. Registered legacy plaintext
+/// secret fields are wrapped directly, so an upgrade cannot leak them into a backup taken before
+/// the operator next saves that settings section.
 /// </summary>
 public sealed class SettingsBackupPart(RuntimeOverridesWriter overrides, ISecretProtector atRest) : IBackupPart
 {
@@ -31,25 +33,31 @@ public sealed class SettingsBackupPart(RuntimeOverridesWriter overrides, ISecret
         foreach (var (key, value) in root)
         {
             if (key == RuntimeOverridesWriter.MetaSectionKey) continue;
-            result[key] = value is null ? null : Rewrite(value, ctx);
+            result[key] = value is null ? null : Rewrite(value, ctx, key);
         }
         return Task.FromResult<JsonNode>(new JsonObject { ["runtimeJson"] = result });
     }
 
-    private JsonNode? Rewrite(JsonNode node, BackupExportContext ctx)
+    private JsonNode? Rewrite(JsonNode node, BackupExportContext ctx, string path)
     {
         switch (node)
         {
             case JsonObject obj:
             {
                 var r = new JsonObject();
-                foreach (var (k, v) in obj) r[k] = v is null ? null : Rewrite(v, ctx);
+                foreach (var (k, v) in obj)
+                    r[k] = v is null ? null : Rewrite(v, ctx, $"{path}.{k}");
                 return r;
             }
             case JsonArray arr:
             {
                 var r = new JsonArray();
-                foreach (var v in arr) r.Add(v is null ? null : Rewrite(v, ctx));
+                var index = 0;
+                foreach (var v in arr)
+                {
+                    r.Add(v is null ? null : Rewrite(v, ctx, $"{path}.{index}"));
+                    index++;
+                }
                 return r;
             }
             case JsonValue val when val.TryGetValue(out string? s) && s is not null
@@ -67,8 +75,33 @@ public sealed class SettingsBackupPart(RuntimeOverridesWriter overrides, ISecret
                     return JsonValue.Create(s);
                 }
             }
+            case JsonValue val when val.TryGetValue(out string? s) && !string.IsNullOrEmpty(s)
+                && IsRegisteredSecretPath(path):
+                return ctx.Enc(s);
             default:
                 return node.DeepClone();
         }
+    }
+
+    private static bool IsRegisteredSecretPath(string path)
+    {
+        foreach (var descriptor in SettingsSchema.Sections)
+        {
+            var sectionPrefix = descriptor.SectionPath.Replace(':', '.') + ".";
+            if (!path.StartsWith(sectionPrefix, StringComparison.OrdinalIgnoreCase)) continue;
+
+            var actual = path[sectionPrefix.Length..].Split('.');
+            foreach (var pattern in descriptor.SecretFieldPaths)
+            {
+                var expected = pattern.Split('.');
+                if (actual.Length != expected.Length) continue;
+                if (expected.Select((segment, index) =>
+                        segment == "*" || segment.Equals(actual[index], StringComparison.OrdinalIgnoreCase))
+                    .All(matches => matches))
+                    return true;
+            }
+        }
+
+        return false;
     }
 }

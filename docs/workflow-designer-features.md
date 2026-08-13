@@ -59,7 +59,7 @@ Vollständige Auflistung sämtlicher Features des NodePilot-Workflow-Designers (
 - **Löschen:** `Delete`/`Backspace`; bei Gruppen werden die Kinder reparentet und bleiben erhalten.
 - **Gruppieren (Expert):** `Ctrl+G` packt die Auswahl in eine Group-Node.
 - **Reparenting:** Nodes lassen sich per Drag in Group-Nodes hineinziehen (Live-Highlight der Ziel-Gruppe).
-- **Clipboard:** `Ctrl+C` / `Ctrl+V` über `sessionStorage` — **funktioniert workflow-übergreifend**; IDs werden beim Einfügen neu vergeben, Edges/Parent-Referenzen remapped, Versatz 40 px × Paste-Zähler.
+- **Clipboard:** `Ctrl+C` / `Ctrl+V` nutzt ausschließlich den In-Memory-Puffer des geöffneten Editor-Tabs — kein `sessionStorage` und keine Persistenz über Reload, Tab-Schließen oder Editor-Unmount. Solange derselbe Editor gemountet bleibt, kann der Puffer einen direkten Workflow-Wechsel im Tab überstehen. Beim Einfügen werden IDs neu vergeben, Edges/Parent-Referenzen remapped und der Versatz pro Paste um 40 px erhöht.
 - **Auto-Layout / Tidy:** `Ctrl+Shift+T`. Standard-Modus immer LR; Expert cyclet LR → TB → Compact → ELK. **Restore Original Layout** (Expert) `Ctrl+Shift+O` stellt das Ausgangs-Layout wieder her.
 - **Undo/Redo:** `Ctrl+Z` / `Ctrl+Y` (auch `Ctrl+Shift+Z`). History-Tiefe 50 Snapshots; strukturelle Änderungen sofort, Property-Edits mit 800 ms Debounce gebündelt; wird beim Workflow-Wechsel geleert.
 - **Bulk-Edit:** Bei ≥ 2 selektierten Nodes erscheint das Bulk-Edit-Panel (Ziel-Maschine, Enable/Disable, Timeout, Retry-Policy — jeweils mit eigenem Apply-Button).

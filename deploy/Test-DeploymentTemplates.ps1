@@ -25,6 +25,8 @@ param(
     [string]$RuntimePayloadScriptPath,
     [string]$PostgresProvisionScriptPath,
     [string]$ServerBuildScriptPath,
+    [string]$PublishSettingsHygienePath,
+    [string]$DesktopBuildScriptPath,
     [string[]]$PackageLockPaths,
     [string[]]$ChecksumDocPaths
 )
@@ -83,6 +85,12 @@ if ([string]::IsNullOrWhiteSpace($PostgresProvisionScriptPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($ServerBuildScriptPath)) {
     $ServerBuildScriptPath = Join-Path $scriptDirectory 'server\Build-ServerInstaller.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($PublishSettingsHygienePath)) {
+    $PublishSettingsHygienePath = Join-Path $scriptDirectory 'Assert-PublishSettingsHygiene.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($DesktopBuildScriptPath)) {
+    $DesktopBuildScriptPath = Join-Path $scriptDirectory 'desktop\Build-DesktopInstaller.ps1'
 }
 if ($null -eq $PackageLockPaths -or $PackageLockPaths.Count -eq 0) {
     $PackageLockPaths = @(
@@ -146,9 +154,55 @@ function Remove-CommentLines {
     }) -join "`n")
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $SetupContractPath, $ArtifactSecurityPath, $ServerIssPath, $RuntimePayloadScriptPath)) {
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $SetupContractPath, $ArtifactSecurityPath, $ServerIssPath, $RuntimePayloadScriptPath, $PublishSettingsHygienePath, $DesktopBuildScriptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
+    }
+}
+
+# The final-stage guard is shared by the server zip and desktop installer builds. Exercise it on
+# synthetic stages so the contract proves filenames recursively, not only today's script text.
+. $PublishSettingsHygienePath
+$publishSettingsTestRoot = Join-Path ([IO.Path]::GetTempPath()) ("nodepilot-publish-settings-test-" + [Guid]::NewGuid().ToString('N'))
+try {
+    New-Item -ItemType Directory -Path $publishSettingsTestRoot | Out-Null
+    [IO.File]::WriteAllText(
+        (Join-Path $publishSettingsTestRoot 'appsettings.json'),
+        '{}',
+        (New-Object Text.UTF8Encoding($false)))
+
+    Assert-NodePilotPublishSettingsHygiene -RootPath $publishSettingsTestRoot
+
+    foreach ($forbiddenName in @('appsettings.Development.json', 'appsettings.runtime.json')) {
+        $nested = Join-Path $publishSettingsTestRoot 'nested'
+        New-Item -ItemType Directory -Path $nested -Force | Out-Null
+        $forbiddenPath = Join-Path $nested $forbiddenName
+        [IO.File]::WriteAllText($forbiddenPath, '{}', (New-Object Text.UTF8Encoding($false)))
+        $rejected = $false
+        try {
+            Assert-NodePilotPublishSettingsHygiene -RootPath $publishSettingsTestRoot
+        } catch {
+            $rejected = $_.Exception.Message -match [regex]::Escape($forbiddenName)
+        }
+        if (-not $rejected) {
+            throw "Deployment template check failed: final-stage guard accepted $forbiddenName."
+        }
+        Remove-Item -LiteralPath $forbiddenPath -Force
+    }
+
+    Remove-Item -LiteralPath (Join-Path $publishSettingsTestRoot 'appsettings.json') -Force
+    $missingBaseRejected = $false
+    try {
+        Assert-NodePilotPublishSettingsHygiene -RootPath $publishSettingsTestRoot
+    } catch {
+        $missingBaseRejected = $_.Exception.Message -match 'appsettings\.json'
+    }
+    if (-not $missingBaseRejected) {
+        throw 'Deployment template check failed: final-stage guard accepted a stage without appsettings.json.'
+    }
+} finally {
+    if (Test-Path -LiteralPath $publishSettingsTestRoot) {
+        Remove-Item -LiteralPath $publishSettingsTestRoot -Recurse -Force
     }
 }
 
@@ -263,6 +317,7 @@ Assert-TextMatches -Name 'installer protects the service registry key before wri
 # three properties that silently rot: the version source, the SPA being built twice, and the
 # desktop step being allowed to abort a server build.
 $buildScript = Get-Content -LiteralPath $BuildScriptPath -Raw
+$desktopBuildScript = Get-Content -LiteralPath $DesktopBuildScriptPath -Raw
 $requiredBuildContracts = [ordered]@{
     'build script accepts the desktop-installer switch' = '\[switch\]\$IncludeDesktopInstaller'
     'build script accepts the Postgres binaries path' = '\[string\]\$PgBinariesPath'
@@ -305,6 +360,33 @@ if ($signIndex -gt $checksumIndex) {
 
 foreach ($contract in $requiredBuildContracts.GetEnumerator()) {
     Assert-TextMatches -Name $contract.Key -Text $buildScript -Pattern $contract.Value
+}
+
+Assert-TextMatches -Name 'development settings are excluded from the production source snapshot' `
+    -Text (Remove-CommentLines -Text $buildScript) `
+    -Pattern "git[\s\S]+archive[\s\S]+HEAD\s+--\s+\.[\s\S]+\(exclude\)src/NodePilot\.Api/appsettings\.Development\.json"
+Assert-TextMatches -Name 'server build imports the final-stage settings guard' `
+    -Text (Remove-CommentLines -Text $buildScript) `
+    -Pattern '\.\s+\$PublishSettingsHygieneScript'
+Assert-TextMatches -Name 'server build validates the complete stage' `
+    -Text (Remove-CommentLines -Text $buildScript) `
+    -Pattern 'Assert-NodePilotPublishSettingsHygiene\s+-RootPath\s+\$StageDir'
+Assert-TextMatches -Name 'desktop build imports the final-stage settings guard' `
+    -Text (Remove-CommentLines -Text $desktopBuildScript) `
+    -Pattern '\.\s+\$PublishSettingsHygieneScript'
+Assert-TextMatches -Name 'desktop build validates the complete stage and required app config' `
+    -Text (Remove-CommentLines -Text $desktopBuildScript) `
+    -Pattern "Assert-NodePilotPublishSettingsHygiene\s+-RootPath\s+\`$Stage\s+-RequiredBaseSettingsPath\s+'app\\appsettings\.json'"
+
+$serverSettingsGateIndex = $buildScript.IndexOf('Assert-NodePilotPublishSettingsHygiene -RootPath $StageDir')
+$serverManifestIndex = $buildScript.IndexOf('New-NodePilotExtractedFileManifest -RootPath $StageDir')
+if ($serverSettingsGateIndex -lt 0 -or $serverManifestIndex -lt 0 -or $serverSettingsGateIndex -gt $serverManifestIndex) {
+    throw 'Deployment template check failed: server settings guard must run after staging and before the extracted-file manifest is generated.'
+}
+$desktopSettingsGateIndex = $desktopBuildScript.IndexOf('Assert-NodePilotPublishSettingsHygiene -RootPath $Stage')
+$desktopCompileIndex = $desktopBuildScript.IndexOf("Write-Step 'Compiling installer (Inno Setup)'")
+if ($desktopSettingsGateIndex -lt 0 -or $desktopCompileIndex -lt 0 -or $desktopSettingsGateIndex -gt $desktopCompileIndex) {
+    throw 'Deployment template check failed: desktop settings guard must run after staging and before the installer is compiled.'
 }
 
 # Every guide that tells an operator to fetch and verify a release must name the file the build
@@ -1424,6 +1506,10 @@ Assert-TextMatches -Name 'the provisioning sends its statements on stdin' `
     -Text $postgresProvision -Pattern '-Sql "\$Sql;"'
 
 $serverBuild = Remove-CommentLines -Text (Get-Content -LiteralPath $ServerBuildScriptPath -Raw)
+Assert-TextMatches -Name 'server installer rejects a pre-fetched runtime below 10.0.11' `
+    -Text $serverBuild -Pattern "MinimumRuntimeVersion\s*=\s*\[version\]'10\.0\.11'"
+Assert-TextMatches -Name 'server installer validates the staged runtime filename version' `
+    -Text $serverBuild -Pattern '\$stagedRuntimeVersion\s+-lt\s+\$MinimumRuntimeVersion'
 # The client, not the distribution: a stock bin folder is 57 MB, of which 27 MB is ICU and 8 MB is
 # wxWidgets for pgAdmin, none of it reachable from psql. The seven files come off psql's own import
 # table.
@@ -1535,6 +1621,42 @@ Assert-TextMatches -Name 'the auto-fix run extracts it too' `
     -Text $serverIss -Pattern '(?s)if WantsFix then[\s\S]{0,200}EnsurePgClient\(\)'
 Assert-TextMatches -Name 'and so does the unattended path, which never sees a page' `
     -Text $serverIss -Pattern "(?s)WizardSilent\(\) and \(AnswerMode = 'install'\)[\s\S]{0,300}EnsurePgClient\(\)"
+
+# The runtime fix is offered on the readiness page, before PrepareToInstall has extracted the
+# dontcopy payload. Checking only that the runtime is extracted somewhere misses that ordering bug:
+# the adapter can be asked to install a file that does not exist in {tmp} yet. Pin both provisioning
+# call sites to an extraction in their own execution path and before the adapter is launched.
+$interactiveProvisionStart = $serverIss.IndexOf('if WantsFix then')
+$interactiveProvisionEnd = $serverIss.IndexOf("DbStatus := GetIniString('provision.database'", $interactiveProvisionStart)
+if ($interactiveProvisionStart -lt 0 -or $interactiveProvisionEnd -lt 0) {
+    throw 'Deployment template check failed: could not locate the interactive provisioning block.'
+}
+
+$interactiveProvisionBlock = $serverIss.Substring(
+    $interactiveProvisionStart,
+    $interactiveProvisionEnd - $interactiveProvisionStart)
+$interactiveRuntimeIndex = $interactiveProvisionBlock.IndexOf('EnsureRuntimePayload();')
+$interactiveRunIndex = $interactiveProvisionBlock.IndexOf("RunPowerShell('-Mode Provision")
+if ($interactiveRuntimeIndex -lt 0 -or $interactiveRunIndex -lt 0 -or
+    $interactiveRuntimeIndex -gt $interactiveRunIndex) {
+    throw ('Deployment template check failed: the interactive auto-fix does not extract the ' +
+           'bundled runtime before launching provisioning.')
+}
+
+$silentProvisionStart = $serverIss.IndexOf("if WizardSilent() and (AnswerMode = 'install') then")
+$silentProvisionEnd = $serverIss.IndexOf("Arguments := '-Mode Apply'", $silentProvisionStart)
+if ($silentProvisionStart -lt 0 -or $silentProvisionEnd -lt 0) {
+    throw 'Deployment template check failed: could not locate the silent provisioning block.'
+}
+$silentProvisionBlock = $serverIss.Substring(
+    $silentProvisionStart,
+    $silentProvisionEnd - $silentProvisionStart)
+$silentRuntimeIndex = $silentProvisionBlock.IndexOf('EnsureRuntimePayload();')
+$silentRunIndex = $silentProvisionBlock.IndexOf("RunPowerShell('-Mode Provision")
+if ($silentRuntimeIndex -lt 0 -or $silentRunIndex -lt 0 -or $silentRuntimeIndex -gt $silentRunIndex) {
+    throw ('Deployment template check failed: silent provisioning does not extract the bundled ' +
+           'runtime before launching the adapter.')
+}
 
 # The readiness page is the ONLY thing that ever ran that provisioning, and /ANSWERFILE skips every
 # wizard page. Without a silent equivalent the provisioning keys are dead weight in an unattended
@@ -1821,6 +1943,14 @@ Assert-TextMatches -Name 'the publisher certificate path has one definition' `
     -Text $setupAdapter -Pattern "function Get-NodePilotSignerCertificatePath"
 Assert-TextDoesNotMatch -Name 'nothing looks for the certificate in a folder the build never makes' `
     -Text $setupAdapter -Pattern "signer\\nodepilot-release-signing\.cer"
+Assert-TextMatches -Name 'the bundled runtime is resolved from the flat temporary payload' `
+    -Text $setupAdapter -Pattern 'Get-ChildItem -LiteralPath \$PayloadRoot -Filter ''aspnetcore-runtime-\*\.exe'''
+Assert-TextDoesNotMatch -Name 'nothing looks for the runtime in a folder the installer never extracts' `
+    -Text $setupAdapter -Pattern 'Join-Path \$PayloadRoot ''runtime'''
+Assert-TextMatches -Name 'the exact bundled runtime is extracted into the temporary payload root' `
+    -Text $serverIss -Pattern "ExtractTemporaryFile\('\{#RuntimeFileName\}'\)"
+Assert-TextMatches -Name 'runtime payload extraction is idempotent and only marked after success' `
+    -Text $serverIss -Pattern '(?s)procedure EnsureRuntimePayload\(\);[\s\S]{0,200}if RuntimePayloadExtracted then Exit;[\s\S]{0,200}ExtractTemporaryFile\(''\{#RuntimeFileName\}''\);[\s\S]{0,100}RuntimePayloadExtracted := True;'
 # The readiness row only exists on the setup path: the scripted installer has no payload to read a
 # certificate from, and its operator was told to import it in step 1 of the deployment guide.
 # Write-Host reaches the host - and so the transcript - whether or not the information stream is
@@ -1936,6 +2066,21 @@ Assert-TextMatches -Name 'the download must be signed by Microsoft' `
     -Text $runtimeScript -Pattern "SignerCertificate\.Subject -notmatch 'Microsoft Corporation'"
 Assert-TextDoesNotMatch -Name 'certificate validation is never relaxed for the download' `
     -Text $runtimeScript -Pattern 'SkipCertificateCheck|ServerCertificateValidationCallback|TrustAllCerts'
+Assert-TextMatches -Name 'runtime payload selection enforces the patched 10.0.11 floor' `
+    -Text $runtimeScript -Pattern "MinimumSupportedRuntime\s*=\s*\[version\]'10\.0\.11'"
+Assert-TextMatches -Name 'explicit runtime versions below the floor are rejected' `
+    -Text $runtimeScript -Pattern '\$selectedVersion\s+-lt\s+\$MinimumSupportedRuntime'
+
+$runtimeLock = Get-Content -LiteralPath (Join-Path $scriptDirectory 'server\runtime-payload.lock.json') -Raw |
+    ConvertFrom-Json
+foreach ($property in $runtimeLock.PSObject.Properties) {
+    if ($property.Name -notmatch '^aspnetcore-runtime-(?<version>\d+\.\d+\.\d+)-win-x64\.exe$') {
+        throw "Deployment template check failed: unrecognised runtime lock key '$($property.Name)'"
+    }
+    if ([version]$Matches.version -lt [version]'10.0.11') {
+        throw "Deployment template check failed: runtime lock includes vulnerable payload $($Matches.version)"
+    }
+}
 
 $ssoDocumentation = Get-Content -LiteralPath $SsoDocumentationPath -Raw
 Assert-TextMatches -Name 'SPN examples use duplicate-safe registration' `

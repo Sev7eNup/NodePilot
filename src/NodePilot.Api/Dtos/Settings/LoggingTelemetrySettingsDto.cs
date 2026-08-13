@@ -163,6 +163,10 @@ public sealed class OtlpSettingsDto
     [Required(AllowEmptyStrings = false)]
     public string Protocol { get; set; } = "grpc";
 
+    /// <summary>
+    /// Opaque collector header string. Read: <c>"********"</c> when configured. Write:
+    /// <c>"__unchanged__"</c> keeps it, plaintext rotates it, and empty clears it.
+    /// </summary>
     [StringLength(2048)]
     public string Headers { get; set; } = "";
 

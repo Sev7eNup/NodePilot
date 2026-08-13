@@ -19,7 +19,8 @@ namespace NodePilot.Core.WorkflowDefinitions;
 ///
 /// The provider token shapes and credential-header names mirror the runtime
 /// <c>OutputRedactor</c> vocabulary; <see cref="CredentialHeaderNames"/> is the single source of
-/// truth also consumed by <c>RestApiActivity</c>.
+/// truth for generic content detection. Redirect forwarding uses the inverse policy: only
+/// <see cref="PublicHttpHeaderNames"/> may cross an authority boundary.
 /// </summary>
 public static class WorkflowSecretContent
 {
@@ -28,7 +29,8 @@ public static class WorkflowSecretContent
 
     /// <summary>
     /// Credential HTTP header names — the single source of truth, consumed by
-    /// <c>RestApiActivity</c> (redirect stripping) and this detector (headers-string masking).
+    /// generic content detection. Definition-aware HTTP header objects/strings additionally treat
+    /// every non-public literal header as secret.
     /// </summary>
     public static readonly IReadOnlySet<string> CredentialHeaderNames =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -37,12 +39,57 @@ public static class WorkflowSecretContent
             "X-Api-Key", "X-Auth-Token", "X-Webhook-Secret",
         };
 
+    /// <summary>
+    /// HTTP request headers whose literal values are configuration metadata rather than credentials.
+    /// Every other user-authored header is secret-bearing by default: custom authentication schemes
+    /// deliberately do not have a universal naming convention.
+    /// </summary>
+    public static readonly IReadOnlySet<string> PublicHttpHeaderNames =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "Accept", "Content-Type", "User-Agent",
+        };
+
+    public static bool IsPublicHttpHeader(string? name)
+        => name is not null && PublicHttpHeaderNames.Contains(name);
+
+    public static bool IsLiteralSecretHeaderValue(string? name, string? value)
+    {
+        if (string.IsNullOrEmpty(value) || IsPublicHttpHeader(name)) return false;
+
+        var withoutTemplates = SafeReplace(TemplateSpan, value, " ");
+        return SafeReplace(SchemePrefix, withoutTemplates, string.Empty).Trim().Length > 0;
+    }
+
+    /// <summary>
+    /// True when a multi-line HTTP-header value contains a literal value in any header that is
+    /// not explicitly public. Template-only values are references, not secrets stored in the
+    /// workflow definition.
+    /// </summary>
+    public static bool ContainsLiteralSecretHeader(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+
+        foreach (var line in value.Split('\n'))
+        {
+            var m = SafeMatch(HeaderLine, line);
+            if (m is null) return true;
+            if (m.Success && IsLiteralSecretHeaderValue(m.Groups[1].Value, m.Groups[2].Value))
+                return true;
+        }
+
+        return false;
+    }
+
     // Any {{…}} template span (globals/databus reference). Stripped before detection so a value
     // that only *references* a secret is never masked.
     private static readonly Regex TemplateSpan = new(@"\{\{[^}]*\}\}", RegexOptions.CultureInvariant, Timeout);
 
     // One `Key: Value` header line — group 1 = name, group 2 = value.
-    private static readonly Regex HeaderLine = new(@"^\s*([A-Za-z][A-Za-z0-9\-]*)\s*:\s*(.+)$", RegexOptions.CultureInvariant, Timeout);
+    private static readonly Regex HeaderLine = new(
+        @"^\s*([!#$%&'*+.^_`|~A-Za-z0-9-]+)\s*:\s*(.+)$",
+        RegexOptions.CultureInvariant,
+        Timeout);
 
     // Leading auth scheme keyword ("Bearer <token>", "Basic <b64>", …) — dropped so a bare scheme
     // with a globals-referenced token (already template-stripped) doesn't read as a literal secret.
@@ -80,7 +127,8 @@ public static class WorkflowSecretContent
         foreach (var line in scrubbed.Split('\n'))
         {
             var m = SafeMatch(HeaderLine, line);
-            if (m is { Success: true } && CredentialHeaderNames.Contains(m.Groups[1].Value))
+            if (m is null) return true;
+            if (m.Success && CredentialHeaderNames.Contains(m.Groups[1].Value))
             {
                 var remainder = SafeReplace(SchemePrefix, m.Groups[2].Value, string.Empty).Trim();
                 if (remainder.Length >= 3) return true;

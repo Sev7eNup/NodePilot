@@ -41,8 +41,7 @@ npm start         # builds and runs against the INSTALLED backend (reads desktop
 | `npm run build` | `tsc` + copy static assets into `dist/` |
 | `npm run typecheck` | type-check only |
 | `npm run test` / `test:run` | vitest — pure logic (config validation, cert pinning, navigation containment, skin resolution) |
-| `npm run package` | `electron-forge package` → `out/NodePilot-win32-x64/` (what the installer build consumes) |
-| `npm run make` | `electron-forge make` → a zip; **not** used by the installer |
+| `npm run package` | Electron Packager → `out/NodePilot-win32-x64/`, followed by the filesystem-boundary gate (what the installer build consumes) |
 
 `assets/` is generated from the tracked brand images by
 [`scripts/generate-desktop-icons.ps1`](../../scripts/generate-desktop-icons.ps1). The generator is
@@ -52,9 +51,12 @@ built on GDI+ and is invoked through Windows PowerShell (5.1) both here and in t
 
 - **No runtime dependencies.** `dependencies` is empty and stays that way; everything that ships is
   Electron itself. Anything else belongs in the SPA or the backend.
-- **Electron is pinned exactly** (`"electron": "43.2.0"`), and `@types/node` tracks the Node version
-  that Electron bundles rather than the newest release — typing against APIs the shipped runtime
-  does not have is how this breaks silently.
+- **Electron is pinned exactly** (`"electron": "43.4.0"`). Runtime-only Node APIs must be checked
+  against Electron's embedded Node release rather than inferred from `@types/node` — typing against
+  APIs the shipped runtime does not have is how this breaks silently.
+- **Archive extraction is vendor-hardened.** Packager 20.3.0 and Electron's native extractor 1.0.5
+  are exact pins. The legacy `extract-zip` package is absent; tests exercise symlink escape rejection,
+  and packaging rejects links/reparse paths before the output reaches the installer stage.
 - **Security-relevant code is unit-tested.** `config.ts`, `security.ts` and `skins.ts` have vitest
   coverage and run in their own CI job (`desktop`, on ubuntu — the tests are pure logic and need no
   Electron runtime).

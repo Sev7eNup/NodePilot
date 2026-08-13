@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -27,6 +28,7 @@ public sealed class BackupServiceExportTests : IDisposable
     private readonly NodePilotDbContext _db;
     private readonly AesGcmSecretProtector _atRest;
     private readonly string _runtimePath;
+    private readonly RuntimeOverridesWriter _overrides;
     private readonly BackupService _service;
     private readonly Guid _machineId = Guid.NewGuid();
 
@@ -35,7 +37,7 @@ public sealed class BackupServiceExportTests : IDisposable
         _db = TestDbFactory.Create();
         _atRest = new AesGcmSecretProtector(DeterministicKey());
         _runtimePath = Path.Combine(Path.GetTempPath(), "np-backup-test-" + Guid.NewGuid().ToString("N") + ".json");
-        var overrides = new RuntimeOverridesWriter(_runtimePath, NullLogger<RuntimeOverridesWriter>.Instance);
+        _overrides = new RuntimeOverridesWriter(_runtimePath, NullLogger<RuntimeOverridesWriter>.Instance);
         var globals = new GlobalVariableStore(_db, _atRest);
 
         var parts = new IBackupPart[]
@@ -47,7 +49,7 @@ public sealed class BackupServiceExportTests : IDisposable
             new GlobalVariableFolderBackupPart(_db),
             new GlobalVariableBackupPart(globals),
             new WorkflowBackupPart(_db),
-            new SettingsBackupPart(overrides, _atRest),
+            new SettingsBackupPart(_overrides, _atRest),
         };
         _service = new BackupService(parts);
     }
@@ -83,6 +85,7 @@ public sealed class BackupServiceExportTests : IDisposable
         var definition =
             "{\"nodes\":[{\"id\":\"step-1\",\"type\":\"activity\",\"data\":{\"activityType\":\"restApi\","
             + "\"targetMachineId\":\"" + _machineId + "\",\"config\":{\"apiKey\":\"super-secret-key\","
+            + "\"headers\":{\"X-Tenant-Token\":\"opaque-tenant-credential\",\"Accept\":\"application/json\"},"
             + "\"url\":\"https://x\"}}}],\"edges\":[]}";
         _db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "wf1", DefinitionJson = definition, FolderId = child.Id });
 
@@ -122,8 +125,27 @@ public sealed class BackupServiceExportTests : IDisposable
         var config = env["sections"]!["workflows"]!["items"]![0]!["definition"]!["nodes"]![0]!["data"]!;
         // apiKey was rewritten to an {"$enc": ...} object.
         config["config"]!["apiKey"]!["$enc"].Should().NotBeNull();
+        config["config"]!["headers"]!["X-Tenant-Token"]!["$enc"].Should().NotBeNull();
+        config["config"]!["headers"]!["Accept"]!.GetValue<string>().Should().Be("application/json");
         // targetMachineId is a GUID reference — left verbatim for restore-time remap (K13).
         config["targetMachineId"]!.GetValue<string>().Should().Be(_machineId.ToString());
+    }
+
+    [Fact]
+    public void WorkflowBackup_TextFormCustomHeader_IsEncryptedAsOneOpaqueSecret()
+    {
+        const string headerBlock = "Accept: application/json\nX_Tenant.Token: opaque-secret";
+        using var doc = JsonDocument.Parse("""
+        { "config": { "headers": "Accept: application/json\nX_Tenant.Token: opaque-secret" } }
+        """);
+        var protector = PassphraseSecretProtector.Derive(Passphrase, new byte[16]);
+
+        var rewritten = WorkflowDefinitionSecretRewriter.Rewrite(
+            doc.RootElement, SecretHandling.EncryptForBackup, protector);
+
+        var encrypted = rewritten["config"]!["headers"]![WorkflowDefinitionSecretRewriter.EncKey]!
+            .GetValue<string>();
+        protector.Unprotect(Convert.FromBase64String(encrypted)).Should().Be(headerBlock);
     }
 
     [Fact]
@@ -139,6 +161,51 @@ public sealed class BackupServiceExportTests : IDisposable
         var salt = Convert.FromBase64String(env["crypto"]!["salt"]!.GetValue<string>());
         var protector = PassphraseSecretProtector.Derive(Passphrase, salt);
         protector.Unprotect(Convert.FromBase64String(encB64)).Should().Be("the-password");
+    }
+
+    [Fact]
+    public async Task Export_OtlpHeaders_RewrapsCustomCollectorHeaderUnderPassphrase()
+    {
+        const string headers = "X-Custom-Collector-Credential=collector-secret";
+        _overrides.MutateAndWrite(root => root["OpenTelemetry"] = new JsonObject
+        {
+            ["Otlp"] = new JsonObject
+            {
+                ["Headers"] = EncryptingJsonConfigurationProvider.EncryptForPersist(headers, _atRest),
+            },
+        });
+
+        var result = await _service.ExportAsync(
+            [BackupSections.Settings], Passphrase, "admin", CancellationToken.None);
+
+        Encoding.UTF8.GetString(result.Content).Should().NotContain(headers);
+        var env = Parse(result.Content);
+        var encrypted = env["sections"]!["settings"]!["runtimeJson"]!["OpenTelemetry"]!["Otlp"]!["Headers"]!["$enc"]!
+            .GetValue<string>();
+        var salt = Convert.FromBase64String(env["crypto"]!["salt"]!.GetValue<string>());
+        var protector = PassphraseSecretProtector.Derive(Passphrase, salt);
+        protector.Unprotect(Convert.FromBase64String(encrypted)).Should().Be(headers);
+    }
+
+    [Fact]
+    public async Task Export_LegacyPlaintextOtlpHeaders_RewrapsWithoutLeakingLiteral()
+    {
+        const string legacyHeaders = "X-Legacy-Collector-Credential=legacy-backup-secret";
+        _overrides.MutateAndWrite(root => root["OpenTelemetry"] = new JsonObject
+        {
+            ["Otlp"] = new JsonObject { ["Headers"] = legacyHeaders },
+        });
+
+        var result = await _service.ExportAsync(
+            [BackupSections.Settings], Passphrase, "admin", CancellationToken.None);
+
+        Encoding.UTF8.GetString(result.Content).Should().NotContain(legacyHeaders);
+        var env = Parse(result.Content);
+        var encrypted = env["sections"]!["settings"]!["runtimeJson"]!["OpenTelemetry"]!["Otlp"]!["Headers"]!["$enc"]!
+            .GetValue<string>();
+        var salt = Convert.FromBase64String(env["crypto"]!["salt"]!.GetValue<string>());
+        var protector = PassphraseSecretProtector.Derive(Passphrase, salt);
+        protector.Unprotect(Convert.FromBase64String(encrypted)).Should().Be(legacyHeaders);
     }
 
     [Fact]

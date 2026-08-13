@@ -763,7 +763,7 @@ Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
 | 41 | Host, der den Herausgeber nicht kennt | Zeile „Artifact publisher" **gelb**, „Weiter" bleibt frei, Installation läuft **ohne** Import durch |
 | 42 | Derselbe Fall, Angebot angehakt | Haken + „Weiter" importiert nach `LocalMachine\Root`, Neuprüfung grün, danach meldet `Get-AuthenticodeSignature` auf der Setup-`.exe` `Valid` |
 | 43 | Abgelaufenes Herausgeber-Zertifikat | Zeile **rot**, „Weiter" gesperrt, **kein** Angebot (ein Import repariert es nicht) |
-| 44 | Nur die **32-Bit**-Runtime installiert | Zeile „ASP.NET Core 10 runtime" **rot** und nennt 32-Bit samt Pfad (nicht „not found"), Angebot vorhanden |
+| 44 | Nur die **32-Bit**- oder eine ältere Runtime (< 10.0.11) installiert | Zeile „ASP.NET Core 10.0.11+ runtime" **rot** und nennt Architektur bzw. gefundene Version samt Pfad, Angebot vorhanden |
 | 45 | x64-Runtime da, x86 zuerst im `PATH` | Zeile **grün** und nennt den 64-Bit-Host, den sie gefragt hat |
 
 Stand: 1, 3, 5, 9, 10, 22, 23, 30, 37 und 38 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und

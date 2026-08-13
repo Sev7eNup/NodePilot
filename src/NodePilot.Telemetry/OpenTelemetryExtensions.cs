@@ -38,23 +38,15 @@ public static class OpenTelemetryExtensions
             return services;
         }
 
-        var serviceName = string.IsNullOrWhiteSpace(options.ServiceName) ? TelemetryConstants.ServiceName : options.ServiceName;
-        var serviceVersion = typeof(OpenTelemetryExtensions).Assembly.GetName().Version?.ToString() ?? "0.0.0";
-        var serviceInstanceId = $"{System.Environment.MachineName}:{System.Environment.ProcessId}";
-        var deploymentEnv = options.Environment ?? environment.EnvironmentName;
-
-        var resourceBuilder = ResourceBuilder.CreateDefault()
-            .AddService(serviceName, serviceVersion: serviceVersion, serviceInstanceId: serviceInstanceId)
-            .AddAttributes(new[]
-            {
-                new KeyValuePair<string, object>("deployment.environment", deploymentEnv),
-                new KeyValuePair<string, object>("host.name", System.Environment.MachineName),
-                new KeyValuePair<string, object>("host.os.type", "windows"),
-                new KeyValuePair<string, object>("nodepilot.node.role", "api"),
-            });
+        var identity = TelemetryResourceIdentityFactory.Create(
+            options,
+            environment,
+            System.Environment.MachineName,
+            System.Environment.ProcessId);
+        var resourceBuilder = CreateResourceBuilder(identity);
 
         var otel = services.AddOpenTelemetry()
-            .ConfigureResource(rb => rb.AddService(serviceName, serviceVersion: serviceVersion, serviceInstanceId: serviceInstanceId));
+            .ConfigureResource(rb => ConfigureResourceBuilder(rb, identity));
 
         if (options.Exporters.Traces)
         {
@@ -176,6 +168,67 @@ public static class OpenTelemetryExtensions
         }
 
         return services;
+    }
+
+    internal static ResourceBuilder CreateResourceBuilder(
+        NodePilotTelemetryOptions options,
+        IHostEnvironment environment,
+        string hostname,
+        int processId,
+        ResourceBuilder? baseResourceBuilder = null) =>
+        ConfigureResourceBuilder(
+            baseResourceBuilder ?? ResourceBuilder.CreateDefault(),
+            TelemetryResourceIdentityFactory.Create(
+                options,
+                environment,
+                hostname,
+                processId));
+
+    private static ResourceBuilder CreateResourceBuilder(TelemetryResourceIdentity identity) =>
+        ConfigureResourceBuilder(ResourceBuilder.CreateDefault(), identity);
+
+    private static ResourceBuilder ConfigureResourceBuilder(
+        ResourceBuilder resourceBuilder,
+        TelemetryResourceIdentity identity)
+    {
+        if (identity.RedactHostnames)
+        {
+            // CreateDefault includes OTEL_RESOURCE_ATTRIBUTES. Rebuild the resource
+            // without host.name so an environment-supplied value cannot bypass the
+            // application-level redaction switch.
+            var retainedAttributes = resourceBuilder.Build().Attributes
+                .Where(attribute => !string.Equals(
+                    attribute.Key,
+                    "host.name",
+                    StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+            resourceBuilder.Clear().AddAttributes(retainedAttributes);
+        }
+
+        resourceBuilder
+            .AddService(
+                identity.ServiceName,
+                serviceVersion: identity.ServiceVersion,
+                serviceInstanceId: identity.ServiceInstanceId)
+            .AddAttributes(CreateResourceAttributes(identity));
+
+        return resourceBuilder;
+    }
+
+    private static IEnumerable<KeyValuePair<string, object>> CreateResourceAttributes(
+        TelemetryResourceIdentity identity)
+    {
+        yield return new KeyValuePair<string, object>(
+            "deployment.environment",
+            identity.DeploymentEnvironment);
+
+        if (!identity.RedactHostnames)
+        {
+            yield return new KeyValuePair<string, object>("host.name", identity.Hostname);
+        }
+
+        yield return new KeyValuePair<string, object>("host.os.type", "windows");
+        yield return new KeyValuePair<string, object>("nodepilot.node.role", "api");
     }
 
     private static void ConfigureSampler(TracerProviderBuilder tracing, NodePilotTelemetryOptions options)

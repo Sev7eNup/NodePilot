@@ -9,7 +9,9 @@ using NodePilot.Ai.Knowledge;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
+using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.TestCommons;
 using NodePilot.Api.Tests.TestSupport;
@@ -21,7 +23,8 @@ public class AiKnowledgeControllerTests
 {
     private static (AiKnowledgeController controller, CapturingAuditWriter audit, FakeLlmClient llm, MemoryStream body)
         Build(bool llmEnabled = true, bool knowledgeEnabled = true, bool docs = true, bool op = true, bool src = false,
-              string role = "Operator", bool enableToolCalling = false, bool db = false, bool withProfile = true)
+              string role = "Operator", bool enableToolCalling = false, bool db = false, bool withProfile = true,
+              SharedFolderRole? folderRole = null)
     {
         // withProfile: false = Llm:Enabled on but no resolvable active profile (LLM_NO_ACTIVE_PROFILE state).
         var llmOptions = new StaticOptionsMonitor<LlmOptions>(withProfile
@@ -35,6 +38,20 @@ public class AiKnowledgeControllerTests
         });
         var llm = new FakeLlmClient();
         var dbContext = TestDbFactory.Create();
+        var userId = Guid.NewGuid();
+        if (folderRole.HasValue)
+        {
+            dbContext.SharedFolderPermissions.Add(new SharedFolderPermission
+            {
+                Id = Guid.NewGuid(),
+                FolderId = SharedWorkflowFolder.RootFolderId,
+                PrincipalType = FolderPrincipalType.User,
+                PrincipalKey = userId.ToString("D"),
+                Role = folderRole.Value,
+                GrantedAt = DateTime.UtcNow,
+            });
+            dbContext.SaveChanges();
+        }
         var registry = new KnowledgeChatToolRegistry(new DocsKnowledgeReader(kOptions), new SourceCodeKnowledgeReader(kOptions));
         var operational = new OperationalKnowledgeReader(dbContext, new StubAuditDetailsRedactor());
         var assistant = new KnowledgeAssistantService(new FakeLlmClientFactory(llm), new PromptCatalog(), registry, llmOptions, kOptions, operational, new StubSettingsKnowledgeReader(), new StubSqlKnowledgeReader());
@@ -43,7 +60,12 @@ public class AiKnowledgeControllerTests
         var controller = new AiKnowledgeController(llmOptions, kOptions, assistant, authz, audit, NullLogger<AiKnowledgeController>.Instance);
 
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
-            new[] { new Claim(ClaimTypes.Role, role), new Claim(ClaimTypes.Name, "tester") }, "TestAuth"));
+            new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString("D")),
+                new Claim(ClaimTypes.Role, role),
+                new Claim(ClaimTypes.Name, "tester"),
+            }, "TestAuth"));
         var body = new MemoryStream();
         var ctx = new DefaultHttpContext { User = principal };
         ctx.Response.Body = body;
@@ -170,6 +192,32 @@ public class AiKnowledgeControllerTests
         events.Should().Contain(e => e.ev == "done");
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(SharedFolderRole.FolderViewer)]
+    [InlineData(SharedFolderRole.FolderOperator)]
+    public async Task Ask_OperatorWithDbEnabled_DoesNotOfferRawDatabaseTools(
+        SharedFolderRole? folderRole)
+    {
+        var (controller, _, llm, _) = Build(
+            role: "Operator", enableToolCalling: true, db: true, folderRole: folderRole);
+        llm.EnqueueStream("ok");
+
+        await controller.Ask(new KnowledgeAskRequest("Welche Workflows gibt es?", null), CancellationToken.None);
+
+        var toolNames = llm.Calls.Should().ContainSingle().Subject.Tools!
+            .Select(tool => tool.Name)
+            .ToHashSet(StringComparer.Ordinal);
+        toolNames.Should().NotContain(new[]
+        {
+            "list_db_tables", "get_db_table", "execute_readonly_sql",
+        });
+        toolNames.Should().Contain(new[]
+        {
+            "get_workflow_definition", "analyze_workflow", "get_next_scheduled_fires",
+        }, "typed folder-scoped knowledge tools remain available to Operators");
+    }
+
     [Fact]
     public async Task Ask_ToolCallRounds_DonePayloadSumsGenerationMsAcrossRounds()
     {
@@ -193,7 +241,7 @@ public class AiKnowledgeControllerTests
     public async Task Ask_DbToolCall_AuditsFingerprintButNeverSqlText()
     {
         var (controller, audit, llm, _) = Build(
-            role: "Operator", enableToolCalling: true, db: true);
+            role: "Admin", enableToolCalling: true, db: true);
         const string sql = "SELECT COUNT(*) FROM Workflows";
         llm.EnqueueToolCallStreamWithFinish(
             new[] { new LlmToolCall("sql-1", "execute_readonly_sql", $$"""{"sql":"{{sql}}"}""") },
@@ -212,7 +260,7 @@ public class AiKnowledgeControllerTests
     public async Task Ask_Text2SqlDiscoveryAndCorrection_FitsDefaultToolDepth()
     {
         var (controller, _, llm, body) = Build(
-            role: "Operator", enableToolCalling: true, db: true);
+            role: "Admin", enableToolCalling: true, db: true);
         llm.EnqueueToolCallStream([new LlmToolCall("c1", "list_db_tables", "{}")]);
         llm.EnqueueToolCallStream(
             [new LlmToolCall("c2", "get_db_table", """{"name":"Workflow"}""")]);
@@ -263,7 +311,7 @@ public class AiKnowledgeControllerTests
     // ---- Capabilities --------------------------------------------------------------------------
 
     [Fact]
-    public void Capabilities_AllEnabledPrivileged_AllTrue()
+    public void Capabilities_AllEnabledAdmin_AllTrue()
     {
         var (controller, _, _, _) = Build(src: true, db: true, role: "Admin", enableToolCalling: true);
         var caps = Caps(controller);
@@ -315,15 +363,17 @@ public class AiKnowledgeControllerTests
         caps.Enabled.Should().BeTrue();
         caps.Docs.Should().BeTrue();
         caps.SourceCode.Should().BeFalse(); // source-code is Admin/Operator only
-        caps.Db.Should().BeFalse();        // DB (raw SQL) is Admin/Operator only
+        caps.Db.Should().BeFalse();        // DB (raw SQL) is global-Admin only
     }
 
     [Fact]
-    public void Capabilities_DbReflectedOnlyForPrivileged()
+    public void Capabilities_DbReflectedOnlyForAdmin()
     {
-        var (controller, _, _, _) = Build(db: true, role: "Operator", enableToolCalling: true);
-        Caps(controller).Db.Should().BeTrue();
-        var (controllerOff, _, _, _) = Build(db: false, role: "Operator", enableToolCalling: true);
+        var (admin, _, _, _) = Build(db: true, role: "Admin", enableToolCalling: true);
+        Caps(admin).Db.Should().BeTrue();
+        var (operatorController, _, _, _) = Build(db: true, role: "Operator", enableToolCalling: true);
+        Caps(operatorController).Db.Should().BeFalse();
+        var (controllerOff, _, _, _) = Build(db: false, role: "Admin", enableToolCalling: true);
         Caps(controllerOff).Db.Should().BeFalse();
     }
 

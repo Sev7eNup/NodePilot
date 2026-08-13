@@ -44,10 +44,11 @@ public sealed class KnowledgeAssistantService(
     /// <summary>
     /// Streams one chat turn. <paramref name="accessible"/> is the caller's pre-resolved folder
     /// access (the reader never sees a <c>ClaimsPrincipal</c>); <paramref name="isPrivileged"/> is
-    /// Admin/Operator — it gates the workflow-content and source-code tools.
+    /// Admin/Operator and gates workflow-content/source-code tools, while
+    /// <paramref name="isAdmin"/> exclusively gates raw database tools.
     /// </summary>
     public async IAsyncEnumerable<ChatStreamEvent> StreamAskAsync(
-        KnowledgeAskRequest request, AccessibleFolderSet accessible, bool isPrivileged,
+        KnowledgeAskRequest request, AccessibleFolderSet accessible, bool isPrivileged, bool isAdmin,
         [EnumeratorCancellation] CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
@@ -75,12 +76,12 @@ public sealed class KnowledgeAssistantService(
             // only for privileged callers (Admin/Operator) — read_settings is gated to them.
             var operationalReader = kOpts.OperationalEnabled ? operational : null;
             var settingsReader = isPrivileged ? settings : null;
-            // Raw SQL can read secret columns, so the DB source requires both the admin toggle AND
-            // privilege. The reader itself redacts every cell regardless; this gate keeps the tools
-            // off the menu for non-privileged callers entirely.
-            var sqlReader = (kOpts.DbEnabled && isPrivileged) ? sql : null;
+            // Raw SQL is a global-Admin capability. Folder grants never elevate an Operator into
+            // this source; the registry independently repeats the gate before every tool call.
+            var sqlReader = (kOpts.DbEnabled && isAdmin) ? sql : null;
             toolContext = new KnowledgeToolContext(
-                accessible, isPrivileged, kOpts.DocsEnabled, kOpts.OperationalEnabled, kOpts.SourceCodeEnabled, kOpts.DbEnabled, operationalReader, settingsReader, sqlReader);
+                accessible, isPrivileged, isAdmin, kOpts.DocsEnabled, kOpts.OperationalEnabled,
+                kOpts.SourceCodeEnabled, kOpts.DbEnabled, operationalReader, settingsReader, sqlReader);
             toolDefs = tools.GetTools(toolContext);
             if (toolDefs.Count == 0)
             {

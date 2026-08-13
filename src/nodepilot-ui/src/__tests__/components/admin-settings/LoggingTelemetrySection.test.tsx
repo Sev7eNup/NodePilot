@@ -31,7 +31,7 @@ const otelSnapshot = {
   payload: {
     enabled: false, serviceName: 'nodepilot-api', environment: 'dev', redactHostnames: true,
     metricExportIntervalSeconds: 30,
-    otlp: { endpoint: 'http://localhost:4317', protocol: 'grpc', headers: '', browserEndpoint: '' },
+    otlp: { endpoint: 'http://localhost:4317', protocol: 'grpc', headers: '********', browserEndpoint: '' },
     sampling: { mode: 'ParentBasedTraceIdRatio', ratio: 1.0 },
     exporters: { traces: true, metrics: true, logs: true, prometheusScrape: false, prometheusScrapeAllowAnonymous: false },
     traceUi: { urlTemplate: '', backendName: 'Tempo' },
@@ -91,5 +91,119 @@ describe('LoggingTelemetrySection', () => {
       expect(body?.RefreshIntervalMinutes).toBe(5);
       expect(body?.WindowDays).toBe(7);
     });
+  });
+
+  it('keeps persisted OTLP headers without echoing the masked display value', async () => {
+    let putBody: unknown = null;
+    server.use(http.put('/api/admin/settings/OpenTelemetry', async ({ request }) => {
+      putBody = await request.json();
+      return HttpResponse.json({ ...otelSnapshot, etag: '"otel-2"' });
+    }));
+
+    renderAll();
+    await waitFor(() => expect(screen.getByDisplayValue('********')).toBeInTheDocument());
+    const saves = screen.getAllByRole('button', { name: /speichern|save/i });
+    fireEvent.click(saves[1]);
+
+    await waitFor(() => {
+      const body = putBody as any;
+      expect(body?.Otlp?.Headers).toBe('__unchanged__');
+    });
+  });
+
+  it('rotates persisted OTLP headers through the secret-field flow', async () => {
+    let putBody: unknown = null;
+    server.use(http.put('/api/admin/settings/OpenTelemetry', async ({ request }) => {
+      putBody = await request.json();
+      return HttpResponse.json({ ...otelSnapshot, etag: '"otel-2"' });
+    }));
+
+    renderAll();
+    await waitFor(() => expect(screen.getByDisplayValue('********')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /set new value|neu setzen/i }));
+    fireEvent.change(screen.getByLabelText(/OTLP.*headers/i), {
+      target: { value: 'x-api-key=rotated-collector-key' },
+    });
+    const saves = screen.getAllByRole('button', { name: /speichern|save/i });
+    fireEvent.click(saves[1]);
+
+    await waitFor(() => {
+      const body = putBody as any;
+      expect(body?.Otlp?.Headers).toBe('x-api-key=rotated-collector-key');
+    });
+  });
+
+  it('clears persisted OTLP headers explicitly', async () => {
+    let putBody: unknown = null;
+    server.use(http.put('/api/admin/settings/OpenTelemetry', async ({ request }) => {
+      putBody = await request.json();
+      return HttpResponse.json({ ...otelSnapshot, etag: '"otel-2"' });
+    }));
+
+    renderAll();
+    await waitFor(() => expect(screen.getByDisplayValue('********')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /clear|löschen/i }));
+    const saves = screen.getAllByRole('button', { name: /speichern|save/i });
+    fireEvent.click(saves[1]);
+
+    await waitFor(() => {
+      const body = putBody as any;
+      expect(body?.Otlp?.Headers).toBeNull();
+    });
+  });
+
+  it('preserves an OTLP header rotation when retrying an ETag conflict', async () => {
+    const putBodies: unknown[] = [];
+    let calls = 0;
+    server.use(http.put('/api/admin/settings/OpenTelemetry', async ({ request }) => {
+      putBodies.push(await request.json());
+      calls += 1;
+      if (calls === 1) {
+        return HttpResponse.json({
+          code: 'ETAG_MISMATCH',
+          current: { ...otelSnapshot, etag: '"otel-current"' },
+        }, { status: 412 });
+      }
+      return HttpResponse.json({ ...otelSnapshot, etag: '"otel-2"' });
+    }));
+
+    renderAll();
+    await waitFor(() => expect(screen.getByDisplayValue('********')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /set new value|neu setzen/i }));
+    fireEvent.change(screen.getByLabelText(/OTLP.*headers/i), {
+      target: { value: 'x-api-key=rotated-after-conflict' },
+    });
+    fireEvent.click(screen.getAllByRole('button', { name: /speichern|save/i })[1]);
+    await waitFor(() => expect(screen.getByText(/Konflikt|Conflict/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /overwrite with my values|meine werte überschreiben/i }));
+
+    await waitFor(() => expect(putBodies).toHaveLength(2));
+    expect((putBodies[1] as any)?.Otlp?.Headers).toBe('x-api-key=rotated-after-conflict');
+  });
+
+  it('preserves an OTLP header deletion when retrying an ETag conflict', async () => {
+    const putBodies: unknown[] = [];
+    let calls = 0;
+    server.use(http.put('/api/admin/settings/OpenTelemetry', async ({ request }) => {
+      putBodies.push(await request.json());
+      calls += 1;
+      if (calls === 1) {
+        return HttpResponse.json({
+          code: 'ETAG_MISMATCH',
+          current: { ...otelSnapshot, etag: '"otel-current"' },
+        }, { status: 412 });
+      }
+      return HttpResponse.json({ ...otelSnapshot, etag: '"otel-2"' });
+    }));
+
+    renderAll();
+    await waitFor(() => expect(screen.getByDisplayValue('********')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /clear|löschen/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /speichern|save/i })[1]);
+    await waitFor(() => expect(screen.getByText(/Konflikt|Conflict/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /overwrite with my values|meine werte überschreiben/i }));
+
+    await waitFor(() => expect(putBodies).toHaveLength(2));
+    expect((putBodies[1] as any)?.Otlp?.Headers).toBeNull();
   });
 });

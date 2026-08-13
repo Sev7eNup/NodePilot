@@ -15,7 +15,7 @@ namespace NodePilot.Api.Tests.Security;
 public class LeaderRequiredMiddlewareTests
 {
     private static async Task<(int statusCode, bool nextCalled)> Run(
-        IClusterStateProvider cluster, string path, string method = "POST")
+        IClusterStateProvider cluster, string path, string method = "POST", bool leaderOnlyMetadata = false)
     {
         var nextCalled = false;
         var middleware = new LeaderRequiredMiddleware(_ => { nextCalled = true; return Task.CompletedTask; },
@@ -24,6 +24,13 @@ public class LeaderRequiredMiddlewareTests
         ctx.Request.Path = path;
         ctx.Request.Method = method;
         ctx.Response.Body = new MemoryStream();
+        if (leaderOnlyMetadata)
+        {
+            ctx.SetEndpoint(new Endpoint(
+                _ => Task.CompletedTask,
+                new EndpointMetadataCollection(new LeaderOnlyAttribute()),
+                "leader-only-test-endpoint"));
+        }
         await middleware.InvokeAsync(ctx, cluster);
         return (ctx.Response.StatusCode, nextCalled);
     }
@@ -77,6 +84,35 @@ public class LeaderRequiredMiddlewareTests
         var (_, nextCalled) = await Run(new FakeCluster(false), path, "GET");
 
         nextCalled.Should().BeTrue("read-only diagnostics may be served by a follower");
+    }
+
+    [Fact]
+    public async Task Follower_GetWebhook_Returns503WithoutEnteringEndpoint()
+    {
+        var (status, nextCalled) = await Run(
+            new FakeCluster(false), "/api/webhooks/order-import/incoming", "GET");
+
+        status.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        nextCalled.Should().BeFalse(
+            "the follower must stop GET webhooks before controller persistence or dispatch");
+    }
+
+    [Fact]
+    public async Task Follower_GetEndpointWithLeaderOnlyMetadata_Returns503()
+    {
+        var (status, nextCalled) = await Run(
+            new FakeCluster(false), "/api/read-shaped-but-mutating", "GET", leaderOnlyMetadata: true);
+
+        status.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        nextCalled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void WebhooksController_IsExplicitlyLeaderOnly()
+    {
+        typeof(NodePilot.Api.Controllers.WebhooksController)
+            .GetCustomAttributes(typeof(LeaderOnlyAttribute), inherit: true)
+            .Should().ContainSingle();
     }
 
     [Fact]
