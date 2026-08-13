@@ -24,7 +24,7 @@ public class OpsObservabilityDbCommandTests
         using var h = new CommandTestHarness();
         var wfA = Guid.NewGuid();
         var wfB = Guid.NewGuid();
-        h.Server.Given(Request.Create().WithPath("/api/operations/graph").UsingGet())
+        h.Server.Given(Request.Create().WithPath("/api/operations/graph").WithParam("windowMinutes", "30").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
                 nodes = new object[]
@@ -46,8 +46,8 @@ public class OpsObservabilityDbCommandTests
                 density = Array.Empty<object>(),
                 meta = new
                 {
-                    overdueSeconds = 600, windowMinutes = 20,
-                    recentSinceUtc = DateTime.UtcNow.AddMinutes(-20),
+                    overdueSeconds = 600, windowMinutes = 30,
+                    recentSinceUtc = DateTime.UtcNow.AddMinutes(-30),
                     oldestReturnedCompletedAt = (DateTime?)null, recentTruncated = false,
                     densityBucketSeconds = 0, densityCapped = false,
                 },
@@ -59,7 +59,7 @@ public class OpsObservabilityDbCommandTests
         result.Output.Should().Contain("Deploy App").And.Contain("Cleanup");
         result.Output.Should().Contain("Workflows:");
         result.Output.Should().Contain("missing: Ghost");
-        result.Output.Should().Contain("last 20 min");
+        result.Output.Should().Contain("last 30 min");
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class OpsObservabilityDbCommandTests
         // and the number a reader wants is what those buckets add up to.
         using var h = new CommandTestHarness();
         var wf = Guid.NewGuid();
-        h.Server.Given(Request.Create().WithPath("/api/operations/graph").UsingGet())
+        h.Server.Given(Request.Create().WithPath("/api/operations/graph").WithParam("windowMinutes", "60").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
                 nodes = new object[]
@@ -90,19 +90,19 @@ public class OpsObservabilityDbCommandTests
                 },
                 meta = new
                 {
-                    overdueSeconds = 600, windowMinutes = 240,
-                    recentSinceUtc = DateTime.UtcNow.AddMinutes(-240),
+                    overdueSeconds = 600, windowMinutes = 60,
+                    recentSinceUtc = DateTime.UtcNow.AddMinutes(-60),
                     oldestReturnedCompletedAt = DateTime.UtcNow.AddMinutes(-35), recentTruncated = true,
-                    densityBucketSeconds = 300, densityCapped = false,
+                    densityBucketSeconds = 75, densityCapped = false,
                 },
             }));
 
-        var result = h.Run("operations", "graph", "-o", "table");
+        var result = h.Run("operations", "graph", "--window", "60", "-o", "table");
 
         result.ExitCode.Should().Be(ExitCodes.Success);
         result.Output.Should().Contain("2000 finished runs");
         result.Output.Should().Contain("11 failed");
-        result.Output.Should().Contain("300s density buckets");
+        result.Output.Should().Contain("75s density buckets");
     }
 
     // ---- observability query ------------------------------------------------

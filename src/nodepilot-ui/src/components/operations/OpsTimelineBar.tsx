@@ -18,8 +18,8 @@ const ROW_H = 38;
  * Floor on the rendered bar width so a very short run stays visible and clickable.
  *
  * Kept small on purpose: the floor destroys proportionality, and it does so worst exactly where
- * the window is widest. At 20 min a 2-minute run is ~55 px; at 4 h it is ~2 px, so a generous
- * floor made every bar in the 1 h / 4 h views the same length and hid which run took longer.
+ * the window is widest. Even at the selectable 1 h window, short runs compress to only a few
+ * pixels, so a generous floor makes them the same length and hides which run took longer.
  * Below the floor, `OpsTimeline` writes the duration next to the bar instead — see
  * OPS_INSIDE_LABEL_PX.
  */

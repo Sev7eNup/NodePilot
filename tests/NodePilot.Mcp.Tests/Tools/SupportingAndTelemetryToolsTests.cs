@@ -176,7 +176,7 @@ public sealed class SupportingAndTelemetryToolsTests
         using var api = new TestApi();
         var parent = Guid.NewGuid();
         var child = Guid.NewGuid();
-        api.Server.Given(Request.Create().WithPath("/api/operations/graph").UsingGet())
+        api.Server.Given(Request.Create().WithPath("/api/operations/graph").WithParam("windowMinutes", "30").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
                 nodes = new[]
@@ -190,7 +190,7 @@ public sealed class SupportingAndTelemetryToolsTests
                 running = new[] { new { executionId = Guid.NewGuid(), workflowId = parent, status = "Running", startedAt = DateTime.UtcNow } },
                 recent = new[] { new { executionId = Guid.NewGuid(), workflowId = parent, status = "Failed", startedAt = DateTime.UtcNow.AddMinutes(-9), completedAt = DateTime.UtcNow.AddMinutes(-8) } },
                 // On a busy window `recent` is capped and the rest arrives counted — an agent
-                // answering "how much ran in the last four hours?" reads this, not the bar list.
+                // answering "how much ran in the selected window?" reads this, not the bar list.
                 density = new[]
                 {
                     new { workflowId = parent, buckets = new[] { new { bucketIndex = 7, total = 340, failed = 5, cancelled = 0 } } },
@@ -228,7 +228,7 @@ public sealed class SupportingAndTelemetryToolsTests
             });
         }
 
-        api.Server.Given(Request.Create().WithPath("/api/operations/graph").UsingGet())
+        api.Server.Given(Request.Create().WithPath("/api/operations/graph").WithParam("windowMinutes", "60").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
                 nodes = Array.Empty<object>(),
@@ -236,11 +236,11 @@ public sealed class SupportingAndTelemetryToolsTests
                 running = new[] { new { executionId = Guid.NewGuid(), workflowId = wf, status = "Running", startedAt = DateTime.UtcNow } },
                 recent,
                 density = Array.Empty<object>(),
-                meta = new { windowMinutes = 240, recentTruncated = true },
+                meta = new { windowMinutes = 60, recentTruncated = true },
             }));
 
         var tools = new TelemetryTools(api.Client());
-        var json = JsonSerializer.Serialize(await tools.GetOperationsGraph(240));
+        var json = JsonSerializer.Serialize(await tools.GetOperationsGraph(60));
 
         json.Should().Contain("\"recentToolCap\":200");
         json.Should().Contain("\"recentWithheldByTool\":300");

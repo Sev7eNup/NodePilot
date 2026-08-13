@@ -17,7 +17,7 @@ public sealed class OperationsGraphSettings : GlobalSettings
 {
     [CommandOption("--window <MINUTES>")]
     [Description("Look-back window for finished runs, in minutes: 30 (default) or 60. Other values clamp to 30 server-side.")]
-    public int WindowMinutes { get; init; } = 20;
+    public int WindowMinutes { get; init; } = 30;
 }
 
 [SupportedOSPlatform("windows")]

@@ -15,6 +15,11 @@ function trigger(p: Partial<OpsArmedTrigger>): OpsArmedTrigger {
 }
 
 describe('OpsDepartureBoard', () => {
+  it('is the next named keyboard stop after the timeline', () => {
+    render(<OpsDepartureBoard triggers={[]} nowMs={NOW} />);
+    expect(screen.getByRole('region', { name: 'Next starts' })).toHaveAttribute('tabindex', '0');
+  });
+
   it('shows the empty state without triggers', () => {
     render(<OpsDepartureBoard triggers={[]} nowMs={NOW} />);
     expect(screen.getByText('No scheduled starts.')).toBeInTheDocument();

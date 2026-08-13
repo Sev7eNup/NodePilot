@@ -2569,8 +2569,8 @@ select:disabled {
   background: color-mix(in srgb, var(--np-ops-bar-color) 30%, var(--color-surface));
   cursor: pointer;
   /* Deliberately NOT transitioned. A settled bar is frozen; between 1 Hz clock ticks it only
-     drifts left with the window — 1.15 px/s at 20 min, 0.38 px/s at 1 h, 0.1 px/s at 4 h, i.e.
-     a sub-pixel step nobody can see. Animating it is not free the way it looks: `left`/`width`
+     drifts left with the window — about 0.77 px/s at 30 min and 0.38 px/s at 1 h, i.e. a
+     sub-pixel step nobody can see. Animating it is not free the way it looks: `left`/`width`
      are layout properties, so the transition ran a full layout pass per frame for EVERY bar on
      the board. That, not the row count, was the real per-tick budget, and paying it is what kept
      the server's bar cap down at 1000 — low enough that a 1 h window on a busy system showed
@@ -2699,7 +2699,7 @@ html:not(.dark) .np-ops-bar--running {
 
    .np-ops-clip   stays put and bounds the drawing surface. Clipping is needed because the slide
                   pushes the leftmost marks a few pixels past x=0 between polls (at most one poll
-                  interval of drift: ~4 px at the 30 min window, under 1 px at 4 h) and they must not
+                   interval of drift: ~4 px at the 30 min window, ~2 px at 1 h) and they must not
                   spill over the lane-label column. z-index 1 puts the layer where a bar sat before;
                   the NOW line keeps z-index 2 and still draws over it.
    .np-ops-shift  moves inside it, and does nothing else.

@@ -29,7 +29,11 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
   }, [triggers]);
 
   return (
-    <section className="np-ops-board rounded-2xl border border-outline-variant bg-surface px-4 py-3" aria-label={t('operations:board.title')}>
+    <section
+      className="np-ops-board rounded-2xl border border-outline-variant bg-surface px-4 py-3"
+      aria-label={t('operations:board.title')}
+      tabIndex={0}
+    >
       <h2 className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-on-surface-variant">
         <Plane size={14} aria-hidden="true" />
         {t('operations:board.title')}

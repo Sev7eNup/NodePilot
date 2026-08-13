@@ -197,7 +197,8 @@ describe('assignLanes', () => {
 });
 
 describe('buildDensityCells', () => {
-  // A 4 h window bucketed at 5 min, with the bar/aggregate seam 30 min before NOW.
+  // A synthetic, no-longer-selectable 4 h window keeps the pure geometry honest for wider callers:
+  // 5-minute buckets, with the bar/aggregate seam 30 min before NOW.
   const WIDE = windowFor(NOW, 240 * MIN, 1000);
   const SINCE = NOW - 240 * MIN;
   const SEAM = NOW - 30 * MIN;

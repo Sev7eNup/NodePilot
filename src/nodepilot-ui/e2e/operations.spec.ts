@@ -58,6 +58,37 @@ async function mock(page: Page) {
   await page.route('**/api/executions/ex-1', (r) => json(r, EXEC_DETAIL));
 }
 
+async function mockDensity(page: Page) {
+  await installDefaultMocks(page);
+  await page.route('**/api/operations/graph*', (r) => {
+    const windowMinutes = Number(new URL(r.request().url()).searchParams.get('windowMinutes') ?? 30);
+    return json(r, {
+      ...GRAPH(),
+      density: [
+        {
+          workflowId: 'wf-1',
+          buckets: [
+            { bucketIndex: 4, total: 12, failed: 0, cancelled: 0 },
+            { bucketIndex: 5, total: 8, failed: 0, cancelled: 0 },
+          ],
+        },
+        { workflowId: 'wf-2', buckets: [{ bucketIndex: 6, total: 20, failed: 3, cancelled: 0 }] },
+      ],
+      meta: {
+        overdueSeconds: 600,
+        windowMinutes,
+        recentSinceUtc: new Date(now() - windowMinutes * MIN).toISOString(),
+        oldestReturnedCompletedAt: new Date(now() - 8 * MIN).toISOString(),
+        recentTruncated: true,
+        densityBucketSeconds: windowMinutes === 60 ? 75 : 37,
+        densityCapped: false,
+      },
+    });
+  });
+  await page.route('**/api/stats/dashboard*', (r) => json(r, STATS()));
+  await page.route('**/api/executions/ex-1', (r) => json(r, EXEC_DETAIL));
+}
+
 test('timeline bars render from the snapshots', async ({ page }) => {
   await mock(page);
   await page.goto('/operations');
@@ -226,6 +257,9 @@ test('window selector re-requests the snapshot and freeze pins the view', async 
 
   await page.goto('/operations');
   await expect(page.getByTitle(/Nightly Backup · Running/)).toBeVisible();
+  expect(await page.getByLabel('Window').locator('option').evaluateAll(
+    (options) => options.map((option) => (option as HTMLOptionElement).value),
+  )).toEqual(['30', '60']);
   expect(windows[0]).toBe('30');
 
   await page.getByLabel('Window').selectOption('60');
@@ -243,22 +277,7 @@ test('window selector re-requests the snapshot and freeze pins the view', async 
 });
 
 test('a window the bars cannot cover is filled with density, not left empty', async ({ page }) => {
-  await installDefaultMocks(page);
-  await page.route('**/api/operations/graph*', (r) => json(r, {
-    ...GRAPH(),
-    density: [
-      { workflowId: 'wf-1', buckets: [{ bucketIndex: 4, total: 12, failed: 0, cancelled: 0 }] },
-      { workflowId: 'wf-2', buckets: [{ bucketIndex: 6, total: 20, failed: 3, cancelled: 0 }] },
-    ],
-    meta: {
-      overdueSeconds: 600, windowMinutes: 60,
-      recentSinceUtc: new Date(now() - 60 * MIN).toISOString(),
-      oldestReturnedCompletedAt: new Date(now() - 8 * MIN).toISOString(),
-      recentTruncated: true, densityBucketSeconds: 75, densityCapped: false,
-    },
-  }));
-  await page.route('**/api/stats/dashboard*', (r) => json(r, STATS()));
-  await page.route('**/api/executions/ex-1', (r) => json(r, EXEC_DETAIL));
+  await mockDensity(page);
 
   await page.goto('/operations');
   await expect(page.getByTitle(/Nightly Backup · Running/)).toBeVisible();
@@ -266,21 +285,143 @@ test('a window the bars cannot cover is filled with density, not left empty', as
   // the window the user picked is what sets the visible span, the snapshot only fills it.
   await page.getByLabel('Window').selectOption('60');
 
-  // The whole point: at 4 h the stretch older than the newest bars carries the run counts
+  // The whole point: at 1 h the stretch older than the newest bars carries the run counts
   // instead of the hatched "nothing came back" band it used to show.
-  await expect(page.getByTestId('ops-density-cell')).toHaveCount(2);
-  await expect(page.getByTestId('ops-density-notice')).toContainText('32 finished runs');
+  const cells = page.getByTestId('ops-density-cell');
+  await expect(cells).toHaveCount(3);
+  await expect(page.getByTestId('ops-density-notice')).toContainText('40 finished runs');
   await expect(page.getByTestId('ops-density-notice')).toContainText('3 failed');
   await expect(page.getByTestId('ops-history-gap')).toHaveCount(0);
+
+  // Screen-reader contract: the interval and count are exposed as an image name, while density
+  // stays out of the keyboard order because it has no action to invoke.
+  const announced = page.getByRole('img', { name: /12 runs/ });
+  await expect(announced).toBeVisible();
+  await expect(announced).not.toHaveAttribute('tabindex');
 
   // The marks that keep the aggregate from reading as one long run — asserted in a real browser
   // with real layout, because that is where the flat slab actually manifested. One baseline per
   // density lane; only wf-2's slice holds failures, so only it gets a rug under the line.
   await expect(page.getByTestId('ops-density-axis')).toHaveCount(2);
   await expect(page.getByTestId('ops-density-rug')).toHaveCount(1);
-  const column = await page.getByTestId('ops-density-cell').first().boundingBox();
+  const column = await cells.first().boundingBox();
   expect(column!.height).toBeLessThan(22);
+
+  // Consecutive buckets remain distinct columns instead of merging into the old solid slab.
+  const nextColumn = await cells.nth(1).boundingBox();
+  expect(nextColumn!.x - (column!.x + column!.width)).toBeGreaterThan(0);
 });
+
+test('timeline keyboard navigation is one tab stop and opens the active run', async ({ page }) => {
+  await mock(page);
+  await page.goto('/operations');
+
+  const track = page.getByTestId('ops-track');
+  const board = page.getByRole('region', { name: 'Next starts' });
+  const bars = track.locator('[id^="ops-bar-"]');
+  await expect(track).toHaveAttribute('tabindex', '0');
+  await expect(bars).toHaveCount(2);
+  for (let i = 0; i < await bars.count(); i++) await expect(bars.nth(i)).toHaveAttribute('tabindex', '-1');
+
+  await track.focus();
+  const first = await track.getAttribute('aria-activedescendant');
+  await track.press('ArrowRight');
+  await expect(track).not.toHaveAttribute('aria-activedescendant', first!);
+  await track.press('ArrowLeft');
+  await expect(track).toHaveAttribute('aria-activedescendant', first!);
+  await track.press('End');
+  await expect(track).not.toHaveAttribute('aria-activedescendant', first!);
+  await track.press('Home');
+  await expect(track).toHaveAttribute('aria-activedescendant', first!);
+  await track.press('ArrowDown');
+  await expect(track).not.toHaveAttribute('aria-activedescendant', first!);
+  await track.press('ArrowUp');
+  await expect(track).toHaveAttribute('aria-activedescendant', first!);
+
+  await track.press('Space');
+  await expect(page.getByLabel('Execution details')).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
+  await track.focus();
+  await track.press('Enter');
+  await expect(page.getByLabel('Execution details')).toBeVisible();
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  await track.focus();
+  await page.keyboard.press('Tab');
+  await expect(board).toBeFocused();
+});
+
+test('a capped lane keeps every run and the time axis aligned at phone width', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installDefaultMocks(page);
+  const busy = GRAPH();
+  await page.route('**/api/operations/graph*', (r) => json(r, {
+    ...busy,
+    nodes: [{ ...busy.nodes[0], workflowId: 'wf-busy', name: 'Busy Workflow', runningCount: 13 }],
+    running: Array.from({ length: 13 }, (_, i) => ({
+      executionId: `busy-${i}`,
+      workflowId: 'wf-busy',
+      status: 'Running',
+      startedAt: new Date(now() - 5 * MIN).toISOString(),
+    })),
+    recent: [],
+    density: [],
+  }));
+  await page.route('**/api/stats/dashboard*', (r) => json(r, STATS()));
+
+  await page.goto('/operations');
+
+  await expect(page.locator('[id^="ops-bar-busy-"]')).toHaveCount(13);
+  const cappedMarker = page.getByTestId('ops-lane-capped');
+  await expect(cappedMarker).toHaveCount(1);
+  await expect(cappedMarker).toHaveAttribute(
+    'aria-label',
+    /some bars share a row/i,
+  );
+
+  const track = await page.getByTestId('ops-track').boundingBox();
+  const axis = await page.getByTestId('ops-time-axis').boundingBox();
+  const labels = await page.locator('.np-ops-lane-labels').boundingBox();
+  expect(track!.width).toBeGreaterThanOrEqual(120);
+  expect(labels!.width).toBeCloseTo(140, 0);
+  expect(Math.abs(axis!.x - track!.x)).toBeLessThanOrEqual(1);
+});
+
+for (const theme of ['light', 'dark'] as const) {
+  for (const windowMinutes of [30, 60] as const) {
+    test(`density marks remain visible in ${theme} at ${windowMinutes} minutes`, async ({ page }) => {
+      await page.addInitScript((selectedTheme) => {
+        localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: selectedTheme }, version: 0 }));
+      }, theme);
+      await mockDensity(page);
+      await page.goto('/operations');
+      if (windowMinutes === 60) await page.getByLabel('Window').selectOption('60');
+
+      await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark')))
+        .toBe(theme === 'dark');
+      const cell = page.getByTestId('ops-density-cell').first();
+      const baseline = page.getByTestId('ops-density-axis').first();
+      const rug = page.getByTestId('ops-density-rug');
+      await expect(cell).toBeVisible();
+      await expect(rug).toBeVisible();
+
+      const styles = await page.evaluate(() => {
+        const style = (selector: string) => getComputedStyle(document.querySelector(selector)!);
+        return {
+          column: style('.np-ops-density').backgroundColor,
+          baseline: style('.np-ops-density-axis').borderTopColor,
+          baselineStyle: style('.np-ops-density-axis').borderTopStyle,
+          rug: style('.np-ops-density-rug').backgroundColor,
+        };
+      });
+      expect(styles.column).not.toBe('rgba(0, 0, 0, 0)');
+      expect(styles.baseline).not.toBe('rgba(0, 0, 0, 0)');
+      expect(styles.baselineStyle).toBe('dashed');
+      expect(styles.rug).not.toBe('rgba(0, 0, 0, 0)');
+      await expect(baseline).toHaveCount(1);
+    });
+  }
+}
 
 test('folder filter scopes timeline and departure board together', async ({ page }) => {
   await mock(page);

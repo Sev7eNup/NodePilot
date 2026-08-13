@@ -50,7 +50,7 @@ public sealed class TelemetryTools
     private const int RecentToolCap = 200;
 
     [McpServerTool(Name = "get_operations_graph", ReadOnly = true)]
-    [Description("Live-ops Mission-Control snapshot (RBAC-scoped): workflow nodes (name, folder, enabled, live runningCount, lastStatus, per-node canRun/canEdit), call edges between workflows (startWorkflow/forEach, with refStatus Resolved|Dynamic|Unresolved|Ambiguous), currently-running executions, and recently finished executions within the selected window. The server caps 'recent' at the newest 4000 and this tool trims it further to the newest 200, reporting 'meta.recentToolCap' and 'meta.recentWithheldByTool' when it does — running executions are never trimmed. When the SERVER cap bit, when it is, 'meta.recentTruncated' is true and 'density' carries the per-workflow run counts for the whole window in 'meta.densityBucketSeconds' buckets (bucketIndex 0 starts at meta.recentSinceUtc), each with total/failed/cancelled — so 'how much ran in the last four hours' is answerable even though not every run is listed individually. 'meta.oldestReturnedCompletedAt' marks where the individual list stops and 'meta.densityCapped' says the counts are a floor. Answers 'what is running right now, what just finished, and how do workflows call each other?'.")]
+    [Description("Live-ops Mission-Control snapshot (RBAC-scoped): workflow nodes (name, folder, enabled, live runningCount, lastStatus, per-node canRun/canEdit), call edges between workflows (startWorkflow/forEach, with refStatus Resolved|Dynamic|Unresolved|Ambiguous), currently-running executions, and recently finished executions within the selected window. The server caps 'recent' at the newest 4000 and this tool trims it further to the newest 200, reporting 'meta.recentToolCap' and 'meta.recentWithheldByTool' when it does — running executions are never trimmed. When the SERVER cap bit, when it is, 'meta.recentTruncated' is true and 'density' carries the per-workflow run counts for the whole window in 'meta.densityBucketSeconds' buckets (bucketIndex 0 starts at meta.recentSinceUtc), each with total/failed/cancelled — so 'how much ran in the selected window' is answerable even though not every run is listed individually. 'meta.oldestReturnedCompletedAt' marks where the individual list stops and 'meta.densityCapped' says the counts are a floor. Answers 'what is running right now, what just finished, and how do workflows call each other?'.")]
     public async Task<object> GetOperationsGraph(
         [Description("Look-back window for finished runs, in minutes: 30 (default) or 60. Other values clamp to 30. Running executions are always returned in full.")] int windowMinutes = 30,
         CancellationToken cancellationToken = default)
@@ -58,7 +58,7 @@ public sealed class TelemetryTools
         var root = await ApiErrorMapper.Guard(() => _api.GetOperationsGraphAsync(cancellationToken, windowMinutes));
         var graph = JsonNode.Parse(root.GetRawText())!.AsObject();
 
-        // The console's budget is not an agent's. A 4 h window on a busy board fills 'recent' with the
+        // The console's budget is not an agent's. A busy 1 h window can fill 'recent' with the
         // server cap's worth of rows -- roughly 900 KB of GUIDs and ISO timestamps -- which is a sensible
         // payload for a timeline that draws every one of them and a waste of an agent's context, which
         // reads a handful. Trimmed from the OLD end: the server orders newest-first, and "what just

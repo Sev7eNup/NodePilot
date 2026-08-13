@@ -637,8 +637,8 @@ public class OperationsControllerTests
 
     // ---- Density: the window covered where individual bars run out ---------------------------
     //
-    // The defect these guard: at 1 h / 4 h a busy system blew past the raw cap after ~30 minutes,
-    // so every wider window showed the same newest half hour and an empty band for the rest. The
+    // The defect these guard: at 1 h a busy system blew past the raw cap after ~30 minutes,
+    // so the wide window showed the same newest half hour and an empty band for the rest. The
     // window selector was decoration. Bars still cap — thousands of them cannot be re-sent every
     // poll and re-positioned every tick — but what they cannot reach now comes back counted.
 
@@ -683,7 +683,7 @@ public class OperationsControllerTests
         // the console cannot answer "how much ran in this window?" at all.
         const int total = OperationsController.RecentCap + 200;
         var wf = Guid.NewGuid();
-        // 250 ms apart, so all of them comfortably fit the 20-minute window even if the request
+        // 250 ms apart, so all of them comfortably fit the 30-minute window even if the request
         // lands a moment after the seed — a wider spacing would push the oldest rows out of it.
         var db = await SeedBusyWindow(wf, total, TimeSpan.FromMilliseconds(250),
             (3, ExecutionStatus.Failed), (7, ExecutionStatus.Failed), (11, ExecutionStatus.Cancelled));

@@ -339,6 +339,12 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
     return x > 2 ? Math.min(x, wAnchor.trackWidthPx) : 0;
   }, [historyFromMs, densityCellsByLane, wAnchor]);
   const nowX = timeToX(nowMs, w);
+  // A wall-clock tick can land within a few pixels of NOW (for example 11:30 at 11:30:04).
+  // Keep its gridline, but suppress that one label so the axis never renders "11:30NOW".
+  const labelledTicks = useMemo(
+    () => ticks.filter((tick) => Math.abs(tick.xPx - nowX) >= 36),
+    [ticks, nowX],
+  );
 
   /**
    * Accessible names, one entry per DISTINCT (workflow, status) pair rather than per bar.
@@ -649,7 +655,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
                       {/* The lane ran out of sub-rows, so some bars share a row and overlap. Saying so
                           is the difference between "crowded" and a layout that quietly misrepresents
                           concurrency. */}
-                      {lane.subRowsCapped && (
+                      {lane.subRowsCapped && r === 0 && (
                         <span
                           className="shrink-0 text-warning"
                           aria-label={t('operations:timeline.subRowsCapped', { rows: OPS_MAX_SUB_ROWS })}
@@ -750,12 +756,16 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
       </div>
 
       {/* Time axis */}
-      <div className="np-ops-axis relative mt-1 h-5 shrink-0 border-t border-outline-variant/60">
-        {ticks.map((tick) => (
+      <div
+        className="np-ops-axis relative mt-1 h-5 shrink-0 border-t border-outline-variant/60"
+        data-testid="ops-time-axis"
+      >
+        {labelledTicks.map((tick) => (
           <span
             key={tick.atMs}
             className="absolute -translate-x-1/2 text-[10px] tabular-nums text-outline"
             style={{ left: tick.xPx }}
+            data-testid="ops-time-tick"
           >
             {formatTime(tick.atMs, { hour: '2-digit', minute: '2-digit' })}
           </span>
@@ -763,6 +773,7 @@ export function OpsTimeline({ nowMs, running, recent, density, locallySettled, s
         <span
           className="absolute -translate-x-1/2 text-[10px] font-semibold uppercase text-primary"
           style={{ left: nowX }}
+          data-testid="ops-now-label"
         >
           {t('operations:timeline.now')}
         </span>

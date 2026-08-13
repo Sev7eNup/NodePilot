@@ -77,6 +77,17 @@ describe('OpsTimeline', () => {
     expect(screen.getByText('Now')).toBeInTheDocument();
   });
 
+  it('keeps wall-clock labels clear of the NOW marker', () => {
+    renderTimeline();
+    const nowX = parseFloat(screen.getByTestId('ops-now-label').style.left);
+    const ticks = screen.getAllByTestId('ops-time-tick');
+
+    expect(ticks.length).toBeGreaterThan(0);
+    for (const tick of ticks) {
+      expect(Math.abs(parseFloat(tick.style.left) - nowX)).toBeGreaterThanOrEqual(36);
+    }
+  });
+
   it('clicking a bar selects its execution', () => {
     const { onSelect } = renderTimeline();
     fireEvent.click(screen.getByTitle(/Nightly Backup · Running/));
@@ -193,8 +204,8 @@ describe('OpsTimeline — overdue runs', () => {
 });
 
 describe('OpsTimeline — density for the stretch bars cannot reach', () => {
-  // The 4 h window on a busy system: ~4000 finished runs exist, the snapshot ships the newest
-  // 1000 as bars and the rest as counts. Before this, everything older than the newest ~30 min
+  // A capped 1 h window on a busy system: thousands of finished runs exist, the snapshot ships the
+  // newest slice as bars and the rest as counts. Before this, everything older than that slice
   // was an empty hatched band and the window selector was decoration.
   const DENSITY_ARGS = {
     running: [],
@@ -234,7 +245,7 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
 
   it('states the window total and suppresses the "no history" band', () => {
     renderTimeline(DENSITY_ARGS);
-    // 12 + 20 counted, 3 of them failed — the answer to "what happened in these four hours?".
+    // 12 + 20 counted, 3 of them failed — the answer to "what happened in this window?".
     expect(screen.getByTestId('ops-density-notice').textContent).toContain('32 finished runs');
     expect(screen.getByTestId('ops-density-notice').textContent).toContain('3 failed');
     // The band claims nothing came back for that stretch; density is the refutation.
@@ -350,7 +361,7 @@ describe('OpsTimeline — density for the stretch bars cannot reach', () => {
 describe('OpsTimeline — duration stays comparable at wide windows', () => {
   // Regression: the bar-width floor used to be 6 px. At 1 h a 2-minute run renders ~9 px and a
   // 20-second one ~3 px, so the floor flattened both to the same length — every bar in the
-  // 1 h / 4 h views looked identical and "which run took longer?" was unanswerable.
+  // the 1 h view made short runs look identical and "which run took longer?" was unanswerable.
   const wideRuns = {
     running: [],
     recent: [
@@ -365,7 +376,7 @@ describe('OpsTimeline — duration stays comparable at wide windows', () => {
 
   it('writes the duration beside bars too narrow to hold it', () => {
     renderTimeline({ ...wideRuns, windowMs: 60 * MIN });
-    // Both runs are sub-pixel-ish at 4 h, so neither can carry an inside label — the text
+    // Both runs are too narrow at 1 h to carry an inside label — the text
     // beside the bar is what keeps them distinguishable.
     expect(screen.getByText('2:00')).toBeInTheDocument();
     expect(screen.getByText('0:20')).toBeInTheDocument();
@@ -451,10 +462,10 @@ describe('OpsTimeline — re-anchoring', () => {
 });
 
 describe('OpsTimeline — a clock tick must not touch the density either', () => {
-  // Density is frozen history, exactly like a settled bar, and it is the bulkier of the two: at the
-  // 4 h window a busy board draws ~24 lanes × up to 48 buckets. It rode the live window until this
+  // Density is frozen history, exactly like a settled bar, and it is the bulkier of the two: a busy
+  // board draws ~24 lanes × up to 48 buckets. It rode the live window until this
   // was fixed, so every one of those cells was recomputed and re-rendered once a second while the
-  // bars beside them sat still — the reason the 4 h view still felt heavy after the bars were done.
+  // bars beside them sat still — the reason the busy view still felt heavy after the bars were done.
   const ARGS = {
     running: [],
     recent: [{
@@ -525,7 +536,7 @@ describe('OpsTimeline — the anchored subtree is built per snapshot, not per ti
   // Memoizing the GEOMETRY was only half of it: the layer's JSX used to live in the render body, so
   // a clock tick still rebuilt every density element and re-ran densityTitle for each one — two
   // toLocaleTimeString calls and up to three i18n lookups per cell, none of which can change between
-  // polls. At the 4 h window that was thousands of Intl formats a second. This measures the real
+  // polls. On a busy board that was thousands of Intl formats a second. This measures the real
   // thing rather than the intent.
 
   const DENSE = {
@@ -633,5 +644,24 @@ describe('OpsTimeline — keyboard reach without a trap', () => {
     expect(cell).toHaveAttribute('role', 'img');
     expect(cell.getAttribute('aria-label')).toContain('12 runs');
     expect(cell).not.toHaveAttribute('tabindex');
+  });
+
+  it('announces a capped lane once instead of repeating the marker on every sub-row', () => {
+    renderTimeline({
+      recent: [],
+      running: Array.from({ length: 13 }, (_, i) => ({
+        executionId: `busy-${i}`,
+        workflowId: 'w1',
+        status: 'Running',
+        startedAt: new Date(NOW - 5 * MIN).toISOString(),
+        parentExecutionId: null,
+        stepsFinished: null,
+        lastCompletedStepName: null,
+        lastProgressAt: null,
+        activeStepCount: null,
+      })),
+    });
+
+    expect(screen.getAllByTestId('ops-lane-capped')).toHaveLength(1);
   });
 });

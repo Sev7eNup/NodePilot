@@ -4583,8 +4583,8 @@ Prüfpunkte je Provider/Fall:
 - [ ] **Go live** entfernt das Badge und nimmt den Poll wieder auf.
 
 ### Test 83.12 — Truncation-Ehrlichkeit (Density-Histogramm)
-1. Ein 4-h-Fenster wählen, in dem der Server mehr beendete Runs hat, als er einzeln zurückgibt (`recentTruncated: true`).
-2. Hinweis: mit `RecentCap = 4000` greift der Cap bei ≤ 1 Std erst ab ~4.000 beendeten Läufen im Fenster — auf ruhigeren Anlagen ist Dichte nicht mehr zu sehen und dieser Test entfällt.
+1. Das 1-h-Fenster wählen und einen Snapshot mit mehr beendeten Runs bereitstellen, als der Server einzeln zurückgibt (`recentTruncated: true`; für reproduzierbare Abnahme entsprechend mocken).
+2. Hinweis: mit `RecentCap = 4000` greift der Cap erst ab ~4.000 beendeten Läufen im Fenster — auf ruhigeren Anlagen ist Dichte nicht zu sehen und dieser Test braucht den Mock.
 - [ ] Der Abschnitt, den die Einzelbalken nicht abdecken, zeigt **aggregierte Run-Zahlen** (Density-Zellen), nicht das frühere schraffierte „nichts zurückgekommen"-Band.
 - [ ] Die Zellen sind **einzeln abzählbare Säulen auf einer gestrichelten Grundlinie**, keine durchgehende Fläche — zwischen benachbarten Buckets bleibt sichtbar Luft.
 - [ ] Die **Säulenhöhe folgt der Lauf-Anzahl**; die höchste Säule ist erkennbar **kürzer als ein Lauf-Balken** und sitzt tiefer in der Lane. Eine Säule darf nie als einzelner langer Lauf lesbar sein.
