@@ -41,7 +41,7 @@ const GRAPH: OperationsGraph = {
   ],
   edges: [],
   running: [{ executionId: 'ex-1', workflowId: 'wf-1', status: 'Running', startedAt: new Date(NOW - 4 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
-  meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
+  meta: { overdueSeconds: 600, windowMinutes: 30, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
   recent: [{ executionId: 'ex-2', workflowId: 'wf-2', status: 'Failed', startedAt: new Date(NOW - 10 * MIN).toISOString(), completedAt: new Date(NOW - 8 * MIN).toISOString(), parentExecutionId: null }],
   density: [],
 };
@@ -216,10 +216,10 @@ describe('OperationsPage', () => {
     }));
     renderPage();
     await screen.findByTitle(/Nightly Backup · Running/);
-    expect(urls.at(-1)).toContain('windowMinutes=20');
+    expect(urls.at(-1)).toContain('windowMinutes=30');
 
-    fireEvent.change(screen.getByLabelText('Window'), { target: { value: '240' } });
-    await waitFor(() => expect(urls.at(-1)).toContain('windowMinutes=240'));
+    fireEvent.change(screen.getByLabelText('Window'), { target: { value: '60' } });
+    await waitFor(() => expect(urls.at(-1)).toContain('windowMinutes=60'));
   });
 
   it('freeze stops the polling and shows a badge naming the freeze time', async () => {
@@ -275,7 +275,7 @@ describe('OperationsPage', () => {
 
   it('shows the empty state when no accessible workflows', async () => {
     server.use(http.get(`${BASE}/api/operations/graph`, () =>
-      HttpResponse.json({ nodes: [], edges: [], running: [], recent: [], density: [], meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false } })));
+      HttpResponse.json({ nodes: [], edges: [], running: [], recent: [], density: [], meta: { overdueSeconds: 600, windowMinutes: 30, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false } })));
     renderPage();
     expect(await screen.findByText('No accessible workflows.')).toBeInTheDocument();
   });
@@ -283,7 +283,7 @@ describe('OperationsPage', () => {
   it('shows the idle hero when workflows exist but nothing ran recently', async () => {
     server.use(http.get(`${BASE}/api/operations/graph`, () => HttpResponse.json({
       nodes: [node({ workflowId: 'wf-a', name: 'Alpha', folderId: 'f', folderPath: '/', lastStatus: 'Succeeded' })],
-      edges: [], running: [], recent: [], density: [], meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
+      edges: [], running: [], recent: [], density: [], meta: { overdueSeconds: 600, windowMinutes: 30, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
     })));
     renderPage();
     expect(await screen.findByText('Nothing is running right now.')).toBeInTheDocument();
@@ -317,7 +317,7 @@ describe('OperationsPage', () => {
     // Next snapshot no longer exposes the /Prod folder (RBAC / scope change).
     server.use(http.get(`${BASE}/api/operations/graph`, () => HttpResponse.json({
       nodes: [node({ workflowId: 'wf-3', name: 'Health Check', folderId: 'staging', folderPath: '/Staging', lastStatus: 'Succeeded' })],
-      edges: [], running: [], recent: [], density: [], meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
+      edges: [], running: [], recent: [], density: [], meta: { overdueSeconds: 600, windowMinutes: 30, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
     })));
     await qc.invalidateQueries({ queryKey: ['operations-graph'] });
 
@@ -330,7 +330,7 @@ describe('OperationsPage', () => {
       nodes: folders.map((folderId, i) => node({
         workflowId: `wf-${i}`, name: `WF ${i}`, folderId, folderPath: `/${folderId}`, lastStatus: 'Succeeded',
       })),
-      edges: [], running: [], recent: [], density: [], meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
+      edges: [], running: [], recent: [], density: [], meta: { overdueSeconds: 600, windowMinutes: 30, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
     })));
     renderPage();
     const select = await screen.findByLabelText('Folder') as HTMLSelectElement;

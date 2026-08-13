@@ -4576,16 +4576,27 @@ Prüfpunkte je Provider/Fall:
 - [ ] **Cancel** und **Quarantine** werden **gar nicht gerendert** (nicht bloß deaktiviert).
 
 ### Test 83.11 — Fenster-Wahl und Freeze
-1. Window-Selector von 20 min auf 4 h stellen.
+1. Window-Selector von 30 Min auf 1 Std stellen (mehr Fenster gibt es nicht).
 2. **Freeze view** klicken, ~10 s warten, dann **Go live**.
-- [ ] Die Umstellung löst einen neuen Snapshot-Request mit `windowMinutes=240` aus.
+- [ ] Die Umstellung löst einen neuen Snapshot-Request mit `windowMinutes=60` aus.
 - [ ] Im Freeze erscheint das Frozen-Badge und der 5-s-Poll **stoppt** (keine weiteren Requests).
 - [ ] **Go live** entfernt das Badge und nimmt den Poll wieder auf.
 
-### Test 83.12 — Truncation-Ehrlichkeit (Density-Track)
+### Test 83.12 — Truncation-Ehrlichkeit (Density-Histogramm)
 1. Ein 4-h-Fenster wählen, in dem der Server mehr beendete Runs hat, als er einzeln zurückgibt (`recentTruncated: true`).
+2. Hinweis: mit `RecentCap = 4000` greift der Cap bei ≤ 1 Std erst ab ~4.000 beendeten Läufen im Fenster — auf ruhigeren Anlagen ist Dichte nicht mehr zu sehen und dieser Test entfällt.
 - [ ] Der Abschnitt, den die Einzelbalken nicht abdecken, zeigt **aggregierte Run-Zahlen** (Density-Zellen), nicht das frühere schraffierte „nichts zurückgekommen"-Band.
-- [ ] Der Hinweis nennt Gesamt- und Fehlerzahl (z. B. „32 finished runs", „3 failed").
+- [ ] Die Zellen sind **einzeln abzählbare Säulen auf einer gestrichelten Grundlinie**, keine durchgehende Fläche — zwischen benachbarten Buckets bleibt sichtbar Luft.
+- [ ] Die **Säulenhöhe folgt der Lauf-Anzahl**; die höchste Säule ist erkennbar **kürzer als ein Lauf-Balken** und sitzt tiefer in der Lane. Eine Säule darf nie als einzelner langer Lauf lesbar sein.
+- [ ] Intervalle mit Fehlschlägen tragen einen **roten Strich unter der Grundlinie** (Abbrüche ohne Fehler: grau) — auch dann, wenn der Fehleranteil winzig ist (z. B. 65 von 2981).
+- [ ] Der Hinweis nennt Gesamt- und Fehlerzahl (z. B. „32 finished runs", „3 failed") **und erklärt die Kodierung** (Säulenhöhe = Läufe, Strich unter der Linie = Fehlschlag).
+- [ ] Hover auf einer Säule nennt Zeitraum und exakte Zahlen; Prüfung in hellem **und** dunklem Skin (Säule und Grundlinie dürfen nicht verschwinden).
+
+### Test 83.12b — Tastatur und Screenreader
+1. Auf `/operations` mit Tab bis zur Zeitleiste, dann mit Pfeiltasten navigieren und Enter drücken.
+- [ ] Die Zeitleiste ist **ein** Tab-Stop: ein weiterer Tab landet im Departure-Board darunter, nicht im nächsten Balken.
+- [ ] Pfeil links/rechts wechselt den Balken, hoch/runter die Lane, Home/End springt an die Enden, Enter öffnet den Drilldown.
+- [ ] Screenreader liest Dichte-Säulen vor (Zeitraum + Lauf-Anzahl); sie sind **nicht** per Tab erreichbar.
 
 ### Test 83.13 — Folder-Scoping
 1. Folder-Filter auf einen Ordner ohne laufende Runs stellen, danach zurückstellen.

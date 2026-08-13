@@ -2568,8 +2568,14 @@ select:disabled {
   border: 1px solid color-mix(in srgb, var(--np-ops-bar-color) 70%, transparent);
   background: color-mix(in srgb, var(--np-ops-bar-color) 30%, var(--color-surface));
   cursor: pointer;
-  /* Between 1 Hz clock ticks the geometry glides at compositor speed. */
-  transition: left 1s linear, width 1s linear;
+  /* Deliberately NOT transitioned. A settled bar is frozen; between 1 Hz clock ticks it only
+     drifts left with the window — 1.15 px/s at 20 min, 0.38 px/s at 1 h, 0.1 px/s at 4 h, i.e.
+     a sub-pixel step nobody can see. Animating it is not free the way it looks: `left`/`width`
+     are layout properties, so the transition ran a full layout pass per frame for EVERY bar on
+     the board. That, not the row count, was the real per-tick budget, and paying it is what kept
+     the server's bar cap down at 1000 — low enough that a 1 h window on a busy system showed
+     only its newest ~20 minutes. Growth that actually needs to be smooth belongs to running
+     bars, which are few; see .np-ops-bar--running. */
 }
 .np-ops-bar:focus-visible {
   outline: 2px solid var(--color-primary);
@@ -2581,6 +2587,9 @@ select:disabled {
   z-index: 3;
 }
 .np-ops-bar--running {
+  /* The one bar kind whose geometry genuinely moves: it grows toward the NOW line every tick, and
+     a 1 Hz step there is visible. There are a handful of these, not thousands. */
+  transition: left 1s linear, width 1s linear;
   background:
     linear-gradient(100deg, transparent 30%, color-mix(in srgb, white 22%, transparent) 50%, transparent 70%)
     color-mix(in srgb, var(--np-ops-bar-color) 42%, var(--color-surface));
@@ -2663,15 +2672,71 @@ html:not(.dark) .np-ops-bar--running {
   border-right: 1px dashed color-mix(in srgb, var(--color-outline) 60%, transparent);
 }
 
-/* Density slice: what one time bucket of a lane held once individual bars ran out. Drawn before
-   the gridlines and the bars, so anything with a drill-down wins the pointer; density only ever
-   occupies the stretch left of the seam, where no bar exists to compete with. It does keep
-   pointer events — the hover title is the only way to read the counts behind a slice. Inline
-   styles carry the outcome stack and the count-driven opacity. */
+/* Anchored layer — TWO elements, deliberately.
+
+   It holds everything frozen at the snapshot: settled bars, the density histogram, the call
+   connectors and the no-history band, drawn once per snapshot in the snapshot's own coordinate
+   system and then slid as a whole. One compositor property per clock tick instead of a `left` write
+   and a layout pass per bar.
+
+   .np-ops-clip   stays put and bounds the drawing surface. Clipping is needed because the slide
+                  pushes the leftmost marks a few pixels past x=0 between polls (at most one poll
+                  interval of drift: ~4 px at the 30 min window, under 1 px at 4 h) and they must not
+                  spill over the lane-label column. z-index 1 puts the layer where a bar sat before;
+                  the NOW line keeps z-index 2 and still draws over it.
+   .np-ops-shift  moves inside it, and does nothing else.
+
+   Splitting the two roles is not cosmetic: on a single element the clip rectangle travels with the
+   transform, so the right edge loses whatever the layer has drifted. Running bars stay OUTSIDE both
+   — they grow toward NOW, which a translation cannot express. */
+.np-ops-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 1;
+}
+.np-ops-shift {
+  position: absolute;
+  inset: 0;
+  will-change: transform;
+}
+
+/* Density histogram: what one time bucket of a lane held once individual bars ran out. Three
+   marks, three claims, deliberately kept apart.
+
+   .np-ops-density       the column. Bottom-anchored on the lane baseline; HEIGHT is the run count
+                         and it tops out below BAR_H, so a column can never be read as a run.
+                         Deliberately achromatic — it aggregates successes and failures alike, so
+                         no status colour would be true of it. A flat var(--color-success) fill was
+                         the defect: at a 1 h window it painted half the track as one pale-green
+                         slab that read as a single 40-minute successful run.
+   .np-ops-density-rug   hangs UNDER the baseline where a slice contains failures (error) or,
+                         failing that, cancellations (skipped). Fixed height on purpose: it states
+                         presence, not proportion. Colour comes inline from the status tokens, the
+                         same way --np-ops-bar-color does on the bars.
+   .np-ops-density-axis  the baseline, one per lane, spanning exactly its columns. Dashed so the
+                         stretch reads as a chart axis; it stops at the seam, which is also where
+                         individual runs take over.
+
+   Drawn before the gridlines and the bars so anything with a drill-down wins the pointer; density
+   only ever occupies the stretch left of the seam, where no bar exists to compete with. Column and
+   rug keep pointer events — the hover title is the only way to read the counts behind them. */
 .np-ops-density {
   position: absolute;
   cursor: default;
-  border-radius: 2px;
+  border-radius: 1px 1px 0 0;
+  background: color-mix(in srgb, var(--color-on-surface) 30%, transparent);
+}
+.np-ops-density-rug {
+  position: absolute;
+  cursor: default;
+  border-radius: 0 0 1px 1px;
+}
+.np-ops-density-axis {
+  position: absolute;
+  height: 0;
+  pointer-events: none;
+  border-top: 1px dashed color-mix(in srgb, var(--color-outline) 55%, transparent);
 }
 
 /* --- Stuck strip: overdue runs lifted out of the timeline ------------------- */

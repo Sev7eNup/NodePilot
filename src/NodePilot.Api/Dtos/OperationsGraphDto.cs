@@ -32,7 +32,7 @@ public record OperationsGraphDto(
 /// exactly the moment the alerting rule would fire for it. Two disagreeing "long-running"
 /// numbers would be worse than none. Read raw per request: the section is hot-reloadable.
 /// </param>
-/// <param name="WindowMinutes">The clamped window this snapshot was built for (20 | 60 | 240).</param>
+/// <param name="WindowMinutes">The clamped window this snapshot was built for (30 | 60).</param>
 /// <param name="RecentSinceUtc">
 /// Left edge the caller ASKED for (<c>now - WindowMinutes</c>). Not necessarily the edge of the
 /// data actually returned — see <paramref name="OldestReturnedCompletedAt"/>.

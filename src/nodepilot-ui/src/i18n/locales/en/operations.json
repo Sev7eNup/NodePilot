@@ -12,9 +12,10 @@
     "idle": "Nothing is running right now.",
     "idleHint": "As soon as a workflow starts, its bar grows here live.",
     "nextStart": "Next start {{time}} — {{name}}",
+    "trackLabel": "Run timeline. Arrow keys move between runs, Enter opens the selected run.",
     "historyGap": "No finished runs returned before {{time}}",
-    "density": "{{runs}} finished runs in this window, {{failed}} failed — older ones are aggregated as density. Pick a shorter window for individual bars.",
-    "densityCapped": "More than {{runs}} finished runs in this window — the density is based on the newest {{runs}}. Pick a shorter window for individual bars.",
+    "density": "{{runs}} finished runs in this window, {{failed}} failed. Older runs are counted per interval instead of drawn individually: column height = runs, tick below the line = failures (red) or cancellations (grey). Pick a shorter window for individual bars.",
+    "densityCapped": "More than {{runs}} finished runs in this window — the counts are based on the newest {{runs}}. Older runs are counted per interval: column height = runs, tick below the line = failures (red) or cancellations (grey). Pick a shorter window for individual bars.",
     "densityCell": "{{from}}–{{to}} · {{runs}} runs",
     "densityCellFailed": "{{count}} failed",
     "densityCellCancelled": "{{count}} cancelled"
@@ -22,9 +23,8 @@
   "window": {
     "label": "Window",
     "option": {
-      "20": "20 min",
-      "60": "1 h",
-      "240": "4 h"
+      "30": "30 min",
+      "60": "1 h"
     }
   },
   "freeze": {

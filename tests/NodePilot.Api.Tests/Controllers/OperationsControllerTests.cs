@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using NodePilot.Api.Controllers;
@@ -27,9 +28,10 @@ public class OperationsControllerTests
         NodePilot.Data.NodePilotDbContext db,
         IResourceAuthorizationService? authz = null,
         string role = "Admin",
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null,
+        NodePilot.Api.Services.WorkflowCallSiteCache? callSites = null)
     {
-        var controller = new OperationsController(db, authz ?? new AlwaysAllowAuthorizationService(), configuration);
+        var controller = new OperationsController(db, authz ?? new AlwaysAllowAuthorizationService(), configuration, callSites);
         var principal = new ClaimsPrincipal(new ClaimsIdentity(
             [new Claim(ClaimTypes.Role, role)], "TestAuth"));
         controller.ControllerContext = new ControllerContext
@@ -39,7 +41,7 @@ public class OperationsControllerTests
         return controller;
     }
 
-    private static async Task<OperationsGraphDto> GetGraph(OperationsController c, int windowMinutes = 20)
+    private static async Task<OperationsGraphDto> GetGraph(OperationsController c, int windowMinutes = OperationsController.DefaultWindowMinutes)
     {
         var result = await c.GetGraph(CancellationToken.None, windowMinutes);
         return result.Result.Should().BeOfType<OkObjectResult>().Subject
@@ -98,6 +100,58 @@ public class OperationsControllerTests
         edge.Target.Should().Be(child);
         edge.RefStatus.Should().Be("Resolved");
         edge.Kind.Should().Be("startWorkflow");
+    }
+
+    [Fact]
+    public async Task GetGraph_RenamedTarget_ReResolvesAcrossPollsInsteadOfServingACachedEdge()
+    {
+        // The call graph is derived from DefinitionJson, which this endpoint no longer reads on
+        // every poll — it caches each workflow's extracted call sites against UpdatedAt. What must
+        // NOT be cached is the resolved edge: a name-based reference resolves against the OTHER
+        // workflow's name, so renaming the child changes the parent's edge while the parent's own
+        // definition never moves. Two polls through one cache is the only way to catch that.
+        var db = TestDbFactory.Create();
+        var parent = Guid.NewGuid();
+        var child = Guid.NewGuid();
+        db.Workflows.AddRange(
+            Wf(parent, "Parent", CallsDef("Child")),   // by NAME, not id
+            Wf(child, "Child", "{}"));
+        await db.SaveChangesAsync();
+
+        var cache = new NodePilot.Api.Services.WorkflowCallSiteCache();
+        var first = await GetGraph(NewController(db, callSites: cache));
+        first.Edges.Should().ContainSingle().Which.RefStatus.Should().Be("Resolved");
+
+        // Rename the child WITHOUT touching the parent — the parent's cached call sites stay valid.
+        var row = await db.Workflows.FirstAsync(w => w.Id == child);
+        row.Name = "Renamed";
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var second = await GetGraph(NewController(db, callSites: cache));
+        second.Edges.Should().ContainSingle().Which.RefStatus.Should().Be("Unresolved");
+    }
+
+    [Fact]
+    public async Task GetGraph_EditedDefinition_IsPickedUpOnTheNextPoll()
+    {
+        // The other half of the same contract: a changed definition must invalidate its own cache
+        // entry, or the console would keep drawing an edge the author already deleted.
+        var db = TestDbFactory.Create();
+        var parent = Guid.NewGuid();
+        var child = Guid.NewGuid();
+        db.Workflows.AddRange(Wf(parent, "Parent", CallsDef(child.ToString())), Wf(child, "Child", "{}"));
+        await db.SaveChangesAsync();
+
+        var cache = new NodePilot.Api.Services.WorkflowCallSiteCache();
+        (await GetGraph(NewController(db, callSites: cache))).Edges.Should().ContainSingle();
+
+        var row = await db.Workflows.FirstAsync(w => w.Id == parent);
+        row.DefinitionJson = "{}";
+        row.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        (await GetGraph(NewController(db, callSites: cache))).Edges.Should().BeEmpty();
     }
 
     [Fact]
@@ -406,9 +460,8 @@ public class OperationsControllerTests
         };
 
     [Theory]
-    [InlineData(20)]
+    [InlineData(30)]
     [InlineData(60)]
-    [InlineData(240)]
     public async Task GetGraph_AllowedWindow_IsEchoedInMeta(int windowMinutes)
     {
         var db = TestDbFactory.Create();
@@ -419,13 +472,84 @@ public class OperationsControllerTests
     [Theory]
     [InlineData(0)]
     [InlineData(7)]
+    [InlineData(20)]
+    [InlineData(90)]
+    [InlineData(240)]
     [InlineData(1440)]
     [InlineData(-30)]
-    public async Task GetGraph_UnsupportedWindow_ClampsToTwenty(int windowMinutes)
+    public async Task GetGraph_UnsupportedWindow_ClampsToTheDefault(int windowMinutes)
     {
         var db = TestDbFactory.Create();
         var graph = await GetGraph(NewController(db), windowMinutes);
-        graph.Meta.WindowMinutes.Should().Be(20);
+        graph.Meta.WindowMinutes.Should().Be(OperationsController.DefaultWindowMinutes);
+    }
+
+    [Fact]
+    public async Task GetGraph_ColdCacheWithThousandsOfWorkflows_LoadsEveryDefinitionInOneGo()
+    {
+        // A cold cache asks for every workflow's definition in a single `WHERE Id IN (...)`. That shape
+        // has bitten this repo before (SQLITE_LIMIT_VARIABLE_NUMBER in GetStepStats), so the size is
+        // worth pinning rather than assuming the provider copes. Also the warm-poll guarantee: the
+        // second call must not re-read a single definition, which is the whole point of the cache.
+        var db = TestDbFactory.Create();
+        var child = Guid.NewGuid();
+        db.Workflows.Add(Wf(child, "Child", "{}"));
+        for (var i = 0; i < 3000; i++)
+            db.Workflows.Add(Wf(Guid.NewGuid(), $"Caller {i}", CallsDef(child.ToString())));
+        await db.SaveChangesAsync();
+
+        var cache = new NodePilot.Api.Services.WorkflowCallSiteCache();
+        var cold = await GetGraph(NewController(db, callSites: cache));
+
+        cold.Nodes.Should().HaveCount(3001);
+        cold.Edges.Should().HaveCount(3000);
+        cold.Edges.Should().OnlyContain(e => e.RefStatus == "Resolved");
+
+        // Warm: nothing is stale any more, so the definitions query must not run at all.
+        var warm = await GetGraph(NewController(db, callSites: cache));
+        warm.Edges.Should().HaveCount(3000);
+        cache.StaleIds(cold.Nodes.Select(n => (n.WorkflowId, DateTime.UtcNow))).Should().HaveCount(3001);
+    }
+
+    [Fact]
+    public async Task GetGraph_RunsSharingACompletedAt_AreOrderedDeterministicallyAcrossPolls()
+    {
+        // Without a tiebreaker the provider decides which row is the last one under the cap, so two
+        // polls of UNCHANGED data could return different sets at the boundary — bars flickering in and
+        // out, and a seam (OldestReturnedCompletedAt) that jumps. Everything here completes at the very
+        // same instant, which is the case that has no natural order at all.
+        var db = TestDbFactory.Create();
+        var wf = Guid.NewGuid();
+        db.Workflows.Add(Wf(wf, "W", "{}"));
+        var sameInstant = DateTime.UtcNow.AddMinutes(-1);
+        for (var i = 0; i < OperationsController.RecentCap + 50; i++)
+            db.WorkflowExecutions.Add(Settled(wf, sameInstant));
+        await db.SaveChangesAsync();
+
+        var first = await GetGraph(NewController(db));
+        var second = await GetGraph(NewController(db));
+
+        first.Meta.RecentTruncated.Should().BeTrue();
+        second.Recent.Select(r => r.ExecutionId).Should().Equal(first.Recent.Select(r => r.ExecutionId));
+        second.Meta.OldestReturnedCompletedAt.Should().Be(first.Meta.OldestReturnedCompletedAt);
+    }
+
+    [Fact]
+    public async Task GetGraph_EvictedCacheEntry_DoesNotCostTheResponseItsEdges()
+    {
+        // The response is built from a REQUEST-LOCAL snapshot of the call sites, not from a second read
+        // of the shared cache. Otherwise an eviction (or a racing poll) landing between the extraction
+        // and the read would silently drop edges this very request had already parsed.
+        var db = TestDbFactory.Create();
+        var parent = Guid.NewGuid();
+        var child = Guid.NewGuid();
+        db.Workflows.AddRange(Wf(parent, "Parent", CallsDef(child.ToString())), Wf(child, "Child", "{}"));
+        await db.SaveChangesAsync();
+
+        var cache = new NodePilot.Api.Services.WorkflowCallSiteCache();
+        var graph = await GetGraph(NewController(db, callSites: cache));
+
+        graph.Edges.Should().ContainSingle().Which.RefStatus.Should().Be("Resolved");
     }
 
     [Fact]
@@ -437,7 +561,7 @@ public class OperationsControllerTests
         db.WorkflowExecutions.Add(Settled(wf, DateTime.UtcNow.AddMinutes(-45)));
         await db.SaveChangesAsync();
 
-        var narrow = await GetGraph(NewController(db), 20);
+        var narrow = await GetGraph(NewController(db), OperationsController.DefaultWindowMinutes);
         var wide = await GetGraph(NewController(db), 60);
 
         narrow.Recent.Should().BeEmpty();
@@ -498,13 +622,13 @@ public class OperationsControllerTests
         var wf = Guid.NewGuid();
         db.Workflows.Add(Wf(wf, "W", "{}"));
         var now = DateTime.UtcNow;
-        for (var i = 0; i < 1005; i++)
-            db.WorkflowExecutions.Add(Settled(wf, now.AddSeconds(-i)));
+        for (var i = 0; i < OperationsController.RecentCap + 5; i++)
+            db.WorkflowExecutions.Add(Settled(wf, now.AddMilliseconds(-250 * i)));
         await db.SaveChangesAsync();
 
         var graph = await GetGraph(NewController(db));
 
-        graph.Recent.Should().HaveCount(1000);
+        graph.Recent.Should().HaveCount(OperationsController.RecentCap);
         graph.Meta.RecentTruncated.Should().BeTrue();
         // The honest left edge sits INSIDE the window, right of what the caller asked for.
         graph.Meta.OldestReturnedCompletedAt.Should().NotBeNull();
@@ -555,33 +679,33 @@ public class OperationsControllerTests
     [Fact]
     public async Task GetGraph_TruncatedWindow_CountsEveryRunIncludingTheOnesPastTheBarCap()
     {
-        // 1200 runs, 1000 of them bars — the density must account for all 1200, otherwise the
-        // console cannot answer "how much ran in this window?" at all.
+        // A few hundred runs past the bar cap — the density must account for ALL of them, else
+        // the console cannot answer "how much ran in this window?" at all.
+        const int total = OperationsController.RecentCap + 200;
         var wf = Guid.NewGuid();
-        // 500 ms apart, so all 1200 comfortably fit the 20-minute window even if the request
-        // lands a moment after the seed — a 1 s spacing would push the oldest rows out of it.
-        var db = await SeedBusyWindow(wf, 1200, TimeSpan.FromMilliseconds(500),
+        // 250 ms apart, so all of them comfortably fit the 20-minute window even if the request
+        // lands a moment after the seed — a wider spacing would push the oldest rows out of it.
+        var db = await SeedBusyWindow(wf, total, TimeSpan.FromMilliseconds(250),
             (3, ExecutionStatus.Failed), (7, ExecutionStatus.Failed), (11, ExecutionStatus.Cancelled));
 
         var graph = await GetGraph(NewController(db));
 
         var lane = graph.Density.Should().ContainSingle().Subject;
         lane.WorkflowId.Should().Be(wf);
-        lane.Buckets.Sum(b => b.Total).Should().Be(1200);
+        lane.Buckets.Sum(b => b.Total).Should().Be(total);
         lane.Buckets.Sum(b => b.Failed).Should().Be(2);
         lane.Buckets.Sum(b => b.Cancelled).Should().Be(1);
         graph.Meta.DensityCapped.Should().BeFalse();
     }
 
     [Theory]
-    [InlineData(20, 25)]
+    [InlineData(30, 37)]
     [InlineData(60, 75)]
-    [InlineData(240, 300)]
     public async Task GetGraph_DensityBucketWidth_ScalesWithTheWindow(int windowMinutes, int expectedSeconds)
     {
         // Fixed bucket COUNT, not fixed bucket width: that is what makes a wider window cost the
         // console nothing extra, however many runs sit behind it.
-        var db = await SeedBusyWindow(Guid.NewGuid(), 1010, TimeSpan.FromSeconds(1));
+        var db = await SeedBusyWindow(Guid.NewGuid(), OperationsController.RecentCap + 10, TimeSpan.FromMilliseconds(250));
 
         var graph = await GetGraph(NewController(db), windowMinutes);
 
@@ -594,16 +718,21 @@ public class OperationsControllerTests
     {
         // Bucket 0 starts at RecentSinceUtc — the console turns an index straight back into a
         // time range, so an off-by-one anchor would slide the whole history sideways.
-        var db = await SeedBusyWindow(Guid.NewGuid(), 1010, TimeSpan.FromSeconds(1));
+        const int rows = OperationsController.RecentCap + 10;
+        var spacing = TimeSpan.FromMilliseconds(250);
+        var db = await SeedBusyWindow(Guid.NewGuid(), rows, spacing);
 
-        var graph = await GetGraph(NewController(db), 240);
+        var graph = await GetGraph(NewController(db), 60);
 
         var buckets = graph.Density.Should().ContainSingle().Subject.Buckets;
         buckets.Select(b => b.BucketIndex).Should().BeInAscendingOrder();
         buckets.Should().OnlyContain(b => b.Total > 0);
-        // Everything was seeded within the last ~17 min of a 4 h window → the newest 5-min slices.
+        // Everything was seeded into the newest stretch of the window, so every bucket has to land in
+        // the last `seededSpan / bucketWidth` slices. Derived rather than hard-coded: the bucket width
+        // follows the window, and a fixed tolerance silently stops meaning anything when either moves.
         var lastIndex = (int)((DateTime.UtcNow - graph.Meta.RecentSinceUtc).TotalSeconds / graph.Meta.DensityBucketSeconds);
-        buckets.Should().OnlyContain(b => b.BucketIndex <= lastIndex && b.BucketIndex >= lastIndex - 5);
+        var seededSlices = (int)Math.Ceiling(rows * spacing.TotalSeconds / graph.Meta.DensityBucketSeconds) + 1;
+        buckets.Should().OnlyContain(b => b.BucketIndex <= lastIndex && b.BucketIndex >= lastIndex - seededSlices);
     }
 
     [Fact]
@@ -619,10 +748,11 @@ public class OperationsControllerTests
         // The visible folder alone has to blow past the cap: RBAC scoping runs BEFORE the cap, so
         // the hidden folder's runs can neither trigger the truncation nor inflate the counts.
         var now = DateTime.UtcNow;
-        for (var i = 0; i < 1100; i++)
+        const int perFolder = OperationsController.RecentCap + 100;
+        for (var i = 0; i < perFolder; i++)
         {
-            db.WorkflowExecutions.Add(Settled(visible, now.AddMilliseconds(-500 * i)));
-            db.WorkflowExecutions.Add(Settled(hidden, now.AddMilliseconds(-500 * i)));
+            db.WorkflowExecutions.Add(Settled(visible, now.AddMilliseconds(-250 * i)));
+            db.WorkflowExecutions.Add(Settled(hidden, now.AddMilliseconds(-250 * i)));
         }
         await db.SaveChangesAsync();
 
@@ -632,7 +762,7 @@ public class OperationsControllerTests
         graph.Meta.RecentTruncated.Should().BeTrue();
         var lane = graph.Density.Should().ContainSingle().Subject;
         lane.WorkflowId.Should().Be(visible);
-        lane.Buckets.Sum(b => b.Total).Should().Be(1100); // the hidden folder's 1100 never counted
+        lane.Buckets.Sum(b => b.Total).Should().Be(perFolder); // the hidden folder's runs never counted
     }
 
     [Fact]
@@ -643,15 +773,18 @@ public class OperationsControllerTests
         var b = Guid.NewGuid();
         db.Workflows.AddRange(Wf(a, "A", "{}"), Wf(b, "B", "{}"));
         var now = DateTime.UtcNow;
-        for (var i = 0; i < 600; i++) db.WorkflowExecutions.Add(Settled(a, now.AddSeconds(-i)));
-        for (var i = 0; i < 500; i++) db.WorkflowExecutions.Add(Settled(b, now.AddSeconds(-i)));
+        // Together they must blow past the bar cap — the cap is global, the density is per lane.
+        const int runsA = OperationsController.RecentCap / 2 + 200;
+        const int runsB = OperationsController.RecentCap / 2 + 100;
+        for (var i = 0; i < runsA; i++) db.WorkflowExecutions.Add(Settled(a, now.AddMilliseconds(-250 * i)));
+        for (var i = 0; i < runsB; i++) db.WorkflowExecutions.Add(Settled(b, now.AddMilliseconds(-250 * i)));
         await db.SaveChangesAsync();
 
         var graph = await GetGraph(NewController(db));
 
         graph.Density.Should().HaveCount(2);
-        graph.Density.Single(l => l.WorkflowId == a).Buckets.Sum(x => x.Total).Should().Be(600);
-        graph.Density.Single(l => l.WorkflowId == b).Buckets.Sum(x => x.Total).Should().Be(500);
+        graph.Density.Single(l => l.WorkflowId == a).Buckets.Sum(x => x.Total).Should().Be(runsA);
+        graph.Density.Single(l => l.WorkflowId == b).Buckets.Sum(x => x.Total).Should().Be(runsB);
     }
 
     [Fact]
@@ -662,7 +795,8 @@ public class OperationsControllerTests
         var wf = Guid.NewGuid();
         db.Workflows.Add(Wf(wf, "W", "{}"));
         var now = DateTime.UtcNow;
-        for (var i = 0; i < 1010; i++) db.WorkflowExecutions.Add(Settled(wf, now.AddSeconds(-i)));
+        const int settled = OperationsController.RecentCap + 10;
+        for (var i = 0; i < settled; i++) db.WorkflowExecutions.Add(Settled(wf, now.AddMilliseconds(-250 * i)));
         db.WorkflowExecutions.Add(new WorkflowExecution
         {
             Id = Guid.NewGuid(), WorkflowId = wf, Status = ExecutionStatus.Running, StartedAt = now.AddMinutes(-2),
@@ -671,7 +805,7 @@ public class OperationsControllerTests
 
         var graph = await GetGraph(NewController(db));
 
-        graph.Density.Should().ContainSingle().Which.Buckets.Sum(b => b.Total).Should().Be(1010);
+        graph.Density.Should().ContainSingle().Which.Buckets.Sum(b => b.Total).Should().Be(settled);
     }
 
     // ---- Step activity on live runs ----------------------------------------------------------

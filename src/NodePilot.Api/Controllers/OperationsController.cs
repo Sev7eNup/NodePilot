@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Dtos;
+using NodePilot.Api.Services;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Operations;
@@ -23,13 +24,15 @@ public class OperationsController : ControllerBase
     private readonly NodePilotDbContext _db;
     private readonly IResourceAuthorizationService _authz;
     private readonly IConfiguration? _configuration;
+    private readonly WorkflowCallSiteCache _callSites;
 
     public OperationsController(NodePilotDbContext db, IResourceAuthorizationService authz,
-        IConfiguration? configuration = null)
+        IConfiguration? configuration = null, WorkflowCallSiteCache? callSites = null)
     {
         _db = db;
         _authz = authz;
         _configuration = configuration;
+        _callSites = callSites ?? new WorkflowCallSiteCache();
     }
 
     /// <summary>
@@ -42,22 +45,43 @@ public class OperationsController : ControllerBase
     private int OverdueSeconds()
         => Math.Max(1, _configuration?.GetValue("Alerting:LongRunningSeconds", 600) ?? 600);
 
-    /// <summary>Selectable timeline windows, in minutes. Anything else clamps to the default.</summary>
-    private static readonly int[] AllowedWindowMinutes = [20, 60, 240];
+    /// <summary>
+    /// Selectable timeline windows, in minutes. Anything else clamps to <see cref="DefaultWindowMinutes"/>.
+    /// Mirrored by <c>OPS_WINDOW_MINUTES</c> in the SPA's lib/opsTimeline.ts and named in the CLI and
+    /// MCP option help — changing this list means changing all four.
+    /// </summary>
+    private static readonly int[] AllowedWindowMinutes = [30, 60];
+
+    /// <summary>Window a caller gets when it names none, or names one that is not selectable.</summary>
+    internal const int DefaultWindowMinutes = 30;
 
     /// <summary>
     /// Cap on returned settled runs. This is a RENDER budget, not a window budget — the same
-    /// number at every window, because what it bounds is how many bars the console re-positions
-    /// on every clock tick and re-receives on every 5 s poll, neither of which cares how far back
-    /// the caller looked. Coverage of the window is not this cap's job: whatever it cannot reach
-    /// comes back aggregated in <see cref="OpsDensityLane"/>, so widening the window can no longer
-    /// punch a hole that reads as "nothing ran".
+    /// number at every window, because what it bounds is how many bars the console holds, and that
+    /// does not care how far back the caller looked. Coverage beyond it is not this cap's job:
+    /// whatever it cannot reach comes back aggregated in <see cref="OpsDensityLane"/>, so widening
+    /// the window can no longer punch a hole that reads as "nothing ran".
+    ///
+    /// The number is the point where bars stop being individually readable, not an arbitrary
+    /// round figure. A bar needs roughly 8 px of lane to be countable; a ~1500 px track therefore
+    /// holds ~185 per lane, and a busy board runs ~24 lanes — about 4400 bars before the view is
+    /// lying either way.
+    ///
+    /// Sitting just under that is what makes the widest offered window whole: on a measured 2980
+    /// finished-runs-per-hour system the 1 h view fits inside the cap with headroom, where the
+    /// previous 1000 covered only its newest ~20 minutes and handed the rest to the aggregate. That
+    /// is the entire reason this number moved — lowering it back re-creates the original complaint
+    /// on the first busy hour.
+    ///
+    /// Affordable only because settled bars no longer animate — see .np-ops-bar in index.css. The
+    /// per-tick cost that the old cap was really guarding was a `left`/`width` CSS transition on
+    /// every bar, which is a layout animation, not a compositor one.
     /// </summary>
-    private const int RecentCap = 1000;
+    internal const int RecentCap = 4000;
 
     /// <summary>
     /// Bucket count the density aggregate aims for at any window — the reason widening the window
-    /// costs nothing extra. At 20 min a bucket is 25 s, at 4 h it is 5 min; either way the console
+    /// costs nothing extra. At 30 min a bucket is 37 s, at 1 h it is 75 s; either way the console
     /// receives at most <c>lanes × 48</c> cells no matter how many runs are behind them.
     /// </summary>
     private const int DensityBucketTarget = 48;
@@ -66,7 +90,7 @@ public class OperationsController : ControllerBase
     /// Row ceiling for the density scan. The aggregate is computed in memory rather than in SQL
     /// deliberately: portable date-part bucketing across Postgres, SQL Server AND the SQLite test
     /// backend is a translation minefield, and 20 000 narrow rows is a cheap indexed range read.
-    /// At the 4 h window this is ~83 finished runs per minute sustained — well past the busiest
+    /// At the 1 h window this is ~333 finished runs per minute sustained — well past the busiest
     /// real load — and if it is ever hit, <c>Meta.DensityCapped</c> says so instead of quietly
     /// under-counting.
     /// </summary>
@@ -86,9 +110,9 @@ public class OperationsController : ControllerBase
     [HttpGet("graph")]
     public async Task<ActionResult<OperationsGraphDto>> GetGraph(
         CancellationToken ct,
-        [FromQuery] int windowMinutes = 20)
+        [FromQuery] int windowMinutes = DefaultWindowMinutes)
     {
-        if (!AllowedWindowMinutes.Contains(windowMinutes)) windowMinutes = 20;
+        if (!AllowedWindowMinutes.Contains(windowMinutes)) windowMinutes = DefaultWindowMinutes;
         var recentSince = DateTime.UtcNow.AddMinutes(-windowMinutes);
         var emptyMeta = new OpsSnapshotMeta(OverdueSeconds(), windowMinutes, recentSince, null, false, 0, false);
 
@@ -105,9 +129,42 @@ public class OperationsController : ControllerBase
             execQuery = execQuery.Where(e => accessible.FolderIds.Contains(e.Workflow.FolderId));
         }
 
+        // Deliberately WITHOUT DefinitionJson. Definitions are unbounded text including every
+        // inline script (21-42 KB apiece in the repo's example set) and the only thing this endpoint
+        // wants from them is the child-workflow call graph, which changes when a workflow is saved
+        // and not when somebody polls. UpdatedAt rides along as the revision marker that lets
+        // WorkflowCallSiteCache decide whose definition actually has to be read — steady state is
+        // none of them. See the cache's remarks for the measured cost this removes.
         var workflows = await workflowQuery
-            .Select(w => new { w.Id, w.Name, w.FolderId, w.IsEnabled, w.DefinitionJson })
+            .Select(w => new { w.Id, w.Name, w.FolderId, w.IsEnabled, w.UpdatedAt })
             .ToListAsync(ct);
+
+        // Request-local and authoritative for THIS response. Deliberately not a second read of the
+        // shared cache after storing: two polls racing across a save could otherwise interleave into
+        // a mixed answer, and an eviction landing mid-request would silently drop the edges of
+        // workflows this very request had already extracted.
+        var callSitesByWorkflow = new Dictionary<Guid, IReadOnlyList<WorkflowCallSite>>(workflows.Count);
+
+        var staleIds = _callSites.StaleIds(workflows.Select(w => (w.Id, w.UpdatedAt)));
+        if (staleIds.Count > 0)
+        {
+            var definitions = await workflowQuery
+                .Where(w => staleIds.Contains(w.Id))
+                .Select(w => new { w.Id, w.UpdatedAt, w.DefinitionJson })
+                .ToListAsync(ct);
+            foreach (var d in definitions)
+            {
+                var sites = WorkflowCallGraphBuilder.ExtractCallSites(d.DefinitionJson);
+                _callSites.Store(d.Id, d.UpdatedAt, sites);
+                callSitesByWorkflow[d.Id] = sites;
+            }
+        }
+
+        foreach (var wf in workflows)
+        {
+            if (!callSitesByWorkflow.ContainsKey(wf.Id))
+                callSitesByWorkflow[wf.Id] = _callSites.Get(wf.Id);
+        }
 
         var folderIds = workflows.Select(w => w.FolderId).Distinct().ToList();
         var folderPaths = await _db.SharedWorkflowFolders.AsNoTracking()
@@ -208,8 +265,14 @@ public class OperationsController : ControllerBase
                      && e.Status != ExecutionStatus.Pending
                      && e.Status != ExecutionStatus.Paused);
 
+        // ThenByDescending(Id) is part of the contract, not a nicety: without a tiebreaker, which row
+        // is the 4000th at a shared CompletedAt is up to the provider, so the cap boundary and with it
+        // OldestReturnedCompletedAt -- the seam the console draws density up to -- could differ between
+        // two polls of unchanged data and make bars flicker in and out. The (CompletedAt, Id) index
+        // serves this sort directly.
         var recentFetched = await settledQuery
             .OrderByDescending(e => e.CompletedAt)
+            .ThenByDescending(e => e.Id)
             .Take(RecentCap + 1)
             .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.ParentExecutionId })
             .ToListAsync(ct);
@@ -229,6 +292,7 @@ public class OperationsController : ControllerBase
             densityBucketSeconds = Math.Max(1, windowMinutes * 60 / DensityBucketTarget);
             var scan = await settledQuery
                 .OrderByDescending(e => e.CompletedAt)
+                .ThenByDescending(e => e.Id)
                 .Take(DensityScanCap + 1)
                 .Select(e => new { e.WorkflowId, e.CompletedAt, e.Status })
                 .ToListAsync(ct);
@@ -273,8 +337,12 @@ public class OperationsController : ControllerBase
                 caps.CanEdit);
         }).ToList();
 
-        var callEdges = WorkflowCallGraphBuilder.Build(
-            workflows.Select(w => new WorkflowCallGraphInput(w.Id, w.Name, w.DefinitionJson)).ToList());
+        // Resolution stays per-request even though extraction is cached: a name-based reference
+        // resolves against every OTHER workflow's name, so a rename changes this workflow's edges
+        // without touching its definition. Caching resolved edges would go stale on exactly that.
+        var callEdges = WorkflowCallGraphBuilder.BuildFromCallSites(
+            workflows.Select(w => new WorkflowCallGraphIdentity(w.Id, w.Name)).ToList(),
+            callSitesByWorkflow);
 
         var edges = callEdges.Select(e => new OpsEdge(
             Id: $"{e.SourceWorkflowId:N}|{e.Kind}|{(e.TargetWorkflowId?.ToString("N") ?? e.RawRef)}",

@@ -16,7 +16,7 @@ namespace NodePilot.Cli.Commands.Operations;
 public sealed class OperationsGraphSettings : GlobalSettings
 {
     [CommandOption("--window <MINUTES>")]
-    [Description("Look-back window for finished runs: 20 (default), 60 or 240. Other values clamp to 20 server-side.")]
+    [Description("Look-back window for finished runs, in minutes: 30 (default) or 60. Other values clamp to 30 server-side.")]
     public int WindowMinutes { get; init; } = 20;
 }
 

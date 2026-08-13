@@ -208,6 +208,48 @@ public sealed class SupportingAndTelemetryToolsTests
     }
 
     [Fact]
+    public async Task GetOperationsGraph_TrimsRecentToTheToolCapAndSaysSo()
+    {
+        // The server's cap is a RENDER budget for a timeline that draws every bar; an agent reads a
+        // handful and pays for the rest in context. The trim must come off the OLD end (the server
+        // orders newest-first) and must be stated in the payload, never done silently.
+        using var api = new TestApi();
+        var wf = Guid.NewGuid();
+        var newest = Guid.NewGuid();
+        var oldest = Guid.NewGuid();
+        var recent = new List<object>();
+        for (var i = 0; i < 500; i++)
+        {
+            var id = i == 0 ? newest : i == 499 ? oldest : Guid.NewGuid();
+            recent.Add(new
+            {
+                executionId = id, workflowId = wf, status = "Succeeded",
+                startedAt = DateTime.UtcNow.AddMinutes(-i - 1), completedAt = DateTime.UtcNow.AddMinutes(-i),
+            });
+        }
+
+        api.Server.Given(Request.Create().WithPath("/api/operations/graph").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                nodes = Array.Empty<object>(),
+                edges = Array.Empty<object>(),
+                running = new[] { new { executionId = Guid.NewGuid(), workflowId = wf, status = "Running", startedAt = DateTime.UtcNow } },
+                recent,
+                density = Array.Empty<object>(),
+                meta = new { windowMinutes = 240, recentTruncated = true },
+            }));
+
+        var tools = new TelemetryTools(api.Client());
+        var json = JsonSerializer.Serialize(await tools.GetOperationsGraph(240));
+
+        json.Should().Contain("\"recentToolCap\":200");
+        json.Should().Contain("\"recentWithheldByTool\":300");
+        json.Should().Contain(newest.ToString());     // newest survives
+        json.Should().NotContain(oldest.ToString());  // oldest is what gets dropped
+        json.Should().Contain("\"status\":\"Running\"");   // live runs are never trimmed
+    }
+
+    [Fact]
     public async Task QueryAuditLog_TruncatesDetailsAndReturnsCursor()
     {
         var big = new string('d', 9000);

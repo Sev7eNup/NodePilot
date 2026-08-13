@@ -26,7 +26,7 @@ const GRAPH = () => ({
     { executionId: 'ex-2', workflowId: 'wf-2', status: 'Failed', startedAt: new Date(now() - 10 * MIN).toISOString(), completedAt: new Date(now() - 8 * MIN).toISOString() },
   ],
   density: [],
-  meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
+  meta: { overdueSeconds: 600, windowMinutes: 30, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
 });
 
 const STATS = () => ({
@@ -140,10 +140,10 @@ test('a run past the long-running threshold surfaces in the stuck strip', async 
   await installDefaultMocks(page);
   await page.route('**/api/operations/graph*', (r) => json(r, {
     ...GRAPH(),
-    // 3 hours old: clamped to the left edge of the 20-minute window, so on the bar alone it is
+    // 3 hours old: clamped to the left edge of the 30-minute window, so on the bar alone it is
     // indistinguishable from a 21-minute run.
     running: [{ executionId: 'ex-1', workflowId: 'wf-1', status: 'Running', startedAt: new Date(now() - 180 * MIN).toISOString(), stepsFinished: 3, lastCompletedStepName: 'Copy files', lastProgressAt: new Date(now() - 40 * MIN).toISOString(), activeStepCount: 0 }],
-    meta: { overdueSeconds: 600, windowMinutes: 20, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false },
+    meta: { overdueSeconds: 600, windowMinutes: 30, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false },
   }));
   await page.route('**/api/stats/dashboard*', (r) => json(r, STATS()));
   await page.route('**/api/executions/ex-1', (r) => json(r, EXEC_DETAIL));
@@ -226,10 +226,10 @@ test('window selector re-requests the snapshot and freeze pins the view', async 
 
   await page.goto('/operations');
   await expect(page.getByTitle(/Nightly Backup · Running/)).toBeVisible();
-  expect(windows[0]).toBe('20');
+  expect(windows[0]).toBe('30');
 
-  await page.getByLabel('Window').selectOption('240');
-  await expect.poll(() => windows.at(-1)).toBe('240');
+  await page.getByLabel('Window').selectOption('60');
+  await expect.poll(() => windows.at(-1)).toBe('60');
 
   // Freeze: loud badge, and the poll stops (no further requests land).
   await page.getByRole('button', { name: 'Freeze view' }).click();
@@ -251,10 +251,10 @@ test('a window the bars cannot cover is filled with density, not left empty', as
       { workflowId: 'wf-2', buckets: [{ bucketIndex: 6, total: 20, failed: 3, cancelled: 0 }] },
     ],
     meta: {
-      overdueSeconds: 600, windowMinutes: 240,
-      recentSinceUtc: new Date(now() - 240 * MIN).toISOString(),
+      overdueSeconds: 600, windowMinutes: 60,
+      recentSinceUtc: new Date(now() - 60 * MIN).toISOString(),
       oldestReturnedCompletedAt: new Date(now() - 8 * MIN).toISOString(),
-      recentTruncated: true, densityBucketSeconds: 300, densityCapped: false,
+      recentTruncated: true, densityBucketSeconds: 75, densityCapped: false,
     },
   }));
   await page.route('**/api/stats/dashboard*', (r) => json(r, STATS()));
@@ -262,9 +262,9 @@ test('a window the bars cannot cover is filled with density, not left empty', as
 
   await page.goto('/operations');
   await expect(page.getByTitle(/Nightly Backup · Running/)).toBeVisible();
-  // The track has to actually span 4 h for the aggregate to have anywhere to sit — the window
-  // the user picked is what sets the visible span, the snapshot only fills it.
-  await page.getByLabel('Window').selectOption('240');
+  // The track has to actually span the wider window for the aggregate to have anywhere to sit —
+  // the window the user picked is what sets the visible span, the snapshot only fills it.
+  await page.getByLabel('Window').selectOption('60');
 
   // The whole point: at 4 h the stretch older than the newest bars carries the run counts
   // instead of the hatched "nothing came back" band it used to show.
@@ -272,6 +272,14 @@ test('a window the bars cannot cover is filled with density, not left empty', as
   await expect(page.getByTestId('ops-density-notice')).toContainText('32 finished runs');
   await expect(page.getByTestId('ops-density-notice')).toContainText('3 failed');
   await expect(page.getByTestId('ops-history-gap')).toHaveCount(0);
+
+  // The marks that keep the aggregate from reading as one long run — asserted in a real browser
+  // with real layout, because that is where the flat slab actually manifested. One baseline per
+  // density lane; only wf-2's slice holds failures, so only it gets a rug under the line.
+  await expect(page.getByTestId('ops-density-axis')).toHaveCount(2);
+  await expect(page.getByTestId('ops-density-rug')).toHaveCount(1);
+  const column = await page.getByTestId('ops-density-cell').first().boundingBox();
+  expect(column!.height).toBeLessThan(22);
 });
 
 test('folder filter scopes timeline and departure board together', async ({ page }) => {

@@ -33,7 +33,7 @@ np auth login --server https://nodepilot.example.com
 | `cron` | `cron next` |
 | `db` | info/query (Read-Default, `--write` opt-in) |
 | `dashboard` | Stats |
-| `operations` | graph (Live-Ops-Snapshot: Workflows, Call-Graph, laufende + kürzlich beendete Executions; RBAC-folder-scoped; `--window 20\|60\|240`) |
+| `operations` | graph (Live-Ops-Snapshot: Workflows, Call-Graph, laufende + kürzlich beendete Executions; RBAC-folder-scoped; `--window 30\|60`) |
 | `observability` | summary/**query**/**query-range** |
 | `settings` | status/system-info/get/put/test smtp\|llm |
 | `secrets` | **reencrypt** |
@@ -345,10 +345,10 @@ np alerting delete 9a2f...
 # Operations — Live-Ops-Snapshot: Workflows, Call-Graph, laufende + kürzlich
 # beendete Executions (alle Rollen, RBAC-folder-scoped)
 np operations graph -o json
-np operations graph --window 240              # Rückblick für beendete Läufe: 20 | 60 | 240 Min
+np operations graph --window 60               # Rückblick für beendete Läufe: 30 | 60 Min
 ```
 
-Einzeln aufgelistet werden die neuesten 1000 beendeten Läufe des Fensters. Gibt es mehr,
+Einzeln aufgelistet werden die neuesten 4000 beendeten Läufe des Fensters. Gibt es mehr,
 liefert `density[]` zusätzlich gebucketete Zähler (`total`/`failed`/`cancelled` je Workflow und
 Zeitscheibe) über das **ganze** Fenster — „wie viel lief in den letzten vier Stunden?" bleibt
 also beantwortbar, auch wenn nicht jeder Lauf einzeln aufgeführt ist. Die Tabellenausgabe nennt
