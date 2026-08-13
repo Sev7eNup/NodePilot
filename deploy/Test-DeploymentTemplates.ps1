@@ -25,6 +25,8 @@ param(
     [string]$RuntimePayloadScriptPath,
     [string]$PostgresProvisionScriptPath,
     [string]$ServerBuildScriptPath,
+    [string]$PublishSettingsHygienePath,
+    [string]$DesktopBuildScriptPath,
     [string[]]$PackageLockPaths,
     [string[]]$ChecksumDocPaths
 )
@@ -83,6 +85,12 @@ if ([string]::IsNullOrWhiteSpace($PostgresProvisionScriptPath)) {
 }
 if ([string]::IsNullOrWhiteSpace($ServerBuildScriptPath)) {
     $ServerBuildScriptPath = Join-Path $scriptDirectory 'server\Build-ServerInstaller.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($PublishSettingsHygienePath)) {
+    $PublishSettingsHygienePath = Join-Path $scriptDirectory 'Assert-PublishSettingsHygiene.ps1'
+}
+if ([string]::IsNullOrWhiteSpace($DesktopBuildScriptPath)) {
+    $DesktopBuildScriptPath = Join-Path $scriptDirectory 'desktop\Build-DesktopInstaller.ps1'
 }
 if ($null -eq $PackageLockPaths -or $PackageLockPaths.Count -eq 0) {
     $PackageLockPaths = @(
@@ -146,9 +154,55 @@ function Remove-CommentLines {
     }) -join "`n")
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $SetupContractPath, $ArtifactSecurityPath, $ServerIssPath, $RuntimePayloadScriptPath)) {
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $SetupContractPath, $ArtifactSecurityPath, $ServerIssPath, $RuntimePayloadScriptPath, $PublishSettingsHygienePath, $DesktopBuildScriptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
+    }
+}
+
+# The final-stage guard is shared by the server zip and desktop installer builds. Exercise it on
+# synthetic stages so the contract proves filenames recursively, not only today's script text.
+. $PublishSettingsHygienePath
+$publishSettingsTestRoot = Join-Path ([IO.Path]::GetTempPath()) ("nodepilot-publish-settings-test-" + [Guid]::NewGuid().ToString('N'))
+try {
+    New-Item -ItemType Directory -Path $publishSettingsTestRoot | Out-Null
+    [IO.File]::WriteAllText(
+        (Join-Path $publishSettingsTestRoot 'appsettings.json'),
+        '{}',
+        (New-Object Text.UTF8Encoding($false)))
+
+    Assert-NodePilotPublishSettingsHygiene -RootPath $publishSettingsTestRoot
+
+    foreach ($forbiddenName in @('appsettings.Development.json', 'appsettings.runtime.json')) {
+        $nested = Join-Path $publishSettingsTestRoot 'nested'
+        New-Item -ItemType Directory -Path $nested -Force | Out-Null
+        $forbiddenPath = Join-Path $nested $forbiddenName
+        [IO.File]::WriteAllText($forbiddenPath, '{}', (New-Object Text.UTF8Encoding($false)))
+        $rejected = $false
+        try {
+            Assert-NodePilotPublishSettingsHygiene -RootPath $publishSettingsTestRoot
+        } catch {
+            $rejected = $_.Exception.Message -match [regex]::Escape($forbiddenName)
+        }
+        if (-not $rejected) {
+            throw "Deployment template check failed: final-stage guard accepted $forbiddenName."
+        }
+        Remove-Item -LiteralPath $forbiddenPath -Force
+    }
+
+    Remove-Item -LiteralPath (Join-Path $publishSettingsTestRoot 'appsettings.json') -Force
+    $missingBaseRejected = $false
+    try {
+        Assert-NodePilotPublishSettingsHygiene -RootPath $publishSettingsTestRoot
+    } catch {
+        $missingBaseRejected = $_.Exception.Message -match 'appsettings\.json'
+    }
+    if (-not $missingBaseRejected) {
+        throw 'Deployment template check failed: final-stage guard accepted a stage without appsettings.json.'
+    }
+} finally {
+    if (Test-Path -LiteralPath $publishSettingsTestRoot) {
+        Remove-Item -LiteralPath $publishSettingsTestRoot -Recurse -Force
     }
 }
 
@@ -263,6 +317,7 @@ Assert-TextMatches -Name 'installer protects the service registry key before wri
 # three properties that silently rot: the version source, the SPA being built twice, and the
 # desktop step being allowed to abort a server build.
 $buildScript = Get-Content -LiteralPath $BuildScriptPath -Raw
+$desktopBuildScript = Get-Content -LiteralPath $DesktopBuildScriptPath -Raw
 $requiredBuildContracts = [ordered]@{
     'build script accepts the desktop-installer switch' = '\[switch\]\$IncludeDesktopInstaller'
     'build script accepts the Postgres binaries path' = '\[string\]\$PgBinariesPath'
@@ -305,6 +360,33 @@ if ($signIndex -gt $checksumIndex) {
 
 foreach ($contract in $requiredBuildContracts.GetEnumerator()) {
     Assert-TextMatches -Name $contract.Key -Text $buildScript -Pattern $contract.Value
+}
+
+Assert-TextMatches -Name 'development settings are excluded from the production source snapshot' `
+    -Text (Remove-CommentLines -Text $buildScript) `
+    -Pattern "git[\s\S]+archive[\s\S]+HEAD\s+--\s+\.[\s\S]+\(exclude\)src/NodePilot\.Api/appsettings\.Development\.json"
+Assert-TextMatches -Name 'server build imports the final-stage settings guard' `
+    -Text (Remove-CommentLines -Text $buildScript) `
+    -Pattern '\.\s+\$PublishSettingsHygieneScript'
+Assert-TextMatches -Name 'server build validates the complete stage' `
+    -Text (Remove-CommentLines -Text $buildScript) `
+    -Pattern 'Assert-NodePilotPublishSettingsHygiene\s+-RootPath\s+\$StageDir'
+Assert-TextMatches -Name 'desktop build imports the final-stage settings guard' `
+    -Text (Remove-CommentLines -Text $desktopBuildScript) `
+    -Pattern '\.\s+\$PublishSettingsHygieneScript'
+Assert-TextMatches -Name 'desktop build validates the complete stage and required app config' `
+    -Text (Remove-CommentLines -Text $desktopBuildScript) `
+    -Pattern "Assert-NodePilotPublishSettingsHygiene\s+-RootPath\s+\`$Stage\s+-RequiredBaseSettingsPath\s+'app\\appsettings\.json'"
+
+$serverSettingsGateIndex = $buildScript.IndexOf('Assert-NodePilotPublishSettingsHygiene -RootPath $StageDir')
+$serverManifestIndex = $buildScript.IndexOf('New-NodePilotExtractedFileManifest -RootPath $StageDir')
+if ($serverSettingsGateIndex -lt 0 -or $serverManifestIndex -lt 0 -or $serverSettingsGateIndex -gt $serverManifestIndex) {
+    throw 'Deployment template check failed: server settings guard must run after staging and before the extracted-file manifest is generated.'
+}
+$desktopSettingsGateIndex = $desktopBuildScript.IndexOf('Assert-NodePilotPublishSettingsHygiene -RootPath $Stage')
+$desktopCompileIndex = $desktopBuildScript.IndexOf("Write-Step 'Compiling installer (Inno Setup)'")
+if ($desktopSettingsGateIndex -lt 0 -or $desktopCompileIndex -lt 0 -or $desktopSettingsGateIndex -gt $desktopCompileIndex) {
+    throw 'Deployment template check failed: desktop settings guard must run after staging and before the installer is compiled.'
 }
 
 # Every guide that tells an operator to fetch and verify a release must name the file the build
@@ -1549,6 +1631,7 @@ $interactiveProvisionEnd = $serverIss.IndexOf("DbStatus := GetIniString('provisi
 if ($interactiveProvisionStart -lt 0 -or $interactiveProvisionEnd -lt 0) {
     throw 'Deployment template check failed: could not locate the interactive provisioning block.'
 }
+
 $interactiveProvisionBlock = $serverIss.Substring(
     $interactiveProvisionStart,
     $interactiveProvisionEnd - $interactiveProvisionStart)

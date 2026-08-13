@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using FluentAssertions;
 using Xunit;
 
@@ -26,6 +27,41 @@ public sealed class AppSettingsHygieneTests
     private static readonly Regex AbsoluteWindowsPath = new(@"""[A-Za-z]:(\\\\|/)", RegexOptions.Compiled);
 
     private static readonly Regex LocalhostPort = new(@"http://localhost:(\d+)", RegexOptions.Compiled);
+
+    [Fact]
+    public void ApiProject_PublishItems_ExcludeLocalAndDevelopmentSettingsButKeepBaseSettings()
+    {
+        var apiDirectory = Path.Combine(FindRepoRoot(), "src", "NodePilot.Api");
+        var project = XDocument.Load(Path.Combine(apiDirectory, "NodePilot.Api.csproj"));
+
+        var excludedFromPublish = project.Descendants("Content")
+            .Where(item => string.Equals(
+                item.Attribute("CopyToPublishDirectory")?.Value
+                    ?? item.Element("CopyToPublishDirectory")?.Value,
+                "Never",
+                StringComparison.OrdinalIgnoreCase))
+            .SelectMany(item => (item.Attribute("Update")?.Value ?? string.Empty)
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .ToArray();
+
+        excludedFromPublish.Should().ContainEquivalentOf("appsettings.Development.json");
+        excludedFromPublish.Should().ContainEquivalentOf("appsettings.runtime.json");
+        excludedFromPublish.Should().NotContainEquivalentOf("appsettings.json");
+        File.Exists(Path.Combine(apiDirectory, "appsettings.json")).Should().BeTrue(
+            "the environment-neutral base configuration is required in every published application");
+
+        var gate = project.Descendants("Target").SingleOrDefault(target =>
+            string.Equals(target.Attribute("Name")?.Value, "ValidatePublishedSettingsHygiene", StringComparison.Ordinal));
+        gate.Should().NotBeNull("every dotnet publish entry point must validate its final output");
+        gate!.Attribute("AfterTargets")?.Value.Should().Be("Publish");
+
+        var failureConditions = gate.Descendants("Error")
+            .Select(error => $"{error.Attribute("Condition")?.Value} {error.Attribute("Text")?.Value}")
+            .ToArray();
+        failureConditions.Should().Contain(text => text.Contains("appsettings.Development.json", StringComparison.Ordinal));
+        failureConditions.Should().Contain(text => text.Contains("appsettings.runtime.json", StringComparison.Ordinal));
+        failureConditions.Should().Contain(text => text.Contains("appsettings.json", StringComparison.Ordinal));
+    }
 
     [Fact]
     public void TrackedAppSettings_DoNotCarryMachineSpecificPaths()

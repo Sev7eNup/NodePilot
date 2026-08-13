@@ -34,6 +34,7 @@ $Stage        = Join-Path $OutputRoot 'stage'
 $DesktopDir   = Join-Path $RepoRoot 'src\nodepilot-desktop'
 $UiDir        = Join-Path $RepoRoot 'src\nodepilot-ui'
 $ApiCsproj    = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
+$PublishSettingsHygieneScript = Join-Path $RepoRoot 'deploy\Assert-PublishSettingsHygiene.ps1'
 $DesktopRuntimeVersion = '10.0.11'
 
 function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
@@ -59,6 +60,10 @@ Assert-Tool 'node' 'node'
 Assert-NodePilotDotnetSdkPolicy -RepoRoot $RepoRoot
 . (Join-Path $PSScriptRoot 'Resolve-IsccPath.ps1')
 . (Join-Path $PSScriptRoot 'Assert-DesktopRuntimePayload.ps1')
+if (-not (Test-Path -LiteralPath $PublishSettingsHygieneScript -PathType Leaf)) {
+    throw "Publish settings hygiene helper missing: $PublishSettingsHygieneScript"
+}
+. $PublishSettingsHygieneScript
 $resolvedIscc = Resolve-NodePilotIsccPath -Explicit $IsccPath
 if (-not $resolvedIscc) {
     throw ("Inno Setup 6 compiler (ISCC.exe) not found. Install it from https://jrsoftware.org/isdl.php " +
@@ -188,6 +193,7 @@ foreach ($f in @('Provision-LocalDb.ps1', 'Update-Desktop.ps1', 'Uninstall-Deskt
 }
 
 # --- 6. compile installer --------------------------------------------------------------------
+Assert-NodePilotPublishSettingsHygiene -RootPath $Stage -RequiredBaseSettingsPath 'app\appsettings.json'
 Write-Step 'Compiling installer (Inno Setup)'
 Invoke-Tool {
     & $IsccPath "/DStageDir=$Stage" "/DAppVersion=$Version" "/DOutputDir=$OutputRoot" (Join-Path $PSScriptRoot 'NodePilot.iss')

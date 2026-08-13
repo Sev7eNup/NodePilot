@@ -57,6 +57,8 @@ $AppPath     = Join-Path $InstallPath 'app'
 $PgData      = Join-Path $DataPath 'pgdata'
 $SecretsDir  = Join-Path $DataPath 'secrets'
 $LogsDir     = Join-Path $DataPath 'logs'
+$KeyRingDir  = Join-Path $DataPath 'data-protection-keys'
+$ArchiveDir  = Join-Path $DataPath 'archive'
 $DesktopJson = Join-Path $DataPath 'desktop.json'
 $ApiExe      = Join-Path $AppPath 'NodePilot.Api.exe'
 $initdb      = Join-Path $PgBinPath 'initdb.exe'
@@ -71,7 +73,7 @@ foreach ($p in @($InstallPath, $PgBinPath, $AppPath, $ApiExe, $initdb, $pg_ctl, 
     if (-not (Test-Path -LiteralPath $p)) { throw "Required path not found: $p" }
 }
 
-New-Item -ItemType Directory -Force -Path $DataPath, $PgData, $SecretsDir, $LogsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $DataPath, $PgData, $SecretsDir, $LogsDir, $KeyRingDir, $ArchiveDir | Out-Null
 
 # --- helpers ---------------------------------------------------------------------------------
 
@@ -101,7 +103,7 @@ function Get-FreePort([int] $start, [int] $end) {
     throw "No free port available in range $start-$end."
 }
 
-function Set-RestrictedAcl([string] $path, [string[]] $extraReadPrincipals = @(), [switch] $NoCurrentUser) {
+function Set-RestrictedAcl([string] $path, [string[]] $extraReadPrincipals = @(), [switch] $NoCurrentUser, [switch] $ExtraReadNoInheritance) {
     # SYSTEM + Administrators FullControl, inheritance disabled; optional extra read grants.
     $acl = New-Object System.Security.AccessControl.DirectorySecurity
     if (-not (Test-Path -LiteralPath $path -PathType Container)) {
@@ -134,7 +136,8 @@ function Set-RestrictedAcl([string] $path, [string[]] $extraReadPrincipals = @()
             New-Object System.Security.Principal.NTAccount($principal)
         }
         $read = [System.Security.AccessControl.FileSystemRights]'ReadAndExecute'
-        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($id, $read, $inherit, $prop, $allow)))
+        $readInherit = if ($ExtraReadNoInheritance) { [System.Security.AccessControl.InheritanceFlags]::None } else { $inherit }
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule($id, $read, $readInherit, $prop, $allow)))
     }
     Set-Acl -LiteralPath $path -AclObject $acl
 }
@@ -148,38 +151,65 @@ function Write-RestrictedText([string] $path, [string] $content) {
 
 function Move-DesktopRuntimeOverridesToSecrets {
     # Releases before 1.2.5 wrote runtime settings and their rollback copies directly below
-    # DataPath. That directory intentionally grants BUILTIN\Users read/traverse for desktop.json,
-    # so LocalMachine-DPAPI ciphertext there was decryptable by any local process. Lock the target
-    # first, move every possible settings artefact, then replace the DACL explicitly: a same-volume
-    # Move-Item preserves the source ACL instead of inheriting the destination directory ACL.
+    # DataPath or beside the installed application. Prefer the install-root primary because that
+    # was the active path in affected releases; if a protected primary already exists, preserve it
+    # and keep every legacy copy as a collision-safe backup. Lock the target first, move every
+    # possible settings artefact, then replace the DACL explicitly: a same-volume Move-Item
+    # preserves the source ACL instead of inheriting the destination directory ACL.
     Set-RestrictedAcl -path $SecretsDir -NoCurrentUser
 
-    $legacyFiles = @(Get-ChildItem -LiteralPath $DataPath -Filter 'appsettings.runtime.json*' -File)
-    foreach ($legacy in $legacyFiles) {
-        $destination = Join-Path $SecretsDir $legacy.Name
-        if (Test-Path -LiteralPath $destination) {
-            # Keep both copies on an interrupted/repeated upgrade without leaving the older one in
-            # the user-readable parent. The runtime writer recognises the primary collision as a
-            # normal backup and can age it out after successful future writes.
-            $suffix = [Guid]::NewGuid().ToString('N')
-            $destinationName = if ($legacy.Name -ieq 'appsettings.runtime.json') {
-                "appsettings.runtime.json.bak.legacy.$suffix"
-            } else {
-                "$($legacy.Name).legacy.$suffix"
+    # DataPath was the authoritative configured source in affected releases; process it first so
+    # the active override remains the primary protected file. The install-root copy is retained as
+    # a collision-safe legacy backup.
+    foreach ($legacyRoot in @($DataPath, $AppPath)) {
+        $legacyFiles = @(Get-ChildItem -LiteralPath $legacyRoot -Filter 'appsettings.runtime.json*' -File)
+        foreach ($legacy in $legacyFiles) {
+            $destination = Join-Path $SecretsDir $legacy.Name
+            if (Test-Path -LiteralPath $destination) {
+                # Keep both copies on an interrupted/repeated upgrade without replacing a
+                # protected primary. The runtime writer recognises the primary collision as a
+                # normal backup and can age it out after successful future writes.
+                $suffix = [Guid]::NewGuid().ToString('N')
+                $destinationName = if ($legacy.Name -ieq 'appsettings.runtime.json') {
+                    "appsettings.runtime.json.bak.legacy.$suffix"
+                } else {
+                    "$($legacy.Name).legacy.$suffix"
+                }
+                $destination = Join-Path $SecretsDir $destinationName
             }
-            $destination = Join-Path $SecretsDir $destinationName
-        }
 
-        Move-Item -LiteralPath $legacy.FullName -Destination $destination
-        # A same-volume move preserves the former broad DACL. Restrict this copy before touching
-        # the next file so a later collision/I/O failure cannot strand an exposed migrated file.
-        Set-RestrictedAcl -path $destination -NoCurrentUser
+            Move-Item -LiteralPath $legacy.FullName -Destination $destination
+            # A same-volume move preserves the former broad DACL. Restrict this copy before
+            # touching the next file so a later collision/I/O failure cannot strand an exposed
+            # migrated file.
+            Set-RestrictedAcl -path $destination -NoCurrentUser
+        }
     }
 
     # Normalise both migrated files and any files already present from a prior partial run.
     foreach ($protectedFile in @(Get-ChildItem -LiteralPath $SecretsDir -Filter 'appsettings.runtime.json*' -File)) {
         Set-RestrictedAcl -path $protectedFile.FullName -NoCurrentUser
     }
+}
+
+function Reset-CompromisedDataProtectionKeyRing {
+    if (-not (Test-Path -LiteralPath $KeyRingDir -PathType Container)) { return }
+    $acl = Get-Acl -LiteralPath $KeyRingDir
+    $untrusted = @($acl.Access | Where-Object {
+        $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Value -match 'S-1-5-32-545|BUILTIN\\Users|Everyone|Authenticated Users'
+    })
+    if ($untrusted.Count -eq 0) {
+        Set-RestrictedAcl -path $KeyRingDir -NoCurrentUser
+        return
+    }
+
+    # LocalMachine-DPAPI keys were readable by local users on affected installs. Preserve the
+    # old ring only as an admin/SYSTEM quarantine for forensic rollback, then force fresh keys.
+    $quarantine = Join-Path $SecretsDir ('data-protection-keys.compromised.' + [DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))
+    Move-Item -LiteralPath $KeyRingDir -Destination $quarantine
+    Set-RestrictedAcl -path $quarantine -NoCurrentUser
+    New-Item -ItemType Directory -Force -Path $KeyRingDir | Out-Null
+    Set-RestrictedAcl -path $KeyRingDir -NoCurrentUser
 }
 
 function Invoke-Native([string] $exe, [string[]] $arguments, [hashtable] $env = @{}) {
@@ -208,6 +238,13 @@ foreach ($svc in @($ApiServiceName, $DbServiceName)) {
 
 Write-Step 'Securing runtime overrides and backups'
 Move-DesktopRuntimeOverridesToSecrets
+Reset-CompromisedDataProtectionKeyRing
+# Development configuration is never part of a production installation. Remove stale copies
+# left by older installers after the service has stopped, before the new API can start.
+$legacyDevelopmentSettings = Join-Path $AppPath 'appsettings.Development.json'
+if (Test-Path -LiteralPath $legacyDevelopmentSettings -PathType Leaf) {
+    Remove-Item -LiteralPath $legacyDevelopmentSettings -Force
+}
 
 # --- 1. ports --------------------------------------------------------------------------------
 Write-Step 'Selecting free loopback ports'
@@ -426,7 +463,15 @@ Set-RestrictedAcl -path $DesktopJson -extraReadPrincipals @('S-1-5-32-545')
 # plus Users read/traverse so the Electron shell can reach desktop.json. NO installing-user
 # mutation -- otherwise the backend's key-directory security check fail-closes the boot.
 Set-RestrictedAcl -path $SecretsDir -NoCurrentUser
-Set-RestrictedAcl -path $DataPath -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser
+# The data root is a traverse-only boundary for standard users; only desktop.json receives
+# an explicit read ACE above.  Do not inherit Users access into logs, key material or archives.
+Set-RestrictedAcl -path $DataPath -extraReadPrincipals @('S-1-5-32-545') -NoCurrentUser -ExtraReadNoInheritance
+foreach ($protectedDir in @($KeyRingDir, $LogsDir, $ArchiveDir)) {
+    Set-RestrictedAcl -path $protectedDir -NoCurrentUser
+    foreach ($protectedFile in @(Get-ChildItem -LiteralPath $protectedDir -Recurse -Force -File -ErrorAction SilentlyContinue)) {
+        Set-RestrictedAcl -path $protectedFile.FullName -NoCurrentUser
+    }
+}
 
 # --- 9. start services + health poll ---------------------------------------------------------
 Write-Step 'Starting services'
