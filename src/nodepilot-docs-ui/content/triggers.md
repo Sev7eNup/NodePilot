@@ -110,6 +110,20 @@ Konfigurierbar sind:
 
 Der Pfad bezieht sich auf das Dateisystem des Rechners, auf dem NodePilot ausgeführt wird. Das Verzeichnis muss vorhanden sein, erreichbar sein und innerhalb der serverseitig erlaubten Pfade liegen.
 
+Symlinks, Junctions und andere Reparse Points im überwachten Pfad werden immer abgelehnt. Bei
+aktivierten Unterverzeichnissen gilt dies auch für den beim Start vorhandenen Unterbaum; der
+manuelle Testlauf folgt solchen Einträgen ebenfalls nicht. Ereignispfade werden unmittelbar
+vor dem Workflow-Start erneut geprüft. Reguläre UNC-Freigaben bleiben unterstützt; Windows-
+Device- und Extended-Path-Namensräume (`\\?\\`, `\\.\\`, `\\??\\`) werden dagegen abgelehnt,
+weil sie die Systempfad-Sperre durch eine alternative Schreibweise umgehen könnten. Administrative
+Shares des lokalen Rechners (zum Beispiel `\\localhost\\C$`) werden für die Policy-Prüfung auf
+den entsprechenden lokalen Pfad abgebildet; `\\localhost\\C$\\Windows` kann die Systemsperre
+daher nicht umgehen. Ein Watch-Root darf standardmäßig auch keinen gesperrten Systempfad als
+Unterbaum enthalten (zum Beispiel `C:\\` mit aktivierten Unterverzeichnissen). Benannte lokale
+Shares ohne sicher ableitbaren Zielpfad werden bei `AllowSystemPaths=false` abgelehnt; mit der
+expliziten Systempfad-Freigabe bleiben sie nutzbar. Shares anderer Rechner bleiben unverändert
+unterstützt.
+
 ### Verhalten bei unerreichbarem Verzeichnis
 
 Wird das überwachte Verzeichnis unerreichbar — etwa weil eine Netzwerkfreigabe durch einen Neustart oder eine gelöschte Freigabe wegfällt — erkennt NodePilot das und versucht die Überwachung regelmäßig neu aufzubauen. Die Abstände wachsen dabei bis auf fünf Minuten. Sobald das Verzeichnis wieder erreichbar ist, läuft die Überwachung selbsttätig weiter; ein Neustart oder ein manueller Eingriff ist nicht nötig.
@@ -191,7 +205,7 @@ Einen Namespace `{{trigger.*}}` gibt es nicht.
 
 ## Workflow extern über die API starten
 
-Ein veröffentlichter und aktivierter Workflow kann unabhängig von einem Webhook-Node über die External-Trigger-API gestartet werden:
+Ein veröffentlichter und aktivierter Workflow kann unabhängig von einem Webhook-Node über die External-Trigger-API gestartet werden. Er muss dafür einen **aktiven manuellen Trigger** enthalten und seine GUID muss im Scope des verwendeten Integrationsschlüssels stehen:
 
 ```bash
 curl -X POST "https://nodepilot.example/api/trigger/Deploy" \
@@ -203,8 +217,42 @@ curl -X POST "https://nodepilot.example/api/trigger/Deploy" \
 
 Voraussetzungen:
 
-- `ExternalTrigger:ApiKey` ist administrativ konfiguriert und mindestens 32 UTF-8-Bytes lang.
-- `X-Api-Key` enthält diesen Schlüssel.
-- `Idempotency-Key` ist optional. Wiederholte Anfragen mit demselben Schlüssel starten innerhalb von 24 Stunden keine zweite Ausführung.
+- Der Workflow enthält einen nicht deaktivierten `manualTrigger`.
+- `X-Api-Key` enthält einen mindestens 32 UTF-8-Bytes langen Integrationsschlüssel.
+- Der SHA-256-Hash dieses Schlüssels ist unter `ExternalTrigger:Keys` konfiguriert und `AllowedWorkflowIds` enthält die Workflow-GUID. Namen und Wildcards werden nicht akzeptiert.
+- `Idempotency-Key` ist optional. Wiederholte Anfragen mit demselben Header **und demselben authentifizierten Integrationsschlüssel** starten innerhalb von 24 Stunden keine zweite Ausführung. Andere Integrationsschlüssel besitzen eine getrennte Replay-Domain und können sich nicht gegenseitig blockieren oder fremde Ergebnisse abrufen. NodePilot persistiert nur einen domain-separierten SHA-256-Digest, nie den Headerwert.
+
+Schlüssel und Hash können lokal erzeugt werden. Nur der Hash wird in NodePilot gespeichert; der Klartextschlüssel geht ausschließlich an die Integration:
+
+```powershell
+$key = [Convert]::ToBase64String([Security.Cryptography.RandomNumberGenerator]::GetBytes(48))
+$hash = [Convert]::ToBase64String(
+  [Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($key)))
+$key
+$hash
+```
+
+```json
+{
+  "ExternalTrigger": {
+    "ApiKey": "",
+    "AllowedWorkflowIds": [],
+    "Keys": {
+      "ci-deploy": {
+        "KeyHash": "<SHA-256 als Base64>",
+        "AllowedWorkflowIds": ["21f1c0d4-0000-0000-0000-000000000000"]
+      }
+    }
+  }
+}
+```
+
+Jeder Schlüssel besitzt einen eigenen Scope. Ein Schlüssel für Workflow A kann Workflow B nicht starten. Ein unbekannter Schlüssel liefert `401`; ein fehlender, deaktivierter, nicht freigegebener oder nicht per `manualTrigger` opt-in gesetzter Workflow liefert einheitlich `404`.
+
+Die gesamte `ExternalTrigger:Keys`-Map wird provider-atomar ausgewertet: Der höchstpriore Provider, der die Map deklariert, besitzt den vollständigen Snapshot; `Keys: {}` widerruft alle niedrigeren Integrationsschlüssel. Ein Override muss daher alle weiterhin gewünschten Einträge samt Hash und Scope enthalten. Auch Allowlisten sind atomar: Eine kürzere Liste ersetzt alle niedrigeren Indizes, `[]` ist deny-all. So können weder entfernte Schlüssel noch GUIDs durch das additive `IConfiguration`-Merging wieder sichtbar werden.
+
+Die Idempotency-Principal-ID enthält die case-insensitiv kanonisierte Integrations-ID und den Key-Fingerprint. Eine reine Änderung der Groß-/Kleinschreibung behält die Replay-Domain, eine Schlüsselrotation beginnt bewusst eine neue. Beim Upgrade auf diese Speicherung werden ältere rohe Cache-Einträge nicht mehr für Replays verwendet; sie laufen innerhalb der regulären 24-Stunden-TTL aus. Ein Retry über genau diese Upgrade-Grenze kann daher einmalig eine neue Ausführung erzeugen.
+
+Migration des alten `ExternalTrigger:ApiKey`: Die erlaubten GUIDs zunächst unter `ExternalTrigger:AllowedWorkflowIds` eintragen. Eine leere Liste verweigert alle Starts. Anschließend pro Integration einen neuen Hash-Eintrag anlegen und den Legacy-Key löschen. Derselbe Schlüssel darf während der Migration nicht gleichzeitig als Legacy-Key und Hash-Eintrag konfiguriert sein; doppelte Treffer werden fail-closed abgewiesen.
 
 Weitere Informationen enthält [Workflow-Steuerung](./api/workflow-control).

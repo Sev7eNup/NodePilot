@@ -2,6 +2,9 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using System.Buffers.Binary;
+using System.Security.Cryptography;
+using System.Text;
 using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
@@ -10,6 +13,7 @@ using NodePilot.Api.Security;
 using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
+using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Data;
 using NodePilot.Engine.Security;
 
@@ -17,8 +21,8 @@ namespace NodePilot.Api.Controllers;
 
 /// <summary>
 /// External trigger surface: <c>POST /api/trigger/{workflowNameOrId}</c>. Anonymous transport,
-/// gated by an <c>X-Api-Key</c> header that is matched against <c>ExternalTrigger:ApiKey</c>
-/// in constant time. Idempotency-Key handling lives here too — internal callers (UI, scheduler,
+/// gated by an <c>X-Api-Key</c> header that is matched against a configured, workflow-scoped
+/// external-trigger key in constant time. Idempotency-Key handling lives here too — internal callers (UI, scheduler,
 /// CLI) hit <see cref="ExecutionsController.Execute"/> instead, which is owner-tagged via JWT.
 /// </summary>
 [ApiController]
@@ -91,13 +95,13 @@ public class ExternalTriggerController : ControllerBase
 
     private static async Task<WorkflowExecution?> FindIdempotencyReplayAsync(
         NodePilotDbContext db,
-        string idempotencyKey,
+        string idempotencyStorageKey,
         Guid workflowId,
         CancellationToken ct)
     {
         var now = DateTime.UtcNow;
         var existing = await db.IdempotencyKeys.AsNoTracking()
-            .FirstOrDefaultAsync(k => k.Key == idempotencyKey && k.WorkflowId == workflowId && k.ExpiresAt > now, ct);
+            .FirstOrDefaultAsync(k => k.Key == idempotencyStorageKey && k.WorkflowId == workflowId && k.ExpiresAt > now, ct);
         if (existing is null) return null;
 
         return await db.WorkflowExecutions.AsNoTracking()
@@ -106,12 +110,12 @@ public class ExternalTriggerController : ControllerBase
 
     private static async Task RemoveIdempotencyKeyAsync(
         NodePilotDbContext db,
-        string idempotencyKey,
+        string idempotencyStorageKey,
         Guid workflowId,
         CancellationToken ct)
     {
         var key = await db.IdempotencyKeys
-            .FirstOrDefaultAsync(k => k.Key == idempotencyKey && k.WorkflowId == workflowId, ct);
+            .FirstOrDefaultAsync(k => k.Key == idempotencyStorageKey && k.WorkflowId == workflowId, ct);
         if (key is null) return;
 
         db.IdempotencyKeys.Remove(key);
@@ -119,10 +123,70 @@ public class ExternalTriggerController : ControllerBase
     }
 
     /// <summary>
+    /// Produces the database key for one caller-supplied Idempotency-Key. The authenticated key
+    /// principal is part of the digest domain, so two integrations cannot replay or reserve one
+    /// another's token even when they target the same workflow. The raw header and key principal
+    /// are never persisted. The fixed-size v1 value fits the existing 200-character column.
+    /// </summary>
+    internal static string BuildIdempotencyStorageKey(string keyPrincipalId, string clientKey)
+    {
+        const string domain = "nodepilot:external-trigger:idempotency:v1";
+        var domainBytes = Encoding.UTF8.GetBytes(domain);
+        var principalBytes = Encoding.UTF8.GetBytes(keyPrincipalId);
+        var clientKeyBytes = Encoding.UTF8.GetBytes(clientKey);
+        var material = new byte[
+            4 + domainBytes.Length + 4 + principalBytes.Length + 4 + clientKeyBytes.Length];
+        var offset = 0;
+        WriteLengthPrefixed(domainBytes, material, ref offset);
+        WriteLengthPrefixed(principalBytes, material, ref offset);
+        WriteLengthPrefixed(clientKeyBytes, material, ref offset);
+        try
+        {
+            var digest = SHA256.HashData(material);
+            try
+            {
+                return $"ext:v1:{Convert.ToHexString(digest)}";
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(digest);
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(principalBytes);
+            CryptographicOperations.ZeroMemory(clientKeyBytes);
+            CryptographicOperations.ZeroMemory(material);
+        }
+    }
+
+    private static void WriteLengthPrefixed(
+        ReadOnlySpan<byte> value,
+        Span<byte> destination,
+        ref int offset)
+    {
+        BinaryPrimitives.WriteInt32BigEndian(destination.Slice(offset, 4), value.Length);
+        offset += 4;
+        value.CopyTo(destination[offset..]);
+        offset += value.Length;
+    }
+
+    /// <summary>
+    /// The external API is one transport for a workflow's manual entry point; it is not an
+    /// instance-wide bypass around the workflow definition. Parse the authoritative definition
+    /// instead of trusting the denormalized TriggerTypesJson column so a stale or malformed row
+    /// fails closed. Disabled manual-trigger nodes are omitted from TriggerDescriptors.
+    /// </summary>
+    private static bool AllowsExternalTrigger(Workflow workflow)
+        => WorkflowDefinitionDocument.TryParse(workflow.DefinitionJson, out var definition)
+           && definition is not null
+           && definition.TriggerDescriptors.Any(trigger => trigger.IsManual);
+
+    /// <summary>
     /// External trigger endpoint — start a workflow by name or ID with parameters.
-    /// Requires an API key via X-Api-Key header; the key is configured in appsettings
-    /// under ExternalTrigger:ApiKey (or env NODEPILOT__ExternalTrigger__ApiKey). If
-    /// the config is missing or empty, this endpoint is disabled entirely.
+    /// Requires an API key via X-Api-Key header. Preferred configuration uses SHA-256 hashes
+    /// under ExternalTrigger:Keys:&lt;integration&gt; with a GUID-only AllowedWorkflowIds scope.
+    /// The legacy ExternalTrigger:ApiKey is inert unless its own AllowedWorkflowIds is set.
     /// Example: POST /api/trigger/Deploy%20App {"parameters": {"version": "2.1.0"}}
     /// </summary>
     [HttpPost("/api/trigger/{workflowNameOrId}")]
@@ -143,28 +207,12 @@ public class ExternalTriggerController : ControllerBase
         [FromServices] ILogger<ExternalTriggerController> logger,
         CancellationToken ct)
     {
-        var expectedKey = config["ExternalTrigger:ApiKey"];
-        // Don't distinguish "no key configured" from "wrong key" in the response — both
-        // return 401. Previously this returned 503, which confirmed to an unauthenticated
-        // caller that the endpoint existed but was unconfigured, aiding discovery.
-        if (string.IsNullOrWhiteSpace(expectedKey)
-            || System.Text.Encoding.UTF8.GetByteCount(expectedKey) < MinExternalApiKeyBytes)
+        Request.Headers.TryGetValue("X-Api-Key", out var presented);
+        var keyScope = ExternalTriggerKeyScopeResolver.Authenticate(
+            config, presented.ToString(), MinExternalApiKeyBytes);
+        if (keyScope is null)
         {
-            if (string.IsNullOrWhiteSpace(expectedKey))
-                logger.LogDebug("External trigger rejected: ExternalTrigger:ApiKey not configured.");
-            else
-                logger.LogWarning("External trigger rejected: ExternalTrigger:ApiKey is shorter than {Min} bytes. Rotate the key.", MinExternalApiKeyBytes);
-
-            // Still run FixedTimeEquals on dummy data so the response time does not reveal
-            // whether the server is misconfigured versus presenting the wrong key.
-            _ = SecretComparer.FixedTimeEquals(Request.Headers["X-Api-Key"].ToString(), new string('x', MinExternalApiKeyBytes));
-            NodePilot.Api.Telemetry.ApiMetrics.ExternalTriggerAuthFailures.Add(1);
-            return Unauthorized(new { message = "Invalid or missing X-Api-Key header" });
-        }
-
-        if (!Request.Headers.TryGetValue("X-Api-Key", out var presented)
-            || !SecretComparer.FixedTimeEquals(presented.ToString(), expectedKey))
-        {
+            logger.LogDebug("External trigger rejected: no configured key scope matched.");
             NodePilot.Api.Telemetry.ApiMetrics.ExternalTriggerAuthFailures.Add(1);
             return Unauthorized(new { message = "Invalid or missing X-Api-Key header" });
         }
@@ -182,11 +230,14 @@ public class ExternalTriggerController : ControllerBase
             workflow = resolved.Workflow;
         }
 
-        // M-29: uniform 404 to prevent workflow-name enumeration via external-trigger API key.
-        // Previously this returned 404 for "not found" but 400 for "exists but disabled", which
-        // let a holder of a valid API key confirm which names exist even when disabled.
-        // Now all non-executable cases (missing / disabled) collapse to the same 404.
-        if (workflow is null || !workflow.IsEnabled)
+        // Uniform 404 prevents workflow-name and external-trigger-scope enumeration by an API-key
+        // holder. A workflow must explicitly contain an enabled manualTrigger (the catalogued
+        // Manual/API entry point); merely being enabled is no longer sufficient. This keeps the
+        // instance-wide key from acting as a start-any-workflow capability.
+        if (workflow is null
+            || !workflow.IsEnabled
+            || !keyScope.AllowedWorkflowIds.Contains(workflow.Id)
+            || !AllowsExternalTrigger(workflow))
             return NotFound(new { message = $"Workflow '{workflowNameOrId}' not found or not executable" });
 
         // Maintenance-window gate. MUST run BEFORE the idempotency-key transaction below: if a
@@ -204,18 +255,21 @@ public class ExternalTriggerController : ControllerBase
             return NotFound(new { message = $"Workflow '{workflowNameOrId}' not found or not executable" });
         }
 
-        // Idempotency-Key handling: if the caller supplies one, a replay of the same key
-        // returns the original execution instead of firing the workflow a second time. Keys
-        // are scoped per workflow so two different runbooks can reuse the same caller token.
-        // Limit: 200 chars (matches column); empty/whitespace treated as "no key".
+        // Idempotency-Key handling: if the caller supplies one, a replay by the same
+        // authenticated key principal returns the original execution. The DB sees only a
+        // versioned digest scoped by principal + workflow, never the raw header; another
+        // integration can therefore reuse the same client token without replay/preemption.
+        // Limit: 200 client characters; empty/whitespace is treated as "no key".
         string? idempotencyKey = Request.Headers.TryGetValue("Idempotency-Key", out var hdr)
             ? hdr.ToString().Trim() : null;
+        string? idempotencyStorageKey = null;
         if (!string.IsNullOrEmpty(idempotencyKey))
         {
             if (idempotencyKey.Length > 200)
                 return BadRequest(new { message = "Idempotency-Key must be 200 characters or less" });
 
-            var replay = await FindIdempotencyReplayAsync(_db, idempotencyKey, workflow.Id, ct);
+            idempotencyStorageKey = BuildIdempotencyStorageKey(keyScope.PrincipalId, idempotencyKey);
+            var replay = await FindIdempotencyReplayAsync(_db, idempotencyStorageKey, workflow.Id, ct);
             if (replay is not null)
                 return IdempotentReplay(replay);
 
@@ -263,8 +317,9 @@ public class ExternalTriggerController : ControllerBase
             EnqueueFailureMessage: "Queued external trigger was not dispatched because the request was cancelled before enqueue completed.");
         WorkflowExecution pending;
 
-        if (!string.IsNullOrEmpty(idempotencyKey))
+        if (idempotencyStorageKey is not null)
         {
+            var scopedIdempotencyKey = idempotencyStorageKey;
             (WorkflowExecution? Replayed, WorkflowExecution? Fresh) outcome;
             try
             {
@@ -287,7 +342,7 @@ public class ExternalTriggerController : ControllerBase
                     await using var tx = await _db.Database.BeginTransactionAsync(ct);
                     var now = DateTime.UtcNow;
                     var existingKey = await _db.IdempotencyKeys
-                        .FirstOrDefaultAsync(k => k.Key == idempotencyKey && k.WorkflowId == workflow.Id, ct);
+                        .FirstOrDefaultAsync(k => k.Key == scopedIdempotencyKey && k.WorkflowId == workflow.Id, ct);
                     if (existingKey is not null && existingKey.ExpiresAt > now)
                     {
                         var cached = await _db.WorkflowExecutions.AsNoTracking()
@@ -306,7 +361,7 @@ public class ExternalTriggerController : ControllerBase
                     _db.IdempotencyKeys.Add(new IdempotencyKey
                     {
                         Id = Guid.NewGuid(),
-                        Key = idempotencyKey,
+                        Key = scopedIdempotencyKey,
                         WorkflowId = workflow.Id,
                         ExecutionId = created.Id,
                         FirstSeenAt = now,
@@ -320,7 +375,7 @@ public class ExternalTriggerController : ControllerBase
             catch (DbUpdateException)
             {
                 _db.ChangeTracker.Clear();
-                var replay = await FindIdempotencyReplayAsync(_db, idempotencyKey, workflow.Id, ct);
+                var replay = await FindIdempotencyReplayAsync(_db, scopedIdempotencyKey, workflow.Id, ct);
                 if (replay is not null)
                     return IdempotentReplay(replay);
 
@@ -342,7 +397,7 @@ public class ExternalTriggerController : ControllerBase
             }
             catch
             {
-                await RemoveIdempotencyKeyAsync(_db, idempotencyKey, workflow.Id, CancellationToken.None);
+                await RemoveIdempotencyKeyAsync(_db, scopedIdempotencyKey, workflow.Id, CancellationToken.None);
                 throw;
             }
         }
@@ -356,8 +411,9 @@ public class ExternalTriggerController : ControllerBase
         await _audit.LogAsync(AuditActions.ExternalTriggerFired, "Workflow", workflow.Id,
             AuditDetails.Json(
                 ("workflowName", workflow.Name),
+                ("integrationId", keyScope.IntegrationId),
                 ("executionId", pending.Id),
-                ("idempotencyKeyUsed", !string.IsNullOrEmpty(idempotencyKey)),
+                ("idempotencyKeyUsed", idempotencyStorageKey is not null),
                 ("parameterCount", parameters?.Count ?? 0)),
             ct);
 

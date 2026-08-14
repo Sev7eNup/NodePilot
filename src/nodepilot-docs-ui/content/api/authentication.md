@@ -126,4 +126,4 @@ Die vollständige Tabelle über alle Bereiche steht — als einzige Quelle — u
 
 ## External Trigger
 
-Nur aktiv wenn `ExternalTrigger:ApiKey` gesetzt. Gated via `X-Api-Key`-Header. Akzeptiert optionale `Idempotency-Key`-Header (24 h TTL, nicht abschaltbar).
+Gated via `X-Api-Key`. Bevorzugt werden SHA-256-gehashte Schlüssel unter `ExternalTrigger:Keys:<id>` mit einer GUID-basierten `AllowedWorkflowIds`-Liste. Zusätzlich muss der Workflow einen aktiven `manualTrigger` enthalten. Der Legacy-Key `ExternalTrigger:ApiKey` ist ohne eigene `AllowedWorkflowIds`-Liste wirkungslos. Die höchstprior deklarierte `Keys`-Map ist der vollständige Snapshot (`{}` widerruft niedrigere Keys); Allowlisten sind ebenfalls atomar (`[]` = deny-all). Optionale `Idempotency-Key`-Header gelten 24 Stunden und sind zusätzlich an den authentifizierten Key-Principal gebunden; gespeichert wird nur ein domain-separierter Digest.

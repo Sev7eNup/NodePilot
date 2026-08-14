@@ -85,6 +85,10 @@ Neu-Eintippen.
 }
 ```
 
+`BaseUrl` muss HTTPS verwenden. HTTP ist nur für exakte lokale Loopback-Ziele wie
+`http://localhost:11434/v1`, `127.0.0.0/8` oder `::1` erlaubt; solche Ziele umgehen immer den
+ausgehenden Proxy, damit Prompt und API-Key den Host nicht im Klartext verlassen.
+
 **Section-Root:**
 
 | Key | Default | Erklärung |

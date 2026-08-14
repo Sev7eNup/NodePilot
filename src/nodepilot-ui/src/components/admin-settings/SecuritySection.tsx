@@ -273,7 +273,8 @@ function WebhookCard() {
 
 function ExternalTriggerCard() {
   const { t } = useTranslation('adminSettings');
-  const ui = useSectionForm<{ apiKey: string | null }>('ExternalTrigger', { apiKey: null });
+  const ui = useSectionForm<{ apiKey: string | null; allowedWorkflowIds: string[] }>(
+    'ExternalTrigger', { apiKey: null, allowedWorkflowIds: [] });
   const [mode, setMode] = useState<SecretFieldMode>('keep');
   const [value, setValue] = useState('');
   useEffect(() => {
@@ -283,7 +284,7 @@ function ExternalTriggerCard() {
     }
   }, [ui.data]);
   if (ui.loading) return <Card icon={Password} title={t('sec.externalTriggerCardTitle')}><p className="text-sm">{t('loading')}</p></Card>;
-  const { data, isEnvLocked, save, errors } = ui;
+  const { form, set, data, isEnvLocked, save, errors } = ui;
   return (
     <Card icon={Password} title={t('sec.externalTriggerCardTitle')}>
       <HotReloadHint isHotReloadable={data.isHotReloadable} />
@@ -295,7 +296,23 @@ function ExternalTriggerCard() {
         mode={mode} value={value} onModeChange={setMode} onValueChange={setValue}
         disabled={isEnvLocked('ExternalTrigger:ApiKey')} />
       <EnvOverrideBadge source={data.effectiveSource['ExternalTrigger:ApiKey'] ?? ''} configKey="ExternalTrigger:ApiKey" />
-      <ErrorsAndSave errors={errors} onSave={() => save({ ApiKey: serializeSecretField(mode, value) })} />
+      <fieldset disabled={isEnvLocked('ExternalTrigger:AllowedWorkflowIds')} className="mt-4 disabled:opacity-60">
+        <StringListEditor
+          label={t('sec.externalTriggerAllowedWorkflowIds')}
+          value={form.allowedWorkflowIds}
+          onChange={(allowedWorkflowIds) => set({ ...form, allowedWorkflowIds })}
+          placeholder="00000000-0000-0000-0000-000000000000"
+        />
+      </fieldset>
+      <EnvOverrideBadge
+        source={data.effectiveSource['ExternalTrigger:AllowedWorkflowIds'] ?? ''}
+        configKey="ExternalTrigger:AllowedWorkflowIds"
+      />
+      <p className="mt-2 text-xs text-on-surface-variant">{t('sec.externalTriggerAllowedWorkflowIdsHint')}</p>
+      <ErrorsAndSave errors={errors} onSave={() => save({
+        ApiKey: serializeSecretField(mode, value),
+        AllowedWorkflowIds: form.allowedWorkflowIds,
+      })} />
       {ui.dialog}
     </Card>
   );

@@ -2,6 +2,7 @@ import { BareMetalServer, Branch, DataBase, Information, Locked, Password } from
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation, Trans } from 'react-i18next';
 import { adminSettings } from '../../api/adminSettings';
+import { CompactCard } from './SectionFormHelpers';
 
 /**
  * Read-only system-info tab — surfaces the bootstrap-only configuration (DB connection
@@ -27,43 +28,32 @@ export function SystemInfoSection() {
 
   return (
     <div className="space-y-4">
-      <Card icon={BareMetalServer} title={t('adminSettings:systemInfo.runtime')}>
+      <CompactCard bodyClassName="space-y-1.5" icon={BareMetalServer} title={t('adminSettings:systemInfo.runtime')}>
         <InfoRow label={t('adminSettings:systemInfo.appVersion')} value={data.appVersion} />
         <InfoRow label={t('adminSettings:systemInfo.overrideFile')} value={data.overridesPath} mono />
-      </Card>
-      <Card icon={DataBase} title={t('adminSettings:systemInfo.database')}>
+      </CompactCard>
+      <CompactCard bodyClassName="space-y-1.5" icon={DataBase} title={t('adminSettings:systemInfo.database')}>
         <InfoRow label={t('adminSettings:systemInfo.provider')} value={data.databaseProvider} mono />
         <InfoRow label="Host" value={data.databaseHost ?? '—'} mono />
-      </Card>
-      <Card icon={Locked} title={t('adminSettings:systemInfo.secrets')}>
+      </CompactCard>
+      <CompactCard bodyClassName="space-y-1.5" icon={Locked} title={t('adminSettings:systemInfo.secrets')}>
         <InfoRow label={t('adminSettings:systemInfo.activeProvider')} value={data.secretsProvider} mono />
-      </Card>
-      <Card icon={Branch} title={t('adminSettings:systemInfo.cluster')}>
+      </CompactCard>
+      <CompactCard bodyClassName="space-y-1.5" icon={Branch} title={t('adminSettings:systemInfo.cluster')}>
         <InfoRow label={t('adminSettings:enabled')} value={data.clusterEnabled ? 'true' : 'false'} mono />
         <InfoRow label={t('adminSettings:systemInfo.nodeId')} value={data.clusterNodeId} mono />
         <InfoRow label={t('adminSettings:systemInfo.isLeader')} value={data.clusterIsLeader ? 'true' : 'false'} mono />
-      </Card>
-      <Card icon={Password} title="JWT">
+      </CompactCard>
+      <CompactCard bodyClassName="space-y-1.5" icon={Password} title="JWT">
         <InfoRow label={t('adminSettings:systemInfo.issuer')} value={data.jwtIssuer} mono />
         <InfoRow label={t('adminSettings:systemInfo.audience')} value={data.jwtAudience} mono />
-      </Card>
+      </CompactCard>
       <div className="text-xs text-on-surface-variant flex items-start gap-2">
         <Information size={14} className="mt-0.5 shrink-0" />
         <p>
           <Trans i18nKey="systemInfo.bootstrapNote" ns="adminSettings" components={[<code key="0" />]} />
         </p>
       </div>
-    </div>
-  );
-}
-
-function Card({ icon: Icon, title, children }: Readonly<{ icon: React.ComponentType<{ size?: number }>; title: string; children: React.ReactNode }>) {
-  return (
-    <div className="np-card p-4">
-      <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
-        <Icon size={18} /> {title}
-      </h3>
-      <div className="space-y-1.5">{children}</div>
     </div>
   );
 }

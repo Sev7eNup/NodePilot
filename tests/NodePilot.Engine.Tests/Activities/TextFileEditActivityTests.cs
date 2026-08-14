@@ -75,6 +75,24 @@ public sealed class TextFileEditActivityTests : IDisposable
 
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement;
 
+    [Fact]
+    public async Task AllowedRoots_InjectsTargetGuardForFileAndBackupPath()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots:0"] = "C:\\data",
+            }).Build();
+
+        await CreateActivity(config).ExecuteAsync(
+            Ctx(),
+            Cfg("{\"operation\":\"append\",\"path\":\"C:\\\\data\\\\file.txt\",\"content\":\"x\",\"backupSuffix\":\".bak\"}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("Assert-NodePilotAllowedPath -Candidate ($__path)");
+        _capturedScript.Should().Contain("Assert-NodePilotAllowedPath -Candidate ($__path + $__backupSuffix)");
+    }
+
     // ---- Error cases: config validation ----
 
     [Fact]

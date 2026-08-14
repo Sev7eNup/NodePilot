@@ -220,11 +220,11 @@ Audit-Codes folgen `VERB_NOMEN`. Vollständige Liste: [Audit-Log](../security/au
 
 | Endpoint | Zweck |
 |---|---|
-| `POST /api/trigger/{workflowNameOrId}` | External Trigger (`X-Api-Key` required) |
+| `POST /api/trigger/{workflowNameOrId}` | External Trigger (`X-Api-Key`, Key-Scope auf Workflow-GUID und aktiver `manualTrigger` erforderlich) |
 | `POST\|GET\|PUT\|DELETE /api/webhooks/{workflow}/{path}` | Webhook (Verb muss `webhookTrigger.method` matchen) |
 
 ```bash
-# External Trigger — anonym, nur API-Key. Optional Idempotency-Key (24h TTL)
+# External Trigger — anonym, aber per Integrations-Key auf Workflow-GUIDs begrenzt. Optional Idempotency-Key (24h TTL, pro Key-Principal isoliert)
 curl -s -X POST "$NP/api/trigger/nightly-reconcile" \
   -H 'X-Api-Key: xyz' \
   -H 'Idempotency-Key: ci-1719100000' \

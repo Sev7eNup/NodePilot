@@ -78,6 +78,10 @@ import { useWorkflowSimulation } from '../hooks/useWorkflowSimulation';
 import { useEditorKeyboardShortcuts } from '../hooks/useEditorKeyboardShortcuts';
 import { useNodeAnnotations } from '../hooks/useNodeAnnotations';
 import { useCoverageHeatmap } from '../hooks/useCoverageHeatmap';
+import {
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+} from '../security/authBoundary';
 import { useCriticalPath } from '../hooks/useCriticalPath';
 import { useNodeOperations } from '../hooks/useNodeOperations';
 import { useCanvasConnect } from '../hooks/useCanvasConnect';
@@ -674,6 +678,7 @@ function WorkflowEditorInner() {
   const exportPng = useCallback(async () => {
     const flow = canvasRef.current?.querySelector('.react-flow') as HTMLElement | null;
     if (!flow) return;
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
     const surfaceBg = canvasRef.current
       ? getComputedStyle(canvasRef.current).backgroundColor
       : '#ffffff';
@@ -692,6 +697,7 @@ function WorkflowEditorInner() {
           return true;
         },
       });
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       const a = document.createElement('a');
       a.href = dataUrl;
       a.download = `${name || 'workflow'}.png`;

@@ -87,8 +87,6 @@ public class FileWatcherTriggerSource : ITriggerSource
         if (string.IsNullOrWhiteSpace(dir))
             throw new InvalidOperationException("FileWatcherTrigger: 'directory' is required");
 
-        ValidateDirectory(dir);
-
         var filter = cfg.TryGetProperty("filter", out var f) ? f.GetString() ?? "*" : "*";
         var watchType = (cfg.TryGetProperty("watchType", out var wt) ? wt.GetString() : null)?.ToLowerInvariant() ?? "created";
         var includeSub = cfg.TryGetProperty("includeSubdirectories", out var is_) && is_.ValueKind == JsonValueKind.True;
@@ -229,11 +227,24 @@ public class FileWatcherTriggerSource : ITriggerSource
     /// </summary>
     private FileSystemWatcher BuildAndArmWatcher(string dir, string filter, string watchType, bool includeSub)
     {
+        // Keep canonicalization in the same bounded target-side operation as handle creation,
+        // immediately before the first filesystem touch. A concurrent rename after this check
+        // is still an OS-level race; ACLs on watched roots remain the authoritative control.
+        ValidateDirectory(dir);
+
         // Kept even though the FileSystemWatcher constructor checks the path itself: this
         // produces the friendly DirectoryNotFoundException that callers and tests rely on,
         // where CheckPathValidity would throw a raw ArgumentException.
         if (!DirectoryProbe(dir))
             throw new DirectoryNotFoundException($"FileWatcherTrigger: directory '{dir}' does not exist");
+
+        if (includeSub)
+            FileWatcherPathGuard.ValidateReparseFreeSubtree(dir);
+
+        // Revalidate the watched root after the subtree walk and immediately before the
+        // constructor obtains its native handle. This narrows, but path APIs cannot eliminate,
+        // a concurrent parent-directory replacement race.
+        ValidateDirectory(dir);
 
         var watcher = new FileSystemWatcher(dir, filter)
         {
@@ -256,6 +267,20 @@ public class FileWatcherTriggerSource : ITriggerSource
             // and arm itself on its orphaned thread. Only the instance StartAsync published may
             // fire — otherwise a timed-out registration attempt would keep triggering workflows.
             if (!ReferenceEquals(watcher, Volatile.Read(ref _watcher))) return;
+
+            // A junction can be created after the startup preflight. Never dispatch an event
+            // whose current path traverses one; validation uses link-local attributes and thus
+            // does not itself follow a link to a UNC target.
+            try { FileWatcherPathGuard.Validate(_config, path); }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "FileWatcher suppressed {Action} event for unsafe path '{Path}'",
+                    action,
+                    path);
+                return;
+            }
 
             // Count every raw FSW event before debounce — operators chasing "trigger fires too
             // often" need to see whether the noise is the watcher itself or our dispatch.

@@ -224,6 +224,7 @@ describe('SqlConfig', () => {
     // Port defaults to 5432 — pinned so a typo'd default can't silently route to a wrong
     // listener on a multi-tenant Postgres host.
     expect(screen.getByDisplayValue('5432')).toBeInTheDocument();
+    expect(screen.getByDisplayValue(/VerifyFull \(Default\)/)).toBeInTheDocument();
   });
 
   it('switchToRawMode_clearsBuilderFields', () => {

@@ -89,10 +89,8 @@ public sealed class AiKnowledgeController : ControllerBase
     [HttpPost("knowledge/ask")]
     public async Task<IActionResult> Ask(KnowledgeAskRequest request, CancellationToken ct)
     {
-        if (!_llmOptions.CurrentValue.Enabled)
-            return this.LlmServiceUnavailable("LLM_DISABLED", "AI ist deaktiviert. Setze Llm:Enabled=true in der Konfiguration.");
-        if (LlmAvailability.IsMissingActiveProfile(_llmOptions.CurrentValue))
-            return this.LlmServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
+        if (LlmAvailability.Unavailable(this, _llmOptions.CurrentValue,
+                "AI ist deaktiviert. Setze Llm:Enabled=true in der Konfiguration.") is { } gate) return gate;
         var k = _knowledgeOptions.CurrentValue;
         if (!k.Enabled)
             return this.LlmServiceUnavailable("KNOWLEDGE_DISABLED", "Der KI-Chat ist deaktiviert. Aktiviere ihn in den Admin-Einstellungen (AI-Wissen).");

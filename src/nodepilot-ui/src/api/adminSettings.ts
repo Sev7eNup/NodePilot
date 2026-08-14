@@ -4,10 +4,21 @@
 // here rather than "unexpected error".
 
 import { csrfHeaders } from './csrf';
+import {
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+  handleUnauthorizedAuthBoundary,
+} from '../security/authBoundary';
 
 const BASE_URL = '/api';
 
-async function adminFetch(path: string, options?: RequestInit): Promise<Response> {
+interface BoundaryResponse {
+  response: Response;
+  authBoundaryGeneration: number;
+}
+
+async function adminFetch(path: string, options?: RequestInit): Promise<BoundaryResponse> {
+  const authBoundaryGeneration = captureAuthBoundaryGeneration();
   const method = (options?.method ?? 'GET').toUpperCase();
   const headers: Record<string, string> = {
     ...(options?.body !== undefined ? { 'Content-Type': 'application/json' } : {}),
@@ -18,13 +29,15 @@ async function adminFetch(path: string, options?: RequestInit): Promise<Response
     credentials: 'include',
     headers: { ...headers, ...options?.headers },
   });
+  assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
   if (response.status === 401) {
+    handleUnauthorizedAuthBoundary();
     if (typeof window !== 'undefined' && !globalThis.location.pathname.startsWith('/login')) {
       globalThis.location.href = '/login';
     }
     throw new SettingsApiError('Unauthorized', 401, null);
   }
-  return response;
+  return { response, authBoundaryGeneration };
 }
 
 export type SettingsStatus = {
@@ -104,16 +117,20 @@ export class SettingsApiError extends Error {
   }
 }
 
-async function readJson<T>(response: Response): Promise<T> {
+async function readJson<T>({ response, authBoundaryGeneration }: BoundaryResponse): Promise<T> {
   if (response.status === 204) return undefined as unknown as T;
-  return (await response.json()) as T;
+  const result = (await response.json()) as T;
+  assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+  return result;
 }
 
-async function expectOk<T>(response: Response): Promise<T> {
-  if (response.ok) return readJson<T>(response);
+async function expectOk<T>(boundaryResponse: BoundaryResponse): Promise<T> {
+  const { response, authBoundaryGeneration } = boundaryResponse;
+  if (response.ok) return readJson<T>(boundaryResponse);
   let body: SettingsErrorBody | null = null;
   try { body = (await response.json()) as SettingsErrorBody; }
   catch { /* response had no JSON body */ }
+  assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
   throw new SettingsApiError(
     `Admin Settings API returned ${response.status}`,
     response.status,

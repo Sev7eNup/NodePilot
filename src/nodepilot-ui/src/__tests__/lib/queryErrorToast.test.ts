@@ -79,6 +79,13 @@ describe('handleQueryError', () => {
     expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 
+  it('shows nothing for an auth-boundary abort', () => {
+    const abort = new Error('Authentication context changed');
+    abort.name = 'AbortError';
+    handleQueryError(abort, fakeQuery());
+    expect(useToastStore.getState().toasts).toHaveLength(0);
+  });
+
   it('does not accumulate a toast per poll for a persistently failing background query', () => {
     // The shape of the shipped defect: the header polls /healthz/live every 15 s, and a dead
     // backend turned that into an endless stream of "status 502" toasts saying exactly what the

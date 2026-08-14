@@ -358,7 +358,7 @@ Der Installer macht alles Weitere:
 8. Dienst per `Win32_Service.Create` anlegen — gMSA (leeres Passwort + `sc.exe managedaccount` + „Log on as a service"-Grant) oder `LocalSystem` (keine dieser drei Schritte nötig), Recovery-Actions, `ASPNETCORE_ENVIRONMENT=Production`
 9. Dienst starten, `https://localhost/healthz/ready` pollen
 10. Installations-Marker `HKLM\SOFTWARE\NodePilot\Server` schreiben (`InstallPath`, `DataPath`, `ServiceName`, `Version`, `DbProvider`, `HttpsPort`) — nur auf dem Erfolgspfad, damit ein zurückgerollter Lauf keinen Marker hinterlässt
-11. Admin-Bootstrap-Token + External-Trigger-API-Key auf der Konsole ausgeben
+11. Admin-Bootstrap-Token + Legacy-External-Trigger-API-Key auf der Konsole ausgeben. Der Key ist zunächst deny-all und wird erst zusammen mit expliziten Workflow-GUIDs unter `ExternalTrigger:AllowedWorkflowIds` wirksam.
 
 Schritt 1 kommt aus [`Preflight.ps1`](Preflight.ps1) und ist bewusst als eigene Datei ausgelagert:
 die Checks sammeln nur (`Invoke-NodePilotPreflight`), das Abbrechen ist ein zweiter Schritt
@@ -376,7 +376,7 @@ Nach erfolgreichem Install steht in der Konsole:
 
 - URL: `https://<public-hostname>/`
 - **Admin-Setup-Token** (aus `C:\ProgramData\NodePilot\admin-setup.token`) → im Browser anmelden: beim ersten Versuch blendet die Login-Seite ein **„Setup-Token"-Feld** ein, Token dort einfügen, erneut anmelden → Admin-User wird erstellt, Token-Datei gelöscht, Bootstrap-Fenster schließt. Kann der Installer das Token nicht anzeigen (die Datei ist per Owner-only-ACL auf das **Dienstkonto** beschränkt — auch für Admins by design nicht direkt lesbar), per Backup-Semantik lesen statt die ACL anzufassen: `robocopy C:\ProgramData\NodePilot $env:TEMP admin-setup.token /B`, dann `Get-Content "$env:TEMP\admin-setup.token"` (Temp-Kopie danach löschen). ACL-Änderung nur mit Bedacht: Der Server validiert die Datei fail-closed; im Trusted-Set sind nur Dienstkonto, SYSTEM und die **Administrators-Gruppe** — `takeown /a` + Gruppen-Grant übersteht das, Ownership auf den persönlichen Admin-User invalidiert die Datei.
-- **External-Trigger API Key** — einmalig sichern, wird nicht erneut angezeigt.
+- **Legacy-External-Trigger API Key** — einmalig sichern, wird nicht erneut angezeigt. Er autorisiert zunächst keinen Workflow; für neue Integrationen werden gehashte, GUID-gescopte Einträge unter `ExternalTrigger:Keys` empfohlen.
 
 ### Parameter-Übersicht
 
@@ -404,7 +404,7 @@ Nach erfolgreichem Install steht in der Konsole:
 | `-DataPath` | | `C:\ProgramData\NodePilot` |
 | `-ServiceName` | | `NodePilot` |
 | `-ServiceDisplayName` | | `NodePilot Orchestrator` |
-| `-ExternalTriggerApiKey` | | auto-generiert (48 bytes base64) |
+| `-ExternalTriggerApiKey` | | auto-generierter Legacy-Key (48 Bytes, Base64); mit leerer `AllowedWorkflowIds`-Liste zunächst deny-all |
 | `-JwtIssuer` | | `nodepilot:prod:<machine>` |
 | `-JwtAudience` | | `nodepilot:prod:<machine>` |
 | `-AllowedHosts` | | PublicHostname. `localhost` wird immer angehängt — die Health-Probe des Installers geht an `https://localhost:<port>/healthz/ready`, und `UseHostFiltering` würde sie sonst mit 400 abweisen und eine fertige Installation zurückrollen |
@@ -475,7 +475,7 @@ Erhält `appsettings.Production.json`, die DB (SQL Server oder Postgres) und den
 
 - **`-HttpsPort` muss nicht wiederholt werden**: die Health-Probe übernimmt `Kestrel:Https:HttpsPort` aus der installierten Config (explizites `-HttpsPort` gewinnt weiterhin). Ohne diese Ableitung probte ein Update einer 8443-Installation gegen 443 und rollte ein gesundes Upgrade zurück.
 - **Prozess-Guard vor dem Swap:** Ein gestoppter Dienst genügt nicht — ein verwaister Worker hält seine DLLs als Image gemappt, Windows meldet das als schlichtes „Access denied" mitten im Wipe. Der SCM meldet aber `SERVICE_STOPPED`, **bevor** der Prozess wirklich beendet ist (Host-Shutdown, Log-Flush). Deshalb wird nach dem Stopp bis zu 30 s gewartet, danach werden verbliebene Prozesse aus dem Install-Verzeichnis beendet — es sind NodePilot-Binaries, deren Dateien ohnehin gleich ersetzt werden. Erst wenn auch das nicht greift, bricht der Updater **vor der ersten Löschung** mit PID + Namen ab. Bis 2026-08-03 fehlte das Warten und der Lauf scheiterte an genau dem Prozess, den er selbst gestoppt hatte.
-- Beim Swap fällt `appsettings.Production.json` bewusst **zuletzt**, damit ein Abbruch die Config nicht mit ins Grab nimmt (sie steht per Design nicht im Backup). Fehlt sie doch einmal, lehnt der Updater ab — dann `Install-NodePilot.ps1` fahren, das die Config aus seinen Parametern neu rendert (DB, DataPath und Konten bleiben; nur der External-Trigger-API-Key wird neu erzeugt).
+- Beim Swap fällt `appsettings.Production.json` bewusst **zuletzt**, damit ein Abbruch die Config nicht mit ins Grab nimmt (sie steht per Design nicht im Backup). Fehlt sie doch einmal, lehnt der Updater ab — dann `Install-NodePilot.ps1` fahren, das die Config aus seinen Parametern neu rendert (DB, DataPath und Konten bleiben; der neu erzeugte Legacy-External-Trigger-Key bleibt bis zur erneuten GUID-Freigabe deny-all).
 - **Ein erfolgreicher Update lässt den Dienst LAUFEN**, egal ob er vorher gestoppt war. Nur ein fehlgeschlagener Update stellt den Ausgangszustand wieder her (ein Rollback startet nichts, was vorher bewusst gestoppt war).
 
 ## Uninstall

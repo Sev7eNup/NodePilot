@@ -8,6 +8,11 @@ import {
   type SharedFolderRole,
 } from '../../api/sharedFolders';
 import { confirmDialog } from '../../stores/confirmStore';
+import {
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+  isAuthBoundaryGenerationCurrent,
+} from '../../security/authBoundary';
 
 /**
  * Admin-only modal: list/grant/revoke folder permissions for one
@@ -44,16 +49,20 @@ export function SharedFolderPermissionsModal({
   const [groupAuthority, setGroupAuthority] = useState('');
   const [pickedRole, setPickedRole] = useState<SharedFolderRole>('FolderViewer');
 
-  const reload = async () => {
+  const reload = async (
+    authBoundaryGeneration = captureAuthBoundaryGeneration(),
+  ) => {
     setLoading(true);
     setError(null);
     try {
       const list = await sharedFoldersApi.listPermissions(folderId);
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       setPermissions(list);
     } catch (e) {
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) setLoading(false);
     }
   };
 
@@ -63,6 +72,7 @@ export function SharedFolderPermissionsModal({
   }, [folderId]);
 
   const grant = async () => {
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
     const key = principalKey.trim();
     if (!key) return;
     setBusy(true);
@@ -72,44 +82,52 @@ export function SharedFolderPermissionsModal({
         ? (groupAuthorityMode === 'ad' ? ACTIVE_DIRECTORY_AUTHORITY : groupAuthority.trim())
         : undefined;
       await sharedFoldersApi.grantPermission(folderId, principalType, key, pickedRole, authority);
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       setPrincipalKey('');
       setPickedRole('FolderViewer');
-      await reload();
+      await reload(authBoundaryGeneration);
     } catch (e) {
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) setBusy(false);
     }
   };
 
   const updateRole = async (perm: SharedFolderPermission, role: SharedFolderRole) => {
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
     setBusy(true);
     setError(null);
     try {
       await sharedFoldersApi.updatePermission(folderId, perm.id, role);
-      await reload();
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+      await reload(authBoundaryGeneration);
     } catch (e) {
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) setBusy(false);
     }
   };
 
   const revoke = async (perm: SharedFolderPermission) => {
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
     const ok = await confirmDialog({
       message: t('workflows:folder.revokePermissionConfirm', { name: perm.principalDisplayName ?? perm.principalKey }),
       danger: true,
     });
-    if (!ok) return;
+    if (!ok || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
     setBusy(true);
     setError(null);
     try {
       await sharedFoldersApi.revokePermission(folderId, perm.id);
-      await reload();
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+      await reload(authBoundaryGeneration);
     } catch (e) {
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) setBusy(false);
     }
   };
 

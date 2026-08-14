@@ -297,7 +297,7 @@ public sealed class SqlActivityTests : IDisposable
             database = "analytics",
             username = "reader",
             password = "secret;1",
-            sslMode = "Require",
+            sslMode = "VerifyFull",
         });
 
         err.Should().BeNull();
@@ -307,16 +307,14 @@ public sealed class SqlActivityTests : IDisposable
         b.Database.Should().Be("analytics");
         b.Username.Should().Be("reader");
         b.Password.Should().Be("secret;1");
-        b.SslMode.Should().Be(Npgsql.SslMode.Require);
+        b.SslMode.Should().Be(Npgsql.SslMode.VerifyFull);
     }
 
     [Fact]
-    public void Builder_Postgres_DefaultSslMode_IsRequire()
+    public void Builder_Postgres_DefaultSslMode_IsVerifyFull()
     {
-        // M-4 (security audit 2026-05-15): when the author does not specify sslMode the builder
-        // must default to Require, NOT Npgsql's built-in Prefer. Prefer silently downgrades to a
-        // plaintext connection when the server doesn't offer TLS, exposing DB credentials to a
-        // MITM. The secure default forces an encrypted channel.
+        // Encryption without authentication is not enough: VerifyFull validates both the CA and
+        // hostname, so a MITM cannot terminate TLS and collect the database credential.
         var (cs, err) = BuildViaActivity(new
         {
             provider = "postgres",
@@ -327,14 +325,14 @@ public sealed class SqlActivityTests : IDisposable
         });
 
         err.Should().BeNull();
-        new Npgsql.NpgsqlConnectionStringBuilder(cs).SslMode.Should().Be(Npgsql.SslMode.Require);
+        new Npgsql.NpgsqlConnectionStringBuilder(cs).SslMode.Should().Be(Npgsql.SslMode.VerifyFull);
     }
 
     [Fact]
     public void Builder_Postgres_ExplicitSslModeDisable_IsHonoured()
     {
-        // The secure default is overridable: an operator on a trusted local socket can still opt
-        // into plaintext by setting sslMode explicitly. Only the *implicit* default changed.
+        // Local development remains possible, but only when the configured host itself is a
+        // literal loopback value (not a hostname which happens to resolve there).
         var (cs, err) = BuildViaActivity(new
         {
             provider = "postgres",
@@ -345,6 +343,106 @@ public sealed class SqlActivityTests : IDisposable
 
         err.Should().BeNull();
         new Npgsql.NpgsqlConnectionStringBuilder(cs).SslMode.Should().Be(Npgsql.SslMode.Disable);
+    }
+
+    [Theory]
+    [InlineData("Disable")]
+    [InlineData("Allow")]
+    [InlineData("Prefer")]
+    [InlineData("Require")]
+    [InlineData("VerifyCA")]
+    public void Builder_Postgres_RemoteWeakSslMode_IsRejected(string sslMode)
+    {
+        var (cs, err) = BuildViaActivity(new
+        {
+            provider = "postgres",
+            host = "pg01.example.com",
+            database = "analytics",
+            sslMode,
+        });
+
+        cs.Should().BeNull();
+        err.Should().Contain("SSL Mode=VerifyFull");
+    }
+
+    [Fact]
+    public void Builder_Postgres_InvalidSslMode_IsRejectedInsteadOfFallingBack()
+    {
+        var (cs, err) = BuildViaActivity(new
+        {
+            provider = "postgres",
+            host = "pg01.example.com",
+            sslMode = "DefinitelySecure",
+        });
+
+        cs.Should().BeNull();
+        err.Should().Contain("sslMode").And.Contain("invalid");
+    }
+
+    [Fact]
+    public void RawPostgresConnection_DefaultsToVerifyFull()
+    {
+        var (cs, err) = BuildViaActivity(new
+        {
+            provider = "postgres",
+            connectionString = "Host=pg01.example.com;Database=analytics;Username=reader;Password=secret",
+        });
+
+        err.Should().BeNull();
+        new Npgsql.NpgsqlConnectionStringBuilder(cs).SslMode.Should().Be(Npgsql.SslMode.VerifyFull);
+    }
+
+    [Fact]
+    public void RawPostgresConnection_RemoteTrustServerCertificate_IsRejected()
+    {
+        var (cs, err) = BuildViaActivity(new
+        {
+            provider = "postgres",
+            connectionString =
+                "Host=pg01.example.com;Database=analytics;SSL Mode=VerifyFull;Trust Server Certificate=true",
+        });
+
+        cs.Should().BeNull();
+        err.Should().Contain("Trust Server Certificate=false");
+    }
+
+    [Fact]
+    public void NamedPostgresConnection_RemoteWeakSslMode_IsRejected()
+    {
+        var act = new SqlActivity(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["SqlActivity:ConnectionStrings:weak"] =
+                    "Host=pg01.example.com;Database=analytics;SSL Mode=Require",
+            })
+            .Build());
+        var cfg = JsonDocument.Parse("""{"connectionRef":"weak","provider":"postgres","query":"SELECT 1"}""")
+            .RootElement;
+
+        var (cs, err) = InvokeResolveConnectionString(act, cfg, "postgres");
+
+        cs.Should().BeNull();
+        err.Should().Contain("SSL Mode=VerifyFull");
+    }
+
+    [Fact]
+    public void NamedPostgresConnection_RemoteTrustServerCertificate_IsRejected()
+    {
+        var act = new SqlActivity(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["SqlActivity:ConnectionStrings:trust-any"] =
+                    "Host=pg01.example.com;Database=analytics;SSL Mode=VerifyFull;Trust Server Certificate=true",
+            })
+            .Build());
+        var cfg = JsonDocument.Parse(
+            """{"connectionRef":"trust-any","provider":"postgres","query":"SELECT 1"}""")
+            .RootElement;
+
+        var (cs, err) = InvokeResolveConnectionString(act, cfg, "postgres");
+
+        cs.Should().BeNull();
+        err.Should().Contain("Trust Server Certificate=false");
     }
 
     [Fact]

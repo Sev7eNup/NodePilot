@@ -2234,21 +2234,32 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 ### Test 23.1 — External Trigger via API-Key
 
 **Schritte:**
-1. Config: `ExternalTrigger:ApiKey: "my-api-key-xyz"`
-2. Call:
+1. Einen aktivierten Workflow mit aktivem `manualTrigger` anlegen und seine GUID notieren.
+2. Einen zufälligen Schlüssel mit mindestens 32 UTF-8-Bytes erzeugen, seinen SHA-256-Hash als Base64 berechnen und konfigurieren:
+   ```yaml
+   ExternalTrigger:
+     Keys:
+       e2e:
+         KeyHash: "<SHA-256-Hash als Base64>"
+         AllowedWorkflowIds:
+           - "<Workflow-GUID>"
+   ```
+3. Call:
    ```bash
    curl -X POST http://localhost:5000/api/trigger/MyWorkflow \
-     -H "X-Api-Key: my-api-key-xyz" \
+     -H "X-Api-Key: <Klartextschlüssel>" \
      -H "Content-Type: application/json" \
      -d '{"parameters": {"env": "prod"}}'
    ```
-3. Response: 202 Accepted + ExecutionId
+4. Response: 202 Accepted + ExecutionId
 
 **Prüfpunkte:**
-- [ ] Ohne Config → 503
+- [ ] Ohne Config → 401
 - [ ] Ohne API-Key → 401
 - [ ] Falscher Key → 401
-- [ ] Korrekter Key → 202
+- [ ] Korrekter, für die Workflow-GUID freigegebener Key → 202
+- [ ] Korrekter Key für eine andere Workflow-GUID → uniforme 404
+- [ ] Workflow ohne aktiven `manualTrigger` → uniforme 404
 - [ ] Execution wird erstellt
 
 **Erwartung:** External Trigger ist sicher

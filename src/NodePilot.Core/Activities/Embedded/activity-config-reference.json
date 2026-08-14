@@ -194,7 +194,7 @@
         { "key": "password", "type": "string", "required": false, "description": "Builder password (secret; dev/legacy)." },
         { "key": "encrypt", "type": "boolean", "required": false, "description": "sqlserver: encrypt the connection." },
         { "key": "trustServerCertificate", "type": "boolean", "required": false, "description": "sqlserver: skip certificate validation." },
-        { "key": "sslMode", "type": "string", "required": false, "description": "postgres SSL mode." }
+        { "key": "sslMode", "type": "string", "required": false, "description": "PostgreSQL SSL mode. Defaults to VerifyFull with Trust Server Certificate=false; weaker modes are allowed only for literal loopback hosts." }
       ]
     },
     "textFileEdit": {

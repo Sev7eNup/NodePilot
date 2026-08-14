@@ -219,9 +219,9 @@ public static class LlmServiceCollectionExtensions
             })
             .ConfigurePrimaryHttpMessageHandler(sp => new SocketsHttpHandler
             {
-                // Local endpoints (Ollama, llama.cpp) speak plaintext HTTP on 127.0.0.1.
-                // Cloud endpoints speak HTTPS — the default SocketsHttpHandler validates that
-                // normally. No forcing HTTPS.
+                // Local endpoints (Ollama, llama.cpp) may speak plaintext HTTP on literal
+                // loopback. LlmEndpointGuard rejects HTTP everywhere else; HTTPS certificate
+                // validation is the unmodified SocketsHttpHandler default.
                 //
                 // Proxying is decided per request by LlmConfiguredProxy from Llm:Proxy:*, NOT
                 // here: this handler is built once per handler lifetime, so reading the config at

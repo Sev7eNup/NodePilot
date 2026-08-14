@@ -60,7 +60,7 @@ export function SqlConfig({ config, onUpdate, upstreamVars = [] }: Readonly<Conf
     provider === 'sqlite'
       ? 'Data Source=C:\\path\\to\\db.sqlite'
       : provider === 'postgres'
-        ? 'Host=localhost;Database=mydb;Username=…;Password=…'
+        ? 'Host=pg01.example.com;Database=mydb;Username=…;Password=…;SSL Mode=VerifyFull'
         : 'Server=.\\SQLEXPRESS;Database=MyDb;Integrated Security=True';
 
   return (
@@ -189,16 +189,16 @@ function BuilderFields({
         </Field>
         <Field label={t('config.sql.sslMode')}>
           <select
-            value={(config.sslMode as string) || 'Prefer'}
+            value={(config.sslMode as string) || 'VerifyFull'}
             onChange={(e) => onUpdate({ sslMode: e.target.value })}
             className="input-field"
           >
             <option value="Disable">Disable</option>
             <option value="Allow">Allow</option>
-            <option value="Prefer">Prefer (Default)</option>
+            <option value="Prefer">Prefer</option>
             <option value="Require">Require</option>
             <option value="VerifyCA">VerifyCA</option>
-            <option value="VerifyFull">VerifyFull</option>
+            <option value="VerifyFull">VerifyFull (Default)</option>
           </select>
         </Field>
         <Field label={t('config.sql.username')}>

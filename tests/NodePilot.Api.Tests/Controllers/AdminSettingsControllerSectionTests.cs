@@ -544,9 +544,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             {
               "Enabled": true, "ActiveProfileId": "a",
               "Profiles": [
-                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "a", "Name": "A", "BaseUrl": "https://a.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "key-a" },
-                { "Id": "b", "Name": "B", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "b", "Name": "B", "BaseUrl": "https://b.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "key-b" }
               ]
             }
@@ -562,9 +562,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             {
               "Enabled": true, "ActiveProfileId": "a",
               "Profiles": [
-                { "Id": "b", "Name": "B", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "b", "Name": "B", "BaseUrl": "https://b.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "__unchanged__" },
-                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "a", "Name": "A", "BaseUrl": "https://a.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "__unchanged__" }
               ]
             }
@@ -619,9 +619,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             {
               "Enabled": true, "ActiveProfileId": "a",
               "Profiles": [
-                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "a", "Name": "A", "BaseUrl": "https://a.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "sk-alpha" },
-                { "Id": "b", "Name": "B", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "b", "Name": "B", "BaseUrl": "https://b.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "sk-beta" }
               ]
             }
@@ -661,9 +661,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             {
               "Enabled": true, "ActiveProfileId": "a",
               "Profiles": [
-                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "a", "Name": "A", "BaseUrl": "https://a.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null },
-                { "Id": "b", "Name": "B", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "b", "Name": "B", "BaseUrl": "https://b.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null }
               ]
             }
@@ -674,7 +674,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             {
               "Enabled": true, "ActiveProfileId": "a",
               "Profiles": [
-                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "a", "Name": "A", "BaseUrl": "https://a.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": "__unchanged__" }
               ]
             }
@@ -698,7 +698,7 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             {
               "Enabled": true, "ActiveProfileId": "a",
               "Profiles": [
-                { "Id": "a", "Name": "A", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "a", "Name": "A", "BaseUrl": "https://a.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null },
                 { "Id": "b", "Name": "B", "BaseUrl": "not-a-url", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null }
@@ -738,9 +738,9 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
             {
               "Enabled": true, "ActiveProfileId": "a",
               "Profiles": [
-                { "Id": "a", "Name": "Same", "BaseUrl": "http://a.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "a", "Name": "Same", "BaseUrl": "https://a.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null },
-                { "Id": "b", "Name": "same", "BaseUrl": "http://b.local/v1", "Model": "m", "MaxTokens": 4096,
+                { "Id": "b", "Name": "same", "BaseUrl": "https://b.local/v1", "Model": "m", "MaxTokens": 4096,
                   "TimeoutSeconds": 60, "EnableToolCalling": false, "ToolCallMaxDepth": 6, "ApiKey": null }
               ]
             }
@@ -1146,6 +1146,53 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task PutSection_EnvLockedExternalTriggerArray_IsNotPersistedAsDormantScope()
+    {
+        var (_, writer, _, cfg) = NewController();
+        var envPrefix = "ADMIN_SCOPE_TEST_" + Guid.NewGuid().ToString("N") + "_";
+        var envKey = envPrefix + "ExternalTrigger__AllowedWorkflowIds__0";
+        Environment.SetEnvironmentVariable(envKey, Guid.NewGuid().ToString());
+        try
+        {
+            var envCfg = new ConfigurationBuilder()
+                .AddInMemoryCollection(cfg.AsEnumerable())
+                .AddEnvironmentVariables(envPrefix)
+                .Build();
+            var probe = new SettingsTestProbe(NullLogger<SettingsTestProbe>.Instance, new StubHttpClientFactory());
+            var controller = new AdminSettingsController(
+                writer, envCfg, new PassthroughProtector(),
+                NoopAuditWriter.Instance, probe,
+                new StaticOptionsMonitor<SmtpOptions>(new SmtpOptions()),
+                new StaticOptionsMonitor<LlmOptions>(new LlmOptions()),
+                new StaticOptionsMonitor<RetentionOptions>(new RetentionOptions()),
+                new StaticOptionsMonitor<LdapOptions>(new LdapOptions()),
+                new StaticOptionsMonitor<WindowsAuthOptions>(new WindowsAuthOptions()),
+                new StaticOptionsMonitor<NodePilotTelemetryOptions>(new NodePilotTelemetryOptions()),
+                new StaticOptionsMonitor<AiKnowledgeOptions>(new AiKnowledgeOptions()),
+                new NoopClusterState());
+            controller.ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() };
+            controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("ExternalTrigger");
+
+            var body = JsonSerializer.SerializeToElement(new ExternalTriggerSettingsDto
+            {
+                ApiKey = null,
+                AllowedWorkflowIds = [Guid.NewGuid()],
+            });
+            (await controller.PutSection("ExternalTrigger", body, CancellationToken.None))
+                .Should().BeOfType<OkObjectResult>();
+
+            var section = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!
+                ["ExternalTrigger"]!.AsObject();
+            section.ContainsKey("AllowedWorkflowIds").Should().BeFalse(
+                "an env-owned array must not leave a dormant UI scope that activates when the env var is removed");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(envKey, null);
+        }
+    }
+
+    [Fact]
     public async Task PutSection_Logging_HappyPath_PersistsFormatAndLevels()
     {
         var (controller, writer, audit, _) = NewController();
@@ -1404,8 +1451,8 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     [Fact]
     public async Task PutSection_ExternalTrigger_ClearsApiKey_WithExplicitNull()
     {
-        // Regression for Finding 7 in the external-trigger path: clearing the API key must
-        // disable the endpoint entirely (503), not fall back to a value from appsettings.json.
+        // Clearing the legacy key must shadow a base-provider value. The external endpoint then
+        // rejects that key with the same 401 as every unknown key.
         var (controller, writer, _, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("ExternalTrigger");
         var body = JsonDocument.Parse("{\"ApiKey\":null}").RootElement;
@@ -1415,6 +1462,99 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
         var section = file["ExternalTrigger"]!.AsObject();
         section.ContainsKey("ApiKey").Should().BeTrue();
         section["ApiKey"].Should().BeNull("explicit JSON null shadows any base-provider ApiKey value");
+        section["AllowedWorkflowIds"]!.AsArray().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PutSection_ExternalTrigger_PersistsLegacyScopeWithoutDeletingHashedKeys()
+    {
+        var (controller, writer, _, _) = NewController();
+        var workflowId = Guid.NewGuid();
+        File.WriteAllText(writer.OverridesPath, """
+        {
+          "ExternalTrigger": {
+            "ApiKey": null,
+            "AllowedWorkflowIds": [],
+            "Keys": {
+              "ci": {
+                "KeyHash": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+                "AllowedWorkflowIds": ["11111111-1111-1111-1111-111111111111"]
+              }
+            }
+          }
+        }
+        """);
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("ExternalTrigger");
+        var body = JsonSerializer.SerializeToElement(new ExternalTriggerSettingsDto
+        {
+            ApiKey = null,
+            AllowedWorkflowIds = [workflowId],
+        });
+
+        var result = await controller.PutSection("ExternalTrigger", body, CancellationToken.None);
+
+        result.Should().BeOfType<OkObjectResult>();
+        var section = JsonNode.Parse(File.ReadAllText(writer.OverridesPath))!
+            .AsObject()["ExternalTrigger"]!.AsObject();
+        section["AllowedWorkflowIds"]!.AsArray().Select(node => node!.GetValue<string>())
+            .Should().ContainSingle().Which.Should().Be(workflowId.ToString());
+        section["Keys"]!["ci"]!["KeyHash"]!.GetValue<string>()
+            .Should().Be("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+    }
+
+    [Fact]
+    public async Task PutSection_ExternalTrigger_ShorterAndEmptyRuntimeScopesRevokeLowerProviderEntries()
+    {
+        var (controller, writer, _, _) = NewController();
+        var retained = Guid.NewGuid();
+        var revoked = Guid.NewGuid();
+        var baseValues = new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:AllowedWorkflowIds:0"] = retained.ToString(),
+            ["ExternalTrigger:AllowedWorkflowIds:1"] = revoked.ToString(),
+        };
+
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("ExternalTrigger");
+        var shorterBody = JsonSerializer.SerializeToElement(new ExternalTriggerSettingsDto
+        {
+            ApiKey = null,
+            AllowedWorkflowIds = [retained],
+        });
+        (await controller.PutSection("ExternalTrigger", shorterBody, CancellationToken.None))
+            .Should().BeOfType<OkObjectResult>();
+
+        IConfigurationRoot LoadLayeredConfiguration() => new ConfigurationBuilder()
+            .AddInMemoryCollection(baseValues)
+            .AddJsonStream(new MemoryStream(File.ReadAllBytes(writer.OverridesPath)))
+            .Build();
+
+        var shorterConfig = LoadLayeredConfiguration();
+        shorterConfig.GetSection("ExternalTrigger:AllowedWorkflowIds").GetChildren()
+            .Select(child => child.Value).Should().Contain(revoked.ToString(),
+                "the stock IConfiguration child view demonstrates the lower-index merge hazard");
+        ProviderAtomicGuidList.TryRead(
+                shorterConfig, "ExternalTrigger:AllowedWorkflowIds", out var shorterScope)
+            .Should().BeTrue();
+        shorterScope.Should().BeEquivalentTo([retained],
+            "the runtime provider must replace, not extend, the base allow-list");
+
+        controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("ExternalTrigger");
+        var emptyBody = JsonSerializer.SerializeToElement(new ExternalTriggerSettingsDto
+        {
+            ApiKey = null,
+            AllowedWorkflowIds = [],
+        });
+        (await controller.PutSection("ExternalTrigger", emptyBody, CancellationToken.None))
+            .Should().BeOfType<OkObjectResult>();
+
+        var emptyConfig = LoadLayeredConfiguration();
+        emptyConfig.GetSection("ExternalTrigger:AllowedWorkflowIds").GetChildren()
+            .Should().NotBeEmpty("ordinary IConfiguration merging still exposes base indices");
+        ProviderAtomicGuidList.TryRead(
+                emptyConfig, "ExternalTrigger:AllowedWorkflowIds", out var emptyScope)
+            .Should().BeTrue();
+        emptyScope.Should().BeEmpty(
+            "the explicit [] emitted by the runtime writer is a deny-all tombstone");
     }
 
     [Fact]

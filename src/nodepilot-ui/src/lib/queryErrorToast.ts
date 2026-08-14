@@ -22,6 +22,9 @@ type CachedQuery = Query<unknown, unknown, unknown, readonly unknown[]>;
  * thing rather than as a copy of it.
  */
 export function handleQueryError(error: unknown, query: CachedQuery): void {
+  // Auth-boundary and user-initiated aborts are intentional cancellation, never a load failure
+  // belonging to the newly authenticated user.
+  if (error instanceof Error && error.name === 'AbortError') return;
   if (!shouldToastQueryError(query)) return;
   // Database OUTAGE only: the global banner owns that message (with live state and recovery), and
   // this handler fires once per failed query — during an outage that is every visible query at once.

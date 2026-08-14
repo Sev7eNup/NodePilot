@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
+import {
+  AI_CHAT_STORAGE_KEY,
+  DB_ADMIN_QUERY_DRAFT_KEY,
+  DB_ADMIN_QUERY_HISTORY_KEY,
+} from '../../security/sensitiveBrowserState';
+import { queryClient } from '../../queryClient';
+import { aiChatScopeKey, useAiChatStore } from '../../stores/aiChatStore';
+import { startAuthBoundarySynchronization, useAuthStore } from '../../stores/authStore';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 const BASE = 'http://localhost';
 const server = setupServer();
@@ -10,6 +19,11 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
+  localStorage.clear();
+  sessionStorage.clear();
+  queryClient.clear();
+  useAiChatStore.setState({ messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} });
+  useAuthStore.setState({ userId: null, username: null, role: null, isAuthenticated: null });
   // Clear cookies between tests. `document.cookie` accepts one entry at a time;
   // walking the current string and expiring each entry is the jsdom idiom.
   if (typeof document !== 'undefined') {
@@ -147,10 +161,178 @@ describe('API Client', () => {
     );
     patchFetch();
 
+    sessionStorage.setItem(AI_CHAT_STORAGE_KEY, 'sensitive chat');
+    sessionStorage.setItem(DB_ADMIN_QUERY_DRAFT_KEY, 'SELECT secret');
+    localStorage.setItem(DB_ADMIN_QUERY_HISTORY_KEY, '["legacy query"]');
+    const scope = aiChatScopeKey('u-1', 'wf-1');
+    const threadId = useAiChatStore.getState().newThread(scope, 'Sensitive');
+    useAiChatStore.getState().updateMessages(scope, threadId, () => [
+      { role: 'user', content: 'live secret' },
+    ]);
+    useAuthStore.setState({ userId: 'u-1', username: 'alice', role: 'Admin', isAuthenticated: true });
+    queryClient.setQueryData(['user-private'], { secret: true });
+
     const { api } = await import('../../api/client');
 
     await expect(api.get('/protected')).rejects.toThrow('Unauthorized');
     expect(window.location.href).toBe('/login');
+    expect(sessionStorage.getItem(AI_CHAT_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(DB_ADMIN_QUERY_DRAFT_KEY)).toBeNull();
+    expect(localStorage.getItem(DB_ADMIN_QUERY_HISTORY_KEY)).toBeNull();
+    expect(useAiChatStore.getState().messagesByThread).toEqual({});
+    expect(useAuthStore.getState().isAuthenticated).toBe(false);
+    expect(queryClient.getQueryData(['user-private'])).toBeUndefined();
+  });
+
+  it('get_stale401FromPreviousIdentity_doesNotClearOrRedirectCurrentIdentity', async () => {
+    useAuthStore.getState().acceptAuthenticatedIdentity({
+      userId: 'u-a',
+      username: 'alice',
+      role: 'Admin',
+    });
+    let resolveResponse!: (response: Response) => void;
+    const staleResponse = new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(staleResponse);
+
+    const { api } = await import('../../api/client');
+    const previousUserRequest = api.get('/protected');
+    clearLocalAuthBoundary();
+    useAuthStore.getState().acceptAuthenticatedIdentity({
+      userId: 'u-b',
+      username: 'bob',
+      role: 'Operator',
+    });
+    sessionStorage.setItem(DB_ADMIN_QUERY_DRAFT_KEY, 'SELECT user_b_data');
+    queryClient.setQueryData(['user-b-private'], { secret: 'belongs-to-b' });
+
+    resolveResponse(new Response(null, { status: 401, statusText: 'Unauthorized' }));
+    await expect(previousUserRequest).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(useAuthStore.getState()).toMatchObject({
+      userId: 'u-b',
+      username: 'bob',
+      isAuthenticated: true,
+    });
+    expect(sessionStorage.getItem(DB_ADMIN_QUERY_DRAFT_KEY)).toBe('SELECT user_b_data');
+    expect(queryClient.getQueryData(['user-b-private'])).toEqual({ secret: 'belongs-to-b' });
+    expect(window.location.href).toBe('');
+  });
+
+  it('stale login response re-probes after its Set-Cookie may have replaced the newer identity', async () => {
+    let resolveStaleLogin!: (response: Response) => void;
+    const staleLoginResponse = new Promise<Response>((resolve) => {
+      resolveStaleLogin = resolve;
+    });
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockReturnValueOnce(staleLoginResponse)
+      .mockResolvedValueOnce(Response.json({
+        id: 'u-cookie-owner',
+        username: 'cookie-owner',
+        role: 'Viewer',
+      }));
+    const stopSynchronization = startAuthBoundarySynchronization();
+
+    try {
+      const { api } = await import('../../api/client');
+      const pendingUserALogin = api.post('/auth/login', {
+        username: 'alice',
+        password: 'secret',
+      });
+
+      clearLocalAuthBoundary();
+      useAuthStore.getState().acceptAuthenticatedIdentity({
+        userId: 'u-b',
+        username: 'bob',
+        role: 'Admin',
+      });
+      sessionStorage.setItem(DB_ADMIN_QUERY_DRAFT_KEY, 'SELECT user_b_data');
+      queryClient.setQueryData(['user-b-private'], { secret: 'belongs-to-b' });
+
+      resolveStaleLogin(Response.json({
+        userId: 'u-a',
+        username: 'alice',
+        role: 'Admin',
+      }));
+      await expect(pendingUserALogin).rejects.toMatchObject({ name: 'AbortError' });
+
+      await vi.waitFor(() => expect(useAuthStore.getState()).toMatchObject({
+        userId: 'u-cookie-owner',
+        username: 'cookie-owner',
+        role: 'Viewer',
+        isAuthenticated: true,
+      }));
+      expect(fetchMock).toHaveBeenCalledWith('/api/auth/me', expect.objectContaining({
+        credentials: 'include',
+      }));
+      expect(sessionStorage.getItem(DB_ADMIN_QUERY_DRAFT_KEY)).toBeNull();
+      expect(queryClient.getQueryData(['user-b-private'])).toBeUndefined();
+    } finally {
+      stopSynchronization();
+    }
+  });
+
+  it('get_staleSuccessCannotPopulateCurrentUsersQueryCache', async () => {
+    useAuthStore.getState().acceptAuthenticatedIdentity({
+      userId: 'u-a',
+      username: 'alice',
+      role: 'Admin',
+    });
+    let resolveResponse!: (response: Response) => void;
+    const staleResponse = new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(staleResponse);
+
+    const { api } = await import('../../api/client');
+    const staleCacheWrite = api.get<{ secret: string }>('/slow-user-a-data').then((data) => {
+      queryClient.setQueryData(['late-user-a-result'], data);
+    });
+    clearLocalAuthBoundary();
+    useAuthStore.getState().acceptAuthenticatedIdentity({
+      userId: 'u-b',
+      username: 'bob',
+      role: 'Operator',
+    });
+    queryClient.setQueryData(['user-b-private'], { secret: 'belongs-to-b' });
+
+    resolveResponse(Response.json({ secret: 'belongs-to-a' }));
+    await expect(staleCacheWrite).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(queryClient.getQueryData(['late-user-a-result'])).toBeUndefined();
+    expect(queryClient.getQueryData(['user-b-private'])).toEqual({ secret: 'belongs-to-b' });
+  });
+
+  it('download_staleSuccessDoesNotCreateOrClickAnAnchor', async () => {
+    let resolveResponse!: (response: Response) => void;
+    const staleResponse = new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(staleResponse);
+    const originalCreateObjectUrl = URL.createObjectURL;
+    const originalRevokeObjectUrl = URL.revokeObjectURL;
+    const createObjectUrl = vi.fn(() => 'blob:stale');
+    URL.createObjectURL = createObjectUrl;
+    URL.revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    try {
+      const { downloadFromApi } = await import('../../api/client');
+      const staleDownload = downloadFromApi('/slow-export', 'export.zip');
+      clearLocalAuthBoundary();
+      resolveResponse(new Response('User A export', {
+        status: 200,
+        headers: { 'Content-Disposition': 'attachment; filename="user-a.zip"' },
+      }));
+
+      await expect(staleDownload).rejects.toMatchObject({ name: 'AbortError' });
+      expect(createObjectUrl).not.toHaveBeenCalled();
+      expect(click).not.toHaveBeenCalled();
+    } finally {
+      URL.createObjectURL = originalCreateObjectUrl;
+      URL.revokeObjectURL = originalRevokeObjectUrl;
+    }
   });
 
   it('post_401_onLoginPage_surfacesServerPayloadWithoutRedirect', async () => {
@@ -169,10 +351,12 @@ describe('API Client', () => {
         ))
     );
     patchFetch();
+    sessionStorage.setItem(DB_ADMIN_QUERY_DRAFT_KEY, 'SELECT previous_user_secret');
 
     const { api } = await import('../../api/client');
     await expect(api.post('/auth/login', {})).rejects.toThrow(/SETUP_TOKEN_REQUIRED/);
     expect(window.location.href).toBe('/login'); // unchanged
+    expect(sessionStorage.getItem(DB_ADMIN_QUERY_DRAFT_KEY)).toBeNull();
   });
 
   it('delete_204_returnsUndefined', async () => {

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { registerAuthBoundaryLiveStateClearer } from '../security/authBoundary';
 
 export interface ConfirmRequest {
   message: string;
@@ -46,3 +47,7 @@ export function confirmDialog(req: ConfirmRequest | string): Promise<boolean> {
     useConfirmStore.getState().open({ ...normalized, resolve });
   });
 }
+
+// ConfirmHost lives outside ProtectedRoute. Cancel its continuation synchronously so a destructive
+// User-A action can never be confirmed and resumed under User B's cookie after an auth switch.
+registerAuthBoundaryLiveStateClearer(() => useConfirmStore.getState().settle(false));

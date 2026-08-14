@@ -5,6 +5,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Execution;
 using NodePilot.Engine.Options;
 using Microsoft.Extensions.Options;
+using NodePilot.Engine.Mail;
 
 namespace NodePilot.Engine.Activities;
 
@@ -29,7 +30,7 @@ public class EmailActivity : IActivityExecutor
             // Reject comma/semicolon-separated recipient lists. An Operator (or trigger payload
             // injected via {{...}}) could otherwise BCC attackers onto workflow notifications and
             // exfiltrate log contents. Single-recipient only — build a second step for fan-out.
-            if (to.IndexOfAny(new[] { ',', ';' }) >= 0)
+            if (SmtpTransport.IsRecipientList(to))
                 return new ActivityResult { Success = false, ErrorOutput = "Email: 'to' must be a single recipient (no comma/semicolon lists)" };
 
             var subject = config.GetString("subject", "");
@@ -37,7 +38,7 @@ public class EmailActivity : IActivityExecutor
 
             // Header-injection defense: CR/LF in address or subject would split headers. .NET's
             // MailMessage already rejects these in most paths, but we fail early with a clear error.
-            if (to.IndexOfAny(new[] { '\r', '\n' }) >= 0 || subject.IndexOfAny(new[] { '\r', '\n' }) >= 0)
+            if (SmtpTransport.HasHeaderInjection(to, subject))
                 return new ActivityResult { Success = false, ErrorOutput = "Email: newline characters are not allowed in 'to' or 'subject'" };
 
             // H-2 (security audit 2026-05-15): default-on TLS. SmtpClient defaults to
@@ -49,13 +50,7 @@ public class EmailActivity : IActivityExecutor
             // Hot-reload: read SmtpOptions per execution so a live config edit takes effect
             // without a service restart.
             var o = _smtp.CurrentValue;
-            using var smtpClient = new SmtpClient(o.Host, o.Port)
-            {
-                EnableSsl = o.EnableSsl,
-            };
-
-            if (o.Username is not null && o.Password is not null)
-                smtpClient.Credentials = new NetworkCredential(o.Username, o.Password);
+            using var smtpClient = SmtpTransport.CreateClient(o);
 
             var message = new MailMessage(o.From, to, subject, body);
 

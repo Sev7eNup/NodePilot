@@ -10,6 +10,7 @@ const signalRMock = vi.hoisted(() => ({
   handlers: {} as Record<string, ((payload: unknown) => void)[]>,
   connection: null as { stop: ReturnType<typeof vi.fn>; invoke: ReturnType<typeof vi.fn> } | null,
 }));
+const toPngMock = vi.hoisted(() => vi.fn(() => Promise.resolve('data:image/png;base64,')));
 
 // Mock SignalR before the page imports it - the editor opens a hub connection on mount
 // and we don't want a real WebSocket attempt in the test runner.
@@ -39,7 +40,7 @@ vi.mock('@microsoft/signalr', () => {
 // `html-to-image` (used by the PNG-export button) tries to read CSS that jsdom doesn't
 // provide. The button is never clicked during smoke tests, but the static import must
 // not blow up at module-load time.
-vi.mock('html-to-image', () => ({ toPng: () => Promise.resolve('data:image/png;base64,') }));
+vi.mock('html-to-image', () => ({ toPng: toPngMock }));
 
 // ELK is loaded as a worker-backed bundle; the module fails to load in jsdom because
 // of its Web Worker dependency. autoLayoutELK is only invoked behind a button so we
@@ -49,6 +50,7 @@ vi.mock('elkjs', () => ({ default: class { layout() { return Promise.resolve({})
 import { WorkflowEditorPage } from '../../pages/WorkflowEditorPage';
 import { useAuthStore } from '../../stores/authStore';
 import { COMPLETED_EXECUTION_TTL_MS } from '../../hooks/useSignalR';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 const BASE = 'http://localhost';
 
@@ -164,6 +166,7 @@ beforeEach(() => {
   signalRMock.connection = null;
   useDesignStore.setState({ designerMode: 'expert' });
   useToastStore.setState({ toasts: [] });
+  toPngMock.mockReset().mockResolvedValue('data:image/png;base64,');
 });
 
 function emitSignalR(event: string, payload: unknown) {
@@ -420,6 +423,22 @@ describe('WorkflowEditorPage — Workflow data variations', () => {
     renderPage();
     await openToolsMenu();
     expect(screen.getByTitle('Export as JSON')).not.toBeDisabled();
+  });
+
+  it('does not download a PNG rendered for the previous authentication context', async () => {
+    let finishRender!: (dataUrl: string) => void;
+    toPngMock.mockReturnValue(new Promise<string>((resolve) => { finishRender = resolve; }));
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderPage();
+    await waitForCanvasReady();
+    await openToolsMenu();
+
+    fireEvent.click(screen.getByTitle('Export as PNG'));
+    await waitFor(() => expect(toPngMock).toHaveBeenCalledTimes(1));
+    clearLocalAuthBoundary();
+    await act(async () => { finishRender('data:image/png;base64,user-a'); });
+
+    expect(anchorClick).not.toHaveBeenCalled();
   });
 });
 

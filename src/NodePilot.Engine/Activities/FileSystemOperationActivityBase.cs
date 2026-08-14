@@ -74,6 +74,10 @@ public abstract class FileSystemOperationActivityBase : BaseRemoteActivity
         var qPath = PowerShellOperation.Literal(path);
         var qDest = PowerShellOperation.Literal(destination);
         var qNewName = PowerShellOperation.Literal(newName);
+        var targetPathGuard = TargetPathGuardScript.Build(
+            _config,
+            ("$__path", "path"),
+            ("$__destination", "destination"));
 
         var opBody = BuildOperationBody(operation);
 
@@ -85,6 +89,7 @@ public abstract class FileSystemOperationActivityBase : BaseRemoteActivity
             $__newName = {{qNewName}}
             $__result = [ordered]@{ operation = '{{operation}}'; path = $__path; ok = $true }
             try {
+            {{targetPathGuard}}
             {{opBody}}
             } catch {
                 $__result.ok = $false

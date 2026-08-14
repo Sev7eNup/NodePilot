@@ -34,6 +34,10 @@ import { CloneConfigButton } from './properties/CloneConfigButton';
 import { StepTestPanel } from './properties/StepTestPanel';
 import { JsonPathTree } from './properties/JsonPathTree';
 import { useDesignStore } from '../../stores/designStore';
+import {
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+} from '../../security/authBoundary';
 
 interface Props {
   node: Node;
@@ -94,9 +98,12 @@ function PropertiesPanelImpl({
     refetchInterval: 15_000,
     staleTime: 10_000,
     queryFn: async () => {
+      const authBoundaryGeneration = captureAuthBoundaryGeneration();
       const executions = await api.get<WorkflowExecution[]>(`/executions?workflowId=${workflowId}`);
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       const last = executions.find((e) => ['Succeeded', 'Failed', 'Cancelled'].includes(e.status));
       if (!last) return null;
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       return await api.get<StepExecution[]>(`/executions/${last.id}/steps`);
     },
   });

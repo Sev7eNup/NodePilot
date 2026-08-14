@@ -17,6 +17,7 @@ import {
   StringListEditor,
   TextInput,
   Toggle,
+  CompactCard,
 } from './SectionFormHelpers';
 import { refreshAiCapabilities } from '../../hooks/useAiCapabilities';
 
@@ -184,12 +185,12 @@ function SmtpCard() {
   });
 
   if (isLoading || !data) {
-    return <Card icon={Email} title={t('adminSettings:subTabIntegrations')}><p className="text-sm">{t('adminSettings:loading')}</p></Card>;
+    return <CompactCard headingMargin="mb-4" icon={Email} title={t('adminSettings:subTabIntegrations')}><p className="text-sm">{t('adminSettings:loading')}</p></CompactCard>;
   }
 
   return (
     <>
-      <Card icon={Email} title="SMTP">
+      <CompactCard headingMargin="mb-4" icon={Email} title="SMTP">
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <LabeledInput
@@ -255,7 +256,7 @@ function SmtpCard() {
           saving={saveMutation.isPending}
           errors={error}
         />
-      </Card>
+      </CompactCard>
       <EtagConflictDialog
         open={!!conflict}
         serverSnapshot={conflict}
@@ -438,12 +439,12 @@ function LlmCard() {
   });
 
   if (isLoading || !data) {
-    return <Card icon={Bot} title="LLM"><p className="text-sm">{t('adminSettings:loading')}</p></Card>;
+    return <CompactCard headingMargin="mb-4" icon={Bot} title="LLM"><p className="text-sm">{t('adminSettings:loading')}</p></CompactCard>;
   }
 
   return (
     <>
-      <Card icon={Bot} title="LLM (KI)">
+      <CompactCard headingMargin="mb-4" icon={Bot} title="LLM (KI)">
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input
@@ -548,7 +549,7 @@ function LlmCard() {
             ? [...(error ?? []), t('adminSettings:integrations.activeProfileRequired')]
             : error}
         />
-      </Card>
+      </CompactCard>
 
       <EtagConflictDialog
         open={!!conflict}
@@ -851,17 +852,6 @@ function LlmProfileForm({
 // ─────────────────────────────────────────────────────────────────────────────
 // Shared UI helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-function Card({ icon: Icon, title, children }: Readonly<{ icon: React.ComponentType<{ size?: number }>; title: string; children: React.ReactNode }>) {
-  return (
-    <div className="np-card p-4">
-      <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-4">
-        <Icon size={18} /> {title}
-      </h3>
-      {children}
-    </div>
-  );
-}
 
 function LabeledInput({
   label, configKey, effectiveSource, value, onChange, type = 'text', disabled, hint,

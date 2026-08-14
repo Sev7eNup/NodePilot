@@ -166,7 +166,7 @@ Je Profil:
 | Einstellung | Bedeutung |
 |---|---|
 | `Name` | Anzeigename; frei änderbar, die Kennung bleibt bestehen |
-| `BaseUrl` | Adresse eines OpenAI-kompatiblen Endpunkts; der Pfad bestimmt das Anfrageformat (siehe unten) |
+| `BaseUrl` | HTTPS-Adresse eines OpenAI-kompatiblen Endpunkts; HTTP ist nur für exakte Loopback-Ziele (`localhost`, `127.0.0.0/8`, `::1`) erlaubt. Der Pfad bestimmt das Anfrageformat (siehe unten). |
 | `ApiKey` | API-Schlüssel; für lokale Modelle häufig nicht erforderlich |
 | `Model` | verwendeter Modellname |
 | `MaxTokens` | maximale Länge einer Modellantwort (256 bis 1.000.000) |

@@ -150,8 +150,14 @@ public sealed class WebhookSettingsDto
 
 public sealed class ExternalTriggerSettingsDto
 {
-    /// <summary>SecretField semantics — empty/null disables the external-trigger endpoint.</summary>
+    /// <summary>Legacy SecretField. It authorizes only <see cref="AllowedWorkflowIds"/>.</summary>
     public string? ApiKey { get; set; }
+
+    /// <summary>
+    /// GUID-only scope for the legacy key. Empty is deliberately fail-closed and authorizes no
+    /// workflows. New integrations should use hashed ExternalTrigger:Keys entries instead.
+    /// </summary>
+    public List<Guid> AllowedWorkflowIds { get; set; } = [];
 }
 
 public sealed class SecuritySettingsDto

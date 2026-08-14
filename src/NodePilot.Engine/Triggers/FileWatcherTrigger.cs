@@ -12,6 +12,9 @@ namespace NodePilot.Engine.Triggers;
 /// </summary>
 public class FileWatcherTrigger : IActivityExecutor
 {
+    private static readonly IConfiguration EmptyPathGuardConfiguration =
+        new ConfigurationBuilder().Build();
+
     private readonly IConfiguration? _config;
 
     public FileWatcherTrigger(IConfiguration? config = null)
@@ -51,13 +54,13 @@ public class FileWatcherTrigger : IActivityExecutor
         // hard-block check as the scheduler-side source so a workflow author can't
         // enumerate C:\Windows via a manual "Run Step" while the live trigger
         // would have refused to start there.
-        if (_config is not null)
+        try
         {
-            try { FileWatcherPathGuard.Validate(_config, directory); }
-            catch (InvalidOperationException ex)
-            {
-                return new ActivityResult { Success = false, ErrorOutput = ex.Message };
-            }
+            FileWatcherPathGuard.Validate(_config ?? EmptyPathGuardConfiguration, directory);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return new ActivityResult { Success = false, ErrorOutput = ex.Message };
         }
 
         return await Task.Run(() =>
@@ -67,13 +70,27 @@ public class FileWatcherTrigger : IActivityExecutor
                 return new ActivityResult { Success = false, ErrorOutput = $"Directory not found: {directory}" };
             }
 
-            var searchOption = includeSubdirs ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            var files = Directory.GetFiles(directory, filter ?? "*.*", searchOption);
+            IReadOnlyList<string> files;
+            try
+            {
+                files = FileWatcherPathGuard.EnumerateFilesReparseFree(
+                    directory,
+                    filter ?? "*.*",
+                    includeSubdirs);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+            {
+                return new ActivityResult
+                {
+                    Success = false,
+                    ErrorOutput = $"FileWatcherTrigger: secure directory scan failed: {ex.Message}",
+                };
+            }
 
             return new ActivityResult
             {
                 Success = true,
-                Output = $"Directory: {directory}\nFilter: {filter}\nWatch type: {watchType}\nFiles found: {files.Length}\n" +
+                Output = $"Directory: {directory}\nFilter: {filter}\nWatch type: {watchType}\nFiles found: {files.Count}\n" +
                          string.Join("\n", files.Take(20).Select(Path.GetFileName))
             };
         }, ct);

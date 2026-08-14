@@ -1,4 +1,6 @@
 using Microsoft.Extensions.Configuration;
+using System.Globalization;
+using System.Text.Json;
 
 namespace NodePilot.Engine.Security;
 
@@ -13,18 +15,15 @@ namespace NodePilot.Engine.Security;
 ///   <item><c>..</c> traversal is rejected when <c>FileSystemOperation:RejectTraversal=true</c>
 ///   (default since Phase 3 hardening). Setting it to <c>false</c> tolerates relative navigation
 ///   for legacy admin scripts but is no longer the recommended posture.</item>
-///   <item><c>FileSystemOperation:AllowedRoots</c> (optional string array): when set, every path must
-///   resolve inside one of the listed roots regardless of traversal.</item>
+///   <item><c>FileSystemOperation:AllowedRoots</c> (optional string array): when non-empty, every
+///   path must be lexically inside one of the listed roots and no existing component may be a
+///   reparse point. An explicit empty array means no containment restriction.</item>
 ///   <item>Wildcard characters are rejected by default. Activities that intentionally support
 ///   globbing must opt in at their specific source parameter.</item>
 /// </list>
 /// Config keys retain the historical <c>FileSystemOperation:</c> prefix so existing operator
 /// docs / appsettings deployments stay valid; the namespace is shared across all path-bearing
 /// activities.
-///
-/// AllowedRoots final-path resolution is local to the NodePilot host. Remote WinRM targets do not
-/// expose their reparse-point map to this guard; remote workflows still need target-side ACLs and
-/// constrained working directories as the authoritative boundary.
 /// </summary>
 public static class PathGuard
 {
@@ -71,41 +70,127 @@ public static class PathGuard
         if (rejectTraversal && ContainsTraversal(path))
             throw new InvalidOperationException($"File System Operation: path '{path}' contains '..' traversal (blocked by FileSystemOperation:RejectTraversal)");
 
-        var roots = ReadConfiguredRoots(config, "FileSystemOperation:AllowedRoots");
-        if (roots.Length > 0)
+        string fullPath;
+        string fullNormalized;
+        try { fullPath = Path.GetFullPath(path); }
+        catch (Exception ex)
         {
-            string fullPath;
-            string fullNormalized;
-            try { fullPath = Path.GetFullPath(path); }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"File System Operation: path '{path}' is not a valid absolute path: {ex.Message}");
-            }
-
-            try { fullNormalized = ResolveLocalFinalPath(fullPath); }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException($"File System Operation: path '{path}' final path could not be resolved: {ex.Message}");
-            }
-
-            var allowed = roots.Any(root => IsWithinRoot(fullNormalized, ResolveLocalFinalPath(Path.GetFullPath(root))));
-
-            if (!allowed)
-                throw new InvalidOperationException($"File System Operation: path '{path}' is not within any configured FileSystemOperation:AllowedRoots");
+            throw new InvalidOperationException($"File System Operation: path '{path}' is not a valid absolute path: {ex.Message}");
         }
+
+        // Reject existing reparse points even when no containment allow-list is configured.
+        // A syntactically-local path can otherwise be a junction to an attacker-controlled UNC
+        // share and make the process authenticate over SMB before any allow-root decision runs.
+        // ResolveLocalFinalPath is intentionally link-local: it inspects attributes on each path
+        // component and never resolves a link target.
+        try { fullNormalized = ResolveLocalFinalPath(fullPath); }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"File System Operation: path '{path}' traverses an unsafe filesystem component: {ex.Message}");
+        }
+
+        var roots = ReadConfiguredRoots(
+            config,
+            "FileSystemOperation:AllowedRoots",
+            out _);
+        if (roots.Length == 0) return;
+
+        var allowed = roots.Any(root =>
+        {
+            if (IsUncPath(root))
+                throw new InvalidOperationException(
+                    $"File System Operation: configured AllowedRoot '{root}' must not be a UNC or device path");
+
+            return IsWithinRoot(fullNormalized, ResolveLocalFinalPath(Path.GetFullPath(root)));
+        });
+
+        if (!allowed)
+            throw new InvalidOperationException($"File System Operation: path '{path}' is not within any configured FileSystemOperation:AllowedRoots");
     }
 
     /// <summary>
-    /// Reads an allow-list section as a string array, dropping blank entries. Shared with
+    /// Reads an allow-list atomically from the highest-priority provider. Blank, sparse, mixed,
+    /// or otherwise malformed arrays are rejected fail-closed. Shared with
     /// <see cref="FileWatcherPathGuard"/> so both guards read their roots the same way.
     /// </summary>
-    internal static string[] ReadConfiguredRoots(IConfiguration config, string sectionPath)
-        => config.GetSection(sectionPath)
-            .GetChildren()
-            .Select(c => c.Value)
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Cast<string>()
-            .ToArray();
+    internal static string[] ReadConfiguredRoots(
+        IConfiguration config,
+        string sectionPath,
+        out bool configured)
+    {
+        if (config is not IConfigurationRoot root)
+            throw new InvalidOperationException(
+                $"Security allow-list '{sectionPath}' requires IConfigurationRoot provider metadata");
+
+        // IConfiguration's merged child view does not replace arrays atomically: a one-item
+        // runtime override otherwise inherits index 1..N from a lower-priority provider. Read
+        // the complete array from the highest-priority provider that declares the section.
+        foreach (var provider in root.Providers.Reverse())
+        {
+            var hasExactValue = provider.TryGet(sectionPath, out var exactValue);
+            var childKeys = provider.GetChildKeys([], sectionPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            if (!hasExactValue && childKeys.Length == 0) continue;
+
+            configured = true;
+            if (hasExactValue && childKeys.Length > 0)
+                throw MalformedRoots(sectionPath, "contains both a scalar value and indexed children");
+
+            if (hasExactValue)
+            {
+                // JsonConfigurationProvider represents [] as an exact null entry. It is an
+                // atomic provider tombstone: lower-provider indices disappear, while the
+                // established AllowedRoots contract still treats the resulting [] as no
+                // containment restriction (reparse rejection remains unconditional).
+                if (string.IsNullOrWhiteSpace(exactValue)) return [];
+
+                try
+                {
+                    using var document = JsonDocument.Parse(exactValue);
+                    if (document.RootElement.ValueKind != JsonValueKind.Array)
+                        throw MalformedRoots(sectionPath, "scalar value is not a JSON string array");
+
+                    var values = new List<string>();
+                    foreach (var element in document.RootElement.EnumerateArray())
+                    {
+                        if (element.ValueKind != JsonValueKind.String
+                            || string.IsNullOrWhiteSpace(element.GetString()))
+                            throw MalformedRoots(sectionPath, "contains an empty or non-string root");
+                        values.Add(element.GetString()!);
+                    }
+                    return values.ToArray();
+                }
+                catch (JsonException ex)
+                {
+                    throw MalformedRoots(sectionPath, $"scalar value is not valid JSON: {ex.Message}");
+                }
+            }
+
+            var indexed = new SortedDictionary<int, string>();
+            foreach (var childKey in childKeys)
+            {
+                if (!int.TryParse(childKey, NumberStyles.None, CultureInfo.InvariantCulture, out var index)
+                    || index < 0
+                    || !provider.TryGet($"{sectionPath}:{childKey}", out var value)
+                    || string.IsNullOrWhiteSpace(value)
+                    || !indexed.TryAdd(index, value))
+                    throw MalformedRoots(sectionPath, "contains malformed, duplicate, or blank indices");
+            }
+
+            if (indexed.Keys.Where((index, ordinal) => index != ordinal).Any())
+                throw MalformedRoots(sectionPath, "contains sparse array indices");
+
+            return indexed.Values.ToArray();
+        }
+
+        configured = false;
+        return [];
+    }
+
+    private static InvalidOperationException MalformedRoots(string sectionPath, string reason) =>
+        new($"Security allow-list '{sectionPath}' is malformed and was rejected: {reason}");
 
     /// <summary>
     /// Root-containment test shared by both path guards: the path is the root itself, or sits
@@ -170,53 +255,56 @@ public static class PathGuard
         return normalized == "..";
     }
 
-    private static string ResolveLocalFinalPath(string absolutePath)
+    internal static string ResolveLocalFinalPath(string absolutePath)
     {
         var full = Path.GetFullPath(absolutePath);
         var root = Path.GetPathRoot(full);
-        if (string.IsNullOrEmpty(root) || !Directory.Exists(root))
+        if (string.IsNullOrEmpty(root))
             return NormalizeForRootComparison(full);
 
         var relative = Path.GetRelativePath(root, full);
-        var current = ResolveExistingPath(root);
-        if (relative == ".")
-            return NormalizeForRootComparison(current);
+        var current = root;
+
+        // File.GetAttributes maps to link-local metadata on Windows: unlike Exists followed by
+        // ResolveLinkTarget it does not dereference a junction/symlink to discover its target.
+        // That property is security-critical for links targeting UNC shares (SMB/NTLM coercion)
+        // and also lets us reject dangling links, which Exists reports as false.
+        AssertNotReparsePoint(current);
+        if (relative == ".") return NormalizeForRootComparison(full);
 
         var segments = relative.Split(
             [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
             StringSplitOptions.RemoveEmptyEntries);
 
-        for (var i = 0; i < segments.Length; i++)
+        foreach (var segment in segments)
         {
-            current = Path.Combine(current, segments[i]);
-            if (Directory.Exists(current) || File.Exists(current))
-            {
-                current = ResolveExistingPath(current);
-                continue;
-            }
+            // Only Zip compression opts into wildcards. It separately restricts them to the
+            // leaf component and expands them on the target; no literal filesystem object can
+            // exist at or below this segment.
+            if (segment.IndexOfAny(WildcardChars) >= 0) break;
 
-            for (var j = i + 1; j < segments.Length; j++)
-                current = Path.Combine(current, segments[j]);
-            return NormalizeForRootComparison(Path.GetFullPath(current));
+            current = Path.Combine(current, segment);
+            if (!AssertNotReparsePoint(current)) break;
         }
 
-        return NormalizeForRootComparison(Path.GetFullPath(current));
+        return NormalizeForRootComparison(full);
     }
 
-    private static string ResolveExistingPath(string path)
+    /// <returns><see langword="true"/> when the path exists; otherwise false.</returns>
+    private static bool AssertNotReparsePoint(string path)
     {
-        if (Directory.Exists(path))
+        FileAttributes attributes;
+        try
         {
-            var info = new DirectoryInfo(path);
-            if ((info.Attributes & FileAttributes.ReparsePoint) == 0)
-                return info.FullName;
-            return info.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? info.FullName;
+            attributes = File.GetAttributes(path);
         }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
 
-        var file = new FileInfo(path);
-        if ((file.Attributes & FileAttributes.ReparsePoint) == 0)
-            return file.FullName;
-        return file.ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? file.FullName;
+        if ((attributes & FileAttributes.ReparsePoint) != 0)
+            throw new IOException($"path traverses reparse point '{path}'");
+
+        return true;
     }
 
     private static string NormalizeForRootComparison(string path)
@@ -230,7 +318,7 @@ public static class PathGuard
     /// extended-length paths (<c>\\?\UNC\server\share\…</c>) are also flagged: the device-
     /// namespace prefix is not a path component our workflows have any reason to express.
     /// </summary>
-    private static bool IsUncPath(string path)
+    internal static bool IsUncPath(string path)
     {
         if (path.Length < 2) return false;
         var c0 = path[0];

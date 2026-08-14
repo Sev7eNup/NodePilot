@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useConfirmStore, confirmDialog } from '../../stores/confirmStore';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 const settle = (ok: boolean) => useConfirmStore.getState().settle(ok);
 const pending = () => useConfirmStore.getState().pending;
@@ -53,6 +54,18 @@ describe('confirmStore', () => {
     expect(pending()?.message).toBe('second');
     settle(true);
     await expect(second).resolves.toBe(true);
+  });
+
+  it('authBoundary_cancelsPendingContinuationAsFalse', async () => {
+    const destructiveContinuation = confirmDialog({
+      message: 'Delete User A data?',
+      danger: true,
+    });
+
+    clearLocalAuthBoundary();
+
+    expect(pending()).toBeNull();
+    await expect(destructiveContinuation).resolves.toBe(false);
   });
 
   it('settle on an empty store is a no-op (does not throw)', () => {

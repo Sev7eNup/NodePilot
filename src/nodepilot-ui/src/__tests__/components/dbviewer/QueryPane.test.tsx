@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { QueryPane } from '../../../components/dbviewer/QueryPane';
-import { dbAdminApi } from '../../../api/dbadmin';
+import { dbAdminApi, type DbAdminQueryResponse } from '../../../api/dbadmin';
+import { useAuthStore } from '../../../stores/authStore';
+import { clearLocalAuthBoundary } from '../../../security/authBoundary';
+import {
+  DB_ADMIN_QUERY_DRAFT_KEY,
+  DB_ADMIN_QUERY_HISTORY_KEY,
+} from '../../../security/sensitiveBrowserState';
 
 vi.mock('../../../api/dbadmin', () => ({
   dbAdminApi: {
@@ -62,6 +68,8 @@ describe('QueryPane', () => {
       mode: 'read',
     });
     globalThis.localStorage.clear();
+    globalThis.sessionStorage.clear();
+    useAuthStore.setState({ userId: null, username: null, role: null, isAuthenticated: false });
   });
 
   it('rendersProviderBadge_fromInfoEndpoint', async () => {
@@ -199,15 +207,15 @@ describe('QueryPane', () => {
     });
   });
 
-  it('history_persistsAcrossPaneRemount_viaLocalStorage', async () => {
-    globalThis.localStorage.setItem(
+  it('history_persistsAcrossPaneRemount_withinSessionStorage', async () => {
+    globalThis.sessionStorage.setItem(
       'nodepilot.dbAdmin.queryHistory',
       JSON.stringify(['SELECT 1', 'SELECT 2']),
     );
     wrap(<QueryPane />);
     await waitFor(() => expect(screen.getByText('postgres')).toBeInTheDocument());
 
-    // The history button shows the count from localStorage.
+    // The history button shows the count from this tab's session storage.
     expect(screen.getByRole('button', { name: /History \(2\)/ })).toBeInTheDocument();
   });
 
@@ -222,7 +230,57 @@ describe('QueryPane', () => {
       expect(screen.getByRole('button', { name: /History \(1\)/ })).toBeInTheDocument();
     });
 
-    const stored = JSON.parse(globalThis.localStorage.getItem('nodepilot.dbAdmin.queryHistory') ?? '[]') as string[];
+    const stored = JSON.parse(globalThis.sessionStorage.getItem('nodepilot.dbAdmin.queryHistory') ?? '[]') as string[];
     expect(stored).toEqual(['SELECT 1']);
+    expect(globalThis.localStorage.getItem('nodepilot.dbAdmin.queryHistory')).toBeNull();
+  });
+
+  it('inFlightQueryFromPreviousIdentity_cannotRestoreHistoryOrResultsAfterBoundary', async () => {
+    useAuthStore.getState().acceptAuthenticatedIdentity({
+      userId: 'u-a',
+      username: 'alice',
+      role: 'Admin',
+    });
+    let resolveQuery!: (result: DbAdminQueryResponse) => void;
+    const pendingQuery = new Promise<DbAdminQueryResponse>((resolve) => {
+      resolveQuery = resolve;
+    });
+    vi.mocked(dbAdminApi.query).mockReturnValueOnce(pendingQuery);
+
+    wrap(<QueryPane />);
+    await waitFor(() => expect(screen.getByText('postgres')).toBeInTheDocument());
+    fireEvent.change(screen.getByTestId('sql-editor'), {
+      target: { value: 'SELECT user_a_secret' },
+    });
+    await userEvent.click(screen.getByRole('button', { name: /^Run$/ }));
+    await waitFor(() => expect(dbAdminApi.query).toHaveBeenCalledWith(
+      'SELECT user_a_secret',
+      'read',
+    ));
+
+    clearLocalAuthBoundary();
+    useAuthStore.getState().acceptAuthenticatedIdentity({
+      userId: 'u-b',
+      username: 'bob',
+      role: 'Operator',
+    });
+
+    await act(async () => {
+      resolveQuery({
+        columns: [{ name: 'Secret', type: 'text' }],
+        rows: [['user-a-result']],
+        rowsAffected: null,
+        durationMs: 5,
+        truncated: false,
+        mode: 'read',
+      });
+      await pendingQuery;
+      await Promise.resolve();
+    });
+
+    expect(useAuthStore.getState().userId).toBe('u-b');
+    expect(globalThis.sessionStorage.getItem(DB_ADMIN_QUERY_HISTORY_KEY)).toBeNull();
+    expect(globalThis.sessionStorage.getItem(DB_ADMIN_QUERY_DRAFT_KEY)).toBeNull();
+    expect(screen.queryByText('user-a-result')).not.toBeInTheDocument();
   });
 });

@@ -172,10 +172,10 @@ public sealed class ExecutionTools
     }
 
     [McpServerTool(Name = "trigger_external_workflow")]
-    [Description("Trigger a workflow via the external API-key endpoint (POST /api/trigger/{nameOrId}). Supply the X-Api-Key value. Supports an idempotencyKey (24h replay window). Returns the ExecutionId and whether an idempotent replay occurred.")]
+    [Description("Trigger a workflow via the external API-key endpoint (POST /api/trigger/{nameOrId}). The X-Api-Key must be scoped to the workflow GUID, and the workflow must contain an enabled manualTrigger. Supports an idempotencyKey (24h replay window). Returns the ExecutionId and whether an idempotent replay occurred.")]
     public async Task<object> TriggerExternalWorkflow(
         [Description("The workflow name or GUID.")] string workflowNameOrId,
-        [Description("The external-trigger API key (sent as X-Api-Key).")] string apiKey,
+        [Description("The external-trigger API key, scoped to the target workflow GUID (sent as X-Api-Key).")] string apiKey,
         [Description("Optional input parameters passed to the run.")] Dictionary<string, string>? parameters = null,
         [Description("Optional Idempotency-Key; a repeat within 24h replays the original run instead of starting a new one.")] string? idempotencyKey = null,
         CancellationToken cancellationToken = default)

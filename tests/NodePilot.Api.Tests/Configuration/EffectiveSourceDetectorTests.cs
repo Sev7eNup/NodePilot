@@ -73,6 +73,28 @@ public sealed class EffectiveSourceDetectorTests : IDisposable
     }
 
     [Fact]
+    public void Env_ArrayChild_ClassifiesParentCollectionAsEnv()
+    {
+        var prefix = "NP_TEST_SCOPE_" + Guid.NewGuid().ToString("N") + "_";
+        var childKey = prefix + "ExternalTrigger__AllowedWorkflowIds__0";
+        Environment.SetEnvironmentVariable(childKey, Guid.NewGuid().ToString());
+        try
+        {
+            var root = (IConfigurationRoot)new ConfigurationBuilder()
+                .AddEnvironmentVariables(prefix)
+                .Build();
+
+            EffectiveSourceDetector.Detect(root, "ExternalTrigger:AllowedWorkflowIds")
+                .Should().Be(EffectiveSourceDetector.SourceEnv,
+                    "array-valued env overrides define child indices rather than the parent key");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(childKey, null);
+        }
+    }
+
+    [Fact]
     public void Cli_ClassifiedAsCli()
     {
         var root = (IConfigurationRoot)new ConfigurationBuilder()

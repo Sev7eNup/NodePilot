@@ -200,7 +200,7 @@ test.describe('AI Knowledge Chat (/ai-chat)', () => {
     await page.getByRole('button', { name: /^Chat 1$/i }).click();
     await expect(page.getByText(/Hi there/i)).toBeVisible();
 
-    // Reload — the store rehydrates from localStorage (key "nodepilot-aichat"); the active
+    // Reload — the store rehydrates from this tab's sessionStorage (key "nodepilot-aichat"); the active
     // thread ("Chat 1") and its messages survive.
     await page.reload();
     await expect(page.locator('#np-main-scroll').getByRole('heading', { name: /^AI Chat$/i })).toBeVisible();

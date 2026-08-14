@@ -153,7 +153,7 @@ public class PathGuardTests
     }
 
     [WindowsFact]
-    public void AllowedRoots_ResolvesDirectorySymlinkBeforeRootComparison()
+    public void AllowedRoots_RejectsDirectorySymlinkWithoutResolvingItsTarget()
     {
         var baseDir = Path.Combine(Path.GetTempPath(), "nodepilot-pathguard-" + Guid.NewGuid().ToString("N"));
         var allowed = Path.Combine(baseDir, "allowed");
@@ -179,12 +179,140 @@ public class PathGuardTests
             }).Build();
 
             Action act = () => PathGuard.Validate(cfg, Path.Combine(link, "file.txt"));
-            act.Should().Throw<InvalidOperationException>().WithMessage("*AllowedRoots*");
+            act.Should().Throw<InvalidOperationException>().WithMessage("*reparse point*");
         }
         finally
         {
-            if (Directory.Exists(baseDir))
-                Directory.Delete(baseDir, recursive: true);
+            DeleteDirectoryLink(link);
+            try { Directory.Delete(baseDir, recursive: true); } catch { }
         }
+    }
+
+    [WindowsFact]
+    public void EmptyAllowedRoots_StillRejectsExistingDirectorySymlink()
+    {
+        var baseDir = Path.Combine(Path.GetTempPath(), "nodepilot-pathguard-empty-" + Guid.NewGuid().ToString("N"));
+        var outside = Path.Combine(baseDir, "outside");
+        var link = Path.Combine(baseDir, "link");
+        Directory.CreateDirectory(outside);
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, outside);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            Action act = () => PathGuard.Validate(Cfg(), Path.Combine(link, "payload.txt"));
+            act.Should().Throw<InvalidOperationException>().WithMessage("*reparse point*");
+        }
+        finally
+        {
+            DeleteDirectoryLink(link);
+            try { Directory.Delete(baseDir, recursive: true); } catch { }
+        }
+    }
+
+    [WindowsFact]
+    public void DanglingDirectorySymlink_IsRejectedLinkLocally()
+    {
+        var baseDir = Path.Combine(Path.GetTempPath(), "nodepilot-pathguard-dangling-" + Guid.NewGuid().ToString("N"));
+        var missingTarget = Path.Combine(baseDir, "missing-target");
+        var link = Path.Combine(baseDir, "link");
+        Directory.CreateDirectory(baseDir);
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, missingTarget);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            Action act = () => PathGuard.Validate(Cfg(), Path.Combine(link, "payload.txt"));
+            act.Should().Throw<InvalidOperationException>().WithMessage("*reparse point*");
+        }
+        finally
+        {
+            DeleteDirectoryLink(link);
+            try { Directory.Delete(baseDir, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void AllowedRoots_HigherPriorityProviderReplacesLowerArrayAtomically()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots:0"] = "C:\\allowed",
+                ["FileSystemOperation:AllowedRoots:1"] = "C:\\must-be-revoked",
+            })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots:0"] = "C:\\allowed",
+            })
+            .Build();
+
+        Action act = () => PathGuard.Validate(config, "C:\\must-be-revoked\\secret.txt");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*AllowedRoots*");
+    }
+
+    [Fact]
+    public void AllowedRoots_HigherPriorityEmptyArrayClearsLowerProviderRoots()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots:0"] = "C:\\allowed",
+            })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots"] = null,
+            })
+            .Build();
+
+        var roots = PathGuard.ReadConfiguredRoots(
+            config,
+            "FileSystemOperation:AllowedRoots",
+            out var configured);
+
+        configured.Should().BeTrue();
+        roots.Should().BeEmpty();
+        Action act = () => PathGuard.Validate(config, "C:\\outside\\file.txt");
+        act.Should().NotThrow("an explicit [] preserves the documented no-containment contract");
+    }
+
+    [Fact]
+    public void AllowedRoots_SparseHighestPriorityArrayFailsClosed()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots:0"] = "C:\\allowed",
+            })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots:1"] = "C:\\other",
+            })
+            .Build();
+
+        Action act = () => PathGuard.Validate(config, "C:\\allowed\\file.txt");
+        act.Should().Throw<InvalidOperationException>().WithMessage("*sparse*");
+    }
+
+    private static void DeleteDirectoryLink(string link)
+    {
+        try
+        {
+            if ((File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0)
+                Directory.Delete(link);
+        }
+        catch { }
     }
 }

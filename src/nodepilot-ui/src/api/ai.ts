@@ -1,4 +1,8 @@
 import { api, postEventStream } from './client';
+import {
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+} from '../security/authBoundary';
 
 /**
  * Frontend mirror of the backend's `UpstreamVariableDto` records. Deliberately uses the
@@ -77,7 +81,11 @@ export interface WorkflowChatProposal {
  * with `\n`, ignores `:`-comment lines, and normalizes `\r\n`. Re-throws `AbortError` as-is
  * so callers can detect a user-initiated stop.
  */
-async function readEventStream(response: Response, onEvent: (event: string, data: string) => void): Promise<void> {
+async function readEventStream(
+  response: Response,
+  authBoundaryGeneration: number,
+  onEvent: (event: string, data: string) => void,
+): Promise<void> {
   const body = response.body;
   if (!body) return;
   const reader = body.getReader();
@@ -93,12 +101,19 @@ async function readEventStream(response: Response, onEvent: (event: string, data
       if (line.startsWith('event:')) event = line.slice(6).trim();
       else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
     }
-    if (dataLines.length > 0) onEvent(event, dataLines.join('\n'));
+    if (dataLines.length > 0) {
+      // A buffered frame can be delivered after logout/identity replacement even when React has
+      // already unmounted the panel and aborted the fetch. Never let that old user's AI output
+      // repopulate the new authentication context.
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+      onEvent(event, dataLines.join('\n'));
+    }
   };
 
   try {
     for (;;) {
       const { value, done } = await reader.read();
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       if (done) break;
       buffer += decoder.decode(value, { stream: true });
       let sep: number;
@@ -154,8 +169,10 @@ export interface ChatStreamHandlers {
 /** Streams one chat turn: `onDelta` per prose token, `onBuilding` when it switches to
  *  generating the workflow definition, `onProposal` at the end, `onDone` with metadata. */
 export async function chatStream(req: WorkflowChatRequest, h: ChatStreamHandlers): Promise<void> {
+  const authBoundaryGeneration = captureAuthBoundaryGeneration();
   const resp = await postEventStream('/ai/chat', req, h.signal);
-  await readEventStream(resp, (event, data) => {
+  assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+  await readEventStream(resp, authBoundaryGeneration, (event, data) => {
     if (event === 'delta') h.onDelta((JSON.parse(data) as { text: string }).text);
     else if (event === 'building') h.onBuilding?.();
     else if (event === 'tool_call') {
@@ -207,8 +224,10 @@ export interface KnowledgeStreamHandlers {
 
 /** Streams one knowledge-chat turn: `onDelta` per token, tool-call indicators, `onDone` with metadata. */
 export async function askStream(req: KnowledgeAskRequest, h: KnowledgeStreamHandlers): Promise<void> {
+  const authBoundaryGeneration = captureAuthBoundaryGeneration();
   const resp = await postEventStream('/ai/knowledge/ask', req, h.signal);
-  await readEventStream(resp, (event, data) => {
+  assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+  await readEventStream(resp, authBoundaryGeneration, (event, data) => {
     if (event === 'delta') h.onDelta((JSON.parse(data) as { text: string }).text);
     else if (event === 'tool_call') {
       const t = JSON.parse(data) as { toolName: string; toolId: string };
@@ -234,8 +253,10 @@ export interface ScriptStreamHandlers {
 /** Streams script generation: `onDelta` per token (with code-fence markers stripped) — used to
  *  make the script appear to type itself live into the Monaco editor. */
 export async function generateScriptStream(req: GenerateScriptRequest, h: ScriptStreamHandlers): Promise<void> {
+  const authBoundaryGeneration = captureAuthBoundaryGeneration();
   const resp = await postEventStream('/ai/generate-script', req, h.signal);
-  await readEventStream(resp, (event, data) => {
+  assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+  await readEventStream(resp, authBoundaryGeneration, (event, data) => {
     if (event === 'delta') h.onDelta((JSON.parse(data) as { text: string }).text);
     else if (event === 'error') throw sseError(data);
   });

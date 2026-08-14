@@ -1,10 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrowserRouter } from 'react-router';
 import { LoginPage } from '../../pages/LoginPage';
 import { useAuthStore } from '../../stores/authStore';
+import { aiChatScopeKey, useAiChatStore } from '../../stores/aiChatStore';
 import { api, ApiError } from '../../api/client';
+import { queryClient } from '../../queryClient';
+import {
+  DB_ADMIN_QUERY_DRAFT_KEY,
+  DB_ADMIN_QUERY_HISTORY_KEY,
+} from '../../security/sensitiveBrowserState';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 function renderLoginPage() {
   return render(
@@ -16,7 +23,12 @@ function renderLoginPage() {
 
 describe('LoginPage', () => {
   beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    queryClient.clear();
+    useAiChatStore.setState({ messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} });
     useAuthStore.setState({
+      userId: null,
       username: null,
       role: null,
       isAuthenticated: false,
@@ -147,10 +159,22 @@ describe('LoginPage', () => {
       windows: true,
       windowsEndpoint: '/api/auth/windows',
     });
-    const postSpy = vi.spyOn(api, 'post').mockResolvedValue({
-      token: 't',
-      userId: 'u-1',
+    useAuthStore.getState().acceptAuthenticatedIdentity({
+      userId: 'u-a',
       username: 'FIRMA\\\\alice',
+      role: 'Admin',
+    });
+    const scope = aiChatScopeKey('u-a', 'wf-1');
+    const threadId = useAiChatStore.getState().newThread(scope, 'User A');
+    useAiChatStore.getState().updateMessages(scope, threadId, () => [
+      { role: 'user', content: 'user-a secret' },
+    ]);
+    sessionStorage.setItem(DB_ADMIN_QUERY_DRAFT_KEY, 'SELECT user_a_secret');
+    sessionStorage.setItem(DB_ADMIN_QUERY_HISTORY_KEY, '["SELECT user_a_secret"]');
+    queryClient.setQueryData(['user-a-result'], { secret: true });
+    const postSpy = vi.spyOn(api, 'post').mockResolvedValue({
+      userId: 'u-b',
+      username: 'FIRMA\\\\bob',
       role: 'Operator',
     });
 
@@ -159,6 +183,54 @@ describe('LoginPage', () => {
     await user.click(ssoButton);
 
     expect(postSpy).toHaveBeenCalledWith('/auth/windows');
+    expect(useAuthStore.getState()).toMatchObject({
+      userId: 'u-b',
+      username: 'FIRMA\\\\bob',
+      role: 'Operator',
+      isAuthenticated: true,
+    });
+    expect(useAiChatStore.getState().messagesByThread).toEqual({});
+    expect(sessionStorage.getItem(DB_ADMIN_QUERY_DRAFT_KEY)).toBeNull();
+    expect(sessionStorage.getItem(DB_ADMIN_QUERY_HISTORY_KEY)).toBeNull();
+    expect(queryClient.getQueryData(['user-a-result'])).toBeUndefined();
+  });
+
+  it('staleWindowsSsoResponse_cannotOverwriteANewerAuthBoundary', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, 'get').mockResolvedValue({
+      local: true,
+      ldap: false,
+      windows: true,
+      windowsEndpoint: '/api/auth/windows',
+    });
+    let resolveWindows!: (identity: { userId: string; username: string; role: string }) => void;
+    const staleWindowsResponse = new Promise<{ userId: string; username: string; role: string }>((resolve) => {
+      resolveWindows = resolve;
+    });
+    vi.spyOn(api, 'post').mockReturnValueOnce(staleWindowsResponse);
+
+    renderLoginPage();
+    await user.click(await screen.findByRole('button', { name: /windows account/i }));
+    expect(api.post).toHaveBeenCalledWith('/auth/windows');
+
+    clearLocalAuthBoundary();
+    useAuthStore.getState().acceptAuthenticatedIdentity({
+      userId: 'u-b',
+      username: 'FIRMA\\\\bob',
+      role: 'Operator',
+    });
+    await act(async () => {
+      resolveWindows({ userId: 'u-a', username: 'FIRMA\\\\alice', role: 'Admin' });
+      await staleWindowsResponse;
+      await Promise.resolve();
+    });
+
+    expect(useAuthStore.getState()).toMatchObject({
+      userId: 'u-b',
+      username: 'FIRMA\\\\bob',
+      role: 'Operator',
+      isAuthenticated: true,
+    });
   });
 
   it('renders OIDC as a top-level browser navigation and can hide password login', async () => {

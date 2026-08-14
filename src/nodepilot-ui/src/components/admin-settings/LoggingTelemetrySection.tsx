@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SecretField, serializeSecretField, type SecretFieldMode } from './SecretField';
 import { EnvOverrideBadge } from './EnvOverrideBadge';
-import { GroupHeading, HotReloadHint, useSectionForm } from './SectionFormHelpers';
+import { GroupHeading, HotReloadHint, useSectionForm, CompactCard } from './SectionFormHelpers';
 
 /**
  * Three independently-saveable cards in one tab: Logging / OpenTelemetry / Stats.
@@ -54,11 +54,11 @@ function LoggingCard() {
     supportLog: { enabled: true, path: '', retainedFileCountLimit: 90, fileSizeLimitBytes: 10 * 1024 * 1024, dbProjectionEnabled: true },
   });
 
-  if (ui.loading) return <Card icon={Document} title="Logging"><p className="text-sm">{t('loading')}</p></Card>;
+  if (ui.loading) return <CompactCard icon={Document} title="Logging"><p className="text-sm">{t('loading')}</p></CompactCard>;
   const { form, set, data, isEnvLocked, save, errors } = ui;
 
   return (
-    <Card icon={Document} title="Logging">
+    <CompactCard icon={Document} title="Logging">
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Select label="Format" value={form.format} options={FORMATS}
           onChange={(v) => set({ ...form, format: v })}
@@ -130,7 +130,7 @@ function LoggingCard() {
       </div>
       <ErrorsAndSave errors={errors} onSave={() => save(toPascalLogging(form))} />
       {ui.dialog}
-    </Card>
+    </CompactCard>
   );
 }
 
@@ -204,7 +204,7 @@ function OpenTelemetryCard() {
     }
   }, [ui.data]);
 
-  if (ui.loading) return <Card icon={Activity} title="OpenTelemetry"><p className="text-sm">{t('loading')}</p></Card>;
+  if (ui.loading) return <CompactCard icon={Activity} title="OpenTelemetry"><p className="text-sm">{t('loading')}</p></CompactCard>;
   const { form, set, data, isEnvLocked, save, errors } = ui;
 
   const buildPayload = () => ({
@@ -233,7 +233,7 @@ function OpenTelemetryCard() {
   });
 
   return (
-    <Card icon={Activity} title="OpenTelemetry">
+    <CompactCard icon={Activity} title="OpenTelemetry">
       <Toggle label={t('enabled')} checked={form.enabled} onChange={(v) => set({ ...form, enabled: v })}
         configKey="OpenTelemetry:Enabled" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked} />
 
@@ -333,7 +333,7 @@ function OpenTelemetryCard() {
 
       <ErrorsAndSave errors={errors} onSave={() => save(buildPayload())} />
       {ui.dialog}
-    </Card>
+    </CompactCard>
   );
 }
 
@@ -346,11 +346,11 @@ type StatsDto = { refreshIntervalMinutes: number; windowDays: number };
 function StatsCard() {
   const { t } = useTranslation('adminSettings');
   const ui = useSectionForm<StatsDto>('Stats', { refreshIntervalMinutes: 5, windowDays: 7 });
-  if (ui.loading) return <Card icon={ChartBar} title="Stats"><p className="text-sm">{t('loading')}</p></Card>;
+  if (ui.loading) return <CompactCard icon={ChartBar} title="Stats"><p className="text-sm">{t('loading')}</p></CompactCard>;
   const { form, set, data, isEnvLocked, save, errors } = ui;
 
   return (
-    <Card icon={ChartBar} title="Stats">
+    <CompactCard icon={ChartBar} title="Stats">
       <HotReloadHint isHotReloadable={data.isHotReloadable} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <NumberInput label={t('stats.refreshInterval')} value={form.refreshIntervalMinutes} min={1} max={1440}
@@ -362,7 +362,7 @@ function StatsCard() {
       </div>
       <ErrorsAndSave errors={errors} onSave={() => save({ RefreshIntervalMinutes: form.refreshIntervalMinutes, WindowDays: form.windowDays })} />
       {ui.dialog}
-    </Card>
+    </CompactCard>
   );
 }
 
@@ -371,17 +371,6 @@ function StatsCard() {
 // SectionFormHelpers: this tab's cards are the tighter p-4/mt-4 variant, and
 // swapping in the shared ones would re-chrome all three cards.
 // ─────────────────────────────────────────────────────────────────────────────
-
-function Card({ icon: Icon, title, children }: Readonly<{ icon: React.ComponentType<{ size?: number }>; title: string; children: React.ReactNode }>) {
-  return (
-    <div className="np-card p-4">
-      <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
-        <Icon size={18} /> {title}
-      </h3>
-      {children}
-    </div>
-  );
-}
 
 function ErrorsAndSave({ errors, onSave }: Readonly<{ errors: string[] | null; onSave: () => void }>) {
   const { t } = useTranslation(['adminSettings']);

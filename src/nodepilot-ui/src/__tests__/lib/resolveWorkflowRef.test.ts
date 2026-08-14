@@ -1,12 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { resolveWorkflowRef } from '../../lib/resolveWorkflowRef';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 const server = setupServer();
 
 beforeEach(() => server.listen({ onUnhandledRequest: 'error' }));
-afterEach(() => { server.resetHandlers(); server.close(); });
+afterEach(() => { server.resetHandlers(); server.close(); vi.restoreAllMocks(); });
 
 const mockWorkflow = {
   id: '11111111-1111-1111-1111-111111111111',
@@ -92,5 +93,19 @@ describe('resolveWorkflowRef', () => {
     );
     await resolveWorkflowRef(upperGuid.toUpperCase());
     expect(usedPath).not.toContain('by-name');
+  });
+
+  it('discardsAStaleSuccessfulLookupAfterAnAuthBoundary', async () => {
+    let resolveResponse!: (response: Response) => void;
+    const pendingResponse = new Promise<Response>((resolve) => {
+      resolveResponse = resolve;
+    });
+    vi.spyOn(globalThis, 'fetch').mockReturnValueOnce(pendingResponse);
+
+    const staleLookup = resolveWorkflowRef('Daily-Report');
+    clearLocalAuthBoundary();
+    resolveResponse(Response.json(mockWorkflow));
+
+    await expect(staleLookup).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

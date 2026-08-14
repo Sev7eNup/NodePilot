@@ -26,6 +26,12 @@ import { useAiCapabilities } from '../hooks/useAiCapabilities';
 import { MobileCardList } from '../components/common/MobileCardList';
 import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
+import {
+  AuthBoundaryChangedError,
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+  isAuthBoundaryGenerationCurrent,
+} from '../security/authBoundary';
 
 type ImportedWorkflowInfo = { id: string; name: string; originalName: string | null };
 type ImportResponse = { created: number; workflows: ImportedWorkflowInfo[]; errors: string[] };
@@ -256,9 +262,14 @@ export function WorkflowsPage() {
   // tab-crash instead of a clean "file too large" message.
   const MAX_IMPORT_BYTES = 6 * 1024 * 1024;
   const importMutation = useMutation({
-    mutationFn: async (files: File[]): Promise<PerFileResult[]> => {
+    mutationFn: async ({ files, authBoundaryGeneration }: {
+      files: File[];
+      authBoundaryGeneration: number;
+    }): Promise<PerFileResult[]> => {
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       const results: PerFileResult[] = [];
       for (const file of files) {
+        assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
         try {
           if (file.size > MAX_IMPORT_BYTES) {
             throw new Error(t('workflows:importFileTooLarge', {
@@ -267,6 +278,7 @@ export function WorkflowsPage() {
             }));
           }
           const text = await file.text();
+          assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
           let envelope: unknown;
           try {
             envelope = JSON.parse(text);
@@ -278,15 +290,25 @@ export function WorkflowsPage() {
           const importUrl = selectedFolderId
             ? `/workflows/import?folderId=${selectedFolderId}`
             : '/workflows/import';
+          assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
           const resp = await api.post<ImportResponse>(importUrl, envelope);
+          assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
           results.push({ kind: 'ok', file: file.name, resp });
         } catch (err) {
+          // Boundary aborts are control flow, not malformed-file results. Continuing the loop
+          // would start the next User-A file under User B's cookie and authorization context.
+          if (err instanceof AuthBoundaryChangedError) throw err;
+          if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) {
+            throw new AuthBoundaryChangedError();
+          }
           results.push({ kind: 'fail', file: file.name, message: (err as Error).message });
         }
       }
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       return results;
     },
-    onSuccess: (results) => {
+    onSuccess: (results, { authBoundaryGeneration }) => {
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
 
       const lines: string[] = [];
@@ -327,7 +349,11 @@ export function WorkflowsPage() {
         toast.success(lines.join('\n'));
       }
     },
-    onError: (err: Error) => toast.error(t('common:importFailed', { message: err.message })),
+    onError: (err: Error, { authBoundaryGeneration }) => {
+      if (err instanceof AuthBoundaryChangedError
+        || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
+      toast.error(t('common:importFailed', { message: err.message }));
+    },
   });
 
   // Importing from System Center Orchestrator (SCOrch) produces much more detail
@@ -340,7 +366,11 @@ export function WorkflowsPage() {
   // someone accidentally uploads a multi-gigabyte backup file instead.
   const MAX_SCORCH_BYTES = 50 * 1024 * 1024;
   const scorchMutation = useMutation({
-    mutationFn: async (file: File): Promise<ScorchImportResponse> => {
+    mutationFn: async ({ file, authBoundaryGeneration }: {
+      file: File;
+      authBoundaryGeneration: number;
+    }): Promise<ScorchImportResponse> => {
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       if (file.size > MAX_SCORCH_BYTES) {
         throw new Error(t('workflows:importFileTooLarge', {
           file: file.name,
@@ -348,21 +378,31 @@ export function WorkflowsPage() {
         }));
       }
       const text = await file.text();
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       const scorchUrl = selectedFolderId
         ? `/workflows/import-scorch?folderId=${selectedFolderId}`
         : '/workflows/import-scorch';
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       return api.postRaw<ScorchImportResponse>(scorchUrl, text, 'application/xml');
     },
-    onSuccess: (resp, file) => {
+    onSuccess: (resp, { file, authBoundaryGeneration }) => {
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       queryClient.invalidateQueries({ queryKey: ['workflows'] });
       setScorchResult({ resp, filename: file.name });
     },
-    onError: (err: Error) => toast.error(t('common:importFailed', { message: err.message })),
+    onError: (err: Error, { authBoundaryGeneration }) => {
+      if (err instanceof AuthBoundaryChangedError
+        || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
+      toast.error(t('common:importFailed', { message: err.message }));
+    },
   });
   const handleScorchClick = () => scorchInputRef.current?.click();
   const handleScorchFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) scorchMutation.mutate(file);
+    if (file) scorchMutation.mutate({
+      file,
+      authBoundaryGeneration: captureAuthBoundaryGeneration(),
+    });
     e.target.value = '';
   };
 
@@ -383,7 +423,10 @@ export function WorkflowsPage() {
   const handleImportClick = () => importInputRef.current?.click();
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
-    if (files.length > 0) importMutation.mutate(files);
+    if (files.length > 0) importMutation.mutate({
+      files,
+      authBoundaryGeneration: captureAuthBoundaryGeneration(),
+    });
     // Always reset so re-selecting the same file(s) fires onChange again.
     e.target.value = '';
   };

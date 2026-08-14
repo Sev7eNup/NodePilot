@@ -50,12 +50,7 @@ public sealed class AiController : ControllerBase
     [HttpPost("generate-script")]
     public async Task<IActionResult> GenerateScript(GenerateScriptRequest request, CancellationToken ct)
     {
-        if (!_options.CurrentValue.Enabled)
-            return this.LlmServiceUnavailable("LLM_DISABLED",
-                "AI assistant is disabled. Set Llm:Enabled=true in configuration.");
-
-        if (LlmAvailability.IsMissingActiveProfile(_options.CurrentValue))
-            return this.LlmServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
+        if (LlmAvailability.Unavailable(this, _options.CurrentValue) is { } gate) return gate;
 
         if (string.IsNullOrWhiteSpace(request.Prompt))
             return BadRequest(new { code = "PROMPT_EMPTY", message = "Prompt must not be empty." });
@@ -164,12 +159,7 @@ public sealed class AiController : ControllerBase
     public async Task<ActionResult<GenerateWorkflowResponse>> GenerateWorkflow(
         GenerateWorkflowRequest request, CancellationToken ct)
     {
-        if (!_options.CurrentValue.Enabled)
-            return this.LlmServiceUnavailable("LLM_DISABLED",
-                "AI assistant is disabled. Set Llm:Enabled=true in configuration.");
-
-        if (LlmAvailability.IsMissingActiveProfile(_options.CurrentValue))
-            return this.LlmServiceUnavailable(LlmAvailability.NoActiveProfileCode, LlmAvailability.NoActiveProfileMessage);
+        if (LlmAvailability.Unavailable(this, _options.CurrentValue) is { } gate) return gate;
 
         if (string.IsNullOrWhiteSpace(request.Prompt))
             return BadRequest(new { code = "PROMPT_EMPTY", message = "Prompt must not be empty." });

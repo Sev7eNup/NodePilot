@@ -39,6 +39,19 @@ public class LlmProfileValidationTests
     }
 
     [Fact]
+    public void ValidateProfileEndpoints_RemotePlaintextProfile_IsReportedBeforeSaveOrBoot()
+    {
+        var issues = LlmProfileValidation.ValidateProfileEndpoints(Config(
+            ("Llm:Enabled", "true"),
+            ("Llm:Profiles:remote:Name", "Remote HTTP"),
+            ("Llm:Profiles:remote:BaseUrl", "http://llm.corp.example/v1")));
+
+        issues.Should().ContainSingle();
+        issues[0].ConfigKey.Should().Be("Llm:Profiles:remote:BaseUrl");
+        issues[0].Message.Should().Contain("Remote HTTP").And.Contain("plaintext HTTP");
+    }
+
+    [Fact]
     public void ValidateProfileEndpoints_MetadataEndpointInInactiveProfile_IsReported()
     {
         var issues = LlmProfileValidation.ValidateProfileEndpoints(Config(

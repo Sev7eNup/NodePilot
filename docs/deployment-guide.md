@@ -305,8 +305,10 @@ version, SQL reachability, **SQL version gate ≥ 2022 CU1**, gMSA retrievabilit
 snapshot any existing installation → extract → render `appsettings.Production.json` →
 register the service, grant *Log on as a service* + private-key read → firewall rule
 (Domain profile) → start and poll `https://localhost:<port>/healthz/ready` for up to
-180 s → print the External-Trigger API key (**shown once — store it**) and the first-login
-setup token. **Any failure after mutation starts triggers an automatic rollback** to the
+180 s → print the legacy External-Trigger API key (**shown once — store it**) and the first-login
+setup token. The legacy key is initially deny-all; it only becomes usable after explicit workflow
+GUIDs are added to `ExternalTrigger:AllowedWorkflowIds`. New integrations should use hashed,
+per-integration entries under `ExternalTrigger:Keys`. **Any failure after mutation starts triggers an automatic rollback** to the
 snapshotted state.
 
 ## Step 4 — First login
@@ -321,10 +323,10 @@ that whoever races to the login endpoint first cannot make themselves admin.
    server deletes the token file and the bootstrap window closes permanently.
 
 If you installed with the GUI setup, its final page carries all of this — address, setup
-token, External-Trigger API key, certificate thumbprint, service name and paths — as
+token, legacy External-Trigger API key, certificate thumbprint, service name and paths — as
 selectable text, with a button to save it to a file. The API key appears there and
-nowhere else: it is not recoverable afterwards, and `install-report.txt` omits it by
-design.
+nowhere else: it is not recoverable afterwards, `install-report.txt` omits it by design,
+and an empty `ExternalTrigger:AllowedWorkflowIds` list grants it no workflow.
 
 If the installer could not print the token: it lives in
 `C:\ProgramData\NodePilot\admin-setup.token`, which is ACL-restricted to the **service
@@ -482,7 +484,8 @@ The health probe follows the port in the installed configuration, so a non-defau
   place — but if it is ever lost, do not re-run the update: it refuses a layout without a
   config. Re-run `Install-NodePilot.ps1` instead, which re-renders the config from its
   parameters. The database, the data directory and the admin accounts are untouched by
-  either path; only the External-Trigger API key is regenerated.
+  either path; only the legacy External-Trigger API key is regenerated. Its workflow allow-list
+  is empty in the newly rendered configuration, so it remains deny-all until explicitly re-scoped.
 
 **Uninstall:** [`Uninstall-NodePilot.ps1`](../deploy/Uninstall-NodePilot.ps1) stops and removes the
 service, its registry environment (which holds the Postgres password), the firewall rules, the

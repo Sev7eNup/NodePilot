@@ -1,4 +1,9 @@
 import type { Workflow } from '../types/api';
+import {
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+  handleUnauthorizedAuthBoundary,
+} from '../security/authBoundary';
 
 const GUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -27,14 +32,19 @@ export async function resolveWorkflowRef(nameOrId: string): Promise<Workflow | n
     ? `/api/workflows/${trimmed}`
     : `/api/workflows/by-name/${encodeURIComponent(trimmed)}`;
 
+  const authBoundaryGeneration = captureAuthBoundaryGeneration();
   const response = await fetch(path, { credentials: 'include' });
+  assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
   if (response.status === 404) return null;
   if (response.status === 401) {
+    handleUnauthorizedAuthBoundary();
     if (typeof window !== 'undefined' && !globalThis.location.pathname.startsWith('/login')) {
       globalThis.location.href = '/login';
     }
     throw new Error('Unauthorized');
   }
   if (!response.ok) throw new Error(`Workflow lookup failed: ${response.status} ${response.statusText}`);
-  return response.json() as Promise<Workflow>;
+  const workflow = await response.json() as Workflow;
+  assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+  return workflow;
 }

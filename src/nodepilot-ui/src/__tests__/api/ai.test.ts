@@ -8,6 +8,7 @@ vi.mock('../../api/client', () => ({
 }));
 
 import { chatStream, generateScriptStream, type WorkflowChatProposal } from '../../api/ai';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 /** Builds a real Response backed by a chunked ReadableStream — exercises the SSE frame/boundary parsing logic. */
 function sseResponse(chunks: string[]): Response {
@@ -95,6 +96,36 @@ describe('chatStream SSE parser', () => {
       onProposal: () => {},
     });
     expect(deltas.join('')).toBe('ab');
+  });
+
+  it('discards buffered stream frames after the authentication boundary changes', async () => {
+    const encoder = new TextEncoder();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+      },
+    });
+    postEventStreamMock.mockResolvedValue(new Response(stream, {
+      status: 200,
+      headers: { 'Content-Type': 'text/event-stream' },
+    }));
+
+    const deltas: string[] = [];
+    const result = chatStream(
+      { question: 'q', workflowJson: '{}', baseDefinitionHash: 'x', history: [] },
+      { onDelta: (text) => deltas.push(text), onProposal: () => {} },
+    );
+
+    streamController.enqueue(encoder.encode('event: delta\ndata: {"text":"before"}\n\n'));
+    await vi.waitFor(() => expect(deltas).toEqual(['before']));
+
+    clearLocalAuthBoundary();
+    streamController.enqueue(encoder.encode('event: delta\ndata: {"text":"stale"}\n\n'));
+    streamController.close();
+
+    await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+    expect(deltas).toEqual(['before']);
   });
 });
 

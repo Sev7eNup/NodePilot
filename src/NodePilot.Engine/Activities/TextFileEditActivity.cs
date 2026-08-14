@@ -142,6 +142,10 @@ public class TextFileEditActivity : BaseRemoteActivity
         var lineNumberLit = lineNumber?.ToString() ?? "0";
         var rangeFromLit = rangeFrom?.ToString() ?? "0";
         var rangeToLit = rangeTo?.ToString() ?? "0";
+        var targetPathGuard = TargetPathGuardScript.Build(
+            _config,
+            ("$__path", "path"),
+            ("$__path + $__backupSuffix", "backupPath"));
 
         return $$"""
             $ErrorActionPreference = 'Stop'
@@ -178,6 +182,7 @@ public class TextFileEditActivity : BaseRemoteActivity
                 summary = $null
             }
             try {
+            {{targetPathGuard}}
             {{TextEditPowerShellBody}}
             } catch {
                 $__result.ok = $false

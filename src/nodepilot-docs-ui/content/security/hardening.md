@@ -32,13 +32,42 @@ Read-Mode ist Defense-in-Depth, kein Ersatz fuer einen gehaerteten Datenbank-Pri
 
 ## File Path Roots
 
-`FileSystemOperation:AllowedRoots` loest lokale Symlinks/Junctions fuer existierende
-Pfadsegmente auf, bevor der Root-Vergleich passiert. Ein Link innerhalb eines erlaubten Roots
-auf ein Ziel ausserhalb wird dadurch lokal blockiert.
+`FileSystemOperation:AllowedRoots` vergleicht Pfade nur innerhalb explizit erlaubter Roots.
+Vorher werden alle vorhandenen Pfadsegmente ueber link-lokale Attribute geprueft: Symlinks,
+Junctions und andere Reparse Points werden abgelehnt, nicht aufgeloest oder verfolgt. Diese
+Reparse-Sperre gilt auch bei leerer oder fehlender Root-Liste. Remote-Aktivitaeten wiederholen
+die Pruefung im PowerShell-Kontext des tatsaechlichen WinRM-Ziels. Ein nicht-leerer
+konfigurierter Root muss dort existieren.
 
-Remote-WinRM-Ziele bleiben eine explizite Grenze: die API kann die Reparse-Point-Map des
-Remote-Hosts nicht lokal aufloesen. Remote-Workflows brauchen target-seitige ACLs,
-eingeschraenkte Arbeitsverzeichnisse und keine breit beschreibbaren Link/Junction-Pfade.
+Root-Arrays werden atomar aus dem hoechstprioren Configuration-Provider gelesen; ein kuerzeres
+Runtime-Array erbt daher keine alten Indizes aus `appsettings.json`. `AllowedRoots: []` behaelt
+die bestehende Semantik "keine Containment-Einschraenkung" bei, waehrend die Reparse-Sperre
+aktiv bleibt. Sparse oder anderweitig fehlerhafte Arrays werden fail-closed abgelehnt.
+
+Die Pruefung schliesst vorhandene Junction-Bypaesse, ersetzt aber keine target-seitigen ACLs:
+pfadbasierte PowerShell-/WinRM-Operationen koennen eine gleichzeitig durch einen anderen
+Prozess umbenannte Parent-Directory nicht atomar an einen zuvor geprueften Handle binden.
+Erlaubte Zielbaeume duerfen deshalb nicht fuer weniger privilegierte Benutzer beschreibbar sein.
+
+ZIP-Kompression akzeptiert Wildcards nur im letzten Pfadsegment. Die Expansion und der
+Verzeichnis-Walk erfolgen kontrolliert und nicht rekursiv pro Schritt; jeder Manifest-Eintrag
+wird vor dem Oeffnen erneut auf Reparse Points geprueft. Eckige Klammern sind dabei literale
+Dateinamenzeichen und keine PowerShell-Provider-Wildcards. ZIP-Extraktion validiert vor und nach
+jeder Verzeichniserstellung und schreibt Dateien mit `CreateNew`.
+
+Bei rekursiver Dateiueberwachung wird der vorhandene Baum vor dem Oeffnen des Watchers ohne
+Folgen von Reparse Points geprueft. Auch der manuelle Scan laeuft iterativ, und Ereignispfade
+werden vor dem Dispatch erneut validiert. Eine gleichzeitig durch einen privilegierten Prozess
+ausgefuehrte Parent-Umbenennung kann mit pfadbasierten APIs weiterhin nicht atomar ausgeschlossen
+werden; die ACL des Watched Roots bleibt deshalb sicherheitsrelevant. Gewoehnliche UNC-Shares
+sind fuer FileWatcher weiterhin zulaessig, Windows-Device-/Extended-Pfade werden jedoch vor jedem
+Filesystem-Zugriff verworfen, damit die Hard-Block-Liste nicht ueber `\\?\\C:\\...` umgangen wird.
+Lokale administrative UNC-Aliase wie `\\localhost\\C$\\...` werden vor dem Vergleich auf den
+lokalen Laufwerkspfad kanonisiert. Dabei gelten zuerst die Windows-/SMB-Normalisierungsregeln,
+damit alternative Share-Schreibweisen und am Share-Root geklemmte `..`-Segmente dieselbe Policy
+treffen. Ein Watch-Root, der einen gesperrten Systembaum enthält, wird ebenfalls abgelehnt.
+Unbekannte benannte Shares des lokalen Rechners sind bei `AllowSystemPaths=false` fail-closed;
+Remote-UNC-Shares werden nicht umgeschrieben.
 
 ## Rate-Limiting
 

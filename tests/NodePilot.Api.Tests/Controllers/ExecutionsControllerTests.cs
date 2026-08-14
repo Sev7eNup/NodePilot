@@ -6,6 +6,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using System.Security.Cryptography;
+using System.Text;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
@@ -417,6 +419,11 @@ public class ExecutionsControllerTests
 
     // 32-byte test key — matches MinExternalApiKeyBytes.
     private const string LongKey = "test-api-key-needs-32-bytes-yep!";
+    private const string OtherLongKey = "other-api-key-needs-32-bytes-ok!";
+    private const string ManualApiDefinition =
+        """{"nodes":[{"id":"manual","type":"activity","data":{"activityType":"manualTrigger","config":{}}}],"edges":[]}""";
+    private const string DisabledManualApiDefinition =
+        """{"nodes":[{"id":"manual","type":"activity","data":{"activityType":"manualTrigger","disabled":true,"config":{}}}],"edges":[]}""";
 
     private static readonly NullLogger<ExternalTriggerController> TriggerLogger = NullLogger<ExternalTriggerController>.Instance;
 
@@ -450,6 +457,15 @@ public class ExecutionsControllerTests
         }
     }
 
+    private sealed class ThrowingExecutionDispatchQueue : IExecutionDispatchQueue
+    {
+        public ValueTask EnqueueAsync(
+            Func<CancellationToken, Task> workItem,
+            CancellationToken ct,
+            ExecutionDispatchPriority priority = ExecutionDispatchPriority.Normal)
+            => throw new InvalidOperationException("synthetic enqueue failure");
+    }
+
     private static ExternalTriggerController CreateTriggerController(
         NodePilotDbContext db,
         IWorkflowEngine engine,
@@ -470,13 +486,52 @@ public class ExecutionsControllerTests
         return controller;
     }
 
-    private static IConfiguration ConfigWithKey(string? key)
+    private static IConfiguration ConfigWithKey(string? key, params Guid[] allowedWorkflowIds)
     {
         var builder = new ConfigurationBuilder();
         if (key is not null)
-            builder.AddInMemoryCollection(new Dictionary<string, string?> { ["ExternalTrigger:ApiKey"] = key });
+        {
+            var values = new Dictionary<string, string?> { ["ExternalTrigger:ApiKey"] = key };
+            for (var i = 0; i < allowedWorkflowIds.Length; i++)
+                values[$"ExternalTrigger:AllowedWorkflowIds:{i}"] = allowedWorkflowIds[i].ToString();
+            builder.AddInMemoryCollection(values);
+        }
         return builder.Build();
     }
+
+    private static IConfiguration ConfigWithHashedKeys(
+        params (string IntegrationId, string Key, Guid[] AllowedWorkflowIds)[] entries)
+    {
+        var values = new Dictionary<string, string?>();
+        foreach (var entry in entries)
+        {
+            values[$"ExternalTrigger:Keys:{entry.IntegrationId}:KeyHash"] = Convert.ToBase64String(
+                SHA256.HashData(Encoding.UTF8.GetBytes(entry.Key)));
+            for (var i = 0; i < entry.AllowedWorkflowIds.Length; i++)
+            {
+                values[$"ExternalTrigger:Keys:{entry.IntegrationId}:AllowedWorkflowIds:{i}"] =
+                    entry.AllowedWorkflowIds[i].ToString();
+            }
+        }
+
+        return new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+    }
+
+    private static IConfiguration ConfigWithJsonOverride(
+        IReadOnlyDictionary<string, string?> baseValues,
+        string overrideJson)
+    {
+        var stream = new MemoryStream(Encoding.UTF8.GetBytes(overrideJson));
+        return new ConfigurationBuilder()
+            .AddInMemoryCollection(baseValues)
+            .AddJsonStream(stream)
+            .Build();
+    }
+
+    private static Workflow ExternalWorkflow(string name) => new()
+    {
+        Id = Guid.NewGuid(), Name = name, DefinitionJson = ManualApiDefinition, IsEnabled = true,
+    };
 
     [Fact]
     public async Task ExternalTrigger_NoApiKeyConfigured_ReturnsUnauthorized()
@@ -557,14 +612,377 @@ public class ExecutionsControllerTests
         // 404. Previously a BadRequest for disabled let a holder of a valid API key enumerate
         // which named workflows exist even while disabled.
         var db = CreateContext();
-        db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "Off", DefinitionJson = "{}", IsEnabled = false });
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Off", DefinitionJson = ManualApiDefinition, IsEnabled = false,
+        };
+        db.Workflows.Add(workflow);
         await db.SaveChangesAsync();
 
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey);
 
-        var result = await controller.ExternalTrigger("Off", null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+        var result = await controller.ExternalTrigger(
+            "Off", null, ConfigWithKey(LongKey, workflow.Id), TriggerLogger, CancellationToken.None);
 
         result.Result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_LegacyKeyWithoutWorkflowScope_ReturnsNotFoundWithoutEnqueue()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Manual", DefinitionJson = ManualApiDefinition, IsEnabled = true,
+        };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var queue = new CountingNoopExecutionDispatchQueue();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+
+        var result = await controller.ExternalTrigger(
+            workflow.Name, null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<NotFoundObjectResult>();
+        queue.EnqueueCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_HashedKey_CanStartOnlyItsAllowedWorkflow()
+    {
+        var db = CreateContext();
+        var allowed = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Allowed", DefinitionJson = ManualApiDefinition, IsEnabled = true,
+        };
+        var denied = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Denied", DefinitionJson = ManualApiDefinition, IsEnabled = true,
+        };
+        db.Workflows.AddRange(allowed, denied);
+        await db.SaveChangesAsync();
+
+        var config = ConfigWithHashedKeys(
+            ("integration-a", LongKey, [allowed.Id]),
+            ("integration-b", OtherLongKey, [denied.Id]));
+        var queue = new CountingNoopExecutionDispatchQueue();
+
+        var deniedController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var deniedResult = await deniedController.ExternalTrigger(
+            denied.Name, null, config, TriggerLogger, CancellationToken.None);
+        deniedResult.Result.Should().BeOfType<NotFoundObjectResult>();
+        queue.EnqueueCount.Should().Be(0);
+
+        var allowedController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var allowedResult = await allowedController.ExternalTrigger(
+            allowed.Name, null, config, TriggerLogger, CancellationToken.None);
+        allowedResult.Result.Should().BeOfType<AcceptedResult>();
+        queue.EnqueueCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_HashedScope_HigherProviderReplacesLowerArrayAtomically()
+    {
+        var db = CreateContext();
+        var retained = ExternalWorkflow("Retained");
+        var revoked = ExternalWorkflow("Revoked");
+        db.Workflows.AddRange(retained, revoked);
+        await db.SaveChangesAsync();
+
+        var encodedKeyHash = Convert.ToBase64String(
+            SHA256.HashData(Encoding.UTF8.GetBytes(LongKey)));
+        var baseValues = new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:Keys:ci:KeyHash"] = encodedKeyHash,
+            ["ExternalTrigger:Keys:ci:AllowedWorkflowIds:0"] = retained.Id.ToString(),
+            ["ExternalTrigger:Keys:ci:AllowedWorkflowIds:1"] = revoked.Id.ToString(),
+        };
+        var shorterOverride = $$"""
+        {
+          "ExternalTrigger": {
+            "Keys": {
+              "ci": {
+                "KeyHash": "{{encodedKeyHash}}",
+                "AllowedWorkflowIds": ["{{retained.Id}}"]
+              }
+            }
+          }
+        }
+        """;
+        var config = ConfigWithJsonOverride(baseValues, shorterOverride);
+        var queue = new CountingNoopExecutionDispatchQueue();
+
+        var revokedController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var revokedResult = await revokedController.ExternalTrigger(
+            revoked.Name, null, config, TriggerLogger, CancellationToken.None);
+        revokedResult.Result.Should().BeOfType<NotFoundObjectResult>(
+            "lower-provider index 1 must not survive a one-element higher-provider list");
+
+        var retainedController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var retainedResult = await retainedController.ExternalTrigger(
+            retained.Name, null, config, TriggerLogger, CancellationToken.None);
+        retainedResult.Result.Should().BeOfType<AcceptedResult>();
+
+        var emptyOverride = $$"""
+        {
+          "ExternalTrigger": {
+            "Keys": {
+              "ci": { "KeyHash": "{{encodedKeyHash}}", "AllowedWorkflowIds": [] }
+            }
+          }
+        }
+        """;
+        var denyAllConfig = ConfigWithJsonOverride(baseValues, emptyOverride);
+        var denyAllController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var denyAllResult = await denyAllController.ExternalTrigger(
+            retained.Name, null, denyAllConfig, TriggerLogger, CancellationToken.None);
+        denyAllResult.Result.Should().BeOfType<NotFoundObjectResult>(
+            "an explicit empty JSON array is a higher-provider deny-all tombstone");
+        queue.EnqueueCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_HashedKeys_HigherProviderEmptyMapRevokesLowerProviderKeys()
+    {
+        var db = CreateContext();
+        var workflow = ExternalWorkflow("EmergencyRevocation");
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var baseValues = new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:Keys:ci:KeyHash"] = Convert.ToBase64String(
+                SHA256.HashData(Encoding.UTF8.GetBytes(LongKey))),
+            ["ExternalTrigger:Keys:ci:AllowedWorkflowIds:0"] = workflow.Id.ToString(),
+        };
+        var config = ConfigWithJsonOverride(
+            baseValues,
+            """{ "ExternalTrigger": { "Keys": {} } }""");
+        var queue = new CountingNoopExecutionDispatchQueue();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+
+        var result = await controller.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>(
+            "an empty higher-provider key map must tombstone every lower-provider integration");
+        queue.EnqueueCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_HashedKeys_ReplacementHashDoesNotInheritLowerProviderScope()
+    {
+        var db = CreateContext();
+        var workflow = ExternalWorkflow("RotatedKey");
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var baseValues = new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:Keys:ci:KeyHash"] = Convert.ToBase64String(
+                SHA256.HashData(Encoding.UTF8.GetBytes(LongKey))),
+            ["ExternalTrigger:Keys:ci:AllowedWorkflowIds:0"] = workflow.Id.ToString(),
+        };
+        var replacementHash = Convert.ToBase64String(
+            SHA256.HashData(Encoding.UTF8.GetBytes(OtherLongKey)));
+        var config = ConfigWithJsonOverride(
+            baseValues,
+            $$"""{ "ExternalTrigger": { "Keys": { "ci": { "KeyHash": "{{replacementHash}}" } } } }""");
+        var queue = new CountingNoopExecutionDispatchQueue();
+
+        var replacementController = CreateTriggerController(
+            db, Mock.Of<IWorkflowEngine>(), OtherLongKey, queue);
+        var replacementResult = await replacementController.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+        replacementResult.Result.Should().BeOfType<NotFoundObjectResult>(
+            "an omitted scope is deny-all and must not fall back to the old provider's allow-list");
+
+        var oldController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var oldResult = await oldController.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+        oldResult.Result.Should().BeOfType<UnauthorizedObjectResult>(
+            "the lower-provider hash must not survive a replacement map");
+        queue.EnqueueCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_LegacyScope_HigherProviderReplacesLowerArrayAtomically()
+    {
+        var db = CreateContext();
+        var retained = ExternalWorkflow("LegacyRetained");
+        var revoked = ExternalWorkflow("LegacyRevoked");
+        db.Workflows.AddRange(retained, revoked);
+        await db.SaveChangesAsync();
+
+        var baseValues = new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:ApiKey"] = LongKey,
+            ["ExternalTrigger:AllowedWorkflowIds:0"] = retained.Id.ToString(),
+            ["ExternalTrigger:AllowedWorkflowIds:1"] = revoked.Id.ToString(),
+        };
+        var shorterOverride = $$"""
+        { "ExternalTrigger": { "AllowedWorkflowIds": ["{{retained.Id}}"] } }
+        """;
+        var config = ConfigWithJsonOverride(baseValues, shorterOverride);
+        var queue = new CountingNoopExecutionDispatchQueue();
+
+        var revokedController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var revokedResult = await revokedController.ExternalTrigger(
+            revoked.Name, null, config, TriggerLogger, CancellationToken.None);
+        revokedResult.Result.Should().BeOfType<NotFoundObjectResult>();
+
+        var retainedController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var retainedResult = await retainedController.ExternalTrigger(
+            retained.Name, null, config, TriggerLogger, CancellationToken.None);
+        retainedResult.Result.Should().BeOfType<AcceptedResult>();
+
+        var denyAllConfig = ConfigWithJsonOverride(
+            baseValues, """{ "ExternalTrigger": { "AllowedWorkflowIds": [] } }""");
+        var denyAllController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var denyAllResult = await denyAllController.ExternalTrigger(
+            retained.Name, null, denyAllConfig, TriggerLogger, CancellationToken.None);
+        denyAllResult.Result.Should().BeOfType<NotFoundObjectResult>();
+        queue.EnqueueCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_DisabledManualTrigger_ReturnsNotFoundWithoutEnqueue()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "DisabledManual", DefinitionJson = DisabledManualApiDefinition, IsEnabled = true,
+        };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var queue = new CountingNoopExecutionDispatchQueue();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        var result = await controller.ExternalTrigger(
+            workflow.Name, null, ConfigWithHashedKeys(("integration-a", LongKey, [workflow.Id])),
+            TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<NotFoundObjectResult>();
+        queue.EnqueueCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_MalformedWorkflowIdInMatchingKeyScope_FailsClosed()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:Keys:broken:KeyHash"] = Convert.ToBase64String(
+                SHA256.HashData(Encoding.UTF8.GetBytes(LongKey))),
+            ["ExternalTrigger:Keys:broken:AllowedWorkflowIds:0"] = "not-a-guid",
+        }).Build();
+        var db = CreateContext();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey);
+
+        var result = await controller.ExternalTrigger(
+            "anything", null, config, TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>();
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_MalformedWorkflowIdInAnyConfiguredScope_FailsClosed()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:Keys:valid:KeyHash"] = Convert.ToBase64String(
+                SHA256.HashData(Encoding.UTF8.GetBytes(LongKey))),
+            ["ExternalTrigger:Keys:valid:AllowedWorkflowIds:0"] = Guid.NewGuid().ToString(),
+            ["ExternalTrigger:Keys:broken:KeyHash"] = Convert.ToBase64String(
+                SHA256.HashData(Encoding.UTF8.GetBytes(OtherLongKey))),
+            ["ExternalTrigger:Keys:broken:AllowedWorkflowIds:0"] = "not-a-guid",
+        }).Build();
+        var db = CreateContext();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey);
+
+        var result = await controller.ExternalTrigger(
+            "anything", null, config, TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>();
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_MalformedLegacyScope_FailsClosedForHashedKey()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:Keys:valid:KeyHash"] = Convert.ToBase64String(
+                SHA256.HashData(Encoding.UTF8.GetBytes(LongKey))),
+            ["ExternalTrigger:Keys:valid:AllowedWorkflowIds:0"] = Guid.NewGuid().ToString(),
+            ["ExternalTrigger:ApiKey"] = OtherLongKey,
+            ["ExternalTrigger:AllowedWorkflowIds:0"] = "not-a-guid",
+        }).Build();
+        var db = CreateContext();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey);
+
+        var result = await controller.ExternalTrigger(
+            "anything", null, config, TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>();
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_MalformedHashInAnyConfiguredEntry_FailsClosed()
+    {
+        var id = Guid.NewGuid();
+        var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:Keys:valid:KeyHash"] = Convert.ToBase64String(
+                SHA256.HashData(Encoding.UTF8.GetBytes(LongKey))),
+            ["ExternalTrigger:Keys:valid:AllowedWorkflowIds:0"] = id.ToString(),
+            ["ExternalTrigger:Keys:broken:KeyHash"] = "not-base64",
+            ["ExternalTrigger:Keys:broken:AllowedWorkflowIds:0"] = id.ToString(),
+        }).Build();
+        var db = CreateContext();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey);
+
+        var result = await controller.ExternalTrigger(
+            "anything", null, config, TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>();
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_DuplicateMatchingHashes_FailClosed()
+    {
+        var id = Guid.NewGuid();
+        var config = ConfigWithHashedKeys(
+            ("duplicate-a", LongKey, [id]),
+            ("duplicate-b", LongKey, [id]));
+        var db = CreateContext();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey);
+
+        var result = await controller.ExternalTrigger(
+            "anything", null, config, TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>();
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_SameKeyInLegacyAndHashedEntry_FailsClosed()
+    {
+        var id = Guid.NewGuid();
+        var values = new Dictionary<string, string?>
+        {
+            ["ExternalTrigger:ApiKey"] = LongKey,
+            ["ExternalTrigger:AllowedWorkflowIds:0"] = id.ToString(),
+            ["ExternalTrigger:Keys:duplicate:KeyHash"] = Convert.ToBase64String(
+                SHA256.HashData(Encoding.UTF8.GetBytes(LongKey))),
+            ["ExternalTrigger:Keys:duplicate:AllowedWorkflowIds:0"] = id.ToString(),
+        };
+        var config = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
+        var db = CreateContext();
+        var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey);
+
+        var result = await controller.ExternalTrigger(
+            "anything", null, config, TriggerLogger, CancellationToken.None);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>();
     }
 
     [Fact]
@@ -576,11 +994,8 @@ public class ExecutionsControllerTests
             Id = Guid.NewGuid(), Username = "publisher", PasswordHash = "hash",
             Role = UserRole.Admin, IsActive = true,
         };
-        var wf = new Workflow
-        {
-            Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true,
-            PublishedByUserId = publisher.Id,
-        };
+        var wf = ExternalWorkflow("Enabled");
+        wf.PublishedByUserId = publisher.Id;
         db.AddRange(publisher, wf);
         await db.SaveChangesAsync();
 
@@ -606,7 +1021,8 @@ public class ExecutionsControllerTests
         var queue = new ImmediateExecutionDispatchQueue();
         var controller = CreateTriggerController(db, engine.Object, presentedKey: LongKey, queue);
 
-        var result = await controller.ExternalTrigger("Enabled", null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+        var result = await controller.ExternalTrigger(
+            "Enabled", null, ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         result.Result.Should().BeOfType<AcceptedResult>();
         queue.EnqueueCount.Should().Be(1);
@@ -643,7 +1059,7 @@ public class ExecutionsControllerTests
     public async Task ExternalTrigger_BlockedByMaintenanceWindow_Returns404AndDoesNotConsumeIdempotencyKey()
     {
         var db = CreateContext();
-        var wf = new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true };
+        var wf = ExternalWorkflow("Enabled");
         db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
@@ -652,7 +1068,8 @@ public class ExecutionsControllerTests
             maintenance: NodePilot.TestCommons.StubMaintenanceWindowEvaluator.Blocking("PatchWindow"));
         controller.HttpContext.Request.Headers["Idempotency-Key"] = "blocked-request";
 
-        var result = await controller.ExternalTrigger("Enabled", null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+        var result = await controller.ExternalTrigger(
+            "Enabled", null, ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         // Uniform 404 (anti-enumeration) + the critical invariant: the maintenance check runs
         // BEFORE the idempotency-key transaction, so a blocked fire neither persists the key nor
@@ -669,7 +1086,8 @@ public class ExecutionsControllerTests
         // M-32: the parameter map is bound before the API key is compared and every entry is
         // copied into the execution's variable dictionary, so an unbounded map is engine work.
         var db = CreateContext();
-        db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true });
+        var wf = ExternalWorkflow("Enabled");
+        db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
         var queue = new CountingNoopExecutionDispatchQueue();
@@ -680,7 +1098,7 @@ public class ExecutionsControllerTests
 
         var result = await controller.ExternalTrigger(
             "Enabled", new ExecuteWorkflowRequest(parameters),
-            ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+            ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
         queue.EnqueueCount.Should().Be(0);
@@ -691,7 +1109,8 @@ public class ExecutionsControllerTests
     public async Task ExternalTrigger_OversizedParameterValue_ReturnsBadRequestWithoutEnqueue()
     {
         var db = CreateContext();
-        db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true });
+        var wf = ExternalWorkflow("Enabled");
+        db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
         var queue = new CountingNoopExecutionDispatchQueue();
@@ -703,7 +1122,7 @@ public class ExecutionsControllerTests
 
         var result = await controller.ExternalTrigger(
             "Enabled", new ExecuteWorkflowRequest(parameters),
-            ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+            ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         result.Result.Should().BeOfType<BadRequestObjectResult>();
         queue.EnqueueCount.Should().Be(0);
@@ -715,7 +1134,8 @@ public class ExecutionsControllerTests
     {
         // Guards the caps against being set so tight they break ordinary runbooks.
         var db = CreateContext();
-        db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true });
+        var wf = ExternalWorkflow("Enabled");
+        db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
         var queue = new CountingNoopExecutionDispatchQueue();
@@ -724,7 +1144,7 @@ public class ExecutionsControllerTests
 
         var result = await controller.ExternalTrigger(
             "Enabled", new ExecuteWorkflowRequest(parameters),
-            ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+            ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         result.Result.Should().NotBeOfType<BadRequestObjectResult>();
         queue.EnqueueCount.Should().Be(1);
@@ -734,7 +1154,7 @@ public class ExecutionsControllerTests
     public async Task ExternalTrigger_IdempotencyKey_ReplayReturnsPendingExecutionWithoutSecondEnqueue()
     {
         var db = CreateContext();
-        var wf = new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true };
+        var wf = ExternalWorkflow("Enabled");
         db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
@@ -743,7 +1163,8 @@ public class ExecutionsControllerTests
 
         var first = CreateTriggerController(db, engine.Object, presentedKey: LongKey, queue);
         first.HttpContext.Request.Headers["Idempotency-Key"] = "same-request";
-        var firstResult = await first.ExternalTrigger("Enabled", null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+        var firstResult = await first.ExternalTrigger(
+            "Enabled", null, ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         firstResult.Result.Should().BeOfType<AcceptedResult>();
         queue.EnqueueCount.Should().Be(1);
@@ -751,7 +1172,8 @@ public class ExecutionsControllerTests
 
         var second = CreateTriggerController(db, engine.Object, presentedKey: LongKey, queue);
         second.HttpContext.Request.Headers["Idempotency-Key"] = "same-request";
-        var secondResult = await second.ExternalTrigger("Enabled", null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+        var secondResult = await second.ExternalTrigger(
+            "Enabled", null, ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         secondResult.Result.Should().BeOfType<OkObjectResult>();
         second.Response.Headers["Idempotent-Replayed"].ToString().Should().Be("true");
@@ -770,6 +1192,123 @@ public class ExecutionsControllerTests
     }
 
     [Fact]
+    public async Task ExternalTrigger_IdempotencyKey_IsSeparatedByAuthenticatedKeyPrincipal()
+    {
+        var db = CreateContext();
+        var workflow = ExternalWorkflow("PrincipalScoped");
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+
+        var config = ConfigWithHashedKeys(
+            ("integration-a", LongKey, [workflow.Id]),
+            ("integration-b", OtherLongKey, [workflow.Id]));
+        var queue = new CountingNoopExecutionDispatchQueue();
+
+        var firstA = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        firstA.HttpContext.Request.Headers["Idempotency-Key"] = "shared-client-token";
+        var firstAResult = await firstA.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+        var firstAResponse = firstAResult.Result.Should().BeOfType<AcceptedResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+
+        var firstB = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), OtherLongKey, queue);
+        firstB.HttpContext.Request.Headers["Idempotency-Key"] = "shared-client-token";
+        var firstBResult = await firstB.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+        var firstBResponse = firstBResult.Result.Should().BeOfType<AcceptedResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+
+        firstBResponse.Id.Should().NotBe(firstAResponse.Id,
+            "a different authenticated key principal owns a separate idempotency domain");
+        queue.EnqueueCount.Should().Be(2);
+        var storedKeys = await db.IdempotencyKeys.OrderBy(k => k.Key).Select(k => k.Key).ToListAsync();
+        storedKeys.Should().HaveCount(2).And.OnlyHaveUniqueItems();
+        storedKeys.Should().OnlyContain(key => key.StartsWith("ext:v1:", StringComparison.Ordinal));
+        storedKeys.Should().NotContain("shared-client-token", "the raw header is never persisted");
+
+        var replayA = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        replayA.HttpContext.Request.Headers["Idempotency-Key"] = "shared-client-token";
+        var replayAResult = await replayA.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+        var replayAResponse = replayAResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+        replayAResponse.Id.Should().Be(firstAResponse.Id);
+        queue.EnqueueCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_IdempotencyPrincipal_CanonicalizesIntegrationIdCasing()
+    {
+        var db = CreateContext();
+        var workflow = ExternalWorkflow("CanonicalPrincipal");
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var queue = new CountingNoopExecutionDispatchQueue();
+
+        var upperConfig = ConfigWithHashedKeys(("CI-Agent", LongKey, [workflow.Id]));
+        var first = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        first.HttpContext.Request.Headers["Idempotency-Key"] = "case-stable";
+        var firstResult = await first.ExternalTrigger(
+            workflow.Name, null, upperConfig, TriggerLogger, CancellationToken.None);
+        var firstResponse = firstResult.Result.Should().BeOfType<AcceptedResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+
+        var lowerConfig = ConfigWithHashedKeys(("ci-agent", LongKey, [workflow.Id]));
+        var replay = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        replay.HttpContext.Request.Headers["Idempotency-Key"] = "case-stable";
+        var replayResult = await replay.ExternalTrigger(
+            workflow.Name, null, lowerConfig, TriggerLogger, CancellationToken.None);
+        var replayResponse = replayResult.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+
+        replayResponse.Id.Should().Be(firstResponse.Id);
+        queue.EnqueueCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void ExternalTrigger_IdempotencyStorageKey_UsesUnambiguousLengthPrefixedEncoding()
+    {
+        var first = ExternalTriggerController.BuildIdempotencyStorageKey("a\0b", "c");
+        var second = ExternalTriggerController.BuildIdempotencyStorageKey("a", "b\0c");
+
+        first.Should().NotBe(second);
+        first.Should().StartWith("ext:v1:").And.HaveLength(71);
+        second.Should().StartWith("ext:v1:").And.HaveLength(71);
+    }
+
+    [Fact]
+    public async Task ExternalTrigger_EnqueueFailure_RemovesPrincipalScopedReservationSoRetryCanRun()
+    {
+        var db = CreateContext();
+        var workflow = ExternalWorkflow("RetryAfterFailure");
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var config = ConfigWithHashedKeys(("ci", LongKey, [workflow.Id]));
+
+        var failing = CreateTriggerController(
+            db, Mock.Of<IWorkflowEngine>(), LongKey, new ThrowingExecutionDispatchQueue());
+        failing.HttpContext.Request.Headers["Idempotency-Key"] = "retry-after-enqueue-failure";
+        Func<Task> firstAttempt = async () => await failing.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+
+        await firstAttempt.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("synthetic enqueue failure");
+        (await db.IdempotencyKeys.CountAsync()).Should().Be(0,
+            "cleanup must remove the internal principal-scoped digest after enqueue failure");
+
+        var queue = new CountingNoopExecutionDispatchQueue();
+        var retry = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        retry.HttpContext.Request.Headers["Idempotency-Key"] = "retry-after-enqueue-failure";
+        var retryResult = await retry.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+
+        retryResult.Result.Should().BeOfType<AcceptedResult>();
+        queue.EnqueueCount.Should().Be(1);
+        (await db.IdempotencyKeys.CountAsync()).Should().Be(1);
+        (await db.IdempotencyKeys.SingleAsync()).Key.Should().StartWith("ext:v1:");
+    }
+
+    [Fact]
     public async Task ExternalTrigger_Replay_RedactsSensitiveExecutionFields()
     {
         // L-7 (security audit 2026-05-15): the API-key trigger surface carries no role, so it
@@ -777,22 +1316,8 @@ public class ExecutionsControllerTests
         // ExecutionsController does for callers below Admin/Operator — otherwise step-stdout
         // tokens or webhook-body secrets leak straight back to the API-key holder.
         var db = CreateContext();
-        var wf = new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true };
+        var wf = ExternalWorkflow("Enabled");
         db.Workflows.Add(wf);
-        var exec = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(), WorkflowId = wf.Id, Status = ExecutionStatus.Succeeded,
-            StartedAt = DateTime.UtcNow,
-            ReturnData = "result token=SECRET-XYZ",
-            ErrorMessage = "failure detail SECRET-XYZ",
-            InputParametersJson = "{\"pw\":\"SECRET-XYZ\"}",
-        };
-        db.WorkflowExecutions.Add(exec);
-        db.IdempotencyKeys.Add(new IdempotencyKey
-        {
-            Id = Guid.NewGuid(), Key = "replay-secret", WorkflowId = wf.Id,
-            ExecutionId = exec.Id, FirstSeenAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddHours(1),
-        });
         await db.SaveChangesAsync();
 
         var redactorConfig = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -801,11 +1326,28 @@ public class ExecutionsControllerTests
             ["Logging:Redaction:Patterns:0"] = "SECRET-[A-Z]+",
         }).Build();
         var redactor = new NodePilot.Engine.Security.OutputRedactor(redactorConfig);
+        var triggerConfig = ConfigWithKey(LongKey, wf.Id);
+        var queue = new CountingNoopExecutionDispatchQueue();
+
+        var initial = CreateTriggerController(
+            db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue, redactor: redactor);
+        initial.HttpContext.Request.Headers["Idempotency-Key"] = "replay-secret";
+        var initialResult = await initial.ExternalTrigger(
+            "Enabled", null, triggerConfig, TriggerLogger, CancellationToken.None);
+        var initialExecution = initialResult.Result.Should().BeOfType<AcceptedResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+        var exec = (await db.WorkflowExecutions.FindAsync(initialExecution.Id))!;
+        exec.Status = ExecutionStatus.Succeeded;
+        exec.ReturnData = "result token=SECRET-XYZ";
+        exec.ErrorMessage = "failure detail SECRET-XYZ";
+        exec.InputParametersJson = "{\"pw\":\"SECRET-XYZ\"}";
+        await db.SaveChangesAsync();
 
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, redactor: redactor);
         controller.HttpContext.Request.Headers["Idempotency-Key"] = "replay-secret";
 
-        var result = await controller.ExternalTrigger("Enabled", null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+        var result = await controller.ExternalTrigger(
+            "Enabled", null, triggerConfig, TriggerLogger, CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
         var resp = ok.Value.Should().BeOfType<ExecutionResponse>().Subject;
@@ -820,7 +1362,7 @@ public class ExecutionsControllerTests
         // Anonymous external invocations must leave an audit trail. Without it, an attacker
         // (or a buggy integration) holding the API key can fire workflows without trace.
         var db = CreateContext();
-        var wf = new Workflow { Id = Guid.NewGuid(), Name = "Audited", DefinitionJson = "{}", IsEnabled = true };
+        var wf = ExternalWorkflow("Audited");
         db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
@@ -830,7 +1372,7 @@ public class ExecutionsControllerTests
 
         var result = await controller.ExternalTrigger("Audited",
             new ExecuteWorkflowRequest(new Dictionary<string, string> { ["v"] = "1" }),
-            ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+            ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         var accepted = result.Result.Should().BeOfType<AcceptedResult>().Subject;
         var response = accepted.Value.Should().BeOfType<ExecutionResponse>().Subject;
@@ -839,6 +1381,8 @@ public class ExecutionsControllerTests
         call.ResourceType.Should().Be("Workflow");
         call.ResourceId.Should().Be(wf.Id);
         call.Details.Should().Contain("\"workflowName\":\"Audited\"");
+        call.Details.Should().Contain("\"integrationId\":\"legacy\"");
+        call.Details.Should().NotContain(LongKey);
         call.Details.Should().Contain($"\"executionId\":\"{response.Id}\"");
         call.Details.Should().Contain("\"idempotencyKeyUsed\":false");
         call.Details.Should().Contain("\"parameterCount\":1");
@@ -851,7 +1395,7 @@ public class ExecutionsControllerTests
         // EXTERNAL_TRIGGER_FIRED. Otherwise a misbehaving caller retrying the same key
         // would inflate the audit log.
         var db = CreateContext();
-        var wf = new Workflow { Id = Guid.NewGuid(), Name = "Enabled", DefinitionJson = "{}", IsEnabled = true };
+        var wf = ExternalWorkflow("Enabled");
         db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
@@ -860,11 +1404,13 @@ public class ExecutionsControllerTests
 
         var first = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue, audit);
         first.HttpContext.Request.Headers["Idempotency-Key"] = "replay-key";
-        await first.ExternalTrigger("Enabled", null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+        await first.ExternalTrigger(
+            "Enabled", null, ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         var second = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue, audit);
         second.HttpContext.Request.Headers["Idempotency-Key"] = "replay-key";
-        var secondResult = await second.ExternalTrigger("Enabled", null, ConfigWithKey(LongKey), TriggerLogger, CancellationToken.None);
+        var secondResult = await second.ExternalTrigger(
+            "Enabled", null, ConfigWithKey(LongKey, wf.Id), TriggerLogger, CancellationToken.None);
 
         secondResult.Result.Should().BeOfType<OkObjectResult>();
         audit.Calls.Where(c => c.Action == "EXTERNAL_TRIGGER_FIRED").Should().HaveCount(1,

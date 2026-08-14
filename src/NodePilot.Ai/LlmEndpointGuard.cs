@@ -71,7 +71,39 @@ public static class LlmEndpointGuard
                 + "(169.254.0.0/16, metadata.google.internal, metadata.azure.com).");
         }
 
+        // Local model servers such as Ollama commonly expose HTTP on loopback. Keep that useful
+        // deployment mode, but never send prompts or bearer keys over cleartext to a remote host.
+        // The host test is deliberately literal: no DNS lookup means a hostname cannot be rebound
+        // from loopback to a remote address after validation.
+        if (uri.Scheme == Uri.UriSchemeHttp && !IsLiteralLoopbackEndpoint(uri))
+        {
+            throw new LlmException(LlmErrorKind.Unreachable,
+                $"SECURITY: LLM baseUrl ('{trimmed}') uses plaintext HTTP for a non-loopback host. "
+                + "Use HTTPS; HTTP is allowed only for literal localhost/loopback endpoints.");
+        }
+
         return trimmed.TrimEnd('/');
+    }
+
+    /// <summary>
+    /// True only for a URI whose host is the exact <c>localhost</c> label or a literal loopback
+    /// address. Hostnames which merely resolve to loopback are intentionally excluded: the
+    /// cleartext exception must not acquire DNS-rebinding semantics.
+    /// </summary>
+    public static bool IsLiteralLoopbackEndpoint(Uri endpoint)
+    {
+        ArgumentNullException.ThrowIfNull(endpoint);
+
+        if (endpoint.Host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var host = endpoint.Host.Trim('[', ']');
+        if (!IPAddress.TryParse(host, out var address))
+            return false;
+
+        if (address.IsIPv4MappedToIPv6)
+            address = address.MapToIPv4();
+        return IPAddress.IsLoopback(address);
     }
 
     /// <summary>

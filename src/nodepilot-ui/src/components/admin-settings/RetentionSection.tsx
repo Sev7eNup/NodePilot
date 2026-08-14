@@ -9,7 +9,7 @@ import {
 } from '../../api/adminSettings';
 import { EtagConflictDialog } from './EtagConflictDialog';
 import { EnvOverrideBadge } from './EnvOverrideBadge';
-import { HotReloadHint } from './SectionFormHelpers';
+import { HotReloadHint, CompactCard } from './SectionFormHelpers';
 
 type ExecutionsDto = { enabled: boolean; maxAgeDays: number; intervalMinutes: number; batchSize: number; archivePath: string | null };
 type AuditLogDto   = { enabled: boolean; maxAgeDays: number; intervalMinutes: number; batchSize: number; archivePath: string | null };
@@ -80,7 +80,7 @@ export function RetentionSection() {
   });
 
   if (isLoading || !data) {
-    return <Card icon={DataBase} title="Retention"><p className="text-sm">{t('adminSettings:loading')}</p></Card>;
+    return <CompactCard headingMargin="mb-4" icon={DataBase} title="Retention"><p className="text-sm">{t('adminSettings:loading')}</p></CompactCard>;
   }
 
   // env/cli-overridden fields are read-only — this mirrors the SMTP/LLM cards and
@@ -93,7 +93,7 @@ export function RetentionSection() {
 
   return (
     <div className="space-y-4">
-      <Card icon={DataBase} title="Executions">
+      <CompactCard headingMargin="mb-4" icon={DataBase} title="Executions">
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
         <ExecutionsForm
           dto={form.executions}
@@ -103,8 +103,8 @@ export function RetentionSection() {
           effectiveSource={data.effectiveSource}
           isEnvLocked={isEnvLocked}
         />
-      </Card>
-      <Card icon={Document} title={t('adminSettings:retention.auditLogCardTitle')}>
+      </CompactCard>
+      <CompactCard headingMargin="mb-4" icon={Document} title={t('adminSettings:retention.auditLogCardTitle')}>
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
         <ExecutionsForm
           dto={form.auditLog}
@@ -114,8 +114,8 @@ export function RetentionSection() {
           effectiveSource={data.effectiveSource}
           isEnvLocked={isEnvLocked}
         />
-      </Card>
-      <Card icon={History} title={t('adminSettings:retention.workflowVersionsCardTitle')}>
+      </CompactCard>
+      <CompactCard headingMargin="mb-4" icon={History} title={t('adminSettings:retention.workflowVersionsCardTitle')}>
         <HotReloadHint isHotReloadable={data.isHotReloadable} />
         <VersionsForm
           dto={form.workflowVersions}
@@ -124,7 +124,7 @@ export function RetentionSection() {
           effectiveSource={data.effectiveSource}
           isEnvLocked={isEnvLocked}
         />
-      </Card>
+      </CompactCard>
       {errors && errors.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-md p-3 text-red-900 text-sm">
           <p className="font-semibold mb-1">{t('adminSettings:validationErrorsTitle')}</p>
@@ -287,17 +287,6 @@ function NumberInput({
         onChange={(e) => onChange(Number.parseInt(e.target.value, 10) || 0)}
         className="w-full px-3 py-2 border border-outline-variant rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-surface-low disabled:text-on-surface-variant"
       />
-    </div>
-  );
-}
-
-function Card({ icon: Icon, title, children }: Readonly<{ icon: React.ComponentType<{ size?: number }>; title: string; children: React.ReactNode }>) {
-  return (
-    <div className="np-card p-4">
-      <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-4">
-        <Icon size={18} /> {title}
-      </h3>
-      {children}
     </div>
   );
 }

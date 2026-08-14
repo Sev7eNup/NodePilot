@@ -57,7 +57,7 @@ public static class OpenApiSetup
             opts.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme
             {
                 Name = "X-Api-Key",
-                Description = "External-trigger API key (ExternalTrigger:ApiKey in appsettings). Only consumed by POST /api/trigger/{workflowNameOrId}.",
+                Description = "Workflow-scoped external-trigger key. Preferred configuration stores its SHA-256 hash under ExternalTrigger:Keys:<integrationId> with AllowedWorkflowIds. The workflow must also contain an enabled manualTrigger. Only consumed by POST /api/trigger/{workflowNameOrId}.",
                 In = ParameterLocation.Header,
                 Type = SecuritySchemeType.ApiKey,
             });

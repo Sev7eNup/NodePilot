@@ -9,7 +9,7 @@ namespace NodePilot.Ai;
 /// <see cref="LlmServiceCollectionExtensions.AddNodePilotAi"/> runs it at startup, and the API's
 /// <c>LlmConfigBootValidator</c> runs it against the simulated merged config on every settings PUT.
 ///
-/// <para><b>Scope rule for the metadata check:</b> when <c>Llm:Enabled=true</c>, <i>every</i>
+/// <para><b>Scope rule for the endpoint check:</b> when <c>Llm:Enabled=true</c>, <i>every</i>
 /// profile's BaseUrl must pass — not just the active one. Switching the active profile is a plain
 /// settings save with no restart, so a parked profile pointing at a metadata endpoint would be a
 /// loaded gun that only fires on the switch. With <c>Enabled=false</c> nothing is checked, so an
@@ -24,8 +24,8 @@ public static class LlmProfileValidation
     public const string ProfilesKey = $"{LlmOptions.SectionName}:Profiles";
 
     /// <summary>
-    /// Cloud-metadata check across all configured profiles. Returns an empty list when
-    /// <c>Llm:Enabled=false</c>.
+    /// Format, transport and cloud-metadata checks across all configured profiles. Returns an
+    /// empty list when <c>Llm:Enabled=false</c>.
     /// </summary>
     public static IReadOnlyList<ProfileIssue> ValidateProfileEndpoints(IConfiguration configuration)
     {
@@ -39,14 +39,17 @@ public static class LlmProfileValidation
         {
             var baseUrl = profile["BaseUrl"];
             if (string.IsNullOrWhiteSpace(baseUrl)) continue;
-            if (!LlmEndpointGuard.IsCloudMetadataEndpoint(baseUrl)) continue;
-
             var name = string.IsNullOrWhiteSpace(profile["Name"]) ? profile.Key : profile["Name"];
-            issues.Add(new ProfileIssue(
-                $"{ProfilesKey}:{profile.Key}:BaseUrl",
-                $"SECURITY: LLM profile '{name}' has a BaseUrl ('{baseUrl}') that points at a cloud-metadata "
-                + "endpoint. This range (169.254.0.0/16, metadata.google.internal, metadata.azure.com) is "
-                + "always blocked. Choose a real LLM endpoint, delete the profile, or disable Llm:Enabled."));
+            try
+            {
+                _ = LlmEndpointGuard.NormalizeAndValidateBaseUrl(baseUrl);
+            }
+            catch (LlmException ex)
+            {
+                issues.Add(new ProfileIssue(
+                    $"{ProfilesKey}:{profile.Key}:BaseUrl",
+                    $"LLM profile '{name}' is not usable: {ex.Message}"));
+            }
         }
 
         return issues;

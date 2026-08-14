@@ -11,10 +11,16 @@ import { dbAdminApi, type DbAdminQueryResponse } from '../../api/dbadmin';
 import { useThemeStore, resolveTheme } from '../../stores/themeStore';
 import { TypedPhraseConfirmDialog } from '../common/TypedPhraseConfirmDialog';
 import { ResizeHandle, useResizableColumns, type ResizableColumn } from './useResizableColumns';
+import {
+  DB_ADMIN_QUERY_DRAFT_KEY as DRAFT_SQL_KEY,
+  DB_ADMIN_QUERY_HISTORY_KEY as HISTORY_KEY,
+  DB_ADMIN_QUERY_MODE_KEY as DRAFT_MODE_KEY,
+} from '../../security/sensitiveBrowserState';
+import {
+  captureAuthBoundaryGeneration,
+  isAuthBoundaryGenerationCurrent,
+} from '../../security/authBoundary';
 
-const HISTORY_KEY = 'nodepilot.dbAdmin.queryHistory';
-const DRAFT_SQL_KEY = 'nodepilot.dbAdmin.queryDraft';
-const DRAFT_MODE_KEY = 'nodepilot.dbAdmin.queryMode';
 const HISTORY_LIMIT = 20;
 const WRITE_CONFIRM_PHRASE = 'ALLOW WRITE';
 
@@ -28,10 +34,15 @@ interface Props {
 }
 
 type Mode = 'read' | 'write';
+interface QueryVariables {
+  sql: string;
+  mode: Mode;
+  authBoundaryGeneration: number;
+}
 
 function loadHistory(): string[] {
   try {
-    const raw = globalThis.localStorage.getItem(HISTORY_KEY);
+    const raw = globalThis.sessionStorage.getItem(HISTORY_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : [];
@@ -42,9 +53,9 @@ function loadHistory(): string[] {
 
 function saveHistory(items: string[]): void {
   try {
-    globalThis.localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, HISTORY_LIMIT)));
+    globalThis.sessionStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, HISTORY_LIMIT)));
   } catch {
-    // localStorage may be disabled (private browsing, quota). History is a nice-to-have,
+    // sessionStorage may be disabled (private browsing, quota). History is a nice-to-have,
     // not a correctness boundary — silently drop and move on.
   }
 }
@@ -54,7 +65,7 @@ function saveHistory(items: string[]): void {
  *  history is "things I'd want to re-run" and the draft is "things I was typing". */
 function loadDraftSql(): string {
   try {
-    return globalThis.localStorage.getItem(DRAFT_SQL_KEY) ?? '';
+    return globalThis.sessionStorage.getItem(DRAFT_SQL_KEY) ?? '';
   } catch {
     return '';
   }
@@ -62,7 +73,7 @@ function loadDraftSql(): string {
 
 function saveDraftSql(value: string): void {
   try {
-    globalThis.localStorage.setItem(DRAFT_SQL_KEY, value);
+    globalThis.sessionStorage.setItem(DRAFT_SQL_KEY, value);
   } catch {
     // Same fallback rationale as saveHistory.
   }
@@ -70,7 +81,7 @@ function saveDraftSql(value: string): void {
 
 function loadDraftMode(): 'read' | 'write' {
   try {
-    return globalThis.localStorage.getItem(DRAFT_MODE_KEY) === 'write' ? 'write' : 'read';
+    return globalThis.sessionStorage.getItem(DRAFT_MODE_KEY) === 'write' ? 'write' : 'read';
   } catch {
     return 'read';
   }
@@ -88,15 +99,15 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
   const [writeConfirmInput, setWriteConfirmInput] = useState('');
   const [showWriteDialog, setShowWriteDialog] = useState(false);
 
-  // Persist sql + mode to localStorage on every change so navigating to a table
-  // and back doesn't drop the in-progress query.
+  // Persist sql + mode to this tab's sessionStorage so navigation/reload keeps the draft without
+  // leaving it in the browser profile after the tab or authentication session ends.
   const setSql = useCallback((v: string) => {
     setSqlState(v);
     saveDraftSql(v);
   }, []);
   const setMode = useCallback((m: Mode) => {
     setModeState(m);
-    try { globalThis.localStorage.setItem(DRAFT_MODE_KEY, m); } catch { /* see saveHistory rationale */ }
+    try { globalThis.sessionStorage.setItem(DRAFT_MODE_KEY, m); } catch { /* see saveHistory rationale */ }
   }, []);
 
   const editorRef = useRef<ReactCodeMirrorRef>(null);
@@ -111,11 +122,14 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
   // an enabled state that the server would just reject.
   useEffect(() => {
     if (info && !info.allowWriteQueries && mode === 'write') setMode('read');
-  }, [info, mode]);
+  }, [info, mode, setMode]);
 
-  const queryMutation = useMutation<DbAdminQueryResponse, Error, { sql: string; mode: Mode }>({
+  const queryMutation = useMutation<DbAdminQueryResponse, Error, QueryVariables>({
     mutationFn: ({ sql: s, mode: m }) => dbAdminApi.query(s, m),
     onSuccess: (_, vars) => {
+      // TanStack mutations can finish after QueryClient.clear()/component unmount. Never let a
+      // response started under User A repopulate User B's SQL history after an auth boundary.
+      if (!isAuthBoundaryGenerationCurrent(vars.authBoundaryGeneration)) return;
       // Push successful queries into history (de-dup, most-recent first).
       setHistory((prev) => {
         const next = [vars.sql, ...prev.filter((q) => q !== vars.sql)].slice(0, HISTORY_LIMIT);
@@ -155,7 +169,11 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
       setWriteConfirmInput('');
       return;
     }
-    queryMutation.mutate({ sql: trimmed, mode });
+    queryMutation.mutate({
+      sql: trimmed,
+      mode,
+      authBoundaryGeneration: captureAuthBoundaryGeneration(),
+    });
   }, [sql, mode, queryMutation, showWriteDialog]);
 
   const cmExtensions = useMemo(() => [
@@ -169,7 +187,12 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
   ], [runQuery]);
 
   const writeAllowed = info?.allowWriteQueries ?? false;
-  const canRun = sql.trim().length > 0 && !queryMutation.isPending;
+  const mutationBelongsToCurrentBoundary = queryMutation.variables === undefined
+    || isAuthBoundaryGenerationCurrent(queryMutation.variables.authBoundaryGeneration);
+  const visibleMutationData = mutationBelongsToCurrentBoundary ? queryMutation.data : undefined;
+  const visibleMutationError = mutationBelongsToCurrentBoundary ? queryMutation.error : null;
+  const canRun = sql.trim().length > 0
+    && !(mutationBelongsToCurrentBoundary && queryMutation.isPending);
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -312,23 +335,23 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
       )}
       {/* Results / error */}
       <div className="flex-1 overflow-auto">
-        {queryMutation.error && (
+        {visibleMutationError && (
           <div className="m-4 p-3 rounded-md bg-error-container/40 border border-error/40 text-sm text-error">
             <div className="flex items-start gap-2">
               <WarningAltFilled size={14} className="mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
                 <p className="font-semibold mb-0.5">{t('database:query.errorTitle')}</p>
                 <p className="font-mono text-xs whitespace-pre-wrap break-words">
-                  {queryMutation.error.message}
+                  {visibleMutationError.message}
                 </p>
               </div>
             </div>
           </div>
         )}
 
-        {queryMutation.data && <ResultTable data={queryMutation.data} />}
+        {visibleMutationData && <ResultTable data={visibleMutationData} />}
 
-        {!queryMutation.data && !queryMutation.error && (
+        {!visibleMutationData && !visibleMutationError && (
           <div className="flex flex-col items-center justify-center h-full text-on-surface-variant gap-2">
             <Play size={28} className="opacity-30" />
             <p className="text-sm font-label">{t('database:query.idleHint')}</p>
@@ -344,7 +367,11 @@ export function QueryPane({ insertSignal }: Readonly<Props>) {
           onConfirm={() => {
             setShowWriteDialog(false);
             setWriteConfirmInput('');
-            queryMutation.mutate({ sql: sql.trim(), mode: 'write' });
+            queryMutation.mutate({
+              sql: sql.trim(),
+              mode: 'write',
+              authBoundaryGeneration: captureAuthBoundaryGeneration(),
+            });
           }}
           title={t('database:query.confirmWriteTitle')}
           body={t('database:query.confirmWriteHint')}
