@@ -17,39 +17,6 @@ internal static class ApiProblems
         return result;
     }
 
-    public static NotFoundObjectResult NotFound(
-        ControllerBase controller,
-        string code,
-        string detail,
-        string title = "Not found")
-    {
-        var result = new NotFoundObjectResult(BuildProblem(controller, StatusCodes.Status404NotFound, code, title, detail));
-        result.ContentTypes.Add("application/problem+json");
-        return result;
-    }
-
-    public static ConflictObjectResult Conflict(
-        ControllerBase controller,
-        string code,
-        string detail,
-        string title = "Conflict")
-    {
-        var result = new ConflictObjectResult(BuildProblem(controller, StatusCodes.Status409Conflict, code, title, detail));
-        result.ContentTypes.Add("application/problem+json");
-        return result;
-    }
-
-    public static UnauthorizedObjectResult Unauthorized(
-        ControllerBase controller,
-        string code,
-        string detail,
-        string title = "Unauthorized")
-    {
-        var result = new UnauthorizedObjectResult(BuildProblem(controller, StatusCodes.Status401Unauthorized, code, title, detail));
-        result.ContentTypes.Add("application/problem+json");
-        return result;
-    }
-
     public static ProblemDetails BuildProblem(
         ControllerBase controller,
         int status,

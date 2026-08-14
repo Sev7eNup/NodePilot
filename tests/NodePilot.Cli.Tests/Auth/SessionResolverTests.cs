@@ -3,6 +3,7 @@ using NodePilot.Cli.Auth;
 using NodePilot.Cli.Settings;
 using NodePilot.Cli.Tests.Infra;
 using Xunit;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Tests.Auth;
 

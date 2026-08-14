@@ -1,54 +1,29 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Settings;
 
 /// <summary>
 /// Plain-JSON config under %APPDATA%\NodePilot\config.json. Holds non-secret connection
 /// settings only — tokens live in <c>Auth/TokenStore</c> (DPAPI-encrypted) so a config
-/// backup never carries a usable session.
+/// backup never carries a usable session. The CLI is the only writer; the read side
+/// (path, <c>Load</c>, <c>CliConfig</c>) lives in <see cref="ClientConfigStore"/> so the
+/// MCP server reads exactly the same file the same way.
 /// </summary>
-public sealed class ConfigStore
+public sealed class ConfigStore : ClientConfigStore
 {
+    // Write-side only: indentation and null-skipping shape the file we emit. Reading goes
+    // through the base store, which needs neither.
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    public string ConfigDir { get; }
-    public string ConfigPath => Path.Combine(ConfigDir, "config.json");
+    public ConfigStore() : base(DefaultConfigDir()) { }
 
-    public ConfigStore() : this(DefaultConfigDir()) { }
-
-    public ConfigStore(string configDir)
-    {
-        ConfigDir = configDir;
-        Directory.CreateDirectory(ConfigDir);
-    }
-
-    public static string DefaultConfigDir()
-    {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(appData, "NodePilot");
-    }
-
-    public CliConfig Load()
-    {
-        if (!File.Exists(ConfigPath))
-            return new CliConfig();
-        try
-        {
-            using var stream = File.OpenRead(ConfigPath);
-            return JsonSerializer.Deserialize<CliConfig>(stream, JsonOptions) ?? new CliConfig();
-        }
-        catch (JsonException)
-        {
-            // Corrupt config → treat as empty rather than blocking the user. They can
-            // always `np config set server …` to repair, and `np auth login` re-creates.
-            return new CliConfig();
-        }
-    }
+    public ConfigStore(string configDir) : base(configDir) { }
 
     public void Save(CliConfig config)
     {
@@ -77,15 +52,4 @@ public sealed class ConfigStore
             return p.Server;
         return null;
     }
-}
-
-public sealed class CliConfig
-{
-    public string DefaultProfile { get; set; } = "default";
-    public Dictionary<string, ProfileEntry> Profiles { get; set; } = new(StringComparer.OrdinalIgnoreCase);
-}
-
-public sealed class ProfileEntry
-{
-    public string? Server { get; set; }
 }

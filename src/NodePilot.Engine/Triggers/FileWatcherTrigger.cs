@@ -34,10 +34,7 @@ public class FileWatcherTrigger : IActivityExecutor
         }
 
         // If the orchestrator fired this trigger, event data is in context.Variables as manual.*
-        var outputParams = new Dictionary<string, string>();
-        foreach (var (k, v) in context.Variables)
-            if (k.StartsWith("manual.", StringComparison.OrdinalIgnoreCase))
-                outputParams[k["manual.".Length..]] = v;
+        var outputParams = TriggerVariables.ExtractManualParams(context.Variables);
 
         if (outputParams.TryGetValue("filePath", out var triggeredFile))
         {

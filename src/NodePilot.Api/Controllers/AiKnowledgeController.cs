@@ -11,10 +11,8 @@ using NodePilot.Ai.Knowledge;
 using NodePilot.Api.Ai;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
-using NodePilot.Api.Telemetry;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Interfaces;
-using NodePilot.Core.Telemetry;
 
 namespace NodePilot.Api.Controllers;
 
@@ -144,32 +142,25 @@ public sealed class AiKnowledgeController : ControllerBase
         var dbQueryFingerprints = new List<string>();
         int? promptTokens = null, completionTokens = null;
 
+        // BuildingEvent / ProposalEvent never occur on the knowledge stream, so the shared
+        // writer covers every event this endpoint can see.
         async Task Write(ChatStreamEvent e)
         {
-            switch (e)
+            if (e is ChatStreamEvent.DoneEvent done)
             {
-                case ChatStreamEvent.DeltaEvent d:
-                    await sse.WriteAsync("delta", new { text = d.Text }, ct);
-                    break;
-                case ChatStreamEvent.ToolCallEvent tc:
-                    toolCalls++;
-                    if (string.Equals(tc.ToolName, "execute_readonly_sql", StringComparison.Ordinal)
-                        && TryFingerprintSqlToolCall(tc.ArgumentsJson) is { } fingerprint)
-                        dbQueryFingerprints.Add(fingerprint);
-                    await sse.WriteAsync("tool_call", new { toolName = tc.ToolName, toolId = tc.ToolId }, ct);
-                    break;
-                case ChatStreamEvent.ToolResultEvent tr:
-                    await sse.WriteAsync("tool_result", new { toolId = tr.ToolId, toolName = tr.ToolName }, ct);
-                    break;
-                case ChatStreamEvent.DoneEvent done:
-                    model = done.Model;
-                    durationMs = done.DurationMs;
-                    promptTokens = done.PromptTokens;
-                    completionTokens = done.CompletionTokens;
-                    await sse.WriteAsync("done", new { model = done.Model, durationMs = done.DurationMs, generationMs = done.GenerationMs, promptTokens = done.PromptTokens, completionTokens = done.CompletionTokens }, ct);
-                    break;
-                // BuildingEvent / ProposalEvent never occur on the knowledge stream.
+                model = done.Model;
+                durationMs = done.DurationMs;
+                promptTokens = done.PromptTokens;
+                completionTokens = done.CompletionTokens;
             }
+
+            await AiStreamSupport.TryWriteSharedEventAsync(sse, e, tc =>
+            {
+                toolCalls++;
+                if (string.Equals(tc.ToolName, "execute_readonly_sql", StringComparison.Ordinal)
+                    && TryFingerprintSqlToolCall(tc.ArgumentsJson) is { } fingerprint)
+                    dbQueryFingerprints.Add(fingerprint);
+            }, ct);
         }
 
         try
@@ -248,32 +239,18 @@ public sealed class AiKnowledgeController : ControllerBase
             .ToList();
     }
 
+    private const string LlmKind = "knowledge";
+
     private static void RecordResult(string result) =>
-        ApiMetrics.LlmCalls.Add(1, new(TelemetryConstants.Attributes.LlmKind, "knowledge"), new("result", result));
+        AiStreamSupport.RecordResult(LlmKind, result);
 
     private void RecordError(LlmException ex)
     {
-        RecordResult("error");
-        ApiMetrics.LlmErrors.Add(1,
-            new(TelemetryConstants.Attributes.LlmKind, "knowledge"),
-            new(TelemetryConstants.Attributes.LlmErrorKind, ex.Kind.ToString()));
+        AiStreamSupport.RecordError(LlmKind, ex);
         _logger.LogWarning(ex, "LLM knowledge stream failed: {Kind}", ex.Kind);
     }
 
-    private static void RecordSuccess(string model, int durationMs, int? promptTokens, int? completionTokens)
-    {
-        RecordResult("success");
-        ApiMetrics.LlmCallDuration.Record(durationMs,
-            new(TelemetryConstants.Attributes.LlmKind, "knowledge"),
-            new(TelemetryConstants.Attributes.LlmModel, model));
-        if (promptTokens.HasValue)
-            ApiMetrics.LlmTokens.Add(promptTokens.Value,
-                new(TelemetryConstants.Attributes.LlmKind, "knowledge"),
-                new(TelemetryConstants.Attributes.LlmModel, model), new("token_type", "prompt"));
-        if (completionTokens.HasValue)
-            ApiMetrics.LlmTokens.Add(completionTokens.Value,
-                new(TelemetryConstants.Attributes.LlmKind, "knowledge"),
-                new(TelemetryConstants.Attributes.LlmModel, model), new("token_type", "completion"));
-    }
+    private static void RecordSuccess(string model, int durationMs, int? promptTokens, int? completionTokens) =>
+        AiStreamSupport.RecordSuccess(LlmKind, model, durationMs, promptTokens, completionTokens);
 
 }

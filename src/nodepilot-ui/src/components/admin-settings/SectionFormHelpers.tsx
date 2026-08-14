@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Chip, FlashFilled } from '@carbon/icons-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -31,6 +31,9 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
   const queryClient = useQueryClient();
   const [conflict, setConflict] = useState<SettingsSectionResponse<T> | null>(null);
   const [errors, setErrors] = useState<string[] | null>(null);
+  // What the Save button actually PUT. "Keep mine" after a 412 has to re-send exactly that
+  // (the PascalCase DTO the card mapped), not the raw camelCase form state.
+  const pendingPayloadRef = useRef<unknown>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-settings', section],
@@ -49,9 +52,11 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
     mutationFn: async (payload: unknown) => {
       setErrors(null);
       if (!data) throw new Error('No section snapshot loaded yet.');
+      pendingPayloadRef.current = payload;
       return adminSettings.putSection<T>(section, payload, data.etag);
     },
     onSuccess: (fresh) => {
+      pendingPayloadRef.current = null;
       queryClient.setQueryData(['admin-settings', section], fresh);
       queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
       // These sections drive the visibility of the AI entry points (buttons + AI-Chat nav) —
@@ -64,6 +69,7 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
         setConflict(err.body.current as SettingsSectionResponse<T>);
         return;
       }
+      pendingPayloadRef.current = null;
       if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
         setErrors(err.body.errors.map((e) => {
           const fields = e.fields?.length ? `${e.fields.join(', ')}: ` : '';
@@ -86,14 +92,16 @@ export function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { l
       localDraft={form}
       onKeepMine={() => {
         if (!conflict) return;
+        const retryPayload = pendingPayloadRef.current ?? form;
         queryClient.setQueryData(['admin-settings', section], conflict);
         setConflict(null);
-        adminSettings.putSection<T>(section, form, conflict.etag)
+        adminSettings.putSection<T>(section, retryPayload, conflict.etag)
           .then((fresh) => {
             queryClient.setQueryData(['admin-settings', section], fresh);
             if (section === 'AiKnowledge' || section === 'Llm') refreshAiCapabilities(queryClient);
           })
-          .catch((e: unknown) => setErrors([e instanceof Error ? e.message : String(e)]));
+          .catch((e: unknown) => setErrors([e instanceof Error ? e.message : String(e)]))
+          .finally(() => { pendingPayloadRef.current = null; });
       }}
       onTakeTheirs={() => {
         if (!conflict) return;

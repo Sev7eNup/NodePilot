@@ -5,6 +5,7 @@ using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
 using Xunit;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Tests.Api;
 

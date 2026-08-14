@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using NodePilot.Core.Clients;
 using NodePilot.Mcp.Api.Dtos;
 using NodePilot.Mcp.Config;
 
@@ -728,35 +729,12 @@ public sealed class NodePilotApiClient
         return await ParseAsync<DbAdminQueryResponse>(res, ct);
     }
 
-    private static async Task<T> ParseAsync<T>(HttpResponseMessage res, CancellationToken ct)
-    {
-        await EnsureSuccessAsync(res, ct);
-        if (res.StatusCode == HttpStatusCode.NoContent || res.Content.Headers.ContentLength == 0)
-            return default!;
-        var stream = await res.Content.ReadAsStreamAsync(ct);
-        var value = await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, ct);
-        if (value is null) throw new ApiException(res.StatusCode, "EmptyBody", "Server returned empty body.", null);
-        return value;
-    }
+    // Response plumbing is shared with the CLI client — see ApiResponseReader in Core.
+    private static Task<T> ParseAsync<T>(HttpResponseMessage res, CancellationToken ct)
+        => ApiResponseReader.ParseAsync<T>(res, JsonOptions, ct);
 
-    private static async Task EnsureSuccessAsync(HttpResponseMessage res, CancellationToken ct)
-    {
-        if (res.IsSuccessStatusCode) return;
-        var body = await res.Content.ReadAsStringAsync(ct);
-        string? title = null, detail = null;
-        if (!string.IsNullOrWhiteSpace(body) && body.TrimStart().StartsWith('{'))
-        {
-            try
-            {
-                using var doc = JsonDocument.Parse(body);
-                if (doc.RootElement.TryGetProperty("title", out var t)) title = t.GetString();
-                if (doc.RootElement.TryGetProperty("detail", out var d)) detail = d.GetString();
-                if (detail is null && doc.RootElement.TryGetProperty("error", out var e)) detail = e.GetString();
-            }
-            catch (JsonException) { /* leave body as raw */ }
-        }
-        throw new ApiException(res.StatusCode, title, detail, body);
-    }
+    private static Task EnsureSuccessAsync(HttpResponseMessage res, CancellationToken ct)
+        => ApiResponseReader.EnsureSuccessAsync(res, ct);
 }
 
 /// <summary>Thrown when the server URL is not configured — distinct from an HTTP error.</summary>

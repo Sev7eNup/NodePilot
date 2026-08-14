@@ -2,7 +2,7 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using NodePilot.Mcp.Config;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Mcp.Auth;
 
@@ -19,7 +19,7 @@ public sealed class TokenStore
 
     private readonly string _baseDir;
 
-    public TokenStore() : this(ConfigStore.DefaultConfigDir()) { }
+    public TokenStore() : this(ClientConfigStore.DefaultConfigDir()) { }
 
     public TokenStore(string baseDir)
     {

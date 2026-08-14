@@ -38,10 +38,7 @@ public class EventLogTrigger : IActivityExecutor
     public Task<ActivityResult> ExecuteAsync(StepExecutionContext context, JsonElement config, CancellationToken ct)
     {
         // If the orchestrator fired this trigger, event metadata is in context.Variables as manual.*
-        var orchestratorParams = new Dictionary<string, string>();
-        foreach (var (k, v) in context.Variables)
-            if (k.StartsWith("manual.", StringComparison.OrdinalIgnoreCase))
-                orchestratorParams[k["manual.".Length..]] = v;
+        var orchestratorParams = TriggerVariables.ExtractManualParams(context.Variables);
 
         if (orchestratorParams.TryGetValue("eventId", out var triggeredEventId))
         {

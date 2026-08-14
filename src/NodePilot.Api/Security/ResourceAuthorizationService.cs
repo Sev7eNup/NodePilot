@@ -91,26 +91,15 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
         // bounded (depth 5 means thousands max even at flat-org-of-thousands scale); the
         // cost of the in-memory walk is negligible compared to per-row DB hits.
         var allFolders = await GetAllFoldersAsync(ct);
-        var userKey = userId.Value.ToString("D");
         var directoryGroups = await GetDirectoryGroupsAsync(userId.Value, ct);
-        var groupKeys = directoryGroups.Select(group => group.GroupKey).Distinct().ToList();
-        var groupAuthorities = directoryGroups.Select(group => group.Authority).Distinct().ToList();
-        if (groupAuthorities.Contains(ExternalIdentity.ActiveDirectoryAuthority, StringComparer.Ordinal))
-            groupAuthorities.Add(string.Empty);
         // Group-aware grant lookup: include any (PrincipalType=Group, PrincipalKey IN
         // userGroupSids) grant alongside the per-user grants. Local users have an empty
         // groupSids list so this branch is a no-op for them.
         var candidateGrants = await _db.SharedFolderPermissions
             .AsNoTracking()
-            .Where(p =>
-                (p.PrincipalType == FolderPrincipalType.User && p.PrincipalKey == userKey)
-                || (p.PrincipalType == FolderPrincipalType.Group
-                    && groupKeys.Contains(p.PrincipalKey)
-                    && groupAuthorities.Contains(p.PrincipalAuthority)))
+            .Where(DirectoryGroupPrincipal.GrantPredicate(userId.Value, directoryGroups))
             .ToListAsync(ct);
-        var grants = candidateGrants
-            .Where(permission => permission.PrincipalType == FolderPrincipalType.User
-                              || directoryGroups.Any(group => group.Matches(permission)))
+        var grants = DirectoryGroupPrincipal.ExactMatches(candidateGrants, directoryGroups)
             .Select(permission => new { permission.FolderId, permission.Role })
             .ToList();
 
@@ -250,23 +239,12 @@ public sealed class ResourceAuthorizationService : IResourceAuthorizationService
             return _ancestryGrantsCache[cacheKey];
         }
 
-        var userKey = userId.ToString("D");
-        var groupKeys = directoryGroups.Select(group => group.GroupKey).Distinct().ToList();
-        var groupAuthorities = directoryGroups.Select(group => group.Authority).Distinct().ToList();
-        if (groupAuthorities.Contains(ExternalIdentity.ActiveDirectoryAuthority, StringComparer.Ordinal))
-            groupAuthorities.Add(string.Empty);
         var candidateGrants = await _db.SharedFolderPermissions
             .AsNoTracking()
-            .Where(p => chain.Contains(p.FolderId)
-                     && ((p.PrincipalType == FolderPrincipalType.User && p.PrincipalKey == userKey)
-                         || (p.PrincipalType == FolderPrincipalType.Group
-                             && groupKeys.Contains(p.PrincipalKey)
-                             && groupAuthorities.Contains(p.PrincipalAuthority))))
+            .Where(p => chain.Contains(p.FolderId))
+            .Where(DirectoryGroupPrincipal.GrantPredicate(userId, directoryGroups))
             .ToListAsync(ct);
-        var grants = candidateGrants
-            .Where(permission => permission.PrincipalType == FolderPrincipalType.User
-                              || directoryGroups.Any(group => group.Matches(permission)))
-            .ToList();
+        var grants = DirectoryGroupPrincipal.ExactMatches(candidateGrants, directoryGroups);
         _ancestryGrantsCache[cacheKey] = grants;
         return grants;
     }

@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NodePilot.Data;
@@ -39,19 +38,10 @@ namespace NodePilot.Scheduler;
 ///     }
 ///   }
 /// </summary>
-public class WorkflowVersionsRetentionService : BackgroundService
+public class WorkflowVersionsRetentionService : LeaderGatedRetentionService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
-    // Hot-reload: hold the live monitor (not a cached snapshot) so a config edit of
-    // Retention:WorkflowVersions:* takes effect on the next sweep pass without a restart.
-    private readonly IOptionsMonitor<RetentionOptions> _opts;
-    private readonly NodePilot.Core.Interfaces.IClusterStateProvider _cluster;
-    private readonly ILogger<WorkflowVersionsRetentionService> _logger;
-
     // Resolved per pass from the live monitor — never cached across passes.
     private WorkflowVersionsRetentionOptions Opts => _opts.CurrentValue.WorkflowVersions;
-
-    private readonly IDatabaseAvailability _availability;
 
     public WorkflowVersionsRetentionService(
         IServiceScopeFactory scopeFactory,
@@ -59,54 +49,17 @@ public class WorkflowVersionsRetentionService : BackgroundService
         NodePilot.Core.Interfaces.IClusterStateProvider cluster,
         ILogger<WorkflowVersionsRetentionService> logger,
         IDatabaseAvailability availability)
+        : base(scopeFactory, opts, cluster, logger, availability)
     {
-        _scopeFactory = scopeFactory;
-        _opts = opts;
-        _cluster = cluster;
-        _availability = availability;
-        _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        // Match ExecutionRetentionService's warm-up delay so we don't hammer the DB during
-        // the cold-start window where the migration bootstrap + TriggerOrchestrator do their
-        // initial work.
-        try { await Task.Delay(TimeSpan.FromMinutes(2), stoppingToken); }
-        catch (OperationCanceledException) { return; }
-
-        _logger.LogInformation("WorkflowVersionsRetentionService started (hot-reload: per-pass config).");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            // Availability gate, deliberately ABOVE the leader check: during a database outage no
-            // node can renew its cluster lease, so every node reads as a follower - gating on
-            // IsLeader first would park for the right reason and log the wrong one.
-            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
-            // is left at its default StopHost, so an escaping cancellation would stop the host).
-            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
-
-            // HA gate: leader-only.
-            if (!_cluster.IsLeader)
-            {
-                try { await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken); }
-                catch (OperationCanceledException) { break; }
-                continue;
-            }
-
-            try
-            {
-                await RunIterationAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) { break; }
-
-            var interval = TimeSpan.FromMinutes(Math.Max(1, Opts.IntervalMinutes));
-            try { await Task.Delay(interval, stoppingToken); }
-            catch (OperationCanceledException) { break; }
-        }
-
-        _logger.LogInformation("WorkflowVersionsRetentionService stopped.");
-    }
+    protected override string ServiceName => nameof(WorkflowVersionsRetentionService);
+    protected override string MetricServiceTag => "workflow_versions";
+    // Longer warm-up than the other sweeps so we don't hammer the DB during the cold-start
+    // window where the migration bootstrap + TriggerOrchestrator do their initial work.
+    protected override TimeSpan WarmUpDelay => TimeSpan.FromMinutes(2);
+    protected override int MinIntervalMinutes => 1;
+    protected override int ConfiguredIntervalMinutes => Opts.IntervalMinutes;
 
     /// <summary>
     /// Exactly one sweep iteration: reads the live config, skips when disabled, else runs one
@@ -114,7 +67,7 @@ public class WorkflowVersionsRetentionService : BackgroundService
     /// <see cref="ExecuteAsync"/> owns the inter-pass spacing. Internal so unit tests can drive
     /// a single pass (incl. the hot-reload Enabled-toggle path) without the 2-minute warm-up.
     /// </summary>
-    internal async Task RunIterationAsync(CancellationToken ct)
+    internal override async Task RunIterationAsync(CancellationToken ct)
     {
         // Hot-reload: a live toggle to Enabled=false parks the sweep instead of killing the
         // service, so flipping back to true later takes effect without a restart.
@@ -136,7 +89,7 @@ public class WorkflowVersionsRetentionService : BackgroundService
             sw.Stop();
             if (deleted > 0)
                 _logger.LogInformation("WorkflowVersions retention deleted {Count} old history rows.", deleted);
-            var tags = new TagList { new("nodepilot.retention.service", "workflow_versions") };
+            var tags = RetentionTags();
             SchedulerMetrics.RetentionRowsDeleted.Add(deleted, tags);
             SchedulerMetrics.RetentionSweepDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
             await HeartbeatAsync(intervalMinutes, $"ok: {deleted} deleted", ct);
@@ -144,18 +97,10 @@ public class WorkflowVersionsRetentionService : BackgroundService
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            var errTags = new TagList { new("nodepilot.retention.service", "workflow_versions") };
+            var errTags = RetentionTags();
             SchedulerMetrics.RetentionSweepErrors.Add(1, errTags);
             _logger.LogError(ex, "WorkflowVersions retention pass failed — will retry on next interval.");
         }
-    }
-
-    private async Task HeartbeatAsync(int intervalMinutes, string status, CancellationToken ct)
-    {
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-        await SystemHealthWriter.BeatAsync(db, "WorkflowVersionsRetentionService",
-            expectedIntervalSeconds: intervalMinutes * 60, status: status, ct: ct);
     }
 
     // Exposed as internal so unit tests can drive a single pass without waiting the warm-up

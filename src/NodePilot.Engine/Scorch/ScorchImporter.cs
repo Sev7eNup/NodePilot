@@ -70,23 +70,7 @@ public sealed class ScorchImporter
     };
 
     public ScorchImportResult Parse(string xml)
-    {
-        var result = new ScorchImportResult();
-
-        XDocument doc;
-        try
-        {
-            using var reader = XmlReader.Create(new StringReader(xml), HardenedReaderSettings);
-            doc = XDocument.Load(reader);
-        }
-        catch (Exception ex)
-        {
-            result.Errors.Add($"Failed to parse XML: {ex.Message}");
-            return result;
-        }
-
-        return ParseFromDocument(doc, result);
-    }
+        => ParseFromReader(() => XmlReader.Create(new StringReader(xml), HardenedReaderSettings));
 
     /// <summary>
     /// M-14: Stream-based overload. Preferred over <see cref="Parse(string)"/> for large
@@ -95,13 +79,18 @@ public sealed class ScorchImporter
     /// tree). Streaming straight into the XmlReader lets the XML parser hold only one copy.
     /// </summary>
     public ScorchImportResult Parse(Stream xmlStream)
+        => ParseFromReader(() => XmlReader.Create(xmlStream, HardenedReaderSettings));
+
+    // The factory is invoked INSIDE the try: XmlReader.Create itself can throw on a bad
+    // source, and that has always been reported as a parse error rather than propagated.
+    private ScorchImportResult ParseFromReader(Func<XmlReader> createReader)
     {
         var result = new ScorchImportResult();
 
         XDocument doc;
         try
         {
-            using var reader = XmlReader.Create(xmlStream, HardenedReaderSettings);
+            using var reader = createReader();
             doc = XDocument.Load(reader);
         }
         catch (Exception ex)

@@ -265,12 +265,4 @@ public sealed class RunScriptExecutionTargetTests : IDisposable
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("no PowerShell host");
     }
-
-    private sealed class FakeEngine(string engineType, bool available) : IPowerShellExecutionEngine
-    {
-        public string EngineType => engineType;
-        public bool IsAvailable => available;
-        public Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct)
-            => Task.FromResult(new PowerShellExecutionResult { Success = true });
-    }
 }

@@ -24,39 +24,15 @@ public class ApiProblemsTests
     }
 
     [Fact]
-    public void NotFound_ProducesProblemResultWithCodeAndStatus()
-    {
-        var result = ApiProblems.NotFound(Controller(), "THING_MISSING", "no such thing");
-        result.StatusCode.Should().Be(StatusCodes.Status404NotFound);
-        var problem = result.Value.Should().BeOfType<ProblemDetails>().Subject;
-        problem.Status.Should().Be(404);
-        problem.Detail.Should().Be("no such thing");
-        problem.Extensions["code"].Should().Be("THING_MISSING");
-        problem.Instance.Should().Be("/api/things/42");
-    }
-
-    [Fact]
-    public void Conflict_ProducesConflictProblem()
-    {
-        var result = ApiProblems.Conflict(Controller(), "DUP", "already exists");
-        result.StatusCode.Should().Be(StatusCodes.Status409Conflict);
-        result.Value.Should().BeOfType<ProblemDetails>().Which.Extensions["code"].Should().Be("DUP");
-    }
-
-    [Fact]
-    public void Unauthorized_ProducesUnauthorizedProblem()
-    {
-        var result = ApiProblems.Unauthorized(Controller(), "NO_TOKEN", "missing token");
-        result.StatusCode.Should().Be(StatusCodes.Status401Unauthorized);
-        result.Value.Should().BeOfType<ProblemDetails>().Which.Status.Should().Be(401);
-    }
-
-    [Fact]
     public void BadRequest_ProducesBadRequestProblem()
     {
         var result = ApiProblems.BadRequest(Controller(), "BAD", "nope");
         result.StatusCode.Should().Be(StatusCodes.Status400BadRequest);
-        result.Value.Should().BeOfType<ProblemDetails>().Which.Extensions["code"].Should().Be("BAD");
+        var problem = result.Value.Should().BeOfType<ProblemDetails>().Subject;
+        problem.Status.Should().Be(400);
+        problem.Detail.Should().Be("nope");
+        problem.Extensions["code"].Should().Be("BAD");
+        problem.Instance.Should().Be("/api/things/42");
     }
 
     // ---- legacy payload adapter --------------------------------------------

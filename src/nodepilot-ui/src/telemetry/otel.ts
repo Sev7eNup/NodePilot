@@ -70,10 +70,6 @@ export function initTelemetry(config: ObservabilityConfig): Tracer | null {
   return tracer;
 }
 
-export function getTracer(): Tracer | null {
-  return tracer;
-}
-
 /**
  * Run a function inside a manually-named span. No-ops when telemetry is disabled.
  */

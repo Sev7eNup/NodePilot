@@ -11,10 +11,8 @@ using NodePilot.Api.Configuration;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
-using NodePilot.Api.Telemetry;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
-using NodePilot.Core.Telemetry;
 
 namespace NodePilot.Api.Controllers;
 
@@ -173,30 +171,27 @@ public sealed class AiChatController : ControllerBase
 
             async Task Write(ChatStreamEvent e)
             {
+                // The closing totals must be captured before the write, so a client that
+                // disconnects mid-flush still lands in the audit trail with what we knew.
+                if (e is ChatStreamEvent.DoneEvent done)
+                {
+                    model = done.Model;
+                    durationMs = done.DurationMs;
+                    promptTokens = done.PromptTokens;
+                    completionTokens = done.CompletionTokens;
+                }
+
+                if (await AiStreamSupport.TryWriteSharedEventAsync(sse, e, onToolCall: null, ct))
+                    return;
+
                 switch (e)
                 {
-                    case ChatStreamEvent.DeltaEvent d:
-                        await sse.WriteAsync("delta", new { text = d.Text }, ct);
-                        break;
                     case ChatStreamEvent.BuildingEvent:
                         await sse.WriteAsync("building", new { }, ct);
                         break;
                     case ChatStreamEvent.ProposalEvent p:
                         proposed = true;
                         await sse.WriteAsync("proposal", p.Dto, ct);
-                        break;
-                    case ChatStreamEvent.ToolCallEvent tc:
-                        await sse.WriteAsync("tool_call", new { toolName = tc.ToolName, toolId = tc.ToolId }, ct);
-                        break;
-                    case ChatStreamEvent.ToolResultEvent tr:
-                        await sse.WriteAsync("tool_result", new { toolId = tr.ToolId, toolName = tr.ToolName }, ct);
-                        break;
-                    case ChatStreamEvent.DoneEvent done:
-                        model = done.Model;
-                        durationMs = done.DurationMs;
-                        promptTokens = done.PromptTokens;
-                        completionTokens = done.CompletionTokens;
-                        await sse.WriteAsync("done", new { model = done.Model, durationMs = done.DurationMs, generationMs = done.GenerationMs, promptTokens = done.PromptTokens, completionTokens = done.CompletionTokens }, ct);
                         break;
                 }
             }
@@ -273,33 +268,19 @@ public sealed class AiChatController : ControllerBase
         return Ok(rows);
     }
 
+    private const string LlmKind = "chat";
+
     private static void RecordResult(string result) =>
-        ApiMetrics.LlmCalls.Add(1, new(TelemetryConstants.Attributes.LlmKind, "chat"), new("result", result));
+        AiStreamSupport.RecordResult(LlmKind, result);
 
     private void RecordError(LlmException ex)
     {
-        RecordResult("error");
-        ApiMetrics.LlmErrors.Add(1,
-            new(TelemetryConstants.Attributes.LlmKind, "chat"),
-            new(TelemetryConstants.Attributes.LlmErrorKind, ex.Kind.ToString()));
+        AiStreamSupport.RecordError(LlmKind, ex);
         _logger.LogWarning(ex, "LLM chat stream failed: {Kind}", ex.Kind);
     }
 
-    private static void RecordSuccess(string model, int durationMs, int? promptTokens, int? completionTokens)
-    {
-        RecordResult("success");
-        ApiMetrics.LlmCallDuration.Record(durationMs,
-            new(TelemetryConstants.Attributes.LlmKind, "chat"),
-            new(TelemetryConstants.Attributes.LlmModel, model));
-        if (promptTokens.HasValue)
-            ApiMetrics.LlmTokens.Add(promptTokens.Value,
-                new(TelemetryConstants.Attributes.LlmKind, "chat"),
-                new(TelemetryConstants.Attributes.LlmModel, model), new("token_type", "prompt"));
-        if (completionTokens.HasValue)
-            ApiMetrics.LlmTokens.Add(completionTokens.Value,
-                new(TelemetryConstants.Attributes.LlmKind, "chat"),
-                new(TelemetryConstants.Attributes.LlmModel, model), new("token_type", "completion"));
-    }
+    private static void RecordSuccess(string model, int durationMs, int? promptTokens, int? completionTokens) =>
+        AiStreamSupport.RecordSuccess(LlmKind, model, durationMs, promptTokens, completionTokens);
 
     private Task AuditAsync(string model, int durationMs, bool proposed, bool cancelled, int turnCount,
         Guid? workflowId, CancellationToken ct = default) =>

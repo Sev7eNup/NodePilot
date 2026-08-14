@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NodePilot.Core.Enums;
@@ -37,19 +36,10 @@ namespace NodePilot.Scheduler;
 ///   - Deletes in bounded batches (<c>BatchSize</c>, default 500) so one pass never holds
 ///     a long-running transaction on SQLite.
 /// </summary>
-public class ExecutionRetentionService : BackgroundService
+public class ExecutionRetentionService : LeaderGatedRetentionService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
-    // Hot-reload: hold the live monitor (not a cached snapshot) so a config edit of
-    // Retention:Executions:* takes effect on the next sweep pass without a restart.
-    private readonly IOptionsMonitor<RetentionOptions> _opts;
-    private readonly IClusterStateProvider _cluster;
-    private readonly ILogger<ExecutionRetentionService> _logger;
-
     // Resolved per pass from the live monitor — never cached across passes.
     private ExecutionsRetentionOptions Opts => _opts.CurrentValue.Executions;
-
-    private readonly IDatabaseAvailability _availability;
 
     public ExecutionRetentionService(
         IServiceScopeFactory scopeFactory,
@@ -57,54 +47,17 @@ public class ExecutionRetentionService : BackgroundService
         IClusterStateProvider cluster,
         ILogger<ExecutionRetentionService> logger,
         IDatabaseAvailability availability)
+        : base(scopeFactory, opts, cluster, logger, availability)
     {
-        _scopeFactory = scopeFactory;
-        _opts = opts;
-        _cluster = cluster;
-        _availability = availability;
-        _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        // Small initial delay so the patcher + trigger orchestrator have time to settle on a
-        // cold start before we start issuing DELETEs.
-        try { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); }
-        catch (OperationCanceledException) { return; }
-
-        _logger.LogInformation("ExecutionRetentionService started (hot-reload: per-pass config).");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            // Availability gate, deliberately ABOVE the leader check: during a database outage no
-            // node can renew its cluster lease, so every node reads as a follower - gating on
-            // IsLeader first would park for the right reason and log the wrong one.
-            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
-            // is left at its default StopHost, so an escaping cancellation would stop the host).
-            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
-
-            // HA gate: only the leader may run retention sweeps. Otherwise a follower would
-            // contend on the same DELETEs and double the IO cost on the shared DB.
-            if (!_cluster.IsLeader)
-            {
-                try { await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken); }
-                catch (OperationCanceledException) { break; }
-                continue;
-            }
-
-            try
-            {
-                await RunIterationAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) { break; }
-
-            var interval = TimeSpan.FromMinutes(Math.Max(1, Opts.IntervalMinutes));
-            try { await Task.Delay(interval, stoppingToken); }
-            catch (OperationCanceledException) { break; }
-        }
-
-        _logger.LogInformation("ExecutionRetentionService stopped.");
-    }
+    protected override string ServiceName => nameof(ExecutionRetentionService);
+    protected override string MetricServiceTag => "execution";
+    // Small initial delay so the patcher + trigger orchestrator have time to settle on a
+    // cold start before we start issuing DELETEs.
+    protected override TimeSpan WarmUpDelay => TimeSpan.FromSeconds(30);
+    protected override int MinIntervalMinutes => 1;
+    protected override int ConfiguredIntervalMinutes => Opts.IntervalMinutes;
 
     /// <summary>
     /// Exactly one sweep iteration: reads the live config, skips when disabled, else runs one
@@ -112,7 +65,7 @@ public class ExecutionRetentionService : BackgroundService
     /// <see cref="ExecuteAsync"/> owns the inter-pass spacing. Internal so unit tests can drive
     /// a single pass (incl. the hot-reload Enabled-toggle path) without the 30-second warm-up.
     /// </summary>
-    internal async Task RunIterationAsync(CancellationToken ct)
+    internal override async Task RunIterationAsync(CancellationToken ct)
     {
         // Hot-reload: a live toggle to Enabled=false parks the sweep instead of killing the
         // service, so flipping back to true later takes effect without a restart. The outer
@@ -135,7 +88,7 @@ public class ExecutionRetentionService : BackgroundService
             sw.Stop();
             if (deleted > 0)
                 _logger.LogInformation("Retention pass deleted {Count} old executions (and cascaded step rows).", deleted);
-            var tags = new TagList { new("nodepilot.retention.service", "execution") };
+            var tags = RetentionTags();
             SchedulerMetrics.RetentionRowsDeleted.Add(deleted, tags);
             SchedulerMetrics.RetentionSweepDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
             await HeartbeatAsync(intervalMinutes, $"ok: {deleted} deleted", ct);
@@ -143,18 +96,10 @@ public class ExecutionRetentionService : BackgroundService
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            var errTags = new TagList { new("nodepilot.retention.service", "execution") };
+            var errTags = RetentionTags();
             SchedulerMetrics.RetentionSweepErrors.Add(1, errTags);
             _logger.LogError(ex, "Retention pass failed — will retry on next interval.");
         }
-    }
-
-    private async Task HeartbeatAsync(int intervalMinutes, string status, CancellationToken ct)
-    {
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-        await SystemHealthWriter.BeatAsync(db, "ExecutionRetentionService",
-            expectedIntervalSeconds: intervalMinutes * 60, status: status, ct: ct);
     }
 
     // Exposed as internal so unit tests can drive a single pass without waiting the 30-second

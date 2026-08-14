@@ -71,12 +71,7 @@ public static class PathGuard
         if (rejectTraversal && ContainsTraversal(path))
             throw new InvalidOperationException($"File System Operation: path '{path}' contains '..' traversal (blocked by FileSystemOperation:RejectTraversal)");
 
-        var roots = config.GetSection("FileSystemOperation:AllowedRoots")
-            .GetChildren()
-            .Select(c => c.Value)
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Cast<string>()
-            .ToArray();
+        var roots = ReadConfiguredRoots(config, "FileSystemOperation:AllowedRoots");
         if (roots.Length > 0)
         {
             string fullPath;
@@ -93,17 +88,33 @@ public static class PathGuard
                 throw new InvalidOperationException($"File System Operation: path '{path}' final path could not be resolved: {ex.Message}");
             }
 
-            var allowed = roots.Any(root =>
-            {
-                var r = ResolveLocalFinalPath(Path.GetFullPath(root));
-                return fullNormalized.Equals(r, StringComparison.OrdinalIgnoreCase)
-                    || fullNormalized.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
-            });
+            var allowed = roots.Any(root => IsWithinRoot(fullNormalized, ResolveLocalFinalPath(Path.GetFullPath(root))));
 
             if (!allowed)
                 throw new InvalidOperationException($"File System Operation: path '{path}' is not within any configured FileSystemOperation:AllowedRoots");
         }
     }
+
+    /// <summary>
+    /// Reads an allow-list section as a string array, dropping blank entries. Shared with
+    /// <see cref="FileWatcherPathGuard"/> so both guards read their roots the same way.
+    /// </summary>
+    internal static string[] ReadConfiguredRoots(IConfiguration config, string sectionPath)
+        => config.GetSection(sectionPath)
+            .GetChildren()
+            .Select(c => c.Value)
+            .Where(v => !string.IsNullOrWhiteSpace(v))
+            .Cast<string>()
+            .ToArray();
+
+    /// <summary>
+    /// Root-containment test shared by both path guards: the path is the root itself, or sits
+    /// below it. Both arguments must already be normalized (full path, no trailing separator) —
+    /// the separator suffix is what stops <c>C:\Data2</c> from matching the root <c>C:\Data</c>.
+    /// </summary>
+    internal static bool IsWithinRoot(string normalizedPath, string normalizedRoot)
+        => normalizedPath.Equals(normalizedRoot, StringComparison.OrdinalIgnoreCase)
+           || normalizedPath.StartsWith(normalizedRoot + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
     public static void ValidateSiblingRenameTarget(IConfiguration config, string currentPath, string newName)
     {

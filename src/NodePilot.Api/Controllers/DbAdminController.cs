@@ -1,4 +1,3 @@
-using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Data;
 using System.Text;
@@ -6,6 +5,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Security;
 using NodePilot.Api.Services.DbAdmin;
@@ -227,7 +227,7 @@ public class DbAdminController : ControllerBase
         // transaction-scoped invariant gate established by PatchRow.
         if (entity is User user)
         {
-            var callerId = GetCallerId();
+            var callerId = this.GetCurrentUserId();
             if (callerId is null) return Unauthorized();
             var guard = await DbAdminPolicy.PreUpdateUserGuardAsync(user, req.Column, coercedValue, _db, callerId.Value, ct);
             if (guard.IsBlocked) return BadRequest(new { code = guard.Code, message = guard.Message });
@@ -267,8 +267,7 @@ public class DbAdminController : ControllerBase
             // so the row mutation and the audit row are atomic. Routes through IAuditStager
             // (same as every other audit-write path) so redaction + 4 KiB cap apply uniformly.
             var pkDisplay = string.Join(";", pk);
-            var auditActor = new AuditActor(GetCallerId(), User.FindFirstValue(ClaimTypes.Name),
-                HttpContext?.Connection?.RemoteIpAddress?.ToString());
+            var auditActor = CurrentAuditActor();
             var auditEntry = _stager.Build(
                 action: AuditActions.DbAdminRowUpdated,
                 actor: auditActor,
@@ -382,7 +381,7 @@ public class DbAdminController : ControllerBase
         // transaction-scoped invariant gate established by DeleteRow.
         if (entity is User user)
         {
-            var callerId = GetCallerId();
+            var callerId = this.GetCurrentUserId();
             if (callerId is null) return Unauthorized();
             var guard = await DbAdminPolicy.PreDeleteUserGuardAsync(user, _db, callerId.Value, ct);
             if (guard.IsBlocked) return BadRequest(new { code = guard.Code, message = guard.Message });
@@ -392,8 +391,7 @@ public class DbAdminController : ControllerBase
             _db.Remove(entity);
 
             var pkDisplay = string.Join(";", pk);
-            var auditActor = new AuditActor(GetCallerId(), User.FindFirstValue(ClaimTypes.Name),
-                HttpContext?.Connection?.RemoteIpAddress?.ToString());
+            var auditActor = CurrentAuditActor();
             var auditEntry = _stager.Build(
                 action: AuditActions.DbAdminRowDeleted,
                 actor: auditActor,
@@ -610,8 +608,7 @@ public class DbAdminController : ControllerBase
         string? reason,
         CancellationToken ct)
     {
-        var auditActor = new AuditActor(GetCallerId(), User.FindFirstValue(ClaimTypes.Name),
-            HttpContext?.Connection?.RemoteIpAddress?.ToString());
+        var auditActor = CurrentAuditActor();
 
         // The stager already caps details at 4 KiB, so even pathological SQL pastes are bounded
         // in audit storage. The full statement is represented by a stable hash + byte length +
@@ -656,8 +653,7 @@ public class DbAdminController : ControllerBase
         int returned,
         CancellationToken ct)
     {
-        var actor = new AuditActor(GetCallerId(), User.FindFirstValue(ClaimTypes.Name),
-            HttpContext?.Connection?.RemoteIpAddress?.ToString());
+        var actor = CurrentAuditActor();
         var entry = _stager.Build(
             AuditActions.DbAdminRowsViewed,
             actor,
@@ -720,11 +716,10 @@ public class DbAdminController : ControllerBase
         }
     }
 
-    private Guid? GetCallerId()
-    {
-        var raw = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        return Guid.TryParse(raw, out var id) ? id : null;
-    }
+    /// <summary>Actor for every DB-admin audit row: caller identity plus the remote address.</summary>
+    private AuditActor CurrentAuditActor() => new(
+        this.GetCurrentUserId(), this.GetCurrentUsername(),
+        HttpContext?.Connection?.RemoteIpAddress?.ToString());
 
     private static Guid? TryParseGuid(string? s)
         => s is not null && Guid.TryParse(s, out var g) ? g : null;

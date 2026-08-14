@@ -876,30 +876,10 @@ public sealed partial class ScimProvisioningService(
 
         try
         {
-            using (logger.BeginScope(new Dictionary<string, object?>
-            {
-                ["support.event_type"] = "AUDIT",
-                ["support.message"] = $"{entry.Action} user={entry.Username ?? "-"} resource={entry.ResourceType ?? "-"}/{entry.ResourceId?.ToString() ?? "-"} ip={entry.IpAddress ?? "-"}",
-                ["event.action"] = entry.Action,
-                ["event.category"] = "iam",
-                ["event.kind"] = "event",
-                ["event.outcome"] = "success",
-                ["event.dataset"] = "nodepilot.audit",
-                ["event.id"] = entry.Id.ToString(),
-                ["event.original"] = entry.Details,
-                ["user.id"] = entry.UserId?.ToString(),
-                ["user.name"] = entry.Username,
-                ["source.ip"] = entry.IpAddress,
-                ["AuditResourceType"] = entry.ResourceType,
-                ["AuditResourceId"] = entry.ResourceId?.ToString(),
-                ["SupportLog"] = true,
-            }))
-            {
-                logger.LogInformation(
-                    "AUDIT {Action} user={UserName} resource={ResourceType}/{ResourceId} ip={RemoteIp}",
-                    entry.Action, entry.Username ?? "-", entry.ResourceType ?? "-",
-                    entry.ResourceId?.ToString() ?? "-", entry.IpAddress ?? "-");
-            }
+            // Shared ECS shape (category/outcome/support-log allowlist) — a hand-rolled copy here
+            // had SCIM_GROUP_* events landing in a different event.category than the same action
+            // forwarded by any other writer.
+            AuditEventForwarder.ForwardCommitted(logger, entry);
         }
         catch (Exception ex)
         {

@@ -227,23 +227,14 @@ public sealed class DirectorySynchronizationService(
         user.KnownGroupSidsJson = JsonSerializer.Serialize(desiredGroups.OrderBy(group => group));
         identity.LastSeenAt = snapshot is null ? identity.LastSeenAt : state.AttemptTime;
 
-        foreach (var membership in oldGroups)
-        {
-            if (!desiredGroups.Contains(membership.GroupKey))
-                db.DirectoryMemberships.Remove(membership);
-            else
-                membership.LastSeenAt = state.AttemptTime;
-        }
-        foreach (var group in desiredGroups.Where(group => !oldGroupKeys.Contains(group)))
-        {
-            db.DirectoryMemberships.Add(new DirectoryMembership
-            {
-                UserId = user.Id,
-                Authority = ExternalIdentity.ActiveDirectoryAuthority,
-                GroupKey = group,
-                LastSeenAt = state.AttemptTime,
-            });
-        }
+        DirectoryMembershipReconciler.Apply(
+            db,
+            user.Id,
+            ExternalIdentity.ActiveDirectoryAuthority,
+            oldGroups,
+            desiredGroups,
+            state.AttemptTime,
+            StringComparer.OrdinalIgnoreCase);
 
         IReadOnlyList<Guid> executionIds = [];
         if (securityChanged)

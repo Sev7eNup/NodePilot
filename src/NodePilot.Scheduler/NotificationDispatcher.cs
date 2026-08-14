@@ -219,18 +219,7 @@ public class NotificationDispatcher : BackgroundService
             }
         }
 
-        // Always save — flushes evaluator-staged match/episode state even when nothing fires this pass.
-        await db.SaveChangesAsync(ct);
-
-        var sent = 0;
-        foreach (var (attempt, route, ctx) in toSend)
-        {
-            if (!StillOwnsLease(leaseEpoch)) break;
-            await SendOneAsync(db, store, attempt, route, ctx, now, leaseEpoch, ct);
-            if (attempt.Status == NotificationDeliveryStatus.Sent) sent++;
-        }
-        if (toSend.Count > 0) await db.SaveChangesAsync(ct);
-        return sent;
+        return await PersistAndSendAsync(db, store, toSend, now, leaseEpoch, ct);
     }
 
     /// <summary>
@@ -284,8 +273,24 @@ public class NotificationDispatcher : BackgroundService
             }
         }
 
-        // Always save once — flushes the collector's staged state (watermark / signal-states) even
-        // when nothing matched, plus the Pending attempts.
+        return await PersistAndSendAsync(db, store, toSend, now, leaseEpoch, ct);
+    }
+
+    /// <summary>
+    /// Shared tail of both delivery paths. One unconditional SaveChanges flushes whatever the caller
+    /// staged on the tracked context — the collector's watermark / signal-states, or the system-alert
+    /// evaluator's match/episode state — together with the Pending attempts, even when nothing fired
+    /// this pass; that ordering is what preserves persist-before-send crash-safety. Then every attempt
+    /// is sent under the lease fence and the resulting statuses are saved.
+    /// </summary>
+    private async Task<int> PersistAndSendAsync(
+        NodePilotDbContext db,
+        INotificationRuleStore store,
+        List<(NotificationDeliveryAttempt attempt, NotificationRoute route, NotificationContext ctx)> toSend,
+        DateTime now,
+        long leaseEpoch,
+        CancellationToken ct)
+    {
         await db.SaveChangesAsync(ct);
 
         var sent = 0;

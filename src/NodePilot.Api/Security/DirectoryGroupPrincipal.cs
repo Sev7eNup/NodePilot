@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
@@ -25,6 +26,43 @@ internal sealed record DirectoryGroupPrincipal(string Authority, string GroupKey
                 ? StringComparison.OrdinalIgnoreCase
                 : StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// SQL-translatable grant predicate shared by every folder-permission lookup: the user's own
+    /// grants plus any group grant whose key and authority both appear in <paramref name="groups"/>.
+    /// Coarse on purpose — the authority-exact, per-authority string comparison lives in
+    /// <see cref="Matches"/> and has to run in memory over the candidates (see
+    /// <see cref="ExactMatches"/>). A grant written before authority scoping carries an empty
+    /// PrincipalAuthority and means Active Directory, so the empty string joins the authority list
+    /// whenever the user holds an AD group.
+    /// </summary>
+    public static Expression<Func<SharedFolderPermission, bool>> GrantPredicate(
+        Guid userId,
+        IReadOnlyCollection<DirectoryGroupPrincipal> groups)
+    {
+        var userKey = userId.ToString("D");
+        var groupKeys = groups.Select(group => group.GroupKey).Distinct().ToList();
+        var groupAuthorities = groups.Select(group => group.Authority).Distinct().ToList();
+        if (groupAuthorities.Contains(ExternalIdentity.ActiveDirectoryAuthority, StringComparer.Ordinal))
+            groupAuthorities.Add(string.Empty);
+        return permission =>
+            (permission.PrincipalType == FolderPrincipalType.User && permission.PrincipalKey == userKey)
+            || (permission.PrincipalType == FolderPrincipalType.Group
+                && groupKeys.Contains(permission.PrincipalKey)
+                && groupAuthorities.Contains(permission.PrincipalAuthority));
+    }
+
+    /// <summary>
+    /// Narrows the candidates returned by <see cref="GrantPredicate"/> to the grants that really
+    /// apply: user grants pass through, group grants must match one principal exactly.
+    /// </summary>
+    public static List<SharedFolderPermission> ExactMatches(
+        IEnumerable<SharedFolderPermission> candidates,
+        IReadOnlyCollection<DirectoryGroupPrincipal> groups) =>
+        candidates
+            .Where(permission => permission.PrincipalType == FolderPrincipalType.User
+                              || groups.Any(group => group.Matches(permission)))
+            .ToList();
 
     public static async Task<IReadOnlyCollection<DirectoryGroupPrincipal>> LoadAsync(
         NodePilotDbContext db,

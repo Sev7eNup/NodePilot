@@ -35,9 +35,6 @@ public sealed class PassphraseSecretProtector : ISecretProtector
     public const int DefaultIterations = 600_000;
     public const int SaltSize = 16;
 
-    private const byte Version = 0x01;
-    private const int NonceSize = 12;   // GCM standard
-    private const int TagSize = 16;     // 128-bit GCM tag
     private const int KeySize = 32;     // 256-bit subkeys
 
     // Distinct HKDF info labels keep the three derived subkeys cryptographically independent.
@@ -143,42 +140,10 @@ public sealed class PassphraseSecretProtector : ISecretProtector
         }
     }
 
-    private static byte[] EncryptGcm(byte[] key, byte[] plain)
-    {
-        var nonce = new byte[NonceSize];
-        RandomNumberGenerator.Fill(nonce);
-        var ciphertext = new byte[plain.Length];
-        var tag = new byte[TagSize];
-        using (var gcm = new AesGcm(key, TagSize))
-            gcm.Encrypt(nonce, plain, ciphertext, tag);
+    private static byte[] EncryptGcm(byte[] key, byte[] plain) => SecretEnvelope.Seal(plain, key);
 
-        var blob = new byte[1 + NonceSize + ciphertext.Length + TagSize];
-        blob[0] = Version;
-        Buffer.BlockCopy(nonce, 0, blob, 1, NonceSize);
-        Buffer.BlockCopy(ciphertext, 0, blob, 1 + NonceSize, ciphertext.Length);
-        Buffer.BlockCopy(tag, 0, blob, 1 + NonceSize + ciphertext.Length, TagSize);
-        return blob;
-    }
-
-    private static byte[] DecryptGcm(byte[] key, byte[] blob)
-    {
-        ArgumentNullException.ThrowIfNull(blob);
-        if (blob.Length < 1 + NonceSize + TagSize)
-            throw new CryptographicException("Backup secret blob is shorter than the minimum envelope.");
-        if (blob[0] != Version)
-            throw new CryptographicException($"Unknown backup secret envelope version 0x{blob[0]:X2}.");
-
-        var ciphertextLength = blob.Length - 1 - NonceSize - TagSize;
-        var nonce = new byte[NonceSize];
-        var ciphertext = new byte[ciphertextLength];
-        var tag = new byte[TagSize];
-        Buffer.BlockCopy(blob, 1, nonce, 0, NonceSize);
-        Buffer.BlockCopy(blob, 1 + NonceSize, ciphertext, 0, ciphertextLength);
-        Buffer.BlockCopy(blob, 1 + NonceSize + ciphertextLength, tag, 0, TagSize);
-
-        var plain = new byte[ciphertextLength];
-        using var gcm = new AesGcm(key, TagSize);
-        gcm.Decrypt(nonce, ciphertext, tag, plain);
-        return plain;
-    }
+    private static byte[] DecryptGcm(byte[] key, byte[] blob) => SecretEnvelope.Open(
+        blob, key,
+        "Backup secret blob is shorter than the minimum envelope.",
+        actual => $"Unknown backup secret envelope version 0x{actual:X2}.");
 }

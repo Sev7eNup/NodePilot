@@ -186,15 +186,6 @@ public static class DbErrorClassifier
     /// </summary>
     public static bool IsCommandTimeout(Exception? exception) => Classify(exception) is DbFailureKind.CommandTimeout;
 
-    /// <summary>True when nothing is listening or the transport died. See <see cref="DbFailureKind.ConnectionFailure"/>.</summary>
-    public static bool IsConnectionFailure(Exception? exception) => Classify(exception) is DbFailureKind.ConnectionFailure;
-
-    /// <summary>True when the server answered and refused. See <see cref="DbFailureKind.ConnectionRejected"/>.</summary>
-    public static bool IsConnectionRejectedByServer(Exception? exception) => Classify(exception) is DbFailureKind.ConnectionRejected;
-
-    /// <summary>True when the server is alive but out of a resource. See <see cref="DbFailureKind.CapacityBackpressure"/>.</summary>
-    public static bool IsCapacityBackpressure(Exception? exception) => Classify(exception) is DbFailureKind.CapacityBackpressure;
-
     private static DbFailureKind ClassifyOne(Exception exception)
     {
         // Pool exhaustion is checked before anything else about the exception, because both providers

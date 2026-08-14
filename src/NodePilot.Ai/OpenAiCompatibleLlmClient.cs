@@ -4,6 +4,7 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using static NodePilot.Ai.LlmJson;
 
 namespace NodePilot.Ai;
 
@@ -170,32 +171,23 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         }
 
         // Tool-call responses often have content: null plus tool_calls — accept both cases.
-        var contentStr = message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String
-            ? content.GetString() ?? string.Empty
-            : string.Empty;
+        var contentStr = ReadString(message, "content") ?? string.Empty;
         var toolCalls = ParseToolCalls(message);
-        var finishReason = first.TryGetProperty("finish_reason", out var fr) && fr.ValueKind == JsonValueKind.String
-            ? fr.GetString() : null;
+        var finishReason = ReadString(first, "finish_reason");
         if (contentStr.Length == 0 && (toolCalls is null || toolCalls.Count == 0))
         {
             throw new LlmException(LlmErrorKind.MalformedResponse,
                 "LLM-Antwort enthielt weder 'content' (string) noch 'tool_calls'.");
         }
 
-        var modelEcho = doc.RootElement.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.String
-            ? m.GetString() ?? _config.Model
-            : _config.Model;
+        var modelEcho = ReadString(doc.RootElement, "model") ?? _config.Model;
 
         int? promptTokens = null, completionTokens = null, totalTokens = null;
         if (doc.RootElement.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
         {
-            promptTokens = usage.TryGetProperty("prompt_tokens", out var pt) && pt.ValueKind == JsonValueKind.Number
-                ? pt.GetInt32() : null;
-            // Deliberately not named `ct` locally — that would shadow the outer CancellationToken parameter (CS0136).
-            completionTokens = usage.TryGetProperty("completion_tokens", out var ctTok) && ctTok.ValueKind == JsonValueKind.Number
-                ? ctTok.GetInt32() : null;
-            totalTokens = usage.TryGetProperty("total_tokens", out var tt) && tt.ValueKind == JsonValueKind.Number
-                ? tt.GetInt32() : null;
+            promptTokens = ReadInt(usage, "prompt_tokens");
+            completionTokens = ReadInt(usage, "completion_tokens");
+            totalTokens = ReadInt(usage, "total_tokens");
         }
 
         return new LlmResponse(contentStr, modelEcho,
@@ -265,18 +257,15 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                 {
                     using var doc = JsonDocument.Parse(data);
                     var root = doc.RootElement;
-                    if (root.TryGetProperty("model", out var m) && m.ValueKind == JsonValueKind.String)
-                        model = m.GetString();
+                    model = ReadString(root, "model") ?? model;
                     if (root.TryGetProperty("choices", out var choices)
                         && choices.ValueKind == JsonValueKind.Array && choices.GetArrayLength() > 0)
                     {
                         var choice0 = choices[0];
-                        if (choice0.TryGetProperty("finish_reason", out var frEl) && frEl.ValueKind == JsonValueKind.String)
-                            finishReason = frEl.GetString();
+                        finishReason = ReadString(choice0, "finish_reason") ?? finishReason;
                         if (choice0.TryGetProperty("delta", out var d) && d.ValueKind == JsonValueKind.Object)
                         {
-                            if (d.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String)
-                                delta = c.GetString();
+                            delta = ReadString(d, "content");
                             if (d.TryGetProperty("tool_calls", out var tcs) && tcs.ValueKind == JsonValueKind.Array)
                             {
                                 AccumulateToolCallDeltas(tcs, toolAcc, ref toolAutoIndex);
@@ -286,10 +275,8 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
                     }
                     if (root.TryGetProperty("usage", out var usage) && usage.ValueKind == JsonValueKind.Object)
                     {
-                        if (usage.TryGetProperty("prompt_tokens", out var pt) && pt.ValueKind == JsonValueKind.Number)
-                            promptTokens = pt.GetInt32();
-                        if (usage.TryGetProperty("completion_tokens", out var cpt) && cpt.ValueKind == JsonValueKind.Number)
-                            completionTokens = cpt.GetInt32();
+                        promptTokens = ReadInt(usage, "prompt_tokens") ?? promptTokens;
+                        completionTokens = ReadInt(usage, "completion_tokens") ?? completionTokens;
                     }
                 }
                 catch (JsonException)
@@ -429,10 +416,10 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
         var list = new List<LlmToolCall>();
         foreach (var tc in tcs.EnumerateArray())
         {
-            var id = tc.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String ? idEl.GetString() ?? "" : "";
+            var id = ReadString(tc, "id") ?? "";
             if (!tc.TryGetProperty("function", out var fn) || fn.ValueKind != JsonValueKind.Object) continue;
-            var name = fn.TryGetProperty("name", out var nm) && nm.ValueKind == JsonValueKind.String ? nm.GetString() ?? "" : "";
-            var args = fn.TryGetProperty("arguments", out var ar) && ar.ValueKind == JsonValueKind.String ? ar.GetString() ?? "" : "";
+            var name = ReadString(fn, "name") ?? "";
+            var args = ReadString(fn, "arguments") ?? "";
             if (name.Length > 0) list.Add(new LlmToolCall(id, name, args));
         }
         return list.Count > 0 ? list : null;
@@ -452,28 +439,29 @@ public sealed class OpenAiCompatibleLlmClient : ILlmClient
     {
         foreach (var tc in toolCallsArray.EnumerateArray())
         {
-            var hasId = tc.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(idEl.GetString());
+            var id = ReadString(tc, "id");
+            var hasId = !string.IsNullOrEmpty(id);
             var hasFn = tc.TryGetProperty("function", out var fn) && fn.ValueKind == JsonValueKind.Object;
-            var startsNewCall = hasId
-                || (hasFn && fn.TryGetProperty("name", out var nm) && nm.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(nm.GetString()));
+            var fnName = hasFn ? ReadString(fn, "name") : null;
+            var startsNewCall = hasId || !string.IsNullOrEmpty(fnName);
 
             int index;
-            if (tc.TryGetProperty("index", out var ix) && ix.ValueKind == JsonValueKind.Number)
-                index = ix.GetInt32();               // canonical OpenAI incremental stream
+            if (ReadInt(tc, "index") is { } wireIndex)
+                index = wireIndex;                   // canonical OpenAI incremental stream
             else if (startsNewCall || acc.Count == 0)
                 index = autoIndex++;                 // index-less runtime: a new call opens a fresh slot
             else
                 index = Math.Max(0, autoIndex - 1);  // index-less arguments continuation → current slot
 
-            if (!acc.TryGetValue(index, out var slot)) { slot = new ToolCallAccumulator(); acc[index] = slot; }
+            var slot = ToolCallAccumulator.Slot(acc, index);
             if (hasId)
-                slot.Id = idEl.GetString()!;
+                slot.Id = id!;
             if (hasFn)
             {
-                if (fn.TryGetProperty("name", out var nm2) && nm2.ValueKind == JsonValueKind.String && !string.IsNullOrEmpty(nm2.GetString()))
-                    slot.Name = nm2.GetString()!;
-                if (fn.TryGetProperty("arguments", out var ar) && ar.ValueKind == JsonValueKind.String)
-                    slot.Arguments.Append(ar.GetString());
+                if (!string.IsNullOrEmpty(fnName))
+                    slot.Name = fnName;
+                if (ReadString(fn, "arguments") is { } arguments)
+                    slot.Arguments.Append(arguments);
             }
         }
     }

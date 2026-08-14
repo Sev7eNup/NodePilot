@@ -6,8 +6,6 @@ using NodePilot.Api.Ai;
 using NodePilot.Ai;
 using NodePilot.Api.Configuration;
 using NodePilot.Core.Audit;
-using NodePilot.Api.Telemetry;
-using NodePilot.Core.Telemetry;
 
 namespace NodePilot.Api.Controllers;
 
@@ -128,33 +126,20 @@ public sealed class AiController : ControllerBase
         return new EmptyResult();
     }
 
+    private const string ScriptKind = "script";
+    private const string WorkflowKind = "workflow";
+
     private static void RecordScriptResult(string result) =>
-        ApiMetrics.LlmCalls.Add(1, new(TelemetryConstants.Attributes.LlmKind, "script"), new("result", result));
+        AiStreamSupport.RecordResult(ScriptKind, result);
 
     private void RecordScriptError(LlmException ex)
     {
-        RecordScriptResult("error");
-        ApiMetrics.LlmErrors.Add(1,
-            new(TelemetryConstants.Attributes.LlmKind, "script"),
-            new(TelemetryConstants.Attributes.LlmErrorKind, ex.Kind.ToString()));
+        AiStreamSupport.RecordError(ScriptKind, ex);
         _logger.LogWarning(ex, "LLM script stream failed: {Kind}", ex.Kind);
     }
 
-    private static void RecordScriptSuccess(string model, int durationMs, int? promptTokens, int? completionTokens)
-    {
-        RecordScriptResult("success");
-        ApiMetrics.LlmCallDuration.Record(durationMs,
-            new(TelemetryConstants.Attributes.LlmKind, "script"),
-            new(TelemetryConstants.Attributes.LlmModel, model));
-        if (promptTokens.HasValue)
-            ApiMetrics.LlmTokens.Add(promptTokens.Value,
-                new(TelemetryConstants.Attributes.LlmKind, "script"),
-                new(TelemetryConstants.Attributes.LlmModel, model), new("token_type", "prompt"));
-        if (completionTokens.HasValue)
-            ApiMetrics.LlmTokens.Add(completionTokens.Value,
-                new(TelemetryConstants.Attributes.LlmKind, "script"),
-                new(TelemetryConstants.Attributes.LlmModel, model), new("token_type", "completion"));
-    }
+    private static void RecordScriptSuccess(string model, int durationMs, int? promptTokens, int? completionTokens) =>
+        AiStreamSupport.RecordSuccess(ScriptKind, model, durationMs, promptTokens, completionTokens);
 
     private Task ScriptAuditAsync(string model, int durationMs, int responseChars,
         GenerateScriptRequest request, bool cancelled, CancellationToken ct = default) =>
@@ -193,22 +178,8 @@ public sealed class AiController : ControllerBase
         {
             var resp = await _workflowGen.GenerateAsync(request, ct);
 
-            ApiMetrics.LlmCalls.Add(1,
-                new(TelemetryConstants.Attributes.LlmKind, "workflow"),
-                new("result", "success"));
-            ApiMetrics.LlmCallDuration.Record(resp.DurationMs,
-                new(TelemetryConstants.Attributes.LlmKind, "workflow"),
-                new(TelemetryConstants.Attributes.LlmModel, resp.Model));
-            if (resp.PromptTokens.HasValue)
-                ApiMetrics.LlmTokens.Add(resp.PromptTokens.Value,
-                    new(TelemetryConstants.Attributes.LlmKind, "workflow"),
-                    new(TelemetryConstants.Attributes.LlmModel, resp.Model),
-                    new("token_type", "prompt"));
-            if (resp.CompletionTokens.HasValue)
-                ApiMetrics.LlmTokens.Add(resp.CompletionTokens.Value,
-                    new(TelemetryConstants.Attributes.LlmKind, "workflow"),
-                    new(TelemetryConstants.Attributes.LlmModel, resp.Model),
-                    new("token_type", "completion"));
+            AiStreamSupport.RecordSuccess(WorkflowKind, resp.Model, resp.DurationMs,
+                resp.PromptTokens, resp.CompletionTokens);
 
             await _audit.LogAsync(AuditActions.AiWorkflowGenerated, "Workflow", null,
                 AuditDetails.Json(
@@ -224,12 +195,7 @@ public sealed class AiController : ControllerBase
         }
         catch (LlmException ex)
         {
-            ApiMetrics.LlmCalls.Add(1,
-                new(TelemetryConstants.Attributes.LlmKind, "workflow"),
-                new("result", "error"));
-            ApiMetrics.LlmErrors.Add(1,
-                new(TelemetryConstants.Attributes.LlmKind, "workflow"),
-                new(TelemetryConstants.Attributes.LlmErrorKind, ex.Kind.ToString()));
+            AiStreamSupport.RecordError(WorkflowKind, ex);
             return this.MapLlmException(_logger, ex, "LLM call");
         }
     }

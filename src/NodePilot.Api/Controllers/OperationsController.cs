@@ -119,15 +119,10 @@ public class OperationsController : ControllerBase
         // RBAC: resolve the accessible-folder set once and scope every query to it. Global Admin
         // is unrestricted and skips the filter; a user with zero folder access gets an empty graph.
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        var workflowQuery = _db.Workflows.AsNoTracking().AsQueryable();
-        var execQuery = _db.WorkflowExecutions.AsNoTracking().AsQueryable();
-        if (!accessible.IsUnrestricted)
-        {
-            if (accessible.FolderIds.Count == 0)
-                return Ok(new OperationsGraphDto([], [], [], [], [], emptyMeta));
-            workflowQuery = workflowQuery.Where(w => accessible.FolderIds.Contains(w.FolderId));
-            execQuery = execQuery.Where(e => accessible.FolderIds.Contains(e.Workflow.FolderId));
-        }
+        var workflowQuery = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        var execQuery = _db.WorkflowExecutions.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        if (workflowQuery is null || execQuery is null)
+            return Ok(new OperationsGraphDto([], [], [], [], [], emptyMeta));
 
         // Deliberately WITHOUT DefinitionJson. Definitions are unbounded text including every
         // inline script (21-42 KB apiece in the repo's example set) and the only thing this endpoint

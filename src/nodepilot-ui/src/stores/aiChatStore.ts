@@ -49,8 +49,6 @@ const MAX_PERSISTED_MESSAGES = 200;
  */
 const MAX_PERSISTED_PROPOSAL_CHARS = 100_000;
 
-const EMPTY_MESSAGES: ChatMessage[] = [];
-
 /**
  * Holds chat history **per user, workflow, and thread**. Unlike an earlier version, this
  * store is now `persist`-ed (survives a page reload), but privacy-conscious: `partialize`
@@ -222,6 +220,3 @@ export const useAiChatStore = create<AiChatStore>()(
     },
   ),
 );
-
-/** Stable empty reference for selectors (avoids re-render loops). */
-export const aiChatEmptyMessages = EMPTY_MESSAGES;

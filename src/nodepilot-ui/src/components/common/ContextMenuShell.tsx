@@ -9,6 +9,8 @@ interface ContextMenuShellProps {
   positioning?: 'absolute' | 'fixed';
   /** Tailwind z-index utility (e.g. "z-30", "z-50"). */
   zIndex?: string;
+  /** Tailwind min-width utility — the node menu is one step narrower than the rest. */
+  minWidth?: string;
   /** data-testid forwarded to the outer div. */
   testId?: string;
   children: ReactNode;
@@ -20,7 +22,7 @@ interface ContextMenuShellProps {
  * (use the sibling MenuItem helper for consistent styling).
  */
 export function ContextMenuShell({
-  x, y, onClose, positioning = 'absolute', zIndex = 'z-30', testId, children,
+  x, y, onClose, positioning = 'absolute', zIndex = 'z-30', minWidth = 'min-w-[180px]', testId, children,
 }: Readonly<ContextMenuShellProps>) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -42,7 +44,7 @@ export function ContextMenuShell({
   return (
     <div
       ref={menuRef}
-      className={`${positioning} ${zIndex} bg-surface-lowest border border-outline-variant/30 rounded-lg shadow-2xl py-1 min-w-[180px]`}
+      className={`${positioning} ${zIndex} bg-surface-lowest border border-outline-variant/30 rounded-lg shadow-2xl py-1 ${minWidth}`}
       style={{ left: x, top: y }}
       data-testid={testId}
     >

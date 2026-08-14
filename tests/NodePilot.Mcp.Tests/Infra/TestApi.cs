@@ -2,6 +2,7 @@ using NodePilot.Mcp.Api;
 using NodePilot.Mcp.Auth;
 using NodePilot.Mcp.Config;
 using WireMock.Server;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Mcp.Tests.Infra;
 
@@ -28,7 +29,7 @@ public sealed class TestApi : IDisposable
     public static McpServerConfig Config()
     {
         var dir = Path.Combine(Path.GetTempPath(), "np-mcp-test-" + Guid.NewGuid().ToString("N"));
-        return new McpServerConfig(new ConfigStore(dir), new TokenStore(dir));
+        return new McpServerConfig(new ClientConfigStore(dir), new TokenStore(dir));
     }
 
     /// <summary>A full WorkflowResponse-shaped body for WireMock stubs.</summary>

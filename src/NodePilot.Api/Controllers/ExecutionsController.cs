@@ -55,12 +55,9 @@ public class ExecutionsController : ControllerBase
         IQueryable<NodePilot.Core.Models.WorkflowExecution> query, CancellationToken ct)
     {
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        if (accessible.IsUnrestricted) return query;
-        if (accessible.FolderIds.Count == 0)
-            return query.Where(_ => false);
-        // Inner-join semantics: pulls each execution's workflow folder via the navigation
-        // property. Translates to a single JOIN on Postgres + SQL Server.
-        return query.Where(e => accessible.FolderIds.Contains(e.Workflow.FolderId));
+        // Zero folder access has no dedicated response on the list endpoints — an always-false
+        // query keeps the rest of the pipeline (paging, projections) intact.
+        return query.ScopeToAccessibleFolders(accessible) ?? query.Where(_ => false);
     }
 
     /// <summary>

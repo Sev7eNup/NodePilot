@@ -30,16 +30,7 @@ public class ScheduleTrigger : IActivityExecutor
         {
             Success = true,
             Output = $"Schedule trigger fired at {DateTime.UtcNow:O}\nCron: {cron}\nDescription: {description ?? "N/A"}",
-            OutputParameters = ExtractManualParams(context.Variables),
+            OutputParameters = TriggerVariables.ExtractManualParams(context.Variables),
         });
-    }
-
-    private static Dictionary<string, string> ExtractManualParams(Dictionary<string, string> vars)
-    {
-        var result = new Dictionary<string, string>();
-        foreach (var (k, v) in vars)
-            if (k.StartsWith("manual.", StringComparison.OrdinalIgnoreCase))
-                result[k["manual.".Length..]] = v;
-        return result;
     }
 }

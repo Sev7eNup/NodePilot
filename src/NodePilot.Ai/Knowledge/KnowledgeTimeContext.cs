@@ -1,4 +1,5 @@
 using System.Globalization;
+using NodePilot.Core.Time;
 
 namespace NodePilot.Ai.Knowledge;
 
@@ -14,10 +15,10 @@ namespace NodePilot.Ai.Knowledge;
 public static class KnowledgeTimeContext
 {
     /// <summary>
-    /// Renders the German context block. <paramref name="timeZoneId"/> is the caller's IANA zone
-    /// (e.g. <c>Europe/Berlin</c>); <paramref name="offsetMinutes"/> is its current UTC offset in
-    /// minutes (browser fallback). Resolution order: a valid IANA zone (honours DST) → the raw
-    /// offset → UTC only.
+    /// Renders the German context block. <paramref name="timeZoneId"/> is the caller's zone — the
+    /// browser sends an IANA id (e.g. <c>Europe/Berlin</c>), the Windows form resolves too;
+    /// <paramref name="offsetMinutes"/> is its current UTC offset in minutes (browser fallback).
+    /// Resolution order: a resolvable zone id (honours DST) → the raw offset → UTC only.
     /// </summary>
     public static string Build(DateTimeOffset nowUtc, string? timeZoneId, int? offsetMinutes)
     {
@@ -25,16 +26,10 @@ public static class KnowledgeTimeContext
         var utcLine = utc.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
 
         string? localLine = null;
-        if (!string.IsNullOrWhiteSpace(timeZoneId))
+        if (!string.IsNullOrWhiteSpace(timeZoneId) && TimeZoneResolver.TryResolve(timeZoneId, out var tz))
         {
-            try
-            {
-                var tz = TimeZoneInfo.FindSystemTimeZoneById(timeZoneId.Trim());
-                var local = TimeZoneInfo.ConvertTime(nowUtc, tz);
-                localLine = $"{Format(local)} ({timeZoneId.Trim()}, {OffsetLabel(local.Offset)})";
-            }
-            catch (TimeZoneNotFoundException) { }
-            catch (InvalidTimeZoneException) { }
+            var local = TimeZoneInfo.ConvertTime(nowUtc, tz);
+            localLine = $"{Format(local)} ({timeZoneId.Trim()}, {OffsetLabel(local.Offset)})";
         }
 
         if (localLine is null && offsetMinutes is int mins && Math.Abs(mins) <= 14 * 60)

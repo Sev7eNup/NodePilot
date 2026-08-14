@@ -70,20 +70,6 @@ public class WorkflowEngine : IWorkflowEngine
         return true;
     }
 
-    /// <summary>
-    /// Apply the redactor to untrusted text and cap the length so a single leaked blob
-    /// can't blow the DB row or the audit log. Internal helper used for ErrorMessage,
-    /// InputParametersJson, ReturnData.
-    /// </summary>
-    private string? RedactAndCap(string? value, int maxChars)
-    {
-        if (string.IsNullOrEmpty(value)) return value;
-        var redacted = _redactor.Redact(value) ?? value;
-        return redacted.Length > maxChars
-            ? redacted.Substring(0, maxChars) + "... [truncated]"
-            : redacted;
-    }
-
     // Per-execution debug state: breakpoint pauses + step-over control. Runs parallel to
     // the _runningExecutions dict (same executionId key), so the cancel path can also
     // reach any paused steps (otherwise the engine thread would hang forever if the user
@@ -575,7 +561,7 @@ public class WorkflowEngine : IWorkflowEngine
             // H-8 (security-audit finding): input parameter JSON may contain values
             // resolved from secrets/globals — run it through the redactor and cap it to
             // 32 KiB so a runaway caller can't blow up the DB row or the audit log.
-            InputParametersJson = RedactAndCap(SerializeInputParameters(inputParameters), 32 * 1024),
+            InputParametersJson = _redactor.RedactAndCap(SerializeInputParameters(inputParameters), 32 * 1024),
             StartedByUserId = startedByUserId,
             ParentExecutionId = parentExecutionId,
             CallDepth = callDepth,
@@ -595,7 +581,7 @@ public class WorkflowEngine : IWorkflowEngine
             execution.ErrorMessage = null;
             execution.TraceId = activity?.TraceId.ToString();
             execution.SpanId = activity?.SpanId.ToString();
-            execution.InputParametersJson = RedactAndCap(SerializeInputParameters(inputParameters), 32 * 1024);
+            execution.InputParametersJson = _redactor.RedactAndCap(SerializeInputParameters(inputParameters), 32 * 1024);
             execution.StartedByUserId = startedByUserId;
             execution.ParentExecutionId = parentExecutionId;
             execution.CallDepth = callDepth;
@@ -1033,15 +1019,7 @@ public class WorkflowEngine : IWorkflowEngine
                 errorMessage,
                 cancelledBy: null,
                 "execution.no_roots");
-            if (IsTerminalStatus(execution.Status))
-            {
-                await _notifier.ExecutionStatusChangedAsync(execution.Id, execution.WorkflowId,
-                    execution.Status, execution.ErrorMessage, execution.CompletedAt);
-            }
-            else
-            {
-                LogTerminalWriteFenced(run);
-            }
+            await NotifyTerminalStateAsync(run);
             return execution;
         }
 
@@ -1147,7 +1125,7 @@ public class WorkflowEngine : IWorkflowEngine
                 ? $" (+{failedStepCount - 1} more failed activities)"
                 : string.Empty;
 
-            failureSummary = RedactAndCap(
+            failureSummary = _redactor.RedactAndCap(
                 $"Activity \"{stepLabel}\" failed{errorDetail}{additionalFailures}",
                 32 * 1024);
         }
@@ -1173,15 +1151,7 @@ public class WorkflowEngine : IWorkflowEngine
                 ExecutionStatus.Skipped, null, null, DateTime.UtcNow, stepType: type);
         }
 
-        if (IsTerminalStatus(execution.Status))
-        {
-            await _notifier.ExecutionStatusChangedAsync(
-                execution.Id, execution.WorkflowId, execution.Status, execution.ErrorMessage, execution.CompletedAt);
-        }
-        else
-        {
-            LogTerminalWriteFenced(run);
-        }
+        await NotifyTerminalStateAsync(run);
 
         activity?.SetTag(TelemetryConstants.Attributes.ExecutionStatus, execution.Status.ToString());
         if (execution.Status == ExecutionStatus.Failed)
@@ -1214,15 +1184,7 @@ public class WorkflowEngine : IWorkflowEngine
             errorMessage: null,
             cancelledBy,
             "execution.cancelled");
-        if (IsTerminalStatus(execution.Status))
-        {
-            await _notifier.ExecutionStatusChangedAsync(
-                execution.Id, execution.WorkflowId, execution.Status, execution.ErrorMessage, execution.CompletedAt);
-        }
-        else
-        {
-            LogTerminalWriteFenced(run);
-        }
+        await NotifyTerminalStateAsync(run);
         run.Activity?.SetTag(TelemetryConstants.Attributes.ExecutionStatus, execution.Status.ToString());
         run.Activity?.SetStatus(ActivityStatusCode.Error, "cancelled");
         EngineMetrics.Cancellations.Add(1, run.WorkflowIdTag, run.WorkflowNameTag, new KeyValuePair<string, object?>("reason", "user_or_token"));
@@ -1242,22 +1204,14 @@ public class WorkflowEngine : IWorkflowEngine
         // H-8/H-9 (security-audit findings): redact + cap — the exception may carry a
         // leaked secret from a child activity (e.g. an HTTP body echoed back in a
         // deserialization error).
-        var errorMessage = RedactAndCap(ex.Message, 32 * 1024);
+        var errorMessage = _redactor.RedactAndCap(ex.Message, 32 * 1024);
         await PersistTerminalStateResilientAsync(
             run,
             ExecutionStatus.Failed,
             errorMessage,
             cancelledBy: null,
             "execution.failed");
-        if (IsTerminalStatus(execution.Status))
-        {
-            await _notifier.ExecutionStatusChangedAsync(
-                execution.Id, execution.WorkflowId, execution.Status, execution.ErrorMessage, execution.CompletedAt);
-        }
-        else
-        {
-            LogTerminalWriteFenced(run);
-        }
+        await NotifyTerminalStateAsync(run);
         run.Activity?.SetTag(TelemetryConstants.Attributes.ExecutionStatus, execution.Status.ToString());
         run.Activity?.SetStatus(ActivityStatusCode.Error,
             execution.Status == ExecutionStatus.Cancelled ? "cancelled" : ex.Message);
@@ -1269,6 +1223,25 @@ public class WorkflowEngine : IWorkflowEngine
 
     private static bool IsTerminalStatus(ExecutionStatus status) =>
         status is ExecutionStatus.Succeeded or ExecutionStatus.Failed or ExecutionStatus.Cancelled;
+
+    /// <summary>
+    /// Emits the terminal SignalR event — but only if the terminal write actually landed.
+    /// A fenced write (execution ownership / leader lease lost) leaves the row non-terminal;
+    /// announcing a status this node no longer owns would race the owning node, so we log instead.
+    /// </summary>
+    private async Task NotifyTerminalStateAsync(ExecutionRun run)
+    {
+        var execution = run.Execution;
+        if (IsTerminalStatus(execution.Status))
+        {
+            await _notifier.ExecutionStatusChangedAsync(
+                execution.Id, execution.WorkflowId, execution.Status, execution.ErrorMessage, execution.CompletedAt);
+        }
+        else
+        {
+            LogTerminalWriteFenced(run);
+        }
+    }
 
     private void LogTerminalWriteFenced(ExecutionRun run)
     {

@@ -8,6 +8,7 @@ using WireMock.RequestBuilders;
 using WireMock.ResponseBuilders;
 using WireMock.Server;
 using Xunit;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Mcp.Tests.Api;
 
@@ -75,7 +76,7 @@ public sealed class InfraTests
             var dir = Temp();
             try
             {
-                var session = new McpServerConfig(new ConfigStore(dir), new TokenStore(dir)).Resolve();
+                var session = new McpServerConfig(new ClientConfigStore(dir), new TokenStore(dir)).Resolve();
                 session.Server.Should().Be("https://env-srv/");
                 session.Token.Should().Be("raw-bearer");
                 session.UsesRefreshableSession.Should().BeFalse();
@@ -98,7 +99,7 @@ public sealed class InfraTests
                 var tokens = new TokenStore(dir);
                 tokens.Save("prod", new StoredSession { Server = "https://prod-srv/", Token = "dpapi-jwt", Username = "u", UserId = Guid.NewGuid(), Role = "Operator", ExpiresAt = DateTime.UtcNow.AddHours(12) });
 
-                var session = new McpServerConfig(new ConfigStore(dir), tokens).Resolve();
+                var session = new McpServerConfig(new ClientConfigStore(dir), tokens).Resolve();
                 session.Profile.Should().Be("prod");
                 session.Server.Should().Be("https://prod-srv/");
                 session.Token.Should().Be("dpapi-jwt");
@@ -125,7 +126,7 @@ public sealed class InfraTests
             var dir = Temp();
             try
             {
-                var cfg = new McpServerConfig(new ConfigStore(dir), new TokenStore(dir));
+                var cfg = new McpServerConfig(new ClientConfigStore(dir), new TokenStore(dir));
                 var client = new ApiClientFactory(cfg, new TokenStore(dir)).Create();
                 client.Session!.HasServer.Should().BeTrue();
                 client.Session.HasToken.Should().BeTrue();
@@ -143,7 +144,7 @@ public sealed class InfraTests
             var dir = Temp();
             try
             {
-                var cfg = new McpServerConfig(new ConfigStore(dir), new TokenStore(dir));
+                var cfg = new McpServerConfig(new ClientConfigStore(dir), new TokenStore(dir));
 
                 Action act = () => new ApiClientFactory(cfg, new TokenStore(dir)).Create();
 
@@ -164,7 +165,7 @@ public sealed class InfraTests
                 var tokens = new TokenStore(dir);
                 tokens.Save("default", StoredSessionFor("https://trusted.example", "origin-bound-token"));
 
-                var session = new McpServerConfig(new ConfigStore(dir), tokens).Resolve();
+                var session = new McpServerConfig(new ClientConfigStore(dir), tokens).Resolve();
 
                 session.Server.Should().Be("https://attacker.example");
                 session.HasToken.Should().BeFalse();
@@ -189,7 +190,7 @@ public sealed class InfraTests
                 var tokens = new TokenStore(dir);
                 tokens.Save("default", StoredSessionFor(storedServer, "tok"));
 
-                var session = new McpServerConfig(new ConfigStore(dir), tokens).Resolve();
+                var session = new McpServerConfig(new ClientConfigStore(dir), tokens).Resolve();
 
                 session.Token.Should().Be("tok");
                 session.UsesRefreshableSession.Should().BeTrue();

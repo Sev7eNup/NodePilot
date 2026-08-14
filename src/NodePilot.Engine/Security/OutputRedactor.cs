@@ -166,6 +166,25 @@ public sealed class OutputRedactor : IAuditDetailsRedactor
     }
 
     /// <summary>
+    /// Length cap for untrusted text before it lands in a DB row or a log line, so a single
+    /// leaked blob can't blow the row or the audit log. The <c>"... [truncated]"</c> marker is
+    /// part of the persisted value — the inspector UI shows it as "this was truncated".
+    /// </summary>
+    public static string Cap(string value, int maxChars)
+        => value.Length > maxChars ? value.Substring(0, maxChars) + "... [truncated]" : value;
+
+    /// <summary>
+    /// Apply the redactor to untrusted text and cap the length. Used for ErrorMessage,
+    /// InputParametersJson, ReturnData.
+    /// </summary>
+    public string? RedactAndCap(string? value, int maxChars)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        var redacted = Redact(value) ?? value;
+        return Cap(redacted, maxChars);
+    }
+
+    /// <summary>
     /// Redacts a value with awareness of the field/variable name. Value-only regexes cannot
     /// recognize opaque secrets such as <c>dbPassword = hunter2</c> once the key and value have
     /// been split into an <c>OutputParameters</c> dictionary. Qualified names and camel/Pascal

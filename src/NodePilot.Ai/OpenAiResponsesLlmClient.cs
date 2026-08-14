@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using static NodePilot.Ai.LlmJson;
 
 namespace NodePilot.Ai;
 
@@ -95,7 +96,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
                         if (root.TryGetProperty("item", out var added) && added.ValueKind == JsonValueKind.Object
                             && ReadString(added, "type") == "function_call")
                         {
-                            var slot = Slot(toolAcc, ReadInt(root, "output_index") ?? toolAcc.Count);
+                            var slot = ToolCallAccumulator.Slot(toolAcc, ReadInt(root, "output_index") ?? toolAcc.Count);
                             slot.Id = ReadString(added, "call_id") ?? slot.Id;
                             slot.Name = ReadString(added, "name") ?? slot.Name;
                             sawOutput = true;
@@ -104,7 +105,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
 
                     case "response.function_call_arguments.delta":
                         {
-                            var slot = Slot(toolAcc, ReadInt(root, "output_index") ?? Math.Max(0, toolAcc.Count - 1));
+                            var slot = ToolCallAccumulator.Slot(toolAcc, ReadInt(root, "output_index") ?? Math.Max(0, toolAcc.Count - 1));
                             if (root.TryGetProperty("delta", out var ad) && ad.ValueKind == JsonValueKind.String)
                                 slot.Arguments.Append(ad.GetString());
                             sawOutput = true;
@@ -118,7 +119,7 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
                         if (root.TryGetProperty("item", out var done) && done.ValueKind == JsonValueKind.Object
                             && ReadString(done, "type") == "function_call")
                         {
-                            var slot = Slot(toolAcc, ReadInt(root, "output_index") ?? Math.Max(0, toolAcc.Count - 1));
+                            var slot = ToolCallAccumulator.Slot(toolAcc, ReadInt(root, "output_index") ?? Math.Max(0, toolAcc.Count - 1));
                             slot.Id = ReadString(done, "call_id") ?? slot.Id;
                             slot.Name = ReadString(done, "name") ?? slot.Name;
                             if (slot.Arguments.Length == 0 && ReadString(done, "arguments") is { } args)
@@ -350,19 +351,5 @@ public sealed class OpenAiResponsesLlmClient : ILlmClient
             return (promptTokens, completionTokens);
         return (ReadInt(usage, "input_tokens") ?? promptTokens, ReadInt(usage, "output_tokens") ?? completionTokens);
     }
-
-    private static ToolCallAccumulator Slot(Dictionary<int, ToolCallAccumulator> acc, int index)
-    {
-        if (!acc.TryGetValue(index, out var slot)) { slot = new ToolCallAccumulator(); acc[index] = slot; }
-        return slot;
-    }
-
-    private static string? ReadString(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
-            ? value.GetString() : null;
-
-    private static int? ReadInt(JsonElement element, string name) =>
-        element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.Number
-            ? value.GetInt32() : null;
 
 }

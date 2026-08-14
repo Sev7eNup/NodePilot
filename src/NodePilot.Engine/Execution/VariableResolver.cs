@@ -50,18 +50,9 @@ internal static class VariableResolver
     ///   3. previous-step OutputParameters: fully-qualified <c>{stepVar}.param.{key}</c>
     ///      always wins; the short-name alias is only added if not already present and
     ///      not in <see cref="DenylistedShortParamNames"/>.
-    /// </summary>
-    internal static Dictionary<string, string> BuildStepVariables(
-        Dictionary<string, string>? inputParameters,
-        IReadOnlyDictionary<string, string> globalVariables,
-        IReadOnlyDictionary<string, ActivityResult> previousResults,
-        List<WorkflowNode> allNodes)
-        => BuildStepVariables(inputParameters, globalVariables, previousResults, BuildOutputNameByStepId(allNodes));
-
-    /// <summary>
-    /// Hot-path overload: callers who already built an output-name index once per execution
-    /// (see <see cref="WorkflowEngine"/>) pass it through directly to skip per-call
-    /// node scans.
+    ///
+    /// Callers pass the output-name index they already built once per execution
+    /// (see <see cref="WorkflowEngine"/>) so nothing rescans the node list per call.
     /// </summary>
     internal static Dictionary<string, string> BuildStepVariables(
         Dictionary<string, string>? inputParameters,
@@ -316,17 +307,6 @@ internal static class VariableResolver
         return map;
     }
 
-    /// <summary>
-    /// Materialises an id → node lookup for one call-site's batch of resolves. Called from
-    /// the legacy <c>List&lt;WorkflowNode&gt;</c> overloads; the hot path in
-    /// <see cref="WorkflowEngine"/> constructs the dict once per execution and reuses it.
-    /// </summary>
-    internal static Dictionary<string, WorkflowNode> BuildNodesById(List<WorkflowNode> allNodes)
-        => WorkflowDefinitionDocument.BuildNodesById(allNodes);
-
-    internal static Dictionary<string, string> BuildOutputNameByStepId(IReadOnlyList<WorkflowNode> allNodes)
-        => WorkflowDefinitionDocument.BuildOutputNameByStepId(allNodes);
-
     internal static Dictionary<string, string> BuildOutputVariableAliasMap(IReadOnlyList<WorkflowNode> allNodes)
         => WorkflowDefinitionDocument.BuildOutputVariableAliasMap(allNodes);
 
@@ -358,22 +338,20 @@ internal static class VariableResolver
 
         return StepPattern.Replace(raw!, match =>
         {
-            var varNameStr = match.Groups[1].Value;
-            var propertyStr = match.Groups[2].Value;
-
-            if (variableMap.TryGetValue(varNameStr, out var res) && propertyStr.StartsWith("param.") && match.Groups[3].Success)
-            {
-                // No Trim — keeps the value byte-identical to ResolveVariables' JSON-config
-                // pass. Mismatched trim semantics caused subtle bugs where the same template
-                // resolved one way in restApi.url (string-path) and another way in restApi.body
-                // (JSON-path).
-                return res.OutputParameters.TryGetValue(match.Groups[3].Value, out var pv) ? pv : match.Value;
-            }
             var varName = match.Groups[1].Value;
             var property = match.Groups[2].Value;
 
             if (!variableMap.TryGetValue(varName, out var result))
                 return match.Value;
+
+            if (property.StartsWith("param.") && match.Groups[3].Success)
+            {
+                // No Trim — keeps the value byte-identical to ResolveVariables' JSON-config
+                // pass. Mismatched trim semantics caused subtle bugs where the same template
+                // resolved one way in restApi.url (string-path) and another way in restApi.body
+                // (JSON-path).
+                return result.OutputParameters.TryGetValue(match.Groups[3].Value, out var pv) ? pv : match.Value;
+            }
 
             return property.ToLowerInvariant() switch
             {

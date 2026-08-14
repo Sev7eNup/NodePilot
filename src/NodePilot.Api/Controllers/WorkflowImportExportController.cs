@@ -44,17 +44,12 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         var sw = Stopwatch.StartNew();
         // RBAC: export only what the caller may read. Global Admin gets everything.
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        var query = _db.Workflows.AsNoTracking().AsQueryable();
+        var all = _db.Workflows.AsNoTracking();
         // A restricted user with zero accessible folders still gets a (valid, empty)
         // envelope rather than an early-return — the audit emission below must run for
         // the empty case too. An attempted catalogue-pull from a viewer who lost their
         // last grant is exactly the SIEM signal "WORKFLOW_EXPORTED_BULK count=0" is for.
-        if (!accessible.IsUnrestricted)
-        {
-            query = accessible.FolderIds.Count == 0
-                ? query.Where(_ => false)
-                : query.Where(w => accessible.FolderIds.Contains(w.FolderId));
-        }
+        var query = all.ScopeToAccessibleFolders(accessible) ?? all.Where(_ => false);
         var workflows = await query
             .OrderBy(w => w.Name)
             .ToListAsync(ct);

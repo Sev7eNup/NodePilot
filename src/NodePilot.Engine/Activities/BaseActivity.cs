@@ -191,10 +191,52 @@ public abstract class BaseRemoteActivity : IActivityExecutor
     protected virtual ActivityResult PostProcess(ActivityResult raw, JsonElement config) => raw;
 
     /// <summary>
-    /// Helper for PostProcess overrides: copies a string field from the JSON object into the
-    /// target dictionary. A <c>ValueKind.String</c> is copied via <c>GetString()</c>, Null/Undefined
-    /// is stored as an empty string, and every other kind is serialized via <c>GetRawText()</c>.
+    /// Shared preamble of every marker-envelope PostProcess override: parses the JSON block the
+    /// script wrote between the result markers. Returns false when the caller must return
+    /// <paramref name="passthrough"/> instead of projecting — either the untouched raw result (no
+    /// envelope in the output, e.g. the script died before reaching it) or a failure carrying
+    /// "<paramref name="label"/>: could not parse result JSON: …" for a malformed envelope.
     /// </summary>
-    protected static void CopyStringField(JsonElement obj, string sourceKey, IDictionary<string, string> dest, string destKey)
-        => PowerShellOperation.CopyStringField(obj, sourceKey, dest, destKey);
+    private protected static bool TryParseResultEnvelope(
+        ActivityResult raw,
+        PowerShellOperationMarkers markers,
+        string label,
+        out JsonDocument? document,
+        out ActivityResult? passthrough)
+    {
+        if (PowerShellOperation.TryParseJsonBlock(raw.Output, markers, out document, out var parseError))
+        {
+            passthrough = null;
+            return true;
+        }
+
+        passthrough = parseError is null
+            ? raw
+            : new ActivityResult
+            {
+                Success = false,
+                Output = raw.Output,
+                ErrorOutput = $"{label}: could not parse result JSON: {parseError}",
+                Duration = raw.Duration,
+            };
+        return false;
+    }
+
+    /// <summary>
+    /// Returns <paramref name="raw"/> unchanged when nothing was projected, otherwise a copy that
+    /// carries the parameters. Success/Output/ErrorOutput/Duration are passed through verbatim.
+    /// </summary>
+    protected static ActivityResult WithOutputParameters(ActivityResult raw, Dictionary<string, string> parameters)
+    {
+        if (parameters.Count == 0) return raw;
+
+        return new ActivityResult
+        {
+            Success = raw.Success,
+            Output = raw.Output,
+            ErrorOutput = raw.ErrorOutput,
+            Duration = raw.Duration,
+            OutputParameters = parameters,
+        };
+    }
 }

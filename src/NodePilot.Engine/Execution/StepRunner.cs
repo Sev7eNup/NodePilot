@@ -618,10 +618,7 @@ internal sealed class StepRunner
     }
 
     private static string Truncate(string? s, int max)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        return s.Length > max ? s.Substring(0, max) + "... [truncated]" : s;
-    }
+        => string.IsNullOrEmpty(s) ? "" : OutputRedactor.Cap(s, max);
 
     /// <summary>
     /// Emits a compact line to the support log (a second Serilog sink) when a step

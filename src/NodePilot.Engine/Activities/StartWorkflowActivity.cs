@@ -8,6 +8,7 @@ using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Execution;
+using NodePilot.Engine.PowerShell;
 
 namespace NodePilot.Engine.Activities;
 
@@ -111,27 +112,17 @@ public class StartWorkflowActivity : IActivityExecutor
         var waitForCompletion = config.GetBool("waitForCompletion", true);
 
         // Locate child workflow — GUID first; by name exact-case wins, then case-insensitive.
-        Workflow? childWorkflow;
-        if (Guid.TryParse(workflowNameOrId, out var id))
+        var (outcome, resolvedWorkflow) = await SubWorkflowInvocation.ResolveChildWorkflowAsync(_db, workflowNameOrId, ct);
+        if (outcome == SubWorkflowInvocation.ChildOutcome.Ambiguous)
         {
-            childWorkflow = await _db.Workflows.FirstOrDefaultAsync(wf => wf.Id == id, ct);
-        }
-        else
-        {
-            var resolved = await WorkflowNameResolver.ResolveByNameAsync(_db.Workflows, workflowNameOrId, ct);
-            if (resolved.Outcome == WorkflowNameResolver.Outcome.Ambiguous)
+            return new ActivityResult
             {
-                return new ActivityResult
-                {
-                    Success = false,
-                    ErrorOutput = $"startWorkflow: multiple workflows named '{workflowNameOrId}' — disambiguate with the GUID",
-                    Duration = sw.Elapsed,
-                };
-            }
-            childWorkflow = resolved.Workflow;
+                Success = false,
+                ErrorOutput = $"startWorkflow: multiple workflows named '{workflowNameOrId}' — disambiguate with the GUID",
+                Duration = sw.Elapsed,
+            };
         }
-
-        if (childWorkflow is null)
+        if (outcome == SubWorkflowInvocation.ChildOutcome.NotFound)
         {
             return new ActivityResult
             {
@@ -140,7 +131,8 @@ public class StartWorkflowActivity : IActivityExecutor
                 Duration = sw.Elapsed,
             };
         }
-        if (!childWorkflow.IsEnabled)
+        var childWorkflow = resolvedWorkflow!;
+        if (outcome == SubWorkflowInvocation.ChildOutcome.Disabled)
         {
             return new ActivityResult
             {
@@ -152,10 +144,8 @@ public class StartWorkflowActivity : IActivityExecutor
 
         // Self-call guard - requires the parent workflow id. It is not on the context directly,
         // so we derive it from the current execution row.
-        var parentExec = await _db.WorkflowExecutions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(e => e.Id == context.WorkflowExecutionId, ct);
-        if (parentExec is not null && parentExec.WorkflowId == childWorkflow.Id)
+        var parentExec = await SubWorkflowInvocation.LoadParentExecutionAsync(_db, context.WorkflowExecutionId, ct);
+        if (SubWorkflowInvocation.IsSelfInvocation(parentExec, childWorkflow))
         {
             return new ActivityResult
             {
@@ -173,28 +163,21 @@ public class StartWorkflowActivity : IActivityExecutor
         //   - manual run: parentExec.StartedByUserId
         //   - trigger-driven run: parent workflow's LastModifiedByUserId (best proxy V1)
         // If neither resolves, the run lacks a principal — refuse the cross-folder call.
-        if (_subWorkflowAuthz is not null && parentExec is not null)
+        var blocked = await SubWorkflowInvocation.GetAuthorizationBlockAsync(
+            _subWorkflowAuthz, parentExec, childWorkflow, ct);
+        if (blocked is not null)
         {
-            var blocked = await _subWorkflowAuthz.IsBlockedAsync(parentExec, childWorkflow, ct);
-            if (blocked is not null)
+            return new ActivityResult
             {
-                return new ActivityResult
-                {
-                    Success = false,
-                    ErrorOutput = $"startWorkflow: {blocked}",
-                    Duration = sw.Elapsed,
-                };
-            }
+                Success = false,
+                ErrorOutput = $"startWorkflow: {blocked}",
+                Duration = sw.Elapsed,
+            };
         }
 
         // Call-depth guard - read from the reserved variable the engine places into context.Variables
         // ("manual.__callDepth" when passed via inputParameters).
-        var currentDepth = 0;
-        if (context.Variables.TryGetValue($"manual.{WorkflowRecursion.CallDepthKey}", out var depthStr)
-            && int.TryParse(depthStr, out var parsed))
-        {
-            currentDepth = parsed;
-        }
+        var currentDepth = SubWorkflowInvocation.CurrentCallDepth(context);
         if (currentDepth >= WorkflowRecursion.MaxCallDepth)
         {
             _subWorkflowDepthExceeded.Add(1);
@@ -226,31 +209,18 @@ public class StartWorkflowActivity : IActivityExecutor
         // who supplies "__callDepth", "__CALLDEPTH", "__CallDepth", etc. as a user parameter
         // and resets the counter. Any key starting with "__" is reserved for engine bookkeeping
         // and rejected on ingest, case-insensitively.
-        var childParams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (config.TryGetProperty("parameters", out var paramsEl) && paramsEl.ValueKind == JsonValueKind.Object)
+        // Reserved-prefix guard (H5): case-insensitive. Previously the reserved key was
+        // seeded first and then overwritten by user params because the user-loop came
+        // second. Reject ALL "__"-prefixed keys from user input - they're ours.
+        var childParams = SubWorkflowInvocation.CollectParameters(config, out var reservedKey);
+        if (reservedKey is not null)
         {
-            foreach (var prop in paramsEl.EnumerateObject())
+            return new ActivityResult
             {
-                // Reserved-prefix guard (H5): case-insensitive. Previously the reserved key was
-                // seeded first and then overwritten by user params because the user-loop came
-                // second. Reject ALL "__"-prefixed keys from user input - they're ours.
-                if (prop.Name.StartsWith("__", StringComparison.OrdinalIgnoreCase))
-                {
-                    return new ActivityResult
-                    {
-                        Success = false,
-                        ErrorOutput = $"startWorkflow: parameter name '{prop.Name}' is reserved (keys starting with '__' are used by the engine). Rename the parameter.",
-                        Duration = sw.Elapsed,
-                    };
-                }
-
-                childParams[prop.Name] = prop.Value.ValueKind switch
-                {
-                    JsonValueKind.String => prop.Value.GetString() ?? string.Empty,
-                    JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
-                    _ => prop.Value.GetRawText(),
-                };
-            }
+                Success = false,
+                ErrorOutput = $"startWorkflow: parameter name '{reservedKey}' is reserved (keys starting with '__' are used by the engine). Rename the parameter.",
+                Duration = sw.Elapsed,
+            };
         }
         // Seed the reserved depth counter AFTER the user loop so even if the reject above were
         // bypassed, the engine's value always wins. Belt-and-suspenders on H5.
@@ -387,12 +357,7 @@ public class StartWorkflowActivity : IActivityExecutor
                     {
                         foreach (var prop in doc.RootElement.EnumerateObject())
                         {
-                            returned[prop.Name] = prop.Value.ValueKind switch
-                            {
-                                JsonValueKind.String => prop.Value.GetString() ?? string.Empty,
-                                JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
-                                _ => prop.Value.GetRawText(),
-                            };
+                            returned[prop.Name] = PowerShellOperation.JsonElementToScalarString(prop.Value);
                         }
                     }
                 }

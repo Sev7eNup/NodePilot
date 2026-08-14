@@ -27,60 +27,9 @@ public sealed class DpapiSecretProtector : ISecretProtector
         _scope = scope;
     }
 
-    public byte[] Protect(string plaintext)
-    {
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            var bytes = Encoding.UTF8.GetBytes(plaintext);
-            var result = ProtectedData.Protect(bytes, null, _scope);
-            sw.Stop();
-            DataMetrics.CredentialCryptoCalls.Add(1,
-                new("operation", "encrypt"),
-                new("provider", ProviderName),
-                new("result", "success"));
-            var tags = new TagList { new("operation", "encrypt"), new("provider", ProviderName) };
-            DataMetrics.CredentialCryptoDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
-            return result;
-        }
-        catch
-        {
-            sw.Stop();
-            DataMetrics.CredentialCryptoCalls.Add(1,
-                new("operation", "encrypt"),
-                new("provider", ProviderName),
-                new("result", "failure"));
-            var tags = new TagList { new("operation", "encrypt"), new("provider", ProviderName) };
-            DataMetrics.CredentialCryptoDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
-            throw;
-        }
-    }
+    public byte[] Protect(string plaintext) => DataMetrics.MeasureCrypto("encrypt", ProviderName, () =>
+        ProtectedData.Protect(Encoding.UTF8.GetBytes(plaintext), null, _scope));
 
-    public string Unprotect(byte[] blob)
-    {
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            var bytes = ProtectedData.Unprotect(blob, null, _scope);
-            sw.Stop();
-            DataMetrics.CredentialCryptoCalls.Add(1,
-                new("operation", "decrypt"),
-                new("provider", ProviderName),
-                new("result", "success"));
-            var tags = new TagList { new("operation", "decrypt"), new("provider", ProviderName) };
-            DataMetrics.CredentialCryptoDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
-            return Encoding.UTF8.GetString(bytes);
-        }
-        catch
-        {
-            sw.Stop();
-            DataMetrics.CredentialCryptoCalls.Add(1,
-                new("operation", "decrypt"),
-                new("provider", ProviderName),
-                new("result", "failure"));
-            var tags = new TagList { new("operation", "decrypt"), new("provider", ProviderName) };
-            DataMetrics.CredentialCryptoDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
-            throw;
-        }
-    }
+    public string Unprotect(byte[] blob) => DataMetrics.MeasureCrypto("decrypt", ProviderName, () =>
+        Encoding.UTF8.GetString(ProtectedData.Unprotect(blob, null, _scope)));
 }

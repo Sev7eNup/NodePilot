@@ -204,39 +204,7 @@ public class SystemAlertingController : ControllerBase
         if (policy is null) return NotFound();
 
         var ctx = BuildSampleContext(policy);
-        var now = DateTime.UtcNow;
-        var results = new List<TestFireRouteResult>();
-
-        foreach (var route in policy.Routes)
-        {
-            var attempt = new NotificationDeliveryAttempt
-            {
-                Id = Guid.NewGuid(),
-                NotificationRuleId = policy.Id,
-                NotificationRouteId = route.Id,
-                EventKey = $"test:{Guid.NewGuid():N}",
-                DedupKey = $"test:{policy.Id}",
-                IsTest = true,
-                Attempt = 1,
-                CreatedAt = now,
-                SentAt = now,
-            };
-
-            NotificationSendResult result;
-            if (!_sinks.TryGetValue(route.Channel, out var sink))
-                result = NotificationSendResult.Fail($"no sink registered for channel {route.Channel}");
-            else
-            {
-                var secret = string.IsNullOrEmpty(route.Secret) ? null : await _store.GetRouteSecretAsync(route.Id, ct);
-                result = await sink.SendAsync(ctx, route.Target, secret, ct);
-            }
-
-            attempt.Status = result.Success ? NotificationDeliveryStatus.Sent : NotificationDeliveryStatus.Failed;
-            attempt.Error = result.Error;
-            attempt.Summary = $"[test] {route.Channel}:{route.Target}";
-            _db.NotificationDeliveryAttempts.Add(attempt);
-            results.Add(new TestFireRouteResult(route.Channel.ToString(), route.Target, result.Success, result.Error));
-        }
+        var results = await AlertingRuleMapping.DeliverTestFireAsync(_db, _store, _sinks, policy, ctx, ct);
         await _db.SaveChangesAsync(ct);
 
         await _audit.LogAsync(AuditActions.SystemAlertPolicyTestFired, "SystemAlertPolicy", policy.Id,
@@ -290,48 +258,13 @@ public class SystemAlertingController : ControllerBase
             return Bad("minOccurrences must be at least 1", out problem);
 
         // Routes: required only to enable (a draft policy may be saved disabled with no route).
-        var mappedRoutes = new List<NotificationRoute>();
         if (request.IsEnabled && (request.Routes is null || request.Routes.Count == 0))
             return Bad("An enabled policy requires at least one route.", out problem);
-        var order = 0;
-        foreach (var rt in request.Routes ?? [])
-        {
-            if (!Enum.TryParse<NotificationChannel>(rt.Channel, ignoreCase: true, out var channel))
-                return Bad($"Invalid channel '{rt.Channel}'", out problem);
-            if (!_sinks.ContainsKey(channel))
-                return Bad($"No delivery sink is registered for channel '{rt.Channel}' (available: {string.Join(", ", _sinks.Keys)})", out problem);
-            if (string.IsNullOrWhiteSpace(rt.Target))
-                return Bad("Each route requires a target", out problem);
-            if (!NotificationRuleSemantics.TryValidateConditionJson(rt.ConditionExpressionJson, out var routeConditionError))
-                return Bad($"route conditionExpressionJson {routeConditionError}", out problem);
-            mappedRoutes.Add(new NotificationRoute
-            {
-                Id = rt.Id ?? Guid.Empty,
-                Channel = channel,
-                Target = rt.Target.Trim(),
-                Secret = rt.Secret,
-                ConditionExpressionJson = string.IsNullOrWhiteSpace(rt.ConditionExpressionJson) ? null : rt.ConditionExpressionJson,
-                Order = order++,
-            });
-        }
+        if (!AlertingRuleMapping.TryMapRoutes(request.Routes, _sinks, out var mappedRoutes, out var routeError))
+            return Bad(routeError!, out problem);
 
-        var mappedTargets = new List<NotificationRuleTarget>();
-        if (scope != NotificationScopeKind.Global)
-        {
-            var expectedKind = scope == NotificationScopeKind.Folders ? NotificationTargetKind.Folder : NotificationTargetKind.Workflow;
-            if (request.Targets is null || request.Targets.Count == 0)
-                return Bad($"{scope} policies require at least one target", out problem);
-            foreach (var t in request.Targets)
-            {
-                if (!Enum.TryParse<NotificationTargetKind>(t.TargetKind, ignoreCase: true, out var kind))
-                    return Bad($"Invalid target kind '{t.TargetKind}'", out problem);
-                if (kind != expectedKind)
-                    return Bad($"{scope} policies may only contain {expectedKind} targets", out problem);
-                if (t.TargetId == Guid.Empty)
-                    return Bad("Target id must not be empty", out problem);
-                mappedTargets.Add(new NotificationRuleTarget { TargetKind = kind, TargetId = t.TargetId });
-            }
-        }
+        if (!AlertingRuleMapping.TryMapScopeTargets(scope, request.Targets, "policies", out var mappedTargets, out var targetError))
+            return Bad(targetError!, out problem);
 
         draft = new NotificationRule
         {

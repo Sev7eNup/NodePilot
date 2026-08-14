@@ -22,20 +22,9 @@ public sealed class GlobalVariableFolderBackupPart(NodePilotDbContext db) : IBac
         var folders = await db.GlobalVariableFolders.AsNoTracking()
             .OrderBy(f => f.Depth).ThenBy(f => f.Name).ToListAsync(ct);
 
-        var structure = new JsonArray();
-        foreach (var f in folders)
+        return new JsonObject
         {
-            structure.Add(new JsonObject
-            {
-                ["sourceId"] = f.Id.ToString(),
-                ["parentFolderId"] = f.ParentFolderId?.ToString(),
-                ["name"] = f.Name,
-                ["path"] = f.Path,
-                ["depth"] = f.Depth,
-                ["createdByUserId"] = f.CreatedByUserId?.ToString(),
-            });
-        }
-
-        return new JsonObject { ["structure"] = structure };
+            ["structure"] = FolderTrees.Structure(folders, FolderTrees.Global),
+        };
     }
 }

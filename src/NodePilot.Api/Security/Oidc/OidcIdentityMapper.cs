@@ -185,7 +185,9 @@ public sealed class OidcIdentityMapper(
                 LastSeenAt = now,
             });
             db.Users.Add(user);
-            await SyncMembershipsAsync(user.Id, issuer!, groups, initialAuthorizationObservedAt, ct);
+            await DirectoryMembershipReconciler.ApplyAsync(
+                db, user.Id, issuer!, groups, initialAuthorizationObservedAt,
+                StringComparer.Ordinal, ct);
 
             try
             {
@@ -358,9 +360,9 @@ public sealed class OidcIdentityMapper(
                 {
                     existing.LastDirectorySyncAt = authorizationObservedAt;
                     existing.DirectorySyncStatus = targetAuthorizationStatus;
-                    ApplyMembershipSnapshot(
-                        existing.Id, issuer, groups, authorizationObservedAt!.Value,
-                        oldMemberships);
+                    DirectoryMembershipReconciler.Apply(
+                        db, existing.Id, issuer, oldMemberships, groups,
+                        authorizationObservedAt!.Value, StringComparer.Ordinal);
                 }
                 else
                 {
@@ -475,62 +477,6 @@ public sealed class OidcIdentityMapper(
                 committedUserId, committedAudit.Id);
         }
         return result;
-    }
-
-    private void ApplyMembershipSnapshot(
-        Guid userId,
-        string authority,
-        IReadOnlySet<string> groups,
-        DateTime timestamp,
-        IReadOnlyCollection<DirectoryMembership> existing)
-    {
-        db.DirectoryMemberships.RemoveRange(existing.Where(membership =>
-            string.Equals(membership.Authority, authority, StringComparison.Ordinal)
-            && !groups.Contains(membership.GroupKey)));
-        foreach (var retained in existing.Where(membership =>
-                     string.Equals(membership.Authority, authority, StringComparison.Ordinal)
-                     && groups.Contains(membership.GroupKey)))
-        {
-            retained.LastSeenAt = timestamp;
-        }
-
-        var existingKeys = existing
-            .Where(membership => string.Equals(
-                membership.Authority, authority, StringComparison.Ordinal))
-            .Select(membership => membership.GroupKey)
-            .ToHashSet(StringComparer.Ordinal);
-        db.DirectoryMemberships.AddRange(groups
-            .Where(group => !existingKeys.Contains(group))
-            .Select(group => new DirectoryMembership
-            {
-                UserId = userId,
-                Authority = authority,
-                GroupKey = group,
-                LastSeenAt = timestamp,
-            }));
-    }
-
-    private async Task SyncMembershipsAsync(
-        Guid userId,
-        string authority,
-        IReadOnlySet<string> groups,
-        DateTime timestamp,
-        CancellationToken ct)
-    {
-        var existing = await db.DirectoryMemberships
-            .Where(x => x.UserId == userId && x.Authority == authority)
-            .ToListAsync(ct);
-        db.DirectoryMemberships.RemoveRange(existing.Where(x => !groups.Contains(x.GroupKey)));
-        foreach (var retained in existing.Where(x => groups.Contains(x.GroupKey)))
-            retained.LastSeenAt = timestamp;
-        var existingKeys = existing.Select(x => x.GroupKey).ToHashSet(StringComparer.Ordinal);
-        db.DirectoryMemberships.AddRange(groups.Where(x => !existingKeys.Contains(x)).Select(group => new DirectoryMembership
-        {
-            UserId = userId,
-            Authority = authority,
-            GroupKey = group,
-            LastSeenAt = timestamp,
-        }));
     }
 
     private static GroupSnapshot ReadGroupSnapshot(

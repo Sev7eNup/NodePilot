@@ -312,17 +312,11 @@ public class StartProgramActivity : BaseRemoteActivity
         };
     }
 
+    // Same comma-separated allow-list runScript parses, except that "unset" means {0} here
+    // (a program's exit code is always gated) instead of "no gate at all".
     private static HashSet<int> ParseSuccessExitCodes(JsonElement config)
-    {
-        var raw = config.GetStringOrNull("successExitCodes");
-        if (string.IsNullOrWhiteSpace(raw)) return new HashSet<int> { 0 };
-        var set = new HashSet<int>();
-        foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (int.TryParse(part, out var n)) set.Add(n);
-        }
-        return set.Count == 0 ? new HashSet<int> { 0 } : set;
-    }
+        => PowerShellActivitySupport.ParseSuccessExitCodes(config.GetStringOrNull("successExitCodes"))
+           ?? new HashSet<int> { 0 };
 
     private void ValidateLocalAbsolutePath(string fieldName, string path)
     {

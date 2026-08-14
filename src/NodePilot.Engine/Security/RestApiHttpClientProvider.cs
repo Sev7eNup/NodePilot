@@ -205,17 +205,9 @@ public sealed class RestApiHttpClientProvider
             ConnectCallback = (ctx, ct) => ConnectWithSsrfGuardAsync(ctx, configuration, ct),
         };
 
+        // The string overload owns the http(s)-URL validation (same check, same message).
         if (useProxy && !string.IsNullOrWhiteSpace(address))
-        {
-            if (!Uri.TryCreate(address, UriKind.Absolute, out var proxyUri)
-                || (proxyUri.Scheme != Uri.UriSchemeHttp && proxyUri.Scheme != Uri.UriSchemeHttps))
-            {
-                throw new InvalidOperationException(
-                    $"REST API: proxy address '{address}' is not a valid http(s) URL.");
-            }
-
-            handler.Proxy = CreateProxy(proxyUri, bypassPatterns, username, password);
-        }
+            handler.Proxy = CreateProxy(address, bypassPatterns, username, password);
 
         return handler;
     }

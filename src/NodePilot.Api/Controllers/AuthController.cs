@@ -118,6 +118,42 @@ public class AuthController : ControllerBase
     internal const int LockoutFailureThreshold = 10;
     internal static readonly TimeSpan LockoutDuration = TimeSpan.FromMinutes(15);
 
+    /// <summary>Single write point for the login-outcome metric. Tag names, order and values are
+    /// dashboard contract — every login path funnels through here instead of restating them.</summary>
+    private static void RecordLoginAttempt(string result, string reason) =>
+        ApiMetrics.AuthLoginAttempts.Add(1,
+            new KeyValuePair<string, object?>("result", result),
+            new KeyValuePair<string, object?>("reason", reason));
+
+    /// <summary>
+    /// Stages a JWT revocation for <paramref name="jti"/>: derives the expiry from the token's
+    /// <c>exp</c> claim (falling back to the configured lifetime) and adds a
+    /// <see cref="RevokedToken"/> row when the jti is not already revoked. Returns true when a
+    /// row was staged. The caller keeps SaveChanges and the revocation metric, because logout
+    /// and refresh deliberately order those two differently.
+    /// </summary>
+    private async Task<bool> TryStageTokenRevocationAsync(
+        string jti, Guid userId, string? expClaim, string reason, CancellationToken ct)
+    {
+        long.TryParse(expClaim, out var expSec);
+        var expiresAt = expSec > 0
+            ? DateTimeOffset.FromUnixTimeSeconds(expSec).UtcDateTime
+            : DateTime.UtcNow.Add(TokenLifetime);
+
+        var existing = await _db.RevokedTokens.FindAsync([jti], ct);
+        if (existing is not null) return false;
+
+        _db.RevokedTokens.Add(new RevokedToken
+        {
+            Jti = jti,
+            UserId = userId,
+            RevokedAt = DateTime.UtcNow,
+            ExpiresAt = expiresAt,
+            Reason = reason,
+        });
+        return true;
+    }
+
     // H-5: cookie names for the httpOnly auth cookie and the (JS-readable) CSRF token.
     // The SPA no longer persists the JWT in localStorage where a single XSS bug would
     // exfiltrate an admin token; the browser holds it in an httpOnly cookie and the
@@ -468,9 +504,7 @@ public class AuthController : ControllerBase
                 _ = BCrypt.Net.BCrypt.Verify(request.Password, DummyHash);
                 await _audit.LogAsync(AuditActions.LoginFailed, "User", null,
                     AuditDetails.Json(("username", SafeUsernameForAudit(request.Username)), ("reason", "unknown_username")), ct);
-                ApiMetrics.AuthLoginAttempts.Add(1,
-                    new KeyValuePair<string, object?>("result", "failure"),
-                    new KeyValuePair<string, object?>("reason", "unknown_user"));
+                RecordLoginAttempt("failure", "unknown_user");
                 return Unauthorized(new { message = "Invalid credentials" });
             }
         }
@@ -487,9 +521,7 @@ public class AuthController : ControllerBase
                     ("username", user.Username),
                     ("reason", "external_user_local_login_attempt"),
                     ("provider", user.Provider.ToString())), ct);
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "external_user_local_login"));
+            RecordLoginAttempt("failure", "external_user_local_login");
             return Unauthorized(new { message = "Invalid credentials" });
         }
 
@@ -503,9 +535,7 @@ public class AuthController : ControllerBase
             await _audit.LogAsync(AuditActions.LoginLocked, "User", user.Id,
                 AuditDetails.Json(("username", user.Username),
                     ("lockedUntil", localAttempt.LockedUntil?.ToString("o") ?? "unknown")), ct);
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "locked"));
+            RecordLoginAttempt("failure", "locked");
             return Unauthorized(new { message = "Invalid credentials" });
         }
 
@@ -517,9 +547,7 @@ public class AuthController : ControllerBase
             await _audit.LogAsync(AuditActions.LoginFailed, "User", user.Id,
                 AuditDetails.Json(("username", user.Username), ("reason", auditReason),
                     ("failedCount", localAttempt.FailureCount)), ct);
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "bad_password"));
+            RecordLoginAttempt("failure", "bad_password");
             if (localAttempt.TriggeredLockout) ApiMetrics.AuthLockouts.Add(1);
             return Unauthorized(new { message = "Invalid credentials" });
         }
@@ -534,9 +562,7 @@ public class AuthController : ControllerBase
             await ReleaseUserAttemptAsync(user, localAttempt, ct);
             await _audit.LogAsync(AuditActions.LoginFailed, "User", user.Id,
                 AuditDetails.Json(("username", user.Username), ("reason", "account_disabled")), ct);
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "disabled"));
+            RecordLoginAttempt("failure", "disabled");
             return Unauthorized(new { message = "Invalid credentials" });
         }
 
@@ -546,9 +572,7 @@ public class AuthController : ControllerBase
         // IAuthSessionIssuer so LDAP / Windows-Auth flows can reuse them. AuthSource.Local
         // for the BCrypt path; LDAP/Windows pass their own value.
         var session = await _sessionIssuer.IssueAsync(user, NodePilot.Api.Security.AuthSource.Local, HttpContext, ct);
-        ApiMetrics.AuthLoginAttempts.Add(1,
-            new KeyValuePair<string, object?>("result", "success"),
-            new KeyValuePair<string, object?>("reason", "ok"));
+        RecordLoginAttempt("success", "ok");
         return SessionResult(session.Token, user, TokenInBodyRequested());
     }
 
@@ -680,9 +704,7 @@ public class AuthController : ControllerBase
             await _audit.LogAsync(AuditActions.LoginLocked, "User", existing.Id,
                 AuditDetails.Json(("username", existing.Username),
                     ("lockedUntil", ldapLockedUntil.ToString("o")), ("source", AuthSourceLdap)), ct);
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "locked"));
+            RecordLoginAttempt("failure", "locked");
             return Unauthorized(new { message = "Invalid credentials" });
         }
 
@@ -740,45 +762,14 @@ public class AuthController : ControllerBase
                 if (existing is { Provider: AuthProvider.Ldap } && ldapUserAttempt is not null)
                     await ResetUserAttemptsAsync(existing, CancellationToken.None);
                 var mapping = await _externalUserMapper.MapAsync(ldap.Result!, ct);
-                if (mapping.Result == ExternalUserMapResult.RefusedUsernameCollision)
+                if (MapExternalIdentityRefusal(
+                        mapping.Result,
+                        "ldap",
+                        collisionMessage: "Invalid credentials",
+                        identityRefusedMessage: "Invalid credentials",
+                        lastActiveAdminMessage: "Invalid credentials") is { } refused)
                 {
-                    // Audit was already written by the mapper; surface a generic 401 so the
-                    // outsider can't tell collision from wrong-password.
-                    ApiMetrics.AuthLoginAttempts.Add(1,
-                        new KeyValuePair<string, object?>("result", "failure"),
-                        new KeyValuePair<string, object?>("reason", "ldap_username_collision"));
-                    return Unauthorized(new { message = "Invalid credentials" });
-                }
-                if (mapping.Result is ExternalUserMapResult.RefusedIdentityConflict
-                    or ExternalUserMapResult.RefusedTombstoned
-                    or ExternalUserMapResult.RefusedDirectoryAccess)
-                {
-                    ApiMetrics.AuthLoginAttempts.Add(1,
-                        new KeyValuePair<string, object?>("result", "failure"),
-                        new KeyValuePair<string, object?>("reason", "ldap_identity_refused"));
-                    return Unauthorized(new { message = "Invalid credentials" });
-                }
-                if (mapping.Result == ExternalUserMapResult.RefusedBootstrapNotAdmin)
-                {
-                    // External identities never bootstrap the recovery administrator. The
-                    // one-shot local bootstrap must establish a break-glass account first.
-                    ApiMetrics.AuthLoginAttempts.Add(1,
-                        new KeyValuePair<string, object?>("result", "failure"),
-                        new KeyValuePair<string, object?>("reason", "ldap_bootstrap_refused"));
-                    return Unauthorized(new
-                    {
-                        message = "Admin bootstrap required: bootstrap a local break-glass Admin first using the X-Setup-Token header.",
-                    });
-                }
-                if (mapping.Result == ExternalUserMapResult.RefusedLastActiveAdmin)
-                {
-                    // The mapper preserved the database Admin invariant, invalidated stale
-                    // sessions, and wrote the refusal audit. Do not mint a new token from
-                    // that deliberately-preserved role.
-                    ApiMetrics.AuthLoginAttempts.Add(1,
-                        new KeyValuePair<string, object?>("result", "failure"),
-                        new KeyValuePair<string, object?>("reason", "ldap_last_admin_demotion_refused"));
-                    return Unauthorized(new { message = "Invalid credentials" });
+                    return refused;
                 }
 
                 var user = mapping.User!;
@@ -786,9 +777,7 @@ public class AuthController : ControllerBase
                 {
                     await _audit.LogAsync(AuditActions.LoginFailed, "User", user.Id,
                         AuditDetails.Json(("username", user.Username), ("reason", "account_disabled"), ("source", AuthSourceLdap)), ct);
-                    ApiMetrics.AuthLoginAttempts.Add(1,
-                        new KeyValuePair<string, object?>("result", "failure"),
-                        new KeyValuePair<string, object?>("reason", "disabled"));
+                    RecordLoginAttempt("failure", "disabled");
                     return Unauthorized(new { message = "Invalid credentials" });
                 }
 
@@ -798,9 +787,7 @@ public class AuthController : ControllerBase
                     await ResetUserAttemptsAsync(user, ct);
 
                 var session = await _sessionIssuer.IssueAsync(user, NodePilot.Api.Security.AuthSource.Ldap, HttpContext, ct);
-                ApiMetrics.AuthLoginAttempts.Add(1,
-                    new KeyValuePair<string, object?>("result", "success"),
-                    new KeyValuePair<string, object?>("reason", "ldap_ok"));
+                RecordLoginAttempt("success", "ldap_ok");
                 return SessionResult(session.Token, user, TokenInBodyRequested());
             }
             case LdapAuthOutcome.InvalidCredentials:
@@ -825,9 +812,7 @@ public class AuthController : ControllerBase
                                       ("failedCount", (ldapUserAttempt?.FailureCount ?? 0).ToString()),
                                       ("lockoutTriggered", ldapTriggeredLockout.ToString()),
                                       ("source", AuthSourceLdap)), ct);
-                ApiMetrics.AuthLoginAttempts.Add(1,
-                    new KeyValuePair<string, object?>("result", "failure"),
-                    new KeyValuePair<string, object?>("reason", "ldap_invalid_credentials"));
+                RecordLoginAttempt("failure", "ldap_invalid_credentials");
                 return Unauthorized(new { message = "Invalid credentials" });
             case LdapAuthOutcome.DirectoryObjectMissing:
                 // Password verified, but the directory holds no user object for this UPN —
@@ -839,9 +824,7 @@ public class AuthController : ControllerBase
                     AuditDetails.Json(("username", SafeUsernameForAudit(request.Username)),
                                       ("reason", "ldap_user_object_not_found"),
                                       ("source", AuthSourceLdap)), ct);
-                ApiMetrics.AuthLoginAttempts.Add(1,
-                    new KeyValuePair<string, object?>("result", "failure"),
-                    new KeyValuePair<string, object?>("reason", "ldap_user_object_not_found"));
+                RecordLoginAttempt("failure", "ldap_user_object_not_found");
                 return Unauthorized(new { message = "Invalid credentials" });
             default:
                 // Local password users were already short-circuited before LDAP. Reaching
@@ -854,9 +837,7 @@ public class AuthController : ControllerBase
                     AuditDetails.Json(("username", SafeUsernameForAudit(request.Username)),
                                       ("reason", ldap.UnavailableReason ?? "directory_unavailable"),
                                       ("source", AuthSourceLdap)), ct);
-                ApiMetrics.AuthLoginAttempts.Add(1,
-                    new KeyValuePair<string, object?>("result", "failure"),
-                    new KeyValuePair<string, object?>("reason", ldap.UnavailableReason ?? "unavailable"));
+                RecordLoginAttempt("failure", ldap.UnavailableReason ?? "unavailable");
                 return StatusCode(StatusCodes.Status503ServiceUnavailable, new
                 {
                     message = "Directory authentication cannot verify current authorization.",
@@ -886,6 +867,54 @@ public class AuthController : ControllerBase
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Shared refusal ladder for the two external-identity login paths (LDAP and Windows SSO).
+    /// <see cref="ExternalUserMapper"/> yields the same verdicts for both; only the metric-reason
+    /// prefix and the client-facing messages differ, so they are parameters. Returns <c>null</c>
+    /// when the mapping was not refused and the caller may continue with <c>mapping.User</c>.
+    /// </summary>
+    private ActionResult<LoginResponse>? MapExternalIdentityRefusal(
+        ExternalUserMapResult result,
+        string reasonPrefix,
+        string collisionMessage,
+        string identityRefusedMessage,
+        string lastActiveAdminMessage)
+    {
+        if (result == ExternalUserMapResult.RefusedUsernameCollision)
+        {
+            // Audit was already written by the mapper; surface a generic 401 so the
+            // outsider can't tell collision from wrong-password.
+            RecordLoginAttempt("failure", reasonPrefix + "_username_collision");
+            return Unauthorized(new { message = collisionMessage });
+        }
+        if (result is ExternalUserMapResult.RefusedIdentityConflict
+            or ExternalUserMapResult.RefusedTombstoned
+            or ExternalUserMapResult.RefusedDirectoryAccess)
+        {
+            RecordLoginAttempt("failure", reasonPrefix + "_identity_refused");
+            return Unauthorized(new { message = identityRefusedMessage });
+        }
+        if (result == ExternalUserMapResult.RefusedBootstrapNotAdmin)
+        {
+            // External identities never bootstrap the recovery administrator. The
+            // one-shot local bootstrap must establish a break-glass account first.
+            RecordLoginAttempt("failure", reasonPrefix + "_bootstrap_refused");
+            return Unauthorized(new
+            {
+                message = "Admin bootstrap required: bootstrap a local break-glass Admin first using the X-Setup-Token header.",
+            });
+        }
+        if (result == ExternalUserMapResult.RefusedLastActiveAdmin)
+        {
+            // The mapper preserved the database Admin invariant, invalidated stale
+            // sessions, and wrote the refusal audit. Do not mint a new token from
+            // that deliberately-preserved role.
+            RecordLoginAttempt("failure", reasonPrefix + "_last_admin_demotion_refused");
+            return Unauthorized(new { message = lastActiveAdminMessage });
+        }
+        return null;
     }
 
     private const string AuthSourceLdap = "Ldap";
@@ -941,9 +970,7 @@ public class AuthController : ControllerBase
                     ("reason", "windows_ntlm_disabled"),
                     ("source", "Windows"),
                     ("mechanism", authMechanism)), ct);
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "windows_ntlm_disabled"));
+            RecordLoginAttempt("failure", "windows_ntlm_disabled");
             return Unauthorized(new
             {
                 message = "Kerberos required — NTLM fallback is disabled. Verify your client has a Kerberos ticket and the SPN is registered."
@@ -1014,41 +1041,14 @@ public class AuthController : ControllerBase
             GroupSids: snapshot.GroupSids);
         var mapping = await _externalUserMapper.MapAsync(ldapResult, AuthProvider.Windows, ct);
 
-        if (mapping.Result == ExternalUserMapResult.RefusedUsernameCollision)
+        if (MapExternalIdentityRefusal(
+                mapping.Result,
+                "windows",
+                collisionMessage: "Windows authentication refused — username collision.",
+                identityRefusedMessage: "Windows authentication refused.",
+                lastActiveAdminMessage: "Windows authentication refused because the directory mapping would remove the last active Admin.") is { } refused)
         {
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "windows_username_collision"));
-            return Unauthorized(new { message = "Windows authentication refused — username collision." });
-        }
-        if (mapping.Result is ExternalUserMapResult.RefusedIdentityConflict
-            or ExternalUserMapResult.RefusedTombstoned
-            or ExternalUserMapResult.RefusedDirectoryAccess)
-        {
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "windows_identity_refused"));
-            return Unauthorized(new { message = "Windows authentication refused." });
-        }
-        if (mapping.Result == ExternalUserMapResult.RefusedBootstrapNotAdmin)
-        {
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "windows_bootstrap_refused"));
-            return Unauthorized(new
-            {
-                message = "Admin bootstrap required: bootstrap a local break-glass Admin first using the X-Setup-Token header.",
-            });
-        }
-        if (mapping.Result == ExternalUserMapResult.RefusedLastActiveAdmin)
-        {
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "windows_last_admin_demotion_refused"));
-            return Unauthorized(new
-            {
-                message = "Windows authentication refused because the directory mapping would remove the last active Admin.",
-            });
+            return refused;
         }
 
         var user = mapping.User!;
@@ -1056,9 +1056,7 @@ public class AuthController : ControllerBase
         {
             await _audit.LogAsync(AuditActions.LoginFailed, "User", user.Id,
                 AuditDetails.Json(("username", user.Username), ("reason", "account_disabled"), ("source", "Windows")), ct);
-            ApiMetrics.AuthLoginAttempts.Add(1,
-                new KeyValuePair<string, object?>("result", "failure"),
-                new KeyValuePair<string, object?>("reason", "disabled"));
+            RecordLoginAttempt("failure", "disabled");
             return Unauthorized(new { message = "Account is disabled" });
         }
 
@@ -1070,9 +1068,7 @@ public class AuthController : ControllerBase
         }
 
         var session = await _sessionIssuer.IssueAsync(user, NodePilot.Api.Security.AuthSource.Windows, HttpContext, ct);
-        ApiMetrics.AuthLoginAttempts.Add(1,
-            new KeyValuePair<string, object?>("result", "success"),
-            new KeyValuePair<string, object?>("reason", "windows_ok"));
+        RecordLoginAttempt("success", "windows_ok");
         // Windows SSO is browser-only and is driven by ambient OS credentials via the Negotiate
         // handshake — i.e. an XSS could trigger it without knowing any secret. So, unlike the
         // password-gated login paths, the token is NEVER returned in the body here: always
@@ -1129,23 +1125,9 @@ public class AuthController : ControllerBase
             return NoContent();
         }
 
-        long.TryParse(expClaim, out var expSec);
-        var expiresAt = expSec > 0
-            ? DateTimeOffset.FromUnixTimeSeconds(expSec).UtcDateTime
-            : DateTime.UtcNow.Add(TokenLifetime);
-
         // Idempotent: if the jti is already revoked we leave it as is.
-        var existing = await _db.RevokedTokens.FindAsync([jti], ct);
-        if (existing is null)
+        if (await TryStageTokenRevocationAsync(jti, userId, expClaim, "user-logout", ct))
         {
-            _db.RevokedTokens.Add(new RevokedToken
-            {
-                Jti = jti,
-                UserId = userId,
-                RevokedAt = DateTime.UtcNow,
-                ExpiresAt = expiresAt,
-                Reason = "user-logout",
-            });
             ApiMetrics.AuthTokenRevocations.Add(1,
                 new KeyValuePair<string, object?>("reason", "user-logout"));
         }
@@ -1219,28 +1201,12 @@ public class AuthController : ControllerBase
         // that's the intended behavior.
         var presentedJti = User.FindFirstValue(JwtRegisteredClaimNames.Jti);
         var expClaim = User.FindFirstValue("exp");
-        if (!string.IsNullOrEmpty(presentedJti))
+        if (!string.IsNullOrEmpty(presentedJti)
+            && await TryStageTokenRevocationAsync(presentedJti, id, expClaim, "rotated", ct))
         {
-            long.TryParse(expClaim, out var expSec);
-            var expiresAt = expSec > 0
-                ? DateTimeOffset.FromUnixTimeSeconds(expSec).UtcDateTime
-                : DateTime.UtcNow.Add(TokenLifetime);
-
-            var existing = await _db.RevokedTokens.FindAsync([presentedJti], ct);
-            if (existing is null)
-            {
-                _db.RevokedTokens.Add(new RevokedToken
-                {
-                    Jti = presentedJti,
-                    UserId = id,
-                    RevokedAt = DateTime.UtcNow,
-                    ExpiresAt = expiresAt,
-                    Reason = "rotated",
-                });
-                await _db.SaveChangesAsync(ct);
-                ApiMetrics.AuthTokenRevocations.Add(1,
-                    new KeyValuePair<string, object?>("reason", "rotated"));
-            }
+            await _db.SaveChangesAsync(ct);
+            ApiMetrics.AuthTokenRevocations.Add(1,
+                new KeyValuePair<string, object?>("reason", "rotated"));
         }
 
         // Cookies were already rotated by RefreshAsync above (np_auth + np_csrf both set

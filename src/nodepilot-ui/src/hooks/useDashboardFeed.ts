@@ -1,90 +1,17 @@
-import { useEffect, useRef } from 'react';
-import * as signalR from '@microsoft/signalr';
-import { useQueryClient } from '@tanstack/react-query';
-import { readCsrfToken } from '../api/csrf';
-import { connectPersistently } from '../lib/signalrConnect';
+import { useLiveOpsFeed } from './useLiveOpsFeed';
 
-// A LiveEventsBatch item is { Type|type, Event|evt }. We only care about
-// ExecutionStatusChanged — it is the only event that changes dashboard aggregates
-// (running/recent/queue-depth/counts). StepStarted/StepCompleted don't move KPIs.
-interface StatusEvt {
-  executionId?: string; ExecutionId?: string;
-  workflowId?: string; WorkflowId?: string;
-  status?: string; Status?: string;
-}
-
-function pickItems(batch: unknown): unknown[] {
-  if (Array.isArray(batch)) return batch;
-  const b = batch as { events?: unknown[]; Events?: unknown[] } | null;
-  return b?.events ?? b?.Events ?? [];
-}
-
-function asStatus(item: unknown): { executionId: string; workflowId: string; status: string } | null {
-  const it = item as { Type?: string; type?: string; Event?: StatusEvt; evt?: StatusEvt };
-  const type = it.Type ?? it.type;
-  if (type !== 'ExecutionStatusChanged') return null;
-  const e = it.Event ?? it.evt;
-  if (!e) return null;
-  const executionId = e.executionId ?? e.ExecutionId;
-  const workflowId = e.workflowId ?? e.WorkflowId;
-  const status = e.status ?? e.Status;
-  if (!executionId || !workflowId || !status) return null;
-  return { executionId, workflowId, status };
-}
+// Module-level so the identity is stable across renders — it feeds useLiveOpsFeed's effect deps.
+const DASHBOARD_STATS_KEY = ['dashboard-stats'];
 
 /**
  * Subscribes to the RBAC-scoped live-ops feed on the shared execution hub and debounce-
  * invalidates the dashboard-stats query so running/recent/queue KPIs reconcile in ~real
  * time instead of waiting for the 120 s polling fallback. Mirrors useOperationsFeed but
  * targets ['dashboard-stats'] (the dashboard's own cache key) rather than the operations
- * graph. SignalR failures are swallowed — the page still works off the polled snapshot.
+ * graph. Any status transition (start/terminal) can move running/recent/queue/counts, so
+ * no per-event delta is applied — one debounced refetch covers the burst.
  */
 export function useDashboardFeed() {
-  const queryClient = useQueryClient();
-  const invalidateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    let disposed = false;
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl('/hubs/execution', { headers: { 'X-CSRF-Token': readCsrfToken() } })
-      .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Warning)
-      .build();
-
-    const scheduleInvalidate = () => {
-      if (invalidateTimer.current !== null) return;
-      invalidateTimer.current = setTimeout(() => {
-        invalidateTimer.current = null;
-        queryClient.invalidateQueries({ queryKey: ['dashboard-stats'] });
-      }, 500);
-    };
-
-    connection.on('LiveEventsBatch', (batch: unknown) => {
-      let sawStatus = false;
-      for (const item of pickItems(batch)) {
-        const s = asStatus(item);
-        if (!s) continue;
-        sawStatus = true;
-      }
-      // Any status transition (start/terminal) can move running/recent/queue/counts —
-      // one debounced refetch covers a burst of events instead of N refetches.
-      if (sawStatus) scheduleInvalidate();
-    });
-
-    const join = () => { connection.invoke('JoinOperationsFeed').catch(() => { /* RBAC reject / transient */ }); };
-    // connectPersistently retries forever with capped backoff: the bare onreconnected +
-    // one-shot start() gave up for good after ~40 s of outage (and never retried a failed
-    // FIRST start at all), silently degrading this feed to snapshot polling until a reload.
-    const persistent = connectPersistently(connection, () => { if (!disposed) join(); });
-
-    return () => {
-      disposed = true;
-      persistent.dispose();
-      if (invalidateTimer.current !== null) clearTimeout(invalidateTimer.current);
-      connection.invoke('LeaveOperationsFeed').catch(() => { /* ignore */ });
-      void connection.stop();
-    };
-  }, [queryClient]);
-
+  useLiveOpsFeed({ queryKey: DASHBOARD_STATS_KEY, debounceMs: 500 });
   return null;
 }

@@ -47,19 +47,7 @@ internal sealed class ExecutionEventCollector : INotificationCollector
                 && (e.CompletedAt > lastTs || (e.CompletedAt == lastTs && e.Id.CompareTo(lastId) > 0)))
             .OrderBy(e => e.CompletedAt).ThenBy(e => e.Id)
             .Take(ExecutionEventSupport.ScanBatchSize)
-            .Select(e => new ExecRow(
-                e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy, e.ErrorMessage,
-                e.ParentExecutionId, e.Workflow.Name, e.Workflow.FolderId, e.Workflow.Folder!.Path, e.CancelledBy,
-                // Gate on Failed in SQL: for Succeeded/Cancelled rows (the common case on a
-                // healthy instance) the value is null anyway — don't pay a per-row ORDER BY
-                // subquery over StepExecutions for information that gets discarded.
-                e.Status == ExecutionStatus.Failed
-                    ? e.Steps
-                        .Where(s => s.Status == ExecutionStatus.Failed && s.TargetMachine != null)
-                        .OrderByDescending(s => s.CompletedAt)
-                        .Select(s => s.TargetMachine)
-                        .FirstOrDefault()
-                    : null))
+            .Select(ExecutionEventSupport.ProjectionWithFailedStepMachine)
             .ToListAsync(ct);
 
         if (batch.Count == 0) return null;
@@ -92,15 +80,7 @@ internal sealed class ExecutionEventCollector : INotificationCollector
 
         var row = await db.WorkflowExecutions.AsNoTracking()
             .Where(e => e.Id == execId)
-            .Select(e => new ExecRow(e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy,
-                e.ErrorMessage, e.ParentExecutionId, e.Workflow.Name, e.Workflow.FolderId, e.Workflow.Folder!.Path, e.CancelledBy,
-                e.Status == ExecutionStatus.Failed
-                    ? e.Steps
-                        .Where(s => s.Status == ExecutionStatus.Failed && s.TargetMachine != null)
-                        .OrderByDescending(s => s.CompletedAt)
-                        .Select(s => s.TargetMachine)
-                        .FirstOrDefault()
-                    : null))
+            .Select(ExecutionEventSupport.ProjectionWithFailedStepMachine)
             .FirstOrDefaultAsync(ct);
         if (row is null) return null;
         row = (await ExecutionEventSupport.ResolveTargetMachineNamesAsync(db, [row], ct))[0];

@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Authentication;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodePilot.TestCommons;
 using Xunit;
 
 namespace NodePilot.Ai.Tests;
@@ -98,8 +99,4 @@ public sealed class LlmUnreachableDiagnosticsTests
         LlmConnectGuard.HandshakeTimeout.Should().BeGreaterThan(LlmConnectGuard.ConnectPhaseTimeout);
     }
 
-    private sealed class StubHttpClientFactory : IHttpClientFactory
-    {
-        public HttpClient CreateClient(string name) => new();
-    }
 }

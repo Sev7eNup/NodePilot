@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
@@ -24,6 +25,33 @@ internal static class ExecutionEventSupport
 {
     /// <summary>Per-pass scan cap shared by the execution-shaped collectors.</summary>
     public const int ScanBatchSize = 200;
+
+    /// <summary>
+    /// The <see cref="ExecRow"/> projection without a failed-step machine. Used by the
+    /// long-running and queued-long collectors, where the execution is still in flight and a
+    /// failed-step join would be meaningless.
+    /// </summary>
+    public static readonly Expression<Func<WorkflowExecution, ExecRow>> Projection = e => new ExecRow(
+        e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy, e.ErrorMessage,
+        e.ParentExecutionId, e.Workflow.Name, e.Workflow.FolderId, e.Workflow.Folder!.Path, e.CancelledBy,
+        null);
+
+    /// <summary>
+    /// The <see cref="ExecRow"/> projection for terminal scans, resolving the machine of the
+    /// last failing step. Gated on Failed in SQL: for Succeeded/Cancelled rows (the common case
+    /// on a healthy instance) the value is null anyway — don't pay a per-row ORDER BY subquery
+    /// over StepExecutions for information that gets discarded.
+    /// </summary>
+    public static readonly Expression<Func<WorkflowExecution, ExecRow>> ProjectionWithFailedStepMachine = e => new ExecRow(
+        e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt, e.TriggeredBy, e.ErrorMessage,
+        e.ParentExecutionId, e.Workflow.Name, e.Workflow.FolderId, e.Workflow.Folder!.Path, e.CancelledBy,
+        e.Status == ExecutionStatus.Failed
+            ? e.Steps
+                .Where(s => s.Status == ExecutionStatus.Failed && s.TargetMachine != null)
+                .OrderByDescending(s => s.CompletedAt)
+                .Select(s => s.TargetMachine)
+                .FirstOrDefault()
+            : null);
 
     private static readonly string[] CredentialFailureNeedles =
     [

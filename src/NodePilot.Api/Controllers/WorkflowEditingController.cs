@@ -1,7 +1,9 @@
+using System.Linq.Expressions;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
 using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
@@ -42,6 +44,87 @@ public class WorkflowEditingController : WorkflowsControllerBase
         _stepTester = stepTester;
         _testContextProvider = testContextProvider;
     }
+
+    // --- Optimistic-concurrency core (shared by Publish + Rollback) ------------------------
+
+    /// <summary>
+    /// M-3 (security audit 2026-05-15): field mutation + history snapshot inside one
+    /// execution-strategy transaction, with the workflow UPDATE an atomic compare-and-swap on
+    /// (folder, lock owner, lock timestamp, version). This closes two TOCTOU windows the old
+    /// load→check→SaveChanges left open: (a) a force-unlock + re-lock by another user landing
+    /// between the in-memory <c>EnsureWriteLockAsync</c> check and the write (lock-theft), and
+    /// (b) a concurrent publish/update bumping the version (lost-update). A return value of 0
+    /// means one of those raced us — the caller re-reads via <see cref="LostCompareAndSwapAsync"/>
+    /// to return the right 423/409 verdict.
+    ///
+    /// <para>Publish and Rollback differ only in the setter chain and the snapshot row, so both
+    /// come in as parameters. The snapshot is a <b>factory</b>, not an instance: every retry of
+    /// the execution strategy clears the change tracker and must stage a fresh row.</para>
+    /// </summary>
+    private Task<int> CompareAndSwapWorkflowAsync(
+        Guid id,
+        Workflow workflow,
+        Guid? meId,
+        int oldVersion,
+        Action<UpdateSettersBuilder<Workflow>> setters,
+        Func<WorkflowVersion> snapshot,
+        CancellationToken ct)
+    {
+        var strategy = _db.Database.CreateExecutionStrategy();
+        return strategy.ExecuteAsync(async () =>
+        {
+            _db.ChangeTracker.Clear(); // retry-safe: drop any snapshot added by a prior attempt
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+            var rows = await _db.Workflows
+                .Where(w => w.Id == id
+                            && w.FolderId == workflow.FolderId
+                            && w.CheckedOutByUserId == meId
+                            && w.CheckedOutAt == workflow.CheckedOutAt
+                            && w.Version == oldVersion)
+                .ExecuteUpdateAsync(setters, ct);
+            if (rows == 0)
+            {
+                await tx.RollbackAsync(ct);
+                return 0;
+            }
+            _db.WorkflowVersions.Add(snapshot());
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return rows;
+        });
+    }
+
+    /// <summary>
+    /// The compare-and-swap matched no row: re-read and answer with whichever verdict actually
+    /// applies now — 404 if the workflow vanished, the access gate's verdict if permissions
+    /// changed, 423 if the lock moved, otherwise the version conflict.
+    /// </summary>
+    private async Task<ActionResult> LostCompareAndSwapAsync(Guid id, string conflictMessage, CancellationToken ct)
+    {
+        var current = await _db.Workflows.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id, ct);
+        if (current is null) return NotFound();
+        if (await RequireWorkflowAccessAsync(current, NodePilot.Core.Interfaces.ResourceOp.Edit, ct) is { } deniedNow)
+            return deniedNow;
+        if (await EnsureWriteLockAsync(current, ct) is { } lockedNow) return lockedNow;
+        return Conflict(new
+        {
+            code = "workflow_version_conflict",
+            message = conflictMessage,
+            currentVersion = current.Version,
+        });
+    }
+
+    /// <summary>Same conflict body, but for the unique-index violation raised by a racing insert.</summary>
+    private async Task<ActionResult> VersionUniqueConflictAsync(Guid id, string conflictMessage, CancellationToken ct)
+        => Conflict(new
+        {
+            code = "workflow_version_conflict",
+            message = conflictMessage,
+            currentVersion = await _db.Workflows.AsNoTracking()
+                .Where(w => w.Id == id)
+                .Select(w => w.Version)
+                .FirstOrDefaultAsync(ct),
+        });
 
     // --- Versions / Rollback --------------------------------------------------------------
 
@@ -134,40 +217,26 @@ public class WorkflowEditingController : WorkflowsControllerBase
         var computed = new Workflow { DefinitionJson = target.DefinitionJson };
         PopulateComputedColumns(computed);
 
-        // M-3 (security audit 2026-05-15): roll-forward (snapshot live row, apply target as a new
-        // version) inside one execution-strategy transaction, with the workflow UPDATE an atomic
-        // compare-and-swap on (lock-owner == me, version == oldVersion). The lock is intentionally
-        // retained (rollback ≠ publish). The CAS closes the lock-theft / lost-update TOCTOU the old
-        // load→check→SaveChanges left open.
+        // Roll-forward: snapshot the live row, apply the target as a new version — through the
+        // shared compare-and-swap (see CompareAndSwapWorkflowAsync). The lock is intentionally
+        // retained here (rollback ≠ publish), which is why the setter chain clears no lock fields.
+        const string rollbackConflictMessage =
+            "Workflow was updated concurrently. Reload the workflow and retry publish.";
         int updated;
         try
         {
-            var strategy = _db.Database.CreateExecutionStrategy();
-            updated = await strategy.ExecuteAsync(async () =>
-            {
-                _db.ChangeTracker.Clear(); // retry-safe: drop any snapshot added by a prior attempt
-                await using var tx = await _db.Database.BeginTransactionAsync(ct);
-                var rows = await _db.Workflows
-                    .Where(w => w.Id == id
-                                && w.FolderId == workflow.FolderId
-                                && w.CheckedOutByUserId == meId
-                                && w.CheckedOutAt == workflow.CheckedOutAt
-                                && w.Version == oldVersion)
-                    .ExecuteUpdateAsync(s => s
-                        .SetProperty(w => w.Name, target.Name)
-                        .SetProperty(w => w.Description, target.Description)
-                        .SetProperty(w => w.DefinitionJson, target.DefinitionJson)
-                        .SetProperty(w => w.Version, oldVersion + 1)
-                        .SetProperty(w => w.TriggerTypesJson, computed.TriggerTypesJson)
-                        .SetProperty(w => w.ActivityCount, computed.ActivityCount)
-                        .SetProperty(w => w.UpdatedAt, now)
-                        .SetProperty(w => w.UpdatedBy, updatedBy), ct);
-                if (rows == 0)
-                {
-                    await tx.RollbackAsync(ct);
-                    return 0;
-                }
-                _db.WorkflowVersions.Add(new WorkflowVersion
+            updated = await CompareAndSwapWorkflowAsync(
+                id, workflow, meId, oldVersion,
+                s => s
+                    .SetProperty(w => w.Name, target.Name)
+                    .SetProperty(w => w.Description, target.Description)
+                    .SetProperty(w => w.DefinitionJson, target.DefinitionJson)
+                    .SetProperty(w => w.Version, oldVersion + 1)
+                    .SetProperty(w => w.TriggerTypesJson, computed.TriggerTypesJson)
+                    .SetProperty(w => w.ActivityCount, computed.ActivityCount)
+                    .SetProperty(w => w.UpdatedAt, now)
+                    .SetProperty(w => w.UpdatedBy, updatedBy),
+                () => new WorkflowVersion
                 {
                     Id = Guid.NewGuid(),
                     WorkflowId = id,
@@ -178,39 +247,16 @@ public class WorkflowEditingController : WorkflowsControllerBase
                     CreatedAt = now,
                     CreatedBy = updatedBy,
                     ChangeNote = $"Superseded by rollback to v{version}",
-                });
-                await _db.SaveChangesAsync(ct);
-                await tx.CommitAsync(ct);
-                return rows;
-            });
+                },
+                ct);
         }
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return Conflict(new
-            {
-                code = "workflow_version_conflict",
-                message = "Workflow was updated concurrently. Reload the workflow and retry publish.",
-                currentVersion = await _db.Workflows.AsNoTracking()
-                    .Where(w => w.Id == id)
-                    .Select(w => w.Version)
-                    .FirstOrDefaultAsync(ct),
-            });
+            return await VersionUniqueConflictAsync(id, rollbackConflictMessage, ct);
         }
 
         if (updated == 0)
-        {
-            var current = await _db.Workflows.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id, ct);
-            if (current is null) return NotFound();
-            if (await RequireWorkflowAccessAsync(current, NodePilot.Core.Interfaces.ResourceOp.Edit, ct) is { } deniedNow)
-                return deniedNow;
-            if (await EnsureWriteLockAsync(current, ct) is { } lockedNow) return lockedNow;
-            return Conflict(new
-            {
-                code = "workflow_version_conflict",
-                message = "Workflow was updated concurrently. Reload the workflow and retry publish.",
-                currentVersion = current.Version,
-            });
-        }
+            return await LostCompareAndSwapAsync(id, rollbackConflictMessage, ct);
 
         var rolled = await _db.Workflows.AsNoTracking().FirstAsync(w => w.Id == id, ct);
         var reason = string.IsNullOrWhiteSpace(body?.Reason) ? $"Rolled back to v{version}" : body!.Reason!;
@@ -437,46 +483,29 @@ public class WorkflowEditingController : WorkflowsControllerBase
         var computed = new Workflow { DefinitionJson = request.DefinitionJson };
         PopulateComputedColumns(computed);
 
-        // M-3 (security audit 2026-05-15): the field mutation + history snapshot run inside one
-        // execution-strategy transaction, and the workflow UPDATE is an atomic compare-and-swap
-        // on (lock-owner == me, version == oldVersion). This closes two TOCTOU windows the old
-        // load→check→SaveChanges left open: (a) a force-unlock + re-lock by another user landing
-        // between the in-memory EnsureWriteLockAsync check and the write (lock-theft), and (b) a
-        // concurrent publish/update bumping the version (lost-update). updated==0 ⇒ one of those
-        // raced us; we re-read to return the right 423/409 verdict.
+        // Publish through the shared compare-and-swap (see CompareAndSwapWorkflowAsync); the
+        // setter chain additionally enables the workflow and releases the edit lock.
+        const string publishConflictMessage =
+            "Workflow was published concurrently. Reload the workflow and retry publish.";
         int updated;
         try
         {
-            var strategy = _db.Database.CreateExecutionStrategy();
-            updated = await strategy.ExecuteAsync(async () =>
-            {
-                _db.ChangeTracker.Clear(); // retry-safe: drop any snapshot added by a prior attempt
-                await using var tx = await _db.Database.BeginTransactionAsync(ct);
-                var rows = await _db.Workflows
-                    .Where(w => w.Id == id
-                                && w.FolderId == workflow.FolderId
-                                && w.CheckedOutByUserId == meId
-                                && w.CheckedOutAt == workflow.CheckedOutAt
-                                && w.Version == oldVersion)
-                    .ExecuteUpdateAsync(s => s
-                        .SetProperty(w => w.Name, request.Name)
-                        .SetProperty(w => w.Description, request.Description)
-                        .SetProperty(w => w.DefinitionJson, request.DefinitionJson)
-                        .SetProperty(w => w.Version, oldVersion + 1)
-                        .SetProperty(w => w.IsEnabled, true)
-                        .SetProperty(w => w.PublishedByUserId, meId)
-                        .SetProperty(w => w.CheckedOutByUserId, (Guid?)null)
-                        .SetProperty(w => w.CheckedOutAt, (DateTime?)null)
-                        .SetProperty(w => w.TriggerTypesJson, computed.TriggerTypesJson)
-                        .SetProperty(w => w.ActivityCount, computed.ActivityCount)
-                        .SetProperty(w => w.UpdatedAt, now)
-                        .SetProperty(w => w.UpdatedBy, updatedBy), ct);
-                if (rows == 0)
-                {
-                    await tx.RollbackAsync(ct);
-                    return 0;
-                }
-                _db.WorkflowVersions.Add(new WorkflowVersion
+            updated = await CompareAndSwapWorkflowAsync(
+                id, workflow, meId, oldVersion,
+                s => s
+                    .SetProperty(w => w.Name, request.Name)
+                    .SetProperty(w => w.Description, request.Description)
+                    .SetProperty(w => w.DefinitionJson, request.DefinitionJson)
+                    .SetProperty(w => w.Version, oldVersion + 1)
+                    .SetProperty(w => w.IsEnabled, true)
+                    .SetProperty(w => w.PublishedByUserId, meId)
+                    .SetProperty(w => w.CheckedOutByUserId, (Guid?)null)
+                    .SetProperty(w => w.CheckedOutAt, (DateTime?)null)
+                    .SetProperty(w => w.TriggerTypesJson, computed.TriggerTypesJson)
+                    .SetProperty(w => w.ActivityCount, computed.ActivityCount)
+                    .SetProperty(w => w.UpdatedAt, now)
+                    .SetProperty(w => w.UpdatedBy, updatedBy),
+                () => new WorkflowVersion
                 {
                     Id = Guid.NewGuid(),
                     WorkflowId = id,
@@ -486,39 +515,16 @@ public class WorkflowEditingController : WorkflowsControllerBase
                     DefinitionJson = oldDefinitionJson,
                     CreatedAt = now,
                     CreatedBy = oldCreatedBy ?? updatedBy,
-                });
-                await _db.SaveChangesAsync(ct);
-                await tx.CommitAsync(ct);
-                return rows;
-            });
+                },
+                ct);
         }
         catch (DbUpdateException ex) when (ex.InnerException?.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase) == true)
         {
-            return Conflict(new
-            {
-                code = "workflow_version_conflict",
-                message = "Workflow was published concurrently. Reload the workflow and retry publish.",
-                currentVersion = await _db.Workflows.AsNoTracking()
-                    .Where(w => w.Id == id)
-                    .Select(w => w.Version)
-                    .FirstOrDefaultAsync(ct),
-            });
+            return await VersionUniqueConflictAsync(id, publishConflictMessage, ct);
         }
 
         if (updated == 0)
-        {
-            var current = await _db.Workflows.AsNoTracking().FirstOrDefaultAsync(w => w.Id == id, ct);
-            if (current is null) return NotFound();
-            if (await RequireWorkflowAccessAsync(current, NodePilot.Core.Interfaces.ResourceOp.Edit, ct) is { } deniedNow)
-                return deniedNow;
-            if (await EnsureWriteLockAsync(current, ct) is { } lockedNow) return lockedNow;
-            return Conflict(new
-            {
-                code = "workflow_version_conflict",
-                message = "Workflow was published concurrently. Reload the workflow and retry publish.",
-                currentVersion = current.Version,
-            });
-        }
+            return await LostCompareAndSwapAsync(id, publishConflictMessage, ct);
 
         var published = await _db.Workflows.AsNoTracking().FirstAsync(w => w.Id == id, ct);
         await _audit.LogAsync(AuditActions.WorkflowPublished, "Workflow", published.Id,

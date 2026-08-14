@@ -8,6 +8,7 @@ using NodePilot.Cli.Tests.Infra;
 using Spectre.Console;
 using Spectre.Console.Testing;
 using Xunit;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Tests.Output;
 

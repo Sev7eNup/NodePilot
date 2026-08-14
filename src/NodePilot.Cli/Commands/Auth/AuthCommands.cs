@@ -5,6 +5,7 @@ using NodePilot.Cli.Api.Dtos;
 using NodePilot.Cli.Auth;
 using NodePilot.Cli.Output;
 using NodePilot.Cli.Settings;
+using NodePilot.Core.Clients;
 using Spectre.Console;
 using Spectre.Console.Cli;
 

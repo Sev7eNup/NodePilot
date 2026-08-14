@@ -14,6 +14,13 @@ internal sealed class ToolCallAccumulator
     public string Name = "";
     public StringBuilder Arguments { get; } = new();
 
+    /// <summary>The slot for <paramref name="index"/>, created on first use.</summary>
+    public static ToolCallAccumulator Slot(Dictionary<int, ToolCallAccumulator> acc, int index)
+    {
+        if (!acc.TryGetValue(index, out var slot)) { slot = new ToolCallAccumulator(); acc[index] = slot; }
+        return slot;
+    }
+
     /// <summary>
     /// Orders by wire index and drops nameless slots (argument fragments whose header
     /// chunk never arrived). Returns null when nothing usable accumulated, so callers can

@@ -17,10 +17,7 @@ public class WebhookTrigger : IActivityExecutor
         var path = config.TryGetProperty("path", out var p) ? p.GetString() : null;
         var method = config.TryGetProperty("method", out var m) ? m.GetString() : "POST";
 
-        var outputParams = new Dictionary<string, string>();
-        foreach (var (k, v) in context.Variables)
-            if (k.StartsWith("manual.", StringComparison.OrdinalIgnoreCase))
-                outputParams[k["manual.".Length..]] = v;
+        var outputParams = TriggerVariables.ExtractManualParams(context.Variables);
 
         var body = outputParams.GetValueOrDefault("webhookBody", "(no body)");
         return Task.FromResult(new ActivityResult

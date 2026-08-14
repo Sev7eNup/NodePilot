@@ -76,6 +76,19 @@ public class ExternalTriggerController : ControllerBase
         _redactor.Redact(execution.ReturnData),
         _redactor.Redact(execution.InputParametersJson));
 
+    /// <summary>
+    /// Answers an idempotency replay: flag the response, count the cached hit, hand back the
+    /// original execution. Three call sites reach it (pre-check, unique-violation race, and the
+    /// replay decided inside the transaction) and they must answer identically.
+    /// </summary>
+    private OkObjectResult IdempotentReplay(WorkflowExecution replay)
+    {
+        Response.Headers["Idempotent-Replayed"] = "true";
+        NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,
+            new KeyValuePair<string, object?>("result", "cached"));
+        return Ok(ToResponse(replay));
+    }
+
     private static async Task<WorkflowExecution?> FindIdempotencyReplayAsync(
         NodePilotDbContext db,
         string idempotencyKey,
@@ -204,12 +217,7 @@ public class ExternalTriggerController : ControllerBase
 
             var replay = await FindIdempotencyReplayAsync(_db, idempotencyKey, workflow.Id, ct);
             if (replay is not null)
-            {
-                Response.Headers["Idempotent-Replayed"] = "true";
-                NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,
-                    new KeyValuePair<string, object?>("result", "cached"));
-                return Ok(ToResponse(replay));
-            }
+                return IdempotentReplay(replay);
 
         }
 
@@ -314,12 +322,7 @@ public class ExternalTriggerController : ControllerBase
                 _db.ChangeTracker.Clear();
                 var replay = await FindIdempotencyReplayAsync(_db, idempotencyKey, workflow.Id, ct);
                 if (replay is not null)
-                {
-                    Response.Headers["Idempotent-Replayed"] = "true";
-                    NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,
-                        new KeyValuePair<string, object?>("result", "cached"));
-                    return Ok(ToResponse(replay));
-                }
+                    return IdempotentReplay(replay);
 
                 return Conflict(new { message = "Idempotency-Key is currently being processed; retry with the same key." });
             }
@@ -327,12 +330,7 @@ public class ExternalTriggerController : ControllerBase
             // Replay is decided inside the transaction but answered out here: an early return
             // from within strategy.ExecuteAsync would escape the retry unit.
             if (outcome.Replayed is not null)
-            {
-                Response.Headers["Idempotent-Replayed"] = "true";
-                NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,
-                    new KeyValuePair<string, object?>("result", "cached"));
-                return Ok(ToResponse(outcome.Replayed));
-            }
+                return IdempotentReplay(outcome.Replayed);
 
             pending = outcome.Fresh!;
             NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,

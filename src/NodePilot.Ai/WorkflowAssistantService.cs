@@ -292,14 +292,9 @@ public sealed class WorkflowAssistantService
             return true;
         foreach (var node in nodes.EnumerateArray())
         {
-            if (node.ValueKind != JsonValueKind.Object) continue;
-            if (node.TryGetProperty("data", out var data) && data.ValueKind == JsonValueKind.Object
-                && data.TryGetProperty("activityType", out var at) && at.ValueKind == JsonValueKind.String)
-            {
-                var t = at.GetString();
-                if (!string.IsNullOrEmpty(t) && !t.EndsWith("Trigger", StringComparison.Ordinal))
-                    return false; // a real activity exists → not an empty canvas
-            }
+            var t = ActivityTypeOf(node);
+            if (!string.IsNullOrEmpty(t) && !t.EndsWith("Trigger", StringComparison.Ordinal))
+                return false; // a real activity exists → not an empty canvas
         }
         return true;
     }
@@ -316,15 +311,8 @@ public sealed class WorkflowAssistantService
         {
             foreach (var node in nodes.EnumerateArray())
             {
-                if (node.ValueKind != JsonValueKind.Object) continue;
-                if (node.TryGetProperty("data", out var data)
-                    && data.ValueKind == JsonValueKind.Object
-                    && data.TryGetProperty("activityType", out var at)
-                    && at.ValueKind == JsonValueKind.String)
-                {
-                    var t = at.GetString();
-                    if (!string.IsNullOrEmpty(t)) types.Add(t);
-                }
+                var t = ActivityTypeOf(node);
+                if (!string.IsNullOrEmpty(t)) types.Add(t);
             }
         }
 

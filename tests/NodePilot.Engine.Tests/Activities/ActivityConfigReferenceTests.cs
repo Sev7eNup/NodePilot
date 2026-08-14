@@ -191,15 +191,23 @@ public class ActivityConfigReferenceTests
     public void SchemaVersion_IsCurrent() => ActivityConfigReference.SchemaVersion.Should().Be(2);
 
     /// <summary>
-    /// Maps activity/trigger type → the source text that must read its keys. For the background
-    /// triggers that is no longer the node executor alone: parsing moved into the shared
-    /// NodePilot.Core.Triggers settings, so the shared contract text is appended for every trigger
-    /// type. Without that this guard would flag every trigger key as phantom.
+    /// Maps activity/trigger type → the source text that must read its keys. Two kinds of key
+    /// reading happen outside the executor's own file, and both are followed here rather than
+    /// exempted — an exemption would stop verifying the key at all:
+    /// <list type="bullet">
+    /// <item>Background triggers parse via the shared NodePilot.Core.Triggers settings, so the
+    /// shared contract text is appended for every trigger type.</item>
+    /// <item>Several activities share a base class or a helper in the same folder
+    /// (FileSystemOperationActivityBase, QueryPayloadSource, SubWorkflowInvocation). Any
+    /// Activities/ file that declares no ActivityType of its own but whose type name the executor
+    /// mentions is appended to that executor's text.</item>
+    /// </list>
     /// </summary>
     private static Dictionary<string, string> LoadExecutorSources()
     {
         var root = FindRepoRoot();
         var sources = new Dictionary<string, string>(StringComparer.Ordinal);
+        var collaborators = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var dir in new[] { "Activities", "Triggers" })
         {
@@ -211,6 +219,17 @@ public class ActivityConfigReferenceTests
                 var text = File.ReadAllText(file);
                 var match = Regex.Match(text, @"(?:ActivityType|TriggerType)\s*=>\s*""([^""]+)""");
                 if (match.Success) sources[match.Groups[1].Value] = text;
+                else collaborators[Path.GetFileNameWithoutExtension(file)] = text;
+            }
+        }
+
+        // Follow shared bases/helpers: a key moved into one of them is still read on every run.
+        foreach (var type in sources.Keys.ToList())
+        {
+            foreach (var (name, text) in collaborators)
+            {
+                if (Regex.IsMatch(sources[type], $@"\b{Regex.Escape(name)}\b"))
+                    sources[type] += text;
             }
         }
 

@@ -131,17 +131,8 @@ public class ZipOperationActivity : BaseRemoteActivity
     {
         if (!raw.Success) return raw;
 
-        if (!PowerShellOperation.TryParseJsonBlock(raw.Output, ResultMarkers, out var doc, out var parseError))
-        {
-            if (parseError is null) return raw;
-            return new ActivityResult
-            {
-                Success = false,
-                Output = raw.Output,
-                ErrorOutput = $"Zip Operation: could not parse result JSON: {parseError}",
-                Duration = raw.Duration,
-            };
-        }
+        if (!TryParseResultEnvelope(raw, ResultMarkers, "Zip Operation", out var doc, out var passthrough))
+            return passthrough!;
 
         using (doc!)
         {

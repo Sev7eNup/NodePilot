@@ -7,6 +7,7 @@ using NodePilot.Cli.Output;
 using NodePilot.Cli.Settings;
 using Spectre.Console.Cli;
 using Xunit;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Tests.Commands;
 
