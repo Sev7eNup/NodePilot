@@ -1,18 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-  skippedConfigKeys,
   isRemoteActivityType,
   buildClonedDataPatch,
   applyClonedPatch,
 } from '../../lib/configClone';
-
-describe('configClone — skippedConfigKeys', () => {
-  it('returns empty list for activities with no type-specific skip rules', () => {
-    expect(skippedConfigKeys('runScript')).toEqual([]);
-    expect(skippedConfigKeys('sql')).toEqual([]);
-    expect(skippedConfigKeys('unknownActivity')).toEqual([]);
-  });
-});
 
 describe('configClone — isRemoteActivityType', () => {
   it('identifies remote-capable activities', () => {
@@ -57,6 +48,19 @@ describe('configClone — buildClonedDataPatch (scope=all)', () => {
       engine: 'pwsh',
       timeoutSeconds: 60,
       retry: { maxAttempts: 3, backoff: 'exponential' },
+    });
+  });
+
+  it('copies unknown/arbitrary config keys verbatim — there is no skip list', () => {
+    const source = {
+      activityType: 'runScript',
+      config: { script: 'Get-Date', someFutureKey: 'kept', result: 'kept-too' },
+    };
+    const patch = buildClonedDataPatch(source, 'runScript', 'all');
+    expect(patch.__configPatch).toEqual({
+      script: 'Get-Date',
+      someFutureKey: 'kept',
+      result: 'kept-too',
     });
   });
 

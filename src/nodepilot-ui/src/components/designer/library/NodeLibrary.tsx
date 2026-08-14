@@ -1,46 +1,24 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { getWorkflowSnippets } from '../../../lib/workflowSnippets';
-import { ACTIVITY_ICONS } from '../../../lib/activityCatalog.generated';
-import { isCustomActivityType, getCustomActivityFacts } from '../../../lib/customActivities';
 import { ACTIVITY_ICON_COMPONENTS, FALLBACK_ACTIVITY_ICON } from '../../../lib/activityIcons';
+import { getActivityVisual } from '../nodes/activityConfig';
 import { ChevronDown } from '@carbon/icons-react';
 
-const iconColors: Record<string, string> = {
-  // Triggers
-  manualTrigger: 'text-red-600', scheduleTrigger: 'text-yellow-600', webhookTrigger: 'text-orange-600',
-  fileWatcherTrigger: 'text-green-600', databaseTrigger: 'text-purple-600', eventLogTrigger: 'text-sky-600',
-  // Activities
-  runScript: 'text-blue-600', fileOperation: 'text-amber-600', folderOperation: 'text-amber-600', fileHash: 'text-violet-600',
-  zipOperation: 'text-yellow-700', serviceManagement: 'text-green-600', scheduledTask: 'text-fuchsia-600',
-  registryOperation: 'text-purple-600', wmiQuery: 'text-cyan-600', startProgram: 'text-rose-600',
-  powerManagement: 'text-red-700', waitForCondition: 'text-cyan-600',
-  restApi: 'text-orange-600',
-  sql: 'text-sky-700', xmlQuery: 'text-teal-600', jsonQuery: 'text-amber-700',
-  emailNotification: 'text-pink-600', delay: 'text-on-surface-variant', log: 'text-slate-600',
-  // Control Flow
-  junction: 'text-indigo-600', decision: 'text-indigo-700',
-};
-
+/**
+ * Palette/picker glyph for an activity type.
+ *
+ * Icon *and* accent come from {@link getActivityVisual} — the same resolver the canvas nodes
+ * use, so palette and canvas can never drift apart. Built-ins resolve to the generated
+ * `--act-<type>-*` design tokens (which carry their own dark-mode values); custom activities
+ * (`custom:<key>`) resolve to the runtime catalog's icon + accent. The colour is a CSS
+ * variable, so it rides on `style` — there is no Tailwind class for it.
+ */
 export function ActivityIcon({ type, size = 20 }: Readonly<{ type: string; size?: number }>) {
-  // Custom activities (custom:<key>) carry their own icon + optional accent colour in the runtime
-  // catalog — they have no static ACTIVITY_ICONS / iconColors entry.
-  if (isCustomActivityType(type)) {
-    const facts = getCustomActivityFacts(type);
-    const CustomIcon = ACTIVITY_ICON_COMPONENTS[facts?.icon ?? ''] ?? FALLBACK_ACTIVITY_ICON;
-    return (
-      <CustomIcon
-        size={size}
-        className={facts?.color ? undefined : 'text-indigo-500'}
-        style={{ color: facts?.color ?? undefined }}
-      />
-    );
-  }
+  const { icon, color } = getActivityVisual(type);
+  const Icon = ACTIVITY_ICON_COMPONENTS[icon] ?? FALLBACK_ACTIVITY_ICON;
 
-  const colorClass = iconColors[type] || 'text-on-surface-variant';
-  const Icon = ACTIVITY_ICON_COMPONENTS[ACTIVITY_ICONS[type] || 'help'] ?? FALLBACK_ACTIVITY_ICON;
-
-  return <Icon size={size} className={colorClass} />;
+  return <Icon size={size} style={{ color }} />;
 }
 
 export function SnippetsSection({ collapsed, onToggle, onInsert, canWrite = true }: Readonly<{

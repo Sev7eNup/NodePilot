@@ -120,7 +120,7 @@ coverage-report/
 **/test-migrate.db
 **/test-migrate.db-*
 
-# dev-reset.ps1 transient logs (build/test/start output, kept locally for debugging)
+# dev-reset.ps1 transient logs (build/start output, kept locally for debugging)
 .dev-logs/
 
 # Local artefact + backup folders produced by Build-Artifact.ps1 / manual zips

@@ -108,6 +108,25 @@ public class CmTraceFormatterTests
     }
 
     [Fact]
+    public void Format_MessageWithSeveralLogTerminatorLiterals_SanitizesEveryOccurrence()
+    {
+        // A pasted multi-line log excerpt carries the terminator once per copied entry.
+        // Sanitising only the first occurrence would still let the later ones close the
+        // SMS wrapper early. Includes two adjacent occurrences so a scan that skips past
+        // its own replacement is exercised too.
+        var ev = MakeEvent(LogEventLevel.Information,
+            "a ]LOG]!> b ]LOG]!>]LOG]!> c ]LOG]!>");
+
+        var line = FormatOne(ev);
+
+        // Exactly one terminator survives — the one at the real end of the message body.
+        Regex.Count(line, Regex.Escape("]LOG]!>")).Should().Be(1);
+        SmsLine.IsMatch(line).Should().BeTrue($"line was: {line}");
+        var msg = SmsLine.Match(line).Groups["msg"].Value;
+        msg.Should().Be("a ]LOG]_> b ]LOG]_>]LOG]_> c ]LOG]_>");
+    }
+
+    [Fact]
     public void Format_ComponentWithDoubleQuotes_IsSanitized()
     {
         var ev = MakeEvent(

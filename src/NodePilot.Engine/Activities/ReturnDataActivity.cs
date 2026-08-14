@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Interfaces;
@@ -16,30 +15,16 @@ namespace NodePilot.Engine.Activities;
 /// Config:
 ///   data: { key1: "literal or {{template}}", key2: "...", ... }
 ///
-/// Concurrency (audit M10): multiple returnData steps on parallel branches used to race —
-/// each fetched the execution row via its scope-local DbContext, set ReturnData, saved, and
-/// EF's default last-writer-wins gave nondeterministic results. The fix is two-fold:
-///   1. per-execution SemaphoreSlim serializes writes within a single process.
-///   2. ExecuteUpdate bypasses tracked-entity state entirely — no stale-entity concurrency
-///      exception between the fetch and the update from a different scope.
-///
-/// Designers are still encouraged to place a single terminal returnData step; this fix just
-/// makes the "last-write" semantic deterministic rather than racy.
+/// Concurrency: multiple returnData steps on parallel branches write the same row. The write
+/// goes through ExecuteUpdate, which bypasses tracked-entity state entirely — no stale-entity
+/// concurrency exception between a fetch and an update from a different scope. Which branch
+/// wins is deliberately not promised: the documented semantic is last-write-wins on the whole
+/// JSON (not per-key), so designers are expected to place a single terminal returnData step.
 /// </summary>
 public class ReturnDataActivity : IActivityExecutor
 {
     private readonly NodePilotDbContext _db;
     private readonly OutputRedactor? _redactor;
-
-    // Process-wide: one semaphore per WorkflowExecutionId. Slots are released by the finally
-    // block below. We don't aggressively evict completed executions — the dictionary grows
-    // linearly with lifetime executions which is bounded (existing executions live forever
-    // in the DB but fewer than a handful of returnData writes per execution) and the steady
-    // state is small.
-    private static readonly object _locksGate = new();
-    private static readonly ConcurrentDictionary<Guid, ExecutionLock> _perExecutionLocks = new();
-
-    internal static int ActiveLockCount => _perExecutionLocks.Count;
 
     // Cap the serialized ReturnData so a single misbehaving workflow (or a caller trying
     // to stuff secrets) can't blow the column / audit trail.
@@ -105,21 +90,11 @@ public class ReturnDataActivity : IActivityExecutor
             };
         }
 
-        var executionLock = AcquireExecutionLock(context.WorkflowExecutionId);
-        await executionLock.Gate.WaitAsync(ct);
-        try
-        {
-            // Atomic update — avoids fetching a tracked entity from this scope's DbContext
-            // while another scope's context might also be tracking the same row.
-            await _db.WorkflowExecutions
-                .Where(e => e.Id == context.WorkflowExecutionId)
-                .ExecuteUpdateAsync(setters => setters.SetProperty(e => e.ReturnData, persistJson), ct);
-        }
-        finally
-        {
-            executionLock.Gate.Release();
-            ReleaseExecutionLock(context.WorkflowExecutionId, executionLock);
-        }
+        // Atomic update — avoids fetching a tracked entity from this scope's DbContext
+        // while another scope's context might also be tracking the same row.
+        await _db.WorkflowExecutions
+            .Where(e => e.Id == context.WorkflowExecutionId)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(e => e.ReturnData, persistJson), ct);
 
         return new ActivityResult
         {
@@ -127,39 +102,5 @@ public class ReturnDataActivity : IActivityExecutor
             Output = json,
             OutputParameters = outputParams,
         };
-    }
-
-    private static ExecutionLock AcquireExecutionLock(Guid executionId)
-    {
-        lock (_locksGate)
-        {
-            if (!_perExecutionLocks.TryGetValue(executionId, out var executionLock))
-            {
-                executionLock = new ExecutionLock();
-                _perExecutionLocks[executionId] = executionLock;
-            }
-
-            executionLock.RefCount++;
-            return executionLock;
-        }
-    }
-
-    private static void ReleaseExecutionLock(Guid executionId, ExecutionLock executionLock)
-    {
-        lock (_locksGate)
-        {
-            executionLock.RefCount--;
-            if (executionLock.RefCount == 0)
-            {
-                _perExecutionLocks.TryRemove(KeyValuePair.Create(executionId, executionLock));
-                executionLock.Gate.Dispose();
-            }
-        }
-    }
-
-    private sealed class ExecutionLock
-    {
-        public SemaphoreSlim Gate { get; } = new(1, 1);
-        public int RefCount { get; set; }
     }
 }

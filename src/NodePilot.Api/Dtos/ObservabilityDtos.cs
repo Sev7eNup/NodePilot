@@ -26,16 +26,9 @@ public record MetricsDashboardResponse(
     bool Available,
     string Key,
     string Title,
-    List<TelemetryPanel> Panels,
-    List<MetricsSeries> Series,
-    List<MetricsTable> Tables,
     List<MetricsWidget>? Widgets = null);
 
-public record MetricsSeries(string Key, string Title, string Unit, List<MetricsSeriesLine> Lines);
-public record MetricsSeriesLine(string Label, List<MetricsPoint> Points);
 public record MetricsPoint(long Timestamp, double? Value);
-public record MetricsTable(string Key, string Title, string Unit, List<MetricsTableRow> Rows);
-public record MetricsTableRow(string Label, double Value);
 
 public record MetricsWidget(
     int Id,

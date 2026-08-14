@@ -78,6 +78,19 @@ public sealed class LlmConfiguredProxyTests
     }
 
     [Fact]
+    public void Custom_PlaintextLoopback_IsAlwaysDirect_EvenWithoutBypassConfiguration()
+    {
+        var (proxy, _) = Build(new LlmProxyOptions
+        {
+            Mode = LlmProxyMode.Custom,
+            Address = "http://proxy.corp.local:8080",
+        });
+
+        proxy.IsBypassed(LocalEndpoint).Should().BeTrue();
+        proxy.GetProxy(LocalEndpoint).Should().BeNull();
+    }
+
+    [Fact]
     public void Custom_WithUsername_PresentsNetworkCredential()
     {
         var (proxy, _) = Build(new LlmProxyOptions
@@ -148,8 +161,9 @@ public sealed class LlmConfiguredProxyTests
     }
 
     [Fact]
-    public void AddressChange_RebuildsTheCachedProxy()
+    public void AddressChange_TakesEffectOnTheNextRequest()
     {
+        // The WebProxy is rebuilt per call, so a hot-reloaded address needs no invalidation step.
         var options = LlmTestOptions.WithProfile();
         options.Proxy = new LlmProxyOptions { Mode = LlmProxyMode.Custom, Address = "http://p1:8080" };
         var monitor = new MutableOptionsMonitor<LlmOptions>(options);
@@ -165,27 +179,61 @@ public sealed class LlmConfiguredProxyTests
     }
 
     [Fact]
-    public void BypassListChange_RebuildsTheCachedProxy()
+    public void BypassListChange_TakesEffectOnTheNextRequest()
     {
-        // The cache compares the source values field by field; a changed bypass list must not be
-        // masked by an unchanged address.
+        // The address stays the same — only the bypass globs change. Nothing may carry the old
+        // bypass regexes over into the next request.
         var options = LlmTestOptions.WithProfile();
         options.Proxy = new LlmProxyOptions { Mode = LlmProxyMode.Custom, Address = "http://p1:8080" };
         var monitor = new MutableOptionsMonitor<LlmOptions>(options);
         var proxy = new LlmConfiguredProxy(monitor);
 
-        proxy.IsBypassed(LocalEndpoint).Should().BeFalse();
+        var internalEndpoint = new Uri("https://llm.intern/v1/chat/completions");
+        proxy.IsBypassed(internalEndpoint).Should().BeFalse();
 
         var updated = LlmTestOptions.WithProfile();
         updated.Proxy = new LlmProxyOptions
         {
             Mode = LlmProxyMode.Custom,
             Address = "http://p1:8080",
-            BypassList = ["localhost"],
+            BypassList = ["*.intern"],
         };
         monitor.Set(updated);
 
-        proxy.IsBypassed(LocalEndpoint).Should().BeTrue();
+        proxy.IsBypassed(internalEndpoint).Should().BeTrue();
+    }
+
+    [Fact]
+    public void CredentialChange_TakesEffectOnTheNextRequest()
+    {
+        // Same address, different credentials — the proxy must not serve a previously built one.
+        var options = LlmTestOptions.WithProfile();
+        options.Proxy = new LlmProxyOptions
+        {
+            Mode = LlmProxyMode.Custom,
+            Address = "http://p1:8080",
+            Username = "old",
+            Password = "old-secret",
+        };
+        var monitor = new MutableOptionsMonitor<LlmOptions>(options);
+        var proxy = new LlmConfiguredProxy(monitor);
+
+        proxy.GetProxy(CloudEndpoint).Should().Be(new Uri("http://p1:8080"));
+        proxy.Credentials.Should().BeOfType<NetworkCredential>().Which.UserName.Should().Be("old");
+
+        var updated = LlmTestOptions.WithProfile();
+        updated.Proxy = new LlmProxyOptions
+        {
+            Mode = LlmProxyMode.Custom,
+            Address = "http://p1:8080",
+            Username = "new",
+            Password = "new-secret",
+        };
+        monitor.Set(updated);
+
+        var credential = proxy.Credentials.Should().BeOfType<NetworkCredential>().Subject;
+        credential.UserName.Should().Be("new");
+        credential.Password.Should().Be("new-secret");
     }
 
     [Fact]

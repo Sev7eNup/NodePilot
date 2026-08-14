@@ -15,7 +15,6 @@ const server = setupServer(
   http.get(`${BASE}/api/observability/config`, () => HttpResponse.json({ enabled: true, prometheusAvailable: true, grafanaBaseUrl: 'http://localhost:3000' })),
   http.get(`${BASE}/api/observability/dashboards/:key`, () => HttpResponse.json({
     available: true, key: 'mission-control', title: 'Mission Control',
-    panels: [], series: [], tables: [],
     widgets: [
       { id: 1, title: 'Active executions', description: null, type: 'stat', unit: 'short', grid: { x: 0, y: 0, width: 3, height: 4 }, data: [{ label: 'Value', labels: {}, points: [{ timestamp: 1, value: 3 }] }], error: null },
       { id: 2, title: 'Top failing workflows', description: null, type: 'bargauge', unit: 'short', grid: { x: 0, y: 4, width: 12, height: 8 }, data: [{ label: 'Import users', labels: { workflow_name: 'Import users' }, points: [{ timestamp: 1, value: 4 }] }], error: null },

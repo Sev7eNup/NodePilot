@@ -59,7 +59,7 @@ internal static class MetricsDashboardCatalog
         var widgets = await Task.WhenAll(panels.Select(panel => ExecutePanelAsync(
             panel, hours, start, end, step, prometheus, logger, cancellationToken)));
 
-        return new MetricsDashboardResponse(true, key, title, [], [], [], widgets.ToList());
+        return new MetricsDashboardResponse(true, key, title, widgets.ToList());
     }
 
     private static bool IsMetricPanel(JsonElement panel)

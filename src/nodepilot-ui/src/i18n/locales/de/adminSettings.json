@@ -51,7 +51,6 @@
     "confirmEnablePrompt": "Tippe: {{phrase}}",
     "confirmEnableButton": "Ja, aktivieren"
   },
-  "comingSoon": "Kommt in einer späteren Version",
   "restartBannerTitle": "Service-Neustart erforderlich",
   "restartBannerBody": "Folgende Einstellungen wurden gespeichert, sind aber erst nach einem Service-Neustart aktiv:",
   "restartBannerSince": "ausstehend seit {{since}}",
@@ -83,7 +82,6 @@
   "errorTitle": "Fehler",
   "validationErrorsTitle": "Diese Werte würden den nächsten Service-Start verhindern:",
   "noSections": "Keine Sektionen konfiguriert.",
-  "comingSoonSectionTitle": "Diese Sektion kommt in einer späteren Version",
   "smtpEnableSslLabel": "TLS aktivieren (EnableSsl)",
   "smtpEnableSslWarning": "Warnung: Benutzername ist gesetzt, aber TLS ist deaktiviert. SMTP-Anmeldedaten und Nachrichteninhalte werden im Klartext übertragen. Nur für lokale, nicht öffentlich erreichbare Relays empfohlen.",
   "perf": {
@@ -159,7 +157,9 @@
     "requireWebhookSecret": "X-Webhook-Secret-Header erforderlich",
     "requireWebhookSecretHint": "Ein webhookTrigger ohne konfiguriertes Secret feuert nicht. Verifiziert wird je nach signatureMode des Triggers als X-Webhook-Secret-Header oder als HMAC-Signatur; der HMAC-Modus ist immer fail-closed, unabhängig von diesem Schalter. Aus heißt: wer die Webhook-URL kennt, kann den Workflow auslösen — jeder secret-lose Treffer wird zusätzlich als Warnung geloggt.",
     "externalTriggerApiKey": "API-Schlüssel",
-    "externalTriggerHint": "Leer/gelöscht deaktiviert <0>POST /api/trigger/...</0> vollständig (503).",
+    "externalTriggerHint": "Legacy-Schlüssel für <0>POST /api/trigger/...</0>. Er kann nur explizit gelistete Workflows mit aktivem Manual/API-Trigger starten. Neue Integrationen sollten gehashte, eingeschränkte Schlüssel-Einträge in der Konfiguration verwenden.",
+    "externalTriggerAllowedWorkflowIds": "Erlaubte Workflow-IDs (Legacy-Schlüssel)",
+    "externalTriggerAllowedWorkflowIdsHint": "Leer bedeutet alles verweigern. Unveränderliche Workflow-GUIDs verwenden, ein Eintrag pro Workflow; Namen und Wildcards sind nicht erlaubt.",
     "strictAllowedHosts": "AllowedHosts='*' beim Start ablehnen (StrictAllowedHosts)",
     "strictAllowedHostsHint": "Bricht den Dienststart ab, wenn AllowedHosts unsicher weit gefasst ist: '*', leer oder ein nicht ersetzter Platzhalter aus dem Deployment-Template. Wirkt ausschließlich beim Boot, nicht zur Laufzeit — nach einer Änderung hier entscheidet erst der nächste Start. Ohne diesen Schalter bleibt eine weit offene Liste nur eine Warnung im Log.",
     "allowedHostsField": "AllowedHosts (semikolon-getrennt)",
