@@ -49,7 +49,12 @@ Provider-Verbindungen, Timeout-Budgets und das Verhalten bei Datenbank-Ausfälle
 | `DataProtection:KeyRingPath` | `data-protection-keys` | bei HA+OIDC persistenter gemeinsamer Pfad für alle Nodes |
 | `DataProtection:CertificateThumbprint` | `null` | bei HA+OIDC gemeinsames Zertifikat mit Private Key in `LocalMachine\My` |
 | `DataProtection:SharedKeyRing` | `false` | muss bei HA+OIDC nach verifiziertem Shared Storage `true` sein |
-| `ExternalTrigger:ApiKey` | leer | leer bedeutet: External Trigger inaktiv |
+| `ExternalTrigger:Keys:<id>:KeyHash` | leer | SHA-256 des Integrationsschlüssels als Base64; Klartext wird nicht persistiert |
+| `ExternalTrigger:Keys:<id>:AllowedWorkflowIds` | `[]` | unveränderliche Workflow-GUIDs; leer bedeutet deny-all |
+| `ExternalTrigger:ApiKey` | leer | Legacy-Klartextschlüssel; nur zusammen mit der folgenden Allowlist wirksam |
+| `ExternalTrigger:AllowedWorkflowIds` | `[]` | GUID-Scope des Legacy-Schlüssels; leer bedeutet deny-all |
+
+`ExternalTrigger:Keys` wird als vollständige Map aus dem höchstprioren Provider gelesen, der sie deklariert. Dadurch widerruft ein höheres `Keys: {}` zuverlässig alle niedrigeren Schlüssel; einzelne Hashes und Scopes werden nie aus verschiedenen Provider-Snapshots zusammengesetzt. `AllowedWorkflowIds` wird ebenfalls nicht indexweise zusammengeführt: `[A]` ersetzt eine niedrigere Liste `[A,B]`, und `[]` ist deny-all. Ein Provider-Override der `Keys`-Map muss daher alle weiterhin gewünschten Integrationen vollständig enthalten.
 
 Die komplette `Authentication`-Sektion ist boot-fest. Saves über die Admin-Einstellungen setzen den Restart-Marker; aktiv werden sie erst nach einem Service-Neustart. LDAP kann vor dem Speichern über `POST /api/admin/settings/test/ldap` gegen den aktuellen Entwurf geprüft werden. Secrets gehören in Umgebungsvariablen oder den Secret-Provider.
 

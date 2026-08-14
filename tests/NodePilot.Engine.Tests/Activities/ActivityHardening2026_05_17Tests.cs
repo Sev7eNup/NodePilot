@@ -54,7 +54,7 @@ public sealed class ActivityHardening2026_05_17Tests
         result.ErrorOutput.Should().Contain("{{");
     }
 
-    // ----- A2: ZipOperation extract embeds a Zip-Slip pre-scan block -----
+    // ----- A2: ZipOperation validates and writes every entry itself -----
 
     [Fact]
     public async Task A2_ZipExtract_ScriptContainsZipSlipGuard()
@@ -95,8 +95,11 @@ public sealed class ActivityHardening2026_05_17Tests
             CancellationToken.None);
 
         captured.Should().Contain("Zip-Slip blocked");
-        captured.Should().Contain("ZipFile]::OpenRead");
         captured.Should().Contain("StartsWith");
+        captured.Should().Contain("ZipArchive]::new");
+        captured.Should().Contain("FileMode]::CreateNew");
+        captured.Should().Contain("FileAttributes]::ReparsePoint");
+        captured.Should().NotContain("Expand-Archive");
     }
 
     // ----- A3: RegistryActivity rejects non-registry keyPath -----

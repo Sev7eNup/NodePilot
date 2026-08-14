@@ -35,6 +35,28 @@ public sealed class LlmEndpointGuardTests
     }
 
     [Theory]
+    [InlineData("http://api.openai.com/v1")]
+    [InlineData("http://10.20.30.40:11434/v1")]
+    [InlineData("http://localhost.example.com:11434/v1")]
+    public void NormalizeAndValidateBaseUrl_RemotePlaintext_Throws(string input)
+    {
+        var act = () => LlmEndpointGuard.NormalizeAndValidateBaseUrl(input);
+
+        act.Should().Throw<LlmException>()
+            .Where(e => e.Message.Contains("plaintext HTTP") && e.Message.Contains("HTTPS"));
+    }
+
+    [Theory]
+    [InlineData("http://localhost:11434/v1")]
+    [InlineData("http://127.0.0.1:11434/v1")]
+    [InlineData("http://127.42.7.9:11434/v1")]
+    [InlineData("http://[::1]:11434/v1")]
+    public void NormalizeAndValidateBaseUrl_LiteralLoopbackPlaintext_IsAllowed(string input)
+    {
+        LlmEndpointGuard.NormalizeAndValidateBaseUrl(input).Should().Be(input);
+    }
+
+    [Theory]
     [InlineData("http://169.254.169.254/latest/meta-data")]
     [InlineData("http://metadata.google.internal/computeMetadata/v1")]
     [InlineData("https://metadata.azure.com/metadata/instance")]
@@ -143,5 +165,16 @@ public sealed class LlmEndpointGuardTests
     public void IsCloudMetadataEndpoint_ClassifiesCorrectly(string baseUrl, bool expected)
     {
         LlmEndpointGuard.IsCloudMetadataEndpoint(baseUrl).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("http://localhost:11434", true)]
+    [InlineData("http://127.0.0.1:11434", true)]
+    [InlineData("http://[::1]:11434", true)]
+    [InlineData("http://localhost.example.com:11434", false)]
+    [InlineData("http://10.0.0.5:11434", false)]
+    public void IsLiteralLoopbackEndpoint_ClassifiesWithoutDns(string input, bool expected)
+    {
+        LlmEndpointGuard.IsLiteralLoopbackEndpoint(new Uri(input)).Should().Be(expected);
     }
 }

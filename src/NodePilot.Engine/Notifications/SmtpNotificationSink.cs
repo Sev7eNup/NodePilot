@@ -5,6 +5,7 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Engine.Options;
+using NodePilot.Engine.Mail;
 
 namespace NodePilot.Engine.Notifications;
 
@@ -27,11 +28,11 @@ public sealed class SmtpNotificationSink : INotificationSink
     {
         if (string.IsNullOrWhiteSpace(target))
             return NotificationSendResult.Fail("Email route has no recipient.");
-        if (target.IndexOfAny([',', ';']) >= 0)
+        if (SmtpTransport.IsRecipientList(target))
             return NotificationSendResult.Fail("Email route target must be a single recipient (no comma/semicolon lists).");
 
         var subject = NotificationRenderer.Title(ctx);
-        if (target.IndexOfAny(['\r', '\n']) >= 0 || subject.IndexOfAny(['\r', '\n']) >= 0)
+        if (SmtpTransport.HasHeaderInjection(target, subject))
             return NotificationSendResult.Fail("Email: newline characters are not allowed in recipient or subject.");
 
         try
@@ -40,9 +41,7 @@ public sealed class SmtpNotificationSink : INotificationSink
             // or Admin-Settings-UI save) takes effect without a service restart. The sink is a
             // singleton — IOptionsMonitor is the correct live source (IOptionsSnapshot would throw).
             var o = _smtp.CurrentValue;
-            using var client = new SmtpClient(o.Host, o.Port) { EnableSsl = o.EnableSsl };
-            if (o.Username is not null && o.Password is not null)
-                client.Credentials = new NetworkCredential(o.Username, o.Password);
+            using var client = SmtpTransport.CreateClient(o);
             using var message = new MailMessage(o.From, target, subject, NotificationRenderer.EmailBody(ctx));
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             cts.CancelAfter(TimeSpan.FromSeconds(SendTimeoutSeconds));

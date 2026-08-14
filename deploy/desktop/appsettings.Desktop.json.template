@@ -111,7 +111,7 @@
   "SqlActivity": { "RequireConnectionRef": true },
   "Trigger": { "Database": { "RequireConnectionRef": true } },
   "StartProgram": { "DisallowShellExecute": true },
-  "ExternalTrigger": { "ApiKey": "" },
+  "ExternalTrigger": { "ApiKey": "", "AllowedWorkflowIds": [], "Keys": {} },
   "Retention": {
     "Executions": { "Enabled": true, "MaxAgeDays": 30, "IntervalMinutes": 60, "BatchSize": 500, "ArchivePath": "{{DATA_PATH_ESCAPED}}\\archive\\executions" },
     "AuditLog":   { "Enabled": true, "MaxAgeDays": 365, "IntervalMinutes": 720, "BatchSize": 1000, "ArchivePath": "{{DATA_PATH_ESCAPED}}\\archive\\audit", "VerifyIntervalMinutes": 1440, "VerifyMaxFilesPerPass": 500 },

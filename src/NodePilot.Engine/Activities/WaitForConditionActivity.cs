@@ -224,22 +224,17 @@ Write-Output ('###NODEPILOT_COND:' + $__npResult + '###')";
         if (conditionType == "portopen")
         {
             var host = config.GetStringOrNull("host")!; // presence is validated by the builder first
-            NetworkGuard.RequireExplicitlyAllowlistedHost(
-                _configuration ?? throw new InvalidOperationException("WaitForCondition: network policy configuration is unavailable."),
-                host,
-                "WaitForCondition portOpen");
+            NetworkGuard.RequireExplicitlyAllowlistedHost(_configuration, host, "WaitForCondition portOpen");
             return;
         }
 
         if (conditionType == "httpok")
         {
             var url = config.GetStringOrNull("url")!; // presence is validated by the builder first
-            var configuration = _configuration
-                ?? throw new InvalidOperationException("WaitForCondition: network policy configuration is unavailable.");
             // Probe policy only — NOT NetworkGuard.ValidateUrl. That is the restApi SSRF guard;
             // running httpOk through it made WaitForCondition:AllowedHosts inert for exactly the
             // loopback/RFC1918 targets it ships enabled for. See NetworkGuard.ValidateProbeUrl.
-            NetworkGuard.ValidateProbeUrl(configuration, url, "WaitForCondition httpOk");
+            NetworkGuard.ValidateProbeUrl(_configuration, url, "WaitForCondition httpOk");
         }
     }
 

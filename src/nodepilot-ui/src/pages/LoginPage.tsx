@@ -15,6 +15,7 @@ import { useAuthStore } from '../stores/authStore';
 import { api, ApiError, isDatabaseOutageError } from '../api/client';
 import { BrandLogo } from '../components/BrandLogo';
 import type { AuthMethodsResponse, LoginResponse } from '../types/api';
+import { captureAuthBoundaryGeneration } from '../security/authBoundary';
 
 const inputClass =
   'w-full pl-10 pr-3 py-2.5 bg-surface-low/60 border border-outline-variant rounded-xl text-sm text-on-surface ' +
@@ -32,6 +33,7 @@ export function LoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [methods, setMethods] = useState<AuthMethodsResponse | null>(null);
   const login = useAuthStore((s) => s.login);
+  const acceptAuthenticatedIdentity = useAuthStore((s) => s.acceptAuthenticatedIdentity);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -85,12 +87,11 @@ export function LoginPage() {
       // Local Intranet zone and the user has a valid Kerberos ticket. The server emits
       // np_auth + np_csrf cookies on success; the body carries identity only (no JWT —
       // Windows SSO is ambient-credential driven, so the token is never echoed back).
+      const expectedBoundaryGeneration = captureAuthBoundaryGeneration();
       const response = await api.post<LoginResponse>('/auth/windows');
-      useAuthStore.setState({
-        userId: response.userId,
-        username: response.username,
-        role: response.role,
-        isAuthenticated: true,
+      acceptAuthenticatedIdentity(response, {
+        forceBoundary: true,
+        expectedBoundaryGeneration,
       });
       navigate('/');
     } catch {

@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Triggers;
+using NodePilot.Engine.Tests.Helpers;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Triggers;
@@ -104,4 +105,87 @@ public class FileWatcherTriggerActivityTests
     [Fact]
     public void ActivityType_IsFileWatcherTrigger() =>
         new FileWatcherTrigger().ActivityType.Should().Be("fileWatcherTrigger");
+
+    [Theory]
+    [InlineData(@"\\?\C:\Windows\System32")]
+    [InlineData(@"//?/C:/Windows/System32")]
+    [InlineData(@"\\.\C:\Windows\System32")]
+    [InlineData(@"\??\C:\Windows\System32")]
+    public async Task Execute_ManualScanRejectsWindowsDeviceNamespace(string directory)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var result = await new FileWatcherTrigger().ExecuteAsync(
+            new StepExecutionContext(),
+            Cfg(JsonSerializer.Serialize(new { directory })),
+            CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("device namespace");
+    }
+
+    [WindowsFact]
+    public async Task Execute_ManualScanRejectsLocalAdministrativeShareSystemAlias()
+    {
+        var result = await new FileWatcherTrigger().ExecuteAsync(
+            new StepExecutionContext(),
+            Cfg(JsonSerializer.Serialize(new
+            {
+                directory = @"\\localhost\c$\Windows\System32",
+            })),
+            CancellationToken.None);
+
+        result.Success.Should().BeFalse();
+        result.ErrorOutput.Should().Contain("system path");
+    }
+
+    [WindowsFact]
+    public async Task Execute_ManualRecursiveScanRejectsNestedJunctionWithoutEnumeratingTarget()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-fw-manual-link-" + Guid.NewGuid().ToString("N"));
+        var watched = Path.Combine(stage, "watched");
+        var outside = Path.Combine(stage, "outside");
+        var link = Path.Combine(watched, "nested-link");
+        Directory.CreateDirectory(watched);
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(outside, "outside-secret.log"), "secret");
+        try
+        {
+            try { Directory.CreateSymbolicLink(link, outside); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var json = JsonSerializer.Serialize(new
+            {
+                directory = watched,
+                filter = "*.log",
+                includeSubdirectories = true,
+            });
+            var result = await new FileWatcherTrigger().ExecuteAsync(
+                new StepExecutionContext(),
+                Cfg(json),
+                CancellationToken.None);
+
+            result.Success.Should().BeFalse();
+            result.ErrorOutput.Should().Contain("reparse point");
+            result.Output.Should().NotContain("outside-secret.log");
+        }
+        finally
+        {
+            DeleteDirectoryLink(link);
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
+    private static void DeleteDirectoryLink(string link)
+    {
+        try
+        {
+            if ((File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0)
+                Directory.Delete(link);
+        }
+        catch { }
+    }
 }

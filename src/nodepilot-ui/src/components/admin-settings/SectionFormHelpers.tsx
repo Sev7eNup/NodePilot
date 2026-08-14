@@ -158,6 +158,35 @@ export function Card({ icon: Icon, title, children }: Readonly<{ icon: React.Com
 }
 
 /**
+ * The tighter card five sections had each declared for themselves: `p-4`, no rule under the
+ * heading, bare icon. It is NOT the same shape as {@link Card} above — that one is roomier and
+ * separates its heading — so the two are kept apart rather than merged, which would silently
+ * restyle those five pages.
+ *
+ * `headingMargin` and `bodyClassName` exist only to preserve what each call site renders today
+ * (three used `mb-3`, two `mb-4`; SystemInfo wraps its rows in `space-y-1.5`). Pass complete
+ * class literals — Tailwind's scanner has to see them in the source.
+ */
+export function CompactCard({
+  icon: Icon, title, headingMargin = 'mb-3', bodyClassName, children,
+}: Readonly<{
+  icon: React.ComponentType<{ size?: number }>;
+  title: string;
+  headingMargin?: string;
+  bodyClassName?: string;
+  children: React.ReactNode;
+}>) {
+  return (
+    <div className="np-card p-4">
+      <h3 className={`font-semibold text-on-surface flex items-center gap-2 ${headingMargin}`}>
+        <Icon size={18} /> {title}
+      </h3>
+      {bodyClassName ? <div className={bodyClassName}>{children}</div> : children}
+    </div>
+  );
+}
+
+/**
  * Sub-group heading inside a settings card.
  *
  * Long cards (AI knowledge, logging, performance) are really three or four unrelated blocks

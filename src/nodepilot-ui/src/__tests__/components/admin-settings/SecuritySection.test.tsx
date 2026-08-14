@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterAll, afterEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setupServer } from 'msw/node';
 import { http, HttpResponse } from 'msw';
@@ -32,16 +32,27 @@ const restApi = {
   },
   etag: '"r-1"', isHotReloadable: false, effectiveSource: {},
 };
+const waitForCondition = {
+  sectionPath: 'WaitForCondition',
+  payload: { allowedHosts: [] },
+  etag: '"wfc-1"', isHotReloadable: true, effectiveSource: {},
+};
 const fso = { sectionPath: 'FileSystemOperation', payload: { rejectTraversal: true, allowedRoots: [] }, etag: '"f-1"', isHotReloadable: true, effectiveSource: {} };
 const sql = { sectionPath: 'SqlActivity', payload: { requireConnectionRef: false }, etag: '"s-1"', isHotReloadable: true, effectiveSource: {} };
 const sp = { sectionPath: 'StartProgram', payload: { disallowShellExecute: true }, etag: '"sp-1"', isHotReloadable: true, effectiveSource: {} };
 const wh = { sectionPath: 'Webhook', payload: { requireSecret: true }, etag: '"wh-1"', isHotReloadable: true, effectiveSource: {} };
-const et = { sectionPath: 'ExternalTrigger', payload: { apiKey: '********' }, etag: '"et-1"', isHotReloadable: true, effectiveSource: {} };
+const allowedWorkflowId = '11111111-1111-1111-1111-111111111111';
+const et = {
+  sectionPath: 'ExternalTrigger',
+  payload: { apiKey: '********', allowedWorkflowIds: [allowedWorkflowId] },
+  etag: '"et-1"', isHotReloadable: true, effectiveSource: {},
+};
 const sec = { sectionPath: 'Security', payload: { strictAllowedHosts: false, allowedHosts: '*' }, etag: '"sec-1"', isHotReloadable: false, effectiveSource: {} };
 
 function renderAll() {
   server.use(
     http.get('/api/admin/settings/RestApi', () => HttpResponse.json(restApi)),
+    http.get('/api/admin/settings/WaitForCondition', () => HttpResponse.json(waitForCondition)),
     http.get('/api/admin/settings/FileSystemOperation', () => HttpResponse.json(fso)),
     http.get('/api/admin/settings/SqlActivity', () => HttpResponse.json(sql)),
     http.get('/api/admin/settings/StartProgram', () => HttpResponse.json(sp)),
@@ -63,11 +74,31 @@ describe('SecuritySection', () => {
     expect(screen.getAllByRole('button', { name: /speichern|save/i }).length).toBeGreaterThanOrEqual(7);
   });
 
-  it('shows the hot-reload hint on the five live hardening cards but not on RestApi/Security', async () => {
+  it('shows the hot-reload hint on the six live hardening cards but not on RestApi/Security', async () => {
     renderAll();
     await waitFor(() => expect(screen.getByDisplayValue('*')).toBeInTheDocument(), { timeout: 3000 });
-    // FileSystemOperation / SqlActivity / StartProgram / Webhook / ExternalTrigger → 5 hints.
-    expect(screen.getAllByText(/Changes apply immediately/i).length).toBe(5);
+    // WaitForCondition / FileSystemOperation / SqlActivity / StartProgram / Webhook /
+    // ExternalTrigger → 6 hints.
+    expect(screen.getAllByText(/Changes apply immediately/i).length).toBe(6);
+  });
+
+  it('External Trigger Save preserves the legacy workflow allow-list', async () => {
+    let putBody: unknown = null;
+    server.use(http.put('/api/admin/settings/ExternalTrigger', async ({ request }) => {
+      putBody = await request.json();
+      return HttpResponse.json({ ...et, etag: '"et-2"' });
+    }));
+    renderAll();
+    await waitFor(() => expect(screen.getByDisplayValue(allowedWorkflowId)).toBeInTheDocument(), { timeout: 3000 });
+
+    const card = screen.getByText('External Trigger API').closest('.np-card') as HTMLElement | null;
+    expect(card).not.toBeNull();
+    fireEvent.click(within(card!).getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(putBody).toEqual(expect.objectContaining({
+      ApiKey: '__unchanged__',
+      AllowedWorkflowIds: [allowedWorkflowId],
+    })));
   });
 
   it('every hardening switch carries an explanatory hint', async () => {

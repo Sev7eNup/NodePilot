@@ -26,7 +26,23 @@ public sealed class BaseRemoteActivityTests : IDisposable
     {
         _db = TestDbContext.Create();
         _credentialStore = new Mock<ICredentialStore>();
-        _sessionFactory = MockRemoteSession.CreateFactory();
+
+        var session = new Mock<IRemoteSession>();
+        session
+            .Setup(s => s.ExecuteScriptAsync(It.IsAny<string>(), It.IsAny<int?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RemoteExecutionResult
+            {
+                Success = true,
+                Output = "OK",
+                ErrorOutput = "",
+                Duration = TimeSpan.FromMilliseconds(100)
+            });
+        session.Setup(s => s.DisposeAsync()).Returns(ValueTask.CompletedTask);
+
+        _sessionFactory = new Mock<IRemoteSessionFactory>();
+        _sessionFactory
+            .Setup(f => f.CreateSessionAsync(It.IsAny<ManagedMachine>(), It.IsAny<Credential>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(session.Object);
     }
 
     public void Dispose()

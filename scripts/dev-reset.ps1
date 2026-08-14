@@ -1,17 +1,15 @@
 <#
 .SYNOPSIS
-    Kill -> Build -> Test -> Start  (NodePilot dev reset)
-    Kills all running backend/frontend processes, builds both, runs all tests,
-    then starts backend (http://localhost:5000) and frontend (http://localhost:5173).
-
-.PARAMETER SkipTests
-    Skip all test runs and go straight to start.
+    Kill -> Build -> Start  (NodePilot dev reset)
+    Kills all running backend/frontend processes, builds both, then starts
+    backend (http://localhost:5000) and frontend (http://localhost:5173).
+    Tests are not run here -- use scripts/nightly-tests.ps1 or a scoped
+    dotnet test / vitest run.
 
 .PARAMETER SkipBuild
-    Skip the build step (still runs tests and restarts processes).
+    Skip the build step (still restarts processes).
 #>
 param(
-    [switch]$SkipTests = $true,
     [switch]$SkipBuild = $false
 )
 
@@ -121,29 +119,7 @@ if (-not $SkipBuild) {
 }
 
 # ---------------------------------------------------------------------------
-# 3. Tests
-# ---------------------------------------------------------------------------
-
-if (-not $SkipTests) {
-
-    Invoke-Checked "Backend tests (dotnet test)" {
-        Set-Location $root
-        $log = Join-Path $logDir "test-backend-$ts.log"
-        dotnet test --logger "console;verbosity=normal" | Tee-Object -FilePath $log
-        if ($LASTEXITCODE -ne 0) { throw "Backend tests failed -- see $log" }
-    }
-
-    Invoke-Checked "Frontend tests (npm run test:run)" {
-        Set-Location $uiDir
-        $log = Join-Path $logDir "test-frontend-$ts.log"
-        cmd /c "npm run test:run" | Tee-Object -FilePath $log
-        if ($LASTEXITCODE -ne 0) { throw "Frontend tests failed -- see $log" }
-    }
-
-}
-
-# ---------------------------------------------------------------------------
-# 4. Start backend
+# 3. Start backend
 # ---------------------------------------------------------------------------
 
 Write-Step "Starting backend  -->  http://localhost:5000"
@@ -163,7 +139,7 @@ $beProc = Start-Process `
 Write-Ok "Backend  PID $($beProc.Id)  ->  $beOut"
 
 # ---------------------------------------------------------------------------
-# 5. Start frontend
+# 4. Start frontend
 # ---------------------------------------------------------------------------
 
 Write-Step "Starting frontend  -->  http://localhost:5173"
@@ -182,7 +158,7 @@ $feProc = Start-Process `
 Write-Ok "Frontend PID $($feProc.Id)  ->  $feOut"
 
 # ---------------------------------------------------------------------------
-# 6. Wait for backend to be ready
+# 5. Wait for backend to be ready
 # ---------------------------------------------------------------------------
 
 Write-Step "Waiting for backend on :5000 ..."

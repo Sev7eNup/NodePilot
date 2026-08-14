@@ -52,7 +52,7 @@ public static class EffectiveSourceDetector
         // Reverse iteration mirrors configuration lookup semantics: last provider wins.
         foreach (var provider in root.Providers.Reverse())
         {
-            if (provider.TryGet(key, out _))
+            if (ProviderDefines(provider, key))
                 return Classify(provider);
         }
         return SourceDefault;
@@ -79,7 +79,7 @@ public static class EffectiveSourceDetector
             if (source == SourceRuntime) continue;
             foreach (var key in keyList)
             {
-                if (provider.TryGet(key, out _)) return source;
+                if (ProviderDefines(provider, key)) return source;
             }
         }
         return null;
@@ -94,6 +94,10 @@ public static class EffectiveSourceDetector
         foreach (var k in keys) map[k] = Detect(root, k);
         return map;
     }
+
+    private static bool ProviderDefines(IConfigurationProvider provider, string key)
+        => provider.TryGet(key, out _)
+           || provider.GetChildKeys([], key).Any();
 
     private static string Classify(IConfigurationProvider provider)
     {

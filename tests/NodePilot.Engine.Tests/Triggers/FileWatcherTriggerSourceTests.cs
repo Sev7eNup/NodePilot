@@ -1,8 +1,12 @@
 using System.ComponentModel;
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
+using NodePilot.Engine.Security;
+using NodePilot.Engine.Tests.Helpers;
 using NodePilot.Scheduler;
 using NodePilot.Scheduler.Sources;
 using Xunit;
@@ -79,6 +83,283 @@ public class FileWatcherTriggerSourceTests
             .WithMessage("*system path*");
     }
 
+    [Theory]
+    [InlineData(@"C:\PROGRA~1")]
+    [InlineData(@"C:\PROGRA~2")]
+    public async Task StartAsync_Throws_WhenHardBlockedPathUsesExistingDosShortName(string directory)
+    {
+        if (!OperatingSystem.IsWindows() || !Directory.Exists(directory)) return;
+
+        // On supported Windows/.NET, GetFullPath expands the existing 8.3 alias before the
+        // hard-block comparison. Pin that behavior because FileSystemWatcher itself accepts
+        // these aliases and a lexical-only comparison would be bypassable.
+        Path.GetFullPath(directory).Should().NotContain("~");
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            EmptyConfig());
+        var act = () => src.StartAsync(
+            Ctx(JsonSerializer.Serialize(new { directory })),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*system path*");
+    }
+
+    [Theory]
+    [InlineData(@"\\?\C:\Windows\System32")]
+    [InlineData(@"//?/C:/Windows/System32")]
+    [InlineData(@"\\.\C:\Windows\System32")]
+    [InlineData(@"\??\C:\Windows\System32")]
+    public async Task StartAsync_Throws_WhenDirectoryUsesWindowsDeviceNamespace(string directory)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            EmptyConfig());
+        var act = () => src.StartAsync(
+            Ctx(JsonSerializer.Serialize(new { directory })),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*device namespace*");
+    }
+
+    [WindowsFact]
+    public async Task StartAsync_Throws_WhenSystemPathUsesLocalAdministrativeShareAliases()
+    {
+        var systemDirectory = Path.GetFullPath(Environment.SystemDirectory);
+        var driveRoot = Path.GetPathRoot(systemDirectory);
+        if (string.IsNullOrWhiteSpace(driveRoot) || driveRoot.Length < 2 || driveRoot[1] != ':')
+            return;
+        var relative = Path.GetRelativePath(driveRoot, systemDirectory);
+        var aliases = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "localhost",
+            "127.0.0.1",
+            "127.0.0.2",
+            "[::1]",
+            "--1.ipv6-literal.net",
+            "0--1.ipv6-literal.net",
+            "0-0-0-0-0-0-0-1.ipv6-literal.net",
+            "--ffff-127.0.0.1.ipv6-literal.net",
+            "0-0-0-0-0-ffff-127.0.0.1.ipv6-literal.net",
+            Environment.MachineName,
+            Dns.GetHostName(),
+        };
+        var properties = IPGlobalProperties.GetIPGlobalProperties();
+        if (!string.IsNullOrWhiteSpace(properties.HostName) &&
+            !string.IsNullOrWhiteSpace(properties.DomainName))
+            aliases.Add($"{properties.HostName}.{properties.DomainName}");
+
+        foreach (var alias in aliases.Where(alias => !string.IsNullOrWhiteSpace(alias)))
+        {
+            var directory = $@"\\{alias}\{char.ToLowerInvariant(driveRoot[0])}$\{relative}";
+            FileWatcherPathGuard.CanonicalizeLocalAdministrativeShareForPolicy(
+                    directory,
+                    rejectUnmappedLocalShare: true)
+                .Should().Be(systemDirectory);
+
+            var src = new FileWatcherTriggerSource(
+                NullLogger<FileWatcherTriggerSource>.Instance,
+                EmptyConfig());
+            var act = () => src.StartAsync(
+                Ctx(JsonSerializer.Serialize(new { directory })),
+                CancellationToken.None);
+
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*system path*", $"alias '{alias}' names the local system drive");
+        }
+    }
+
+    [WindowsFact]
+    public async Task StartAsync_Throws_WhenActualSystemDirectoryUsesLocalDriveAdminShare()
+    {
+        var systemDirectory = Path.GetFullPath(Environment.SystemDirectory);
+        var driveRoot = Path.GetPathRoot(systemDirectory);
+        if (string.IsNullOrWhiteSpace(driveRoot) || driveRoot.Length < 2 || driveRoot[1] != ':')
+            return;
+
+        var relative = Path.GetRelativePath(driveRoot, systemDirectory);
+        var directory = $@"\\localhost\{char.ToLowerInvariant(driveRoot[0])}$\{relative}";
+        FileWatcherPathGuard.CanonicalizeLocalAdministrativeShareForPolicy(
+                directory,
+                rejectUnmappedLocalShare: true)
+            .Should().Be(systemDirectory);
+
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            EmptyConfig());
+        var act = () => src.StartAsync(
+            Ctx(JsonSerializer.Serialize(new { directory })),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*system path*");
+    }
+
+    [Theory]
+    [InlineData(@"\\localhost\ADMIN$\..\System32")]
+    [InlineData(@"\\localhost\ADMIN$\..\..\System32")]
+    public async Task StartAsync_Throws_WhenAdminShareParentSegmentsClampAtShareRoot(string directory)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        FileWatcherPathGuard.CanonicalizeLocalAdministrativeShareForPolicy(
+                directory,
+                rejectUnmappedLocalShare: true)
+            .Should().BeEquivalentTo(Path.GetFullPath(Environment.SystemDirectory));
+
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            EmptyConfig());
+        var act = () => src.StartAsync(
+            Ctx(JsonSerializer.Serialize(new { directory })),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*system path*");
+    }
+
+    [WindowsFact]
+    public async Task StartAsync_Throws_WhenDriveShareParentSegmentClampsAtShareRoot()
+    {
+        var systemDirectory = Path.GetFullPath(Environment.SystemDirectory);
+        var driveRoot = Path.GetPathRoot(systemDirectory);
+        if (string.IsNullOrWhiteSpace(driveRoot) || driveRoot.Length < 2 || driveRoot[1] != ':')
+            return;
+
+        var relative = Path.GetRelativePath(driveRoot, systemDirectory);
+        var directory = $@"\\localhost\{char.ToLowerInvariant(driveRoot[0])}$\..\{relative}";
+        FileWatcherPathGuard.CanonicalizeLocalAdministrativeShareForPolicy(
+                directory,
+                rejectUnmappedLocalShare: true)
+            .Should().Be(systemDirectory);
+
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            EmptyConfig());
+        var act = () => src.StartAsync(
+            Ctx(JsonSerializer.Serialize(new { directory })),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*system path*");
+    }
+
+    [Theory]
+    [InlineData(@"\\localhost\ADMIN$.")]
+    [InlineData(@"\\localhost\ADMIN$ ")]
+    public async Task StartAsync_Throws_WhenAdminShareRootHasAcceptedTrailingAlias(string directory)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var expectedSystemRoot = Path.GetDirectoryName(Environment.SystemDirectory)!;
+        FileWatcherPathGuard.CanonicalizeLocalAdministrativeShareForPolicy(
+                directory,
+                rejectUnmappedLocalShare: true)
+            .Should().Be(Path.GetFullPath(expectedSystemRoot));
+
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            EmptyConfig());
+        var act = () => src.StartAsync(
+            Ctx(JsonSerializer.Serialize(new { directory })),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*system path*");
+    }
+
+    [Theory]
+    [InlineData(@"\\localhost\c$.")]
+    [InlineData(@"\\localhost\c$ ")]
+    public void LocalDriveAdminShareRoot_NormalizesAcceptedTrailingAlias(string directory)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        FileWatcherPathGuard.CanonicalizeLocalAdministrativeShareForPolicy(
+                directory,
+                rejectUnmappedLocalShare: true)
+            .Should().Be(Path.GetFullPath(@"C:\"));
+    }
+
+    [WindowsFact]
+    public async Task StartAsync_RejectsUnmappedLocalNamedShareEvenWhenConfiguredAsAllowedRoot()
+    {
+        const string directory = @"\\localhost\Logs";
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            WithAllowedRoots(directory));
+        var act = () => src.StartAsync(
+            Ctx(JsonSerializer.Serialize(new { directory })),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*local UNC share*cannot be mapped safely*");
+    }
+
+    [WindowsFact]
+    public async Task StartAsync_RejectsDriveRootThatContainsProtectedSystemTrees()
+    {
+        var driveRoot = Path.GetPathRoot(Environment.SystemDirectory);
+        if (string.IsNullOrWhiteSpace(driveRoot)) return;
+
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            EmptyConfig());
+        var act = () => src.StartAsync(
+            Ctx(JsonSerializer.Serialize(new
+            {
+                directory = driveRoot,
+                includeSubdirectories = true,
+            })),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*intersects a system path*");
+    }
+
+    [Theory]
+    [InlineData(2)]
+    [InlineData(3)]
+    public void LocalAdminShare_WithRepeatedServerShareSeparators_MapsForPolicy(int separators)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        var systemDirectory = Path.GetFullPath(Environment.SystemDirectory);
+        var driveRoot = Path.GetPathRoot(systemDirectory);
+        if (string.IsNullOrWhiteSpace(driveRoot) || driveRoot.Length < 2 || driveRoot[1] != ':')
+            return;
+        var relative = Path.GetRelativePath(driveRoot, systemDirectory);
+        var directory = $@"\\localhost{new string('\\', separators)}{char.ToLowerInvariant(driveRoot[0])}$\{relative}";
+
+        FileWatcherPathGuard.CanonicalizeLocalAdministrativeShareForPolicy(
+                directory,
+                rejectUnmappedLocalShare: true)
+            .Should().Be(systemDirectory);
+    }
+
+    [WindowsFact]
+    public void LocalAdminShare_MapsToWindowsDirectoryForPolicy()
+    {
+        FileWatcherPathGuard.CanonicalizeLocalAdministrativeShareForPolicy(
+                @"\\localhost\ADMIN$\System32",
+                rejectUnmappedLocalShare: true)
+            .Should().BeEquivalentTo(Path.GetFullPath(Environment.SystemDirectory));
+    }
+
+    [WindowsFact]
+    public void RemoteAdministrativeUncShare_RemainsRemoteForPolicy()
+    {
+        const string remote = @"\\nodepilot-remote.example.invalid\c$\Windows\System32";
+
+        FileWatcherPathGuard.CanonicalizeLocalAdministrativeShareForPolicy(
+                remote,
+                rejectUnmappedLocalShare: true)
+            .Should().Be(remote, "remote UNC shares remain a supported FileWatcher target");
+    }
+
     [Fact]
     public async Task StartAsync_AllowsSystemPath_WhenAllowSystemPathsConfigSet()
     {
@@ -131,6 +412,115 @@ public class FileWatcherTriggerSourceTests
         {
             try { Directory.Delete(unrelatedRoot, recursive: true); } catch { }
         }
+    }
+
+    [WindowsFact]
+    public async Task StartAsync_Throws_WhenAllowedPathResolvesThroughJunctionOutsideRoot()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-fw-junction-" + Guid.NewGuid().ToString("N"));
+        var allowed = Path.Combine(stage, "allowed");
+        var outside = Path.Combine(stage, "outside");
+        var link = Path.Combine(allowed, "link");
+        Directory.CreateDirectory(allowed);
+        Directory.CreateDirectory(outside);
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, outside);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return; // Windows host without the symlink-development privilege.
+            }
+
+            var src = new FileWatcherTriggerSource(
+                NullLogger<FileWatcherTriggerSource>.Instance,
+                WithAllowedRoots(allowed));
+            var act = () => src.StartAsync(
+                Ctx($$"""{"directory":"{{Esc(link)}}"}"""),
+                CancellationToken.None);
+
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*reparse point*");
+        }
+        finally
+        {
+            try
+            {
+                if ((File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0)
+                    Directory.Delete(link);
+            }
+            catch { }
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
+    [WindowsFact]
+    public async Task StartAsync_WithRecursiveWatchRejectsNestedJunction()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-fw-subtree-link-" + Guid.NewGuid().ToString("N"));
+        var watched = Path.Combine(stage, "watched");
+        var outside = Path.Combine(stage, "outside");
+        var link = Path.Combine(watched, "nested-link");
+        Directory.CreateDirectory(watched);
+        Directory.CreateDirectory(outside);
+        try
+        {
+            try { Directory.CreateSymbolicLink(link, outside); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var src = new FileWatcherTriggerSource(
+                NullLogger<FileWatcherTriggerSource>.Instance,
+                EmptyConfig());
+            var act = () => src.StartAsync(
+                Ctx($$"""{"directory":"{{Esc(watched)}}","includeSubdirectories":true}"""),
+                CancellationToken.None);
+
+            await act.Should().ThrowAsync<InvalidOperationException>()
+                .WithMessage("*watched tree contains reparse point*");
+        }
+        finally
+        {
+            try
+            {
+                if ((File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0)
+                    Directory.Delete(link);
+            }
+            catch { }
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
+    [Fact]
+    public async Task AllowedRoots_HigherPriorityProviderRevokesLowerArrayEntry()
+    {
+        using var allowed = new TempDirectory();
+        using var revoked = new TempDirectory();
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Trigger:FileWatcher:AllowedRoots:0"] = allowed.Path,
+                ["Trigger:FileWatcher:AllowedRoots:1"] = revoked.Path,
+            })
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Trigger:FileWatcher:AllowedRoots:0"] = allowed.Path,
+            })
+            .Build();
+        var src = new FileWatcherTriggerSource(
+            NullLogger<FileWatcherTriggerSource>.Instance,
+            config);
+
+        var act = () => src.StartAsync(
+            Ctx($$"""{"directory":"{{Esc(revoked.Path)}}"}"""),
+            CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*not within any configured Trigger:FileWatcher:AllowedRoots*");
     }
 
     [Fact]

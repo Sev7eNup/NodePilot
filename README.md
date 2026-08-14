@@ -1165,7 +1165,9 @@ All settings live in [`src/NodePilot.Api/appsettings.json`](src/NodePilot.Api/ap
 | `Jwt:Issuer` / `Jwt:Audience` | `NodePilot` | Token validation — change for production |
 | `Remote:Provider` | `winrm` | `winrm` or `noop` (load-test stub) |
 | `Smtp:Host` / `Port` / `From` | `localhost:25` | SMTP for `emailNotification` |
-| `ExternalTrigger:ApiKey` | *(unset)* | API key for `POST /api/trigger/{name}`; endpoint returns 401 if unset |
+| `ExternalTrigger:Keys:<id>:KeyHash` | *(unset)* | Base64-encoded SHA-256 hash; the highest provider declaring `Keys` owns the complete map, and `Keys: {}` revokes all lower-provider keys |
+| `ExternalTrigger:Keys:<id>:AllowedWorkflowIds` | `[]` | Provider-atomic GUID-only workflow scope; a higher list replaces all lower indices and empty is deny-all |
+| `ExternalTrigger:ApiKey` / `AllowedWorkflowIds` | *(unset)* / `[]` | Transitional legacy key and its mandatory GUID scope; without the scope it authorizes nothing |
 
 ### Logging & Observability
 
@@ -1349,7 +1351,7 @@ The full OpenAPI spec is served at `GET /openapi/v1.json`; Swagger UI at `GET /s
 | AI | `POST /api/ai/generate-script` + `/api/ai/chat` *(SSE streaming)*, `POST /api/ai/generate-workflow` *(JSON)*, `POST /api/ai/chat/applied` + `GET /api/ai/chat/activity/{workflowId}` *(Admin/Operator, folder-RBAC)* — `generate-*` Admin/Operator, `chat` all roles (edits Admin/Operator only); opt-in, rate-limited |
 | Auth | `POST /api/auth/login`, `POST /api/auth/logout`, `POST /api/auth/refresh`, `GET /api/auth/me` |
 | Audit | `GET /api/audit` *(Admin only, max 500 entries)* |
-| External trigger | `POST /api/trigger/{workflowNameOrId}` *(`X-Api-Key` header, optional `Idempotency-Key`)* |
+| External trigger | `POST /api/trigger/{workflowNameOrId}` *(`X-Api-Key` scoped to the workflow GUID; workflow needs an enabled `manualTrigger`; optional `Idempotency-Key`, isolated per authenticated key principal)* |
 | Webhooks | `POST /api/webhooks/{workflow}/{path}` *(secret via `X-Webhook-Secret` or versioned NodePilot HMAC v2 over freshness metadata + method + path + canonical query + body)* |
 | Observability | `GET /api/observability/config\|query\|query_range\|summary` |
 | Health | `GET /healthz/live`, `GET /healthz/ready`, `GET /healthz/database` *(anonymous)* |

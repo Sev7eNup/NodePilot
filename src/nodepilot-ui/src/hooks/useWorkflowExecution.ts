@@ -7,6 +7,10 @@ import type { Workflow, WorkflowExecution } from '../types/api';
 import { withSpan } from '../telemetry/otel';
 import { extractManualTriggerConfig } from '../components/common/RunWorkflowDialog';
 import { toast } from '../stores/toastStore';
+import {
+  captureAuthBoundaryGeneration,
+  isAuthBoundaryGenerationCurrent,
+} from '../security/authBoundary';
 
 interface UseWorkflowExecutionArgs {
   workflowId: string | undefined;
@@ -83,6 +87,7 @@ export function useWorkflowExecution({
   // depend on it honestly — an unmemoized `run` would force those handlers to either re-create
   // every render or capture a stale closure (stale isDirty/nodes/edges/saveAsync).
   const run = useCallback(async (debug = false) => {
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
     if (workflow && !workflow.isEnabled) {
       toast.info(t('editor:workflowDisabledRunHint'));
       return;
@@ -97,14 +102,17 @@ export function useWorkflowExecution({
         void err;
         return;
       }
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
     }
 
     // Check if workflow has a ManualTrigger node with parameters.
     const triggerConfig = extractManualTriggerConfig(JSON.stringify({ nodes, edges }));
     if (triggerConfig && triggerConfig.parameters.length > 0) {
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       setShowRunDialog(true);
       setPendingRunIsDebug(debug);
     } else {
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       executeMutation.mutate({ debug }, {
         onError: (err) => toast.error(t('editor:executionStartFailed', { message: (err as Error).message })),
       });

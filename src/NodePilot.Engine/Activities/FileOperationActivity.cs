@@ -6,9 +6,10 @@ namespace NodePilot.Engine.Activities;
 
 /// <summary>
 /// File-scoped operations: copy, move, delete, exists, create, rename. Operates on individual
-/// files; PowerShell-side checks assert <c>-PathType Leaf</c> on destructive paths so a folder
-/// accidentally typed into a file activity fails fast instead of silently being deleted or
-/// renamed. Folder-equivalent operations live in <see cref="FolderOperationActivity"/>.
+/// files; PowerShell-side link-local attribute checks require a non-reparse leaf on destructive
+/// paths so a folder or link accidentally typed into a file activity fails fast instead of
+/// being followed, deleted, or renamed. Folder-equivalent operations live in
+/// <see cref="FolderOperationActivity"/>.
 ///
 /// Output format: every operation emits a JSON result object between marker lines, which
 /// PostProcess projects into OutputParameters (param.operation, param.path, param.destination,
@@ -50,18 +51,40 @@ public class FileOperationActivity : FileSystemOperationActivityBase
 
     // Leaf-Assertion: ensures the path is a file before mutation, so a folder typed here
     // by mistake throws cleanly instead of being copied/moved/deleted as if it were a file.
-    private const string AssertLeaf =
-        "    if (-not (Test-Path -LiteralPath $__path -PathType Leaf)) { throw \"Not a file: \" + $__path }";
+    private const string AssertLeaf = """
+            $__pathAttributes = Get-NodePilotPathAttributes -Path $__path
+            if ($null -eq $__pathAttributes -or
+                ($__pathAttributes -band [System.IO.FileAttributes]::Directory) -ne 0 -or
+                ($__pathAttributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "Not a file: " + $__path
+            }
+        """;
 
     private static string BuildCopy() => $$"""
         {{AssertLeaf}}
-            Copy-Item -LiteralPath $__path -Destination $__destination -Force
+            $__effectiveDestination = Get-NodePilotEffectiveDestination `
+                -Source $__path -Destination $__destination -Label 'copy destination'
+            # Re-check both endpoints immediately before the non-recursive copy. This blocks
+            # pre-existing destination\sourceLeaf junctions when Destination is a directory.
+            Assert-NodePilotAllowedPath -Candidate $__path -Label 'copy source'
+            Assert-NodePilotAllowedPath -Candidate $__effectiveDestination -Label 'copy destination effective path'
+            [System.IO.File]::Copy($__path, $__effectiveDestination, $true)
             $__result.destination = $__destination
         """;
 
     private static string BuildMove() => $$"""
         {{AssertLeaf}}
-            Move-Item -LiteralPath $__path -Destination $__destination -Force
+            $__effectiveDestination = Get-NodePilotEffectiveDestination `
+                -Source $__path -Destination $__destination -Label 'move destination'
+            Assert-NodePilotAllowedPath -Candidate $__path -Label 'move source'
+            Assert-NodePilotAllowedPath -Candidate $__effectiveDestination -Label 'move destination effective path'
+            $__moveDestinationAttributes = Get-NodePilotPathAttributes -Path $__effectiveDestination
+            if ($null -ne $__moveDestinationAttributes -and
+                ($__moveDestinationAttributes -band [System.IO.FileAttributes]::Directory) -ne 0) {
+                throw "File System Operation: file move destination is a directory: '$__effectiveDestination'"
+            }
+            Assert-NodePilotAllowedPath -Candidate $__effectiveDestination -Label 'move destination effective path'
+            Move-Item -LiteralPath $__path -Destination $__effectiveDestination -Force
             $__result.destination = $__destination
         """;
 
@@ -92,7 +115,12 @@ public class FileOperationActivity : FileSystemOperationActivityBase
         {{AssertLeaf}}
             $__parentDir = Split-Path -LiteralPath $__path
             $__target = Join-Path -Path $__parentDir -ChildPath $__newName
-            if (Test-Path -LiteralPath $__target) { throw "Target already exists: " + $__target }
+            Assert-NodePilotAllowedPath -Candidate $__target -Label 'rename target'
+            if ($null -ne (Get-NodePilotPathAttributes -Path $__target)) {
+                throw "Target already exists: " + $__target
+            }
+            Assert-NodePilotAllowedPath -Candidate $__path -Label 'rename source'
+            Assert-NodePilotAllowedPath -Candidate $__target -Label 'rename target'
             Rename-Item -LiteralPath $__path -NewName $__newName -Force
             $__result.newPath = $__target
             $__result.newName = $__newName

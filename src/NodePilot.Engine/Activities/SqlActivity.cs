@@ -21,8 +21,8 @@ namespace NodePilot.Engine.Activities;
 ///          ("integrated"/"sql"), <c>username</c>, <c>password</c>, <c>encrypt</c> (default
 ///          true), <c>trustServerCertificate</c> (default false).
 ///        * Postgres:  <c>host</c> (required), <c>port</c> (default 5432), <c>database</c>,
-///          <c>username</c>, <c>password</c>, <c>sslMode</c> (default "Require" — set
-///          "Disable"/"Prefer" explicitly to allow a plaintext fallback).
+///          <c>username</c>, <c>password</c>, <c>sslMode</c> (default "VerifyFull"; weaker
+///          modes are accepted only for literal loopback hosts).
 ///        * SQLite:    <c>dataSource</c> (required, file path).
 ///   3. <c>connectionString</c> — raw inline string. Rejected unless
 ///      <c>SqlActivity:RequireConnectionRef=false</c>.
@@ -211,7 +211,7 @@ public class SqlActivity : IActivityExecutor
             var fromConfig = _configuration[$"SqlActivity:ConnectionStrings:{connectionRef}"];
             if (string.IsNullOrWhiteSpace(fromConfig))
                 return (null, $"SQL: connectionRef '{connectionRef}' is not configured under SqlActivity:ConnectionStrings");
-            return (fromConfig, null);
+            return ApplyProviderSecurityPolicy(fromConfig, provider);
         }
 
         var requireRef = RequireConnectionRef();
@@ -224,7 +224,10 @@ public class SqlActivity : IActivityExecutor
                     "include credentials (username/password), which would put DB secrets in the workflow " +
                     "JSON and defeat the strict-whitelist policy. Add the target under " +
                     "SqlActivity:ConnectionStrings:{name} and reference it via 'connectionRef'.");
-            return BuildConnectionString(config, provider);
+            var built = BuildConnectionString(config, provider);
+            return built.Error is null
+                ? ApplyProviderSecurityPolicy(built.ConnStr!, provider)
+                : built;
         }
 
         var raw = config.GetStringOrNull("connectionString");
@@ -236,7 +239,7 @@ public class SqlActivity : IActivityExecutor
                 "SQL: this deployment requires a named connectionRef. Add the target under " +
                 "SqlActivity:ConnectionStrings:{name} and reference it via 'connectionRef'.");
 
-        return (raw, null);
+        return ApplyProviderSecurityPolicy(raw, provider);
     }
 
     private bool RequireConnectionRef()
@@ -297,6 +300,83 @@ public class SqlActivity : IActivityExecutor
             _ => BuildSqlServerConnectionString(config),
         };
 
+    /// <summary>
+    /// Enforces provider-level transport rules after every resolution path, including named and
+    /// raw connection strings. PostgreSQL defaults to full certificate/hostname verification;
+    /// explicitly weaker modes fail closed for non-loopback hosts.
+    /// </summary>
+    private static (string? ConnStr, string? Error) ApplyProviderSecurityPolicy(
+        string connectionString,
+        string provider)
+    {
+        if (provider is not ("postgres" or "postgresql" or "npgsql"))
+            return (connectionString, null);
+
+        try
+        {
+            var supplied = new DbConnectionStringBuilder { ConnectionString = connectionString };
+            var sslModeWasSpecified = supplied.Keys
+                .Cast<string>()
+                .Any(key => string.Equals(
+                    key.Replace(" ", "", StringComparison.Ordinal),
+                    "sslmode",
+                    StringComparison.OrdinalIgnoreCase));
+            var trustServerCertificate = supplied.Keys
+                .Cast<string>()
+                .Any(key => string.Equals(
+                        key.Replace(" ", "", StringComparison.Ordinal),
+                        "trustservercertificate",
+                        StringComparison.OrdinalIgnoreCase)
+                    // Fail closed on anything except an explicit false. The Npgsql parser will
+                    // reject malformed values later, but no new truthy spelling may bypass this
+                    // policy if its converter grows more permissive.
+                    && !string.Equals(supplied[key]?.ToString(), "false", StringComparison.OrdinalIgnoreCase));
+
+            var builder = new NpgsqlConnectionStringBuilder(connectionString);
+            if (!sslModeWasSpecified)
+                builder.SslMode = Npgsql.SslMode.VerifyFull;
+
+            var loopbackOnly = AllPostgresHostsAreLiteralLoopback(builder.Host);
+            if (!loopbackOnly
+                && (builder.SslMode != Npgsql.SslMode.VerifyFull || trustServerCertificate))
+            {
+                return (null,
+                    "SQL: PostgreSQL connections to non-loopback hosts require SSL Mode=VerifyFull "
+                    + "and Trust Server Certificate=false. Settings which bypass server identity "
+                    + "validation are blocked.");
+            }
+
+            return (builder.ConnectionString, null);
+        }
+        catch (ArgumentException)
+        {
+            // Do not echo the source connection string or parser exception: either may contain a
+            // password. The caller only needs a safe, actionable configuration error.
+            return (null, "SQL: the PostgreSQL connection settings are invalid.");
+        }
+    }
+
+    private static bool AllPostgresHostsAreLiteralLoopback(string? configuredHosts)
+    {
+        if (string.IsNullOrWhiteSpace(configuredHosts))
+            return false;
+        var hosts = configuredHosts.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return hosts.Length > 0 && hosts.All(IsLiteralLoopbackHost);
+    }
+
+    private static bool IsLiteralLoopbackHost(string configuredHost)
+    {
+        var host = configuredHost.Trim().Trim('[', ']');
+        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        if (!System.Net.IPAddress.TryParse(host, out var address))
+            return false;
+        if (address.IsIPv4MappedToIPv6)
+            address = address.MapToIPv4();
+        return System.Net.IPAddress.IsLoopback(address);
+    }
+
     private static (string? ConnStr, string? Error) BuildSqlServerConnectionString(JsonElement config)
     {
         var server = config.GetStringOrNull("server");
@@ -355,16 +435,17 @@ public class SqlActivity : IActivityExecutor
         if (!string.IsNullOrWhiteSpace(password))
             b.Password = password;
 
-        // M-4 (security audit 2026-05-15): default to SslMode.Require instead of Npgsql's
-        // built-in Prefer. Prefer silently downgrades to a plaintext connection when the
-        // server doesn't offer TLS, so DB credentials can be sniffed by a MITM on the wire.
-        // Require forces an encrypted channel; operators who genuinely need plaintext (a
-        // trusted local socket, a server without TLS) opt in explicitly via sslMode="Disable".
+        // Encryption alone is insufficient: Require accepts any server certificate. VerifyFull
+        // authenticates both the issuing CA and the configured hostname, preventing a MITM from
+        // collecting the database credential. The common plaintext dev case remains available
+        // only for literal loopback hosts via the provider security policy above.
         var sslMode = config.GetStringOrNull("sslMode");
         if (string.IsNullOrWhiteSpace(sslMode))
-            b.SslMode = Npgsql.SslMode.Require;
+            b.SslMode = Npgsql.SslMode.VerifyFull;
         else if (Enum.TryParse<Npgsql.SslMode>(sslMode, ignoreCase: true, out var parsedSslMode))
             b.SslMode = parsedSslMode;
+        else
+            return (null, "SQL: 'sslMode' is invalid for PostgreSQL.");
 
         return (b.ConnectionString, null);
     }

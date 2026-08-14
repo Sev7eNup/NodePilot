@@ -191,9 +191,9 @@ public static class SettingsSchema
         new SettingsSectionDescriptor("Webhook", "Webhook Triggers", typeof(object),
             typeof(WebhookSettingsDto), ImmutableArray<string>.Empty, true,
             AuditActions.SettingsWebhookUpdated),
-        // Hot-reload: ExternalTriggerController reads ExternalTrigger:ApiKey from the live
-        // IConfiguration indexer per request (apiKey is the active-when-set toggle), so a Settings-UI
-        // save takes effect without a restart.
+        // Hot-reload: ExternalTriggerController reads the legacy ApiKey + AllowedWorkflowIds and
+        // hashed Keys entries from live IConfiguration per request. The legacy key is inert when
+        // its GUID allow-list is empty.
         new SettingsSectionDescriptor("ExternalTrigger", "External Trigger API", typeof(object),
             typeof(ExternalTriggerSettingsDto), ImmutableArray.Create("ApiKey"), true,
             AuditActions.SettingsExternalTriggerUpdated),

@@ -22,6 +22,7 @@ import { SecretField, serializeSecretField, type SecretFieldMode } from './Secre
 import { EnvOverrideBadge } from './EnvOverrideBadge';
 import { EtagConflictDialog } from './EtagConflictDialog';
 import { TestProbeModal } from './TestProbeModal';
+import { CompactCard } from './SectionFormHelpers';
 
 type RoleMapping = { groupSid: string; role: 'Viewer' | 'Operator' | 'Admin' };
 
@@ -252,7 +253,7 @@ export function AuthenticationSection() {
   });
 
   if (isLoading || !data) {
-    return <Card icon={Locked} title={t('adminSettings:auth.cardTitle')}><p className="text-sm">{t('adminSettings:loading')}</p></Card>;
+    return <CompactCard icon={Locked} title={t('adminSettings:auth.cardTitle')}><p className="text-sm">{t('adminSettings:loading')}</p></CompactCard>;
   }
 
   const ldap = form.ldap;
@@ -262,7 +263,7 @@ export function AuthenticationSection() {
 
   return (
     <div className="space-y-4">
-      <Card icon={Locked} title="LDAP">
+      <CompactCard icon={Locked} title="LDAP">
         <ToggleRow
           label={t('adminSettings:enabled')}
           checked={ldap.enabled}
@@ -383,8 +384,8 @@ export function AuthenticationSection() {
             <Play size={13} /> {t('adminSettings:testButton')}
           </button>
         </div>
-      </Card>
-      <Card icon={Screen} title={t('adminSettings:auth.windowsCardTitle')}>
+      </CompactCard>
+      <CompactCard icon={Screen} title={t('adminSettings:auth.windowsCardTitle')}>
         <ToggleRow label={t('adminSettings:enabled')} checked={windows.enabled}
           onChange={(v) => setForm({ ...form, windows: { ...windows, enabled: v } })}
           configKey="Authentication:Windows:Enabled"
@@ -402,8 +403,8 @@ export function AuthenticationSection() {
         {windows.enabled && !windows.ntlmDisabledByPolicy && (
           <p className="mt-2 text-xs text-error" role="alert">{t('adminSettings:auth.ntlmPolicyRequired')}</p>
         )}
-      </Card>
-      <Card icon={Earth} title={t('adminSettings:auth.oidcCardTitle')}>
+      </CompactCard>
+      <CompactCard icon={Earth} title={t('adminSettings:auth.oidcCardTitle')}>
         <ToggleRow label={t('adminSettings:enabled')} checked={oidc.enabled}
           onChange={(v) => setForm({ ...form, oidc: { ...oidc, enabled: v } })}
           configKey="Authentication:Oidc:Enabled"
@@ -477,8 +478,8 @@ export function AuthenticationSection() {
           mappings={oidc.globalRoleMappings}
           onChange={(globalRoleMappings) => setForm({ ...form, oidc: { ...oidc, globalRoleMappings } })}
         />
-      </Card>
-      <Card icon={Password} title={t('adminSettings:auth.scimCardTitle')}>
+      </CompactCard>
+      <CompactCard icon={Password} title={t('adminSettings:auth.scimCardTitle')}>
         <ToggleRow label={t('adminSettings:enabled')} checked={scim.enabled}
           onChange={(v) => setForm({ ...form, scim: { ...scim, enabled: v } })}
           configKey="Authentication:Scim:Enabled"
@@ -520,8 +521,8 @@ export function AuthenticationSection() {
         <p className="mt-3 text-xs text-on-surface-variant">
           {t('adminSettings:auth.scimEndpoint')} <code>/api/scim/v2</code>
         </p>
-      </Card>
-      <Card icon={Security} title={t('adminSettings:auth.localLoginTitle')}>
+      </CompactCard>
+      <CompactCard icon={Security} title={t('adminSettings:auth.localLoginTitle')}>
         <label className="text-xs font-medium text-on-surface-variant mb-1 flex items-center gap-2">
           {t('adminSettings:auth.localLoginMode')}
           <EnvOverrideBadge source={data.effectiveSource['Authentication:LocalLoginMode'] ?? ''} configKey="Authentication:LocalLoginMode" />
@@ -547,7 +548,7 @@ export function AuthenticationSection() {
             effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
           />
         </div>
-      </Card>
+      </CompactCard>
       {errors && errors.length > 0 && (
         <div className="bg-red-50 border border-red-200 rounded-md p-3 text-red-900 text-sm">
           <p className="font-semibold mb-1">{t('adminSettings:validationErrorsTitle')}</p>
@@ -794,17 +795,6 @@ function OidcRoleMappingsEditor({
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function Card({ icon: Icon, title, children }: Readonly<{ icon: React.ComponentType<{ size?: number }>; title: string; children: React.ReactNode }>) {
-  return (
-    <div className="np-card p-4">
-      <h3 className="font-semibold text-on-surface flex items-center gap-2 mb-3">
-        <Icon size={18} /> {title}
-      </h3>
-      {children}
     </div>
   );
 }

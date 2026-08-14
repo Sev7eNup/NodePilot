@@ -132,25 +132,6 @@ public sealed class ReturnDataActivityTests : IDisposable
         reloaded.ReturnData.Should().NotBeNullOrEmpty();
         reloaded.ReturnData.Should().Contain("\"status\":\"ok\"");
     }
-
-    [Fact]
-    public async Task ExecuteAsync_RemovesPerExecutionLockAfterWrite()
-    {
-        var execId = Guid.NewGuid();
-        var wf = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
-        _db.Workflows.Add(wf);
-        _db.WorkflowExecutions.Add(new WorkflowExecution { Id = execId, WorkflowId = wf.Id });
-        await _db.SaveChangesAsync();
-
-        var activity = new ReturnDataActivity(_db);
-        var ctx = new StepExecutionContext { WorkflowExecutionId = execId, StepId = "r1" };
-
-        var before = ReturnDataActivity.ActiveLockCount;
-        var result = await activity.ExecuteAsync(ctx, Parse("{\"data\":{\"status\":\"ok\"}}"), CancellationToken.None);
-
-        result.Success.Should().BeTrue();
-        ReturnDataActivity.ActiveLockCount.Should().Be(before);
-    }
 }
 
 public sealed class StartWorkflowActivityTests : IDisposable

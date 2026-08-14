@@ -5,16 +5,17 @@ const STORAGE_KEY = 'nodepilot-aichat';
 
 function reset() {
   useAiChatStore.setState({ messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} });
+  sessionStorage.removeItem(STORAGE_KEY);
   localStorage.removeItem(STORAGE_KEY);
 }
 
-/** Reads the partialized state that the persist middleware wrote to localStorage. */
+/** Reads the partialized state that the persist middleware wrote to this tab's sessionStorage. */
 function persisted(): {
   messagesByThread: Record<string, ChatMessage[]>;
   threadsByScope: Record<string, unknown[]>;
   activeThreadByScope: Record<string, string>;
 } {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  const raw = sessionStorage.getItem(STORAGE_KEY);
   return raw ? JSON.parse(raw).state : { messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} };
 }
 
@@ -100,6 +101,15 @@ describe('aiChatStore', () => {
   });
 
   describe('persistence (partialize)', () => {
+    it('uses sessionStorage and never writes chat content to localStorage', () => {
+      const scope = aiChatScopeKey('u1', 'wf1');
+      const id = useAiChatStore.getState().newThread(scope, 'Chat 1');
+      useAiChatStore.getState().updateMessages(scope, id, () => [{ role: 'user', content: 'sensitive' }]);
+
+      expect(sessionStorage.getItem(STORAGE_KEY)).toContain('sensitive');
+      expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+    });
+
     it('strips baseDef and streaming/building flags but keeps proposal.definitionJson', () => {
       const scope = aiChatScopeKey('u1', 'wf1');
       const id = useAiChatStore.getState().newThread(scope, 'Chat 1');

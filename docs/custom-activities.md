@@ -95,9 +95,10 @@ Audit codes: `CUSTOM_ACTIVITY_CREATED|UPDATED|DELETED|ENABLED|DISABLED|IMPORTED|
   `activityCatalog.generated.ts` and its parity test are **untouched** — custom activities are a
   runtime catalog, never the static one.
 - Consumers wired via `isCustomActivityType` + runtime facts: palette (`activityCategories.ts`),
-  labels/icons (`shared.tsx`, `NodeLibrary.tsx`), node visuals (`nodes/activityConfig.ts`),
-  config form (`DynamicActivityConfig`), output variables (`upstreamVariables.ts`), and
-  PropertiesPanel remote/timeout gating.
+  labels (`shared.tsx`), node visuals (`nodes/activityConfig.ts` — `getActivityVisual` is also the
+  single source for the palette/picker glyph in `NodeLibrary.tsx`, which therefore carries no icon
+  or colour table of its own), config form (`DynamicActivityConfig`), output variables
+  (`upstreamVariables.ts`), and PropertiesPanel remote/timeout gating.
 
 ## System-configuration backup (ADR 0001)
 

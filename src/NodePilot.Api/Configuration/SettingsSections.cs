@@ -209,16 +209,27 @@ public static class SettingsSectionAdapters
 
             new DelegateSettingsSectionAdapter<ExternalTriggerSettingsDto>(
                 Descriptor("ExternalTrigger"),
-                ["ExternalTrigger:ApiKey"],
+                ["ExternalTrigger:ApiKey", "ExternalTrigger:AllowedWorkflowIds"],
                 () => new ExternalTriggerSettingsDto
                 {
                     ApiKey = string.IsNullOrEmpty(configRoot["ExternalTrigger:ApiKey"]) ? null : "********",
+                    AllowedWorkflowIds = ProviderAtomicGuidList.TryRead(
+                            configRoot, "ExternalTrigger:AllowedWorkflowIds", out var workflowIds)
+                        ? workflowIds.ToList()
+                        : [],
                 },
                 BuildExternalTriggerDtoFromJson,
                 (dto, previous) =>
                 {
                     var section = new JsonObject();
                     WriteSecretField(section, "ApiKey", dto.ApiKey, previous ?? new JsonObject(), protector);
+                    section["AllowedWorkflowIds"] = ToJsonArray(
+                        dto.AllowedWorkflowIds.Select(id => id.ToString()));
+                    // Hashed integration entries are intentionally configured out-of-band. A
+                    // legacy-key save in the Settings UI must never erase entries that already
+                    // live in appsettings.runtime.json.
+                    if (previous?["Keys"] is { } keys)
+                        section["Keys"] = keys.DeepClone();
                     return section;
                 }),
 
@@ -1190,6 +1201,11 @@ public static class SettingsSectionAdapters
         return new ExternalTriggerSettingsDto
         {
             ApiKey = HasNonNullValue(section, "ApiKey") ? "********" : null,
+            AllowedWorkflowIds = ReadJsonStringArray(section, "AllowedWorkflowIds")
+                .Select(value => Guid.TryParse(value, out var id) ? id : (Guid?)null)
+                .Where(id => id.HasValue)
+                .Select(id => id!.Value)
+                .ToList(),
         };
     }
 

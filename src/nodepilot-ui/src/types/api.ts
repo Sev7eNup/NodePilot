@@ -135,10 +135,6 @@ export interface TelemetrySummary {
 }
 
 export interface MetricsPoint { timestamp: number; value: number | null; }
-export interface MetricsSeriesLine { label: string; points: MetricsPoint[]; }
-export interface MetricsSeries { key: string; title: string; unit: string; lines: MetricsSeriesLine[]; }
-export interface MetricsTableRow { label: string; value: number; }
-export interface MetricsTable { key: string; title: string; unit: string; rows: MetricsTableRow[]; }
 export interface MetricsDataSeries { label: string; labels: Record<string, string>; points: MetricsPoint[]; }
 export interface MetricsWidget {
   id: number;
@@ -154,9 +150,6 @@ export interface MetricsDashboard {
   available: boolean;
   key: string;
   title: string;
-  panels: TelemetryPanel[];
-  series: MetricsSeries[];
-  tables: MetricsTable[];
   widgets: MetricsWidget[];
 }
 

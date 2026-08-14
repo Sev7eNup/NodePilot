@@ -77,7 +77,7 @@ service-environment value.
   The practical rule: **anything NodePilot initiates works, anything that must reach in does not.**
   Schedule/file-watcher/database/event-log triggers and all outbound automation (WinRM, `restApi`,
   `sql`, SMTP, alerting webhooks) are unaffected; inbound webhooks and the external trigger API
-  (also disabled via an empty `ExternalTrigger:ApiKey`) are unusable.
+  (also disabled because no scoped external-trigger key is configured) are unusable.
 - **API runs as LocalSystem** (zero-config). Consequence: loopback `runScript` activities run with
   **SYSTEM** rights. This is an explicit v1 decision for a single-user local orchestrator.
 - **Postgres runs as NetworkService**, bound to 127.0.0.1 only.

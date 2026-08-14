@@ -20,63 +20,28 @@ internal static class WorkflowDbWriteMetrics
         try
         {
             var rows = await write();
-            var statusTag = new KeyValuePair<string, object?>("status", "success");
-            EngineMetrics.DbSaveChanges.Add(1, operationTag, statusTag);
-            EngineMetrics.DbSaveChangesDuration.Record(ElapsedMilliseconds(startTimestamp), operationTag, statusTag);
+            RecordCall("success", startTimestamp, operationTag);
             EngineMetrics.DbSaveChangesRows.Record(rows, operationTag);
             return rows;
         }
-        catch (OperationCanceledException)
+        catch (Exception ex)
         {
-            var statusTag = new KeyValuePair<string, object?>("status", "cancelled");
-            EngineMetrics.DbSaveChanges.Add(1, operationTag, statusTag);
-            EngineMetrics.DbSaveChangesDuration.Record(ElapsedMilliseconds(startTimestamp), operationTag, statusTag);
-            throw;
-        }
-        catch
-        {
-            var statusTag = new KeyValuePair<string, object?>("status", "failure");
-            EngineMetrics.DbSaveChanges.Add(1, operationTag, statusTag);
-            EngineMetrics.DbSaveChangesDuration.Record(ElapsedMilliseconds(startTimestamp), operationTag, statusTag);
+            RecordCall(ex is OperationCanceledException ? "cancelled" : "failure", startTimestamp, operationTag);
             throw;
         }
     }
 
-    internal static async Task<int> SaveChangesMeasuredAsync(
+    internal static Task<int> SaveChangesMeasuredAsync(
         this NodePilotDbContext db,
         string operation,
         CancellationToken ct)
+        => ExecuteMeasuredAsync(operation, () => SaveChangesIdempotentAsync(db, ct));
+
+    private static void RecordCall(string status, long startTimestamp, KeyValuePair<string, object?> operationTag)
     {
-        if (!HasDbSaveMetricsListener())
-            return await SaveChangesIdempotentAsync(db, ct);
-
-        var startTimestamp = Stopwatch.GetTimestamp();
-        var operationTag = new KeyValuePair<string, object?>("operation", operation);
-
-        try
-        {
-            var rows = await SaveChangesIdempotentAsync(db, ct);
-
-            var statusTag = new KeyValuePair<string, object?>("status", "success");
-            EngineMetrics.DbSaveChanges.Add(1, operationTag, statusTag);
-            EngineMetrics.DbSaveChangesDuration.Record(ElapsedMilliseconds(startTimestamp), operationTag, statusTag);
-            EngineMetrics.DbSaveChangesRows.Record(rows, operationTag);
-            return rows;
-        }
-        catch (OperationCanceledException)
-        {
-            var statusTag = new KeyValuePair<string, object?>("status", "cancelled");
-            EngineMetrics.DbSaveChanges.Add(1, operationTag, statusTag);
-            EngineMetrics.DbSaveChangesDuration.Record(ElapsedMilliseconds(startTimestamp), operationTag, statusTag);
-            throw;
-        }
-        catch
-        {
-            var statusTag = new KeyValuePair<string, object?>("status", "failure");
-            EngineMetrics.DbSaveChanges.Add(1, operationTag, statusTag);
-            EngineMetrics.DbSaveChangesDuration.Record(ElapsedMilliseconds(startTimestamp), operationTag, statusTag);
-            throw;
-        }
+        var statusTag = new KeyValuePair<string, object?>("status", status);
+        EngineMetrics.DbSaveChanges.Add(1, operationTag, statusTag);
+        EngineMetrics.DbSaveChangesDuration.Record(ElapsedMilliseconds(startTimestamp), operationTag, statusTag);
     }
 
     /// <summary>

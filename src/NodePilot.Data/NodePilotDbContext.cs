@@ -622,8 +622,9 @@ public class NodePilotDbContext : DbContext
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Key).HasMaxLength(200).IsRequired();
-            // Composite unique: a key is scoped to a workflow so two different workflows
-            // can carry the same caller-provided token.
+            // Composite unique: external-trigger Key values already digest the authenticated
+            // key principal + caller token; WorkflowId keeps the same caller token reusable
+            // across runbooks. Other producers use their own domain-separated Key prefix.
             e.HasIndex(x => new { x.Key, x.WorkflowId }).IsUnique();
             e.HasIndex(x => x.ExpiresAt);
         });

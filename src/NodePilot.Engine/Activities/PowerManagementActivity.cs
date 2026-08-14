@@ -100,7 +100,7 @@ public class PowerManagementActivity : BaseRemoteActivity
 
     private bool AllowsLocalSelfShutdown()
     {
-        var raw = _configuration?["PowerManagement:AllowLocalSelfShutdown"];
+        var raw = _configuration["PowerManagement:AllowLocalSelfShutdown"];
         return string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
     }
 

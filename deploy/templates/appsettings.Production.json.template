@@ -197,7 +197,9 @@
     "DisallowShellExecute": true
   },
   "ExternalTrigger": {
-    "ApiKey": "{{EXTERNAL_TRIGGER_API_KEY}}"
+    "ApiKey": "{{EXTERNAL_TRIGGER_API_KEY}}",
+    "AllowedWorkflowIds": [],
+    "Keys": {}
   },
   "Retention": {
     "Executions": { "Enabled": true, "MaxAgeDays": 30, "IntervalMinutes": 60, "BatchSize": 500, "ArchivePath": "{{DATA_PATH_ESCAPED}}\\archive\\executions" },

@@ -1,5 +1,10 @@
 import { api } from './client';
 import type { OperationsGraph, WorkflowExecution } from '../types/api';
+import {
+  AuthBoundaryChangedError,
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+} from '../security/authBoundary';
 
 /**
  * RBAC-folder-scoped snapshot for the live-ops Mission-Control view.
@@ -108,10 +113,18 @@ export interface QuarantineOutcome {
 }
 
 export async function quarantineWorkflow(workflowId: string): Promise<QuarantineOutcome> {
+  const authBoundaryGeneration = captureAuthBoundaryGeneration();
   await disableWorkflow(workflowId);
+  assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
   try {
-    return { disabled: true, cancelled: await cancelAllForWorkflow(workflowId) };
-  } catch {
+    const cancelled = await cancelAllForWorkflow(workflowId);
+    assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+    return { disabled: true, cancelled };
+  } catch (err) {
+    // Never reinterpret an identity switch as the documented same-user partial outcome; doing so
+    // would also permit the cancel step to start under a replacement user's cookie.
+    if (err instanceof AuthBoundaryChangedError) throw err;
+    assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
     return { disabled: true, cancelled: null };
   }
 }

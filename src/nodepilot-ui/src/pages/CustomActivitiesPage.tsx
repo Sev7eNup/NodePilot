@@ -28,6 +28,12 @@ import { formatDate } from '../lib/format';
 import { toast } from '../stores/toastStore';
 import { confirmDialog } from '../stores/confirmStore';
 import { useThemeStore, resolveTheme } from '../stores/themeStore';
+import {
+  AuthBoundaryChangedError,
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+  isAuthBoundaryGenerationCurrent,
+} from '../security/authBoundary';
 
 /**
  * Admin/Operator management surface for custom activities ("Custom Nodes"). A definition is created
@@ -193,34 +199,55 @@ export function CustomActivitiesPage() {
   };
 
   const onExport = async () => {
-    const env = await api.get('/custom-activities/export');
-    const blob = new Blob([JSON.stringify(env, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'custom-nodes.npca.json'; a.click();
-    URL.revokeObjectURL(url);
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
+    try {
+      const env = await api.get('/custom-activities/export');
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+      const blob = new Blob([JSON.stringify(env, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'custom-nodes.npca.json'; a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      // A stale export is intentionally silent; retain the existing behavior for real failures.
+      if (!(err instanceof AuthBoundaryChangedError)) throw err;
+    }
   };
   // File-picker import (same pattern as WorkflowsPage): hidden <input type="file">,
   // read the .npca/.json envelope client-side, POST it as-is. Imported nodes land
   // disabled server-side and need an Admin review + enable.
   const importMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async ({ file, authBoundaryGeneration }: {
+      file: File;
+      authBoundaryGeneration: number;
+    }) => {
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       const text = await file.text();
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       let envelope: unknown;
       try { envelope = JSON.parse(text); } catch {
         throw new Error(t('customActivities:importInvalidJson', { file: file.name }));
       }
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
       return api.post<unknown[]>('/custom-activities/import', envelope);
     },
-    onSuccess: (imported) => {
+    onSuccess: (imported, { authBoundaryGeneration }) => {
+      if (!isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
       invalidate();
       toast.success(t('customActivities:importDone', { count: imported.length }));
     },
-    onError: (err: Error) => toast.error(err.message),
+    onError: (err: Error, { authBoundaryGeneration }) => {
+      if (err instanceof AuthBoundaryChangedError
+        || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
+      toast.error(err.message);
+    },
   });
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) importMutation.mutate(file);
+    if (file) importMutation.mutate({
+      file,
+      authBoundaryGeneration: captureAuthBoundaryGeneration(),
+    });
     // Always reset so re-selecting the same file fires onChange again.
     e.target.value = '';
   };

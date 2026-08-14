@@ -35,7 +35,7 @@ HSTS, CSP, `X-Frame-Options=DENY`, `nosniff`, `Referrer-Policy`.
 
 ## External Trigger
 
-Nur aktiv wenn `ExternalTrigger:ApiKey` gesetzt. Gated via `X-Api-Key`-Header.
+Gated via `X-Api-Key`; Schlüssel werden als SHA-256-Hash mit GUID-basierter Workflow-Allowlist konfiguriert. Der Zielworkflow muss zusätzlich einen aktiven `manualTrigger` enthalten. Der Legacy-Key ist ohne explizite `AllowedWorkflowIds`-Liste wirkungslos. Die höchste deklarierte `Keys`-Map ersetzt niedrigere Provider vollständig (`{}` widerruft alle Keys), Scope-Listen ebenso (`[]` = deny-all). Idempotency-Replays sind pro authentifiziertem Key-Principal isoliert und persistieren keinen rohen Headerwert.
 
 ## Rate-Limiting
 

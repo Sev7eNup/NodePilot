@@ -357,7 +357,7 @@ Initial-Admin: erster Login bei leerer DB (One-Shot-Token `admin-setup.token`).
 
 - **Session:** absolute Lebensdauer **8h** (`Authentication:SessionAbsoluteLifetimeHours`, default 8; `AuthController.TokenLifetime`). Refresh verlängert die absolute Grenze **nicht**. `jti`-Revocation. Key aus `Jwt:Key` oder auto-generiertes `jwt-secret.key`.
 - **Auth-Pfade:** Local-BCrypt (`Authentication:LocalLoginMode`, Produktionsdefault **`BreakGlassOnly`** — nur explizit markierte Notfallkonten; `Enabled`/`Disabled` möglich) + LDAP (`Authentication:Ldap:Enabled`) + Windows-Negotiate (`Authentication:Windows:Enabled`) + OIDC (`Authentication:Oidc:Enabled`, release-gated, + SCIM-Controller). Alle konvergieren auf JWT-Cookie + CSRF-Token. Siehe `docs/ldap-windows-sso.md`.
-- **External Trigger:** nur aktiv wenn `ExternalTrigger:ApiKey` gesetzt.
+- **External Trigger:** `X-Api-Key` wird bevorzugt gegen SHA-256-Hashes unter `ExternalTrigger:Keys:<id>` geprüft; jeder Eintrag hat eine GUID-only `AllowedWorkflowIds`-Liste. Die komplette `Keys`-Map kommt atomar aus dem höchstprioren Provider, der sie deklariert (`Keys: {}` widerruft alle niedrigeren Keys); auch Scope-Arrays sind provider-atomar (`[]` = deny-all). Zusätzlich braucht der Workflow einen aktiven `manualTrigger`. Legacy-`ApiKey` ist ohne eigene `AllowedWorkflowIds`-Liste inert. Idempotency wird per kanonischer Integration-ID + Key-Fingerprint + Workflow domain-separiert; die DB speichert nur den Digest.
 - **Rate-Limiting:** login 50/Min, refresh 20/Min, webhook 60/Min, trigger 30/Min, ai-generate 20/Min, audit 60/Min, backup 10/Min (per-IP, Sliding-Window).
 - **Output-Redaction:** `OutputRedactor` maskiert Secrets. Immer aktiv. Custom-Patterns via `Logging:Redaction:Patterns`.
 - **Localhost-Bypass:** ohne Credentials läuft in-process. **Produkt-Feature, kein Guard einziehen.**
@@ -410,7 +410,7 @@ Getrennt vom Workflow-Export: voller DR-Snapshot der Konfiguration (Workflows+Fo
 - **Kein Root (trigger-los oder nur Zyklen):** Nodes vorhanden, aber kein (aktiver) Trigger → 0 Roots → Execution `Failed` (ErrorMessage nennt den fehlenden Trigger/Start). **Leerer** Workflow (0 Nodes) → läuft mit 0 Steps durch (`Succeeded`).
 - **`POST /execute`:** asynchron, 202 + ExecutionId. Fortschritt via SignalR.
 - **Workflow-Version-History:** `Update`/`Rollback` snapshotten vorherige Definition.
-- **Idempotency-Keys:** `POST /api/trigger/{name}` akzeptiert `Idempotency-Key`-Header.
+- **Idempotency-Keys:** `POST /api/trigger/{name}` akzeptiert `Idempotency-Key`-Header; Replay/Reservation gilt nur innerhalb desselben authentifizierten External-Trigger-Key-Principals und Workflows.
 - **Node-Level `disabled`:** `data.disabled: true` → Node wird `Skipped`, Downstream ohne andere Quellen auch.
 - **Step-Debugger:** `POST /execute` mit `debug: true` → Breakpoints, SignalR `StepPaused`, Resume via `POST /executions/{id}/resume`.
 

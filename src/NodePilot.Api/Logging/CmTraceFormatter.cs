@@ -46,7 +46,7 @@ public sealed class CmTraceFormatter : ITextFormatter
         // (e.g. a copied log excerpt as script output) would truncate the message at the
         // terminator and dump the rest of the payload outside the SMS wrapper. Replace the
         // `!` with `_` to keep the substring recognisable while breaking the match.
-        ReplaceAll(msgBuf, "]LOG]!>", "]LOG]_>");
+        msgBuf.Replace("]LOG]!>", "]LOG]_>");
 
         // CMTrace's parser gives up at ~4096 chars per line — past that point the viewer
         // falls back to "raw line" rendering (no column extraction, all meta fields blank).
@@ -92,34 +92,6 @@ public sealed class CmTraceFormatter : ITextFormatter
             $"<time=\"{timeField}\" date=\"{ts:MM-dd-yyyy}\" " +
             $"component=\"{component}\" context=\"\" type=\"{type}\" " +
             $"thread=\"{Environment.CurrentManagedThreadId}\" file=\"\">");
-    }
-
-    /// <summary>
-    /// In-place replace of every occurrence of <paramref name="needle"/> with
-    /// <paramref name="replacement"/> (lengths may differ).
-    /// </summary>
-    private static void ReplaceAll(System.Text.StringBuilder sb, string needle, string replacement)
-    {
-        if (needle.Length == 0 || sb.Length < needle.Length) return;
-        var idx = 0;
-        while (idx <= sb.Length - needle.Length)
-        {
-            var hit = true;
-            for (var k = 0; k < needle.Length; k++)
-            {
-                if (sb[idx + k] != needle[k]) { hit = false; break; }
-            }
-            if (hit)
-            {
-                sb.Remove(idx, needle.Length);
-                sb.Insert(idx, replacement);
-                idx += replacement.Length;
-            }
-            else
-            {
-                idx++;
-            }
-        }
     }
 
     /// <summary>

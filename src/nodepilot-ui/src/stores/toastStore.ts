@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { registerAuthBoundaryLiveStateClearer } from '../security/authBoundary';
 
 export type ToastKind = 'success' | 'error' | 'info';
 
@@ -61,3 +62,7 @@ export const toast = {
   error: (message: string, timeoutMs?: number) => useToastStore.getState().push('error', message, timeoutMs),
   info: (message: string, timeoutMs?: number) => useToastStore.getState().push('info', message, timeoutMs),
 };
+
+// ToastHost is mounted outside ProtectedRoute. Messages can contain workflow/database names, so
+// do not display User A's notifications after the browser switches to User B.
+registerAuthBoundaryLiveStateClearer(() => useToastStore.setState({ toasts: [] }));

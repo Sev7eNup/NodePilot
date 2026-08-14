@@ -8,6 +8,7 @@ import { WorkflowsPage } from '../../pages/WorkflowsPage';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
 import type { Workflow } from '../../types/api';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 const BASE = 'http://localhost';
 
@@ -53,13 +54,14 @@ function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
   useAuthStore.setState({ isAuthenticated: true, username: 'admin', role });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   patchFetch();
-  return render(
+  const view = render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
         <WorkflowsPage />
       </MemoryRouter>
     </QueryClientProvider>
   );
+  return { ...view, queryClient: qc };
 }
 
 function mkWorkflow(overrides: Partial<Workflow> = {}): Workflow {
@@ -290,6 +292,70 @@ describe('WorkflowsPage — import result toast', () => {
     const toastEntry = useToastStore.getState().toasts[0];
     expect(toastEntry.kind).toBe('error');
     expect(toastEntry.message).toContain('workflow "X" is invalid');
+  });
+
+  it('stops a multi-file import instead of posting the next User-A file after an auth boundary', async () => {
+    let releaseFirst!: () => void;
+    const firstResponseGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    let postCount = 0;
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.post(`${BASE}/api/workflows/import`, async () => {
+        postCount++;
+        if (postCount === 1) await firstResponseGate;
+        return HttpResponse.json({ created: 1, workflows: [], errors: [] });
+      }),
+    );
+
+    const { container, queryClient } = renderPage('Admin');
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+    const secondFile = envelopeFile('user-a-second.json');
+    const secondText = vi.spyOn(secondFile, 'text');
+    const input = container.querySelector('input[accept="application/json,.json"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [envelopeFile('user-a-first.json'), secondFile] },
+    });
+    await waitFor(() => expect(postCount).toBe(1));
+
+    clearLocalAuthBoundary();
+    releaseFirst();
+
+    await waitFor(() => expect(
+      queryClient.getMutationCache().getAll().some((mutation) => mutation.state.status === 'error'),
+    ).toBe(true));
+    expect(postCount).toBe(1);
+    expect(secondText).not.toHaveBeenCalled();
+    expect(useToastStore.getState().toasts).toEqual([]);
+  });
+
+  it('does not start a SCOrch upload after its local file read crosses an auth boundary', async () => {
+    let finishRead!: (xml: string) => void;
+    const deferredRead = new Promise<string>((resolve) => { finishRead = resolve; });
+    let posted = false;
+    server.use(
+      http.get(`${BASE}/api/workflows`, () => HttpResponse.json([])),
+      http.post(`${BASE}/api/workflows/import-scorch`, () => {
+        posted = true;
+        return HttpResponse.json({ created: 0, workflows: [], variables: [], warnings: [], errors: [] });
+      }),
+    );
+    const { container, queryClient } = renderPage('Admin');
+    await waitFor(() => expect(screen.queryByText(/loading/i)).not.toBeInTheDocument());
+    const file = new File(['<old-user />'], 'user-a.ois_export', { type: 'application/xml' });
+    vi.spyOn(file, 'text').mockReturnValue(deferredRead);
+    const input = container.querySelector(
+      'input[accept=".ois_export,.ore,application/xml,text/xml,.xml"]',
+    ) as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [file] } });
+
+    clearLocalAuthBoundary();
+    finishRead('<old-user />');
+
+    await waitFor(() => expect(
+      queryClient.getMutationCache().getAll().some((mutation) => mutation.state.status === 'error'),
+    ).toBe(true));
+    expect(posted).toBe(false);
+    expect(useToastStore.getState().toasts).toEqual([]);
   });
 });
 

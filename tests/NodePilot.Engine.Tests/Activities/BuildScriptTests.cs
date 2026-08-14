@@ -258,11 +258,13 @@ public sealed class BuildScriptTests : IDisposable
     [Theory]
     [InlineData("copy", "{\"operation\": \"copy\", \"path\": \"C:\\\\temp\\\\file.txt\", \"destination\": \"D:\\\\backup\\\\file.txt\"}",
         new[] { "$__path = 'C:\\temp\\file.txt'", "$__destination = 'D:\\backup\\file.txt'",
-                "Copy-Item -LiteralPath $__path -Destination $__destination -Force",
+                "Get-NodePilotEffectiveDestination", "Assert-NodePilotAllowedPath -Candidate $__effectiveDestination",
+                "[System.IO.File]::Copy($__path, $__effectiveDestination, $true)",
                 "$__result.destination = $__destination", "Not a file:" })]
     [InlineData("move", "{\"operation\": \"move\", \"path\": \"C:\\\\temp\\\\file.txt\", \"destination\": \"D:\\\\backup\\\\file.txt\"}",
         new[] { "$__path = 'C:\\temp\\file.txt'", "$__destination = 'D:\\backup\\file.txt'",
-                "Move-Item -LiteralPath $__path -Destination $__destination -Force",
+                "Get-NodePilotEffectiveDestination", "Assert-NodePilotAllowedPath -Candidate $__effectiveDestination",
+                "Move-Item -LiteralPath $__path -Destination $__effectiveDestination -Force",
                 "$__result.destination = $__destination", "Not a file:" })]
     [InlineData("delete", "{\"operation\": \"delete\", \"path\": \"C:\\\\temp\\\\file.txt\"}",
         new[] { "$__path = 'C:\\temp\\file.txt'", "Remove-Item -LiteralPath $__path -Force", "Not a file:" })]
@@ -294,11 +296,13 @@ public sealed class BuildScriptTests : IDisposable
     [Theory]
     [InlineData("copy", "{\"operation\": \"copy\", \"path\": \"C:\\\\temp\\\\src\", \"destination\": \"D:\\\\backup\"}",
         new[] { "$__path = 'C:\\temp\\src'", "$__destination = 'D:\\backup'",
-                "Copy-Item -LiteralPath $__path -Destination $__destination -Force -Recurse",
+                "Get-NodePilotEffectiveDestination", "[System.IO.Directory]::EnumerateFileSystemEntries",
+                "[System.IO.File]::Copy($__copySourceChild, $__copyDestinationChild, $true)",
                 "Not a directory:" })]
     [InlineData("move", "{\"operation\": \"move\", \"path\": \"C:\\\\temp\\\\src\", \"destination\": \"D:\\\\backup\"}",
         new[] { "$__path = 'C:\\temp\\src'", "$__destination = 'D:\\backup'",
-                "Move-Item -LiteralPath $__path -Destination $__destination -Force",
+                "Assert-NodePilotReparseFreeTree -Root $__path", "Get-NodePilotEffectiveDestination",
+                "Move-Item -LiteralPath $__path -Destination $__effectiveDestination -Force",
                 "Not a directory:" })]
     [InlineData("delete", "{\"operation\": \"delete\", \"path\": \"C:\\\\temp\\\\old\"}",
         new[] { "$__path = 'C:\\temp\\old'", "Remove-Item -LiteralPath $__path -Force -Recurse",

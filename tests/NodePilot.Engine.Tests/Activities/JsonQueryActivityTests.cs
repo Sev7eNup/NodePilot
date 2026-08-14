@@ -2,6 +2,7 @@ using System.Text.Json;
 using FluentAssertions;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.Activities;
+using NodePilot.Engine.Tests.Helpers;
 using Xunit;
 
 namespace NodePilot.Engine.Tests.Activities;
@@ -136,5 +137,46 @@ public class JsonQueryActivityTests
 
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("not found");
+    }
+
+    [WindowsFact]
+    public async Task ExecuteAsync_FileSourceWithoutInjectedConfigRejectsDirectorySymlink()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-json-link-" + Guid.NewGuid().ToString("N"));
+        var outside = Path.Combine(stage, "outside");
+        var link = Path.Combine(stage, "link");
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(outside, "payload.json"), "{\"value\":1}");
+        try
+        {
+            try { Directory.CreateSymbolicLink(link, outside); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var result = await new JsonQueryActivity().ExecuteAsync(
+                Ctx(),
+                Cfg(new { source = "file", path = Path.Combine(link, "payload.json"), jsonPath = "$.value" }),
+                CancellationToken.None);
+
+            result.Success.Should().BeFalse();
+            result.ErrorOutput.Should().Contain("reparse point");
+        }
+        finally
+        {
+            DeleteDirectoryLink(link);
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
+    private static void DeleteDirectoryLink(string link)
+    {
+        try
+        {
+            if ((File.GetAttributes(link) & FileAttributes.ReparsePoint) != 0)
+                Directory.Delete(link);
+        }
+        catch { }
     }
 }

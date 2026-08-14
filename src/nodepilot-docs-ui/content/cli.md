@@ -86,7 +86,7 @@ np auth logout
 
 ### run / trigger
 
-`run` startet einen Lauf als authentifizierter User; `trigger` ist session-unabhängig und nur via `X-Api-Key` gegated.
+`run` startet einen Lauf als authentifizierter User; `trigger` ist session-unabhängig und via `X-Api-Key` auf die im Schlüssel-Scope gelisteten Workflow-GUIDs begrenzt. Der Workflow benötigt außerdem einen aktiven `manualTrigger`.
 
 `run`-Flags: `-p|--params <k=v>` (wiederholbar; nur erstes `=` splittet), `--wait` (pollen bis terminal), `--follow` (live Step-Events via SignalR), `--debug`, `--timeout <s>`.
 

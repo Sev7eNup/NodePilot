@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
@@ -67,6 +69,26 @@ public sealed class FolderOperationActivityTests : IDisposable
 
     private StepExecutionContext Ctx()
         => new() { WorkflowExecutionId = Guid.NewGuid(), StepId = "step-1", TargetMachineId = _machineId, CredentialId = _credentialId };
+
+    private StepExecutionContext LocalCtx()
+    {
+        var machineId = Guid.NewGuid();
+        _db.ManagedMachines.Add(new ManagedMachine
+        {
+            Id = machineId,
+            Name = "Local " + machineId.ToString("N"),
+            Hostname = "localhost",
+            WinRmPort = 5985,
+            IsReachable = true,
+        });
+        _db.SaveChanges();
+        return new StepExecutionContext
+        {
+            WorkflowExecutionId = Guid.NewGuid(),
+            StepId = "local-folder-operation",
+            TargetMachineId = machineId,
+        };
+    }
 
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement;
 
@@ -207,7 +229,7 @@ public sealed class FolderOperationActivityTests : IDisposable
         _capturedScript.Should().Contain("'C:\\O''Brian''s files'");
     }
 
-    // ---- Container assertion is emitted for destructive ops ----
+    // ---- Link-local container assertion is emitted for destructive ops ----
 
     [Theory]
     [InlineData("delete")]
@@ -215,7 +237,7 @@ public sealed class FolderOperationActivityTests : IDisposable
     [InlineData("copy")]
     [InlineData("move")]
     [InlineData("rename")]
-    public async Task DestructiveOps_EmitContainerAssertion(string op)
+    public async Task DestructiveOps_EmitLinkLocalContainerAssertion(string op)
     {
         var activity = CreateActivity();
         _capturedScript = null;
@@ -226,8 +248,270 @@ public sealed class FolderOperationActivityTests : IDisposable
             _ => $"{{\"operation\": \"{op}\", \"path\": \"C:\\\\dir\"}}",
         };
         await activity.ExecuteAsync(Ctx(), Cfg(json), CancellationToken.None);
-        _capturedScript.Should().Contain("-PathType Container");
+        _capturedScript.Should().Contain("Get-NodePilotPathAttributes -Path $__path");
+        _capturedScript.Should().Contain("FileAttributes]::ReparsePoint");
         _capturedScript.Should().Contain("Not a directory:");
+    }
+
+    [Theory]
+    [InlineData("copy")]
+    [InlineData("move")]
+    public async Task TransferOps_ValidateEffectiveDestinationRoot(string operation)
+    {
+        await CreateActivity().ExecuteAsync(
+            Ctx(),
+            Cfg($"{{\"operation\":\"{operation}\",\"path\":\"C:\\\\source\",\"destination\":\"C:\\\\destination\"}}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("Get-NodePilotEffectiveDestination");
+        _capturedScript.Should().Contain(
+            "Assert-NodePilotAllowedPath -Candidate $__effectiveDestination");
+    }
+
+    [Fact]
+    public async Task Rename_ValidatesTargetBeforeLinkLocalExistenceProbe()
+    {
+        await CreateActivity().ExecuteAsync(
+            Ctx(),
+            Cfg("{\"operation\":\"rename\",\"path\":\"C:\\\\source\",\"newName\":\"renamed\"}"),
+            CancellationToken.None);
+
+        var targetGuard = _capturedScript!.IndexOf(
+            "Assert-NodePilotAllowedPath -Candidate $__target -Label 'rename target'",
+            StringComparison.Ordinal);
+        var existenceProbe = _capturedScript.IndexOf(
+            "Get-NodePilotPathAttributes -Path $__target",
+            StringComparison.Ordinal);
+        targetGuard.Should().BeGreaterThan(-1);
+        existenceProbe.Should().BeGreaterThan(targetGuard);
+    }
+
+    [Fact]
+    public async Task Copy_EmitsControlledNoFollowTreeWalk()
+    {
+        await CreateActivity().ExecuteAsync(
+            Ctx(),
+            Cfg("{\"operation\":\"copy\",\"path\":\"C:\\\\source\",\"destination\":\"C:\\\\destination\"}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("[System.IO.Directory]::EnumerateFileSystemEntries");
+        _capturedScript.Should().Contain("[System.IO.File]::Copy");
+        _capturedScript.Should().NotContain("Copy-Item -LiteralPath $__path");
+    }
+
+    [WindowsFact]
+    public async Task Copy_RejectsNestedSourceReparsePointWithoutReadingOutsideTree()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-folder-copy-link-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(stage, "source");
+        var destination = Path.Combine(stage, "destination");
+        var outside = Path.Combine(stage, "outside");
+        var sourceLink = Path.Combine(source, "nested-link");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(source, "safe.txt"), "safe");
+        await File.WriteAllTextAsync(Path.Combine(outside, "secret.txt"), "must-not-copy");
+
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(sourceLink, outside);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var config = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["FileSystemOperation:AllowedRoots:0"] = stage,
+                }).Build();
+            var result = await CreateActivity(config).ExecuteAsync(
+                LocalCtx(),
+                Cfg(JsonSerializer.Serialize(new { operation = "copy", path = source, destination })),
+                CancellationToken.None);
+
+            result.Success.Should().BeFalse();
+            result.ErrorOutput.Should().Contain("reparse point");
+            File.Exists(Path.Combine(destination, "nested-link", "secret.txt")).Should().BeFalse();
+        }
+        finally
+        {
+            DeleteReparsePointOnly(sourceLink);
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
+    [WindowsFact]
+    public async Task Copy_RejectsReparseEffectiveDestinationRoot()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-folder-copy-destination-link-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(stage, "source");
+        var destinationParent = Path.Combine(stage, "destination-parent");
+        var effectiveDestination = Path.Combine(destinationParent, Path.GetFileName(source));
+        var outside = Path.Combine(stage, "outside");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(destinationParent);
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(source, "payload.txt"), "must-not-copy");
+
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(effectiveDestination, outside);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var config = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["FileSystemOperation:AllowedRoots:0"] = stage,
+                }).Build();
+            var result = await CreateActivity(config).ExecuteAsync(
+                LocalCtx(),
+                Cfg(JsonSerializer.Serialize(new
+                {
+                    operation = "copy",
+                    path = source,
+                    destination = destinationParent,
+                })),
+                CancellationToken.None);
+
+            result.Success.Should().BeFalse();
+            result.ErrorOutput.Should().Contain("reparse point");
+            File.Exists(Path.Combine(outside, "payload.txt")).Should().BeFalse();
+        }
+        finally
+        {
+            DeleteReparsePointOnly(effectiveDestination);
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
+    [WindowsFact]
+    public async Task Copy_RecursivelyCopiesReparseFreeTree()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-folder-copy-safe-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(stage, "source");
+        var destination = Path.Combine(stage, "destination");
+        Directory.CreateDirectory(Path.Combine(source, "nested"));
+        await File.WriteAllTextAsync(Path.Combine(source, "nested", "payload.txt"), "safe-copy");
+
+        try
+        {
+            var config = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["FileSystemOperation:AllowedRoots:0"] = stage,
+                }).Build();
+            var result = await CreateActivity(config).ExecuteAsync(
+                LocalCtx(),
+                Cfg(JsonSerializer.Serialize(new { operation = "copy", path = source, destination })),
+                CancellationToken.None);
+
+            result.Success.Should().BeTrue(result.ErrorOutput);
+            (await File.ReadAllTextAsync(Path.Combine(destination, "nested", "payload.txt")))
+                .Should().Be("safe-copy");
+        }
+        finally
+        {
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
+    [WindowsFact]
+    public async Task Copy_WindowsPowerShell51CopiesSafeTree()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-folder-copy-winps51-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(stage, "source");
+        var destinationParent = Path.Combine(stage, "destination-parent");
+        Directory.CreateDirectory(Path.Combine(source, "nested"));
+        Directory.CreateDirectory(destinationParent);
+        await File.WriteAllTextAsync(Path.Combine(source, "nested", "payload.txt"), "winps51-safe");
+
+        try
+        {
+            _capturedScript = null;
+            await CreateActivity().ExecuteAsync(
+                Ctx(),
+                Cfg(JsonSerializer.Serialize(new
+                {
+                    operation = "copy",
+                    path = source,
+                    destination = destinationParent,
+                })),
+                CancellationToken.None);
+
+            var (exitCode, stdout, stderr) = await RunWithWindowsPowerShell51(
+                stage,
+                "folder-copy-safe.ps1",
+                _capturedScript!);
+
+            exitCode.Should().Be(0, $"stdout: {stdout}{Environment.NewLine}stderr: {stderr}");
+            stdout.Should().Contain("\"ok\":true");
+            (await File.ReadAllTextAsync(Path.Combine(
+                    destinationParent,
+                    "source",
+                    "nested",
+                    "payload.txt")))
+                .Should().Be("winps51-safe");
+        }
+        finally
+        {
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
+    [WindowsFact]
+    public async Task Copy_WindowsPowerShell51RejectsNestedReparsePoint()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-folder-copy-winps51-link-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(stage, "source");
+        var destination = Path.Combine(stage, "destination");
+        var outside = Path.Combine(stage, "outside");
+        var sourceLink = Path.Combine(source, "nested-link");
+        Directory.CreateDirectory(source);
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(outside, "secret.txt"), "must-not-copy");
+
+        try
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(sourceLink, outside);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            _capturedScript = null;
+            await CreateActivity().ExecuteAsync(
+                Ctx(),
+                Cfg(JsonSerializer.Serialize(new { operation = "copy", path = source, destination })),
+                CancellationToken.None);
+
+            var (exitCode, stdout, stderr) = await RunWithWindowsPowerShell51(
+                stage,
+                "folder-copy-link.ps1",
+                _capturedScript!);
+
+            exitCode.Should().Be(0, $"stdout: {stdout}{Environment.NewLine}stderr: {stderr}");
+            stdout.Should().Contain("\"ok\":false");
+            stdout.Should().Contain("reparse point");
+            File.Exists(Path.Combine(destination, "nested-link", "secret.txt")).Should().BeFalse();
+        }
+        finally
+        {
+            DeleteReparsePointOnly(sourceLink);
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
     }
 
     [Fact]
@@ -374,5 +658,54 @@ public sealed class FolderOperationActivityTests : IDisposable
 
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("Not a directory:");
+    }
+
+    private static void DeleteReparsePointOnly(string path)
+    {
+        try
+        {
+            var attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) == 0)
+                return;
+            if ((attributes & FileAttributes.Directory) != 0)
+                Directory.Delete(path);
+            else
+                File.Delete(path);
+        }
+        catch { }
+    }
+
+    private static async Task<(int ExitCode, string Stdout, string Stderr)> RunWithWindowsPowerShell51(
+        string stage,
+        string scriptName,
+        string script)
+    {
+        var scriptPath = Path.Combine(stage, scriptName);
+        await File.WriteAllTextAsync(scriptPath, script, Encoding.Unicode);
+        var executable = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell",
+            "v1.0",
+            "powershell.exe");
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = executable,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            ArgumentList =
+            {
+                "-NoLogo",
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy", "Bypass",
+                "-File", scriptPath,
+            },
+        })!;
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+        return (process.ExitCode, await stdoutTask, await stderrTask);
     }
 }

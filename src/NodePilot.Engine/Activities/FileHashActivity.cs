@@ -47,11 +47,13 @@ public class FileHashActivity : BaseRemoteActivity
         PathGuard.Validate(_config, path);
 
         var qPath = PowerShellOperation.Literal(path);
+        var targetPathGuard = TargetPathGuardScript.Build(_config, ("$__npPath", "path"));
 
         return $$"""
             $ErrorActionPreference = 'Stop'
             $__npAlgorithm = '{{algorithm}}'
             $__npPath = {{qPath}}
+            {{targetPathGuard}}
             $__npAlg = [System.Security.Cryptography.HashAlgorithm]::Create($__npAlgorithm)
             try {
                 $__npStream = [System.IO.File]::OpenRead($__npPath)

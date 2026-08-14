@@ -1,10 +1,20 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { toast, useToastStore } from '../../stores/toastStore';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 describe('toastStore', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     useToastStore.setState({ toasts: [] });
+  });
+
+  it('clears potentially sensitive messages at an authentication boundary', () => {
+    toast.error('Delete failed for customer-db', 30_000);
+    expect(useToastStore.getState().toasts).toHaveLength(1);
+
+    clearLocalAuthBoundary();
+
+    expect(useToastStore.getState().toasts).toEqual([]);
   });
 
   afterEach(() => {

@@ -1,7 +1,21 @@
 import { csrfHeaders } from './csrf';
 import { reportDatabaseOutageSuspected } from '../stores/dbHealthStore';
+import {
+  AuthBoundaryChangedError,
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+  handleStaleAuthCookieResponseBoundary,
+  handleUnauthorizedAuthBoundary,
+  isAuthBoundaryGenerationCurrent,
+} from '../security/authBoundary';
 
 const BASE_URL = '/api';
+const COOKIE_MUTATING_AUTH_PATHS = new Set([
+  '/auth/login',
+  '/auth/windows',
+  '/auth/refresh',
+  '/auth/logout',
+]);
 
 /**
  * Error thrown for every non-OK API response, carrying the machine-readable parts the display
@@ -50,7 +64,19 @@ export function isDatabaseSlowError(err: unknown): boolean {
  * echo the CSRF cookie back in the `X-CSRF-Token` header; the server rejects mismatches.
  * No token is ever stored in localStorage, so a future XSS cannot exfiltrate it.
  */
-async function authedFetch(path: string, options?: RequestInit): Promise<Response> {
+interface AuthBoundaryRequestPolicy {
+  /** Remote cross-tab identity probes handle their own result and must not echo a 401. */
+  broadcastUnauthorized?: boolean;
+}
+
+async function authedFetch(
+  path: string,
+  options?: RequestInit,
+  authBoundaryPolicy?: AuthBoundaryRequestPolicy,
+  requestBoundaryGeneration = captureAuthBoundaryGeneration(),
+): Promise<Response> {
+  // Bind every request—not just auth endpoints—to the identity under which it started. A delayed
+  // User-A 401 must not clear or redirect a newer User-B session.
   const method = (options?.method ?? 'GET').toUpperCase();
   const headers: Record<string, string> = {
     // FormData must NOT carry an explicit Content-Type — the browser sets the multipart
@@ -67,7 +93,33 @@ async function authedFetch(path: string, options?: RequestInit): Promise<Respons
     headers: { ...headers, ...options?.headers },
   });
 
-  if (response.status === 401 && typeof window !== 'undefined' && !globalThis.location.pathname.startsWith('/login')) {
+  // Discard stale successes and failures before any caller can cache, display, download or persist
+  // them. This is the global defense; feature-level generation checks remain defense-in-depth.
+  if (!isAuthBoundaryGenerationCurrent(requestBoundaryGeneration)) {
+    // Set-Cookie is a browser side effect which already happened before fetch resolved. For the
+    // four SPA auth endpoints, a stale response can therefore replace/clear a newer tab's cookie
+    // even though its JSON body is rejected. Force every tab back through authoritative /auth/me.
+    if (COOKIE_MUTATING_AUTH_PATHS.has(path)) handleStaleAuthCookieResponseBoundary();
+    throw new AuthBoundaryChangedError();
+  }
+  let responseBoundaryGeneration = requestBoundaryGeneration;
+  if (response.status === 401) {
+    // A 401 is a complete local boundary before redirect/error handling: in-memory AI/auth state,
+    // SQL/AI persistence, legacy residue and React Query data are all discarded centrally.
+    // Credential rejection on the login endpoints is local to that attempt and must not disturb
+    // a still-valid session in another tab; all other 401s are broadcast for a safe re-probe.
+    const isRejectedLoginAttempt = path === '/auth/login' || path === '/auth/windows';
+    handleUnauthorizedAuthBoundary(
+      authBoundaryPolicy?.broadcastUnauthorized ?? !isRejectedLoginAttempt,
+    );
+    // The 401 above intentionally established a new anonymous boundary. On /login we still need
+    // to parse its structured error payload; bind that parsing to the newly-created generation.
+    responseBoundaryGeneration = captureAuthBoundaryGeneration();
+  }
+
+  if (response.status === 401
+    && typeof window !== 'undefined'
+    && !globalThis.location.pathname.startsWith('/login')) {
     // Cookie expired / revoked / missing. Redirect to login. On the login page itself we
     // instead fall through to the generic error parser below so the form can distinguish
     // the server's 401 payloads (wrong password vs. the SETUP_TOKEN_REQUIRED bootstrap
@@ -80,6 +132,7 @@ async function authedFetch(path: string, options?: RequestInit): Promise<Respons
     // Cap body + strip probable stack-frame artifacts so that leaked server exceptions
     // don't blow up toast UIs or expose internal paths to end users.
     let error = await response.text();
+    assertAuthBoundaryGenerationCurrent(responseBoundaryGeneration);
     let code: string | undefined;
 
     // Structured server errors have the shape `{code, message, bodyExcerpt?}` (see
@@ -133,14 +186,27 @@ async function authedFetch(path: string, options?: RequestInit): Promise<Respons
   return response;
 }
 
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await authedFetch(path, options);
+async function request<T>(
+  path: string,
+  options?: RequestInit,
+  authBoundaryPolicy?: AuthBoundaryRequestPolicy,
+): Promise<T> {
+  const requestBoundaryGeneration = captureAuthBoundaryGeneration();
+  const response = await authedFetch(
+    path,
+    options,
+    authBoundaryPolicy,
+    requestBoundaryGeneration,
+  );
   if (response.status === 204) return undefined as T;
-  return response.json();
+  const result = await response.json() as T;
+  assertAuthBoundaryGenerationCurrent(requestBoundaryGeneration);
+  return result;
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
+  get: <T>(path: string, authBoundaryPolicy?: AuthBoundaryRequestPolicy) =>
+    request<T>(path, undefined, authBoundaryPolicy),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
   put: <T>(path: string, body: unknown) =>
@@ -170,12 +236,13 @@ export const api = {
  * `AbortSignal` to cancel (Stop button / dialog close) — the reader then throws `AbortError`.
  */
 export async function postEventStream(path: string, body: unknown, signal?: AbortSignal): Promise<Response> {
+  const requestBoundaryGeneration = captureAuthBoundaryGeneration();
   return authedFetch(path, {
     method: 'POST',
     body: JSON.stringify(body),
     headers: { Accept: 'text/event-stream' },
     signal,
-  });
+  }, undefined, requestBoundaryGeneration);
 }
 
 /**
@@ -184,7 +251,13 @@ export async function postEventStream(path: string, body: unknown, signal?: Abor
  * backup export. Honors the server-supplied Content-Disposition filename.
  */
 export async function downloadFromApiPost(path: string, body: unknown, fallbackName: string): Promise<void> {
-  const response = await authedFetch(path, { method: 'POST', body: JSON.stringify(body) });
+  const requestBoundaryGeneration = captureAuthBoundaryGeneration();
+  const response = await authedFetch(
+    path,
+    { method: 'POST', body: JSON.stringify(body) },
+    undefined,
+    requestBoundaryGeneration,
+  );
 
   let filename = fallbackName;
   const disposition = response.headers.get('Content-Disposition') ?? '';
@@ -192,6 +265,7 @@ export async function downloadFromApiPost(path: string, body: unknown, fallbackN
   if (match) filename = decodeURIComponent(match[1]);
 
   const blob = await response.blob();
+  assertAuthBoundaryGenerationCurrent(requestBoundaryGeneration);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -205,7 +279,8 @@ export async function downloadFromApiPost(path: string, body: unknown, fallbackN
 // Triggers a browser download of the response body. Honors the server-supplied
 // Content-Disposition filename; falls back to `fallbackName` if missing.
 export async function downloadFromApi(path: string, fallbackName: string): Promise<void> {
-  const response = await authedFetch(path);
+  const requestBoundaryGeneration = captureAuthBoundaryGeneration();
+  const response = await authedFetch(path, undefined, undefined, requestBoundaryGeneration);
 
   let filename = fallbackName;
   const disposition = response.headers.get('Content-Disposition') ?? '';
@@ -213,6 +288,7 @@ export async function downloadFromApi(path: string, fallbackName: string): Promi
   if (match) filename = decodeURIComponent(match[1]);
 
   const blob = await response.blob();
+  assertAuthBoundaryGenerationCurrent(requestBoundaryGeneration);
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

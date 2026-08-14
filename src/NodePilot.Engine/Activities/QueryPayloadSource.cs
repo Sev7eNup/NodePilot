@@ -13,6 +13,9 @@ namespace NodePilot.Engine.Activities;
 /// </summary>
 internal static class QueryPayloadSource
 {
+    private static readonly IConfiguration EmptyPathGuardConfiguration =
+        new ConfigurationBuilder().Build();
+
     public static async Task<(string? Content, ActivityResult? Error)> LoadAsync(
         string source,
         JsonElement config,
@@ -28,15 +31,16 @@ internal static class QueryPayloadSource
             if (string.IsNullOrWhiteSpace(path))
                 return (null, fail("'path' is required when source=file"));
 
-            // M-8: apply the same PathGuard config the FileSystemOperation activity uses, so ops
-            // can restrict file-mode queries to allow-listed roots / block traversal.
-            if (pathGuardConfig is not null)
+            // M-8: apply PathGuard unconditionally. AllowedRoots remain optional, but the
+            // link-local reparse check is not: a local-looking JSON/XML path may be a junction
+            // to an attacker-controlled UNC share even when no IConfiguration was injected.
+            try
             {
-                try { PathGuard.Validate(pathGuardConfig, path); }
-                catch (InvalidOperationException ex)
-                {
-                    return (null, fail($"file access denied: {ex.Message}"));
-                }
+                PathGuard.Validate(pathGuardConfig ?? EmptyPathGuardConfiguration, path);
+            }
+            catch (InvalidOperationException ex)
+            {
+                return (null, fail($"file access denied: {ex.Message}"));
             }
 
             if (!File.Exists(path))

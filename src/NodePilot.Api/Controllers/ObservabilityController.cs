@@ -246,7 +246,7 @@ public class ObservabilityController : ControllerBase
         if (!MetricsDashboardCatalog.Exists(key)) return NotFound(new { message = "Unknown metrics dashboard." });
         hours = hours switch { 1 or 24 or 168 or 720 => hours, _ => 24 };
         if (!_prom.IsConfigured)
-            return Ok(new MetricsDashboardResponse(false, key, MetricsDashboardCatalog.Title(key), [], [], [], []));
+            return Ok(new MetricsDashboardResponse(false, key, MetricsDashboardCatalog.Title(key), []));
         return Ok(await MetricsDashboardCatalog.ExecuteAsync(key, hours, _prom, _logger, ct));
     }
 

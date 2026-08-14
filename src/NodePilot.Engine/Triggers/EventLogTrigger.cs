@@ -148,8 +148,16 @@ public class EventLogTrigger : IActivityExecutor
         return new ScanResult(matches, timeouts);
     }
 
-    /// <summary>Maps the framework enum onto the Core filter enum used by the shared matcher.</summary>
-    internal static EventLogEntryTypeFilter ToFilter(EventLogEntryType type) => type switch
+    /// <summary>
+    /// Maps the framework enum onto the Core filter enum used by the shared matcher. Public
+    /// because the background source (NodePilot.Scheduler) needs the identical mapping — the
+    /// Core settings type cannot host it without pulling the Windows-only
+    /// System.Diagnostics.EventLog package into Core, and from there into the CLI and MCP
+    /// executables that only speak HTTP.
+    /// <para>A plain switch rather than a <c>ToString</c> round-trip: the scheduler runs this on
+    /// the EventLog callback thread for every entry written to the log, filtered or not.</para>
+    /// </summary>
+    public static EventLogEntryTypeFilter ToFilter(EventLogEntryType type) => type switch
     {
         EventLogEntryType.Error => EventLogEntryTypeFilter.Error,
         EventLogEntryType.Warning => EventLogEntryTypeFilter.Warning,

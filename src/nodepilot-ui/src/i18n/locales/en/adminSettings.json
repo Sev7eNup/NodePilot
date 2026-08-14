@@ -51,7 +51,6 @@
     "confirmEnablePrompt": "Type: {{phrase}}",
     "confirmEnableButton": "Yes, enable"
   },
-  "comingSoon": "Coming in a later version",
   "restartBannerTitle": "Service restart required",
   "restartBannerBody": "The following settings have been saved but will only take effect after a service restart:",
   "restartBannerSince": "pending since {{since}}",
@@ -83,7 +82,6 @@
   "errorTitle": "Error",
   "validationErrorsTitle": "These values would prevent the next service start:",
   "noSections": "No sections configured.",
-  "comingSoonSectionTitle": "This section is coming in a later version",
   "smtpEnableSslLabel": "Enable TLS (EnableSsl)",
   "smtpEnableSslWarning": "Warning: a username is configured but TLS is disabled. SMTP credentials and message bodies will travel in plaintext. Only recommended for local, non-public relays.",
   "perf": {
@@ -159,7 +157,9 @@
     "requireWebhookSecret": "Require X-Webhook-Secret header",
     "requireWebhookSecretHint": "A webhookTrigger without a configured secret will not fire. Verification follows the trigger's signatureMode — either the X-Webhook-Secret header or an HMAC signature; HMAC mode is always fail-closed regardless of this switch. Off means anyone who knows the webhook URL can start the workflow — every secret-less hit is additionally logged as a warning.",
     "externalTriggerApiKey": "API key",
-    "externalTriggerHint": "Empty/cleared disables <0>POST /api/trigger/...</0> entirely (503).",
+    "externalTriggerHint": "Legacy key for <0>POST /api/trigger/...</0>. It can start only explicitly listed workflows that contain an enabled Manual/API trigger. New integrations should use hashed, scoped key entries in configuration.",
+    "externalTriggerAllowedWorkflowIds": "Allowed workflow IDs (legacy key)",
+    "externalTriggerAllowedWorkflowIdsHint": "Empty means deny all. Use immutable workflow GUIDs, one entry per workflow; names and wildcards are not accepted.",
     "strictAllowedHosts": "Reject AllowedHosts='*' at boot (StrictAllowedHosts)",
     "strictAllowedHostsHint": "Aborts service start-up when AllowedHosts is unsafely wide: '*', empty, or a deployment-template placeholder that was never substituted. It applies at boot only, never at runtime — a change here takes effect on the next start. Without this switch, a wide-open list is only a warning in the log.",
     "allowedHostsField": "AllowedHosts (semicolon-separated)",

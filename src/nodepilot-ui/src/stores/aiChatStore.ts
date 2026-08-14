@@ -1,7 +1,8 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { WorkflowChatProposal, ChatDoneMeta } from '../api/ai';
 import type { WorkflowDefinition } from '../lib/workflowDiff';
+import { AI_CHAT_STORAGE_KEY } from '../security/sensitiveBrowserState';
 
 /** One message in the workflow-assistant chat. */
 export interface ChatMessage {
@@ -45,13 +46,14 @@ const MAX_PERSISTED_MESSAGES = 200;
  * survives a page reload and stays applicable (the diff base is reconstructed from the
  * live canvas as long as its hash still matches `baseDefinitionHash`); above the cap it
  * degrades to a read-only "expired" notice, so that a pathologically large workflow
- * definition can't blow out the localStorage quota.
+ * definition can't blow out the sessionStorage quota.
  */
 const MAX_PERSISTED_PROPOSAL_CHARS = 100_000;
 
 /**
  * Holds chat history **per user, workflow, and thread**. Unlike an earlier version, this
- * store is now `persist`-ed (survives a page reload), but privacy-conscious: `partialize`
+ * store is now `persist`-ed in sessionStorage (survives a page reload, not a closed tab), but
+ * privacy-conscious: `partialize`
  * strips the heavy/sensitive fields (`baseDef` snapshots, `proposal.definitionJson`,
  * streaming flags) and does **not** persist threads for unsaved workflows (`__new__`).
  * Logout calls `clearAll()`, which also empties the persisted store — so the next user on
@@ -103,7 +105,7 @@ function isPersistableScope(scopeKey: string): boolean {
  * Proposal JSON survives a reload only for the thread's **most recent** proposal (and only
  * up to a size cap) so it stays applicable: older proposals are superseded anyway — the
  * apply path would reject them via the stale-hash guard — so they persist as an empty `''`
- * stub instead. Without this, 200 messages at ~90 KB each could blow out the localStorage
+ * stub instead. Without this, 200 messages at ~90 KB each could blow out the sessionStorage
  * quota. The diff base itself needs no snapshot — the panel reconstructs it from the live
  * canvas as soon as its hash matches the proposal's baseDefinitionHash.
  */
@@ -199,8 +201,9 @@ export const useAiChatStore = create<AiChatStore>()(
       clearAll: () => set({ messagesByThread: {}, threadsByScope: {}, activeThreadByScope: {} }),
     }),
     {
-      name: 'nodepilot-aichat',
+      name: AI_CHAT_STORAGE_KEY,
       version: 1,
+      storage: createJSONStorage(() => globalThis.sessionStorage),
       // Only persist saved workflows; strip sensitive/heavy fields.
       partialize: (state) => {
         const threadsByScope: Record<string, ChatThreadMeta[]> = {};

@@ -95,7 +95,9 @@
     Windows Service display name. Default: NodePilot Orchestrator.
 
 .PARAMETER ExternalTriggerApiKey
-    Pre-shared key for POST /api/trigger/{workflow}. Auto-generated (48 random bytes base64) if omitted.
+    Transitional legacy key for POST /api/trigger/{workflow}. Auto-generated (48 random bytes
+    base64) if omitted. It authorizes nothing until workflow GUIDs are explicitly configured in
+    ExternalTrigger:AllowedWorkflowIds; new integrations should use hashed ExternalTrigger:Keys entries.
 
 .PARAMETER JwtIssuer
     JWT issuer claim. Default: nodepilot:prod:<machine-name>.
@@ -1709,8 +1711,9 @@ Write-Host "  Health      : https://$PublicHostname/healthz/ready"   -Foreground
 Write-Host "  Logs        : $DataPath\logs"                          -ForegroundColor Gray
 Write-Host "  Install log : $reportPath"                             -ForegroundColor Gray
 Write-Host ""
-Write-Host "  External-Trigger API key (store it now; it won't be shown again):" -ForegroundColor Yellow
+Write-Host "  External-Trigger API key (legacy; store it now, it won't be shown again):" -ForegroundColor Yellow
 Write-Host "    $ExternalTriggerApiKey" -ForegroundColor Yellow
+Write-Host "  Deny-all until workflow GUIDs are added to ExternalTrigger:AllowedWorkflowIds." -ForegroundColor Yellow
 Write-Host ""
 if ($tokenContent) {
     Write-Host "  FIRST-LOGIN ADMIN BOOTSTRAP" -ForegroundColor Yellow

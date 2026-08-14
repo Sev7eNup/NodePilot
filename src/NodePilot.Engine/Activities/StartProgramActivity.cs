@@ -76,15 +76,12 @@ public class StartProgramActivity : BaseRemoteActivity
         // The shell parser introduces a second injection surface beyond PowerShell quoting,
         // so default-on since Phase 3: a missing config key is treated as
         // "DisallowShellExecute=true". Dev/test deployments that need shell-mediated launches
-        // flip StartProgram:DisallowShellExecute=false explicitly. Activities running with a
-        // null configuration (test harness without IConfiguration) keep the old permissive
-        // behaviour — there's no operator at risk in that scenario.
+        // flip StartProgram:DisallowShellExecute=false explicitly.
         if (useShell)
         {
-            var raw = _configuration?["StartProgram:DisallowShellExecute"];
-            var disallow = _configuration is not null
-                && (string.IsNullOrWhiteSpace(raw)
-                    || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase));
+            var raw = _configuration["StartProgram:DisallowShellExecute"];
+            var disallow = string.IsNullOrWhiteSpace(raw)
+                || string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase);
             if (disallow)
                 throw new InvalidOperationException(
                     "StartProgram: useShellExecute=true is blocked by configuration. " +
@@ -110,6 +107,10 @@ public class StartProgramActivity : BaseRemoteActivity
         var timeoutMs = PowerShellOperation.ToWaitForExitMilliseconds(timeoutSeconds);
         var useShellPs = useShell ? "$true" : "$false";
         var waitPs = wait ? "$true" : "$false";
+        var targetPathGuard = TargetPathGuardScript.Build(
+            _configuration,
+            ("$__filePath", "filePath"),
+            ("$__workingDir", "workingDirectory"));
 
         // Build a self-contained script that emits a JSON result block between markers.
         // Uses ProcessStartInfo directly for reliable stdout/stderr capture (Start-Process
@@ -122,6 +123,7 @@ public class StartProgramActivity : BaseRemoteActivity
             $__useShell = {{useShellPs}}
             $__wait = {{waitPs}}
             $__timeoutMs = {{timeoutMs}}
+            {{targetPathGuard}}
 
             $psi = New-Object System.Diagnostics.ProcessStartInfo
             $psi.FileName = $__filePath
@@ -322,8 +324,7 @@ public class StartProgramActivity : BaseRemoteActivity
     {
         try
         {
-            if (_configuration is not null)
-                PathGuard.Validate(_configuration, path, allowWildcards: false);
+            PathGuard.Validate(_configuration, path, allowWildcards: false);
         }
         catch (InvalidOperationException ex)
         {

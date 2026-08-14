@@ -96,7 +96,11 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 ## `zipOperation`
 
-**Remote.** Extract führt einen Zip-Slip-Pre-Scan aus.
+**Remote.** Compress baut einen explizit validierten Datei-Manifest auf und schreibt ihn direkt
+mit `ZipArchive`; Wildcards sind nur im letzten Source-Segment erlaubt und eckige Klammern
+werden literal behandelt. Extract validiert und schreibt jeden Entry einzeln. Zip-Slip,
+vorhandene Junctions/Symlinks in Source oder Destination und das Folgen eines bestehenden
+Output-Links werden abgelehnt; die Ziel-ACL bleibt die Grenze gegen parallele Parent-Renames.
 
 - **Config:** `operation` (compress/extract, default `compress`), `source` (Wildcards erlaubt für compress), `destination`, `compressionLevel` (Optimal/Fastest/NoCompression — compress only), `force`
 - **Outputs:** `param.destination`, `param.sizeBytes` (extract ⇒ 0)
@@ -112,7 +116,7 @@ Jeder Step unterstützt `config.retry` mit `maxAttempts`, `backoff`, `initialDel
 
 **Engine-local.** Connection-Precedence: `connectionRef` > Builder > raw `connectionString`.
 
-- **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `timeoutSeconds`. Connection-Optionen: (a) Builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode`; SQLite: `dataSource`; (b) raw `connectionString`; (c) named `connectionRef` aus `SqlActivity:ConnectionStrings:{name}`.
+- **Config:** `provider` (sqlserver/sqlite/postgres), `query`, `timeoutSeconds`. Connection-Optionen: (a) Builder — SQL Server: `server`/`database`/`authentication`/`username`/`password`/`encrypt`/`trustServerCertificate`; Postgres: `host`/`port`/`database`/`username`/`password`/`sslMode` (`VerifyFull` + `Trust Server Certificate=false` default; schwächere Modi nur für literale Loopback-Hosts); SQLite: `dataSource`; (b) raw `connectionString`; (c) named `connectionRef` aus `SqlActivity:ConnectionStrings:{name}`. Die Postgres-TLS-Policy gilt auch für raw/ref.
 - **Outputs:** SELECT → `param.rowCount` + erste-Row-Spalten als `param.<col>` + `param.row{i}_{col}` (erste 20 Rows) + `param.truncated`/`param.flatKeysTruncated`. DML/DDL → `param.rowsAffected` + `param.rowCount`
 
 ## `emailNotification`

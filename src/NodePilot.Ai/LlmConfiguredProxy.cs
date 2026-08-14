@@ -30,14 +30,6 @@ public sealed class LlmConfiguredProxy : IWebProxy
 {
     private readonly IOptionsMonitor<LlmOptions> _options;
 
-    /// <summary>
-    /// Last built custom proxy plus the values it was built from. Rebuilding a
-    /// <see cref="WebProxy"/> (and recompiling its bypass regexes) per request would be wasteful;
-    /// comparing the source values is cheaper and needs no invalidation callback. A race just
-    /// builds twice, which is harmless.
-    /// </summary>
-    private volatile CustomProxyCache? _cache;
-
     public LlmConfiguredProxy(IOptionsMonitor<LlmOptions> options)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
@@ -76,6 +68,12 @@ public sealed class LlmConfiguredProxy : IWebProxy
     {
         ArgumentNullException.ThrowIfNull(destination);
 
+        // A plaintext LLM endpoint is accepted only because it is physically on this host. Never
+        // hand such a request to a proxy: "localhost" would then refer to the proxy machine and
+        // the unencrypted prompt/key would leave the loopback boundary the endpoint guard promised.
+        if (MustStayOnLoopback(destination))
+            return null;
+
         var proxy = CurrentOptions;
         return proxy.Mode switch
         {
@@ -91,6 +89,9 @@ public sealed class LlmConfiguredProxy : IWebProxy
     {
         ArgumentNullException.ThrowIfNull(destination);
 
+        if (MustStayOnLoopback(destination))
+            return true;
+
         var proxy = CurrentOptions;
         return proxy.Mode switch
         {
@@ -104,6 +105,10 @@ public sealed class LlmConfiguredProxy : IWebProxy
 
     private LlmProxyOptions CurrentOptions => _options.CurrentValue.Proxy ?? new LlmProxyOptions();
 
+    private static bool MustStayOnLoopback(Uri destination)
+        => destination.Scheme == Uri.UriSchemeHttp
+            && LlmEndpointGuard.IsLiteralLoopbackEndpoint(destination);
+
     private static ICredentials? ResolveCustomCredentials(LlmProxyOptions proxy)
     {
         if (proxy.UseDefaultCredentials) return CredentialCache.DefaultCredentials;
@@ -111,11 +116,13 @@ public sealed class LlmConfiguredProxy : IWebProxy
         return new NetworkCredential(proxy.Username, proxy.Password ?? "");
     }
 
-    private WebProxy ResolveCustomProxy(LlmProxyOptions proxy)
+    /// <summary>
+    /// Builds the <see cref="WebProxy"/> for the current settings on every call. No caching: the
+    /// LLM endpoints are rate-limited to 20 requests/minute, so an allocation plus a handful of
+    /// bypass regexes per request is not worth an invalidation mechanism of its own.
+    /// </summary>
+    private static WebProxy ResolveCustomProxy(LlmProxyOptions proxy)
     {
-        var cached = _cache;
-        if (cached is not null && cached.Matches(proxy)) return cached.Proxy;
-
         // Same two rules the settings validation applies, from the same place — see LlmProfileValidation.
         if (!LlmProfileValidation.HasProxyAddress(proxy.Address, out var address))
         {
@@ -138,42 +145,12 @@ public sealed class LlmConfiguredProxy : IWebProxy
             .Select(v => v.Trim())
             .ToArray();
 
-        var built = new WebProxy(
+        return new WebProxy(
             proxyUri,
             BypassOnLocal: false,
             BypassList: bypass.Select(ProxyBypassPattern.ToRegex).ToArray())
         {
             Credentials = ResolveCustomCredentials(proxy),
         };
-
-        _cache = new CustomProxyCache(built, address, bypass, proxy.Username, proxy.Password, proxy.UseDefaultCredentials);
-        return built;
-    }
-
-    /// <summary>
-    /// Snapshot of the values a cached <see cref="WebProxy"/> was built from. Compared field by
-    /// field rather than via a concatenated signature string so the proxy password does not get a
-    /// second, longer-lived copy in memory.
-    /// </summary>
-    private sealed record CustomProxyCache(
-        WebProxy Proxy,
-        string Address,
-        string[] Bypass,
-        string? Username,
-        string? Password,
-        bool UseDefaultCredentials)
-    {
-        public bool Matches(LlmProxyOptions options)
-        {
-            if (!string.Equals(Address, options.Address?.Trim(), StringComparison.Ordinal)) return false;
-            if (!string.Equals(Username, options.Username, StringComparison.Ordinal)) return false;
-            if (!string.Equals(Password, options.Password, StringComparison.Ordinal)) return false;
-            if (UseDefaultCredentials != options.UseDefaultCredentials) return false;
-
-            var incoming = (options.BypassList ?? new List<string>())
-                .Where(v => !string.IsNullOrWhiteSpace(v))
-                .Select(v => v.Trim());
-            return Bypass.SequenceEqual(incoming, StringComparer.Ordinal);
-        }
     }
 }

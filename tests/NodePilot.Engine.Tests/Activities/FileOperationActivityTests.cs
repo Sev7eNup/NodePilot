@@ -67,7 +67,46 @@ public sealed class FileOperationActivityTests : IDisposable
     private StepExecutionContext Ctx()
         => new() { WorkflowExecutionId = Guid.NewGuid(), StepId = "step-1", TargetMachineId = _machineId, CredentialId = _credentialId };
 
+    private StepExecutionContext LocalCtx()
+    {
+        var machineId = Guid.NewGuid();
+        _db.ManagedMachines.Add(new ManagedMachine
+        {
+            Id = machineId,
+            Name = "Local " + machineId.ToString("N"),
+            Hostname = "localhost",
+            WinRmPort = 5985,
+            IsReachable = true,
+        });
+        _db.SaveChanges();
+        return new StepExecutionContext
+        {
+            WorkflowExecutionId = Guid.NewGuid(),
+            StepId = "local-file-operation",
+            TargetMachineId = machineId,
+        };
+    }
+
     private static JsonElement Cfg(string json) => JsonDocument.Parse(json).RootElement;
+
+    [Fact]
+    public async Task AllowedRoots_InjectsAuthoritativeTargetSideGuard()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots:0"] = "C:\\data",
+            }).Build();
+
+        await CreateActivity(config).ExecuteAsync(
+            Ctx(),
+            Cfg("{\"operation\":\"exists\",\"path\":\"C:\\\\data\\\\file.txt\"}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("function Assert-NodePilotAllowedPath");
+        _capturedScript.Should().Contain("Assert-NodePilotAllowedPath -Candidate ($__path)");
+        _capturedScript.Should().Contain("FileAttributes]::ReparsePoint");
+    }
 
     // ---- Error cases ----
 
@@ -250,14 +289,14 @@ public sealed class FileOperationActivityTests : IDisposable
         _capturedScript.Should().Contain("'C:\\O''Brian''s files.txt'");
     }
 
-    // ---- Leaf assertion is emitted for destructive ops ----
+    // ---- Link-local leaf assertion is emitted for destructive ops ----
 
     [Theory]
     [InlineData("delete")]
     [InlineData("copy")]
     [InlineData("move")]
     [InlineData("rename")]
-    public async Task DestructiveOps_EmitLeafAssertion(string op)
+    public async Task DestructiveOps_EmitLinkLocalLeafAssertion(string op)
     {
         var activity = CreateActivity();
         _capturedScript = null;
@@ -268,8 +307,127 @@ public sealed class FileOperationActivityTests : IDisposable
             _ => $"{{\"operation\": \"{op}\", \"path\": \"C:\\\\f.txt\"}}",
         };
         await activity.ExecuteAsync(Ctx(), Cfg(json), CancellationToken.None);
-        _capturedScript.Should().Contain("-PathType Leaf");
+        _capturedScript.Should().Contain("Get-NodePilotPathAttributes -Path $__path");
+        _capturedScript.Should().Contain("FileAttributes]::ReparsePoint");
         _capturedScript.Should().Contain("Not a file:");
+    }
+
+    [Theory]
+    [InlineData("copy")]
+    [InlineData("move")]
+    public async Task TransferOps_ValidateEffectiveDestinationLeaf(string operation)
+    {
+        await CreateActivity().ExecuteAsync(
+            Ctx(),
+            Cfg($"{{\"operation\":\"{operation}\",\"path\":\"C:\\\\source.txt\",\"destination\":\"C:\\\\destination\"}}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("Get-NodePilotEffectiveDestination");
+        _capturedScript.Should().Contain(
+            "Assert-NodePilotAllowedPath -Candidate $__effectiveDestination");
+    }
+
+    [Fact]
+    public async Task Rename_ValidatesTargetBeforeLinkLocalExistenceProbe()
+    {
+        await CreateActivity().ExecuteAsync(
+            Ctx(),
+            Cfg("{\"operation\":\"rename\",\"path\":\"C:\\\\source.txt\",\"newName\":\"renamed.txt\"}"),
+            CancellationToken.None);
+
+        var targetGuard = _capturedScript!.IndexOf(
+            "Assert-NodePilotAllowedPath -Candidate $__target -Label 'rename target'",
+            StringComparison.Ordinal);
+        var existenceProbe = _capturedScript.IndexOf(
+            "Get-NodePilotPathAttributes -Path $__target",
+            StringComparison.Ordinal);
+        targetGuard.Should().BeGreaterThan(-1);
+        existenceProbe.Should().BeGreaterThan(targetGuard);
+    }
+
+    [WindowsFact]
+    public async Task Copy_ToExistingDirectoryRejectsReparseEffectiveDestinationLeaf()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-file-copy-link-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(stage, "payload.txt");
+        var destinationDirectory = Path.Combine(stage, "destination");
+        var outside = Path.Combine(stage, "outside.txt");
+        var effectiveDestination = Path.Combine(destinationDirectory, Path.GetFileName(source));
+        Directory.CreateDirectory(destinationDirectory);
+        await File.WriteAllTextAsync(source, "source");
+        await File.WriteAllTextAsync(outside, "outside-must-not-change");
+
+        try
+        {
+            try
+            {
+                File.CreateSymbolicLink(effectiveDestination, outside);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+            {
+                return;
+            }
+
+            var config = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["FileSystemOperation:AllowedRoots:0"] = stage,
+                }).Build();
+            var result = await CreateActivity(config).ExecuteAsync(
+                LocalCtx(),
+                Cfg(JsonSerializer.Serialize(new
+                {
+                    operation = "copy",
+                    path = source,
+                    destination = destinationDirectory,
+                })),
+                CancellationToken.None);
+
+            result.Success.Should().BeFalse();
+            result.ErrorOutput.Should().Contain("reparse point");
+            (await File.ReadAllTextAsync(outside)).Should().Be("outside-must-not-change");
+        }
+        finally
+        {
+            DeleteReparsePointOnly(effectiveDestination);
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
+    }
+
+    [WindowsFact]
+    public async Task Copy_ToExistingDirectoryUsesEffectiveDestinationLeaf()
+    {
+        var stage = Path.Combine(Path.GetTempPath(), "nodepilot-file-copy-safe-" + Guid.NewGuid().ToString("N"));
+        var source = Path.Combine(stage, "payload.txt");
+        var destinationDirectory = Path.Combine(stage, "destination");
+        Directory.CreateDirectory(destinationDirectory);
+        await File.WriteAllTextAsync(source, "safe-copy");
+
+        try
+        {
+            var config = new ConfigurationBuilder().AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["FileSystemOperation:AllowedRoots:0"] = stage,
+                }).Build();
+            var result = await CreateActivity(config).ExecuteAsync(
+                LocalCtx(),
+                Cfg(JsonSerializer.Serialize(new
+                {
+                    operation = "copy",
+                    path = source,
+                    destination = destinationDirectory,
+                })),
+                CancellationToken.None);
+
+            result.Success.Should().BeTrue(result.ErrorOutput);
+            (await File.ReadAllTextAsync(Path.Combine(destinationDirectory, "payload.txt")))
+                .Should().Be("safe-copy");
+        }
+        finally
+        {
+            try { Directory.Delete(stage, recursive: true); } catch { }
+        }
     }
 
     // ---- Security: path traversal ----
@@ -402,5 +560,20 @@ public sealed class FileOperationActivityTests : IDisposable
 
         result.Success.Should().BeFalse();
         result.ErrorOutput.Should().Contain("Not a file:");
+    }
+
+    private static void DeleteReparsePointOnly(string path)
+    {
+        try
+        {
+            var attributes = File.GetAttributes(path);
+            if ((attributes & FileAttributes.ReparsePoint) == 0)
+                return;
+            if ((attributes & FileAttributes.Directory) != 0)
+                Directory.Delete(path);
+            else
+                File.Delete(path);
+        }
+        catch { }
     }
 }

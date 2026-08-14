@@ -72,6 +72,24 @@ public sealed class FileHashActivityTests : IDisposable
         """;
 
     [Fact]
+    public async Task AllowedRoots_InjectsAuthoritativeTargetSideGuard()
+    {
+        var config = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots:0"] = "C:\\data",
+            }).Build();
+
+        await CreateActivity(config).ExecuteAsync(
+            Ctx(),
+            Cfg("{\"path\":\"C:\\\\data\\\\file.txt\"}"),
+            CancellationToken.None);
+
+        _capturedScript.Should().Contain("Assert-NodePilotAllowedPath -Candidate ($__npPath)");
+        _capturedScript.Should().Contain("FileAttributes]::ReparsePoint");
+    }
+
+    [Fact]
     public async Task MissingPath_Throws()
     {
         var act = CreateActivity();

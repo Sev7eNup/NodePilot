@@ -7,6 +7,7 @@ import { CustomActivitiesPage } from '../../pages/CustomActivitiesPage';
 import { useAuthStore } from '../../stores/authStore';
 import { useToastStore } from '../../stores/toastStore';
 import { confirmDialog } from '../../stores/confirmStore';
+import { clearLocalAuthBoundary } from '../../security/authBoundary';
 
 vi.mock('../../stores/confirmStore', async (importOriginal) => {
   const mod = await importOriginal<typeof import('../../stores/confirmStore')>();
@@ -84,11 +85,12 @@ function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
   useAuthStore.setState({ isAuthenticated: true, username: 'u', role });
   patchFetch();
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(
+  const view = render(
     <QueryClientProvider client={qc}>
       <CustomActivitiesPage />
     </QueryClientProvider>,
   );
+  return { ...view, queryClient: qc };
 }
 
 describe('CustomActivitiesPage', () => {
@@ -249,6 +251,57 @@ describe('CustomActivitiesPage', () => {
       useToastStore.getState().toasts.some((x) => x.kind === 'error' && x.message.includes('broken.npca')),
     ).toBe(true));
     expect(posted).toBe(false);
+  });
+
+  it('does not download an export whose response crosses an auth boundary', async () => {
+    let releaseExport!: () => void;
+    const exportGate = new Promise<void>((resolve) => { releaseExport = resolve; });
+    let requestStarted = false;
+    seed([]);
+    server.use(http.get(`${BASE}/api/custom-activities/export`, async () => {
+      requestStarted = true;
+      await exportGate;
+      return HttpResponse.json({ items: [{ name: 'User A private node' }] });
+    }));
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    renderPage('Admin');
+    await waitFor(() => expect(screen.getByText(/No custom nodes yet/i)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /^Export$/i }));
+    await waitFor(() => expect(requestStarted).toBe(true));
+    clearLocalAuthBoundary();
+    releaseExport();
+
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 25));
+    expect(anchorClick).not.toHaveBeenCalled();
+  });
+
+  it('does not post or toast when a file read fails after the auth boundary changed', async () => {
+    let rejectRead!: (error: Error) => void;
+    const deferredRead = new Promise<string>((_resolve, reject) => { rejectRead = reject; });
+    let posted = false;
+    seed([]);
+    server.use(http.post(`${BASE}/api/custom-activities/import`, () => {
+      posted = true;
+      return HttpResponse.json([]);
+    }));
+    const { container, queryClient } = renderPage('Admin');
+    await waitFor(() => expect(screen.getByText(/No custom nodes yet/i)).toBeInTheDocument());
+
+    const file = new File(['old-user'], 'user-a-private.npca', { type: 'application/json' });
+    const readFile = vi.spyOn(file, 'text').mockReturnValue(deferredRead);
+    const fileInput = container.querySelector<HTMLInputElement>('input[type=file]')!;
+    fireEvent.change(fileInput, { target: { files: [file] } });
+    await waitFor(() => expect(readFile).toHaveBeenCalledTimes(1));
+
+    clearLocalAuthBoundary();
+    rejectRead(new Error('Could not read user-a-private.npca'));
+
+    await waitFor(() => expect(
+      queryClient.getMutationCache().getAll().some((mutation) => mutation.state.status === 'error'),
+    ).toBe(true));
+    expect(posted).toBe(false);
+    expect(useToastStore.getState().toasts).toEqual([]);
   });
 
   it('createDialog_codeMirrorEdit_updatesScriptTemplateState', async () => {

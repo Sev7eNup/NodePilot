@@ -18,7 +18,7 @@ public abstract class BaseRemoteActivity : IActivityExecutor
     protected readonly ICredentialStore _credentialStore;
     protected readonly NodePilot.Data.NodePilotDbContext _db;
     protected readonly PowerShellEngineFactory _engineFactory;
-    protected readonly IConfiguration? _configuration;
+    protected readonly IConfiguration _configuration;
 
     public abstract string ActivityType { get; }
 
@@ -26,15 +26,8 @@ public abstract class BaseRemoteActivity : IActivityExecutor
         IRemoteSessionFactory sessionFactory,
         ICredentialStore credentialStore,
         NodePilot.Data.NodePilotDbContext db,
-        PowerShellEngineFactory engineFactory)
-        : this(sessionFactory, credentialStore, db, engineFactory, null) { }
-
-    protected BaseRemoteActivity(
-        IRemoteSessionFactory sessionFactory,
-        ICredentialStore credentialStore,
-        NodePilot.Data.NodePilotDbContext db,
         PowerShellEngineFactory engineFactory,
-        IConfiguration? configuration)
+        IConfiguration configuration)
     {
         _sessionFactory = sessionFactory;
         _credentialStore = credentialStore;
@@ -94,7 +87,7 @@ public abstract class BaseRemoteActivity : IActivityExecutor
             // Emitted via the engine's ActivitySource so it surfaces in OpenTelemetry
             // tracing without requiring an ILogger reference inside NodePilot.Core
             // (which is zero-deps by convention, see CLAUDE.md).
-            if (_configuration?.GetValue<bool>("Cluster:Enabled") ?? false)
+            if (_configuration.GetValue<bool>("Cluster:Enabled"))
             {
                 var nodeId = _configuration["Cluster:NodeId"] ?? Environment.MachineName;
                 Activity.Current?.AddEvent(new ActivityEvent("cluster.localhost_step",

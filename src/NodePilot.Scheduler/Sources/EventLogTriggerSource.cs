@@ -3,6 +3,7 @@ using System.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Triggers;
+using NodePilot.Engine.Triggers;
 
 namespace NodePilot.Scheduler.Sources;
 
@@ -82,7 +83,7 @@ public class EventLogTriggerSource : ITriggerSource
             new KeyValuePair<string, object?>("trigger_type", "eventLogTrigger"),
             new KeyValuePair<string, object?>("event_kind", entry.EntryType.ToString()));
 
-        var match = settings.Matches(entry.Source, entry.InstanceId, ToFilter(entry.EntryType), entry.Message);
+        var match = settings.Matches(entry.Source, entry.InstanceId, EventLogTrigger.ToFilter(entry.EntryType), entry.Message);
         if (match == EventLogMatch.PatternTimeout)
         {
             SchedulerMetrics.TriggerPollErrors.Add(1,
@@ -104,20 +105,6 @@ public class EventLogTriggerSource : ITriggerSource
             }),
             _logger, ActivityType, _ctx.WorkflowId, _ctx.NodeId);
     }
-
-    /// <summary>
-    /// Maps the framework enum onto the Core filter enum. A plain switch rather than a
-    /// <c>ToString</c> round-trip: this runs on the EventLog callback thread for every entry
-    /// written to the log, filtered or not.
-    /// </summary>
-    internal static EventLogEntryTypeFilter ToFilter(EventLogEntryType type) => type switch
-    {
-        EventLogEntryType.Error => EventLogEntryTypeFilter.Error,
-        EventLogEntryType.Warning => EventLogEntryTypeFilter.Warning,
-        EventLogEntryType.SuccessAudit => EventLogEntryTypeFilter.SuccessAudit,
-        EventLogEntryType.FailureAudit => EventLogEntryTypeFilter.FailureAudit,
-        _ => EventLogEntryTypeFilter.Information,
-    };
 
     public ValueTask DisposeAsync()
     {

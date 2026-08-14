@@ -14,6 +14,12 @@ import {
 } from './signalrReducer';
 import { connectPersistently } from '../lib/signalrConnect';
 import {
+  AuthBoundaryChangedError,
+  assertAuthBoundaryGenerationCurrent,
+  captureAuthBoundaryGeneration,
+  isAuthBoundaryGenerationCurrent,
+} from '../security/authBoundary';
+import {
   COMPLETED_EXECUTION_TTL_MS,
   LIVE_EVENT_FLUSH_MS,
   LIVE_REFRESH_INTERVAL_MS,
@@ -189,13 +195,20 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
    * On HTTP failure the dedup mark is removed so the next event burst can retry.
    */
   const hydrateStepsForExecution = useCallback(async (executionId: string, execWorkflowId: string) => {
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
+    if (!mountedRef.current || workflowIdRef.current !== execWorkflowId) return;
     if (hydratedExecsRef.current.has(executionId)) return;
     hydratedExecsRef.current.add(executionId);
     try {
       const steps = await rateLimitedHydration(
-        () => api.get<ApiStepItem[]>(`/executions/${executionId}/steps`),
+        () => {
+          // The hydration limiter may keep this callback queued across logout/user switch.
+          assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+          return api.get<ApiStepItem[]>(`/executions/${executionId}/steps`);
+        },
       );
-      if (!mountedRef.current) return;
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+      if (!mountedRef.current || workflowIdRef.current !== execWorkflowId) return;
       setLiveExecutionsById((prev) => {
         const exec = prev[executionId];
         const existing = new Map(exec ? exec.steps.map((s) => [s.stepId, s]) : []);
@@ -258,7 +271,9 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
         };
       });
     } catch (err) {
-      console.warn(`[useWorkflowSignalR] step hydration for ${executionId} failed`, err);
+      if (!(err instanceof AuthBoundaryChangedError)) {
+        console.warn(`[useWorkflowSignalR] step hydration for ${executionId} failed`, err);
+      }
       hydratedExecsRef.current.delete(executionId);
     }
   }, []);
@@ -315,11 +330,15 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
    * because the run finished while we weren't subscribed.
    */
   const hydrateActive = useCallback(async (wfid: string, mode: 'initial' | 'periodic' = 'initial') => {
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
     let all: ApiExecutionItem[];
     try {
       all = await api.get<ApiExecutionItem[]>(`/executions?workflowId=${wfid}&activeOnly=true`);
+      assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
     } catch (err) {
-      console.warn('[useWorkflowSignalR] bulk hydration: list executions failed', err);
+      if (!(err instanceof AuthBoundaryChangedError)) {
+        console.warn('[useWorkflowSignalR] bulk hydration: list executions failed', err);
+      }
       return;
     }
     const cutoff = Date.now() - COMPLETED_EXECUTION_TTL_MS * 2;
@@ -373,8 +392,12 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     await Promise.all(toAutoHydrate.map(async (exec) => {
       try {
         const steps = await rateLimitedHydration(
-          () => api.get<ApiStepItem[]>(`/executions/${exec.id}/steps`),
+          () => {
+            assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
+            return api.get<ApiStepItem[]>(`/executions/${exec.id}/steps`);
+          },
         );
+        assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
         result[exec.id] = {
           executionId: exec.id,
           workflowId: exec.workflowId,
@@ -399,7 +422,9 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
         };
         hydratedExecsRef.current.add(exec.id);
       } catch (err) {
-        console.warn(`[useWorkflowSignalR] bulk hydration: steps for ${exec.id} failed`, err);
+        if (!(err instanceof AuthBoundaryChangedError)) {
+          console.warn(`[useWorkflowSignalR] bulk hydration: steps for ${exec.id} failed`, err);
+        }
       }
     }));
 
@@ -479,8 +504,11 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
    * Idempotent: if the execution is already fully hydrated the HTTP call is skipped.
    */
   const joinExecution = useCallback(async (executionId: string, execWorkflowId: string) => {
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
     desiredExecutionGroupsRef.current.add(executionId);
     if (!await invokeSafely('JoinExecution', executionId)) return;
+    if (!mountedRef.current
+      || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
     // Always refetch on explicit expand — the auto-hydration snapshot (taken at mount)
     // only captured steps that existed at that moment. Steps that started between mount
     // and this expand arrived on the execution-only SignalR group, which the frontend
@@ -502,16 +530,24 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
    * for joins that failed while the hub filter was returning DATABASE_UNAVAILABLE.
    */
   const reconcileSubscriptions = useCallback(async (wfid: string) => {
+    const authBoundaryGeneration = captureAuthBoundaryGeneration();
     if (!mountedRef.current || workflowIdRef.current !== wfid) return;
 
     await invokeSafely('JoinWorkflow', wfid);
+    if (!mountedRef.current
+      || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
     const desired = Array.from(desiredExecutionGroupsRef.current);
     await Promise.all(desired.map(async (executionId) => {
-      if (await invokeSafely('JoinExecution', executionId))
+      if (await invokeSafely('JoinExecution', executionId)
+        && mountedRef.current
+        && isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) {
         await hydrateStepsForExecution(executionId, wfid);
+      }
     }));
 
-    if (!mountedRef.current || workflowIdRef.current !== wfid) return;
+    if (!mountedRef.current
+      || workflowIdRef.current !== wfid
+      || !isAuthBoundaryGenerationCurrent(authBoundaryGeneration)) return;
     await hydrateActive(wfid);
     scheduleQueryInvalidate(wfid);
   }, [hydrateActive, hydrateStepsForExecution, invokeSafely, scheduleQueryInvalidate]);

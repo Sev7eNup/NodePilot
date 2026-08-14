@@ -25,8 +25,6 @@ import { AiKnowledgeSection } from '../components/admin-settings/AiKnowledgeSect
 type SubTab = 'integrations' | 'ai-knowledge' | 'retention' | 'system-info'
   | 'authentication' | 'logging-telemetry' | 'security' | 'performance' | 'db-admin';
 
-// Tabs are progressively activated as their section is implemented. Disabled tabs
-// keep the operator informed about what's on the roadmap.
 // Order is grouped by topic, not by implementation history: outbound integrations →
 // security → operations → data. `integrations` stays first because it is also the
 // default/fallback section for a bare `?tab=system`, and `system-info` sits LAST because
@@ -34,21 +32,21 @@ type SubTab = 'integrations' | 'ai-knowledge' | 'retention' | 'system-info'
 // rather than splitting that run.
 // Order is presentation only: nothing indexes into this array and deep links address a
 // section by `?section=<id>`, so reordering breaks no bookmark.
-const TABS: { id: SubTab; ready: boolean }[] = [
+const TABS: SubTab[] = [
   // External connections — AI knowledge sources hang off the LLM profile configured next door.
-  { id: 'integrations',     ready: true },
-  { id: 'ai-knowledge',     ready: true },
+  'integrations',
+  'ai-knowledge',
   // Security — the two access/hardening tabs stay adjacent.
-  { id: 'authentication',   ready: true },
-  { id: 'security',         ready: true },
+  'authentication',
+  'security',
   // Operations.
-  { id: 'logging-telemetry', ready: true },
-  { id: 'performance',      ready: true },
+  'logging-telemetry',
+  'performance',
   // Data lifecycle — retention is a database-side concern, so it follows the DB tab.
-  { id: 'db-admin',         ready: true },
-  { id: 'retention',        ready: true },
+  'db-admin',
+  'retention',
   // Read-only, always last.
-  { id: 'system-info',      ready: true },
+  'system-info',
 ];
 
 const ICONS: Record<SubTab, React.ComponentType<{ size?: number }>> = {
@@ -63,19 +61,33 @@ const ICONS: Record<SubTab, React.ComponentType<{ size?: number }>> = {
   'db-admin': DataBase,
 };
 
+// i18n key per sub-tab. Doubles as the whitelist for the `?section=` deep link: a value is
+// accepted iff it is a key here, so a new sub-tab cannot be link-addressable without a label.
+const LABEL_KEYS: Record<SubTab, string> = {
+  'integrations': 'subTabIntegrations',
+  'ai-knowledge': 'subTabAiKnowledge',
+  'retention': 'subTabRetention',
+  'system-info': 'subTabSystemInfo',
+  'authentication': 'subTabAuthentication',
+  'logging-telemetry': 'subTabLoggingTelemetry',
+  'security': 'subTabSecurity',
+  'performance': 'subTabPerformance',
+  'db-admin': 'subTabDbAdmin',
+};
+
+const DEFAULT_SUB_TAB: SubTab = 'integrations';
+
+function isSubTab(value: string | null): value is SubTab {
+  return value !== null && Object.prototype.hasOwnProperty.call(LABEL_KEYS, value);
+}
+
 export function SystemSettingsPage() {
   const { t } = useTranslation(['adminSettings']);
   // Deep-link: /settings?tab=system&section=<subTab> opens the requested sub-tab directly.
   // The dashboard's "LLM config" shortcut targets `integrations` (SMTP + LLM cards).
   const [searchParams, setSearchParams] = useSearchParams();
   const sectionParam = searchParams.get('section');
-  const initialSub: SubTab =
-    sectionParam === 'integrations' || sectionParam === 'ai-knowledge' || sectionParam === 'retention'
-      || sectionParam === 'system-info' || sectionParam === 'authentication'
-      || sectionParam === 'logging-telemetry' || sectionParam === 'security'
-      || sectionParam === 'performance' || sectionParam === 'db-admin'
-      ? (sectionParam as SubTab) : 'integrations';
-  const active = initialSub;
+  const active: SubTab = isSubTab(sectionParam) ? sectionParam : DEFAULT_SUB_TAB;
   const setActive = (next: SubTab) => {
     const params = new URLSearchParams(searchParams);
     params.set('tab', 'system');
@@ -83,53 +95,24 @@ export function SystemSettingsPage() {
     setSearchParams(params);
   };
 
-  const labelFor = (tab: SubTab): string => {
-    const key = tab === 'integrations' ? 'subTabIntegrations'
-      : tab === 'ai-knowledge' ? 'subTabAiKnowledge'
-      : tab === 'retention' ? 'subTabRetention'
-      : tab === 'system-info' ? 'subTabSystemInfo'
-      : tab === 'authentication' ? 'subTabAuthentication'
-      : tab === 'logging-telemetry' ? 'subTabLoggingTelemetry'
-      : tab === 'security' ? 'subTabSecurity'
-      : tab === 'db-admin' ? 'subTabDbAdmin'
-      : 'subTabPerformance';
-    return t(`adminSettings:${key}`);
-  };
+  const labelFor = (tab: SubTab): string => t(`adminSettings:${LABEL_KEYS[tab]}`);
 
   return (
     <div className="space-y-4">
       <RestartBanner />
 
       <div className="np-tab-list">
-        {TABS.map(({ id, ready }) => {
+        {TABS.map((id) => {
           const Icon = ICONS[id];
-          const isActive = active === id;
-          if (ready) {
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setActive(id)}
-                className={`np-tab ${isActive ? 'is-active' : ''}`}
-              >
-                <Icon size={14} />
-                {labelFor(id)}
-              </button>
-            );
-          }
           return (
             <button
               key={id}
               type="button"
-              disabled
-              title={t('adminSettings:comingSoon')}
-              className="np-tab"
+              onClick={() => setActive(id)}
+              className={`np-tab ${active === id ? 'is-active' : ''}`}
             >
               <Icon size={14} />
               {labelFor(id)}
-              <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-surface-low text-on-surface-variant">
-                {t('adminSettings:comingSoon')}
-              </span>
             </button>
           );
         })}
@@ -149,7 +132,3 @@ export function SystemSettingsPage() {
     </div>
   );
 }
-
-// ComingSoonPlaceholder is no longer used now that all four V2 tabs are wired up.
-// Keeping the function around would emit an unused-import lint; if a future tab is
-// added with a placeholder during scaffolding, re-add it here.

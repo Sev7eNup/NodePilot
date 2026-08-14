@@ -43,6 +43,26 @@ public class StartProgramActivityTests
     private static string CmdPath => Path.Combine(Environment.SystemDirectory, "cmd.exe");
 
     [Fact]
+    public void BuildScript_WithAllowedRoots_InjectsTargetGuardForExecutableAndWorkingDirectory()
+    {
+        var root = Path.GetPathRoot(CmdPath)!;
+        var config = new ConfigurationBuilder().AddInMemoryCollection(
+            new Dictionary<string, string?>
+            {
+                ["FileSystemOperation:AllowedRoots:0"] = root,
+            }).Build();
+        var script = new Accessor(config).CallBuildScript(Cfg(new
+        {
+            filePath = CmdPath,
+            workingDirectory = Environment.SystemDirectory,
+        }), Ctx());
+
+        script.Should().Contain("Assert-NodePilotAllowedPath -Candidate ($__filePath)");
+        script.Should().Contain("Assert-NodePilotAllowedPath -Candidate ($__workingDir)");
+        script.Should().Contain("FileAttributes]::ReparsePoint");
+    }
+
+    [Fact]
     public void BuildScript_MissingFilePath_Throws()
     {
         var act = () => new Accessor().CallBuildScript(Cfg(new { arguments = "x" }), Ctx());
@@ -117,8 +137,8 @@ public class StartProgramActivityTests
     {
         // Phase-3 hardening: an empty IConfiguration now reads the missing
         // StartProgram:DisallowShellExecute as "true" so a stripped-down deployment falls
-        // on the safe side. Activities running with a NULL configuration (load harness)
-        // keep the old permissive behaviour — see BuildScript_UseShellExecuteTrue_NullConfig_Allowed.
+        // on the safe side. There is no permissive path left — BaseRemoteActivity requires a
+        // non-null IConfiguration, so the guard applies to every caller.
         var act = () => new Accessor().CallBuildScript(Cfg(new
         {
             filePath = @"C:\data\report.xlsx",
