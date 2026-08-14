@@ -375,11 +375,12 @@ function PickerPopover({
   surfaceClass?: string;
   children: React.ReactNode;
 }>) {
+  const { open, toggle, query, setQuery, containerRef, popoverRef, searchRef } = picker;
   return (
-    <div ref={picker.containerRef} className="relative inline-block">
+    <div ref={containerRef} className="relative inline-block">
       <button
         type="button"
-        onClick={picker.toggle}
+        onClick={toggle}
         className={pickerChipClass()}
         title={title}
       >
@@ -388,19 +389,19 @@ function PickerPopover({
         <span className="opacity-60 tabular-nums">{count}</span>
       </button>
       <AnchoredPickerPopover
-        open={picker.open}
-        anchorRef={picker.containerRef}
-        popoverRef={picker.popoverRef}
+        open={open}
+        anchorRef={containerRef}
+        popoverRef={popoverRef}
         surfaceClass={surfaceClass}
       >
           <div className="p-2 border-b border-outline-variant/30">
             <div className="relative">
               <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-on-surface-variant" />
               <input
-                ref={picker.searchRef}
+                ref={searchRef}
                 type="text"
-                value={picker.query}
-                onChange={(e) => picker.setQuery(e.target.value)}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
                 placeholder={placeholder}
                 className="w-full bg-surface-high rounded pl-7 pr-2 py-1 text-xs font-label focus:outline-none focus:ring-1 focus:ring-primary/40"
               />
