@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Add, BareMetalServer, ChartColumn, Chat, Checkbox, Checkmark, ChevronDown, CircleDash, Code,
-  DataBase, DataShare, Debug, Document, Download, Edit, Email, Events, FlowModeler, InProgress,
+  BareMetalServer, ChartColumn, Chat, Checkbox, Checkmark, ChevronDown, CircleDash, Code,
+  DataBase, DataShare, Debug, Document, Download, Email, Events, FlowModeler, InProgress,
   Locked, Renew, Reset, Save, Send, Time, Tools, TrashCan, UserRole, WarningAlt,
 } from '@carbon/icons-react';
 import {
@@ -13,77 +13,28 @@ import { useAiCapabilities } from '../hooks/useAiCapabilities';
 import { Markdown } from '../components/common/Markdown';
 import { CopyButton } from '../components/common/CopyButton';
 import { UsageFooter } from '../components/ai/UsageFooter';
+import { ChatThreadMenu } from '../components/ai/ChatThreadMenu';
 import {
   useAiChatStore, aiChatScopeKey, aiChatFullKey,
   type ChatMessage, type ChatThreadMeta,
 } from '../stores/aiChatStore';
 import { useAuthStore } from '../stores/authStore';
 import { buildChatMarkdown, chatFilenameSlug, downloadTextFile } from '../lib/chatExport';
+import {
+  addToolCallToLast,
+  appendToLastAssistant,
+  finalizeStreaming,
+  isAbort,
+  markToolDoneOnLast,
+  patchLastAssistant,
+  trimHistory,
+} from '../lib/chatMessages';
 
 // A non-`__new__` sentinel workflowId so the store's `isPersistableScope` KEEPS this page's
 // threads across reloads (unlike an unsaved canvas). One shared scope per user.
 const GLOBAL_SCOPE = 'global';
 const EMPTY_THREAD: ChatMessage[] = [];
 const EMPTY_THREADS: ChatThreadMeta[] = [];
-// The backend caps history at 20 turns / 50k chars (AiKnowledgeController) → trim hard here.
-const MAX_HISTORY_TURNS = 19;
-const MAX_HISTORY_CHARS = 48_000;
-
-function isAbort(err: unknown): boolean {
-  return (err instanceof DOMException || err instanceof Error) && err.name === 'AbortError';
-}
-
-function trimHistory(history: AiChatTurn[]): AiChatTurn[] {
-  let turns = history.slice(-MAX_HISTORY_TURNS);
-  let total = turns.reduce((s, m) => s + m.content.length, 0);
-  while (turns.length > 0 && total > MAX_HISTORY_CHARS) {
-    total -= turns[0].content.length;
-    turns = turns.slice(1);
-  }
-  return turns;
-}
-
-function appendToLastAssistant(prev: ChatMessage[], text: string): ChatMessage[] {
-  const next = prev.slice();
-  for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].role === 'assistant') { next[i] = { ...next[i], content: next[i].content + text }; break; }
-  }
-  return next;
-}
-
-function patchLastAssistant(prev: ChatMessage[], patch: Partial<ChatMessage>): ChatMessage[] {
-  const next = prev.slice();
-  for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].role === 'assistant') { next[i] = { ...next[i], ...patch }; break; }
-  }
-  return next;
-}
-
-function addToolCallToLast(prev: ChatMessage[], toolId: string, toolName: string): ChatMessage[] {
-  const next = prev.slice();
-  for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].role === 'assistant') {
-      next[i] = { ...next[i], toolCalls: [...(next[i].toolCalls ?? []), { toolId, toolName, done: false }] };
-      break;
-    }
-  }
-  return next;
-}
-
-function markToolDoneOnLast(prev: ChatMessage[], toolId: string): ChatMessage[] {
-  const next = prev.slice();
-  for (let i = next.length - 1; i >= 0; i--) {
-    if (next[i].role === 'assistant') {
-      next[i] = { ...next[i], toolCalls: (next[i].toolCalls ?? []).map((tc) => (tc.toolId === toolId ? { ...tc, done: true } : tc)) };
-      break;
-    }
-  }
-  return next;
-}
-
-function finalizeStreaming(prev: ChatMessage[]): ChatMessage[] {
-  return prev.map((m) => (m.streaming ? { ...m, streaming: false } : m));
-}
 
 /**
  * Global "AI Chat" — a read-only knowledge & operations assistant over NodePilot's docs,
@@ -281,7 +232,7 @@ export function AiChatPage() {
       <div className="flex items-start justify-between gap-3">
         <PageHeader t={t} />
         <div className="flex shrink-0 items-center gap-1.5">
-          <ThreadMenu
+          <ChatThreadMenu
             threads={threads}
             activeId={threadId}
             disabled={sending}
@@ -289,7 +240,8 @@ export function AiChatPage() {
             onNew={() => { createThread(scope, t('ai:chat.threadDefault', { n: threads.length + 1 })); setError(null); }}
             onRename={(id, name) => renameThread(scope, id, name)}
             onDelete={(id) => { removeThread(scope, id); setError(null); }}
-            t={t}
+            triggerClassName="flex min-w-0 items-center gap-1 rounded-lg border border-outline-variant/40 px-2.5 py-1.5 text-sm text-on-surface transition-colors hover:bg-surface-highest"
+            align="right"
           />
           <button
             onClick={exportChat}
@@ -569,123 +521,6 @@ function MessageBubble({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function ThreadMenu({
-  threads, activeId, disabled, onSelect, onNew, onRename, onDelete, t,
-}: Readonly<{
-  threads: ChatThreadMeta[];
-  activeId: string;
-  disabled?: boolean;
-  onSelect: (id: string) => void;
-  onNew: () => void;
-  onRename: (id: string, name: string) => void;
-  onDelete: (id: string) => void;
-  t: (k: string, opts?: Record<string, unknown>) => string;
-}>) {
-  const [open, setOpen] = useState(false);
-  const [renaming, setRenaming] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as globalThis.Node)) { setOpen(false); setRenaming(null); }
-    };
-    document.addEventListener('mousedown', onDoc);
-    return () => document.removeEventListener('mousedown', onDoc);
-  }, [open]);
-
-  const active = threads.find((th) => th.id === activeId);
-  const activeName = active?.name ?? t('ai:chat.threadDefault', { n: 1 });
-
-  const commitRename = (id: string) => {
-    const name = renameValue.trim();
-    if (name) onRename(id, name);
-    setRenaming(null);
-  };
-
-  return (
-    <div ref={ref} className="relative min-w-0">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex min-w-0 items-center gap-1 rounded-lg border border-outline-variant/40 px-2.5 py-1.5 text-sm text-on-surface transition-colors hover:bg-surface-highest"
-        title={t('ai:chat.threads')}
-        aria-label={t('ai:chat.threads')}
-      >
-        <span className="max-w-[11rem] truncate">{activeName}</span>
-        <ChevronDown size={13} className="shrink-0 text-on-surface-variant" />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-64 rounded-lg border border-outline-variant/30 bg-surface-low p-1 shadow-lg">
-          <div className="max-h-64 overflow-y-auto">
-            {threads.length === 0 && (
-              <p className="px-2 py-1.5 text-xs text-on-surface-variant">{t('ai:chat.noThreads')}</p>
-            )}
-            {threads.map((th) => (
-              <div
-                key={th.id}
-                className={`group/th flex items-center gap-1 rounded px-1.5 py-1 ${th.id === activeId ? 'bg-surface-high' : 'hover:bg-surface-high'}`}
-              >
-                {renaming === th.id ? (
-                  <input
-                    autoFocus
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') commitRename(th.id);
-                      if (e.key === 'Escape') setRenaming(null);
-                    }}
-                    onBlur={() => commitRename(th.id)}
-                    className="min-w-0 flex-1 rounded border border-outline-variant bg-surface-low px-1 py-0.5 text-xs text-on-surface"
-                  />
-                ) : (
-                  <button
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => { onSelect(th.id); setOpen(false); }}
-                    className="min-w-0 flex-1 truncate text-left text-xs text-on-surface disabled:opacity-50"
-                  >
-                    {th.name}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  disabled={disabled}
-                  title={t('ai:chat.renameThread')}
-                  aria-label={t('ai:chat.renameThread')}
-                  onClick={() => { setRenaming(th.id); setRenameValue(th.name); }}
-                  className="rounded p-0.5 text-on-surface-variant opacity-0 transition-opacity hover:text-on-surface group-hover/th:opacity-100 disabled:hover:text-on-surface-variant"
-                >
-                  <Edit size={12} />
-                </button>
-                <button
-                  type="button"
-                  disabled={disabled}
-                  title={t('ai:chat.deleteThread')}
-                  aria-label={t('ai:chat.deleteThread')}
-                  onClick={() => onDelete(th.id)}
-                  className="rounded p-0.5 text-on-surface-variant opacity-0 transition-opacity hover:text-error group-hover/th:opacity-100 disabled:hover:text-on-surface-variant"
-                >
-                  <TrashCan size={12} />
-                </button>
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => { onNew(); setOpen(false); }}
-            className="mt-1 flex w-full items-center gap-1.5 rounded px-1.5 py-1.5 text-xs text-primary hover:bg-surface-high disabled:opacity-40"
-          >
-            <Add size={13} /> {t('ai:chat.newThread')}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

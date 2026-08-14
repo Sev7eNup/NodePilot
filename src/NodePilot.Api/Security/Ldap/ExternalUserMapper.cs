@@ -847,39 +847,19 @@ public sealed class ExternalUserMapper
             await _db.SaveChangesAsync(ct);
     }
 
-    private async Task ReplaceDirectoryMembershipsAsync(
+    // AD SIDs are compared case-insensitively; the authority is always the AD constant here.
+    private Task ReplaceDirectoryMembershipsAsync(
         Guid userId,
         IReadOnlyCollection<string> groupKeys,
-        CancellationToken ct)
-    {
-        var now = DateTime.UtcNow;
-        var desired = groupKeys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var existing = await _db.DirectoryMemberships
-            .Where(m => m.UserId == userId
-                     && m.Authority == ExternalIdentity.ActiveDirectoryAuthority)
-            .ToListAsync(ct);
-
-        foreach (var membership in existing)
-        {
-            if (!desired.Contains(membership.GroupKey))
-                _db.DirectoryMemberships.Remove(membership);
-            else
-                membership.LastSeenAt = now;
-        }
-
-        var existingKeys = existing.Select(m => m.GroupKey)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var groupKey in desired.Where(key => !existingKeys.Contains(key)))
-        {
-            _db.DirectoryMemberships.Add(new DirectoryMembership
-            {
-                UserId = userId,
-                Authority = ExternalIdentity.ActiveDirectoryAuthority,
-                GroupKey = groupKey,
-                LastSeenAt = now,
-            });
-        }
-    }
+        CancellationToken ct) =>
+        DirectoryMembershipReconciler.ApplyAsync(
+            _db,
+            userId,
+            ExternalIdentity.ActiveDirectoryAuthority,
+            groupKeys.ToHashSet(StringComparer.OrdinalIgnoreCase),
+            DateTime.UtcNow,
+            StringComparer.OrdinalIgnoreCase,
+            ct);
 
     private static IReadOnlyList<string> NormalizeGroupSids(IEnumerable<string> groupSids) =>
         groupSids

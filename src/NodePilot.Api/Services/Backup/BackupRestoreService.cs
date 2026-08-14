@@ -444,34 +444,77 @@ public sealed class BackupRestoreService(
         db.DirectoryMemberships.AddRange(restored);
     }
 
-    private async Task<SectionRestoreResult> RestoreFoldersAsync(RestoreState s, CancellationToken ct)
+    private Task<SectionRestoreResult> RestoreFoldersAsync(RestoreState s, CancellationToken ct) =>
+        RestoreFolderStructureAsync(
+            s,
+            BackupSections.Folders,
+            SharedWorkflowFolder.RootFolderId,
+            s.Folders,
+            s.ExistingFolderIds,
+            s.FolderMap,
+            // Root is represented by a null ParentFolderId here, and an unresolvable parent stays null.
+            parentSource => parentSource is null ? null : s.ResolveFolder(parentSource.Value),
+            FolderTrees.Shared,
+            folder => db.SharedWorkflowFolders.Add(folder),
+            ct);
+
+    private Task<SectionRestoreResult> RestoreGlobalFoldersAsync(RestoreState s, CancellationToken ct) =>
+        RestoreFolderStructureAsync(
+            s,
+            BackupSections.GlobalVariableFolders,
+            GlobalVariableFolder.RootFolderId,
+            s.GlobalFolders,
+            s.ExistingGlobalFolderIds,
+            s.GlobalFolderMap,
+            // Unlike shared folders, a missing/unresolvable parent lands under the singleton Root.
+            parentSource => parentSource is null
+                ? GlobalVariableFolder.RootFolderId
+                : s.ResolveGlobalFolder(parentSource.Value) ?? GlobalVariableFolder.RootFolderId,
+            FolderTrees.Global,
+            folder => db.GlobalVariableFolders.Add(folder),
+            ct);
+
+    /// <summary>
+    /// Restores one folder tree's <c>structure</c> array. Identical for both folder types
+    /// (see <see cref="FolderTreeShape{TFolder}"/>); only the root id, the parent-resolution rule
+    /// and the target DbSet differ.
+    /// </summary>
+    private async Task<SectionRestoreResult> RestoreFolderStructureAsync<TFolder>(
+        RestoreState s,
+        string section,
+        Guid rootId,
+        IDictionary<string, TFolder> byPath,
+        HashSet<Guid> existingIds,
+        IDictionary<Guid, Guid> folderMap,
+        Func<Guid?, Guid?> resolveParent,
+        FolderTreeShape<TFolder> shape,
+        Action<TFolder> add,
+        CancellationToken ct)
     {
-        var policy = s.Policy(BackupSections.Folders);
+        var policy = s.Policy(section);
         int created = 0, overwritten = 0, skipped = 0, renamed = 0;
-        var structure = (s.Reader.Sections[BackupSections.Folders] as JsonObject)?["structure"] as JsonArray ?? [];
+        var structure = (s.Reader.Sections[section] as JsonObject)?["structure"] as JsonArray ?? [];
 
         // Id -> restored Path, so a child derives its Path from the *restored* parent Path instead of
         // the stale backup path. The export orders folders by Depth (parents first), so every parent
-        // is already in this map when its children are processed. Seeded with the target DB's
-        // pre-existing folders — an existing folder reused as a parent (Skip policy) must expose its
-        // current Path to its restored children. Root is represented by a null ParentFolderId, so a
-        // null parentTarget maps to the "" prefix. Without this, a parent renamed on conflict left its
-        // children with the old backup Path while their ParentFolderId pointed at the renamed parent
-        // → inconsistent materialized Path for the whole subtree.
-        var pathById = new Dictionary<Guid, string>();
-        foreach (var f in s.Folders.Values)
-            pathById[f.Id] = f.Path == "/" ? "" : f.Path;
+        // is already in this map when its children are processed. Seeded with Root (path prefix "") and
+        // the target DB's pre-existing folders — an existing folder reused as a parent (Skip policy)
+        // must expose its current Path to its restored children. Without this, a parent renamed on
+        // conflict left its children with the old backup Path while their ParentFolderId pointed at the
+        // renamed parent → inconsistent materialized Path for the whole subtree.
+        var pathById = new Dictionary<Guid, string> { [rootId] = "" };
+        foreach (var f in byPath.Values)
+            pathById[shape.Id(f)] = shape.Path(f) == "/" ? "" : shape.Path(f);
 
-        s.FolderMap[SharedWorkflowFolder.RootFolderId] = SharedWorkflowFolder.RootFolderId;
+        folderMap[rootId] = rootId;
         foreach (var item in structure)
         {
             var sourceId = Gid(item!["sourceId"]);
-            if (sourceId == SharedWorkflowFolder.RootFolderId) { skipped++; continue; } // Root is fixed; never recreated.
+            if (sourceId == rootId) { skipped++; continue; } // Root is fixed; never recreated.
 
             var name = item["name"]!.GetValue<string>();
             var depth = item["depth"]?.GetValue<int>() ?? 1;
-            var parentSource = GidN(item["parentFolderId"]);
-            var parentTarget = parentSource is null ? (Guid?)null : s.ResolveFolder(parentSource.Value);
+            var parentTarget = resolveParent(GidN(item["parentFolderId"]));
             var createdBy = ResolveUserOrNull(s, GidN(item["createdByUserId"])); // remaps the folder-creator's user id; null if it can't be resolved (K17)
 
             // Recompute the Path from the parent's restored Path + this folder's name. The backup path
@@ -481,190 +524,174 @@ public sealed class BackupRestoreService(
             var parentPath = parentTarget is null ? "" : pathById.GetValueOrDefault(parentTarget.Value, "");
             var path = parentPath.Length == 0 ? "/" + name : parentPath + "/" + name;
 
-            if (s.Folders.TryGetValue(path, out var existing))
+            if (byPath.TryGetValue(path, out var existing))
             {
-                if (policy == RestoreConflictPolicy.Skip) { s.FolderMap[sourceId] = existing.Id; skipped++; continue; }
+                if (policy == RestoreConflictPolicy.Skip) { folderMap[sourceId] = shape.Id(existing); skipped++; continue; }
                 if (policy == RestoreConflictPolicy.Overwrite)
                 {
-                    existing.Name = name; existing.ParentFolderId = parentTarget; existing.Depth = depth; existing.Path = path; existing.CreatedByUserId = createdBy;
-                    pathById[existing.Id] = path;
-                    s.FolderMap[sourceId] = existing.Id; overwritten++; continue;
+                    shape.Apply(existing, name, path, depth, parentTarget, createdBy);
+                    pathById[shape.Id(existing)] = path;
+                    folderMap[sourceId] = shape.Id(existing); overwritten++; continue;
                 }
                 // Rename: the DB enforces unique(ParentFolderId, Name), so we MUST give the new
                 // folder a sibling-unique name and recompute the Path from it so the in-memory lookup
                 // key tracks the actual stored Path.
                 var siblingNames = new HashSet<string>(
-                    s.Folders.Values.Where(f => f.ParentFolderId == parentTarget).Select(f => f.Name), StringComparer.Ordinal);
+                    byPath.Values.Where(f => shape.ParentId(f) == parentTarget).Select(shape.Name), StringComparer.Ordinal);
                 name = UniqueName(name, siblingNames);
                 path = parentPath.Length == 0 ? "/" + name : parentPath + "/" + name;
                 renamed++;
             }
             else created++;
 
-            var id = s.ExistingFolderIds.Contains(sourceId) ? Guid.NewGuid() : sourceId;
-            var folder = new SharedWorkflowFolder
-            {
-                Id = id, Name = name, Path = path, Depth = depth, ParentFolderId = parentTarget, CreatedByUserId = createdBy,
-            };
-            db.SharedWorkflowFolders.Add(folder);
-            s.Folders[path] = folder; s.ExistingFolderIds.Add(id); s.FolderMap[sourceId] = id;
+            var id = existingIds.Contains(sourceId) ? Guid.NewGuid() : sourceId;
+            var folder = shape.New(id);
+            shape.Apply(folder, name, path, depth, parentTarget, createdBy);
+            add(folder);
+            byPath[path] = folder; existingIds.Add(id); folderMap[sourceId] = id;
             pathById[id] = path;
         }
         await db.SaveChangesAsync(ct);
-        return new SectionRestoreResult(BackupSections.Folders, created, overwritten, skipped, renamed);
+        return new SectionRestoreResult(section, created, overwritten, skipped, renamed);
     }
 
-    private async Task<SectionRestoreResult> RestoreCredentialsAsync(RestoreState s, CancellationToken ct)
+    /// <summary>
+    /// One parsed item of a by-name section: its conflict key, the backup's source id, and the two
+    /// section-specific writes — apply onto the existing row, or materialize a new one under the
+    /// (possibly renamed) name.
+    /// </summary>
+    private sealed record NamedRestoreItem<TEntity>(
+        string Name,
+        Guid SourceId,
+        Action<TEntity> Overwrite,
+        Func<Guid, string, TEntity> Create);
+
+    /// <summary>
+    /// The by-name conflict algorithm every "named row" section shares: counters, the taken-name
+    /// set, the Skip/Overwrite/Rename branch, the source-id collision remap (K3) and the section
+    /// result. <paramref name="read"/> parses an item BEFORE the conflict check — a section may
+    /// reject an item outright (decryption/validation) whatever the policy says, and it must see
+    /// the item's original name.
+    /// </summary>
+    private async Task<SectionRestoreResult> RestoreNamedSectionAsync<TEntity>(
+        RestoreState s,
+        string section,
+        IDictionary<string, TEntity> byName,
+        Func<TEntity, Guid> idOf,
+        HashSet<Guid> existingIds,
+        IDictionary<Guid, Guid>? idMap,
+        Action<TEntity> add,
+        Func<JsonNode, NamedRestoreItem<TEntity>> read,
+        CancellationToken ct,
+        bool preserveSourceIds = true)
     {
-        var policy = s.Policy(BackupSections.Credentials);
+        var policy = s.Policy(section);
         int created = 0, overwritten = 0, skipped = 0, renamed = 0;
-        var takenNames = new HashSet<string>(s.Credentials.Keys, StringComparer.Ordinal);
+        var takenNames = new HashSet<string>(byName.Keys, StringComparer.Ordinal);
 
-        foreach (var item in Items(s.Reader, BackupSections.Credentials))
+        foreach (var node in Items(s.Reader, section))
         {
-            var sourceId = Gid(item!["sourceId"]);
-            var name = item["name"]!.GetValue<string>();
-            var username = item["username"]?.GetValue<string>() ?? "";
-            var domain = item["domain"]?.GetValue<string>();
-            var expiresAt = DateTime.TryParse(
-                item["expiresAt"]?.GetValue<string>(), null,
-                System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
-                out var exp) ? exp : (DateTime?)null;
-            byte[] encrypted = EncryptedPasswordFor(item, s, name);
+            var item = read(node!);
+            var name = item.Name;
 
-            if (s.Credentials.TryGetValue(name, out var existing))
+            if (byName.TryGetValue(name, out var existing))
             {
-                if (policy == RestoreConflictPolicy.Skip) { s.CredentialMap[sourceId] = existing.Id; skipped++; continue; }
+                if (policy == RestoreConflictPolicy.Skip)
+                {
+                    if (idMap is not null) idMap[item.SourceId] = idOf(existing);
+                    skipped++; continue;
+                }
                 if (policy == RestoreConflictPolicy.Overwrite)
                 {
-                    existing.Username = username; existing.Domain = domain; existing.EncryptedPassword = encrypted;
-                    existing.ExpiresAt = expiresAt;
-                    s.CredentialMap[sourceId] = existing.Id; overwritten++; continue;
+                    item.Overwrite(existing);
+                    if (idMap is not null) idMap[item.SourceId] = idOf(existing);
+                    overwritten++; continue;
                 }
                 name = UniqueName(name, takenNames); renamed++;
             }
             else created++;
 
             takenNames.Add(name);
-            var id = s.ExistingCredentialIds.Contains(sourceId) ? Guid.NewGuid() : sourceId;
-            var cred = new Credential { Id = id, Name = name, Username = username, Domain = domain, EncryptedPassword = encrypted, ExpiresAt = expiresAt };
-            db.Credentials.Add(cred);
-            s.Credentials[name] = cred; s.ExistingCredentialIds.Add(id); s.CredentialMap[sourceId] = id;
+            var id = preserveSourceIds && !existingIds.Contains(item.SourceId) ? item.SourceId : Guid.NewGuid();
+            var entity = item.Create(id, name);
+            add(entity);
+            byName[name] = entity; existingIds.Add(id);
+            if (idMap is not null) idMap[item.SourceId] = id;
         }
         await db.SaveChangesAsync(ct);
-        return new SectionRestoreResult(BackupSections.Credentials, created, overwritten, skipped, renamed);
+        return new SectionRestoreResult(section, created, overwritten, skipped, renamed);
     }
 
-    private async Task<SectionRestoreResult> RestoreMachinesAsync(RestoreState s, CancellationToken ct)
-    {
-        var policy = s.Policy(BackupSections.Machines);
-        int created = 0, overwritten = 0, skipped = 0, renamed = 0;
-        var takenNames = new HashSet<string>(s.Machines.Keys, StringComparer.Ordinal);
-
-        foreach (var item in Items(s.Reader, BackupSections.Machines))
-        {
-            var sourceId = Gid(item!["sourceId"]);
-            var name = item["name"]!.GetValue<string>();
-            var hostname = item["hostname"]?.GetValue<string>() ?? "";
-            var winRmPort = item["winRmPort"]?.GetValue<int>() ?? 5985;
-            var useSsl = item["useSsl"]?.GetValue<bool>() ?? false;
-            var tags = item["tags"]?.GetValue<string>();
-            var credSource = GidN(item["defaultCredentialId"]);
-            var credTarget = credSource is null ? (Guid?)null : s.ResolveCredential(credSource.Value);
-
-            if (s.Machines.TryGetValue(name, out var existing))
+    private Task<SectionRestoreResult> RestoreCredentialsAsync(RestoreState s, CancellationToken ct) =>
+        RestoreNamedSectionAsync(
+            s,
+            BackupSections.Credentials,
+            s.Credentials,
+            credential => credential.Id,
+            s.ExistingCredentialIds,
+            s.CredentialMap,
+            credential => db.Credentials.Add(credential),
+            item =>
             {
-                if (policy == RestoreConflictPolicy.Skip) { s.MachineMap[sourceId] = existing.Id; skipped++; continue; }
-                if (policy == RestoreConflictPolicy.Overwrite)
-                {
-                    existing.Hostname = hostname; existing.WinRmPort = winRmPort; existing.UseSsl = useSsl;
-                    existing.Tags = tags; existing.DefaultCredentialId = credTarget;
-                    s.MachineMap[sourceId] = existing.Id; overwritten++; continue;
-                }
-                name = UniqueName(name, takenNames); renamed++;
-            }
-            else created++;
+                var sourceId = Gid(item["sourceId"]);
+                var name = item["name"]!.GetValue<string>();
+                var username = item["username"]?.GetValue<string>() ?? "";
+                var domain = item["domain"]?.GetValue<string>();
+                var expiresAt = DateTime.TryParse(
+                    item["expiresAt"]?.GetValue<string>(), null,
+                    System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                    out var exp) ? exp : (DateTime?)null;
+                byte[] encrypted = EncryptedPasswordFor(item, s, name);
+                return new NamedRestoreItem<Credential>(
+                    name,
+                    sourceId,
+                    existing =>
+                    {
+                        existing.Username = username; existing.Domain = domain; existing.EncryptedPassword = encrypted;
+                        existing.ExpiresAt = expiresAt;
+                    },
+                    (id, finalName) => new Credential
+                    {
+                        Id = id, Name = finalName, Username = username, Domain = domain,
+                        EncryptedPassword = encrypted, ExpiresAt = expiresAt,
+                    });
+            },
+            ct);
 
-            takenNames.Add(name);
-            var id = s.ExistingMachineIds.Contains(sourceId) ? Guid.NewGuid() : sourceId;
-            var machine = new ManagedMachine
+    private Task<SectionRestoreResult> RestoreMachinesAsync(RestoreState s, CancellationToken ct) =>
+        RestoreNamedSectionAsync(
+            s,
+            BackupSections.Machines,
+            s.Machines,
+            machine => machine.Id,
+            s.ExistingMachineIds,
+            s.MachineMap,
+            machine => db.ManagedMachines.Add(machine),
+            item =>
             {
-                Id = id, Name = name, Hostname = hostname, WinRmPort = winRmPort, UseSsl = useSsl,
-                Tags = tags, DefaultCredentialId = credTarget,
-            };
-            db.ManagedMachines.Add(machine);
-            s.Machines[name] = machine; s.ExistingMachineIds.Add(id); s.MachineMap[sourceId] = id;
-        }
-        await db.SaveChangesAsync(ct);
-        return new SectionRestoreResult(BackupSections.Machines, created, overwritten, skipped, renamed);
-    }
-
-    private async Task<SectionRestoreResult> RestoreGlobalFoldersAsync(RestoreState s, CancellationToken ct)
-    {
-        var policy = s.Policy(BackupSections.GlobalVariableFolders);
-        int created = 0, overwritten = 0, skipped = 0, renamed = 0;
-        var structure = (s.Reader.Sections[BackupSections.GlobalVariableFolders] as JsonObject)?["structure"] as JsonArray ?? [];
-
-        // Id -> restored Path, so a child derives its Path from the *restored* parent Path instead of
-        // the stale backup path. The export orders folders by Depth (parents first), so every parent
-        // is already in this map when its children are processed. Seeded with Root (path prefix "") and
-        // the target DB's pre-existing folders — an existing folder reused as a parent (Skip policy)
-        // must expose its current Path to its restored children. Without this, a parent renamed on
-        // conflict left its children with the old backup Path while their ParentFolderId pointed at the
-        // renamed parent → inconsistent materialized Path for the whole subtree.
-        var pathById = new Dictionary<Guid, string> { [GlobalVariableFolder.RootFolderId] = "" };
-        foreach (var f in s.GlobalFolders.Values)
-            pathById[f.Id] = f.Path == "/" ? "" : f.Path;
-
-        s.GlobalFolderMap[GlobalVariableFolder.RootFolderId] = GlobalVariableFolder.RootFolderId;
-        foreach (var item in structure)
-        {
-            var sourceId = Gid(item!["sourceId"]);
-            if (sourceId == GlobalVariableFolder.RootFolderId) { skipped++; continue; } // Root is fixed; never recreated.
-
-            var name = item["name"]!.GetValue<string>();
-            var depth = item["depth"]?.GetValue<int>() ?? 1;
-            var parentSource = GidN(item["parentFolderId"]);
-            var parentTarget = parentSource is null ? GlobalVariableFolder.RootFolderId : (s.ResolveGlobalFolder(parentSource.Value) ?? GlobalVariableFolder.RootFolderId);
-            var createdBy = ResolveUserOrNull(s, GidN(item["createdByUserId"]));
-
-            // Recompute the Path from the parent's restored Path + this folder's name. The backup path
-            // is only a serialization hint; the stored Path must follow the actual parent chain (which
-            // may have been renamed above). Conflict detection runs on this recomputed path so a folder
-            // clashes with whatever already lives at its true target position.
-            var parentPath = pathById.GetValueOrDefault(parentTarget, "");
-            var path = parentPath.Length == 0 ? "/" + name : parentPath + "/" + name;
-
-            if (s.GlobalFolders.TryGetValue(path, out var existing))
-            {
-                if (policy == RestoreConflictPolicy.Skip) { s.GlobalFolderMap[sourceId] = existing.Id; skipped++; continue; }
-                if (policy == RestoreConflictPolicy.Overwrite)
-                {
-                    existing.Name = name; existing.ParentFolderId = parentTarget; existing.Depth = depth; existing.Path = path; existing.CreatedByUserId = createdBy;
-                    pathById[existing.Id] = path;
-                    s.GlobalFolderMap[sourceId] = existing.Id; overwritten++; continue;
-                }
-                // Rename: unique(ParentFolderId, Name) forces a sibling-unique name; recompute the Path from it.
-                var siblingNames = new HashSet<string>(
-                    s.GlobalFolders.Values.Where(f => f.ParentFolderId == parentTarget).Select(f => f.Name), StringComparer.Ordinal);
-                name = UniqueName(name, siblingNames);
-                path = parentPath.Length == 0 ? "/" + name : parentPath + "/" + name;
-                renamed++;
-            }
-            else created++;
-
-            var id = s.ExistingGlobalFolderIds.Contains(sourceId) ? Guid.NewGuid() : sourceId;
-            var folder = new GlobalVariableFolder
-            {
-                Id = id, Name = name, Path = path, Depth = depth, ParentFolderId = parentTarget, CreatedByUserId = createdBy,
-            };
-            db.GlobalVariableFolders.Add(folder);
-            s.GlobalFolders[path] = folder; s.ExistingGlobalFolderIds.Add(id); s.GlobalFolderMap[sourceId] = id;
-            pathById[id] = path;
-        }
-        await db.SaveChangesAsync(ct);
-        return new SectionRestoreResult(BackupSections.GlobalVariableFolders, created, overwritten, skipped, renamed);
-    }
+                var sourceId = Gid(item["sourceId"]);
+                var name = item["name"]!.GetValue<string>();
+                var hostname = item["hostname"]?.GetValue<string>() ?? "";
+                var winRmPort = item["winRmPort"]?.GetValue<int>() ?? 5985;
+                var useSsl = item["useSsl"]?.GetValue<bool>() ?? false;
+                var tags = item["tags"]?.GetValue<string>();
+                var credSource = GidN(item["defaultCredentialId"]);
+                var credTarget = credSource is null ? (Guid?)null : s.ResolveCredential(credSource.Value);
+                return new NamedRestoreItem<ManagedMachine>(
+                    name,
+                    sourceId,
+                    existing =>
+                    {
+                        existing.Hostname = hostname; existing.WinRmPort = winRmPort; existing.UseSsl = useSsl;
+                        existing.Tags = tags; existing.DefaultCredentialId = credTarget;
+                    },
+                    (id, finalName) => new ManagedMachine
+                    {
+                        Id = id, Name = finalName, Hostname = hostname, WinRmPort = winRmPort, UseSsl = useSsl,
+                        Tags = tags, DefaultCredentialId = credTarget,
+                    });
+            },
+            ct);
 
     private async Task<SectionRestoreResult> RestoreGlobalsAsync(RestoreState s, CancellationToken ct)
     {
@@ -770,94 +797,83 @@ public sealed class BackupRestoreService(
         def.Version = item["version"]?.GetValue<int>() ?? 1;
     }
 
-    private async Task<SectionRestoreResult> RestoreWorkflowsAsync(RestoreState s, CancellationToken ct)
-    {
-        var policy = s.Policy(BackupSections.Workflows);
-        int created = 0, overwritten = 0, skipped = 0, renamed = 0;
-        var takenNames = new HashSet<string>(s.Workflows.Keys, StringComparer.Ordinal);
-
-        foreach (var item in Items(s.Reader, BackupSections.Workflows))
-        {
-            var sourceId = Gid(item!["sourceId"]);
-            var name = item["name"]!.GetValue<string>();
-            var description = item["description"]?.GetValue<string>();
-            var isEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
-            var version = item["version"]?.GetValue<int>() ?? 1;
-            var folderTarget = s.ResolveFolder(GidN(item["folderId"]) ?? SharedWorkflowFolder.RootFolderId)
-                ?? SharedWorkflowFolder.RootFolderId;
-            var definitionJson = RestoreDefinitionJson(item["definition"], s);
-
-            if (s.Workflows.TryGetValue(name, out var existing))
+    private Task<SectionRestoreResult> RestoreWorkflowsAsync(RestoreState s, CancellationToken ct) =>
+        RestoreNamedSectionAsync(
+            s,
+            BackupSections.Workflows,
+            s.Workflows,
+            workflow => workflow.Id,
+            s.ExistingWorkflowIds,
+            s.WorkflowMap,
+            workflow => db.Workflows.Add(workflow),
+            item =>
             {
-                if (policy == RestoreConflictPolicy.Skip) { s.WorkflowMap[sourceId] = existing.Id; skipped++; continue; }
-                if (policy == RestoreConflictPolicy.Overwrite)
-                {
-                    if (existing.CheckedOutByUserId is not null)
-                        throw new BackupRestoreException(
-                            $"Restore aborted: workflow '{existing.Name}' is locked for editing. Publish, unlock, or force-unlock it before overwrite restore.");
-                    existing.Description = description; existing.DefinitionJson = definitionJson;
-                    existing.IsEnabled = isEnabled; existing.FolderId = folderTarget; existing.UpdatedAt = DateTime.UtcNow;
-                    s.WorkflowMap[sourceId] = existing.Id; overwritten++; continue;
-                }
-                name = UniqueName(name, takenNames); renamed++;
-            }
-            else created++;
+                var sourceId = Gid(item["sourceId"]);
+                var name = item["name"]!.GetValue<string>();
+                var description = item["description"]?.GetValue<string>();
+                var isEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
+                var version = item["version"]?.GetValue<int>() ?? 1;
+                var folderTarget = s.ResolveFolder(GidN(item["folderId"]) ?? SharedWorkflowFolder.RootFolderId)
+                    ?? SharedWorkflowFolder.RootFolderId;
+                var definitionJson = RestoreDefinitionJson(item["definition"], s);
+                return new NamedRestoreItem<Workflow>(
+                    name,
+                    sourceId,
+                    existing =>
+                    {
+                        if (existing.CheckedOutByUserId is not null)
+                            throw new BackupRestoreException(
+                                $"Restore aborted: workflow '{existing.Name}' is locked for editing. Publish, unlock, or force-unlock it before overwrite restore.");
+                        existing.Description = description; existing.DefinitionJson = definitionJson;
+                        existing.IsEnabled = isEnabled; existing.FolderId = folderTarget; existing.UpdatedAt = DateTime.UtcNow;
+                    },
+                    (id, finalName) => new Workflow
+                    {
+                        Id = id, Name = finalName, Description = description, DefinitionJson = definitionJson,
+                        Version = version, IsEnabled = isEnabled, FolderId = folderTarget,
+                        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+                    });
+            },
+            ct);
 
-            takenNames.Add(name);
-            var id = s.ExistingWorkflowIds.Contains(sourceId) ? Guid.NewGuid() : sourceId;
-            var wf = new Workflow
+    // Alerting rules carry no source-id map: a restored rule always gets a fresh id, and nothing
+    // in the envelope references a rule by id.
+    private Task<SectionRestoreResult> RestoreAlertingAsync(RestoreState s, CancellationToken ct) =>
+        RestoreNamedSectionAsync(
+            s,
+            BackupSections.Alerting,
+            s.NotificationRules,
+            rule => rule.Id,
+            s.ExistingNotificationRuleIds,
+            idMap: null,
+            rule => db.NotificationRules.Add(rule),
+            item =>
             {
-                Id = id, Name = name, Description = description, DefinitionJson = definitionJson,
-                Version = version, IsEnabled = isEnabled, FolderId = folderTarget,
-                CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
-            };
-            db.Workflows.Add(wf);
-            s.Workflows[name] = wf; s.ExistingWorkflowIds.Add(id); s.WorkflowMap[sourceId] = id;
-        }
-        await db.SaveChangesAsync(ct);
-        return new SectionRestoreResult(BackupSections.Workflows, created, overwritten, skipped, renamed);
-    }
-
-    private async Task<SectionRestoreResult> RestoreAlertingAsync(RestoreState s, CancellationToken ct)
-    {
-        var policy = s.Policy(BackupSections.Alerting);
-        int created = 0, overwritten = 0, skipped = 0, renamed = 0;
-        var takenNames = new HashSet<string>(s.NotificationRules.Keys, StringComparer.Ordinal);
-
-        foreach (var item in Items(s.Reader, BackupSections.Alerting))
-        {
-            var name = item!["name"]!.GetValue<string>();
-            var kind = Enum.TryParse<NotificationRuleKind>(item["kind"]?.GetValue<string>(), out var k) ? k : NotificationRuleKind.Custom;
-            var isEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
-
-            if (s.NotificationRules.TryGetValue(name, out var existing))
-            {
-                if (policy == RestoreConflictPolicy.Skip) { skipped++; continue; }
-                if (policy == RestoreConflictPolicy.Overwrite)
-                {
-                    ApplyRuleScalars(existing, item, kind, isEnabled);
-                    db.NotificationRoutes.RemoveRange(existing.Routes);
-                    db.NotificationRuleTargets.RemoveRange(existing.Targets);
-                    foreach (var r in RestoredRoutes(item, s, existing.Id)) db.NotificationRoutes.Add(r);
-                    foreach (var tg in RestoredTargets(item, s, existing.Id)) db.NotificationRuleTargets.Add(tg);
-                    overwritten++; continue;
-                }
-                name = UniqueName(name, takenNames); renamed++;
-            }
-            else created++;
-
-            takenNames.Add(name);
-            var id = Guid.NewGuid();
-            var rule = new NotificationRule { Id = id, Name = name };
-            ApplyRuleScalars(rule, item, kind, isEnabled);
-            rule.Routes = RestoredRoutes(item, s, id);
-            rule.Targets = RestoredTargets(item, s, id);
-            db.NotificationRules.Add(rule);
-            s.NotificationRules[name] = rule; s.ExistingNotificationRuleIds.Add(id);
-        }
-        await db.SaveChangesAsync(ct);
-        return new SectionRestoreResult(BackupSections.Alerting, created, overwritten, skipped, renamed);
-    }
+                var name = item["name"]!.GetValue<string>();
+                var kind = Enum.TryParse<NotificationRuleKind>(item["kind"]?.GetValue<string>(), out var k) ? k : NotificationRuleKind.Custom;
+                var isEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
+                return new NamedRestoreItem<NotificationRule>(
+                    name,
+                    Guid.Empty,
+                    existing =>
+                    {
+                        ApplyRuleScalars(existing, item, kind, isEnabled);
+                        db.NotificationRoutes.RemoveRange(existing.Routes);
+                        db.NotificationRuleTargets.RemoveRange(existing.Targets);
+                        foreach (var r in RestoredRoutes(item, s, existing.Id)) db.NotificationRoutes.Add(r);
+                        foreach (var tg in RestoredTargets(item, s, existing.Id)) db.NotificationRuleTargets.Add(tg);
+                    },
+                    (id, finalName) =>
+                    {
+                        var rule = new NotificationRule { Id = id, Name = finalName };
+                        ApplyRuleScalars(rule, item, kind, isEnabled);
+                        rule.Routes = RestoredRoutes(item, s, id);
+                        rule.Targets = RestoredTargets(item, s, id);
+                        return rule;
+                    });
+            },
+            ct,
+            preserveSourceIds: false);
 
     private static void ApplyRuleScalars(NotificationRule rule, JsonNode item, NotificationRuleKind kind, bool isEnabled)
     {

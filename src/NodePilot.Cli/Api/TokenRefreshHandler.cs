@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Runtime.Versioning;
 using NodePilot.Cli.Api.Dtos;
 using NodePilot.Cli.Auth;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Api;
 

@@ -1,11 +1,13 @@
 using System.Net;
 
-namespace NodePilot.Cli.Api;
+namespace NodePilot.Core.Clients;
 
 /// <summary>
-/// Thrown by <see cref="NodePilotApiClient"/> on every non-2xx response. Captures both
-/// the HTTP status (so commands can branch on 401/403/423) and the parsed
-/// <c>ProblemDetails</c> payload when the server returned one.
+/// Thrown by the HTTP-only clients (the <c>np</c> CLI and the <c>nodepilot-mcp</c> server)
+/// on every non-2xx response. Captures both the HTTP status (so commands and tools can
+/// branch on 401/403/404/409/423) and the parsed <c>ProblemDetails</c> payload when the
+/// server returned one. Shared here for the same reason as
+/// <see cref="ClientSessionSecurity"/>: the two executables must not drift apart.
 /// </summary>
 public sealed class ApiException : Exception
 {
@@ -42,4 +44,7 @@ public sealed class ApiException : Exception
 
     /// <summary>True for 409 — conflicting state (e.g. lock contention, idempotency).</summary>
     public bool IsConflict => StatusCode == HttpStatusCode.Conflict;
+
+    /// <summary>True for 404 — resource not found.</summary>
+    public bool IsNotFound => StatusCode == HttpStatusCode.NotFound;
 }

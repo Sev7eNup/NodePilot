@@ -69,12 +69,8 @@ public class WorkflowsController : WorkflowsControllerBase
     {
         if (string.IsNullOrWhiteSpace(name)) return NotFound();
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        var query = _db.Workflows.AsNoTracking().AsQueryable();
-        if (!accessible.IsUnrestricted)
-        {
-            if (accessible.FolderIds.Count == 0) return NotFound();
-            query = query.Where(w => accessible.FolderIds.Contains(w.FolderId));
-        }
+        var query = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        if (query is null) return NotFound();
         var result = await WorkflowNameResolver.ResolveByNameAsync(query, name, ct);
         if (result.Outcome == WorkflowNameResolver.Outcome.Ambiguous)
             return Conflict(new { message = $"Multiple workflows named '{name.Trim()}' — disambiguate with the GUID." });
@@ -99,13 +95,9 @@ public class WorkflowsController : WorkflowsControllerBase
         // RBAC list-filter: collapse to "every workflow whose folder I can read". Global
         // Admin gets the unrestricted set and skips the IN-clause.
         var accessibleFolders = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        var query = _db.Workflows.AsNoTracking().AsQueryable();
-        if (!accessibleFolders.IsUnrestricted)
-        {
-            if (accessibleFolders.FolderIds.Count == 0)
-                return Ok(new List<WorkflowResponse>());
-            query = query.Where(w => accessibleFolders.FolderIds.Contains(w.FolderId));
-        }
+        var query = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessibleFolders);
+        if (query is null)
+            return Ok(new List<WorkflowResponse>());
         var workflows = await query
             .OrderByDescending(w => w.UpdatedAt)
             .Take(HardLimitWorkflows)
@@ -319,12 +311,8 @@ public class WorkflowsController : WorkflowsControllerBase
     {
         if (string.IsNullOrWhiteSpace(name)) return NotFound();
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        var query = _db.Workflows.AsNoTracking().AsQueryable();
-        if (!accessible.IsUnrestricted)
-        {
-            if (accessible.FolderIds.Count == 0) return NotFound();
-            query = query.Where(w => accessible.FolderIds.Contains(w.FolderId));
-        }
+        var query = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        if (query is null) return NotFound();
         var result = await WorkflowNameResolver.ResolveByNameAsync(query, name, ct);
         if (result.Outcome == WorkflowNameResolver.Outcome.Ambiguous)
             return Conflict(new { message = $"Multiple workflows named '{name.Trim()}' — disambiguate with the GUID." });

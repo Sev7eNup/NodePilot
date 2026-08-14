@@ -1,22 +1,24 @@
 using System.Text.Json;
 
-namespace NodePilot.Mcp.Config;
+namespace NodePilot.Core.Clients;
 
 /// <summary>
-/// Reads the same <c>%APPDATA%\NodePilot\config.json</c> the <c>np</c> CLI writes, so the
-/// MCP server can fall back to a CLI-configured profile server URL. Read-only here — the
-/// MCP server never writes config; the operator manages it via <c>np config</c>.
+/// Reads the plain-JSON config under <c>%APPDATA%\NodePilot\config.json</c> that both
+/// HTTP-only clients share: the <c>np</c> CLI owns it (its <c>ConfigStore</c> adds the write
+/// side), the <c>nodepilot-mcp</c> server only reads it to fall back to a CLI-configured
+/// profile server. Non-secret connection settings only — tokens live in the DPAPI session
+/// store so a config backup never carries a usable session.
 /// </summary>
-public sealed class ConfigStore
+public class ClientConfigStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public string ConfigDir { get; }
     public string ConfigPath => Path.Combine(ConfigDir, "config.json");
 
-    public ConfigStore() : this(DefaultConfigDir()) { }
+    public ClientConfigStore() : this(DefaultConfigDir()) { }
 
-    public ConfigStore(string configDir)
+    public ClientConfigStore(string configDir)
     {
         ConfigDir = configDir;
         Directory.CreateDirectory(ConfigDir);
@@ -30,7 +32,8 @@ public sealed class ConfigStore
 
     public CliConfig Load()
     {
-        if (!File.Exists(ConfigPath)) return new CliConfig();
+        if (!File.Exists(ConfigPath))
+            return new CliConfig();
         try
         {
             using var stream = File.OpenRead(ConfigPath);
@@ -38,6 +41,8 @@ public sealed class ConfigStore
         }
         catch (JsonException)
         {
+            // Corrupt config → treat as empty rather than blocking the user. They can
+            // always `np config set server …` to repair, and `np auth login` re-creates.
             return new CliConfig();
         }
     }

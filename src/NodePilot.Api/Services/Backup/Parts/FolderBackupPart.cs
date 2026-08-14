@@ -26,19 +26,7 @@ public sealed class FolderBackupPart(NodePilotDbContext db) : IBackupPart
         var folders = await db.SharedWorkflowFolders.AsNoTracking().OrderBy(f => f.Depth).ThenBy(f => f.Name).ToListAsync(ct);
         var grants = await db.SharedFolderPermissions.AsNoTracking().ToListAsync(ct);
 
-        var structure = new JsonArray();
-        foreach (var f in folders)
-        {
-            structure.Add(new JsonObject
-            {
-                ["sourceId"] = f.Id.ToString(),
-                ["parentFolderId"] = f.ParentFolderId?.ToString(),
-                ["name"] = f.Name,
-                ["path"] = f.Path,
-                ["depth"] = f.Depth,
-                ["createdByUserId"] = f.CreatedByUserId?.ToString(),
-            });
-        }
+        var structure = FolderTrees.Structure(folders, FolderTrees.Shared);
 
         var grantArr = new JsonArray();
         foreach (var g in grants)

@@ -7,7 +7,7 @@ namespace NodePilot.Api.Services.Backup;
 /// <summary>
 /// How secret-bearing string values inside a workflow <c>DefinitionJson</c> are treated when
 /// the definition leaves the system (ADR 0001 K2). The same key list
-/// (<see cref="WorkflowDefinitionSecretRewriter.SecretConfigKeys"/>) drives all three modes so the
+/// (<see cref="WorkflowDefinitionSecretRewriter.SecretConfigKeys"/>) drives both modes so the
 /// contextual "share one workflow" export and the system backup never disagree about what's a secret.
 /// </summary>
 public enum SecretHandling
@@ -18,9 +18,6 @@ public enum SecretHandling
     /// <summary>Replace secret values with an <c>{"$enc":"&lt;base64&gt;"}</c> object encrypted under
     /// the backup passphrase — the DR backup path.</summary>
     EncryptForBackup,
-
-    /// <summary>Leave values untouched. Internal/test only — never sent over the wire.</summary>
-    PlainInternal,
 }
 
 /// <summary>
@@ -58,7 +55,7 @@ public static class WorkflowDefinitionSecretRewriter
 
         var node = JsonNode.Parse(root.GetRawText())
             ?? throw new InvalidOperationException("Workflow definition is not valid JSON.");
-        return Walk(node, parentName: null, isHttpHeaderValue: false, handling, protector);
+        return Walk(node, parentName: null, isHttpHeaderValue: false, protector);
     }
 
     /// <summary>
@@ -130,8 +127,10 @@ public static class WorkflowDefinitionSecretRewriter
         }
     }
 
+    // Only reached for EncryptForBackup: Rewrite short-circuits Redact to Core's
+    // WorkflowSecretRedactor, and the protector was null-checked there.
     private static JsonNode Walk(JsonNode node, string? parentName, bool isHttpHeaderValue,
-        SecretHandling handling, PassphraseSecretProtector? protector)
+        PassphraseSecretProtector? protector)
     {
         switch (node)
         {
@@ -140,14 +139,14 @@ public static class WorkflowDefinitionSecretRewriter
                 var result = new JsonObject();
                 var isHeadersObject = string.Equals(parentName, "headers", StringComparison.OrdinalIgnoreCase);
                 foreach (var (name, value) in obj)
-                    result[name] = value is null ? null : Walk(value, name, isHeadersObject, handling, protector);
+                    result[name] = value is null ? null : Walk(value, name, isHeadersObject, protector);
                 return result;
             }
             case JsonArray arr:
             {
                 var result = new JsonArray();
                 foreach (var item in arr)
-                    result.Add(item is null ? null : Walk(item, parentName, isHttpHeaderValue, handling, protector));
+                    result.Add(item is null ? null : Walk(item, parentName, isHttpHeaderValue, protector));
                 return result;
             }
             case JsonValue val when val.TryGetValue(out string? s) && s is not null:
@@ -155,14 +154,9 @@ public static class WorkflowDefinitionSecretRewriter
                 if (!NodePilot.Core.WorkflowDefinitions.WorkflowSecretKeys.IsSecretValue(parentName, s, isHttpHeaderValue))
                     return JsonValue.Create(s);
 
-                return handling switch
+                return new JsonObject
                 {
-                    SecretHandling.Redact => JsonValue.Create("***"),
-                    SecretHandling.EncryptForBackup => new JsonObject
-                    {
-                        [EncKey] = Convert.ToBase64String(protector!.Protect(s)),
-                    },
-                    _ => JsonValue.Create(s), // PlainInternal
+                    [EncKey] = Convert.ToBase64String(protector!.Protect(s)),
                 };
             }
             default:

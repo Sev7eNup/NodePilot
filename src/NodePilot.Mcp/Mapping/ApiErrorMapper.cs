@@ -1,4 +1,5 @@
 using ModelContextProtocol;
+using NodePilot.Core.Clients;
 using NodePilot.Mcp.Api;
 
 namespace NodePilot.Mcp.Mapping;

@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Audit;
 using NodePilot.Data;
+using NodePilot.Api.Export;
 
 namespace NodePilot.Api.Controllers;
 
@@ -199,12 +200,12 @@ public class AuditController : ControllerBase
                 sb.Append(row.Id).Append(',')
                   .Append(row.Timestamp.ToString("O")).Append(',')
                   .Append(row.UserId?.ToString() ?? "").Append(',');
-                CsvField(sb, row.Username); sb.Append(',');
-                CsvField(sb, row.Action); sb.Append(',');
-                CsvField(sb, row.ResourceType); sb.Append(',');
+                CsvWriter.Field(sb, row.Username); sb.Append(',');
+                CsvWriter.Field(sb, row.Action); sb.Append(',');
+                CsvWriter.Field(sb, row.ResourceType); sb.Append(',');
                 sb.Append(row.ResourceId?.ToString() ?? "").Append(',');
-                CsvField(sb, row.IpAddress); sb.Append(',');
-                CsvField(sb, row.Details);
+                CsvWriter.Field(sb, row.IpAddress); sb.Append(',');
+                CsvWriter.Field(sb, row.Details);
                 await writer.WriteLineAsync(sb);
             }
 
@@ -230,23 +231,5 @@ public class AuditController : ControllerBase
                 ("until", until),
                 ("exported", batch)),
             ct);
-    }
-
-    /// <summary>
-    /// RFC 4180 minimal CSV escaping: only quote when the value contains a comma, quote,
-    /// or newline; double internal quotes. NULL and empty render as empty (no quotes).
-    /// </summary>
-    private static void CsvField(StringBuilder sb, string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return;
-        var needsQuoting = value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0;
-        if (!needsQuoting) { sb.Append(value); return; }
-        sb.Append('"');
-        foreach (var c in value)
-        {
-            if (c == '"') sb.Append("\"\"");
-            else sb.Append(c);
-        }
-        sb.Append('"');
     }
 }

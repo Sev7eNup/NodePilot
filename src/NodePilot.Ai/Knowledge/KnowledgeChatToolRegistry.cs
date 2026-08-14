@@ -46,10 +46,10 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
 {
     private static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     private static readonly JsonElement NoParams =
-        ParseParams("""{"type":"object","properties":{},"additionalProperties":false}""");
+        ChatToolDispatch.ParseParams("""{"type":"object","properties":{},"additionalProperties":false}""");
 
-    private delegate Task<object> Handler(JsonElement args, KnowledgeToolContext ctx, CancellationToken ct);
-    private sealed record Tool(LlmToolDefinition Def, Handler Run, Func<KnowledgeToolContext, bool> Gate);
+    private sealed record Tool(
+        LlmToolDefinition Def, ChatToolHandler<KnowledgeToolContext> Run, Func<KnowledgeToolContext, bool> Gate);
 
     private readonly Dictionary<string, Tool> _tools;
 
@@ -98,7 +98,7 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
                     "Berechnet die nächsten geplanten Ausführungszeitpunkte (UTC) aktivierter Workflows mit "
                     + "scheduleTrigger — die verlässliche Quelle für 'wann läuft der/ein Workflow als Nächstes'. "
                     + "Nicht aus vergangenen Läufen raten. Optional per idOrName auf einen Workflow eingrenzen.",
-                    ParseParams("""
+                    ChatToolDispatch.ParseParams("""
                         {"type":"object","properties":{
                           "idOrName":{"type":"string","description":"Optional: Workflow-Name oder GUID, um nur dessen Fires zu liefern."},
                           "count":{"type":"integer","minimum":1,"maximum":5,"description":"Fires pro Workflow (Default 3)."}}}
@@ -154,7 +154,7 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
                     + "Fragen nach eingestellten Werten oder Defaults ('wie viele Runspaces werden beim Start vorab "
                     + "allokiert', 'welches Log-Format', 'wie lange werden Executions aufbewahrt') — nicht raten. "
                     + "Optional per 'section' auf eine Sektion eingrenzen.",
-                    ParseParams("""
+                    ChatToolDispatch.ParseParams("""
                         {"type":"object","properties":{
                           "section":{"type":"string","description":"Optionaler Sektions-Teilname (z.B. 'Engine', 'Retention', 'Remote'). Leer = alle Sektionen."}}}
                         """)),
@@ -169,31 +169,11 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
     public async Task<string> ExecuteAsync(string name, string argumentsJson, KnowledgeToolContext context, CancellationToken ct)
     {
         if (!_tools.TryGetValue(name, out var tool))
-            return Error($"Unbekanntes Tool: {name}");
+            return ChatToolDispatch.UnknownTool(name, Json);
         if (!tool.Gate(context))
             return Error($"Tool '{name}' ist in dieser Sitzung nicht verfügbar.");
 
-        try
-        {
-            JsonElement args;
-            try
-            {
-                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson);
-                args = doc.RootElement.Clone();
-            }
-            catch (JsonException) { args = NoParams; }
-
-            var result = await tool.Run(args, context, ct);
-            return Truncate(JsonSerializer.Serialize(result, Json));
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception ex)
-        {
-            return Error(ex.Message);
-        }
+        return await ChatToolDispatch.ExecuteAsync(tool.Run, argumentsJson, NoParams, context, Json, ct, Truncate);
     }
 
     // ---- docs / source ------------------------------------------------------------------------
@@ -369,19 +349,13 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
         }, Json);
     }
 
-    private static string Error(string message) => JsonSerializer.Serialize(new { error = message }, Json);
+    private static string Error(string message) => ChatToolDispatch.Error(message, Json);
 
     private static JsonElement StringParam(string name, string description, bool required = false)
     {
         var desc = description.Replace("\\", "\\\\").Replace("\"", "\\\"");
         var req = required ? $",\"required\":[\"{name}\"]" : "";
-        return ParseParams(
+        return ChatToolDispatch.ParseParams(
             $"{{\"type\":\"object\",\"properties\":{{\"{name}\":{{\"type\":\"string\",\"description\":\"{desc}\"}}}}{req},\"additionalProperties\":false}}");
-    }
-
-    private static JsonElement ParseParams(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.Clone();
     }
 }

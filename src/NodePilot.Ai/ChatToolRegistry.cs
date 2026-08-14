@@ -41,7 +41,8 @@ public interface IChatToolRegistry
 /// </summary>
 public sealed class WorkflowChatToolRegistry : IChatToolRegistry
 {
-    private static readonly JsonElement NoParams = ParseParams("""{"type":"object","properties":{}}""");
+    private static readonly JsonElement NoParams =
+        ChatToolDispatch.ParseParams("""{"type":"object","properties":{}}""");
     private static readonly JsonSerializerOptions Json = new();
 
     // Token-budget caps: redaction happens in the reader on the FULL string; truncation only
@@ -59,13 +60,11 @@ public sealed class WorkflowChatToolRegistry : IChatToolRegistry
         "list_recent_executions", "get_execution_steps", "get_failure_context",
     };
 
-    private delegate Task<object> ToolHandler(JsonElement args, ChatToolContext context, CancellationToken ct);
-
-    private readonly Dictionary<string, (LlmToolDefinition Def, ToolHandler Handler)> _tools;
+    private readonly Dictionary<string, (LlmToolDefinition Def, ChatToolHandler<ChatToolContext> Handler)> _tools;
 
     public WorkflowChatToolRegistry()
     {
-        _tools = new Dictionary<string, (LlmToolDefinition, ToolHandler)>(StringComparer.Ordinal)
+        _tools = new Dictionary<string, (LlmToolDefinition, ChatToolHandler<ChatToolContext>)>(StringComparer.Ordinal)
         {
             ["analyze_workflow"] = (
                 new LlmToolDefinition("analyze_workflow",
@@ -88,7 +87,7 @@ public sealed class WorkflowChatToolRegistry : IChatToolRegistry
                     "Listet die jüngsten Ausführungen (Runs) des aktuell geöffneten Workflows: Status, Zeiten, "
                     + "Fehlermeldung und fehlgeschlagene Steps. Rufe es, wenn der User nach vergangenen Läufen oder "
                     + "Fehlschlägen fragt. Ergebnisse sind redigiert und gekürzt.",
-                    ParseParams("""
+                    ChatToolDispatch.ParseParams("""
                         {"type":"object","properties":{"take":{"type":"integer","minimum":1,"maximum":20,
                         "description":"Anzahl der jüngsten Läufe (Default 10)."}}}
                         """)),
@@ -99,7 +98,7 @@ public sealed class WorkflowChatToolRegistry : IChatToolRegistry
                     "Liefert die Step-Details EINER Ausführung dieses Workflows: pro Step Status, Versuche "
                     + "(attemptCount), Output und ErrorOutput (redigiert + gekürzt). executionId stammt aus "
                     + "list_recent_executions.",
-                    ParseParams("""
+                    ChatToolDispatch.ParseParams("""
                         {"type":"object","properties":{"executionId":{"type":"string",
                         "description":"GUID der Execution (aus list_recent_executions)."}},"required":["executionId"]}
                         """)),
@@ -126,28 +125,8 @@ public sealed class WorkflowChatToolRegistry : IChatToolRegistry
     public async Task<string> ExecuteAsync(string name, string argumentsJson, ChatToolContext context, CancellationToken ct)
     {
         if (!_tools.TryGetValue(name, out var tool))
-            return Error($"Unbekanntes Tool: {name}");
-        try
-        {
-            JsonElement args;
-            try
-            {
-                using var doc = JsonDocument.Parse(string.IsNullOrWhiteSpace(argumentsJson) ? "{}" : argumentsJson);
-                args = doc.RootElement.Clone();
-            }
-            catch (JsonException) { args = NoParams; }
-
-            var result = await tool.Handler(args, context, ct);
-            return JsonSerializer.Serialize(result, Json);
-        }
-        catch (OperationCanceledException)
-        {
-            throw; // Cancellation belongs to the caller's loop, not the error-JSON path.
-        }
-        catch (Exception ex)
-        {
-            return Error(ex.Message);
-        }
+            return ChatToolDispatch.UnknownTool(name, Json);
+        return await ChatToolDispatch.ExecuteAsync(tool.Handler, argumentsJson, NoParams, context, Json, ct);
     }
 
     private static object AnalyzeWorkflow(ChatToolContext ctx)
@@ -305,11 +284,4 @@ public sealed class WorkflowChatToolRegistry : IChatToolRegistry
         return value[..maxChars] + $"…[+{value.Length - maxChars} Zeichen abgeschnitten]";
     }
 
-    private static string Error(string message) => JsonSerializer.Serialize(new { error = message }, Json);
-
-    private static JsonElement ParseParams(string json)
-    {
-        using var doc = JsonDocument.Parse(json);
-        return doc.RootElement.Clone();
-    }
 }

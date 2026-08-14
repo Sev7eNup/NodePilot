@@ -53,9 +53,7 @@ internal sealed class DebugCoordinator
         var redactedVariables = new Dictionary<string, string>(variables.Count, StringComparer.OrdinalIgnoreCase);
         foreach (var (k, v) in variables)
             redactedVariables[k] = _redactor.RedactNamedValue(k, v) ?? v;
-        var snapshotJson = JsonSerializer.Serialize(redactedVariables);
-        if (snapshotJson.Length > MaxSnapshotChars)
-            snapshotJson = snapshotJson.Substring(0, MaxSnapshotChars) + "... [truncated]";
+        var snapshotJson = OutputRedactor.Cap(JsonSerializer.Serialize(redactedVariables), MaxSnapshotChars);
 
         stepExecution.Status = ExecutionStatus.Paused;
         stepExecution.PausedAt = DateTime.UtcNow;

@@ -60,7 +60,7 @@ public class JsonQueryActivity : IActivityExecutor
 
             var loaded = await LoadJsonAsync(source, config, ct);
             if (loaded.Error is not null) return loaded.Error;
-            var json = loaded.Json!;
+            var json = loaded.Content!;
 
             if (json.Length > MaxJsonBytes)
                 return Fail($"input is {json.Length} chars; exceeds limit of {MaxJsonBytes}.");
@@ -83,41 +83,15 @@ public class JsonQueryActivity : IActivityExecutor
             };
         }, ex => $"JsonQuery error: {ex.Message}");
 
-    private async Task<(string? Json, ActivityResult? Error)> LoadJsonAsync(string source, JsonElement config, CancellationToken ct)
-    {
-        if (source == "file")
-        {
-            var path = config.GetStringOrNull("path");
-            if (string.IsNullOrWhiteSpace(path))
-                return (null, Fail("'path' is required when source=file"));
-
-            // M-8: apply the same PathGuard config the FileSystemOperation activity uses, so ops
-            // can restrict file-mode JsonQuery to allow-listed roots / block traversal.
-            if (_config is not null)
-            {
-                try { PathGuard.Validate(_config, path); }
-                catch (InvalidOperationException ex)
-                {
-                    return (null, Fail($"file access denied: {ex.Message}"));
-                }
-            }
-
-            if (!File.Exists(path))
-                return (null, Fail($"file not found: {path}"));
-
-            // M-7: check size before reading so a 10 GiB file doesn't pin the managed heap.
-            var fi = new FileInfo(path);
-            if (fi.Length > MaxJsonBytes)
-                return (null, Fail($"file '{path}' is {fi.Length} bytes; exceeds limit of {MaxJsonBytes}."));
-
-            return (await File.ReadAllTextAsync(path, ct), null);
-        }
-
-        var inline = config.GetString("content", "");
-        if (string.IsNullOrWhiteSpace(inline))
-            return (null, Fail("'content' is required when source=inline"));
-        return (inline, null);
-    }
+    private Task<(string? Content, ActivityResult? Error)> LoadJsonAsync(string source, JsonElement config, CancellationToken ct)
+        => QueryPayloadSource.LoadAsync(
+            source,
+            config,
+            _config,
+            MaxJsonBytes,
+            Fail,
+            (path, length) => $"file '{path}' is {length} bytes; exceeds limit of {MaxJsonBytes}.",
+            ct);
 
     private static (JToken? Root, ActivityResult? Error) ParseJson(string json)
     {

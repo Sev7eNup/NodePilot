@@ -1,4 +1,5 @@
 using System.Runtime.Versioning;
+using NodePilot.Core.Clients;
 using NodePilot.Mcp.Auth;
 
 namespace NodePilot.Mcp.Config;
@@ -15,10 +16,10 @@ namespace NodePilot.Mcp.Config;
 [SupportedOSPlatform("windows")]
 public sealed class McpServerConfig
 {
-    private readonly ConfigStore _config;
+    private readonly ClientConfigStore _config;
     private readonly TokenStore _tokens;
 
-    public McpServerConfig(ConfigStore config, TokenStore tokens)
+    public McpServerConfig(ClientConfigStore config, TokenStore tokens)
     {
         _config = config;
         _tokens = tokens;

@@ -150,9 +150,3 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 }));
 
-// Re-export a void helper so existing call sites that treat `isAuthenticated` as boolean
-// get the right fallback when init hasn't completed yet (treat "unknown" as "not yet signed in"
-// for guard purposes; ProtectedRoute renders a loader for null instead).
-export function isAuthResolved(): boolean {
-  return useAuthStore.getState().isAuthenticated !== null;
-}

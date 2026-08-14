@@ -1,12 +1,12 @@
 using System.Diagnostics;
 using System.Text.Json;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Engine.Execution;
+using NodePilot.Engine.PowerShell;
 
 namespace NodePilot.Engine.Activities;
 
@@ -207,34 +207,25 @@ public class ForEachActivity : IActivityExecutor
 
     private async Task<(Workflow? Workflow, string? Error)> ResolveChildWorkflowAsync(string nameOrId, CancellationToken ct)
     {
-        Workflow? workflow;
-        if (Guid.TryParse(nameOrId, out var id))
+        // Exact-case wins, then case-insensitive; ambiguous names fail the step.
+        var (outcome, workflow) = await SubWorkflowInvocation.ResolveChildWorkflowAsync(_db, nameOrId, ct);
+        return outcome switch
         {
-            workflow = await _db.Workflows.FirstOrDefaultAsync(wf => wf.Id == id, ct);
-        }
-        else
-        {
-            // Exact-case wins, then case-insensitive; ambiguous names fail the step.
-            var resolved = await WorkflowNameResolver.ResolveByNameAsync(_db.Workflows, nameOrId, ct);
-            if (resolved.Outcome == WorkflowNameResolver.Outcome.Ambiguous)
-                return (null, $"forEach: multiple workflows named '{nameOrId}' — disambiguate with the GUID");
-            workflow = resolved.Workflow;
-        }
-
-        if (workflow is null)
-            return (null, $"forEach: child workflow '{nameOrId}' not found");
-        if (!workflow.IsEnabled)
-            return (null, $"forEach: child workflow '{workflow.Name}' is disabled");
-        return (workflow, null);
+            SubWorkflowInvocation.ChildOutcome.Ambiguous =>
+                (null, $"forEach: multiple workflows named '{nameOrId}' — disambiguate with the GUID"),
+            SubWorkflowInvocation.ChildOutcome.NotFound =>
+                (null, $"forEach: child workflow '{nameOrId}' not found"),
+            SubWorkflowInvocation.ChildOutcome.Disabled =>
+                (null, $"forEach: child workflow '{workflow!.Name}' is disabled"),
+            _ => (workflow, null),
+        };
     }
 
     private async Task<(int CurrentDepth, string? Error)> ValidateCallContextAsync(StepExecutionContext context, Workflow childWorkflow, CancellationToken ct)
     {
         // Self-invocation guard — identical to startWorkflow.
-        var parentExec = await _db.WorkflowExecutions
-            .AsNoTracking()
-            .FirstOrDefaultAsync(e => e.Id == context.WorkflowExecutionId, ct);
-        if (parentExec is not null && parentExec.WorkflowId == childWorkflow.Id)
+        var parentExec = await SubWorkflowInvocation.LoadParentExecutionAsync(_db, context.WorkflowExecutionId, ct);
+        if (SubWorkflowInvocation.IsSelfInvocation(parentExec, childWorkflow))
             return (0, "forEach: self-invocation is not allowed (direct recursion)");
 
         // RBAC sub-workflow runtime check — identical model to StartWorkflowActivity.
@@ -242,20 +233,13 @@ public class ForEachActivity : IActivityExecutor
         // still iterate a forEach over a child workflow they no longer have permission to
         // start. Defense in depth: PrePublishChecklist enforces the same check at save
         // time, but folder permissions can be revoked or rotated mid-flight.
-        if (_subWorkflowAuthz is not null && parentExec is not null)
-        {
-            var blocked = await _subWorkflowAuthz.IsBlockedAsync(parentExec, childWorkflow, ct);
-            if (blocked is not null)
-                return (0, $"forEach: {blocked}");
-        }
+        var blocked = await SubWorkflowInvocation.GetAuthorizationBlockAsync(
+            _subWorkflowAuthz, parentExec, childWorkflow, ct);
+        if (blocked is not null)
+            return (0, $"forEach: {blocked}");
 
         // Call-depth guard.
-        var currentDepth = 0;
-        if (context.Variables.TryGetValue($"manual.{WorkflowRecursion.CallDepthKey}", out var depthStr)
-            && int.TryParse(depthStr, out var parsed))
-        {
-            currentDepth = parsed;
-        }
+        var currentDepth = SubWorkflowInvocation.CurrentCallDepth(context);
         if (currentDepth >= WorkflowRecursion.MaxCallDepth)
             return (currentDepth, $"forEach: call depth limit ({WorkflowRecursion.MaxCallDepth}) exceeded");
 
@@ -264,25 +248,10 @@ public class ForEachActivity : IActivityExecutor
 
     private static Dictionary<string, string> CollectStaticParams(JsonElement config, out string? error)
     {
-        error = null;
-        var staticParams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (!config.TryGetProperty("parameters", out var paramsEl) || paramsEl.ValueKind != JsonValueKind.Object)
-            return staticParams;
-
-        foreach (var prop in paramsEl.EnumerateObject())
-        {
-            if (prop.Name.StartsWith("__", StringComparison.OrdinalIgnoreCase))
-            {
-                error = $"forEach: parameter name '{prop.Name}' is reserved ('__'-prefix)";
-                return staticParams;
-            }
-            staticParams[prop.Name] = prop.Value.ValueKind switch
-            {
-                JsonValueKind.String => prop.Value.GetString() ?? string.Empty,
-                JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
-                _ => prop.Value.GetRawText(),
-            };
-        }
+        var staticParams = SubWorkflowInvocation.CollectParameters(config, out var reservedKey);
+        error = reservedKey is null
+            ? null
+            : $"forEach: parameter name '{reservedKey}' is reserved ('__'-prefix)";
         return staticParams;
     }
 
@@ -485,12 +454,7 @@ public class ForEachActivity : IActivityExecutor
                 var list = new List<string>();
                 foreach (var el in doc.RootElement.EnumerateArray())
                 {
-                    list.Add(el.ValueKind switch
-                    {
-                        JsonValueKind.String => el.GetString() ?? string.Empty,
-                        JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
-                        _ => el.GetRawText(),
-                    });
+                    list.Add(PowerShellOperation.JsonElementToScalarString(el));
                 }
                 return list;
             }

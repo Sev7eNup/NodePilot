@@ -159,13 +159,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
         catch (Exception ex)
         {
             sw.Stop();
-            return new PowerShellExecutionResult
-            {
-                Success = false,
-                ExitCode = -1,
-                Error = $"Failed to start {_executable}: {ex.Message}",
-                Duration = sw.Elapsed,
-            };
+            return EngineFailure($"Failed to start {_executable}: {ex.Message}", sw.Elapsed);
         }
         finally
         {
@@ -300,13 +294,7 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
         catch (Exception ex)
         {
             sw.Stop();
-            return new PowerShellExecutionResult
-            {
-                Success = false,
-                ExitCode = -1,
-                Error = $"Isolated execution failed: {ex.Message}",
-                Duration = sw.Elapsed,
-            };
+            return EngineFailure($"Isolated execution failed: {ex.Message}", sw.Elapsed);
         }
         finally
         {
@@ -338,6 +326,19 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
             return (ObserveAbandonedRead(stdoutTask), ObserveAbandonedRead(stderrTask), true);
         }
     }
+
+    /// <summary>
+    /// The engine never got far enough to have a script result: no exit code, no output, just
+    /// the reason. Callers stop the stopwatch first so the reported duration excludes the
+    /// message formatting.
+    /// </summary>
+    private static PowerShellExecutionResult EngineFailure(string error, TimeSpan duration) => new()
+    {
+        Success = false,
+        ExitCode = -1,
+        Error = error,
+        Duration = duration,
+    };
 
     /// <summary>
     /// Returns a completed read's text, or empty for a read still blocked by a leaked inherited pipe

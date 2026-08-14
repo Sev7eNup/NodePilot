@@ -1,16 +1,9 @@
 import { Activity, ChartBar, Chip, Document } from '@carbon/icons-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import {
-  adminSettings,
-  SettingsApiError,
-  type SettingsSectionResponse,
-} from '../../api/adminSettings';
 import { SecretField, serializeSecretField, type SecretFieldMode } from './SecretField';
 import { EnvOverrideBadge } from './EnvOverrideBadge';
-import { EtagConflictDialog } from './EtagConflictDialog';
-import { GroupHeading, HotReloadHint } from './SectionFormHelpers';
+import { GroupHeading, HotReloadHint, useSectionForm } from './SectionFormHelpers';
 
 /**
  * Three independently-saveable cards in one tab: Logging / OpenTelemetry / Stats.
@@ -374,110 +367,9 @@ function StatsCard() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// useSectionForm — generic GET+PUT+ETag+conflict hook for the three cards above
-// ─────────────────────────────────────────────────────────────────────────────
-
-type FormUi<T> = {
-  loading: boolean;
-  data: SettingsSectionResponse<T>;
-  form: T;
-  set: (next: T) => void;
-  isEnvLocked: (k: string) => boolean;
-  save: (payload: unknown) => void;
-  errors: string[] | null;
-  dialog: React.ReactNode;
-};
-
-function useSectionForm<T>(section: string, fallback: T): FormUi<T> | { loading: true } & Partial<FormUi<T>> {
-  const queryClient = useQueryClient();
-  const [conflict, setConflict] = useState<SettingsSectionResponse<T> | null>(null);
-  const [errors, setErrors] = useState<string[] | null>(null);
-  const pendingPayloadRef = useRef<unknown>(null);
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['admin-settings', section],
-    queryFn: () => adminSettings.getSection<T>(section),
-  });
-
-  const [form, setForm] = useState<T>(fallback);
-  useEffect(() => { if (data) setForm(data.payload); }, [data]);
-
-  const isEnvLocked = (key: string) => {
-    const src = data?.effectiveSource[key];
-    return src === 'env' || src === 'cli';
-  };
-
-  const saveMutation = useMutation({
-    mutationFn: async (payload: unknown) => {
-      setErrors(null);
-      if (!data) throw new Error('No section snapshot loaded yet.');
-      pendingPayloadRef.current = payload;
-      return adminSettings.putSection<T>(section, payload, data.etag);
-    },
-    onSuccess: (fresh) => {
-      pendingPayloadRef.current = null;
-      queryClient.setQueryData(['admin-settings', section], fresh);
-      queryClient.invalidateQueries({ queryKey: ['admin-settings', 'status'] });
-    },
-    onError: (err: unknown) => {
-      if (err instanceof SettingsApiError && err.status === 412 && err.body?.current) {
-        setConflict(err.body.current as SettingsSectionResponse<T>);
-        return;
-      }
-      pendingPayloadRef.current = null;
-      if (err instanceof SettingsApiError && err.status === 400 && err.body?.errors) {
-        setErrors(err.body.errors.map((e) => {
-          const fields = e.fields?.length ? `${e.fields.join(', ')}: ` : '';
-          return `${fields}${e.message ?? JSON.stringify(e)}`;
-        }));
-        return;
-      }
-      setErrors([err instanceof Error ? err.message : String(err)]);
-    },
-  });
-
-  if (isLoading || !data) {
-    return { loading: true };
-  }
-
-  const dialog = (
-    <EtagConflictDialog
-      open={!!conflict}
-      serverSnapshot={conflict}
-      localDraft={form}
-      onKeepMine={() => {
-        if (!conflict) return;
-        const retryPayload = pendingPayloadRef.current ?? form;
-        queryClient.setQueryData(['admin-settings', section], conflict);
-        setConflict(null);
-        adminSettings.putSection<T>(section, retryPayload, conflict.etag)
-          .then((fresh) => queryClient.setQueryData(['admin-settings', section], fresh))
-          .catch((e: unknown) => setErrors([e instanceof Error ? e.message : String(e)]))
-          .finally(() => { pendingPayloadRef.current = null; });
-      }}
-      onTakeTheirs={() => {
-        if (!conflict) return;
-        queryClient.setQueryData(['admin-settings', section], conflict);
-        setConflict(null);
-      }}
-      onCancel={() => setConflict(null)}
-    />
-  );
-
-  return {
-    loading: false,
-    data,
-    form,
-    set: setForm,
-    isEnvLocked,
-    save: (payload: unknown) => saveMutation.mutate(payload),
-    errors,
-    dialog,
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Shared UI widgets (kept local to this section; could be hoisted later if reused)
+// Local UI widgets. Card and ErrorsAndSave deliberately do NOT come from
+// SectionFormHelpers: this tab's cards are the tighter p-4/mt-4 variant, and
+// swapping in the shared ones would re-chrome all three cards.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function Card({ icon: Icon, title, children }: Readonly<{ icon: React.ComponentType<{ size?: number }>; title: string; children: React.ReactNode }>) {

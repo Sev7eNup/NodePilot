@@ -165,39 +165,15 @@ public class ServiceManagementActivity : BaseRemoteActivity
         if (action != "status" || !raw.Success || string.IsNullOrWhiteSpace(raw.Output))
             return raw;
 
-        var op = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        try
-        {
-            using var doc = JsonDocument.Parse(raw.Output!);
-            var root = doc.RootElement;
-            // ConvertTo-Json wraps single-result objects in {} but multi-result in []. Get-Service
-            // for a single service is single-result, but we defensively unwrap a 1-element array too.
-            if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 1)
-                root = root[0];
+        // Non-JSON output (e.g. because the service was missing and PowerShell printed an error
+        // instead) projects to nothing — Success/Output stay unchanged and the caller sees
+        // ErrorOutput anyway.
+        var op = PowerShellOperation.MapStatusJsonFields(
+            raw.Output,
+            ("Name", "name"),
+            ("Status", "status"),
+            ("StartType", "startType"));
 
-            if (root.ValueKind == JsonValueKind.Object)
-            {
-                CopyStringField(root, "Name", op, "name");
-                CopyStringField(root, "Status", op, "status");
-                CopyStringField(root, "StartType", op, "startType");
-            }
-        }
-        catch (JsonException)
-        {
-            // Output wasn't JSON (e.g. because the service was missing and PowerShell printed an
-            // error instead) — we leave Success/Output unchanged and return empty
-            // OutputParameters; the caller sees ErrorOutput anyway.
-        }
-
-        if (op.Count == 0) return raw;
-
-        return new ActivityResult
-        {
-            Success = raw.Success,
-            Output = raw.Output,
-            ErrorOutput = raw.ErrorOutput,
-            Duration = raw.Duration,
-            OutputParameters = op,
-        };
+        return WithOutputParameters(raw, op);
     }
 }

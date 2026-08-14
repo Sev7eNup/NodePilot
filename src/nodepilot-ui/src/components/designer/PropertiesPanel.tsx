@@ -35,9 +35,6 @@ import { StepTestPanel } from './properties/StepTestPanel';
 import { JsonPathTree } from './properties/JsonPathTree';
 import { useDesignStore } from '../../stores/designStore';
 
-// Re-export truth-tables so existing import sites keep working.
-export { REMOTE_ACTIVITY_TYPES, TIMEOUT_ACTIVITY_TYPES };
-
 interface Props {
   node: Node;
   allNodes: Node[];

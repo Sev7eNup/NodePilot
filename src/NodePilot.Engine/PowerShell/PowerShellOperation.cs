@@ -128,6 +128,29 @@ internal static class PowerShellOperation
         return result;
     }
 
+    /// <summary>
+    /// Projects a bare <c>ConvertTo-Json</c> status object (no marker envelope) into the
+    /// requested fields. ConvertTo-Json wraps a single result in <c>{}</c> but multiple results
+    /// in <c>[]</c>, so a 1-element array is defensively unwrapped. Non-JSON output — e.g. the
+    /// cmdlet printed an error instead — yields an empty dictionary rather than throwing.
+    /// </summary>
+    public static Dictionary<string, string> MapStatusJsonFields(
+        string? json,
+        params (string SourceKey, string DestKey)[] fields)
+    {
+        if (json is null || !TryParseJson(json, out var parsedDoc, out _))
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        using var doc = parsedDoc!;
+        var root = doc.RootElement;
+        if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() == 1)
+            root = root[0];
+
+        return root.ValueKind == JsonValueKind.Object
+            ? MapObjectFields(root, fields)
+            : new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    }
+
     public static string JsonElementToScalarString(JsonElement value) => value.ValueKind switch
     {
         JsonValueKind.String => value.GetString() ?? string.Empty,

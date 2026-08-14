@@ -322,17 +322,12 @@ export function VariableInsertField({
 }
 
 /**
- * Compact variable picker — a single button that opens a searchable popover
- * instead of rendering every upstream variable as a chip inline. Keeps per-field
- * UI small even when many upstream variables exist.
+ * Open/close + search state shared by the field pickers below: outside-click and Escape close the
+ * popover and clear the query, and the search box autofocuses once the popover has mounted.
+ * The query lives here (not inside {@link PickerPopover}) so each picker can filter with a plain
+ * top-level `useMemo`.
  */
-export function VariablePicker({
-  upstreamVars, onPick,
-}: Readonly<{
-  upstreamVars: UpstreamVariable[];
-  onPick: (expression: string) => void;
-}>) {
-  const { t } = useTranslation(['properties', 'common']);
+function useSearchablePicker() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -361,9 +356,82 @@ export function VariablePicker({
     };
   }, [open]);
 
+  const toggle = useCallback(() => setOpen((o) => !o), []);
+  const close = useCallback(() => { setOpen(false); setQuery(''); }, []);
+
+  return { open, toggle, close, query, setQuery, containerRef, popoverRef, searchRef };
+}
+
+/** Chip trigger + anchored popover + search box. `children` renders the (already filtered) rows. */
+function PickerPopover({
+  picker, icon, chipLabel, count, title, placeholder, surfaceClass, children,
+}: Readonly<{
+  picker: ReturnType<typeof useSearchablePicker>;
+  icon: React.ReactNode;
+  chipLabel: string;
+  count: number;
+  title: string;
+  placeholder: string;
+  surfaceClass?: string;
+  children: React.ReactNode;
+}>) {
+  const { open, toggle, query, setQuery, containerRef, popoverRef, searchRef } = picker;
+  return (
+    <div ref={containerRef} className="relative inline-block">
+      <button
+        type="button"
+        onClick={toggle}
+        className={pickerChipClass()}
+        title={title}
+      >
+        {icon}
+        {chipLabel}
+        <span className="opacity-60 tabular-nums">{count}</span>
+      </button>
+      <AnchoredPickerPopover
+        open={open}
+        anchorRef={containerRef}
+        popoverRef={popoverRef}
+        surfaceClass={surfaceClass}
+      >
+          <div className="p-2 border-b border-outline-variant/30">
+            <div className="relative">
+              <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={placeholder}
+                className="w-full bg-surface-high rounded pl-7 pr-2 py-1 text-xs font-label focus:outline-none focus:ring-1 focus:ring-primary/40"
+              />
+            </div>
+          </div>
+          <div className="min-h-0 max-h-[26rem] overflow-y-auto py-1">
+            {children}
+          </div>
+      </AnchoredPickerPopover>
+    </div>
+  );
+}
+
+/**
+ * Compact variable picker — a single button that opens a searchable popover
+ * instead of rendering every upstream variable as a chip inline. Keeps per-field
+ * UI small even when many upstream variables exist.
+ */
+export function VariablePicker({
+  upstreamVars, onPick,
+}: Readonly<{
+  upstreamVars: UpstreamVariable[];
+  onPick: (expression: string) => void;
+}>) {
+  const { t } = useTranslation(['properties', 'common']);
+  const picker = useSearchablePicker();
+
   // Group by step for readability; filter by query (matches expression or label)
   const { groups, total } = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = picker.query.trim().toLowerCase();
     const filtered = q
       ? upstreamVars.filter((v) => v.expression.toLowerCase().includes(q) || v.label.toLowerCase().includes(q))
       : upstreamVars;
@@ -374,65 +442,45 @@ export function VariablePicker({
       byStep.get(baseLabel)!.push(v);
     }
     return { groups: [...byStep.entries()], total: filtered.length };
-  }, [upstreamVars, query]);
+  }, [upstreamVars, picker.query]);
 
   return (
-    <div ref={containerRef} className="relative inline-block">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={pickerChipClass()}
-        title={t('properties:varsTooltip', { count: upstreamVars.length })}
-      >
-        <ValueVariable size={10} />
-        {t('properties:vars')}
-        <span className="opacity-60 tabular-nums">{upstreamVars.length}</span>
-      </button>
-      <AnchoredPickerPopover open={open} anchorRef={containerRef} popoverRef={popoverRef}>
-          <div className="p-2 border-b border-outline-variant/30">
-            <div className="relative">
-              <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-              <input
-                ref={searchRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('properties:searchVariable')}
-                className="w-full bg-surface-high rounded pl-7 pr-2 py-1 text-xs font-label focus:outline-none focus:ring-1 focus:ring-primary/40"
-              />
-            </div>
+    <PickerPopover
+      picker={picker}
+      icon={<ValueVariable size={10} />}
+      chipLabel={t('properties:vars')}
+      count={upstreamVars.length}
+      title={t('properties:varsTooltip', { count: upstreamVars.length })}
+      placeholder={t('properties:searchVariable')}
+    >
+      {total === 0 && (
+        <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">{t('common:noResults')}</div>
+      )}
+      {groups.map(([stepLabel, items]) => (
+        <div key={stepLabel} className="pb-1">
+          <div className="text-[9px] font-label font-bold text-outline uppercase tracking-widest px-3 pt-1.5 pb-0.5">
+            {stepLabel}
           </div>
-          <div className="min-h-0 max-h-[26rem] overflow-y-auto py-1">
-            {total === 0 && (
-              <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">{t('common:noResults')}</div>
-            )}
-            {groups.map(([stepLabel, items]) => (
-              <div key={stepLabel} className="pb-1">
-                <div className="text-[9px] font-label font-bold text-outline uppercase tracking-widest px-3 pt-1.5 pb-0.5">
-                  {stepLabel}
-                </div>
-                {items.map((v) => {
-                  const suffix = v.label.includes(' → ') ? v.label.split(' → ')[1] : '';
-                  return (
-                    <button
-                      key={v.expression}
-                      draggable
-                      onDragStart={(e) => setVariableDragData(e, v.expression)}
-                      type="button"
-                      onClick={() => { onPick(v.expression); setOpen(false); setQuery(''); }}
-                      className="w-full flex items-center justify-between gap-2 px-3 py-1 text-left hover:bg-surface-high transition-colors"
-                      title={t('properties:insertVariable', { expression: v.expression })}
-                    >
-                      <code className="text-[10px] font-mono text-primary truncate">{v.variable}</code>
-                      {suffix && <span className="text-[10px] font-label text-on-surface-variant truncate">{suffix}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-      </AnchoredPickerPopover>
-    </div>
+          {items.map((v) => {
+            const suffix = v.label.includes(' → ') ? v.label.split(' → ')[1] : '';
+            return (
+              <button
+                key={v.expression}
+                draggable
+                onDragStart={(e) => setVariableDragData(e, v.expression)}
+                type="button"
+                onClick={() => { onPick(v.expression); picker.close(); }}
+                className="w-full flex items-center justify-between gap-2 px-3 py-1 text-left hover:bg-surface-high transition-colors"
+                title={t('properties:insertVariable', { expression: v.expression })}
+              >
+                <code className="text-[10px] font-mono text-primary truncate">{v.variable}</code>
+                {suffix && <span className="text-[10px] font-label text-on-surface-variant truncate">{suffix}</span>}
+              </button>
+            );
+          })}
+        </div>
+      ))}
+    </PickerPopover>
   );
 }
 
@@ -444,11 +492,7 @@ export function VariablePicker({
  */
 export function GlobalVariablePicker({ onPick }: Readonly<{ onPick: (expression: string) => void }>) {
   const { t } = useTranslation(['properties', 'common']);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const containerRef = useRef<HTMLDivElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const picker = useSearchablePicker();
 
   const { data: globals = [], isLoading } = useQuery({
     queryKey: ['global-variables'],
@@ -457,98 +501,58 @@ export function GlobalVariablePicker({ onPick }: Readonly<{ onPick: (expression:
     staleTime: 60_000,
   });
 
-  useEffect(() => {
-    if (!open) return;
-    const onClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (containerRef.current && !containerRef.current.contains(target) && !popoverRef.current?.contains(target)) {
-        setOpen(false); setQuery('');
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setOpen(false); setQuery(''); }
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    document.addEventListener('keydown', onKey);
-    requestAnimationFrame(() => searchRef.current?.focus());
-    return () => {
-      document.removeEventListener('mousedown', onClickOutside);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = picker.query.trim().toLowerCase();
     if (!q) return globals;
     return globals.filter((g) =>
       g.name.toLowerCase().includes(q) || (g.description?.toLowerCase().includes(q) ?? false));
-  }, [globals, query]);
+  }, [globals, picker.query]);
 
   return (
-    <div ref={containerRef} className="relative inline-block">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={pickerChipClass()}
-        title={t('properties:globalsTooltip', { count: globals.length })}
-      >
-        <Password size={10} />
-        {t('properties:globals')}
-        <span className="opacity-60 tabular-nums">{globals.length}</span>
-      </button>
-      <AnchoredPickerPopover open={open} anchorRef={containerRef} popoverRef={popoverRef}>
-          <div className="p-2 border-b border-outline-variant/30">
-            <div className="relative">
-              <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-              <input
-                ref={searchRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('properties:searchGlobalVariable')}
-                className="w-full bg-surface-high rounded pl-7 pr-2 py-1 text-xs font-label focus:outline-none focus:ring-1 focus:ring-primary/40"
-              />
-            </div>
-          </div>
-          <div className="min-h-0 max-h-[26rem] overflow-y-auto py-1">
-            {isLoading && (
-              <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">{t('common:loading')}</div>
+    <PickerPopover
+      picker={picker}
+      icon={<Password size={10} />}
+      chipLabel={t('properties:globals')}
+      count={globals.length}
+      title={t('properties:globalsTooltip', { count: globals.length })}
+      placeholder={t('properties:searchGlobalVariable')}
+    >
+      {isLoading && (
+        <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">{t('common:loading')}</div>
+      )}
+      {!isLoading && globals.length === 0 && (
+        <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">
+          {t('properties:noGlobalsHint')}
+        </div>
+      )}
+      {!isLoading && globals.length > 0 && filtered.length === 0 && (
+        <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">{t('common:noResults')}</div>
+      )}
+      {filtered.map((g) => {
+        const expression = `{{globals.${g.name}}}`;
+        return (
+          <button
+            key={g.id}
+            draggable
+            onDragStart={(e) => setVariableDragData(e, expression)}
+            type="button"
+            onClick={() => { onPick(expression); picker.close(); }}
+            className="w-full flex items-center justify-between gap-2 px-3 py-1 text-left hover:bg-surface-high transition-colors"
+            title={g.description ? `${expression} — ${g.description}` : t('properties:insertVariable', { expression })}
+          >
+            <span className="flex items-center gap-1.5 min-w-0">
+              {g.isSecret && <Locked size={9} className="text-on-surface-variant shrink-0" />}
+              <code className="text-[10px] font-mono text-primary truncate">{g.name}</code>
+            </span>
+            {!g.isSecret && g.value && (
+              <span className="text-[10px] font-label text-on-surface-variant truncate max-w-[7rem]" title={g.value}>
+                = {g.value}
+              </span>
             )}
-            {!isLoading && globals.length === 0 && (
-              <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">
-                {t('properties:noGlobalsHint')}
-              </div>
-            )}
-            {!isLoading && globals.length > 0 && filtered.length === 0 && (
-              <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">{t('common:noResults')}</div>
-            )}
-            {filtered.map((g) => {
-              const expression = `{{globals.${g.name}}}`;
-              return (
-                <button
-                  key={g.id}
-                  draggable
-                  onDragStart={(e) => setVariableDragData(e, expression)}
-                  type="button"
-                  onClick={() => { onPick(expression); setOpen(false); setQuery(''); }}
-                  className="w-full flex items-center justify-between gap-2 px-3 py-1 text-left hover:bg-surface-high transition-colors"
-                  title={g.description ? `${expression} — ${g.description}` : t('properties:insertVariable', { expression })}
-                >
-                  <span className="flex items-center gap-1.5 min-w-0">
-                    {g.isSecret && <Locked size={9} className="text-on-surface-variant shrink-0" />}
-                    <code className="text-[10px] font-mono text-primary truncate">{g.name}</code>
-                  </span>
-                  {!g.isSecret && g.value && (
-                    <span className="text-[10px] font-label text-on-surface-variant truncate max-w-[7rem]" title={g.value}>
-                      = {g.value}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-      </AnchoredPickerPopover>
-    </div>
+          </button>
+        );
+      })}
+    </PickerPopover>
   );
 }
 
@@ -622,87 +626,39 @@ export function OptionsPicker({
   label: string;
 }>) {
   const { t } = useTranslation(['properties', 'common']);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const containerRef = useRef<HTMLDivElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onClickOutside = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (containerRef.current && !containerRef.current.contains(target) && !popoverRef.current?.contains(target)) {
-        setOpen(false); setQuery('');
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setOpen(false); setQuery(''); }
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    document.addEventListener('keydown', onKey);
-    requestAnimationFrame(() => searchRef.current?.focus());
-    return () => {
-      document.removeEventListener('mousedown', onClickOutside);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
+  const picker = useSearchablePicker();
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = picker.query.trim().toLowerCase();
     if (!q) return options;
     return options.filter((o) => o.label.toLowerCase().includes(q) || o.id.toLowerCase().includes(q));
-  }, [options, query]);
+  }, [options, picker.query]);
 
   return (
-    <div ref={containerRef} className="relative inline-block">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={pickerChipClass()}
-        title={t('properties:listTooltip', { label, count: options.length })}
-      >
-        <TaskComplete size={10} />
-        {t('properties:list')}
-        <span className="opacity-60 tabular-nums">{options.length}</span>
-      </button>
-      <AnchoredPickerPopover
-        open={open}
-        anchorRef={containerRef}
-        popoverRef={popoverRef}
-        surfaceClass="bg-surface-container border-outline-variant/30"
-      >
-          <div className="p-2 border-b border-outline-variant/30">
-            <div className="relative">
-              <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-on-surface-variant" />
-              <input
-                ref={searchRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={t('common:searchEllipsis')}
-                className="w-full bg-surface-high rounded pl-7 pr-2 py-1 text-xs font-label focus:outline-none focus:ring-1 focus:ring-primary/40"
-              />
-            </div>
-          </div>
-          <div className="min-h-0 max-h-[26rem] overflow-y-auto py-1">
-            {filtered.length === 0 && (
-              <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">{t('common:noResults')}</div>
-            )}
-            {filtered.map((o) => (
-              <button
-                key={o.id}
-                type="button"
-                onClick={() => { onPick(o.id); setOpen(false); setQuery(''); }}
-                className="w-full flex items-center justify-between gap-2 px-3 py-1 text-left hover:bg-surface-high transition-colors"
-                title={t('properties:insertVariable', { expression: o.label })}
-              >
-                <span className="text-xs font-label text-on-surface truncate">{o.label}</span>
-                <code className="text-[9px] font-mono text-on-surface-variant truncate max-w-[6rem]" title={o.id}>{o.id.slice(0, 8)}</code>
-              </button>
-            ))}
-          </div>
-      </AnchoredPickerPopover>
-    </div>
+    <PickerPopover
+      picker={picker}
+      icon={<TaskComplete size={10} />}
+      chipLabel={t('properties:list')}
+      count={options.length}
+      title={t('properties:listTooltip', { label, count: options.length })}
+      placeholder={t('common:searchEllipsis')}
+      surfaceClass="bg-surface-container border-outline-variant/30"
+    >
+      {filtered.length === 0 && (
+        <div className="text-[11px] font-label text-on-surface-variant px-3 py-2">{t('common:noResults')}</div>
+      )}
+      {filtered.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => { onPick(o.id); picker.close(); }}
+          className="w-full flex items-center justify-between gap-2 px-3 py-1 text-left hover:bg-surface-high transition-colors"
+          title={t('properties:insertVariable', { expression: o.label })}
+        >
+          <span className="text-xs font-label text-on-surface truncate">{o.label}</span>
+          <code className="text-[9px] font-mono text-on-surface-variant truncate max-w-[6rem]" title={o.id}>{o.id.slice(0, 8)}</code>
+        </button>
+      ))}
+    </PickerPopover>
   );
 }

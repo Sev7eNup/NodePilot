@@ -76,17 +76,8 @@ public class FileHashActivity : BaseRemoteActivity
     {
         if (!raw.Success) return raw;
 
-        if (!PowerShellOperation.TryParseJsonBlock(raw.Output, ResultMarkers, out var doc, out var parseError))
-        {
-            if (parseError is null) return raw;
-            return new ActivityResult
-            {
-                Success = false,
-                Output = raw.Output,
-                ErrorOutput = $"File Hash: could not parse result JSON: {parseError}",
-                Duration = raw.Duration,
-            };
-        }
+        if (!TryParseResultEnvelope(raw, ResultMarkers, "File Hash", out var doc, out var passthrough))
+            return passthrough!;
 
         using (doc!)
         {

@@ -8,6 +8,7 @@ using NodePilot.Engine.Activities;
 using NodePilot.Engine.Security;
 using NodePilot.TestCommons;
 using Xunit;
+using NodePilot.Engine.Tests.Helpers;
 
 namespace NodePilot.Engine.Tests.Execution;
 
@@ -519,26 +520,5 @@ public class StepTesterTests
                 Output = "password=hunter2",
                 OutputParameters = { ["leakedToken"] = "eyJabcdef0123456789.eyJpayloadabcdefghij.signaturevaluexyz0" },
             });
-    }
-
-    private sealed class StubGlobalVariableStore : IGlobalVariableStore
-    {
-        public Task<IReadOnlyDictionary<string, string>> GetAllResolvedAsync(CancellationToken ct)
-            => Task.FromResult<IReadOnlyDictionary<string, string>>(new Dictionary<string, string>());
-        public Task<GlobalVariableResolutionResult> GetAllResolvedDetailedAsync(CancellationToken ct)
-            => Task.FromResult(new GlobalVariableResolutionResult(
-                new Dictionary<string, string>(), new HashSet<string>()));
-        public Task<IReadOnlyList<GlobalVariable>> GetAllAsync(CancellationToken ct)
-            => Task.FromResult<IReadOnlyList<GlobalVariable>>(Array.Empty<GlobalVariable>());
-        public Task<string?> GetValueAsync(string name, CancellationToken ct) => Task.FromResult<string?>(null);
-        public Task<GlobalVariable> CreateAsync(string name, string value, bool isSecret, string? description, Guid folderId, string? updatedBy, CancellationToken ct)
-            => throw new NotSupportedException();
-        public Task UpdateAsync(Guid id, string name, string? value, bool isSecret, string? description, Guid? folderId, string? updatedBy, CancellationToken ct)
-            => throw new NotSupportedException();
-        public Task MoveToFolderAsync(Guid id, Guid folderId, string? updatedBy, CancellationToken ct)
-            => throw new NotSupportedException();
-        public Task DeleteAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
-        public Task<ReencryptionSummary> ReencryptAllSecretsAsync(CancellationToken ct)
-            => Task.FromResult(new ReencryptionSummary(0, 0, Array.Empty<ReencryptionSkip>()));
     }
 }

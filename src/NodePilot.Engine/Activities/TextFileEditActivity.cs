@@ -274,18 +274,8 @@ public class TextFileEditActivity : BaseRemoteActivity
 
     protected override ActivityResult PostProcess(ActivityResult raw, JsonElement config)
     {
-        var output = raw.Output ?? string.Empty;
-        if (!PowerShellOperation.TryParseJsonBlock(output, ResultMarkers, out var doc, out var parseError))
-        {
-            if (parseError is null) return raw;
-            return new ActivityResult
-            {
-                Success = false,
-                Output = raw.Output,
-                ErrorOutput = $"Text File Edit: could not parse result JSON: {parseError}",
-                Duration = raw.Duration,
-            };
-        }
+        if (!TryParseResultEnvelope(raw, ResultMarkers, "Text File Edit", out var doc, out var passthrough))
+            return passthrough!;
 
         using (doc!)
         {

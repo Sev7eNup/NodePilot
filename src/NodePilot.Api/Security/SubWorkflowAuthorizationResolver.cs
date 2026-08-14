@@ -97,25 +97,15 @@ public sealed class SubWorkflowAuthorizationResolver : ISubWorkflowAuthorization
         }
         if (chain.Count == 0) return $"sub-workflow folder chain unresolvable for '{childWorkflow.Name}'";
 
-        var userKey = effectiveUserId.Value.ToString("D");
         // Group-aware grant lookup uses the same normalized, server-side snapshot as HTTP
         // authorization. Scheduled/triggered work must never depend on group claims from an
         // old browser token or the legacy JSON cache on User.
         var directoryGroups = await DirectoryGroupPrincipal.LoadAsync(_db, user, ct);
-        var groupKeys = directoryGroups.Select(group => group.GroupKey).Distinct().ToList();
-        var groupAuthorities = directoryGroups.Select(group => group.Authority).Distinct().ToList();
-        if (groupAuthorities.Contains(ExternalIdentity.ActiveDirectoryAuthority, StringComparer.Ordinal))
-            groupAuthorities.Add(string.Empty);
         var candidateGrants = await _db.SharedFolderPermissions.AsNoTracking()
-            .Where(p => chain.Contains(p.FolderId)
-                     && ((p.PrincipalType == FolderPrincipalType.User && p.PrincipalKey == userKey)
-                         || (p.PrincipalType == FolderPrincipalType.Group
-                             && groupKeys.Contains(p.PrincipalKey)
-                             && groupAuthorities.Contains(p.PrincipalAuthority))))
+            .Where(p => chain.Contains(p.FolderId))
+            .Where(DirectoryGroupPrincipal.GrantPredicate(effectiveUserId.Value, directoryGroups))
             .ToListAsync(ct);
-        var grants = candidateGrants
-            .Where(permission => permission.PrincipalType == FolderPrincipalType.User
-                              || directoryGroups.Any(group => group.Matches(permission)))
+        var grants = DirectoryGroupPrincipal.ExactMatches(candidateGrants, directoryGroups)
             .Select(permission => permission.Role)
             .ToList();
         if (grants.Count == 0)

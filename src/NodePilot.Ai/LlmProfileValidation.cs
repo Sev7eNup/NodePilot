@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.Configuration;
 
 namespace NodePilot.Ai;
@@ -84,8 +85,7 @@ public static class LlmProfileValidation
 
         if (mode != LlmProxyMode.Custom) return issues;
 
-        var address = configuration[addressKey]?.Trim();
-        if (string.IsNullOrWhiteSpace(address))
+        if (!HasProxyAddress(configuration[addressKey], out var address))
         {
             issues.Add(new ProfileIssue(
                 addressKey,
@@ -94,8 +94,7 @@ public static class LlmProfileValidation
             return issues;
         }
 
-        if (!Uri.TryCreate(address, UriKind.Absolute, out var proxyUri)
-            || (proxyUri.Scheme != Uri.UriSchemeHttp && proxyUri.Scheme != Uri.UriSchemeHttps))
+        if (!IsHttpProxyUrl(address, out _))
         {
             issues.Add(new ProfileIssue(
                 addressKey,
@@ -113,6 +112,25 @@ public static class LlmProfileValidation
 
         return issues;
     }
+
+    /// <summary>
+    /// First rule for a <c>Custom</c> proxy address: it has to be there. <paramref name="address"/>
+    /// is the trimmed value both callers go on to use.
+    /// </summary>
+    public static bool HasProxyAddress(string? rawAddress, out string address)
+    {
+        address = rawAddress?.Trim() ?? "";
+        return !string.IsNullOrWhiteSpace(address);
+    }
+
+    /// <summary>
+    /// Second rule: an absolute http(s) URL. Shared with <see cref="LlmConfiguredProxy"/>, which
+    /// builds the live proxy from the same value — the two must not disagree on what "valid" means,
+    /// while each keeps its own wording for the rejection.
+    /// </summary>
+    public static bool IsHttpProxyUrl(string address, [NotNullWhen(true)] out Uri? url) =>
+        Uri.TryCreate(address, UriKind.Absolute, out url)
+        && (url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps);
 
     /// <summary>
     /// True when <c>Llm:ActiveProfileId</c> names an existing profile. Read straight from

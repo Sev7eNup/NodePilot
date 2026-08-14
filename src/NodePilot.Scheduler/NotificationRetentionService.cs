@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NodePilot.Core.Enums;
@@ -26,19 +25,10 @@ namespace NodePilot.Scheduler;
 /// <para>Config: <see cref="NotificationsRetentionOptions"/> (<c>Retention:Notifications:*</c> —
 /// Enabled=true, MaxAgeDays=90, IntervalMinutes=360).</para>
 /// </summary>
-public class NotificationRetentionService : BackgroundService
+public class NotificationRetentionService : LeaderGatedRetentionService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
-    // Hot-reload: hold the live monitor (not a cached snapshot) so a config edit of
-    // Retention:Notifications:* takes effect on the next sweep pass without a restart.
-    private readonly IOptionsMonitor<RetentionOptions> _opts;
-    private readonly NodePilot.Core.Interfaces.IClusterStateProvider _cluster;
-    private readonly ILogger<NotificationRetentionService> _logger;
-
     // Resolved per pass from the live monitor — never cached across passes.
     private NotificationsRetentionOptions Opts => _opts.CurrentValue.Notifications;
-
-    private readonly IDatabaseAvailability _availability;
 
     public NotificationRetentionService(
         IServiceScopeFactory scopeFactory,
@@ -46,51 +36,15 @@ public class NotificationRetentionService : BackgroundService
         NodePilot.Core.Interfaces.IClusterStateProvider cluster,
         ILogger<NotificationRetentionService> logger,
         IDatabaseAvailability availability)
+        : base(scopeFactory, opts, cluster, logger, availability)
     {
-        _scopeFactory = scopeFactory;
-        _opts = opts;
-        _cluster = cluster;
-        _availability = availability;
-        _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        try { await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken); }
-        catch (OperationCanceledException) { return; }
-
-        _logger.LogInformation("NotificationRetentionService started (hot-reload: per-pass config).");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            // Availability gate, deliberately ABOVE the leader check: during a database outage no
-            // node can renew its cluster lease, so every node reads as a follower - gating on
-            // IsLeader first would park for the right reason and log the wrong one.
-            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
-            // is left at its default StopHost, so an escaping cancellation would stop the host).
-            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
-
-            // HA gate: leader-only.
-            if (!_cluster.IsLeader)
-            {
-                try { await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken); }
-                catch (OperationCanceledException) { break; }
-                continue;
-            }
-
-            try
-            {
-                await RunIterationAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) { break; }
-
-            var interval = TimeSpan.FromMinutes(Math.Max(1, Opts.IntervalMinutes));
-            try { await Task.Delay(interval, stoppingToken); }
-            catch (OperationCanceledException) { break; }
-        }
-
-        _logger.LogInformation("NotificationRetentionService stopped.");
-    }
+    protected override string ServiceName => nameof(NotificationRetentionService);
+    protected override string MetricServiceTag => "notification_deliveries";
+    protected override TimeSpan WarmUpDelay => TimeSpan.FromSeconds(60);
+    protected override int MinIntervalMinutes => 1;
+    protected override int ConfiguredIntervalMinutes => Opts.IntervalMinutes;
 
     /// <summary>
     /// Exactly one sweep iteration: reads the live config, skips when disabled, else runs one
@@ -98,7 +52,7 @@ public class NotificationRetentionService : BackgroundService
     /// <see cref="ExecuteAsync"/> owns the inter-pass spacing. Internal so unit tests can drive
     /// a single pass (incl. the hot-reload Enabled-toggle path) without the warm-up.
     /// </summary>
-    internal async Task RunIterationAsync(CancellationToken ct)
+    internal override async Task RunIterationAsync(CancellationToken ct)
     {
         // Hot-reload: a live toggle to Enabled=false parks the sweep instead of killing the
         // service, so flipping back to true later takes effect without a restart.
@@ -119,7 +73,7 @@ public class NotificationRetentionService : BackgroundService
             sw.Stop();
             if (deleted > 0)
                 _logger.LogInformation("Pruned {Count} notification delivery/suppression rows older than {Days}d.", deleted, maxAgeDays);
-            var tags = new TagList { new("nodepilot.retention.service", "notification_deliveries") };
+            var tags = RetentionTags();
             SchedulerMetrics.RetentionRowsDeleted.Add(deleted, tags);
             SchedulerMetrics.RetentionSweepDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
             await HeartbeatAsync(intervalMinutes, $"ok: {deleted} pruned", ct);
@@ -127,7 +81,7 @@ public class NotificationRetentionService : BackgroundService
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            var errTags = new TagList { new("nodepilot.retention.service", "notification_deliveries") };
+            var errTags = RetentionTags();
             SchedulerMetrics.RetentionSweepErrors.Add(1, errTags);
             _logger.LogError(ex, "Notification retention sweep failed — retrying on next interval.");
         }
@@ -158,13 +112,5 @@ public class NotificationRetentionService : BackgroundService
             .ExecuteDeleteAsync(ct);
 
         return deletedAttempts + deletedSuppressions + deletedPolicyStates;
-    }
-
-    private async Task HeartbeatAsync(int intervalMinutes, string status, CancellationToken ct)
-    {
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-        await SystemHealthWriter.BeatAsync(db, "NotificationRetentionService",
-            expectedIntervalSeconds: intervalMinutes * 60, status: status, ct: ct);
     }
 }

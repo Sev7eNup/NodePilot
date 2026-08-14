@@ -4,6 +4,7 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.TestCommons;
 using Xunit;
+using NodePilot.Engine.Tests.Helpers;
 
 namespace NodePilot.Engine.Tests.Execution;
 
@@ -287,42 +288,4 @@ public class StepTestContextProviderTests
         target,
         data = new { disabled },
     };
-
-    private sealed class StubGlobalVariableStore : NodePilot.Core.Interfaces.IGlobalVariableStore
-    {
-        private readonly Dictionary<string, string> _values;
-        private readonly HashSet<string> _secretNames = new(StringComparer.Ordinal);
-        public StubGlobalVariableStore(params (string Key, string Value)[] values)
-            => _values = values.ToDictionary(p => p.Key, p => p.Value);
-        public void SetSecret(string name, bool isSecret)
-        {
-            if (isSecret) _secretNames.Add(name); else _secretNames.Remove(name);
-        }
-        public Task<IReadOnlyDictionary<string, string>> GetAllResolvedAsync(CancellationToken ct)
-            => Task.FromResult<IReadOnlyDictionary<string, string>>(_values);
-        public Task<NodePilot.Core.Interfaces.GlobalVariableResolutionResult> GetAllResolvedDetailedAsync(CancellationToken ct)
-            => Task.FromResult(new NodePilot.Core.Interfaces.GlobalVariableResolutionResult(
-                _values, new HashSet<string>()));
-        public Task<IReadOnlyList<NodePilot.Core.Models.GlobalVariable>> GetAllAsync(CancellationToken ct)
-            => Task.FromResult<IReadOnlyList<NodePilot.Core.Models.GlobalVariable>>(
-                _values.Select(kv => new NodePilot.Core.Models.GlobalVariable
-                {
-                    Id = Guid.NewGuid(),
-                    Name = kv.Key,
-                    Value = kv.Value,
-                    IsSecret = _secretNames.Contains(kv.Key),
-                }).ToList());
-        public Task<string?> GetValueAsync(string name, CancellationToken ct)
-            => Task.FromResult<string?>(_values.TryGetValue(name, out var v) ? v : null);
-        public Task<NodePilot.Core.Models.GlobalVariable> CreateAsync(string name, string value, bool isSecret, string? description, Guid folderId, string? updatedBy, CancellationToken ct)
-            => throw new NotSupportedException();
-        public Task UpdateAsync(Guid id, string name, string? value, bool isSecret, string? description, Guid? folderId, string? updatedBy, CancellationToken ct)
-            => throw new NotSupportedException();
-        public Task MoveToFolderAsync(Guid id, Guid folderId, string? updatedBy, CancellationToken ct)
-            => throw new NotSupportedException();
-        public Task DeleteAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
-        public Task<NodePilot.Core.Interfaces.ReencryptionSummary> ReencryptAllSecretsAsync(CancellationToken ct)
-            => Task.FromResult(new NodePilot.Core.Interfaces.ReencryptionSummary(
-                0, 0, Array.Empty<NodePilot.Core.Interfaces.ReencryptionSkip>()));
-    }
 }

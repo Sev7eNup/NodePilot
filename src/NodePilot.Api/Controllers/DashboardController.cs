@@ -53,18 +53,13 @@ public class DashboardController : ControllerBase
         // accessible-folder set once and reuse for every workflow + execution query
         // below. Global Admin gets the unrestricted set and skips filtering.
         var accessible = await _authz.GetAccessibleFolderIdsAsync(User, ct);
-        var workflowQuery = _db.Workflows.AsNoTracking().AsQueryable();
-        var execQuery = _db.WorkflowExecutions.AsNoTracking().AsQueryable();
-        if (!accessible.IsUnrestricted)
+        var workflowQuery = _db.Workflows.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        var execQuery = _db.WorkflowExecutions.AsNoTracking().ScopeToAccessibleFolders(accessible);
+        if (workflowQuery is null || execQuery is null)
         {
-            if (accessible.FolderIds.Count == 0)
-            {
-                // User has zero folder access — return an empty dashboard rather than a
-                // potentially confusing partial one.
-                return Ok(EmptyStats(sinceWindow, windowHours, NormalizeProvider(_db.Database.ProviderName), GetClusterRole(), GetLlmEnabled()));
-            }
-            workflowQuery = workflowQuery.Where(w => accessible.FolderIds.Contains(w.FolderId));
-            execQuery = execQuery.Where(e => accessible.FolderIds.Contains(e.Workflow.FolderId));
+            // User has zero folder access — return an empty dashboard rather than a
+            // potentially confusing partial one.
+            return Ok(EmptyStats(sinceWindow, windowHours, NormalizeProvider(_db.Database.ProviderName), GetClusterRole(), GetLlmEnabled()));
         }
 
         // TriggerTypesJson, not DefinitionJson. The definition is unbounded text holding the whole

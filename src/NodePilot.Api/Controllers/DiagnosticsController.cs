@@ -8,6 +8,7 @@ using NodePilot.Api.Diagnostics;
 using NodePilot.Api.Dtos;
 using NodePilot.Core.Audit;
 using NodePilot.Data;
+using NodePilot.Api.Export;
 
 namespace NodePilot.Api.Controllers;
 
@@ -406,14 +407,14 @@ public class DiagnosticsController : ControllerBase
                 sb.Append(row.Id).Append(',')
                   .Append(row.Timestamp.ToString("O")).Append(',')
                   .Append(row.Level).Append(',');
-                CsvField(sb, row.EventType); sb.Append(',');
-                CsvField(sb, row.WorkflowName); sb.Append(',');
-                CsvField(sb, row.ExecutionShort); sb.Append(',');
-                CsvField(sb, row.StepLabel); sb.Append(',');
-                CsvField(sb, row.ActivityType); sb.Append(',');
-                CsvField(sb, row.UserName); sb.Append(',');
-                CsvField(sb, row.Message); sb.Append(',');
-                CsvField(sb, row.PropertiesJson);
+                CsvWriter.Field(sb, row.EventType); sb.Append(',');
+                CsvWriter.Field(sb, row.WorkflowName); sb.Append(',');
+                CsvWriter.Field(sb, row.ExecutionShort); sb.Append(',');
+                CsvWriter.Field(sb, row.StepLabel); sb.Append(',');
+                CsvWriter.Field(sb, row.ActivityType); sb.Append(',');
+                CsvWriter.Field(sb, row.UserName); sb.Append(',');
+                CsvWriter.Field(sb, row.Message); sb.Append(',');
+                CsvWriter.Field(sb, row.PropertiesJson);
                 await writer.WriteLineAsync(sb);
             }
 
@@ -436,20 +437,6 @@ public class DiagnosticsController : ControllerBase
                 ("executionId", executionId),
                 ("exported", batch)),
             ct);
-    }
-
-    private static void CsvField(StringBuilder sb, string? value)
-    {
-        if (string.IsNullOrEmpty(value)) return;
-        var needsQuoting = value.IndexOfAny(new[] { ',', '"', '\n', '\r' }) >= 0;
-        if (!needsQuoting) { sb.Append(value); return; }
-        sb.Append('"');
-        foreach (var c in value)
-        {
-            if (c == '"') sb.Append("\"\"");
-            else sb.Append(c);
-        }
-        sb.Append('"');
     }
 }
 

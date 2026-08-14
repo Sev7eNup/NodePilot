@@ -37,10 +37,7 @@ public class DatabaseTrigger : IActivityExecutor
     {
         // If the orchestrator's polling source fired this trigger, it already ran the query and
         // just needs to surface the change-detection data to downstream steps.
-        var orchestratorParams = new Dictionary<string, string>();
-        foreach (var (k, v) in context.Variables)
-            if (k.StartsWith("manual.", StringComparison.OrdinalIgnoreCase))
-                orchestratorParams[k["manual.".Length..]] = v;
+        var orchestratorParams = TriggerVariables.ExtractManualParams(context.Variables);
         if (orchestratorParams.TryGetValue("dbSentinel", out var dbSentinel))
         {
             return new ActivityResult

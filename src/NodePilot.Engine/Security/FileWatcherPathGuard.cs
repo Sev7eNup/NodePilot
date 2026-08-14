@@ -42,19 +42,14 @@ public static class FileWatcherPathGuard
         {
             foreach (var blocked in HardBlockedWindowsRoots)
             {
-                if (normalized.Equals(blocked, StringComparison.OrdinalIgnoreCase)
-                    || normalized.StartsWith(blocked + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                if (PathGuard.IsWithinRoot(normalized, blocked))
                     throw new InvalidOperationException(
                         $"FileWatcherTrigger: directory '{dir}' is under a system path ('{blocked}'). " +
                         "Set Trigger:FileWatcher:AllowSystemPaths=true and add it to AllowedRoots to override.");
             }
         }
 
-        var roots = config.GetSection("Trigger:FileWatcher:AllowedRoots").GetChildren()
-            .Select(c => c.Value)
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Cast<string>()
-            .ToArray();
+        var roots = PathGuard.ReadConfiguredRoots(config, "Trigger:FileWatcher:AllowedRoots");
         if (roots.Length == 0) return;
 
         var allowed = roots.Any(root =>
@@ -62,8 +57,7 @@ public static class FileWatcherPathGuard
             string rFull;
             try { rFull = Path.GetFullPath(root); } catch { return false; }
             var r = rFull.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-            return normalized.Equals(r, StringComparison.OrdinalIgnoreCase)
-                || normalized.StartsWith(r + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
+            return PathGuard.IsWithinRoot(normalized, r);
         });
         if (!allowed)
             throw new InvalidOperationException(

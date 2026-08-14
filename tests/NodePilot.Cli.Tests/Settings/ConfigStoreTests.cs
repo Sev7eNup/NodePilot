@@ -1,6 +1,7 @@
 using FluentAssertions;
 using NodePilot.Cli.Settings;
 using Xunit;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Tests.Settings;
 

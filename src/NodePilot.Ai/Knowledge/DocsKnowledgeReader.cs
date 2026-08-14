@@ -19,45 +19,26 @@ public interface IDocsKnowledgeReader
 /// </summary>
 public sealed class DocsKnowledgeReader(IOptionsMonitor<AiKnowledgeOptions> options) : IDocsKnowledgeReader
 {
-    private string Root()
-    {
-        var configured = options.CurrentValue.DocsRootPath;
-        return string.IsNullOrWhiteSpace(configured)
-            ? Path.Combine(AppContext.BaseDirectory, "knowledge", "docs")
-            : configured;
-    }
+    private readonly KnowledgeCorpusReader _corpus = new(
+        () => options.CurrentValue.DocsRootPath,
+        "docs",
+        IsMarkdown,
+        full => IsMarkdown(full) ? null : "Nur Markdown-Dokumente (.md) sind lesbar.",
+        notFoundError: "Dokument nicht gefunden.",
+        unreadableError: "Dokument konnte nicht gelesen werden.");
 
     private static bool IsMarkdown(string path) =>
         path.EndsWith(".md", StringComparison.OrdinalIgnoreCase)
         || path.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase);
 
-    public bool IsAvailable() => Directory.Exists(Root());
+    public bool IsAvailable() => _corpus.IsAvailable();
 
     public IReadOnlyList<KnowledgeSearchHit> Search(string query)
     {
         var o = options.CurrentValue;
-        return KnowledgeFileSearch.Search(Root(), query, o.DocsMaxResults, o.DocsMaxFileBytes, IsMarkdown);
+        return _corpus.Search(query, o.DocsMaxResults, o.DocsMaxFileBytes);
     }
 
-    public KnowledgeFileResult Read(string relPath)
-    {
-        var o = options.CurrentValue;
-        var root = Root();
-        if (!KnowledgeFileSearch.TryResolveWithin(root, relPath, out var full))
-            return KnowledgeFileResult.Fail("Ungültiger oder unerlaubter Pfad.");
-        if (!IsMarkdown(full))
-            return KnowledgeFileResult.Fail("Nur Markdown-Dokumente (.md) sind lesbar.");
-        if (!File.Exists(full))
-            return KnowledgeFileResult.Fail("Dokument nicht gefunden.");
-        try
-        {
-            if (new FileInfo(full).Length > o.DocsMaxFileBytes)
-                return KnowledgeFileResult.Fail($"Datei zu groß (> {o.DocsMaxFileBytes} Bytes).");
-            return KnowledgeFileResult.Success(KnowledgeFileSearch.RelativeOf(root, full), File.ReadAllText(full));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return KnowledgeFileResult.Fail("Dokument konnte nicht gelesen werden.");
-        }
-    }
+    public KnowledgeFileResult Read(string relPath) =>
+        _corpus.Read(relPath, options.CurrentValue.DocsMaxFileBytes);
 }

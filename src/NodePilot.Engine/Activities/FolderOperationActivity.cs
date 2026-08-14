@@ -2,7 +2,6 @@ using System.Text.Json;
 using Microsoft.Extensions.Configuration;
 using NodePilot.Core.Interfaces;
 using NodePilot.Engine.PowerShell;
-using NodePilot.Engine.Security;
 
 namespace NodePilot.Engine.Activities;
 
@@ -16,15 +15,18 @@ namespace NodePilot.Engine.Activities;
 /// PostProcess projects into OutputParameters (param.operation, param.path, param.destination,
 /// param.newPath, param.exists, param.fullName, param.items, param.count — depending on the
 /// operation). This guarantees that <c>{{step.param.exists}}</c> is always "true"/"false" and
-/// <c>{{step.param.items}}</c> is always a JSON array.
+/// <c>{{step.param.items}}</c> is always a JSON array. Validation, envelope and projection live
+/// in <see cref="FileSystemOperationActivityBase"/>; only <c>list</c> is folder-specific.
 /// </summary>
-public class FolderOperationActivity : BaseRemoteActivity
+public class FolderOperationActivity : FileSystemOperationActivityBase
 {
     public override string ActivityType => "folderOperation";
 
-    private static readonly PowerShellOperationMarkers ResultMarkers = PowerShellOperation.Markers("FOLDEROP");
+    protected override string OperationLabel => "Folder Operation";
 
-    private readonly IConfiguration _config;
+    protected override string SupportedOperations => "copy, move, delete, exists, list, create, rename";
+
+    protected override int ResultJsonDepth => 6;
 
     public FolderOperationActivity(
         IRemoteSessionFactory sessionFactory,
@@ -32,66 +34,21 @@ public class FolderOperationActivity : BaseRemoteActivity
         NodePilot.Data.NodePilotDbContext db,
         PowerShellEngineFactory engineFactory,
         IConfiguration config)
-        : base(sessionFactory, credentialStore, db, engineFactory, config)
+        : base(sessionFactory, credentialStore, db, engineFactory, config, "FOLDEROP")
     {
-        _config = config;
     }
 
-    protected override string BuildScript(JsonElement config, StepExecutionContext context)
+    protected override string BuildOperationBody(string operation) => operation switch
     {
-        var operation = config.GetStringOrNull("operation")?.ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(operation))
-            throw new InvalidOperationException("Folder Operation: 'operation' is required (copy, move, delete, exists, list, create, rename)");
-
-        var path = config.GetStringOrNull("path");
-        if (string.IsNullOrWhiteSpace(path))
-            throw new InvalidOperationException("Folder Operation: 'path' is required");
-
-        var destination = config.GetStringOrNull("destination");
-        var newName = config.GetStringOrNull("newName");
-
-        PathGuard.Validate(_config, path, allowWildcards: false);
-        if (!string.IsNullOrWhiteSpace(destination))
-            PathGuard.Validate(_config, destination, allowWildcards: false);
-        if (string.Equals(operation, "rename", StringComparison.Ordinal) && !string.IsNullOrWhiteSpace(newName))
-            PathGuard.ValidateSiblingRenameTarget(_config, path, newName);
-
-        if ((operation == "copy" || operation == "move") && string.IsNullOrWhiteSpace(destination))
-            throw new InvalidOperationException($"Folder Operation '{operation}' requires 'destination'");
-        if (operation == "rename" && string.IsNullOrWhiteSpace(newName))
-            throw new InvalidOperationException("Folder Operation 'rename' requires 'newName'");
-
-        var qPath = PowerShellOperation.Literal(path);
-        var qDest = PowerShellOperation.Literal(destination);
-        var qNewName = PowerShellOperation.Literal(newName);
-
-        var opBody = operation switch
-        {
-            "copy" => BuildCopy(),
-            "move" => BuildMove(),
-            "delete" => BuildDelete(),
-            "exists" => BuildExists(),
-            "list" => BuildList(),
-            "create" => BuildCreate(),
-            "rename" => BuildRename(),
-            _ => throw new InvalidOperationException($"Unknown folder operation: {operation}")
-        };
-
-        return $$"""
-            $ErrorActionPreference = 'Stop'
-            $__path = {{qPath}}
-            $__destination = {{qDest}}
-            $__newName = {{qNewName}}
-            $__result = [ordered]@{ operation = '{{operation}}'; path = $__path; ok = $true }
-            try {
-            {{opBody}}
-            } catch {
-                $__result.ok = $false
-                $__result.error = $_.Exception.Message
-            }
-            {{ResultMarkers.RenderJsonEnvelope("$__result", depth: 6)}}
-            """;
-    }
+        "copy" => BuildCopy(),
+        "move" => BuildMove(),
+        "delete" => BuildDelete(),
+        "exists" => BuildExists(),
+        "list" => BuildList(),
+        "create" => BuildCreate(),
+        "rename" => BuildRename(),
+        _ => throw new InvalidOperationException($"Unknown folder operation: {operation}")
+    };
 
     // Container-Assertion: ensures the path is a folder before mutation, so a file typed
     // here by mistake throws cleanly instead of being copied/moved/deleted as if it were
@@ -163,101 +120,19 @@ public class FolderOperationActivity : BaseRemoteActivity
             $__result.newName = $__newName
         """;
 
-    protected override ActivityResult PostProcess(ActivityResult raw, JsonElement config)
+    protected override string? ProjectExtraOperation(
+        string operation,
+        JsonElement root,
+        Dictionary<string, string> parameters)
     {
-        var output = raw.Output ?? string.Empty;
-        if (!PowerShellOperation.TryParseJsonBlock(output, ResultMarkers, out var doc, out var parseError))
-        {
-            if (parseError is null) return raw;
-            return new ActivityResult
-            {
-                Success = false,
-                Output = raw.Output,
-                ErrorOutput = $"Folder Operation: could not parse result JSON: {parseError}",
-                Duration = raw.Duration,
-            };
-        }
+        if (operation != "list") return null;
 
-        using (doc!)
-        {
-            var root = doc!.RootElement;
-            var ok = root.TryGetProperty("ok", out var okEl) && okEl.GetBoolean();
-            var operation = root.TryGetProperty("operation", out var opEl) ? opEl.GetString() ?? "" : "";
-
-            if (!ok)
-            {
-                var err = root.TryGetProperty("error", out var errEl) ? errEl.GetString() : null;
-                return new ActivityResult
-                {
-                    Success = false,
-                    Output = null,
-                    ErrorOutput = string.IsNullOrEmpty(err) ? raw.ErrorOutput : err,
-                    Duration = raw.Duration,
-                };
-            }
-
-            var parameters = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["operation"] = operation,
-            };
-            if (root.TryGetProperty("path", out var pathEl) && pathEl.ValueKind == JsonValueKind.String)
-                parameters["path"] = pathEl.GetString() ?? "";
-
-            string display;
-            switch (operation)
-            {
-                case "copy":
-                case "move":
-                    if (root.TryGetProperty("destination", out var destEl))
-                        parameters["destination"] = destEl.GetString() ?? "";
-                    display = $"{operation}: {parameters.GetValueOrDefault("path")} -> {parameters.GetValueOrDefault("destination")}";
-                    break;
-
-                case "exists":
-                    var exists = root.TryGetProperty("exists", out var eEl) && eEl.GetBoolean();
-                    parameters["exists"] = exists ? "true" : "false";
-                    display = exists ? "True" : "False";
-                    break;
-
-                case "list":
-                    if (root.TryGetProperty("items", out var itemsEl))
-                        parameters["items"] = itemsEl.GetRawText();
-                    var count = root.TryGetProperty("count", out var cEl) ? cEl.GetInt32() : 0;
-                    parameters["count"] = count.ToString();
-                    if (root.TryGetProperty("truncated", out var truncEl) && truncEl.ValueKind != JsonValueKind.Null)
-                        parameters["truncated"] = truncEl.GetBoolean() ? "true" : "false";
-                    display = root.TryGetProperty("items", out var itemsEl2) ? itemsEl2.GetRawText() : "[]";
-                    break;
-
-                case "create":
-                    if (root.TryGetProperty("fullName", out var fnEl))
-                        parameters["fullName"] = fnEl.GetString() ?? "";
-                    if (root.TryGetProperty("creationTime", out var ctEl))
-                        parameters["creationTime"] = ctEl.GetString() ?? "";
-                    display = parameters.GetValueOrDefault("fullName") ?? "";
-                    break;
-
-                case "rename":
-                    if (root.TryGetProperty("newPath", out var npEl))
-                        parameters["newPath"] = npEl.GetString() ?? "";
-                    if (root.TryGetProperty("newName", out var nnEl))
-                        parameters["newName"] = nnEl.GetString() ?? "";
-                    display = parameters.GetValueOrDefault("newPath") ?? "";
-                    break;
-
-                default:
-                    display = "OK";
-                    break;
-            }
-
-            return new ActivityResult
-            {
-                Success = true,
-                Output = display,
-                ErrorOutput = raw.ErrorOutput,
-                Duration = raw.Duration,
-                OutputParameters = parameters,
-            };
-        }
+        if (root.TryGetProperty("items", out var itemsEl))
+            parameters["items"] = itemsEl.GetRawText();
+        var count = root.TryGetProperty("count", out var cEl) ? cEl.GetInt32() : 0;
+        parameters["count"] = count.ToString();
+        if (root.TryGetProperty("truncated", out var truncEl) && truncEl.ValueKind != JsonValueKind.Null)
+            parameters["truncated"] = truncEl.GetBoolean() ? "true" : "false";
+        return root.TryGetProperty("items", out var itemsEl2) ? itemsEl2.GetRawText() : "[]";
     }
 }

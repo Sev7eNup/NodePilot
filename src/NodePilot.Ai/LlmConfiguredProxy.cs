@@ -116,8 +116,8 @@ public sealed class LlmConfiguredProxy : IWebProxy
         var cached = _cache;
         if (cached is not null && cached.Matches(proxy)) return cached.Proxy;
 
-        var address = proxy.Address?.Trim();
-        if (string.IsNullOrWhiteSpace(address))
+        // Same two rules the settings validation applies, from the same place — see LlmProfileValidation.
+        if (!LlmProfileValidation.HasProxyAddress(proxy.Address, out var address))
         {
             // Rejected by LlmProfileValidation on every save and at boot, so this only fires for a
             // hand-edited config picked up by hot-reload. Failing loudly beats silently going
@@ -127,8 +127,7 @@ public sealed class LlmConfiguredProxy : IWebProxy
                 + "Set a proxy URL (e.g. http://proxy.corp.local:8080) or switch the mode to 'Off' or 'System'.");
         }
 
-        if (!Uri.TryCreate(address, UriKind.Absolute, out var proxyUri)
-            || (proxyUri.Scheme != Uri.UriSchemeHttp && proxyUri.Scheme != Uri.UriSchemeHttps))
+        if (!LlmProfileValidation.IsHttpProxyUrl(address, out var proxyUri))
         {
             throw new InvalidOperationException(
                 $"{LlmProxyOptions.SectionName}:Address '{address}' is not a valid http(s) URL.");

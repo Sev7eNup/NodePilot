@@ -33,19 +33,6 @@ export function skippedConfigKeys(activityType: string): ReadonlyArray<string> {
 }
 
 /**
- * Back-compat alias for the older "include-list" API. Now returns an empty array when no
- * skips are configured; callers should treat "no skips" as "every key is cloneable" rather
- * than "nothing is cloneable" (the inverse semantics from before the cloning rules were
- * relaxed to copy entire configs).
- *
- * @deprecated Read `skippedConfigKeys` directly — the include-list shape no longer maps onto
- * the actual cloning behaviour.
- */
-export function cloneableConfigKeys(activityType: string): ReadonlyArray<string> {
-  return skippedConfigKeys(activityType);
-}
-
-/**
  * Returns true if `targetMachineId` + `credentialId` are meaningful for this activity.
  * Used to decide whether the clone-picker should offer cross-type Remote-→-Remote
  * (e.g. clone target machine from a runScript onto a serviceManagement step).

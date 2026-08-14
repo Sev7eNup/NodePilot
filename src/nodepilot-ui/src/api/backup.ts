@@ -42,17 +42,6 @@ export interface BackupRestoreResult {
   warnings: string[];
 }
 
-/** Section keys, in display order — must match BackupSections on the server. */
-export const BACKUP_SECTIONS = [
-  'folders',
-  'users',
-  'credentials',
-  'machines',
-  'globalVariables',
-  'workflows',
-  'settings',
-] as const;
-
 export const backupApi = {
   getManifest: () => api.get<BackupManifest>('/backup/manifest'),
 

@@ -6,6 +6,7 @@ using Spectre.Console.Cli;
 using Spectre.Console.Cli.Testing;
 using Spectre.Console.Testing;
 using WireMock.Server;
+using NodePilot.Core.Clients;
 
 namespace NodePilot.Cli.Tests.Infra;
 

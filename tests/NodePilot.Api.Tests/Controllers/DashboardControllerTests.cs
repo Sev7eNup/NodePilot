@@ -347,6 +347,20 @@ public class DashboardControllerTests
     // NOT flag the row, and vice versa.
 
     /// <summary>An always-armed workflow: hourly cron, so NextFireUtc is within the next hour.</summary>
+    /// <summary>
+    /// A point in time strictly between "now" and the next firing of <see cref="ArmedCronWorkflow"/>'s
+    /// cron, which is the top of the coming hour. The two blackout tests below split their verdict on
+    /// this instant, so it must never land on or past the fire time — a fixed "now + 30 s" did exactly
+    /// that whenever the suite ran in the last half minute of an hour, silently inverting both of them
+    /// (observed in CI at 19:00:20Z). Anchoring on the actual boundary holds at every wall-clock moment.
+    /// </summary>
+    private static DateTime CutoffBeforeNextHourlyFire()
+    {
+        var now = DateTime.UtcNow;
+        var nextFire = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(1);
+        return now.AddTicks(Math.Max(1, (nextFire - now).Ticks / 2));
+    }
+
     private static Workflow ArmedCronWorkflow(string name = "Nightly Backup")
         => new()
         {
@@ -396,8 +410,8 @@ public class DashboardControllerTests
         db.Workflows.Add(ArmedCronWorkflow());
         await db.SaveChangesAsync();
 
-        // Blocks only from 30 s out — i.e. not "now", but by the time the cron fires.
-        var cutoff = DateTime.UtcNow.AddSeconds(30);
+        // Blocks only from the cutoff on — i.e. not "now", but by the time the cron fires.
+        var cutoff = CutoffBeforeNextHourlyFire();
         var evaluator = new StubMaintenanceWindowEvaluator
         {
             VerdictAt = at => at >= cutoff
@@ -419,7 +433,7 @@ public class DashboardControllerTests
         await db.SaveChangesAsync();
 
         // The honest inverse: evaluating at "now" would have flagged this row wrongly.
-        var cutoff = DateTime.UtcNow.AddSeconds(30);
+        var cutoff = CutoffBeforeNextHourlyFire();
         var evaluator = new StubMaintenanceWindowEvaluator
         {
             VerdictAt = at => at < cutoff

@@ -236,35 +236,14 @@ public class RegistryActivity : BaseRemoteActivity
                 $__result.count = $names.Count
         """;
 
-    private static string BuildListValues() => """
-                $key = Get-Item -LiteralPath $__keyPath
-                $items = New-Object System.Collections.ArrayList
-                foreach ($n in $key.Property) {
-                    [void]$items.Add([ordered]@{
-                        name  = $n
-                        type  = $key.GetValueKind($n).ToString()
-                        value = $key.GetValue($n)
-                    })
-                }
-                $__result.values = @($items)
-                $__result.count = $items.Count
-        """;
+    // listValues is a valueName-less read under another name: same inventory, same JSON shape
+    // (values/count), so it emits the exact same snippet instead of a second copy of it.
+    private static string BuildListValues() => BuildReadAllValues();
 
     protected override ActivityResult PostProcess(ActivityResult raw, JsonElement config)
     {
-        var output = raw.Output ?? "";
-        if (!PowerShellOperation.TryParseJsonBlock(output, ResultMarkers, out var doc, out var parseError))
-        {
-            if (parseError is null) return raw;
-
-            return new ActivityResult
-            {
-                Success = false,
-                Output = raw.Output,
-                ErrorOutput = $"Registry: could not parse result JSON: {parseError}",
-                Duration = raw.Duration,
-            };
-        }
+        if (!TryParseResultEnvelope(raw, ResultMarkers, "Registry", out var doc, out var passthrough))
+            return passthrough!;
 
         using (doc!)
         {

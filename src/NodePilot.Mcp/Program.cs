@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using NodePilot.Core.Clients;
 using NodePilot.Mcp.Api;
 using NodePilot.Mcp.Auth;
 using NodePilot.Mcp.Config;
@@ -20,7 +21,7 @@ builder.Logging.AddConsole(o => o.LogToStandardErrorThreshold = LogLevel.Trace);
 
 // Connection plumbing — singletons. The NodePilotApiClient is built once from the resolved
 // session (env-first; falls back to the CLI's DPAPI session + config.json).
-builder.Services.AddSingleton<ConfigStore>();
+builder.Services.AddSingleton<ClientConfigStore>();
 builder.Services.AddSingleton<TokenStore>();
 builder.Services.AddSingleton<McpServerConfig>();
 builder.Services.AddSingleton<ApiClientFactory>();

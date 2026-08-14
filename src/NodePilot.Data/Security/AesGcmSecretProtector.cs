@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using NodePilot.Core.Interfaces;
@@ -25,9 +24,6 @@ namespace NodePilot.Data.Security;
 public sealed class AesGcmSecretProtector : ISecretProtector
 {
     private readonly byte[] _key;
-    private const byte Version = 0x01;
-    private const int NonceSize = 12;     // GCM standard
-    private const int TagSize = 16;       // 128-bit GCM tag
 
     public string ProviderName => "AesGcm";
 
@@ -41,95 +37,23 @@ public sealed class AesGcmSecretProtector : ISecretProtector
         _key = masterKey;
     }
 
-    public byte[] Protect(string plaintext)
-    {
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            var plain = Encoding.UTF8.GetBytes(plaintext);
-            var nonce = new byte[NonceSize];
-            RandomNumberGenerator.Fill(nonce);
-            var ciphertext = new byte[plain.Length];
-            var tag = new byte[TagSize];
+    public byte[] Protect(string plaintext) => DataMetrics.MeasureCrypto("encrypt", ProviderName, () =>
+        SecretEnvelope.Seal(Encoding.UTF8.GetBytes(plaintext), _key));
 
-            // .NET 10's AesGcm constructor takes the key + tag size — the latter is required
-            // since 9.0 (was inferable before; explicit prevents later breaking-change pain).
-            using var gcm = new AesGcm(_key, TagSize);
-            gcm.Encrypt(nonce, plain, ciphertext, tag);
+    private const string TooShortMessage = "AES-GCM blob is shorter than the minimum envelope (header + nonce + tag).";
 
-            var blob = new byte[1 + NonceSize + ciphertext.Length + TagSize];
-            blob[0] = Version;
-            Buffer.BlockCopy(nonce, 0, blob, 1, NonceSize);
-            Buffer.BlockCopy(ciphertext, 0, blob, 1 + NonceSize, ciphertext.Length);
-            Buffer.BlockCopy(tag, 0, blob, 1 + NonceSize + ciphertext.Length, TagSize);
-
-            sw.Stop();
-            DataMetrics.CredentialCryptoCalls.Add(1,
-                new("operation", "encrypt"),
-                new("provider", ProviderName),
-                new("result", "success"));
-            var tags = new TagList { new("operation", "encrypt"), new("provider", ProviderName) };
-            DataMetrics.CredentialCryptoDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
-            return blob;
-        }
-        catch
-        {
-            sw.Stop();
-            DataMetrics.CredentialCryptoCalls.Add(1,
-                new("operation", "encrypt"),
-                new("provider", ProviderName),
-                new("result", "failure"));
-            var tags = new TagList { new("operation", "encrypt"), new("provider", ProviderName) };
-            DataMetrics.CredentialCryptoDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
-            throw;
-        }
-    }
+    private static string UnknownVersionMessage(byte actual) =>
+        $"Unknown AES-GCM envelope version 0x{actual:X2}. Expected {SecretEnvelope.ExpectedVersionHex}. " +
+        "Was the row written by a different ISecretProtector?";
 
     public string Unprotect(byte[] blob)
     {
-        ArgumentNullException.ThrowIfNull(blob);
-        if (blob.Length < 1 + NonceSize + TagSize)
-            throw new CryptographicException("AES-GCM blob is shorter than the minimum envelope (header + nonce + tag).");
-        if (blob[0] != Version)
-            throw new CryptographicException(
-                $"Unknown AES-GCM envelope version 0x{blob[0]:X2}. Expected 0x{Version:X2}. " +
-                "Was the row written by a different ISecretProtector?");
+        // Header validation runs OUTSIDE the measured region, as it always has: a malformed blob
+        // is a caller error, not a crypto failure, and must not land in the failed-decrypt series.
+        SecretEnvelope.ValidateHeader(blob, TooShortMessage, UnknownVersionMessage);
 
-        var sw = Stopwatch.StartNew();
-        try
-        {
-            var ciphertextLength = blob.Length - 1 - NonceSize - TagSize;
-            var nonce = new byte[NonceSize];
-            var ciphertext = new byte[ciphertextLength];
-            var tag = new byte[TagSize];
-            Buffer.BlockCopy(blob, 1, nonce, 0, NonceSize);
-            Buffer.BlockCopy(blob, 1 + NonceSize, ciphertext, 0, ciphertextLength);
-            Buffer.BlockCopy(blob, 1 + NonceSize + ciphertextLength, tag, 0, TagSize);
-
-            var plain = new byte[ciphertextLength];
-            using var gcm = new AesGcm(_key, TagSize);
-            gcm.Decrypt(nonce, ciphertext, tag, plain);
-
-            sw.Stop();
-            DataMetrics.CredentialCryptoCalls.Add(1,
-                new("operation", "decrypt"),
-                new("provider", ProviderName),
-                new("result", "success"));
-            var tags = new TagList { new("operation", "decrypt"), new("provider", ProviderName) };
-            DataMetrics.CredentialCryptoDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
-            return Encoding.UTF8.GetString(plain);
-        }
-        catch
-        {
-            sw.Stop();
-            DataMetrics.CredentialCryptoCalls.Add(1,
-                new("operation", "decrypt"),
-                new("provider", ProviderName),
-                new("result", "failure"));
-            var tags = new TagList { new("operation", "decrypt"), new("provider", ProviderName) };
-            DataMetrics.CredentialCryptoDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
-            throw;
-        }
+        return DataMetrics.MeasureCrypto("decrypt", ProviderName, () =>
+            Encoding.UTF8.GetString(SecretEnvelope.Open(blob, _key, TooShortMessage, UnknownVersionMessage)));
     }
 
     /// <summary>

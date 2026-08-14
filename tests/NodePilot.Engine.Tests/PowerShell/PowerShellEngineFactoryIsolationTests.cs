@@ -1,6 +1,7 @@
 using FluentAssertions;
 using NodePilot.Engine.PowerShell;
 using Xunit;
+using NodePilot.Engine.Tests.Helpers;
 
 namespace NodePilot.Engine.Tests.PowerShell;
 
@@ -13,13 +14,6 @@ namespace NodePilot.Engine.Tests.PowerShell;
 /// </summary>
 public class PowerShellEngineFactoryIsolationTests
 {
-    private sealed class FakeEngine(string engineType, bool available) : IPowerShellExecutionEngine
-    {
-        public string EngineType => engineType;
-        public bool IsAvailable => available;
-        public Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct)
-            => Task.FromResult(new PowerShellExecutionResult { Success = true });
-    }
 
     private static PowerShellEngineFactory Factory(bool pwsh = true, bool windows = true, bool runspace = true)
         => new(

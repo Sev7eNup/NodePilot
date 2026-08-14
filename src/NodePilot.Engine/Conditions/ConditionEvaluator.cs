@@ -111,12 +111,10 @@ public static class ConditionEvaluator
         };
     }
 
-    // Step-output template: matches the regex used by VariableResolver.StepPattern (kept
-    // independent so this evaluator can be reused without dragging the Engine.Execution
-    // namespace in). globals/manual run as a separate pre-pass because they don't carry a
-    // step-shaped tail.
-    private static readonly Regex TemplateRegex = new(@"\{\{([\w-]+)\.(output|error|success|param\.([\w-]+))\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
-    private static readonly Regex GlobalsTemplateRegex = new(@"\{\{globals\.([A-Za-z0-9_\-]+)\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+    // Step-output and globals templates reuse VariableResolver's compiled patterns — this
+    // evaluator already depends on Engine.Execution (see EvaluateEdge below), so keeping a
+    // second copy of the same two patterns only risked them drifting apart. `manual.` has no
+    // counterpart there and runs as its own pre-pass; like globals it carries no step-shaped tail.
     private static readonly Regex ManualTemplateRegex = new(@"\{\{manual\.([A-Za-z0-9_\-]+)\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     private static string ResolveOperand(JsonElement operand, ConditionContext ctx)
@@ -262,7 +260,7 @@ public static class ConditionEvaluator
         // mis-classified as an unresolved step (and silently return "").
         if (ctx.GlobalVariables is not null && ctx.GlobalVariables.Count > 0)
         {
-            raw = GlobalsTemplateRegex.Replace(raw, m =>
+            raw = VariableResolver.GlobalsPattern.Replace(raw, m =>
                 ctx.GlobalVariables.TryGetValue(m.Groups[1].Value, out var gv) ? gv : m.Value);
         }
 
@@ -274,7 +272,11 @@ public static class ConditionEvaluator
                 ctx.InputParameters.TryGetValue(m.Groups[1].Value, out var mv) ? mv : m.Value);
         }
 
-        return TemplateRegex.Replace(raw, m =>
+        // The substitution body stays local: it resolves against ctx.Results with THAT dict's
+        // own comparer (ordinal for the engine's result map), whereas VariableResolver merges
+        // results + aliases into an OrdinalIgnoreCase map. Routing through it would newly
+        // resolve differently-cased step ids in conditions.
+        return VariableResolver.StepPattern.Replace(raw, m =>
         {
             var name = m.Groups[1].Value;
             if (!ctx.Results.ContainsKey(name) && ctx.OutputVariableToStepId is not null

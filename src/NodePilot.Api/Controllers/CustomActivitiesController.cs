@@ -63,25 +63,18 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
     [Authorize(Roles = "Admin,Operator")]
     public async Task<ActionResult<CustomActivitySaveResponse>> Create(CreateCustomActivityRequest request, CancellationToken ct)
     {
-        var inputs = request.Inputs ?? [];
-        var outputs = request.Outputs ?? [];
-        var icon = string.IsNullOrWhiteSpace(request.Icon) ? "extension" : request.Icon!;
-        var engine = string.IsNullOrWhiteSpace(request.Engine) ? "auto" : request.Engine!;
+        var (icon, engine, inputs, outputs) = NormalizePayload(request.Icon, request.Engine, request.Inputs, request.Outputs);
 
         var error = CustomActivityValidation.Validate(request.Key, request.Name, icon, engine, inputs, outputs, requireKey: true);
         if (error is not null) return BadRequest(new { message = error });
         if (string.IsNullOrWhiteSpace(request.ScriptTemplate))
             return BadRequest(new { message = "ScriptTemplate is required." });
 
-        var newInput = new CustomActivityDefinitionInput
-        {
-            Key = request.Key, Name = request.Name, Description = request.Description, Icon = icon, Color = request.Color,
-            ScriptTemplate = request.ScriptTemplate, Engine = engine, RunsRemote = request.RunsRemote, Isolated = request.Isolated,
-            MemoryLimitMb = request.MemoryLimitMb, MaxProcesses = request.MaxProcesses,
-            DefaultTimeoutSeconds = request.DefaultTimeoutSeconds, SuccessExitCodes = request.SuccessExitCodes,
-            InputParametersJson = CustomActivityParameters.Serialize(inputs),
-            OutputParametersJson = CustomActivityParameters.Serialize(outputs),
-        };
+        var newInput = BuildDefinitionInput(
+            request.Key, request.Name, request.Description, icon, request.Color,
+            request.ScriptTemplate, engine, request.RunsRemote, request.Isolated,
+            request.MemoryLimitMb, request.MaxProcesses, request.DefaultTimeoutSeconds, request.SuccessExitCodes,
+            inputs, outputs);
         CustomActivityDefinition def;
         try { def = await store.CreateAsync(newInput, this.GetCurrentUsername(), ct); }
         catch (InvalidOperationException ex) { return Conflict(new { message = ex.Message }); }
@@ -101,26 +94,18 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
         if (existing is null) return NotFound();
         if (MutationForbidden(existing, out var forbid)) return forbid!;
 
-        var inputs = request.Inputs ?? [];
-        var outputs = request.Outputs ?? [];
-        var icon = string.IsNullOrWhiteSpace(request.Icon) ? "extension" : request.Icon!;
-        var engine = string.IsNullOrWhiteSpace(request.Engine) ? "auto" : request.Engine!;
+        var (icon, engine, inputs, outputs) = NormalizePayload(request.Icon, request.Engine, request.Inputs, request.Outputs);
 
         var error = CustomActivityValidation.Validate(null, request.Name, icon, engine, inputs, outputs, requireKey: false);
         if (error is not null) return BadRequest(new { message = error });
         if (string.IsNullOrWhiteSpace(request.ScriptTemplate))
             return BadRequest(new { message = "ScriptTemplate is required." });
 
-        var updInput = new CustomActivityDefinitionInput
-        {
-            Key = existing.Key, Name = request.Name, Description = request.Description, Icon = icon, Color = request.Color,
-            ScriptTemplate = request.ScriptTemplate, Engine = engine, RunsRemote = request.RunsRemote, Isolated = request.Isolated,
-            MemoryLimitMb = request.MemoryLimitMb, MaxProcesses = request.MaxProcesses,
-            DefaultTimeoutSeconds = request.DefaultTimeoutSeconds, SuccessExitCodes = request.SuccessExitCodes,
-            InputParametersJson = CustomActivityParameters.Serialize(inputs),
-            OutputParametersJson = CustomActivityParameters.Serialize(outputs),
-            ChangeNote = request.ChangeNote,
-        };
+        var updInput = BuildDefinitionInput(
+            existing.Key, request.Name, request.Description, icon, request.Color,
+            request.ScriptTemplate, engine, request.RunsRemote, request.Isolated,
+            request.MemoryLimitMb, request.MaxProcesses, request.DefaultTimeoutSeconds, request.SuccessExitCodes,
+            inputs, outputs, request.ChangeNote);
         CustomActivityDefinition def;
         try { def = await store.UpdateAsync(id, updInput, request.ConcurrencyToken, this.GetCurrentUsername(), ct); }
         catch (KeyNotFoundException) { return NotFound(); }
@@ -220,24 +205,17 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
         var imported = new List<CustomActivityResponse>();
         foreach (var item in envelope.Items)
         {
-            var icon = string.IsNullOrWhiteSpace(item.Icon) ? "extension" : item.Icon;
-            var engine = string.IsNullOrWhiteSpace(item.Engine) ? "auto" : item.Engine;
-            var inputs = item.Inputs ?? [];
-            var outputs = item.Outputs ?? [];
+            var (icon, engine, inputs, outputs) = NormalizePayload(item.Icon, item.Engine, item.Inputs, item.Outputs);
             if (CustomActivityValidation.Validate(item.Key, item.Name, icon, engine, inputs, outputs, requireKey: true) is not null)
                 continue; // skip malformed entries
             if (await store.GetByKeyAsync(item.Key, ct) is not null)
                 continue; // skip key collisions
 
-            var input = new CustomActivityDefinitionInput
-            {
-                Key = item.Key, Name = item.Name, Description = item.Description, Icon = icon, Color = item.Color,
-                ScriptTemplate = item.ScriptTemplate, Engine = engine, RunsRemote = item.RunsRemote, Isolated = item.Isolated,
-                MemoryLimitMb = item.MemoryLimitMb, MaxProcesses = item.MaxProcesses,
-                DefaultTimeoutSeconds = item.DefaultTimeoutSeconds, SuccessExitCodes = item.SuccessExitCodes,
-                InputParametersJson = CustomActivityParameters.Serialize(inputs),
-                OutputParametersJson = CustomActivityParameters.Serialize(outputs),
-            };
+            var input = BuildDefinitionInput(
+                item.Key, item.Name, item.Description, icon, item.Color,
+                item.ScriptTemplate, engine, item.RunsRemote, item.Isolated,
+                item.MemoryLimitMb, item.MaxProcesses, item.DefaultTimeoutSeconds, item.SuccessExitCodes,
+                inputs, outputs);
             var def = await store.CreateAsync(input, this.GetCurrentUsername(), ct); // created disabled
             await audit.LogAsync(AuditActions.CustomActivityImported, "CustomActivity", def.Id,
                 AuditDetails.Json(("key", def.Key)), ct);
@@ -262,6 +240,44 @@ public sealed class CustomActivitiesController(ICustomActivityDefinitionStore st
         result = null;
         return false;
     }
+
+    /// <summary>
+    /// Applies the defaults every write payload shares: icon falls back to "extension", engine to
+    /// "auto", absent parameter lists to empty. Validation and persistence must see the same
+    /// normalised values, so this runs ahead of both.
+    /// </summary>
+    private static (string Icon, string Engine,
+        IReadOnlyList<CustomActivityInputParameter> Inputs,
+        IReadOnlyList<CustomActivityOutputParameter> Outputs) NormalizePayload(
+            string? icon, string? engine,
+            IReadOnlyList<CustomActivityInputParameter>? inputs,
+            IReadOnlyList<CustomActivityOutputParameter>? outputs)
+        => (string.IsNullOrWhiteSpace(icon) ? "extension" : icon!,
+            string.IsNullOrWhiteSpace(engine) ? "auto" : engine!,
+            inputs ?? [],
+            outputs ?? []);
+
+    /// <summary>
+    /// Single mapper onto the store's input record. Create, Update and Import persist the exact same
+    /// shape from three different payload types; only the key source (request vs. existing row) and
+    /// the change note differ, which is why those are parameters.
+    /// </summary>
+    private static CustomActivityDefinitionInput BuildDefinitionInput(
+        string key, string name, string? description, string icon, string? color,
+        string scriptTemplate, string engine, bool runsRemote, bool isolated,
+        int? memoryLimitMb, int? maxProcesses, int? defaultTimeoutSeconds, string? successExitCodes,
+        IReadOnlyList<CustomActivityInputParameter> inputs,
+        IReadOnlyList<CustomActivityOutputParameter> outputs,
+        string? changeNote = null) => new()
+        {
+            Key = key, Name = name, Description = description, Icon = icon, Color = color,
+            ScriptTemplate = scriptTemplate, Engine = engine, RunsRemote = runsRemote, Isolated = isolated,
+            MemoryLimitMb = memoryLimitMb, MaxProcesses = maxProcesses,
+            DefaultTimeoutSeconds = defaultTimeoutSeconds, SuccessExitCodes = successExitCodes,
+            InputParametersJson = CustomActivityParameters.Serialize(inputs),
+            OutputParametersJson = CustomActivityParameters.Serialize(outputs),
+            ChangeNote = changeNote,
+        };
 
     private static IReadOnlyList<CustomActivityLintWarning> Lint(string script) =>
         WorkflowScriptLinter.LintScript(script).Select(w => new CustomActivityLintWarning(w.Rule, w.Message)).ToList();

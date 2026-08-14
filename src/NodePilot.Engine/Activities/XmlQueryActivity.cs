@@ -53,7 +53,7 @@ public class XmlQueryActivity : IActivityExecutor
 
             var loaded = await LoadXmlAsync(source, config, ct);
             if (loaded.Error is not null) return loaded.Error;
-            var xml = loaded.Xml!;
+            var xml = loaded.Content!;
 
             // Hard caps to stop a malicious inline XML from DoS-ing the engine: reject
             // payloads larger than 8 MiB outright, and load via XmlReader with DTD
@@ -80,38 +80,15 @@ public class XmlQueryActivity : IActivityExecutor
             };
         }, ex => $"XmlQuery error: {ex.Message}");
 
-    private async Task<(string? Xml, ActivityResult? Error)> LoadXmlAsync(string source, JsonElement config, CancellationToken ct)
-    {
-        if (source == "file")
-        {
-            var path = config.GetStringOrNull("path");
-            if (string.IsNullOrWhiteSpace(path))
-                return (null, Fail("'path' is required when source=file"));
-
-            // M-8: apply the same PathGuard config FileOperationActivity uses — ops can
-            // restrict file-mode XmlQuery to allow-listed roots / reject `..` traversal.
-            if (_config is not null)
-            {
-                try { PathGuard.Validate(_config, path); }
-                catch (InvalidOperationException ex)
-                {
-                    return (null, Fail($"file access denied: {ex.Message}"));
-                }
-            }
-
-            if (!File.Exists(path))
-                return (null, Fail($"file not found: {path}"));
-            var fileInfo = new FileInfo(path);
-            if (fileInfo.Length > MaxXmlBytes)
-                return (null, Fail($"file exceeds {MaxXmlBytes} bytes"));
-            return (await File.ReadAllTextAsync(path, ct), null);
-        }
-
-        var inline = config.GetString("content", "");
-        if (string.IsNullOrWhiteSpace(inline))
-            return (null, Fail("'content' is required when source=inline"));
-        return (inline, null);
-    }
+    private Task<(string? Content, ActivityResult? Error)> LoadXmlAsync(string source, JsonElement config, CancellationToken ct)
+        => QueryPayloadSource.LoadAsync(
+            source,
+            config,
+            _config,
+            MaxXmlBytes,
+            Fail,
+            (_, _) => $"file exceeds {MaxXmlBytes} bytes",
+            ct);
 
     private static XmlDocument LoadXmlDocument(string xml)
     {

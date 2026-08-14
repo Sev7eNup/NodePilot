@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.Versioning;
 using NodePilot.Cli.Output;
 using NodePilot.Cli.Settings;
+using NodePilot.Core.Clients;
 using Spectre.Console;
 using Spectre.Console.Cli;
 

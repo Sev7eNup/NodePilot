@@ -4,7 +4,6 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NodePilot.Data;
@@ -45,21 +44,12 @@ namespace NodePilot.Scheduler;
 /// can't drift-check without their original hash.
 /// </para>
 /// </summary>
-public class AuditLogRetentionService : BackgroundService
+public class AuditLogRetentionService : LeaderGatedRetentionService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
-    // Hot-reload: hold the live monitor (not a cached snapshot) so a config edit of
-    // Retention:AuditLog:* takes effect on the next sweep pass without a restart.
-    private readonly IOptionsMonitor<RetentionOptions> _opts;
-    private readonly NodePilot.Core.Interfaces.IClusterStateProvider _cluster;
-    private readonly ILogger<AuditLogRetentionService> _logger;
-
     // Resolved per pass from the live monitor — never cached across passes.
     private AuditLogRetentionOptions Opts => _opts.CurrentValue.AuditLog;
 
     private DateTime _lastVerifyUtc = DateTime.MinValue;
-
-    private readonly IDatabaseAvailability _availability;
 
     public AuditLogRetentionService(
         IServiceScopeFactory scopeFactory,
@@ -67,51 +57,15 @@ public class AuditLogRetentionService : BackgroundService
         NodePilot.Core.Interfaces.IClusterStateProvider cluster,
         ILogger<AuditLogRetentionService> logger,
         IDatabaseAvailability availability)
+        : base(scopeFactory, opts, cluster, logger, availability)
     {
-        _scopeFactory = scopeFactory;
-        _opts = opts;
-        _cluster = cluster;
-        _availability = availability;
-        _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        try { await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken); }
-        catch (OperationCanceledException) { return; }
-
-        _logger.LogInformation("AuditLogRetentionService started (hot-reload: per-pass config).");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            // Availability gate, deliberately ABOVE the leader check: during a database outage no
-            // node can renew its cluster lease, so every node reads as a follower - gating on
-            // IsLeader first would park for the right reason and log the wrong one.
-            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
-            // is left at its default StopHost, so an escaping cancellation would stop the host).
-            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
-
-            // HA gate: only the leader sweeps audit log so two nodes don't race on DELETEs.
-            if (!_cluster.IsLeader)
-            {
-                try { await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken); }
-                catch (OperationCanceledException) { break; }
-                continue;
-            }
-
-            try
-            {
-                await RunIterationAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) { break; }
-
-            var interval = TimeSpan.FromMinutes(Math.Max(5, Opts.IntervalMinutes));
-            try { await Task.Delay(interval, stoppingToken); }
-            catch (OperationCanceledException) { break; }
-        }
-
-        _logger.LogInformation("AuditLogRetentionService stopped.");
-    }
+    protected override string ServiceName => nameof(AuditLogRetentionService);
+    protected override string MetricServiceTag => "audit_log";
+    protected override TimeSpan WarmUpDelay => TimeSpan.FromSeconds(60);
+    protected override int MinIntervalMinutes => 5;
+    protected override int ConfiguredIntervalMinutes => Opts.IntervalMinutes;
 
     /// <summary>
     /// Exactly one sweep iteration: reads the live config, skips when disabled, else runs one
@@ -120,7 +74,7 @@ public class AuditLogRetentionService : BackgroundService
     /// Internal so unit tests can drive a single pass (incl. the hot-reload Enabled-toggle path)
     /// without the 60-second warm-up.
     /// </summary>
-    internal async Task RunIterationAsync(CancellationToken ct)
+    internal override async Task RunIterationAsync(CancellationToken ct)
     {
         // Hot-reload: a live toggle to Enabled=false parks the sweep instead of killing the
         // service, so flipping back to true later takes effect without a restart.
@@ -143,14 +97,11 @@ public class AuditLogRetentionService : BackgroundService
             if (deleted > 0)
                 _logger.LogInformation("AuditLog retention pass deleted {Count} old entries.", deleted);
 
-            var tags = new TagList { new("nodepilot.retention.service", "audit_log") };
+            var tags = RetentionTags();
             SchedulerMetrics.RetentionRowsDeleted.Add(deleted, tags);
             SchedulerMetrics.RetentionSweepDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
 
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-            await SystemHealthWriter.BeatAsync(db, "AuditLogRetentionService",
-                expectedIntervalSeconds: intervalMinutes * 60, status: $"ok: {deleted} deleted", ct: ct);
+            await HeartbeatAsync(intervalMinutes, $"ok: {deleted} deleted", ct);
 
             // Archive integrity verify pass — independent cadence (default daily) so a
             // 12h-interval retention doesn't pay the SHA-256 walk twice per day. The
@@ -174,7 +125,7 @@ public class AuditLogRetentionService : BackgroundService
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            var errTags = new TagList { new("nodepilot.retention.service", "audit_log") };
+            var errTags = RetentionTags();
             SchedulerMetrics.RetentionSweepErrors.Add(1, errTags);
             _logger.LogError(ex, "AuditLog retention pass failed — will retry on next interval.");
         }

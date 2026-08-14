@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NodePilot.Data;
@@ -19,19 +18,10 @@ namespace NodePilot.Scheduler;
 /// Enabled=true, MaxAgeDays=90 matching the file-based support-log retention,
 /// IntervalMinutes=360).</para>
 /// </summary>
-public class SupportEventRetentionService : BackgroundService
+public class SupportEventRetentionService : LeaderGatedRetentionService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
-    // Hot-reload: hold the live monitor (not a cached snapshot) so a config edit of
-    // Retention:SupportEvents:* takes effect on the next sweep pass without a restart.
-    private readonly IOptionsMonitor<RetentionOptions> _opts;
-    private readonly NodePilot.Core.Interfaces.IClusterStateProvider _cluster;
-    private readonly ILogger<SupportEventRetentionService> _logger;
-
     // Resolved per pass from the live monitor — never cached across passes.
     private SupportEventsRetentionOptions Opts => _opts.CurrentValue.SupportEvents;
-
-    private readonly IDatabaseAvailability _availability;
 
     public SupportEventRetentionService(
         IServiceScopeFactory scopeFactory,
@@ -39,51 +29,15 @@ public class SupportEventRetentionService : BackgroundService
         NodePilot.Core.Interfaces.IClusterStateProvider cluster,
         ILogger<SupportEventRetentionService> logger,
         IDatabaseAvailability availability)
+        : base(scopeFactory, opts, cluster, logger, availability)
     {
-        _scopeFactory = scopeFactory;
-        _opts = opts;
-        _cluster = cluster;
-        _availability = availability;
-        _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        try { await Task.Delay(TimeSpan.FromSeconds(60), stoppingToken); }
-        catch (OperationCanceledException) { return; }
-
-        _logger.LogInformation("SupportEventRetentionService started (hot-reload: per-pass config).");
-
-        while (!stoppingToken.IsCancellationRequested)
-        {
-            // Availability gate, deliberately ABOVE the leader check: during a database outage no
-            // node can renew its cluster lease, so every node reads as a follower - gating on
-            // IsLeader first would park for the right reason and log the wrong one.
-            // Returns false only on shutdown and never throws (BackgroundServiceExceptionBehavior
-            // is left at its default StopHost, so an escaping cancellation would stop the host).
-            if (!await _availability.WaitUntilServableAsync(stoppingToken)) break;
-
-            // HA gate: leader-only.
-            if (!_cluster.IsLeader)
-            {
-                try { await Task.Delay(TimeSpan.FromSeconds(15), stoppingToken); }
-                catch (OperationCanceledException) { break; }
-                continue;
-            }
-
-            try
-            {
-                await RunIterationAsync(stoppingToken);
-            }
-            catch (OperationCanceledException) { break; }
-
-            var interval = TimeSpan.FromMinutes(Math.Max(1, Opts.IntervalMinutes));
-            try { await Task.Delay(interval, stoppingToken); }
-            catch (OperationCanceledException) { break; }
-        }
-
-        _logger.LogInformation("SupportEventRetentionService stopped.");
-    }
+    protected override string ServiceName => nameof(SupportEventRetentionService);
+    protected override string MetricServiceTag => "support_events";
+    protected override TimeSpan WarmUpDelay => TimeSpan.FromSeconds(60);
+    protected override int MinIntervalMinutes => 1;
+    protected override int ConfiguredIntervalMinutes => Opts.IntervalMinutes;
 
     /// <summary>
     /// Exactly one sweep iteration: reads the live config, skips when disabled, else runs one
@@ -91,7 +45,7 @@ public class SupportEventRetentionService : BackgroundService
     /// <see cref="ExecuteAsync"/> owns the inter-pass spacing. Internal so unit tests can drive
     /// a single pass (incl. the hot-reload Enabled-toggle path) without the warm-up.
     /// </summary>
-    internal async Task RunIterationAsync(CancellationToken ct)
+    internal override async Task RunIterationAsync(CancellationToken ct)
     {
         // Hot-reload: a live toggle to Enabled=false parks the sweep instead of killing the
         // service, so flipping back to true later takes effect without a restart.
@@ -112,7 +66,7 @@ public class SupportEventRetentionService : BackgroundService
             sw.Stop();
             if (deleted > 0)
                 _logger.LogInformation("Pruned {Count} support events older than {Days}d.", deleted, maxAgeDays);
-            var tags = new TagList { new("nodepilot.retention.service", "support_events") };
+            var tags = RetentionTags();
             SchedulerMetrics.RetentionRowsDeleted.Add(deleted, tags);
             SchedulerMetrics.RetentionSweepDuration.Record(sw.Elapsed.TotalMilliseconds, tags);
             await HeartbeatAsync(intervalMinutes, $"ok: {deleted} pruned", ct);
@@ -120,7 +74,7 @@ public class SupportEventRetentionService : BackgroundService
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
-            var errTags = new TagList { new("nodepilot.retention.service", "support_events") };
+            var errTags = RetentionTags();
             SchedulerMetrics.RetentionSweepErrors.Add(1, errTags);
             _logger.LogError(ex, "Support-event retention sweep failed — retrying on next interval.");
         }
@@ -134,13 +88,5 @@ public class SupportEventRetentionService : BackgroundService
         var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
         return await db.SupportEvents.Where(e => e.Timestamp < cutoff)
             .ExecuteDeleteAsync(ct);
-    }
-
-    private async Task HeartbeatAsync(int intervalMinutes, string status, CancellationToken ct)
-    {
-        using var scope = _scopeFactory.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NodePilotDbContext>();
-        await SystemHealthWriter.BeatAsync(db, "SupportEventRetentionService",
-            expectedIntervalSeconds: intervalMinutes * 60, status: status, ct: ct);
     }
 }

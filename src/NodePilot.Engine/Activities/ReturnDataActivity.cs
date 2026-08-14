@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NodePilot.Core.Interfaces;
 using NodePilot.Data;
+using NodePilot.Engine.PowerShell;
 using NodePilot.Engine.Security;
 
 namespace NodePilot.Engine.Activities;
@@ -77,12 +78,7 @@ public class ReturnDataActivity : IActivityExecutor
         var outputParams = new Dictionary<string, string>();
         foreach (var prop in dataEl.EnumerateObject())
         {
-            var raw = prop.Value.ValueKind switch
-            {
-                JsonValueKind.String => prop.Value.GetString() ?? string.Empty,
-                JsonValueKind.Null or JsonValueKind.Undefined => string.Empty,
-                _ => prop.Value.GetRawText(),
-            };
+            var raw = PowerShellOperation.JsonElementToScalarString(prop.Value);
             outputParams[prop.Name] = raw.Length > MaxPerValueChars
                 ? raw[..MaxPerValueChars] + PerValueTruncationMarker
                 : raw;

@@ -6,4 +6,6 @@ Reiner HTTP-Client gegen die REST-API (wie die CLI) + In-Proc-Analyse gegen `Nod
 
 **Architektur-Konvention:** Neuer API-Endpoint → Methode in `Api/NodePilotApiClient.cs` (DTOs in `Api/Dtos/` dupliziert) + `[McpServerTool]`-Methode in der passenden `Tools/*Tools.cs` (destruktiv → `DestructiveTools` + `get_safety_status`-Liste pflegen), ggf. Klasse in `Program.cs` via `WithTools<T>()` registrieren (**nie** `WithToolsFromAssembly`), WireMock-Test ergänzen. Frontend-Databus-/Lint-Logik wird in `Analysis/` gespiegelt (`upstreamVariables.ts`, `activityConfigFacts.ts`, `workflowLint.ts`).
 
+**Geteilte Client-Infrastruktur:** `ApiException`, das Response-Plumbing (`ApiResponseReader`) und die Lese-Seite der `config.json` (`ClientConfigStore` + `CliConfig`) liegen in `NodePilot.Core.Clients` — gemeinsam mit der CLI. **Nur die DTOs bleiben bewusst dupliziert** (`Api/Dtos/`); neue Infrastruktur nicht erneut kopieren.
+
 **Activity-Config-Reference:** liegt **nicht** unter `Resources/Embedded/`, sondern in `NodePilot.Core` (`Activities/Embedded/activity-config-reference.json`, gelesen über `ActivityConfigReference`) — `NodePilot.Ai` rendert daraus den Activity-Katalog der AI-Prompts. Neue/geänderte Config-Keys dort pflegen; `ActivityConfigReferenceTests` prüft, dass jeder dokumentierte Key vom Executor wirklich gelesen wird.

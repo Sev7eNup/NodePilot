@@ -39,15 +39,15 @@ public sealed class SourceCodeKnowledgeReader(IOptionsMonitor<AiKnowledgeOptions
         ".key", ".pfx", ".pem", ".p12", ".token",
     };
 
-    private string Root()
-    {
-        var configured = options.CurrentValue.SourceCodeRootPath;
-        return string.IsNullOrWhiteSpace(configured)
-            ? Path.Combine(AppContext.BaseDirectory, "knowledge", "source")
-            : configured;
-    }
+    private readonly KnowledgeCorpusReader _corpus = new(
+        () => options.CurrentValue.SourceCodeRootPath,
+        "source",
+        IsEligible,
+        RejectionFor,
+        notFoundError: "Datei nicht gefunden.",
+        unreadableError: "Datei konnte nicht gelesen werden.");
 
-    public bool IsAvailable() => Directory.Exists(Root());
+    public bool IsAvailable() => _corpus.IsAvailable();
 
     /// <summary>DENY first (belt-and-suspenders on top of the git-tracked-only snapshot), then extension allowlist.</summary>
     internal static bool IsEligible(string path) => !IsDenied(path) && AllowedExtensions.Contains(Path.GetExtension(path));
@@ -65,33 +65,20 @@ public sealed class SourceCodeKnowledgeReader(IOptionsMonitor<AiKnowledgeOptions
             || normalized.Contains("/.git/", StringComparison.Ordinal);
     }
 
+    /// <summary>Read gates in the same DENY-before-allowlist order as <see cref="IsEligible"/>; null = readable.</summary>
+    private static string? RejectionFor(string path)
+    {
+        if (IsDenied(path)) return "Diese Datei ist gesperrt (Secret-/Konfigurationsdatei).";
+        if (!AllowedExtensions.Contains(Path.GetExtension(path))) return "Dieser Dateityp ist nicht lesbar.";
+        return null;
+    }
+
     public IReadOnlyList<KnowledgeSearchHit> Search(string query)
     {
         var o = options.CurrentValue;
-        return KnowledgeFileSearch.Search(Root(), query, o.SourceCodeMaxResults, o.SourceCodeMaxFileBytes, IsEligible);
+        return _corpus.Search(query, o.SourceCodeMaxResults, o.SourceCodeMaxFileBytes);
     }
 
-    public KnowledgeFileResult Read(string relPath)
-    {
-        var o = options.CurrentValue;
-        var root = Root();
-        if (!KnowledgeFileSearch.TryResolveWithin(root, relPath, out var full))
-            return KnowledgeFileResult.Fail("Ungültiger oder unerlaubter Pfad.");
-        if (IsDenied(full))
-            return KnowledgeFileResult.Fail("Diese Datei ist gesperrt (Secret-/Konfigurationsdatei).");
-        if (!AllowedExtensions.Contains(Path.GetExtension(full)))
-            return KnowledgeFileResult.Fail("Dieser Dateityp ist nicht lesbar.");
-        if (!File.Exists(full))
-            return KnowledgeFileResult.Fail("Datei nicht gefunden.");
-        try
-        {
-            if (new FileInfo(full).Length > o.SourceCodeMaxFileBytes)
-                return KnowledgeFileResult.Fail($"Datei zu groß (> {o.SourceCodeMaxFileBytes} Bytes).");
-            return KnowledgeFileResult.Success(KnowledgeFileSearch.RelativeOf(root, full), File.ReadAllText(full));
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return KnowledgeFileResult.Fail("Datei konnte nicht gelesen werden.");
-        }
-    }
+    public KnowledgeFileResult Read(string relPath) =>
+        _corpus.Read(relPath, options.CurrentValue.SourceCodeMaxFileBytes);
 }
