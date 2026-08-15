@@ -100,7 +100,7 @@ Die **Standard-Ausführungsart schreibt keine temporäre Datei und startet keine
 
 | Pfad | Betriebsart | Priorität |
 |---|---|---|
-| `%TEMP%\nodepilot-artifact-*` | Server | Pflicht während der Installation |
+| `%TEMP%\nodepilot-artifact-*` (Installer **und** Updater, siehe A.1) | Server | Empfohlen, für Installation und Update |
 | `%TEMP%\nodepilot-provision.log` | Desktop | Empfohlen |
 | `NodePilot-Desktop-Setup-*.exe`, `unins000.exe` | Desktop | Empfohlen |
 | `C:\ProgramData\NodePilot\backups\pre-update-*.dump`, `…\rollback` | Desktop | Empfohlen |

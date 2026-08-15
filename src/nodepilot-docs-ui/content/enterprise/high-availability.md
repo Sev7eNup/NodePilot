@@ -52,7 +52,7 @@ Das Zertifikat mit Private Key muss auf jedem Node in `LocalMachine\My` vorhande
 - **`ClusterLeaderService`** ist `BackgroundService` (Renew-Loop) und `IClusterStateProvider` ("am I leader?").
 - Lease-Acquire/Renew: atomares `UPDATE … WHERE OwnerNodeId = me AND ExpiresAt > now` — zwei Nodes können nicht gleichzeitig Leader sein.
 - **DB-Clock, nicht App-Clock:** vor jeder Lease-Operation wird `SYSUTCDATETIME()` (SQL Server) bzw. `now() AT TIME ZONE 'UTC'` (Postgres) gelesen → kein Split-Brain bei divergenten Wall-Clocks.
-- **`LeaderRequiredMiddleware`** blockt jeden mutierenden Pfad auf einem Follower mit 503. Erlaubt: `/healthz/*`, `/openapi/*`, Read-Only-Endpoints.
+- **`LeaderRequiredMiddleware`** blockt jeden mutierenden Pfad auf einem Follower mit 503. Erlaubt: `/healthz/*`, `/openapi/*`, Read-Only-Endpoints. Ein `[LeaderOnly]` am Endpoint gewinnt vor der Pfad-Heuristik — für Endpoints, deren HTTP-Verb harmlos aussieht, die aber Zustand ändern (Webhook-Ingress per `GET`).
 - **`ClusterLeader`**-Tabelle mit Single-Row-Sentinel `Resource='primary'`, geseedet im `MigrationBootstrapper`.
 
 ## Health-Probe

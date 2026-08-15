@@ -56,6 +56,11 @@ jedoch bewusst auf dasselbe Identitäts-, Session-, Membership- und Offboarding-
 - **`LeaderRequiredMiddleware`** (`src/NodePilot.Api/Security/`) blockt jeden mutierenden
   Pfad auf einem Follower mit 503. Erlaubt: `/healthz/*`, `/openapi/*`, read-only Endpoints.
   Defense-in-Depth — der Loadbalancer sollte Follower eh nicht ansprechen.
+  **Endpoint-Metadata schlägt Pfad-Heuristik:** die Middleware prüft zuerst auf ein
+  `[LeaderOnly]` (`Security/LeaderOnlyAttribute.cs`) am Endpoint und erst danach die
+  Methode/Pfad-Regeln. Nötig für jeden Endpoint, dessen HTTP-Verb harmlos aussieht, der
+  aber tatsächlich Zustand ändert — ein `GET`-Webhook-Ingress ist genau dieser Fall
+  (`WebhooksController` trägt das Attribut). Neue semantisch mutierende GETs bekommen es.
 - **`ClusterFailoverRecoveryHost`** subscribed im **Constructor** (nicht in `StartAsync`,
   damit das erste Acquire-Event nicht in eine leere Handler-Liste feuert) auf
   `OnLeadershipAcquired` und ruft `StartupRecovery.RecoverOrphanedExecutionsAsync`.
@@ -94,6 +99,7 @@ TTL=30s + Renew=10s + Sweep=~5s → ~45s Worst Case.
 - [src/NodePilot.Api/Hosting/ClusterFailoverRecoveryHost.cs](../src/NodePilot.Api/Hosting/ClusterFailoverRecoveryHost.cs)
 - [src/NodePilot.Api/Hosting/ClusterFencingHost.cs](../src/NodePilot.Api/Hosting/ClusterFencingHost.cs)
 - [src/NodePilot.Api/Security/LeaderRequiredMiddleware.cs](../src/NodePilot.Api/Security/LeaderRequiredMiddleware.cs)
+- [src/NodePilot.Api/Security/LeaderOnlyAttribute.cs](../src/NodePilot.Api/Security/LeaderOnlyAttribute.cs)
 - [src/NodePilot.Engine/Execution/StartupRecovery.cs](../src/NodePilot.Engine/Execution/StartupRecovery.cs)
 
 ### Bewusst nicht in Scope

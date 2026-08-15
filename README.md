@@ -1179,6 +1179,7 @@ All settings live in [`src/NodePilot.Api/appsettings.json`](src/NodePilot.Api/ap
 | `Logging:StepDetail:MaxOutputChars` | `10000` | Truncation limit for step output |
 | `OpenTelemetry:Enabled` | `false` | Enable OTLP export & instrumentation |
 | `OpenTelemetry:Exporters:PrometheusScrape` | `false` | Enable `GET /metrics` |
+| `OpenTelemetry:RedactHostnames` | `true` | Keep the host name out of telemetry: `service.instance.id` becomes a process-stable random id instead of `hostname:pid`, the `host.name` resource attribute is dropped, and the Serilog bridge suppresses the field. Set to `false` to restore host attribution in Tempo/Grafana |
 
 ### Retention
 

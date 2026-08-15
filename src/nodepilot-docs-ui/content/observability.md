@@ -10,6 +10,10 @@ OpenTelemetry ist opt-in. Setup in `NodePilot.Telemetry` — Constants, Options,
 
 `OpenTelemetry:Exporters:PrometheusScrapeAllowAnonymous` (default `false`) — `/metrics` ist **nicht** anonym erreichbar. Auf `true` setzen, wenn der Scraper ohne Auth zugreifen soll (Relaxation, bewusst setzen).
 
+## Hostname-Redaktion
+
+`OpenTelemetry:RedactHostnames` (default `true`) hält den Hostnamen aus der Telemetrie: `service.instance.id` ist eine prozessstabile Zufalls-Id statt `hostname:pid`, das Resource-Attribut `host.name` entfällt, und die Serilog-Bridge unterdrückt das Feld. Wer Host-Attribution in Tempo/Grafana braucht, setzt den Wert bewusst auf `false` — nach einem Upgrade verschwindet die Zuordnung sonst ohne weiteren Hinweis.
+
 ## Observability-API
 
 | Endpoint | Zweck |
