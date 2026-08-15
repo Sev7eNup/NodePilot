@@ -17,6 +17,20 @@ public sealed class AlertingTools
 
     public AlertingTools(NodePilotApiClient api) => _api = api;
 
+    [McpServerTool(Name = "get_alerting_catalog", ReadOnly = true)]
+    [Description("Get the alerting rule vocabulary: supported event types (with category and whether they can be scoped), the fields a filter expression may reference (with type and allowed values), the notification channels this installation can deliver on, and the fields usable in a dedup-key template. Read this before authoring a filterExpressionJson — a filter over an unknown field never matches.")]
+    public async Task<object> GetAlertingCatalog(CancellationToken cancellationToken = default)
+    {
+        var catalog = await ApiErrorMapper.Guard(() => _api.GetAlertingCatalogAsync(cancellationToken));
+        return new
+        {
+            eventTypes = catalog.EventTypes,
+            eventFields = catalog.EventFields,
+            channels = catalog.Channels,
+            dedupTemplateFields = catalog.DedupTemplateFields,
+        };
+    }
+
     [McpServerTool(Name = "list_alerting_rules", ReadOnly = true)]
     [Description("List alerting rules with their event types, scope, throttle and route channels.")]
     public async Task<object> ListAlertingRules(CancellationToken cancellationToken = default)

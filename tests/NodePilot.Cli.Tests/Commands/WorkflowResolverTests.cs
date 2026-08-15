@@ -40,37 +40,35 @@ public sealed class WorkflowResolverTests : IDisposable
     }
 
     [Fact]
-    public async Task ByName_UniqueMatch_Resolves()
+    public async Task ByName_UniqueMatch_ResolvesViaByNameEndpoint()
     {
-        var idA = Guid.NewGuid();
-        var idB = Guid.NewGuid();
-        _server.Given(Request.Create().WithPath("/api/workflows").UsingGet())
-               .RespondWith(Response.Create().WithStatusCode(200).WithBody(List(
-                    (idA, "Build"), (idB, "Report"))));
+        var id = Guid.NewGuid();
+        _server.Given(Request.Create().WithPath("/api/workflows/by-name/Report").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(id, "Report")));
 
         var w = await WorkflowResolver.ResolveAsync(_client, "Report", CancellationToken.None);
-        w.Id.Should().Be(idB);
+        w.Id.Should().Be(id);
+        // The whole workflow list no longer travels over the wire to resolve one name.
+        _server.LogEntries.Should().NotContain(e => e.RequestMessage!.AbsolutePath == "/api/workflows" && e.RequestMessage!.Method == "GET");
     }
 
     [Fact]
-    public async Task ByName_CaseInsensitive()
+    public async Task ByName_EscapesTheName()
     {
         var id = Guid.NewGuid();
-        _server.Given(Request.Create().WithPath("/api/workflows").UsingGet())
-               .RespondWith(Response.Create().WithStatusCode(200).WithBody(List((id, "Build"))));
+        _server.Given(Request.Create().WithPath("/api/workflows/by-name/Nightly Backup").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(200).WithBody(Single(id, "Nightly Backup")));
 
-        var w = await WorkflowResolver.ResolveAsync(_client, "build", CancellationToken.None);
+        var w = await WorkflowResolver.ResolveAsync(_client, "Nightly Backup", CancellationToken.None);
         w.Id.Should().Be(id);
     }
 
     [Fact]
-    public async Task ByName_AmbiguousMatch_Throws()
+    public async Task ByName_Ambiguous_TranslatesTheConflict()
     {
-        var idA = Guid.NewGuid();
-        var idB = Guid.NewGuid();
-        _server.Given(Request.Create().WithPath("/api/workflows").UsingGet())
-               .RespondWith(Response.Create().WithStatusCode(200).WithBody(List(
-                    (idA, "Build"), (idB, "Build"))));
+        _server.Given(Request.Create().WithPath("/api/workflows/by-name/Build").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(409)
+                   .WithBody("""{"message":"Multiple workflows named 'Build' — disambiguate with the GUID."}"""));
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             WorkflowResolver.ResolveAsync(_client, "Build", CancellationToken.None));
@@ -80,8 +78,8 @@ public sealed class WorkflowResolverTests : IDisposable
     [Fact]
     public async Task ByName_NotFound_Throws()
     {
-        _server.Given(Request.Create().WithPath("/api/workflows").UsingGet())
-               .RespondWith(Response.Create().WithStatusCode(200).WithBody("[]"));
+        _server.Given(Request.Create().WithPath("/api/workflows/by-name/Missing").UsingGet())
+               .RespondWith(Response.Create().WithStatusCode(404));
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             WorkflowResolver.ResolveAsync(_client, "Missing", CancellationToken.None));
@@ -96,10 +94,4 @@ public sealed class WorkflowResolverTests : IDisposable
       "lastExecution": null, "successCount": 0, "totalCount": 0, "avgDurationMs": null,
       "checkedOutByUserId": null, "checkedOutByUserName": null, "checkedOutAt": null }
     """;
-
-    private static string List(params (Guid Id, string Name)[] rows)
-    {
-        var items = rows.Select(r => Single(r.Id, r.Name));
-        return "[" + string.Join(",", items) + "]";
-    }
 }

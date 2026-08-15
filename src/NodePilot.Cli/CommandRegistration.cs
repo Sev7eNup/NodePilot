@@ -179,6 +179,7 @@ public static class CommandRegistration
         config.AddBranch("alerting", a =>
         {
             a.SetDescription("Manage alerting rules (notify on matching events).");
+            a.AddCommand<AlertingCatalogCommand>("catalog").WithDescription("Show the rule vocabulary: event types, filter fields, channels.");
             a.AddCommand<AlertingListCommand>("list").WithDescription("List all alerting rules.");
             a.AddCommand<AlertingGetCommand>("get").WithDescription("Show one alerting rule.");
             a.AddCommand<AlertingCreateCommand>("create").WithDescription("Create an alerting rule (Admin only).");

@@ -94,7 +94,7 @@ Large free-text fields (stdout/stderr, return data, audit details, diagnostics) 
 
 ## Tool catalog
 
-89 default tools across 10 groups, plus 10 gated destructive tools (99 total). (Roles refer to the
+90 default tools across 10 groups, plus 10 gated destructive tools (100 total). (Roles refer to the
 authenticated user.)
 
 ### Discovery
@@ -159,8 +159,8 @@ harmlosen Casts auf diesen Secret-Tabellen; explizit benannte, nicht geschützte
 `move_global_variable_folder` · `move_global_variable_to_folder`
 
 ### Alerting (notification rules; route secrets never surfaced)
-`list_alerting_rules` · `get_alerting_rule` · `create_alerting_rule` · `update_alerting_rule` ·
-`test_fire_alerting_rule` · `list_alerting_deliveries`
+`get_alerting_catalog` · `list_alerting_rules` · `get_alerting_rule` · `create_alerting_rule` ·
+`update_alerting_rule` · `test_fire_alerting_rule` · `list_alerting_deliveries`
 
 ### System alerts (ADR 0008; catalog-driven policies)
 `get_system_alert_catalog` · `list_system_alert_policies` · `get_system_alert_policy` ·

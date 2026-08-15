@@ -23,6 +23,22 @@ public sealed class AlertingListCommand : BaseCommand<GlobalSettings>
     }
 }
 
+// Rules are authored as JSON (`np alerting create --file`), so the vocabulary that JSON may use —
+// event types, filter-referenceable fields, the channels this installation can deliver on — has to
+// be readable from the CLI too. Otherwise the only way to learn a field name is the web UI.
+[SupportedOSPlatform("windows")]
+public sealed class AlertingCatalogCommand : BaseCommand<GlobalSettings>
+{
+    public AlertingCatalogCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
+    protected override async Task<int> RunAsync(CommandContext _, GlobalSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
+    {
+        var api = ClientFactory.Create(session);
+        var catalog = await api.GetAlertingCatalogAsync(ct);
+        writer.WriteData(catalog, (console, c) => Renderers.AlertingCatalog(console, c));
+        return ExitCodes.Success;
+    }
+}
+
 public sealed class AlertingIdSettings : GlobalSettings
 {
     [CommandArgument(0, "<RULE-ID>")]

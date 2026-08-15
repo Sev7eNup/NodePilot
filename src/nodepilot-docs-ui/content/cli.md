@@ -333,6 +333,7 @@ np observability query-range --query "rate(nodepilot_workflows_total[5m])" \
 
 ```bash
 # Alerting (Read Admin/Op; Create/Edit/Delete/Test-Fire Admin-only)
+np alerting catalog                           # Event-Typen, Filter-Felder, Kanäle
 np alerting list
 np alerting get 9a2f...
 np alerting create --file ./rule.json

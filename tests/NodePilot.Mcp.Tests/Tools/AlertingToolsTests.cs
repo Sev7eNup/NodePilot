@@ -43,6 +43,26 @@ public sealed class AlertingToolsTests
     }
 
     [Fact]
+    public async Task GetAlertingCatalog_ReturnsTheRuleVocabulary()
+    {
+        using var api = new TestApi();
+        api.Server.Given(Request.Create().WithPath("/api/alerting/catalog").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                eventTypes = new object[] { new { name = "ExecutionFailed", category = "execution", scopeable = true } },
+                eventFields = new object[] { new { name = "workflowName", applies = "execution", type = "string", values = (string[]?)null } },
+                channels = new[] { "Email", "GenericWebhook" },
+                dedupTemplateFields = new[] { "eventType" },
+            }));
+
+        var tools = new AlertingTools(api.Client());
+        var json = JsonSerializer.Serialize(await tools.GetAlertingCatalog());
+
+        json.Should().Contain("ExecutionFailed").And.Contain("workflowName")
+            .And.Contain("GenericWebhook").And.Contain("dedupTemplateFields");
+    }
+
+    [Fact]
     public async Task CreateAlertingRule_PostsRoutes_AndReturnsId()
     {
         var id = Guid.NewGuid();
