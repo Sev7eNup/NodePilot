@@ -6,6 +6,7 @@ NodePilot aktiviert Sicherheitsprüfungen standardmäßig. `appsettings.Developm
 
 - **Serverseitige Sessions:** standardmäßig acht Stunden absolute Lebensdauer, einzeln widerrufbar. JWTs tragen Session-ID, Security-Stamp und `jti`; Gruppen bleiben aus JWT und Cookie heraus.
 - **Lokale BCrypt-Passwörter:** Produktionsdefault `BreakGlassOnly`; nur explizit markierte Notfallkonten dürfen sich lokal anmelden.
+- **Passwortlänge pro Pfad:** Lokale Konten enden bei 72 UTF-8 Byte (BCrypt schneidet darüber hinaus stillschweigend ab). Directory-Passwörter regelt das Directory: NodePilot kürzt sie nie und weist einen Login-Payload erst jenseits von 256 Byte ab — dem AD-Maximum. Eine lange AD-Passphrase erreicht damit immer den Bind.
 - **Externe Pfade:** LDAP ausschließlich über validiertes LDAPS, Windows Negotiate ausschließlich Kerberos sowie release-gated OIDC Authorization Code + PKCE. Windows lädt bei jedem Login einen autoritativen LDAPS-Snapshot und vertraut keinen PAC-Gruppen.
 - **Kanonische Identität:** `(Authority, Subject)`; LDAP und Windows teilen sich den AD-`objectSid`, OIDC verwendet `(iss, sub)`. Gleichnamige bestehende Benutzer werden nicht automatisch zusammengeführt.
 - **Serverseitige Autorisierung:** Gruppen-Memberships kommen aus Directory-Snapshots. AD-Sync läuft standardmäßig alle fünf Minuten mit 16 parallelen LDAPS-Lookups (konfigurierbar 1–32); Snapshots über 15 Minuten werden für Sessions, Jobs und Trigger abgewiesen.
