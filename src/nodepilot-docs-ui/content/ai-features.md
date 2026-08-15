@@ -199,6 +199,9 @@ in Sekunden.
 | `Password` | zugehöriges Kennwort; besser über die Umgebungsvariable `Llm__Proxy__Password` setzen |
 | `UseDefaultCredentials` | meldet sich mit den Windows-Anmeldedaten des Dienstkontos am Proxy an — der Normalfall bei domänenintegrierten Proxys |
 
+Loopback-Ziele (`localhost`, `127.0.0.0/8`, `::1`) werden unabhängig von `Mode` und `BypassList`
+immer direkt verbunden, damit Prompt und API-Schlüssel den Host nicht unverschlüsselt verlassen.
+
 Zu beachten: Läuft der Verkehr über einen Proxy, löst dieser die Zieladresse auf. Die zusätzliche
 Prüfung, die NodePilot sonst unmittelbar vor dem Verbindungsaufbau vornimmt, greift dann nur noch
 für den Proxy selbst; die Base-URL wird weiterhin beim Speichern und beim Start geprüft.
