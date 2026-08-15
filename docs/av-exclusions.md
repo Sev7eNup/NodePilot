@@ -185,7 +185,7 @@ Diese Einträge lassen sich auf ein Wartungsfenster befristen.
 
 | Pfad | Rolle | Zweck | Priorität | Restrisiko |
 |---|---|---|---|---|
-| `%TEMP%\nodepilot-artifact-*\` | Server | Entpacktes, signaturgeprüftes Installationsartefakt | Pflicht während der Installation | Der Inhalt wurde vor dem Entpacken gegen einen festgelegten Signer-Thumbprint geprüft. Befristung empfohlen |
+| `%TEMP%\nodepilot-artifact-*\` | Server | Entpacktes, signaturgeprüftes Installationsartefakt — Installer **und** Updater nutzen denselben Pfad (Details und Begründung in A.1) | Empfohlen, für Installation und Update | Der Inhalt wurde vor dem Entpacken gegen einen festgelegten Signer-Thumbprint geprüft. Befristung empfohlen |
 | `%TEMP%\nodepilot-provision.log` | Desktop | Mitschrift der Einrichtung, für die Fehlersuche | Empfohlen | Reine Textdatei |
 | `NodePilot-Desktop-Setup-*.exe` | Desktop | Der Offline-Installer | Empfohlen | Signiertes Setup; Publisher-Regel bevorzugen |
 | `unins000.exe` in `C:\Program Files\NodePilot\` | Desktop | Deinstallationsroutine | Empfohlen | gering |
