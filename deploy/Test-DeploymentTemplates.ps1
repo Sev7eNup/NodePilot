@@ -307,6 +307,20 @@ Assert-TextMatches -Name 'installer renders the trusted-proxy placeholder' `
     -Text $installer -Pattern "Replace\('\{\{KNOWN_PROXIES_JSON\}\}'"
 Assert-TextMatches -Name 'installer validates trusted proxy addresses' `
     -Text $installer -Pattern 'IPAddress\]::TryParse\(\$proxyIp'
+# Emptying the install directory kills the GUI setup's uninstaller, which lives in it. Sparing that
+# file is not an option - Assert-NodePilotExtractedFiles requires the directory to hold exactly the
+# signed artifact - so the Add/Remove Programs entry it leaves behind is removed instead, or Windows
+# keeps an entry it can neither run nor clear.
+Assert-TextMatches -Name 'a ZIP install clears the uninstall entry it just invalidated' `
+    -Text $installer `
+    -Pattern '(?s)CurrentVersion\\Uninstall[\s\S]{0,1400}Remove-Item -LiteralPath \$entry\.PSPath'
+# Both halves matter: an entry pointing somewhere else, or one whose uninstaller still exists, is
+# somebody else's. Without either test this silently becomes "delete every uninstall entry".
+Assert-TextMatches -Name 'and only one whose uninstaller lived in the emptied directory' `
+    -Text $installer -Pattern '\$uninstallTarget\.StartsWith\(\$deadEntryPrefix'
+Assert-TextMatches -Name 'and only one whose uninstaller is really gone' `
+    -Text $installer -Pattern '(?s)if \(Test-Path -LiteralPath \$uninstallTarget\) \{ continue \}'
+
 Assert-TextMatches -Name 'installer keeps the Postgres secret in the service-scoped environment' `
     -Text $installer -Pattern 'ConnectionStrings__Postgres=\$postgresServiceConnStr'
 Assert-TextMatches -Name 'installer protects the service registry key before writing the Postgres secret' `
@@ -1071,6 +1085,16 @@ Assert-TextDoesNotMatch -Name 'the uninstall must not pass the wizard default as
     -Text $serverIssCode -Pattern '-ServiceName[\s\S]{0,24}GetServiceName'
 Assert-TextDoesNotMatch -Name 'the uninstall must not pass {app} as the install path' `
     -Text $serverIssCode -Pattern '-InstallPath[\s\S]{0,24}ExpandConstant'
+
+# Apps & Features must name the directory NodePilot is in, not the one the uninstaller landed in.
+# With /ANSWERFILE the directory page never runs, so {app} keeps DefaultDirName while the adapter
+# installs to the answer file's installPath - and Inno fills InstallLocation with {app}.
+Assert-TextMatches -Name 'the ARP entry is corrected to the real install path' `
+    -Text $serverIssCode `
+    -Pattern '(?s)ssPostInstall[\s\S]{0,900}RegWriteStringValue\(HKLM64,[\s\S]{0,200}InstallLocation'
+Assert-TextMatches -Name 'and it takes that path from the installer marker' `
+    -Text $serverIssCode `
+    -Pattern '(?s)ssPostInstall[\s\S]{0,600}RegQueryStringValue\(HKLM64,[^)]*InstallPath'
 
 # /ANSWERFILE skips the mode page, so IsUpdateSelected() reads ModePage's hard default of 0
 # ('update') and AnswerMode contradicts a file that says "mode": "install". Gating the silent

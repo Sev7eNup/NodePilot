@@ -1202,6 +1202,35 @@ Assert-SafeInstallRoot -Path $InstallPath
 if (Test-Path $InstallPath) {
     # Empty install path but do NOT touch DataPath.
     Get-ChildItem $InstallPath -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+
+    # The GUI setup keeps its uninstaller in this directory, so emptying it invalidates whatever
+    # Add/Remove Programs entry pointed at that uninstaller. Both the setup and this script are
+    # documented ways to install the same product and an operator may well mix them - and an entry
+    # whose uninstaller no longer exists is one Windows can neither run nor clear, so it sits there
+    # until somebody edits the registry.
+    #
+    # Sparing the uninstaller instead is not an option: Assert-NodePilotExtractedFiles a few steps
+    # below requires this directory to hold exactly the signed artifact and nothing else, which is
+    # what stops a binary being swapped before the service executes it.
+    #
+    # Deliberately narrow - an entry is removed only when its uninstaller lived in the directory
+    # just emptied AND is really gone. One that still works belongs to somebody else.
+    $deadEntryPrefix = $InstallPath.TrimEnd('\') + '\'
+    foreach ($uninstallRoot in @(
+            'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+            'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall')) {
+        foreach ($entry in @(Get-ChildItem -LiteralPath $uninstallRoot -ErrorAction SilentlyContinue)) {
+            $uninstallString = [string]$entry.GetValue('UninstallString')
+            if ([string]::IsNullOrWhiteSpace($uninstallString)) { continue }
+            # Strip the quoting an uninstaller path normally carries, plus any trailing switches.
+            $uninstallTarget = ($uninstallString -replace '^\s*"([^"]+)".*$', '$1').Trim()
+            if (-not $uninstallTarget.StartsWith($deadEntryPrefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
+            if (Test-Path -LiteralPath $uninstallTarget) { continue }
+            $deadEntryName = [string]$entry.GetValue('DisplayName')
+            Remove-Item -LiteralPath $entry.PSPath -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Info "  Removed the stale uninstall entry '$deadEntryName' - its uninstaller was in $InstallPath."
+        }
+    }
 } else {
     New-Item -ItemType Directory -Path $InstallPath -Force | Out-Null
 }
