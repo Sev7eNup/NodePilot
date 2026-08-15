@@ -13,9 +13,9 @@ internal static class DbAdminReadOnlySqlGuard
     public const string CastOperator = "::";
 
     /// <summary>
-    /// Constructs that can collapse a complete row into one innocently named result column. This
-    /// list supports the forensic DbAdmin secret-column guard; external-agent SQL additionally uses
-    /// bare composite-row detection in <see cref="ExternalAgentSqlPolicy"/>.
+    /// Constructs that can collapse a complete row into one innocently named result column, which
+    /// would otherwise carry a secret past the two name-based layers. Scoped to the tables that
+    /// actually hold a protected column — see <see cref="DbAdminSecretColumns"/>.
     /// </summary>
     private static readonly HashSet<string> WholeRowProjectionIdentifiers = new(StringComparer.OrdinalIgnoreCase)
     {

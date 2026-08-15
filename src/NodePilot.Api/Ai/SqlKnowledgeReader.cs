@@ -2,7 +2,6 @@ using System.Diagnostics;
 using NodePilot.Api.Services.DbAdmin;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Interfaces;
-using NodePilot.Core.Security;
 
 namespace NodePilot.Api.Ai;
 
@@ -10,21 +9,19 @@ namespace NodePilot.Api.Ai;
 /// <see cref="ISqlKnowledgeReader"/> over the existing DbAdmin services. Reuses
 /// <see cref="DbAdminMetadataService"/> (singleton — schema is stable) for the catalog and
 /// <see cref="DbAdminQueryExecutor"/> (scoped — owns the request DbContext) for read-only execution,
-/// then redacts every cell before it leaves the reader. Tables holding Workflow Definitions or
-/// custom-activity implementations are excluded from this generic source and remain available only
-/// through dedicated, RBAC-aware tools.
-/// Scoped, matching <see cref="SettingsKnowledgeReader"/>.
+/// then redacts every cell before it leaves the reader. Scoped, matching
+/// <see cref="SettingsKnowledgeReader"/>.
 ///
-/// <para><b>Redaction layers:</b> the external-agent policy first removes and rejects opaque
-/// automation tables. Then <see cref="DbAdminSecretColumns"/> refuses statements that name a protected
-/// column, masks protected result columns, and rejects whole-row serializers over protected tables.
-/// Finally, every remaining cell is stringified and run through <see cref="IAuditDetailsRedactor"/>.
-/// Result rows are capped (token budget) and cells truncated. Only <c>string?</c> ever leaves this
-/// reader.</para>
+/// <para><b>Redaction (three layers):</b> first, <see cref="DbAdminSecretColumns"/> refuses statements
+/// that name a protected column and replaces protected result columns with <c>"***"</c>; second, it
+/// refuses whole-row serializers over those tables, which would otherwise carry the secret past the
+/// name-based mask; third, every remaining cell is stringified and run through
+/// <see cref="IAuditDetailsRedactor"/>. Result rows are capped (token budget) and cells truncated.
+/// Only <c>string?</c> ever leaves this reader.</para>
 ///
-/// <para>The shared secret-column guard also runs on <c>/api/dbadmin/query</c>. The external-agent
-/// table policy intentionally does not: DbAdmin keeps those rows visible to administrators
-/// for forensic inspection and never forwards its response to an LLM.</para>
+/// <para>This closes the secret-leak gap that raw SQL otherwise opens. The same
+/// <see cref="DbAdminSecretColumns"/> guard runs on the <c>/api/dbadmin/query</c> endpoint, so the
+/// MCP/CLI/UI raw-SQL path enforces the identical contract.</para>
 /// </summary>
 public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
 {
@@ -53,17 +50,12 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
     public Task<IReadOnlyList<DbTableKnowledgeSummary>> ListTablesAsync(CancellationToken ct)
     {
         var rows = _metadata.GetAllTables()
-            .Where(t => ExternalAgentSqlPolicy.IsSchemaTableVisible(t.Name))
             .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
             .Select(t => new DbTableKnowledgeSummary(
                 t.Name,
                 t.DbTableName,
                 t.PkColumns,
-                t.Columns
-                    .Where(c => !c.IsHidden
-                                && ExternalAgentSqlPolicy.IsSchemaColumnVisible(t.Name, c.Name))
-                    .Select(c => c.Name)
-                    .ToList()))
+                t.Columns.Where(c => !c.IsHidden).Select(c => c.Name).ToList()))
             .ToList();
         return Task.FromResult<IReadOnlyList<DbTableKnowledgeSummary>>(rows);
     }
@@ -71,11 +63,9 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
     public Task<DbTableKnowledgeDetail?> GetTableAsync(string name, CancellationToken ct)
     {
         var t = _metadata.GetTable(name);
-        if (t is null || !ExternalAgentSqlPolicy.IsSchemaTableVisible(t.Name))
-            return Task.FromResult<DbTableKnowledgeDetail?>(null);
+        if (t is null) return Task.FromResult<DbTableKnowledgeDetail?>(null);
         var cols = t.Columns
-            .Where(c => !c.IsHidden
-                        && ExternalAgentSqlPolicy.IsSchemaColumnVisible(t.Name, c.Name))
+            .Where(c => !c.IsHidden)
             .Select(c => new DbColumnKnowledge(c.Name, FriendlyType(c), c.IsNullable, c.IsPrimaryKey))
             .ToList();
         var visibleNames = cols.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -91,16 +81,6 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
     public async Task<SqlQueryKnowledgeResult> ExecuteReadAsync(string sql, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
-
-        // DbAdmin keeps opaque automation rows visible for forensic administrators. This reader
-        // sends results to an external LLM, so it rejects every mention of those tables before a
-        // database connection opens. Dedicated tools own RBAC and payload redaction.
-        if (ExternalAgentSqlPolicy.ReferencesProtectedProjection(sql))
-        {
-            return new SqlQueryKnowledgeResult(
-                Array.Empty<string>(), Array.Empty<IReadOnlyList<string?>>(), false,
-                sw.ElapsedMilliseconds, ExternalAgentSqlPolicy.RejectionMessage);
-        }
 
         // Result-column masking cannot recover source lineage after aliases/expressions, so a
         // statement that mentions a protected identifier is refused before it reaches the database.
@@ -136,11 +116,6 @@ public sealed class SqlKnowledgeReader : ISqlKnowledgeReader
 
         var columns = result.Columns.Select(c => c.Name).ToList();
         var masked = _secretColumns.BuildColumnMask(columns);
-        for (var c = 0; c < columns.Count; c++)
-        {
-            if (ExternalAgentSqlPolicy.IsProtectedResultColumn(columns[c]))
-                masked[c] = true;
-        }
 
         var rows = new List<IReadOnlyList<string?>>(result.Rows.Count);
         var truncated = result.Truncated;

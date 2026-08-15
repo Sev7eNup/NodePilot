@@ -477,7 +477,7 @@ Source-Code + DB default aus:
 |---|---|---|---|
 | Dokumentation | `DocsEnabled` | `search_docs`, `read_doc` | — |
 | Workflows & Betrieb | `OperationalEnabled` | `get_workflow_definition`, `analyze_workflow`, `get_next_scheduled_fires` | RBAC-folder-scoped |
-| Betrieb (Listen) | via DB-Quelle | "Welche Läufe/Maschinen gibt es" → `list_db_tables` + `execute_readonly_sql` | ausschließlich globaler Admin (text2sql) |
+| Workflows & Betrieb (Listen) | via DB-Quelle | "Welche Workflows/Läufe/Maschinen gibt es" → `list_db_tables` + `execute_readonly_sql` | ausschließlich globaler Admin (text2sql) |
 | Systemkonfiguration | (immer, wenn privilegiert) | `read_settings` | Admin/Operator |
 | Quellcode | `SourceCodeEnabled` | `search_source`, `read_source` | Admin/Operator |
 | **DB / text2sql** | `DbEnabled` | `list_db_tables`, `get_db_table`, `execute_readonly_sql` | ausschließlich globaler Admin |
@@ -489,15 +489,18 @@ DbAdmin-Services). `execute_readonly_sql` nimmt ein einzelnes Statement bis 64 K
 Executor (nicht nur am HTTP-Controller), erlaubt als erstes Keyword nur `SELECT`/`WITH`/`EXPLAIN`/`SHOW`/
 `VALUES`/`TABLE` und lehnt mutierende Keywords, gefährliche Routinen, Multi-Statements sowie
 `EXPLAIN ANALYZE` ab. PostgreSQL setzt zusätzlich `SET TRANSACTION READ ONLY`; alle Provider rollen die
-Transaktion zurück. **Secret-Schutz mehrlagig**: Schema-Tools verbergen `IsHidden`-Spalten und lassen
-`Workflows`, `WorkflowVersions`, `CustomActivityDefinitions` sowie deren Versionstabelle vollständig aus.
-Der AI-SQL-Adapter lehnt jede Referenz auf diese vier Tabellen vor Ausführung ab; Workflow-Definitionen
-bleiben über das dedizierte, RBAC-geprüfte `get_workflow_definition` erreichbar. Damit muss kein
-provider-neutraler Lexer beweisen, dass Composite Rows nicht über Casts, LATERAL-Funktionen oder andere
-Wrapper abfließen. PostgreSQL-`U&"…"`-Identifier werden an dieser Grenze ebenfalls abgelehnt. Das ist
-absichtlich strenger als die forensische DbAdmin-Ansicht. Result-Spalten werden zusätzlich nach Namen
-maskiert und übrige Zellen durch den `IAuditDetailsRedactor` geführt. Row-Cap 200.
-Übergroße Tool-Resultate bleiben valides JSON mit explizitem Truncation-Hinweis.
+Transaktion zurück. **Secret-Schutz mehrlagig**: Schema-Tools verbergen `IsHidden`-Spalten; jede SQL-Referenz
+auf eine geschützte Spalte wird bereits vor Ausführung abgelehnt (auch Alias-/Ausdrucksvarianten);
+Whole-Row-Serialisierer über eine Tabelle mit geschützter Spalte (`to_json`/`row_to_json`/`::text`/
+`FOR JSON`) ebenso, weil sie die namensbasierten Schichten umgehen würden. PostgreSQL-`U&"…"`-Identifier
+und dynamische XML-Exporter (`query_to_xml` & Co.) sind im Read-Guard generell gesperrt.
+Result-Spalten werden zusätzlich nach Namen maskiert und übrige Zellen durch den `IAuditDetailsRedactor`
+geführt. Row-Cap 200. Übergroße Tool-Resultate bleiben valides JSON mit explizitem Truncation-Hinweis.
+
+**Workflow-Definitionen sind hier bewusst nicht ausgenommen.** Der text2sql-Pfad ist Admin-only, und ein
+globaler Admin sieht dieselben Zeilen ohnehin über die DbAdmin-Ansicht — eine Sperre auf `Workflows`,
+`WorkflowVersions` oder den Custom-Activity-Tabellen hätte nur „welche Workflows gibt es" unbeantwortbar
+gemacht, ohne eine Fähigkeit zu entziehen.
 DB-Tools nutzen Strict Function Schemas; inkompatible lokale Endpoints erhalten automatisch einen
 Best-Effort-Retry. SQL-Text wird nicht auditiert, stattdessen nur Anzahl und SHA-256-Kurzfingerprints.
 Text2SQL ist nur als Capability sichtbar, wenn das aktive Profil `EnableToolCalling=true` hat.

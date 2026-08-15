@@ -130,13 +130,13 @@ gerade“. Gefensterte Gesamtzahlen kommen ohnehin aus `density[]`, nicht aus de
 `list_db_tables` · `get_db_info` · `run_readonly_sql`. Schema discovery + single read-only SQL
 statement against the NodePilot App-DB (the agent does the NL→SQL translation). Read keyword
 whitelist + rollback enforced server-side; no write tool. `list_db_tables` hides secret columns
-(`PasswordHash`/`EncryptedPassword`), masks `GlobalVariable.Value` und lässt die vier Tabellen mit
-opaquen Automations-Payloads vollständig aus: `Workflows`, `WorkflowVersions`,
-`CustomActivityDefinitions`, `CustomActivityDefinitionVersions`. `run_readonly_sql` lehnt jede
-Referenz auf diese Tabellen bereits im MCP-Prozess vor dem HTTP-Request ab; passende Ergebnis-
-Spaltennamen werden zusätzlich maskiert. So können Composite Rows weder über Casts/LATERAL noch
-über provider-spezifische Wrapper zum Agent gelangen. PostgreSQL-`U&"…"`-Identifier sind an dieser
-Grenze ebenfalls gesperrt. Dedizierte Workflow-/Custom-Activity-Tools bleiben der Zugriffspfad.
+(`PasswordHash`/`EncryptedPassword`) und maskiert `GlobalVariable.Value`. PostgreSQL-`U&"…"`-Identifier
+und dynamische XML-Exporter (`query_to_xml` & Co.) sind im serverseitigen Read-Guard generell gesperrt.
+
+`Workflows`, `WorkflowVersions` und die Custom-Activity-Tabellen sind **bewusst nicht** gesperrt: die
+Tools sind Admin-only, und ein Admin liest dieselben Zeilen ohnehin über DbAdmin. Eine Sperre hätte nur
+Bestandsfragen („welche Workflows gibt es") unbeantwortbar gemacht. Für Definitionen inklusive
+Secret-Redaction bleibt `get_workflow_definition` der bequemere Weg.
 
 Für die übrigen Secret-Spalten gelten drei serverseitige Schichten im `DbAdminSecretColumns`-Contract:
 

@@ -1,5 +1,4 @@
 using FluentAssertions;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NodePilot.Api.Ai;
 using NodePilot.Api.Services.DbAdmin;
@@ -14,9 +13,8 @@ namespace NodePilot.Api.Tests.Ai;
 /// <summary>
 /// Direct coverage for the text2sql reader's redaction contract: secret columns named in the
 /// schema (<c>User.PasswordHash</c>, <c>Credential.EncryptedPassword</c>) are masked to <c>"***"</c>
-/// by result-column name, and Workflow Definition payloads are excluded from this generic database
-/// knowledge source entirely. Every other cell runs through the redactor, rows are capped, and SQL
-/// errors surface as <c>Error</c> instead of throwing.
+/// by result-column name, the masked-by-name <c>GlobalVariable.Value</c> too, every other cell runs
+/// through the redactor, rows are capped, and SQL errors surface as <c>Error</c> instead of throwing.
 /// Uses the same in-memory SQLite backend as <c>DbAdminQueryExecutorTests</c>.
 /// </summary>
 public class SqlKnowledgeReaderTests
@@ -58,14 +56,6 @@ public class SqlKnowledgeReaderTests
         user.DbTableName.Should().Be("Users");
         user.ColumnNames.Should().NotContain("PasswordHash"); // hidden
         user.ColumnNames.Should().Contain("Username");
-
-        tables.Select(t => t.Name).Should().NotContain(new[]
-        {
-            "Workflow",
-            "WorkflowVersion",
-            "CustomActivityDefinition",
-            "CustomActivityDefinitionVersion",
-        });
     }
 
     [Fact]
@@ -76,72 +66,6 @@ public class SqlKnowledgeReaderTests
         var detail = await reader.GetTableAsync("User", CancellationToken.None);
         detail.Should().NotBeNull();
         detail!.Columns.Select(c => c.Name).Should().NotContain("PasswordHash");
-    }
-
-    [Theory]
-    [InlineData("Workflow")]
-    [InlineData("WorkflowVersion")]
-    [InlineData("CustomActivityDefinition")]
-    [InlineData("CustomActivityDefinitionVersion")]
-    public async Task GetTable_HidesOpaqueAutomationTablesFromAi(string table)
-    {
-        using var db = TestDbFactory.Create();
-
-        var detail = await NewReader(db).GetTableAsync(table, CancellationToken.None);
-
-        detail.Should().BeNull();
-    }
-
-    [Theory]
-    [InlineData("SELECT DefinitionJson FROM Workflows")]
-    [InlineData("SELECT w.DefinitionJson AS payload FROM Workflows w")]
-    [InlineData("SELECT substr(DefinitionJson, 1, 20) AS payload FROM Workflows")]
-    [InlineData("SELECT [DefinitionJson] FROM [WorkflowVersions]")]
-    [InlineData("SELECT `DefinitionJson` FROM `WorkflowVersions`")]
-    [InlineData("SELECT U&\"Definiti\\006FnJson\" AS payload FROM U&\"Workfl\\006Fws\"")]
-    public async Task ExecuteRead_RejectsWorkflowDefinitionReferencesBeforeExecution(string sql)
-    {
-        using var db = TestDbFactory.Create();
-
-        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
-
-        result.Error.Should().Contain("workflow definition");
-        result.Rows.Should().BeEmpty();
-    }
-
-    [Theory]
-    [InlineData("SELECT ScriptTemplate FROM CustomActivityDefinitions")]
-    [InlineData("SELECT d.ScriptTemplate AS payload FROM CustomActivityDefinitions d")]
-    [InlineData("SELECT substr(InputParametersJson, 1, 10) FROM CustomActivityDefinitions")]
-    [InlineData("SELECT [InputParametersJson] FROM [CustomActivityDefinitionVersions]")]
-    public async Task ExecuteRead_RejectsCustomActivityImplementationReferencesBeforeExecution(string sql)
-    {
-        using var db = TestDbFactory.Create();
-
-        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
-
-        result.Error.Should().Contain("custom activity implementation");
-        result.Rows.Should().BeEmpty();
-    }
-
-    [Theory]
-    [InlineData("SELECT * FROM Workflows")]
-    [InlineData("SELECT w.* FROM Workflows AS w")]
-    [InlineData("SELECT * FROM WorkflowVersions")]
-    [InlineData("WITH current AS (SELECT * FROM Workflows) SELECT Name FROM current")]
-    [InlineData("TABLE Workflows")]
-    [InlineData("SELECT Id, Name FROM Workflows")]
-    [InlineData("SELECT leak FROM Workflows w CROSS JOIN LATERAL regexp_split_to_table(CAST(w AS text), 'NEVER_MATCH') AS leak")]
-    [InlineData("SELECT * FROM CustomActivityDefinitions")]
-    [InlineData("SELECT d.* FROM CustomActivityDefinitionVersions d")]
-    public async Task ExecuteRead_RejectsAnyProtectedAutomationTableReferenceBeforeExecution(string sql)
-    {
-        using var db = TestDbFactory.Create();
-
-        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
-
-        result.Error.Should().Contain("workflow definition");
-        result.Rows.Should().BeEmpty();
     }
 
     [Fact]
@@ -216,49 +140,14 @@ public class SqlKnowledgeReaderTests
         result.Rows.Should().BeEmpty();
     }
 
-    [Theory]
-    [InlineData("SELECT to_json(w) FROM Workflows w")]
-    [InlineData("SELECT row_to_json(w) FROM \"Workflows\" w")]
-    [InlineData("SELECT to_jsonb(v) FROM WorkflowVersions v")]
-    [InlineData("SELECT w::text FROM Workflows w")]
-    [InlineData("SELECT json_agg(w) FROM Workflows w")]
-    [InlineData("SELECT CAST(w AS text) AS payload FROM Workflows w")]
-    [InlineData("SELECT array_to_json(array_agg(w)) AS payload FROM Workflows w")]
-    [InlineData("SELECT CAST(d AS text) FROM CustomActivityDefinitions d")]
-    [InlineData("SELECT * FROM Workflows FOR JSON AUTO")]
-    [InlineData("SELECT * FROM WorkflowVersions FOR XML AUTO")]
-    public async Task ExecuteRead_RejectsProviderSpecificWorkflowRowSerialization(string sql)
-    {
-        using var db = TestDbFactory.Create();
-
-        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
-
-        result.Error.Should().Contain("workflow definition");
-        result.Rows.Should().BeEmpty();
-    }
-
-    [Theory]
-    [InlineData("SELECT query_to_xml('SELECT \"DefinitionJson\" FROM \"Workflows\"', false, true, '')")]
-    [InlineData("SELECT table_to_xml('Workflows', false, true, '')")]
-    [InlineData("SELECT database_to_xml(false, true, '')")]
-    public async Task ExecuteRead_RejectsDynamicXmlDataExporters(string sql)
-    {
-        using var db = TestDbFactory.Create();
-
-        var result = await NewReader(db).ExecuteReadAsync(sql, CancellationToken.None);
-
-        result.Error.Should().Contain("workflow definition or custom activity implementation");
-        result.Rows.Should().BeEmpty();
-    }
-
     /// <summary>
     /// The row-projection guard is blunt by design, so it must stay scoped to tables that actually
     /// hold a masked column — otherwise it would break ordinary analysis on the ~34 tables that
     /// hold no secret.
     /// </summary>
     [Theory]
-    [InlineData("SELECT to_json(e) FROM WorkflowExecutions e")]
-    [InlineData("SELECT e::text FROM WorkflowExecutions e")]
+    [InlineData("SELECT to_json(w) FROM Workflows w")]
+    [InlineData("SELECT w::text FROM Workflows w")]
     public async Task ExecuteRead_AllowsRowProjectionOverTableWithoutSecrets(string sql)
     {
         using var db = TestDbFactory.Create();
@@ -270,53 +159,6 @@ public class SqlKnowledgeReaderTests
         // no secret at all.
         result.Error.Should().NotBeNull();
         result.Error.Should().NotContain("serializes a whole row");
-        result.Error.Should().NotContain("workflow definition");
-    }
-
-    [Fact]
-    public async Task ExecuteRead_AllowsCountWildcardAndDefinitionJsonStringLiteral()
-    {
-        using var db = TestDbFactory.Create();
-        db.GlobalVariables.Add(new GlobalVariable { Name = "safe-name", Value = "opaque" });
-        await db.SaveChangesAsync();
-
-        var count = await NewReader(db).ExecuteReadAsync(
-            "SELECT COUNT(*) FROM GlobalVariables", CancellationToken.None);
-        var safeExpression = await NewReader(db).ExecuteReadAsync(
-            "SELECT CAST(g.Name AS text) FROM GlobalVariables g", CancellationToken.None);
-        var literal = await NewReader(db).ExecuteReadAsync(
-            "SELECT 'DefinitionJson' AS Label", CancellationToken.None);
-
-        count.Error.Should().BeNull();
-        count.Rows.Should().ContainSingle();
-        safeExpression.Error.Should().BeNull();
-        safeExpression.Rows.Should().ContainSingle();
-        safeExpression.Rows[0][0].Should().Be("safe-name");
-        literal.Error.Should().BeNull();
-        literal.Rows.Should().ContainSingle();
-        literal.Rows[0][0].Should().Be("DefinitionJson");
-    }
-
-    [Fact]
-    public async Task ExecuteRead_MasksWorkflowDefinitionResultColumn_AsDefenseInDepth()
-    {
-        using var db = TestDbFactory.Create();
-        const string canary = "opaque-workflow-definition-canary-741";
-        db.Workflows.Add(new Workflow { Id = Guid.NewGuid(), Name = "wf", DefinitionJson = canary });
-        await db.SaveChangesAsync();
-        await db.Database.ExecuteSqlRawAsync(
-            "CREATE VIEW WorkflowDefinitionLeak AS SELECT DefinitionJson FROM Workflows");
-
-        // The view is intentionally absent from AI schema discovery. This reaches result masking
-        // without naming the underlying protected table or column in the submitted statement.
-        var result = await NewReader(db).ExecuteReadAsync(
-            "SELECT * FROM WorkflowDefinitionLeak", CancellationToken.None);
-
-        result.Error.Should().BeNull();
-        result.Columns.Should().ContainSingle().Which.Should().Be("DefinitionJson");
-        result.Rows.Should().ContainSingle();
-        result.Rows[0][0].Should().Be(DbAdminSecretColumns.Mask);
-        result.Rows.SelectMany(r => r).Should().NotContain(canary);
     }
 
     [Fact]
