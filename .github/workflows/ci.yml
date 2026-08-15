@@ -1,16 +1,19 @@
 name: CI
 
 on:
-  # Pull requests only. A merge commit on main re-tests the exact tree the PR run already
-  # covered, so a `push: [main]` trigger doubled every change's CI for no new signal — a
-  # measured ~35 job-minutes per change, with both runs drawing on the same runner pool.
-  # Coverage for the paths a PR does not take:
-  #   - direct pushes to main (release cuts) -> `workflow_dispatch`, plus the nightly suite
-  #     (`scripts/nightly-tests.ps1`, 22:00 daily) which runs all four suites against main.
+  # main is gated unconditionally: every commit that lands on the default branch gets a full CI
+  # run, no matter how it got there. A merge commit does re-test the tree its PR run already
+  # covered (~35 job-minutes per change, both runs drawing on the same runner pool) — that
+  # duplication is accepted deliberately, because the alternative leaves direct pushes and
+  # release cuts resting on a `workflow_dispatch` nobody is forced to trigger. The local nightly
+  # suite is not a substitute: it runs against its currently checked-out tree and never pulls,
+  # so it is not an origin/main status check.
   #   - CodeQL keeps its own `push: [main]` trigger: only a run on the default branch
   #     updates the repository's code-scanning dashboard.
   pull_request:
     branches: [main, master]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -84,11 +87,20 @@ jobs:
         # [ExcludeFromCodeCoverage]-attributed code from the denominator) — the same filter
         # the local measurement uses. Previously CI measured without it, so the enforced
         # number and the documented measurement procedure disagreed.
-        run: dotnet test --configuration Release --no-build --settings coverage.runsettings --logger "trx;LogFileName=test_results.trx" --collect:"XPlat Code Coverage" --results-directory TestResults
+        # The trx logger gets no LogFileName on purpose: every test project in the solution wrote
+        # the same test_results.trx into the shared results directory, so each one overwrote its
+        # predecessor and the uploaded artifact held a single project's results. VSTest's default
+        # name is per-run unique, which keeps all of them.
+        run: dotnet test --configuration Release --no-build --settings coverage.runsettings --logger trx --collect:"XPlat Code Coverage" --results-directory TestResults
 
       - name: Generate coverage report
         if: always()
-        run: dotnet reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:"Html;Cobertura;TextSummary"
+        # -assemblyfilters mirrors the documented local measurement exactly. Without it the test
+        # scaffolding itself (NodePilot.TestCommons, NodePilot.LoadTests) counted as production
+        # code, so the gated number and the procedure in docs/claude-reference.md disagreed.
+        # The two +np / +nodepilot-mcp entries are not optional: the CLI assembly is named `np`
+        # and the MCP server `nodepilot-mcp`, so a plain NodePilot.* filter drops both.
+        run: dotnet reportgenerator -reports:"TestResults/**/coverage.cobertura.xml" -targetdir:coverage-report -reporttypes:"Html;Cobertura;TextSummary" "-assemblyfilters:+NodePilot.*;+np;+nodepilot-mcp;-NodePilot.*.Tests;-NodePilot.TestCommons;-NodePilot.LoadTests"
 
       - name: Enforce minimum coverage
         shell: pwsh
@@ -126,7 +138,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: backend-test-results
-          path: '**/test_results.trx'
+          path: '**/*.trx'
 
       - name: Upload coverage report
         if: always()

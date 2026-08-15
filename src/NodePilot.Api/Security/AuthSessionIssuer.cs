@@ -1,8 +1,10 @@
+using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using NodePilot.Core.Audit;
@@ -30,6 +32,21 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
     private readonly IHostEnvironment? _environment;
     private readonly NodePilotDbContext? _db;
     private readonly AuthenticationPolicyOptions _policy;
+
+    private sealed record RefreshRotationAttempt(
+        Guid UserId,
+        int AuthorizationVersion,
+        string PresentedJti,
+        string NewJti,
+        Guid SessionId,
+        bool HasServerSession,
+        DateTimeOffset AttemptedAt,
+        DateTimeOffset FallbackExpiresAt,
+        DateTime PresentedTokenExpiresAt,
+        string FallbackAuthenticationMethod)
+    {
+        public DateTimeOffset CommittedExpiresAt { get; set; } = FallbackExpiresAt;
+    }
 
     // Optional IHostEnvironment is null-default so existing test sites (10 fixtures across
     // AuthControllerLdap*Tests / AuthControllerWindowsTests / AuthControllerMethodsTests)
@@ -98,33 +115,41 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
         var sessionId = Guid.NewGuid();
         var tokenJti = Guid.NewGuid().ToString("N");
         var authMethod = source?.ToString() ?? AuthSource.Local.ToString();
+        var tokenRotationCommitted = false;
 
         if (_db is not null)
         {
-            AuthSession? persisted = null;
-            if (isRefresh
-                && Guid.TryParse(httpContext.User.FindFirstValue(SessionIdClaim), out var currentSessionId))
+            if (isRefresh)
             {
-                persisted = await _db.AuthSessions
-                    .FirstOrDefaultAsync(s => s.Id == currentSessionId && s.UserId == user.Id, ct);
-                if (persisted is null || persisted.RevokedAt is not null || persisted.ExpiresAt <= now.UtcDateTime)
-                    throw new UnauthorizedAccessException("The authentication session is no longer active.");
                 var presentedJti = httpContext.User.FindFirstValue(JwtRegisteredClaimNames.Jti);
-                if (string.IsNullOrEmpty(presentedJti)
-                    || !string.Equals(persisted.CurrentJti, presentedJti, StringComparison.Ordinal))
-                    throw new UnauthorizedAccessException("The authentication token was already rotated.");
+                if (string.IsNullOrEmpty(presentedJti))
+                    throw new UnauthorizedAccessException("The authentication token has no identifier.");
 
-                sessionId = persisted.Id;
-                expiresAt = new DateTimeOffset(DateTime.SpecifyKind(persisted.ExpiresAt, DateTimeKind.Utc));
-                authMethod = persisted.AuthenticationMethod;
-                persisted.LastSeenAt = now.UtcDateTime;
-                persisted.AuthorizationVersion = user.SecurityStamp;
-                persisted.CurrentJti = tokenJti;
-                persisted.RefreshGeneration++;
+                var hasServerSession = Guid.TryParse(
+                    httpContext.User.FindFirstValue(SessionIdClaim), out var currentSessionId);
+                if (hasServerSession) sessionId = currentSessionId;
+                long.TryParse(httpContext.User.FindFirstValue("exp"), out var expSeconds);
+                var presentedTokenExpiresAt = expSeconds > 0
+                    ? DateTimeOffset.FromUnixTimeSeconds(expSeconds).UtcDateTime
+                    : expiresAt.UtcDateTime;
+                var attempt = new RefreshRotationAttempt(
+                    user.Id,
+                    user.SecurityStamp,
+                    presentedJti,
+                    tokenJti,
+                    sessionId,
+                    hasServerSession,
+                    now,
+                    expiresAt,
+                    presentedTokenExpiresAt,
+                    authMethod);
+
+                expiresAt = await PersistRefreshRotationAsync(_db, attempt, ct);
+                tokenRotationCommitted = true;
             }
             else
             {
-                persisted = new AuthSession
+                _db.AuthSessions.Add(new AuthSession
                 {
                     Id = sessionId,
                     UserId = user.Id,
@@ -134,17 +159,8 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
                     ExpiresAt = expiresAt.UtcDateTime,
                     AuthorizationVersion = user.SecurityStamp,
                     CurrentJti = tokenJti,
-                };
-                _db.AuthSessions.Add(persisted);
-            }
-
-            try
-            {
+                });
                 await _db.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateConcurrencyException ex) when (isRefresh)
-            {
-                throw new UnauthorizedAccessException("The authentication token was already rotated.", ex);
             }
         }
 
@@ -154,7 +170,152 @@ public sealed class AuthSessionIssuer : IAuthSessionIssuer
         // which silently skipped cookies when HttpContext was null.
         if (httpContext is not null)
             SetAuthCookies(httpContext, token, expiresAt, _environment);
-        return new IssuedSession(token, user.Id, expiresAt);
+        return new IssuedSession(token, user.Id, expiresAt, tokenRotationCommitted);
+    }
+
+    private static async Task<DateTimeOffset> PersistRefreshRotationAsync(
+        NodePilotDbContext db,
+        RefreshRotationAttempt attempt,
+        CancellationToken ct)
+    {
+        var strategy = db.Database.CreateExecutionStrategy();
+        try
+        {
+            await strategy.ExecuteInTransactionAsync(
+                attempt,
+                async (state, token) =>
+                {
+                    // Every retry starts from committed database state. This is essential
+                    // after a lost COMMIT acknowledgement: EF may already have accepted the
+                    // first attempt's tracked entities even though the strategy must verify it.
+                    db.ChangeTracker.Clear();
+                    AuthSession persisted;
+                    if (state.HasServerSession)
+                    {
+                        persisted = await db.AuthSessions.FirstOrDefaultAsync(
+                                session => session.Id == state.SessionId
+                                           && session.UserId == state.UserId,
+                                token)
+                            ?? throw new UnauthorizedAccessException(
+                                "The authentication session is no longer active.");
+                        if (persisted.RevokedAt is not null
+                            || persisted.ExpiresAt <= state.AttemptedAt.UtcDateTime)
+                        {
+                            throw new UnauthorizedAccessException(
+                                "The authentication session is no longer active.");
+                        }
+                        if (!string.Equals(
+                                persisted.CurrentJti, state.PresentedJti, StringComparison.Ordinal))
+                        {
+                            throw new UnauthorizedAccessException(
+                                "The authentication token was already rotated.");
+                        }
+
+                        state.CommittedExpiresAt = new DateTimeOffset(
+                            DateTime.SpecifyKind(persisted.ExpiresAt, DateTimeKind.Utc));
+                        persisted.LastSeenAt = state.AttemptedAt.UtcDateTime;
+                        persisted.AuthorizationVersion = state.AuthorizationVersion;
+                        persisted.CurrentJti = state.NewJti;
+                        persisted.RefreshGeneration++;
+                    }
+                    else
+                    {
+                        persisted = new AuthSession
+                        {
+                            Id = state.SessionId,
+                            UserId = state.UserId,
+                            AuthenticationMethod = state.FallbackAuthenticationMethod,
+                            CreatedAt = state.AttemptedAt.UtcDateTime,
+                            LastSeenAt = state.AttemptedAt.UtcDateTime,
+                            ExpiresAt = state.FallbackExpiresAt.UtcDateTime,
+                            AuthorizationVersion = state.AuthorizationVersion,
+                            CurrentJti = state.NewJti,
+                        };
+                        state.CommittedExpiresAt = state.FallbackExpiresAt;
+                        db.AuthSessions.Add(persisted);
+                    }
+
+                    if (await db.RevokedTokens.AsNoTracking().AnyAsync(
+                            revoked => revoked.Jti == state.PresentedJti, token))
+                    {
+                        throw new UnauthorizedAccessException(
+                            "The authentication token was already rotated.");
+                    }
+                    db.RevokedTokens.Add(new RevokedToken
+                    {
+                        Jti = state.PresentedJti,
+                        UserId = state.UserId,
+                        RevokedAt = state.AttemptedAt.UtcDateTime,
+                        ExpiresAt = state.PresentedTokenExpiresAt,
+                        Reason = "rotated",
+                    });
+
+                    await db.SaveChangesAsync(token);
+                },
+                async (state, token) => await VerifyRefreshRotationAsync(db, state, token),
+                IsolationLevel.ReadCommitted,
+                ct);
+            return attempt.CommittedExpiresAt;
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            if (await VerifyRefreshRotationAsync(db, attempt, ct))
+                return attempt.CommittedExpiresAt;
+            throw new UnauthorizedAccessException(
+                "The authentication token was already rotated.", ex);
+        }
+        catch (DbUpdateException ex) when (DbErrorClassifier.IsUniqueConstraintViolation(ex))
+        {
+            if (await VerifyRefreshRotationAsync(db, attempt, ct))
+                return attempt.CommittedExpiresAt;
+            throw new UnauthorizedAccessException(
+                "The authentication token was already rotated.", ex);
+        }
+        catch (DbUpdateException ex)
+        {
+            if (await VerifyRefreshRotationAsync(db, attempt, ct))
+                return attempt.CommittedExpiresAt;
+            if (await PresentedTokenWasRotatedAsync(db, attempt, ct))
+            {
+                throw new UnauthorizedAccessException(
+                    "The authentication token was already rotated.", ex);
+            }
+            throw;
+        }
+    }
+
+    private static async Task<bool> VerifyRefreshRotationAsync(
+        NodePilotDbContext db,
+        RefreshRotationAttempt attempt,
+        CancellationToken ct)
+    {
+        db.ChangeTracker.Clear();
+        var committedSession = await db.AuthSessions.AsNoTracking()
+            .Where(session => session.Id == attempt.SessionId
+                              && session.UserId == attempt.UserId
+                              && session.CurrentJti == attempt.NewJti)
+            .Select(session => new { session.ExpiresAt })
+            .FirstOrDefaultAsync(ct);
+        if (committedSession is null) return false;
+        if (!await db.RevokedTokens.AsNoTracking()
+                .AnyAsync(revoked => revoked.Jti == attempt.PresentedJti, ct))
+        {
+            return false;
+        }
+
+        attempt.CommittedExpiresAt = new DateTimeOffset(
+            DateTime.SpecifyKind(committedSession.ExpiresAt, DateTimeKind.Utc));
+        return true;
+    }
+
+    private static async Task<bool> PresentedTokenWasRotatedAsync(
+        NodePilotDbContext db,
+        RefreshRotationAttempt attempt,
+        CancellationToken ct)
+    {
+        db.ChangeTracker.Clear();
+        return await db.RevokedTokens.AsNoTracking()
+            .AnyAsync(revoked => revoked.Jti == attempt.PresentedJti, ct);
     }
 
     private string GenerateJwtToken(

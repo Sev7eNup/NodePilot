@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "lint:ci": "eslint . --max-warnings 13",
+    "lint:ci": "eslint . --max-warnings 11",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",

@@ -242,4 +242,52 @@ public sealed class WorkflowDefinitionPatcherTests
         cfg["headers"]!.GetValue<string>().Should().Be("Authorization: Bearer sk-live-REAL");    // restored
         result.Notes.Should().BeEmpty();
     }
+
+    [Fact]
+    public void MergeFull_OpaqueHeadersObjectMask_RestoresCompleteOriginalShape()
+    {
+        var original = E("""
+        {"nodes":[{"id":"n1","data":{"config":{"url":"https://x","headers":{"Accept":"application/json","X-Legacy":"opaque-value"}}}}],"edges":[]}
+        """);
+        var proposed = E("""
+        {"nodes":[{"id":"n1","data":{"config":{"url":"https://y","headers":"***"}}}],"edges":[]}
+        """);
+
+        var result = WorkflowDefinitionPatcher.MergeFull(original, proposed);
+        var cfg = result.Definition["nodes"]!.AsArray()[0]!["data"]!["config"]!;
+
+        cfg["url"]!.GetValue<string>().Should().Be("https://y");
+        cfg["headers"]!["Accept"]!.GetValue<string>().Should().Be("application/json");
+        cfg["headers"]!["X-Legacy"]!.GetValue<string>().Should().Be("opaque-value");
+    }
+
+    [Fact]
+    public void MergeFull_MaskedLiteralsInsideNestedArrays_RestoreOriginalConditionsAndCases()
+    {
+        var original = E("""
+        {"nodes":[{"id":"decision-1","data":{"config":{"cases":[{
+          "conditionExpression":{"type":"comparison","left":{"kind":"variable","value":"x"},
+          "op":"==","right":{"kind":"literal","value":"case-secret"}}}]}}}],
+         "edges":[{"id":"edge-1","source":"a","target":"b","data":{"conditionExpression":{
+          "type":"group","op":"AND","children":[{"type":"comparison",
+          "left":{"kind":"literal","value":"left-secret"},"op":"==",
+          "right":{"kind":"variable","value":"y"}}]}}}]}
+        """);
+        var proposed = E("""
+        {"nodes":[{"id":"decision-1","data":{"config":{"cases":[{
+          "conditionExpression":{"type":"comparison","left":{"kind":"variable","value":"x"},
+          "op":"==","right":{"kind":"literal","value":"***"}}}]}}}],
+         "edges":[{"id":"edge-1","source":"a","target":"b","data":{"conditionExpression":{
+          "type":"group","op":"AND","children":[{"type":"comparison",
+          "left":{"kind":"literal","value":"***"},"op":"==",
+          "right":{"kind":"variable","value":"y"}}]}}}]}
+        """);
+
+        var merged = WorkflowDefinitionPatcher.MergeFull(original, proposed).Definition;
+
+        merged["nodes"]![0]!["data"]!["config"]!["cases"]![0]!["conditionExpression"]!
+            ["right"]!["value"]!.GetValue<string>().Should().Be("case-secret");
+        merged["edges"]![0]!["data"]!["conditionExpression"]!["children"]![0]!
+            ["left"]!["value"]!.GetValue<string>().Should().Be("left-secret");
+    }
 }

@@ -55,6 +55,9 @@ public sealed record ReencryptResult(
     int GlobalSecretsRewritten,
     int GlobalSecretsSkipped,
     IReadOnlyList<ReencryptionSkip> GlobalSecretSkipDetails,
+    int WorkflowVersionsRewritten,
+    int WorkflowVersionsSkipped,
+    IReadOnlyList<ReencryptionSkip> WorkflowVersionSkipDetails,
     bool PartialSuccess);
 
 // ---- Shared workflow folders (RBAC) -----------------------------------------

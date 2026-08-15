@@ -166,11 +166,18 @@
     "allowedHostsFieldHint": "Host-Header, die der Host-Filter annimmt — mehrere durch Semikolon getrennt, am besten konkrete FQDNs. 'localhost' mit eintragen: die Health-Probe der Installer geht an https://localhost:<port>/healthz/ready und würde sonst mit 400 abgewiesen.",
     "remoteNote": "<0>Remote (WinRM):</0> RequireWinRmSsl, WinRM-Timeouts und Session-Pool werden unter <1>Performance → Remote</1> bearbeitet — alle Remote-Schalter liegen dort gebündelt, damit ein Save den ganzen Block atomar überschreibt.",
     "reencryptCardTitle": "Secrets neu verschlüsseln",
-    "reencryptHint": "Verschlüsselt alle Credential-Passwörter und secret-markierten globalen Variablen mit dem aktiven Secret-Provider neu. Nach einer Master-Key-Rotation oder einem Wechsel von Secrets:Provider ausführen (Legacy-Provider für das Migrationsfenster konfiguriert lassen, siehe docs/secrets-providers.md).",
+    "reencryptHint": "Verschlüsselt alle Credential-Passwörter, secret-markierten globalen Variablen und verschlüsselten Workflow-History-Definitionen mit dem aktiven Secret-Provider neu. Nach einer Master-Key-Rotation oder einem Wechsel von Secrets:Provider ausführen (Legacy-Provider für das Migrationsfenster konfiguriert lassen, siehe docs/secrets-providers.md).",
     "reencryptButton": "Neu verschlüsseln",
     "reencryptConfirm": "Alle gespeicherten Secrets jetzt mit dem aktiven Provider neu verschlüsseln?",
-    "reencryptDone": "{{credentials}} Credential(s) und {{globals}} globale(s) Secret(s) neu verschlüsselt.",
-    "reencryptPartial": "Teilweise erfolgreich: {{rewritten}} neu verschlüsselt, {{skipped}} übersprungen — betroffene Einträge manuell neu erfassen (Details im Support-Log)."
+    "reencryptDone": "{{credentials}} Credential(s), {{globals}} globale(s) Secret(s) und {{workflowVersions}} Workflow-History-Version(en) neu verschlüsselt.",
+    "reencryptPartial": "Teilweise erfolgreich: {{rewritten}} neu verschlüsselt, {{skipped}} übersprungen — betroffene Einträge unten prüfen, bevor der Legacy-Provider entfernt wird.",
+    "reencryptResultComplete": "Rotation ohne übersprungene Einträge abgeschlossen",
+    "reencryptResultPartial": "Rotation mit noch zu prüfenden Einträgen abgeschlossen",
+    "reencryptScopeCredentials": "Credentials",
+    "reencryptScopeGlobals": "Globale Secrets",
+    "reencryptScopeWorkflowVersions": "Workflow-History-Versionen",
+    "reencryptScopeCounts": "{{rewritten}} neu verschlüsselt · {{skipped}} übersprungen",
+    "reencryptSkipDetails": "Übersprungene Einträge (Name · Grund · ID)"
   },
   "logging": {
     "asyncFileSink": "Asynchroner Datei-Sink",

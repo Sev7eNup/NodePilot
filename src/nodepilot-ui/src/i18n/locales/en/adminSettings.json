@@ -166,11 +166,18 @@
     "allowedHostsFieldHint": "Host headers the host filter accepts — semicolon-separated, ideally concrete FQDNs. Include 'localhost': the installers' own health probe targets https://localhost:<port>/healthz/ready and would otherwise be rejected with a 400.",
     "remoteNote": "<0>Remote (WinRM):</0> RequireWinRmSsl, WinRM timeouts and the session pool are edited under <1>Performance → Remote</1> — every remote switch lives there together, so one save overwrites the whole block atomically.",
     "reencryptCardTitle": "Re-encrypt secrets",
-    "reencryptHint": "Re-encrypts every credential password and secret-flagged global variable with the active secret provider. Run this after rotating the master key or switching Secrets:Provider (keep the legacy provider configured for the migration window, see docs/secrets-providers.md).",
+    "reencryptHint": "Re-encrypts every credential password, secret-flagged global variable, and encrypted workflow-history definition with the active secret provider. Run this after rotating the master key or switching Secrets:Provider (keep the legacy provider configured for the migration window, see docs/secrets-providers.md).",
     "reencryptButton": "Re-encrypt now",
     "reencryptConfirm": "Re-encrypt all stored secrets with the active provider now?",
-    "reencryptDone": "Re-encrypted {{credentials}} credential(s) and {{globals}} global secret(s).",
-    "reencryptPartial": "Partial success: {{rewritten}} re-encrypted, {{skipped}} skipped — re-enter the affected entries manually (details in the support log)."
+    "reencryptDone": "Re-encrypted {{credentials}} credential(s), {{globals}} global secret(s), and {{workflowVersions}} workflow history version(s).",
+    "reencryptPartial": "Partial success: {{rewritten}} re-encrypted, {{skipped}} skipped — review the affected entries below before removing the legacy provider.",
+    "reencryptResultComplete": "Rotation completed without skips",
+    "reencryptResultPartial": "Rotation completed with entries that still need attention",
+    "reencryptScopeCredentials": "Credentials",
+    "reencryptScopeGlobals": "Global secrets",
+    "reencryptScopeWorkflowVersions": "Workflow history versions",
+    "reencryptScopeCounts": "{{rewritten}} re-encrypted · {{skipped}} skipped",
+    "reencryptSkipDetails": "Skipped entries (name · reason · ID)"
   },
   "logging": {
     "asyncFileSink": "Async file sink",

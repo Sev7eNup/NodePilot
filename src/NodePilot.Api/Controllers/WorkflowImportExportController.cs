@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using System.Data;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using NodePilot.Api.Audit;
 using NodePilot.Core.Audit;
 using NodePilot.Api.Dtos;
@@ -326,8 +328,12 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             });
 
         const int MaxImportItems = 500;
-        if (parsed.Workflows.Count > MaxImportItems)
-            return BadRequest(new { error = $"Too many runbooks in one import (got {parsed.Workflows.Count}, max {MaxImportItems})." });
+        var importItemCount = (long)parsed.Workflows.Count + parsed.Variables.Count;
+        if (importItemCount > MaxImportItems)
+            return BadRequest(new
+            {
+                error = $"Too many workflows and variables in one import (got {importItemCount}, max {MaxImportItems}).",
+            });
 
         // 1. Create global variables first so workflow-import and any {{globals.X}} references
         //    already resolve when the operator opens the imported workflow. We never overwrite
@@ -335,7 +341,13 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         var existingGlobals = await _globals.GetAllAsync(ct);
         var existingGlobalNames = new HashSet<string>(existingGlobals.Select(g => g.Name), StringComparer.OrdinalIgnoreCase);
         var importedVariables = new List<ScorchImportedVariableInfo>();
+        var variablesToCreate = new List<NodePilot.Engine.Scorch.ScorchVariable>();
         var triggeredBy = User.Identity?.Name;
+        // Operators create global variables here just like Admins do. Gating this on Admin was
+        // considered and rejected: an Operator may already run arbitrary script under the service
+        // identity, so anyone able to import a runbook can put the same value straight into a
+        // step. The gate would only split Orchestrator migrations into two manual passes without
+        // removing a capability. Collisions are still never overwritten (see above).
         foreach (var v in parsed.Variables)
         {
             if (existingGlobalNames.Contains(v.Name))
@@ -345,20 +357,13 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                     SkipReason: "A global variable with this name already exists."));
                 continue;
             }
-            try
-            {
-                // Scorch-imported globals land in the Root folder — the importer has no folder concept.
-                await _globals.CreateAsync(v.Name, v.Value, v.IsSecret, v.Description,
-                    GlobalVariableFolder.RootFolderId, triggeredBy, ct);
-                existingGlobalNames.Add(v.Name);
-                importedVariables.Add(new ScorchImportedVariableInfo(
-                    v.Name, null, CreatedNow: true, Skipped: false, SkipReason: null));
-            }
-            catch (Exception ex)
-            {
-                importedVariables.Add(new ScorchImportedVariableInfo(
-                    v.Name, null, CreatedNow: false, Skipped: true, SkipReason: ex.Message));
-            }
+            // Plan all writes before opening the transaction. Adding the name now also makes a
+            // duplicate within the same SCOrch file a deterministic collision rather than a
+            // database-provider-specific unique-constraint failure halfway through the batch.
+            variablesToCreate.Add(v);
+            existingGlobalNames.Add(v.Name);
+            importedVariables.Add(new ScorchImportedVariableInfo(
+                v.Name, null, CreatedNow: true, Skipped: false, SkipReason: null));
         }
 
         // 2. Create workflows (disabled).
@@ -367,6 +372,7 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         var takenNames = new HashSet<string>(existingNames, StringComparer.Ordinal);
 
         var created = new List<ScorchImportedWorkflowInfo>();
+        var workflowsToCreate = new List<Workflow>();
         var errors = new List<string>(parsed.Errors);
 
         foreach (var rb in parsed.Workflows)
@@ -396,17 +402,69 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 UpdatedAt = DateTime.UtcNow,
             };
             PopulateComputedColumns(workflow);
-            _db.Workflows.Add(workflow);
+            workflowsToCreate.Add(workflow);
             created.Add(new ScorchImportedWorkflowInfo(
                 workflow.Id, finalName,
                 finalName == rb.Name ? null : rb.Name,
                 rb.ActivityCount, rb.HeuristicCount, rb.FallbackCount));
         }
 
-        var variablesCreated = importedVariables.Count(v => v.CreatedNow);
-        if (created.Count > 0)
+        var variablesCreated = variablesToCreate.Count;
+        if (workflowsToCreate.Count > 0 || variablesToCreate.Count > 0)
         {
-            await _db.SaveChangesAsync(ct);
+            // GlobalVariableStore is scoped with this controller and therefore shares _db.
+            // Its per-variable SaveChanges calls and the workflow insert must commit as one
+            // unit: a later encryption/database failure must not leave a half-imported batch.
+            // ExecuteInTransaction verifies exact row identities after an ambiguous commit
+            // acknowledgement, so a retry never collides with an import that already committed.
+            var strategy = _db.Database.CreateExecutionStrategy();
+            var attempt = new ScorchImportAttempt(
+                workflowsToCreate,
+                variablesToCreate,
+                triggeredBy,
+                new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase));
+            await strategy.ExecuteInTransactionAsync(
+                attempt,
+                async (state, token) =>
+                {
+                    // A retried attempt must not inherit entities whose state changed to
+                    // Unchanged before an ambiguous commit. Variable IDs are attempt-local.
+                    _db.ChangeTracker.Clear();
+                    state.CreatedVariableIds.Clear();
+                    _db.Workflows.AddRange(state.Workflows);
+                    foreach (var v in state.Variables)
+                    {
+                        var createdVariable = await _globals.CreateAsync(
+                            v.Name, v.Value, v.IsSecret, v.Description,
+                            GlobalVariableFolder.RootFolderId, state.TriggeredBy, token);
+                        state.CreatedVariableIds[v.Name] = createdVariable.Id;
+                    }
+
+                    await _db.SaveChangesAsync(token);
+                },
+                async (state, token) =>
+                {
+                    // A commit acknowledgement can be lost after the database committed. Verify
+                    // the exact pre-generated workflow and captured variable identities before
+                    // allowing the execution strategy to replay the import.
+                    _db.ChangeTracker.Clear();
+                    if (state.CreatedVariableIds.Count != state.Variables.Count) return false;
+
+                    var workflowIds = state.Workflows.Select(workflow => workflow.Id).ToArray();
+                    var variableIds = state.CreatedVariableIds.Values.ToArray();
+                    var workflowsCommitted = workflowIds.Length == 0
+                        || await _db.Workflows.AsNoTracking()
+                            .CountAsync(workflow => workflowIds.Contains(workflow.Id), token)
+                            == workflowIds.Length;
+                    if (!workflowsCommitted) return false;
+
+                    return variableIds.Length == 0
+                           || await _db.GlobalVariables.AsNoTracking()
+                               .CountAsync(variable => variableIds.Contains(variable.Id), token)
+                               == variableIds.Length;
+                },
+                IsolationLevel.Serializable,
+                ct);
         }
 
         if (created.Count > 0 || variablesCreated > 0)
@@ -487,6 +545,12 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         }
         return new WorkflowExportItem(w.Name, w.Description, definition, IsEnabled: w.IsEnabled);
     }
+
+    private sealed record ScorchImportAttempt(
+        IReadOnlyList<Workflow> Workflows,
+        IReadOnlyList<NodePilot.Engine.Scorch.ScorchVariable> Variables,
+        string? TriggeredBy,
+        Dictionary<string, Guid> CreatedVariableIds);
 
     private IActionResult ExportEnvelopeResult(WorkflowExportEnvelope envelope, string filename)
     {

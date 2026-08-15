@@ -18,7 +18,7 @@ Envelope: `nodepilot-workflow-export/v1`. **Secrets werden hier redigiert** (`**
 
 ## System-Configuration Backup (ADR 0001)
 
-Voller DR-Snapshot der Konfiguration: Workflows + Folders/Sharing, Machines, Credentials, Globals + Global-Variable-Ordner, Custom Activities, Alerting, Users, Settings. **Nicht enthalten:** Execution-History, Audit, Stats. Admin-only. Envelope `nodepilot-system-backup/v2` (`.npbackup`) — v2 ergänzt die `alerting`-Sektion; der Reader akzeptiert v1 **und** v2, geschrieben wird ausschließlich v2.
+Voller DR-Snapshot der Konfiguration: Workflows + Folders/Sharing, Machines, Credentials, Globals + Global-Variable-Ordner, Custom Activities, Alerting, Users, Settings. **Nicht enthalten:** Execution-History, Audit, Stats. Admin-only. Envelope `nodepilot-system-backup/v3` (`.npbackup`) — v2 ergänzte die `alerting`-Sektion; v3 schützt vollständige Workflowdefinitionen mit `$encDefinition` sowie Custom-Activity-Skripte und Eingabe-Defaults mit `$enc`. Ein Workflow-Export zieht Custom Activities automatisch als harte Abhängigkeit mit. Der Reader akzeptiert v1, v2 und v3 (inklusive alter Plaintext-Custom-Activity-Felder), geschrieben wird ausschließlich v3. Ältere Builds lehnen v3 sichtbar ab.
 
 ### Secret-Handling
 

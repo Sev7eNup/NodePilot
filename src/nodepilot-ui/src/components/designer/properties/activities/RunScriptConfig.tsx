@@ -40,7 +40,7 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
   }, [workflowId, stepId, config, t]);
 
   // AI script generation (streaming): the script types itself out live in the Monaco editor.
-  const handleAiGenerate = useAiScriptStream({ workflowId, stepId, upstreamVars });
+  const aiScript = useAiScriptStream({ workflowId, stepId, upstreamVars });
 
   return (
     <>
@@ -188,7 +188,8 @@ export function RunScriptConfig({ config, onUpdate, upstreamVars = [], workflowI
             upstreamRefs={upstreamRefs}
             outputVariableName={outputVariableName}
             onRun={canRun ? runStepTest : undefined}
-            onAiGenerate={handleAiGenerate}
+            onAiGenerate={aiScript?.generate}
+            aiTargetHost={aiScript?.targetHost}
           />
         </Suspense>
       )}

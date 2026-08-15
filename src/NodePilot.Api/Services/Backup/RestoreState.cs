@@ -49,6 +49,7 @@ internal sealed class RestoreState
 
     private readonly HashSet<Guid> _backupCredentialIds;
     private readonly HashSet<Guid> _backupMachineIds;
+    private readonly HashSet<Guid> _backupCustomActivityIds;
     private readonly HashSet<Guid> _backupFolderIds;
     private readonly HashSet<Guid> _backupGlobalFolderIds;
 
@@ -60,6 +61,7 @@ internal sealed class RestoreState
         _policies = policies;
         _backupCredentialIds = SourceIds(reader, BackupSections.Credentials, "items");
         _backupMachineIds = SourceIds(reader, BackupSections.Machines, "items");
+        _backupCustomActivityIds = SourceIds(reader, BackupSections.CustomActivities, "items");
         _backupFolderIds = SourceIds(reader, BackupSections.Folders, "structure");
         _backupGlobalFolderIds = SourceIds(reader, BackupSections.GlobalVariableFolders, "structure");
     }
@@ -70,6 +72,8 @@ internal sealed class RestoreState
     // ---- resolvability (validation, before any write) ----
     public bool CredentialResolvable(Guid g) => _backupCredentialIds.Contains(g) || ExistingCredentialIds.Contains(g);
     public bool MachineResolvable(Guid g) => _backupMachineIds.Contains(g) || ExistingMachineIds.Contains(g);
+    public bool CustomActivityResolvable(Guid g) =>
+        _backupCustomActivityIds.Contains(g) || ExistingCustomActivityIds.Contains(g);
     public bool FolderResolvable(Guid g) =>
         g == SharedWorkflowFolder.RootFolderId || _backupFolderIds.Contains(g) || ExistingFolderIds.Contains(g);
     public bool GlobalFolderResolvable(Guid g) =>
@@ -89,7 +93,7 @@ internal sealed class RestoreState
 
     /// <summary>Maps a backed-up custom-activity definition id to its restored target id (for
     /// <c>config.__customDefinitionId</c> in workflow node configs). Null when neither in the backup
-    /// nor the target DB — the reference is left as-is and resolves (or fails cleanly) at run time.</summary>
+    /// nor the target DB — validation rejects that restore before any write.</summary>
     public Guid? ResolveCustomActivity(Guid g) =>
         CustomActivityMap.TryGetValue(g, out var t) ? t : ExistingCustomActivityIds.Contains(g) ? g : null;
 

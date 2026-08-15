@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
+using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Api.Tests.TestSupport;
@@ -115,6 +117,31 @@ public class WorkflowImportExportControllerTests
 
         content.Content.Should().NotContain("opaque-tenant-credential");
         content.Content.Should().Contain("***");
+    }
+
+    [Fact]
+    public async Task ExportOne_RedactsOpaqueLegacyFields_WithoutSecretHeuristics()
+    {
+        var db = CreateContext();
+        var wf = new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "Legacy",
+            DefinitionJson =
+                """{"nodes":[{"id":"legacy","data":{"activityType":"restApi","config":{"script":"Write-Output 'plain-looking-literal'","body":"opaque-body","headers":{"Accept":"application/json"},"scorchRaw":{"payload":"raw-migration-value"},"url":"https://example.test/?api_key=plain-looking-secret"}}}],"edges":[]}""",
+        };
+        db.Workflows.Add(wf);
+        await db.SaveChangesAsync();
+
+        var result = await NewController(db).ImportExport.ExportOne(wf.Id, CancellationToken.None);
+        var content = result.Should().BeOfType<ContentResult>().Subject.Content!;
+
+        content.Should().NotContain("plain-looking-literal");
+        content.Should().NotContain("opaque-body");
+        content.Should().NotContain("application/json");
+        content.Should().NotContain("raw-migration-value");
+        content.Should().NotContain("example.test");
+        content.Should().NotContain("api_key");
     }
 
     [Fact]
@@ -381,6 +408,170 @@ public class WorkflowImportExportControllerTests
         call.Action.Should().Be("WORKFLOW_IMPORTED_SCORCH");
         call.Details.Should().Contain("\"created\":0");
         call.Details.Should().Contain("\"variables\":1");
+    }
+
+    // Operators migrate Orchestrator runbooks themselves, globals included. This is a deliberate
+    // product decision, not an oversight: an Operator may already run arbitrary script under the
+    // service identity, so gating the variable would split every migration into two passes
+    // without taking away a capability.
+    [Fact]
+    public async Task ImportScorch_OperatorImportsWorkflow_CreatesGlobalVariable()
+    {
+        var db = CreateContext();
+        var h = NewController(db, role: "Operator");
+        var workflowId = Guid.NewGuid();
+        var variableId = Guid.NewGuid();
+        var xml = $$"""
+                    <ExportData>
+                      <Policies>
+                        <Folder>
+                          <Policy>
+                            <UniqueID>{{workflowId}}</UniqueID>
+                            <Name>Operator Migration</Name>
+                            <Description>Imported by an Operator, globals included.</Description>
+                          </Policy>
+                        </Folder>
+                      </Policies>
+                      <GlobalSettings>
+                        <Variables>
+                          <Object>
+                            <ObjectTypeName>Variable</ObjectTypeName>
+                            <UniqueID>{{variableId}}</UniqueID>
+                            <Name>MissingGlobal</Name>
+                            <Value>migration-value</Value>
+                          </Object>
+                        </Variables>
+                      </GlobalSettings>
+                    </ExportData>
+                    """;
+        h.ImportExport.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = await h.ImportExport.ImportScorch(null, CancellationToken.None);
+
+        var response = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ScorchImportResponse>().Subject;
+        response.Created.Should().Be(1);
+        response.Workflows.Should().ContainSingle(w => w.Name == "Operator Migration");
+        response.Variables.Should().ContainSingle(v =>
+            v.Name == "MissingGlobal" && v.CreatedNow && !v.Skipped);
+        response.Warnings.Should().NotContain(w =>
+            w.Contains("Admin approval", StringComparison.OrdinalIgnoreCase));
+        db.Workflows.Should().ContainSingle(w => w.Name == "Operator Migration");
+        db.GlobalVariables.Should().ContainSingle(g => g.Name == "MissingGlobal");
+    }
+
+    [Fact]
+    public async Task ImportScorch_CombinedWorkflowsAndVariablesOverLimit_IsRejectedBeforeWrites()
+    {
+        var db = CreateContext();
+        var h = NewController(db);
+        var variables = string.Join("", Enumerable.Range(0, 501).Select(i => $$"""
+            <Object>
+              <ObjectTypeName>Variable</ObjectTypeName>
+              <UniqueID>{{Guid.NewGuid()}}</UniqueID>
+              <Name>Var_{{i}}</Name>
+              <Value>value</Value>
+            </Object>
+            """));
+        var xml = $"""
+                  <ExportData>
+                    <GlobalSettings><Variables>{variables}</Variables></GlobalSettings>
+                  </ExportData>
+                  """;
+        h.ImportExport.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = await h.ImportExport.ImportScorch(null, CancellationToken.None);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        db.Workflows.Should().BeEmpty();
+        db.GlobalVariables.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ImportScorch_LaterVariableFailure_RollsBackEarlierVariableAndWorkflow()
+    {
+        var db = CreateContext();
+        var realStore = new NodePilot.Data.GlobalVariableStore(
+            db,
+            new NodePilot.Data.Security.DpapiSecretProtector(
+                System.Security.Cryptography.DataProtectionScope.CurrentUser));
+        var createCalls = 0;
+        var failingStore = new Mock<IGlobalVariableStore>(MockBehavior.Strict);
+        failingStore.Setup(s => s.GetAllAsync(It.IsAny<CancellationToken>()))
+            .Returns((CancellationToken ct) => realStore.GetAllAsync(ct));
+        failingStore.Setup(s => s.CreateAsync(
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>(), It.IsAny<string?>(),
+                It.IsAny<Guid>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns((string name, string value, bool isSecret, string? description,
+                Guid folderId, string? updatedBy, CancellationToken ct) =>
+            {
+                createCalls++;
+                if (createCalls == 2)
+                    throw new InvalidOperationException("injected second-variable failure");
+                return realStore.CreateAsync(
+                    name, value, isSecret, description, folderId, updatedBy, ct);
+            });
+
+        var principal = new System.Security.Claims.ClaimsPrincipal(
+            new System.Security.Claims.ClaimsIdentity(
+                new[]
+                {
+                    new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, "Admin"),
+                    new System.Security.Claims.Claim(
+                        System.Security.Claims.ClaimTypes.NameIdentifier,
+                        Guid.NewGuid().ToString()),
+                    new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Name, "test-admin"),
+                },
+                "TestAuth"));
+        var controller = new WorkflowImportExportController(
+            db,
+            NullLogger<WorkflowImportExportController>.Instance,
+            new CapturingAuditWriter(),
+            new AlwaysAllowAuthorizationService(),
+            failingStore.Object)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext { User = principal },
+            },
+        };
+        var xml = $$"""
+                    <ExportData>
+                      <Policies>
+                        <Folder>
+                          <Policy>
+                            <UniqueID>{{Guid.NewGuid()}}</UniqueID>
+                            <Name>Atomic Migration</Name>
+                          </Policy>
+                        </Folder>
+                      </Policies>
+                      <GlobalSettings>
+                        <Variables>
+                          <Object>
+                            <ObjectTypeName>Variable</ObjectTypeName>
+                            <UniqueID>{{Guid.NewGuid()}}</UniqueID>
+                            <Name>FirstGlobal</Name>
+                            <Value>first-value</Value>
+                          </Object>
+                          <Object>
+                            <ObjectTypeName>Variable</ObjectTypeName>
+                            <UniqueID>{{Guid.NewGuid()}}</UniqueID>
+                            <Name>SecondGlobal</Name>
+                            <Value>second-value</Value>
+                          </Object>
+                        </Variables>
+                      </GlobalSettings>
+                    </ExportData>
+                    """;
+        controller.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var act = () => controller.ImportScorch(null, CancellationToken.None);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("injected second-variable failure");
+        db.ChangeTracker.Clear();
+        (await db.GlobalVariables.AsNoTracking().ToListAsync()).Should().BeEmpty();
+        (await db.Workflows.AsNoTracking().ToListAsync()).Should().BeEmpty();
     }
 
     [Fact]

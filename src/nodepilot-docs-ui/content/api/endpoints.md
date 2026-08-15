@@ -320,6 +320,8 @@ Maintenance-Window-Create-Body:
 
 ```bash
 # Script generieren (mit Upstream-Variablen-Kontext)
+# Optionaler Editor-Kontext braucht zusätzlich includeCurrentScript:true; ohne das Flag ignoriert
+# der Server ein mitgesendetes currentScript, weil es Passwörter oder Tokens enthalten kann.
 curl -s -b cookie.jar -X POST "$NP/api/ai/generate-script" -H 'Content-Type: application/json' \
   -d '{ "prompt":"Write a PowerShell step that checks free disk space",
         "workflowId":"21f1c0d4-...", "stepId":"runScript_1",

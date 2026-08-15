@@ -44,10 +44,15 @@ public static class BackupSections
     public const string Schema = "nodepilot-system-backup/v1";
     /// <summary>Current envelope schema — adds the <see cref="Alerting"/> section. New exports write this.</summary>
     public const string SchemaV2 = "nodepilot-system-backup/v2";
+    /// <summary>
+    /// Protects each complete workflow definition in a passphrase envelope. Older readers must
+    /// reject this schema instead of treating <c>$encDefinition</c> as an ordinary definition.
+    /// </summary>
+    public const string SchemaV3 = "nodepilot-system-backup/v3";
     /// <summary>The schema every new export writes.</summary>
-    public const string CurrentSchema = SchemaV2;
-    /// <summary>Schemas this build can import. Older builds reject <see cref="SchemaV2"/> (unknown) — visible refusal.</summary>
-    public static readonly string[] SupportedSchemas = [Schema, SchemaV2];
+    public const string CurrentSchema = SchemaV3;
+    /// <summary>Schemas this build can import. Older builds reject unknown newer schemas visibly.</summary>
+    public static readonly string[] SupportedSchemas = [Schema, SchemaV2, SchemaV3];
 }
 
 /// <summary>

@@ -176,6 +176,7 @@ builder.Services.AddHealthChecks()
 // deployments. Picks the implementation from Secrets:Provider; both CredentialStore and
 // GlobalVariableStore route their encrypt/decrypt through it transparently.
 builder.Services.AddNodePilotSecretProtector(builder.Configuration);
+builder.Services.AddSingleton<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>();
 // RBAC Tier A: scoped per-request authorization service. Folder-permission lookups are
 // cached for the lifetime of the request so list endpoints with N workflows resolve the
 // accessible-folder set once, then do O(1) set-membership tests per row.
@@ -491,6 +492,16 @@ using (var scope = app.Services.CreateScope())
     // Surface the active secret protector so operators see "DPAPI" vs "AES-GCM" in the
     // boot log without grepping config. Single line, INFO level, only at startup.
     scope.ServiceProvider.GetRequiredService<NodePilot.Data.Security.SecretProtectorRegistry.IStartupLogger>().Log();
+
+    // WorkflowVersions predate at-rest protection and may contain arbitrary scripts, HTTP bodies,
+    // or imported SCOrch payloads with inline credentials. Do not rewrite legacy rows during
+    // startup: the production updater's health-check rollback restores binaries, not database
+    // contents, and an upgraded HA passive node must remain data-compatible with the old active
+    // node. Once every node is upgraded, the explicit secrets re-encryption sweep performs the
+    // audited cutover. New snapshots are protected immediately by their write paths.
+    await scope.ServiceProvider
+        .GetRequiredService<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>()
+        .WarnIfExplicitMigrationRequiredAsync(db, CancellationToken.None);
 
     // Sweep orphaned Running executions left over from a previous process instance
     // (crash / kill / upgrade). Without this the UI would show ghost "Running" rows

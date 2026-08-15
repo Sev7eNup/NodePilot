@@ -444,7 +444,7 @@ function ScriptDoubleClickEditor({
   const config = (data.config as Record<string, unknown>) ?? {};
   const upstreamVars = node ? getUpstreamVariables(node.id, nodes, edges) : [];
   // Hook unconditionally before any early return (Rules of Hooks).
-  const handleAiGenerate = useAiScriptStream({ workflowId, stepId: node?.id, upstreamVars });
+  const aiScript = useAiScriptStream({ workflowId, stepId: node?.id, upstreamVars });
 
   if (!node) return null;
 
@@ -474,7 +474,8 @@ function ScriptDoubleClickEditor({
         upstreamRefs={upstreamRefs}
         outputVariableName={outputVariableName}
         onRun={workflowId ? runStepTest : undefined}
-        onAiGenerate={handleAiGenerate}
+        onAiGenerate={aiScript?.generate}
+        aiTargetHost={aiScript?.targetHost}
       />
     </Suspense>
   );

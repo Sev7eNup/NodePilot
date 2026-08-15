@@ -5,9 +5,9 @@ namespace NodePilot.Api.Services.Backup.Parts;
 
 /// <summary>
 /// Exports custom-activity definitions (the live row of each, including disabled drafts). The
-/// PowerShell <c>scriptTemplate</c> is exported in cleartext — exactly like a workflow's runScript
-/// <c>script</c> field (neither is a known secret config key); the whole backup is integrity-sealed
-/// and secrets are expected to live in globals/credentials, not inline. Version-history snapshots are
+/// PowerShell <c>scriptTemplate</c> is encrypted as one opaque value under the backup passphrase.
+/// Like a workflow's runScript field it can contain arbitrary legacy literals that no key-name
+/// heuristic can classify safely. Version-history snapshots are
 /// intentionally excluded (DR snapshot = live config, not history). Restored faithfully with their
 /// enabled state — unlike the dedicated <c>.npca</c> import, which forces disabled.
 /// </summary>
@@ -33,7 +33,7 @@ public sealed class CustomActivityBackupPart(ICustomActivityDefinitionStore stor
                 ["description"] = d.Description,
                 ["icon"] = d.Icon,
                 ["color"] = d.Color,
-                ["scriptTemplate"] = d.ScriptTemplate,
+                ["scriptTemplate"] = ctx.Enc(d.ScriptTemplate),
                 ["engine"] = d.Engine,
                 ["runsRemote"] = d.RunsRemote,
                 ["isolated"] = d.Isolated,
@@ -41,7 +41,10 @@ public sealed class CustomActivityBackupPart(ICustomActivityDefinitionStore stor
                 ["maxProcesses"] = d.MaxProcesses,
                 ["defaultTimeoutSeconds"] = d.DefaultTimeoutSeconds,
                 ["successExitCodes"] = d.SuccessExitCodes,
-                ["inputParametersJson"] = d.InputParametersJson,
+                // Defaults are injected as runtime PowerShell variables and may contain the same
+                // arbitrary legacy literals as the script itself. Seal the complete schema blob;
+                // output metadata does not carry executable input values.
+                ["inputParametersJson"] = ctx.Enc(d.InputParametersJson),
                 ["outputParametersJson"] = d.OutputParametersJson,
                 ["isEnabled"] = d.IsEnabled,
                 ["version"] = d.Version,

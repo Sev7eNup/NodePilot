@@ -9,7 +9,7 @@ namespace NodePilot.Api.Services.Backup;
 public sealed class BackupFormatException(string message) : Exception(message);
 
 /// <summary>
-/// Parses and validates a <c>nodepilot-system-backup/v1</c> file (ADR 0001). Parsing is
+/// Parses and validates a supported version of the NodePilot system-backup file (ADR 0001). Parsing is
 /// passphrase-free (so preview can run without one); unlocking the secrets and verifying the
 /// whole-file MAC requires the passphrase.
 /// </summary>

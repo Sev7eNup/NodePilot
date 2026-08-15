@@ -143,6 +143,7 @@ public sealed class AiController : ControllerBase
                 ("model", model),
                 ("promptChars", request.Prompt.Length),
                 ("upstreamVarCount", request.UpstreamVariables.Count),
+                ("currentScriptIncluded", request.IncludeCurrentScript && !string.IsNullOrWhiteSpace(request.CurrentScript)),
                 ("responseChars", responseChars),
                 ("durationMs", durationMs),
                 ("cancelled", cancelled),

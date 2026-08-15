@@ -328,10 +328,77 @@ function ExternalTriggerCard() {
 type ReencryptResult = {
   credentialsRewritten: number;
   credentialsSkipped: number;
+  credentialSkipDetails: ReencryptionSkip[];
   globalSecretsRewritten: number;
   globalSecretsSkipped: number;
+  globalSecretSkipDetails: ReencryptionSkip[];
+  workflowVersionsRewritten: number;
+  workflowVersionsSkipped: number;
+  workflowVersionSkipDetails: ReencryptionSkip[];
   partialSuccess: boolean;
 };
+
+type ReencryptionSkip = {
+  id: string;
+  name: string;
+  reason: string;
+};
+
+function ReencryptResultSummary({ result }: Readonly<{ result: ReencryptResult }>) {
+  const { t } = useTranslation('adminSettings');
+  const scopes = [
+    {
+      key: 'credentials', label: t('sec.reencryptScopeCredentials'),
+      rewritten: result.credentialsRewritten, skipped: result.credentialsSkipped,
+      details: result.credentialSkipDetails,
+    },
+    {
+      key: 'globals', label: t('sec.reencryptScopeGlobals'),
+      rewritten: result.globalSecretsRewritten, skipped: result.globalSecretsSkipped,
+      details: result.globalSecretSkipDetails,
+    },
+    {
+      key: 'workflowVersions', label: t('sec.reencryptScopeWorkflowVersions'),
+      rewritten: result.workflowVersionsRewritten, skipped: result.workflowVersionsSkipped,
+      details: result.workflowVersionSkipDetails,
+    },
+  ];
+
+  return (
+    <div
+      role={result.partialSuccess ? 'alert' : 'status'}
+      className={`mt-4 rounded-md border p-3 text-xs ${result.partialSuccess
+        ? 'border-error/30 bg-error-container/20 text-on-error-container'
+        : 'border-success/30 bg-success-container/20 text-on-success-container'}`}
+    >
+      <p className="font-semibold">
+        {t(result.partialSuccess ? 'sec.reencryptResultPartial' : 'sec.reencryptResultComplete')}
+      </p>
+      <dl className="mt-2 grid gap-1 sm:grid-cols-3">
+        {scopes.map((scope) => (
+          <div key={scope.key}>
+            <dt className="font-medium">{scope.label}</dt>
+            <dd>{t('sec.reencryptScopeCounts', { rewritten: scope.rewritten, skipped: scope.skipped })}</dd>
+          </div>
+        ))}
+      </dl>
+      {result.partialSuccess && (
+        <div className="mt-3 border-t border-current/20 pt-2">
+          <p className="font-semibold">{t('sec.reencryptSkipDetails')}</p>
+          <ul className="mt-1 max-h-64 space-y-1 overflow-y-auto">
+            {scopes.flatMap((scope) => scope.details.map((skip) => (
+              <li key={`${scope.key}:${skip.id}`} className="rounded bg-surface-lowest/60 px-2 py-1">
+                <span className="font-medium">{scope.label}: {skip.name}</span>
+                {' — '}{skip.reason}{' — '}
+                <code className="break-all">{skip.id}</code>
+              </li>
+            )))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function SecretsReencryptCard() {
   const { t } = useTranslation('adminSettings');
@@ -343,13 +410,14 @@ function SecretsReencryptCard() {
       // partial sweeps as an error toast so skipped rows can't slip by unnoticed.
       if (r.partialSuccess) {
         toast.error(t('sec.reencryptPartial', {
-          rewritten: r.credentialsRewritten + r.globalSecretsRewritten,
-          skipped: r.credentialsSkipped + r.globalSecretsSkipped,
+          rewritten: r.credentialsRewritten + r.globalSecretsRewritten + r.workflowVersionsRewritten,
+          skipped: r.credentialsSkipped + r.globalSecretsSkipped + r.workflowVersionsSkipped,
         }));
       } else {
         toast.success(t('sec.reencryptDone', {
           credentials: r.credentialsRewritten,
           globals: r.globalSecretsRewritten,
+          workflowVersions: r.workflowVersionsRewritten,
         }));
       }
     },
@@ -371,6 +439,7 @@ function SecretsReencryptCard() {
           {t('sec.reencryptButton')}
         </button>
       </div>
+      {reencrypt.data && <ReencryptResultSummary result={reencrypt.data} />}
     </Card>
   );
 }

@@ -53,12 +53,16 @@ public sealed class BackupRestoreServiceTests : IDisposable
     [
         new FolderBackupPart(db), new UserBackupPart(db), new CredentialBackupPart(db, _atRest),
         new MachineBackupPart(db), new GlobalVariableFolderBackupPart(db), new GlobalVariableBackupPart(new GlobalVariableStore(db, _atRest)),
+        new CustomActivityBackupPart(new CustomActivityDefinitionStore(db)),
         new WorkflowBackupPart(db), new SettingsBackupPart(new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance), _atRest),
     ];
 
     private BackupRestoreService Restore(NodePilotDbContext db) =>
         new(db, _atRest, new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance),
-            NullLogger<BackupRestoreService>.Instance);
+            NullLogger<BackupRestoreService>.Instance, VersionProtector());
+
+    private NodePilot.Api.Services.WorkflowVersionDefinitionProtector VersionProtector() =>
+        new(_atRest, NullLogger<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>.Instance);
 
     private async Task<byte[]> ExportAsync(NodePilotDbContext db, List<string> sections)
         => (await new BackupService(Parts(db)).ExportAsync(sections, Passphrase, "admin", CancellationToken.None)).Content;
@@ -319,6 +323,50 @@ public sealed class BackupRestoreServiceTests : IDisposable
         var after = await dst.Workflows.AsNoTracking().SingleAsync(w => w.Id == original.Id);
         after.DefinitionJson.Should().Be("{}");
         after.CheckedOutByUserId.Should().Be(owner);
+    }
+
+    [Fact]
+    public async Task Restore_OverwriteWorkflow_SnapshotsEncryptedHistory_BumpsVersion_AndRecomputesMetadata()
+    {
+        const string restoredDefinition =
+            """{"nodes":[{"id":"t","data":{"activityType":"scheduleTrigger","config":{"cron":"0 * * * *"}}},{"id":"a","data":{"activityType":"log","config":{}}}],"edges":[]}""";
+        using var src = TestDbFactory.Create();
+        src.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "restore-wf", DefinitionJson = restoredDefinition,
+            FolderId = SharedWorkflowFolder.RootFolderId, Version = 2, IsEnabled = true,
+        });
+        await src.SaveChangesAsync();
+        var backup = await ExportAsync(src, [BackupSections.Workflows]);
+
+        const string previousDefinition =
+            """{"nodes":[{"id":"s","data":{"activityType":"runScript","config":{"script":"Write-Output 'historic-secret'"}}}],"edges":[]}""";
+        using var dst = TestDbFactory.Create();
+        var existing = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "restore-wf", DefinitionJson = previousDefinition,
+            FolderId = SharedWorkflowFolder.RootFolderId, Version = 7, IsEnabled = false,
+        };
+        dst.Workflows.Add(existing);
+        await dst.SaveChangesAsync();
+
+        await Restore(dst).RestoreAsync(
+            backup, Passphrase,
+            Policy(BackupSections.Workflows, RestoreConflictPolicy.Overwrite),
+            CancellationToken.None);
+
+        dst.ChangeTracker.Clear();
+        var restored = await dst.Workflows.SingleAsync(w => w.Id == existing.Id);
+        restored.Version.Should().Be(8, "overwrite restore is a new revision of the target workflow");
+        restored.DefinitionJson.Should().Be(restoredDefinition);
+        var expectedMetadata = WorkflowMetadata.Compute(restoredDefinition);
+        restored.ActivityCount.Should().Be(expectedMetadata.ActivityCount);
+        restored.TriggerTypesJson.Should().Be(expectedMetadata.TriggerTypesJson);
+
+        var history = await dst.WorkflowVersions.SingleAsync(v => v.WorkflowId == existing.Id);
+        history.Version.Should().Be(7);
+        history.DefinitionJson.Should().NotContain("historic-secret");
+        VersionProtector().Unprotect(history.DefinitionJson).Should().Be(previousDefinition);
     }
 
     [Fact]
@@ -635,7 +683,8 @@ public sealed class BackupRestoreServiceTests : IDisposable
         dstWriter.MutateAndWrite(root => { root["Foo"] = new JsonObject { ["x"] = 1 }; root["Smtp"] = new JsonObject { ["Port"] = 25 }; });
 
         using var dst = TestDbFactory.Create();
-        var restore = new BackupRestoreService(dst, _atRest, dstWriter, NullLogger<BackupRestoreService>.Instance);
+        var restore = new BackupRestoreService(
+            dst, _atRest, dstWriter, NullLogger<BackupRestoreService>.Instance, VersionProtector());
         await restore.RestoreAsync(backup, Passphrase, Empty(), CancellationToken.None);
 
         var after = dstWriter.ReadOrEmpty();

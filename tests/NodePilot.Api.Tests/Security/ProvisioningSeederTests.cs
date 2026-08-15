@@ -44,7 +44,9 @@ public sealed class ProvisioningSeederTests : IDisposable
     private BackupRestoreService Restore(NodePilotDbContext db) =>
         new(db, _atRest,
             new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance),
-            NullLogger<BackupRestoreService>.Instance);
+            NullLogger<BackupRestoreService>.Instance,
+            new NodePilot.Api.Services.WorkflowVersionDefinitionProtector(
+                _atRest, NullLogger<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>.Instance));
 
     /// <summary>A backup carrying one break-glass Admin — the minimum a seed must contain.</summary>
     private async Task<byte[]> BuildSeedAsync(string username = "seeded-admin")

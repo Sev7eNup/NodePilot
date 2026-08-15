@@ -345,6 +345,10 @@ beim Startup eine Hardening-Warnung in den Logs aus.
   sind nur für `Admin` und `Operator` zugänglich. Der Chat-Assistent (`POST /api/ai/chat`) ist für alle Rollen
   lesbar (Erklären), aber das **Anwenden** von Vorschlägen bleibt Admin/Operator. Viewer sehen die Schreib-KI-Buttons im UI nicht
   (der Script-Editor-KI-Button wird für Viewer zusätzlich zum LLM-Gating ausgeblendet).
+- **Script-Kontext**: Das aktuelle PowerShell-Skript wird standardmäßig nicht an das LLM
+  gesendet. Der Dialog nennt den aktiven Zielhost und verlangt pro Aufruf eine standardmäßig
+  abgewählte Freigabe mit Secret-Warnung. Der Server wertet `CurrentScript` nur aus, wenn
+  `IncludeCurrentScript=true`; alte Clients bleiben dadurch fail-closed.
 - **Rate-Limit**: 20 Anfragen/Min pro IP — schützt gegen Cost-Runaway bei Cloud-Modellen
   und gegen versehentliche Spam-Loops im UI.
 - **SSRF-Block**: Beim Startup wird die `BaseUrl` **jedes** Profils gegen Cloud-Metadata-IPs
@@ -487,8 +491,16 @@ Executor (nicht nur am HTTP-Controller), erlaubt als erstes Keyword nur `SELECT`
 `EXPLAIN ANALYZE` ab. PostgreSQL setzt zusätzlich `SET TRANSACTION READ ONLY`; alle Provider rollen die
 Transaktion zurück. **Secret-Schutz mehrlagig**: Schema-Tools verbergen `IsHidden`-Spalten; jede SQL-Referenz
 auf eine geschützte Spalte wird bereits vor Ausführung abgelehnt (auch Alias-/Ausdrucksvarianten);
+Whole-Row-Serialisierer über eine Tabelle mit geschützter Spalte (`to_json`/`row_to_json`/`::text`/
+`FOR JSON`) ebenso, weil sie die namensbasierten Schichten umgehen würden. PostgreSQL-`U&"…"`-Identifier
+und dynamische XML-Exporter (`query_to_xml` & Co.) sind im Read-Guard generell gesperrt.
 Result-Spalten werden zusätzlich nach Namen maskiert und übrige Zellen durch den `IAuditDetailsRedactor`
 geführt. Row-Cap 200. Übergroße Tool-Resultate bleiben valides JSON mit explizitem Truncation-Hinweis.
+
+**Workflow-Definitionen sind hier bewusst nicht ausgenommen.** Der text2sql-Pfad ist Admin-only, und ein
+globaler Admin sieht dieselben Zeilen ohnehin über die DbAdmin-Ansicht — eine Sperre auf `Workflows`,
+`WorkflowVersions` oder den Custom-Activity-Tabellen hätte nur „welche Workflows gibt es" unbeantwortbar
+gemacht, ohne eine Fähigkeit zu entziehen.
 DB-Tools nutzen Strict Function Schemas; inkompatible lokale Endpoints erhalten automatisch einen
 Best-Effort-Retry. SQL-Text wird nicht auditiert, stattdessen nur Anzahl und SHA-256-Kurzfingerprints.
 Text2SQL ist nur als Capability sichtbar, wenn das aktive Profil `EnableToolCalling=true` hat.

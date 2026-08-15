@@ -190,4 +190,64 @@ public class WorkflowDefinitionMergeTests
         cfg["headers"]!.GetValue<string>().Should().Be("Authorization: Bearer sk-live-REAL123");   // restored
         result.Notes.Should().BeEmpty();
     }
+
+    [Fact]
+    public void Merge_OpaqueHeadersObjectMask_RestoresCompleteOriginalShape()
+    {
+        var original = Parse("""
+            { "nodes": [ { "id": "n1", "type": "activity", "position": {"x":0,"y":0},
+                "data": { "activityType": "restApi", "config": {
+                    "url": "https://x", "headers": { "Accept": "application/json", "X-Legacy": "opaque-value" }
+                } } } ], "edges": [] }
+            """);
+        var proposed = Parse("""
+            { "nodes": [ { "id": "n1", "type": "activity", "position": {"x":0,"y":0},
+                "data": { "activityType": "restApi", "config": { "url": "https://y", "headers": "***" } } } ], "edges": [] }
+            """);
+
+        var result = WorkflowDefinitionMerge.Merge(original, proposed);
+        var cfg = result.Definition["nodes"]![0]!["data"]!["config"]!;
+
+        cfg["url"]!.GetValue<string>().Should().Be("https://y");
+        cfg["headers"]!["Accept"]!.GetValue<string>().Should().Be("application/json");
+        cfg["headers"]!["X-Legacy"]!.GetValue<string>().Should().Be("opaque-value");
+    }
+
+    [Fact]
+    public void Merge_MaskedLiteralsInsideNestedArrays_RestoresOriginalConditionsAndCases()
+    {
+        var original = Parse("""
+            { "nodes": [{ "id": "decision-1", "type": "decision", "data": { "config": {
+                "cases": [{ "label": "secret-case", "conditionExpression": {
+                    "type": "comparison", "left": { "kind": "variable", "value": "x" },
+                    "op": "==", "right": { "kind": "literal", "value": "case-secret" }
+                }}]
+            }}}], "edges": [{ "id": "edge-1", "source": "a", "target": "b", "data": {
+                "conditionExpression": { "type": "group", "op": "AND", "children": [{
+                    "type": "comparison", "left": { "kind": "literal", "value": "left-secret" },
+                    "op": "==", "right": { "kind": "variable", "value": "y" }
+                }]}
+            }}] }
+            """);
+        var proposed = Parse("""
+            { "nodes": [{ "id": "decision-1", "type": "decision", "data": { "config": {
+                "cases": [{ "label": "secret-case", "conditionExpression": {
+                    "type": "comparison", "left": { "kind": "variable", "value": "x" },
+                    "op": "==", "right": { "kind": "literal", "value": "***" }
+                }}]
+            }}}], "edges": [{ "id": "edge-1", "source": "a", "target": "b", "data": {
+                "conditionExpression": { "type": "group", "op": "AND", "children": [{
+                    "type": "comparison", "left": { "kind": "literal", "value": "***" },
+                    "op": "==", "right": { "kind": "variable", "value": "y" }
+                }]}
+            }}] }
+            """);
+
+        var merged = WorkflowDefinitionMerge.Merge(original, proposed).Definition;
+
+        merged["nodes"]![0]!["data"]!["config"]!["cases"]![0]!["conditionExpression"]!
+            ["right"]!["value"]!.GetValue<string>().Should().Be("case-secret");
+        merged["edges"]![0]!["data"]!["conditionExpression"]!["children"]![0]!
+            ["left"]!["value"]!.GetValue<string>().Should().Be("left-secret");
+    }
 }

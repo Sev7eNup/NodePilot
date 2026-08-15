@@ -42,7 +42,10 @@ public sealed class ScriptGenerationService
             capped = capped.Take(LlmOptions.MaxUpstreamVariables).ToList();
             truncated = true;
         }
-        var userPrompt = BuildUserPrompt(request.Prompt, request.CurrentScript, capped, truncated);
+        // Presence of CurrentScript alone is never consent: older or non-UI clients must opt in
+        // explicitly before editor contents may leave NodePilot for the configured LLM endpoint.
+        var currentScript = request.IncludeCurrentScript ? request.CurrentScript : null;
+        var userPrompt = BuildUserPrompt(request.Prompt, currentScript, capped, truncated);
 
         var firstLine = new StringBuilder();   // collects the first line up to \n (fence check)
         var pending = new StringBuilder();      // body text, holding back TailHold chars for the closing fence

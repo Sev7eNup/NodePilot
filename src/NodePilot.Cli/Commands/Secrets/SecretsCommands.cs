@@ -17,10 +17,10 @@ public sealed class SecretsReencryptSettings : GlobalSettings
 }
 
 /// <summary>
-/// Triggers the bulk re-encrypt sweep after rotating the AES-GCM master key or
-/// migrating between secret protectors. Admin-only on the server. Returns exit code 0
-/// on a clean sweep, 1 when the server reported partial success (some rows could
-/// not be migrated — see the printed skip-detail list).
+/// Triggers the credential, global-secret and workflow-history re-encrypt sweep after
+/// rotating the AES-GCM master key or migrating between secret protectors. Admin-only
+/// on the server. Returns exit code 0 on a clean sweep, 1 when the server reported
+/// partial success (some rows could not be migrated — see the printed skip-detail list).
 /// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettings>
@@ -32,7 +32,7 @@ public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettin
         if (!settings.Yes && !Console.IsInputRedirected)
         {
             var ok = await AnsiConsole.ConfirmAsync(
-                "Re-encrypt sweep über alle Credentials + Global-Secrets ausführen?\n  " +
+                "Re-encrypt sweep über alle Credentials, Global-Secrets + Workflow-History ausführen?\n  " +
                 "[grey](Empfohlen nur direkt nach AES-GCM-Key-Rotation oder Provider-Migration.)[/]",
                 defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
@@ -50,6 +50,9 @@ public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettin
             grid.AddRow("Global Secrets Rewritten", value.GlobalSecretsRewritten.ToString());
             grid.AddRow("Global Secrets Skipped",
                 value.GlobalSecretsSkipped == 0 ? "0" : $"[yellow]{value.GlobalSecretsSkipped}[/]");
+            grid.AddRow("Workflow Versions Rewritten", value.WorkflowVersionsRewritten.ToString());
+            grid.AddRow("Workflow Versions Skipped",
+                value.WorkflowVersionsSkipped == 0 ? "0" : $"[yellow]{value.WorkflowVersionsSkipped}[/]");
             grid.AddRow("Status", value.PartialSuccess
                 ? "[yellow]partial — some rows need manual re-entry[/]"
                 : "[green]clean[/]");
@@ -70,6 +73,15 @@ public sealed class SecretsReencryptCommand : BaseCommand<SecretsReencryptSettin
                 var t = new Table().Title("Global-secret skips").Border(TableBorder.Rounded)
                     .AddColumn("Id").AddColumn("Name").AddColumn("Reason");
                 foreach (var s in value.GlobalSecretSkipDetails)
+                    t.AddRow(s.Id.ToString()[..8], Markup.Escape(s.Name), Markup.Escape(s.Reason));
+                console.Write(t);
+            }
+            if (value.WorkflowVersionSkipDetails.Count > 0)
+            {
+                console.WriteLine();
+                var t = new Table().Title("Workflow-version skips").Border(TableBorder.Rounded)
+                    .AddColumn("Id").AddColumn("Name").AddColumn("Reason");
+                foreach (var s in value.WorkflowVersionSkipDetails)
                     t.AddRow(s.Id.ToString()[..8], Markup.Escape(s.Name), Markup.Escape(s.Reason));
                 console.Write(t);
             }

@@ -71,18 +71,30 @@ public sealed class AiKnowledgeController : ControllerBase
         var k = _knowledgeOptions.CurrentValue;
         // "Usable" = kill-switch on AND an active profile resolves — without one every call would
         // 503 anyway, so reporting the sources as available would be a lie.
-        var llmUsable = _llmOptions.CurrentValue.IsUsable;
+        var llm = _llmOptions.CurrentValue;
+        var llmUsable = llm.IsUsable;
         var enabled = llmUsable && k.Enabled;
         var toolSourcesEnabled = enabled
-                                 && _llmOptions.CurrentValue.TryResolveActiveProfile(out var activeProfile)
+                                 && llm.TryResolveActiveProfile(out var activeProfile)
                                  && activeProfile.EnableToolCalling;
+        var scriptContextTargetHost = llmUsable && User.IsPrivileged()
+                                      && llm.TryResolveActiveProfile(out var scriptProfile)
+            ? DisplayHost(scriptProfile.BaseUrl)
+            : null;
         return Ok(new KnowledgeCapabilitiesDto(
             Enabled: enabled,
             Llm: llmUsable,
             Docs: toolSourcesEnabled && k.DocsEnabled,
             Operational: toolSourcesEnabled && k.OperationalEnabled,
             SourceCode: toolSourcesEnabled && k.SourceCodeEnabled && User.IsPrivileged(),
-            Db: toolSourcesEnabled && k.DbEnabled && User.IsAdmin()));
+            Db: toolSourcesEnabled && k.DbEnabled && User.IsAdmin(),
+            ScriptContextTargetHost: scriptContextTargetHost));
+    }
+
+    private static string? DisplayHost(string? baseUrl)
+    {
+        if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri)) return null;
+        return uri.IsDefaultPort ? uri.IdnHost : $"{uri.IdnHost}:{uri.Port}";
     }
 
     /// <summary>Streams one knowledge-chat turn as Server-Sent Events (delta/tool_call/tool_result/done/error).</summary>

@@ -48,6 +48,7 @@ public sealed class BackupServiceExportTests : IDisposable
             new MachineBackupPart(_db),
             new GlobalVariableFolderBackupPart(_db),
             new GlobalVariableBackupPart(globals),
+            new CustomActivityBackupPart(new CustomActivityDefinitionStore(_db)),
             new WorkflowBackupPart(_db),
             new SettingsBackupPart(_overrides, _atRest),
         };
@@ -116,36 +117,108 @@ public sealed class BackupServiceExportTests : IDisposable
     }
 
     [Fact]
-    public async Task Export_EncryptsInlineWorkflowSecret_ButKeepsMachineGuidVerbatim()
+    public async Task Export_EncryptsCompleteWorkflowDefinition_IncludingOpaqueFieldsAndReferences()
     {
         await SeedAsync();
         var result = await _service.ExportAsync([BackupSections.Workflows], Passphrase, "admin", CancellationToken.None);
 
         var env = Parse(result.Content);
-        var config = env["sections"]!["workflows"]!["items"]![0]!["definition"]!["nodes"]![0]!["data"]!;
+        var definition = env["sections"]!["workflows"]!["items"]![0]!["definition"]!;
+        var encrypted = definition[WorkflowDefinitionSecretRewriter.DefinitionEncKey]!.GetValue<string>();
+        var serializedBackup = Encoding.UTF8.GetString(result.Content);
+        serializedBackup.Should().NotContain("super-secret-key");
+        serializedBackup.Should().NotContain("opaque-tenant-credential");
+        definition.ToJsonString().Should().NotContain(_machineId.ToString());
+
+        var salt = Convert.FromBase64String(env["crypto"]!["salt"]!.GetValue<string>());
+        var protector = PassphraseSecretProtector.Derive(Passphrase, salt);
+        var plaintext = protector.Unprotect(Convert.FromBase64String(encrypted));
+        plaintext.Should().Contain("super-secret-key");
+        plaintext.Should().Contain("opaque-tenant-credential");
+        plaintext.Should().Contain(_machineId.ToString(), "restore remaps references after decrypting the definition");
         // apiKey was rewritten to an {"$enc": ...} object.
-        config["config"]!["apiKey"]!["$enc"].Should().NotBeNull();
-        config["config"]!["headers"]!["X-Tenant-Token"]!["$enc"].Should().NotBeNull();
-        config["config"]!["headers"]!["Accept"]!.GetValue<string>().Should().Be("application/json");
         // targetMachineId is a GUID reference — left verbatim for restore-time remap (K13).
-        config["targetMachineId"]!.GetValue<string>().Should().Be(_machineId.ToString());
     }
 
     [Fact]
-    public void WorkflowBackup_TextFormCustomHeader_IsEncryptedAsOneOpaqueSecret()
+    public void WorkflowBackup_ArbitraryOpaqueLiterals_AreProtectedWithoutContentDetection()
     {
-        const string headerBlock = "Accept: application/json\nX_Tenant.Token: opaque-secret";
         using var doc = JsonDocument.Parse("""
-        { "config": { "headers": "Accept: application/json\nX_Tenant.Token: opaque-secret" } }
+        { "config": {
+          "script": "$secure = ConvertTo-SecureString 'hunter2' -AsPlainText -Force",
+          "body": "plain-looking-body",
+          "headers": { "Accept": "application/json" },
+          "scorchRaw": { "payload": "legacy-raw-value" }
+        } }
         """);
         var protector = PassphraseSecretProtector.Derive(Passphrase, new byte[16]);
 
         var rewritten = WorkflowDefinitionSecretRewriter.Rewrite(
             doc.RootElement, SecretHandling.EncryptForBackup, protector);
 
-        var encrypted = rewritten["config"]!["headers"]![WorkflowDefinitionSecretRewriter.EncKey]!
-            .GetValue<string>();
-        protector.Unprotect(Convert.FromBase64String(encrypted)).Should().Be(headerBlock);
+        var encrypted = rewritten[WorkflowDefinitionSecretRewriter.DefinitionEncKey]!.GetValue<string>();
+        rewritten.ToJsonString().Should().NotContain("hunter2");
+        var plaintext = protector.Unprotect(Convert.FromBase64String(encrypted));
+        plaintext.Should().Contain("hunter2");
+        plaintext.Should().Contain("plain-looking-body");
+        plaintext.Should().Contain("application/json");
+        plaintext.Should().Contain("legacy-raw-value");
+    }
+
+    [Fact]
+    public void RestoreDefinition_LegacyPerFieldEncryptedBackup_RemainsCompatible()
+    {
+        var protector = PassphraseSecretProtector.Derive(Passphrase, new byte[16]);
+        var sourceMachine = Guid.NewGuid();
+        var targetMachine = Guid.NewGuid();
+        var legacy = new JsonObject
+        {
+            ["nodes"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["data"] = new JsonObject
+                    {
+                        ["targetMachineId"] = sourceMachine.ToString(),
+                        ["config"] = new JsonObject
+                        {
+                            ["apiKey"] = new JsonObject
+                            {
+                                [WorkflowDefinitionSecretRewriter.EncKey] =
+                                    Convert.ToBase64String(protector.Protect("legacy-secret")),
+                            },
+                        },
+                    },
+                },
+            },
+            ["edges"] = new JsonArray(),
+        };
+
+        var restored = WorkflowDefinitionSecretRewriter.RestoreDefinition(
+            legacy, protector,
+            id => id == sourceMachine ? targetMachine : null,
+            _ => null,
+            []);
+
+        restored["nodes"]![0]!["data"]!["config"]!["apiKey"]!.GetValue<string>()
+            .Should().Be("legacy-secret");
+        restored["nodes"]![0]!["data"]!["targetMachineId"]!.GetValue<string>()
+            .Should().Be(targetMachine.ToString());
+    }
+
+    [Fact]
+    public void RestoreDefinition_CurrentWholeEnvelope_PreservesLiteralLegacyMarkerObjects()
+    {
+        using var doc = JsonDocument.Parse(
+            """{"nodes":[{"data":{"config":{"scorchRaw":{"$enc":"application-owned-literal"}}}}],"edges":[]}""");
+        var protector = PassphraseSecretProtector.Derive(Passphrase, new byte[16]);
+        var sealedDefinition = WorkflowDefinitionSecretRewriter.Rewrite(
+            doc.RootElement, SecretHandling.EncryptForBackup, protector);
+
+        var restored = WorkflowDefinitionSecretRewriter.RestoreDefinition(
+            sealedDefinition, protector, _ => null, _ => null, []);
+
+        restored.ToJsonString().Should().Be(doc.RootElement.GetRawText());
     }
 
     [Fact]
@@ -257,6 +330,16 @@ public sealed class BackupServiceExportTests : IDisposable
         await SeedAsync();
         var result = await _service.ExportAsync([BackupSections.Credentials], Passphrase, "admin", CancellationToken.None);
         result.ContainsSecrets.Should().BeTrue("the credential password is sealed as a $enc field");
+    }
+
+    [Fact]
+    public async Task Export_WorkflowsOnly_ReportsContainsSecretsTrueForWholeDefinitionEnvelope()
+    {
+        await SeedAsync();
+        var result = await _service.ExportAsync([BackupSections.Workflows], Passphrase, "admin", CancellationToken.None);
+
+        result.ContainsSecrets.Should().BeTrue(
+            "a $encDefinition envelope contains passphrase-protected workflow content even without a legacy $enc field");
     }
 
     [Fact]

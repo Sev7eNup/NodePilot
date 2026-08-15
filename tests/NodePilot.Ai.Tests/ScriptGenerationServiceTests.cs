@@ -13,8 +13,9 @@ public class ScriptGenerationServiceTests
     private static GenerateScriptRequest NewRequest(
         string prompt = "list all stopped services",
         IReadOnlyList<UpstreamVariableDto>? vars = null,
-        string? currentScript = null)
-        => new(prompt, Guid.NewGuid(), "step-x", vars ?? Array.Empty<UpstreamVariableDto>(), currentScript);
+        string? currentScript = null,
+        bool includeCurrentScript = false)
+        => new(prompt, Guid.NewGuid(), "step-x", vars ?? Array.Empty<UpstreamVariableDto>(), currentScript, includeCurrentScript);
 
     /// <summary>Streams and collects the script text with code-fence markers stripped.</summary>
     private static async Task<string> Collect(ScriptGenerationService svc, GenerateScriptRequest req)
@@ -76,12 +77,25 @@ public class ScriptGenerationServiceTests
         var fake = new FakeLlmClient().EnqueueStream("Get-Date");
         await Collect(NewService(fake), NewRequest(
             prompt: "refactor das skript",
-            currentScript: "$now = Get-Date\nWrite-Output $now"));
+            currentScript: "$now = Get-Date\nWrite-Output $now",
+            includeCurrentScript: true));
 
         var prompt = fake.Calls[0].UserPrompt;
         prompt.Should().Contain("## Current script");
         prompt.Should().Contain("$now = Get-Date");      // the base script is included in the prompt context
         prompt.Should().Contain("Write-Output $now");
+    }
+
+    [Fact]
+    public async Task StreamAsync_LegacyCurrentScriptWithoutConsent_DoesNotForwardIt()
+    {
+        var fake = new FakeLlmClient().EnqueueStream("Get-Date");
+        await Collect(NewService(fake), NewRequest(
+            prompt: "write a new script",
+            currentScript: "$password = 'must-not-leave-nodepilot'"));
+
+        fake.Calls[0].UserPrompt.Should().NotContain("must-not-leave-nodepilot");
+        fake.Calls[0].UserPrompt.Should().NotContain("## Current script");
     }
 
     [Fact]

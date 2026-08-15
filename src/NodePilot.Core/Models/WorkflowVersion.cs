@@ -7,8 +7,9 @@ namespace NodePilot.Core.Models;
 /// Enables rollback + diff + blame ("who changed step X from A to B, and when?").
 ///
 /// <para>
-/// The table is append-only; there is no update path. Rows are removed only when the
-/// parent <see cref="Workflow"/> is deleted (FK cascade). Rollback does not purge history
+/// The history is semantically append-only; the only in-place update re-wraps the opaque
+/// definition envelope during an explicit secret-provider migration. Rows are removed when the
+/// parent <see cref="Workflow"/> is deleted (FK cascade) or by configured retention. Rollback does not purge history
 /// — restoring a prior version increments the Workflow's <c>Version</c> counter and
 /// emits a fresh snapshot so the roll-forward remains auditable.
 /// </para>
@@ -27,6 +28,12 @@ public class WorkflowVersion
 
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
+    /// <summary>
+    /// At rest this contains a versioned authenticated-ciphertext envelope. Authorised history and
+    /// rollback paths decrypt it before parsing. Legacy plaintext JSON remains readable during a
+    /// rolling upgrade and is converted only by the explicit post-upgrade
+    /// <c>secrets reencrypt</c> cutover, after every HA node supports this envelope.
+    /// </summary>
     public string DefinitionJson { get; set; } = "{}";
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

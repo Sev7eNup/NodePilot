@@ -94,8 +94,8 @@ Operators MUST:
 - Rotate the key via the migration path described in
   [§ Rotating the AES-GCM master key](#rotating-the-aes-gcm-master-key) below — set
   `Secrets:LegacyMasterKey` or `Secrets:LegacyMasterKeyFile` alongside the new key, run
-  `POST /api/secrets/reencrypt`,
-  then drop the legacy entries on the next restart.
+  `POST /api/secrets/reencrypt`, and drop the legacy entries only after the response confirms
+  a clean credential, global-secret **and workflow-history** sweep.
 
 The startup hardening warning emits a SECURITY log line on boot whenever a plaintext
 master key is detected, so operators get a daily reminder if they forget to harden.
@@ -140,6 +140,9 @@ Clean-success response (status `200 OK`):
   "globalSecretsRewritten": 12,
   "globalSecretsSkipped": 0,
   "globalSecretSkipDetails": [],
+  "workflowVersionsRewritten": 86,
+  "workflowVersionsSkipped": 0,
+  "workflowVersionSkipDetails": [],
   "partialSuccess": false
 }
 ```
@@ -158,27 +161,34 @@ decrypted under any configured protector:
   "globalSecretSkipDetails": [
     { "id": "def...", "name": "STRIPE_KEY", "reason": "FormatException" }
   ],
+  "workflowVersionsRewritten": 84,
+  "workflowVersionsSkipped": 2,
+  "workflowVersionSkipDetails": [
+    { "id": "123...", "name": "Deploy v3", "reason": "CryptographicException" },
+    { "id": "456...", "name": "Rollback v7", "reason": "FormatException" }
+  ],
   "partialSuccess": true
 }
 ```
 
-The endpoint walks every credential password and every secret-flagged global, decrypts
-through the migrating wrapper (active first, falls back to legacy when the bytes don't
-parse under active), and re-encrypts under the active provider. Successfully migrated
-rows are committed regardless of skip outcomes — a partial sweep still moves the
-deployment forward. **`partialSuccess=true` (status 207) is the operator's signal to
-re-enter the listed rows manually before dropping the legacy config in Step 3.**
+The endpoint walks every credential password, every secret-flagged global and every encrypted
+`WorkflowVersion.DefinitionJson`, decrypts through the migrating wrapper (active first, falls
+back to legacy when the bytes don't parse under active), and re-encrypts under the active
+provider. Successfully migrated rows are committed regardless of skip outcomes — a partial
+sweep still moves the deployment forward. **`partialSuccess=true` (status 207) means the legacy
+provider must remain configured.** Re-enter listed credentials/globals; for a workflow-history
+skip, restore or otherwise repair the named version before re-running the sweep.
 
 CI / Ansible can branch on the status line directly: `200` = clean cutover, `207` =
 manual follow-up needed for the named rows.
 
 ### Step 3 — drop the legacy config
 
-Pre-conditions: response from Step 2 was `200 OK` with `partialSuccess=false` AND the
-`nodepilot.credential.crypto.legacy_reads` counter is zero (every read now hits the
-active provider directly). If Step 2 returned `207`, deal with the rows in
-`*SkipDetails` first — re-enter them through the credentials/global-variables UI, then
-re-run Step 2 until clean.
+Pre-conditions: response from Step 2 was `200 OK` with `partialSuccess=false`; all three
+skip counters — including `workflowVersionsSkipped` — are zero; and the
+`nodepilot.credential.crypto.legacy_reads` counter remains zero during post-sweep checks
+(every read now hits the active provider directly). A `207` or any workflow-version skip blocks
+removal of `LegacyProvider`. Resolve every `*SkipDetails` entry and re-run Step 2 until clean.
 
 Once clean, remove the `Secrets:LegacyProvider` / `Secrets:LegacyDpapiScope` /
 `Secrets:LegacyMasterKey` keys and restart. The deployment is now pure-active-provider.
@@ -190,6 +200,7 @@ Once clean, remove the `Secrets:LegacyProvider` / `Secrets:LegacyDpapiScope` /
 | `legacy_reads` keeps climbing after the sweep | New rows being written somewhere in the legacy format | Investigate — should not happen after Step 2; possibly a parallel deployment branch still running DPAPI |
 | `CryptographicException: Decrypt failed under both protectors` | Row written under a third provider, OR ciphertext corrupted | Re-enter the affected secret manually; check `LegacyDpapiScope` matches what wrote the row |
 | `Re-encrypt skipped credential 'X'` warning during Step 2 | Single row's ciphertext is unrecoverable | Re-enter that credential; sweep continues for the rest |
+| `workflowVersionsSkipped` is non-zero | A historic workflow definition could not be decrypted | Keep `LegacyProvider`; restore/repair every named version and repeat the sweep before cutover |
 
 ### Rotating the AES-GCM master key
 
@@ -206,6 +217,8 @@ DPAPI in Step 1. Step 2 + 3 unchanged.
 - [ ] Boot log (logger category `Secrets`) shows the expected provider line. Two shapes:
       - Single provider, no migration: `Secret protector enabled. Provider: AesGcm.`
       - Migration window with legacy fallback: `Migrating secret protector enabled: active=AesGcm, legacy=Dpapi. Run POST /api/secrets/reencrypt then remove Secrets:LegacyProvider once the legacy_reads counter is zero.`
+- [ ] The re-encrypt response is `200`, `partialSuccess=false`, and credential/global/history
+      skip counters are all zero before removing any legacy-provider setting.
 - [ ] After cluster-mode switch, smoke-test one credential decrypt on each node.
 
 ## Bewusst nicht in V1

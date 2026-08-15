@@ -62,6 +62,22 @@ public sealed class TokenStoreTests : IDisposable
     }
 
     [Fact]
+    public void StoredSession_OldUtcDateTimeJson_RemainsReadableAsDateTimeOffset()
+    {
+        const string legacyJson =
+            """
+            {"server":"https://np.example","token":"legacy","username":"admin","userId":"00000000-0000-0000-0000-000000000001","role":"Admin","expiresAt":"2026-08-15T12:34:56Z"}
+            """;
+
+        var session = System.Text.Json.JsonSerializer.Deserialize<StoredSession>(
+            legacyJson,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+        session.Should().NotBeNull();
+        session!.ExpiresAt.Should().Be(new DateTimeOffset(2026, 8, 15, 12, 34, 56, TimeSpan.Zero));
+    }
+
+    [Fact]
     public void Delete_RemovesFile()
     {
         var store = new TokenStore(_dir);
@@ -69,5 +85,47 @@ public sealed class TokenStoreTests : IDisposable
         File.Exists(store.PathFor("dev")).Should().BeTrue();
         store.Delete("dev");
         File.Exists(store.PathFor("dev")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ConcurrentStoreInstances_SaveAndLoad_NeverExposePartialEncryptedBlob()
+    {
+        var first = new TokenStore(_dir);
+        var second = new TokenStore(_dir);
+        var largeTokenA = "a." + new string('A', 64 * 1024) + ".sig";
+        var largeTokenB = "b." + new string('B', 64 * 1024) + ".sig";
+        StoredSession Session(string token) => new()
+        {
+            Server = "https://np.example",
+            Token = token,
+            Username = "admin",
+            UserId = Guid.NewGuid(),
+            Role = "Admin",
+            ExpiresAt = DateTimeOffset.UtcNow.AddHours(8),
+        };
+        first.Save("shared", Session(largeTokenA));
+
+        using var start = new ManualResetEventSlim(false);
+        var writers = Enumerable.Range(0, 24).Select(i => Task.Run(() =>
+        {
+            start.Wait();
+            (i % 2 == 0 ? first : second).Save(
+                "shared", Session(i % 2 == 0 ? largeTokenA : largeTokenB));
+        })).ToArray();
+        var readers = Enumerable.Range(0, 80).Select(i => Task.Run(() =>
+        {
+            start.Wait();
+            var loaded = (i % 2 == 0 ? first : second).Load("shared");
+            loaded.Should().NotBeNull("atomic replacement must expose either complete generation");
+            loaded!.Token.Should().BeOneOf(largeTokenA, largeTokenB);
+        })).ToArray();
+
+        start.Set();
+        await Task.WhenAll(writers.Concat(readers));
+
+        var final = first.Load("shared");
+        final.Should().NotBeNull();
+        final!.Token.Should().BeOneOf(largeTokenA, largeTokenB);
+        Directory.EnumerateFiles(_dir, "*.tmp").Should().BeEmpty();
     }
 }

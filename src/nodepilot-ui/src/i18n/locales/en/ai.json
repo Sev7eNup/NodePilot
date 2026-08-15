@@ -10,6 +10,8 @@
     "streamingBadge": "generating",
     "stop": "Stop",
     "replaceAll": "Replace entire script (instead of inserting at cursor)",
+    "includeCurrentScriptTarget": "Send current script to {{target}} as context. It may contain passwords, tokens, or other secrets.",
+    "includeCurrentScriptFallback": "Send current script to the configured LLM endpoint (which may be external). It may contain passwords, tokens, or other secrets.",
     "insert": "Apply",
     "regenerate": "Regenerate",
     "tokenUsed": "Tokens: {{tokens}} · {{ms}} ms",

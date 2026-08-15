@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Api.Configuration;
@@ -39,7 +41,9 @@ public sealed class CustomActivityBackupTests : IDisposable
 
     private BackupRestoreService Restore(NodePilotDbContext db) =>
         new(db, _atRest, new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance),
-            NullLogger<BackupRestoreService>.Instance);
+            NullLogger<BackupRestoreService>.Instance,
+            new NodePilot.Api.Services.WorkflowVersionDefinitionProtector(
+                _atRest, NullLogger<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>.Instance));
 
     private async Task<byte[]> ExportAsync(NodePilotDbContext db) =>
         (await new BackupService(Parts(db)).ExportAsync(Sections, Passphrase, "admin", CancellationToken.None)).Content;
@@ -49,7 +53,9 @@ public sealed class CustomActivityBackupTests : IDisposable
         var store = new CustomActivityDefinitionStore(db);
         var def = await store.CreateAsync(new CustomActivityDefinitionInput
         {
-            Key = "disk_check", Name = "Disk Check", ScriptTemplate = "Get-PSDrive C",
+            Key = "disk_check", Name = "Disk Check",
+            ScriptTemplate = "$token = 'inline-custom-script-secret'; Get-PSDrive C",
+            InputParametersJson = """[{"name":"apiKey","type":"string","default":"inline-custom-default-secret"}]""",
             OutputParametersJson = "[{\"name\":\"status\",\"type\":\"string\"}]",
         }, "alice", CancellationToken.None);
         if (enabled) await store.SetEnabledAsync(def.Id, true, "admin", CancellationToken.None);
@@ -93,6 +99,9 @@ public sealed class CustomActivityBackupTests : IDisposable
         var def = await SeedAsync(src, enabled: true);
         SeedWorkflow(src, def.Id);
         var backup = await ExportAsync(src);
+        var serialized = Encoding.UTF8.GetString(backup);
+        serialized.Should().NotContain("inline-custom-script-secret");
+        serialized.Should().NotContain("inline-custom-default-secret");
 
         using var dst = TestDbFactory.Create();
         await Restore(dst).RestoreAsync(backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), CancellationToken.None);
@@ -101,7 +110,8 @@ public sealed class CustomActivityBackupTests : IDisposable
         restored.Should().NotBeNull();
         restored!.Id.Should().Be(def.Id, "source id is preserved on a clean restore");
         restored.IsEnabled.Should().BeTrue("system-backup restores the enabled state faithfully (unlike .npca import)");
-        restored.ScriptTemplate.Should().Be("Get-PSDrive C");
+        restored.ScriptTemplate.Should().Contain("inline-custom-script-secret");
+        restored.InputParametersJson.Should().Contain("inline-custom-default-secret");
 
         var wf = dst.Workflows.Single();
         CustomDefIdInFirstNode(wf.DefinitionJson).Should().Be(def.Id.ToString(), "the workflow reference still resolves");
@@ -131,6 +141,104 @@ public sealed class CustomActivityBackupTests : IDisposable
         var wf = dst.Workflows.Single();
         CustomDefIdInFirstNode(wf.DefinitionJson).Should().Be(dstDef.Id.ToString(),
             "the restored workflow's __customDefinitionId is remapped to the destination's existing definition id");
+    }
+
+    [Fact]
+    public async Task WorkflowOnlyExport_AutoIncludesReferencedCustomActivityDefinitions()
+    {
+        using var src = TestDbFactory.Create();
+        SeedAdmin(src);
+        var definition = await SeedAsync(src, enabled: true);
+        SeedWorkflow(src, definition.Id);
+
+        var result = await new BackupService(Parts(src)).ExportAsync(
+            [BackupSections.Workflows], Passphrase, "admin", CancellationToken.None);
+
+        result.AutoIncludedSections.Should().Contain(BackupSections.CustomActivities);
+        var reader = BackupFileReader.Parse(result.Content);
+        reader.Sections[BackupSections.CustomActivities]!["items"]!.AsArray().Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task Restore_MissingCustomActivityReference_AbortsBeforeWritingWorkflow()
+    {
+        using var src = TestDbFactory.Create();
+        SeedAdmin(src);
+        SeedWorkflow(src, Guid.NewGuid());
+        var backup = await ExportAsync(src);
+
+        using var dst = TestDbFactory.Create();
+        SeedAdmin(dst);
+
+        var act = () => Restore(dst).RestoreAsync(
+            backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), CancellationToken.None);
+        await act.Should().ThrowAsync<BackupRestoreException>()
+            .WithMessage("*__customDefinitionId*");
+        dst.Workflows.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Restore_LegacyV2PlaintextCustomActivityFields_RemainsCompatible()
+    {
+        using var src = TestDbFactory.Create();
+        await SeedAsync(src, enabled: true);
+        var current = await new BackupService(Parts(src)).ExportAsync(
+            [BackupSections.CustomActivities], Passphrase, "admin", CancellationToken.None);
+        var reader = BackupFileReader.Parse(current.Content);
+        var protector = reader.TryUnlock(Passphrase)!;
+        var envelope = (JsonObject)JsonNode.Parse(Encoding.UTF8.GetString(current.Content))!;
+        envelope["schema"] = BackupSections.SchemaV2;
+        var item = envelope["sections"]![BackupSections.CustomActivities]!["items"]![0]!;
+        item["scriptTemplate"] = "legacy-plaintext-script";
+        item["inputParametersJson"] = """[{"name":"token","type":"string","default":"legacy-default"}]""";
+        envelope["mac"] = Convert.ToBase64String(protector.ComputeMac(
+            BackupCanonicalJson.Canonicalize(envelope, excludeKey: "mac")));
+
+        using var dst = TestDbFactory.Create();
+        SeedAdmin(dst);
+        await Restore(dst).RestoreAsync(
+            Encoding.UTF8.GetBytes(envelope.ToJsonString()), Passphrase,
+            new Dictionary<string, RestoreConflictPolicy>(), CancellationToken.None);
+
+        var restored = dst.CustomActivityDefinitions.Single();
+        restored.ScriptTemplate.Should().Be("legacy-plaintext-script");
+        restored.InputParametersJson.Should().Contain("legacy-default");
+    }
+
+    [Fact]
+    public async Task Restore_DoesNotTreatSameNamedNestedPayloadKeysAsInfrastructureReferences()
+    {
+        var payloadCredentialId = Guid.NewGuid();
+        var payloadMachineId = Guid.NewGuid();
+        using var src = TestDbFactory.Create();
+        var adminId = SeedAdmin(src);
+        src.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "payload-ids", FolderId = SharedWorkflowFolder.RootFolderId,
+            DefinitionJson = """
+                {"nodes":[
+                  {"id":"child","type":"startWorkflow","data":{"config":{"parameters":{
+                    "credentialId":"__PAYLOAD_CREDENTIAL__"}}}},
+                  {"id":"return","type":"returnData","data":{"config":{"data":{
+                    "targetMachineId":"__PAYLOAD_MACHINE__"}}}}
+                ],"edges":[]}
+                """
+                .Replace("__PAYLOAD_CREDENTIAL__", payloadCredentialId.ToString(), StringComparison.Ordinal)
+                .Replace("__PAYLOAD_MACHINE__", payloadMachineId.ToString(), StringComparison.Ordinal),
+        });
+        await src.SaveChangesAsync();
+        var backup = await ExportAsync(src);
+
+        using var dst = TestDbFactory.Create();
+        SeedAdmin(dst, adminId);
+        await Restore(dst).RestoreAsync(
+            backup, Passphrase, new Dictionary<string, RestoreConflictPolicy>(), CancellationToken.None);
+
+        var restored = JsonNode.Parse(dst.Workflows.Single().DefinitionJson)!;
+        restored["nodes"]![0]!["data"]!["config"]!["parameters"]!["credentialId"]!
+            .GetValue<string>().Should().Be(payloadCredentialId.ToString());
+        restored["nodes"]![1]!["data"]!["config"]!["data"]!["targetMachineId"]!
+            .GetValue<string>().Should().Be(payloadMachineId.ToString());
     }
 
     public void Dispose()

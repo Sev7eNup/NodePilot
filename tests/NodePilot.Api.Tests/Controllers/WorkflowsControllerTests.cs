@@ -829,6 +829,38 @@ public class WorkflowsControllerTests
     }
 
     [Fact]
+    public async Task Update_StoresHistoricDefinitionEncrypted_AndAuthorizedEditorReadsPlaintext()
+    {
+        var db = CreateContext();
+        const string legacyDefinition =
+            """{"nodes":[{"id":"s","data":{"activityType":"runScript","config":{"script":"ConvertTo-SecureString 'history-secret' -AsPlainText -Force"}}}],"edges":[]}""";
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Legacy", DefinitionJson = legacyDefinition, Version = 1,
+            CheckedOutByUserId = TestUserId, CheckedOutAt = DateTime.UtcNow,
+        };
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var h = NewController(db);
+
+        await h.Workflows.Update(
+            workflow.Id,
+            new UpdateWorkflowRequest("Legacy v2", null, """{"nodes":[],"edges":[]}"""),
+            CancellationToken.None);
+
+        db.ChangeTracker.Clear();
+        var stored = await db.WorkflowVersions.Where(v => v.WorkflowId == workflow.Id)
+            .Select(v => v.DefinitionJson).SingleAsync();
+        stored.Should().NotContain("history-secret");
+        stored.Should().StartWith("np:wfv:v1:",
+            "the database stores an opaque authenticated ciphertext envelope, not readable JSON");
+
+        var result = await h.Editing.GetVersion(workflow.Id, 1, CancellationToken.None);
+        var detail = (result.Result as OkObjectResult)!.Value.Should().BeOfType<WorkflowVersionDetail>().Subject;
+        detail.DefinitionJson.Should().Contain("history-secret");
+    }
+
+    [Fact]
     public async Task Update_WhenVersionSnapshotAlreadyExists_Returns409()
     {
         var db = CreateContext();
@@ -925,7 +957,7 @@ public class WorkflowsControllerTests
             WorkflowId = workflow.Id,
             Version = 1,
             Name = "Old",
-            DefinitionJson = OneNodeDef,
+            DefinitionJson = WorkflowControllerHarnessFactory.VersionDefinitions().Protect(OneNodeDef),
         };
         db.Workflows.Add(workflow);
         db.WorkflowVersions.Add(target);
@@ -944,6 +976,7 @@ public class WorkflowsControllerTests
         var history = await db.WorkflowVersions.Where(v => v.WorkflowId == workflow.Id).OrderBy(v => v.Version).ToListAsync();
         history.Select(v => v.Version).Should().Equal(1, 3);
         history.First(v => v.Version == 3).ChangeNote.Should().Contain("rollback");
+        history.First(v => v.Version == 3).DefinitionJson.Should().StartWith("np:wfv:v1:");
 
         audit.Calls.Should().ContainSingle(c => c.Action == "WORKFLOW_ROLLED_BACK");
     }

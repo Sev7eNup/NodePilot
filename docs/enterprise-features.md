@@ -137,13 +137,15 @@ Erwartung: 40–60 s bis `/healthz/leader` auf node-b grün wird. Audit-Log zeig
 
 ### Was es kann
 
-- Verschlüsselt **Credentials** und **Global Variables** at rest. Bisher hart an Windows
+- Verschlüsselt **Credentials**, **Global Variables** und vollständige historische
+  **Workflow-Version-Definitionen** at rest. Bisher hart an Windows
   DPAPI gekoppelt; das Feature führt eine Provider-Abstraktion ein und liefert eine
   zweite Implementierung gegen AES-GCM mit Key aus Env-Variable.
 - **Provider-Migration** über einen `MigratingSecretProtector`-Wrapper: für die Dauer
   der Rotation läuft ein zweiter (Legacy-)Provider parallel. Reads probieren Active
   zuerst, fallen auf Legacy zurück; Writes nutzen immer Active. Ein admin-getriggerter
-  Bulk-Sweep (`POST /api/secrets/reencrypt`) zieht jede Row durch Decrypt→Encrypt und
+  Bulk-Sweep (`POST /api/secrets/reencrypt`) zieht Credentials, Secret-Globals und
+  Workflow-History durch Decrypt→Encrypt und
   beendet das Migration-Fenster. Skipped Rows (z.B. korrupte Ciphertexte) werden im
   Response namentlich gelistet; HTTP `207 Multi-Status` signalisiert „nicht alles
   migriert", `200 OK` nur bei sauberem Cutover.
@@ -159,7 +161,8 @@ Erwartung: 40–60 s bis `/healthz/leader` auf node-b grün wird. Audit-Log zeig
 - **Audit der Crypto-Operationen** über Metrics: `nodepilot_credential_crypto_calls{operation,result}`
   unterscheidet `encrypt`/`decrypt` × `success`/`failure`. `nodepilot_credential_crypto_legacy_reads`
   zählt Decrypts die vom Legacy-Provider (Migrations-Window) bedient wurden — wenn der
-  Counter auf null ist, kann der Operator das Legacy-Config sicher wegwerfen.
+  Counter auf null ist. Das Legacy-Config darf trotzdem erst nach einem sauberen Sweep mit
+  `workflowVersionsSkipped=0` entfernt werden.
 
 ### Wie es umgesetzt ist
 
@@ -185,10 +188,12 @@ Erwartung: 40–60 s bis `/healthz/leader` auf node-b grün wird. Audit-Log zeig
   aktiven Implementierung greift die Legacy-Implementierung; bleibt das Plaintext leer,
   wird ein kombinierter `CryptographicException`-Diagnostic geworfen, der beide Versuche
   benennt.
-- **`POST /api/secrets/reencrypt`** (Admin-only) liest jede Credential + jede Secret-
-  Global-Variable, dechiffriert über den (ggf. wrappenden) Protector, re-enkryptiert
-  unter dem Active-Provider und schreibt zurück. Skipped Rows landen mit `(id, name, reason)`
-  im Response.
+- **`POST /api/secrets/reencrypt`** (Admin-only) liest jede Credential, jede Secret-
+  Global-Variable und jede verschlüsselte `WorkflowVersion.DefinitionJson`, dechiffriert über
+  den (ggf. wrappenden) Protector, re-enkryptiert unter dem Active-Provider und schreibt
+  zurück. Alle drei Bereiche liefern eigene Rewritten-/Skipped-Zähler und
+  `(id, name, reason)`-Details. `LegacyProvider` bleibt gesetzt, solange insbesondere ein
+  History-Skip offen ist.
 - **DI-Disambiguierung über `[ActivatorUtilitiesConstructor]`**: `CredentialStore` und
   `GlobalVariableStore` haben mehrere Konstruktoren (Legacy + neuer Single-Arg-Pfad mit
   Protector). Microsoft.Extensions.DependencyInjection würde sonst mit
@@ -239,7 +244,7 @@ Key im Klartext im `appsettings.json` steht.
 
 | Endpoint | Auth | Zweck |
 |---|---|---|
-| `POST /api/secrets/reencrypt` | Admin | Bulk-Sweep aller Credentials + Secret-Globals durch Decrypt→Re-Encrypt unter dem aktiven Provider. Liefert `200 OK` (clean) oder `207 Multi-Status` (skipped rows mit Details) zurück. |
+| `POST /api/secrets/reencrypt` | Admin | Bulk-Sweep aller Credentials, Secret-Globals und Workflow-Version-Definitionen unter dem aktiven Provider. Liefert `200 OK` (clean) oder `207 Multi-Status` (separate Skip-Details je Bereich) zurück. |
 
 ### Wichtige Dateien
 
@@ -251,6 +256,7 @@ Key im Klartext im `appsettings.json` steht.
 - [src/NodePilot.Api/Controllers/SecretsController.cs](../src/NodePilot.Api/Controllers/SecretsController.cs)
 - [src/NodePilot.Data/CredentialStore.cs](../src/NodePilot.Data/CredentialStore.cs) (`ReencryptAllCredentialsAsync`)
 - [src/NodePilot.Data/GlobalVariableStore.cs](../src/NodePilot.Data/GlobalVariableStore.cs) (`ReencryptAllSecretsAsync`)
+- [src/NodePilot.Api/Services/WorkflowVersionDefinitionProtector.cs](../src/NodePilot.Api/Services/WorkflowVersionDefinitionProtector.cs) (`ReencryptAllAsync`)
 - [docs/secrets-providers.md](secrets-providers.md) — Operator-Doku mit Migrations-Runbook
 
 ### Bewusst nicht in Scope
@@ -291,9 +297,10 @@ $body = @{username='admin'; password='admin123'} | ConvertTo-Json
 $login = Invoke-RestMethod -Uri http://localhost:5000/api/auth/login -Method POST -Body $body -ContentType 'application/json'
 $headers = @{ Authorization = "Bearer $($login.token)" }
 Invoke-RestMethod -Uri http://localhost:5000/api/secrets/reencrypt -Method POST -Headers $headers
-#  → 200 OK + { credentialsRewritten: 1, ..., partialSuccess: false }
+#  → Legacy-Config nur bei 200 OK + partialSuccess:false + workflowVersionsSkipped:0 entfernen
 
-# 5. Stoppen, Legacy-Config entfernen, neu booten — Provider ist jetzt rein AES-GCM.
+# 5. Erst nach sauberem Credential-/Global-/History-Sweep stoppen, Legacy-Config entfernen
+#    und neu booten — Provider ist jetzt rein AES-GCM.
 Remove-Item Env:Secrets__LegacyProvider, Env:Secrets__LegacyDpapiScope
 ```
 

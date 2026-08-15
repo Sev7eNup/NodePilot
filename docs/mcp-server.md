@@ -51,7 +51,7 @@ environment variables, falling back to the CLI's on-disk config/session:
 |---|---|
 | Server URL | `NODEPILOT_MCP_SERVER` › `NODEPILOT_SERVER` › CLI `config.json` profile |
 | Profile | `NODEPILOT_MCP_PROFILE` › `NODEPILOT_PROFILE` › CLI default profile › `default` |
-| Token | `NODEPILOT_MCP_TOKEN` (raw bearer, CI/headless escape — no refresh) › DPAPI `np auth login` session (auto-refreshed on 401) |
+| Token | `NODEPILOT_MCP_TOKEN` (raw bearer, CI/headless escape — no refresh) › DPAPI `np auth login` session (cross-process single-flight rotation shared with CLI before its server-issued absolute expiry; transient proactive failures use a 15-second token-bound cooldown; re-login after expiry) |
 
 The server starts even when unconfigured/unauthenticated; tools then return an actionable error
 (`run np auth login`, or set `NODEPILOT_MCP_SERVER`).
@@ -75,12 +75,13 @@ Every tool also carries MCP annotations: read tools are `readOnly`, the gated on
 
 ## Secret handling
 
-- Workflow definitions are **redacted** before they reach the agent: inline secret config values
-  (`secret`, `apiKey`, `password`, `authToken`, `bearer`, `connectionString`) are masked to `***`.
-  (The API only redacts for non-privileged roles; the MCP server re-applies it for everyone,
-  using the shared `NodePilot.Core.WorkflowDefinitions.WorkflowSecretKeys`.)
+- Workflow definitions are **redacted** before they reach the agent. Named secret keys plus opaque
+  executable/runtime payloads (scripts, bodies, headers, arguments, queries, prompts, condition
+  literals and Custom-Activity string inputs) are masked to `***`. The API only redacts by role;
+  MCP re-applies the shared `WorkflowSecretRedactor` for everyone.
 - On `publish_workflow`/`update_workflow_definition`/`apply_workflow_patch`, real secrets are
-  **restored from the stored version** by node id — the agent's `***` never overwrites them, and a
+  **restored from the stored version** by node id (including masks nested in condition/case arrays)
+  — the agent's `***` never overwrites them, and a
   secret the agent invents on a new node is rejected (masked + noted).
 - Credentials carry no password field; secret global values arrive masked. Create/update accept
   secrets write-only.
@@ -129,9 +130,15 @@ gerade“. Gefensterte Gesamtzahlen kommen ohnehin aus `density[]`, nicht aus de
 `list_db_tables` · `get_db_info` · `run_readonly_sql`. Schema discovery + single read-only SQL
 statement against the NodePilot App-DB (the agent does the NL→SQL translation). Read keyword
 whitelist + rollback enforced server-side; no write tool. `list_db_tables` hides secret columns
-(`PasswordHash`/`EncryptedPassword`), masks `GlobalVariable.Value`. `run_readonly_sql` cannot reach
-them either — drei Schichten, alle im `DbAdminSecretColumns`-Contract, den auch der Row-Browser und
-der In-App-text2sql-Reader fahren:
+(`PasswordHash`/`EncryptedPassword`) und maskiert `GlobalVariable.Value`. PostgreSQL-`U&"…"`-Identifier
+und dynamische XML-Exporter (`query_to_xml` & Co.) sind im serverseitigen Read-Guard generell gesperrt.
+
+`Workflows`, `WorkflowVersions` und die Custom-Activity-Tabellen sind **bewusst nicht** gesperrt: die
+Tools sind Admin-only, und ein Admin liest dieselben Zeilen ohnehin über DbAdmin. Eine Sperre hätte nur
+Bestandsfragen („welche Workflows gibt es") unbeantwortbar gemacht. Für Definitionen inklusive
+Secret-Redaction bleibt `get_workflow_definition` der bequemere Weg.
+
+Für die übrigen Secret-Spalten gelten drei serverseitige Schichten im `DbAdminSecretColumns`-Contract:
 
 1. Nennt das Statement eine geschützte Spalte → Ablehnung (`protected_column`).
 2. Wildcard-Select → die geschützten Ergebnis-Spalten kommen als `***` zurück.
@@ -142,7 +149,7 @@ der In-App-text2sql-Reader fahren:
    aus — sie umging damit beide auf einen Schlag (Security-Audit 2026-07-26).
 
 So landet kein Secret im Kontext des Agents. Schicht 3 ist bewusst grob und greift auch bei
-harmlosen Casts auf diesen Tabellen; explizit benannte Spalten funktionieren immer.
+harmlosen Casts auf diesen Secret-Tabellen; explizit benannte, nicht geschützte Spalten funktionieren.
 
 ### Supporting resources (secrets never surfaced)
 `list_machines` · `get_machine` · `create_machine` · `update_machine` · `test_machine` ·

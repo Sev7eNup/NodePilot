@@ -314,12 +314,22 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
                    globalSecretsRewritten = 0,
                    globalSecretsSkipped = 0,
                    globalSecretSkipDetails = Array.Empty<object>(),
+                   workflowVersionsRewritten = 4,
+                   workflowVersionsSkipped = 1,
+                   workflowVersionSkipDetails = new[]
+                   {
+                       new { id = Guid.NewGuid(), name = "Deploy v3", reason = "CryptographicException" },
+                   },
                    partialSuccess = true,
                }));
         var result = await _client.ReencryptSecretsAsync(CancellationToken.None);
         result.PartialSuccess.Should().BeTrue();
         result.CredentialsRewritten.Should().Be(5);
         result.CredentialSkipDetails.Should().ContainSingle();
+        result.WorkflowVersionsRewritten.Should().Be(4);
+        result.WorkflowVersionsSkipped.Should().Be(1);
+        result.WorkflowVersionSkipDetails.Should().ContainSingle()
+            .Which.Name.Should().Be("Deploy v3");
     }
 
     [Fact]
@@ -330,10 +340,12 @@ public sealed class NodePilotApiClientNewSurfaceTests : IDisposable
                {
                    credentialsRewritten = 3, credentialsSkipped = 0, credentialSkipDetails = Array.Empty<object>(),
                    globalSecretsRewritten = 1, globalSecretsSkipped = 0, globalSecretSkipDetails = Array.Empty<object>(),
+                   workflowVersionsRewritten = 7, workflowVersionsSkipped = 0, workflowVersionSkipDetails = Array.Empty<object>(),
                    partialSuccess = false,
                }));
         var result = await _client.ReencryptSecretsAsync(CancellationToken.None);
         result.PartialSuccess.Should().BeFalse();
+        result.WorkflowVersionsRewritten.Should().Be(7);
     }
 
     // ---- Shared folders -----------------------------------------------------

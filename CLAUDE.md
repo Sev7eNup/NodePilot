@@ -355,12 +355,12 @@ Initial-Admin: erster Login bei leerer DB (One-Shot-Token `admin-setup.token`).
 
 ## Security
 
-- **Session:** absolute Lebensdauer **8h** (`Authentication:SessionAbsoluteLifetimeHours`, default 8; `AuthController.TokenLifetime`). Refresh verlängert die absolute Grenze **nicht**. `jti`-Revocation. Key aus `Jwt:Key` oder auto-generiertes `jwt-secret.key`.
+- **Session:** absolute Lebensdauer **8h** (`Authentication:SessionAbsoluteLifetimeHours`, default 8; `AuthSessionIssuer`). Refresh verlängert die absolute Grenze **nicht**. `jti`-Revocation. Key aus `Jwt:Key` oder auto-generiertes `jwt-secret.key`.
 - **Auth-Pfade:** Local-BCrypt (`Authentication:LocalLoginMode`, Produktionsdefault **`BreakGlassOnly`** — nur explizit markierte Notfallkonten; `Enabled`/`Disabled` möglich) + LDAP (`Authentication:Ldap:Enabled`) + Windows-Negotiate (`Authentication:Windows:Enabled`) + OIDC (`Authentication:Oidc:Enabled`, release-gated, + SCIM-Controller). Alle konvergieren auf JWT-Cookie + CSRF-Token. Siehe `docs/ldap-windows-sso.md`.
 - **External Trigger:** `X-Api-Key` wird bevorzugt gegen SHA-256-Hashes unter `ExternalTrigger:Keys:<id>` geprüft; jeder Eintrag hat eine GUID-only `AllowedWorkflowIds`-Liste. Die komplette `Keys`-Map kommt atomar aus dem höchstprioren Provider, der sie deklariert (`Keys: {}` widerruft alle niedrigeren Keys); auch Scope-Arrays sind provider-atomar (`[]` = deny-all). Zusätzlich braucht der Workflow einen aktiven `manualTrigger`. Legacy-`ApiKey` ist ohne eigene `AllowedWorkflowIds`-Liste inert. Idempotency wird per kanonischer Integration-ID + Key-Fingerprint + Workflow domain-separiert; die DB speichert nur den Digest.
 - **Rate-Limiting:** login 50/Min, refresh 20/Min, webhook 60/Min, trigger 30/Min, ai-generate 20/Min, audit 60/Min, backup 10/Min (per-IP, Sliding-Window).
 - **Output-Redaction:** `OutputRedactor` maskiert Secrets. Immer aktiv. Custom-Patterns via `Logging:Redaction:Patterns`.
-- **Localhost-Bypass:** ohne Credentials läuft in-process. **Produkt-Feature, kein Guard einziehen.**
+- **Localhost-Bypass / Operator-Trust:** ohne Credentials läuft in-process unter der NodePilot-Service-Identität. `Operator` ist bewusst ein vertrauenswürdiger Automation-Author und darf solchen Workflow-Code publizieren/ausführen. Folder-RBAC ist keine Code-Sandbox. **Produkt-Feature, keinen Require-Target-Guard einziehen.**
 - **Security-Headers (Non-Dev):** HSTS, CSP, X-Frame-Options=DENY, nosniff, Referrer-Policy.
 - **SignalR-Auth:** httpOnly `np_auth`-Cookie wird beim WebSocket-Upgrade automatisch mitgeschickt (nur `/hubs/`); kein `?access_token=`-Querystring.
 - **REST-API-Proxy:** `RestApi:Proxy:Enabled` (default `false`). Per-Step-Override via `proxyMode`.

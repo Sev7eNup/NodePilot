@@ -204,6 +204,8 @@ function WorkflowEditorInner() {
   }, [isAtelier]);
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [tidyingWorkflowId, setTidyingWorkflowId] = useState<string | null>(null);
+  const isTidying = !!id && tidyingWorkflowId === id;
   const [selected, setSelected] = useState<SelectedItem>(null);
   const [connectionNotice, setConnectionNotice] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -254,14 +256,20 @@ function WorkflowEditorInner() {
   });
 
   const {
-    isLockedByMe, isLockedByOther, canWrite,
+    isLockedByMe, isLockedByOther, canWrite: lockCanWrite,
     lock, unlock, forceUnlock, disable, enable,
     isLocking, isUnlocking, isForceUnlocking, isDisabling, isEnabling,
   } = useWorkflowLock({ workflowId: id, workflow, currentUserId, roleCanWrite });
   const {
     name, isDirty, isSaving, isPublishing,
     rename, markDirty, save, saveAsync, publish, syncFromServer,
-  } = useWorkflowPersistence({ workflowId: id, workflow, nodes, edges });
+    beginAsyncGraphEdit, applyAsyncGraphEdit,
+  } = useWorkflowPersistence({
+    workflowId: id, workflow, nodes, edges, suspendAutoSave: isTidying,
+  });
+  // Publish saves and releases the lock atomically. Freeze all edit affordances as soon as it
+  // is queued, and while an async layout still owns a pre-apply graph snapshot.
+  const canWrite = lockCanWrite && !isPublishing && !isTidying;
 
   const { data: allWorkflows } = useQuery({
     queryKey: ['workflows'],
@@ -324,7 +332,7 @@ function WorkflowEditorInner() {
 
   useEffect(() => {
     if (workflow) {
-      syncFromServer(workflow.name);
+      if (!syncFromServer(workflow.name)) return;
       resetPasteCount();
       pushRecentWorkflow(workflow.id);
       try {
@@ -603,41 +611,58 @@ function WorkflowEditorInner() {
   // ---- Auto-Layout (Tidy) — cycles through LR → TB → Compact → ELK --------
   const layoutMode = useDesignStore((s) => s.layoutMode);
   const setLayoutMode = useDesignStore((s) => s.setLayoutMode);
-  const [isTidying, setIsTidying] = useState(false);
   // Snapshot of positions before the first auto-layout in this session.
-  const origLayoutRef = useRef<Node[] | null>(null);
-  const [hasOrigLayout, setHasOrigLayout] = useState(false);
+  const origLayoutRef = useRef<{ workflowId: string | undefined; nodes: Node[] } | null>(null);
+  const [origLayoutWorkflowId, setOrigLayoutWorkflowId] = useState<string | null>(null);
+  const hasOrigLayout = origLayoutWorkflowId === id;
   const tidyLayout = useCallback(async () => {
     if (nodes.length === 0 || isTidying) return;
-    if (origLayoutRef.current === null) {
-      origLayoutRef.current = nodes.map((n) => ({ ...n }));
-      setHasOrigLayout(true);
-    }
-    commitHistory('Tidy layout');
-    markDirty();
     const modeToApply = designerMode === 'standard' ? 'LR' : layoutMode;
     const next = LAYOUT_MODES[(LAYOUT_MODES.indexOf(layoutMode) + 1) % LAYOUT_MODES.length];
-    if (modeToApply === 'LR') {
-      setNodes(autoLayout(nodes, edges));
-    } else if (modeToApply === 'TB') {
-      setNodes(autoLayoutTB(nodes, edges));
-    } else if (modeToApply === 'Compact') {
-      setNodes(autoLayoutCompact(nodes, edges));
-    } else {
-      setIsTidying(true);
-      try { setNodes(await autoLayoutELK(nodes, edges)); }
-      finally { setIsTidying(false); }
+    const rememberOriginal = () => {
+      if (origLayoutRef.current?.workflowId !== id) {
+        origLayoutRef.current = { workflowId: id, nodes: nodes.map((n) => ({ ...n })) };
+        setOrigLayoutWorkflowId(id ?? null);
+      }
+    };
+
+    if (modeToApply === 'ELK') {
+      const token = beginAsyncGraphEdit();
+      if (!token || !id) return;
+      setTidyingWorkflowId(id);
+      try {
+        const laidOut = await autoLayoutELK(nodes, edges);
+        // Reject results after another edit, publish, unmount, or workflow visit.
+        if (!applyAsyncGraphEdit(token, laidOut, edges)) return;
+        rememberOriginal();
+        commitHistory('Tidy layout');
+        setNodes(laidOut);
+        if (designerMode === 'expert') setLayoutMode(next);
+      } catch (err) {
+        toast.error(t('editor:tidyFailed', { message: (err as Error).message }));
+      } finally {
+        setTidyingWorkflowId((current) => current === id ? null : current);
+      }
+      return;
     }
+
+    rememberOriginal();
+    commitHistory('Tidy layout');
+    markDirty();
+    if (modeToApply === 'LR') setNodes(autoLayout(nodes, edges));
+    else if (modeToApply === 'TB') setNodes(autoLayoutTB(nodes, edges));
+    else setNodes(autoLayoutCompact(nodes, edges));
     if (designerMode === 'expert') setLayoutMode(next);
-  }, [nodes, edges, designerMode, layoutMode, isTidying, commitHistory, markDirty, setNodes, setLayoutMode]);
+  }, [nodes, edges, designerMode, layoutMode, isTidying, id, beginAsyncGraphEdit,
+      applyAsyncGraphEdit, commitHistory, markDirty, setNodes, setLayoutMode, t]);
   const restoreOrigLayout = useCallback(() => {
-    if (!origLayoutRef.current) return;
+    if (!origLayoutRef.current || origLayoutRef.current.workflowId !== id) return;
     commitHistory('Restore layout');
     markDirty();
-    setNodes(origLayoutRef.current);
+    setNodes(origLayoutRef.current.nodes);
     origLayoutRef.current = null;
-    setHasOrigLayout(false);
-  }, [commitHistory, markDirty, setNodes]);
+    setOrigLayoutWorkflowId(null);
+  }, [id, commitHistory, markDirty, setNodes]);
 
   // ---- Select All (Ctrl+A) ------------------------------------------------
   const selectAll = useCallback(() => {
@@ -892,14 +917,14 @@ function WorkflowEditorInner() {
   // in the toolbar buttons + command palette. Declared here (not earlier) because they
   // reference saveMutation/lockMutation/handleRunClick/etc., which are declared above.
   const triggerSave = useCallback(() => {
-    if (canWrite && isDirty && !isSaving) save();
-  }, [canWrite, isDirty, isSaving, save]);
+    if (canWrite && isDirty && !isSaving && !isTidying) save();
+  }, [canWrite, isDirty, isSaving, isTidying, save]);
   const triggerLock = useCallback(() => {
     if (roleCanWrite && !isLockedByMe && !isLockedByOther && !isLocking) lock();
   }, [roleCanWrite, isLockedByMe, isLockedByOther, isLocking, lock]);
   const triggerUnlock = useCallback(() => {
-    if (isLockedByMe && !isUnlocking) unlock();
-  }, [isLockedByMe, isUnlocking, unlock]);
+    if (isLockedByMe && !isUnlocking && !isTidying) unlock();
+  }, [isLockedByMe, isUnlocking, isTidying, unlock]);
   const triggerForceUnlock = useCallback(async () => {
     if (isAdmin && isLockedByOther && !isForceUnlocking) {
       if (await confirmDialog(t('editor:banners.forceUnlockConfirm', { user: workflow?.checkedOutByUserName ?? t('common:unknown') }))) {
@@ -912,7 +937,7 @@ function WorkflowEditorInner() {
   // really a Disable — the kill-switch path stays direct (no modal) because stopping
   // production is not a "is everything ready"-question.
   const requestPublish = useCallback(async () => {
-    if (!roleCanWrite || isLockedByOther) return;
+    if (!roleCanWrite || isLockedByOther || isTidying) return;
     if (workflow?.isEnabled) {
       if (await confirmDialog(t('editor:stopWorkflowConfirm'))) {
         disable();
@@ -929,15 +954,16 @@ function WorkflowEditorInner() {
     }
     setPrePublishOpen(true);
   }, [roleCanWrite, isLockedByOther, workflow?.isEnabled, isLockedByMe,
-      isPublishing, publish, isEnabling, enable, disable, prePublishLint]);
+      isPublishing, isTidying, publish, isEnabling, enable, disable, prePublishLint, t]);
 
   // Modal "Trotzdem publizieren" / "Publizieren" callback — fires the right mutation.
   // Errors block the button at render time, so we don't re-check here.
   const confirmPrePublish = useCallback(() => {
     setPrePublishOpen(false);
+    if (isTidying) return;
     if (isLockedByMe) publish();
     else enable();
-  }, [isLockedByMe, publish, enable]);
+  }, [isLockedByMe, isTidying, publish, enable]);
 
   // Keyboard shortcut (Ctrl+Shift+S) reuses the same gate so power users see the modal too.
   const triggerPublish = requestPublish;
@@ -1152,12 +1178,12 @@ function WorkflowEditorInner() {
         lintResult={lintResult} setLintPanelOpen={setLintPanelOpen} setHelpOpen={setHelpOpen}
         hiddenActivityTypes={hiddenActivityTypes} setHiddenActivityTypes={setHiddenActivityTypes}
         liveExecution={liveExecution} handleRunClick={run}
-        exportPng={exportPng} onSave={save} isPublishing={isPublishing}
+        exportPng={exportPng} onSave={save} isPublishing={isPublishing || isTidying}
         onRequestPublish={requestPublish}
         roleCanWrite={roleCanWrite}
         isLockedByMe={isLockedByMe}
         isLockedByOther={isLockedByOther}
-        onLock={lock} isLocking={isLocking} onUnlock={unlock} isUnlocking={isUnlocking}
+        onLock={lock} isLocking={isLocking} onUnlock={unlock} isUnlocking={isUnlocking || isTidying}
         onDisable={disable} isDisabling={isDisabling} isEnabling={isEnabling}
       />
 
@@ -1737,8 +1763,8 @@ function WorkflowEditorInner() {
         onLock={lock}
         isLocking={isLocking}
         onUnlock={unlock}
-        isUnlocking={isUnlocking}
-        isPublishing={isPublishing}
+        isUnlocking={isUnlocking || isTidying}
+        isPublishing={isPublishing || isTidying}
         isEnabling={isEnabling}
         isDisabling={isDisabling}
         onForceUnlock={forceUnlock}

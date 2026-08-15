@@ -82,9 +82,19 @@ curl -X POST -H "Authorization: Bearer <admin-token>" \
 - `200 OK` → clean cutover (`partialSuccess: false`).
 - `207 Multi-Status` → übersprungene Rows in `*SkipDetails`, manuell nachpflegen.
 
+Der Sweep umfasst Credentials, Secret-Globals und die vollständig verschlüsselten Definitionen
+in `WorkflowVersions`. Die Response weist dafür zusätzlich `workflowVersionsRewritten`,
+`workflowVersionsSkipped` und `workflowVersionSkipDetails` aus.
+
 Derselbe Sweep ist auch in der UI verfügbar — **Admin-Einstellungen → Security → „Secrets neu verschlüsseln“** (Admin-only; Bestätigungsdialog, Ergebnis-Toast mit den Zählern, Partial Success als Fehler-Toast) — sowie per CLI: `np secrets reencrypt`.
 
-**Schritt 3 — Legacy-Config entfernen** (wenn Step 2 `200` + `nodepilot.credential.crypto.legacy_reads`-Counter null): `Secrets:LegacyProvider`/`LegacyDpapiScope`/`LegacyMasterKey` entfernen, Restart.
+**Schritt 3 — Legacy-Config entfernen:** erst wenn Step 2 `200` mit
+`partialSuccess=false` liefert, **alle** Skip-Counter einschließlich
+`workflowVersionsSkipped` null sind und der
+`nodepilot.credential.crypto.legacy_reads`-Counter bei den Nachtests null bleibt.
+Bei einem History-Skip bleibt `Secrets:LegacyProvider` konfiguriert, bis die genannte Version
+wiederhergestellt/repariert und ein erneuter Sweep sauber ist. Danach
+`Secrets:LegacyProvider`/`LegacyDpapiScope`/`LegacyMasterKey` entfernen und neu starten.
 
 ## AES-GCM Master-Key rotieren
 
@@ -94,7 +104,7 @@ Gleiches Prozedere, aber `LegacyProvider=AesGcm` + `LegacyMasterKey={{old-base64
 
 | Endpoint | Auth | Zweck |
 |---|---|---|
-| `POST /api/secrets/reencrypt` | Admin | Bulk-Sweep aller Credentials + secret-Globals durch decrypt→re-encrypt. `200` (clean) oder `207` (skipped). |
+| `POST /api/secrets/reencrypt` | Admin | Bulk-Sweep aller Credentials, Secret-Globals und Workflow-Version-Definitionen durch decrypt→re-encrypt. `200` (clean) oder `207` (skipped, inklusive History-Details). |
 
 Audit: `SECRETS_REENCRYPTED`.
 

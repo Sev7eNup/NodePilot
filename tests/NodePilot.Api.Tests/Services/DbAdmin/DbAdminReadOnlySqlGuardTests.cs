@@ -52,6 +52,31 @@ public class DbAdminReadOnlySqlGuardTests
             .WithMessage("*not allowed in read mode*");
     }
 
+    [Theory]
+    [InlineData("SELECT query_to_xml('SELECT \"PasswordHash\" FROM \"Users\"', false, true, '')")]
+    [InlineData("SELECT table_to_xml('Users', false, true, '')")]
+    [InlineData("SELECT schema_to_xml('public', false, true, '')")]
+    [InlineData("SELECT database_to_xml(false, true, '')")]
+    [InlineData("SELECT query_to_xmlschema('SELECT * FROM Workflows', false, true, '')")]
+    [InlineData("SELECT table_to_xml_and_xmlschema('Workflows', false, true, '')")]
+    public void Validate_RejectsDynamicXmlExportRoutines(string sql)
+    {
+        var act = () => DbAdminReadOnlySqlGuard.Validate(sql);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*not allowed in read mode*");
+    }
+
+    [Fact]
+    public void Validate_RejectsUnicodeEscapedIdentifiers()
+    {
+        var act = () => DbAdminReadOnlySqlGuard.Validate(
+            "SELECT U&\"query_to\\005Fxml\"('SELECT 1', false, true, '')");
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*Unicode-escaped identifiers are not allowed*");
+    }
+
     [Fact]
     public void Validate_AllowsWriteKeywordInsideStringLiteral()
     {

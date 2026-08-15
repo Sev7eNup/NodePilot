@@ -25,14 +25,16 @@ public sealed record UpstreamVariableDto(
 /// <paramref name="CurrentScript"/> is the current editor content — it gives requests like
 /// "refactor this script" / "fix the error" something to work from (otherwise the LLM would have
 /// to hallucinate from the variable list alone). It is forwarded as-is inside an untrusted context
-/// block; since the user is editing their own script, it is not redacted.
+/// block only when <paramref name="IncludeCurrentScript"/> is explicitly true. The flag defaults
+/// to false so merely supplying <paramref name="CurrentScript"/> cannot disclose it.
 /// </summary>
 public sealed record GenerateScriptRequest(
     string Prompt,
     Guid? WorkflowId,
     string? StepId,
     IReadOnlyList<UpstreamVariableDto> UpstreamVariables,
-    string? CurrentScript);
+    string? CurrentScript,
+    bool IncludeCurrentScript = false);
 
 /// <summary>
 /// Request body for <c>POST /api/ai/generate-workflow</c>. Just a free-text prompt — all activity

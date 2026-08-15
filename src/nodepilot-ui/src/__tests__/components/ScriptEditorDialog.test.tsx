@@ -113,8 +113,8 @@ describe('ScriptEditorDialog', () => {
     expect(screen.getByText(/Generate script with AI/i)).toBeInTheDocument();
   });
 
-  it('streamed tokens append to the editor buffer (default insert mode)', async () => {
-    const onAiGenerate = vi.fn((_p: string, _cur: string, onToken: (t: string) => void) => { onToken('Get-Service'); return Promise.resolve(); });
+  it('does not expose the current script unless the user explicitly consents', async () => {
+    const onAiGenerate = vi.fn((_p: string, _cur: string | null, onToken: (t: string) => void) => { onToken('Get-Service'); return Promise.resolve(); });
     render(
       <ScriptEditorDialog
         value="$existing = 1"
@@ -134,11 +134,56 @@ describe('ScriptEditorDialog', () => {
       expect(editor.value).toContain('Get-Service');
     });
     expect(onAiGenerate.mock.calls[0][0]).toBe('list services');
-    expect(onAiGenerate.mock.calls[0][1]).toBe('$existing = 1'); // current editor content, passed in as the basis for refactoring
+    expect(onAiGenerate.mock.calls[0][1]).toBeNull();
+  });
+
+  it('names the LLM target and sends the current script only after consent', async () => {
+    const onAiGenerate = vi.fn((_p: string, _cur: string | null, onToken: (t: string) => void) => { onToken('Get-Service'); return Promise.resolve(); });
+    render(
+      <ScriptEditorDialog
+        value="$password = 'possibly-secret'"
+        onChange={() => {}}
+        onClose={() => {}}
+        onAiGenerate={onAiGenerate}
+        aiTargetHost="llm.example.test"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generate script with ai/i }));
+    expect(screen.getByText(/llm\.example\.test/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('AI prompt'), { target: { value: 'refactor' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: /send current script/i }));
+    fireEvent.click(screen.getAllByRole('button', { name: /^generate$/i })[0]);
+
+    await waitFor(() => expect(onAiGenerate).toHaveBeenCalled());
+    expect(onAiGenerate.mock.calls[0][1]).toBe("$password = 'possibly-secret'");
+  });
+
+  it('uses an external-LLM fallback warning and forgets consent when reopened', () => {
+    render(
+      <ScriptEditorDialog
+        value="$possiblySecret = 1"
+        onChange={() => {}}
+        onClose={() => {}}
+        onAiGenerate={async () => {}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /generate script with ai/i }));
+    expect(screen.getByText(/configured LLM endpoint.*may be external/i)).toBeInTheDocument();
+    const consent = screen.getByRole('checkbox', { name: /send current script/i });
+    expect(consent).not.toBeChecked();
+    fireEvent.click(consent);
+    expect(consent).toBeChecked();
+
+    const dialogs = screen.getAllByRole('dialog');
+    fireEvent.keyDown(dialogs[dialogs.length - 1], { key: 'Escape' });
+    fireEvent.click(screen.getByRole('button', { name: /generate script with ai/i }));
+    expect(screen.getByRole('checkbox', { name: /send current script/i })).not.toBeChecked();
   });
 
   it('replace-all clears the buffer on first token then streams in', async () => {
-    const onAiGenerate = vi.fn((_p: string, _cur: string, onToken: (t: string) => void) => { onToken('Get-Service'); return Promise.resolve(); });
+    const onAiGenerate = vi.fn((_p: string, _cur: string | null, onToken: (t: string) => void) => { onToken('Get-Service'); return Promise.resolve(); });
     render(
       <ScriptEditorDialog
         value="$existing = 1"
@@ -150,7 +195,7 @@ describe('ScriptEditorDialog', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /generate script with ai/i }));
     fireEvent.change(screen.getByLabelText('AI prompt'), { target: { value: 'list services' } });
-    fireEvent.click(screen.getByRole('checkbox')); // toggle "replace all"
+    fireEvent.click(screen.getByRole('checkbox', { name: /replace entire script/i }));
     fireEvent.click(screen.getAllByRole('button', { name: /^generate$/i })[0]);
 
     await waitFor(() => {

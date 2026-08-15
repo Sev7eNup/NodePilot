@@ -23,7 +23,8 @@ public sealed class BackupSectionCoverageTests
     private static readonly string[] SectionConstants = typeof(BackupSections)
         .GetFields(BindingFlags.Public | BindingFlags.Static)
         .Where(f => f.IsLiteral && f.FieldType == typeof(string))
-        .Where(f => f.Name is not ("Schema" or "SchemaV2" or "CurrentSchema"))
+        .Where(f => !f.Name.StartsWith("Schema", StringComparison.Ordinal)
+                    && f.Name != "CurrentSchema")
         .Select(f => (string)f.GetRawConstantValue()!)
         .ToArray();
 

@@ -165,6 +165,7 @@ describe('SecuritySection', () => {
       return HttpResponse.json({
         credentialsRewritten: 3, credentialsSkipped: 0, credentialSkipDetails: [],
         globalSecretsRewritten: 2, globalSecretsSkipped: 0, globalSecretSkipDetails: [],
+        workflowVersionsRewritten: 4, workflowVersionsSkipped: 0, workflowVersionSkipDetails: [],
         partialSuccess: false,
       });
     }));
@@ -177,8 +178,17 @@ describe('SecuritySection', () => {
     await waitFor(() => expect(posted).toBe(true));
     await waitFor(() => expect(
       useToastStore.getState().toasts.some((x) =>
-        x.kind === 'success' && x.message.includes('3') && x.message.includes('2')),
+        x.kind === 'success'
+        && /3 credential/i.test(x.message)
+        && /2 global secret/i.test(x.message)
+        && /4 workflow history version/i.test(x.message)),
     ).toBe(true));
+
+    const card = screen.getByText('Re-encrypt secrets').closest('.np-card') as HTMLElement;
+    const result = await within(card).findByRole('status');
+    expect(result).toHaveTextContent(/Credentials.*3 re-encrypted.*0 skipped/i);
+    expect(result).toHaveTextContent(/Global secrets.*2 re-encrypted.*0 skipped/i);
+    expect(result).toHaveTextContent(/Workflow history versions.*4 re-encrypted.*0 skipped/i);
   });
 
   it('Admin reencrypt: cancelled confirm does not POST', async () => {
@@ -202,8 +212,13 @@ describe('SecuritySection', () => {
     server.use(http.post('/api/secrets/reencrypt', () =>
       HttpResponse.json({
         credentialsRewritten: 4, credentialsSkipped: 1,
-        credentialSkipDetails: [{ name: 'old-cred', reason: 'DecryptFailed' }],
+        credentialSkipDetails: [{ id: '11111111-1111-1111-1111-111111111111', name: 'old-cred', reason: 'CryptographicException' }],
         globalSecretsRewritten: 0, globalSecretsSkipped: 0, globalSecretSkipDetails: [],
+        workflowVersionsRewritten: 8, workflowVersionsSkipped: 2,
+        workflowVersionSkipDetails: [
+          { id: '22222222-2222-2222-2222-222222222222', name: 'Payroll v7', reason: 'CryptographicException' },
+          { id: '33333333-3333-3333-3333-333333333333', name: 'Payroll v8', reason: 'FormatException' },
+        ],
         partialSuccess: true,
       }, { status: 207 })));
     renderAll();
@@ -211,7 +226,19 @@ describe('SecuritySection', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /re-encrypt now/i }));
     await waitFor(() => expect(
-      useToastStore.getState().toasts.some((x) => x.kind === 'error' && /partial/i.test(x.message)),
+      useToastStore.getState().toasts.some((x) =>
+        x.kind === 'error'
+        && /partial/i.test(x.message)
+        && /12 re-encrypted/i.test(x.message)
+        && /3 skipped/i.test(x.message)),
     ).toBe(true));
+
+    const card = screen.getByText('Re-encrypt secrets').closest('.np-card') as HTMLElement;
+    const details = await within(card).findByRole('alert');
+    expect(details).toHaveTextContent(/Credentials.*4 re-encrypted.*1 skipped/i);
+    expect(details).toHaveTextContent(/Workflow history versions.*8 re-encrypted.*2 skipped/i);
+    expect(details).toHaveTextContent(/old-cred.*CryptographicException.*11111111-1111-1111-1111-111111111111/i);
+    expect(details).toHaveTextContent(/Payroll v7.*CryptographicException.*22222222-2222-2222-2222-222222222222/i);
+    expect(details).toHaveTextContent(/Payroll v8.*FormatException.*33333333-3333-3333-3333-333333333333/i);
   });
 });

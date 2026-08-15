@@ -26,7 +26,9 @@ public interface IAuthSessionIssuer
     /// Token rotation on <c>POST /api/auth/refresh</c>: mint a fresh JWT (carrying the
     /// same compact baseline claims as <see cref="IssueAsync"/>) and set the
     /// <c>np_auth</c> + <c>np_csrf</c> cookies. Directory groups remain server-side and
-    /// are never copied into the browser cookie. Does
+    /// are never copied into the browser cookie. When the issuer owns a database context,
+    /// the new session JTI and old-token revocation commit atomically before either cookie
+    /// is written. Does
     /// <b>not</b> write a <c>LOGIN_SUCCESS</c> audit row — refresh is a session-rotation,
     /// not a fresh login; the controller writes its own rotation metric.
     /// </summary>
@@ -53,4 +55,19 @@ public enum AuthSource
 /// <summary>Result of a successful session issue. The token is also persisted into the
 /// httpOnly cookie on the response; callers that need the bearer-string for tests or
 /// API responses can read it from <see cref="Token"/>.</summary>
-public sealed record IssuedSession(string Token, Guid UserId, DateTimeOffset ExpiresAt);
+/// <param name="Token">The minted bearer token.</param>
+/// <param name="UserId">The authenticated user's identifier.</param>
+/// <param name="ExpiresAt">The absolute session expiration.</param>
+/// <param name="TokenRotationCommitted">
+/// True only when a refresh persisted both the new server-side session JTI and the
+/// presented-token revocation in one database unit of work. The default remains false so
+/// DbContext-free unit-test fixtures can use the controller's compatibility fallback without
+/// pretending that they committed production state. This fallback is a test seam, not a
+/// supported production issuer contract: production refresh issuers must atomically update
+/// the server-side session family and revoke the presented token before returning.
+/// </param>
+public sealed record IssuedSession(
+    string Token,
+    Guid UserId,
+    DateTimeOffset ExpiresAt,
+    bool TokenRotationCommitted = false);

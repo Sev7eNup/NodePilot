@@ -223,18 +223,22 @@ public class WorkflowAssistantServiceTests
     }
 
     [Fact]
-    public async Task StreamChat_DoesNotSendUnknownLiteralHttpHeaderToLlm()
+    public async Task StreamChat_DoesNotSendAnyOpaqueWorkflowFieldToLlm()
     {
         const string workflow =
-            """{"nodes":[{"id":"http","data":{"activityType":"restApi","config":{"headers":{"X-Tenant-Token":"opaque-tenant-credential","Accept":"application/json"}}}}],"edges":[]}""";
+            """{"nodes":[{"id":"http","data":{"activityType":"restApi","config":{"headers":{"X-Tenant-Token":"opaque-tenant-credential","Accept":"application/json"},"script":"Write-Output 'unclassified-script-literal'","body":"plain-looking-body","scorchRaw":{"payload":"legacy-raw-literal"},"url":"https://example.test"}}}],"edges":[]}""";
         var fake = new FakeLlmClient().EnqueueStream("ok");
 
         await Run(NewService(fake), Req("Erkläre.", workflow));
 
         var userTurn = fake.Calls.Single().Conversation!.Last().Content;
         userTurn.Should().NotContain("opaque-tenant-credential");
+        userTurn.Should().NotContain("unclassified-script-literal");
+        userTurn.Should().NotContain("plain-looking-body");
+        userTurn.Should().NotContain("legacy-raw-literal");
+        userTurn.Should().NotContain("application/json");
         userTurn.Should().Contain("***");
-        userTurn.Should().Contain("application/json");
+        userTurn.Should().NotContain("https://example.test");
     }
 
     // ---- Empty-canvas design mode -------------------------------------------------

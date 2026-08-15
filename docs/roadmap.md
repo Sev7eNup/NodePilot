@@ -33,7 +33,7 @@ Hier steht nur, *was* geändert wird.
 
 | # | Posten | Inhalt |
 |---|---|---|
-| 1 | **Lokale Skript-Ausführung härten** | `runScript` ohne `targetMachineId` läuft im API-Prozess mit dessen Identität. Zwei Stufen: (a) die Rollenmatrix in README/CLAUDE.md ehrlich dokumentieren — `Operator` ist heute faktisch mächtiger als die Tabelle suggeriert; (b) Hardening-Flag `Engine:RequireTargetMachineForScripts` (default wie die übrigen Flags), das auch `CustomActivityExecutor`, `startProgram` und lokale File-Ops erfasst. **Wenn dieser Posten geschlossen wird, muss der `llmQuery`-Per-Node-`baseUrl`-Override mitgezogen werden** — er umgeht den SSRF-Guard heute bewusst und wird danach selbst zum Finding. |
+| 1 | ~~**Lokale Skript-Ausführung härten**~~ **Entschieden (2026-08-15)** | `Operator` ist bewusst ein vertrauenswürdiger Automation-Author. Lokale Activities dürfen unter der NodePilot-Service-Identität laufen; Folder-RBAC ist keine Code-Sandbox. README und CLAUDE.md dokumentieren diese Trust Boundary. Ein `Engine:RequireTargetMachineForScripts`-Flag ist daher nicht vorgesehen. |
 | 2 | **SSRF-Guard: Adressabdeckung vervollständigen** | `NetworkGuard.IsPrivateNetwork` deckt nicht alle Adressformen ab, die auf Windows beim lokalen Host landen. Zwei Zeilen (IPv4- und IPv6-Zweig) plus Regressionstest. Betrifft `RestApiActivity` und `WebhookNotificationSink`. |
 | 3 | **Passwortpolicy für Break-Glass-Konten** | `AuthController.MinPasswordLength` steht auf 8 ohne Komplexitätsregel. Für explizit als Break-Glass markierte Konten auf 12 anheben. |
 | 4 | **`restApi` bekommt ein First-Class-Credential-Feld** | Heute landen Auth-Header als Klartext im `config.headers` und werden nur nachgelagert redigiert. Ein `credentialId`-Feld analog zu den Remote-Activities löst die Ursache statt des Symptoms. Backend + `RestApiConfig.tsx`. |
@@ -243,7 +243,14 @@ Beschreibung, Nutzerproblem und Sicherheitsgrenzen je Idee: [`ai-feature-ideas.m
 
 | Posten | Auslöser |
 |---|---|
-| Backend-Line-Coverage 89 % → 90 % | Die Ratsche steht auf 88 %. Anheben, wenn ohnehin breit getestet wird — kein Selbstzweck. |
+| Backend-Line-Coverage 89 % → 90 % | Die Ratsche steht in `ci.yml` auf 85 % Line / 70 % Branch. Anheben, wenn ohnehin breit getestet wird — kein Selbstzweck. |
+| `IWorkflowDefinitionMutator` — ein Mutations-Pfad für Workflow-Definitionen | Aus dem Audit 2026-08-15 (P1). Version, `UpdatedAt`, berechnete Metadaten, History und Trigger-Sync liegen heute mehrfach nebeneinander in Create/Publish/Duplicate/Restore. Auslöser: der nächste Bug, der nur einen dieser Pfade trifft. |
+| Custom-Activity-Invarianten DB-seitig erzwingen | Aus dem Audit 2026-08-15 (P2). Heute nur App-Level-`ConcurrencyToken` in `CustomActivityDefinitionStore`; DB-seitig fehlen `IsConcurrencyToken()` und Live-Key-Eindeutigkeit. Braucht EF-Migration + Parallel-Test mit zwei DbContexts. Auslöser: erste beobachtete Race in der Praxis. |
+| Credential-Rotation an den WinRM-Pool koppeln | Aus dem Audit 2026-08-15 (P2). Pool-Key um Credential-Fingerprint erweitern, Idle-Sessions bei Update invalidieren, Semantik für ausgeliehene Sessions dokumentieren. Auslöser: erste Rotation, nach der eine alte Identität weiterlief. |
+| N+1 bei Notifications und Workflow-Statistiken bündeln | Aus dem Audit 2026-08-15 (P2). Ziel-Größenordnung laut Betreiber: ~100 parallele Läufe. Auslöser: gemessene Latenz, nicht Verdacht — vorher `docs/performance-improvements.md` gegenlesen. |
+| Reale Integrationsgrenzen (Container-Migrationen, Browser↔echte API, Electron-Smoke) | Aus dem Audit 2026-08-15 (P2). Alle bestehenden Suiten sind hermetisch gemockt. Größter Einzelposten der Liste; sinnvoll nur stückweise. |
+| `WorkflowEditorPage` in Hooks zerlegen + Gzip-Budgets in CI | Aus dem Audit 2026-08-15 (P2). Die Seite ist zuletzt weiter gewachsen. Monaco und ELK bleiben erlaubte Lazy-Ausnahmen. Auslöser: wenn der Initial-Chunk spürbar wird. |
+| xUnit1051 abbauen, produktive Nullable-Warnungen als Fehler | Aus dem Audit 2026-08-15 (P3). Bewusst schrittweise — als Big-Bang bricht es die halbe Suite auf einmal. |
 | `WorkflowEditorPage.test.tsx` splitten (1558 Zeilen / 89 Tests) | Wenn die Frontend-Suite in CI zum Zeitfaktor wird. Die Flakiness selbst ist gefixt. |
 | E2E-Spec für `/metrics/:section` | Einzige Seite ohne Playwright-Spec. Mock-Smoke-testbar. |
 | `/operations` (Live-Ops) über den Snapshot-Happy-Path hinaus | RBAC-Cross-Checks, Drilldown und Health-Rail sind unasserted; SignalR-Live bleibt untestbar (404-Stub). |

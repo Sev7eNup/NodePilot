@@ -3,6 +3,7 @@ using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using NodePilot.Api.Controllers;
 using NodePilot.Api.Dtos;
 using NodePilot.Api.Security;
@@ -10,6 +11,7 @@ using NodePilot.Core.Enums;
 using NodePilot.Core.Models;
 using NodePilot.TestCommons;
 using NodePilot.Api.Tests.TestSupport;
+using NodePilot.Engine;
 using Xunit;
 
 namespace NodePilot.Api.Tests.Rbac;
@@ -77,11 +79,27 @@ public sealed class WorkflowResponseCapabilitiesTests : IDisposable
         var ctrl = new WorkflowsController(
             _db, NullLogger<WorkflowsController>.Instance, NoopAuditWriter.Instance,
             new ResourceAuthorizationService(_db),
-            new NodePilot.Api.Services.WorkflowContractDeriver())
+            new NodePilot.Api.Services.WorkflowContractDeriver(),
+            NodePilot.Api.Tests.Controllers.WorkflowControllerHarnessFactory.VersionDefinitions())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } }
         };
         return ctrl;
+    }
+
+    private WorkflowEditingController NewEditingCtrl(Guid userId, string role)
+    {
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Role, role),
+        ], "test"));
+        return new WorkflowEditingController(
+            _db, NullLogger<WorkflowEditingController>.Instance, NoopAuditWriter.Instance,
+            new ResourceAuthorizationService(_db), Mock.Of<IStepTester>(), Mock.Of<IStepTestContextProvider>(),
+            NodePilot.Api.Tests.Controllers.WorkflowControllerHarnessFactory.VersionDefinitions())
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } },
+        };
     }
 
     [Fact]
@@ -136,8 +154,57 @@ public sealed class WorkflowResponseCapabilitiesTests : IDisposable
         var dto = ok!.Value as WorkflowResponse;
 
         dto!.DefinitionJson.Should().NotContain("opaque-tenant-credential");
-        dto.DefinitionJson.Should().Contain("\"X-Tenant-Token\":\"***\"");
-        dto.DefinitionJson.Should().Contain("application/json");
+        dto.DefinitionJson.Should().NotContain("application/json");
+        dto.DefinitionJson.Should().Contain("\"headers\":\"***\"");
+    }
+
+    [Fact]
+    public async Task GetById_AsViewer_RedactsEveryOpaqueDefinitionField_WithoutGuessingSecretSyntax()
+    {
+        _financeWorkflow.DefinitionJson =
+            """
+            {"nodes":[{"id":"legacy","data":{"activityType":"restApi","config":{
+              "script":"$secure = ConvertTo-SecureString 'hunter2' -AsPlainText -Force",
+              "body":"arbitrary-legacy-body-literal",
+              "headers":{"Accept":"application/json","X-Legacy":"unclassified-value"},
+              "scorchRaw":{"source":"opaque-migration-payload"},
+              "url":"https://example.test"
+            }}}],"edges":[]}
+            """;
+        _db.SaveChanges();
+
+        var ctrl = NewCtrl(_viewerId, "Viewer");
+        var ok = (await ctrl.GetById(_financeWorkflow.Id, CancellationToken.None)).Result as OkObjectResult;
+        var dto = ok!.Value as WorkflowResponse;
+
+        dto!.DefinitionJson.Should().NotContain("hunter2");
+        dto.DefinitionJson.Should().NotContain("arbitrary-legacy-body-literal");
+        dto.DefinitionJson.Should().NotContain("application/json");
+        dto.DefinitionJson.Should().NotContain("unclassified-value");
+        dto.DefinitionJson.Should().NotContain("opaque-migration-payload");
+        dto.DefinitionJson.Should().NotContain("https://example.test");
+    }
+
+    [Fact]
+    public async Task GetHistoricVersion_AsViewer_DecryptsInternally_ButReturnsRedactedDefinition()
+    {
+        const string historic =
+            """{"nodes":[{"id":"s","data":{"config":{"script":"Write-Output 'historic-secret'","url":"https://example.test"}}}],"edges":[]}""";
+        var protector = NodePilot.Api.Tests.Controllers.WorkflowControllerHarnessFactory.VersionDefinitions();
+        _financeWorkflow.Version = 2;
+        _db.WorkflowVersions.Add(new WorkflowVersion
+        {
+            Id = Guid.NewGuid(), WorkflowId = _financeWorkflow.Id, Version = 1, Name = _financeWorkflow.Name,
+            DefinitionJson = protector.Protect(historic),
+        });
+        _db.SaveChanges();
+
+        var result = await NewEditingCtrl(_viewerId, "Viewer")
+            .GetVersion(_financeWorkflow.Id, 1, CancellationToken.None);
+        var detail = (result.Result as OkObjectResult)!.Value.Should().BeOfType<WorkflowVersionDetail>().Subject;
+
+        detail.DefinitionJson.Should().NotContain("historic-secret");
+        detail.DefinitionJson.Should().Contain("https://example.test");
     }
 
     [Fact]

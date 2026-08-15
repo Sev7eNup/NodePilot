@@ -230,6 +230,308 @@ public sealed class InfraTests
         finally { TryDelete(dir); }
     }
 
+    [Fact]
+    public async Task TokenRefreshHandler_ConcurrentExpiringToolCalls_ShareOneRefresh()
+    {
+        var dir = Temp();
+        using var server = WireMockServer.Start();
+        try
+        {
+            var tokens = new TokenStore(dir);
+            tokens.Save("default", new StoredSession
+            {
+                Server = server.Url!,
+                Token = "mcp-expiring-token",
+                Username = "admin",
+                UserId = Guid.NewGuid(),
+                Role = "Admin",
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            });
+            server.Given(Request.Create().WithPath("/api/auth/refresh").UsingPost()
+                    .WithHeader("Authorization", "Bearer mcp-expiring-token"))
+                .RespondWith(Response.Create()
+                    .WithDelay(TimeSpan.FromMilliseconds(150))
+                    .WithStatusCode(200)
+                    .WithBodyAsJson(new
+                    {
+                        token = "mcp-fresh-token",
+                        userId = Guid.NewGuid(),
+                        username = "admin",
+                        role = "Admin",
+                        expiresAt = DateTimeOffset.UtcNow.AddHours(8),
+                    }));
+            server.Given(Request.Create().WithPath("/api/auth/me").UsingGet()
+                    .WithHeader("Authorization", "Bearer mcp-fresh-token"))
+                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+                {
+                    id = Guid.NewGuid(), username = "admin", role = "Admin",
+                }));
+
+            var handler = new TokenRefreshHandler(tokens, "default")
+            {
+                InnerHandler = new HttpClientHandler(),
+            };
+            var http = new HttpClient(handler) { BaseAddress = new Uri(server.Url + "/") };
+            var client = new NodePilotApiClient(http) { BearerToken = "mcp-expiring-token" };
+
+            var callers = await Task.WhenAll(
+                client.MeAsync(CancellationToken.None),
+                client.MeAsync(CancellationToken.None));
+
+            callers.Should().OnlyContain(me => me.Username == "admin");
+            tokens.Load("default")!.Token.Should().Be("mcp-fresh-token");
+            server.LogEntries.Count(entry =>
+                entry.RequestMessage!.AbsolutePath == "/api/auth/refresh").Should().Be(1);
+        }
+        finally { TryDelete(dir); }
+    }
+
+    [Fact]
+    public async Task TokenRefreshHandler_ConcurrentTransientRefreshFailures_UseBoundedCooldown()
+    {
+        var dir = Temp();
+        using var server = WireMockServer.Start();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var clock = new ManualTimeProvider(now);
+            var tokens = new TokenStore(dir);
+            tokens.Save("default", new StoredSession
+            {
+                Server = server.Url!,
+                Token = "mcp-transient-failure",
+                Username = "admin",
+                UserId = Guid.NewGuid(),
+                Role = "Admin",
+                ExpiresAt = now.AddMinutes(1),
+            });
+            server.Given(Request.Create().WithPath("/api/auth/refresh").UsingPost()
+                    .WithHeader("Authorization", "Bearer mcp-transient-failure"))
+                .RespondWith(Response.Create().WithStatusCode(503));
+            server.Given(Request.Create().WithPath("/api/auth/me").UsingGet()
+                    .WithHeader("Authorization", "Bearer mcp-transient-failure"))
+                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+                {
+                    id = Guid.NewGuid(), username = "admin", role = "Admin",
+                }));
+
+            var handler = new TokenRefreshHandler(tokens, "default", timeProvider: clock)
+            {
+                InnerHandler = new HttpClientHandler(),
+            };
+            using var http = new HttpClient(handler) { BaseAddress = new Uri(server.Url + "/") };
+            var client = new NodePilotApiClient(http) { BearerToken = "mcp-transient-failure" };
+
+            var callers = await Task.WhenAll(Enumerable.Range(0, 100)
+                .Select(_ => client.MeAsync(CancellationToken.None)));
+
+            callers.Should().OnlyContain(me => me.Username == "admin");
+            server.LogEntries.Count(entry =>
+                entry.RequestMessage!.AbsolutePath == "/api/auth/refresh").Should().Be(1);
+            server.LogEntries.Count(entry =>
+                entry.RequestMessage!.AbsolutePath == "/api/auth/me").Should().Be(100);
+            tokens.Load("default")!.Token.Should().Be("mcp-transient-failure");
+
+            clock.Advance(ClientSessionSecurity.TransientRefreshFailureCooldown + TimeSpan.FromSeconds(1));
+            (await client.MeAsync(CancellationToken.None)).Username.Should().Be("admin");
+            server.LogEntries.Count(entry =>
+                entry.RequestMessage!.AbsolutePath == "/api/auth/refresh").Should().Be(2);
+        }
+        finally { TryDelete(dir); }
+    }
+
+    [Fact]
+    public async Task TokenRefreshHandler_IndependentProcessesSharingProfile_UseOneRefresh()
+    {
+        var dir = Temp();
+        using var server = WireMockServer.Start();
+        try
+        {
+            var firstStore = new TokenStore(dir);
+            var secondStore = new TokenStore(dir);
+            firstStore.Save("default", new StoredSession
+            {
+                Server = server.Url!,
+                Token = "mcp-cross-process-expiring",
+                Username = "admin",
+                UserId = Guid.NewGuid(),
+                Role = "Admin",
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(1),
+            });
+            server.Given(Request.Create().WithPath("/api/auth/refresh").UsingPost()
+                    .WithHeader("Authorization", "Bearer mcp-cross-process-expiring"))
+                .RespondWith(Response.Create()
+                    .WithDelay(TimeSpan.FromMilliseconds(250))
+                    .WithStatusCode(200)
+                    .WithBodyAsJson(new
+                    {
+                        token = "mcp-cross-process-fresh",
+                        userId = Guid.NewGuid(),
+                        username = "admin",
+                        role = "Admin",
+                        expiresAt = DateTimeOffset.UtcNow.AddHours(8),
+                    }));
+            server.Given(Request.Create().WithPath("/api/auth/me").UsingGet()
+                    .WithHeader("Authorization", "Bearer mcp-cross-process-fresh"))
+                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+                {
+                    id = Guid.NewGuid(), username = "admin", role = "Admin",
+                }));
+
+            var firstHandler = new TokenRefreshHandler(firstStore, "default")
+            {
+                InnerHandler = new HttpClientHandler(),
+            };
+            var secondHandler = new TokenRefreshHandler(secondStore, "default")
+            {
+                InnerHandler = new HttpClientHandler(),
+            };
+            using var firstHttp = new HttpClient(firstHandler) { BaseAddress = new Uri(server.Url + "/") };
+            using var secondHttp = new HttpClient(secondHandler) { BaseAddress = new Uri(server.Url + "/") };
+            var firstClient = new NodePilotApiClient(firstHttp) { BearerToken = "mcp-cross-process-expiring" };
+            var secondClient = new NodePilotApiClient(secondHttp) { BearerToken = "mcp-cross-process-expiring" };
+
+            var callers = await Task.WhenAll(
+                firstClient.MeAsync(CancellationToken.None),
+                secondClient.MeAsync(CancellationToken.None));
+
+            callers.Should().OnlyContain(me => me.Username == "admin");
+            server.LogEntries.Count(entry =>
+                entry.RequestMessage!.AbsolutePath == "/api/auth/refresh").Should().Be(1);
+            firstStore.Load("default")!.Token.Should().Be("mcp-cross-process-fresh");
+        }
+        finally { TryDelete(dir); }
+    }
+
+    [Fact]
+    public async Task TokenRefreshHandler_OlderResponseUsesJwtExpiry_AndNewProcessesRespectCooldown()
+    {
+        var dir = Temp();
+        using var server = WireMockServer.Start();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var absoluteExpiry = now.AddMinutes(4);
+            var clock = new ManualTimeProvider(now);
+            const string initialToken = "mcp-rolling-upgrade-token";
+            var firstRotatedToken = Jwt(now, absoluteExpiry);
+            var secondIssuedAt = now
+                + ClientSessionSecurity.SuccessfulRefreshDeduplicationWindow
+                + TimeSpan.FromSeconds(1);
+            var secondRotatedToken = Jwt(secondIssuedAt, absoluteExpiry);
+            var tokens = new TokenStore(dir);
+            tokens.Save("default", new StoredSession
+            {
+                Server = server.Url!,
+                Token = initialToken,
+                Username = "admin",
+                UserId = Guid.NewGuid(),
+                Role = "Admin",
+                ExpiresAt = absoluteExpiry,
+            });
+
+            server.Given(Request.Create().WithPath("/api/auth/refresh").UsingPost()
+                    .WithHeader("Authorization", $"Bearer {initialToken}"))
+                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+                {
+                    token = firstRotatedToken,
+                    userId = Guid.NewGuid(),
+                    username = "admin",
+                    role = "Admin",
+                }));
+            server.Given(Request.Create().WithPath("/api/auth/refresh").UsingPost()
+                    .WithHeader("Authorization", $"Bearer {firstRotatedToken}"))
+                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+                {
+                    token = secondRotatedToken,
+                    userId = Guid.NewGuid(),
+                    username = "admin",
+                    role = "Admin",
+                }));
+            foreach (var token in new[] { firstRotatedToken, secondRotatedToken })
+            {
+                server.Given(Request.Create().WithPath("/api/auth/me").UsingGet()
+                        .WithHeader("Authorization", $"Bearer {token}"))
+                    .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+                    {
+                        id = Guid.NewGuid(), username = "admin", role = "Admin",
+                    }));
+            }
+
+            async Task CallFromNewProcessAsync()
+            {
+                var processStore = new TokenStore(dir);
+                var current = processStore.Load("default")!;
+                var handler = new TokenRefreshHandler(
+                    processStore, "default", timeProvider: clock)
+                {
+                    InnerHandler = new HttpClientHandler(),
+                };
+                using var http = new HttpClient(handler) { BaseAddress = new Uri(server.Url + "/") };
+                var client = new NodePilotApiClient(http) { BearerToken = current.Token };
+                (await client.MeAsync(CancellationToken.None)).Username.Should().Be("admin");
+            }
+
+            await CallFromNewProcessAsync();
+            for (var i = 0; i < 5; i++)
+                await CallFromNewProcessAsync();
+
+            server.LogEntries.Count(entry =>
+                entry.RequestMessage!.AbsolutePath == "/api/auth/refresh").Should().Be(1);
+            tokens.Load("default")!.ExpiresAt.Should()
+                .BeCloseTo(absoluteExpiry, TimeSpan.FromSeconds(1));
+
+            clock.Advance(
+                ClientSessionSecurity.SuccessfulRefreshDeduplicationWindow
+                + TimeSpan.FromSeconds(1));
+            await CallFromNewProcessAsync();
+
+            server.LogEntries.Count(entry =>
+                entry.RequestMessage!.AbsolutePath == "/api/auth/refresh").Should().Be(2);
+            tokens.Load("default")!.Token.Should().Be(secondRotatedToken);
+        }
+        finally { TryDelete(dir); }
+    }
+
+    [Fact]
+    public async Task TokenRefreshHandler_ExpiredSession_DoesNotCallServerAndRequiresLogin()
+    {
+        var dir = Temp();
+        using var server = WireMockServer.Start();
+        try
+        {
+            var tokens = new TokenStore(dir);
+            tokens.Save("default", new StoredSession
+            {
+                Server = server.Url!,
+                Token = "mcp-expired-token",
+                Username = "admin",
+                UserId = Guid.NewGuid(),
+                Role = "Admin",
+                ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1),
+            });
+            server.Given(Request.Create().WithPath("/api/auth/refresh").UsingPost())
+                .RespondWith(Response.Create().WithStatusCode(200));
+            server.Given(Request.Create().WithPath("/api/auth/me").UsingGet())
+                .RespondWith(Response.Create().WithStatusCode(200));
+
+            var handler = new TokenRefreshHandler(tokens, "default")
+            {
+                InnerHandler = new HttpClientHandler(),
+            };
+            var http = new HttpClient(handler) { BaseAddress = new Uri(server.Url + "/") };
+            var client = new NodePilotApiClient(http) { BearerToken = "mcp-expired-token" };
+
+            var act = () => client.MeAsync(CancellationToken.None);
+
+            var ex = await act.Should().ThrowAsync<ApiException>();
+            ex.Which.IsUnauthorized.Should().BeTrue();
+            tokens.Load("default").Should().BeNull();
+            server.LogEntries.Should().BeEmpty();
+        }
+        finally { TryDelete(dir); }
+    }
+
     // ---- helpers ------------------------------------------------------------
 
     private static string Temp() => Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "np-mcp-cfg-" + Guid.NewGuid().ToString("N"))).FullName;
@@ -243,6 +545,32 @@ public sealed class InfraTests
         Role = "Admin",
         ExpiresAt = DateTime.UtcNow.AddHours(12),
     };
+
+    private sealed class ManualTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        private DateTimeOffset _utcNow = utcNow;
+
+        public override DateTimeOffset GetUtcNow() => _utcNow;
+
+        public void Advance(TimeSpan duration) => _utcNow += duration;
+    }
+
+    private static string Jwt(DateTimeOffset issuedAt, DateTimeOffset expiresAt)
+    {
+        static string Encode(string value) => Convert.ToBase64String(
+                System.Text.Encoding.UTF8.GetBytes(value))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+        var payload = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            iat = issuedAt.ToUnixTimeSeconds(),
+            np_iat_ms = issuedAt.ToUnixTimeMilliseconds(),
+            exp = expiresAt.ToUnixTimeSeconds(),
+        });
+        return $"{Encode("{\"alg\":\"none\"}")}.{Encode(payload)}.";
+    }
 
     private static void TryDelete(string dir) { try { Directory.Delete(dir, recursive: true); } catch { /* best effort */ } }
 

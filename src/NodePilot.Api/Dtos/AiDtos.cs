@@ -21,4 +21,11 @@ public sealed record AiActivityEntryDto(
 /// assistant, script-editor generate, AI workflow generation), while <see cref="Enabled"/> keeps gating
 /// only the knowledge chat itself.
 /// </summary>
-public sealed record KnowledgeCapabilitiesDto(bool Enabled, bool Llm, bool Docs, bool Operational, bool SourceCode, bool Db);
+public sealed record KnowledgeCapabilitiesDto(
+    bool Enabled,
+    bool Llm,
+    bool Docs,
+    bool Operational,
+    bool SourceCode,
+    bool Db,
+    string? ScriptContextTargetHost);

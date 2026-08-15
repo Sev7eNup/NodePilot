@@ -25,6 +25,12 @@ internal sealed record WorkflowControllerHarness(
 
 internal static class WorkflowControllerHarnessFactory
 {
+    internal static NodePilot.Api.Services.WorkflowVersionDefinitionProtector VersionDefinitions() =>
+        new(
+            new NodePilot.Data.Security.AesGcmSecretProtector(
+                Enumerable.Range(1, 32).Select(i => (byte)i).ToArray()),
+            NullLogger<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>.Instance);
+
     public static WorkflowControllerHarness Build(
         NodePilotDbContext db,
         IAuditWriter? audit = null,
@@ -55,15 +61,16 @@ internal static class WorkflowControllerHarnessFactory
         // permissions for its principal. Tests that specifically exercise RBAC denial use
         // the dedicated RBAC test fixtures instead of this harness.
         authz ??= new AlwaysAllowAuthorizationService();
+        var versionDefinitions = VersionDefinitions();
         var workflows = new WorkflowsController(
             db, NullLogger<WorkflowsController>.Instance, audit, authz,
-            new NodePilot.Api.Services.WorkflowContractDeriver())
+            new NodePilot.Api.Services.WorkflowContractDeriver(), versionDefinitions)
         {
             ControllerContext = NewCtx()
         };
         var editing = new WorkflowEditingController(
             db, NullLogger<WorkflowEditingController>.Instance, audit, authz,
-            Mock.Of<IStepTester>(), Mock.Of<IStepTestContextProvider>())
+            Mock.Of<IStepTester>(), Mock.Of<IStepTestContextProvider>(), versionDefinitions)
         {
             ControllerContext = NewCtx()
         };

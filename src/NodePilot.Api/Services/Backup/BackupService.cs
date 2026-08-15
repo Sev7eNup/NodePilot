@@ -24,7 +24,7 @@ public sealed record BackupExportResult(
 /// <summary>
 /// Orchestrates the system-configuration backup (ADR 0001). Phase 1 covers the manifest and the
 /// export: it resolves the requested sections + their transitive dependencies (K12), drives each
-/// <see cref="IBackupPart"/>, assembles the <c>nodepilot-system-backup/v1</c> envelope, and seals it
+/// <see cref="IBackupPart"/>, assembles the current versioned system-backup envelope, and seals it
 /// with a passphrase-derived whole-file HMAC (K5).
 /// </summary>
 public sealed class BackupService(IEnumerable<IBackupPart> parts)
@@ -120,8 +120,13 @@ public sealed class BackupService(IEnumerable<IBackupPart> parts)
         // Accurate audit signal: a backup "contains secrets" only if at least one field was actually
         // sealed (the $enc marker). A globals-only export with no secret variables, for example,
         // legitimately carries none — reporting true unconditionally would muddy the audit trail.
-        var containsSecrets = sections.ToJsonString()
-            .Contains("\"" + WorkflowDefinitionSecretRewriter.EncKey + "\"", StringComparison.Ordinal);
+        var sectionsJson = sections.ToJsonString();
+        var containsSecrets = sectionsJson.Contains(
+                                  "\"" + WorkflowDefinitionSecretRewriter.EncKey + "\"",
+                                  StringComparison.Ordinal)
+                              || sectionsJson.Contains(
+                                  "\"" + WorkflowDefinitionSecretRewriter.DefinitionEncKey + "\"",
+                                  StringComparison.Ordinal);
 
         return new BackupExportResult(content, includedOrdered, autoIncluded, counts, ctx.Warnings, containsSecrets);
     }
