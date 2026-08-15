@@ -1686,7 +1686,7 @@ end;
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   ResultCode: Integer;
-  AnswerMode, Arguments, ResultIni, ProvisionIni, Extra: String;
+  AnswerMode, Arguments, ResultIni, ProvisionIni, DbStatus, Extra: String;
 begin
   Result := EnsureSession();
   if Result <> '' then Exit;
@@ -1709,7 +1709,16 @@ begin
   // Run unconditionally rather than after parsing the file for a "does it ask for anything"
   // flag: Pascal Script has no JSON reader, the adapter already has one, and a run with nothing
   // requested performs no action and exits 0.
-  if WizardSilent() and (AnswerMode = 'install') then
+  //
+  // /ANSWERFILE is deliberately NOT filtered through AnswerMode. That variable comes from
+  // IsUpdateSelected(), which reads ModePage.SelectedValueIndex - and /ANSWERFILE skips the mode
+  // page, so the index keeps its hard default of 0 ('update'). Any host that already carried a
+  // NodePilot installation therefore turned an answer file saying "mode": "install" into
+  // AnswerMode = 'update' and silently dropped every provisioning key: no database, no login, no
+  // generated certificate, no runtime. The file decides on this path, by the same reasoning as
+  // above - the adapter validates it, update mode accepts no provisioning keys at all, so a
+  // Provision run for an update answer file performs no action and exits 0.
+  if WizardSilent() and ((AnswerFileOverride <> '') or (AnswerMode = 'install')) then
   begin
     // Unattended runs never reached the readiness page, so this is the first and only chance to
     // put lazy dontcopy payloads where the adapter looks for them.
@@ -1721,6 +1730,18 @@ begin
     begin
       Result := 'The provisioning requested by the answer file could not be applied (exit code ' +
         IntToStr(ResultCode) + '). Log: ' + ExpandConstant('{%TEMP}') + '\nodepilot-server-setup.log';
+      Exit;
+    end;
+
+    // A failed database provisioning exits 0 and reports itself INSIDE provision.ini, exactly as
+    // it does for the readiness page - which reads this same value and stops. Without the check
+    // the unattended path walked on to Apply and died in the SQL pre-flight instead, telling the
+    // operator to have a DBA create a login that was never the problem.
+    DbStatus := GetIniString('provision.database', 'status', '', ProvisionIni);
+    if (DbStatus <> '') and (DbStatus <> 'Pass') then
+    begin
+      Result := 'The database could not be prepared: ' +
+        ExpandNewlines(GetIniString('provision.database', 'detail', '', ProvisionIni));
       Exit;
     end;
   end;
@@ -1816,6 +1837,7 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
   ScriptPath, Arguments, Switches: String;
+  InstalledServiceName, InstalledInstallPath, InstalledDataPath: String;
 begin
   if CurUninstallStep = usUninstall then
   begin
@@ -1834,9 +1856,32 @@ begin
     Switches := '';
     if UninstallPurgeData then Switches := Switches + ' -PurgeData';
 
+    // Read back what was actually installed, from the marker Install-NodePilot.ps1 writes.
+    // GetServiceName('') resolves to the literal 'NodePilot' in the uninstaller process -
+    // ExistingServiceName is only ever populated by DetectExistingInstallation(), which runs in
+    // Setup - and {app} is merely where Inno put the uninstaller, which is NOT installPath when
+    // /ANSWERFILE supplied one (the dir page never ran). Passing those guesses meant an install
+    // with a non-default service name or path was "uninstalled" with exit 0 while the service,
+    // its firewall rule and every program file stayed exactly where they were, and only the
+    // bookkeeping that said NodePilot existed was removed. -DataPath was not passed at all, so
+    // -PurgeData wiped the default directory or nothing.
+    if (not RegQueryStringValue(HKLM64, 'SOFTWARE\NodePilot\Server', 'ServiceName', InstalledServiceName)) or
+       (InstalledServiceName = '') then
+      InstalledServiceName := GetServiceName('');
+    if (not RegQueryStringValue(HKLM64, 'SOFTWARE\NodePilot\Server', 'InstallPath', InstalledInstallPath)) or
+       (InstalledInstallPath = '') then
+      InstalledInstallPath := ExpandConstant('{app}');
+    if not RegQueryStringValue(HKLM64, 'SOFTWARE\NodePilot\Server', 'DataPath', InstalledDataPath) then
+      InstalledDataPath := '';
+
     Arguments := '-NoProfile -ExecutionPolicy Bypass -File "' + ScriptPath + '"' +
-      ' -ServiceName "' + GetServiceName('') + '"' +
-      ' -InstallPath "' + ExpandConstant('{app}') + '"' + Switches;
+      ' -ServiceName "' + InstalledServiceName + '"' +
+      ' -InstallPath "' + InstalledInstallPath + '"';
+    // Only when known: Uninstall-NodePilot.ps1's own default is the right fallback, and an empty
+    // -DataPath "" would point it at the current directory.
+    if InstalledDataPath <> '' then
+      Arguments := Arguments + ' -DataPath "' + InstalledDataPath + '"';
+    Arguments := Arguments + Switches;
 
     if not Exec('powershell.exe', Arguments, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
       SuppressibleMsgBox('Could not start PowerShell to remove the NodePilot service.',

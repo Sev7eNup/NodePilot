@@ -72,6 +72,16 @@ public sealed class PowerShellExecutionResult
 
 public interface IPowerShellExecutionEngine
 {
+    /// <summary>
+    /// The message carried by the <see cref="OperationCanceledException"/> every engine throws
+    /// when the caller's token is signalled. Caller cancellation is not a script failure — it is
+    /// how a waitAny/waitNofM junction stands down its losing branches — so the exception has to
+    /// reach StepRunner, which records the step as Cancelled. An engine that swallowed it into a
+    /// failed result marked those branches Failed, and a single Failed row fails the whole run.
+    /// A timeout is a different matter and still comes back as a failed result with TimedOut set.
+    /// </summary>
+    public const string CancelledMessage = "Script execution cancelled";
+
     string EngineType { get; }
     bool IsAvailable { get; }
     Task<PowerShellExecutionResult> ExecuteAsync(PowerShellExecutionRequest request, CancellationToken ct);

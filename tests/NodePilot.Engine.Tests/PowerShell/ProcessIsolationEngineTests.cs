@@ -39,8 +39,12 @@ public class ProcessIsolationEngineTests
     }
 
     [WindowsFact]
-    public async Task ExecuteIsolated_CallerCancellation_ReturnsCancelledNotTimedOut()
+    public async Task ExecuteIsolated_CallerCancellation_ThrowsInsteadOfReturningAFailedResult()
     {
+        // Same contract as the in-process runspace engine: a caller cancel is a junction standing
+        // down a losing branch, not a script failure, so it has to reach StepRunner as an
+        // OperationCanceledException. Returning Success=false wrote the branch as Failed and
+        // turned every waitAny/waitNofM run red. The timeout branch above is unaffected.
         var engine = IsolatedPowerShell();
         using var cts = new CancellationTokenSource();
 
@@ -56,12 +60,13 @@ public class ProcessIsolationEngineTests
 
         await Task.Delay(400);
         cts.Cancel();
-        var result = await task;
+
+        var thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
         sw.Stop();
 
-        result.Success.Should().BeFalse();
-        result.TimedOut.Should().BeFalse("caller cancellation is distinct from a timeout");
-        result.Error.Should().Be("Script execution cancelled");
+        // Specifically NOT "Isolated execution failed: Script execution cancelled" — the outer
+        // catch-all used to re-wrap the throw into a failed result under a new name.
+        thrown.Message.Should().Be(IPowerShellExecutionEngine.CancelledMessage);
         sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(15), "cancel must tear the job down promptly, not wait out the 60s sleep");
     }
 

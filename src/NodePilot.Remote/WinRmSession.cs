@@ -164,12 +164,17 @@ public class WinRmSession : IRemoteSession
             RemoteMetrics.ScriptTimeouts.Add(1);
             RemoteMetrics.ScriptDuration.Record(sw.Elapsed.TotalMilliseconds,
                 new KeyValuePair<string, object?>("result", cancelled ? "cancelled" : "timeout"));
+            // A caller cancel is not a script failure - it is how a waitAny/waitNofM junction
+            // stands down its losing branches, and StepRunner records those as Cancelled from the
+            // exception. Returning Success=false marked them Failed, and one Failed step fails the
+            // whole run. The session stays poisoned either way; only the verdict differs. A
+            // timeout remains a failure.
+            if (cancelled)
+                throw new OperationCanceledException("Script execution cancelled", ct);
             return new RemoteExecutionResult
             {
                 Success = false,
-                ErrorOutput = cancelled
-                    ? "Script execution cancelled"
-                    : $"Script execution timed out after {timeoutSeconds} seconds",
+                ErrorOutput = $"Script execution timed out after {timeoutSeconds} seconds",
                 Duration = sw.Elapsed
             };
         }

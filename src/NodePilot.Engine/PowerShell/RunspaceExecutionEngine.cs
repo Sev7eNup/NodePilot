@@ -208,15 +208,21 @@ public sealed class RunspaceExecutionEngine : IPowerShellExecutionEngine, IDispo
             sw.Stop();
             // Distinguish caller-cancellation (parent ct) from our internal timeout firing.
             // Without an explicit timeout the only way we end up here is via parent ct.
-            var isUserCancel = ct.IsCancellationRequested;
+            // A caller cancel is NOT a script failure: it is the losing branch of a waitAny /
+            // waitNofM junction being stood down, and StepRunner's OperationCanceledException
+            // handler is what records the Cancelled row for it. Returning Success=false here
+            // instead made the step Failed, and one Failed row fails the whole execution - so
+            // every junction race reported the run red even though it did exactly what it should.
+            // `delay` never had the problem because it lets the exception through.
+            // A timeout stays a failure and keeps its result.
+            if (ct.IsCancellationRequested)
+                throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
             return new PowerShellExecutionResult
             {
                 Success = false,
                 ExitCode = -1,
-                TimedOut = !isUserCancel,
-                Error = isUserCancel
-                    ? "Script execution cancelled"
-                    : $"Script timed out after {request.Timeout!.Value.TotalSeconds:0}s",
+                TimedOut = true,
+                Error = $"Script timed out after {request.Timeout!.Value.TotalSeconds:0}s",
                 Duration = sw.Elapsed,
             };
         }

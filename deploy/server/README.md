@@ -619,6 +619,14 @@ JWT-Signaturschlüssel, Data-Protection-Keyring). Default ist **behalten**, übe
 "C:\Program Files\NodePilot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1 # Daten löschen
 ```
 
+**Was entfernt wird, liest der Uninstaller aus dem Installations-Marker**
+(`HKLM\SOFTWARE\NodePilot\Server`: `ServiceName`, `InstallPath`, `DataPath`) — nicht aus den
+Wizard-Defaults. Das ist der einzige Weg, der bei einer Installation mit abweichendem Dienstnamen
+oder abweichenden Pfaden funktioniert: die Modus- und Verzeichnis-Seiten laufen unter
+`/ANSWERFILE` nie, `{app}` ist dann lediglich der Ort des Uninstallers, und der Uninstaller-Prozess
+kennt den Dienstnamen des Setups nicht mehr. Wer den Marker von Hand löscht, nimmt dem Uninstaller
+damit seine einzige Quelle; er fällt dann auf `NodePilot` und `{app}` zurück.
+
 **Die Datenbank wird nie entfernt, und es gibt dafür keine Option.** Dieses Setup legt sie nicht an
 — sie wurde separat bereitgestellt, hat oft ein eigenes Backup-, Replikations- und
 Aufbewahrungsregime, und in einem Active/Passive-Cluster teilen sich **beide Knoten dieselbe
