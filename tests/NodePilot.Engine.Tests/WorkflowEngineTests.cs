@@ -1102,6 +1102,86 @@ public class WorkflowEngineTests
             "waitAny must fire after the fast branch (≈10ms), not after the slow branch (2000ms)");
     }
 
+    /// <summary>
+    /// Standing a branch down is what a waitAny junction is for, so the run's verdict must not
+    /// hold it against the workflow. Found in the lab on 2026-08-15: every runbook whose racing
+    /// branches were <c>runScript</c> reported Failed on a completely correct run, because the
+    /// PowerShell engines converted the cancellation into an ordinary failed ActivityResult
+    /// instead of letting the OperationCanceledException reach StepRunner. A single Failed step
+    /// fails the execution, so the winning branch, both junctions and returnData were all green
+    /// and the run was still red. Branches built from <c>delay</c> were unaffected — they let the
+    /// exception through, which is the behaviour pinned here for every activity.
+    /// </summary>
+    [Fact]
+    public async Task ExecuteAsync_WaitAnyJunction_StandsDownLosersAsCancelledAndStillSucceeds()
+    {
+        _mockExecutor.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<StepExecutionContext, JsonElement, CancellationToken>(async (ctx, _, ct) =>
+            {
+                // Task.Delay throws OperationCanceledException on the losing branch, exactly as a
+                // real activity must now that the PowerShell engines rethrow instead of swallowing.
+                var ms = ctx.StepId switch
+                {
+                    "branchFast" => 10,
+                    "branchSlow" => 5000,
+                    _ => 5,
+                };
+                await Task.Delay(ms, ct);
+                return new ActivityResult { Success = true, Output = ctx.StepId };
+            });
+
+        var mockJunction = new Mock<IActivityExecutor>();
+        mockJunction.Setup(e => e.ActivityType).Returns("junction");
+        mockJunction.Setup(e => e.ExecuteAsync(
+                It.IsAny<StepExecutionContext>(),
+                It.IsAny<JsonElement>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ActivityResult { Success = true, Output = "merged" });
+
+        var registry = new ActivityRegistry(
+            new[] { _mockExecutor.Object, _manualTriggerExecutor.Object, mockJunction.Object });
+        var sp = TestDbContext.BuildScopeProviderOnSameConnection(_connection, registry);
+        var notifier = new Mock<IExecutionNotifier>();
+        var engine = new WorkflowEngine(_db, NullLogger<WorkflowEngine>.Instance, sp, notifier.Object);
+
+        var def = "{\"nodes\":[" + TriggerNodeJson + """
+            ,{"id":"branchFast","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{}}},
+            {"id":"branchSlow","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{}}},
+            {"id":"join","type":"junction","position":{"x":0,"y":0},"data":{"activityType":"junction","config":{"mode":"waitAny"}}},
+            {"id":"final","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"runScript","config":{}}}
+          ],
+          "edges":[
+            {"id":"t1","source":"trigger-1","target":"branchFast"},
+            {"id":"t2","source":"trigger-1","target":"branchSlow"},
+            {"id":"e1","source":"branchFast","target":"join"},
+            {"id":"e2","source":"branchSlow","target":"join"},
+            {"id":"e3","source":"join","target":"final"}
+          ]
+        }
+        """;
+
+        var workflow = CreateWorkflow(def);
+        _db.Workflows.Add(workflow);
+        await _db.SaveChangesAsync();
+
+        var execution = await engine.ExecuteAsync(workflow, "test-user", CancellationToken.None);
+
+        var steps = _db.StepExecutions.Where(s => s.WorkflowExecutionId == execution.Id).ToList();
+
+        steps.Should().NotContain(s => s.Status == ExecutionStatus.Failed,
+            "standing a losing branch down is the junction working, not a step failing");
+        execution.Status.Should().Be(ExecutionStatus.Succeeded);
+
+        var loser = steps.SingleOrDefault(s => s.StepId == "branchSlow");
+        loser.Should().NotBeNull("the losing branch must still leave a row, so the run is explicable");
+        loser!.Status.Should().Be(ExecutionStatus.Cancelled);
+        steps.Single(s => s.StepId == "branchFast").Status.Should().Be(ExecutionStatus.Succeeded);
+        steps.Single(s => s.StepId == "final").Status.Should().Be(ExecutionStatus.Succeeded);
+    }
+
     [Fact]
     public async Task ExecuteAsync_WithParameters_PersistsInputParametersJson()
     {

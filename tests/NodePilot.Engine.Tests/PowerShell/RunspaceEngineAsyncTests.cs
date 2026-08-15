@@ -8,17 +8,24 @@ namespace NodePilot.Engine.Tests.PowerShell;
 
 /// <summary>
 /// Verifies the async behavior of RunspaceExecutionEngine after the BeginInvoke/EndInvoke
-/// port. Three properties matter under load:
+/// port. Four properties matter under load:
 ///   1. Caller cancellation tears down the running script promptly (used to be impossible
 ///      with Task.Run(() => ps.Invoke()) — the token only cancelled scheduling).
-///   2. Per-script timeout actually stops the pipeline (same rationale).
-///   3. Many concurrent ExecuteAsync calls all complete with correct, non-interleaved output.
+///   2. Caller cancellation surfaces as OperationCanceledException, not as a failed result.
+///   3. Per-script timeout actually stops the pipeline (same rationale) and stays a failure.
+///   4. Many concurrent ExecuteAsync calls all complete with correct, non-interleaved output.
 /// </summary>
 public class RunspaceEngineAsyncTests
 {
     [Fact]
-    public async Task Execute_CallerCancellation_StopsPromptlyAndIsNotTimedOut()
+    public async Task Execute_CallerCancellation_ThrowsInsteadOfReturningAFailedResult()
     {
+        // Caller cancellation is how a waitAny/waitNofM junction stands down the branches that
+        // lost the race. StepRunner records those as Cancelled — but only if the exception reaches
+        // it. This engine used to convert the cancellation into Success=false, so the loser was
+        // written as a Failed step, and a single Failed step fails the whole execution: every
+        // junction race reported a correct run as red. `delay` never had the problem because it
+        // lets the exception through, which is exactly the behaviour pinned here.
         using var engine = new RunspaceExecutionEngine(
             NullLogger<RunspaceExecutionEngine>.Instance,
             minRunspaces: 1,
@@ -38,12 +45,13 @@ public class RunspaceEngineAsyncTests
         // Give the pipeline a moment to actually start executing on the runspace.
         await Task.Delay(150);
         cts.Cancel();
-        var result = await task;
+
+        var thrown = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => task);
         sw.Stop();
 
-        result.Success.Should().BeFalse();
-        result.TimedOut.Should().BeFalse("caller cancellation is distinct from timeout-fire");
-        result.Error.Should().Be("Script execution cancelled");
+        thrown.CancellationToken.Should().Be(cts.Token,
+            "StepRunner tells a junction stand-down from a whole-execution cancel by the token");
+        thrown.Message.Should().Be(IPowerShellExecutionEngine.CancelledMessage);
         // A 30-second sleep cancelled at 150ms must return well under the original sleep.
         // 5 seconds is a generous bound that won't flake under CI load but still proves the
         // pipeline was actively stopped (not waited out).

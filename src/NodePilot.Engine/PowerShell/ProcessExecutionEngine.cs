@@ -126,16 +126,17 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 try { process.Kill(entireProcessTree: true); } catch { /* best-effort: process may have exited */ }
 
                 sw.Stop();
-                var isUserCancel = ct.IsCancellationRequested;
+                // Caller cancel is not a failure - see IPowerShellExecutionEngine.CancelledMessage.
+                // The process is killed either way; only the verdict differs.
+                if (ct.IsCancellationRequested)
+                    throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
                 return new PowerShellExecutionResult
                 {
                     Success = false,
                     ExitCode = -1,
                     Output = stdout.ToString().TrimEnd(),
-                    Error = isUserCancel
-                        ? "Script execution cancelled"
-                        : $"Script execution timed out after {request.Timeout!.Value.TotalSeconds:0}s",
-                    TimedOut = !isUserCancel,
+                    Error = $"Script execution timed out after {request.Timeout!.Value.TotalSeconds:0}s",
+                    TimedOut = true,
                     Duration = sw.Elapsed,
                 };
             }
@@ -156,8 +157,11 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 Duration = sw.Elapsed,
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // Same reason as the isolated path: a caller cancel has to leave as an exception, or
+            // it comes back out of here as "Failed to start …: Script execution cancelled" and the
+            // junction's losing branch is a Failed step again.
             sw.Stop();
             return EngineFailure($"Failed to start {_executable}: {ex.Message}", sw.Elapsed);
         }
@@ -249,17 +253,20 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
 
             sw.Stop();
 
-            if (userCancel || timedOut)
+            // Caller cancel is not a failure - see IPowerShellExecutionEngine.CancelledMessage.
+            // Thrown after the drain above so the job object is already closed and the tree reaped.
+            if (userCancel)
+                throw new OperationCanceledException(IPowerShellExecutionEngine.CancelledMessage, ct);
+
+            if (timedOut)
             {
                 return new PowerShellExecutionResult
                 {
                     Success = false,
                     ExitCode = -1,
                     Output = stdout.TrimEnd(),
-                    Error = userCancel
-                        ? "Script execution cancelled"
-                        : $"Script execution timed out after {request.Timeout!.Value.TotalSeconds:0}s",
-                    TimedOut = timedOut,
+                    Error = $"Script execution timed out after {request.Timeout!.Value.TotalSeconds:0}s",
+                    TimedOut = true,
                     Duration = sw.Elapsed,
                 };
             }
@@ -291,8 +298,14 @@ public class ProcessExecutionEngine : IPowerShellExecutionEngine
                 Duration = sw.Elapsed,
             };
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
+            // A caller cancel is deliberately NOT an engine failure: it is a junction standing
+            // down a losing branch, and it has to reach StepRunner as an exception so the step is
+            // recorded Cancelled rather than Failed. Without this guard the throw above walked
+            // straight into this handler and came back out as
+            // "Isolated execution failed: Script execution cancelled" — the same red step under a
+            // new name.
             sw.Stop();
             return EngineFailure($"Isolated execution failed: {ex.Message}", sw.Elapsed);
         }

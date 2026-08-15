@@ -559,10 +559,21 @@ function Invoke-NodePilotSetupMode {
                         "$env:USERDOMAIN\$env:COMPUTERNAME`$"
                     }
                     else { [string]$answers['identity.account'] }
+                    # The certificate host name travels with the server name or the connection is
+                    # rejected before any DDL runs. The runtime connection string carries it as
+                    # HostNameInCertificate and Invoke-NodePilotPreflight is handed it too; leaving
+                    # it off here meant provisioning derived it from -Server instead, so the very
+                    # normal 'localhost' against a server whose TLS certificate names the FQDN died
+                    # with "The target principal name is incorrect" and no database was created.
+                    # An absent key is fine - the script derives the same fallback itself.
+                    $certificateHostName = if ($answers.Contains('database.sqlCertificateHostName')) {
+                        [string]$answers['database.sqlCertificateHostName']
+                    } else { '' }
                     $outcome = & (Join-Path $scriptDirectory 'Provision-NodePilotDatabase.ps1') `
                         -Server ([string]$answers['database.sqlServer']) `
                         -Database ([string]$answers['database.sqlDatabase']) `
-                        -Principal $principal
+                        -Principal $principal `
+                        -CertificateHostName $certificateHostName
                 }
                 Set-NodePilotResult -Buffer $result -Section 'provision.database' -Name 'status' -Value $outcome.Status
                 Set-NodePilotResult -Buffer $result -Section 'provision.database' -Name 'detail' -Value $outcome.Detail

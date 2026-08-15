@@ -1043,6 +1043,52 @@ Assert-TextMatches -Name 'uninstalling runs the deployment uninstaller from code
     -Text $serverIss -Pattern '(?s)usUninstall.*Uninstall-NodePilot\.ps1'
 Assert-TextMatches -Name 'the purge switch is built at uninstall time' `
     -Text $serverIss -Pattern '(?s)usUninstall.*UninstallPurgeData then Switches'
+
+# Everything below reads the Pascal with its comments removed. The rules these contracts pin are
+# each stated, in words, in a comment a few lines above the code that implements them - and a
+# contract that matches its own explanation measures nothing. Same trap Remove-CommentLines was
+# written for; Pascal just spells the prefix '//'.
+$serverIssCode = Remove-CommentLines -Text $serverIss -CommentPrefix '//'
+
+# The uninstaller must remove the INSTALLATION, not merely the bookkeeping that says it exists.
+# It ran with GetServiceName('') - which resolves to the literal 'NodePilot' in the uninstaller
+# process, because ExistingServiceName is only ever set by DetectExistingInstallation() in Setup -
+# and with {app}, which is where Inno put the uninstaller and NOT installPath when /ANSWERFILE
+# supplied one. An install with a non-default service name or path was therefore "uninstalled"
+# with exit 0 while the service, its firewall rule and every program file stayed put. -DataPath
+# was not passed at all, so -PurgeData wiped the default directory or nothing.
+# Patterns avoid quote characters entirely - the Pascal they match is full of them, and escaping
+# both layers is how a contract ends up matching nothing.
+Assert-TextMatches -Name 'the uninstall reads the installed service name from the marker' `
+    -Text $serverIssCode `
+    -Pattern '(?s)usUninstall[\s\S]*RegQueryStringValue\(HKLM64,[^)]*ServiceName'
+Assert-TextMatches -Name 'the uninstall reads the installed path from the marker' `
+    -Text $serverIssCode `
+    -Pattern '(?s)usUninstall[\s\S]*RegQueryStringValue\(HKLM64,[^)]*InstallPath'
+Assert-TextMatches -Name 'the uninstall passes the installed data path through' `
+    -Text $serverIssCode -Pattern '(?s)usUninstall[\s\S]*-DataPath[\s\S]{0,40}InstalledDataPath'
+Assert-TextDoesNotMatch -Name 'the uninstall must not pass the wizard default as the service name' `
+    -Text $serverIssCode -Pattern '-ServiceName[\s\S]{0,24}GetServiceName'
+Assert-TextDoesNotMatch -Name 'the uninstall must not pass {app} as the install path' `
+    -Text $serverIssCode -Pattern '-InstallPath[\s\S]{0,24}ExpandConstant'
+
+# /ANSWERFILE skips the mode page, so IsUpdateSelected() reads ModePage's hard default of 0
+# ('update') and AnswerMode contradicts a file that says "mode": "install". Gating the silent
+# provisioning run on AnswerMode alone therefore dropped every provisioning key - database, login,
+# generated certificate, runtime - on any host that already carried a NodePilot installation.
+Assert-TextMatches -Name 'an answer file reaches provisioning regardless of the unshown mode page' `
+    -Text $serverIssCode `
+    -Pattern '(?s)WizardSilent\(\) and \(\(AnswerFileOverride <> ..\)[\s\S]{0,40}AnswerMode = .install.'
+Assert-TextDoesNotMatch -Name 'the silent provisioning gate must not rest on AnswerMode alone' `
+    -Text $serverIssCode -Pattern 'WizardSilent\(\) and \(AnswerMode'
+
+# A failed database provisioning exits 0 and reports itself inside provision.ini. The readiness
+# page has always read that value and stopped; the silent path walked on to Apply and died in the
+# SQL pre-flight instead, telling the operator to have a DBA create a login that was never the
+# problem.
+Assert-TextMatches -Name 'the silent path reads the provisioning verdict, not just the exit code' `
+    -Text $serverIssCode `
+    -Pattern '(?s)-Mode Provision[\s\S]{0,900}?GetIniString\([^)]*provision\.database[^)]*status'
 # The data directory is ours; the database is not. There is no option to remove it and there must
 # not be one: this installer never created it.
 Assert-TextDoesNotMatch -Name 'the setup must not offer to drop the database' `
@@ -1620,7 +1666,7 @@ Assert-TextMatches -Name 'the readiness probe extracts the Postgres client first
 Assert-TextMatches -Name 'the auto-fix run extracts it too' `
     -Text $serverIss -Pattern '(?s)if WantsFix then[\s\S]{0,200}EnsurePgClient\(\)'
 Assert-TextMatches -Name 'and so does the unattended path, which never sees a page' `
-    -Text $serverIss -Pattern "(?s)WizardSilent\(\) and \(AnswerMode = 'install'\)[\s\S]{0,300}EnsurePgClient\(\)"
+    -Text $serverIss -Pattern '(?s)WizardSilent\(\) and \(\(AnswerFileOverride[\s\S]{0,400}EnsurePgClient\(\)'
 
 # The runtime fix is offered on the readiness page, before PrepareToInstall has extracted the
 # dontcopy payload. Checking only that the runtime is extracted somewhere misses that ordering bug:
@@ -1643,7 +1689,8 @@ if ($interactiveRuntimeIndex -lt 0 -or $interactiveRunIndex -lt 0 -or
            'bundled runtime before launching provisioning.')
 }
 
-$silentProvisionStart = $serverIss.IndexOf("if WizardSilent() and (AnswerMode = 'install') then")
+$silentProvisionStart = $serverIss.IndexOf(
+    "if WizardSilent() and ((AnswerFileOverride <> '') or (AnswerMode = 'install')) then")
 $silentProvisionEnd = $serverIss.IndexOf("Arguments := '-Mode Apply'", $silentProvisionStart)
 if ($silentProvisionStart -lt 0 -or $silentProvisionEnd -lt 0) {
     throw 'Deployment template check failed: could not locate the silent provisioning block.'
@@ -1663,10 +1710,10 @@ if ($silentRuntimeIndex -lt 0 -or $silentRunIndex -lt 0 -or $silentRuntimeIndex 
 # file - accepted, validated, then ignored - which is how a fleet rollout ends up with a service
 # that starts and answers 503 because the computer account was never granted db_owner.
 Assert-TextMatches -Name 'a silent install runs the provisioning its answer file asks for' `
-    -Text $serverIss -Pattern "(?s)WizardSilent\(\) and \(AnswerMode = 'install'\)[\s\S]{0,600}-Mode Provision"
+    -Text $serverIss -Pattern '(?s)WizardSilent\(\) and \(\(AnswerFileOverride[\s\S]{0,700}-Mode Provision'
 # Before the install, not after it: everything provisioning does - the runtime, the certificate,
 # the database grant - is a precondition of the install rather than a follow-up to it.
-$silentProvisionIndex = $serverIss.IndexOf("WizardSilent() and (AnswerMode = 'install')")
+$silentProvisionIndex = $serverIss.IndexOf("WizardSilent() and ((AnswerFileOverride <> '')")
 $applyIndex = $serverIss.IndexOf("Arguments := '-Mode Apply'")
 if ($silentProvisionIndex -lt 0 -or $applyIndex -lt 0 -or $silentProvisionIndex -gt $applyIndex) {
     throw ('Deployment template check failed: the silent provisioning step does not run before ' +
@@ -1825,6 +1872,22 @@ $updateBranch = $setupAdapter.Substring($updateBranchStart, $updateInvokeIndex -
 # version of this check only looked for the hyphenated form and a mutation walked straight past it.
 Assert-TextDoesNotMatch -Name 'the adapter must not pass a HTTPS port to the updater' `
     -Text $updateBranch -Pattern '\bHttpsPort\b'
+
+# The provisioning connection is subject to the same TLS name check as the runtime one, so the
+# certificate host name has to travel with the server name. Without it the provisioner derived the
+# name from -Server, and the entirely normal 'localhost' against a SQL Server whose certificate
+# names the FQDN failed with "The target principal name is incorrect" - leaving no database, and
+# an install that then died in the SQL pre-flight blaming a missing login.
+$provisionDbIndex = $setupAdapter.IndexOf("'Provision-NodePilotDatabase.ps1'")
+if ($provisionDbIndex -lt 0) {
+    throw 'Deployment template check failed: could not locate the database provisioning call in the setup adapter.'
+}
+# Bounded to the invocation itself: the adapter reads database.sqlCertificateHostName elsewhere
+# (the preflight splat), and a file-wide match would pass on that alone.
+$provisionDbCall = $setupAdapter.Substring($provisionDbIndex,
+    [Math]::Min(400, $setupAdapter.Length - $provisionDbIndex))
+Assert-TextMatches -Name 'database provisioning is given the certificate host name' `
+    -Text $provisionDbCall -Pattern '-CertificateHostName'
 
 # powershell.exe -File returns 0 for a script that merely wrote errors, so an implicit
 # fall-through would report a failed installation as success.
