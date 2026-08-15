@@ -7,6 +7,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <!-- CVE-2025-6965: fixed SQLitePCLRaw 3.x native build (see Directory.Packages.props). -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
   </ItemGroup>
 
