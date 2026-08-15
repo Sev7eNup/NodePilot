@@ -636,6 +636,53 @@ describe('OpsTimeline — keyboard reach without a trap', () => {
     expect(track.getAttribute('aria-activedescendant')).toBe(first);
   });
 
+  it('moves lane-wise with ArrowDown/ArrowUp instead of crawling through a lane', () => {
+    // The two fixture bars sit in different lanes, so a vertical press has to land on the other
+    // one. Crawling bar-by-bar would be unusable on a board where one lane holds hundreds.
+    renderTimeline();
+    const track = screen.getByTestId('ops-track');
+    const first = track.getAttribute('aria-activedescendant');
+
+    fireEvent.keyDown(track, { key: 'ArrowDown' });
+    const next = track.getAttribute('aria-activedescendant');
+    expect(next).not.toBe(first);
+    expect(next).toMatch(/^ops-bar-/);
+
+    fireEvent.keyDown(track, { key: 'ArrowUp' });
+    expect(track.getAttribute('aria-activedescendant')).toBe(first);
+  });
+
+  it('stays put when the neighbouring lane has no bars to land on', () => {
+    // The `first !== -1` guard. Without it a press past the last lane clears the roving pointer and
+    // the focus lands nowhere — the same branch covers a lane that renders from density alone.
+    renderTimeline();
+    const track = screen.getByTestId('ops-track');
+
+    fireEvent.keyDown(track, { key: 'End' });
+    const last = track.getAttribute('aria-activedescendant');
+    expect(last).toMatch(/^ops-bar-/);
+    fireEvent.keyDown(track, { key: 'ArrowDown' });
+    expect(track.getAttribute('aria-activedescendant')).toBe(last);
+
+    fireEvent.keyDown(track, { key: 'Home' });
+    const first = track.getAttribute('aria-activedescendant');
+    fireEvent.keyDown(track, { key: 'ArrowUp' });
+    expect(track.getAttribute('aria-activedescendant')).toBe(first);
+  });
+
+  it('reaches both ends with End and ArrowLeft', () => {
+    renderTimeline();
+    const track = screen.getByTestId('ops-track');
+    const first = track.getAttribute('aria-activedescendant');
+
+    fireEvent.keyDown(track, { key: 'End' });
+    const last = track.getAttribute('aria-activedescendant');
+    expect(last).not.toBe(first);
+
+    fireEvent.keyDown(track, { key: 'ArrowLeft' });
+    expect(track.getAttribute('aria-activedescendant')).toBe(first);
+  });
+
   it('announces density columns instead of hiding them behind a title attribute', () => {
     // A div with only a `title` does not reach a screen reader, and the column carries the one thing
     // the density stretch has to say.
