@@ -24,6 +24,18 @@ public sealed record TestFireRouteResult(string Channel, string Target, bool Suc
 
 public sealed record TestFireResponse(bool AllSucceeded, List<TestFireRouteResult> Results);
 
+// The rule-authoring vocabulary. An agent writing a filter expression has to know which fields
+// exist and which values they take; guessing produces rules that never match.
+public sealed record AlertingCatalogFieldDto(string Name, string Applies, string Type, IReadOnlyList<string>? Values = null);
+
+public sealed record AlertingCatalogEventTypeDto(string Name, string Category, bool Scopeable);
+
+public sealed record AlertingCatalogResponse(
+    IReadOnlyList<AlertingCatalogEventTypeDto> EventTypes,
+    IReadOnlyList<AlertingCatalogFieldDto> EventFields,
+    IReadOnlyList<string> Channels,
+    IReadOnlyList<string> DedupTemplateFields);
+
 public sealed record NotificationDeliveryDto(
     Guid Id, Guid RuleId, string? RuleName, Guid RouteId, string? Channel, string? Target,
     string EventKey, string Status, int Attempt, DateTime CreatedAt, DateTime? SentAt,

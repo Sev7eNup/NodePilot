@@ -337,6 +337,28 @@ public static class Renderers
         console.Write(table);
     }
 
+    // The event types are already the enum values of the `eventType` field, so one table over the
+    // fields plus two summary lines says everything without printing the vocabulary twice.
+    public static void AlertingCatalog(IAnsiConsole console, AlertingCatalogResponse catalog)
+    {
+        var table = new Table().Border(TableBorder.Rounded)
+            .AddColumn("Field")
+            .AddColumn("Applies")
+            .AddColumn("Type")
+            .AddColumn("Values");
+        foreach (var f in catalog.EventFields)
+        {
+            table.AddRow(
+                Markup.Escape(f.Name),
+                Markup.Escape(f.Applies),
+                Markup.Escape(f.Type),
+                f.Values is { Count: > 0 } v ? Markup.Escape(string.Join(", ", v)) : "[dim]-[/]");
+        }
+        console.Write(table);
+        console.MarkupLine($"Channels: {Markup.Escape(string.Join(", ", catalog.Channels))}");
+        console.MarkupLine($"Scopeable events: {Markup.Escape(string.Join(", ", catalog.EventTypes.Where(e => e.Scopeable).Select(e => e.Name)))}");
+    }
+
     public static void AlertingDeliveries(IAnsiConsole console, IReadOnlyList<NotificationDeliveryDto> rows)
     {
         var table = new Table().Border(TableBorder.Rounded)

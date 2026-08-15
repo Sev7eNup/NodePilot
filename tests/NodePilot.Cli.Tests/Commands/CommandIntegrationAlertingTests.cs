@@ -46,6 +46,27 @@ public class CommandIntegrationAlertingTests
     }
 
     [Fact]
+    public void AlertingCatalog_RendersFieldsAndChannels()
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/alerting/catalog").UsingGet())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                eventTypes = new object[] { new { name = "ExecutionFailed", category = "execution", scopeable = true } },
+                eventFields = new object[] { new { name = "workflowName", applies = "execution", type = "string", values = (string[]?)null } },
+                channels = new[] { "Email", "Webhook" },
+                dedupTemplateFields = new[] { "eventType" },
+            }));
+
+        var result = h.Run("alerting", "catalog");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        result.Output.Should().Contain("workflowName");
+        result.Output.Should().Contain("Email");
+        result.Output.Should().Contain("ExecutionFailed");
+    }
+
+    [Fact]
     public void AlertingCreate_TranslatesEventsAndRoutes_AndPostsBody()
     {
         using var h = new CommandTestHarness();

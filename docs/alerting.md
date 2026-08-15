@@ -185,6 +185,7 @@ operand mode; the globals query is disabled in that mode). A **Deliveries** butt
 ### CLI
 
 ```
+np alerting catalog                                     # event types, filter fields, channels
 np alerting list
 np alerting get <rule-id>
 np alerting create --name "Prod failures" --event-types ExecutionFailed,ExecutionCancelled \
@@ -200,7 +201,7 @@ Routes are given with `--email` / `--webhook` (repeatable); scope targets with `
 
 ### MCP
 
-`list_alerting_rules`, `get_alerting_rule`, `list_alerting_deliveries`, `create_alerting_rule`,
+`get_alerting_catalog`, `list_alerting_rules`, `get_alerting_rule`, `list_alerting_deliveries`, `create_alerting_rule`,
 `update_alerting_rule`, `test_fire_alerting_rule` (read + write); `delete_alerting_rule` lives in the
 gated `DestructiveTools` (only registered when `NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true`; listed in
 `get_safety_status`). Route secrets are never surfaced in tool output.

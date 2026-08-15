@@ -584,6 +584,13 @@ public sealed class NodePilotApiClient
         return await ParseAsync<List<NotificationRuleResponse>>(res, ct);
     }
 
+    public async Task<AlertingCatalogResponse> GetAlertingCatalogAsync(CancellationToken ct)
+    {
+        EnsureReady();
+        using var res = await _http.GetAsync("api/alerting/catalog", ct);
+        return await ParseAsync<AlertingCatalogResponse>(res, ct);
+    }
+
     public async Task<NotificationRuleResponse> GetAlertingRuleAsync(Guid id, CancellationToken ct)
     {
         EnsureReady();

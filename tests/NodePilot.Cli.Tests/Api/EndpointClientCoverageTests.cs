@@ -36,6 +36,7 @@ public sealed class EndpointClientCoverageTests
     private const string InteractiveAiSse = "DELIBERATE: interactive SSE surface for the designer/knowledge chat UI; clients have no streaming UX";
     private const string WebhookIngress = "DELIBERATE: external webhook ingress — callers are third-party systems, not our clients";
     private const string CustomActivityGap = "audit finding F1: the custom-activities surface has NO client — close by adding np custom-activity + MCP tools";
+    private const string RuleBuilderPreview = "DELIBERATE: stateless dry-run for the rule builder's live preview; a client authors the rule JSON and validates it by saving";
 
     private static readonly Dictionary<string, string> KnownCliGaps = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -52,6 +53,8 @@ public sealed class EndpointClientCoverageTests
         ["api/ai/knowledge/capabilities"] = InteractiveAiSse,
         ["api/alerting/rules/*/disable"] = "np alerting toggles via PUT update; the dedicated enable/disable endpoints have no CLI verb",
         ["api/alerting/rules/*/enable"] = "np alerting toggles via PUT update; the dedicated enable/disable endpoints have no CLI verb",
+        ["api/alerting/preview-filter"] = RuleBuilderPreview,
+        ["api/alerting/preview-rule"] = RuleBuilderPreview,
         ["api/alerting/system/preview"] = "system-policy preview is a UI builder affordance",
         ["api/audit/export"] = "np audit list exists but cannot download the CSV export",
         ["api/auth/oidc"] = BrowserAuthFlow,
@@ -109,6 +112,8 @@ public sealed class EndpointClientCoverageTests
         ["api/ai/knowledge/capabilities"] = InteractiveAiSse,
         ["api/alerting/rules/*/disable"] = "MCP alerting tools toggle via update; dedicated enable/disable endpoints unused",
         ["api/alerting/rules/*/enable"] = "MCP alerting tools toggle via update; dedicated enable/disable endpoints unused",
+        ["api/alerting/preview-filter"] = RuleBuilderPreview,
+        ["api/alerting/preview-rule"] = RuleBuilderPreview,
         ["api/alerting/system/preview"] = "system-policy preview is a UI builder affordance",
         ["api/audit/export"] = "MCP has audit read tools but no CSV export",
         ["api/auth/login"] = "DELIBERATE: the MCP server reuses the CLI's DPAPI session (np auth login) — it never logs in itself",
@@ -159,6 +164,8 @@ public sealed class EndpointClientCoverageTests
         ["api/users/*"] = "no MCP user-management tools — deliberate, user admin stays human",
         ["api/users/*/reactivate"] = "no MCP user-management tools — deliberate, user admin stays human",
         ["api/webhooks/*/*"] = WebhookIngress,
+        ["api/workflows/*/move-folder"] = "no MCP folder-RBAC tools — placement follows the same gap as api/shared-workflow-folders",
+        ["api/workflows/export"] = "export_workflow covers one workflow; a bulk dump is an operator (UI/CLI) task",
     };
 
     [Theory]
@@ -199,6 +206,35 @@ public sealed class EndpointClientCoverageTests
         stale.Should().BeEmpty(
             $"these {client} known-gap entries are stale (endpoint gone or now covered) — " +
             "remove them so the list stays an honest inventory:\n" + string.Join("\n", stale));
+    }
+
+    // ---- the matcher itself -------------------------------------------------------------
+
+    /// <summary>
+    /// The guard is only as good as its matcher, and the matcher has no other test — a leniency
+    /// bug here reports the whole API as covered and nothing fails. These cases pin the two rules
+    /// that went wrong: a client wildcard must not swallow a literal endpoint route, and a
+    /// query-string interpolation must not turn its own segment into a wildcard.
+    /// </summary>
+    [Theory]
+    // A by-id/by-section client call may not stand in for a literal sibling route.
+    [InlineData("api/admin/settings/effective-sizing", "api/admin/settings/*", false)]
+    [InlineData("api/alerting/catalog", "api/alerting/*", false)]
+    // ...but it does cover the parameterized route it was written for.
+    [InlineData("api/admin/settings/*", "api/admin/settings/*", true)]
+    // An endpoint literal is covered by the same literal, whatever the casing.
+    [InlineData("api/workflows/export", "api/workflows/export", true)]
+    [InlineData("api/workflows/export", "API/Workflows/Export", true)]
+    // Segment counts must line up — a prefix is not a cover.
+    [InlineData("api/workflows/*/versions", "api/workflows/*", false)]
+    // The query-string idiom keeps its literal segment instead of collapsing to a wildcard.
+    [InlineData("api/alerting/deliveries", "api/alerting/deliveries{qs}", true)]
+    [InlineData("api/alerting/catalog", "api/alerting/deliveries{qs}", false)]
+    public void Matcher_TreatsWildcardsAsParametersOnly(string endpoint, string clientUrl, bool expected)
+    {
+        var routes = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { NormalizeRoute(clientUrl) };
+
+        IsCovered(NormalizeRoute(endpoint), routes).Should().Be(expected);
     }
 
     // ---- endpoint discovery -------------------------------------------------------------
@@ -270,10 +306,16 @@ public sealed class EndpointClientCoverageTests
     // ---- matching -----------------------------------------------------------------------
 
     /// <summary>
-    /// A client URL covers an endpoint when segment counts match and every segment is
-    /// compatible — equal, or a wildcard on either side (a client interpolation hole like
-    /// <c>{(enable ? "enable" : "disable")}</c> legitimately reaches literal endpoint
-    /// segments at runtime).
+    /// A client URL covers an endpoint when segment counts match and every segment is equal —
+    /// with <c>*</c> matching only <c>*</c>.
+    ///
+    /// <para>A client wildcard deliberately does NOT satisfy an endpoint literal. The lenient
+    /// rule (wildcard on either side) is what let the <c>effective-sizing</c> endpoint ship
+    /// without a CLI client while this guard reported the surface as covered: the CLI's
+    /// <c>api/admin/settings/{section}</c> call normalizes to <c>api/admin/settings/*</c> and
+    /// then matched every literal sibling route under that path. The by-id/by-name/by-section
+    /// call sites that make this shape common are exactly the ones with literal siblings, so
+    /// the leniency cost coverage everywhere it applied.</para>
     /// </summary>
     private static bool IsCovered(string endpoint, HashSet<string> clientRoutes)
     {
@@ -286,7 +328,7 @@ public sealed class EndpointClientCoverageTests
             var allCompatible = true;
             for (var i = 0; i < e.Length; i++)
             {
-                if (e[i] != c[i] && e[i] != "*" && c[i] != "*") { allCompatible = false; break; }
+                if (e[i] != c[i]) { allCompatible = false; break; }
             }
 
             if (allCompatible) return true;
@@ -301,6 +343,13 @@ public sealed class EndpointClientCoverageTests
     /// Both sides collapse to the same shape: leading slash and query string stripped, every
     /// parameterized segment (route <c>{id:guid}</c>/<c>{*path}</c> or interpolation hole
     /// <c>{Uri.EscapeDataString(x)}</c>) becomes <c>*</c>, compared case-insensitively.
+    ///
+    /// <para>A segment keeps whatever literal prefix precedes its first hole — only a segment
+    /// that STARTS with <c>{</c> is a parameter. This matters for the query-string idiom
+    /// <c>$"api/alerting/deliveries{qs}"</c>: collapsing that to <c>api/alerting/*</c> both
+    /// loses the route it actually calls and hands the strict matcher a wildcard that would
+    /// otherwise report every literal sibling (<c>catalog</c>, <c>preview-filter</c>, …) as
+    /// covered by the deliveries call site.</para>
     /// </summary>
     private static string NormalizeRoute(string raw)
     {
@@ -309,7 +358,12 @@ public sealed class EndpointClientCoverageTests
         if (q >= 0) path = path[..q];
 
         var segments = path.Split('/', StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => s.Contains('{') ? "*" : s.ToLowerInvariant());
+            .Select(s =>
+            {
+                var hole = s.IndexOf('{');
+                if (hole < 0) return s.ToLowerInvariant();
+                return hole == 0 ? "*" : s[..hole].ToLowerInvariant();
+            });
         return string.Join('/', segments);
     }
 

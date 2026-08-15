@@ -93,6 +93,16 @@ public sealed class NodePilotApiClient
         return await ParseAsync<WorkflowResponse>(res, ct);
     }
 
+    /// <summary>
+    /// Name lookup with the engine's own rules: exact case wins, otherwise case-insensitive,
+    /// ambiguous names answer 409. Listing and filtering client-side cannot reproduce that.
+    /// </summary>
+    public async Task<WorkflowResponse> GetWorkflowByNameAsync(string name, CancellationToken ct)
+    {
+        using var res = await _http.GetAsync($"api/workflows/by-name/{Uri.EscapeDataString(name)}", ct);
+        return await ParseAsync<WorkflowResponse>(res, ct);
+    }
+
     public async Task<ExecutionResponse> ExecuteWorkflowAsync(Guid id, ExecuteWorkflowRequest req, CancellationToken ct)
     {
         using var res = await _http.PostAsJsonAsync($"api/workflows/{id}/execute", req, JsonOptions, ct);
@@ -473,6 +483,12 @@ public sealed class NodePilotApiClient
     {
         using var res = await _http.GetAsync("api/alerting/rules", ct);
         return await ParseAsync<List<NotificationRuleResponse>>(res, ct);
+    }
+
+    public async Task<AlertingCatalogResponse> GetAlertingCatalogAsync(CancellationToken ct)
+    {
+        using var res = await _http.GetAsync("api/alerting/catalog", ct);
+        return await ParseAsync<AlertingCatalogResponse>(res, ct);
     }
 
     public async Task<NotificationRuleResponse> GetAlertingRuleAsync(Guid id, CancellationToken ct)

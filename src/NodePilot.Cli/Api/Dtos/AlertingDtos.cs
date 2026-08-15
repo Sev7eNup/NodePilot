@@ -26,6 +26,19 @@ public sealed record TestFireRouteResult(string Channel, string Target, bool Suc
 
 public sealed record TestFireResponse(bool AllSucceeded, List<TestFireRouteResult> Results);
 
+// The rule-authoring catalog: which event types exist, which fields a filter may reference, and
+// which channels this installation can actually deliver on. `np alerting create` takes a rule as
+// JSON, so without this the field names had to be read out of the web UI or the source.
+public sealed record AlertingCatalogFieldDto(string Name, string Applies, string Type, IReadOnlyList<string>? Values = null);
+
+public sealed record AlertingCatalogEventTypeDto(string Name, string Category, bool Scopeable);
+
+public sealed record AlertingCatalogResponse(
+    IReadOnlyList<AlertingCatalogEventTypeDto> EventTypes,
+    IReadOnlyList<AlertingCatalogFieldDto> EventFields,
+    IReadOnlyList<string> Channels,
+    IReadOnlyList<string> DedupTemplateFields);
+
 public sealed record NotificationDeliveryDto(
     Guid Id, Guid RuleId, string? RuleName, Guid RouteId, string? Channel, string? Target,
     string EventKey, string Status, int Attempt, DateTime CreatedAt, DateTime? SentAt,

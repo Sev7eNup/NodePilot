@@ -4,7 +4,7 @@ Ein [Model-Context-Protocol](https://modelcontextprotocol.io)-Server, mit dem ei
 (Claude Desktop/Code oder ein beliebiger MCP-Client) **NodePilot-Workflows steuern und bearbeiten**
 sowie **Daten auslesen** kann. Wie die `np`-CLI ist er ein reiner HTTP-Client gegen die bestehende
 REST-API — **kein neuer Backend-Pfad**; jedes Tool ruft einen vorhandenen Endpoint auf oder rechnet
-in-proc gegen `NodePilot.Core`. 99 Tools über 10 Gruppen, plus 3 MCP-Resources.
+in-proc gegen `NodePilot.Core`. 100 Tools über 10 Gruppen, plus 3 MCP-Resources.
 
 ## Installation
 
@@ -65,7 +65,7 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
 - **Telemetrie:** dashboard, coverage/step-health/step-stats, `query_audit_log` (Admin), `get_support_diagnostics` (Admin)
 - **DB / text2sql (Admin, nur lesend):** `list_db_tables` (Schema-Katalog; Secret-Spalten hidden, `GlobalVariable.Value` maskiert), `get_db_info` (Provider + Row-/Timeout-Limits), `run_readonly_sql` (ein Read-Only-Statement, Server erzwingt Keyword-Whitelist + Rollback; kein Write-Tool). Secret-Spalten sind auch über Raw-SQL unerreichbar — drei Schichten: Ein direkter Verweis liefert `protected_column`; ein `SELECT *` liefert die Werte als `***`; und wer eine **ganze Zeile** einer Tabelle mit Secret-Spalte serialisiert (`to_json`/`row_to_json`/`::text`/`FOR JSON`), bekommt `protected_row_projection` — genau dieser Weg trug die Werte an den ersten beiden, rein namensbasierten Schichten vorbei. Spalten explizit benennen funktioniert immer. Die Übersetzung natürlicher Sprache nach SQL übernimmt der Agent.
 - **Supporting:** Machines, Credentials, Globals (Secrets nie ausgegeben)
-- **Alerting:** `list/get/create/update/test_fire_alerting_rule` + `list_alerting_deliveries` (Ledger) (+ gated `delete_alerting_rule`; Route-Secrets nie ausgegeben)
+- **Alerting:** `get_alerting_catalog` (Regel-Vokabular) + `list/get/create/update/test_fire_alerting_rule` + `list_alerting_deliveries` (Ledger) (+ gated `delete_alerting_rule`; Route-Secrets nie ausgegeben)
 - **System-Alerts (ADR 0008):** `get_system_alert_catalog` + `list/get/create/update/enable/disable/test_fire_system_alert_policy` (+ gated `delete_system_alert_policy`)
 - **Canvas-Assistent** (für den Designer-Chat, überwiegend in-proc): `analyze_workflow`, `get_available_variables`, `get_failure_context`, `find_unresolved_references`, `validate_edge_condition`, `validate_activity_config`, `preview_template_resolution`, `suggest_layout`, `diff_workflow_definition`, `get_workflow_node`, `check_styleguide`
 
