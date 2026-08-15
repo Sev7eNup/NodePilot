@@ -62,6 +62,22 @@ public sealed class CliSessionInteropTests
             "Session, die der MCP-Server nie findet");
     }
 
+    [Fact]
+    public void McpStoredSession_ReadsLegacyCliUtcDateTimeJson()
+    {
+        const string legacyJson =
+            """
+            {"server":"https://np.example","token":"legacy","username":"admin","userId":"00000000-0000-0000-0000-000000000001","role":"Admin","expiresAt":"2026-08-15T12:34:56Z"}
+            """;
+
+        var session = System.Text.Json.JsonSerializer.Deserialize<NodePilot.Mcp.Auth.StoredSession>(
+            legacyJson,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+
+        session.Should().NotBeNull();
+        session!.ExpiresAt.Should().Be(new DateTimeOffset(2026, 8, 15, 12, 34, 56, TimeSpan.Zero));
+    }
+
     private static string ExtractEntropyExpression(string relativePath)
     {
         var source = ReadRepoFile(relativePath);

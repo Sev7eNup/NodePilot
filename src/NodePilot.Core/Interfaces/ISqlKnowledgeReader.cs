@@ -9,20 +9,22 @@ namespace NodePilot.Core.Interfaces;
 /// scoped — exactly the <see cref="ISettingsKnowledgeReader"/> pattern.
 ///
 /// <para><b>Redaction is the contract</b>: schema tools omit hidden secret columns
-/// (<c>PasswordHash</c>, <c>EncryptedPassword</c>, byte[] blobs); query results redact any column
-/// whose name matches a hidden/masked column in the schema to <c>"***"</c> and run every cell through
-/// the audit details redactor. Only <c>string?</c> leaves the reader — never raw <c>object?</c> — so
-/// the model never sees an unredacted value. Restricted to Admin/Operator at the tool layer.</para>
+/// (<c>PasswordHash</c>, <c>EncryptedPassword</c>, byte[] blobs) and entirely omit the four tables
+/// holding opaque Workflow Definitions or custom-activity implementations. Any SQL reference to
+/// those tables is refused; callers use dedicated, RBAC-aware tools instead. Result columns are
+/// masked by name as defence in depth and every other cell passes through the audit details
+/// redactor. Only <c>string?</c> leaves the reader — never raw <c>object?</c>. Restricted to global
+/// Admins at the tool layer.</para>
 /// </summary>
 public interface ISqlKnowledgeReader
 {
     /// <summary>Active SQL dialect token (<c>postgres</c>, <c>sqlserver</c>, ...).</summary>
     string Provider { get; }
 
-    /// <summary>All tracked tables, with their non-hidden columns named. Secret columns are omitted.</summary>
+    /// <summary>All tracked tables with the columns safe for generic AI discovery.</summary>
     Task<IReadOnlyList<DbTableKnowledgeSummary>> ListTablesAsync(CancellationToken ct);
 
-    /// <summary>One table's non-hidden columns with type/nullable/PK, or null if unknown. Secret columns omitted.</summary>
+    /// <summary>One table's AI-safe columns with type/nullable/PK, or null if unknown.</summary>
     Task<DbTableKnowledgeDetail?> GetTableAsync(string name, CancellationToken ct);
 
     /// <summary>Runs a single read-only SQL statement and returns redacted columns + rows. Never throws for

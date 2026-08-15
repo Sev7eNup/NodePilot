@@ -129,8 +129,9 @@ public class AuthController : ControllerBase
     /// Stages a JWT revocation for <paramref name="jti"/>: derives the expiry from the token's
     /// <c>exp</c> claim (falling back to the configured lifetime) and adds a
     /// <see cref="RevokedToken"/> row when the jti is not already revoked. Returns true when a
-    /// row was staged. The caller keeps SaveChanges and the revocation metric, because logout
-    /// and refresh deliberately order those two differently.
+    /// row was staged. Logout and the DbContext-free refresh compatibility path keep
+    /// SaveChanges and the revocation metric at their call sites; the production refresh path
+    /// stages its revocation inside <see cref="AuthSessionIssuer"/> instead.
     /// </summary>
     private async Task<bool> TryStageTokenRevocationAsync(
         string jti, Guid userId, string? expClaim, string reason, CancellationToken ct)
@@ -162,7 +163,7 @@ public class AuthController : ControllerBase
     internal const string CsrfCookieName = "np_csrf";
 
     // H-5 completion: the JWT must never reach a browser response body, or an XSS could
-    // exfiltrate a portable 12h bearer token via /auth/refresh and defeat the httpOnly-cookie
+    // exfiltrate a portable session bearer token via /auth/refresh and defeat the httpOnly-cookie
     // design entirely. We hand the token back ONLY to provably non-browser callers, using two
     // different discriminators because the two situations differ:
     //
@@ -199,9 +200,14 @@ public class AuthController : ControllerBase
 
     /// <summary>Builds the auth success body: <see cref="LoginResponse"/> (with JWT) for
     /// programmatic callers, <see cref="AuthIdentityResponse"/> (identity only) for browsers.</summary>
-    private OkObjectResult SessionResult(string token, User user, bool includeToken)
+    private OkObjectResult SessionResult(IssuedSession session, User user, bool includeToken)
         => includeToken
-            ? Ok(new LoginResponse(token, user.Id, user.Username, user.Role.ToString()))
+            ? Ok(new LoginResponse(
+                session.Token,
+                user.Id,
+                user.Username,
+                user.Role.ToString(),
+                session.ExpiresAt))
             : Ok(new AuthIdentityResponse(user.Id, user.Username, user.Role.ToString()));
 
     /// <summary>
@@ -573,7 +579,7 @@ public class AuthController : ControllerBase
         // for the BCrypt path; LDAP/Windows pass their own value.
         var session = await _sessionIssuer.IssueAsync(user, NodePilot.Api.Security.AuthSource.Local, HttpContext, ct);
         RecordLoginAttempt("success", "ok");
-        return SessionResult(session.Token, user, TokenInBodyRequested());
+        return SessionResult(session, user, TokenInBodyRequested());
     }
 
     private async Task<BootstrapAdminCreation> TryCreateBootstrapAdminAsync(
@@ -788,7 +794,7 @@ public class AuthController : ControllerBase
 
                 var session = await _sessionIssuer.IssueAsync(user, NodePilot.Api.Security.AuthSource.Ldap, HttpContext, ct);
                 RecordLoginAttempt("success", "ldap_ok");
-                return SessionResult(session.Token, user, TokenInBodyRequested());
+                return SessionResult(session, user, TokenInBodyRequested());
             }
             case LdapAuthOutcome.InvalidCredentials:
                 // The directory cleanly rejected the credentials. If a local row exists we'd
@@ -1073,7 +1079,7 @@ public class AuthController : ControllerBase
         // handshake — i.e. an XSS could trigger it without knowing any secret. So, unlike the
         // password-gated login paths, the token is NEVER returned in the body here: always
         // identity-only, the JWT stays in the httpOnly cookie.
-        return SessionResult(session.Token, user, includeToken: false);
+        return SessionResult(session, user, includeToken: false);
     }
 
     /// <summary>
@@ -1178,12 +1184,11 @@ public class AuthController : ControllerBase
         var user = await _db.Users.FindAsync([id], ct);
         if (user is null) return Unauthorized(new { message = "User no longer exists" });
 
-        // Mint the new token first so a failure below (e.g. DB unavailable) leaves the old
-        // token valid — we prefer "client keeps using current token" over "user gets locked
-        // out mid-session". Routed through IAuthSessionIssuer.RefreshAsync so the rotated
-        // JWT carries the same baseline claims as the original login. Group authorization
-        // is deliberately not token-borne (server-side DirectoryMemberships), so a refresh
-        // can never gain or lose group-folder permissions.
+        // The production issuer commits the new session JTI and old-token revocation as one
+        // unit before generating response cookies. A database failure therefore rolls both
+        // writes back and leaves the presented token usable instead of locking the client out
+        // with no replacement. The rotated JWT keeps the original baseline claim shape; group
+        // authorization remains server-side in DirectoryMemberships.
         IssuedSession session;
         try
         {
@@ -1194,19 +1199,26 @@ public class AuthController : ControllerBase
             ClearAuthCookies();
             return Unauthorized(new { message = "Session is no longer active" });
         }
-        var newToken = session.Token;
-
-        // Revoke the presented token. If the caller racingly refreshes twice the second
-        // request will already find the jti revoked and return 401 from the middleware;
-        // that's the intended behavior.
-        var presentedJti = User.FindFirstValue(JwtRegisteredClaimNames.Jti);
-        var expClaim = User.FindFirstValue("exp");
-        if (!string.IsNullOrEmpty(presentedJti)
-            && await TryStageTokenRevocationAsync(presentedJti, id, expClaim, "rotated", ct))
+        // The production issuer has already persisted CurrentJti/RefreshGeneration and the
+        // old-JTI revocation in one SaveChanges transaction. The fallback exists only for
+        // DbContext-free controller unit fixtures; it is not a supported production issuer
+        // path and must never duplicate the production revocation write.
+        if (session.TokenRotationCommitted)
         {
-            await _db.SaveChangesAsync(ct);
             ApiMetrics.AuthTokenRevocations.Add(1,
                 new KeyValuePair<string, object?>("reason", "rotated"));
+        }
+        else
+        {
+            var presentedJti = User.FindFirstValue(JwtRegisteredClaimNames.Jti);
+            var expClaim = User.FindFirstValue("exp");
+            if (!string.IsNullOrEmpty(presentedJti)
+                && await TryStageTokenRevocationAsync(presentedJti, id, expClaim, "rotated", ct))
+            {
+                await _db.SaveChangesAsync(ct);
+                ApiMetrics.AuthTokenRevocations.Add(1,
+                    new KeyValuePair<string, object?>("reason", "rotated"));
+            }
         }
 
         // Cookies were already rotated by RefreshAsync above (np_auth + np_csrf both set
@@ -1216,7 +1228,7 @@ public class AuthController : ControllerBase
 
         // Audit the refresh so a stolen-token-being-renewed scenario leaves a forensic
         // trail. Distinct from LOGIN_SUCCESS to avoid double-counting active sessions in
-        // SIEM dashboards (12h token lifetime × N sessions would otherwise dwarf real
+        // SIEM dashboards (session lifetime × N sessions would otherwise dwarf real
         // login signal). MapEventCategory maps TOKEN_REFRESHED to event.category=iam so
         // it groups with the rest of the auth events.
         await _audit.LogAsync(AuditActions.TokenRefreshed, "User", id,
@@ -1226,7 +1238,7 @@ public class AuthController : ControllerBase
         // cookie-authenticated browser — or an XSS riding the browser's np_auth cookie — gets
         // identity-only; the rotated token reaches it solely through the refreshed httpOnly
         // cookie. This is the H-5 invariant: no browser-reachable endpoint hands out the token.
-        return SessionResult(newToken, user, AuthenticatedViaBearerHeader());
+        return SessionResult(session, user, AuthenticatedViaBearerHeader());
     }
 
     private enum BootstrapAdminCreationStatus

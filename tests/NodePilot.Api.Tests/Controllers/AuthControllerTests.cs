@@ -95,6 +95,7 @@ public sealed class AuthControllerTests : IDisposable
         response.Token.Should().NotBeNullOrEmpty();
         response.Username.Should().Be("admin");
         response.Role.Should().Be("Admin");
+        response.ExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow.AddHours(7));
 
         // Verify user was created and the token file was consumed
         var user = await db.Users.FirstOrDefaultAsync(u => u.Username == "admin");
@@ -480,6 +481,7 @@ public sealed class AuthControllerTests : IDisposable
         response.Token.Should().NotBeNullOrEmpty();
         response.Username.Should().Be("admin");
         response.Role.Should().Be("Admin");
+        response.ExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow.AddHours(7));
     }
 
     [Fact]

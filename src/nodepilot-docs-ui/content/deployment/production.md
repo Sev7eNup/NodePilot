@@ -425,6 +425,17 @@ Der Updater:
 
 Ein **erfolgreicher** Update lässt den Dienst immer **laufen**, unabhängig davon, ob er vorher gestoppt war. Nur ein fehlgeschlagener Update stellt den Ausgangszustand wieder her.
 
+Workflow-History wird beim Start absichtlich noch nicht umgeschlüsselt, damit der unmittelbare
+Health-Check-Rollback sicher bleibt. Während eines gemischten HA-Upgrades Workflow-Edits und
+Rollbacks pausieren (oder nach dem ersten Schreibzugriff eines neuen Knotens keinen Failback auf
+alte Knoten mehr zulassen): neue Knoten schreiben neue History-Snapshots sofort als `np:wfv:v1:`,
+das alte Binary kann diese Zeilen nicht lesen. Sobald der Health-Check erfolgreich war und **alle
+HA-Knoten** die neue Version ausführen, nach dem regulären DB-Backup
+`np secrets reencrypt --yes` (oder die Aktion unter Admin-Einstellungen → Security) ausführen.
+Danach sind auch alte `WorkflowVersions` als `np:wfv:v1:` geschützt. Nach dem ersten neuen
+History-Write oder diesem Cutover darf nicht mehr auf eine Binärversion ohne Format-Unterstützung
+zurückgerollt werden.
+
 Das Binärbackup enthält keine secret-haltige `appsettings.Production.json`. Sie wird beim Austausch deshalb als Letztes ersetzt, damit ein Abbruch sie nicht zerstört.
 
 ## Deinstallation

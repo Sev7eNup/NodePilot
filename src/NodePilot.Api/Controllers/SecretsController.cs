@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NodePilot.Api.Dtos;
+using NodePilot.Api.Services;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Interfaces;
+using NodePilot.Data;
 
 namespace NodePilot.Api.Controllers;
 
@@ -21,15 +23,21 @@ public class SecretsController : ControllerBase
 {
     private readonly ICredentialStore _credentials;
     private readonly IGlobalVariableStore _globals;
+    private readonly NodePilotDbContext _db;
+    private readonly WorkflowVersionDefinitionProtector _workflowVersions;
     private readonly IAuditWriter _audit;
 
     public SecretsController(
         ICredentialStore credentials,
         IGlobalVariableStore globals,
+        NodePilotDbContext db,
+        WorkflowVersionDefinitionProtector workflowVersions,
         IAuditWriter audit)
     {
         _credentials = credentials;
         _globals = globals;
+        _db = db;
+        _workflowVersions = workflowVersions;
         _audit = audit;
     }
 
@@ -51,8 +59,9 @@ public class SecretsController : ControllerBase
     {
         var creds = await _credentials.ReencryptAllCredentialsAsync(ct);
         var globals = await _globals.ReencryptAllSecretsAsync(ct);
+        var versions = await _workflowVersions.ReencryptAllAsync(_db, ct);
 
-        var partial = creds.Skipped > 0 || globals.Skipped > 0;
+        var partial = creds.Skipped > 0 || globals.Skipped > 0 || versions.Skipped > 0;
         var result = new ReencryptResult(
             CredentialsRewritten: creds.Rewritten,
             CredentialsSkipped: creds.Skipped,
@@ -60,6 +69,9 @@ public class SecretsController : ControllerBase
             GlobalSecretsRewritten: globals.Rewritten,
             GlobalSecretsSkipped: globals.Skipped,
             GlobalSecretSkipDetails: globals.SkippedDetails,
+            WorkflowVersionsRewritten: versions.Rewritten,
+            WorkflowVersionsSkipped: versions.Skipped,
+            WorkflowVersionSkipDetails: versions.SkippedDetails,
             PartialSuccess: partial);
 
         await _audit.LogAsync(AuditActions.SecretsReencrypted, "Secrets", null,
@@ -68,6 +80,8 @@ public class SecretsController : ControllerBase
                 ("credentialsSkipped", creds.Skipped),
                 ("globalsRewritten", globals.Rewritten),
                 ("globalsSkipped", globals.Skipped),
+                ("workflowVersionsRewritten", versions.Rewritten),
+                ("workflowVersionsSkipped", versions.Skipped),
                 ("partialSuccess", partial)),
             ct);
 

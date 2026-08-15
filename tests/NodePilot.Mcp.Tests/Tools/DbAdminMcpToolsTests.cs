@@ -25,8 +25,26 @@ public sealed class DbAdminMcpToolsTests
             {
                 new { name = "Id", clrType = "Guid", isNullable = false, maxLength = (int?)null, isPrimaryKey = true, isMasked = false, isReadOnly = true },
                 new { name = "Name", clrType = "string", isNullable = false, maxLength = (int?)200, isPrimaryKey = false, isMasked = false, isReadOnly = false },
+                new { name = "DefinitionJson", clrType = "string", isNullable = false, maxLength = (int?)null, isPrimaryKey = false, isMasked = false, isReadOnly = true },
             },
             rowCount = 12L,
+            cascadeDeletesTo = Array.Empty<string>(),
+        },
+        new
+        {
+            name = "CustomActivityDefinition",
+            displayName = "Custom Activity Definition",
+            dbTableName = "CustomActivityDefinitions",
+            pkColumns = new[] { "Id" },
+            capabilities = new { canUpdate = true, canDelete = false },
+            columns = new object[]
+            {
+                new { name = "Id", clrType = "Guid", isNullable = false, maxLength = (int?)null, isPrimaryKey = true, isMasked = false, isReadOnly = true },
+                new { name = "Name", clrType = "string", isNullable = false, maxLength = (int?)200, isPrimaryKey = false, isMasked = false, isReadOnly = false },
+                new { name = "ScriptTemplate", clrType = "string", isNullable = false, maxLength = (int?)null, isPrimaryKey = false, isMasked = false, isReadOnly = false },
+                new { name = "InputParametersJson", clrType = "string", isNullable = false, maxLength = (int?)null, isPrimaryKey = false, isMasked = false, isReadOnly = false },
+            },
+            rowCount = 2L,
             cascadeDeletesTo = Array.Empty<string>(),
         },
         new
@@ -56,11 +74,15 @@ public sealed class DbAdminMcpToolsTests
         var tools = new DbAdminMcpTools(api.Client());
         var json = JsonSerializer.Serialize(await tools.ListDbTables());
 
-        json.Should().Contain("\"name\":\"Workflow\"");
+        json.Should().NotContain("\"name\":\"Workflow\"");
+        json.Should().NotContain("CustomActivityDefinition");
         json.Should().Contain("\"isMasked\":true");          // GlobalVariable.Value masked flag carried through
         json.Should().NotContain("capabilities");            // capabilities/cascade dropped for token efficiency
         json.Should().NotContain("cascadeDeletesTo");
         json.Should().NotContain("PasswordHash");            // hidden columns never present from API
+        json.Should().NotContain("DefinitionJson");          // raw DbAdmin schema is filtered at MCP boundary
+        json.Should().NotContain("ScriptTemplate");
+        json.Should().NotContain("InputParametersJson");
     }
 
     [Fact]
@@ -121,6 +143,64 @@ public sealed class DbAdminMcpToolsTests
         json.Should().Contain("\"rowCount\":2");
         json.Should().Contain("\"truncated\":false");
         json.Should().NotContain("\"note\":null"); // success path omits a note
+    }
+
+    [Theory]
+    [InlineData("SELECT DefinitionJson FROM Workflows")]
+    [InlineData("SELECT w.DefinitionJson AS payload FROM Workflows w")]
+    [InlineData("SELECT * FROM WorkflowVersions")]
+    [InlineData("SELECT CAST(w AS text) FROM Workflows w")]
+    [InlineData("SELECT array_to_json(array_agg(w)) FROM Workflows w")]
+    [InlineData("SELECT Id, Name FROM Workflows")]
+    [InlineData("SELECT leak FROM Workflows w CROSS JOIN LATERAL regexp_split_to_table(CAST(w AS text), 'NEVER_MATCH') AS leak")]
+    [InlineData("SELECT ScriptTemplate FROM CustomActivityDefinitions")]
+    [InlineData("SELECT substr(InputParametersJson, 1, 10) FROM CustomActivityDefinitionVersions")]
+    [InlineData("SELECT query_to_xml('SELECT \"DefinitionJson\" FROM \"Workflows\"', false, true, '')")]
+    [InlineData("SELECT U&\"Definiti\\006FnJson\" AS payload FROM U&\"Workfl\\006Fws\"")]
+    public async Task RunReadonlySql_RejectsOpaqueAutomationPayloadBeforeApiCall(string sql)
+    {
+        using var api = new TestApi();
+        var tools = new DbAdminMcpTools(api.Client());
+
+        var ex = await Assert.ThrowsAsync<McpException>(() => tools.RunReadonlySql(sql));
+
+        ex.Message.Should().Contain("workflow definition or custom activity implementation");
+        api.Server.LogEntries.Should().BeEmpty("rejected agent SQL must never reach raw DbAdmin");
+    }
+
+    [Fact]
+    public async Task RunReadonlySql_MasksOpaqueResultColumnNames_AsDefenseInDepth()
+    {
+        using var api = new TestApi();
+        api.Server.Given(Request.Create().WithPath("/api/dbadmin/query").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                columns = new[]
+                {
+                    new { name = "Name", type = "string" },
+                    new { name = "DefinitionJson", type = "string" },
+                    new { name = "ScriptTemplate", type = "string" },
+                    new { name = "InputParametersJson", type = "string" },
+                },
+                rows = new object[]
+                {
+                    new object[] { "safe-name", "definition-canary-741", "script-canary-852", "defaults-canary-963" },
+                },
+                rowsAffected = (int?)null,
+                durationMs = 2L,
+                truncated = false,
+                mode = "read",
+            }));
+
+        var tools = new DbAdminMcpTools(api.Client());
+        var json = JsonSerializer.Serialize(
+            await tools.RunReadonlySql("SELECT * FROM AgentSafeProjection"));
+
+        json.Should().Contain("safe-name");
+        json.Should().Contain("***");
+        json.Should().NotContain("definition-canary-741");
+        json.Should().NotContain("script-canary-852");
+        json.Should().NotContain("defaults-canary-963");
     }
 
     [Fact]

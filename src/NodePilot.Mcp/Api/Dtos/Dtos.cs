@@ -7,7 +7,12 @@ namespace NodePilot.Mcp.Api.Dtos;
 
 // ---- Auth ----
 public sealed record LoginRequest(string Username, string Password);
-public sealed record LoginResponse(string Token, Guid UserId, string Username, string Role);
+public sealed record LoginResponse(
+    string Token,
+    Guid UserId,
+    string Username,
+    string Role,
+    DateTimeOffset? ExpiresAt = null);
 public sealed record MeResponse(Guid Id, string Username, string Role);
 
 // ---- Workflows ----

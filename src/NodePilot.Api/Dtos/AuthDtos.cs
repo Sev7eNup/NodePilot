@@ -17,7 +17,12 @@ public record LoginRequest(string Username, string Password)
 /// on the password-gated login paths, or a real Bearer header on refresh). Browser flows get
 /// <see cref="AuthIdentityResponse"/> instead.
 /// </summary>
-public record LoginResponse(string Token, Guid UserId, string Username, string Role);
+public record LoginResponse(
+    string Token,
+    Guid UserId,
+    string Username,
+    string Role,
+    DateTimeOffset ExpiresAt);
 
 /// <summary>
 /// Browser-facing auth response (audit H-5 completion). Carries only the caller's identity —

@@ -28,16 +28,19 @@ namespace NodePilot.Api.Controllers;
 public class WorkflowsController : WorkflowsControllerBase
 {
     private readonly NodePilot.Api.Services.IWorkflowContractDeriver _contractDeriver;
+    private readonly NodePilot.Api.Services.WorkflowVersionDefinitionProtector _versionDefinitions;
 
     public WorkflowsController(
         NodePilotDbContext db,
         ILogger<WorkflowsController> logger,
         IAuditWriter audit,
         IResourceAuthorizationService authz,
-        NodePilot.Api.Services.IWorkflowContractDeriver contractDeriver)
+        NodePilot.Api.Services.IWorkflowContractDeriver contractDeriver,
+        NodePilot.Api.Services.WorkflowVersionDefinitionProtector versionDefinitions)
         : base(db, logger, audit, authz)
     {
         _contractDeriver = contractDeriver;
+        _versionDefinitions = versionDefinitions;
     }
 
     /// <summary>
@@ -418,7 +421,7 @@ public class WorkflowsController : WorkflowsControllerBase
                     Version = workflow.Version,
                     Name = workflow.Name,
                     Description = workflow.Description,
-                    DefinitionJson = workflow.DefinitionJson,
+                    DefinitionJson = _versionDefinitions.Protect(workflow.DefinitionJson),
                     CreatedAt = updatedAt,
                     CreatedBy = workflow.CreatedBy ?? updatedBy,
                 });
@@ -684,6 +687,7 @@ public class WorkflowsController : WorkflowsControllerBase
         };
 
         copy.CreatedBy = this.GetCurrentUsername();
+        PopulateComputedColumns(copy);
         _db.Workflows.Add(copy);
         await _db.SaveChangesAsync(ct);
 

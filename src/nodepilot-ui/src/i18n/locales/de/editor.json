@@ -49,6 +49,7 @@
   "undoTooltip": "Rückgängig (Ctrl+Z)",
   "redoTooltip": "Wiederherstellen (Ctrl+Y / Ctrl+Shift+Z)",
   "tidyTooltip": "Layout: {{mode}} — anwenden, dann nächsten Modus aktivieren",
+  "tidyFailed": "Automatisches Layout fehlgeschlagen: {{message}}",
   "restoreOrigLayout": "Originallayout wiederherstellen",
   "restoreOrigLayoutShort": "Orig",
   "searchTooltip": "Nodes suchen (Ctrl+F)",

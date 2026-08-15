@@ -103,13 +103,16 @@ Audit codes: `CUSTOM_ACTIVITY_CREATED|UPDATED|DELETED|ENABLED|DISABLED|IMPORTED|
 ## System-configuration backup (ADR 0001)
 
 Custom activities are part of the `.npbackup` DR snapshot (`CustomActivityBackupPart`, section
-`customActivities`). The live definition of each (including disabled drafts) is exported — script
-template in cleartext, like a workflow's runScript `script` field; version-history snapshots are
-excluded. Restore is full-fidelity (the enabled state is preserved, unlike the `.npca` import which
+`customActivities`). The live definition of each (including disabled drafts) is exported. The
+PowerShell script template and the complete input-schema JSON (whose defaults become runtime
+values) are encrypted under the backup passphrase; v1/v2 plaintext fields remain restore-compatible.
+Version-history snapshots are excluded. Restore is full-fidelity (the enabled state is preserved, unlike the `.npca` import which
 forces disabled), conflict policies skip/overwrite apply by `Key` (rename is unsupported — a key is
 embedded in workflow references — and falls back to skip with a warning). A workflow node's
 `config.__customDefinitionId` is **remapped** to the restored definition id, so overwrite-merge
-restores keep references intact (a no-op for a clean restore, which preserves source ids).
+restores keep references intact (a no-op for a clean restore, which preserves source ids). Selecting
+workflows automatically includes custom-activity definitions; a missing hard reference aborts before
+any restore write.
 
 ## AI awareness
 

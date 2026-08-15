@@ -42,15 +42,6 @@ export interface ChatThreadMeta {
 const MAX_PERSISTED_MESSAGES = 200;
 
 /**
- * Cap on the size of a persisted `proposal.definitionJson`. Below the cap, a proposal
- * survives a page reload and stays applicable (the diff base is reconstructed from the
- * live canvas as long as its hash still matches `baseDefinitionHash`); above the cap it
- * degrades to a read-only "expired" notice, so that a pathologically large workflow
- * definition can't blow out the sessionStorage quota.
- */
-const MAX_PERSISTED_PROPOSAL_CHARS = 100_000;
-
-/**
  * Holds chat history **per user, workflow, and thread**. Unlike an earlier version, this
  * store is now `persist`-ed in sessionStorage (survives a page reload, not a closed tab), but
  * privacy-conscious: `partialize`
@@ -101,26 +92,34 @@ function isPersistableScope(scopeKey: string): boolean {
 }
 
 /**
- * Strips heavy/sensitive fields before persisting (the diff-base snapshot, streaming flags).
- * Proposal JSON survives a reload only for the thread's **most recent** proposal (and only
- * up to a size cap) so it stays applicable: older proposals are superseded anyway — the
- * apply path would reject them via the stale-hash guard — so they persist as an empty `''`
- * stub instead. Without this, 200 messages at ~90 KB each could blow out the sessionStorage
- * quota. The diff base itself needs no snapshot — the panel reconstructs it from the live
- * canvas as soon as its hash matches the proposal's baseDefinitionHash.
+ * Strips heavy/sensitive fields before persisting. Proposal metadata survives so the UI can
+ * explain that a proposal expired, but its server-restored definition never enters browser
+ * storage. The in-memory proposal remains applicable until the tab reloads.
  */
 function stripForPersist(messages: ChatMessage[]): ChatMessage[] {
   const kept = messages.slice(-MAX_PERSISTED_MESSAGES);
-  const lastProposalIdx = kept.reduce((acc, m, i) => (m.proposal ? i : acc), -1);
-  return kept.map((m, i) => {
+  return kept.map((m) => {
     const { baseDef: _baseDef, streaming: _s, building: _b, proposal, ...rest } = m;
     const out: ChatMessage = { ...rest };
-    if (proposal) {
-      const keepJson = i === lastProposalIdx && proposal.definitionJson.length <= MAX_PERSISTED_PROPOSAL_CHARS;
-      out.proposal = keepJson ? { ...proposal } : { ...proposal, definitionJson: '' };
-    }
+    // The server merges proposals back onto the unredacted Workflow Definition. Keep proposal
+    // metadata for the expired notice, but never persist the potentially secret-bearing JSON.
+    if (proposal) out.proposal = { ...proposal, definitionJson: '' };
     return out;
   });
+}
+
+/** Scrubs v1 state during hydration before Zustand writes the migrated v2 payload back. */
+function migratePersistedState(persistedState: unknown): unknown {
+  if (!persistedState || typeof persistedState !== 'object') return persistedState;
+  const state = persistedState as Record<string, unknown>;
+  const rawMessages = state.messagesByThread;
+  if (!rawMessages || typeof rawMessages !== 'object') return state;
+
+  const messagesByThread: Record<string, ChatMessage[]> = {};
+  for (const [key, value] of Object.entries(rawMessages as Record<string, unknown>)) {
+    messagesByThread[key] = Array.isArray(value) ? stripForPersist(value as ChatMessage[]) : [];
+  }
+  return { ...state, messagesByThread };
 }
 
 export const useAiChatStore = create<AiChatStore>()(
@@ -202,7 +201,8 @@ export const useAiChatStore = create<AiChatStore>()(
     }),
     {
       name: AI_CHAT_STORAGE_KEY,
-      version: 1,
+      version: 2,
+      migrate: (persistedState) => migratePersistedState(persistedState) as AiChatStore,
       storage: createJSONStorage(() => globalThis.sessionStorage),
       // Only persist saved workflows; strip sensitive/heavy fields.
       partialize: (state) => {

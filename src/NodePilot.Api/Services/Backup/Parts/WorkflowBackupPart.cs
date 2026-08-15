@@ -14,7 +14,13 @@ namespace NodePilot.Api.Services.Backup.Parts;
 public sealed class WorkflowBackupPart(NodePilotDbContext db) : IBackupPart
 {
     public string Key => BackupSections.Workflows;
-    public IReadOnlyList<string> DependsOn => [BackupSections.Folders, BackupSections.Machines, BackupSections.Credentials];
+    public IReadOnlyList<string> DependsOn =>
+    [
+        BackupSections.Folders,
+        BackupSections.Machines,
+        BackupSections.Credentials,
+        BackupSections.CustomActivities,
+    ];
 
     public Task<int> CountAsync(CancellationToken ct) => db.Workflows.CountAsync(ct);
 

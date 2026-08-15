@@ -90,7 +90,8 @@ public sealed class WorkflowsControllerRbacTests : IDisposable
         var ctrl = new WorkflowsController(
             _db, NullLogger<WorkflowsController>.Instance, NoopAuditWriter.Instance,
             new ResourceAuthorizationService(_db),
-            new NodePilot.Api.Services.WorkflowContractDeriver())
+            new NodePilot.Api.Services.WorkflowContractDeriver(),
+            NodePilot.Api.Tests.Controllers.WorkflowControllerHarnessFactory.VersionDefinitions())
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = principal } }
         };

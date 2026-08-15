@@ -188,11 +188,14 @@ public class CommandIntegrationNewSurfaceTests
             {
                 credentialsRewritten = 3, credentialsSkipped = 0, credentialSkipDetails = Array.Empty<object>(),
                 globalSecretsRewritten = 1, globalSecretsSkipped = 0, globalSecretSkipDetails = Array.Empty<object>(),
+                workflowVersionsRewritten = 7, workflowVersionsSkipped = 0, workflowVersionSkipDetails = Array.Empty<object>(),
                 partialSuccess = false,
             }));
 
         var result = h.Run("secrets", "reencrypt", "--yes");
         result.ExitCode.Should().Be(ExitCodes.Success);
+        result.Output.Should().Contain("\"workflowVersionsRewritten\":7")
+            .And.Contain("\"workflowVersionsSkipped\":0");
     }
 
     [Fact]
@@ -205,11 +208,46 @@ public class CommandIntegrationNewSurfaceTests
                 credentialsRewritten = 2, credentialsSkipped = 1,
                 credentialSkipDetails = new[] { new { id = Guid.NewGuid(), name = "x", reason = "CryptographicException" } },
                 globalSecretsRewritten = 0, globalSecretsSkipped = 0, globalSecretSkipDetails = Array.Empty<object>(),
+                workflowVersionsRewritten = 2, workflowVersionsSkipped = 1,
+                workflowVersionSkipDetails = new[]
+                {
+                    new { id = Guid.NewGuid(), name = "Deploy v3", reason = "LegacyProviderUnavailable" },
+                },
                 partialSuccess = true,
             }));
 
         var result = h.Run("secrets", "reencrypt", "--yes");
         result.ExitCode.Should().Be(ExitCodes.Error);
+        result.Output.Should().Contain("\"workflowVersionsSkipped\":1")
+            .And.Contain("Deploy v3")
+            .And.Contain("LegacyProviderUnavailable");
+    }
+
+    [Fact]
+    public void SecretsReencrypt_Table_ReportsWorkflowHistoryCountersAndSkipDetails()
+    {
+        using var h = new CommandTestHarness();
+        h.Server.Given(Request.Create().WithPath("/api/secrets/reencrypt").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(207).WithBodyAsJson(new
+            {
+                credentialsRewritten = 2, credentialsSkipped = 0, credentialSkipDetails = Array.Empty<object>(),
+                globalSecretsRewritten = 1, globalSecretsSkipped = 0, globalSecretSkipDetails = Array.Empty<object>(),
+                workflowVersionsRewritten = 9, workflowVersionsSkipped = 1,
+                workflowVersionSkipDetails = new[]
+                {
+                    new { id = Guid.NewGuid(), name = "Deploy v3", reason = "LegacyProviderUnavailable" },
+                },
+                partialSuccess = true,
+            }));
+
+        var result = h.Run("secrets", "reencrypt", "--yes", "-o", "table", "--no-color");
+
+        result.ExitCode.Should().Be(ExitCodes.Error);
+        result.Output.Should().Contain("Workflow Versions Rewritten").And.Contain("9")
+            .And.Contain("Workflow Versions Skipped").And.Contain("1")
+            .And.Contain("Workflow-version skips")
+            .And.Contain("Deploy v3")
+            .And.Contain("LegacyProviderUnavailable");
     }
 
     // ---- settings -----------------------------------------------------------

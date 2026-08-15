@@ -684,7 +684,7 @@ NodePilot ships **27 built-in activities** in two scopes — *Remote* (executed 
 
 | Type | Description | Key Config |
 |---|---|---|
-| `runScript` | Execute a PowerShell script locally when no target/localhost is selected, or through NodePilot's WinRM wrapper when a non-local target is selected. With no target the script runs on the API host and may open its own WinRM session (`Invoke-Command`/`New-PSSession`, SCOrch-style self-managed remoting) — at the cost of NodePilot's managed session pool, credential store and machine audit. Auto-captures script-scope variables as `param.*` outputs. Fails only on a terminating PowerShell error (`throw`/`Write-Error`) — an `exit N` does not fail the step unless `successExitCodes` is set; `isolated: true` runs it in its own Windows Job Object process. | `script`, `engine` (`auto`/`pwsh`/`powershell`), `timeoutSeconds`, `successExitCodes`, `isolated`, `memoryLimitMb`, `maxProcesses` |
+| `runScript` | Execute a PowerShell script locally when no target/localhost is selected, or through NodePilot's WinRM wrapper when a non-local target is selected. With no target the script runs on the API host **as the NodePilot service identity** and may open its own WinRM session (`Invoke-Command`/`New-PSSession`, SCOrch-style self-managed remoting) — at the cost of NodePilot's managed session pool, credential store and machine audit. Operators are intentionally trusted automation authors and may publish/run this code. Auto-captures script-scope variables as `param.*` outputs. Fails only on a terminating PowerShell error (`throw`/`Write-Error`) — an `exit N` does not fail the step unless `successExitCodes` is set; `isolated: true` runs it in its own Windows Job Object process. | `script`, `engine` (`auto`/`pwsh`/`powershell`), `timeoutSeconds`, `successExitCodes`, `isolated`, `memoryLimitMb`, `maxProcesses` |
 | `fileOperation` | Copy / move / delete / test-exists / rename — **files only** (asserts `-PathType Leaf`) | `operation`, `path`, `destination`, `newName` |
 | `folderOperation` | Copy / move / delete / test-exists / list / create / rename — **folders only** (asserts `-PathType Container`) | `operation`, `path`, `destination`, `newName` |
 | `textFileEdit` | Line-oriented text edit — append / prepend / insert / delete / replace / replaceLine — BOM-aware encoding, atomic write, optional backup, dry-run | `operation`, `path`, `content`, `matchPattern`, `replace`, `lineNumber` |
@@ -993,7 +993,7 @@ HTTPS is mandatory by default. `--allow-insecure` is an explicit development-onl
 for HTTP loopback URLs and must be supplied on every command that uses such a profile;
 it never permits plaintext connections to remote hosts.
 
-**Tokens** are stored DPAPI-encrypted (`CurrentUser` scope) under `%APPDATA%\NodePilot\session-<profile>.dat`. A `TokenRefreshHandler` `DelegatingHandler` transparently refreshes on `401` and replays the original request.
+**Tokens** are stored DPAPI-encrypted (`CurrentUser` scope) under `%APPDATA%\NodePilot\session-<profile>.dat`, including the server-issued absolute expiry. A `TokenRefreshHandler` rotates a still-valid token shortly before that deadline. CLI and MCP coordinate through the same origin-bound file lease, so concurrent processes perform one refresh and losers reload the winner's token; atomic same-directory replacement keeps each stored session generation complete. A transient proactive-refresh failure enters a token-bound 15-second cooldown while requests continue with the still-valid token. The rotated token is used by all future requests, and a new login is required after absolute expiry. Rotation never extends the server-side session lifetime.
 
 ---
 
@@ -1074,8 +1074,8 @@ During a runtime PostgreSQL or SQL Server outage, NodePilot stays up: APIs fail 
 - **Rate limiting** — per-IP **sliding window** (IPv4 partitioned by /32, IPv6 by /64): login **50/min**, refresh **20/min**, webhook **60/min**, external trigger **30/min**, AI generate **20/min**.
 - **SSRF guard** — `restApi` blocks RFC 1918 / loopback / metadata IPs (opt-in for prod), re-validates on every redirect, strips auth headers cross-origin.
 - **Localhost bypass** — `localhost` / `127.0.0.1` / `::1` without credentials runs in-process, skipping WinRM. Documented product feature.
-- **Roles** — Admin (full), Operator (run + manage machines/credentials), Viewer (read-only).
-- **SignalR auth** — JWT via `?access_token=` (only for `/hubs/` paths).
+- **Roles** — Admin (full), Operator (trusted automation author: create/edit/publish/run workflows, manage machines/credentials, and intentionally execute local activities as the NodePilot service identity), Viewer (read-only). Folder RBAC governs workflow access; it is not a sandbox around Operator-authored code.
+- **SignalR auth** — the browser's httpOnly `np_auth` cookie is sent automatically during the `/hubs/` WebSocket upgrade; no JWT query string is used.
 
 ### Hardening flags (shipped on — relaxed in Development)
 
@@ -1130,7 +1130,7 @@ What you get:
 - **Direct Kestrel HTTPS** — cert from `LocalMachine\My` by thumbprint, **no IIS / reverse proxy**, SPA + API on one origin
 - **Install-dir / data-dir split** — binaries in `C:\Program Files\NodePilot` (Read), mutable state in `C:\ProgramData\NodePilot` (Modify)
 - **Cert private-key ACL grant** to the gMSA, firewall rule, health-check probe before unblocking
-- **In-place upgrades with auto-rollback** via `deploy/Update-NodePilot.ps1`
+- **In-place upgrades with auto-rollback** via `deploy/Update-NodePilot.ps1` (legacy workflow-history encryption is an explicit post-health-check cutover so rollback remains safe)
 
 ### Prerequisites (one-time)
 
@@ -1319,9 +1319,10 @@ dotnet test tests/NodePilot.Cli.Tests
 - Backend DB tests use **SQLite in-memory** (`DataSource=:memory:`) — only as a test backend; the production app does not support SQLite.
 
 **CI pipeline** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs five jobs on every pull
-request — and on demand via `workflow_dispatch`. There is deliberately no `push` trigger: a merge
-commit re-tests the tree the PR run already covered. Direct pushes to `main` (release cuts) are
-covered by the nightly suite (`scripts/nightly-tests.ps1`).
+request — and on demand via `workflow_dispatch`. There is deliberately no `push` trigger: repository
+owner-controlled release cuts use the manual workflow when another run is wanted. The local nightly
+suite (`scripts/nightly-tests.ps1`) is a safety net for the **currently checked-out working tree**; it
+does not run `git pull` and therefore does not claim to validate the latest `origin/main`.
 
 1. **Backend** *(Windows)* — restore, build Release, `dotnet test --collect:"XPlat Code Coverage"`, ReportGenerator, **85 % line / 70 % branch coverage** gate
 2. **Frontend** *(Ubuntu)* — `npm ci`, lint, type-check + build, vitest with coverage thresholds
@@ -1342,7 +1343,7 @@ The full OpenAPI spec is served at `GET /openapi/v1.json`; Swagger UI at `GET /s
 | Workflows | `GET/POST/PUT/DELETE /api/workflows`, `/{id}/execute`, `/{id}/enable`, `/{id}/disable`, `/{id}/duplicate`, `/{id}/cancel-all` |
 | Edit lock | `POST /{id}/lock`, `POST /{id}/unlock`, `POST /{id}/publish` *(atomic save+enable+unlock)*, `POST /{id}/force-unlock` *(Admin)* |
 | Versions | `GET /{id}/versions`, `GET /{id}/versions/{v}`, `POST /{id}/rollback/{v}` |
-| Import / Export | `GET /api/workflows/export`, `GET /{id}/export`, `POST /api/workflows/import?folderId={guid}`, `POST /api/workflows/import-scorch?folderId={guid}` *(SCOrch XML, ≤50 MiB; `folderId` optional → Root, RBAC = Edit on the target folder)* |
+| Import / Export | `GET /api/workflows/export`, `GET /{id}/export`, `POST /api/workflows/import?folderId={guid}`, `POST /api/workflows/import-scorch?folderId={guid}` *(SCOrch XML, ≤50 MiB and ≤500 combined workflows/variables; `folderId` optional → Root, RBAC = Edit on the target folder; Admins and Operators both import workflows and their global variables — an existing variable of the same name is never overwritten)* |
 | Executions | `GET /api/executions`, `GET /{id}/steps`, `POST /{id}/cancel`, `POST /{id}/retry`, `POST /{id}/resume` |
 | Designer telemetry | `GET /api/workflows/{id}/step-health` (sparkline), `GET /api/workflows/{id}/step-stats?windowDays=30` |
 | Machines | `GET/POST/PUT/DELETE /api/machines`, `POST /{id}/test` |

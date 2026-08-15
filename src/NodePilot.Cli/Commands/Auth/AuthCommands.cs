@@ -71,6 +71,13 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
         {
             var api = _factory.CreateAnonymous(server, settings.AllowInsecureLoopback);
             var response = await api.LoginAsync(new LoginRequest(username, password), settings.SetupToken, ct);
+            if (!ClientSessionSecurity.TryResolveExpiration(
+                    response.Token, response.ExpiresAt, out var expiresAt)
+                || expiresAt <= DateTimeOffset.UtcNow)
+            {
+                writer.Error("Login fehlgeschlagen: Serverantwort enthält keine gültige Token-Ablaufzeit.");
+                return ExitCodes.Error;
+            }
 
             // Persist server URL into the active profile so subsequent calls don't need --server.
             cfg.Profiles[profile] = new ProfileEntry { Server = server };
@@ -84,7 +91,7 @@ public sealed class LoginCommand : AsyncCommand<LoginSettings>
                 Username = response.Username,
                 UserId = response.UserId,
                 Role = response.Role,
-                ExpiresAt = DateTime.UtcNow.AddHours(12),
+                ExpiresAt = expiresAt,
             });
 
             writer.Success($"Eingeloggt als [bold]{response.Username}[/] ({response.Role}) → {server}");

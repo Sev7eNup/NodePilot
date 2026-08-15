@@ -110,13 +110,13 @@ describe('aiChatStore', () => {
       expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
     });
 
-    it('strips baseDef and streaming/building flags but keeps proposal.definitionJson', () => {
+    it('strips baseDef, transient flags and every proposal definitionJson', () => {
       const scope = aiChatScopeKey('u1', 'wf1');
       const id = useAiChatStore.getState().newThread(scope, 'Chat 1');
       const msg: ChatMessage = {
         role: 'assistant', content: 'done', streaming: true, building: true,
         baseDef: { nodes: [], edges: [] },
-        proposal: { definitionJson: '{"nodes":[]}', summary: 's', nodeCount: 1, edgeCount: 0, baseDefinitionHash: 'h' },
+        proposal: { definitionJson: '{"nodes":[{"secret":"must-not-reach-session-storage"}]}', summary: 's', nodeCount: 1, edgeCount: 0, baseDefinitionHash: 'h' },
       };
       useAiChatStore.getState().updateMessages(scope, id, () => [msg]);
 
@@ -125,8 +125,9 @@ describe('aiChatStore', () => {
       expect(stored.streaming).toBeUndefined();
       expect(stored.building).toBeUndefined();
       expect(stored.content).toBe('done'); // prose survives
-      expect(stored.proposal?.definitionJson).toBe('{"nodes":[]}'); // survives reload → stays applicable
+      expect(stored.proposal?.definitionJson).toBe('');
       expect(stored.proposal?.summary).toBe('s');
+      expect(sessionStorage.getItem(STORAGE_KEY)).not.toContain('must-not-reach-session-storage');
     });
 
     it('degrades an oversized proposal.definitionJson to the empty stub', () => {
@@ -140,11 +141,11 @@ describe('aiChatStore', () => {
       useAiChatStore.getState().updateMessages(scope, id, () => [msg]);
 
       const stored = persisted().messagesByThread[aiChatFullKey(scope, id)][0];
-      expect(stored.proposal?.definitionJson).toBe(''); // over the cap → read-only stub
+      expect(stored.proposal?.definitionJson).toBe(''); // all persisted proposals are read-only stubs
       expect(stored.proposal?.summary).toBe('s');
     });
 
-    it('keeps definitionJson only for the newest proposal in a thread (aggregate bound)', () => {
+    it('never persists definitionJson, including for the newest proposal in a thread', () => {
       const scope = aiChatScopeKey('u1', 'wf1');
       const id = useAiChatStore.getState().newThread(scope, 'Chat 1');
       const proposalMsg = (json: string): ChatMessage => ({
@@ -160,7 +161,32 @@ describe('aiChatStore', () => {
       const stored = persisted().messagesByThread[aiChatFullKey(scope, id)];
       expect(stored[0].proposal?.definitionJson).toBe('');            // superseded → stub
       expect(stored[0].proposal?.summary).toBe('s');                  // metadata survives
-      expect(stored[2].proposal?.definitionJson).toBe('{"new":true}'); // newest stays applicable
+      expect(stored[2].proposal?.definitionJson).toBe('');
+    });
+
+    it('migrates previously persisted proposal JSON out of sessionStorage', async () => {
+      const key = aiChatFullKey('u1::wf1', 'thread-1');
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: 1,
+        state: {
+          messagesByThread: {
+            [key]: [{
+              role: 'assistant', content: 'done',
+              proposal: {
+                definitionJson: '{"secret":"legacy-session-secret"}',
+                summary: 's', nodeCount: 1, edgeCount: 0, baseDefinitionHash: 'h',
+              },
+            }],
+          },
+          threadsByScope: {},
+          activeThreadByScope: {},
+        },
+      }));
+
+      await useAiChatStore.persist.rehydrate();
+
+      expect(sessionStorage.getItem(STORAGE_KEY)).not.toContain('legacy-session-secret');
+      expect(useAiChatStore.getState().messagesByThread[key][0].proposal?.definitionJson).toBe('');
     });
 
     it('does NOT persist threads of unsaved (__new__) workflows', () => {

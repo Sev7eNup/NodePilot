@@ -10,6 +10,8 @@
     "streamingBadge": "generiert",
     "stop": "Stopp",
     "replaceAll": "Komplettes Skript ersetzen (statt am Cursor einfügen)",
+    "includeCurrentScriptTarget": "Aktuelles Skript als Kontext an {{target}} senden. Es kann Passwörter, Tokens oder andere Secrets enthalten.",
+    "includeCurrentScriptFallback": "Aktuelles Skript an den konfigurierten LLM-Endpunkt senden (dieser kann extern sein). Es kann Passwörter, Tokens oder andere Secrets enthalten.",
     "insert": "Übernehmen",
     "regenerate": "Neu generieren",
     "tokenUsed": "Tokens: {{tokens}} · {{ms}} ms",

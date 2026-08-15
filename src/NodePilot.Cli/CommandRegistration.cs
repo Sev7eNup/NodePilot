@@ -250,7 +250,7 @@ public static class CommandRegistration
         config.AddBranch("secrets", s =>
         {
             s.SetDescription("Operate on the secret-protector layer (Admin only).");
-            s.AddCommand<SecretsReencryptCommand>("reencrypt").WithDescription("Bulk re-encrypt every credential + secret-flagged global variable.");
+            s.AddCommand<SecretsReencryptCommand>("reencrypt").WithDescription("Bulk re-encrypt credentials, secret globals, and workflow history.");
         });
 
         // -- shared-folder (RBAC org tree) --------------------------------------

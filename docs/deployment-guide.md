@@ -479,6 +479,15 @@ The health probe follows the port in the installed configuration, so a non-defau
 - A **successful update always leaves the service running**, regardless of whether it was
   running before. A failed update restores the pre-update state instead — a service that
   was deliberately stopped is not started by a rollback.
+- Releases that introduce encrypted workflow-history envelopes keep the startup health-check
+  rollback safe: startup reports legacy plaintext history but does not rewrite it. During a mixed
+  HA rollout, pause workflow editing/rollback writes (or disable failback to old nodes after the
+  first such write), because a new node immediately writes new history snapshots as `np:wfv:v1:`
+  and an old binary cannot read those rows. After the health check has succeeded and **every HA
+  node** runs the new release, take the normal database backup and run
+  `np secrets reencrypt --yes` (or the Admin Security action). This audited cutover protects old
+  `WorkflowVersions`. Once either a new-binary history write or this cutover succeeds, do not
+  fail back to a release that predates `np:wfv:v1:` history support.
 - The binary backup deliberately **excludes** `appsettings.Production.json` (it holds
   secrets). It is the last file removed during the swap, so an aborted upgrade leaves it in
   place — but if it is ever lost, do not re-run the update: it refuses a layout without a

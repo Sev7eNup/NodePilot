@@ -42,20 +42,6 @@ public sealed class DbAdminSecretColumns
     private static readonly HashSet<string> GlobalVariableValueIdentifier =
         new(["Value"], StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    /// Constructs that return a whole row under one result column. Neither the statement text nor
-    /// the result-column name mentions the protected column, so both name-based layers miss them.
-    /// <c>::</c> is the PostgreSQL cast operator (<c>u::text</c> serializes the entire row);
-    /// SQL Server's <c>FOR JSON</c> is matched separately as a token pair.
-    /// </summary>
-    private static readonly HashSet<string> RowProjectionIdentifiers = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "to_json", "row_to_json", "to_jsonb", "json_agg", "jsonb_agg",
-        "json_build_object", "jsonb_build_object", "json_object", "jsonb_object",
-        "row_to_xml", "table_to_xml", "query_to_xml", "hstore",
-        DbAdminReadOnlySqlGuard.CastOperator,
-    };
-
     /// <summary>Result-column names that get masked: every hidden column plus GlobalVariable.Value.</summary>
     private readonly HashSet<string> _maskedColumnNames;
 
@@ -68,6 +54,16 @@ public sealed class DbAdminSecretColumns
     /// ~34 tables that hold no secret at all.
     /// </summary>
     private readonly HashSet<string> _protectedTableIdentifiers;
+
+    /// <summary>
+    /// Entity and mapped SQL table identifiers whose rows contain a hidden/masked secret column.
+    /// External-agent adapters deny these complete tables because provider-neutral SQL cannot prove
+    /// that a composite row was not serialized under an alias.
+    /// </summary>
+    public IReadOnlySet<string> ProtectedTableIdentifiers => _protectedTableIdentifiers;
+
+    public bool IsProtectedTableIdentifier(string identifier)
+        => _protectedTableIdentifiers.Contains(identifier);
 
     public DbAdminSecretColumns(DbAdminMetadataService metadata)
     {
@@ -124,10 +120,7 @@ public sealed class DbAdminSecretColumns
     /// docs/security-findings.md).</para>
     /// </summary>
     public bool ReferencesProtectedRowProjection(string sql)
-        => DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, _protectedTableIdentifiers)
-           && (DbAdminReadOnlySqlGuard.ReferencesAnyIdentifier(sql, RowProjectionIdentifiers)
-               || DbAdminReadOnlySqlGuard.ReferencesIdentifierPair(sql, "FOR", "JSON")
-               || DbAdminReadOnlySqlGuard.ReferencesIdentifierPair(sql, "FOR", "XML"));
+        => DbAdminReadOnlySqlGuard.ReferencesWholeRowProjection(sql, _protectedTableIdentifiers);
 
     /// <summary>
     /// Per-result-column flags: <c>true</c> where the cell must be replaced with <see cref="Mask"/>.

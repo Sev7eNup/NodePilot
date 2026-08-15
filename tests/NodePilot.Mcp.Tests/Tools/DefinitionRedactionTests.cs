@@ -18,7 +18,7 @@ public sealed class DefinitionRedactionTests
     public async Task GetWorkflowDefinition_MasksSecretConfigValues()
     {
         var id = Guid.NewGuid();
-        // A definition with an inline webhook secret + an API key + a harmless script.
+        // A definition with named secrets and free-form fields whose contents cannot be classified safely.
         var definition = """
         {
           "nodes": [
@@ -55,10 +55,11 @@ public sealed class DefinitionRedactionTests
         json.Should().NotContain("sk-live-123");
         json.Should().NotContain("hunter2");
         json.Should().NotContain("opaque-tenant-credential");
+        json.Should().NotContain("Get-PSDrive C");
+        json.Should().NotContain("application/json");
         json.Should().Contain("***");
-        // Non-secret content preserved.
-        json.Should().Contain("Get-PSDrive C");
-        json.Should().Contain("https://example.com");
-        json.Should().Contain("application/json");
+        // Runtime HTTP destinations are opaque because user-info, path and query components may
+        // carry unclassified legacy credentials.
+        json.Should().NotContain("https://example.com");
     }
 }

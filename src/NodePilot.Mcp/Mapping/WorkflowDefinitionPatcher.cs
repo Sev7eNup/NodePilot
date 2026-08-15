@@ -162,6 +162,12 @@ public static class WorkflowDefinitionPatcher
                 continue;
             }
 
+            if (targetVal is JsonArray targetArray)
+            {
+                MergeNestedArray(targetArray, sourceChild as JsonArray, notes);
+                continue;
+            }
+
             var original = sourceChild is JsonValue sv && sv.TryGetValue(out string? o) && !string.IsNullOrEmpty(o) && o != SecretMask ? o : null;
 
             // Universal redaction round-trip: a proposed "***" means "unchanged / was redacted" for
@@ -170,7 +176,11 @@ public static class WorkflowDefinitionPatcher
             var proposedIsMask = targetVal is JsonValue mv && mv.TryGetValue(out string? mm) && mm == SecretMask;
             if (proposedIsMask)
             {
-                if (original is not null) target[key] = JsonValue.Create(original);
+                var originalIsMask = sourceChild is JsonValue originalValue
+                    && originalValue.TryGetValue(out string? originalString)
+                    && originalString == SecretMask;
+                if (sourceChild is not null && !originalIsMask)
+                    target[key] = sourceChild.DeepClone();
                 continue;
             }
 
@@ -190,6 +200,50 @@ public static class WorkflowDefinitionPatcher
                 notes.Add($"Secret '{key}' must be set manually — the agent may not assign secret values.");
             }
         }
+    }
+
+    // Nested condition/case arrays have no stable item identity. If a redacted array still
+    // contains a mask, retain the whole original array so a reorder cannot attach a secret to the
+    // wrong case. Otherwise recurse by index to keep named-secret protection for nested objects.
+    private static void MergeNestedArray(JsonArray target, JsonArray? source, List<string> notes)
+    {
+        if (source is not null && ContainsMask(target))
+        {
+            target.Clear();
+            foreach (var item in source)
+                target.Add(item?.DeepClone());
+            return;
+        }
+
+        for (var index = 0; index < target.Count; index++)
+        {
+            var targetItem = target[index];
+            var sourceItem = source is not null && index < source.Count ? source[index] : null;
+            switch (targetItem)
+            {
+                case JsonObject targetObject:
+                    MergeObject(targetObject, sourceItem as JsonObject, notes);
+                    break;
+                case JsonArray targetArray:
+                    MergeNestedArray(targetArray, sourceItem as JsonArray, notes);
+                    break;
+                case JsonValue targetValue when targetValue.TryGetValue(out string? value)
+                                               && value == SecretMask
+                                               && sourceItem is not null:
+                    target[index] = sourceItem.DeepClone();
+                    break;
+            }
+        }
+    }
+
+    private static bool ContainsMask(JsonNode node)
+    {
+        if (node is JsonValue value)
+            return value.TryGetValue(out string? text) && text == SecretMask;
+        if (node is JsonObject obj)
+            return obj.Any(property => property.Value is not null && ContainsMask(property.Value));
+        return node is JsonArray array
+               && array.Any(item => item is not null && ContainsMask(item));
     }
 
     private static List<JsonObject> ToObjectList(JsonElement def, string arrayName)

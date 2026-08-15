@@ -140,13 +140,14 @@ describe('generateScriptStream SSE parser', () => {
     expect(out.join('')).toBe('Get-Service');
   });
 
-  it('forwards the current script in the request body (refactor base)', async () => {
+  it('forwards explicit script-context consent in the request body', async () => {
     postEventStreamMock.mockResolvedValue(sseResponse(['event: done\ndata: {"model":"m","durationMs":1}\n\n']));
     await generateScriptStream(
-      { prompt: 'refactor', upstreamVariables: [], currentScript: '$now = Get-Date' },
+      { prompt: 'refactor', upstreamVariables: [], currentScript: '$now = Get-Date', includeCurrentScript: true },
       { onDelta: () => {} },
     );
-    const body = postEventStreamMock.mock.calls[0][1] as { currentScript?: string };
+    const body = postEventStreamMock.mock.calls[0][1] as { currentScript?: string; includeCurrentScript?: boolean };
     expect(body.currentScript).toBe('$now = Get-Date');
+    expect(body.includeCurrentScript).toBe(true);
   });
 });

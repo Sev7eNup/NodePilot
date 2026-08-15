@@ -60,7 +60,9 @@ interface Props {
    * appear as a banner in the editor. Default insert mode is "insert at cursor"; the user can
    * switch to "replace the whole editor content" in the prompt dialog.
    */
-  onAiGenerate?: (prompt: string, currentScript: string, onToken: (text: string) => void, signal: AbortSignal) => Promise<void>;
+  onAiGenerate?: (prompt: string, currentScript: string | null, onToken: (text: string) => void, signal: AbortSignal) => Promise<void>;
+  /** Sanitized active LLM host shown beside the one-shot script-context consent. */
+  aiTargetHost?: string | null;
 }
 
 const FONT_SIZE_KEY = 'nodepilot.scriptEditor.fontSize';
@@ -188,7 +190,8 @@ function parseExposedVars(code: string): string[] {
 }
 
 export function ScriptEditorDialog({
-  value, onChange, onClose, onRun, availableVars = [], upstreamRefs = [], outputVariableName, title = 'PowerShell Script Editor', onAiGenerate,
+  value, onChange, onClose, onRun, availableVars = [], upstreamRefs = [], outputVariableName,
+  title = 'PowerShell Script Editor', onAiGenerate, aiTargetHost,
 }: Readonly<Props>) {
   const { t } = useTranslation(['ai', 'editor']);
   const aiDialogTitle = t('ai:scriptDialog.title');
@@ -342,7 +345,7 @@ export function ScriptEditorDialog({
    * editor on the first token (so a pre-token error doesn't lose the old content). Cancelled via
    * `signal` (Stop/Close).
    */
-  const handleAiSubmit = useCallback(async (prompt: string, replaceAll: boolean) => {
+  const handleAiSubmit = useCallback(async (prompt: string, replaceAll: boolean, includeCurrentScript: boolean) => {
     if (!onAiGenerate) return;
     if (aiAbortRef.current) return; // a generation is already running → no second stream
     const editor = editorRef.current;
@@ -431,9 +434,9 @@ export function ScriptEditorDialog({
     };
 
     try {
-      // Send the current editor content along, so "refactor/fix the script" has a starting point.
+        // Editor contents leave the browser only after the dialog's one-shot consent.
       const currentScript = editor?.getValue() ?? code;
-      await onAiGenerate(prompt, currentScript, onToken, ac.signal);
+      await onAiGenerate(prompt, includeCurrentScript ? currentScript : null, onToken, ac.signal);
       cleanup();
     } catch (err: unknown) {
       const aborted = (err instanceof DOMException || err instanceof Error) && err.name === 'AbortError';
@@ -868,6 +871,8 @@ export function ScriptEditorDialog({
           submitLabel={aiDialogSubmit}
           showReplaceToggle
           defaultReplaceAll={false}
+          showScriptContextConsent={code.trim().length > 0}
+          scriptContextTargetHost={aiTargetHost}
           onSubmit={handleAiSubmit}
           onClose={() => setAiDialogOpen(false)}
         />

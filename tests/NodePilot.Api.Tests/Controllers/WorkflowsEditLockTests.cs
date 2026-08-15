@@ -602,6 +602,8 @@ public class WorkflowsEditLockTests
     {
         var db = CreateContext();
         var w = NewWorkflow(enabled: true, lockedBy: null);
+        w.DefinitionJson =
+            """{"nodes":[{"id":"t","data":{"activityType":"scheduleTrigger","config":{"cron":"0 * * * *"}}},{"id":"a","data":{"activityType":"log","config":{}}}],"edges":[]}""";
         db.Workflows.Add(w);
         await db.SaveChangesAsync();
 
@@ -613,6 +615,10 @@ public class WorkflowsEditLockTests
         copy.IsEnabled.Should().BeFalse(
             "L-6: a duplicate is always born disabled so cloning a locked/under-review workflow cannot bypass the edit-lock");
         copy.Name.Should().Be("W (Copy)");
+        var expectedMetadata = WorkflowMetadata.Compute(w.DefinitionJson);
+        copy.ActivityCount.Should().Be(expectedMetadata.ActivityCount);
+        copy.TriggerTypesJson.Should().Be(expectedMetadata.TriggerTypesJson);
+        copy.Version.Should().Be(1, "a duplicate starts a distinct monotonically-versioned history");
     }
 
     private sealed class CallbackAuthorizationService(

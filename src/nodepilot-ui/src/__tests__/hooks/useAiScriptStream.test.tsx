@@ -12,7 +12,7 @@ import { useAuthStore } from '../../stores/authStore';
 // propagates to ScriptEditorDialog.onAiGenerate, whose absence hides the button.
 
 function caps(llm: boolean): KnowledgeCapabilities {
-  return { enabled: false, llm, docs: false, operational: false, sourceCode: false, db: false };
+  return { enabled: false, llm, docs: false, operational: false, sourceCode: false, db: false, scriptContextTargetHost: 'llm.example.test' };
 }
 
 // Seeded fresh cache → the query never fetches; no MSW needed.
@@ -36,7 +36,8 @@ describe('useAiScriptStream — gating', () => {
 
   it('operatorWithUsableLlm_returnsTheCallback', () => {
     const { result } = renderStreamHook('Operator', true);
-    expect(typeof result.current).toBe('function');
+    expect(typeof result.current?.generate).toBe('function');
+    expect(result.current?.targetHost).toBe('llm.example.test');
   });
 
   it('llmNotUsable_returnsUndefined', () => {

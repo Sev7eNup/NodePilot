@@ -5,25 +5,24 @@ using NodePilot.Data.Security;
 namespace NodePilot.Api.Services.Backup;
 
 /// <summary>
-/// How secret-bearing string values inside a workflow <c>DefinitionJson</c> are treated when
-/// the definition leaves the system (ADR 0001 K2). The same key list
-/// (<see cref="WorkflowDefinitionSecretRewriter.SecretConfigKeys"/>) drives both modes so the
-/// contextual "share one workflow" export and the system backup never disagree about what's a secret.
+/// How a workflow <c>DefinitionJson</c> is protected when it leaves the system (ADR 0001 K2).
+/// Collaboration exports use the shared structural redactor; DR backups encrypt the complete
+/// definition because arbitrary executable payloads cannot be classified safely by key name.
 /// </summary>
 public enum SecretHandling
 {
     /// <summary>Replace secret values with <c>"***"</c> — the share/export-for-collaboration path.</summary>
     Redact,
 
-    /// <summary>Replace secret values with an <c>{"$enc":"&lt;base64&gt;"}</c> object encrypted under
-    /// the backup passphrase — the DR backup path.</summary>
+    /// <summary>Seal the complete definition as an authenticated <c>$encDefinition</c> envelope
+    /// under the backup passphrase — the DR backup path.</summary>
     EncryptForBackup,
 }
 
 /// <summary>
-/// Structure-preserving rewrite of a workflow definition that handles the inline secret-bearing
-/// config keys uniformly. Generalises the former <c>WorkflowsControllerBase.RedactSecretsInDefinition</c>
-/// so both the workflow-sharing export and the system backup share one implementation.
+/// Redacts a structure-preserving sharing copy or seals the complete definition for DR backup.
+/// Generalises the former <c>WorkflowsControllerBase.RedactSecretsInDefinition</c> while keeping
+/// collaboration and backup confidentiality policies explicit and independently fail-closed.
 /// </summary>
 public static class WorkflowDefinitionSecretRewriter
 {
@@ -40,6 +39,13 @@ public static class WorkflowDefinitionSecretRewriter
     public const string EncKey = "$enc";
 
     /// <summary>
+    /// Marker for a backup-passphrase-encrypted complete workflow definition. Whole-definition
+    /// sealing is deliberate: executable/free-form fields cannot be classified safely by inspecting
+    /// their contents, and GUID references can be decrypted and remapped during restore.
+    /// </summary>
+    public const string DefinitionEncKey = "$encDefinition";
+
+    /// <summary>
     /// Rewrites <paramref name="root"/> according to <paramref name="handling"/>. For
     /// <see cref="SecretHandling.EncryptForBackup"/>, <paramref name="protector"/> must be supplied.
     /// </summary>
@@ -53,9 +59,14 @@ public static class WorkflowDefinitionSecretRewriter
         if (handling == SecretHandling.EncryptForBackup && protector is null)
             throw new ArgumentNullException(nameof(protector), "EncryptForBackup requires a passphrase protector.");
 
-        var node = JsonNode.Parse(root.GetRawText())
-            ?? throw new InvalidOperationException("Workflow definition is not valid JSON.");
-        return Walk(node, parentName: null, isHttpHeaderValue: false, protector);
+        // Seal the complete definition. Selective encryption can never be sound for arbitrary
+        // PowerShell, request bodies, custom headers, or imported SCOrch payloads: an unrecognised
+        // literal is still a potential credential. Keeping a single encrypted blob also avoids
+        // leaking structure and identifiers through a DR archive.
+        return new JsonObject
+        {
+            [DefinitionEncKey] = Convert.ToBase64String(protector!.Protect(root.GetRawText())),
+        };
     }
 
     /// <summary>
@@ -73,17 +84,55 @@ public static class WorkflowDefinitionSecretRewriter
         Func<Guid, Guid?> resolveCredential,
         List<string> unresolved)
     {
-        return RestoreWalk(definition, parentName: null, protector, resolveMachine, resolveCredential, unresolved);
+        var wholeDefinitionEnvelope = TryUnsealBackupDefinition(definition, protector, out var plaintextDefinition);
+        var restored = RestoreWalk(
+            plaintextDefinition, protector,
+            decryptLegacyFieldEnvelopes: !wholeDefinitionEnvelope);
+        RemapNodeInfrastructureReferences(
+            restored, resolveMachine, resolveCredential, unresolved);
+        return restored;
+    }
+
+    /// <summary>
+    /// Decrypts the whole-definition envelope used by current backups. A deep clone is returned for
+    /// older per-field-encrypted backups so the existing recursive restore remains backward compatible.
+    /// </summary>
+    public static JsonNode UnsealBackupDefinition(JsonNode definition, PassphraseSecretProtector protector)
+    {
+        TryUnsealBackupDefinition(definition, protector, out var plaintextDefinition);
+        return plaintextDefinition;
+    }
+
+    private static bool TryUnsealBackupDefinition(
+        JsonNode definition, PassphraseSecretProtector protector, out JsonNode plaintextDefinition)
+    {
+        if (definition is JsonObject envelope
+            && envelope.Count == 1
+            && envelope.TryGetPropertyValue(DefinitionEncKey, out var ciphertext)
+            && ciphertext is JsonValue value
+            && value.TryGetValue(out string? encoded)
+            && !string.IsNullOrEmpty(encoded))
+        {
+            var plaintext = protector.Unprotect(Convert.FromBase64String(encoded));
+            plaintextDefinition = JsonNode.Parse(plaintext)
+                ?? throw new InvalidOperationException("Encrypted workflow definition contained JSON null.");
+            return true;
+        }
+
+        plaintextDefinition = definition.DeepClone();
+        return false;
     }
 
     private static JsonNode RestoreWalk(
-        JsonNode node, string? parentName, PassphraseSecretProtector protector,
-        Func<Guid, Guid?> resolveMachine, Func<Guid, Guid?> resolveCredential, List<string> unresolved)
+        JsonNode node,
+        PassphraseSecretProtector protector,
+        bool decryptLegacyFieldEnvelopes)
     {
         switch (node)
         {
             // An {"$enc":"<b64>"} object is a sealed secret — decrypt it back to its string value.
-            case JsonObject enc when enc.Count == 1 && enc.TryGetPropertyValue(EncKey, out var b64)
+            case JsonObject enc when decryptLegacyFieldEnvelopes
+                && enc.Count == 1 && enc.TryGetPropertyValue(EncKey, out var b64)
                 && b64 is JsonValue bv && bv.TryGetValue(out string? s) && s is not null:
                 return JsonValue.Create(protector.Unprotect(Convert.FromBase64String(s)));
             case JsonObject obj:
@@ -91,7 +140,7 @@ public static class WorkflowDefinitionSecretRewriter
                 var result = new JsonObject();
                 foreach (var (name, value) in obj)
                     result[name] = value is null ? null
-                        : RestoreWalk(value, name, protector, resolveMachine, resolveCredential, unresolved);
+                        : RestoreWalk(value, protector, decryptLegacyFieldEnvelopes);
                 return result;
             }
             case JsonArray arr:
@@ -99,68 +148,51 @@ public static class WorkflowDefinitionSecretRewriter
                 var result = new JsonArray();
                 foreach (var item in arr)
                     result.Add(item is null ? null
-                        : RestoreWalk(item, parentName, protector, resolveMachine, resolveCredential, unresolved));
+                        : RestoreWalk(item, protector, decryptLegacyFieldEnvelopes));
                 return result;
-            }
-            case JsonValue val when val.TryGetValue(out string? str) && str is not null:
-            {
-                var resolver = parentName switch
-                {
-                    "targetMachineId" => resolveMachine,
-                    "credentialId" => resolveCredential,
-                    _ => (Func<Guid, Guid?>?)null,
-                };
-                if (resolver is not null && Guid.TryParse(str, out var sourceId))
-                {
-                    var target = resolver(sourceId);
-                    if (target is null)
-                    {
-                        unresolved.Add($"{parentName}={str}");
-                        return JsonValue.Create(str);
-                    }
-                    return JsonValue.Create(target.Value.ToString());
-                }
-                return JsonValue.Create(str);
             }
             default:
                 return node.DeepClone();
         }
     }
 
-    // Only reached for EncryptForBackup: Rewrite short-circuits Redact to Core's
-    // WorkflowSecretRedactor, and the protector was null-checked there.
-    private static JsonNode Walk(JsonNode node, string? parentName, bool isHttpHeaderValue,
-        PassphraseSecretProtector? protector)
+    /// <summary>
+    /// Runtime resolves infrastructure references only from each node's <c>data</c> object. Do
+    /// not recursively rewrite same-named keys inside config payloads: they are ordinary child
+    /// parameters/return data and changing them would silently corrupt application data.
+    /// </summary>
+    private static void RemapNodeInfrastructureReferences(
+        JsonNode definition,
+        Func<Guid, Guid?> resolveMachine,
+        Func<Guid, Guid?> resolveCredential,
+        List<string> unresolved)
     {
-        switch (node)
+        if (definition is not JsonObject root || root["nodes"] is not JsonArray nodes) return;
+        foreach (var node in nodes)
         {
-            case JsonObject obj:
-            {
-                var result = new JsonObject();
-                var isHeadersObject = string.Equals(parentName, "headers", StringComparison.OrdinalIgnoreCase);
-                foreach (var (name, value) in obj)
-                    result[name] = value is null ? null : Walk(value, name, isHeadersObject, protector);
-                return result;
-            }
-            case JsonArray arr:
-            {
-                var result = new JsonArray();
-                foreach (var item in arr)
-                    result.Add(item is null ? null : Walk(item, parentName, isHttpHeaderValue, protector));
-                return result;
-            }
-            case JsonValue val when val.TryGetValue(out string? s) && s is not null:
-            {
-                if (!NodePilot.Core.WorkflowDefinitions.WorkflowSecretKeys.IsSecretValue(parentName, s, isHttpHeaderValue))
-                    return JsonValue.Create(s);
-
-                return new JsonObject
-                {
-                    [EncKey] = Convert.ToBase64String(protector!.Protect(s)),
-                };
-            }
-            default:
-                return node.DeepClone();
+            if (node is not JsonObject nodeObject || nodeObject["data"] is not JsonObject data) continue;
+            RemapNodeReference(data, "targetMachineId", resolveMachine, unresolved);
+            RemapNodeReference(data, "credentialId", resolveCredential, unresolved);
         }
     }
+
+    private static void RemapNodeReference(
+        JsonObject data,
+        string key,
+        Func<Guid, Guid?> resolver,
+        List<string> unresolved)
+    {
+        if (data[key] is not JsonValue value
+            || !value.TryGetValue(out string? raw)
+            || !Guid.TryParse(raw, out var sourceId)) return;
+
+        var target = resolver(sourceId);
+        if (target is null)
+        {
+            unresolved.Add($"{key}={raw}");
+            return;
+        }
+        data[key] = target.Value.ToString();
+    }
+
 }

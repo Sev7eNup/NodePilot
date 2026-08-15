@@ -31,10 +31,16 @@ public sealed class TokenStore
     public StoredSession? Load(string profile)
     {
         var path = PathFor(profile);
-        if (!File.Exists(path)) return null;
+        using var mutation = NodePilot.Core.Clients.ClientSessionFileCoordinator.AcquireMutationLock(path);
+        return LoadPath(path);
+    }
+
+    private static StoredSession? LoadPath(string path)
+    {
         try
         {
-            var encrypted = File.ReadAllBytes(path);
+            var encrypted = NodePilot.Core.Clients.ClientSessionFileCoordinator.ReadAllBytesIfExists(path);
+            if (encrypted is null) return null;
             var plain = ProtectedData.Unprotect(encrypted, optionalEntropy: Entropy, scope: DataProtectionScope.CurrentUser);
             return JsonSerializer.Deserialize<StoredSession>(plain, JsonOptions);
         }
@@ -51,16 +57,53 @@ public sealed class TokenStore
 
     public void Save(string profile, StoredSession session)
     {
-        var plain = JsonSerializer.SerializeToUtf8Bytes(session, JsonOptions);
-        var encrypted = ProtectedData.Protect(plain, optionalEntropy: Entropy, scope: DataProtectionScope.CurrentUser);
         var path = PathFor(profile);
-        File.WriteAllBytes(path, encrypted);
+        using var mutation = NodePilot.Core.Clients.ClientSessionFileCoordinator.AcquireMutationLock(path);
+        Write(path, session);
     }
 
     public void Delete(string profile)
     {
         var path = PathFor(profile);
-        if (File.Exists(path)) File.Delete(path);
+        using var mutation = NodePilot.Core.Clients.ClientSessionFileCoordinator.AcquireMutationLock(path);
+        NodePilot.Core.Clients.ClientSessionFileCoordinator.DeleteIfExists(path);
+    }
+
+    /// <summary>
+    /// Persists a rotation only while the session generation that was presented to the API is
+    /// still current. This prevents a refresh response from resurrecting a concurrent logout or
+    /// overwriting a newer login performed while the HTTP request was in flight.
+    /// </summary>
+    internal bool TrySaveIfCurrent(string profile, string expectedToken, StoredSession session)
+    {
+        var path = PathFor(profile);
+        using var mutation = NodePilot.Core.Clients.ClientSessionFileCoordinator.AcquireMutationLock(path);
+        var current = LoadPath(path);
+        if (current is null || !string.Equals(current.Token, expectedToken, StringComparison.Ordinal))
+            return false;
+
+        Write(path, session);
+        return true;
+    }
+
+    internal bool DeleteIfCurrent(string profile, string expectedToken)
+    {
+        var path = PathFor(profile);
+        using var mutation = NodePilot.Core.Clients.ClientSessionFileCoordinator.AcquireMutationLock(path);
+        var current = LoadPath(path);
+        if (current is null || !string.Equals(current.Token, expectedToken, StringComparison.Ordinal))
+            return false;
+
+        NodePilot.Core.Clients.ClientSessionFileCoordinator.DeleteIfExists(path);
+        return true;
+    }
+
+    private static void Write(string path, StoredSession session)
+    {
+        var plain = JsonSerializer.SerializeToUtf8Bytes(session, JsonOptions);
+        var encrypted = ProtectedData.Protect(
+            plain, optionalEntropy: Entropy, scope: DataProtectionScope.CurrentUser);
+        NodePilot.Core.Clients.ClientSessionFileCoordinator.WriteAllBytesAtomically(path, encrypted);
     }
 
     // Constant entropy distinguishes our blob from anything else the same user has DPAPI-encrypted,
@@ -84,5 +127,5 @@ public sealed class StoredSession
     public string Username { get; set; } = "";
     public Guid UserId { get; set; }
     public string Role { get; set; } = "";
-    public DateTime ExpiresAt { get; set; }
+    public DateTimeOffset ExpiresAt { get; set; }
 }

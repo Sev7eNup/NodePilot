@@ -139,13 +139,13 @@ const tick = () => new Promise<void>((r) => setTimeout(r, 30));
 function startGenerate(replaceAll: boolean) {
   fireEvent.click(screen.getByRole('button', { name: /generate script with ai/i }));
   fireEvent.change(screen.getByLabelText('AI prompt'), { target: { value: 'go' } });
-  if (replaceAll) fireEvent.click(screen.getByRole('checkbox'));
+  if (replaceAll) fireEvent.click(screen.getByRole('checkbox', { name: /replace entire script/i }));
   fireEvent.click(screen.getAllByRole('button', { name: /^generate$/i })[0]);
 }
 
 describe('ScriptEditorDialog — AI streaming order into a real (read-only) editor', () => {
   it('replace-all streams multi-line chunks in order across flushes (no scramble)', async () => {
-    const onAiGenerate = vi.fn(async (_p: string, _cur: string, onToken: (t: string) => void) => {
+    const onAiGenerate = vi.fn(async (_p: string, _cur: string | null, onToken: (t: string) => void) => {
       onToken('$now = Get-Date\n'); await tick();
       onToken('Write-Host '); await tick();
       onToken('"Zeit: $now"');
@@ -161,7 +161,7 @@ describe('ScriptEditorDialog — AI streaming order into a real (read-only) edit
   });
 
   it('insert mode streams chunks in order at the cursor (no scramble)', async () => {
-    const onAiGenerate = vi.fn(async (_p: string, _cur: string, onToken: (t: string) => void) => {
+    const onAiGenerate = vi.fn(async (_p: string, _cur: string | null, onToken: (t: string) => void) => {
       onToken('$a = 1\n'); await tick();
       onToken('$b = 2\n'); await tick();
       onToken('$c = 3');

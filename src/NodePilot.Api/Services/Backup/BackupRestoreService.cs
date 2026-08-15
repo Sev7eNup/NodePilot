@@ -1,5 +1,7 @@
+using System.Data;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using NodePilot.Api.Configuration;
 using NodePilot.Api.Security;
 using NodePilot.Core.Enums;
@@ -22,8 +24,11 @@ public sealed class BackupRestoreService(
     NodePilotDbContext db,
     ISecretProtector atRest,
     RuntimeOverridesWriter overrides,
-    ILogger<BackupRestoreService> logger)
+    ILogger<BackupRestoreService> logger,
+    NodePilot.Api.Services.WorkflowVersionDefinitionProtector versionDefinitions)
 {
+    private const string RestoreCommitMarkerAction = "BACKUP_RESTORE_DB_COMMITTED";
+
     // ---- Preview ------------------------------------------------------------
 
     public async Task<BackupPreviewResult> PreviewAsync(byte[] content, string? passphrase, CancellationToken ct)
@@ -748,7 +753,7 @@ public sealed class BackupRestoreService(
             {
                 if (policy == RestoreConflictPolicy.Overwrite)
                 {
-                    ApplyCustomActivityFields(existing, item);
+                    ApplyCustomActivityFields(existing, item, s.Protector);
                     existing.UpdatedAt = DateTime.UtcNow;
                     s.CustomActivityMap[sourceId] = existing.Id;
                     overwritten++; continue;
@@ -769,7 +774,7 @@ public sealed class BackupRestoreService(
                 Id = id, Key = key, ConcurrencyToken = Guid.NewGuid(),
                 CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
             };
-            ApplyCustomActivityFields(def, item);
+            ApplyCustomActivityFields(def, item, s.Protector);
             db.CustomActivityDefinitions.Add(def);
             s.CustomActivities[key] = def; s.ExistingCustomActivityIds.Add(id); s.CustomActivityMap[sourceId] = id;
         }
@@ -777,13 +782,17 @@ public sealed class BackupRestoreService(
         return new SectionRestoreResult(BackupSections.CustomActivities, created, overwritten, skipped, renamed);
     }
 
-    private static void ApplyCustomActivityFields(CustomActivityDefinition def, JsonNode item)
+    private static void ApplyCustomActivityFields(
+        CustomActivityDefinition def,
+        JsonNode item,
+        PassphraseSecretProtector protector)
     {
         def.Name = item["name"]!.GetValue<string>();
         def.Description = item["description"]?.GetValue<string>();
         def.Icon = item["icon"]?.GetValue<string>() ?? "extension";
         def.Color = item["color"]?.GetValue<string>();
-        def.ScriptTemplate = item["scriptTemplate"]?.GetValue<string>() ?? "";
+        def.ScriptTemplate = RestoreEncryptedOrLegacyPlaintext(
+            item["scriptTemplate"], protector, "custom activity scriptTemplate");
         def.Engine = item["engine"]?.GetValue<string>() ?? "auto";
         def.RunsRemote = item["runsRemote"]?.GetValue<bool>() ?? false;
         def.Isolated = item["isolated"]?.GetValue<bool>() ?? false;
@@ -791,7 +800,10 @@ public sealed class BackupRestoreService(
         def.MaxProcesses = item["maxProcesses"]?.GetValue<int>();
         def.DefaultTimeoutSeconds = item["defaultTimeoutSeconds"]?.GetValue<int>();
         def.SuccessExitCodes = item["successExitCodes"]?.GetValue<string>();
-        def.InputParametersJson = item["inputParametersJson"]?.GetValue<string>() ?? "[]";
+        def.InputParametersJson = item["inputParametersJson"] is null
+            ? "[]"
+            : RestoreEncryptedOrLegacyPlaintext(
+                item["inputParametersJson"], protector, "custom activity inputParametersJson");
         def.OutputParametersJson = item["outputParametersJson"]?.GetValue<string>() ?? "[]";
         def.IsEnabled = item["isEnabled"]?.GetValue<bool>() ?? false;
         def.Version = item["version"]?.GetValue<int>() ?? 1;
@@ -824,14 +836,39 @@ public sealed class BackupRestoreService(
                         if (existing.CheckedOutByUserId is not null)
                             throw new BackupRestoreException(
                                 $"Restore aborted: workflow '{existing.Name}' is locked for editing. Publish, unlock, or force-unlock it before overwrite restore.");
-                        existing.Description = description; existing.DefinitionJson = definitionJson;
-                        existing.IsEnabled = isEnabled; existing.FolderId = folderTarget; existing.UpdatedAt = DateTime.UtcNow;
+                        var now = DateTime.UtcNow;
+                        db.WorkflowVersions.Add(new WorkflowVersion
+                        {
+                            Id = Guid.NewGuid(),
+                            WorkflowId = existing.Id,
+                            Version = existing.Version,
+                            Name = existing.Name,
+                            Description = existing.Description,
+                            DefinitionJson = versionDefinitions.Protect(existing.DefinitionJson),
+                            CreatedAt = now,
+                            CreatedBy = existing.UpdatedBy ?? existing.CreatedBy ?? "restore",
+                            ChangeNote = "Superseded by system backup restore",
+                        });
+
+                        existing.Description = description;
+                        existing.DefinitionJson = definitionJson;
+                        existing.Version = checked(existing.Version + 1);
+                        existing.IsEnabled = isEnabled;
+                        existing.FolderId = folderTarget;
+                        existing.UpdatedAt = now;
+                        existing.UpdatedBy = "restore";
+                        WorkflowMetadata.PopulateComputedColumns(existing);
                     },
-                    (id, finalName) => new Workflow
+                    (id, finalName) =>
                     {
-                        Id = id, Name = finalName, Description = description, DefinitionJson = definitionJson,
-                        Version = version, IsEnabled = isEnabled, FolderId = folderTarget,
-                        CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+                        var created = new Workflow
+                        {
+                            Id = id, Name = finalName, Description = description, DefinitionJson = definitionJson,
+                            Version = Math.Max(1, version), IsEnabled = isEnabled, FolderId = folderTarget,
+                            CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+                        };
+                        WorkflowMetadata.PopulateComputedColumns(created);
+                        return created;
                     });
             },
             ct);
@@ -1072,9 +1109,16 @@ public sealed class BackupRestoreService(
             if (f is not null && f != SharedWorkflowFolder.RootFolderId && !s.FolderResolvable(f.Value))
                 unresolved.Add($"workflow '{w["name"]}' → folder {f}");
             if (w["definition"] is JsonNode def)
-                foreach (var (kind, id) in ExtractDefinitionRefs(def))
+                foreach (var (kind, id) in ExtractDefinitionRefs(
+                             WorkflowDefinitionSecretRewriter.UnsealBackupDefinition(def, s.Protector)))
                 {
-                    var ok = kind == "targetMachineId" ? s.MachineResolvable(id) : s.CredentialResolvable(id);
+                    var ok = kind switch
+                    {
+                        "targetMachineId" => s.MachineResolvable(id),
+                        "credentialId" => s.CredentialResolvable(id),
+                        "__customDefinitionId" => s.CustomActivityResolvable(id),
+                        _ => false,
+                    };
                     if (!ok) unresolved.Add($"workflow '{w["name"]}' → {kind} {id}");
                 }
         }
@@ -1265,45 +1309,62 @@ public sealed class BackupRestoreService(
         return s.ExistingUserIds.Contains(source.Value) ? source.Value : null; // K17 — null when unresolvable
     }
 
-    /// <summary>Recursively remaps <c>config.__customDefinitionId</c> GUIDs onto their restored target ids.</summary>
+    /// <summary>
+    /// Remaps the authoritative custom-activity reference only on custom workflow nodes. A
+    /// same-named nested child parameter is application data and must remain untouched.
+    /// </summary>
     private static void RemapCustomActivityRefs(JsonNode node, RestoreState s)
     {
-        switch (node)
+        if (node is not JsonObject root || root["nodes"] is not JsonArray nodes) return;
+        foreach (var candidate in nodes)
         {
-            case JsonObject obj:
-                if (obj["__customDefinitionId"] is JsonValue v && v.TryGetValue(out string? idStr)
-                    && Guid.TryParse(idStr, out var oldId)
-                    && s.ResolveCustomActivity(oldId) is { } target && target != oldId)
-                {
-                    obj["__customDefinitionId"] = target.ToString();
-                }
-                foreach (var (_, child) in obj) if (child is not null) RemapCustomActivityRefs(child, s);
-                break;
-            case JsonArray arr:
-                foreach (var item in arr) if (item is not null) RemapCustomActivityRefs(item, s);
-                break;
+            if (candidate is not JsonObject nodeObject || nodeObject["data"] is not JsonObject data)
+                continue;
+            var activityType = NodeActivityType(nodeObject, data);
+            if (!NodePilot.Core.Activities.CustomActivityType.IsCustomType(activityType)
+                || data["config"] is not JsonObject config
+                || config["__customDefinitionId"] is not JsonValue idValue
+                || !idValue.TryGetValue(out string? idString)
+                || !Guid.TryParse(idString, out var sourceId)) continue;
+
+            var target = s.ResolveCustomActivity(sourceId)
+                ?? throw new BackupRestoreException(
+                    $"Workflow custom activity reference {sourceId} is not resolvable.");
+            config["__customDefinitionId"] = target.ToString();
         }
     }
 
-    private static IEnumerable<(string kind, Guid id)> ExtractDefinitionRefs(JsonNode node, string? parentName = null)
+    private static IEnumerable<(string kind, Guid id)> ExtractDefinitionRefs(JsonNode node)
     {
-        switch (node)
+        if (node is not JsonObject root || root["nodes"] is not JsonArray nodes) yield break;
+        foreach (var candidate in nodes)
         {
-            case JsonObject obj:
-                foreach (var (name, value) in obj)
-                    if (value is not null)
-                        foreach (var r in ExtractDefinitionRefs(value, name)) yield return r;
-                break;
-            case JsonArray arr:
-                foreach (var item in arr)
-                    if (item is not null)
-                        foreach (var r in ExtractDefinitionRefs(item, parentName)) yield return r;
-                break;
-            case JsonValue val when (parentName == "targetMachineId" || parentName == "credentialId")
-                && val.TryGetValue(out string? str) && Guid.TryParse(str, out var g):
-                yield return (parentName!, g);
-                break;
+            if (candidate is not JsonObject nodeObject || nodeObject["data"] is not JsonObject data)
+                continue;
+            if (TryGuid(data["targetMachineId"], out var machineId))
+                yield return ("targetMachineId", machineId);
+            if (TryGuid(data["credentialId"], out var credentialId))
+                yield return ("credentialId", credentialId);
+
+            var activityType = NodeActivityType(nodeObject, data);
+            if (NodePilot.Core.Activities.CustomActivityType.IsCustomType(activityType)
+                && data["config"] is JsonObject config
+                && TryGuid(config["__customDefinitionId"], out var definitionId))
+            {
+                yield return ("__customDefinitionId", definitionId);
+            }
         }
+    }
+
+    private static string? NodeActivityType(JsonObject node, JsonObject data)
+        => data["activityType"]?.GetValue<string>() ?? node["type"]?.GetValue<string>();
+
+    private static bool TryGuid(JsonNode? node, out Guid id)
+    {
+        id = default;
+        return node is JsonValue value
+               && value.TryGetValue(out string? text)
+               && Guid.TryParse(text, out id);
     }
 
     private static string? DecryptField(JsonNode? field, PassphraseSecretProtector protector)
@@ -1312,6 +1373,20 @@ public sealed class BackupRestoreService(
             && b64 is JsonValue v && v.TryGetValue(out string? s) && s is not null)
             return protector.Unprotect(Convert.FromBase64String(s));
         return null;
+    }
+
+    private static string RestoreEncryptedOrLegacyPlaintext(
+        JsonNode? field,
+        PassphraseSecretProtector protector,
+        string fieldName)
+    {
+        if (field is null) return string.Empty;
+        if (field is JsonValue value && value.TryGetValue(out string? plaintext))
+            return plaintext ?? string.Empty; // v1/v2 compatibility
+
+        var decrypted = DecryptField(field, protector);
+        if (decrypted is not null) return decrypted;
+        throw new BackupRestoreException($"Backup field '{fieldName}' is malformed.");
     }
 
     private static JsonArray Items(BackupFileReader reader, string section) =>

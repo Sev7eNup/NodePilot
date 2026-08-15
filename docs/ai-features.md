@@ -345,6 +345,10 @@ beim Startup eine Hardening-Warnung in den Logs aus.
   sind nur für `Admin` und `Operator` zugänglich. Der Chat-Assistent (`POST /api/ai/chat`) ist für alle Rollen
   lesbar (Erklären), aber das **Anwenden** von Vorschlägen bleibt Admin/Operator. Viewer sehen die Schreib-KI-Buttons im UI nicht
   (der Script-Editor-KI-Button wird für Viewer zusätzlich zum LLM-Gating ausgeblendet).
+- **Script-Kontext**: Das aktuelle PowerShell-Skript wird standardmäßig nicht an das LLM
+  gesendet. Der Dialog nennt den aktiven Zielhost und verlangt pro Aufruf eine standardmäßig
+  abgewählte Freigabe mit Secret-Warnung. Der Server wertet `CurrentScript` nur aus, wenn
+  `IncludeCurrentScript=true`; alte Clients bleiben dadurch fail-closed.
 - **Rate-Limit**: 20 Anfragen/Min pro IP — schützt gegen Cost-Runaway bei Cloud-Modellen
   und gegen versehentliche Spam-Loops im UI.
 - **SSRF-Block**: Beim Startup wird die `BaseUrl` **jedes** Profils gegen Cloud-Metadata-IPs
@@ -473,7 +477,7 @@ Source-Code + DB default aus:
 |---|---|---|---|
 | Dokumentation | `DocsEnabled` | `search_docs`, `read_doc` | — |
 | Workflows & Betrieb | `OperationalEnabled` | `get_workflow_definition`, `analyze_workflow`, `get_next_scheduled_fires` | RBAC-folder-scoped |
-| Workflows & Betrieb (Listen) | via DB-Quelle | "Welche Workflows/Läufe/Maschinen gibt es" → `list_db_tables` + `execute_readonly_sql` | ausschließlich globaler Admin (text2sql) |
+| Betrieb (Listen) | via DB-Quelle | "Welche Läufe/Maschinen gibt es" → `list_db_tables` + `execute_readonly_sql` | ausschließlich globaler Admin (text2sql) |
 | Systemkonfiguration | (immer, wenn privilegiert) | `read_settings` | Admin/Operator |
 | Quellcode | `SourceCodeEnabled` | `search_source`, `read_source` | Admin/Operator |
 | **DB / text2sql** | `DbEnabled` | `list_db_tables`, `get_db_table`, `execute_readonly_sql` | ausschließlich globaler Admin |
@@ -485,10 +489,15 @@ DbAdmin-Services). `execute_readonly_sql` nimmt ein einzelnes Statement bis 64 K
 Executor (nicht nur am HTTP-Controller), erlaubt als erstes Keyword nur `SELECT`/`WITH`/`EXPLAIN`/`SHOW`/
 `VALUES`/`TABLE` und lehnt mutierende Keywords, gefährliche Routinen, Multi-Statements sowie
 `EXPLAIN ANALYZE` ab. PostgreSQL setzt zusätzlich `SET TRANSACTION READ ONLY`; alle Provider rollen die
-Transaktion zurück. **Secret-Schutz mehrlagig**: Schema-Tools verbergen `IsHidden`-Spalten; jede SQL-Referenz
-auf eine geschützte Spalte wird bereits vor Ausführung abgelehnt (auch Alias-/Ausdrucksvarianten);
-Result-Spalten werden zusätzlich nach Namen maskiert und übrige Zellen durch den `IAuditDetailsRedactor`
-geführt. Row-Cap 200. Übergroße Tool-Resultate bleiben valides JSON mit explizitem Truncation-Hinweis.
+Transaktion zurück. **Secret-Schutz mehrlagig**: Schema-Tools verbergen `IsHidden`-Spalten und lassen
+`Workflows`, `WorkflowVersions`, `CustomActivityDefinitions` sowie deren Versionstabelle vollständig aus.
+Der AI-SQL-Adapter lehnt jede Referenz auf diese vier Tabellen vor Ausführung ab; Workflow-Definitionen
+bleiben über das dedizierte, RBAC-geprüfte `get_workflow_definition` erreichbar. Damit muss kein
+provider-neutraler Lexer beweisen, dass Composite Rows nicht über Casts, LATERAL-Funktionen oder andere
+Wrapper abfließen. PostgreSQL-`U&"…"`-Identifier werden an dieser Grenze ebenfalls abgelehnt. Das ist
+absichtlich strenger als die forensische DbAdmin-Ansicht. Result-Spalten werden zusätzlich nach Namen
+maskiert und übrige Zellen durch den `IAuditDetailsRedactor` geführt. Row-Cap 200.
+Übergroße Tool-Resultate bleiben valides JSON mit explizitem Truncation-Hinweis.
 DB-Tools nutzen Strict Function Schemas; inkompatible lokale Endpoints erhalten automatisch einen
 Best-Effort-Retry. SQL-Text wird nicht auditiert, stattdessen nur Anzahl und SHA-256-Kurzfingerprints.
 Text2SQL ist nur als Capability sichtbar, wenn das aktive Profil `EnableToolCalling=true` hat.

@@ -37,11 +37,37 @@ public class CommandIntegrationTests
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
                 token = "fresh", userId = Guid.NewGuid(), username = "admin", role = "Admin",
+                expiresAt = DateTimeOffset.UtcNow.AddHours(8),
             }));
 
         var result = h.Run("auth", "login", "--username", "admin", "--password", "pw12345678");
         result.ExitCode.Should().Be(ExitCodes.Success);
         h.Tokens.Load("default")!.Token.Should().Be("fresh");
+        h.Tokens.Load("default")!.ExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow.AddHours(7));
+    }
+
+    [Fact]
+    public void AuthLogin_OlderServerWithoutExpiresAt_UsesJwtExpiration()
+    {
+        using var h = new CommandTestHarness(authenticated: false);
+        var expiresAt = DateTimeOffset.UtcNow.AddHours(8);
+        var token = Jwt(DateTimeOffset.UtcNow, expiresAt);
+        h.Server.Given(Request.Create().WithPath("/api/auth/login").UsingPost())
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                token,
+                userId = Guid.NewGuid(),
+                username = "admin",
+                role = "Admin",
+                // Rolling-upgrade fixture: old APIs do not send expiresAt.
+            }));
+
+        var result = h.Run("auth", "login", "--username", "admin", "--password", "pw12345678");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        var stored = h.Tokens.Load("default")!;
+        stored.Token.Should().Be(token);
+        stored.ExpiresAt.Should().BeCloseTo(expiresAt, TimeSpan.FromSeconds(1));
     }
 
     [Fact]
@@ -99,6 +125,23 @@ public class CommandIntegrationTests
         using var h = new CommandTestHarness(authenticated: false);
         var result = h.Run("auth", "whoami");
         result.ExitCode.Should().Be(ExitCodes.AuthRequired);
+    }
+
+    private static string Jwt(DateTimeOffset issuedAt, DateTimeOffset expiresAt)
+    {
+        static string Encode(string value) => Convert.ToBase64String(
+                System.Text.Encoding.UTF8.GetBytes(value))
+            .TrimEnd('=')
+            .Replace('+', '-')
+            .Replace('/', '_');
+
+        var payload = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            iat = issuedAt.ToUnixTimeSeconds(),
+            np_iat_ms = issuedAt.ToUnixTimeMilliseconds(),
+            exp = expiresAt.ToUnixTimeSeconds(),
+        });
+        return $"{Encode("{\"alg\":\"none\"}")}.{Encode(payload)}.";
     }
 
     // ---- Workflow ----------------------------------------------------------

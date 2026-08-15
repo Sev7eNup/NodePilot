@@ -11,6 +11,7 @@ const signalRMock = vi.hoisted(() => ({
   connection: null as { stop: ReturnType<typeof vi.fn>; invoke: ReturnType<typeof vi.fn> } | null,
 }));
 const toPngMock = vi.hoisted(() => vi.fn(() => Promise.resolve('data:image/png;base64,')));
+const autoLayoutElkMock = vi.hoisted(() => vi.fn());
 
 // Mock SignalR before the page imports it - the editor opens a hub connection on mount
 // and we don't want a real WebSocket attempt in the test runner.
@@ -41,6 +42,11 @@ vi.mock('@microsoft/signalr', () => {
 // provide. The button is never clicked during smoke tests, but the static import must
 // not blow up at module-load time.
 vi.mock('html-to-image', () => ({ toPng: toPngMock }));
+
+vi.mock('../../lib/autoLayout', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/autoLayout')>();
+  return { ...actual, autoLayoutELK: autoLayoutElkMock };
+});
 
 // ELK is loaded as a worker-backed bundle; the module fails to load in jsdom because
 // of its Web Worker dependency. autoLayoutELK is only invoked behind a button so we
@@ -167,10 +173,18 @@ beforeEach(() => {
   useDesignStore.setState({ designerMode: 'expert' });
   useToastStore.setState({ toasts: [] });
   toPngMock.mockReset().mockResolvedValue('data:image/png;base64,');
+  autoLayoutElkMock.mockReset();
 });
 
 function emitSignalR(event: string, payload: unknown) {
   for (const handler of signalRMock.handlers[event] ?? []) handler(payload);
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+  return { promise, resolve, reject };
 }
 
 function renderPage(role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
@@ -1349,6 +1363,90 @@ describe('WorkflowEditorPage — Tidy Layout', () => {
       || savedById.get('step-b')!.position.x !== 400
       || savedById.get('step-b')!.position.y !== 100,
     ).toBe(true);
+  });
+
+  it('blocks Save and Publish while ELK is pending, then persists only the applied layout', async () => {
+    useDesignStore.setState({ layoutMode: 'ELK' });
+    const elk = deferred<Array<{ id: string; position: { x: number; y: number } }>>();
+    autoLayoutElkMock.mockReturnValueOnce(elk.promise);
+    const putBodies: Array<{ definitionJson: string }> = [];
+    const publishBodies: Array<{ definitionJson: string }> = [];
+    server.use(
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, async ({ request }) => {
+        putBodies.push(await request.json() as { definitionJson: string });
+        return HttpResponse.json(MOCK_WORKFLOW);
+      }),
+      http.post(`${BASE}/api/workflows/wf-smoke-1/publish`, async ({ request }) => {
+        publishBodies.push(await request.json() as { definitionJson: string });
+        return HttpResponse.json(MOCK_WORKFLOW);
+      }),
+    );
+
+    renderPage('Admin');
+    await waitForCanvasReady();
+    await openToolsMenu();
+    fireEvent.click(await screen.findByTitle(/Layout: ELK/));
+    await waitFor(() => expect(autoLayoutElkMock).toHaveBeenCalledTimes(1));
+
+    expect(screen.queryByTitle(/Save in place|Zwischen-Speichern/i)).not.toBeInTheDocument();
+    const pendingPublish = screen.getByRole('button', { name: /^Publish$/ });
+    expect(pendingPublish).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^End/i })).toBeDisabled();
+    fireEvent.click(pendingPublish);
+    expect(putBodies).toHaveLength(0);
+    expect(publishBodies).toHaveLength(0);
+
+    const inputNodes = autoLayoutElkMock.mock.calls[0][0] as Array<{ id: string; position: { x: number; y: number } }>;
+    const laidOut = inputNodes.map((node, index) => ({
+      ...node,
+      position: { x: 700 + index * 100, y: 900 + index * 100 },
+    }));
+    await act(async () => elk.resolve(laidOut));
+
+    const saveButton = await screen.findByTitle(/Save in place|Zwischen-Speichern/i);
+    await waitFor(() => expect(screen.getByTitle(/Unsaved changes|Ungespeicherte Änderungen/i)).toBeInTheDocument());
+    fireEvent.click(saveButton);
+    await waitFor(() => expect(putBodies).toHaveLength(1));
+    const saved = JSON.parse(putBodies[0].definitionJson) as { nodes: typeof laidOut };
+    expect(saved.nodes.map((node) => node.position)).toEqual(laidOut.map((node) => node.position));
+
+    fireEvent.click(screen.getByRole('button', { name: /^Publish$/ }));
+    await waitFor(() => expect(publishBodies).toHaveLength(1));
+    const published = JSON.parse(publishBodies[0].definitionJson) as { nodes: typeof laidOut };
+    expect(published.nodes.map((node) => node.position)).toEqual(laidOut.map((node) => node.position));
+  });
+
+  it('releases the editor freeze without dirtying the draft when ELK rejects', async () => {
+    useDesignStore.setState({ layoutMode: 'ELK' });
+    const elk = deferred<Array<{ id: string; position: { x: number; y: number } }>>();
+    autoLayoutElkMock.mockReturnValueOnce(elk.promise);
+    let putCalls = 0;
+    server.use(
+      http.put(`${BASE}/api/workflows/wf-smoke-1`, () => {
+        putCalls += 1;
+        return HttpResponse.json(MOCK_WORKFLOW);
+      }),
+    );
+
+    renderPage('Admin');
+    await waitForCanvasReady();
+    await openToolsMenu();
+    fireEvent.click(await screen.findByTitle(/Layout: ELK/));
+    await waitFor(() => expect(autoLayoutElkMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByTitle(/Save in place|Zwischen-Speichern/i)).not.toBeInTheDocument();
+
+    await act(async () => { elk.reject(new Error('ELK worker crashed')); });
+
+    await waitFor(() => expect(screen.getByTitle(/Save in place|Zwischen-Speichern/i)).toBeInTheDocument());
+    expect(screen.getByRole('button', { name: /^End/i })).not.toBeDisabled();
+    expect(screen.getByRole('button', { name: /^Publish$/ })).not.toBeDisabled();
+    expect(screen.queryByTitle(/Unsaved changes|Ungespeicherte Änderungen/i)).not.toBeInTheDocument();
+    expect(screen.getByTitle(/Restore layout/)).toBeDisabled();
+    expect(putCalls).toBe(0);
+    expect(useToastStore.getState().toasts).toContainEqual(expect.objectContaining({
+      kind: 'error',
+      message: expect.stringContaining('ELK worker crashed'),
+    }));
   });
 });
 

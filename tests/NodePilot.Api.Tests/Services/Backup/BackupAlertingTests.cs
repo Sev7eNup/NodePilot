@@ -14,8 +14,9 @@ using Xunit;
 namespace NodePilot.Api.Tests.Services.Backup;
 
 /// <summary>
-/// Backup schema v2 (ADR 0008): alerting rules + system policies round-trip through export/restore with
-/// route-secret passphrase-rewrap and scope-target remap; the envelope advertises v2 and both schemas import.
+/// Alerting section (introduced in backup schema v2, ADR 0008): rules + system policies round-trip
+/// through current export/restore with route-secret rewrap and scope-target remap; legacy schemas
+/// remain readable.
 /// </summary>
 public sealed class BackupAlertingTests : IDisposable
 {
@@ -43,6 +44,7 @@ public sealed class BackupAlertingTests : IDisposable
     [
         new FolderBackupPart(db), new UserBackupPart(db), new CredentialBackupPart(db, _atRest),
         new MachineBackupPart(db), new GlobalVariableFolderBackupPart(db), new GlobalVariableBackupPart(new GlobalVariableStore(db, _atRest)),
+        new CustomActivityBackupPart(new CustomActivityDefinitionStore(db)),
         new WorkflowBackupPart(db), new AlertingBackupPart(db, _atRest),
     ];
 
@@ -51,19 +53,24 @@ public sealed class BackupAlertingTests : IDisposable
 
     private BackupRestoreService Restore(NodePilotDbContext db) =>
         new(db, _atRest, new RuntimeOverridesWriter(TempPath(), NullLogger<RuntimeOverridesWriter>.Instance),
-            NullLogger<BackupRestoreService>.Instance);
+            NullLogger<BackupRestoreService>.Instance,
+            new NodePilot.Api.Services.WorkflowVersionDefinitionProtector(
+                _atRest, NullLogger<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>.Instance));
 
     private static Dictionary<string, RestoreConflictPolicy> AllSkip() =>
         new(StringComparer.Ordinal) { [BackupSections.Folders] = RestoreConflictPolicy.Skip, [BackupSections.Workflows] = RestoreConflictPolicy.Skip, [BackupSections.Alerting] = RestoreConflictPolicy.Skip };
 
     [Fact]
-    public async Task Export_AdvertisesSchemaV2()
+    public async Task Export_AdvertisesCurrentSchema_AndKeepsOlderSchemasReadable()
     {
         await using var db = TestDbFactory.Create();
         var bytes = await ExportAsync(db, [BackupSections.Alerting]);
         var reader = BackupFileReader.Parse(bytes);
-        reader.Schema.Should().Be(BackupSections.SchemaV2);
-        BackupSections.SupportedSchemas.Should().Contain(BackupSections.Schema).And.Contain(BackupSections.SchemaV2);
+        reader.Schema.Should().Be(BackupSections.SchemaV3);
+        BackupSections.SupportedSchemas.Should()
+            .Contain(BackupSections.Schema)
+            .And.Contain(BackupSections.SchemaV2)
+            .And.Contain(BackupSections.SchemaV3);
     }
 
     [Fact]

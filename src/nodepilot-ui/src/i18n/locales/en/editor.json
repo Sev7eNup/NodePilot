@@ -49,6 +49,7 @@
   "undoTooltip": "Undo (Ctrl+Z)",
   "redoTooltip": "Redo (Ctrl+Y / Ctrl+Shift+Z)",
   "tidyTooltip": "Layout: {{mode}} — click to apply, then advance to next mode",
+  "tidyFailed": "Auto-layout failed: {{message}}",
   "restoreOrigLayout": "Restore layout from before first auto-arrange",
   "restoreOrigLayoutShort": "Orig",
   "searchTooltip": "Search nodes (Ctrl+F)",

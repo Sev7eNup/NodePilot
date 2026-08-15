@@ -12,19 +12,22 @@ interface Props {
   /** Optional "replace the entire editor content" toggle — useful for script generation. */
   showReplaceToggle?: boolean;
   defaultReplaceAll?: boolean;
+  /** Show a one-shot, default-off consent for sending the current script as LLM context. */
+  showScriptContextConsent?: boolean;
+  /** Sanitized host of the configured LLM target. Null falls back to a generic warning. */
+  scriptContextTargetHost?: string | null;
   /**
-   * Called with the (trimmed) prompt plus the replace toggle. On success the dialog
-   * closes itself automatically; if the callback throws, its message is shown as an
-   * error and the dialog stays open.
+   * Called with the trimmed prompt, replace toggle, and one-shot script-context consent.
+   * If the callback throws, its message is shown as an error and the dialog stays open.
    */
-  onSubmit: (prompt: string, replaceAll: boolean) => Promise<void>;
+  onSubmit: (prompt: string, replaceAll: boolean, includeCurrentScript: boolean) => Promise<void>;
   onClose: () => void;
 }
 
 /**
  * Generic input dialog for AI calls (script generation + workflow generation).
  * Owns its own loading/error state; the caller only gets a thin
- * `onSubmit(prompt, replaceAll)` interface.
+ * `onSubmit(prompt, replaceAll, includeCurrentScript)` interface.
  */
 export function AiPromptDialog({
   title,
@@ -33,6 +36,8 @@ export function AiPromptDialog({
   submitLabel,
   showReplaceToggle = false,
   defaultReplaceAll = false,
+  showScriptContextConsent = false,
+  scriptContextTargetHost,
   onSubmit,
   onClose,
 }: Readonly<Props>) {
@@ -40,6 +45,9 @@ export function AiPromptDialog({
   const submitLabelResolved = submitLabel ?? t('ai:scriptDialog.generate');
   const [prompt, setPrompt] = useState('');
   const [replaceAll, setReplaceAll] = useState(defaultReplaceAll);
+  // Deliberately component-local and default false: closing/reopening the dialog requires a new
+  // decision and no browser storage ever remembers this data-egress consent.
+  const [includeCurrentScript, setIncludeCurrentScript] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -53,7 +61,7 @@ export function AiPromptDialog({
     setError(null);
     setSubmitting(true);
     try {
-      await onSubmit(trimmed, replaceAll);
+      await onSubmit(trimmed, replaceAll, includeCurrentScript);
       // Closing does NOT happen automatically here — the caller closes the dialog
       // after inserting the result. That gives it a chance to sync editor state
       // before the dialog disappears.
@@ -63,7 +71,7 @@ export function AiPromptDialog({
     } finally {
       setSubmitting(false);
     }
-  }, [prompt, replaceAll, submitting, onSubmit]);
+  }, [prompt, replaceAll, includeCurrentScript, submitting, onSubmit]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape' && !submitting) onClose();
@@ -126,6 +134,23 @@ export function AiPromptDialog({
                 className="w-4 h-4 rounded border-outline-variant accent-primary"
               />
               <span>{t('ai:scriptDialog.replaceAll')}</span>
+            </label>
+          )}
+
+          {showScriptContextConsent && (
+            <label className="flex items-start gap-2 cursor-pointer text-xs text-on-surface select-none">
+              <input
+                type="checkbox"
+                checked={includeCurrentScript}
+                onChange={(e) => setIncludeCurrentScript(e.target.checked)}
+                disabled={submitting}
+                className="w-4 h-4 mt-0.5 rounded border-outline-variant accent-primary shrink-0"
+              />
+              <span className="leading-snug">
+                {scriptContextTargetHost
+                  ? t('ai:scriptDialog.includeCurrentScriptTarget', { target: scriptContextTargetHost })
+                  : t('ai:scriptDialog.includeCurrentScriptFallback')}
+              </span>
             </label>
           )}
 

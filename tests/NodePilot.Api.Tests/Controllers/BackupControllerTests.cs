@@ -51,11 +51,14 @@ public sealed class BackupControllerTests : IDisposable
             new MachineBackupPart(_db),
             new GlobalVariableFolderBackupPart(_db),
             new GlobalVariableBackupPart(globals),
+            new CustomActivityBackupPart(new CustomActivityDefinitionStore(_db)),
             new WorkflowBackupPart(_db),
             new SettingsBackupPart(overrides, _atRest),
         ]);
         _restore = new BackupRestoreService(
-            _db, _atRest, overrides, NullLogger<BackupRestoreService>.Instance);
+            _db, _atRest, overrides, NullLogger<BackupRestoreService>.Instance,
+            new NodePilot.Api.Services.WorkflowVersionDefinitionProtector(
+                _atRest, NullLogger<NodePilot.Api.Services.WorkflowVersionDefinitionProtector>.Instance));
 
         _db.Users.Add(new User
         {

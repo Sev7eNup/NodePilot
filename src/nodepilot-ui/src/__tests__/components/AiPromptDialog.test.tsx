@@ -44,7 +44,7 @@ describe('AiPromptDialog', () => {
     fireEvent.change(screen.getByLabelText('AI prompt'), { target: { value: '  do a thing  ' } });
     fireEvent.click(screen.getByRole('button', { name: /generate/i }));
 
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('do a thing', false));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('do a thing', false, false));
   });
 
   it('replaceAll toggle flips the flag passed to onSubmit', async () => {
@@ -59,10 +59,10 @@ describe('AiPromptDialog', () => {
     );
 
     fireEvent.change(screen.getByLabelText('AI prompt'), { target: { value: 'hello' } });
-    fireEvent.click(screen.getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('checkbox', { name: /replace entire script/i }));
     fireEvent.click(screen.getByRole('button', { name: /generate/i }));
 
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('hello', true));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('hello', true, false));
   });
 
   it('replace toggle is hidden when showReplaceToggle is false', () => {
@@ -108,7 +108,7 @@ describe('AiPromptDialog', () => {
     fireEvent.change(ta, { target: { value: 'go' } });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Enter', ctrlKey: true });
 
-    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('go', false));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('go', false, false));
   });
 
   it('shows loading state while onSubmit is pending', async () => {

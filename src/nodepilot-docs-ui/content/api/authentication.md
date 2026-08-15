@@ -71,7 +71,7 @@ curl -s -c cookie.jar -X POST "$NP/api/auth/login" \
   -H 'Content-Type: application/json' \
   -H 'X-Auth-Token-Response: true' \
   -d '{ "username":"admin", "password":"s3cret-pass" }'
-# 200 → {"token":"eyJ...","userId":"...","username":"admin","role":"Admin"}
+# 200 → {"token":"eyJ...","userId":"...","username":"admin","role":"Admin","expiresAt":"2026-08-15T18:30:00Z"}
 
 # Folgende Aufrufe authentifizieren (Cookie oder Bearer)
 curl -s -b cookie.jar "$NP/api/auth/me"

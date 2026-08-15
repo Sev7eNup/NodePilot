@@ -186,7 +186,8 @@ public sealed class WorkflowStepTestRbacTests : IDisposable
             NoopAuditWriter.Instance,
             new ResourceAuthorizationService(_db),
             _stepTester.Object,
-            Mock.Of<IStepTestContextProvider>())
+            Mock.Of<IStepTestContextProvider>(),
+            NodePilot.Api.Tests.Controllers.WorkflowControllerHarnessFactory.VersionDefinitions())
         {
             ControllerContext = new ControllerContext
             {

@@ -31,6 +31,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
 {
     private readonly IStepTester _stepTester;
     private readonly IStepTestContextProvider _testContextProvider;
+    private readonly NodePilot.Api.Services.WorkflowVersionDefinitionProtector _versionDefinitions;
 
     public WorkflowEditingController(
         NodePilotDbContext db,
@@ -38,11 +39,13 @@ public class WorkflowEditingController : WorkflowsControllerBase
         IAuditWriter audit,
         NodePilot.Core.Interfaces.IResourceAuthorizationService authz,
         IStepTester stepTester,
-        IStepTestContextProvider testContextProvider)
+        IStepTestContextProvider testContextProvider,
+        NodePilot.Api.Services.WorkflowVersionDefinitionProtector versionDefinitions)
         : base(db, logger, audit, authz)
     {
         _stepTester = stepTester;
         _testContextProvider = testContextProvider;
+        _versionDefinitions = versionDefinitions;
     }
 
     // --- Optimistic-concurrency core (shared by Publish + Rollback) ------------------------
@@ -172,9 +175,10 @@ public class WorkflowEditingController : WorkflowsControllerBase
             .FirstOrDefaultAsync(v => v.WorkflowId == id && v.Version == version, ct);
         if (row is null) return NotFound();
 
+        var historicDefinition = _versionDefinitions.Unprotect(row.DefinitionJson);
         return Ok(new WorkflowVersionDetail(
             row.Version, row.Name, row.Description,
-            ScopedDefinitionJson(row.DefinitionJson, capabilities.CanEdit),
+            ScopedDefinitionJson(historicDefinition, capabilities.CanEdit),
             row.CreatedAt, row.CreatedBy, row.ChangeNote, IsCurrent: false));
     }
 
@@ -202,9 +206,10 @@ public class WorkflowEditingController : WorkflowsControllerBase
         // rolling forward would push a definition that the engine refuses to load at fire time.
         // Surface the failure to the operator now instead of letting the next trigger discover it.
         // Lint warnings are non-fatal — same semantics as Create/Update.
-        var rollbackSizeError = ValidateDefinitionJson(target.DefinitionJson);
+        var targetDefinitionJson = _versionDefinitions.Unprotect(target.DefinitionJson);
+        var rollbackSizeError = ValidateDefinitionJson(targetDefinitionJson);
         if (rollbackSizeError is not null) return rollbackSizeError;
-        LintAndLogWarnings(target.DefinitionJson);
+        LintAndLogWarnings(targetDefinitionJson);
 
         // Pre-rollback values captured for the append-only history snapshot.
         var oldVersion = workflow.Version;
@@ -214,7 +219,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
         var now = DateTime.UtcNow;
         var updatedBy = this.GetCurrentUsername();
 
-        var computed = new Workflow { DefinitionJson = target.DefinitionJson };
+        var computed = new Workflow { DefinitionJson = targetDefinitionJson };
         PopulateComputedColumns(computed);
 
         // Roll-forward: snapshot the live row, apply the target as a new version — through the
@@ -230,7 +235,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
                 s => s
                     .SetProperty(w => w.Name, target.Name)
                     .SetProperty(w => w.Description, target.Description)
-                    .SetProperty(w => w.DefinitionJson, target.DefinitionJson)
+                    .SetProperty(w => w.DefinitionJson, targetDefinitionJson)
                     .SetProperty(w => w.Version, oldVersion + 1)
                     .SetProperty(w => w.TriggerTypesJson, computed.TriggerTypesJson)
                     .SetProperty(w => w.ActivityCount, computed.ActivityCount)
@@ -243,7 +248,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
                     Version = oldVersion,
                     Name = oldName,
                     Description = oldDescription,
-                    DefinitionJson = oldDefinitionJson,
+                    DefinitionJson = _versionDefinitions.Protect(oldDefinitionJson),
                     CreatedAt = now,
                     CreatedBy = updatedBy,
                     ChangeNote = $"Superseded by rollback to v{version}",
@@ -512,7 +517,7 @@ public class WorkflowEditingController : WorkflowsControllerBase
                     Version = oldVersion,
                     Name = oldName,
                     Description = oldDescription,
-                    DefinitionJson = oldDefinitionJson,
+                    DefinitionJson = _versionDefinitions.Protect(oldDefinitionJson),
                     CreatedAt = now,
                     CreatedBy = oldCreatedBy ?? updatedBy,
                 },

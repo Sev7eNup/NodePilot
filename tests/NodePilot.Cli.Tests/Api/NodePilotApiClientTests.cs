@@ -44,6 +44,7 @@ public sealed class NodePilotApiClientTests : IDisposable
                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
                {
                    token = "jwt-abc", userId, username = "admin", role = "Admin",
+                   expiresAt = DateTimeOffset.UtcNow.AddHours(8),
                }));
 
         var resp = await _client.LoginAsync(new LoginRequest("admin", "pw12345678"), null, CancellationToken.None);
@@ -51,6 +52,7 @@ public sealed class NodePilotApiClientTests : IDisposable
         resp.Username.Should().Be("admin");
         resp.Role.Should().Be("Admin");
         resp.UserId.Should().Be(userId);
+        resp.ExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow.AddHours(7));
     }
 
     [Fact]
@@ -61,6 +63,7 @@ public sealed class NodePilotApiClientTests : IDisposable
                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
                {
                    token = "jwt", userId = Guid.NewGuid(), username = "admin", role = "Admin",
+                   expiresAt = DateTimeOffset.UtcNow.AddHours(8),
                }));
 
         var resp = await _client.LoginAsync(new LoginRequest("admin", "pw12345678"), "bootstrap-secret", CancellationToken.None);
@@ -78,6 +81,7 @@ public sealed class NodePilotApiClientTests : IDisposable
                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
                {
                    token = "jwt", userId = Guid.NewGuid(), username = "admin", role = "Admin",
+                   expiresAt = DateTimeOffset.UtcNow.AddHours(8),
                }));
 
         var resp = await _client.LoginAsync(new LoginRequest("admin", "pw12345678"), null, CancellationToken.None);
@@ -112,6 +116,7 @@ public sealed class NodePilotApiClientTests : IDisposable
                .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
                {
                    token = "rotated", userId = Guid.NewGuid(), username = "admin", role = "Admin",
+                   expiresAt = DateTimeOffset.UtcNow.AddHours(8),
                }));
 
         var resp = await _client.RefreshAsync(CancellationToken.None);

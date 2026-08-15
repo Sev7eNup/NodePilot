@@ -25,6 +25,8 @@ export interface GenerateScriptRequest {
   /** Current editor content — the basis for "refactor/fix this script" requests (without
    *  it, the LLM would have to guess/hallucinate the existing script). */
   currentScript?: string | null;
+  /** Explicit, default-false consent. The backend ignores currentScript without it. */
+  includeCurrentScript?: boolean;
 }
 
 export interface GenerateWorkflowRequest {
@@ -210,6 +212,8 @@ export interface KnowledgeCapabilities {
   operational: boolean;
   sourceCode: boolean;
   db: boolean;
+  /** Host of the active profile, shown only to Admin/Operator as the script-context target. */
+  scriptContextTargetHost?: string | null;
 }
 
 /** Handlers for the read-only knowledge stream — deliberately leaner than {@link ChatStreamHandlers}
