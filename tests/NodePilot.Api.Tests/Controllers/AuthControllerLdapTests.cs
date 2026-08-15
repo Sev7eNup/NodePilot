@@ -330,19 +330,62 @@ public sealed class AuthControllerLdapTests : IDisposable
     [Fact]
     public async Task OverlongPassword_IsRejectedBeforeLdapOrThrottleWork()
     {
-        // M-32: every password-setting path runs ValidatePasswordPolicy, which caps at
-        // MaxPasswordBytes, so no stored hash can correspond to a longer secret — an over-long
-        // login password is unauthenticatable by construction. Reject it at the entry point
-        // instead of spending a directory round-trip and a throttle slot on it.
+        // M-32: the entry point still bounds the payload, but at the DIRECTORY maximum — no AD
+        // password can be longer, so anything past it is unauthenticatable by construction and
+        // must not cost a directory round-trip or a throttle slot.
         var (controller, adapter) = NewController();
 
         var result = await controller.Login(
-            new LoginRequest("alice", new string('a', AuthController.MaxPasswordBytes + 1)),
+            new LoginRequest("alice", new string('a', AuthController.MaxDirectoryPasswordBytes + 1)),
             CancellationToken.None);
 
         result.Result.Should().BeOfType<UnauthorizedObjectResult>();
         adapter.Calls.Should().Be(0);
         (await _db.IdempotencyKeys.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task LongPassphrase_PastBcryptsLimit_StillReachesTheLdapBind()
+    {
+        // BCrypt's 72-byte truncation is a property of LOCAL accounts. An AD passphrase lives in
+        // the directory and never touches BCrypt, so a ~12-word passphrase — exactly what the
+        // security-conscious orgs that deploy LDAP SSO hand out — must reach the bind intact.
+        var passphrase = new string('a', AuthController.MaxPasswordBytes + 28);
+        var (controller, adapter) = NewController();
+        controller.Request.Headers[AuthController.TokenResponseHeader] = "true";
+        adapter.Result = new LdapAuthResult(
+            ExternalId: "guid-aaa",
+            Upn: "alice@firma.de",
+            DisplayName: "Alice Example",
+            GroupSids: new[] { "S-1-5-21-1-1-1-512" });
+
+        var result = await controller.Login(new LoginRequest("alice", passphrase), CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        adapter.Calls.Should().Be(1);
+        adapter.LastPassword.Should().Be(passphrase, "the directory verifies the full secret, unshortened");
+    }
+
+    [Fact]
+    public async Task OverlongPassword_AgainstLocalAccount_IsStillRejectedWithoutSpendingLockoutBudget()
+    {
+        // The local half of the same bound: no local hash can correspond to more than 72 bytes,
+        // so the reject stays — but on this branch only, and still ahead of the throttle.
+        var audit = new CapturingAuditWriter();
+        var (controller, adapter) = NewController(
+            options: new LdapOptions { Enabled = false }, audit: audit);
+
+        var result = await controller.Login(
+            new LoginRequest("preexisting-admin", new string('a', AuthController.MaxPasswordBytes + 1)),
+            CancellationToken.None);
+
+        result.Result.Should().BeOfType<UnauthorizedObjectResult>();
+        adapter.Calls.Should().Be(0);
+        audit.Calls.Should().ContainSingle(c =>
+            c.Action == AuditActions.LoginFailed && c.Details!.Contains("invalid_password_length"));
+
+        var admin = await _db.Users.SingleAsync(u => u.Username == "preexisting-admin");
+        admin.FailedLoginCount.Should().Be(0, "an unauthenticatable length costs no lockout budget");
     }
 
     [Fact]

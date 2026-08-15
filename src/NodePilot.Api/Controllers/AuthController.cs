@@ -43,6 +43,12 @@ public class AuthController : ControllerBase
     // they have a stronger secret than they actually do (L1).
     internal const int MaxPasswordBytes = 72;
 
+    // The same bound does NOT apply to a directory account: an LDAP/AD password lives in the
+    // directory, never reaches BCrypt, and Active Directory permits up to 256 characters. The
+    // login entrance therefore bounds the payload at the directory maximum and leaves the
+    // BCrypt-specific 72-byte reject to the local branch, where it is actually true.
+    internal const int MaxDirectoryPasswordBytes = 256;
+
     // M-32: /api/auth/login is AllowAnonymous, so its body is bound in full before any
     // credential is checked. Without an endpoint limit it inherits Kestrel's 30 MiB default —
     // the rate limiter caps requests per minute, never bytes per request. A login payload is a
@@ -361,13 +367,13 @@ public class AuthController : ControllerBase
         // using a multi-megabyte JSON string as a CPU/allocation amplifier in the throttle.
         var invalidUsername = string.IsNullOrWhiteSpace(request.Username)
             || request.Username.Length > ExternalLoginThrottle.MaximumUsernameLength;
-        // M-32: every password-setting path already runs ValidatePasswordPolicy, which caps at
-        // MaxPasswordBytes, so no stored hash can correspond to a longer secret — a longer login
-        // password is unauthenticatable by construction and only exists to make the server work.
-        // Checking it here keeps the bound explicit at the entry point instead of relying on
-        // BCrypt's internal 72-byte truncation to absorb it.
+        // M-32: bound the password payload before any credential work, but at the DIRECTORY
+        // maximum — this gate sits ahead of the LDAP bind, and BCrypt's 72-byte truncation is a
+        // property of local accounts only. Capping at 72 here would 401 every AD user whose
+        // passphrase is longer than ~72 ASCII characters without ever attempting the bind. The
+        // BCrypt bound is enforced on the local branch instead, where it is actually true.
         var invalidPassword =
-            System.Text.Encoding.UTF8.GetByteCount(request.Password ?? string.Empty) > MaxPasswordBytes;
+            System.Text.Encoding.UTF8.GetByteCount(request.Password ?? string.Empty) > MaxDirectoryPasswordBytes;
         if (invalidUsername || invalidPassword)
         {
             _ = BCrypt.Net.BCrypt.Verify(request.Password, DummyHash);
@@ -534,6 +540,21 @@ public class AuthController : ControllerBase
         // Atomically reserve the attempt before BCrypt. The conditional UPDATE takes the
         // database row lock and closes the old check-then-save race where parallel requests
         // all observed the same failure count and overwrote each other's increments.
+        // M-32 (local half): every local password-setting path runs ValidatePasswordPolicy, which
+        // caps at MaxPasswordBytes, so no stored hash can correspond to a longer secret — a longer
+        // login password is unauthenticatable by construction. Rejecting it here, ahead of the
+        // throttle reservation, keeps that bound explicit instead of relying on BCrypt's silent
+        // truncation to absorb it, and costs the caller no lockout budget. LDAP users never reach
+        // this line: TryLdapLoginAsync short-circuits above.
+        if (System.Text.Encoding.UTF8.GetByteCount(request.Password ?? string.Empty) > MaxPasswordBytes)
+        {
+            _ = BCrypt.Net.BCrypt.Verify(request.Password, DummyHash);
+            await _audit.LogAsync(AuditActions.LoginFailed, "User", user.Id,
+                AuditDetails.Json(("username", user.Username), ("reason", "invalid_password_length")), ct);
+            RecordLoginAttempt("failure", "invalid_password_length");
+            return Unauthorized(new { message = "Invalid credentials" });
+        }
+
         var localAttempt = await TryReserveUserAttemptAsync(user, DateTime.UtcNow, ct);
         if (!localAttempt.IsAllowed)
         {

@@ -34,6 +34,12 @@ public sealed class FakeLdapConnectionAdapter : ILdapConnectionAdapter
     /// <summary>The UPN of the most recent authenticate attempt.</summary>
     public string? LastUpn { get; private set; }
 
+    /// <summary>
+    /// The password of the most recent authenticate attempt — the bind sees whatever the caller
+    /// typed, so this is what proves a long AD passphrase arrives at the directory unshortened.
+    /// </summary>
+    public string? LastPassword { get; private set; }
+
     // --- LookupBySubjectAsync (background directory synchronization) -----------------
 
     /// <summary>Snapshot served for any subject without a <see cref="Snapshots"/> entry.</summary>
@@ -52,6 +58,7 @@ public sealed class FakeLdapConnectionAdapter : ILdapConnectionAdapter
     {
         Calls++;
         LastUpn = upn;
+        LastPassword = password;
         if (ExceptionToThrow is not null) throw ExceptionToThrow;
         if (ThrowCancellation) throw new OperationCanceledException(ct);
         if (ThrowUserObjectMissing)

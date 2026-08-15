@@ -28,6 +28,7 @@ All login paths issue the same server-side, revocable NodePilot session. Directo
 - Windows SSO is Kerberos-only. `AllowNtlmFallback` must remain `false`, and startup requires `NtlmDisabledByPolicy=true` as an operator attestation that host/domain policy rejects incoming NTLM.
 - Memberships are authority-scoped server-side snapshots. AD sync runs every one to five minutes, and external authorization is rejected once the last authoritative snapshot is more than 15 minutes old.
 - Deactivation, tombstoning or access-group removal revokes sessions and stops pending, running or paused executions belonging to the effective user, including schedules, webhooks and external triggers.
+- Password length is bounded per authentication path, not globally. Local accounts end at 72 UTF-8 bytes — BCrypt truncates past that, so a longer secret is silently weaker than it looks and is refused at both the password-setting and the login end. Directory passwords are governed by the directory: NodePilot never truncates them and rejects a login payload only past 256 bytes, Active Directory's own maximum. A long AD passphrase therefore always reaches the bind.
 - Local login defaults to `BreakGlassOnly`; only bootstrap and explicitly marked break-glass local accounts can use a password in that mode. Every successful emergency login emits the dedicated `BREAK_GLASS_LOGIN_SUCCESS` audit action for SIEM alerting.
 - Authentication scheme changes are process-start decisions. Restart the NodePilot service after saving this section.
 
