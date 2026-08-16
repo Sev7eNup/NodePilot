@@ -140,6 +140,110 @@ public sealed class ManualParameterResolutionTests
         finally { conn.Dispose(); }
     }
 
+    /// <summary>
+    /// A declared default is part of the run's inputs, not just of the trigger node's outputs.
+    ///
+    /// <para>Before, the default reached only <c>{{trg.param.ziel}}</c>: ManualTrigger substitutes
+    /// it when reading the variables dict, but nothing wrote it back, so <c>{{manual.ziel}}</c>
+    /// found nothing. Invisible while <c>{{manual.X}}</c> never resolved at all — both cases
+    /// rendered the same literal — and a step-failing asymmetry the moment it did.</para>
+    /// </summary>
+    [Fact]
+    public async Task DeclaredDefault_NotSuppliedByCaller_ResolvesForBothSpellings()
+    {
+        var (captured, engine, db, conn) = Harness("log");
+        try
+        {
+            var workflow = Workflow(db, """
+                {"id":"s1","type":"activity","position":{"x":0,"y":0},
+                 "data":{"activityType":"log","config":{"message":"A={{manual.ziel}} B={{trg.param.ziel}}"}}}
+                """);
+
+            // No parameters at all — the "Run" button with nothing filled in.
+            var execution = await engine.ExecuteAsync(workflow, "manual", CancellationToken.None);
+
+            execution.Status.Should().Be(ExecutionStatus.Succeeded,
+                "an omitted parameter that declares a default is not a missing value");
+            captured.Value!.Value.GetProperty("message").GetString().Should().Be("A=leer B=leer");
+        }
+        finally { conn.Dispose(); }
+    }
+
+    /// <summary>A supplied value beats the declared default, for both spellings.</summary>
+    [Fact]
+    public async Task SuppliedValue_WinsOverTheDeclaredDefault()
+    {
+        var (captured, engine, db, conn) = Harness("log");
+        try
+        {
+            var workflow = Workflow(db, """
+                {"id":"s1","type":"activity","position":{"x":0,"y":0},
+                 "data":{"activityType":"log","config":{"message":"A={{manual.ziel}} B={{trg.param.ziel}}"}}}
+                """);
+
+            var execution = await engine.ExecuteAsync(
+                workflow, "manual", CancellationToken.None,
+                new Dictionary<string, string> { ["ziel"] = "UEBERGEBEN" });
+
+            execution.Status.Should().Be(ExecutionStatus.Succeeded);
+            captured.Value!.Value.GetProperty("message").GetString().Should().Be("A=UEBERGEBEN B=UEBERGEBEN");
+        }
+        finally { conn.Dispose(); }
+    }
+
+    /// <summary>
+    /// The execution row records what the run actually saw, so a retry replays the same values
+    /// and the run detail does not show an input the step never had.
+    /// </summary>
+    [Fact]
+    public async Task SeededDefault_IsRecordedOnTheExecution()
+    {
+        var (_, engine, db, conn) = Harness("log");
+        try
+        {
+            var workflow = Workflow(db, """
+                {"id":"s1","type":"activity","position":{"x":0,"y":0},
+                 "data":{"activityType":"log","config":{"message":"A={{manual.ziel}}"}}}
+                """);
+
+            var execution = await engine.ExecuteAsync(workflow, "manual", CancellationToken.None);
+
+            execution.InputParametersJson.Should().NotBeNull();
+            execution.InputParametersJson.Should().Contain("leer");
+        }
+        finally { conn.Dispose(); }
+    }
+
+    /// <summary>
+    /// A parameter declared WITHOUT a default still has no value, so the reference stays a hard
+    /// error — that is the case the loud failure exists for.
+    /// </summary>
+    [Fact]
+    public async Task DeclaredWithoutDefault_NotSupplied_StillFails()
+    {
+        var (_, engine, db, conn) = Harness("log");
+        try
+        {
+            var json = "{\"nodes\":["
+                + "{\"id\":\"trg\",\"type\":\"activity\",\"position\":{\"x\":0,\"y\":0},"
+                + "\"data\":{\"activityType\":\"manualTrigger\",\"outputVariable\":\"trg\","
+                + "\"config\":{\"parameters\":[{\"name\":\"ziel\",\"type\":\"string\",\"required\":true}]}}},"
+                + "{\"id\":\"s1\",\"type\":\"activity\",\"position\":{\"x\":0,\"y\":0},"
+                + "\"data\":{\"activityType\":\"log\",\"config\":{\"message\":\"A={{manual.ziel}}\"}}}],"
+                + "\"edges\":[{\"id\":\"e\",\"source\":\"trg\",\"target\":\"s1\"}]}";
+            var workflow = new Workflow { Id = Guid.NewGuid(), Name = "NoDefault", DefinitionJson = json };
+            db.Workflows.Add(workflow);
+            db.SaveChanges();
+
+            var execution = await engine.ExecuteAsync(workflow, "manual", CancellationToken.None);
+
+            execution.Status.Should().Be(ExecutionStatus.Failed);
+            var step = db.StepExecutions.First(s => s.WorkflowExecutionId == execution.Id && s.StepId == "s1");
+            step.ErrorOutput.Should().Contain("Unknown trigger input(s)");
+        }
+        finally { conn.Dispose(); }
+    }
+
     // ------------------------------------------------------------------ fixture
 
     private static (Box<JsonElement?> Captured, WorkflowEngine Engine, NodePilotDbContext Db, Microsoft.Data.Sqlite.SqliteConnection Conn)

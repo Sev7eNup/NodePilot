@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using NodePilot.Core.Configuration;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Core.Models;
 using NodePilot.Data;
 using NodePilot.Data.Availability;
@@ -484,6 +485,11 @@ public class WorkflowEngine : IWorkflowEngine
 
         EngineMetrics.ExecutionsStarted.Add(1, workflowIdTag, workflowNameTag, triggerTag);
         EngineMetrics.ExecutionsActive.Add(1, workflowIdTag, workflowNameTag);
+
+        // A declared parameter's default is part of the run's inputs, not just of the trigger
+        // node's outputs. Applied here, before the execution row is written, so the recorded
+        // InputParametersJson is what the run actually saw and a retry replays the same values.
+        inputParameters = ApplyDeclaredParameterDefaults(workflow, inputParameters);
 
         var execution = CreateOrResetExecution(existingExecution, workflow, executionId, triggeredBy,
             inputParameters, startedByUserId, parentExecutionId, callDepth, activity);
@@ -1383,6 +1389,62 @@ public class WorkflowEngine : IWorkflowEngine
             ? set
             : new HashSet<string>(StringComparer.Ordinal);
         return new AncestorScopedResults(results, ancestors, knownNodeIds);
+    }
+
+    /// <summary>
+    /// Fills the run's inputs with the defaults declared on its <c>manualTrigger</c> nodes, for
+    /// every parameter the caller did not supply.
+    ///
+    /// <para>A declared default used to reach only the trigger node's own <c>param.*</c> outputs:
+    /// <c>ManualTrigger</c> substitutes it when reading <c>manual.&lt;name&gt;</c> out of the
+    /// variables dict, but nothing ever wrote it back into that dict. So
+    /// <c>{{trg.param.ziel}}</c> returned the default while <c>{{manual.ziel}}</c> found nothing —
+    /// two documented spellings of the same value disagreeing. That was invisible until
+    /// <c>{{manual.X}}</c> started resolving at all: before, both the default case and the
+    /// genuinely-missing case rendered as the same literal placeholder.</para>
+    ///
+    /// <para>Skipped for a parameter declared more than once with diverging defaults
+    /// (<see cref="WorkflowContractInputDefinition.HasConflict"/>): which default applies is
+    /// genuinely ambiguous, and the contract already reports the conflict. A declared parameter
+    /// with no default stays absent — "no value" is what it means.</para>
+    ///
+    /// <para>The gate on the definition text keeps this off the hot path: deriving the contract
+    /// re-parses the whole definition JSON, and most runs have no manual trigger at all.</para>
+    /// </summary>
+    private static Dictionary<string, string>? ApplyDeclaredParameterDefaults(
+        Workflow workflow, Dictionary<string, string>? inputParameters)
+    {
+        if (string.IsNullOrEmpty(workflow.DefinitionJson)
+            || !workflow.DefinitionJson.Contains("manualTrigger", StringComparison.Ordinal))
+        {
+            return inputParameters;
+        }
+
+        var contract = WorkflowDefinitionContractDeriver.Derive(workflow.DefinitionJson);
+        if (contract.Inputs.Count == 0) return inputParameters;
+
+        // Case-insensitive, because that is how the value is looked up later: BuildStepVariables
+        // keys the variables dict OrdinalIgnoreCase, so a caller-supplied "Ziel" already satisfies
+        // a declared "ziel" and must not be overwritten by the default.
+        var supplied = new HashSet<string>(
+            inputParameters?.Keys ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+
+        Dictionary<string, string>? seeded = null;
+        foreach (var input in contract.Inputs)
+        {
+            if (input.Default is null || input.HasConflict) continue;
+            if (!supplied.Add(input.Name)) continue;
+
+            // Copied rather than mutated: the caller's dictionary is its own, and the trigger
+            // sources hand the same instance to more than one place. The source comparer is
+            // preserved so a caller that keys case-sensitively keeps its own semantics.
+            seeded ??= inputParameters is null
+                ? new Dictionary<string, string>(StringComparer.Ordinal)
+                : new Dictionary<string, string>(inputParameters, inputParameters.Comparer);
+            seeded[input.Name] = input.Default;
+        }
+
+        return seeded ?? inputParameters;
     }
 
     private static string? SerializeInputParameters(Dictionary<string, string>? inputParameters)
