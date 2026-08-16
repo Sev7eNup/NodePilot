@@ -323,7 +323,7 @@ Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, d
 | `SettingsSchema.cs` / Admin-Settings-UI | `AdminSettingsFrontendSyncTests` | Api.Tests |
 | AI-Prompt-Katalog | `PromptCatalogDriftTest` | Ai.Tests |
 | Alerting-Katalog / System-Policies | `AlertingCatalogFrontendSyncTests`, `SystemAlertCatalogTests` | Engine.Tests |
-| Workflow-Analyzer | `WorkflowAnalyzerFrontendParityTests` | Mcp.Tests |
+| Workflow-Analyzer (`WorkflowAnalyzer`/`WorkflowDataBusAnalyzer` in Core — MCP **und** AI-Chat) | `WorkflowAnalyzerFrontendParityTests` | Engine.Tests |
 | Template-Grammatik / Variable-Resolution | `TemplateGrammarParityTests` | Engine.Tests |
 | Metrics-Dashboard-Katalog | `MetricsDashboardCatalogTests` | Api.Tests |
 | Font-Tokens / Monaco-Stack | `fontTokens.test.ts` | nodepilot-ui |

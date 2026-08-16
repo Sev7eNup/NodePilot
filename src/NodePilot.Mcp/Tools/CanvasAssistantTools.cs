@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using ModelContextProtocol;
 using ModelContextProtocol.Server;
 using NodePilot.Core.Activities;
+using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Mcp.Analysis;
 using NodePilot.Mcp.Api;
 using NodePilot.Mcp.Mapping;
@@ -42,7 +43,7 @@ public sealed class CanvasAssistantTools
     [Description("Scan a definition's config strings for {{…}} references that won't resolve under the contract guarantee (only output/error/success/param.X tails plus globals.*/manual.* resolve). Returns stable codes such as unknown-template-ref and invalid-template-tail. No network call.")]
     public object FindUnresolvedReferences(
         [Description("The workflow definition: { nodes: [...], edges: [...] }.")] JsonElement definition)
-        => Wrap(() => new { unresolved = VariableResolver.FindUnresolved(definition) });
+        => Wrap(() => new { unresolved = WorkflowDataBusAnalyzer.FindUnresolved(definition) });
 
     [McpServerTool(Name = "get_available_variables", ReadOnly = true)]
     [Description("List the {{…}} references available AT a given node: upstream step outputs (output/error/success + static + runScript/$var + wmiQuery captureProperties params), run-level manual.* (from manualTrigger parameters) and globals.*. Mostly in-process; globals come from the API.")]
@@ -51,8 +52,8 @@ public sealed class CanvasAssistantTools
         [Description("The node id to compute available variables for.")] string nodeId,
         CancellationToken cancellationToken = default)
     {
-        VariableResolver.AvailableVariables vars;
-        try { vars = VariableResolver.Available(definition, nodeId); }
+        WorkflowDataBusAnalyzer.AvailableVariables vars;
+        try { vars = WorkflowDataBusAnalyzer.Available(definition, nodeId); }
         catch (ArgumentException ex) { throw new McpException(ex.Message); }
 
         // Globals are run-level; fetch best-effort so the rest still works unauthenticated.

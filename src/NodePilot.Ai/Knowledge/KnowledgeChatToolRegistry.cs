@@ -247,15 +247,18 @@ public sealed class KnowledgeChatToolRegistry : IKnowledgeToolRegistry
         try
         {
             using var doc = JsonDocument.Parse(detail.RedactedDefinitionJson);
-            var findings = WorkflowReviewAnalyzer.Analyze(doc.RootElement);
+            var result = WorkflowAnalyzer.Analyze(doc.RootElement);
             return new
             {
                 workflow = detail.Name,
-                ok = findings.Count == 0,
-                count = findings.Count,
-                findings = findings.Select(f => new
+                ok = result.Ok,
+                count = result.Findings.Count,
+                nodeCount = result.NodeCount,
+                edgeCount = result.EdgeCount,
+                roots = result.Roots,
+                findings = result.Findings.Select(f => new
                 {
-                    severity = f.Severity.ToString().ToLowerInvariant(),
+                    severity = f.Severity,
                     code = f.Code,
                     message = f.Message,
                     nodeId = f.NodeId,

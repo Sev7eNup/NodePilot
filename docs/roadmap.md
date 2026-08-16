@@ -261,7 +261,7 @@ Beschreibung, Nutzerproblem und Sicherheitsgrenzen je Idee: [`ai-feature-ideas.m
 
 ## E — Offene Entscheidungen
 
-Diese vier Punkte können nicht gebaut werden, solange die Entscheidung aussteht. Sie sind
+Diese fünf Punkte können nicht gebaut werden, solange die Entscheidung aussteht. Sie sind
 bewusst keine R2-Posten: Es fehlt nicht der Auslöser, es fehlt der Beschluss.
 
 | Frage | Kontext |
@@ -270,6 +270,7 @@ bewusst keine R2-Posten: Es fehlt nicht der Auslöser, es fehlt der Beschluss.
 | **`aiAgent`-Activity: bauen?** | Ein iterativer read-only Diagnose-Agent als *ein* Workflow-Step. Ein Agent-Loop im Graphen ist strukturell unmöglich — ein Agent ist `plan → act → observe → repeat` mit unbekannter Iterationszahl, die WorkflowEngine ist ein DAG-Scheduler, in dem jeder Node maximal einmal pro Lauf läuft. Der Plan kapselt die Schleife deshalb *innerhalb* eines Steps. Echte Produktentscheidung, nicht nebenbei. |
 | **Multi-DC: Quorum oder All-DC-Konsens?** | Heute strikter All-DC-Konsens, **kein** Failover: Ein DC down ⇒ externe Logins 503. Das ist per Unit-Test festgeschrieben und inzwischen ehrlich dokumentiert (früher stand fälschlich „Failover" da). Ob das so bleibt, ist ein Produktentscheid — kein Bug. |
 | **Dev-Postgres-Passwort in der Git-History** | Wurde vor der Migration aus `HEAD` entfernt, stand aber in der damaligen History. Die aktuelle History beginnt bei v1.0.0, ist also vermutlich sauber. **Einmal verifizieren, dann streichen** — oder rotieren, falls doch enthalten. |
+| **Fremde MCP-Server im AI-Chat nutzbar machen?** | Admin konfiguriert externe MCP-Server, der Chat darf deren read-only Tools aufrufen. Das ist der eigentliche Nutzen eines MCP-**Clients** im Backend — fremde Tools anbinden. Die Gegenrichtung (den Chat über `nodepilot-mcp` auf die *eigenen* Tools fahren) ist geprüft und verworfen: `nodepilot-mcp` authentifiziert sich mit *einer* DPAPI-Session, der Chat läuft pro Request unter dem `ClaimsPrincipal` des Aufrufers (Folder-RBAC, SQL nur für globale Admins) — ein Umleiten würde alle Tool-Calls unter eine Dienst-Identität legen; dazu Loopback-HTTP je Call und ~90 Schreib-Tools, die der Chat bewusst nicht hat. Die geteilte Analyse-Logik liegt stattdessen in `NodePilot.Core` (`WorkflowAnalyzer`, `WorkflowDataBusAnalyzer`), von beiden Flächen konsumiert. Offen für den Client-Fall: Trust-Modell gegen Prompt-Injection aus fremden Tool-Ergebnissen, RBAC-Gate, Prozess-Lifecycle. |
 
 ---
 

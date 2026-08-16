@@ -1,11 +1,18 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using FluentAssertions;
-using NodePilot.Mcp.Analysis;
+using NodePilot.Core.WorkflowDefinitions;
 using Xunit;
 
-namespace NodePilot.Mcp.Tests.Analysis;
+namespace NodePilot.Engine.Tests.WorkflowDefinitions;
 
+/// <summary>
+/// The single mirror guard for the static workflow analysis. <c>WorkflowAnalyzer</c> and
+/// <c>WorkflowDataBusAnalyzer</c> live in Core and serve BOTH the MCP tools and the AI chat, so
+/// this file is the one place that pins their codes against the canvas linter
+/// (<c>workflowLint.ts</c>). It used to sit in Mcp.Tests, back when the chat had its own second
+/// analyzer that nothing pinned against anything.
+/// </summary>
 public sealed class WorkflowAnalyzerFrontendParityTests
 {
     private static readonly string[] MirroredFrontendLintCodes =
@@ -19,12 +26,12 @@ public sealed class WorkflowAnalyzerFrontendParityTests
     private static JsonElement E(string json) => JsonDocument.Parse(json).RootElement;
 
     [Fact]
-    public void FrontendLintCodes_MirroredByMcp_StayPresentInFrontendSource()
+    public void FrontendLintCodes_MirroredByAnalyzer_StayPresentInFrontendSource()
     {
         var source = File.ReadAllText(PathFor(FindRepoRoot(), "src/nodepilot-ui/src/lib/workflowLint.ts"));
 
         foreach (var code in MirroredFrontendLintCodes)
-            source.Should().Contain($"code: '{code}'", $"MCP mirrors the frontend lint rule '{code}'");
+            source.Should().Contain($"code: '{code}'", $"the shared analyzer mirrors the frontend lint rule '{code}'");
     }
 
     /// <summary>
@@ -138,7 +145,7 @@ public sealed class WorkflowAnalyzerFrontendParityTests
     [Fact]
     public void FindUnresolvedReferences_FlagsUnknownTemplateRef_WithFrontendCode()
     {
-        var unresolved = VariableResolver.FindUnresolved(E("""
+        var unresolved = WorkflowDataBusAnalyzer.FindUnresolved(E("""
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
           {"id":"use","type":"activity","data":{"activityType":"log","label":"Use","config":{"message":"{{ghost.output}}"}}}],
@@ -152,7 +159,7 @@ public sealed class WorkflowAnalyzerFrontendParityTests
     [Fact]
     public void AvailableVariables_IncludeWebhookFieldMappings()
     {
-        var vars = VariableResolver.Available(E("""
+        var vars = WorkflowDataBusAnalyzer.Available(E("""
         {"nodes":[
           {"id":"hook","type":"activity","data":{"activityType":"webhookTrigger","label":"Hook","outputVariable":"wh",
             "config":{"path":"incident","fieldMappings":[
@@ -172,7 +179,7 @@ public sealed class WorkflowAnalyzerFrontendParityTests
     [Fact]
     public void AvailableVariables_IncludeFileWatcherStaticOutputs()
     {
-        var vars = VariableResolver.Available(E("""
+        var vars = WorkflowDataBusAnalyzer.Available(E("""
         {"nodes":[
           {"id":"fw","type":"activity","data":{"activityType":"fileWatcherTrigger","label":"Watch","outputVariable":"watch",
             "config":{"directory":"C:\\inbox","filter":"*.csv","watchType":"created"}}},
@@ -188,7 +195,7 @@ public sealed class WorkflowAnalyzerFrontendParityTests
     [Fact]
     public void AvailableVariables_IncludeExternalTriggerStaticOutputs()
     {
-        var vars = VariableResolver.Available(E("""
+        var vars = WorkflowDataBusAnalyzer.Available(E("""
         {"nodes":[
           {"id":"sched","type":"activity","data":{"activityType":"scheduleTrigger","label":"Schedule","outputVariable":"sched",
             "config":{"cronExpression":"0 0/5 * * * ?"}}},
@@ -219,46 +226,46 @@ public sealed class WorkflowAnalyzerFrontendParityTests
     {
         var repoRoot = FindRepoRoot();
         var frontend = StripComments(File.ReadAllText(PathFor(repoRoot, "src/nodepilot-ui/src/lib/upstreamVariables.ts")));
-        var mcp = StripComments(File.ReadAllText(PathFor(repoRoot, "src/NodePilot.Mcp/Analysis/VariableResolver.cs")));
+        var resolver = StripComments(File.ReadAllText(PathFor(repoRoot, "src/NodePilot.Core/WorkflowDefinitions/WorkflowDataBusAnalyzer.cs")));
 
         var frontendTypes = Regex.Matches(frontend, @"activityType\s*===\s*'(?<type>[^']+)'")
             .Select(m => m.Groups["type"].Value)
             .ToHashSet(StringComparer.Ordinal);
 
         var dynamicParamsMatch = Regex.Match(
-            mcp,
+            resolver,
             @"DynamicParams\(WorkflowNode\s+node\)\s*=>\s*node\.Type\s+switch\s*\{(?<body>[\s\S]*?)\};",
             RegexOptions.Singleline);
-        dynamicParamsMatch.Success.Should().BeTrue("MCP VariableResolver.DynamicParams must stay parseable by this drift guard");
+        dynamicParamsMatch.Success.Should().BeTrue("WorkflowDataBusAnalyzer.DynamicParams must stay parseable by this drift guard");
 
-        var mcpTypes = Regex.Matches(dynamicParamsMatch.Groups["body"].Value, @"""(?<type>[^""]+)""\s*=>")
+        var resolverTypes = Regex.Matches(dynamicParamsMatch.Groups["body"].Value, @"""(?<type>[^""]+)""\s*=>")
             .Select(m => m.Groups["type"].Value)
             .ToHashSet(StringComparer.Ordinal);
 
-        mcpTypes.Should().BeEquivalentTo(
+        resolverTypes.Should().BeEquivalentTo(
             frontendTypes,
-            "the frontend variable picker and MCP get_available_variables must expose dynamic databus params for the same activity types");
+            "the frontend variable picker and get_available_variables must expose dynamic databus params for the same activity types");
     }
 
     [Fact]
-    public void RuntimeTemplateNamespaces_MatchAcrossFrontendLintAndMcpResolver()
+    public void RuntimeTemplateNamespaces_MatchAcrossFrontendLintAndAnalyzer()
     {
         var repoRoot = FindRepoRoot();
         var workflowLint = StripComments(File.ReadAllText(PathFor(repoRoot, "src/nodepilot-ui/src/lib/workflowLint.ts")));
         var variableUsageScan = StripComments(File.ReadAllText(PathFor(repoRoot, "src/nodepilot-ui/src/lib/variableUsageScan.ts")));
-        var mcpResolver = StripComments(File.ReadAllText(PathFor(repoRoot, "src/NodePilot.Mcp/Analysis/VariableResolver.cs")));
+        var resolver = StripComments(File.ReadAllText(PathFor(repoRoot, "src/NodePilot.Core/WorkflowDefinitions/WorkflowDataBusAnalyzer.cs")));
 
         var workflowLintPrefixes = ReadTypeScriptStringSet(workflowLint, "runtimePrefixes");
         var variableUsagePrefixes = ReadTypeScriptStringSet(variableUsageScan, "RUNTIME_HEADS");
-        var mcpPrefixes = Regex.Matches(mcpResolver, @"head\.Equals\(""(?<name>[^""]+)""")
+        var resolverPrefixes = Regex.Matches(resolver, @"head\.Equals\(""(?<name>[^""]+)""")
             .Select(m => m.Groups["name"].Value)
             .ToHashSet(StringComparer.Ordinal);
 
         workflowLintPrefixes.Should().BeEquivalentTo(["globals", "manual"]);
         variableUsagePrefixes.Should().BeEquivalentTo(workflowLintPrefixes);
-        mcpPrefixes.Should().BeEquivalentTo(
+        resolverPrefixes.Should().BeEquivalentTo(
             workflowLintPrefixes,
-            "UI lint, data-flow scanning, and MCP unresolved-reference checks must agree on the runtime-injected namespaces");
+            "UI lint, data-flow scanning, and the analyzer's unresolved-reference checks must agree on the runtime-injected namespaces");
     }
 
     private static string StripComments(string content)

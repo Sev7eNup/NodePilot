@@ -1,16 +1,16 @@
 using System.Text.Json;
 using FluentAssertions;
-using NodePilot.Mcp.Analysis;
+using NodePilot.Core.WorkflowDefinitions;
 using Xunit;
 
-namespace NodePilot.Mcp.Tests.Analysis;
+namespace NodePilot.Engine.Tests.WorkflowDefinitions;
 
 /// <summary>
 /// Direct unit coverage for the pure data-bus resolver (no API/WireMock). Drives the branches the
 /// tool-level tests don't reach: unknown-node guard, globals/manual namespaces staying literal,
 /// and the dynamic-param providers for wmiQuery + every registryOperation operation arm.
 /// </summary>
-public sealed class VariableResolverTests
+public sealed class WorkflowDataBusAnalyzerTests
 {
     private static JsonElement E(string json) => JsonDocument.Parse(json).RootElement;
 
@@ -23,7 +23,7 @@ public sealed class VariableResolverTests
          "edges":[]}
         """);
 
-        var act = () => VariableResolver.Available(def, "does-not-exist");
+        var act = () => WorkflowDataBusAnalyzer.Available(def, "does-not-exist");
 
         act.Should().Throw<ArgumentException>().WithMessage("*does-not-exist*");
     }
@@ -41,7 +41,7 @@ public sealed class VariableResolverTests
          "edges":[{"id":"e","source":"t","target":"use"}]}
         """);
 
-        var unresolved = VariableResolver.FindUnresolved(def);
+        var unresolved = WorkflowDataBusAnalyzer.FindUnresolved(def);
 
         unresolved.Should().BeEmpty();
     }
@@ -58,7 +58,7 @@ public sealed class VariableResolverTests
          "edges":[{"id":"e","source":"check","target":"use"}]}
         """);
 
-        var unresolved = VariableResolver.FindUnresolved(def);
+        var unresolved = WorkflowDataBusAnalyzer.FindUnresolved(def);
 
         unresolved.Should().Contain(r => r.Code == "unknown-template-ref" && r.Reference == "{{ghost.output}}");
         // invalid tail on a real step name → stays literal, with a param.X hint.
@@ -85,7 +85,7 @@ public sealed class VariableResolverTests
           {"id":"e1","source":"w","target":"end"}]}
         """);
 
-        var vars = VariableResolver.Available(def, "end");
+        var vars = WorkflowDataBusAnalyzer.Available(def, "end");
 
         vars.Upstream.Should().Contain("{{w.param.count}}");
         vars.Upstream.Should().Contain("{{w.param.Name}}");
@@ -122,7 +122,7 @@ public sealed class VariableResolverTests
           {"id":"e7","source":"rempty","target":"end"}]}
         """);
 
-        var vars = VariableResolver.Available(def, "end");
+        var vars = WorkflowDataBusAnalyzer.Available(def, "end");
 
         vars.Upstream.Should().Contain("{{rlv.param.values}}").And.Contain("{{rlv.param.count}}");
         vars.Upstream.Should().Contain("{{rss.param.subKeys}}").And.Contain("{{rss.param.count}}");
@@ -147,7 +147,7 @@ public sealed class VariableResolverTests
          "edges":[{"id":"e","source":"t","target":"end"}]}
         """);
 
-        var vars = VariableResolver.Available(def, "end");
+        var vars = WorkflowDataBusAnalyzer.Available(def, "end");
 
         vars.RunLevel.Should().Contain("{{manual.env}}").And.Contain("{{manual.region}}");
     }
