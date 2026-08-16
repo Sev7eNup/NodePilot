@@ -280,7 +280,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 ### Testumfang pro Änderung
 
-**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (~4.600 Backend-Testfälle, 197 Vitest-Dateien, 72 E2E-Specs) und liefert lokal kein neues Signal: das Netz hängt bereits zweifach — `ci.yml` auf **jedem PR** (5 Jobs inkl. Coverage-Gate + E2E) und der Nightly-Task gegen main.
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (~4.600 Backend-Testfälle, 197 Vitest-Dateien, 72 E2E-Specs) und liefert lokal kein neues Signal: das Netz hängt bereits dreifach — `ci.yml` auf **jedem PR und jedem Push auf main** (5 Jobs inkl. Coverage-Gate + E2E) und der Nightly-Task gegen main.
 
 Default bei Feature-Arbeit:
 
