@@ -1833,6 +1833,30 @@ begin
   UninstallPurgeData := Response = IDNO;
 end;
 
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  InstalledInstallPath: String;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    // Apps & Features shows InstallLocation, and Inno fills it with {app} - which is where the
+    // uninstaller ended up, not where NodePilot was installed. /ANSWERFILE skips the directory
+    // page, so {app} keeps DefaultDirName while the adapter installs to the answer file's
+    // installPath; the entry then points an operator at a directory holding the uninstaller and
+    // nothing else. Corrected from the marker the installer has just written, which is the same
+    // source the uninstaller reads.
+    //
+    // Best-effort on purpose. An exception in ssPostInstall does NOT change the exit code (see the
+    // note in [Files]), so nothing load-bearing may live here - a failed write leaves Inno's own
+    // value in place, which is exactly today's behaviour.
+    if RegQueryStringValue(HKLM64, 'SOFTWARE\NodePilot\Server', 'InstallPath', InstalledInstallPath) and
+       (InstalledInstallPath <> '') then
+      RegWriteStringValue(HKLM64,
+        'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{03EAD540-1472-4A1B-9F06-9CB3D358E202}_is1',
+        'InstallLocation', AddBackslash(InstalledInstallPath));
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   ResultCode: Integer;
