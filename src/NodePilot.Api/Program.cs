@@ -681,6 +681,21 @@ app.MapGet("/healthz/leader", (NodePilot.Core.Interfaces.IClusterStateProvider c
     ClusterSetup.ComputeLeaderHealth(cluster, TimeSpan.FromSeconds(clusterTtlSeconds), DateTime.UtcNow))
     .AllowAnonymous();
 
+// API 404s must stay API-shaped. The SPA fallback below matches anything no endpoint claimed,
+// which used to include unmatched /api paths: a typo, a removed endpoint, or a route parameter
+// that failed its type constraint all answered 200 text/html with the SPA bundle. Every client
+// then read a successful HTML page instead of an error — measured on a lab install, `np`, the
+// MCP server and the SPA itself all treated the bundle as a valid response body. This runs first
+// and is registered with a higher order so it wins over the catch-all for that prefix only.
+app.MapFallback("/api/{**rest}", (HttpContext http) =>
+        Results.Problem(
+            title: "Not Found",
+            detail: $"No API endpoint matches {http.Request.Method} {http.Request.Path}.",
+            statusCode: StatusCodes.Status404NotFound,
+            instance: http.Request.Path,
+            extensions: new Dictionary<string, object?> { ["code"] = "NOT_FOUND" }))
+    .AllowAnonymous();
+
 // SPA fallback
 app.MapFallbackToFile("index.html");
 

@@ -115,6 +115,8 @@ Prozessweiter In-Memory-Breaker (`NodePilot.Data.Availability`): fällt die DB z
 
 Routen + Rollen-Gating stehen an den Controllern in `src/NodePilot.Api/Controllers/` (`[Route]`/`[Authorize]`) — dort nachsehen statt hier spiegeln. Die Rollen-Matrix der sicherheitsrelevanten Endpoints steht unter `## Autorisierung`; Semantik der nicht offensichtlichen Endpoints unter `## Workflow-Kontrollfluss` und in `docs/claude-reference.md`.
 
+**Nicht getroffene `/api`-Pfade antworten `404 application/problem+json`** (`code: NOT_FOUND`), nicht mit dem SPA-Bundle — ein eigener `MapFallback("/api/{**rest}")` steht vor `MapFallbackToFile("index.html")`. Betrifft Tippfehler, verschobene Endpoints und Routenparameter, die ihre Typ-Constraint verfehlen (`/api/global-variables/nicht-eine-guid`). Deep-Links außerhalb von `/api` gehen weiterhin an die SPA.
+
 ## Workflow-Kontrollfluss
 
 | Endpoint | Semantik |
