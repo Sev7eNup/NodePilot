@@ -27,6 +27,20 @@ internal static class VariableResolver
     // it now resolves normally AND is covered by that same fail-fast check when the
     // referenced step is missing or didn't run, matching the other tails' behavior.
     internal static readonly Regex GlobalsPattern = new(@"\{\{globals\.([A-Za-z0-9_\-]+)\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    // {{manual.NAME}} — the run's trigger inputs. Every trigger seeds its event data into the
+    // run under this namespace (manualTrigger's declared parameters, the webhook body, the
+    // watched file path, ...), and it is the form the README, the designer's variable picker,
+    // the ForEach hint and the AI prompt catalog all tell authors to write.
+    //
+    // It needs its own pattern for the same reason globals do: the tail after the dot is a
+    // user-chosen name, not one of StepPattern's four fixed property tails, so StepPattern
+    // cannot match it. Without this the placeholder survived resolution untouched AND slipped
+    // past the unresolved-template check (which only scans step patterns) — the step then
+    // reported success having written the literal "{{manual.customerId}}" wherever the value
+    // belonged. Measured against a 1.2.6 install: a log activity rendered
+    // "A={{manual.ziel}}" and finished green while {{trg.param.ziel}} on the same run resolved.
+    internal static readonly Regex ManualPattern = new(@"\{\{manual\.([A-Za-z0-9_\-]+)\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
     internal static readonly Regex StepPattern = new(@"\{\{([\w-]+)\.(output|error|success|param\.([\w-]+))\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
 
     /// <summary>
@@ -165,8 +179,9 @@ internal static class VariableResolver
     /// within the config JSON element. Uses outputVariable if set, otherwise falls back to stepId.
     /// </summary>
     internal static JsonElement ResolveVariables(JsonElement config, IReadOnlyDictionary<string, ActivityResult> results, List<WorkflowNode> allNodes,
-        IReadOnlyDictionary<string, string>? globalVariables = null)
-        => ResolveVariables(config, results, BuildOutputVariableAliasMap(allNodes), globalVariables);
+        IReadOnlyDictionary<string, string>? globalVariables = null,
+        IReadOnlyDictionary<string, string>? manualParameters = null)
+        => ResolveVariables(config, results, BuildOutputVariableAliasMap(allNodes), globalVariables, manualParameters);
 
     /// <summary>
     /// H-1 (security audit 2026-05-15): same as <see cref="ResolveVariables(JsonElement, IReadOnlyDictionary{string, ActivityResult}, IReadOnlyDictionary{string, string}?, IReadOnlyDictionary{string, string}?)"/>,
@@ -182,12 +197,13 @@ internal static class VariableResolver
         IReadOnlyDictionary<string, ActivityResult> results,
         IReadOnlyDictionary<string, string>? outputVariableToStepId,
         IReadOnlyDictionary<string, string>? globalVariables,
-        IReadOnlySet<string> doNotResolveFields)
+        IReadOnlySet<string> doNotResolveFields,
+        IReadOnlyDictionary<string, string>? manualParameters = null)
     {
         if (doNotResolveFields is null || doNotResolveFields.Count == 0
             || config.ValueKind != JsonValueKind.Object)
         {
-            return ResolveVariables(config, results, outputVariableToStepId, globalVariables);
+            return ResolveVariables(config, results, outputVariableToStepId, globalVariables, manualParameters);
         }
 
         // Re-assemble the object property-by-property: protected fields are passed through
@@ -209,7 +225,7 @@ internal static class VariableResolver
             }
             else
             {
-                var subResolved = ResolveVariables(prop.Value, results, outputVariableToStepId, globalVariables);
+                var subResolved = ResolveVariables(prop.Value, results, outputVariableToStepId, globalVariables, manualParameters);
                 sb.Append(subResolved.GetRawText());
             }
         }
@@ -222,7 +238,8 @@ internal static class VariableResolver
     /// <summary>Hot-path overload taking a pre-built output-variable alias index.</summary>
     internal static JsonElement ResolveVariables(JsonElement config, IReadOnlyDictionary<string, ActivityResult> results,
         IReadOnlyDictionary<string, string>? outputVariableToStepId,
-        IReadOnlyDictionary<string, string>? globalVariables = null)
+        IReadOnlyDictionary<string, string>? globalVariables = null,
+        IReadOnlyDictionary<string, string>? manualParameters = null)
     {
         var configJson = config.GetRawText();
         if (string.IsNullOrEmpty(configJson) || !configJson.Contains("{{"))
@@ -240,6 +257,20 @@ internal static class VariableResolver
                 var name = match.Groups[1].Value;
                 if (!globalVariables.TryGetValue(name, out var val)) return match.Value;
                 // JSON-string-escape: the placeholder lives inside a JSON string literal.
+                return JsonEscape(val);
+            });
+        }
+
+        // {{manual.NAME}} — the run's trigger inputs. Same shape as the globals pass: a flat
+        // name lookup, JSON-escaped for the string context it sits in. An unknown name is left
+        // verbatim so the unresolved-template check can fail the step with a real diagnostic
+        // instead of the value silently rendering as its own placeholder.
+        if (manualParameters is not null && manualParameters.Count > 0)
+        {
+            configJson = ManualPattern.Replace(configJson, match =>
+            {
+                var name = match.Groups[1].Value;
+                if (!manualParameters.TryGetValue(name, out var val)) return match.Value;
                 return JsonEscape(val);
             });
         }
@@ -315,13 +346,15 @@ internal static class VariableResolver
     /// Used for targetMachineId and credentialId fields.
     /// </summary>
     internal static string? ResolveStringValue(string? raw, IReadOnlyDictionary<string, ActivityResult> results, List<WorkflowNode> allNodes,
-        IReadOnlyDictionary<string, string>? globalVariables = null)
-        => ResolveStringValue(raw, results, BuildOutputVariableAliasMap(allNodes), globalVariables);
+        IReadOnlyDictionary<string, string>? globalVariables = null,
+        IReadOnlyDictionary<string, string>? manualParameters = null)
+        => ResolveStringValue(raw, results, BuildOutputVariableAliasMap(allNodes), globalVariables, manualParameters);
 
     /// <summary>Hot-path overload taking a pre-built output-variable alias index.</summary>
     internal static string? ResolveStringValue(string? raw, IReadOnlyDictionary<string, ActivityResult> results,
         IReadOnlyDictionary<string, string>? outputVariableToStepId,
-        IReadOnlyDictionary<string, string>? globalVariables = null)
+        IReadOnlyDictionary<string, string>? globalVariables = null,
+        IReadOnlyDictionary<string, string>? manualParameters = null)
     {
         if (string.IsNullOrWhiteSpace(raw) || !raw.Contains("{{"))
             return raw;
@@ -332,6 +365,12 @@ internal static class VariableResolver
         {
             raw = GlobalsPattern.Replace(raw, m =>
                 globalVariables.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
+        }
+
+        if (manualParameters is not null && manualParameters.Count > 0)
+        {
+            raw = ManualPattern.Replace(raw!, m =>
+                manualParameters.TryGetValue(m.Groups[1].Value, out var v) ? v : m.Value);
         }
 
         var variableMap = BuildVariableMap(results, outputVariableToStepId);

@@ -15,6 +15,8 @@ Activities können Ergebnisse für nachfolgende Activities bereitstellen. Ein Zu
 
 `hostInfo` ist die **Output Variable** der vorherigen Activity. Ohne Output Variable wird die Node-ID verwendet.
 
+Ein `{{manual.NAME}}`, das der Lauf nicht führt, lässt den Schritt mit „Unknown trigger input(s)" fehlschlagen — der Platzhalter läuft nicht still als Text mit.
+
 ## Sichtbarkeit: nur Vorgänger
 
 Eine Activity kann nur Ergebnisse von Vorgängern verwenden. Zwischen dem erzeugenden Node und der verwendenden Activity muss ein Pfad bestehen.

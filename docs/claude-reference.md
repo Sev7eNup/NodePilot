@@ -63,7 +63,7 @@ in den Kontext-Window geladen werden müssen, aber bei Bedarf nachschlagbar sind
 
 ## Trigger — Injected-Params
 
-Trigger-Sources seeden ihre Event-Daten als `manual.*`-Variablen in den Run (`VariableResolver` schreibt `manual.<key>`), referenzierbar als `{{manual.<name>}}`. Jeder Trigger-Node spiegelt dieselben Keys zusätzlich als eigene `param.*`-Outputs (`{{<triggerVar>.param.<name>}}`). Es gibt **kein** `trigger.*`-Namespace — ein `{{trigger.file.path}}` bleibt unaufgelöstes Literal.
+Trigger-Sources seeden ihre Event-Daten als `manual.*`-Variablen in den Run (`VariableResolver` schreibt `manual.<key>`), referenzierbar als `{{manual.<name>}}`. Jeder Trigger-Node spiegelt dieselben Keys zusätzlich als eigene `param.*`-Outputs (`{{<triggerVar>.param.<name>}}`). Es gibt **kein** `trigger.*`-Namespace — ein `{{trigger.file.path}}` bleibt unaufgelöstes Literal. `manual.*` hat ein **eigenes Regex-Muster** (`VariableResolver.ManualPattern`), weil der Tail ein frei gewählter Name ist und `StepPattern` ihn nie treffen könnte; ein Name, den der Lauf nicht führt, lässt den Step mit „Unknown trigger input(s)" scheitern statt still als Literal durchzulaufen.
 
 > **Häufigster Autorenfehler:** `{{trigger.doctorEmail}}` statt `{{trigger.param.doctorEmail}}`. Das `param.` fehlt, damit ist der Tail keiner der vier gültigen — die Referenz bleibt wörtlich stehen und wandert unbemerkt in die Config (z.B. als E-Mail-Empfänger). Im Muster-Workflow-Set steckten 9 solcher Referenzen in 3 Workflows.
 

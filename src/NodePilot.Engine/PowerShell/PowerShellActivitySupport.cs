@@ -24,8 +24,8 @@ internal static class PowerShellActivitySupport
     private const string ExitCodeMarker = PowerShellScriptWrapper.ExitCodeMarker;
 
     /// <summary>
-    /// Resolves <c>{{globals.NAME}}</c> and <c>{{varName.output|error|success|param.x}}</c> in script
-    /// text. In code context textual values become single-quoted PowerShell literals; inside an
+    /// Resolves <c>{{globals.NAME}}</c>, <c>{{manual.NAME}}</c> and
+    /// <c>{{varName.output|error|success|param.x}}</c> in script text. In code context textual values become single-quoted PowerShell literals; inside an
     /// existing PowerShell string/here-string only the string content is escaped. Booleans become
     /// <c>$true</c>/<c>$false</c>. Unresolved references are left verbatim.
     /// </summary>
@@ -78,10 +78,15 @@ internal static class PowerShellActivitySupport
         Comment,
     }
 
-    private sealed record TemplateExpression(Match Match, bool IsGlobal)
+    private enum TemplateKind { Global, Manual, Step }
+
+    private sealed record TemplateExpression(Match Match, TemplateKind Kind)
     {
         public int Index => Match.Index;
         public int Length => Match.Length;
+
+        /// <summary>Flat-namespace forms win an overlap against the step form — see FindTemplateExpressions.</summary>
+        public bool IsFlatNamespace => Kind != TemplateKind.Step;
     }
 
     /// <summary>
@@ -101,15 +106,21 @@ internal static class PowerShellActivitySupport
         var expressions = new List<TemplateExpression>();
         expressions.AddRange(VariableResolver.GlobalsPattern.Matches(script)
             .Cast<Match>()
-            .Select(match => new TemplateExpression(match, IsGlobal: true)));
+            .Select(match => new TemplateExpression(match, TemplateKind.Global)));
+        expressions.AddRange(VariableResolver.ManualPattern.Matches(script)
+            .Cast<Match>()
+            .Select(match => new TemplateExpression(match, TemplateKind.Manual)));
         expressions.AddRange(VariableResolver.StepPattern.Matches(script)
             .Cast<Match>()
-            .Select(match => new TemplateExpression(match, IsGlobal: false)));
+            .Select(match => new TemplateExpression(match, TemplateKind.Step)));
 
-        // Position first; at equal position the global wins, so it is the one kept below.
+        // Position first; at equal position the flat-namespace form wins, so it is the one kept
+        // below. A trigger input named "output"/"error"/"success" collides the same way a global
+        // with that name does: {{manual.output}} matches ManualPattern AND StepPattern over the
+        // identical span, and cutting the span twice would shred the surrounding script.
         expressions.Sort(static (left, right) => left.Index != right.Index
             ? left.Index.CompareTo(right.Index)
-            : right.IsGlobal.CompareTo(left.IsGlobal));
+            : right.IsFlatNamespace.CompareTo(left.IsFlatNamespace));
 
         var deduped = new List<TemplateExpression>(expressions.Count);
         var nextFreeIndex = 0;
@@ -217,11 +228,12 @@ internal static class PowerShellActivitySupport
         TemplateContext context)
     {
         var match = expression.Match;
-        if (expression.IsGlobal)
+        if (expression.Kind is TemplateKind.Global or TemplateKind.Manual)
         {
-            var key = $"globals.{match.Groups[1].Value}";
-            return variables.TryGetValue(key, out var globalValue)
-                ? FormatResolvedValue(globalValue, context)
+            var prefix = expression.Kind == TemplateKind.Global ? "globals" : "manual";
+            var key = $"{prefix}.{match.Groups[1].Value}";
+            return variables.TryGetValue(key, out var flatValue)
+                ? FormatResolvedValue(flatValue, context)
                 : null;
         }
 
@@ -322,6 +334,12 @@ internal static class PowerShellActivitySupport
         text = VariableResolver.GlobalsPattern.Replace(text, m =>
         {
             var key = $"globals.{m.Groups[1].Value}";
+            return variables.TryGetValue(key, out var v) ? v : m.Value;
+        });
+
+        text = VariableResolver.ManualPattern.Replace(text, m =>
+        {
+            var key = $"manual.{m.Groups[1].Value}";
             return variables.TryGetValue(key, out var v) ? v : m.Value;
         });
 
