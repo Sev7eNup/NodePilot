@@ -520,6 +520,17 @@ $successCode = ($successPath -split "`n" | Where-Object { $_.TrimStart() -notmat
 Assert-TextDoesNotMatch -Name 'a successful update must not stop the service again' `
     -Text $successCode -Pattern 'Stop-ServiceAndVerify'
 
+# Only the installer used to write the marker, so its Version kept naming the last INSTALL and a
+# script-driven update was invisible in it - including on the setup wizard's own mode page, which
+# reads exactly this value to tell the operator what is already installed.
+Assert-TextMatches -Name 'a successful update refreshes the installation marker' `
+    -Text $successCode `
+    -Pattern "(?s)SOFTWARE\\NodePilot\\Server[\s\S]{0,700}New-ItemProperty[^\r\n]*-Name 'Version'"
+# The marker is one machine-wide key, so on a host with a second instance it may well describe a
+# different installation. Stamping this update's version onto that one is worse than leaving it stale.
+Assert-TextMatches -Name 'and only when the marker describes this installation' `
+    -Text $successCode -Pattern '\$markerInstallPath\.TrimEnd\([^)]*\) -eq \$InstallPath\.TrimEnd\('
+
 # The rollback path is the one place the prior state still governs.
 $rollbackPath = $updateScript.Substring($catchStart)
 Assert-TextMatches -Name 'a failed update still restores the pre-update state' `

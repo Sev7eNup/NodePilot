@@ -328,6 +328,35 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
         catch {
             Write-Host "[update] Update succeeded, but old backup pruning failed: $($_.Exception.Message)" -ForegroundColor Yellow
         }
+
+        # Only Install-NodePilot.ps1 used to write this, so the marker kept the version of the last
+        # INSTALL and every script-driven update was invisible in it. That value is what the setup
+        # wizard puts on its mode page ("NodePilot <version> is already installed in <path>") and
+        # the obvious thing for an inventory to read - measured in the lab: binaries updated from
+        # 1.2.6-rc1 to the 1.2.5 artifact, marker still claiming 1.2.6-rc1.
+        #
+        # Version only: path, service name, provider and port are not changed by an update and are
+        # already correct. Guarded on InstallPath because the marker is a single machine-wide key -
+        # on a host running more than one instance it describes whichever was installed last, and
+        # stamping this update's version onto another instance's marker is worse than leaving it
+        # stale. A failure here is a warning: it costs discoverability, not a working installation.
+        try {
+            $markerPath = 'HKLM:\SOFTWARE\NodePilot\Server'
+            $marker = Get-ItemProperty -LiteralPath $markerPath -ErrorAction Stop
+            $markerInstallPath = [string]$marker.InstallPath
+            if ($markerInstallPath -and
+                $markerInstallPath.TrimEnd('\') -eq $InstallPath.TrimEnd('\')) {
+                New-ItemProperty -LiteralPath $markerPath -Name 'Version' `
+                    -Value ([string]$verifiedArtifact.Version) -PropertyType String -Force | Out-Null
+                Write-Info "Installation marker updated to version $($verifiedArtifact.Version)."
+            }
+            else {
+                Write-Info 'Installation marker describes another installation; left untouched.'
+            }
+        } catch {
+            Write-Warn "Could not update the installation marker: $($_.Exception.Message)"
+        }
+
         Write-Ok 'Update complete.'
     }
     catch {
