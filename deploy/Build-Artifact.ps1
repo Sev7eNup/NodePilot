@@ -52,9 +52,11 @@
     verified by deploy\Get-DotnetRuntimePayload.ps1 when omitted.
 .PARAMETER InstallerSigningCertificateThumbprint
     Authenticode-sign every installer this run produces with this certificate, before the
-    checksums are written. Without it they are produced unsigned and SmartScreen warns on first
-    launch. Signing afterwards by hand invalidates the SHA256SUMS entry for the .exe, which is
-    why this is a build parameter rather than a documented follow-up step.
+    checksums are written. Signing afterwards by hand invalidates the SHA256SUMS entry for the
+    .exe, which is why this is a build parameter rather than a documented follow-up step.
+    Note that signing does NOT silence SmartScreen: the release certificate is self-signed and
+    carries no reputation, so a downloaded installer raises the unrecognised-app prompt whether
+    it is signed or not (docs/deployment-guide.md, "First run: the SmartScreen prompt").
 .EXAMPLE
     .\deploy\Build-Artifact.ps1
 .EXAMPLE

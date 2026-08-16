@@ -174,8 +174,10 @@ deploy\Build-Artifact.ps1 -SigningCertificateThumbprint <artifact-signer> `
 ```
 
 Sign during the build rather than afterwards: signing rewrites the `.exe` and would invalidate its
-entry in `NodePilot-<version>.SHA256SUMS.txt`. An unsigned installer makes SmartScreen warn on
-first launch. Internals,
+entry in `NodePilot-<version>.SHA256SUMS.txt`. Signing does not silence SmartScreen — a downloaded
+installer warns on first launch either way, because the publisher certificate is self-signed and
+carries no reputation (see
+[deployment-guide.md](docs/deployment-guide.md#first-run-the-smartscreen-prompt)). Internals,
 service identities and the first-run handoff: [`deploy/desktop/README.md`](deploy/desktop/README.md).
 
 </details>

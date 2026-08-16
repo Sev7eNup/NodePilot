@@ -4,6 +4,8 @@
 
 Das Dokument ist **produktneutral** — es enthält bewusst keine `Add-MpPreference`-Zeilen oder Skripte. Die konkrete Umsetzung (GPO, Intune, Konsole des jeweiligen Herstellers) bleibt bei der AV-Abteilung.
 
+**Abgrenzung: SmartScreen ist hier nicht gemeint.** Dieses Dokument adressiert ausschließlich den **Virenscanner** (Echtzeit-Prüfung, Heuristik, ASR, Controlled Folder Access). Der blaue Dialog „Der Computer wurde durch Windows geschützt", der beim Start eines **heruntergeladenen** Installers erscheint, kommt von Microsoft Defender SmartScreen — einem getrennten Reputationsdienst, der Ausschlusslisten **ignoriert**. Kein Eintrag aus diesem Dokument beeinflusst ihn. Erklärung und Vorgehen: [deployment-guide.md → First run: the SmartScreen prompt](deployment-guide.md#first-run-the-smartscreen-prompt).
+
 **Geltungsbereich**
 
 | Rolle | Enthalten |
@@ -75,6 +77,8 @@ Ausdrücklich **nicht** enthalten: Ordner, in die Workflows schreiben. Siehe [Wa
 | `pwsh.exe` | `C:\Program Files\PowerShell\7\pwsh.exe` | PowerShell 7, bevorzugter Host für isolierte und explizit prozessbasierte Schritte | Wird mit `-ExecutionPolicy Bypass -File <Temp-Skript>` gestartet | Pflicht | Ein Prozess-Ausschluss für einen generischen Skript-Host ist die weitreichendste Regel in dieser Liste. **Nach Möglichkeit einschränken:** nur, wenn der Elternprozess `NodePilot.Api.exe` ist, oder nur in Kombination mit dem Dateimuster aus [C.1](#c1-temporäre-skript--und-transcript-dateien) |
 | `powershell.exe` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Fallback-Host, wenn PowerShell 7 nicht installiert ist | wie oben | Pflicht, sofern PowerShell 7 nicht garantiert vorhanden ist | wie oben |
 | `where.exe` | `C:\Windows\System32\where.exe` | Wird beim Start der Engine **einmalig** aufgerufen, um den PowerShell-Host zu lokalisieren | Aufruf durch einen Dienst kann als Discovery-Verhalten gewertet werden | Empfohlen | Sehr gering — reine Pfadauflösung ohne Schreibzugriff |
+| `np.exe` | `C:\Program Files\NodePilot\tools\np\np.exe` | Operations-CLI. Wird seit 1.2.8 mit dem Installer ausgeliefert und liegt auf der Maschinen-`PATH`; reiner HTTPS-Client gegen die eigene REST-API | Wird interaktiv von Administratoren aufgerufen, legt eine DPAPI-geschützte Sitzungsdatei unter `%APPDATA%` an | Empfohlen | Gering — kein Dienstkontext, keine Kindprozesse. **Achtung:** Die mitgelieferten Client-Binaries sind selbst **nicht** Authenticode-signiert (nur der Installer ist es), eine Publisher-Regel greift hier also nicht — Prozess- oder Pfadregel verwenden |
+| `nodepilot-mcp.exe` | `C:\Program Files\NodePilot\tools\mcp\nodepilot-mcp.exe` | MCP-Server für KI-Agenten, seit 1.2.8 mitgeliefert. Wird über stdio von einem Agenten gestartet, spricht ausschließlich HTTPS gegen die REST-API | Ein von einem Editor/Agenten gestarteter Prozess, der eine Netzwerkverbindung öffnet, kann als auffällig gewertet werden | Optional — nur nötig, wenn der MCP-Server auf diesem Host genutzt wird | Wie `np.exe`: nicht signiert, kein Dienstkontext. Läuft nur, solange ein Agent ihn offen hält |
 
 Aus generiertem PowerShell heraus werden je nach Workflow zusätzlich Windows-Bordmittel aufgerufen: `sc.exe` (Dienstverwaltung), `shutdown.exe` und `cmd.exe /c shutdown /a` (Energieverwaltung), die WMI-/CIM-Infrastruktur (`WmiPrvSE.exe`) und die Aufgabenplanung. Diese laufen in der Regel auf der **Ziel-Maschine**, nicht auf dem Orchestrator, und brauchen dort keinen NodePilot-spezifischen Ausschluss. Sie sind hier nur genannt, damit ein Alarm auf `NodePilot.Api.exe → powershell.exe → sc.exe` als erwartet eingeordnet werden kann.
 
@@ -142,6 +146,7 @@ Rolle: Einzelplatz-Installation aus dem Offline-Installer. **Zwei** Windows-Dien
 | `psql.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Legt Rolle und Datenbank an — nur bei Installation | Empfohlen | gering |
 | `pg_dump.exe` / `pg_restore.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Sicherung vor jedem Update bzw. Rückrollen | Empfohlen | gering; laufen nur im Wartungsfenster |
 | `powershell.exe` / `pwsh.exe` | Systempfade | Workflow-Ausführung — identisch zu Teil A | Pflicht | siehe [A.2](#a2-prozesse) |
+| `np.exe` / `nodepilot-mcp.exe` | `C:\Program Files\NodePilot\tools\np\`<br>`C:\Program Files\NodePilot\tools\mcp\` | Operations-CLI und MCP-Server, seit 1.2.8 mitgeliefert. Im Desktop-Paket **self-contained** publiziert, bringen also je eine eigene .NET-Laufzeit mit (~80 MB je Verzeichnis) | Optional — nur nötig, wenn sie auf diesem Gerät benutzt werden | Reine HTTPS-Clients gegen die lokale API, kein Dienstkontext. Beide sind **nicht** Authenticode-signiert (nur der Installer ist es) — Publisher-Regel greift nicht, Prozess-/Pfadregel verwenden. Anders als beim Server liegen sie hier **nicht** auf der `PATH` |
 
 Die übrigen 37 Programme in `pgsql\bin` (`pgbench.exe`, `pg_upgrade.exe`, `stackbuilder.exe`, …) werden von NodePilot **nicht** aufgerufen und brauchen keinen Ausschluss.
 

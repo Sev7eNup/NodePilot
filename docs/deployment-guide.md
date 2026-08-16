@@ -161,6 +161,66 @@ retroactively authenticate anything already running, and it does not silence Sma
 > code-signing certificate — note that the installer does not validate the chain either way, so
 > that choice is about your own policy rather than about what the installer will accept.
 
+### First run: the SmartScreen prompt
+
+Starting the downloaded installer raises a blue **"Windows protected your PC"** window
+(Microsoft Defender SmartScreen), offering only *Don't run* until you expand *More info*. That is
+expected, and it is not a sign that anything is wrong with the file.
+
+Two things have to be true for it to appear, and both are true for a downloaded release:
+
+- **The file carries a Mark of the Web.** Anything a browser writes to disk gets an alternate data
+  stream marking it as Internet-zone content, and SmartScreen only evaluates files that carry it.
+  A locally built installer out of `out\` has no such stream and starts silently — which is why the
+  prompt shows up the first time you run a *published* release even though earlier builds of the
+  same product never triggered it.
+- **The publisher carries no reputation.** NodePilot is signed with a self-signed certificate
+  (`CN=NodePilot Release Signing`), so SmartScreen has nothing to weigh and reports an unrecognised
+  app.
+
+You can see the mark for yourself:
+
+```powershell
+Get-Content -LiteralPath .\NodePilot-Server-Setup-1.2.10.exe -Stream Zone.Identifier
+# ZoneId=3   (3 = Internet)
+```
+
+**Verify before you dismiss it, not after.** The prompt is not the trust decision — the checksum
+and the publisher thumbprint are:
+
+```powershell
+# 1. The file is the one that was published
+Get-FileHash .\NodePilot-Server-Setup-1.2.10.exe -Algorithm SHA256 | Format-List
+#    compare against NodePilot-1.2.10.SHA256SUMS.txt
+
+# 2. It carries the publisher named in the release notes
+(Get-AuthenticodeSignature .\NodePilot-Server-Setup-1.2.10.exe).SignerCertificate.Thumbprint
+```
+
+`Get-AuthenticodeSignature` reports `UnknownError` here, and that is the expected result rather
+than a failure: the signature itself is intact, but its root is not in any trust store. What is
+meaningful is the thumbprint and the checksum. Once both match, choose *More info → Run anyway*.
+
+Clearing the mark instead of clicking through it has the same effect and is easier to script:
+
+```powershell
+Unblock-File -Path .\NodePilot-Server-Setup-1.2.10.exe
+```
+
+**The ZIP route needs the same treatment.** `Install-NodePilot.ps1` unpacks a downloaded archive
+and runs PowerShell out of it; files extracted from a marked ZIP inherit the mark, which makes
+Windows treat those scripts as downloaded content. Unblock the archive before extracting:
+
+```powershell
+Unblock-File -Path .\NodePilot-1.2.10.zip
+Expand-Archive -Path .\NodePilot-1.2.10.zip -DestinationPath .\NodePilot-1.2.10
+```
+
+Antivirus exclusions do not change any of this. SmartScreen is a separate reputation service and
+ignores scanner exclusion lists — see [av-exclusions.md](av-exclusions.md). The only thing that
+removes the prompt for good is signing with a reputation-carrying certificate; a self-signed
+publisher keeps it no matter what is imported into a trust store.
+
 ### Option B — build it yourself (build host)
 
 Create the signing certificate once and keep it:

@@ -4,6 +4,8 @@ NodePilot führt PowerShell aus und startet Prozesse. Beides kollidiert mit Stan
 
 Betroffen sind die Betriebsarten [Windows-Server](./production) und [Desktop-App](./desktop). Auf den per WinRM orchestrierten Ziel-Maschinen wird keine NodePilot-Software installiert; sie sind nicht Gegenstand dieser Seite.
 
+**Nicht gemeint ist SmartScreen.** Der blaue Dialog beim Start eines heruntergeladenen Installers kommt von einem getrennten Reputationsdienst, der Ausschlusslisten ignoriert — kein Eintrag dieser Seite beeinflusst ihn. Siehe [Beim ersten Start: das blaue SmartScreen-Fenster](./production#beim-ersten-start-das-blaue-smartscreen-fenster).
+
 ## Auslöser
 
 | Verhalten | Betriebsart | Typische Reaktion des Scanners |
