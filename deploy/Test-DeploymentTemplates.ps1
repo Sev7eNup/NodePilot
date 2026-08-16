@@ -2223,6 +2223,13 @@ foreach ($pathConsumer in @(
         @{ Name = 'uninstaller'; Text = $uninstallScript })) {
     Assert-TextMatches -Name "$($pathConsumer.Name) uses the shared PATH helper" `
         -Text $pathConsumer.Text -Pattern "MachinePath\.ps1"
+    # The directory literal itself, on ONE line. Asserting only the helper name let a mangled
+    # path through into 1.2.8 and 1.2.9: an editing slip turned 'tools\np' into a string
+    # containing a literal newline, so Test-Path threw "Illegal characters in path", the catch
+    # downgraded it to a warning, and `np` silently never reached the machine PATH. The install
+    # itself succeeded every time, which is exactly why nobody noticed.
+    Assert-TextMatches -Name "$($pathConsumer.Name) names the tools\np directory on one line" `
+        -Text $pathConsumer.Text -Pattern "Join-Path \`$InstallPath 'tools\\np'"
 }
 
 $ssoDocumentation = Get-Content -LiteralPath $SsoDocumentationPath -Raw

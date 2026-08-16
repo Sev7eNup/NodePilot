@@ -362,8 +362,7 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
         # idempotent append as the installer, so an update that already has the entry is a no-op.
         try {
             . (Join-Path $PSScriptRoot 'MachinePath.ps1')
-            $toolsPath = Join-Path $InstallPath 'tools
-p'
+            $toolsPath = Join-Path $InstallPath 'tools\np'
             if (Test-Path -LiteralPath (Join-Path $toolsPath 'np.exe')) {
                 $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
                 if (-not (Test-NodePilotPathContains -PathValue $machinePath -Directory $toolsPath)) {

@@ -1741,8 +1741,7 @@ try {
 # an absolute path in .mcp.json, so it gains nothing from PATH and would only add noise.
 try {
     . (Join-Path $PSScriptRoot 'MachinePath.ps1')
-    $toolsPath = Join-Path $InstallPath 'tools
-p'
+    $toolsPath = Join-Path $InstallPath 'tools\np'
     if (Test-Path -LiteralPath (Join-Path $toolsPath 'np.exe')) {
         $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
         if (Test-NodePilotPathContains -PathValue $machinePath -Directory $toolsPath) {

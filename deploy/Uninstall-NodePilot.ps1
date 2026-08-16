@@ -207,8 +207,7 @@ Write-Step "Removing the CLI from the machine PATH"
 # accumulate.
 try {
     . (Join-Path $PSScriptRoot 'MachinePath.ps1')
-    $toolsPath = Join-Path $InstallPath 'tools
-p'
+    $toolsPath = Join-Path $InstallPath 'tools\np'
     $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
     if (Test-NodePilotPathContains -PathValue $machinePath -Directory $toolsPath) {
         [Environment]::SetEnvironmentVariable('Path',
