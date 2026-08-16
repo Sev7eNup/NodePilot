@@ -1,15 +1,20 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using NodePilot.Core.Activities;
-using NodePilot.Core.WorkflowDefinitions;
 
-namespace NodePilot.Mcp.Analysis;
+namespace NodePilot.Core.WorkflowDefinitions;
 
 /// <summary>
 /// In-process static analysis of a workflow definition (works on the unsaved canvas state).
 /// Surfaces the NodePilot-specific traps an author hits most: nodes that never run (no active
 /// path from a trigger — "trigger-only roots"), a missing/disabled trigger (0 roots → the run
 /// Fails), cycles, remote activities without a target machine, and unknown activity types.
+///
+/// <para>The single analyzer behind <c>analyze_workflow</c> on BOTH surfaces — the MCP tool and
+/// the AI chat. It lived twice until the two copies had drifted (<c>cycle</c> was an error here and
+/// a warning there, and the chat copy flagged a missing target machine on the hybrid types, which
+/// the Localhost bypass makes perfectly valid). Finding codes/severities are kept aligned with the
+/// canvas linter (<c>workflowLint.ts</c>), guarded by <c>WorkflowAnalyzerFrontendParityTests</c>.</para>
 /// </summary>
 public static class WorkflowAnalyzer
 {
@@ -20,8 +25,24 @@ public static class WorkflowAnalyzer
 
     public static AnalysisResult Analyze(JsonElement definition)
     {
+        // A broken structure (duplicate ids, dangling edge endpoints, ...) makes every graph
+        // finding below untrustworthy, so report that one thing and stop rather than pile
+        // misleading findings on top of it.
+        var structural = WorkflowDefinitionStructuralValidator.Validate(definition);
+        if (!structural.IsValid)
+        {
+            return new AnalysisResult(false, 0, 0, [], [
+                new Finding("error", "invalid-structure", null,
+                    structural.Error ?? "The definition is structurally invalid.")]);
+        }
+
         var doc = WorkflowDefinitionDocument.FromJsonElement(definition);
         var findings = new List<Finding>();
+
+        // An empty workflow runs through with 0 steps and Succeeds — "no trigger" would be a
+        // false positive, so there is simply nothing to report.
+        if (doc.Nodes.Count == 0)
+            return new AnalysisResult(true, 0, doc.Edges.Count, [], []);
 
         var rootIds = doc.RootNodes.Select(n => n.Id).ToList();
         if (rootIds.Count == 0)
@@ -51,20 +72,14 @@ public static class WorkflowAnalyzer
         AddDuplicateOutputVariableFindings(doc, findings);
         AddUnresolvedReferenceFindings(doc, definition, findings);
 
-        // Remote activities without a target machine, and unknown activity types.
+        // Remote activities without a target machine. Unknown activity types are NOT checked here:
+        // the structural pre-check above already rejects them, and with a better message (it names
+        // the node index and the offending type). It also validates the custom:<slug> grammar, so a
+        // custom activity that reaches this loop is well-formed — its RunsRemote flag just isn't
+        // resolvable without the DB, which is why the heuristic below skips it.
         foreach (var node in doc.Nodes)
         {
             if (doc.DisabledNodeIds.Contains(node.Id)) continue;
-
-            // custom:<key> activities are user-authored and resolved at run time, not in the static
-            // catalog — recognise them by prefix so they aren't flagged as unknown. Their RunsRemote
-            // flag isn't resolvable here (no DB), so the remote-target heuristic below skips them.
-            if (!ActivityCatalog.ByType.ContainsKey(node.Type) && !IsAnnotation(node.Type)
-                && !CustomActivityType.IsCustomType(node.Type))
-            {
-                findings.Add(new Finding("error", "unknown-activity-type", node.Id, $"Unknown activityType '{node.Type}'."));
-                continue;
-            }
 
             // runScript and waitForCondition are HYBRID: without a target machine they run locally
             // in the API process (Localhost-Bypass), so a missing targetMachineId is NOT an error.
@@ -132,7 +147,7 @@ public static class WorkflowAnalyzer
     {
         var typeByNodeId = doc.Nodes.ToDictionary(n => n.Id, n => n.Type ?? string.Empty, StringComparer.Ordinal);
 
-        foreach (var unresolved in VariableResolver.FindUnresolved(definition))
+        foreach (var unresolved in WorkflowDataBusAnalyzer.FindUnresolved(definition))
         {
             if (doc.DisabledNodeIds.Contains(unresolved.NodeId)) continue;
 
@@ -273,7 +288,7 @@ public static class WorkflowAnalyzer
            || string.Equals(type, "stickyNote", StringComparison.OrdinalIgnoreCase)
            || string.Equals(type, "group", StringComparison.OrdinalIgnoreCase);
 
-    private static string Label(NodePilot.Core.Models.WorkflowNode node)
+    private static string Label(Models.WorkflowNode node)
         => string.IsNullOrWhiteSpace(node.Data.Label) ? node.Id : node.Data.Label!;
 
     private static bool TryGetString(JsonElement obj, string name, out string? value)

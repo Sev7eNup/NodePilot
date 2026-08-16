@@ -36,8 +36,11 @@ public class WorkflowChatToolRegistryTests
         var result = await Registry.ExecuteAsync("analyze_workflow", "{}", ctx, CancellationToken.None);
 
         using var doc = JsonDocument.Parse(result);
-        doc.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
-        result.Should().Contain("orphan-node");
+        // ok mirrors the shared analyzer's meaning: no ERROR-severity finding. An unreachable node
+        // is a warning, so it shows up in count/findings while ok stays true.
+        doc.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("count").GetInt32().Should().BeGreaterThan(0);
+        result.Should().Contain("unreachable-node");
     }
 
     [Fact]

@@ -170,7 +170,9 @@ harmlosen Casts auf diesen Secret-Tabellen; explizit benannte, nicht geschützte
 `disable_system_alert_policy` · `test_fire_system_alert_policy`
 
 ### Canvas assistant (for the in-designer chat — mostly in-process, work on the unsaved definition)
-`analyze_workflow` (orphans / no-trigger / cycles / remote-without-machine) ·
+`analyze_workflow` (unreachable nodes / no-trigger / cycles / remote-without-machine / unresolvable
+`{{…}}` references / duplicate edges + output variables / `Start-Job` in a hosted runspace; the same
+`NodePilot.Core.WorkflowAnalyzer` the AI chat calls, so both surfaces report identical codes) ·
 `find_unresolved_references` · `get_available_variables` · `check_styleguide` ·
 `validate_edge_condition` · `validate_activity_config` · `preview_template_resolution` ·
 `suggest_layout` · `diff_workflow_definition` · `get_workflow_node` · `get_failure_context`

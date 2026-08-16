@@ -2,17 +2,20 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using NodePilot.Core.Activities;
 using NodePilot.Core.Models;
-using NodePilot.Core.WorkflowDefinitions;
 
-namespace NodePilot.Mcp.Analysis;
+namespace NodePilot.Core.WorkflowDefinitions;
 
 /// <summary>
 /// Data-bus reasoning over a definition: which <c>{{…}}</c> references are available at a node,
 /// and which references in the workflow won't resolve under the contract guarantee (only the
 /// <c>output</c>/<c>error</c>/<c>success</c>/<c>param.X</c> tails plus <c>globals.*</c>/<c>manual.*</c>
 /// resolve; anything else stays a literal).
+///
+/// <para>Static analysis over an unsaved definition — deliberately NOT
+/// <c>NodePilot.Engine.VariableResolver</c>, which substitutes values during a real run. The name
+/// differs so a file that needs both never has to disambiguate.</para>
 /// </summary>
-public static class VariableResolver
+public static class WorkflowDataBusAnalyzer
 {
     private static readonly Regex TemplateRx = new(@"\{\{\s*(.*?)\s*\}\}", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
     private static readonly Regex PsAssignRx = new(@"\$([A-Za-z_][A-Za-z0-9_]*)\s*=", RegexOptions.Compiled, TimeSpan.FromSeconds(1));

@@ -438,8 +438,11 @@ eine OpenAI-Function-Calling-Schleife (`tool_choice: auto`): das Modell darf **r
 der **secret-redigierten** Workflow-Definition aufrufen, deren Ergebnisse zurückgespeist werden, bevor
 es die finale Antwort/den Vorschlag produziert. Verfügbare Tools:
 
-- **`analyze_workflow`** — deterministische Static-Analysis (fehlender Trigger, unreachable/orphan Steps,
-  Zyklen, Remote-Step ohne Target-Machine, Strukturfehler) — dieselben Codes wie der Canvas-Linter.
+- **`analyze_workflow`** — deterministische Static-Analysis (fehlender Trigger, unreachable Steps,
+  Zyklen, Remote-Step ohne Target-Machine, Strukturfehler, unauflösbare `{{…}}`-Referenzen, doppelte
+  Edges/Output-Variablen, `Start-Job` im Hosted-Runspace) — dieselben Codes wie der Canvas-Linter,
+  **derselbe Analyzer** (`WorkflowAnalyzer` in `NodePilot.Core`) wie hinter dem gleichnamigen
+  MCP-Tool. `ok` bedeutet „kein Error-Befund"; Warnungen erscheinen trotzdem in `count`/`findings`.
 - **`list_activity_types`** — der Activity-Katalog.
 - **`list_recent_executions`** — die jüngsten Läufe des aktuell geöffneten Workflows (Status, Zeiten,
   Fehlermeldung, fehlgeschlagene Steps; `take` 1–20, Default 10).

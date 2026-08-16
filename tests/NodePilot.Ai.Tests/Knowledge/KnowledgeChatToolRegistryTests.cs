@@ -266,8 +266,11 @@ public class KnowledgeChatToolRegistryTests
         var r = await reg.ExecuteAsync("analyze_workflow", """{"idOrName":"wf"}""", Ctx(opReader: op), CancellationToken.None);
 
         using var doc = JsonDocument.Parse(r);
-        doc.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
-        r.Should().Contain("orphan-node");
+        // ok = "no error-severity finding"; an unreachable node is a warning, so it lands in
+        // count/findings without flipping ok.
+        doc.RootElement.GetProperty("ok").GetBoolean().Should().BeTrue();
+        doc.RootElement.GetProperty("count").GetInt32().Should().BeGreaterThan(0);
+        r.Should().Contain("unreachable-node");
     }
 
     [Fact]
