@@ -378,7 +378,7 @@ Background-Service-, Konfigurations- und Observability-Vertrag stehen vollständ
 
 ## CLI (`np`) — Befehlsbereiche & Details
 
-Operations-CLI für Operatoren — eigenes Projekt unter [src/NodePilot.Cli/](src/NodePilot.Cli/), `AssemblyName=np`. Ausgeliefert per `dotnet publish` + `PATH`-Eintrag, **kein** `dotnet global tool`: `PackAsTool` verträgt kein Platform-TFM, und das Projekt hängt transitiv an `net10.0-windows` (NETSDK1146). **Reiner HTTP-Client gegen die bestehenden REST-Endpoints** — keine eigene API-Surface, keine DB-Zugriffe.
+Operations-CLI für Operatoren — eigenes Projekt unter [src/NodePilot.Cli/](src/NodePilot.Cli/), `AssemblyName=np`. Mit beiden Installern ausgeliefert (`<install>\tools\np`, von Install/Update idempotent in die Maschinen-PATH gehängt), aus dem Source-Checkout per `dotnet publish`, **kein** `dotnet global tool`: `PackAsTool` verträgt kein Platform-TFM, und das Projekt hängt transitiv an `net10.0-windows` (NETSDK1146). **Reiner HTTP-Client gegen die bestehenden REST-Endpoints** — keine eigene API-Surface, keine DB-Zugriffe.
 
 **Befehlsbereiche:**
 - `auth` — login/logout/whoami/**methods** (Discovery der Local/LDAP/Windows-SSO-Tiles)

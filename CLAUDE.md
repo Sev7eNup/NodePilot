@@ -336,7 +336,7 @@ Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, d
 
 ## Clients (`np` CLI + `nodepilot-mcp`)
 
-Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad. Ausgeliefert werden beide per `dotnet publish` (Ordner in den `PATH` bzw. `.mcp.json` auf die `.exe` zeigen lassen); **keine** `dotnet global tool`s — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146, siehe `docs/roadmap.md`-Sperrvermerk). Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (100 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI (`np auth login`).
+Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pfad. Beide werden **von beiden Installern mitgeliefert**: Server-Artefakt und Desktop-Paket enthalten `tools\np\np.exe` und `tools\mcp\nodepilot-mcp.exe`; `Install-NodePilot.ps1`/`Update-NodePilot.ps1` hängen `tools\np` idempotent an die Maschinen-`PATH` (gemeinsame Helfer in `deploy/MachinePath.ps1`, Uninstall entfernt sie wieder), der MCP-Server wird per absolutem Pfad in `.mcp.json` referenziert und bewusst **nicht** in die PATH aufgenommen. Aus einem Source-Checkout weiterhin per `dotnet publish`; **keine** `dotnet global tool`s — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146, siehe `docs/roadmap.md`-Sperrvermerk). Der MCP-Server ergänzt In-Proc-Analyse gegen `NodePilot.Core` (100 Tools, 3 Resources, stdio) und reused die DPAPI-Session der CLI (`np auth login`).
 
 **Jeder neue API-Endpoint braucht beide Clients.** Mechanik, Befehlsbereiche und Tool-Katalog: `src/NodePilot.Cli/CLAUDE.md`, `src/NodePilot.Mcp/CLAUDE.md`, `docs/mcp-server.md`, `docs/claude-reference.md`.
 

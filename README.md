@@ -965,8 +965,12 @@ Full reference: [docs/ai-features.md](docs/ai-features.md).
 
 A first-class command-line client for operators, talking to the same REST API the SPA does. **No backend dependencies, no DB access** — pure HTTP client.
 
+**Shipped with both installers.** The server setup installs it to `<install>\tools\np` and puts
+that directory on the machine PATH, so `np` works in any new shell; the desktop package installs
+it to `<install>\tools\np`. Build it yourself only when working from a source checkout:
+
 ```powershell
-# Build (one-time) — publish, then put the folder on PATH
+# From a source checkout — publish, then put the folder on PATH
 dotnet publish src/NodePilot.Cli -c Release -o C:\Tools\NodePilot-Cli
 $env:PATH += ';C:\Tools\NodePilot-Cli'    # persist via System Properties → Environment Variables
 
@@ -1001,7 +1005,12 @@ it never permits plaintext connections to remote hosts.
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that lets an AI agent (Claude Desktop/Code, or any MCP client) **drive and edit workflows and read data** — 100 tools over the same REST API the SPA uses, plus in-process graph/data-bus analysis for the in-canvas chat assistant. Like the CLI: **HTTP-only, no backend dependencies**, and it reuses the CLI's `np auth login` session.
 
+**Shipped with both installers** under `<install>\tools\mcp\nodepilot-mcp.exe` — point `.mcp.json`
+at that path. It is deliberately not added to PATH: an MCP client is configured with an absolute
+path anyway. Build it yourself only when working from a source checkout:
+
 ```powershell
+# From a source checkout
 dotnet publish src/NodePilot.Mcp -c Release -o C:\Tools\NodePilot-Mcp
 np auth login                          # the MCP server reuses this session
 ```
@@ -1237,8 +1246,8 @@ src/
   NodePilot.Scheduler/    TriggerOrchestrator (Quartz.NET), 4 polling trigger sources + retention/cluster services
   NodePilot.Telemetry/    OpenTelemetry setup, Prometheus client, metric constants
   NodePilot.Api/          ASP.NET Core host, controllers, SignalR hub, security middleware
-  NodePilot.Cli/          `np` — operations CLI (Spectre.Console.Cli), shipped via dotnet publish
-  NodePilot.Mcp/          `nodepilot-mcp` — MCP server for AI agents (ModelContextProtocol), shipped via dotnet publish
+  NodePilot.Cli/          `np` — operations CLI (Spectre.Console.Cli), shipped in both installers under tools\np
+  NodePilot.Mcp/          `nodepilot-mcp` — MCP server for AI agents (ModelContextProtocol), shipped under tools\mcp
   nodepilot-ui/           React 19 SPA (Vite 8 + Tailwind CSS 4 + React Flow 12)
   nodepilot-docs-ui/      Documentation website (Vite + React SPA) — its OWN curated markdown corpus under content/, maintained alongside docs/ (not a 1:1 render)
   nodepilot-desktop/      Electron shell for the desktop app — thin hardened viewer, no business logic

@@ -13,6 +13,8 @@ Der Server ist **kein** .NET Global Tool: `PackAsTool` verträgt das geerbte
 `dotnet publish`; der MCP-Client zeigt auf die erzeugte `.exe`.
 
 ```powershell
+# Beide Installer liefern den Server bereits mit: <install>\tools\mcp\nodepilot-mcp.exe.
+# Nur aus einem Source-Checkout selbst bauen:
 dotnet publish src/NodePilot.Mcp -c Release -o C:\Tools\NodePilot-Mcp
 
 np auth login          # der MCP-Server nutzt diese CLI-Session weiter
