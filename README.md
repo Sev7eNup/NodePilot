@@ -1320,8 +1320,7 @@ dotnet test tests/NodePilot.Cli.Tests
 - Backend DB tests use **SQLite in-memory** (`DataSource=:memory:`) — only as a test backend; the production app does not support SQLite.
 
 **CI pipeline** ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs five jobs on every pull
-request — and on demand via `workflow_dispatch`. There is deliberately no `push` trigger: repository
-owner-controlled release cuts use the manual workflow when another run is wanted. The local nightly
+request and on every push to `main` — and on demand via `workflow_dispatch`. The local nightly
 suite (`scripts/nightly-tests.ps1`) is a safety net for the **currently checked-out working tree**; it
 does not run `git pull` and therefore does not claim to validate the latest `origin/main`.
 
