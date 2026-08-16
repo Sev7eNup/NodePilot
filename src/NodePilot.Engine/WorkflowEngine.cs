@@ -1004,6 +1004,12 @@ public class WorkflowEngine : IWorkflowEngine
         // timing. Computed once per run from the compiled reverse adjacency.
         var ancestorsByNode = AncestorIndex.Build(reverseAdjacency);
 
+        // The out-of-scope gate asks "is this a node of the graph that I may not read", not "has
+        // it run yet" — the latter made the check depend on which branch finished first. Built
+        // from the node list rather than from the ancestor index because a root has no reverse
+        // adjacency entry and would otherwise be invisible to the gate.
+        var knownNodeIds = new HashSet<string>(nodesById.Keys, StringComparer.Ordinal);
+
         // Root selection and disabled-node/edge semantics are owned by
         // WorkflowDefinitionDocument. The engine only handles the execution-specific
         // failure mode when the compiled graph has no entry point.
@@ -1048,7 +1054,7 @@ public class WorkflowEngine : IWorkflowEngine
             incomingEdgesByTarget, activeEdgeByEndpoints, outputVariableToStepId,
             results, completed, skipped,
             (node, stepCt) => _stepRunner.ExecuteAsync(execution, workflow.Name, node,
-                ScopeResultsToAncestors(results, ancestorsByNode, node.Id),
+                ScopeResultsToAncestors(results, ancestorsByNode, knownNodeIds, node.Id),
                 outputNameByStepId, outputVariableToStepId,
                 inputParameters, globalVariables, compiledDefinition.RetryPolicies, debug, cts, stepCt,
                 run.DurabilityCancellation),
@@ -1370,12 +1376,13 @@ public class WorkflowEngine : IWorkflowEngine
     private static IReadOnlyDictionary<string, ActivityResult> ScopeResultsToAncestors(
         IReadOnlyDictionary<string, ActivityResult> results,
         IReadOnlyDictionary<string, IReadOnlySet<string>> ancestorsByNode,
+        IReadOnlySet<string> knownNodeIds,
         string nodeId)
     {
         var ancestors = ancestorsByNode.TryGetValue(nodeId, out var set)
             ? set
             : new HashSet<string>(StringComparer.Ordinal);
-        return new AncestorScopedResults(results, ancestors);
+        return new AncestorScopedResults(results, ancestors, knownNodeIds);
     }
 
     private static string? SerializeInputParameters(Dictionary<string, string>? inputParameters)

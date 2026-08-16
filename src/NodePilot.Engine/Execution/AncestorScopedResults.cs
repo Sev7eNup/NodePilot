@@ -28,11 +28,16 @@ internal sealed class AncestorScopedResults : IReadOnlyDictionary<string, Activi
 {
     private readonly IReadOnlyDictionary<string, ActivityResult> _all;
     private readonly IReadOnlySet<string> _ancestors;
+    private readonly IReadOnlySet<string> _knownNodeIds;
 
-    public AncestorScopedResults(IReadOnlyDictionary<string, ActivityResult> all, IReadOnlySet<string> ancestors)
+    public AncestorScopedResults(
+        IReadOnlyDictionary<string, ActivityResult> all,
+        IReadOnlySet<string> ancestors,
+        IReadOnlySet<string> knownNodeIds)
     {
         _all = all;
         _ancestors = ancestors;
+        _knownNodeIds = knownNodeIds;
     }
 
     public bool TryGetValue(string key, out ActivityResult value)
@@ -49,14 +54,25 @@ internal sealed class AncestorScopedResults : IReadOnlyDictionary<string, Activi
     public bool ContainsKey(string key) => _ancestors.Contains(key) && _all.ContainsKey(key);
 
     /// <summary>
-    /// True when <paramref name="stepId"/> has produced a result in this run but is not a
-    /// predecessor of the step holding this view — i.e. the value exists and was deliberately
-    /// hidden. The unresolved-template diagnostic uses this to say "not on a predecessor path"
-    /// instead of "has not run or does not exist", which would send the author looking for a
-    /// step that visibly ran and succeeded in the same execution.
+    /// True when <paramref name="stepId"/> names a node of this workflow that is not a predecessor
+    /// of the step holding this view — the databus hides it by design, whether or not it has
+    /// produced a result yet.
+    ///
+    /// <para>The membership test is deliberately the compiled node set and not the result map.
+    /// Asking "did it already run" reintroduces the race this class exists to remove: a sibling
+    /// that has finished is recognised as out-of-scope, while the very same reference on the very
+    /// same graph reads as an unknown step when the sibling is still running. Callers that treat
+    /// out-of-scope as fatal but unknown steps as tolerable — the runScript / custom-activity
+    /// exemption in <see cref="StepRunner"/> — then let the literal through on the fast path and
+    /// fail on the slow one. Measured end to end: a cross-branch <c>$x = {{sibling.output}}</c>
+    /// reached PowerShell verbatim and the run reported green having written
+    /// "Ergebnis: {sibling.output}".</para>
+    ///
+    /// <para>Reference by an <c>outputVariable</c> alias is resolved to the node id by the caller,
+    /// which owns that mapping.</para>
     /// </summary>
-    public bool IsHiddenNonAncestor(string stepId) =>
-        !_ancestors.Contains(stepId) && _all.ContainsKey(stepId);
+    public bool IsNonAncestorNode(string stepId) =>
+        _knownNodeIds.Contains(stepId) && !_ancestors.Contains(stepId);
 
     public ActivityResult this[string key] =>
         TryGetValue(key, out var value) ? value : throw new KeyNotFoundException(key);

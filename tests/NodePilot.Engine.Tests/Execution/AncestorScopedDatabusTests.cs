@@ -165,7 +165,10 @@ public sealed class AncestorScopedDatabusTests : IDisposable
             ["ancestor"] = new() { Success = true, Output = "yes" },
             ["sibling"] = new() { Success = true, Output = "no" },
         };
-        var scoped = new AncestorScopedResults(all, new HashSet<string>(StringComparer.Ordinal) { "ancestor" });
+        var scoped = new AncestorScopedResults(
+            all,
+            new HashSet<string>(StringComparer.Ordinal) { "ancestor" },
+            new HashSet<string>(StringComparer.Ordinal) { "ancestor", "sibling" });
 
         scoped.TryGetValue("ancestor", out var visible).Should().BeTrue();
         visible.Output.Should().Be("yes");
@@ -184,10 +187,36 @@ public sealed class AncestorScopedDatabusTests : IDisposable
     {
         var scoped = new AncestorScopedResults(
             new Dictionary<string, ActivityResult>(StringComparer.Ordinal),
+            new HashSet<string>(StringComparer.Ordinal) { "ancestor" },
             new HashSet<string>(StringComparer.Ordinal) { "ancestor" });
 
         scoped.ContainsKey("ancestor").Should().BeFalse();
         scoped.Count.Should().Be(0);
+    }
+
+    /// <summary>
+    /// The out-of-scope test asks the graph, not the result map. A sibling that has not produced
+    /// a result yet is just as unreadable as one that has — and it is the "not yet" case that
+    /// used to slip through, because it was indistinguishable from a typo.
+    /// </summary>
+    [Fact]
+    public void ScopedResults_NonAncestorNode_IsOutOfScopeEvenBeforeItHasRun()
+    {
+        var knownNodes = new HashSet<string>(StringComparer.Ordinal) { "ancestor", "finished-sibling", "running-sibling" };
+        var scoped = new AncestorScopedResults(
+            new Dictionary<string, ActivityResult>(StringComparer.Ordinal)
+            {
+                ["finished-sibling"] = new() { Success = true, Output = "done" },
+            },
+            new HashSet<string>(StringComparer.Ordinal) { "ancestor" },
+            knownNodes);
+
+        scoped.IsNonAncestorNode("finished-sibling").Should().BeTrue("a sibling that finished is out of scope");
+        scoped.IsNonAncestorNode("running-sibling").Should().BeTrue(
+            "a sibling that has not finished is out of scope for the same reason — the graph decides, not the clock");
+        scoped.IsNonAncestorNode("ancestor").Should().BeFalse("a predecessor is readable");
+        scoped.IsNonAncestorNode("typo-step").Should().BeFalse(
+            "an id that names no node at all stays a plain missing reference, not a wiring error");
     }
 
     // ------------------------------------------------------------------ end to end
@@ -316,6 +345,34 @@ public sealed class AncestorScopedDatabusTests : IDisposable
         var scriptStep = await FindStepAsync(execution.Id, "script");
         scriptStep.Status.Should().Be(ExecutionStatus.Failed);
         scriptStep.ErrorOutput.Should().Contain("not on a predecessor path");
+    }
+
+    /// <summary>
+    /// The mirror image of the test above, and the one that used to fail: the sibling is still
+    /// RUNNING when the script starts. The gate used to ask the result map — "has this step
+    /// produced a value" — so an unfinished sibling read as an unknown step, fell into the
+    /// runScript tolerance, and the literal reached PowerShell. Same graph, same reference,
+    /// opposite outcome depending on which branch won the race. Measured against the lab
+    /// install: the step reported Succeeded having written "Ergebnis: {sibling.output}".
+    /// </summary>
+    [Fact]
+    public async Task Execution_RunScriptReadingAStillRunningSibling_FailsToo()
+    {
+        var workflow = NewWorkflow(
+            Node("sibling-slow"),
+            ScriptNode("script", "$wert = {{sibling-slow.output}}"),
+            Edge("trigger-1", "sibling-slow"),
+            Edge("trigger-1", "script"));
+
+        var execution = await _engine.ExecuteAsync(workflow, "manual", CancellationToken.None);
+
+        execution.Status.Should().Be(ExecutionStatus.Failed,
+            "the reference is unreadable because of the graph, not because of timing");
+        var scriptStep = await FindStepAsync(execution.Id, "script");
+        scriptStep.Status.Should().Be(ExecutionStatus.Failed);
+        scriptStep.ErrorOutput.Should().Contain("not on a predecessor path");
+        _seenConfigByStep.Should().NotContainKey("script",
+            "the step must fail before the placeholder can reach the script body");
     }
 
     /// <summary>

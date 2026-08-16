@@ -673,10 +673,16 @@ internal sealed class StepRunner
     /// their raw SQL / query text is intentionally left unresolved and validated by the executor.
     /// </summary>
     /// <summary>
-    /// Narrows a set of unresolved template tokens to those that point at a step which DID run in
-    /// this execution but is not on the referencing step's predecessor path. Those are the ones
-    /// the databus deliberately hid — never legitimate leftover text, and therefore fatal even
-    /// for the activities that otherwise tolerate unresolved placeholders.
+    /// Narrows a set of unresolved template tokens to those naming a node of this workflow that is
+    /// not on the referencing step's predecessor path. Those are the ones the databus deliberately
+    /// hid — never legitimate leftover text, and therefore fatal even for the activities that
+    /// otherwise tolerate unresolved placeholders.
+    ///
+    /// <para>Membership comes from the compiled graph, not from "has it produced a result yet".
+    /// The result-map test made the gate a race: the identical reference on the identical graph
+    /// was fatal when the sibling branch happened to finish first and tolerated otherwise, so the
+    /// placeholder reached PowerShell verbatim on exactly the runs where it was hardest to spot.
+    /// </para>
     /// </summary>
     internal static List<string> FindOutOfScopeReferences(
         IEnumerable<string> unresolved,
@@ -693,7 +699,7 @@ internal sealed class StepRunner
 
             var name = match.Groups[1].Value;
             var stepId = outputVariableToStepId.TryGetValue(name, out var mapped) ? mapped : name;
-            if (scoped.IsHiddenNonAncestor(stepId))
+            if (scoped.IsNonAncestorNode(stepId))
                 outOfScope.Add(token);
         }
 
@@ -785,7 +791,7 @@ internal sealed class StepRunner
                 var referencedStepId = outputVariableToStepId.TryGetValue(stepName, out var mapped)
                     ? mapped
                     : stepName;
-                if (previousResults is AncestorScopedResults scoped && scoped.IsHiddenNonAncestor(referencedStepId))
+                if (previousResults is AncestorScopedResults scoped && scoped.IsNonAncestorNode(referencedStepId))
                     outOfScope.Add((token, stepName));
                 else
                     stepMissing.Add(token);
@@ -826,7 +832,7 @@ internal sealed class StepRunner
             sb.Append(" Out-of-scope reference(s) \u2014 ")
               .Append(string.Join(", ", outOfScope.Select(o => o.token)))
               .Append(": ").Append(names)
-              .Append(" ran in this execution but is not on a predecessor path of this step. A step can only read ")
+              .Append(" is a node of this workflow but not on a predecessor path of this step. A step can only read ")
               .Append("outputs from steps it depends on \u2014 connect the branches with an edge, or move the reference ")
               .Append("to a step downstream of both.");
         }
