@@ -41,6 +41,9 @@ Source: "{#StageDir}\app\*";     DestDir: "{app}\app";     Flags: recursesubdirs
 Source: "{#StageDir}\desktop\*"; DestDir: "{app}\desktop"; Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#StageDir}\pgsql\*";   DestDir: "{app}\pgsql";   Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#StageDir}\deploy\*";  DestDir: "{app}\deploy";  Flags: recursesubdirs createallsubdirs ignoreversion
+; Operator clients: `np` drives the installation from a script, `nodepilot-mcp` is what an AI
+; agent connects to. Shipped because a desktop user has no build toolchain to produce them.
+Source: "{#StageDir}\tools\*";   DestDir: "{app}\tools";   Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{group}\NodePilot";         Filename: "{app}\desktop\NodePilot.exe"

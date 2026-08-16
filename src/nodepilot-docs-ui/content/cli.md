@@ -7,6 +7,8 @@
 `np` ist **kein** .NET Global Tool — `PackAsTool` verträgt das geerbte `net10.0-windows`-TFM nicht (NETSDK1146). Stattdessen veröffentlichen und den Ordner in den `PATH` legen:
 
 ```powershell
+# Beide Installer liefern np bereits mit: <install>\tools\np\np.exe, beim Server-Setup
+# zusaetzlich in der Maschinen-PATH. Nur aus einem Source-Checkout selbst bauen:
 dotnet publish src/NodePilot.Cli -c Release -o C:\Tools\NodePilot-Cli
 $env:PATH += ';C:\Tools\NodePilot-Cli'   # dauerhaft über Systemeigenschaften → Umgebungsvariablen
 

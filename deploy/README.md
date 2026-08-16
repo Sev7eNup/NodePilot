@@ -22,7 +22,8 @@ Der Dienst läuft wahlweise unter:
 
 | Datei | Zweck |
 |---|---|
-| [Build-Artifact.ps1](Build-Artifact.ps1) | Baut `out\NodePilot-<version>.zip` aus dem Repo (dotnet publish + PS-Modul-Staging nach `<stage>\Modules` + npm build + Template) und signiert das Manifest (detached CMS) |
+| [Build-Artifact.ps1](Build-Artifact.ps1) | Baut `out\NodePilot-<version>.zip` aus dem Repo (dotnet publish + PS-Modul-Staging nach `<stage>\Modules` + Operator-Clients nach `<stage>\tools\{np,mcp}` + npm build + Template) und signiert das Manifest (detached CMS) |
+| [MachinePath.ps1](MachinePath.ps1) | Reine PATH-String-Helfer, geteilt von Install/Update/Uninstall — hängt `<install>\tools\np` idempotent an die Maschinen-PATH bzw. entfernt sie wieder. Tests: `Test-MachinePath.ps1` |
 | [Install-NodePilot.ps1](Install-NodePilot.ps1) | Hauptinstaller — Service, ACLs, Firewall, Cert-Key-Access |
 | [ArtifactSecurity.ps1](ArtifactSecurity.ps1) | Geteilte Signier-/Verifikationslogik (Manifest + `.p7s`); wird von Build/Install/Update dot-sourced |
 | [Preflight.ps1](Preflight.ps1) | Geteilte **seiteneffektfreie** Readiness-Checks (Runtime, Zertifikat, **HTTP/HTTPS-Ports bindbar**, gMSA, DB-Erreichbarkeit, TDS-8.0-Version, Dienstidentität, Domänenmitgliedschaft); wird von Install dot-sourced |

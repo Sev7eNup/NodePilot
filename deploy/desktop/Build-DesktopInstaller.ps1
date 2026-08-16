@@ -124,6 +124,31 @@ if (-not (Test-Path -LiteralPath (Join-Path $appStage 'Modules\Microsoft.PowerSh
 }
 Write-Host ("    " + ((Get-ChildItem (Join-Path $appStage 'Modules') -Directory | Select-Object -ExpandProperty Name) -join ', '))
 
+# --- 1c. Operator clients -> <stage>\tools\{np,mcp} -------------------------------------------
+# Self-contained, unlike the server artifact's framework-dependent copies. The desktop package
+# promises zero prerequisites and offline install: there is no shared .NET runtime to bind to,
+# and a framework-dependent apphost cannot borrow the runtime sitting next to the API. Each
+# client keeps its own directory so no publish overwrites another's assembly versions.
+#
+# nodepilot-mcp is the reason this matters on desktop in particular: it is the only way to
+# point an AI agent at the local installation, and a desktop user has no build toolchain to
+# produce it themselves.
+Write-Step 'Publishing operator clients (np, nodepilot-mcp)'
+foreach ($client in @(
+        @{ Name = 'np';  Csproj = Join-Path $RepoRoot 'src\NodePilot.Cli\NodePilot.Cli.csproj'; Exe = 'np.exe' },
+        @{ Name = 'mcp'; Csproj = Join-Path $RepoRoot 'src\NodePilot.Mcp\NodePilot.Mcp.csproj'; Exe = 'nodepilot-mcp.exe' })) {
+    if (-not (Test-Path -LiteralPath $client.Csproj)) { throw "Client csproj not found: $($client.Csproj)" }
+    $clientStage = Join-Path $Stage ("tools\" + $client.Name)
+    Invoke-Tool {
+        & dotnet publish $client.Csproj -c $Configuration -r win-x64 --self-contained true `
+            "-p:RuntimeFrameworkVersion=$DesktopRuntimeVersion" `
+            -p:UseAppHost=true -p:DebugType=embedded -o $clientStage
+    } "dotnet publish failed for $($client.Csproj)."
+    if (-not (Test-Path -LiteralPath (Join-Path $clientStage $client.Exe))) {
+        throw "Expected $($client.Exe) in $clientStage, but it is missing."
+    }
+}
+
 # --- 2. SPA -> wwwroot -----------------------------------------------------------------------
 if (-not $SkipSpaBuild) {
     Write-Step 'Building SPA'

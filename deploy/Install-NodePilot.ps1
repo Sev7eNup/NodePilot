@@ -1731,6 +1731,35 @@ try {
     Write-Warn "  The installation works; tools that auto-detect it will not find this instance."
 }
 
+# `np` on the machine PATH. The CLI is the documented way to drive an installation from a
+# script, and an operator should not have to know where the install directory is to use it.
+#
+# Appended to the MACHINE path (not the user's): the people who run `np` on a server are
+# administrators arriving over RDP or a remote session, often not the account that ran setup.
+# Idempotent - a re-install or upgrade must not grow the variable each time, and PATH has a
+# real length limit. nodepilot-mcp is deliberately NOT added: an MCP client is configured with
+# an absolute path in .mcp.json, so it gains nothing from PATH and would only add noise.
+try {
+    . (Join-Path $PSScriptRoot 'MachinePath.ps1')
+    $toolsPath = Join-Path $InstallPath 'tools
+p'
+    if (Test-Path -LiteralPath (Join-Path $toolsPath 'np.exe')) {
+        $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+        if (Test-NodePilotPathContains -PathValue $machinePath -Directory $toolsPath) {
+            Write-Info "  $toolsPath is already on the machine PATH."
+        } else {
+            [Environment]::SetEnvironmentVariable('Path',
+                (Add-NodePilotPathEntry -PathValue $machinePath -Directory $toolsPath), 'Machine')
+            Write-Info "  Added $toolsPath to the machine PATH (new shells will find 'np')."
+        }
+    } else {
+        Write-Warn "  np.exe not found under $toolsPath - skipping the PATH entry."
+    }
+} catch {
+    Write-Warn "  Could not update the machine PATH: $($_.Exception.Message)"
+    Write-Warn "  The installation works; call np.exe by its full path under $InstallPath\tools\np."
+}
+
 Write-Host ""
 Write-Ok "Installation complete."
 Write-Host ""

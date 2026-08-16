@@ -2180,6 +2180,51 @@ foreach ($property in $runtimeLock.PSObject.Properties) {
     }
 }
 
+# --- Operator clients are part of the shipped artifact ----------------------------------------
+# Until 1.2.7 the server ZIP held exactly one executable and both clients were something the
+# operator had to build from source, which the docs said out loud. `np` is the documented way to
+# drive an installation from a script and nodepilot-mcp is the only way to point an AI agent at
+# it, so "not shipped" meant "not really available".
+Assert-TextMatches -Name 'server build publishes the CLI' `
+    -Text $buildScript -Pattern 'NodePilot\.Cli\.csproj'
+Assert-TextMatches -Name 'server build publishes the MCP server' `
+    -Text $buildScript -Pattern 'NodePilot\.Mcp\.csproj'
+Assert-TextMatches -Name 'server build stages the clients under tools\' `
+    -Text $buildScript -Pattern 'Join-Path \$StageDir \("tools'
+Assert-TextMatches -Name 'server build fails when a client executable is missing' `
+    -Text $buildScript -Pattern 'but it is missing\. Check publish output'
+
+Assert-TextMatches -Name 'desktop build publishes the CLI' `
+    -Text $desktopBuildScript -Pattern 'NodePilot\.Cli\.csproj'
+Assert-TextMatches -Name 'desktop build publishes the MCP server' `
+    -Text $desktopBuildScript -Pattern 'NodePilot\.Mcp\.csproj'
+# Desktop promises zero prerequisites: a framework-dependent client would need a shared runtime
+# that the package deliberately does not install.
+Assert-TextMatches -Name 'desktop clients are self-contained' `
+    -Text $desktopBuildScript -Pattern '(?s)Publishing operator clients.*?--self-contained true'
+
+$desktopIss = Get-Content -LiteralPath (Join-Path $scriptDirectory 'desktop\NodePilot.iss') -Raw
+Assert-TextMatches -Name 'desktop installer ships the tools directory' `
+    -Text $desktopIss -Pattern '(?m)^Source:\s*"\{#StageDir\}\\tools\\\*"'
+
+# PATH registration: added on install AND on update (an installation predating the shipped
+# clients has no entry to keep), removed on uninstall before the directory it points at is gone.
+Assert-TextMatches -Name 'installer puts the CLI on the machine PATH' `
+    -Text $installer -Pattern "Add-NodePilotPathEntry"
+Assert-TextMatches -Name 'updater puts the CLI on the machine PATH' `
+    -Text $updateScript -Pattern "Add-NodePilotPathEntry"
+Assert-TextMatches -Name 'uninstaller removes the CLI from the machine PATH' `
+    -Text $uninstallScript -Pattern "Remove-NodePilotPathEntry"
+# All three share one implementation; three copies of the same string surgery is how one of
+# them ends up subtly different.
+foreach ($pathConsumer in @(
+        @{ Name = 'installer';   Text = $installer },
+        @{ Name = 'updater';     Text = $updateScript },
+        @{ Name = 'uninstaller'; Text = $uninstallScript })) {
+    Assert-TextMatches -Name "$($pathConsumer.Name) uses the shared PATH helper" `
+        -Text $pathConsumer.Text -Pattern "MachinePath\.ps1"
+}
+
 $ssoDocumentation = Get-Content -LiteralPath $SsoDocumentationPath -Raw
 Assert-TextMatches -Name 'SPN examples use duplicate-safe registration' `
     -Text $ssoDocumentation -Pattern '(?m)^\s*setspn\s+-S\s+HTTP/'

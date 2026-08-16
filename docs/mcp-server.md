@@ -15,6 +15,8 @@ computes in-process against `NodePilot.Core`).
 ```powershell
 # From the repo. Not a dotnet global tool: PackAsTool rejects the net10.0-windows TFM this
 # project inherits (NETSDK1146), so `dotnet pack` fails. Publish and reference the .exe.
+# Beide Installer liefern den Server bereits mit: <install>\tools\mcp\nodepilot-mcp.exe.
+# Nur aus einem Source-Checkout selbst bauen:
 dotnet publish src/NodePilot.Mcp -c Release -o C:\Tools\NodePilot-Mcp
 ```
 

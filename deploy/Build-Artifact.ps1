@@ -93,6 +93,13 @@ Set-StrictMode -Version 3.0
 
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 $ApiCsproj = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
+# Operator clients. Both are HTTP-only clients against the REST API, so they carry no server
+# configuration and no privileged path -- they are shipped because an installation without them
+# is only half usable: `np` is the documented way to drive NodePilot from a script, and
+# nodepilot-mcp is the only way to point an AI agent at the installation. Until 1.2.7 the
+# artifact held exactly one executable and the docs told operators to build these themselves.
+$CliCsproj = Join-Path $RepoRoot 'src\NodePilot.Cli\NodePilot.Cli.csproj'
+$McpCsproj = Join-Path $RepoRoot 'src\NodePilot.Mcp\NodePilot.Mcp.csproj'
 $UiDir = Join-Path $RepoRoot 'src\nodepilot-ui'
 $OutDir = Join-Path $RepoRoot 'out'
 $StageDir = Join-Path $OutDir 'artifact'
@@ -139,6 +146,8 @@ if (-not $SkipFrontend) {
 Assert-RequiredTool -Name 'git' -HowToInstall 'Install Git for Windows from https://git-scm.com/download/win.'
 Assert-RequiredTool -Name 'tar' -HowToInstall 'tar.exe ships with Windows 10 1803+ (bsdtar). Update Windows or add tar.exe to PATH.'
 if (-not (Test-Path $ApiCsproj)) { throw "API csproj not found at $ApiCsproj" }
+if (-not (Test-Path $CliCsproj)) { throw "CLI csproj not found at $CliCsproj" }
+if (-not (Test-Path $McpCsproj)) { throw "MCP csproj not found at $McpCsproj" }
 if (-not $SkipFrontend -and -not (Test-Path (Join-Path $UiDir 'package.json'))) {
     throw "UI project not found at $UiDir"
 }
@@ -260,6 +269,31 @@ if (-not $psModuleSource) { throw "PowerShell built-in modules not found under $
 Copy-Item -Path $psModuleSource -Destination (Join-Path $StageDir 'Modules') -Recurse -Force
 if (-not (Test-Path -LiteralPath (Join-Path $StageDir 'Modules\Microsoft.PowerShell.Utility'))) {
     throw 'Module staging failed: Microsoft.PowerShell.Utility missing under <stage>\Modules.'
+}
+
+# --- Operator clients -> <stage>\tools\{np,mcp} -----------------------------------------------
+# Each client publishes into its OWN directory rather than alongside NodePilot.Api.exe. They
+# bring their own copies of shared dependencies, and merging three publishes into one folder
+# lets whichever runs last decide the assembly versions the service then loads. Separate
+# directories also keep Assert-NodePilotExtractedFiles' "exactly the signed contents" check
+# readable, and give Install-NodePilot.ps1 one directory to put on PATH.
+Write-Host "[build] dotnet publish operator clients (np, nodepilot-mcp)" -ForegroundColor Cyan
+foreach ($client in @(
+        @{ Name = 'np';           Csproj = $CliCsproj; Exe = 'np.exe' },
+        @{ Name = 'mcp';          Csproj = $McpCsproj; Exe = 'nodepilot-mcp.exe' })) {
+    $clientOut = Join-Path $StageDir ("tools\" + $client.Name)
+    & dotnet publish $client.Csproj `
+        --configuration $Configuration `
+        --runtime $RuntimeIdentifier `
+        --self-contained false `
+        --output $clientOut `
+        -p:UseAppHost=true `
+        -p:DebugType=embedded
+    if ($LASTEXITCODE -ne 0) { throw "dotnet publish failed for $($client.Csproj) with exit code $LASTEXITCODE" }
+    $clientExe = Join-Path $clientOut $client.Exe
+    if (-not (Test-Path -LiteralPath $clientExe)) {
+        throw "Expected $($client.Exe) in $clientOut, but it is missing. Check publish output."
+    }
 }
 
 if (-not $SkipFrontend) {

@@ -357,6 +357,25 @@ public class TrustAllCertsUpdate : ICertificatePolicy {
             Write-Warn "Could not update the installation marker: $($_.Exception.Message)"
         }
 
+        # Updating FROM a pre-1.2.8 installation is the case that needs this: the old artifact
+        # carried no tools directory, so Install-NodePilot.ps1 never had a path to add. Same
+        # idempotent append as the installer, so an update that already has the entry is a no-op.
+        try {
+            . (Join-Path $PSScriptRoot 'MachinePath.ps1')
+            $toolsPath = Join-Path $InstallPath 'tools
+p'
+            if (Test-Path -LiteralPath (Join-Path $toolsPath 'np.exe')) {
+                $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+                if (-not (Test-NodePilotPathContains -PathValue $machinePath -Directory $toolsPath)) {
+                    [Environment]::SetEnvironmentVariable('Path',
+                        (Add-NodePilotPathEntry -PathValue $machinePath -Directory $toolsPath), 'Machine')
+                    Write-Info "Added $toolsPath to the machine PATH (new shells will find 'np')."
+                }
+            }
+        } catch {
+            Write-Warn "Could not update the machine PATH: $($_.Exception.Message)"
+        }
+
         Write-Ok 'Update complete.'
     }
     catch {

@@ -200,6 +200,27 @@ if ((Test-Path -LiteralPath $markerParent) -and
     Remove-Item -LiteralPath $markerParent -Force -ErrorAction SilentlyContinue
 }
 
+Write-Step "Removing the CLI from the machine PATH"
+# Install-NodePilot.ps1 appends <install>\tools\np so operators can just type `np`. Leaving it
+# behind would point PATH at a directory this uninstall is about to delete, and every new shell
+# would carry a dead entry - PATH has a real length limit, so repeated install/uninstall cycles
+# accumulate.
+try {
+    . (Join-Path $PSScriptRoot 'MachinePath.ps1')
+    $toolsPath = Join-Path $InstallPath 'tools
+p'
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    if (Test-NodePilotPathContains -PathValue $machinePath -Directory $toolsPath) {
+        [Environment]::SetEnvironmentVariable('Path',
+            (Remove-NodePilotPathEntry -PathValue $machinePath -Directory $toolsPath), 'Machine')
+        Write-Info "  Removed: $toolsPath"
+    } else {
+        Write-Info "  No NodePilot CLI entry on the machine PATH."
+    }
+} catch {
+    Write-Warn "  Could not update the machine PATH: $($_.Exception.Message)"
+}
+
 Write-Step "Removing firewall rules"
 foreach ($name in @("NodePilot $ServiceName HTTPS", "NodePilot $ServiceName HTTP-Redirect")) {
     $rules = Get-NetFirewallRule -DisplayName $name -ErrorAction SilentlyContinue
