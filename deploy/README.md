@@ -284,6 +284,14 @@ Installer als Teil des Laufs; nachträglich zu signieren würde ihre Einträge i
 `NodePilot-<version>.SHA256SUMS.txt` ungültig machen. Fehlen Inno Setup 6 oder die PostgreSQL-Binaries, wird nur der jeweilige
 Installer-Teil mit einer Warnung übersprungen — das Server-Zip entsteht trotzdem.
 
+**In die Release-Notes gehört ein Absatz zu SmartScreen.** Wer den Installer von der
+Release-Seite herunterlädt, bekommt beim Start „Der Computer wurde durch Windows geschützt" —
+die Datei trägt dann einen Mark of the Web, und das Release-Zertifikat ist selbstsigniert, hat
+also keine Reputation. Ein lokal gebauter Installer löst das nie aus, weshalb die Warnung im
+eigenen Test nicht auffällt und beim ersten echten Download überrascht. Signieren beseitigt sie
+**nicht**. Textbaustein und Vorgehen (Prüfsumme + Thumbprint vor dem Wegklicken, `Unblock-File`,
+Zip-Sonderfall): [docs/deployment-guide.md → First run: the SmartScreen prompt](../docs/deployment-guide.md#first-run-the-smartscreen-prompt).
+
 Den Zip auf den Zielserver kopieren.
 
 ## Installation

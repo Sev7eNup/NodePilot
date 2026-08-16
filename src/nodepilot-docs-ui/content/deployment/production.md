@@ -172,6 +172,44 @@ Authenticode-Signatur der Installer selbst validiert.
 > `NodePilot-Server-Setup-<version>.exe` hängt am selben Release, trägt das signierte Artefakt in
 > sich und prüft dessen Signatur selbst — eine Datei statt fünf, kein Thumbprint-Abgleich von Hand.
 
+### Beim ersten Start: das blaue SmartScreen-Fenster
+
+Ein **heruntergeladener** Installer löst beim Start „Der Computer wurde durch Windows geschützt"
+aus, mit *Nicht ausführen* als einziger sichtbarer Schaltfläche. Das ist erwartet und kein Hinweis
+auf eine beschädigte Datei.
+
+Dafür müssen zwei Dinge zutreffen, und beim Download treffen beide zu:
+
+- **Die Datei trägt einen Mark of the Web.** Alles, was ein Browser speichert, bekommt einen
+  Alternate Data Stream mit der Zone „Internet", und SmartScreen bewertet ausschließlich Dateien
+  mit dieser Markierung. Ein selbst gebauter Installer aus `out\` hat sie nicht und startet
+  wortlos — deshalb erscheint der Dialog beim ersten *veröffentlichten* Release, obwohl frühere
+  eigene Builds desselben Produkts ihn nie ausgelöst haben.
+- **Der Herausgeber hat keine Reputation.** NodePilot wird mit einem selbstsignierten Zertifikat
+  signiert; SmartScreen hat also nichts zu bewerten und meldet eine unbekannte App.
+
+Die Markierung lässt sich sichtbar machen und entfernen:
+
+```powershell
+Get-Content -LiteralPath .\NodePilot-Server-Setup-<version>.exe -Stream Zone.Identifier
+# ZoneId=3   (3 = Internet)
+
+Unblock-File -Path .\NodePilot-Server-Setup-<version>.exe
+```
+
+**Erst prüfen, dann wegklicken.** Der Dialog ist nicht die Vertrauensentscheidung — Prüfsumme und
+Thumbprint sind es. Beides vergleichen, danach *Weitere Informationen → Trotzdem ausführen*.
+`Get-AuthenticodeSignature` meldet dabei `UnknownError`; das ist bei einem selbstsignierten
+Herausgeber der erwartete Befund, nicht ein Fehler.
+
+Dasselbe gilt für den Zip-Weg: Aus einem markierten Archiv entpackte Dateien erben die Markierung,
+also das Zip vor dem Entpacken mit `Unblock-File` freigeben — sonst behandelt Windows die darin
+enthaltenen Skripte als heruntergeladenen Inhalt.
+
+Antiviren-Ausschlüsse ändern daran nichts; SmartScreen ist ein getrennter Reputationsdienst und
+ignoriert sie (siehe [Antiviren-Ausschlüsse](./av-exclusions)). Dauerhaft verschwindet der Dialog
+nur mit einem reputationstragenden Zertifikat.
+
 **Variante B — selbst bauen.** Im Repository auf dem Build-Host:
 
 ```powershell

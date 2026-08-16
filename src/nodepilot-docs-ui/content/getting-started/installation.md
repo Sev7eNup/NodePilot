@@ -27,7 +27,9 @@ Der Zugriff ist ausschließlich auf dem installierten System möglich. Eingehend
 
 `NodePilot-Desktop-Setup-<version>.exe` liegt als Asset am [aktuellen Release](https://github.com/Sev7eNup/NodePilot/releases/latest). Herunterladen, gegen `NodePilot-<version>.SHA256SUMS.txt` prüfen, ausführen — der Installer richtet Datenbank, Zertifikat und beide Dienste ein und übergibt das Setup-Token direkt an die Anmeldemaske.
 
-Alternativ selbst bauen: `deploy\desktop\Build-DesktopInstaller.ps1` benötigt zusätzlich Inno Setup 6 und die PostgreSQL-16-Binaries. Eine selbst gebaute `.exe` ist **unsigniert** und wird von SmartScreen angemeldet, bis sie mit einem eigenen Authenticode-Zertifikat signiert wird.
+Beim Start des heruntergeladenen Installers meldet sich SmartScreen mit „Der Computer wurde durch Windows geschützt" — erwartet, weil die Datei einen Mark of the Web trägt und das Signaturzertifikat selbstsigniert ist. Vorgehen: [Beim ersten Start: das blaue SmartScreen-Fenster](../deployment/production#beim-ersten-start-das-blaue-smartscreen-fenster).
+
+Alternativ selbst bauen: `deploy\desktop\Build-DesktopInstaller.ps1` benötigt zusätzlich Inno Setup 6 und die PostgreSQL-16-Binaries. Eine selbst gebaute `.exe` ist **unsigniert** — SmartScreen meldet sie ebenfalls an, sobald sie über einen Download auf den Zielrechner gelangt.
 
 Build-Voraussetzungen, vollständiger Befehl, Installation, Update und Deinstallation stehen unter [Desktop-App](../deployment/desktop).
 
