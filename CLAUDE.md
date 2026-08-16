@@ -216,7 +216,7 @@ Layout-Styleguide für Workflow-JSONs: **zuerst** `docs/workflow-styleguide.md` 
 - `{{varName.success}}` — Step-Erfolg (`"true"` / `"false"`)
 - `{{varName.param.xxx}}` — OutputParameter
 - `{{globals.NAME}}` — Globale Variable
-- `{{manual.NAME}}` — Trigger-Input des Laufs (dieselben Keys liegen zusätzlich als `param.*` des Trigger-Nodes an)
+- `{{manual.NAME}}` — Trigger-Input des Laufs (dieselben Keys liegen zusätzlich als `param.*` des Trigger-Nodes an). Deklarierte `manualTrigger`-Parameter werden beim Laufstart mit ihrem `default` in den Namespace geseedet, wenn der Aufrufer sie weglässt — beide Schreibweisen liefern damit denselben Wert, und die Execution-Zeile protokolliert den effektiven Input. Ein deklarierter Parameter **ohne** Default bleibt abwesend (und die Referenz scheitert).
 - Kein `outputVariable` → Step-ID wird verwendet: `{{step-123.output}}`
 
 **Contract-Garantie:** Drei Muster im `VariableResolver` — `GlobalsPattern` (`globals.NAME`), `ManualPattern` (`manual.NAME`) und `StepPattern` mit genau vier Tails (`output`, `error`, `success`, `param.X`). Andere Tails bleiben als Literal. Unresolved → granulare Diagnostik (StepRunner T-7.1); ein unbekannter Trigger-Input bekommt einen eigenen Befund („Unknown trigger input(s)") statt als fehlender Step gemeldet zu werden. Ein neuer Namespace braucht ein eigenes Muster: `manual.NAME` hat als Tail einen frei gewählten Namen und kann von `StepPattern` prinzipiell nicht getroffen werden — genau daran scheiterte es bis 1.2.7 still (Platzhalter blieb stehen, Step meldete Erfolg).
