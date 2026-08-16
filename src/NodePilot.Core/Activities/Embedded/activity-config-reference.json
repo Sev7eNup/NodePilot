@@ -119,13 +119,13 @@
         { "key": "namespace", "type": "string", "required": false, "description": "CIM namespace (default root/cimv2)." },
         { "key": "methodName", "type": "string", "required": false, "description": "Required for invokeMethod." },
         { "key": "arguments", "type": "object", "required": false, "description": "invokeMethod arguments as a JSON object → PS hashtable; keys must be valid identifiers." },
-        { "key": "captureProperties", "type": "array", "required": false, "description": "CIM property names projected to {{step.param.<Name>}} (+ param.count)." }
+        { "key": "captureProperties", "type": "array", "required": false, "description": "JSON array of CIM property names, e.g. [\"Caption\",\"Version\"] - a comma-separated string is rejected. Projected to {{step.param.<Name>}} (+ param.count)." }
       ]
     },
     "startProgram": {
       "description": "Start a program/process (remote).",
       "configKeys": [
-        { "key": "filePath", "type": "string", "required": true, "description": "Executable path." },
+        { "key": "filePath", "type": "string", "required": true, "description": "Absolute local path to the executable - a bare name like cmd.exe is rejected, PATH is not searched." },
         { "key": "arguments", "type": "string", "required": false, "description": "Command-line arguments." },
         { "key": "workingDirectory", "type": "string", "required": false, "description": "Working directory." },
         { "key": "waitForExit", "type": "boolean", "required": false, "description": "Block until the process exits and capture stdout/stderr/exitCode." },

@@ -49,6 +49,7 @@ public static class WorkflowAnalyzer
             findings.Add(new Finding("error", "cycle", null, $"Cycle detected: {string.Join(" → ", cycle)} → {cycle[0]}. The engine has no inDegree fallback; cyclic graphs Fail."));
 
         AddDuplicateOutputVariableFindings(doc, findings);
+        AddUnresolvedReferenceFindings(doc, definition, findings);
 
         // Remote activities without a target machine, and unknown activity types.
         foreach (var node in doc.Nodes)
@@ -107,6 +108,45 @@ public static class WorkflowAnalyzer
             {
                 seen[key] = edge.Id;
             }
+        }
+    }
+
+    /// <summary>
+    /// Template references that will not resolve at run time.
+    ///
+    /// <para>The check itself already existed, but only behind its own tool
+    /// (<c>find_unresolved_references</c>). <c>analyze_workflow</c> is what an agent reaches for
+    /// and what the in-canvas assistant is built around, so the entire class was invisible to a
+    /// caller who asked the obvious question: a workflow whose log message read
+    /// <c>{{gibtsnicht.output}}</c> analysed as <c>ok: true, findings: []</c> and then failed on
+    /// the first run. Folding the findings in here costs one pass over the same document.</para>
+    ///
+    /// <para>Severity follows what the engine actually does with the reference. For most
+    /// activities an unresolved placeholder aborts the step (the T-7.1 check), so it is an error.
+    /// <c>runScript</c> and custom activities resolve their own templates and tolerate a leftover
+    /// <c>{{...}}</c> because it may be legitimate script text — still almost always a mistake,
+    /// but the run survives, so it is a warning rather than an error.</para>
+    /// </summary>
+    private static void AddUnresolvedReferenceFindings(
+        WorkflowDefinitionDocument doc, JsonElement definition, List<Finding> findings)
+    {
+        var typeByNodeId = doc.Nodes.ToDictionary(n => n.Id, n => n.Type ?? string.Empty, StringComparer.Ordinal);
+
+        foreach (var unresolved in VariableResolver.FindUnresolved(definition))
+        {
+            if (doc.DisabledNodeIds.Contains(unresolved.NodeId)) continue;
+
+            var nodeType = typeByNodeId.GetValueOrDefault(unresolved.NodeId, string.Empty);
+            var tolerated = nodeType.Equals("runScript", StringComparison.OrdinalIgnoreCase)
+                         || nodeType.StartsWith("custom:", StringComparison.OrdinalIgnoreCase);
+
+            var severity = tolerated ? "warning" : "error";
+            var consequence = tolerated
+                ? "the step keeps running and the literal reaches the script"
+                : "the step fails with an unresolved-template error";
+
+            findings.Add(new Finding(severity, unresolved.Code, unresolved.NodeId,
+                $"{unresolved.Reference}: {unresolved.Reason} At run time {consequence}."));
         }
     }
 

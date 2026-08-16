@@ -27,6 +27,63 @@ public sealed class WorkflowAnalyzerFrontendParityTests
             source.Should().Contain($"code: '{code}'", $"MCP mirrors the frontend lint rule '{code}'");
     }
 
+    /// <summary>
+    /// analyze_workflow must report unresolvable template references itself.
+    ///
+    /// <para>The check existed only behind find_unresolved_references, so the tool an agent
+    /// actually calls answered ok:true / findings:[] for a workflow that fails on its first run.
+    /// Measured against a 1.2.6 install: a log message reading {{gibtsnicht.output}} produced a
+    /// clean analysis, and only the orphan-node finding came back for the same definition.</para>
+    /// </summary>
+    [Fact]
+    public void AnalyzeWorkflow_FlagsUnresolvableTemplateReference_AsError()
+    {
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"a","type":"activity","data":{"activityType":"log","label":"Log","config":{"message":"x {{gibtsnicht.output}}"}}}],
+         "edges":[{"id":"e1","source":"t","target":"a"}]}
+        """));
+
+        result.Findings.Should().Contain(f =>
+            f.Code == "unknown-template-ref" && f.Severity == "error" && f.NodeId == "a");
+        result.Ok.Should().BeFalse("a reference that aborts the step is an error, not a hint");
+    }
+
+    /// <summary>
+    /// runScript resolves its own templates and tolerates a leftover {{...}} because it may be
+    /// legitimate script text, so the same reference must not be reported as fatal there —
+    /// reporting it as an error would make every script carrying brace syntax un-analysable.
+    /// </summary>
+    [Fact]
+    public void AnalyzeWorkflow_UnresolvableReferenceInRunScript_IsWarningNotError()
+    {
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"s","type":"activity","data":{"activityType":"runScript","label":"Script","config":{"script":"Write-Output '{{gibtsnicht.output}}'"}}}],
+         "edges":[{"id":"e1","source":"t","target":"s"}]}
+        """));
+
+        result.Findings.Should().Contain(f =>
+            f.Code == "unknown-template-ref" && f.Severity == "warning" && f.NodeId == "s");
+        result.Ok.Should().BeTrue("the run survives, so the analysis must not call it broken");
+    }
+
+    /// <summary>A reference on a disabled node cannot fail anything — that node never runs.</summary>
+    [Fact]
+    public void AnalyzeWorkflow_UnresolvableReferenceOnDisabledNode_IsNotReported()
+    {
+        var result = WorkflowAnalyzer.Analyze(E("""
+        {"nodes":[
+          {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"Start","config":{}}},
+          {"id":"a","type":"activity","data":{"activityType":"log","label":"Log","disabled":true,"config":{"message":"x {{gibtsnicht.output}}"}}}],
+         "edges":[{"id":"e1","source":"t","target":"a"}]}
+        """));
+
+        result.Findings.Should().NotContain(f => f.Code == "unknown-template-ref");
+    }
+
     [Fact]
     public void AnalyzeWorkflow_FlagsDuplicateEdges_WithFrontendCode()
     {
