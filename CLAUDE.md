@@ -214,9 +214,10 @@ Layout-Styleguide für Workflow-JSONs: **zuerst** `docs/workflow-styleguide.md` 
 - `{{varName.success}}` — Step-Erfolg (`"true"` / `"false"`)
 - `{{varName.param.xxx}}` — OutputParameter
 - `{{globals.NAME}}` — Globale Variable
+- `{{manual.NAME}}` — Trigger-Input des Laufs (dieselben Keys liegen zusätzlich als `param.*` des Trigger-Nodes an)
 - Kein `outputVariable` → Step-ID wird verwendet: `{{step-123.output}}`
 
-**Contract-Garantie:** Nur diese vier Tails (`output`, `error`, `success`, `param.X`) werden aufgelöst — andere Tails bleiben als Literal. Unresolved → granulare Diagnostik (StepRunner T-7.1).
+**Contract-Garantie:** Drei Muster im `VariableResolver` — `GlobalsPattern` (`globals.NAME`), `ManualPattern` (`manual.NAME`) und `StepPattern` mit genau vier Tails (`output`, `error`, `success`, `param.X`). Andere Tails bleiben als Literal. Unresolved → granulare Diagnostik (StepRunner T-7.1); ein unbekannter Trigger-Input bekommt einen eigenen Befund („Unknown trigger input(s)") statt als fehlender Step gemeldet zu werden. Ein neuer Namespace braucht ein eigenes Muster: `manual.NAME` hat als Tail einen frei gewählten Namen und kann von `StepPattern` prinzipiell nicht getroffen werden — genau daran scheiterte es bis 1.2.7 still (Platzhalter blieb stehen, Step meldete Erfolg).
 
 **Sichtbarkeits-Scope (Ahnen-only):** Ein Step sieht **ausschließlich** Ergebnisse seiner Graph-Vorgänger (`AncestorIndex` + `AncestorScopedResults`, einmal pro Lauf aus `ReverseAdjacency`). Eine Referenz auf einen Knoten aus einem **parallelen Zweig** löst nie auf — auch dann nicht, wenn dieser Zweig zufällig schon fertig ist. Vorher entschied das Timing darüber, ob derselbe Workflow lief oder mit „Unresolved template variable" scheiterte. Designer-Variablenpicker, Step-Tester und MCP-Analyzer scopen ohnehin schon auf Ahnen; die Engine zieht damit nach. **Ein Ahne ohne Ergebnis bleibt unauflösbar** — das ist bei `junction`/waitAny (der unterlegene Zweig läuft nicht) und bei übersprungenen Knoten korrekt so.
 

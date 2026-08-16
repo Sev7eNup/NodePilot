@@ -48,7 +48,8 @@ internal sealed class StepRunner
         JsonElement config,
         IReadOnlyDictionary<string, ActivityResult> previousResults,
         IReadOnlyDictionary<string, string> outputVariableToStepId,
-        IReadOnlyDictionary<string, string> globalVariables)
+        IReadOnlyDictionary<string, string> globalVariables,
+        IReadOnlyDictionary<string, string>? manualParameters = null)
     {
         // runScript AND custom:<key> activities resolve {{...}} inside their own executor with
         // PowerShell-safe single-quote quoting, so the generic resolver must leave their config
@@ -62,11 +63,11 @@ internal sealed class StepRunner
         if (FieldsNotToResolve.TryGetValue(activityType ?? string.Empty, out var protectedFields))
         {
             return VariableResolver.ResolveVariablesExcept(
-                config, previousResults, outputVariableToStepId, globalVariables, protectedFields);
+                config, previousResults, outputVariableToStepId, globalVariables, protectedFields, manualParameters);
         }
 
         return VariableResolver.ResolveVariables(
-            config, previousResults, outputVariableToStepId, globalVariables);
+            config, previousResults, outputVariableToStepId, globalVariables, manualParameters);
     }
 
     internal StepRunner(
@@ -144,8 +145,8 @@ internal sealed class StepRunner
         // inside GetExecutor below.
         var stepRegistry = stepScope.ServiceProvider.GetRequiredService<ActivityRegistry>();
 
-        var resolvedTargetMachine = VariableResolver.ResolveStringValue(node.Data.TargetMachineRaw, previousResults, outputVariableToStepId, globalVariables);
-        var resolvedCredential = VariableResolver.ResolveStringValue(node.Data.CredentialRaw, previousResults, outputVariableToStepId, globalVariables);
+        var resolvedTargetMachine = VariableResolver.ResolveStringValue(node.Data.TargetMachineRaw, previousResults, outputVariableToStepId, globalVariables, inputParameters);
+        var resolvedCredential = VariableResolver.ResolveStringValue(node.Data.CredentialRaw, previousResults, outputVariableToStepId, globalVariables, inputParameters);
 
         var credentialId = Guid.TryParse(resolvedCredential, out var credGuid) ? credGuid : (Guid?)null;
 
@@ -218,7 +219,8 @@ internal sealed class StepRunner
             // field but passes the protected ones through verbatim. The activity executor
             // then rejects the call if the protected text still carries {{...}} residue.
             var configForExecution = ResolveConfigForExecution(
-                node.Type, node.Data.Config, previousResults, outputVariableToStepId, globalVariables);
+                node.Type, node.Data.Config, previousResults, outputVariableToStepId, globalVariables,
+                inputParameters);
 
             // T-7.1: Fail the step early when step-pattern placeholders survive resolution
             // unsubstituted. This surfaces typos, deleted-step references, and wrong
@@ -714,6 +716,8 @@ internal sealed class StepRunner
                 if (!raw.Contains("{{")) continue;
                 foreach (Match m in VariableResolver.StepPattern.Matches(raw))
                     unresolved.Add(m.Value);
+                foreach (Match m in VariableResolver.ManualPattern.Matches(raw))
+                    unresolved.Add(m.Value);
             }
             return [..unresolved];
         }
@@ -722,6 +726,11 @@ internal sealed class StepRunner
         if (!fullRaw.Contains("{{")) return [];
         var set = new HashSet<string>(StringComparer.Ordinal);
         foreach (Match m in VariableResolver.StepPattern.Matches(fullRaw))
+            set.Add(m.Value);
+        // A surviving {{manual.X}} means the run carries no such trigger input. Left unchecked
+        // it renders as its own placeholder and the step still reports success, which is the
+        // one outcome the T-7.1 check exists to prevent.
+        foreach (Match m in VariableResolver.ManualPattern.Matches(fullRaw))
             set.Add(m.Value);
         return [..set];
     }
@@ -762,9 +771,20 @@ internal sealed class StepRunner
         var outOfScope = new List<(string token, string step)>();
         var paramMissing = new List<(string token, string step, string param)>();
         var valueEmpty = new List<(string token, string step, string tail)>();
+        var manualMissing = new List<string>();
 
         foreach (var token in unresolved)
         {
+            // Trigger inputs have their own namespace and their own failure mode: the name was
+            // never seeded into this run. Reporting it as a missing STEP would send the author
+            // looking for a node that was never meant to exist.
+            var manualMatch = VariableResolver.ManualPattern.Match(token);
+            if (manualMatch.Success)
+            {
+                manualMissing.Add(token);
+                continue;
+            }
+
             var match = VariableResolver.StepPattern.Match(token);
             if (!match.Success)
             {
@@ -818,6 +838,14 @@ internal sealed class StepRunner
             sb.Append(" Missing step(s) \u2014 reference points to a step that has not run or does not exist: ")
               .Append(string.Join(", ", stepMissing))
               .Append('.');
+        }
+
+        if (manualMissing.Count > 0)
+        {
+            sb.Append(" Unknown trigger input(s) — this run carries no such value: ")
+              .Append(string.Join(", ", manualMissing))
+              .Append(". Declare the parameter on the trigger node (manualTrigger) or check the name against ")
+              .Append("the keys the firing trigger seeds.");
         }
 
         if (outOfScope.Count > 0)
