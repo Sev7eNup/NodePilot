@@ -52,6 +52,8 @@ Fenster- und Infobereichssymbol übernehmen die Farbe des in der Oberfläche gew
 | `C:\Program Files\NodePilot\app` | Self-contained API und Produktoberfläche |
 | `C:\Program Files\NodePilot\desktop` | Electron-Shell |
 | `C:\Program Files\NodePilot\pgsql` | PostgreSQL-Serverruntime |
+| `C:\Program Files\NodePilot\tools\np` | `np` CLI (Operations-CLI, kein PATH-Eintrag beim Desktop-Paket) |
+| `C:\Program Files\NodePilot\tools\mcp` | `nodepilot-mcp` — MCP-Server für KI-Agenten |
 | `C:\ProgramData\NodePilot\pgdata` | PostgreSQL-Daten |
 | `C:\ProgramData\NodePilot\logs` | Anwendungslogs |
 | `C:\ProgramData\NodePilot\backups` | Update-Backups |
@@ -119,11 +121,12 @@ out\NodePilot-Desktop-Setup-1.0.0.exe
 Der Build:
 
 1. veröffentlicht die API self-contained für `win-x64`,
-2. baut die React-Oberfläche,
-3. kopiert erforderliche PowerShell-Module,
-4. paketiert die Electron-Shell,
-5. übernimmt den benötigten PostgreSQL-Teil,
-6. erzeugt den Inno-Setup-Installer.
+2. veröffentlicht die Operator-Clients (`np`, `nodepilot-mcp`) self-contained nach `tools\np` und `tools\mcp`,
+3. baut die React-Oberfläche,
+4. kopiert erforderliche PowerShell-Module,
+5. paketiert die Electron-Shell,
+6. übernimmt den benötigten PostgreSQL-Teil,
+7. erzeugt den Inno-Setup-Installer.
 
 Der erzeugte Installer muss vor der Verteilung mit Authenticode signiert werden.
 

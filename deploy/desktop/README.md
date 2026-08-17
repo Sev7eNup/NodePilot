@@ -15,7 +15,7 @@ window is open. So the backend runs as an always-on service and the Electron she
 
 ```
 Installer (.exe, signed)
- ├─ C:\Program Files\NodePilot\   app\ (self-contained API + wwwroot + Modules) · desktop\ (Electron) · pgsql\ (PG16 server runtime) · deploy\
+ ├─ C:\Program Files\NodePilot\   app\ (self-contained API + wwwroot + Modules) · desktop\ (Electron) · pgsql\ (PG16 server runtime) · deploy\ · tools\np (np CLI) · tools\mcp (nodepilot-mcp)
  ├─ C:\ProgramData\NodePilot\     pgdata\ · logs\ · secrets\ · keys · admin-setup.token · desktop.json · backups\
  ├─ Service "NodePilotDb"  (postgres, NetworkService, 127.0.0.1:<pgport>, boot-start)
  ├─ Service "NodePilot"    (NodePilot.Api.exe, LocalSystem, https://127.0.0.1:<apiport>, boot-start, depend= NodePilotDb)
@@ -117,10 +117,11 @@ and a PostgreSQL 16 binaries folder (the `pgsql` directory from the EDB zip dist
 ```
 
 The build generates the icons via `scripts/generate-desktop-icons.ps1` (see **Icons** below),
-publishes the API self-contained (`-r win-x64
---self-contained true`, no single-file — the PowerShell SDK is folder-deployed), builds the SPA into
-`app\wwwroot`, packages the Electron shell with Electron Packager, stages the Postgres server runtime +
-scripts, and compiles the installer.
+publishes the API self-contained (`-r win-x64 --self-contained true`, no single-file — the PowerShell
+SDK is folder-deployed), publishes the operator clients (`np`, `nodepilot-mcp`) self-contained to
+`tools\np` and `tools\mcp` (self-contained because the desktop package promises zero prerequisites),
+builds the SPA into `app\wwwroot`, packages the Electron shell with Electron Packager, stages the
+Postgres server runtime + scripts, and compiles the installer.
 
 Two build steps are load-bearing and easy to break by accident:
 
@@ -186,7 +187,7 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
 
 | File | Role |
 |---|---|
-| `Build-DesktopInstaller.ps1` | Build orchestrator (icons + publish + SPA + Modules + Electron + PG subset + ISCC). |
+| `Build-DesktopInstaller.ps1` | Build orchestrator (icons + publish + SPA + Modules + Electron + operator clients → `tools\{np,mcp}` + PG subset + ISCC). |
 | `../../scripts/generate-desktop-icons.ps1` | Icon set from the SPA brand assets (default + per-skin); also runnable standalone. |
 | `Sync-DesktopApp.ps1` | Dev loop: pushes local changes into an installed app in ~1 min (see below). |
 | `NodePilot.iss` | Inno Setup installer definition. |
