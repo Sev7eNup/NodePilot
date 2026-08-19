@@ -116,7 +116,44 @@ Wer mit `NodePilot-Server-Setup-<version>.exe` installiert, kann das SQL oben ü
 
 ### SQL Server
 
-Zusätzlich zur NodePilot-Datenbank sollte Read-Committed-Snapshot-Isolation aktiviert sein:
+**Das TLS-Zertifikat.** SQL Server bietet ausschließlich Zertifikate an, die RSA mit
+`KeySpec=KeyExchange` sind. Der CNG-Standardschlüssel von `New-SelfSignedCertificate` ist für ihn
+unsichtbar — die beiden Provider-Angaben unten sind deshalb tragend und keine Zierde:
+
+```powershell
+New-SelfSignedCertificate -DnsName 'sql1.corp.example.com' `
+    -CertStoreLocation Cert:\LocalMachine\My `
+    -KeySpec KeyExchange `
+    -Provider 'Microsoft RSA SChannel Cryptographic Provider' `
+    -KeyLength 2048 -NotAfter (Get-Date).AddYears(5)
+```
+
+1. Dem SQL-Dienstkonto (standardmäßig `NT Service\MSSQLSERVER`) Leserecht auf den privaten
+   Schlüssel geben: `certlm.msc` → Eigene Zertifikate → Zertifikat → *Alle Aufgaben → Private
+   Schlüssel verwalten*.
+2. Im SQL Server Configuration Manager zuweisen: *Protokolle für MSSQLSERVER* → Reiter
+   *Zertifikat*. **Force Encryption bleibt auf No.** NodePilot verschlüsselt seine Verbindung
+   ohnehin selbst, und eine instanzweite Erzwingung bricht jeden anderen Client einer gemeinsam
+   genutzten Instanz, der dem Zertifikat nicht vertraut — etwa entfernte ConfigMgr-Standortsysteme.
+3. SQL-Server-Dienst neu starten und die ERRORLOG-Zeile bestätigen:
+   `The certificate ... was successfully loaded for encryption`.
+4. Bei selbstsignierten Zertifikaten zusätzlich den öffentlichen Teil **auf dem NodePilot-Server**
+   nach `LocalMachine\Root` importieren — die Laufzeit prüft die Kette
+   (`TrustServerCertificate=False`).
+
+**Datenbank und Login** für die Dienst-Identität, ausgeführt als `sysadmin`. Bei `LocalSystem`
+statt der gMSA das Computerkonto einsetzen (`CORP\APPHOST$`):
+
+```sql
+CREATE LOGIN [CORP\svc-nodepilot$] FROM WINDOWS;
+CREATE DATABASE [NodePilot];
+GO
+USE [NodePilot];
+CREATE USER [CORP\svc-nodepilot$] FOR LOGIN [CORP\svc-nodepilot$];
+ALTER ROLE db_owner ADD MEMBER [CORP\svc-nodepilot$];
+```
+
+Zusätzlich sollte Read-Committed-Snapshot-Isolation aktiviert sein:
 
 ```sql
 ALTER DATABASE [NodePilot]

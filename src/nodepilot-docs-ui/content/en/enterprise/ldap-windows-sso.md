@@ -15,6 +15,55 @@ This page describes central sign-in and provisioning. All external sign-in paths
 
 All paths create the same server-side revocable session. The JWT cookie contains no group list; the absolute session lifetime is eight hours by default.
 
+## Setting up a single domain
+
+The short path for one domain. Domain users are never imported — they are provisioned on their
+first successful login, provided they belong to an allowed group.
+
+**LDAPS is the prerequisite.** NodePilot speaks only LDAPS on port 636 with full certificate
+validation against the NodePilot host's Windows certificate store; there is no bypass switch. If
+the domain has no CA yet, an Enterprise Root CA is the least-effort route: the DC then enrolls its
+own certificate automatically, and Group Policy distributes the root to every domain member, so
+the NodePilot host trusts it without manual imports.
+
+```powershell
+# On the domain controller, once:
+Install-WindowsFeature AD-Certificate -IncludeManagementTools
+Install-AdcsCertificationAuthority -CAType EnterpriseRootCa -CACommonName 'corp-CA' -Force
+```
+
+**Two groups, one service account.** Access and role are separate: membership in an allowed group
+decides whether someone may sign in at all, a role mapping decides what they are.
+
+```powershell
+New-ADGroup -Name 'NodePilot-Users'  -GroupScope Global -GroupCategory Security
+New-ADGroup -Name 'NodePilot-Admins' -GroupScope Global -GroupCategory Security
+Add-ADGroupMember -Identity 'NodePilot-Users'  -Members <user>
+Add-ADGroupMember -Identity 'NodePilot-Admins' -Members <user>
+
+# Read the SIDs. Get-ADGroup takes ONE identity, so pipe them rather than passing a list:
+'NodePilot-Users','NodePilot-Admins' | Get-ADGroup |
+    Select-Object Name, @{n='SID';e={$_.SID.Value}}
+
+# Read-only service account for the authoritative lookups:
+New-ADUser -Name 'svc-nodepilot-dir' -AccountPassword (Read-Host -AsSecureString) `
+    -Enabled $true -PasswordNeverExpires $true
+Get-ADUser 'svc-nodepilot-dir' | Select-Object -ExpandProperty DistinguishedName
+```
+
+Then, under Admin settings → *Authentication*: enable LDAP, give one endpoint
+(`dc1.corp.example.com:636`), the `BaseDn`, the `UpnSuffix`, the service-bind DN and password, the
+`NodePilot-Users` SID as an allowed group, and the `NodePilot-Admins` SID mapped to `Admin`. The
+built-in test checks TLS trust, service bind, search base and group resolution against the unsaved
+draft before you commit it.
+
+**Configure exactly one endpoint** unless every DC you list is reachable at all times. Directory
+access is all-DC consensus, not failover — a second, occasionally-offline DC blocks every AD login
+rather than covering for the first.
+
+Users sign in with the bare username (`alice`), not `DOMAIN\alice`; NodePilot appends the UPN
+suffix itself. A missing role mapping is not an error — the user is created as a Viewer.
+
 ## A safe base configuration
 
 ```jsonc
