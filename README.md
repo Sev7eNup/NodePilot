@@ -15,7 +15,7 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 [![Latest release](https://img.shields.io/github/v/release/Sev7eNup/NodePilot?logo=github&label=release)](https://github.com/Sev7eNup/NodePilot/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-**[📚 Documentation](https://sev7enup.github.io/NodePilot/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Install guide](docs/deployment-guide.md)**
+**[📚 Documentation](https://sev7enup.github.io/NodePilot/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Quick start](https://sev7enup.github.io/NodePilot/#/en/getting-started/quickstart)**
 
 </div>
 
@@ -171,7 +171,7 @@ complete route to a working login, and nothing below mixes them.
 | **You get** | installer `.exe` — bundles a local PostgreSQL and the .NET runtime, installs both as services, opens a native window | setup `.exe` (or the signed `.zip` + PowerShell installer) — Windows service under a gMSA, Kestrel HTTPS | `dotnet run` + Vite dev server on your own machine |
 | **Database** | bundled, loopback-only | you provide it | you provide it |
 | **Offline** | yes, fully | yes | no (package restore) |
-| **Guide** | [below](#path-1--desktop-app) · [details](deploy/desktop/README.md) | [below](#path-2--windows-service) · [step-by-step](docs/deployment-guide.md) | [below](#path-3--from-source) |
+| **Guide** | [below](#path-1--desktop-app) · [details](deploy/desktop/README.md) | [below](#path-2--windows-service) · [step-by-step](https://sev7enup.github.io/NodePilot/#/en/deployment/production) | [below](#path-3--from-source) |
 
 > NodePilot is **Windows-only by design** — the engine drives PowerShell remoting over WinRM and
 > protects credentials with DPAPI. There is no Linux, container or Kubernetes target.
@@ -284,9 +284,11 @@ target machine: pinning the thumbprint is the trust decision, so there is nothin
 installing. If you build the artifact yourself you also sign it yourself;
 `docs/deployment-guide.md` walks through creating the self-signed code-signing certificate.
 
-**Full walkthrough** — certificates, SQL TLS, first login, troubleshooting:
-[docs/deployment-guide.md](docs/deployment-guide.md). **Operator reference** — gMSA setup, every
-parameter, update and uninstall: [deploy/README.md](deploy/README.md).
+**Full walkthrough** — service identity, database, certificates, first login:
+[Windows Server deployment](https://sev7enup.github.io/NodePilot/#/en/deployment/production).
+**Verifying what you downloaded, and building it yourself** — plus a troubleshooting table for
+what actually goes wrong: [docs/deployment-guide.md](docs/deployment-guide.md). **Operator
+reference** — every parameter, update and uninstall: [deploy/README.md](deploy/README.md).
 
 ---
 
@@ -407,11 +409,17 @@ UI at `GET /swagger` (Development by default).
 
 ### Production deployment
 
-For a real server rollout, follow **[docs/deployment-guide.md](docs/deployment-guide.md)** — an
-end-to-end, lab-validated walkthrough from build to first login, including SQL/TLS setup and
-troubleshooting. The installer runs NodePilot as a Windows service under a gMSA with direct
-Kestrel HTTPS, splits install and data directories, and upgrades in place with automatic rollback.
-Parameter reference and what the installer deliberately does *not* do: [deploy/README.md](deploy/README.md).
+For a real server rollout, follow
+**[Windows Server deployment](https://sev7enup.github.io/NodePilot/#/en/deployment/production)** on
+the documentation site — a lab-validated walkthrough covering service identity, both database
+providers, certificates and the first admin account. The installer runs NodePilot as a Windows
+service under a gMSA with direct Kestrel HTTPS, splits install and data directories, and upgrades
+in place with automatic rollback.
+
+Two companions to it: [docs/deployment-guide.md](docs/deployment-guide.md) covers what happens
+*before* you install — verifying the download against its checksums and publisher, and building the
+artifact yourself — and carries the troubleshooting table. [deploy/README.md](deploy/README.md) is
+the parameter reference, and states what the installer deliberately does *not* do.
 
 Before you deploy anywhere with endpoint protection, hand
 [docs/av-exclusions.md](docs/av-exclusions.md) to whoever owns it — NodePilot runs PowerShell by

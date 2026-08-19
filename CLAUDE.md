@@ -27,7 +27,7 @@ Diese Datei ist der Index; die Tiefe liegt in `docs/`:
 - `docs/custom-activities.md` — Custom Activities (Plugin-System)
 - `docs/mcp-server.md` — MCP-Server inkl. Tool-Katalog + `.mcp.json`-Beispiel
 - `docs/ai-features.md` — KI-Features: Config-Keys, Modell-Empfehlungen
-- `docs/deployment-guide.md` — End-to-End-Produktions-Deployment (EN): Build → SQL-TLS → Install → First Login → Troubleshooting; lab-validiert
+- `docs/deployment-guide.md` — (EN) **nicht** der Installationsweg, sondern was davor und danach kommt: Artefakt beschaffen und gegen Prüfsummen + Herausgeber verifizieren, selbst bauen, plus die Troubleshooting-Tabelle. Der Installationsweg selbst steht **einmal**, auf der Doku-Website (`content/{de,en}/deployment/production.md`) — zwei Durchläufe derselben Aufgabe sind auseinandergelaufen (der Guide führte nur durch SQL Server, während PostgreSQL der Default ist)
 - `docs/av-exclusions.md` — Antiviren-Ausschlüsse (Server + Desktop) als Übergabedokument für eine AV-Abteilung: Ordner, Prozesse, Temp-Dateimuster, Verhaltensregeln — je mit Begründung und Restrisiko
 - `docs/workflow-styleguide.md` — Layout-Styleguide für Workflow-JSONs (**vor jedem Workflow-Gen lesen**)
 - `docs/enterprise-features.md` — HA, Secret-Provider, LDAP/SSO, SIEM, Folder-RBAC

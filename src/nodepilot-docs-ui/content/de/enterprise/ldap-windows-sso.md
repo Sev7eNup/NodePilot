@@ -15,6 +15,57 @@ Diese Seite beschreibt zentrale Anmeldung und Provisionierung. Alle externen Anm
 
 Alle Wege erzeugen dieselbe serverseitig widerrufbare Session. Das JWT-Cookie enthält keine Gruppenliste; die absolute Session-Lebensdauer beträgt standardmäßig acht Stunden.
 
+## Einrichtung in einer Einzeldomäne
+
+Der kurze Weg für eine Domäne. Domänenbenutzer werden nie importiert — sie entstehen bei der ersten
+erfolgreichen Anmeldung, sofern sie einer erlaubten Gruppe angehören.
+
+**LDAPS ist Voraussetzung.** NodePilot spricht ausschließlich LDAPS auf Port 636 mit vollständiger
+Zertifikatsprüfung gegen den Windows-Zertifikatsspeicher des NodePilot-Hosts; einen Bypass-Schalter
+gibt es nicht. Hat die Domäne noch keine CA, ist eine Enterprise Root CA der Weg mit dem geringsten
+Aufwand: Der DC stellt sich sein Zertifikat dann selbst aus, und die Gruppenrichtlinie verteilt das
+Stammzertifikat an jedes Domänenmitglied — der NodePilot-Host vertraut ihm ohne manuellen Import.
+
+```powershell
+# Auf dem Domänencontroller, einmalig:
+Install-WindowsFeature AD-Certificate -IncludeManagementTools
+Install-AdcsCertificationAuthority -CAType EnterpriseRootCa -CACommonName 'corp-CA' -Force
+```
+
+**Zwei Gruppen, ein Dienstkonto.** Zugang und Rolle sind getrennte Begriffe: Die Mitgliedschaft in
+einer erlaubten Gruppe entscheidet, *ob* sich jemand anmelden darf, eine Rollenzuordnung entscheidet,
+*was* er ist.
+
+```powershell
+New-ADGroup -Name 'NodePilot-Users'  -GroupScope Global -GroupCategory Security
+New-ADGroup -Name 'NodePilot-Admins' -GroupScope Global -GroupCategory Security
+Add-ADGroupMember -Identity 'NodePilot-Users'  -Members <user>
+Add-ADGroupMember -Identity 'NodePilot-Admins' -Members <user>
+
+# SIDs auslesen. Get-ADGroup nimmt GENAU EINE Identität — deshalb per Pipe, nicht als Liste:
+'NodePilot-Users','NodePilot-Admins' | Get-ADGroup |
+    Select-Object Name, @{n='SID';e={$_.SID.Value}}
+
+# Nur-Lese-Dienstkonto für die autoritativen Abfragen:
+New-ADUser -Name 'svc-nodepilot-dir' -AccountPassword (Read-Host -AsSecureString) `
+    -Enabled $true -PasswordNeverExpires $true
+Get-ADUser 'svc-nodepilot-dir' | Select-Object -ExpandProperty DistinguishedName
+```
+
+Anschließend unter Admin-Einstellungen → *Authentication*: LDAP aktivieren, **einen** Endpunkt
+angeben (`dc1.corp.example.com:636`), dazu `BaseDn`, `UpnSuffix`, Service-Bind-DN samt Passwort, die
+SID von `NodePilot-Users` als erlaubte Gruppe und die SID von `NodePilot-Admins` auf die Rolle
+`Admin` gemappt. Der eingebaute Test prüft TLS-Vertrauen, Service-Bind, Search Base und
+Gruppenauflösung gegen den ungespeicherten Entwurf, bevor du ihn übernimmst.
+
+**Genau einen Endpunkt konfigurieren**, solange nicht jeder aufgeführte DC dauerhaft erreichbar ist.
+Der Verzeichniszugriff arbeitet mit All-DC-Konsens, nicht mit Failover — ein zweiter, zeitweise
+offline stehender DC blockiert damit jede AD-Anmeldung, statt für den ersten einzuspringen.
+
+Angemeldet wird mit dem bloßen Benutzernamen (`alice`), nicht mit `DOMAIN\alice`; den UPN-Suffix
+hängt NodePilot selbst an. Eine fehlende Rollenzuordnung ist kein Fehler — der Benutzer entsteht als
+Viewer.
+
 ## Sichere Basiskonfiguration
 
 ```jsonc
