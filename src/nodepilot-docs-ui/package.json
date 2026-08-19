@@ -17,7 +17,7 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@carbon/icons-react": "^11.85.0",
+    "@carbon/icons-react": "^11.86.0",
     "@fontsource-variable/geist": "^5.2.8",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "i18next": "^26.0.10",
@@ -39,7 +39,7 @@
     "eslint": "^10.8.1",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.4",
-    "globals": "^17.9.0",
+    "globals": "^17.11.0",
     "tailwindcss": "^4.2.2",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.67.0",
