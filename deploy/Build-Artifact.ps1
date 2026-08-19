@@ -512,14 +512,84 @@ if ($InstallerSigningCertificateThumbprint -and $installersToSign.Count -gt 0) {
     }
 }
 
+# --- operator scripts -------------------------------------------------------------------------
+# The deployment scripts, as their own small archive covered by SHA256SUMS.
+#
+# Option A of docs/deployment-guide.md ("download the published release") listed the artifact and
+# then told the reader to run .\deploy\Install-NodePilot.ps1 - a file that appeared in no download.
+# The scripts do travel inside the artifact, but only buried under knowledge\source\ for the AI
+# assistant, and taking them from there would be worse than useless: you would have to extract the
+# UNVERIFIED archive to obtain the very script whose job is to verify it. Shipping them separately
+# keeps the signature check meaningful - verify this zip against SHA256SUMS, then let the script it
+# contains verify the artifact.
+Write-Host "[build] Pack deployment scripts" -ForegroundColor Cyan
+$DeployScriptsZip = Join-Path $OutDir "NodePilot-Deploy-Scripts-$Version.zip"
+$DeployStage = Join-Path $OutDir "deploy-scripts-stage"
+if (Test-Path $DeployStage) { Remove-Item $DeployStage -Recurse -Force }
+New-Item -ItemType Directory -Path (Join-Path $DeployStage 'deploy\templates') -Force | Out-Null
+# Entry points plus every file they dot-source. Keep this list in step with the `Join-Path
+# $PSScriptRoot` references in the three entry-point scripts - a missing helper turns into a
+# "script not found" throw on the target machine, after the operator has already started.
+$deployScriptFiles = @(
+    'Install-NodePilot.ps1'              # entry point
+    'Update-NodePilot.ps1'               # entry point
+    'Uninstall-NodePilot.ps1'            # entry point
+    'ArtifactSecurity.ps1'               # dot-sourced by install + update
+    'Preflight.ps1'                      # dot-sourced by install
+    'ServiceControl.ps1'                 # dot-sourced by install + update
+    'MachinePath.ps1'                    # dot-sourced by install + update + uninstall
+    'Provision-NodePilotDatabase.ps1'    # optional: create the SQL Server login/database
+    'Provision-NodePilotPostgres.ps1'    # optional: same for PostgreSQL
+    'New-NodePilotSelfSignedCertificate.ps1'  # optional: lab certificates
+    'README.md'                          # the operator reference
+)
+foreach ($name in $deployScriptFiles) {
+    $source = Join-Path $PSScriptRoot $name
+    if (-not (Test-Path -LiteralPath $source)) { throw "Deployment script missing from the build: $source" }
+    Copy-Item -LiteralPath $source -Destination (Join-Path $DeployStage 'deploy') -Force
+}
+Copy-Item -Path (Join-Path $PSScriptRoot 'templates\*') -Destination (Join-Path $DeployStage 'deploy\templates') -Force
+if (Test-Path $DeployScriptsZip) { Remove-Item $DeployScriptsZip -Force }
+Compress-Archive -Path (Join-Path $DeployStage 'deploy') -DestinationPath $DeployScriptsZip -Force
+Remove-Item $DeployStage -Recurse -Force
+Write-Host "         $(Split-Path $DeployScriptsZip -Leaf) ($($deployScriptFiles.Count) scripts + templates)" -ForegroundColor DarkGray
+
+# --- publisher certificate --------------------------------------------------------------------
+# The public half of the ARTIFACT signer - the certificate whose thumbprint a deployer passes to
+# Install-NodePilot.ps1 as -TrustedArtifactSignerThumbprint. docs/deployment-guide.md tells the
+# downloader to read the thumbprint out of this file and compare it against the release notes, and
+# calls that comparison "the trust decision".
+#
+# It is produced HERE, as a build output, because it used to be attached to releases by hand: it
+# rode along in 1.1.0, 1.2.0 and 1.2.4 and was then simply forgotten from 1.2.8 onwards, which left
+# the documented verification impossible to perform. It is also listed in SHA256SUMS below - as a
+# hand-attached file it never was, so the one artifact the whole ceremony rests on was the only one
+# nobody could check.
+$publisherCertPath = $null
+if (-not $AllowUnsignedDevelopmentArtifact) {
+    Write-Host "[build] Export publisher certificate" -ForegroundColor Cyan
+    $normalizedSigner = ($SigningCertificateThumbprint -replace '[^0-9A-Fa-f]', '').ToUpperInvariant()
+    $publisherCert = Get-ChildItem Cert:\CurrentUser\My, Cert:\LocalMachine\My -ErrorAction SilentlyContinue |
+        Where-Object { $_.Thumbprint -eq $normalizedSigner } | Select-Object -First 1
+    if (-not $publisherCert) {
+        throw ("No certificate with thumbprint $normalizedSigner found in the local stores. The " +
+               "artifact was signed with it, so its public half must be exportable for the release.")
+    }
+    $publisherCertPath = Join-Path $OutDir 'nodepilot-release-signing.cer'
+    [IO.File]::WriteAllBytes($publisherCertPath, $publisherCert.Export('Cert'))
+    Write-Host "         $(Split-Path $publisherCertPath -Leaf) - $($publisherCert.Subject)" -ForegroundColor DarkGray
+    Write-Host "         Thumbprint: $($publisherCert.Thumbprint) (publish this in the release notes)" -ForegroundColor DarkGray
+}
+
 # --- checksums --------------------------------------------------------------------------------
 # One file covering everything this run produced, so a downloader can verify the drop without
 # knowing which pieces are supposed to exist.
 Write-Host "[build] Write SHA256SUMS" -ForegroundColor Cyan
-$artifacts = @($ZipPath)
+$artifacts = @($ZipPath, $DeployScriptsZip)
 if (-not $AllowUnsignedDevelopmentArtifact) {
     $artifacts += "$ZipPath.manifest.json"
     $artifacts += "$ZipPath.manifest.json.p7s"
+    $artifacts += $publisherCertPath
 }
 if ($desktopInstaller) { $artifacts += $desktopInstaller }
 if ($serverInstaller) { $artifacts += $serverInstaller }
@@ -535,8 +605,10 @@ $sizeMb = [Math]::Round((Get-Item $ZipPath).Length / 1MB, 1)
 Write-Host ""
 Write-Host "[build] Done - version $Version" -ForegroundColor Green
 Write-Host "         $(Split-Path $ZipPath -Leaf) ($sizeMb MB)"
+Write-Host "         $(Split-Path $DeployScriptsZip -Leaf)"
 if (-not $AllowUnsignedDevelopmentArtifact) {
     Write-Host "         $(Split-Path $ZipPath -Leaf).manifest.json + .p7s"
+    Write-Host "         nodepilot-release-signing.cer (attach to the release; its thumbprint goes in the notes)"
 }
 if ($desktopInstaller) {
     $desktopMb = [Math]::Round((Get-Item $desktopInstaller).Length / 1MB, 1)

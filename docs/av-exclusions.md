@@ -1,257 +1,318 @@
-# Antiviren-Ausschlüsse für NodePilot
+# Antivirus exclusions for NodePilot
 
-Übergabedokument für die Antiviren-/Endpoint-Security-Abteilung. Es listet auf, welche Ordner, Prozesse und Dateimuster NodePilot im Betrieb anfasst, warum ein Ausschluss nötig ist und welches Restrisiko er erzeugt.
+A hand-off document for the antivirus / endpoint-security team. It lists which folders, processes and
+file patterns NodePilot touches in operation, why an exclusion is necessary, and what residual risk it
+creates.
 
-Das Dokument ist **produktneutral** — es enthält bewusst keine `Add-MpPreference`-Zeilen oder Skripte. Die konkrete Umsetzung (GPO, Intune, Konsole des jeweiligen Herstellers) bleibt bei der AV-Abteilung.
+The document is deliberately **product-neutral** — it contains no `Add-MpPreference` lines or scripts.
+The concrete implementation (GPO, Intune, the vendor's own console) stays with the security team.
 
-**Abgrenzung: SmartScreen ist hier nicht gemeint.** Dieses Dokument adressiert ausschließlich den **Virenscanner** (Echtzeit-Prüfung, Heuristik, ASR, Controlled Folder Access). Der blaue Dialog „Der Computer wurde durch Windows geschützt", der beim Start eines **heruntergeladenen** Installers erscheint, kommt von Microsoft Defender SmartScreen — einem getrennten Reputationsdienst, der Ausschlusslisten **ignoriert**. Kein Eintrag aus diesem Dokument beeinflusst ihn. Erklärung und Vorgehen: [deployment-guide.md → First run: the SmartScreen prompt](deployment-guide.md#first-run-the-smartscreen-prompt).
+**Scope note: this is not about SmartScreen.** This document addresses the **virus scanner** only
+(real-time inspection, heuristics, ASR, controlled folder access). The blue "Windows protected your PC"
+dialog that appears when a **downloaded** installer is started comes from Microsoft Defender
+SmartScreen — a separate reputation service that **ignores** exclusion lists. No entry in this document
+affects it. Explanation and procedure:
+[deployment-guide.md → First run: the SmartScreen prompt](deployment-guide.md#first-run-the-smartscreen-prompt).
 
-**Geltungsbereich**
+**Applicability**
 
-| Rolle | Enthalten |
+| Role | Covered |
 |---|---|
-| Produktions-Server (Windows-Dienst, `deploy/`-Installer) | ja → [Teil A](#teil-a--produktions-server) |
-| Desktop-App (Offline-Installer, `deploy/desktop/`) | ja → [Teil B](#teil-b--desktop-app) |
-| Beide Rollen gemeinsam (PowerShell-Ausführung) | ja → [Teil C](#teil-c--powershell-ausführung-beide-rollen) |
-| Per WinRM orchestrierte Ziel-Maschinen | nein — dort läuft keine NodePilot-Software; siehe [Hinweis](#nicht-im-geltungsbereich-ziel-maschinen) |
-| Entwickler-Arbeitsplätze | nein |
+| Production server (Windows service, `deploy/` installer) | yes → [Part A](#part-a--production-server) |
+| Desktop app (offline installer, `deploy/desktop/`) | yes → [Part B](#part-b--desktop-app) |
+| Both roles together (PowerShell execution) | yes → [Part C](#part-c--powershell-execution-both-roles) |
+| Target machines orchestrated over WinRM | no — no NodePilot software runs there; see [note](#out-of-scope-target-machines) |
+| Developer workstations | no |
 
 ---
 
-## Warum Ausschlüsse nötig sind
+## Why exclusions are necessary
 
-NodePilot ist eine Workflow-Orchestrierung: Der Kern der Anwendung besteht darin, PowerShell auszuführen und Prozesse zu starten. Fünf davon abgeleitete Verhaltensweisen kollidieren regelmäßig mit Standard-Heuristiken:
+NodePilot is a workflow orchestrator: the core of the application consists of executing PowerShell and
+starting processes. Five behaviours that follow from that regularly collide with standard heuristics:
 
-1. **Ein Dienst unter `LocalSystem` schreibt ein Skript nach `%TEMP%` und führt es aus.**
-   Für die Ausführungsarten „isolierter Prozess" und „expliziter PowerShell-Host" schreibt NodePilot das Workflow-Skript als `nodepilot_<32-Hex>.ps1` in das Temp-Verzeichnis, härtet dessen ACL auf Besitzer-Vollzugriff (alle vererbten Rechte werden entfernt) und startet es mit `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`. Datei-Erzeugung, ACL-Härtung und sofortige Ausführung im Temp-Verzeichnis ist die stärkste Heuristik-Signatur im gesamten Produkt.
+1. **A service running as `LocalSystem` writes a script to `%TEMP%` and executes it.**
+   For the "isolated process" and "explicit PowerShell host" execution modes, NodePilot writes the
+   workflow script as `nodepilot_<32-hex>.ps1` into the temp directory, hardens its ACL to
+   owner-full-control (all inherited rights are removed) and starts it with
+   `-NoProfile -NonInteractive -ExecutionPolicy Bypass -File`. File creation, ACL hardening and
+   immediate execution in the temp directory is the strongest heuristic signature in the entire
+   product.
 
-2. **Die Prozess-Isolation nutzt Low-Level-Windows-APIs.**
-   Mit `config.isolated: true` startet NodePilot den PowerShell-Host nicht über die .NET-Standardwege, sondern über `CreateProcessW` mit `PROC_THREAD_ATTRIBUTE_JOB_LIST`/`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`, vererbbaren Anonymous-Pipes und einem Job Object mit `KILL_ON_JOB_CLOSE`. Zweck ist Crash- und Leak-Containment (der Job räumt verwaiste Kindprozesse zuverlässig ab). Verhaltensanalysen lesen dieselbe API-Kombination als Injector- bzw. Launcher-Muster.
+2. **Process isolation uses low-level Windows APIs.**
+   With `config.isolated: true`, NodePilot starts the PowerShell host not through the standard .NET
+   paths but through `CreateProcessW` with
+   `PROC_THREAD_ATTRIBUTE_JOB_LIST`/`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`, inheritable anonymous pipes
+   and a job object with `KILL_ON_JOB_CLOSE`. The purpose is crash and leak containment (the job
+   reliably cleans up orphaned child processes). Behavioural analysis reads the same API combination
+   as an injector or launcher pattern.
 
-3. **Der Installer entpackt ein signiertes Artefakt und tauscht das Programmverzeichnis.**
-   Installation und Update entpacken nach `%TEMP%\nodepilot-artifact-<GUID>\`, verschieben das alte Programmverzeichnis nach `…NodePilot.rollback.<Zeitstempel>` bzw. `…NodePilot.backup.<Zeitstempel>` und legen das neue an derselben Stelle ab. Ein Echtzeit-Scanner, der währenddessen ein Dateihandle hält, lässt Verschiebe- oder Löschoperationen fehlschlagen — der Installer bricht dann mitten im Tausch ab und rollt zurück.
+3. **The installer unpacks a signed artifact and swaps the program directory.**
+   Installation and update unpack into `%TEMP%\nodepilot-artifact-<GUID>\`, move the old program
+   directory to `…NodePilot.rollback.<timestamp>` or `…NodePilot.backup.<timestamp>`, and put the new
+   one in the same place. A real-time scanner holding a file handle during that makes move or delete
+   operations fail — the installer then aborts mid-swap and rolls back.
 
-4. **PostgreSQL erzeugt dauerhaftes, hochfrequentes Datei-I/O** (nur Desktop-Rolle).
-   `postgres.exe` schreibt kontinuierlich in `pgdata\base\` und `pgdata\pg_wal\`. Echtzeit-Scanning dieser Verzeichnisse kostet spürbar Durchsatz; im schlechteren Fall blockiert ein Scanner-Handle einen WAL-Write und die Datenbank quittiert mit einem Schreibfehler.
+4. **PostgreSQL produces continuous, high-frequency file I/O** (desktop role only).
+   `postgres.exe` writes continuously into `pgdata\base\` and `pgdata\pg_wal\`. Real-time scanning of
+   those directories costs noticeable throughput; in the worse case a scanner handle blocks a WAL write
+   and the database responds with a write error.
 
-5. **Die Desktop-Oberfläche ist eine Electron-Anwendung** (nur Desktop-Rolle).
-   `NodePilot.exe` startet Kindprozesse **desselben Binärnamens** (`--type=renderer`, `--type=gpu-process`, `--type=utility`) und liefert Nativ-Bibliotheken mit, die häufig Heuristik-Treffer erzeugen (`vk_swiftshader.dll`, `ffmpeg.dll`, `dxcompiler.dll`, `libEGL.dll`, `libGLESv2.dll`).
+5. **The desktop interface is an Electron application** (desktop role only).
+   `NodePilot.exe` starts child processes with **the same binary name** (`--type=renderer`,
+   `--type=gpu-process`, `--type=utility`) and ships native libraries that frequently produce heuristic
+   hits (`vk_swiftshader.dll`, `ffmpeg.dll`, `dxcompiler.dll`, `libEGL.dll`, `libGLESv2.dll`).
 
 ---
 
-## Grundsätze für die Umsetzung
+## Principles for the implementation
 
-- **Rangfolge der Ausschlussarten: Signatur/Publisher → Prozess → Pfad.**
-  Das Server-Artefakt ist signiert und der Installer prüft die Signatur gegen einen festgelegten Signer-Thumbprint, bevor er irgendetwas entpackt. Wo das AV-Produkt Publisher-basierte Regeln kennt, ist das der pfadärmste und am schwersten missbrauchbare Weg. Pfad-Ausschlüsse sind die letzte Wahl.
-- **Ein Ausschluss soll die Echtzeit-Prüfung entlasten, nicht die Telemetrie abschalten.**
-  Wo das Produkt zwischen Scan-Ausschluss und EDR-Sichtbarkeit trennt, sollte die Verhaltens-/Telemetrie-Erfassung aktiv bleiben. Alle Einträge unten sind als Scan-/Blockier-Ausnahmen gemeint.
-- **Ausschlüsse gelten pro Rolle, nicht flächendeckend.**
-  Teil A gehört auf die Orchestrator-Server, Teil B auf die Desktop-Installationen. Eine gemeinsame Policy für alle Windows-Systeme der Domäne wäre eine unnötige Ausweitung.
-- **Spalte „Priorität"**
-  *Pflicht* = ohne diesen Ausschluss ist mit Funktionsausfall oder Abbruch zu rechnen.
-  *Empfohlen* = ohne ihn arbeitet NodePilot, aber mit messbarem Durchsatzverlust oder wiederkehrenden Fehlalarmen.
-- **Pfade sind Standardwerte.** Weichen `-InstallPath`/`-DataPath` bei der Installation ab, sind die Einträge entsprechend anzupassen — siehe [unten](#wann-diese-liste-neu-geprüft-werden-muss).
+- **Order of preference for exclusion types: signature/publisher → process → path.**
+  The server artifact is signed, and the installer verifies the signature against a pinned signer
+  thumbprint before it unpacks anything. Where the AV product supports publisher-based rules, that is
+  the narrowest and hardest-to-abuse route. Path exclusions are the last resort.
+- **An exclusion should relieve real-time inspection, not switch off telemetry.**
+  Where the product distinguishes between scan exclusion and EDR visibility, behavioural/telemetry
+  collection should stay active. All entries below are meant as scan/block exceptions.
+- **Exclusions apply per role, not across the board.**
+  Part A belongs on the orchestrator servers, part B on the desktop installations. A shared policy for
+  every Windows system in the domain would be an unnecessary broadening.
+- **The "Priority" column**
+  *Required* = without this exclusion, expect malfunction or an aborted operation.
+  *Recommended* = without it NodePilot works, but with measurable throughput loss or recurring false
+  positives.
+- **Paths are defaults.** If `-InstallPath`/`-DataPath` differ at installation time, adjust the entries
+  accordingly — see [below](#when-this-list-has-to-be-reviewed-again).
 
 ---
 
-## Teil A — Produktions-Server
+## Part A — Production server
 
-Rolle: Windows-Server mit dem Dienst **`NodePilot`** (Anzeigename `NodePilot Orchestrator`), ausgeführt als `LocalSystem` oder als gruppenverwaltetes Dienstkonto (gMSA, `DOMAIN\svc-nodepilot$`). Die Datenbank liegt auf einem **anderen** Host — der Server-Installer bringt kein lokales PostgreSQL mit.
+Role: a Windows server running the **`NodePilot`** service (display name `NodePilot Orchestrator`),
+executing as `LocalSystem` or as a group managed service account (gMSA, `DOMAIN\svc-nodepilot$`). The
+database sits on a **different** host — the server installer brings no local PostgreSQL with it.
 
-### A.1 Ordner
+### A.1 Folders
 
-| Pfad | Inhalt | Warum nötig | Priorität | Restrisiko |
+| Path | Contents | Why it is needed | Priority | Residual risk |
 |---|---|---|---|---|
-| `C:\Program Files\NodePilot\` | Programmverzeichnis: `NodePilot.Api.exe`, ~mehrere hundert verwaltete DLLs, `wwwroot\` (SPA), `PSModules\`, `knowledge\` | Wird beim Update komplett getauscht; ein gehaltenes Scanner-Handle lässt Verschieben/Löschen fehlschlagen. Enthält außerdem `powershell.config.json` — siehe Warnung unter [A.4](#a4-verhaltensregeln-asr-controlled-folder-access) | Pflicht | Schreibrechte hat nur SYSTEM/Administratoren; ein Angreifer mit diesen Rechten hat das System ohnehin. Restrisiko: eine dort abgelegte Fremd-DLL würde nicht mehr gescannt — kompensierbar über Publisher-Regel statt Pfad und über Integritätsüberwachung des Verzeichnisses |
-| `C:\ProgramData\NodePilot\` | Laufzeitdaten: `logs\`, `archive\`, `jwt-secret.key`, `data-protection-keys\`, `admin-setup.token`, `appsettings.runtime.json`, `install-report.txt`, `postgres-root-ca.pem` | Dauerhaftes Schreiben (Rolling Logs, atomare Config-Writes über `.tmp` + `File.Replace`, gzip-Archive). Scanner-Handles auf der Zieldatei lassen den atomaren Ersetzungsschritt scheitern | Pflicht | Verzeichnis ist per ACL auf das Dienstkonto + Administratoren beschränkt. Es liegen dort **Schlüsselmaterial und Tokens** — der Ausschluss verhindert nicht deren Diebstahl (dafür ist der Dateizugriff zuständig), er reduziert nur die Erkennung einer dort abgelegten Schaddatei |
-| `C:\Program Files\NodePilot.rollback.*`<br>`C:\Program Files\NodePilot.backup.*` | Zeitgestempelte Kopien des vorherigen Programmverzeichnisses (drei werden aufbewahrt) | Entstehen nur während Installation/Update; enthalten dieselben Binärdateien wie oben | Empfohlen | Wie Programmverzeichnis. Kann auf ein Wartungsfenster befristet werden |
-| `%TEMP%\nodepilot-artifact-*`<br>(Dienst-Kontext: `C:\Windows\Temp\nodepilot-artifact-*`) | Staging des signierten Artefakts: Installer **und** Updater entpacken das Zip zuerst hierher — rund **2900 Dateien**, davon ~2650 kleiner als 64 KB, und prüfen anschließend jede einzelne gegen das signierte Manifest | Dies ist die **teuerste Stelle des gesamten Updates** und der Grund, warum ein Upgrade minutenlang auf einer Stelle zu stehen scheint: Nicht die Datenmenge (114 MB) kostet, sondern die Dateianzahl. Ein Echtzeit-Scan prüft jede Erzeugung einzeln und vervielfacht die Laufzeit; ein gehaltenes Handle lässt zusätzlich das Aufräumen des Staging-Ordners scheitern | Empfohlen | Der Ordner trägt bereits eine restriktive DACL (SYSTEM + Administratoren + aufrufender Benutzer, atomar bei der Erzeugung gesetzt), und sein Inhalt wird unmittelbar nach dem Entpacken **gegen das signierte Manifest** verifiziert — Datei für Datei, mit Längen- und SHA-256-Vergleich. Der Ausschluss senkt die Erkennung also genau dort, wo bereits kryptografisch geprüft wird. Kann auf ein Wartungsfenster befristet werden |
+| `C:\Program Files\NodePilot\` | Program directory: `NodePilot.Api.exe`, several hundred managed DLLs, `wwwroot\` (the SPA), `PSModules\`, `knowledge\` | Replaced wholesale during an update; a held scanner handle makes moving/deleting fail. Also contains `powershell.config.json` — see the warning under [A.4](#a4-behavioural-rules-asr-controlled-folder-access) | Required | Only SYSTEM/Administrators have write access; an attacker with those rights already owns the system. Residual risk: a foreign DLL placed there would no longer be scanned — compensable through a publisher rule instead of a path, and through integrity monitoring of the directory |
+| `C:\ProgramData\NodePilot\` | Runtime data: `logs\`, `archive\`, `jwt-secret.key`, `data-protection-keys\`, `admin-setup.token`, `appsettings.runtime.json`, `install-report.txt`, `postgres-root-ca.pem` | Continuous writing (rolling logs, atomic configuration writes via `.tmp` + `File.Replace`, gzip archives). Scanner handles on the target file make the atomic replace step fail | Required | The directory is restricted by ACL to the service account + Administrators. It holds **key material and tokens** — the exclusion does not prevent their theft (file access control is responsible for that), it only reduces detection of a malicious file placed there |
+| `C:\Program Files\NodePilot.rollback.*`<br>`C:\Program Files\NodePilot.backup.*` | Timestamped copies of the previous program directory (three are retained) | Only created during installation/update; contain the same binaries as above | Recommended | As for the program directory. Can be limited to a maintenance window |
+| `%TEMP%\nodepilot-artifact-*`<br>(service context: `C:\Windows\Temp\nodepilot-artifact-*`) | Staging of the signed artifact: the installer **and** the updater unpack the zip here first — roughly **2,900 files**, about 2,650 of them smaller than 64 KB — and then verify each one against the signed manifest | This is the **most expensive point in the entire update** and the reason an upgrade appears to sit in one place for minutes: it is not the data volume (114 MB) that costs, it is the file count. A real-time scan inspects every creation individually and multiplies the runtime; a held handle additionally makes cleaning up the staging folder fail | Recommended | The folder already carries a restrictive DACL (SYSTEM + Administrators + the calling user, set atomically at creation), and its contents are verified **against the signed manifest** immediately after unpacking — file by file, comparing length and SHA-256. The exclusion therefore lowers detection exactly where cryptographic verification already happens. Can be limited to a maintenance window |
 
-Ausdrücklich **nicht** enthalten: Ordner, in die Workflows schreiben. Siehe [Was nicht ausgeschlossen werden soll](#was-ausdrücklich-nicht-ausgeschlossen-werden-soll).
+Explicitly **not** included: folders that workflows write to. See
+[What explicitly should not be excluded](#what-explicitly-should-not-be-excluded).
 
-### A.2 Prozesse
+### A.2 Processes
 
-| Prozess | Pfad | Rolle | Warum nötig | Priorität | Restrisiko |
+| Process | Path | Role | Why it is needed | Priority | Residual risk |
 |---|---|---|---|---|---|
-| `NodePilot.Api.exe` | `C:\Program Files\NodePilot\NodePilot.Api.exe` | Der Dienst selbst. Enthält die Workflow-Engine, den In-Process-PowerShell-Runspace-Pool und den WinRM-Client | Startet Kindprozesse, öffnet vererbbare Pipes, legt Job Objects an, liest/schreibt permanent unter `ProgramData` | Pflicht | Der Prozess führt konstruktionsbedingt beliebigen, vom Workflow-Autor bestimmten PowerShell-Code aus. Ein Prozess-Ausschluss macht dessen Datei-Zugriffe unsichtbar. **Kompensierende Kontrolle:** NodePilot hat eigene Rollen-/Ordner-Rechte und ein vollständiges Audit-Log für jede Workflow-Änderung und -Ausführung |
-| `pwsh.exe` | `C:\Program Files\PowerShell\7\pwsh.exe` | PowerShell 7, bevorzugter Host für isolierte und explizit prozessbasierte Schritte | Wird mit `-ExecutionPolicy Bypass -File <Temp-Skript>` gestartet | Pflicht | Ein Prozess-Ausschluss für einen generischen Skript-Host ist die weitreichendste Regel in dieser Liste. **Nach Möglichkeit einschränken:** nur, wenn der Elternprozess `NodePilot.Api.exe` ist, oder nur in Kombination mit dem Dateimuster aus [C.1](#c1-temporäre-skript--und-transcript-dateien) |
-| `powershell.exe` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Fallback-Host, wenn PowerShell 7 nicht installiert ist | wie oben | Pflicht, sofern PowerShell 7 nicht garantiert vorhanden ist | wie oben |
-| `where.exe` | `C:\Windows\System32\where.exe` | Wird beim Start der Engine **einmalig** aufgerufen, um den PowerShell-Host zu lokalisieren | Aufruf durch einen Dienst kann als Discovery-Verhalten gewertet werden | Empfohlen | Sehr gering — reine Pfadauflösung ohne Schreibzugriff |
-| `np.exe` | `C:\Program Files\NodePilot\tools\np\np.exe` | Operations-CLI. Wird seit 1.2.8 mit dem Installer ausgeliefert und liegt auf der Maschinen-`PATH`; reiner HTTPS-Client gegen die eigene REST-API | Wird interaktiv von Administratoren aufgerufen, legt eine DPAPI-geschützte Sitzungsdatei unter `%APPDATA%` an | Empfohlen | Gering — kein Dienstkontext, keine Kindprozesse. **Achtung:** Die mitgelieferten Client-Binaries sind selbst **nicht** Authenticode-signiert (nur der Installer ist es), eine Publisher-Regel greift hier also nicht — Prozess- oder Pfadregel verwenden |
-| `nodepilot-mcp.exe` | `C:\Program Files\NodePilot\tools\mcp\nodepilot-mcp.exe` | MCP-Server für KI-Agenten, seit 1.2.8 mitgeliefert. Wird über stdio von einem Agenten gestartet, spricht ausschließlich HTTPS gegen die REST-API | Ein von einem Editor/Agenten gestarteter Prozess, der eine Netzwerkverbindung öffnet, kann als auffällig gewertet werden | Optional — nur nötig, wenn der MCP-Server auf diesem Host genutzt wird | Wie `np.exe`: nicht signiert, kein Dienstkontext. Läuft nur, solange ein Agent ihn offen hält |
+| `NodePilot.Api.exe` | `C:\Program Files\NodePilot\NodePilot.Api.exe` | The service itself. Contains the workflow engine, the in-process PowerShell runspace pool and the WinRM client | Starts child processes, opens inheritable pipes, creates job objects, reads and writes continuously under `ProgramData` | Required | By design the process executes arbitrary PowerShell code chosen by the workflow author. A process exclusion makes its file accesses invisible. **Compensating control:** NodePilot has its own role/folder permissions and a complete audit log for every workflow change and execution |
+| `pwsh.exe` | `C:\Program Files\PowerShell\7\pwsh.exe` | PowerShell 7, the preferred host for isolated and explicitly process-based steps | Started with `-ExecutionPolicy Bypass -File <temp script>` | Required | A process exclusion for a generic script host is the broadest rule in this list. **Narrow it where possible:** only when the parent process is `NodePilot.Api.exe`, or only in combination with the file pattern from [C.1](#c1-temporary-script-and-transcript-files) |
+| `powershell.exe` | `C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe` | Fallback host when PowerShell 7 is not installed | as above | Required unless PowerShell 7 is guaranteed to be present | as above |
+| `where.exe` | `C:\Windows\System32\where.exe` | Called **once** at engine start to locate the PowerShell host | A call by a service can be classified as discovery behaviour | Recommended | Very low — pure path resolution with no write access |
+| `np.exe` | `C:\Program Files\NodePilot\tools\np\np.exe` | The operations CLI. Shipped with the installer since 1.2.8 and placed on the machine `PATH`; a pure HTTPS client against NodePilot's own REST API | Invoked interactively by administrators, creates a DPAPI-protected session file under `%APPDATA%` | Recommended | Low — no service context, no child processes. **Note:** the bundled client binaries are themselves **not** Authenticode-signed (only the installer is), so a publisher rule does not apply here — use a process or path rule |
+| `nodepilot-mcp.exe` | `C:\Program Files\NodePilot\tools\mcp\nodepilot-mcp.exe` | MCP server for AI agents, shipped since 1.2.8. Started over stdio by an agent, speaks HTTPS against the REST API only | A process started by an editor/agent that opens a network connection can be flagged as unusual | Optional — only needed if the MCP server is used on this host | As for `np.exe`: unsigned, no service context. Runs only while an agent keeps it open |
 
-Aus generiertem PowerShell heraus werden je nach Workflow zusätzlich Windows-Bordmittel aufgerufen: `sc.exe` (Dienstverwaltung), `shutdown.exe` und `cmd.exe /c shutdown /a` (Energieverwaltung), die WMI-/CIM-Infrastruktur (`WmiPrvSE.exe`) und die Aufgabenplanung. Diese laufen in der Regel auf der **Ziel-Maschine**, nicht auf dem Orchestrator, und brauchen dort keinen NodePilot-spezifischen Ausschluss. Sie sind hier nur genannt, damit ein Alarm auf `NodePilot.Api.exe → powershell.exe → sc.exe` als erwartet eingeordnet werden kann.
+Depending on the workflow, generated PowerShell additionally invokes built-in Windows tools: `sc.exe`
+(service management), `shutdown.exe` and `cmd.exe /c shutdown /a` (power management), the WMI/CIM
+infrastructure (`WmiPrvSE.exe`) and the task scheduler. These normally run on the **target machine**,
+not on the orchestrator, and need no NodePilot-specific exclusion there. They are listed here only so
+that an alert on `NodePilot.Api.exe → powershell.exe → sc.exe` can be classified as expected.
 
-### A.3 Temporäre Dateimuster
+### A.3 Temporary file patterns
 
-Siehe [Teil C](#teil-c--powershell-ausführung-beide-rollen) — die Muster sind für beide Rollen identisch. Für einen Dienst unter `LocalSystem` löst `%TEMP%` nach `C:\Windows\Temp\` auf.
+See [Part C](#part-c--powershell-execution-both-roles) — the patterns are identical for both roles. For
+a service running as `LocalSystem`, `%TEMP%` resolves to `C:\Windows\Temp\`.
 
-### A.4 Verhaltensregeln, ASR, Controlled Folder Access
+### A.4 Behavioural rules, ASR, controlled folder access
 
-| Regel/Mechanismus | Konflikt | Empfehlung |
+| Rule/mechanism | Conflict | Recommendation |
 |---|---|---|
-| Verhaltensregeln nach dem Muster **„Dienst oder Office-Prozess startet einen Skript-Host"** (bei Microsoft Defender: die ASR-Regeln zu Prozesserzeugung aus PSExec/WMI bzw. zu verschleierten Skripten) | Genau das ist die Kernfunktion von NodePilot: `NodePilot.Api.exe` (Dienst, `LocalSystem`) startet `pwsh.exe`/`powershell.exe` | Ausnahme für `NodePilot.Api.exe` als Elternprozess. Regel selbst **nicht** global deaktivieren |
-| **Controlled Folder Access / Ordnerschutz** | Blockiert das Schreiben in `C:\ProgramData\NodePilot\` und lässt den Dienst-Start scheitern, weil weder Log noch Schlüsseldatei angelegt werden können | `NodePilot.Api.exe` als vertrauenswürdige Anwendung eintragen |
-| **Quarantäne einzelner Dateien im Programmverzeichnis** | Wird `powershell.config.json` (liegt neben `System.Management.Automation.dll`) entfernt, fällt eine bewusst gesetzte Kompatibilitätssperre weg. Die PowerShell-SDK startet dann **pro Runspace im Pool** ein zusätzliches `powershell.exe -Version 5.1 -s`, das nicht beendet wird — der Dienst hat in einem realen Fall dadurch mehrere Gigabyte Arbeitsspeicher belegt | Datei-Löschquarantäne auf `C:\Program Files\NodePilot\` unterbinden; Funde melden statt entfernen |
-| **Skript-Scanning / AMSI** | Unproblematisch und ausdrücklich erwünscht | Aktiv lassen |
+| Behavioural rules of the form **"a service or Office process starts a script host"** (in Microsoft Defender: the ASR rules on process creation from PSExec/WMI and on obfuscated scripts) | That is precisely NodePilot's core function: `NodePilot.Api.exe` (a service, `LocalSystem`) starts `pwsh.exe`/`powershell.exe` | An exception for `NodePilot.Api.exe` as the parent process. Do **not** disable the rule globally |
+| **Controlled folder access / folder protection** | Blocks writing into `C:\ProgramData\NodePilot\` and makes the service start fail, because neither the log nor the key file can be created | Register `NodePilot.Api.exe` as a trusted application |
+| **Quarantining individual files in the program directory** | If `powershell.config.json` (which sits next to `System.Management.Automation.dll`) is removed, a deliberately configured compatibility block disappears. The PowerShell SDK then starts an additional `powershell.exe -Version 5.1 -s` **per runspace in the pool**, which is never terminated — in one real case this made the service consume several gigabytes of memory | Prevent delete-quarantine on `C:\Program Files\NodePilot\`; report findings instead of removing them |
+| **Script scanning / AMSI** | Unproblematic and explicitly desirable | Leave enabled |
 
-### A.5 Netzwerk (informativ, kein Ausschluss)
+### A.5 Network (informational, not an exclusion)
 
-Kein Ausschluss nötig — nur zur Einordnung, falls die AV-/Firewall-Seite dieselbe Konsole bedient.
+No exclusion needed — listed only for context, in case the AV/firewall side uses the same console.
 
-| Richtung | Port | Zweck |
+| Direction | Port | Purpose |
 |---|---|---|
-| eingehend | TCP 443 | Weboberfläche + REST-API + SignalR (`/hubs/execution`, kein eigener Port), Bindung auf alle Adressen |
-| eingehend | TCP 80 | Weiterleitung auf HTTPS; per Konfiguration abschaltbar |
-| ausgehend | TCP 5985 / 5986 | WinRM zu den Ziel-Maschinen (HTTP/HTTPS, je Maschine konfiguriert) |
-| ausgehend | TCP 1433 bzw. 5432 | SQL Server bzw. PostgreSQL |
+| inbound | TCP 443 | Web interface + REST API + SignalR (`/hubs/execution`, no separate port), bound on all addresses |
+| inbound | TCP 80 | Redirect to HTTPS; can be disabled by configuration |
+| outbound | TCP 5985 / 5986 | WinRM to the target machines (HTTP/HTTPS, configured per machine) |
+| outbound | TCP 1433 or 5432 | SQL Server or PostgreSQL |
 
-Der Installer legt zwei Firewall-Regeln an: `NodePilot NodePilot HTTPS` und — sofern HTTP gebunden ist — `NodePilot NodePilot HTTP-Redirect` (beide Profil *Domäne*).
+The installer creates two firewall rules: `NodePilot NodePilot HTTPS` and — if HTTP is bound —
+`NodePilot NodePilot HTTP-Redirect` (both in the *Domain* profile).
 
 ---
 
-## Teil B — Desktop-App
+## Part B — Desktop app
 
-Rolle: Einzelplatz-Installation aus dem Offline-Installer. **Zwei** Windows-Dienste, ein mitgeliefertes PostgreSQL und eine Electron-Oberfläche. Alle Netzwerkdienste sind auf Loopback beschränkt; es wird **keine** Firewall-Regel angelegt.
+Role: a single-machine installation from the offline installer. **Two** Windows services, a bundled
+PostgreSQL and an Electron interface. All network services are restricted to loopback; **no** firewall
+rule is created.
 
-> **Wichtiger Unterschied zu Teil A:** Beide Rollen nutzen `C:\Program Files\NodePilot`, aber die API liegt in der Desktop-Installation eine Ebene tiefer — `…\NodePilot\app\NodePilot.Api.exe` statt `…\NodePilot\NodePilot.Api.exe`. Ein auf die Server-Variante gemünzter Pfad-Ausschluss greift hier nicht.
+> **An important difference from part A:** both roles use `C:\Program Files\NodePilot`, but in the
+> desktop installation the API sits one level deeper — `…\NodePilot\app\NodePilot.Api.exe` instead of
+> `…\NodePilot\NodePilot.Api.exe`. A path exclusion written for the server variant does not apply here.
 
-### B.1 Dienste
+### B.1 Services
 
-| Dienstname | Anzeigename | Programm | Konto |
+| Service name | Display name | Program | Account |
 |---|---|---|---|
 | `NodePilot` | `NodePilot` | `C:\Program Files\NodePilot\app\NodePilot.Api.exe` | `LocalSystem` |
-| `NodePilotDb` | `NodePilot Database` | `C:\Program Files\NodePilot\pgsql\bin\pg_ctl.exe` (startet `postgres.exe`) | `NT AUTHORITY\NetworkService` |
+| `NodePilotDb` | `NodePilot Database` | `C:\Program Files\NodePilot\pgsql\bin\pg_ctl.exe` (starts `postgres.exe`) | `NT AUTHORITY\NetworkService` |
 
-### B.2 Ordner
+### B.2 Folders
 
-| Pfad | Inhalt | Warum nötig | Priorität | Restrisiko |
+| Path | Contents | Why it is needed | Priority | Residual risk |
 |---|---|---|---|---|
-| `C:\Program Files\NodePilot\app\` | API-Dienst und dessen Abhängigkeiten | wie Teil A: Update tauscht das Verzeichnis; enthält `powershell.config.json` | Pflicht | wie Teil A |
-| `C:\Program Files\NodePilot\desktop\` | Electron-Oberfläche: `NodePilot.exe` plus Nativ-DLLs (`vk_swiftshader.dll`, `ffmpeg.dll`, `dxcompiler.dll`, `dxil.dll`, `libEGL.dll`, `libGLESv2.dll`, `vulkan-1.dll`), `resources\app.asar`, `*.pak`, `icudtl.dat`, `snapshot_blob.bin` | Chromium-Nativbibliotheken erzeugen regelmäßig generische Heuristik-Treffer; ein einzelner Quarantäne-Fund macht die Oberfläche startunfähig | Pflicht | Statischer Programmcode, wird nur durch Installer/Update verändert. Restrisiko entspricht dem jedes ausgeschlossenen Programmverzeichnisses |
-| `C:\Program Files\NodePilot\pgsql\` | Mitgeliefertes PostgreSQL (Binärdateien, `lib`, `share`) | Wird von `pg_ctl.exe`/`postgres.exe` beim Start vollständig gelesen | Empfohlen | Enthält 43 Programme, von denen NodePilot nur sechs benutzt. Wer die Fläche klein halten will, schließt statt des Ordners nur die sechs Prozesse aus [B.3](#b3-prozesse) aus |
-| `C:\ProgramData\NodePilot\` | `pgdata\` (Datenbank-Cluster), `secrets\` (Datenbank-Passwörter sowie `appsettings.runtime.json` und dessen Rollback-Kopien), `logs\`, `backups\`, `rollback\`, `archive\`, `desktop.json`, `jwt-secret.key`, `data-protection-keys\` | Dauerhaftes Datenbank- und WAL-I/O plus alle Laufzeitschreibvorgänge der API | Pflicht | wie Teil A. Der Desktop-Installer schützt `secrets\` einschließlich Runtime-Overrides mit einer ACL nur für SYSTEM und Administratoren; der Ausschluss ändert nichts an diesem Zugriffsschutz |
-| `%APPDATA%\NodePilot\` (je Benutzer) | Chromium-Profil der Oberfläche: `Cache`, `GPUCache`, `Code Cache`, Cookies | Hochfrequentes Cache-I/O beim Bedienen der Oberfläche | Empfohlen | Nur Browser-Cache-Daten; kein ausführbarer Code |
-| `%LOCALAPPDATA%\NodePilot\` (je Benutzer) | `admin-setup.handoff` — Einmal-Token für den Erstlogin | Wird beim ersten Start gelesen und gelöscht | Empfohlen | Einzelne kurzlebige Textdatei |
+| `C:\Program Files\NodePilot\app\` | The API service and its dependencies | As in part A: an update swaps the directory; contains `powershell.config.json` | Required | As in part A |
+| `C:\Program Files\NodePilot\desktop\` | The Electron interface: `NodePilot.exe` plus native DLLs (`vk_swiftshader.dll`, `ffmpeg.dll`, `dxcompiler.dll`, `dxil.dll`, `libEGL.dll`, `libGLESv2.dll`, `vulkan-1.dll`), `resources\app.asar`, `*.pak`, `icudtl.dat`, `snapshot_blob.bin` | Chromium native libraries regularly produce generic heuristic hits; a single quarantine finding makes the interface unable to start | Required | Static program code, changed only by the installer/update. The residual risk equals that of any excluded program directory |
+| `C:\Program Files\NodePilot\pgsql\` | The bundled PostgreSQL (binaries, `lib`, `share`) | Read in full by `pg_ctl.exe`/`postgres.exe` at startup | Recommended | Contains 43 programs, of which NodePilot uses only six. To keep the surface small, exclude only the six processes from [B.3](#b3-processes) instead of the folder |
+| `C:\ProgramData\NodePilot\` | `pgdata\` (the database cluster), `secrets\` (database passwords plus `appsettings.runtime.json` and its rollback copies), `logs\`, `backups\`, `rollback\`, `archive\`, `desktop.json`, `jwt-secret.key`, `data-protection-keys\` | Continuous database and WAL I/O plus all runtime writes by the API | Required | As in part A. The desktop installer protects `secrets\`, including the runtime overrides, with an ACL for SYSTEM and Administrators only; the exclusion changes nothing about that access protection |
+| `%APPDATA%\NodePilot\` (per user) | The interface's Chromium profile: `Cache`, `GPUCache`, `Code Cache`, cookies | High-frequency cache I/O while the interface is in use | Recommended | Browser cache data only; no executable code |
+| `%LOCALAPPDATA%\NodePilot\` (per user) | `admin-setup.handoff` — the one-time token for the first sign-in | Read and deleted on first start | Recommended | A single short-lived text file |
 
-### B.3 Prozesse
+### B.3 Processes
 
-| Prozess | Pfad | Warum nötig | Priorität | Restrisiko |
+| Process | Path | Why it is needed | Priority | Residual risk |
 |---|---|---|---|---|
-| `NodePilot.Api.exe` | `C:\Program Files\NodePilot\app\` | wie Teil A | Pflicht | wie Teil A |
-| `NodePilot.exe` | `C:\Program Files\NodePilot\desktop\` | Electron-Oberfläche. Startet Kindprozesse **desselben Namens** mit `--type=renderer/gpu-process/utility`; über das Tray-Menü zusätzlich `powershell.exe` mit UAC-Anhebung, um den API-Dienst neu zu starten | Pflicht | Die Selbst-Aufruf-Kette und die Rechteanhebung aus einer GUI heraus sind für sich genommen auffällig. Der Ausschluss sollte auf den Pfad im Programmverzeichnis eingeschränkt werden, nicht auf den bloßen Dateinamen `NodePilot.exe` |
-| `postgres.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Datenbank-Serverprozess; dauerhaftes I/O in `pgdata\` | Pflicht | Bindet ausschließlich an `127.0.0.1`, TLS ist aus, Port aus dem Bereich 47100–47149 |
-| `pg_ctl.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Dienst-Host, Start/Stopp des Clusters | Pflicht | gering |
-| `initdb.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Legt den Cluster an — läuft **nur** bei der Erstinstallation | Empfohlen | gering |
-| `psql.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Legt Rolle und Datenbank an — nur bei Installation | Empfohlen | gering |
-| `pg_dump.exe` / `pg_restore.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Sicherung vor jedem Update bzw. Rückrollen | Empfohlen | gering; laufen nur im Wartungsfenster |
-| `powershell.exe` / `pwsh.exe` | Systempfade | Workflow-Ausführung — identisch zu Teil A | Pflicht | siehe [A.2](#a2-prozesse) |
-| `np.exe` / `nodepilot-mcp.exe` | `C:\Program Files\NodePilot\tools\np\`<br>`C:\Program Files\NodePilot\tools\mcp\` | Operations-CLI und MCP-Server, seit 1.2.8 mitgeliefert. Im Desktop-Paket **self-contained** publiziert, bringen also je eine eigene .NET-Laufzeit mit (~80 MB je Verzeichnis) | Optional — nur nötig, wenn sie auf diesem Gerät benutzt werden | Reine HTTPS-Clients gegen die lokale API, kein Dienstkontext. Beide sind **nicht** Authenticode-signiert (nur der Installer ist es) — Publisher-Regel greift nicht, Prozess-/Pfadregel verwenden. Anders als beim Server liegen sie hier **nicht** auf der `PATH` |
+| `NodePilot.Api.exe` | `C:\Program Files\NodePilot\app\` | As in part A | Required | As in part A |
+| `NodePilot.exe` | `C:\Program Files\NodePilot\desktop\` | The Electron interface. Starts child processes with **the same name** using `--type=renderer/gpu-process/utility`; through the tray menu additionally `powershell.exe` with UAC elevation, to restart the API service | Required | The self-invocation chain and the elevation from a GUI are conspicuous in their own right. The exclusion should be narrowed to the path in the program directory, not to the bare file name `NodePilot.exe` |
+| `postgres.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | The database server process; continuous I/O in `pgdata\` | Required | Binds to `127.0.0.1` only, TLS is off, port from the range 47100–47149 |
+| `pg_ctl.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Service host, starting/stopping the cluster | Required | Low |
+| `initdb.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Creates the cluster — runs **only** during the first installation | Recommended | Low |
+| `psql.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Creates the role and database — only during installation | Recommended | Low |
+| `pg_dump.exe` / `pg_restore.exe` | `C:\Program Files\NodePilot\pgsql\bin\` | Backup before each update, and rollback | Recommended | Low; they run only in the maintenance window |
+| `powershell.exe` / `pwsh.exe` | System paths | Workflow execution — identical to part A | Required | See [A.2](#a2-processes) |
+| `np.exe` / `nodepilot-mcp.exe` | `C:\Program Files\NodePilot\tools\np\`<br>`C:\Program Files\NodePilot\tools\mcp\` | The operations CLI and the MCP server, shipped since 1.2.8. Published **self-contained** in the desktop package, so each brings its own .NET runtime (~80 MB per directory) | Optional — only needed if they are used on this device | Pure HTTPS clients against the local API, no service context. Both are **not** Authenticode-signed (only the installer is) — a publisher rule does not apply, use a process/path rule. Unlike on the server, they are **not** on the `PATH` here |
 
-Die übrigen 37 Programme in `pgsql\bin` (`pgbench.exe`, `pg_upgrade.exe`, `stackbuilder.exe`, …) werden von NodePilot **nicht** aufgerufen und brauchen keinen Ausschluss.
+The remaining 37 programs in `pgsql\bin` (`pgbench.exe`, `pg_upgrade.exe`, `stackbuilder.exe`, …) are
+**never** invoked by NodePilot and need no exclusion.
 
-### B.4 Netzwerk (informativ)
+### B.4 Network (informational)
 
-| Richtung | Port | Zweck |
+| Direction | Port | Purpose |
 |---|---|---|
-| Loopback | TCP 47000–47049 (ein freier Port wird bei der Installation gewählt und festgehalten) | Weboberfläche + API, ausschließlich `localhost` |
-| Loopback | TCP 47100–47149 (dito) | PostgreSQL, gebunden an `127.0.0.1` |
+| Loopback | TCP 47000–47049 (a free port is chosen at installation time and pinned) | Web interface + API, `localhost` only |
+| Loopback | TCP 47100–47149 (likewise) | PostgreSQL, bound to `127.0.0.1` |
 
-Keine eingehenden Verbindungen von außen, keine Firewall-Regel.
+No inbound connections from outside, no firewall rule.
 
 ---
 
-## Teil C — PowerShell-Ausführung (beide Rollen)
+## Part C — PowerShell execution (both roles)
 
-Dieser Teil betrifft **den ausführenden Host**, also den Orchestrator-Server bzw. die Desktop-Installation.
+This part concerns **the executing host**, i.e. the orchestrator server or the desktop installation.
 
-### C.1 Temporäre Skript- und Transcript-Dateien
+### C.1 Temporary script and transcript files
 
-| Muster | Entsteht wann | Warum nötig | Priorität | Restrisiko |
+| Pattern | When it appears | Why it is needed | Priority | Residual risk |
 |---|---|---|---|---|
-| `%TEMP%\nodepilot_*.ps1`<br>bei `LocalSystem`: `C:\Windows\Temp\nodepilot_*.ps1` | Bei jedem Workflow-Schritt, der isoliert oder mit explizit gewähltem PowerShell-Host läuft. Wird nach dem Lauf wieder gelöscht | Datei wird angelegt, ACL-gehärtet und sofort mit `-ExecutionPolicy Bypass` ausgeführt — das häufigste Blockier-Muster | Pflicht | **Der weitreichendste Eintrag der Liste.** `C:\Windows\Temp` ist von vielen Prozessen beschreibbar; ein Angreifer, der dort eine Datei nach diesem Namensschema ablegt, entginge dem Scanner. **Deshalb: ausschließlich das Namensmuster ausschließen, niemals das gesamte Temp-Verzeichnis**, und wo möglich zusätzlich auf den Elternprozess `NodePilot.Api.exe` einschränken |
-| `%TEMP%\NodePilot-Transcript-*.log` | Nur bei Schritten mit aktivierter Mitschrift (`transcript`); räumt sich nach 24 h selbst auf | Wird während des Laufs geschrieben und danach zurückgelesen | Empfohlen | Reine Textdatei ohne Ausführungspfad |
+| `%TEMP%\nodepilot_*.ps1`<br>under `LocalSystem`: `C:\Windows\Temp\nodepilot_*.ps1` | On every workflow step that runs isolated or with an explicitly selected PowerShell host. Deleted again after the run | The file is created, ACL-hardened and immediately executed with `-ExecutionPolicy Bypass` — the most common blocking pattern | Required | **The broadest entry in this list.** `C:\Windows\Temp` is writable by many processes; an attacker who places a file there matching this naming scheme would evade the scanner. **Therefore: exclude the name pattern only, never the entire temp directory**, and where possible additionally restrict it to the parent process `NodePilot.Api.exe` |
+| `%TEMP%\NodePilot-Transcript-*.log` | Only for steps with transcription enabled (`transcript`); cleans itself up after 24 h | Written during the run and read back afterwards | Recommended | A plain text file with no execution path |
 
-> **Häufiger Fehler:** Ein Ausschluss „alles unterhalb von `C:\Program Files\NodePilot` und `C:\ProgramData\NodePilot`" wirkt vollständig, lässt aber genau diese Skriptdatei ungeschützt — sie liegt außerhalb jedes NodePilot-benannten Pfads.
+> **A common mistake:** an exclusion covering "everything under `C:\Program Files\NodePilot` and
+> `C:\ProgramData\NodePilot`" looks complete but leaves precisely this script file unprotected — it
+> lives outside every NodePilot-named path.
 
-### C.2 Der Standardfall braucht nichts davon
+### C.2 The default case needs none of this
 
-Die Standard-Ausführungsart schreibt **keine** temporäre Datei und startet **keinen** Kindprozess: Skripte laufen in einem prozessinternen Runspace-Pool innerhalb von `NodePilot.Api.exe`. Temp-Dateien und PowerShell-Kindprozesse entstehen nur, wenn ein Schritt ausdrücklich Isolation oder einen bestimmten PowerShell-Host anfordert. Wenn diese Ausführungsarten in der Umgebung nicht genutzt werden, entfallen die Einträge aus [C.1](#c1-temporäre-skript--und-transcript-dateien) und die Skript-Host-Prozesse aus [A.2](#a2-prozesse).
+The default execution mode writes **no** temporary file and starts **no** child process: scripts run in
+an in-process runspace pool inside `NodePilot.Api.exe`. Temp files and PowerShell child processes only
+arise when a step explicitly requests isolation or a specific PowerShell host. If those execution modes
+are not used in the environment, the entries from
+[C.1](#c1-temporary-script-and-transcript-files) and the script-host processes from
+[A.2](#a2-processes) do not apply.
 
-### C.3 Ordner-Überwachung durch NodePilot selbst
+### C.3 Folder monitoring by NodePilot itself
 
-Der Dateiwächter-Trigger überwacht ein vom Betrieb gewähltes Verzeichnis auf Änderungen. Wenn AV-Software dort Dateien verschiebt, umbenennt oder in Quarantäne nimmt, löst das echte Trigger-Ereignisse aus und startet Workflows. Das ist kein Ausschlussbedarf, aber ein bekannter Wechselwirkungspunkt bei der Fehlersuche.
+The file-watcher trigger monitors a directory chosen by operations for changes. If AV software moves,
+renames or quarantines files there, that produces genuine trigger events and starts workflows. This is
+not a case for an exclusion, but it is a known interaction point during troubleshooting.
 
 ---
 
-## Nur während Installation und Update
+## Only during installation and update
 
-Diese Einträge lassen sich auf ein Wartungsfenster befristen.
+These entries can be limited to a maintenance window.
 
-| Pfad | Rolle | Zweck | Priorität | Restrisiko |
+| Path | Role | Purpose | Priority | Residual risk |
 |---|---|---|---|---|
-| `%TEMP%\nodepilot-artifact-*\` | Server | Entpacktes, signaturgeprüftes Installationsartefakt — Installer **und** Updater nutzen denselben Pfad (Details und Begründung in A.1) | Empfohlen, für Installation und Update | Der Inhalt wurde vor dem Entpacken gegen einen festgelegten Signer-Thumbprint geprüft. Befristung empfohlen |
-| `%TEMP%\nodepilot-provision.log` | Desktop | Mitschrift der Einrichtung, für die Fehlersuche | Empfohlen | Reine Textdatei |
-| `NodePilot-Desktop-Setup-*.exe` | Desktop | Der Offline-Installer | Empfohlen | Signiertes Setup; Publisher-Regel bevorzugen |
-| `unins000.exe` in `C:\Program Files\NodePilot\` | Desktop | Deinstallationsroutine | Empfohlen | gering |
-| `C:\ProgramData\NodePilot\backups\pre-update-*.dump`<br>`C:\ProgramData\NodePilot\rollback\` | Desktop | Datenbank-Sicherung und Binär-Rückrollstand vor jedem Update | Empfohlen | Enthält Datenbankinhalte; ACL-geschützt |
+| `%TEMP%\nodepilot-artifact-*\` | Server | The unpacked, signature-verified installation artifact — the installer **and** the updater use the same path (details and rationale in A.1) | Recommended, for installation and update | The contents were verified against a pinned signer thumbprint before unpacking. Time-limiting recommended |
+| `%TEMP%\nodepilot-provision.log` | Desktop | A transcript of the provisioning, for troubleshooting | Recommended | A plain text file |
+| `NodePilot-Desktop-Setup-*.exe` | Desktop | The offline installer | Recommended | A signed setup; prefer a publisher rule |
+| `unins000.exe` in `C:\Program Files\NodePilot\` | Desktop | The uninstall routine | Recommended | Low |
+| `C:\ProgramData\NodePilot\backups\pre-update-*.dump`<br>`C:\ProgramData\NodePilot\rollback\` | Desktop | Database backup and the binary rollback state before each update | Recommended | Contains database content; ACL-protected |
 
 ---
 
-## Symptome bei fehlenden Ausschlüssen
+## Symptoms of missing exclusions
 
-Zur schnellen Zuordnung, falls die Ausschlüsse unvollständig gesetzt wurden.
+For quick attribution if the exclusions were set incompletely.
 
-| Symptom | Wahrscheinlich fehlender Ausschluss |
+| Symptom | Probably missing exclusion |
 |---|---|
-| Workflow-Schritt bleibt dauerhaft im Zustand *Running* und läuft in den Timeout | `%TEMP%\nodepilot_*.ps1` oder der Skript-Host-Prozess |
-| Schritt schlägt sofort mit einem Datei-Zugriffsfehler auf eine `.ps1` unter `C:\Windows\Temp` fehl | `%TEMP%\nodepilot_*.ps1` |
-| Dienst startet nach einem Update nicht mehr, Programmverzeichnis unvollständig | Programmverzeichnis (Handle während des Verzeichnistauschs) |
-| Dienst startet, aber es entsteht keine Logdatei; kein Erstlogin möglich | `C:\ProgramData\NodePilot\` bzw. Ordnerschutz/Controlled Folder Access |
-| Arbeitsspeicherverbrauch des Dienstes wächst über Stunden in den Gigabyte-Bereich, viele `powershell.exe`-Prozesse | `powershell.config.json` wurde aus dem Programmverzeichnis entfernt (Quarantäne) |
-| Desktop: Oberfläche startet nicht oder zeigt ein leeres Fenster | `C:\Program Files\NodePilot\desktop\` (Nativ-DLL in Quarantäne) |
-| Desktop: Dienst `NodePilotDb` startet nicht bzw. läuft in einen Timeout | `C:\ProgramData\NodePilot\pgdata\` oder `postgres.exe`/`pg_ctl.exe` |
-| Speichern in den Admin-Einstellungen schlägt fehl oder wird nicht wirksam | Server: `C:\ProgramData\NodePilot\appsettings.runtime.json`; Desktop: `C:\ProgramData\NodePilot\secrets\appsettings.runtime.json` (jeweils atomarer Ersetzungsvorgang samt temporärer Datei) |
-| Sporadische Fehler beim Archivieren alter Ausführungen oder Audit-Einträge | `C:\ProgramData\NodePilot\archive\` |
+| A workflow step stays in *Running* indefinitely and runs into its timeout | `%TEMP%\nodepilot_*.ps1` or the script-host process |
+| A step fails immediately with a file access error on a `.ps1` under `C:\Windows\Temp` | `%TEMP%\nodepilot_*.ps1` |
+| The service no longer starts after an update, program directory incomplete | The program directory (a handle held during the directory swap) |
+| The service starts but no log file appears; first sign-in is impossible | `C:\ProgramData\NodePilot\`, or folder protection / controlled folder access |
+| The service's memory consumption grows into the gigabytes over hours, with many `powershell.exe` processes | `powershell.config.json` was removed from the program directory (quarantined) |
+| Desktop: the interface does not start or shows an empty window | `C:\Program Files\NodePilot\desktop\` (a native DLL quarantined) |
+| Desktop: the `NodePilotDb` service does not start or runs into a timeout | `C:\ProgramData\NodePilot\pgdata\`, or `postgres.exe`/`pg_ctl.exe` |
+| Saving in the admin settings fails or does not take effect | Server: `C:\ProgramData\NodePilot\appsettings.runtime.json`; desktop: `C:\ProgramData\NodePilot\secrets\appsettings.runtime.json` (each an atomic replace including a temporary file) |
+| Sporadic errors when archiving old executions or audit entries | `C:\ProgramData\NodePilot\archive\` |
 
 ---
 
-## Was ausdrücklich **nicht** ausgeschlossen werden soll
+## What explicitly should **not** be excluded
 
-| Nicht ausschließen | Begründung |
+| Do not exclude | Reason |
 |---|---|
-| `C:\Windows\Temp\` als Ganzes | Für viele Prozesse beschreibbar. Nur das Muster `nodepilot_*.ps1` ausschließen |
-| Pfade, in die Workflows schreiben | Die Datei-, Ordner-, Textdatei-, ZIP- und Registry-Aktivitäten schreiben an frei konfigurierbare Ziele — potenziell überall. Genau diese Schreibvorgänge sollen weiterhin geprüft werden. NodePilot deckt diesen Bereich über eigene Rollen, Ordner-Berechtigungen, Pfad-Prüfungen und das Audit-Log ab |
-| Der gesamte Ordner `pgsql\bin` | 37 der 43 Programme werden nie aufgerufen. Es genügen die sechs aus [B.3](#b3-prozesse) |
-| Benutzerprofile (`C:\Users\…`) | NodePilot schreibt dort nur `%APPDATA%\NodePilot` und `%LOCALAPPDATA%\NodePilot` — diese beiden Unterordner reichen |
-| `pwsh.exe`/`powershell.exe` **systemweit ohne Elternprozess-Einschränkung** | Wo das AV-Produkt eine Einschränkung auf den Elternprozess `NodePilot.Api.exe` unterstützt, ist sie deutlich enger und sollte genutzt werden |
-| Skript-Scanning / AMSI abschalten | Wird von NodePilot nicht behindert und soll aktiv bleiben |
-| `*.npbackup`-Dateien | Das Ziel des Sicherungs-Exports wählt der Administrator frei — ein pauschaler Dateityp-Ausschluss wäre eine unnötig breite Regel |
+| `C:\Windows\Temp\` as a whole | Writable by many processes. Exclude only the pattern `nodepilot_*.ps1` |
+| Paths that workflows write to | The file, folder, text-file, ZIP and registry activities write to freely configurable targets — potentially anywhere. Those writes are exactly what should keep being inspected. NodePilot covers this area through its own roles, folder permissions, path checks and the audit log |
+| The whole `pgsql\bin` folder | 37 of the 43 programs are never invoked. The six from [B.3](#b3-processes) are enough |
+| User profiles (`C:\Users\…`) | NodePilot only writes `%APPDATA%\NodePilot` and `%LOCALAPPDATA%\NodePilot` there — those two subfolders suffice |
+| `pwsh.exe`/`powershell.exe` **system-wide without a parent-process restriction** | Where the AV product supports restricting to the parent process `NodePilot.Api.exe`, that is considerably narrower and should be used |
+| Disabling script scanning / AMSI | NodePilot is not hindered by it and it should stay enabled |
+| `*.npbackup` files | The destination of the backup export is chosen freely by the administrator — a blanket file-type exclusion would be an unnecessarily broad rule |
 
 ---
 
-## Nicht im Geltungsbereich: Ziel-Maschinen
+## Out of scope: target machines
 
-Auf den per WinRM orchestrierten Windows-Hosts wird **keine NodePilot-Software installiert** — die Orchestrierung ist agentenlos. Dort führt der Windows-eigene WinRM-Dienst die Schritte in `wsmprovhost.exe` aus; WMI-Abfragen laufen über `WmiPrvSE.exe`. Ob dafür Anpassungen nötig sind, richtet sich nach der bestehenden Richtlinie für administrative Remote-Ausführung und ist bewusst nicht Teil dieses Dokuments.
+**No NodePilot software is installed** on the Windows hosts orchestrated over WinRM — the
+orchestration is agentless. There, the built-in Windows WinRM service executes the steps in
+`wsmprovhost.exe`; WMI queries run through `WmiPrvSE.exe`. Whether adjustments are needed for that
+depends on the existing policy for administrative remote execution and is deliberately not part of this
+document.
 
-Umgekehrt gilt: Der Orchestrator selbst startet für WinRM **keinen** Kindprozess. Die Remote-Verbindung läuft vollständig innerhalb von `NodePilot.Api.exe`.
-
----
-
-## Wann diese Liste neu geprüft werden muss
-
-- Die Installation weicht von `-InstallPath` = `C:\Program Files\NodePilot` oder `-DataPath` = `C:\ProgramData\NodePilot` ab.
-- `Logging:File:Path`, `Logging:SupportLog:Path` oder `Retention:*:ArchivePath` wurden auf Verzeichnisse außerhalb des Datenverzeichnisses gesetzt.
-- Der Dienstname wurde bei der Installation über `-ServiceName` geändert (betrifft auch die Namen der Firewall-Regeln).
-- Desktop: die bei der Installation gewählten Loopback-Ports haben sich durch eine Neuinstallation verschoben.
-- Eine neue Activity oder eine Custom Activity startet einen bisher nicht gelisteten Prozess.
-- Ein NodePilot-Update ändert das Verzeichnislayout — die Freigabeinformationen nennen das dann ausdrücklich.
+Conversely: the orchestrator itself starts **no** child process for WinRM. The remote connection runs
+entirely inside `NodePilot.Api.exe`.
 
 ---
 
-## Verwandte Dokumentation
+## When this list has to be reviewed again
 
-- [deployment-guide.md](deployment-guide.md) — End-to-End-Produktions-Deployment
-- [claude-reference.md](claude-reference.md) — Deployment-Architektur, gMSA, Kestrel-HTTPS, Konfigurationsschlüssel
-- `deploy/README.md` — Server-Installer im Detail
-- `deploy/desktop/README.md` — Desktop-Installer im Detail
+- The installation deviates from `-InstallPath` = `C:\Program Files\NodePilot` or `-DataPath` = `C:\ProgramData\NodePilot`.
+- `Logging:File:Path`, `Logging:SupportLog:Path` or `Retention:*:ArchivePath` were pointed at directories outside the data directory.
+- The service name was changed at installation time via `-ServiceName` (this also affects the names of the firewall rules).
+- Desktop: the loopback ports chosen at installation time have shifted because of a reinstallation.
+- A new activity or a custom activity starts a process not listed so far.
+- A NodePilot update changes the directory layout — the release notes will say so explicitly.
+
+---
+
+## Related documentation
+
+- [deployment-guide.md](deployment-guide.md) — end-to-end production deployment
+- [desktop-troubleshooting.md](desktop-troubleshooting.md) — desktop app troubleshooting
+- [claude-reference.md](claude-reference.md) — deployment architecture, gMSA, Kestrel HTTPS, configuration keys
+- `deploy/README.md` — the server installer in detail
+- `deploy/desktop/README.md` — the desktop installer in detail

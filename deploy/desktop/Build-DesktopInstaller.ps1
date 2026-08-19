@@ -14,7 +14,7 @@
     and a PostgreSQL 16 binaries directory (the "pgsql" folder from the EDB zip distribution).
 
 .EXAMPLE
-    ./Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\NodePilot-Postgres\pgsql' -Version 1.0.0
+    ./Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\Packages\pgsql' -Version 1.2.10
 #>
 [CmdletBinding()]
 param(
@@ -36,6 +36,10 @@ $UiDir        = Join-Path $RepoRoot 'src\nodepilot-ui'
 $ApiCsproj    = Join-Path $RepoRoot 'src\NodePilot.Api\NodePilot.Api.csproj'
 $PublishSettingsHygieneScript = Join-Path $RepoRoot 'deploy\Assert-PublishSettingsHygiene.ps1'
 $DesktopRuntimeVersion = '10.0.11'
+# The one place the bundled PostgreSQL major is written down. It is a compatibility contract, not a
+# preference: a cluster initialised by one major cannot be opened by another, and this package
+# upgrades in place over the pgdata a previous version created.
+$DesktopPostgresMajorVersion = 16
 
 function Write-Step([string] $m) { Write-Host "==> $m" -ForegroundColor Cyan }
 function Assert-Tool([string] $name, [string] $probe) {
@@ -73,6 +77,9 @@ $IsccPath = $resolvedIscc
 if (-not (Test-Path -LiteralPath (Join-Path $PgBinariesPath 'bin\postgres.exe'))) {
     throw "PgBinariesPath does not look like a PostgreSQL install (no bin\postgres.exe): $PgBinariesPath"
 }
+# Asserted here rather than after staging so a wrong distribution costs seconds instead of a full
+# publish + SPA + Electron build. What ships is a byte copy of exactly these binaries.
+Assert-DesktopPostgresPayload -PgRootPath $PgBinariesPath -ExpectedMajorVersion $DesktopPostgresMajorVersion
 
 if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
 New-Item -ItemType Directory -Force -Path $Stage, $OutputRoot | Out-Null

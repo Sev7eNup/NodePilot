@@ -4,14 +4,14 @@ NodePilot bündelt HA, Secret-Provider, SIEM, Folder-RBAC und Enterprise-Authent
 Die externen Authentifizierungs- und Provisioning-Pfade sind opt-in. Der SSO-Status bleibt
 bis zum bestandenen realen AD-/Kerberos-/LDAPS-Feldtest ausdrücklich **AD SSO Preview**.
 
-| Feature | Branch | Status | Default | Config-Switch |
-|---|---|---|---|---|
-| HA Active/Passive | `feat/ha-active-passive` (gemerged) | implementiert + Field-Test | Single-Node (off) | `Cluster:Enabled=true` |
-| Vault / Secret-Provider | `feat/vault-secrets-abstraction` (gemerged) | implementiert + Field-Test | DPAPI | `Secrets:Provider=aesgcm` |
-| SIEM-Logging (ECS-JSON) | `feat/siem-logging` (gemerged) | implementiert | text | `Logging:Format=ecs-json` |
-| RBAC Stufe A (Shared Folders) | `feat/rbac-shared-folders` (gemerged) | implementiert | aktiv (alle bestehenden User auf Root) | — |
-| AD SSO | `feature/enterprise-sso-hardening` | **Preview**, realer Feldtest offen | off | `Authentication:Ldap:Enabled` / `Authentication:Windows:Enabled` |
-| OIDC + SCIM 2.0 | `feature/enterprise-sso-hardening` | implementiert, separates Release-Gate | off | `Authentication:Oidc:Enabled` / `Authentication:Scim:Enabled` |
+| Feature | Status | Default | Config-Switch |
+|---|---|---|---|
+| HA Active/Passive | implementiert + Field-Test | Single-Node (off) | `Cluster:Enabled=true` |
+| Vault / Secret-Provider | implementiert + Field-Test | DPAPI | `Secrets:Provider=aesgcm` |
+| SIEM-Logging (ECS-JSON) | implementiert | text | `Logging:Format=ecs-json` |
+| RBAC Stufe A (Shared Folders) | implementiert | aktiv (alle bestehenden User auf Root) | — |
+| AD SSO | **Preview**, realer Feldtest offen | off | `Authentication:Ldap:Enabled` / `Authentication:Windows:Enabled` |
+| OIDC + SCIM 2.0 | implementiert, separates Release-Gate | off | `Authentication:Oidc:Enabled` / `Authentication:Scim:Enabled` |
 
 Die Infrastruktur-Features bleiben unabhängig aktivierbar. Alle Login-Pfade konvergieren
 jedoch bewusst auf dasselbe Identitäts-, Session-, Membership- und Offboarding-Modell.
@@ -496,8 +496,7 @@ auf den Zielordner und lehnt sonst mit 403 ab.
 ### Field-Test
 
 ```powershell
-# 1. Branch checkout, neu booten — Migration applied automatisch
-git checkout feat/rbac-shared-folders
+# 1. Neu booten — Migration applied automatisch
 dotnet run --project src/NodePilot.Api
 
 # 2. Als Admin einloggen, neuen Folder + zweiten User anlegen

@@ -37,8 +37,8 @@ SKIN_HUE = {
     "dark": 216,            # azure   (#6da8ff / #2467d9)
     "dark-lila": 254,       # lilac   (#9b7dff / #7c5cfc)
     "light-grey": 262,      # violet  (#7c3aed / #7c5cfc)
-    "dark-sparkasse": 0,    # red     (#ff5a5a / #ee0000)
-    "light-sparkasse": 0,   # red     (#c80000 / #ee0000)
+    "dark-bank": 0,    # red     (#ff5a5a / #ee0000)
+    "light-bank": 0,   # red     (#c80000 / #ee0000)
     "dark-nebula": 188,     # cyan    (#4de4f7 / #22d3ee)
 }
 

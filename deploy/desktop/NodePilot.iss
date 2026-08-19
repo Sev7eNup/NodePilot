@@ -36,6 +36,13 @@ OutputBaseFilename=NodePilot-Desktop-Setup-{#AppVersion}
 WizardStyle=modern
 SetupIconFile={#StageDir}\setup-icon.ico
 
+[Tasks]
+; The desktop shortcut is the one optional part of this install. Checked by default, as is
+; conventional for a desktop application; unticking it still leaves the Start-Menu entry, which is
+; created unconditionally. Literal English text rather than {cm:CreateDesktopIcon}, because this
+; script declares no [Languages] section - every other user-visible string here is literal too.
+Name: "desktopicon"; Description: "Create a &desktop icon"; GroupDescription: "Additional shortcuts:"
+
 [Files]
 Source: "{#StageDir}\app\*";     DestDir: "{app}\app";     Flags: recursesubdirs createallsubdirs ignoreversion
 Source: "{#StageDir}\desktop\*"; DestDir: "{app}\desktop"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -47,18 +54,18 @@ Source: "{#StageDir}\tools\*";   DestDir: "{app}\tools";   Flags: recursesubdirs
 
 [Icons]
 Name: "{group}\NodePilot";         Filename: "{app}\desktop\NodePilot.exe"
-Name: "{commondesktop}\NodePilot"; Filename: "{app}\desktop\NodePilot.exe"
+Name: "{commondesktop}\NodePilot"; Filename: "{app}\desktop\NodePilot.exe"; Tasks: desktopicon
 
 [Run]
-; Provision the local runtime (elevated): Postgres cluster+service, cert, config, API service,
-; desktop.json, first-run token handoff. Idempotent — safe on reinstall.
-Filename: "powershell.exe"; \
-  Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\deploy\Provision-LocalDb.ps1"" -InstallPath ""{app}"""; \
-  StatusMsg: "Provisioning local database and services (this can take a minute)..."; \
-  Flags: runhidden waituntilterminated
-; Launch the shell as the interacting user (installer runs elevated).
+; NOTE: provisioning is NOT a [Run] entry. [Run] discards the exit code, so a failed provisioning
+; produced a green "installation complete" and a dead app. It runs from CurStepChanged below,
+; where ResultCode can be inspected. See ProvisionRuntime().
+; Launch the shell as the interacting user (installer runs elevated) - but only when provisioning
+; actually succeeded, otherwise the user gets a second error dialog from the shell for a problem
+; they were already told about.
 Filename: "{app}\desktop\NodePilot.exe"; \
   Description: "Launch NodePilot"; \
+  Check: ProvisionSucceeded; \
   Flags: postinstall nowait skipifsilent runasoriginaluser
 
 [UninstallRun]
@@ -69,6 +76,53 @@ Filename: "powershell.exe"; \
   Flags: runhidden waituntilterminated; RunOnceId: "NodePilotDesktopUninstall"
 
 [Code]
+var
+  ProvisionOk: Boolean;
+
+// Guards the "Launch NodePilot" post-install entry.
+function ProvisionSucceeded(): Boolean;
+begin
+  Result := ProvisionOk;
+end;
+
+// Runs the elevated provisioning script and REPORTS ITS EXIT CODE. Previously this was a [Run]
+// entry, which throws the exit code away: a provisioning that aborted (port pool exhausted, the
+// API service never reaching /healthz/ready, a cluster whose secrets went missing) still produced
+// a "Setup completed successfully" page, and the first thing the user saw was the shell failing
+// to connect. Deliberately does NOT abort setup - the files are already in place and a rollback
+// here would delete a database the user may still want. It reports plainly and names the log.
+procedure ProvisionRuntime();
+var
+  ResultCode: Integer;
+  ProvisionScript: String;
+  LogPath: String;
+begin
+  ProvisionScript := ExpandConstant('{app}\deploy\Provision-LocalDb.ps1');
+  LogPath := GetEnv('TEMP') + '\nodepilot-provision.log';
+
+  WizardForm.StatusLabel.Caption := 'Provisioning local database and services (this can take a minute)...';
+  WizardForm.Refresh();
+
+  if not Exec('powershell.exe',
+       '-NoProfile -ExecutionPolicy Bypass -File "' + ProvisionScript + '" -InstallPath "' + ExpandConstant('{app}') + '"',
+       '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    ProvisionOk := False;
+    MsgBox('NodePilot could not start Windows PowerShell to set up its database and services.'#13#10#13#10
+           + 'The application files are installed, but it will not run yet.'#13#10#13#10
+           + 'See docs/desktop-troubleshooting.md.', mbCriticalError, MB_OK);
+    Exit;
+  end;
+
+  ProvisionOk := (ResultCode = 0);
+  if not ProvisionOk then
+    MsgBox('NodePilot was installed, but setting up the local database and services did not finish'
+           + ' (exit code ' + IntToStr(ResultCode) + ').'#13#10#13#10
+           + 'The application will not start until this is resolved. The full log of this run is at:'#13#10#13#10
+           + LogPath + #13#10#13#10
+           + 'Troubleshooting steps: docs/desktop-troubleshooting.md', mbCriticalError, MB_OK);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   ResultCode: Integer;
@@ -88,4 +142,7 @@ begin
         '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
   end;
+
+  if CurStep = ssPostInstall then
+    ProvisionRuntime();
 end;

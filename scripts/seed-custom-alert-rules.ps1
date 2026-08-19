@@ -28,7 +28,7 @@
 #>
 param(
   [string]$BaseUrl = 'http://localhost:5000',
-  [string]$AlertEmail = 'test@gmail.com'
+  [string]$AlertEmail = 'alerts@example.com'
 )
 
 function Cond($field, $op, $val) {

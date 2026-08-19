@@ -118,7 +118,7 @@ Nur kurz, weil meiste Logik in Engine bleibt:
   - Auth-Konfiguration (JWT + optional LDAP/Windows)
   - SignalR-Hub-Mapping (`/hubs/execution`)
   - SPA-Fallback (`MapFallbackToFile("index.html")`)
-- [AuthenticationSetup.cs](../src/NodePilot.Api/Security/AuthenticationSetup.cs) — JWT-Cookie + Bearer + CSRF.
+- [AuthenticationSetup.cs](../src/NodePilot.Api/Hosting/AuthenticationSetup.cs) — JWT-Cookie + Bearer + CSRF.
 
 **Schritt 2 — DTOs (vor den Controllern!):**
 

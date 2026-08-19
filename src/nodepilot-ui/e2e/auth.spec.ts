@@ -5,7 +5,7 @@ import { installDefaultMocks } from './fixtures/mockApi';
  * Auth-Lifecycle E2E. Mock-driven so the suite stays deterministic and CI doesn't
  * need a Postgres backend to assert the SPA's login + logout + cookie behaviour.
  *
- * Maps to scenarios in [E2ETests.md](../../../E2ETests.md):
+ * Maps to scenarios in [E2ETests.md](../../../docs/testing/E2ETests.md):
  *   - Test 25.1 (Bootstrap-Token-Flow)
  *   - Test 25.4 (HttpOnly-Cookie inspection — partial; the `Secure` flag isn't
  *     observable in jsdom-style mocks but the HttpOnly side is)

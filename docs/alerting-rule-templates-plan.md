@@ -278,12 +278,16 @@ Regeln deaktiviert und ohne Route.
   immer deaktiviert, zweisprachig, Herkunfts-ID; zwei REST-Zeilen; zwei `np alerting`-Zeilen; zwei
   MCP-Tools; Governance-Punkt korrigieren (Routen sind zum **Aktivieren** Pflicht, nicht zum Anlegen);
   ein Satz zur Dispatcher-Invariante.
-- `src/nodepilot-docs-ui/content/alerting.md` — dieselbe Aussage im kuratierten Ton der Website.
+- `src/nodepilot-docs-ui/content/{de,en}/alerting.md` — dieselbe Aussage im kuratierten Ton der
+  Website. Die Doku-Website ist zweisprachig: **beide** Sprachfassungen pflegen, sonst schlägt der
+  Parity-Test in `src/nodepilot-docs-ui/src/lib/content.test.ts` an.
 - **Tool-Zahl 99 → 101 an allen Stellen**, sonst rot in `DocumentationCountsTests`: Root-`CLAUDE.md`
   (zwei Behauptungen), `README.md`, [mcp-server.md](mcp-server.md) (drei Zahlen),
-  `src/NodePilot.Mcp/CLAUDE.md`, `src/nodepilot-docs-ui/content/mcp-server.md`. Dazu
-  `src/nodepilot-docs-ui/content/cli.md` und `src/NodePilot.Cli/CLAUDE.md` für die neuen Befehle.
-- `E2ETests.md` + `src/nodepilot-ui/e2e/README.md` — neuer Fall in Teil 78.
+  `src/NodePilot.Mcp/CLAUDE.md`, `src/nodepilot-docs-ui/content/{de,en}/mcp-server.md` (beide
+  Sprachen sind einzeln in `DocumentationCountsTests` verdrahtet). Dazu
+  `src/nodepilot-docs-ui/content/{de,en}/cli.md` und `src/NodePilot.Cli/CLAUDE.md` für die neuen
+  Befehle.
+- `docs/testing/E2ETests.md` + `src/nodepilot-ui/e2e/README.md` — neuer Fall in Teil 78.
 - **`scripts/seed-custom-alert-rules.ps1` löschen** — vom Katalog vollständig ersetzt, von keiner Doku
   referenziert. Zwei divergierende Quellen für dieselben Regeln wären die eigentliche Schuld.
   `seed-system-alert-policies.ps1` bleibt.

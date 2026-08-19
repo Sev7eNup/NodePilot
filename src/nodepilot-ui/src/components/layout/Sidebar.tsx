@@ -21,7 +21,7 @@ import { navGroups, type BadgeKind } from '../../lib/navigation';
 // Icon per skin id (+ system). Falls back to Monitor for any future skin without
 // an explicit icon. Options/cycle are derived from the THEMES registry so a new
 // scheme appears in the quick-toggle + popover automatically.
-const THEME_ICONS: Record<string, CarbonIconType> = { light: Light, dark: Asleep, 'dark-lila': ColorPalette, 'light-grey': Contrast, 'dark-sparkasse': BankVault, 'light-sparkasse': Building, 'dark-nebula': Star, system: Screen };
+const THEME_ICONS: Record<string, CarbonIconType> = { light: Light, dark: Asleep, 'dark-lila': ColorPalette, 'light-grey': Contrast, 'dark-bank': BankVault, 'light-bank': Building, 'dark-nebula': Star, system: Screen };
 
 const THEME_OPTIONS: { value: Theme; icon: CarbonIconType; key: string }[] = [
   ...THEMES.map((t) => ({ value: t.id as Theme, icon: THEME_ICONS[t.id] ?? Screen, key: t.labelKey })),

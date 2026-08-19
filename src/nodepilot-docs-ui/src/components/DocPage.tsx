@@ -1,50 +1,72 @@
 import { useEffect, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { Trans, useTranslation } from 'react-i18next'
 import { ArrowLeft, ArrowRight } from '@carbon/icons-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeSlug from 'rehype-slug'
 import rehypeHighlight from 'rehype-highlight'
 import type { Components } from 'react-markdown'
-import { getContent } from '../lib/content'
-import { neighbors } from '../data/nav'
+import { getContent, hasTranslation } from '../lib/content'
+import { navTitleKey, neighbors } from '../data/nav'
+import { DEFAULT_LANG, type Lang } from '../i18n/languages'
 import Toc from './Toc'
 
-export default function DocPage({ path }: { path: string }) {
-  const markdown = getContent(path)
+export default function DocPage({ lang, path }: { lang: Lang; path: string }) {
+  const { t } = useTranslation()
+  const markdown = getContent(lang, path)
   const articleRef = useRef<HTMLElement>(null)
 
   // Reset scroll on navigation. The document is the scroller (the app's inner-scroller
   // model would break `scroll-padding-top` for TOC jumps and deep links).
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' })
-  }, [path])
+  }, [path, lang])
 
   if (!markdown) {
     return (
       <div className="mx-auto max-w-3xl px-6 py-16 text-center">
-        <h1 className="text-2xl font-bold">Seite nicht gefunden</h1>
+        <h1 className="text-2xl font-bold">{t('ui.notFoundTitle')}</h1>
         <p className="mt-2 text-on-surface-variant">
-          Inhalt für <code className="rounded bg-surface-container px-1">{path}</code> ist nicht verfügbar.
+          <Trans
+            i18nKey="ui.notFoundBody"
+            values={{ path }}
+            components={[<code key="path" className="rounded bg-surface-container px-1" />]}
+          />
         </p>
-        <Link to="/" className="mt-6 inline-block font-medium text-[var(--np-accent-text)] hover:underline">
-          ← Zur Startseite
+        <Link
+          to={`/${lang}`}
+          className="mt-6 inline-block font-medium text-[var(--np-accent-text)] hover:underline"
+        >
+          {t('ui.backHome')}
         </Link>
       </div>
     )
   }
 
   const { prev, next } = neighbors(path)
+  // Content came from the fallback language — say so rather than silently serving
+  // English text under a German nav.
+  const fellBack = !hasTranslation(lang, path)
 
   return (
     <div className="flex w-full">
       {/* Main content column */}
       <div className="mx-auto flex min-w-0 max-w-3xl flex-1 px-6 py-8 lg:px-10">
         <article ref={articleRef} className="np-prose min-w-0 flex-1">
+          {fellBack && (
+            <div
+              lang={DEFAULT_LANG}
+              className="mb-6 rounded-lg border border-outline-variant bg-surface-container px-4 py-3 text-sm text-on-surface-variant"
+            >
+              {t('ui.translationMissing')}
+            </div>
+          )}
+
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[rehypeSlug, rehypeHighlight]}
-            components={makeLinkComponents(path)}
+            components={makeLinkComponents(lang, path)}
           >
             {markdown}
           </ReactMarkdown>
@@ -53,11 +75,11 @@ export default function DocPage({ path }: { path: string }) {
 
           <nav className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {prev ? (
-              <FooterLink kind="prev" path={prev.path} title={prev.title} />
+              <FooterLink kind="prev" lang={lang} path={prev.path} />
             ) : (
               <span />
             )}
-            {next ? <FooterLink kind="next" path={next.path} title={next.title} /> : <span />}
+            {next ? <FooterLink kind="next" lang={lang} path={next.path} /> : <span />}
           </nav>
         </article>
       </div>
@@ -70,16 +92,17 @@ export default function DocPage({ path }: { path: string }) {
 
 function FooterLink({
   kind,
+  lang,
   path,
-  title,
 }: {
   kind: 'prev' | 'next'
+  lang: Lang
   path: string
-  title: string
 }) {
+  const { t } = useTranslation()
   return (
     <Link
-      to={`/${path}`}
+      to={`/${lang}/${path}`}
       className={`np-card np-doc-nav group flex flex-col gap-1 px-4 py-3 ${
         kind === 'next' ? 'sm:text-right' : ''
       }`}
@@ -91,16 +114,16 @@ function FooterLink({
       >
         {kind === 'prev' ? (
           <>
-            <ArrowLeft size={14} /> Vorherige
+            <ArrowLeft size={14} /> {t('ui.prev')}
           </>
         ) : (
           <>
-            Weiter <ArrowRight size={14} />
+            {t('ui.next')} <ArrowRight size={14} />
           </>
         )}
       </span>
       <span className="font-medium text-on-surface group-hover:text-[var(--np-accent-text)]">
-        {title}
+        {t(navTitleKey(path))}
       </span>
     </Link>
   )
@@ -116,6 +139,10 @@ function FooterLink({
 // a full page load — a plain `<a href="./installation">` would resolve against the
 // document base URL (before the `#`), producing a broken `/installation` path and
 // leaving the user on the current page. See makeLinkComponents() below.
+//
+// The markdown sources are language-neutral: they cross-link by content path only
+// (`../enterprise/folder-rbac`), never by language. The active language is re-applied
+// here, which is what keeps a reader inside their language while following links.
 
 /** Resolve a markdown cross-link href against the current doc path into a nav
  * path like "getting-started/installation". Returns null for non-internal links. */
@@ -137,7 +164,17 @@ function resolveDocHref(href: string, currentPath: string): string | null {
   return pathname.replace(/^\//, '').replace(/\/+$/, '')
 }
 
-function InternalLink({ href, currentPath, children }: { href: string; currentPath: string; children?: ReactNode }) {
+function InternalLink({
+  href,
+  lang,
+  currentPath,
+  children,
+}: {
+  href: string
+  lang: Lang
+  currentPath: string
+  children?: ReactNode
+}) {
   // In-page anchor: scroll to the element instead of changing the hash route.
   if (href.startsWith('#')) {
     const id = href.slice(1)
@@ -158,13 +195,13 @@ function InternalLink({ href, currentPath, children }: { href: string; currentPa
     return <a href={href}>{children}</a>
   }
   return (
-    <Link to={`/${target}`}>
+    <Link to={`/${lang}/${target}`}>
       {children}
     </Link>
   )
 }
 
-function makeLinkComponents(currentPath: string): Components {
+function makeLinkComponents(lang: Lang, currentPath: string): Components {
   return {
     a: ({ href, children }) => {
       const external = /^https?:\/\//.test(href ?? '') || /^(mailto|tel):/i.test(href ?? '')
@@ -176,7 +213,7 @@ function makeLinkComponents(currentPath: string): Components {
         )
       }
       return (
-        <InternalLink href={href ?? ''} currentPath={currentPath}>
+        <InternalLink href={href ?? ''} lang={lang} currentPath={currentPath}>
           {children}
         </InternalLink>
       )

@@ -10,113 +10,128 @@ import {
 
 export interface NavPage {
   path: string // route + content key, e.g. "getting-started/introduction"
-  title: string
   /** Sidebar glyph. Required on purpose: `tsc` then fails if a new page ships without one. */
   icon: CarbonIconType
 }
 
 export interface NavGroup {
-  label: string
+  /** Stable id — the translation key suffix, never rendered directly. */
+  id: string
   items: NavPage[]
 }
 
+// Structure lives here exactly once; the visible titles live in `i18n/locales/*.json`
+// under `nav.groups.<id>` / `nav.pages.<path>`. Adding a page therefore means adding it
+// here plus one line per language — `navTitleKey()` derives the key from the path, so
+// there is no third mapping table to keep in sync.
+//
 // Icons mirror `nodepilot-ui/src/lib/navigation.ts` wherever a docs page maps onto an
 // app page (Workflows, Activities, CLI-Auth, Machines, Settings, …), so the two navs
 // read as one product.
 export const navGroups: NavGroup[] = [
   {
-    label: 'Erste Schritte',
+    id: 'getting-started',
     items: [
-      { path: 'getting-started/introduction', title: 'Einführung', icon: Idea },
-      { path: 'getting-started/installation', title: 'Installation', icon: Download },
-      { path: 'getting-started/quickstart', title: 'Schnelleinstieg', icon: Rocket },
-      { path: 'getting-started/architecture', title: 'Architektur', icon: Layers },
+      { path: 'getting-started/introduction', icon: Idea },
+      { path: 'getting-started/installation', icon: Download },
+      { path: 'getting-started/quickstart', icon: Rocket },
+      { path: 'getting-started/architecture', icon: Layers },
     ],
   },
   {
-    label: 'Konzepte',
+    id: 'concepts',
     items: [
-      { path: 'concepts/workflows', title: 'Workflows & Activities', icon: FlowModeler },
-      { path: 'concepts/activities', title: 'Activity-Typen & Scopes', icon: Apps },
-      { path: 'concepts/workflow-json', title: 'Workflow-JSON-Format', icon: Json },
-      { path: 'concepts/data-bus', title: 'Datenbus & Variablen', icon: ValueVariable },
-      { path: 'concepts/edge-conditions', title: 'Edge-Bedingungen', icon: DecisionTree },
-      { path: 'concepts/sub-workflows', title: 'Sub-Workflows & Contract', icon: Flow },
+      { path: 'concepts/workflows', icon: FlowModeler },
+      { path: 'concepts/activities', icon: Apps },
+      { path: 'concepts/workflow-json', icon: Json },
+      { path: 'concepts/data-bus', icon: ValueVariable },
+      { path: 'concepts/edge-conditions', icon: DecisionTree },
+      { path: 'concepts/sub-workflows', icon: Flow },
     ],
   },
   {
-    label: 'Workflow-Designer',
+    id: 'designer',
     items: [
-      { path: 'designer/overview', title: 'Überblick', icon: Draw },
-      { path: 'designer/canvas-nodes-edges', title: 'Canvas, Nodes & Edges', icon: ChartRelationship },
-      { path: 'designer/properties-modes', title: 'Properties, Modi & Shortcuts', icon: SettingsAdjust },
+      { path: 'designer/overview', icon: Draw },
+      { path: 'designer/canvas-nodes-edges', icon: ChartRelationship },
+      { path: 'designer/properties-modes', icon: SettingsAdjust },
     ],
   },
   {
-    label: 'Referenz',
+    id: 'reference',
     items: [
-      { path: 'activities-reference', title: 'Activity-Referenz', icon: Catalog },
-      { path: 'triggers', title: 'Trigger', icon: Lightning },
-      { path: 'api/endpoints', title: 'API-Endpoints', icon: Api },
-      { path: 'api/authentication', title: 'Authentifizierung & Rollen', icon: UserRole },
-      { path: 'api/workflow-control', title: 'Workflow-Kontrollfluss', icon: PlayFilledAlt },
-      { path: 'cli', title: 'CLI (np)', icon: Terminal },
-      { path: 'mcp-server', title: 'MCP-Server (nodepilot-mcp)', icon: Plug },
+      { path: 'activities-reference', icon: Catalog },
+      { path: 'triggers', icon: Lightning },
+      { path: 'api/endpoints', icon: Api },
+      { path: 'api/authentication', icon: UserRole },
+      { path: 'api/workflow-control', icon: PlayFilledAlt },
+      { path: 'cli', icon: Terminal },
+      { path: 'mcp-server', icon: Plug },
     ],
   },
   {
-    label: 'Security',
+    id: 'security',
     items: [
-      { path: 'security/overview', title: 'Sicherheitsmodell', icon: Security },
-      { path: 'security/hardening', title: 'Hardening-Flags', icon: Firewall },
-      { path: 'security/audit-log', title: 'Audit-Log', icon: ListChecked },
+      { path: 'security/overview', icon: Security },
+      { path: 'security/hardening', icon: Firewall },
+      { path: 'security/audit-log', icon: ListChecked },
     ],
   },
   {
-    label: 'Enterprise',
+    id: 'enterprise',
     items: [
-      { path: 'enterprise/high-availability', title: 'High Availability', icon: Replicate },
-      { path: 'enterprise/secrets-providers', title: 'Secret-Provider', icon: Password },
-      { path: 'enterprise/ldap-windows-sso', title: 'AD SSO Preview', icon: Group },
-      { path: 'enterprise/siem-logging', title: 'SIEM-Logging (ECS)', icon: CloudMonitoring },
-      { path: 'enterprise/folder-rbac', title: 'Folder-RBAC', icon: Folder },
+      { path: 'enterprise/high-availability', icon: Replicate },
+      { path: 'enterprise/secrets-providers', icon: Password },
+      { path: 'enterprise/ldap-windows-sso', icon: Group },
+      { path: 'enterprise/siem-logging', icon: CloudMonitoring },
+      { path: 'enterprise/folder-rbac', icon: Folder },
     ],
   },
   {
-    label: 'Konfiguration',
+    id: 'configuration',
     items: [
-      { path: 'configuration/appsettings', title: 'appsettings-Übersicht', icon: Settings },
-      { path: 'configuration/database', title: 'Datenbank-Provider', icon: DataBase },
-      { path: 'configuration/remote-execution', title: 'Remote-Execution', icon: Screen },
-      { path: 'configuration/logging', title: 'Logging', icon: Document },
-      { path: 'configuration/retention', title: 'Retention-Services', icon: Time },
-      { path: 'configuration/performance', title: 'Performance-Dimensionierung', icon: Meter },
+      { path: 'configuration/appsettings', icon: Settings },
+      { path: 'configuration/database', icon: DataBase },
+      { path: 'configuration/remote-execution', icon: Screen },
+      { path: 'configuration/logging', icon: Document },
+      { path: 'configuration/retention', icon: Time },
+      { path: 'configuration/performance', icon: Meter },
     ],
   },
   {
-    label: 'Deployment & Mehr',
+    id: 'deployment',
     items: [
-      { path: 'deployment/overview', title: 'Betriebsarten', icon: Deploy },
-      { path: 'deployment/production', title: 'Windows-Server', icon: BareMetalServer },
-      { path: 'deployment/desktop', title: 'Desktop-App', icon: Laptop },
-      { path: 'deployment/av-exclusions', title: 'Antiviren-Ausschlüsse', icon: SecurityServices },
-      { path: 'ai-features', title: 'AI-Features', icon: Chat },
-      { path: 'alerting', title: 'Alerting', icon: Notification },
-      { path: 'observability', title: 'Observability', icon: ChartLine },
-      { path: 'import-export', title: 'Import / Export & Backup', icon: Archive },
+      { path: 'deployment/overview', icon: Deploy },
+      { path: 'deployment/production', icon: BareMetalServer },
+      { path: 'deployment/desktop', icon: Laptop },
+      { path: 'deployment/av-exclusions', icon: SecurityServices },
+      { path: 'ai-features', icon: Chat },
+      { path: 'alerting', icon: Notification },
+      { path: 'observability', icon: ChartLine },
+      { path: 'import-export', icon: Archive },
     ],
   },
 ]
 
 export const allPages: NavPage[] = navGroups.flatMap((g) => g.items)
 
+/** Translation key for a page title. No page path contains a `.`, so the path can sit
+ *  under `nav.pages` as a plain leaf without fighting i18next's key separator. */
+export function navTitleKey(path: string): string {
+  return `nav.pages.${path}`
+}
+
+export function navGroupKey(id: string): string {
+  return `nav.groups.${id}`
+}
+
 export function pageByPath(path: string): NavPage | undefined {
   return allPages.find((p) => p.path === path)
 }
 
-/** Group label a page belongs to — the single source for the TopBar breadcrumb. */
+/** Group id a page belongs to — the single source for the TopBar breadcrumb. */
 export function groupOf(path: string): string | undefined {
-  return navGroups.find((g) => g.items.some((i) => i.path === path))?.label
+  return navGroups.find((g) => g.items.some((i) => i.path === path))?.id
 }
 
 export function neighbors(path: string): { prev?: NavPage; next?: NavPage } {

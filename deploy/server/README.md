@@ -1,217 +1,212 @@
 # NodePilot Server Setup (`NodePilot-Server-Setup-<version>.exe`)
 
-GUI-Installer für die **Server-Installation** (Windows-Dienst). Er ersetzt den ZIP-Weg nicht — er
-ist ein zweiter Weg zur selben Installation. `deploy/Install-NodePilot.ps1` bleibt unverändert
-nutzbar und ist weiterhin die Referenz; das Setup ruft genau dieses Skript auf.
+GUI installer for the **server installation** (Windows service). It does not replace the ZIP route —
+it is a second way to the same installation. `deploy/Install-NodePilot.ps1` remains usable unchanged
+and is still the reference; the setup calls exactly that script.
 
-> Für **eine einzelne Maschine ohne Netzwerkzugriff** ist die Desktop-App der schnellere Weg —
-> siehe [`../desktop/README.md`](../desktop/README.md). Sie bindet ausschließlich Loopback.
+> For **a single machine with no network access**, the desktop app is the faster route — see
+> [`../desktop/README.md`](../desktop/README.md). It binds loopback only.
 
 ## Quick start
 
-Der Rest dieser Datei erklärt, **warum** die Dinge so sind. Das hier ist, **was man tut**.
+The rest of this file explains **why** things are the way they are. This section is **what you do**.
 
-### Vorher besorgen — zwei Dinge
+### Get two things ready first
 
-**1. Kestrel-Zertifikat** auf dem Zielserver in den Maschinenspeicher:
+**1. The Kestrel certificate** in the machine store on the target server:
 
 ```powershell
 Import-PfxCertificate -FilePath cert.pfx -CertStoreLocation Cert:\LocalMachine\My `
   -Password (Read-Host -AsSecureString)
 ```
 
-`MachineKeySet|PersistKeySet` ist bei diesem Aufruf Default und ist Pflicht — ohne persistierten
-Maschinenschlüssel findet `Grant-CertPrivateKeyAccess` die Schlüsseldatei später nicht und die
-Installation bricht ab. Gültig und auf den Public-Hostnamen ausgestellt: ein abgelaufenes Zertifikat
-ist eine rote Pflicht-Zeile, ein abweichender Name nur eine Warnung.
+`MachineKeySet|PersistKeySet` is the default for this call and is mandatory — without a persisted
+machine key, `Grant-CertPrivateKeyAccess` cannot find the key file later and the installation aborts.
+Valid, and issued for the public hostname: an expired certificate is a red blocking row, a mismatched
+name is only a warning.
 
-Wer **noch keins hat**, lässt das Thumbprint-Feld leer: die Prüfseite meldet dann „No certificate
-selected" und bietet an, ein selbstsigniertes zu erzeugen — für Labor und Pilot, nicht für
-Produktion. Unbeaufsichtigt ist das derselbe Fall: leeres `certificate.thumbprint` plus
+If you **do not have one yet**, leave the thumbprint field empty: the readiness page then reports
+"No certificate selected" and offers to create a self-signed one — for lab and pilot use, not for
+production. Unattended, this is the same case: an empty `certificate.thumbprint` plus
 `"provisioning": { "generateSelfSignedCertificate": true }`.
 
-**2. Datenbank-Server**, erreichbar, dessen **TLS der NodePilot-Host verifizieren kann** — bei
-self-signed also den öffentlichen Teil nach `LocalMachine\Root` auf dem NodePilot-Server. SQL Server
-muss **2022 CU1** (`16.0.4003.1`) oder neuer sein. Für PostgreSQL zusätzlich die **Root-CA als PEM**
-bereitlegen.
+**2. A database server** that is reachable and whose **TLS the NodePilot host can verify** — for a
+self-signed certificate that means importing its public half into `LocalMachine\Root` on the NodePilot
+server. SQL Server must be **2022 CU1** (`16.0.4003.1`) or newer. For PostgreSQL, also have the
+**root CA as a PEM file** ready.
 
-**Datenbank, Login und Rechte legt das Setup an** — bei SQL Server, wenn das ausführende Konto
-`sysadmin` ist; bei PostgreSQL, wenn Superuser-Zugangsdaten eingetragen werden. Das ist keine
-Vorarbeit mehr, siehe [Auto-Fixes](#auto-fixes).
+**The setup creates the database, the login and the permissions** — on SQL Server if the account
+running it is `sysadmin`; on PostgreSQL if superuser credentials are supplied. That is no longer
+preparatory work, see [Auto-fixes](#auto-fixes).
 
-Nur beim gMSA-Pfad: Konto in AD anlegen, für den Host freigeben, `Install-ADServiceAccount` auf dem
-Zielserver. Den Zugriff auf den privaten Schlüssel des Zertifikats erledigt der Installer.
+Only on the gMSA path: create the account in AD, allow the host to retrieve its password, and run
+`Install-ADServiceAccount` on the target server. Access to the certificate's private key is handled
+by the installer.
 
-### Der Wizard
+### The wizard
 
-| # | Seite | Eingabe |
+| # | Page | Input |
 |---|---|---|
-| 1 | Modus | Neuinstallation (bzw. Update / Entfernen) |
-| 2 | Zielordner | Installationsverzeichnis |
-| 3 | Dienst-Identität | LocalSystem oder gMSA |
-| 4 | Konto | nur bei gMSA: `DOMAIN\name$` |
-| 5 | Datenbank | SQL Server 2022 CU1+ oder PostgreSQL 16+ |
-| 6a | SQL Server | Server, Datenbank, Zertifikats-Hostname (leer = wird aus dem Server abgeleitet) |
-| 6b | PostgreSQL | Host/Port/Datenbank, dann User, Passwort, Root-Zertifikat — optional Superuser + Passwort, damit Rolle und Datenbank angelegt werden können |
-| 7 | Netzwerk und TLS | Public-Hostname, HTTPS-Port, HTTP-Port (**`0`** = kein Redirect), Allowed Hosts, Thumbprint — die Liste darunter füllt das Feld, **leer** heißt „habe ich noch nicht" |
-| 8 | Prerequisites | zehn Prüfzeilen; rote Pflicht-Zeilen sperren „Weiter". Wo eine Checkbox erscheint: anhaken, „Weiter" führt den Fix aus und **prüft neu** |
-| 9 | Installation | läuft mit Fortschritt und Phasentext, 2–3 Minuten |
-| 10 | Abschluss | URL, Zugangsdaten bzw. Setup-Token, Pfade, Zertifikat — und der **External-Trigger-API-Key, der nur hier steht** |
+| 1 | Mode | New installation (or update / remove) |
+| 2 | Destination | Installation directory |
+| 3 | Service identity | LocalSystem or gMSA |
+| 4 | Account | gMSA only: `DOMAIN\name$` |
+| 5 | Database | SQL Server 2022 CU1+ or PostgreSQL 16+ |
+| 6a | SQL Server | Server, database, certificate host name (empty = derived from the server) |
+| 6b | PostgreSQL | Host/port/database, then user, password, root certificate — optionally superuser + password so role and database can be created |
+| 7 | Network and TLS | Public hostname, HTTPS port, HTTP port (**`0`** = no redirect), allowed hosts, thumbprint — the list below fills the field, **empty** means "I don't have one yet" |
+| 8 | Prerequisites | Ten check rows; red blocking rows disable "Next". Where a checkbox appears: tick it, "Next" runs the fix and **re-checks** |
+| 9 | Installation | Runs with a progress bar and phase text, 2–3 minutes |
+| 10 | Finish | URL, credentials or setup token, paths, certificate — and the **external-trigger API key, which appears only here** |
 
-Erster Login: das Setup-Token in das Feld, das die Anmeldemaske beim ersten Versuch einblendet.
+First login: enter the setup token in the field the sign-in form reveals on the first attempt.
 
-### Unbeaufsichtigt
+### Unattended
 
 ```
 NodePilot-Server-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=answers.json
 ```
 
-Die elf Pflichtschlüssel stehen unter [Answer-File](#answer-file). Dazu praktisch immer:
+The eleven mandatory keys are listed under [Answer file](#answer-file). In practice, always add:
 
 ```json
 "provisioning": { "createDatabaseAndLogin": true },
 "bootstrap":    { "adminUsername": "npadmin" }
 ```
 
-Der erste legt Datenbank und Login an (bei PostgreSQL zusätzlich `provisioning.postgresSuperUser` /
-`.postgresSuperPassword`), der zweite verhindert, dass der Lauf mit einem Token endet, das niemand
-eintippt — das erzeugte Kennwort landet ACL-geschützt in `<dataPath>\bootstrap-admin.json`. Wer
-stattdessen eine Referenzinstanz klonen will, nimmt `seed.backupPath`; siehe
-[Schlüsselfertiger Rollout](#schlüsselfertiger-rollout-unbeaufsichtigt-ohne-token-eingabe).
+The first creates the database and login (on PostgreSQL, also supply
+`provisioning.postgresSuperUser` / `.postgresSuperPassword`); the second prevents the run from ending
+with a token nobody types in — the generated password lands in `<dataPath>\bootstrap-admin.json`
+under a restrictive ACL. To clone a reference instance instead, use `seed.backupPath`; see
+[Turnkey rollout](#turnkey-rollout-unattended-without-typing-a-token).
 
-### Zwei Stolpersteine
+### Two stumbling blocks
 
-- **Ports 80 und 443 gehören auf einem Host mit IIS der HTTP.SYS** und sind für Kestrel nicht
-  bindbar. Andere Ports wählen oder den HTTP-Port auf `0` setzen. Die Readiness-Seite sagt es
-  vorher — mit „reserved by Windows", nicht mit „in use by System (PID 4)".
-- **AV-Ausschlüsse** vorher einreichen: [`../../docs/av-exclusions.md`](../../docs/av-exclusions.md)
-  ist als Übergabedokument für eine AV-Abteilung geschrieben.
+- **On a host running IIS, ports 80 and 443 belong to HTTP.SYS** and cannot be bound by Kestrel.
+  Choose different ports or set the HTTP port to `0`. The readiness page says so up front — with
+  "reserved by Windows", not "in use by System (PID 4)".
+- **Submit the antivirus exclusions beforehand:**
+  [`../../docs/av-exclusions.md`](../../docs/av-exclusions.md) is written as a hand-off document for
+  a security team.
 
-Die Deinstallation fasst die **Datenbank nie** an; das Datenverzeichnis nur mit `/PURGEDATA=1`.
+Uninstalling **never** touches the database; it touches the data directory only with `/PURGEDATA=1`.
 
-## Was er abnimmt — und was nicht
+## What it takes off your hands — and what it does not
 
 | | |
 |---|---|
-| **Nimmt ab** | Fünf Release-Assets herunterladen, Prüfsumme vergleichen, Signer-Thumbprint out-of-band abgleichen, neun Parameter fehlerfrei tippen, den Kestrel-Thumbprint aus der Zertifikats-MMC heraussuchen. Ein Asset, ein Doppelklick. |
-| **Nimmt ab (opt-in)** | ASP.NET-Core-Runtime installieren, SQL-Login und Datenbank anlegen, **PostgreSQL-Rolle und -Datenbank anlegen**, selbstsigniertes Kestrel-Zertifikat erzeugen, Publisher-Zertifikat vertrauen. |
-| **Nimmt nicht ab** | gMSA anlegen (AD-Aufgabe), TLS für die Datenbank, Kerberos-Delegation, AV-Ausschlüsse. |
+| **Takes off your hands** | Downloading five release assets, comparing checksums, verifying the signer thumbprint out of band, typing nine parameters without a mistake, digging the Kestrel thumbprint out of the certificate MMC. One asset, one double-click. |
+| **Takes off your hands (opt-in)** | Installing the ASP.NET Core runtime, creating the SQL login and database, **creating the PostgreSQL role and database**, generating a self-signed Kestrel certificate, trusting the publisher certificate. |
+| **Does not** | Creating the gMSA (an AD task), TLS for the database, Kerberos delegation, antivirus exclusions. |
 
-Die **Readiness-Seite** prüft alles davon *bevor* etwas verändert wird — zehn Zeilen: .NET-Runtime,
-Kestrel-Zertifikat, **HTTP/HTTPS-Ports**, gMSA, Dienstidentität, Domänenmitgliedschaft,
-DB-Erreichbarkeit, DB-Version, **DB-Zugriff der Dienst-Identität**, **Herausgeber des Artefakts**.
-Die Runtime-Zeile prüft dabei ausdrücklich die **64-Bit**-Runtime: NodePilot wird als `win-x64`
-veröffentlicht, und ein 32-Bit-Host kann den Apphost nicht starten — eine Zeile, die jede beliebige
-Architektur durchgehen lässt, wäre grün und der Dienst käme trotzdem nicht hoch. Jede Zeile trägt rechts ein
-Statuszeichen — Haken, Kreuz, Ausrufezeichen oder Gedankenstrich — und ist zusätzlich eingefärbt.
-Das Zeichen ist nicht Dekoration: Farbe allein sagt niemandem etwas, der dieses Grün nicht von
-diesem Rot unterscheidet, und in einem Screenshot in einem Ticket schon gar nicht. Rote
-Pflicht-Zeilen blockieren „Weiter" — der Installer würde ohnehin abbrechen, und ein Wizard, der
-einen in ein garantiertes Scheitern hineinführt, ist schlechter als einer, der stoppt.
+The **readiness page** checks all of that *before* anything is changed — ten rows: .NET runtime,
+Kestrel certificate, **HTTP/HTTPS ports**, gMSA, service identity, domain membership, database
+reachability, database version, **the service identity's database access**, and **the artifact's
+publisher**. The runtime row explicitly checks for the **64-bit** runtime: NodePilot is published as
+`win-x64`, and a 32-bit host cannot start the apphost — a row that let any architecture through would
+be green while the service still failed to start. Every row carries a status glyph on the right —
+check, cross, exclamation mark or dash — and is colour-coded as well. The glyph is not decoration:
+colour alone means nothing to someone who cannot tell this green from this red, and certainly not in
+a screenshot pasted into a ticket. Red blocking rows disable "Next" — the installer would abort
+anyway, and a wizard that walks you into a guaranteed failure is worse than one that stops.
 
-Ein Klick auf eine Zeile zeigt die zugehörige Anleitung darunter — ein **schreibgeschütztes,
-scrollendes `TNewMemo`**. Das war einmal ein Label, weil ein Memo neben acht fest reservierten
-Prüfzeilen nur eine Zeile hoch wurde und wie ein kaputtes Eingabefeld aussah; seit die Zeilen
-dynamisch liegen, gilt der Grund nicht mehr, und eine Anleitung ist nicht nach fünf Zeilen zu Ende:
-ein DB-Fix ist ein `CREATE LOGIN` / `CREATE USER` / `ALTER ROLE`-Block. Nebeneffekt, der die
-Umstellung ohnehin gerechtfertigt hätte: der Text ist wieder markierbar. „In Datei speichern…"
-bleibt trotzdem, weil Inno-Pascal keine Clipboard-API hat.
+Clicking a row shows the matching instructions below it — a **read-only, scrolling `TNewMemo`**.
+This used to be a label, because a memo next to eight fixed-height check rows was only one line tall
+and looked like a broken input field; now that the rows are laid out dynamically that reason no
+longer applies, and instructions do not end after five lines: a database fix is a
+`CREATE LOGIN` / `CREATE USER` / `ALTER ROLE` block. A side effect that would have justified the
+change on its own: the text is selectable again. "Save to file…" stays regardless, because Inno
+Pascal has no clipboard API.
 
-Die Zeilen werden erst positioniert, wenn ihr Text steht. Vorher reservierte jede der acht
-Zeilen 16 px für eine Auto-Fix-Checkbox, die fast nie sichtbar ist — 128 px einer 309 px hohen
-Fläche für nichts.
+The rows are only positioned once their text is known. Previously each of the eight rows reserved
+16 px for an auto-fix checkbox that is almost never visible — 128 px of a 309 px area for nothing.
 
-### Auto-Fixes
+### Auto-fixes
 
-Rote Zeilen, die der Adapter selbst reparieren kann, tragen eine Checkbox. Anhaken + „Weiter"
-führt den Fix aus und **prüft danach neu** — ein Fix gilt nie als gelungen, nur weil er gelaufen
-ist. Der Haken ist mit dem Versuch verbraucht: er wird danach gelöscht, sonst hinge ein
-dauerhaft scheiternder Fix (typisch: keine Rechte am SQL Server) in einer Schleife aus „Weiter →
-gleiche rote Zeile".
+Red rows the adapter can repair itself carry a checkbox. Tick it, press "Next", and the fix runs and
+**re-checks afterwards** — a fix never counts as successful merely because it ran. The tick is
+consumed by the attempt: it is cleared afterwards, otherwise a permanently failing fix (typically:
+no permissions on the SQL Server) would loop between "Next" and the same red row.
 
-**Herausgeber** ist die Zeile mit der ungewöhnlichsten Geschichte. Sie war einmal rot und
-blockierend, weil `Install-NodePilot.ps1` die Signatur **samt Zertifikatskette** prüfte und
-`CN=NodePilot Release Signing` selbstsigniert ist: Auf jedem Host, der ihn nicht kannte — also bei
-jeder Erstinstallation — scheiterte das mitten im Lauf, mit Rollback. Die Zeile nahm das vorweg.
+**Publisher** is the row with the most unusual history. It used to be red and blocking, because
+`Install-NodePilot.ps1` verified the signature **including the certificate chain** and
+`CN=NodePilot Release Signing` is self-signed: on every host that did not know it — that is, on every
+first installation — verification failed mid-run, with a rollback. The row anticipated that.
 
-Inzwischen prüft der Installer die Signatur **ohne Kette** gegen den einkompilierten Thumbprint
-(plus Codesignatur-EKU, KeyUsage und Gültigkeit explizit — das ist der Teil, den die Kette
-mitgeliefert hatte). Bei einem selbstsignierten Herausgeber ist der Vertrauensanker dasselbe
-Zertifikat, die Kette bestätigte also nur, was der Pin ohnehin sagt. Damit ist die Zeile **gelb und
-optional**: Der Import nach `LocalMachine\Root` bewirkt nur noch, dass Windows die
-Authenticode-Signatur der Installer selbst validiert — angeboten, **nicht** vorangehakt, mit dem
-Thumbprint in der Meldung.
+The installer now verifies the signature **without the chain** against the compiled-in thumbprint
+(plus code-signing EKU, KeyUsage and validity explicitly — the part the chain used to supply). For a
+self-signed publisher the trust anchor is the same certificate, so the chain only confirmed what the
+pin already says. That makes the row **amber and optional**: importing into `LocalMachine\Root` now
+only causes Windows to validate the Authenticode signature of the installers themselves — offered,
+**not** pre-ticked, with the thumbprint in the message.
 
-Was die Zeile weiterhin **rot** macht, ist alles, was der Installer selbst ablehnen wird:
-Thumbprint ≠ Pin, abgelaufen oder noch nicht gültig, fehlende Codesignatur-EKU, eine KeyUsage ohne
-`DigitalSignature`/`NonRepudiation`, oder ein Kettenfehler, der **nicht** bloß das fehlende
-Vertrauen ist. In all diesen Fällen verschwindet das Angebot — ein Import repariert nichts davon,
-und ein Knopf, der eine fremde CA maschinenweit vertrauenswürdig macht, wäre schlimmer als eine
-verweigerte Installation.
+What still makes the row **red** is everything the installer itself will reject: thumbprint ≠ pin,
+expired or not yet valid, missing code-signing EKU, a KeyUsage without
+`DigitalSignature`/`NonRepudiation`, or a chain error that is **not** merely missing trust. In all of
+those cases the offer disappears — an import repairs none of them, and a button that makes a foreign
+CA machine-wide trusted would be worse than a refused installation.
 
-Ein leeres Thumbprint-Feld ist der Weg zu genau einem dieser Fixes: die Zertifikatszeile meldet
-dann „No certificate selected" statt eines nicht gefundenen Thumbprints und bietet die Erzeugung
-eines selbstsignierten an — **nicht** vorangehakt, denn ein Laborzertifikat entsteht auf Ansage,
-nicht durch Drücken von „Weiter". Bei einem **abgelaufenen** Zertifikat wird die Erzeugung bewusst
-nicht angeboten (siehe unten).
+An empty thumbprint field is the route to exactly one of these fixes: the certificate row then
+reports "No certificate selected" instead of a thumbprint it could not find, and offers to generate a
+self-signed one — **not** pre-ticked, because a lab certificate is created on request, not by pressing
+"Next". For an **expired** certificate, generation is deliberately not offered (see below).
 
-Eine Zeile kommt **vorangehakt**: der DB-Zugriff der Dienst-Identität. Der Pre-Flight testet die
-Erreichbarkeit mit der Identität des installierenden Admins — zur Laufzeit meldet sich aber der
-Dienst an, unter dem Computer-Konto (LocalSystem) bzw. dem gMSA. Diese Zeile fragt genau das ab
-(Login vorhanden? Benutzer in der Ziel-DB? `db_owner`?) und legt es bei Bedarf an. Das ist Teil
-des Installierens, kein Eingriff in fremde Infrastruktur — anders als `CREATE DATABASE`, das
-opt-in bleibt. Sichtbar und abwählbar ist der Haken trotzdem.
+One row comes **pre-ticked**: the service identity's database access. The pre-flight tests
+reachability using the installing administrator's identity — but at runtime it is the *service* that
+signs in, under the computer account (LocalSystem) or the gMSA. This row asks exactly that (login
+present? user in the target database? `db_owner`?) and creates it if needed. That is part of
+installing, not an intervention in someone else's infrastructure — unlike `CREATE DATABASE`, which
+stays opt-in. The tick is visible and can be cleared regardless.
 
-Der Fix läuft über `Provision-NodePilotDatabase.ps1`: erst Rechte-Gate (`sysadmin` oder
-`CREATE ANY DATABASE`), dann existenzgeprüft Login → Datenbank → Benutzer → `db_owner`. Fehlen
-die Rechte, wird **nichts** verändert und der Wizard zeigt die Anweisungen für den DBA.
+The fix runs through `Provision-NodePilotDatabase.ps1`: first a permission gate (`sysadmin` or
+`CREATE ANY DATABASE`), then existence-checked login → database → user → `db_owner`. Without the
+permissions, **nothing** is changed and the wizard shows the instructions for the DBA.
 
 ### PostgreSQL
 
-Dieselbe Zeile, andere Mechanik — und ein Unterschied, den man kennen muss: bei SQL Server ist die
-Berechtigung gratis, weil `Trusted_Connection` die Windows-Identität des installierenden Admins
-*ist*. PostgreSQL kennt das nicht. Für `CREATE ROLE`/`CREATE DATABASE` braucht das Setup deshalb
-**Superuser-Zugangsdaten**, die es sonst nirgends bekommt: zwei zusätzliche Felder auf der
-Credentials-Seite (leer lassen → kein Fix-Angebot), unbeaufsichtigt
-`provisioning.postgresSuperUser` / `.postgresSuperPassword`. Der Dienst sieht sie nie; sie leben
-nur in der ACL-geschützten Session der laufenden Installation.
+Same row, different mechanics — and one difference you need to know: on SQL Server the authorization
+is free, because `Trusted_Connection` *is* the Windows identity of the installing administrator.
+PostgreSQL has no such thing. For `CREATE ROLE`/`CREATE DATABASE` the setup therefore needs
+**superuser credentials**, which it cannot obtain anywhere else: two additional fields on the
+credentials page (leave them empty → no fix offered), or `provisioning.postgresSuperUser` /
+`.postgresSuperPassword` when unattended. The service never sees them; they live only in the
+ACL-protected session of the running installation.
 
-Der Client (`psql`) liegt im Payload — sieben Dateien, 8,4 MB, gemessen aus der Import-Tabelle von
-`psql.exe`, also ohne ICU und ohne die pgAdmin-Bibliotheken. Er wird **erst extrahiert, wenn er
-gebraucht wird**; eine Installation auf SQL Server fasst ihn nie an. Gebaut wird er nur mit
-`-PgBinariesPath`; ohne den Schalter entsteht derselbe Installer wie zuvor, und die Postgres-Zeile
-sagt dann ausdrücklich, dass die Anmeldung ungeprüft blieb.
+The client (`psql`) is part of the payload — seven files, 8.4 MB, determined from `psql.exe`'s import
+table, so without ICU and without the pgAdmin libraries. It is **only extracted when it is needed**;
+an installation on SQL Server never touches it. It is only built in with `-PgBinariesPath`; without
+that switch the resulting installer is the same as before, and the Postgres row then states
+explicitly that the sign-in went unverified.
 
-Dadurch ist die Zeile überhaupt erst aussagekräftig: vorher war sie ein reiner TCP-Probe, der bei
-fehlender Rolle, fehlender Datenbank oder falschem Passwort **grün** blieb — der Fehler tauchte
-180 Sekunden später beim Health-Probe auf und rollte die Installation zurück. Jetzt meldet sich der
-Check als NodePilot-Rolle an, in derselben TLS-Form wie die Laufzeit (`sslmode=verify-full` gegen
-das angegebene Root-Zertifikat).
+That is what makes the row meaningful in the first place: previously it was a plain TCP probe that
+stayed **green** for a missing role, a missing database or a wrong password — the error surfaced
+180 seconds later at the health probe and rolled the installation back. Now the check signs in as the
+NodePilot role, in the same TLS shape as the runtime (`sslmode=verify-full` against the supplied root
+certificate).
 
-**Was fehlt, wird im Katalog nachgesehen, nicht aus der Fehlermeldung gelesen.** psql-Meldungen sind
-lokalisiert — ein deutscher Server antwortet „Rolle »nodepilot« existiert nicht" —, ein
-englisch gebauter Matcher klassifiziert also auf einem Host richtig und auf dem nächsten alles als
-„abgelehnt". Bei fehlgeschlagener Anmeldung fragt der Check deshalb mit den Superuser-Daten
-`pg_roles` und `pg_database`. Ohne Superuser-Daten sagt er, dass er es nicht unterscheiden kann,
-und gibt die Server-Meldung wörtlich weiter — statt zu raten.
+**What is missing is looked up in the catalog, not read out of the error message.** psql messages are
+localized — a German server answers "Rolle »nodepilot« existiert nicht" — so a matcher written
+against English classifies correctly on one host and marks everything as "rejected" on the next. On a
+failed sign-in the check therefore queries `pg_roles` and `pg_database` with the superuser
+credentials. Without superuser credentials it says it cannot tell the difference, and passes the
+server's message through verbatim — rather than guessing.
 
-Der Fix (`Provision-NodePilotPostgres.ps1`) folgt derselben Regel wie die SQL-Server-Seite: erst
-Rechte-Gate (`rolsuper` oder `rolcreaterole` **und** `rolcreatedb`), dann existenzgeprüft Rolle →
-Datenbank, zum Schluss eine Probeanmeldung als die Rolle selbst. Zwei Dinge tut er bewusst **nicht**:
-das Passwort einer vorhandenen Rolle zurücksetzen (ein nicht passendes Passwort ist ein Tippfehler in
-der Answer-File — ihn zu „heilen" würde ihn verstecken und alles andere aussperren, was diese Rolle
-benutzt) und den Eigentümer einer vorhandenen Datenbank ändern. Beides wird gemeldet, nicht
-korrigiert.
+The fix (`Provision-NodePilotPostgres.ps1`) follows the same rule as the SQL Server side: first a
+permission gate (`rolsuper`, or `rolcreaterole` **and** `rolcreatedb`), then existence-checked
+role → database, and finally a test sign-in as the role itself. Two things it deliberately does
+**not** do: reset the password of an existing role (a mismatched password is a typo in the answer
+file — "healing" it would hide the typo and lock out everything else that uses that role), and change
+the owner of an existing database. Both are reported, not corrected.
 
-## Schlüsselfertiger Rollout (unbeaufsichtigt, ohne Token-Eingabe)
+## Turnkey rollout (unattended, without typing a token)
 
-Ein unbeaufsichtigter Lauf endet sonst mit einer Instanz, die niemand benutzen kann: das
-Setup-Token müsste ein Mensch in die Anmeldemaske tippen. Es gibt zwei Wege daran vorbei, die sich
-gegenseitig ausschließen — welcher greift, entscheidet allein, ob die Instanz danach Benutzer hat.
+An unattended run otherwise ends with an instance nobody can use: a human would have to type the
+setup token into the sign-in form. There are two ways around that, and they are mutually exclusive —
+which one applies depends solely on whether the instance has users afterwards.
 
-### Variante 1: Zufalls-Admin
+### Variant 1: random admin
 
-Mit der optionalen `bootstrap`-Gruppe löst das Setup das Token selbst ein.
+With the optional `bootstrap` group, the setup redeems the token itself.
 
 ```json
 "bootstrap": {
@@ -220,18 +215,18 @@ Mit der optionalen `bootstrap`-Gruppe löst das Setup das Token selbst ein.
 }
 ```
 
-`credentialOutputPath` ist optional; ohne Angabe liegt die Datei unter
-`<DataPath>\bootstrap-admin.json`. Inhalt: Benutzername, Kennwort, Adresse, Zeitstempel.
+`credentialOutputPath` is optional; without it the file lands at
+`<DataPath>\bootstrap-admin.json`. Contents: user name, password, address, timestamp.
 
-**Das Kennwort wird pro Maschine zufällig erzeugt, nicht vorgegeben.** Ein fester Wert wäre über
-alle Maschinen gleich, hätte einen bekannten Wert und würde gefunden statt geraten — auf einem
-Produkt, das PowerShell auf allen verwalteten Maschinen ausführt und im Server-Modus auf allen
-Interfaces lauscht. Die Answer-File kennt deshalb **kein** `adminPassword`.
+**The password is generated randomly per machine, not supplied.** A fixed value would be identical
+across every machine, would have a known value, and would be found rather than guessed — on a product
+that runs PowerShell on every managed machine and, in server mode, listens on all interfaces. The
+answer file therefore has **no** `adminPassword`.
 
-### Variante 2: Bestand aus einem Backup einspielen
+### Variant 2: seed an existing estate from a backup
 
-Die reichere Variante. Eine Referenzmaschine normal installieren, einrichten, `np backup export` —
-das Ergebnis ist der Seed für alle weiteren Maschinen:
+The richer variant. Install a reference machine normally, set it up, run `np backup export` — the
+result is the seed for every further machine:
 
 ```json
 "seed": {
@@ -240,240 +235,234 @@ das Ergebnis ist der Seed für alle weiteren Maschinen:
 }
 ```
 
-Der Installer kopiert die Datei nach `<DataPath>\seed.npbackup` (restriktive ACL, gleicher Writer
-wie die Konfiguration) und legt die Passphrase in den `Environment`-Wert des Dienstschlüssels —
-**nicht** in die `appsettings.Production.json`, genau wie die Postgres-Verbindungszeichenfolge. Beim
-ersten Start spielt `ProvisioningSeeder` sie ein, **bevor** irgendetwas die Benutzertabelle liest,
-und löscht die Datei danach.
+The installer copies the file to `<DataPath>\seed.npbackup` (restrictive ACL, same writer as the
+configuration) and puts the passphrase into the `Environment` value of the service key — **not** into
+`appsettings.Production.json`, exactly like the Postgres connection string. On first start,
+`ProvisioningSeeder` applies it **before** anything reads the users table, and deletes the file
+afterwards.
 
-Damit kommt die Maschine mit Benutzern, Workflows, Maschinen, Credentials **und Settings** hoch. Weil
-das Restore einen Break-Glass-Admin verlangt, wenn es in eine leere Datenbank läuft, ist danach auch
-`EnterpriseRecoveryInvariant` erfüllt — LDAP/SSO lässt sich also einschalten. (Die Auth-Sektion ist
-laut Hot-Reload-Matrix restart-pflichtig; nach dem Seed einmal neu starten.)
+The machine therefore comes up with users, workflows, machines, credentials **and settings**. Because
+a restore into an empty database requires a break-glass admin, `EnterpriseRecoveryInvariant` is
+satisfied afterwards too — so LDAP/SSO can be switched on. (The authentication section is
+restart-required per the hot-reload matrix; restart once after seeding.)
 
-Zwei Regeln, die den Seed sicher machen, dauerhaft konfiguriert zu lassen:
+Two rules that make it safe to leave the seed configured permanently:
 
-- **Nur in eine leere Instanz.** Existieren Benutzer, passiert nichts — der Seed ist Erstbefüllung,
-  nie Migration. Eine Maschine im Betrieb behält alles, was sie hat, egal was die Konfiguration sagt.
-- **Fail closed.** Falsche Passphrase, fehlende oder kaputte Datei → der Dienst startet **nicht**.
-  Die Alternative wäre eine leere Instanz mit offenem Bootstrap-Fenster, die der Betreiber für
-  provisioniert hält.
+- **Only into an empty instance.** If users exist, nothing happens — the seed is initial population,
+  never migration. A machine in production keeps everything it has, whatever the configuration says.
+- **Fail closed.** Wrong passphrase, missing or corrupt file → the service does **not** start. The
+  alternative would be an empty instance with an open bootstrap window that the operator believes is
+  provisioned.
 
-Was dabei passiert:
+What happens in each case:
 
-| Lage | Ergebnis |
+| Situation | Result |
 |---|---|
-| `seed`-Gruppe gesetzt, Instanz leer | Bestand wird eingespielt. Es gibt kein Token, `bootstrap.status=AlreadyProvisioned`, **keine** Zugangsdatei. |
-| Benutzer existieren bereits (Seed oder Neuinstallation über bestehende DB) | Es gibt kein Token, nichts einzulösen. `bootstrap.status=AlreadyProvisioned`, **keine** Zugangsdatei. |
-| Kein Benutzer, `bootstrap.adminUsername` gesetzt | Konto wird angelegt, Zugangsdaten werden abgelegt. `bootstrap.status=Created`. |
-| Kein Benutzer, keine `bootstrap`-Gruppe | Wie bisher: Token auf der Abschlussseite, manuelle Erstanmeldung. |
+| `seed` group set, instance empty | The estate is applied. There is no token, `bootstrap.status=AlreadyProvisioned`, **no** credential file. |
+| Users already exist (seeded, or a new installation over an existing database) | There is no token and nothing to redeem. `bootstrap.status=AlreadyProvisioned`, **no** credential file. |
+| No users, `bootstrap.adminUsername` set | The account is created and the credentials are written out. `bootstrap.status=Created`. |
+| No users, no `bootstrap` group | As before: token on the finish page, manual first sign-in. |
 
-**Die Zugangsdatei ist eine lebende Zugangsberechtigung.** Sie entsteht mit ACL vor Inhalt
-(SYSTEM + Administratoren, keine Vererbung) über dieselbe Mechanik wie das signierte Artefakt-Staging
-— sie erbt also nie kurzzeitig von `DataPath`. Gelöscht wird sie **nicht** automatisch: ein Rollout,
-der sie noch nicht abgeholt hat, stünde sonst ohne Konto da. Abholen, löschen, Kennwort rotieren ist
-der Schritt des Betreibers.
+**The credential file is a live credential.** It is created ACL-before-content (SYSTEM +
+Administrators, no inheritance) through the same mechanism as the signed-artifact staging — so it
+never briefly inherits from `DataPath`. It is **not** deleted automatically: a rollout that has not
+collected it yet would otherwise be left without an account. Collecting it, deleting it and rotating
+the password is the operator's step.
 
-Zwei Eigenschaften, die nicht offensichtlich sind:
+Two properties that are not obvious:
 
-- **Ein fehlgeschlagener Bootstrap kippt die Installation nicht.** Der Dienst läuft und ist gesund,
-  wenn der Login versucht wird. Exit-Code bleibt 0, `bootstrap.status=Failed` trägt die Antwort des
-  Servers wörtlich. Eine funktionierende Installation als Fehlschlag zu melden hieße, SCCM zu einem
-  Wiederholungslauf zu bewegen — und ein erneuter Install ist deutlich zerstörerischer als ein
-  fehlendes Konto.
-- **Der Name wird festgenagelt.** Ist `bootstrap.adminUsername` gesetzt, schreibt der Installer
-  `NodePilot:BootstrapAdminUsername` in die Konfiguration. Selbst ein zwischen Dienststart und
-  Adapter-Login abgefangenes Token kann dann nur genau dieses Konto anlegen.
+- **A failed bootstrap does not fail the installation.** The service is running and healthy when the
+  login is attempted. The exit code stays 0 and `bootstrap.status=Failed` carries the server's answer
+  verbatim. Reporting a working installation as a failure would push SCCM into a retry — and a repeat
+  install is considerably more destructive than a missing account.
+- **The name is pinned.** If `bootstrap.adminUsername` is set, the installer writes
+  `NodePilot:BootstrapAdminUsername` into the configuration. Even a token intercepted between service
+  start and the adapter's login can then only create that one account.
 
-**LDAP/SSO ersetzt das nicht.** Die JIT-Provisionierung ist ausdrücklich gesperrt, solange kein
-lokaler Break-Glass-Admin existiert (`external_jit_blocked_until_breakglass_admin_exists`), und
-`EnterpriseRecoveryInvariant` bricht den Boot ab, wenn SSO ohne einen solchen aktiv ist. Das so
-erzeugte Konto trägt `IsBreakGlass` und erfüllt genau diese Bedingung — SSO lässt sich danach
-einschalten.
+**LDAP/SSO does not replace this.** JIT provisioning is explicitly blocked while no local break-glass
+admin exists (`external_jit_blocked_until_breakglass_admin_exists`), and
+`EnterpriseRecoveryInvariant` aborts the boot if SSO is enabled without one. The account created this
+way carries `IsBreakGlass` and satisfies exactly that condition — SSO can be enabled afterwards.
 
-## Fortschrittsanzeige
+## Progress display
 
-Während der Installation zeigt der Wizard Phase und Balken. Vorher stand er auf „Preparing to
-Install" und zeigte **nichts** — gemessen 136 s bei einem erfolgreichen Lauf, 187 s bei einem, der
-in den Health-Probe-Timeout läuft. Lange genug, dass Windows das Fenster ausgraut und „Keine
-Rückmeldung" danebenschreibt; genau so wurde es auch gelesen.
+During installation the wizard shows a phase and a progress bar. It used to sit on "Preparing to
+Install" and show **nothing** — measured at 136 s for a successful run, 187 s for one that runs into
+the health-probe timeout. Long enough for Windows to grey out the window and add "Not responding";
+that is exactly how it was read.
 
-Ursache war `Exec` mit `ewWaitUntilTerminated`: synchron, blockiert Innos UI-Thread vollständig.
-**Nur die Installation** läuft deshalb jetzt detached (`ewNoWait`); Probe, Provision, Certificates
-und Cleanup bleiben synchron, die sind in Sekunden durch.
+The cause was `Exec` with `ewWaitUntilTerminated`: synchronous, blocking Inno's UI thread completely.
+**Only the installation** therefore now runs detached (`ewNoWait`); probe, provision, certificates and
+cleanup stay synchronous, as those finish in seconds.
 
-Vier Punkte, die daran nicht offensichtlich sind:
+Four points about this that are not obvious:
 
-- **Der Exit-Code kommt aus `result.ini`, nicht von `Exec`.** Mit `ewNoWait` gibt es keinen — der
-  Prozess läuft ja noch. Der Adapter schreibt die Datei in einem `finally`, sie existiert also auch
-  auf den Rollback-Pfaden. Geprüft wird nicht ihre Existenz, sondern ob `summary.exitCode` darin
-  steht: `WriteAllLines` ist nicht atomar, die Datei kann da und halb geschrieben sein.
-- **Inno hat keinen Message-Pump.** `AppProcessMessages`, `ProcessMessages` und `Application` sind
-  in 6.7.3 allesamt unbekannte Bezeichner (nachgemessen). Die Schleife ruft deshalb pro Tick
-  `ProgressPage.SetProgress` — das ist der Mechanismus, den Inno für lange Operationen vorsieht.
-- **Der Fortschritt entsteht aus der Ausgabe der Installer-Skripte**, nicht aus neuen Meldungen in
-  ihnen. `Install-NodePilot.ps1` (10 Phasen) und `Update-NodePilot.ps1` (4) sind unverändert; der
-  Adapter übersetzt ihre `Write-Step`-Zeilen im Vorbeigehen in `percent|text`. Zugeordnet wird per
-  **Präfix**, weil mehrere Überschriften einen Wert einbetten (`Stopping service '$ServiceName'`).
-  Das ist sicher, weil `Write-Step` bündig schreibt und `Write-Info` einrückt — eine Detailzeile
-  beginnt mit Leerzeichen und kann keinen Phasennamen präfixieren.
-- **Der Drift-Contract läuft in beide Richtungen.** Jeder Tabelleneintrag muss im Skript existieren
-  *und* jede `Write-Step` des Skripts muss von einem Eintrag abgedeckt sein. Die zweite Richtung
-  fehlte zuerst, und genau das ist durchgerutscht: Der Updater meldet vier Phasen, die Tabelle
-  kannte zwei; der Installer zehn, die Tabelle neun. Der Balken stand dadurch über die halbe
-  Update-Laufzeit still, ohne dass ein Test rot wurde.
-- **Kein Abbrechen.** Ein halb installiertes System ist schlimmer als drei Minuten warten.
+- **The exit code comes from `result.ini`, not from `Exec`.** With `ewNoWait` there is none — the
+  process is still running. The adapter writes the file in a `finally`, so it exists on the rollback
+  paths as well. What is checked is not its existence but whether `summary.exitCode` is in it:
+  `WriteAllLines` is not atomic, so the file can be present and half-written.
+- **Inno has no message pump.** `AppProcessMessages`, `ProcessMessages` and `Application` are all
+  unknown identifiers in 6.7.3 (measured). The loop therefore calls `ProgressPage.SetProgress` once
+  per tick — the mechanism Inno provides for long operations.
+- **The progress comes from the output of the installer scripts**, not from new messages added to
+  them. `Install-NodePilot.ps1` (10 phases) and `Update-NodePilot.ps1` (4) are unchanged; the adapter
+  translates their `Write-Step` lines into `percent|text` in passing. Matching is by **prefix**,
+  because several headings embed a value (`Stopping service '$ServiceName'`). That is safe because
+  `Write-Step` writes flush left and `Write-Info` indents — a detail line starts with a space and
+  cannot prefix a phase name.
+- **The drift contract runs in both directions.** Every table entry must exist in the script *and*
+  every `Write-Step` in the script must be covered by an entry. The second direction was missing at
+  first, and that is exactly what slipped through: the updater reports four phases, the table knew
+  two; the installer ten, the table nine. The bar stood still for half the update runtime without a
+  single test turning red.
+- **No cancel.** A half-installed system is worse than waiting three minutes.
 
-Der Balken **steht** während „Starting service" — diese Phase wartet bis zu 180 s auf
-`/healthz/ready`. Der Text sagt das dazu. Ein künstlich weiterlaufender Balken würde Fortschritt
-behaupten, den niemand misst.
+The bar **stands still** during "Starting service" — that phase waits up to 180 s for
+`/healthz/ready`. The text says so. A bar that kept moving artificially would claim progress nobody
+is measuring.
 
-Ein Timeout von 45 Minuten begrenzt die Schleife. Er greift nur, wenn der Adapter hart abgeschossen
-wurde und `result.ini` nie erscheint — sonst würde der Wizard ewig warten.
+A 45-minute timeout bounds the loop. It only triggers if the adapter was killed outright and
+`result.ini` never appears — otherwise the wizard would wait forever.
 
-## Port-Prüfung
+## Port check
 
-Die Ports werden **vor** der Installation auf Bindbarkeit geprüft — gemessen an dem, was ohne diese
-Prüfung passiert: Auf einem ConfigMgr-Standortserver reserviert HTTP.SYS die Ports 80 und 443, also
-scheiterte Kestrel beim Start mit `SocketException 10013`. Sichtbar war davon nichts. Der Installer
-hatte da bereits alles kopiert, den Dienst registriert, wartete 180 Sekunden auf `/healthz/ready`,
-rollte dann zurück und meldete „did not report /healthz/ready" — drei Minuten für eine Aussage, mit
-der niemand etwas anfangen kann.
+The ports are checked for bindability **before** the installation — measured against what happens
+without that check: on a ConfigMgr site server, HTTP.SYS reserves ports 80 and 443, so Kestrel failed
+at startup with `SocketException 10013`. None of that was visible. By then the installer had copied
+everything, registered the service, waited 180 seconds for `/healthz/ready`, then rolled back and
+reported "did not report /healthz/ready" — three minutes for a statement nobody can act on.
 
-Zwei Dinge unterscheidet die Prüfung, die eine naive Version nicht unterscheiden würde:
+Two things this check distinguishes that a naive version would not:
 
-- **`10013` heißt nicht „belegt".** Windows liefert das für eine HTTP.SYS-Reservierung oder einen
-  ausgeschlossenen Portbereich — es gibt **keinen Listener**, den man finden könnte. Eine Meldung
-  „Port in Benutzung" schickt den Operator hinter einen Prozess her, den es nicht gibt. Die
-  Anleitung nennt deshalb `netsh interface ipv4 show excludedportrange protocol=tcp`.
-- **Der eigene Dienst zählt nicht als Konflikt.** Wird NodePilot über sich selbst installiert, hält
-  der zu ersetzende Dienst den Port. Das als Fehler zu melden hieße, jemanden für eine korrekte
-  Erstinstallation zu bestrafen.
+- **`10013` does not mean "in use".** Windows returns it for an HTTP.SYS reservation or an excluded
+  port range — there is **no listener** to be found. A message saying "port in use" sends the operator
+  chasing a process that does not exist. The instructions therefore name
+  `netsh interface ipv4 show excludedportrange protocol=tcp`.
+- **Your own service does not count as a conflict.** When NodePilot is installed over itself, the
+  service being replaced holds the port. Reporting that as an error would punish someone for a correct
+  first installation.
 
-Gebunden wird auf `IPAddress.Any` — dieselbe Adresse wie Kestrel (`AnyIPListenOptions.BindAsync`).
-Ein Test gegen `127.0.0.1` würde einen Port durchwinken, der auf der Wildcard-Adresse reserviert ist.
-Gebunden und sofort wieder freigegeben: eine Sonde, keine Änderung, sonst wäre sie hinter dem
-„Check again"-Knopf nicht zulässig.
+The bind is against `IPAddress.Any` — the same address Kestrel uses
+(`AnyIPListenOptions.BindAsync`). A test against `127.0.0.1` would wave through a port that is
+reserved on the wildcard address. Bound and immediately released: a probe, not a change, otherwise it
+would not be permissible behind the "Check again" button.
 
-Schlägt die Installation trotzdem fehl, steht die **Ursache jetzt im Dialog**: der Adapter holt die
-letzte `.NET Runtime`-Ausnahme des Laufs aus dem Application-Log und hängt sie an die Meldung
-(`SocketException (10013): …`). Vorher stand dort nur der Symptomsatz, und die Ursache lag in einer
-Logdatei, die niemand öffnet.
+If the installation fails anyway, the **cause is now in the dialog**: the adapter pulls the run's last
+`.NET Runtime` exception out of the Application log and appends it to the message
+(`SocketException (10013): …`). Previously only the symptom sentence was shown, and the cause sat in
+a log file nobody opens.
 
-## Zertifikatsauswahl (TLS-Seite)
+## Certificate selection (TLS page)
 
-Unter dem Feld *Certificate thumbprint* steht eine Auswahlliste der Zertifikate aus
-`Cert:\LocalMachine\My`. Eine Auswahl schreibt den Thumbprint **in das Feld darüber** — das Feld
-bleibt der einzige Wert, den Answer-File, Validierung und der Rückschreibpfad des selbstsignierten
-Zertifikats lesen. Deshalb musste für die Liste an keiner dieser Stellen etwas angepasst werden.
+Below the *Certificate thumbprint* field there is a list of the certificates in
+`Cert:\LocalMachine\My`. Selecting one writes the thumbprint **into the field above** — that field
+remains the single value read by the answer file, the validation and the write-back path of the
+self-signed certificate. That is why the list required no change at any of those places.
 
-**Ein leeres Feld ist erlaubt** und heißt „ich habe noch keins". Die Seite prüft die Länge nur,
-wenn überhaupt etwas dasteht; entschieden wird auf der Prüfseite, die die Zertifikatszeile rot
-setzt und die Erzeugung anbietet. Vorher verlangte die Seite bedingungslos 40 Zeichen — und sagte
-in derselben Meldung, man solle das Feld so lassen, wie es ist. Auf einer Maschine ganz ohne
-Zertifikat kam man an das Angebot also nur heran, indem man 40 Hex-Zeichen erfand.
+**An empty field is allowed** and means "I don't have one yet". The page only checks the length if
+something is actually there; the decision happens on the readiness page, which turns the certificate
+row red and offers to generate one. Previously the page unconditionally demanded 40 characters — and
+in the same message told you to leave the field as it was. On a machine with no certificate at all,
+the only way to reach the offer was to invent 40 hex characters.
 
-Der Grund für die Liste ist der Weg, den sie ersetzt: den Thumbprint eines bereits installierten
-Zertifikats bekommt man sonst nur über die Zertifikats-MMC, deren Kopierknopf ein **unsichtbares
-U+200E** voranstellt. Genau dafür wirft `Install-NodePilot.ps1` alle Nicht-Hex-Zeichen weg, bevor er
-die Länge misst — 40 Zeichen, sieht richtig aus, wird trotzdem abgelehnt.
+The reason for the list is the route it replaces: the only other way to get the thumbprint of an
+already-installed certificate is the certificate MMC, whose copy button prepends an **invisible
+U+200E**. That is exactly why `Install-NodePilot.ps1` strips all non-hex characters before measuring
+the length — 40 characters, looks right, still rejected.
 
-Vier Entscheidungen, die nicht offensichtlich sind:
+Four decisions that are not obvious:
 
-- **Eigener Adapter-Modus, nicht die Probe.** `-Mode Certificates` liest nur den Zertifikatsspeicher:
-  kein Answer-File, kein Session-Verzeichnis, keine Datenbankverbindung. Die Probe läuft erst auf der
-  Readiness-Seite, also eine Seite *nach* der, auf der der Thumbprint eingetippt wird — und sie darf
-  Sekunden auf ein Netzwerk-Timeout warten.
-- **Nie blockierend.** Lässt sich die Liste nicht lesen, erscheint eine Zeile die das sagt, und der
-  Thumbprint wird wie zuvor getippt. Die Readiness-Seite prüft ihn ohnehin. Ein Komfort-Feature, das
-  eine funktionierende Installation stoppt, wäre ein schlechter Tausch.
-- **Zertifikate ohne privaten Schlüssel werden angezeigt**, mit `NO PRIVATE KEY` markiert, statt
-  gefiltert zu werden. „Es liegt doch im Store, warum steht es nicht da?" hat eine häufige Antwort —
-  es wurde ein `.cer` importiert, wo ein `.pfx` gemeint war — und eine gefilterte Liste macht daraus
-  ein Rätsel.
-- **Jede Zeile trägt den Thumbprint**, nicht nur Subject und Ablauf. Auf CM1 liegen zwei
-  Zertifikate mit demselben Subject **und** demselben Ablaufdatum („NodePilot Lab HTTPS" und
-  „NodePilot Lab SQL TLS", 39 Sekunden auseinander ausgestellt): ohne den Thumbprint waren das zwei
-  identische Zeilen, und die falsche hätte Kestrel kommentarlos das Datenbank-Zertifikat gegeben.
-  Nebeneffekt: der Wert lässt sich gegen einen übergebenen Thumbprint prüfen, statt ihn zu glauben.
-- **Sortiert nach Ablauf, spätestes zuerst.** Ein erneuertes Zertifikat liegt neben dem, das es
-  ersetzt, unter demselben Subject; das Datum ist das Erste, was die beiden unterscheidet.
+- **A dedicated adapter mode, not the probe.** `-Mode Certificates` only reads the certificate store:
+  no answer file, no session directory, no database connection. The probe does not run until the
+  readiness page, i.e. one page *after* the one where the thumbprint is typed — and it is allowed to
+  spend seconds on a network timeout.
+- **Never blocking.** If the list cannot be read, a row appears saying so, and the thumbprint is typed
+  as before. The readiness page checks it anyway. A convenience feature that stops a working
+  installation would be a bad trade.
+- **Certificates without a private key are shown**, marked `NO PRIVATE KEY`, rather than filtered out.
+  "It is in the store, why isn't it listed?" has one common answer — a `.cer` was imported where a
+  `.pfx` was meant — and a filtered list turns that into a riddle.
+- **Every row carries the thumbprint**, not just subject and expiry. On CM1 there are two certificates
+  with the same subject **and** the same expiry date ("NodePilot Lab HTTPS" and "NodePilot Lab SQL
+  TLS", issued 39 seconds apart): without the thumbprint those were two identical rows, and the wrong
+  one would have handed Kestrel the database certificate without comment. Side effect: the value can be
+  checked against a supplied thumbprint instead of being taken on trust.
+- **Sorted by expiry, latest first.** A renewed certificate sits next to the one it replaces under the
+  same subject; the date is the first thing that tells them apart.
 
-**Layout.** Die Liste steht auf derselben Seite wie die fünf Eingabefelder — dafür wird die Seite neu
-umbrochen. Inno rechnet 54 px pro Label+Feld-Paar, die Controls brauchen real ~43 px; fünf Paare
-belegten damit 270 der 309 px Fläche und die Liste wurde **unterhalb der sichtbaren Kante**
-gezeichnet. Eine Input-Seite scrollt nicht und zeigt nicht an, dass da noch etwas ist. Der Umbruch
-misst die Controls, statt Konstanten zu setzen, und eine Klemme erzwingt zusätzlich, dass die Liste
-innerhalb der Fläche endet. Die Alternative wäre eine zweite Seite gewesen — fünf Werte, die zu
-einer Entscheidung gehören, auf zwei Bildschirme verteilt.
+**Layout.** The list is on the same page as the five input fields — which required re-flowing the
+page. Inno budgets 54 px per label+field pair while the controls actually need ~43 px; five pairs
+therefore occupied 270 of the 309 px available and the list was drawn **below the visible edge**. An
+input page does not scroll and gives no hint that there is more. The re-flow measures the controls
+instead of hard-coding constants, and a clamp additionally forces the list to end inside the area. The
+alternative would have been a second page — five values that belong to one decision, split across two
+screens.
 
-**Was die Readiness-Seite prüft:** Vorhandensein im Maschinenspeicher, privater Schlüssel,
-**Gültigkeitszeitraum** und **Namensabgleich**. Ein abgelaufenes (oder noch nicht gültiges)
-Zertifikat ist eine rote Pflicht-Zeile und stoppt die Installation — vorher stand der Ablauf nur
-als Datum in der grünen Zeile, die Installation lief durch, und der Erste, der davon erfuhr, war ein
-Benutzer mit einer Browser-Warnung. Ein Auto-Fix gibt es hier bewusst **nicht**: „dein
-PKI-Zertifikat ist abgelaufen" mit „hier, nimm ein Lab-Zertifikat" zu beantworten wäre schlimmer als
-anzuhalten.
+**What the readiness page checks:** presence in the machine store, the private key, the **validity
+period** and a **name match**. An expired (or not-yet-valid) certificate is a red blocking row and
+stops the installation — previously the expiry was only a date in the green row, the installation ran
+through, and the first person to find out was a user with a browser warning. There is deliberately
+**no** auto-fix here: answering "your PKI certificate has expired" with "here, have a lab certificate"
+would be worse than stopping.
 
-Der Namensabgleich läuft gegen die SAN-Liste (Wildcards decken genau ein Label, RFC 6125; ohne SAN
-zählt der CN) und ist **nur eine Warnung** — hinter einem Reverse-Proxy oder unter einem Alias ist
-ein abweichender Name legitim, und „Weiter" bleibt möglich. Gelesen wird `DnsNameList` aus dem
-PowerShell-Zertifikats-Provider, nicht `Extensions.Format()`: dessen Ausgabe ist lokalisiert
-(`DNS Name=` vs. `DNS-Name=`), ein Parser darauf funktioniert auf einem englischen Host und findet
-auf einem deutschen stillschweigend nichts.
+The name match runs against the SAN list (wildcards cover exactly one label, RFC 6125; without a SAN
+the CN counts) and is **only a warning** — behind a reverse proxy or under an alias a different name
+is legitimate, and "Next" stays available. It reads `DnsNameList` from the PowerShell certificate
+provider, not `Extensions.Format()`: that output is localized (`DNS Name=` vs. `DNS-Name=`), so a
+parser built on it works on an English host and silently finds nothing on a German one.
 
-**Was weiterhin niemand prüft:** ob die Kette den Clients vertrauenswürdig ist. Für ein
-PKI-Zertifikat aus der eigenen CA ist das der übliche Fall — es muss vorher im Maschinenspeicher
-liegen, mehr verlangt das Setup nicht:
+**What still nobody checks:** whether the chain is trusted by the clients. For a PKI certificate from
+your own CA that is the normal case — it has to be in the machine store beforehand, and the setup
+asks for nothing more:
 
 ```powershell
 Import-PfxCertificate -FilePath cert.pfx -CertStoreLocation Cert:\LocalMachine\My `
   -Password (Read-Host -AsSecureString)
 ```
 
-Ohne `MachineKeySet|PersistKeySet` findet `Grant-CertPrivateKeyAccess` später die Schlüsseldatei
-unter `ProgramData\Microsoft\Crypto` nicht und bricht ab.
+Without `MachineKeySet|PersistKeySet`, `Grant-CertPrivateKeyAccess` later fails to find the key file
+under `ProgramData\Microsoft\Crypto` and aborts.
 
-## Architektur
+## Architecture
 
-Der Pascal-Layer ist bewusst **dünn**: Seiten, Payload, `Exec`, INI lesen. Keine Installationslogik.
+The Pascal layer is deliberately **thin**: pages, payload, `Exec`, reading INI. No installation logic.
 
 ```
-Wizard-Seiten  ->  answers.json  ->  Invoke-NodePilotSetup.ps1  ->  Install-NodePilot.ps1
-(NodePilotServer.iss)  (ACL-geschützt)        (Adapter)            (unverändert)
+Wizard pages   ->  answers.json  ->  Invoke-NodePilotSetup.ps1  ->  Install-NodePilot.ps1
+(NodePilotServer.iss)  (ACL-protected)       (adapter)              (unchanged)
 ```
 
-Warum eine Datei statt einer Kommandozeile — drei Gründe, jeder für sich ausreichend:
+Why a file instead of a command line — three reasons, each sufficient on its own:
 
-1. `-PostgresPassword` ist ein `[SecureString]` und kann über `powershell.exe -File` **gar nicht**
-   übergeben werden.
-2. `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=` fällt damit für SCCM/GPO ab, ohne zweiten Codepfad.
-3. Inno-Pascal hat keine Unit-Test-Story. Was in PowerShell liegt, ist testbar
-   ([`../Test-SetupAdapter.ps1`](../Test-SetupAdapter.ps1), 55 Assertions).
+1. `-PostgresPassword` is a `[SecureString]` and **cannot** be passed through `powershell.exe -File`
+   at all.
+2. `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=` then falls out for SCCM/GPO, with no second code path.
+3. Inno Pascal has no unit-test story. Whatever lives in PowerShell is testable
+   ([`../Test-SetupAdapter.ps1`](../Test-SetupAdapter.ps1), 55 assertions).
 
-Ergebnisse kommen als **INI** zurück, nicht als JSON: Inno hat `GetIniString` eingebaut und für JSON
-gar nichts — ein Parser in Pascal wären ~120 Zeilen, die kein Test erreicht.
+Results come back as **INI**, not JSON: Inno has `GetIniString` built in and nothing at all for JSON —
+a parser in Pascal would be ~120 lines that no test reaches.
 
-## Unbeaufsichtigt (SCCM, GPO)
+## Unattended (SCCM, GPO)
 
 ```powershell
-NodePilot-Server-Setup-1.2.0.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
+NodePilot-Server-Setup-<version>.exe /VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE=C:\prod\answers.json
 ```
 
-| Schalter | Wirkung |
+| Switch | Effect |
 |---|---|
-| `/ANSWERFILE=<pfad>` | Antworten aus einer Datei statt aus den Seiten. Sie gewinnt über alles. |
-| `/FULLREINSTALL` | Erzwingt Neuaufsetzen statt Update. **Erzeugt einen neuen External-Trigger-API-Key** — der alte ist nicht rekonstruierbar. |
-| `/LOG=<pfad>` | Inno-Log. Der Adapter schreibt zusätzlich `%TEMP%\nodepilot-server-setup.log`. |
+| `/ANSWERFILE=<path>` | Answers from a file instead of the pages. It wins over everything. |
+| `/FULLREINSTALL` | Forces a fresh install instead of an update. **Generates a new external-trigger API key** — the old one cannot be reconstructed. |
+| `/LOG=<path>` | Inno's log. The adapter additionally writes `%TEMP%\nodepilot-server-setup.log`. |
 
-Die übergebene Answer-File wird **kopiert**, nicht in-place benutzt: die Kopie erbt die restriktive
-DACL des Session-Verzeichnisses und wird am Ende geschreddert. Das Original bleibt unangetastet.
+The supplied answer file is **copied**, not used in place: the copy inherits the restrictive DACL of
+the session directory and is shredded at the end. The original is left untouched.
 
-### Answer-File
+### Answer file
 
-`schemaVersion: 1`. Unbekannte Schlüssel und fehlende Pflichtschlüssel werden **namentlich**
-abgelehnt — strenger als PowerShells Binding, weil ein Tippfehler in einer SCCM-Datei sonst mitten
-in der Installation zuschlägt.
+`schemaVersion: 1`. Unknown keys and missing mandatory keys are rejected **by name** — stricter than
+PowerShell's binding, because a typo in an SCCM file would otherwise strike in the middle of the
+installation.
 
 ```json
 {
@@ -501,381 +490,369 @@ in der Installation zuschlägt.
 }
 ```
 
-`identity.type` ist `localSystem` oder `gmsa` (dann ist `identity.account` Pflicht).
-`database.provider` ist `sqlserver` (dann `sqlServer` + `sqlDatabase`) oder `postgres` (dann
+`identity.type` is `localSystem` or `gmsa` (then `identity.account` is mandatory).
+`database.provider` is `sqlserver` (then `sqlServer` + `sqlDatabase`) or `postgres` (then
 `postgresHost`, `postgresDatabase`, `postgresUser`, `postgresPassword`, `postgresRootCertificate`).
-`certificate.thumbprint` ist der einzige Pflichtschlüssel, der **leer** sein darf: leer heißt „noch
-keins vorhanden" und verlangt dann `provisioning.generateSelfSignedCertificate`. Steht etwas drin,
-müssen es 40 Hex-Zeichen sein — sonst bricht der Lauf hier ab statt später in der Kestrel-Config.
-Für `"mode": "update"` genügen `installPath` und `serviceName`; jeder weitere Schlüssel wird
-abgelehnt, damit eine veraltete Datei nicht halb angewendet wird.
+`certificate.thumbprint` is the only mandatory key that may be **empty**: empty means "none available
+yet" and then requires `provisioning.generateSelfSignedCertificate`. If something is there, it must be
+40 hex characters — otherwise the run aborts here instead of later in the Kestrel configuration.
+For `"mode": "update"`, `installPath` and `serviceName` are enough; every further key is rejected, so
+that a stale file is not half-applied.
 
-**Optionale Schlüssel im Überblick:**
+**Optional keys at a glance:**
 
-| Schlüssel | Wirkung |
+| Key | Effect |
 |---|---|
-| `serviceDisplayName` | Anzeigename des Dienstes |
-| `database.sqlCertificateHostName` | leer lassen → Installer leitet ihn aus `sqlServer` ab |
-| `network.allowedHosts`, `network.knownProxyIps` | Host-Filter und vertrauenswürdige Proxy-IPs. `localhost` hängt der Installer immer an — seine eigene Health-Probe geht dorthin |
-| `certificate.source` | rein dokumentarisch |
-| `provisioning.installDotnetRuntime`, `.createDatabaseAndLogin`, `.generateSelfSignedCertificate`, `.trustArtifactSigner` | dieselben Auto-Fixes wie auf der Readiness-Seite, **auch im Silent-Modus** — dort ist die Answer-File die einzige Stelle, an der sie angefordert werden können. Laufen vor der Installation, nicht danach. |
-| `provisioning.postgresSuperUser`, `.postgresSuperPassword` | nur für den PostgreSQL-Fix. `CREATE ROLE`/`CREATE DATABASE` brauchen eine Berechtigung, die es bei SQL Server gratis über die Windows-Identität gibt. Der Dienst sieht sie nie |
-| `bootstrap.adminUsername` | legt den ersten Admin an, Kennwort zufällig (siehe [Schlüsselfertiger Rollout](#schlüsselfertiger-rollout-unbeaufsichtigt-ohne-token-eingabe)) |
-| `bootstrap.credentialOutputPath` | wohin die Zugangsdaten geschrieben werden. Default `<dataPath>\bootstrap-admin.json` |
-| `seed.backupPath` | `.npbackup`, das beim ersten Start eingespielt wird |
-| `seed.passphrase` | dessen Passphrase. Landet **nie** in der `appsettings.Production.json`, sondern im `Environment`-Wert des Dienstschlüssels |
-| `skips.databaseCheck`, `skips.gmsaCheck` | überspringen die jeweilige Preflight-Prüfung |
+| `serviceDisplayName` | Display name of the service |
+| `database.sqlCertificateHostName` | Leave empty → the installer derives it from `sqlServer` |
+| `network.allowedHosts`, `network.knownProxyIps` | Host filter and trusted proxy IPs. The installer always appends `localhost` — its own health probe goes there |
+| `certificate.source` | Purely documentary |
+| `provisioning.installDotnetRuntime`, `.createDatabaseAndLogin`, `.generateSelfSignedCertificate`, `.trustArtifactSigner` | The same auto-fixes as on the readiness page, **in silent mode too** — there the answer file is the only place they can be requested. They run before the installation, not after. |
+| `provisioning.postgresSuperUser`, `.postgresSuperPassword` | For the PostgreSQL fix only. `CREATE ROLE`/`CREATE DATABASE` need an authorization that SQL Server gets for free via the Windows identity. The service never sees them |
+| `bootstrap.adminUsername` | Creates the first admin, password random (see [Turnkey rollout](#turnkey-rollout-unattended-without-typing-a-token)) |
+| `bootstrap.credentialOutputPath` | Where the credentials are written. Default `<dataPath>\bootstrap-admin.json` |
+| `seed.backupPath` | A `.npbackup` applied on first start |
+| `seed.passphrase` | Its passphrase. **Never** lands in `appsettings.Production.json`, but in the `Environment` value of the service key |
+| `skips.databaseCheck`, `skips.gmsaCheck` | Skip the respective pre-flight check |
 
-`bootstrap` und `seed` schließen einander nicht aus, aber nur einer greift: bringt der Seed Benutzer
-mit, gibt es kein Token, und `bootstrap` läuft ins Leere. Ohne beide bleibt es beim Token auf der
-Abschlussseite.
+`bootstrap` and `seed` are not mutually exclusive, but only one takes effect: if the seed brings users
+with it, there is no token and `bootstrap` finds nothing to do. Without either, the token on the finish
+page remains.
 
-**Für einen Rollout auf eine frische Datenbank gehört `provisioning.createDatabaseAndLogin` in die
-Answer-File.** Ein Schlüssel, beide Provider — welches Skript läuft, folgt aus `database.provider`
-und nicht aus einem zweiten Flag, das dem ersten widersprechen könnte. Auf dem Postgres-Pfad
-brauchen zusätzlich `provisioning.postgresSuperUser` / `.postgresSuperPassword` gesetzt zu sein,
-sonst bleibt die Rolle unangetastet und der Lauf sagt es im Log.
+**For a rollout onto a fresh database, `provisioning.createDatabaseAndLogin` belongs in the answer
+file.** One key, both providers — which script runs follows from `database.provider` and not from a
+second flag that could contradict the first. On the Postgres path,
+`provisioning.postgresSuperUser` / `.postgresSuperPassword` must be set as well, otherwise the role is
+left untouched and the run says so in the log.
 
-Bei SQL Server deckt der Schlüssel beides ab, was ein unbeaufsichtigter Lauf sonst offen lässt:
-Datenbank und Login anlegen, und der Dienst-Identität (Computer-Konto bzw. gMSA) `db_owner` geben.
-Ohne ihn startet der Dienst und antwortet auf `/healthz/ready` mit 503, weil er sich an der
-Datenbank nicht anmelden kann. Existenzgeprüft — auf einer Maschine, wo alles schon da ist,
-verändert der Lauf nichts. Ausgeführt wird er mit den Rechten des Kontos, das das Setup startet;
-ohne `sysadmin` bzw. `CREATE ANY DATABASE` bleibt alles unverändert und der Grund steht im Log.
-Interaktiv braucht es den Schlüssel nicht — dort hakt die Readiness-Seite die Zeile selbst an.
+On SQL Server the key covers both things an unattended run otherwise leaves open: creating the database
+and login, and granting the service identity (computer account or gMSA) `db_owner`. Without it the
+service starts and answers `/healthz/ready` with 503, because it cannot sign in to the database.
+Existence-checked — on a machine where everything is already there, the run changes nothing. It runs
+with the permissions of the account that started the setup; without `sysadmin` or `CREATE ANY DATABASE`
+nothing is changed and the reason is in the log. Interactively the key is not needed — there the
+readiness page ticks the row itself.
 
-**Das Passwort steht im Klartext in der Datei.** Geschützt ist sie über die DACL ihres
-Verzeichnisses (SYSTEM + Administratoren + installierender Benutzer, atomar beim Anlegen gesetzt).
-Ein lokaler Administrator kann sie während der Installation lesen — dieselbe Lesergruppe, die auch
-den dauerhaften Aufbewahrungsort des Secrets lesen kann
-(`HKLM\SYSTEM\CurrentControlSet\Services\NodePilot\Environment`). Die Answer-File eröffnet **keine
-neue Angreiferklasse**. Deine eigene Vorlage solltest du trotzdem so behandeln wie jede andere
-Datei mit einem Produktionspasswort.
+**The password is in clear text in the file.** It is protected by the DACL of its directory (SYSTEM +
+Administrators + the installing user, set atomically at creation). A local administrator can read it
+during the installation — the same reader group that can also read the secret's permanent storage
+location (`HKLM\SYSTEM\CurrentControlSet\Services\NodePilot\Environment`). The answer file opens **no
+new class of attacker**. You should still treat your own template like any other file containing a
+production password.
 
-### Exit-Codes
+### Exit codes
 
-| Code | Bedeutung |
+| Code | Meaning |
 |---|---|
-| 0 | Erfolg |
-| 3 | Vorbereitung fehlgeschlagen (Inno) |
-| 7 | Installation fehlgeschlagen — Meldung steht im Log, der Installer hat bereits zurückgerollt |
+| 0 | Success |
+| 3 | Preparation failed (Inno) |
+| 7 | Installation failed — the message is in the log, the installer has already rolled back |
 
-Adapter-intern (im Log sichtbar): 2 = Readiness rot, 3 = Answer-File ungültig, 4 = Installation
-gescheitert, 1 = Adapter-Absturz.
+Adapter-internal (visible in the log): 2 = readiness red, 3 = answer file invalid, 4 = installation
+failed, 1 = adapter crash.
 
 ## Update
 
-Ein erneuter Lauf erkennt die vorhandene Installation über `HKLM\SOFTWARE\NodePilot\Server` —
-**auch eine, die per ZIP installiert wurde** — und fährt per Default die
-`Update-NodePilot.ps1`-Semantik: nur Binaries, `appsettings.Production.json` bleibt, Datenbank und
-Dienstidentität unangetastet, Rollback bei Fehler, Dienst läuft danach.
+A repeat run detects an existing installation via `HKLM\SOFTWARE\NodePilot\Server` — **including one
+installed via the ZIP route** — and by default applies `Update-NodePilot.ps1` semantics: binaries only,
+`appsettings.Production.json` preserved, database and service identity untouched, rollback on failure,
+service running afterwards.
 
-## Abschlussseite
+## Finish page
 
-Der Adapter schreibt nach einem erfolgreichen Lauf eine `[result]`-Sektion in seine INI; die
-letzte Wizard-Seite zeigt sie. Enthalten ist alles, was für den ersten Zugriff nötig ist:
+After a successful run the adapter writes a `[result]` section into its INI; the last wizard page shows
+it. It contains everything needed for first access:
 
-- **Adresse** (`https://<host>:<port>/`). Beim Update aus der bereits installierten
-  `appsettings.Production.json` abgeleitet — ein Update erfragt keine Netzwerkdaten.
-- **Setup-Token** für die erste Anmeldung, solange noch kein Konto existiert. Ist die Datei
-  besitzer-exklusiv und unlesbar, wird stattdessen ihr Pfad und der `robocopy /B`-Trick genannt;
-  fehlt sie ganz, hat die Datenbank bereits Konten — auch das steht dort, statt zu schweigen.
-- **External-Trigger-API-Key.** Der einzige Ort, an dem er je erscheint: erzeugt wird er vom
-  Adapter, `Install-NodePilot.ps1` druckt ihn auf eine Konsole, die unter `Exec(…, SW_HIDE)` nicht
-  existiert, und `install-report.txt` lässt ihn bewusst weg.
-- **Zertifikats-Thumbprint** mit dem Hinweis, ein selbstsigniertes auf den Clients zu importieren.
-- **Dienstname, Programm- und Datenverzeichnis.**
+- **Address** (`https://<host>:<port>/`). On an update this is derived from the already-installed
+  `appsettings.Production.json` — an update does not ask for network details.
+- **Setup token** for the first sign-in, as long as no account exists yet. If the file is
+  owner-exclusive and unreadable, its path and the `robocopy /B` trick are named instead; if it is
+  missing entirely, the database already has accounts — that is stated too, rather than saying nothing.
+- **External-trigger API key.** The only place it ever appears: it is generated by the adapter,
+  `Install-NodePilot.ps1` prints it to a console that does not exist under `Exec(…, SW_HIDE)`, and
+  `install-report.txt` deliberately omits it.
+- **Certificate thumbprint**, with a note about importing a self-signed one on the clients.
+- **Service name, program and data directory.**
 
-Hier ist es ein `TNewMemo`, nicht wie auf der Readiness-Seite ein Label: die Seite ist sonst leer,
-also ist Platz für ein ordentlich dimensioniertes, und ein 64-Zeichen-API-Key, den man nicht
-markieren kann, müsste abgetippt werden. „Save this summary…" legt denselben Text auf den Desktop
-— **mit den Secrets darin**, worauf der Bestätigungsdialog hinweist.
+Here it is a `TNewMemo`, not a label as on the readiness page: the page is otherwise empty, so there is
+room for a properly sized one, and a 64-character API key that cannot be selected would have to be
+typed out by hand. "Save this summary…" writes the same text to the desktop — **including the secrets**,
+which the confirmation dialog points out.
 
-Gebaut wird die Zusammenfassung in `PrepareToInstall`, nicht in `CurPageChanged`: `DeinitializeSetup`
-räumt das Session-Verzeichnis, die INI wäre beim Anzeigen also längst weg. Und ausschließlich auf
-dem Erfolgspfad — ein zurückgerollter Lauf darf keine Werte präsentieren, als hätte er funktioniert.
+The summary is built in `PrepareToInstall`, not in `CurPageChanged`: `DeinitializeSetup` clears the
+session directory, so the INI would be long gone by display time. And only on the success path — a
+rolled-back run must not present values as if it had worked.
 
-## Deinstallation
+## Uninstalling
 
-Erreichbar an zwei Stellen: über „Apps & Features" wie bei jedem Windows-Programm, **und als dritte
-Option auf der Modus-Seite**, wenn man das Setup auf einem Rechner startet, auf dem NodePilot
-bereits installiert ist. Die zweite existiert, weil niemand, der gerade das Setup doppelgeklickt
-hat, anschließend in der Systemsteuerung sucht. Die Modus-Seite fragt dort nichts selbst, sondern
-übergibt an denselben Uninstaller — eine Entscheidung, eine Rückfrage.
+Reachable in two places: through "Apps & features" like any Windows program, **and as a third option
+on the mode page** if you start the setup on a machine where NodePilot is already installed. The second
+exists because nobody who has just double-clicked the setup then goes looking in Control Panel. The
+mode page asks nothing itself there, but hands over to the same uninstaller — one decision, one prompt.
 
-Bei einer per ZIP installierten Instanz gibt es keinen `unins000.exe`. Die Option nennt dann den
-Pfad zu `Uninstall-NodePilot.ps1` statt ins Leere zu greifen.
+For an instance installed via the ZIP route there is no `unins000.exe`. The option then names the path
+to `Uninstall-NodePilot.ps1` instead of grasping at nothing.
 
-Entfernt **alles, was dieses Setup installiert hat**: Windows-Dienst, Dienst-Binaries,
-Firewall-Regeln, Installations-Marker, Registry-Environment (inklusive des dort liegenden
-Postgres-Passworts) und den Uninstall-Eintrag.
+It removes **everything this setup installed**: the Windows service, the service binaries, firewall
+rules, the installation marker, the registry environment (including the Postgres password stored there)
+and the uninstall entry.
 
-Genau eine Frage wird gestellt: **Datenverzeichnis behalten?** (`C:\ProgramData\NodePilot` — Logs,
-JWT-Signaturschlüssel, Data-Protection-Keyring). Default ist **behalten**, überall: interaktiv,
-`/SILENT` ohne Schalter, „Apps & Features" und beim Aufruf durch Inno selbst.
+Exactly one question is asked: **keep the data directory?** (`C:\ProgramData\NodePilot` — logs, the JWT
+signing key, the data-protection key ring). The default is **keep**, everywhere: interactive, `/SILENT`
+without switches, "Apps & features", and when invoked by Inno itself.
 
 ```powershell
-"C:\Program Files\NodePilot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES              # Daten behalten
-"C:\Program Files\NodePilot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1 # Daten löschen
+"C:\Program Files\NodePilot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES              # keep data
+"C:\Program Files\NodePilot\unins000.exe" /VERYSILENT /SUPPRESSMSGBOXES /PURGEDATA=1 # delete data
 ```
 
-**Was entfernt wird, liest der Uninstaller aus dem Installations-Marker**
-(`HKLM\SOFTWARE\NodePilot\Server`: `ServiceName`, `InstallPath`, `DataPath`) — nicht aus den
-Wizard-Defaults. Das ist der einzige Weg, der bei einer Installation mit abweichendem Dienstnamen
-oder abweichenden Pfaden funktioniert: die Modus- und Verzeichnis-Seiten laufen unter
-`/ANSWERFILE` nie, `{app}` ist dann lediglich der Ort des Uninstallers, und der Uninstaller-Prozess
-kennt den Dienstnamen des Setups nicht mehr. Wer den Marker von Hand löscht, nimmt dem Uninstaller
-damit seine einzige Quelle; er fällt dann auf `NodePilot` und `{app}` zurück.
+**What gets removed is read from the installation marker**
+(`HKLM\SOFTWARE\NodePilot\Server`: `ServiceName`, `InstallPath`, `DataPath`) — not from the wizard
+defaults. That is the only approach that works for an installation with a different service name or
+different paths: under `/ANSWERFILE` the mode and directory pages never run, `{app}` is then merely
+where the uninstaller lives, and the uninstaller process no longer knows the setup's service name.
+Deleting the marker by hand takes away the uninstaller's only source; it then falls back to `NodePilot`
+and `{app}`.
 
-**Die Datenbank wird nie entfernt, und es gibt dafür keine Option.** Dieses Setup legt sie nicht an
-— sie wurde separat bereitgestellt, hat oft ein eigenes Backup-, Replikations- und
-Aufbewahrungsregime, und in einem Active/Passive-Cluster teilen sich **beide Knoten dieselbe
-Datenbank**. Was man nie installiert hat, entfernt man nicht. Der Wizard sagt das in der Abfrage
-ausdrücklich, statt zu schweigen, und ein Vertragstest verhindert, dass die Fähigkeit
-zurückkommt.
+**The database is never removed, and there is no option for it.** This setup does not create it — it
+was provisioned separately, often has its own backup, replication and retention regime, and in an
+active/passive cluster **both nodes share the same database**. What you never installed, you do not
+remove. The wizard says so explicitly in the prompt rather than staying silent, and a contract test
+prevents the capability from coming back.
 
-Ebenfalls bewusst stehen bleiben: das „Log on as a service"-Recht des gMSA und die Lese-ACE auf dem
-Private Key des TLS-Zertifikats — beide können mit einem anderen Dienst geteilt sein. Der
-Uninstaller **benennt** sie am Ende namentlich.
+Also deliberately left in place: the gMSA's "Log on as a service" right and the read ACE on the TLS
+certificate's private key — both may be shared with another service. The uninstaller **names** them
+explicitly at the end.
 
-## Bauen
+## Building
 
 ```powershell
-# Einzeln:
+# On its own:
 .\deploy\server\Build-ServerInstaller.ps1 `
-    -ArtifactPath .\out\NodePilot-1.2.0.zip `
+    -ArtifactPath .\out\NodePilot-<version>.zip `
     -TrustedSignerThumbprint 277EAB317A581C88302CE92BE805938C86B4650D
 
-# Als Teil des Release-Builds (empfohlen — signiert und in SHA256SUMS):
+# As part of the release build (recommended — signed and in SHA256SUMS):
 .\deploy\Build-Artifact.ps1 -SigningCertificateThumbprint $tp `
     -IncludeServerInstaller -InstallerSigningCertificateThumbprint $tp
 ```
 
-Voraussetzungen: Inno Setup 6, ein **signiertes** Artefakt (das Setup verifiziert es zur
-Installationszeit, ein `-AllowUnsignedDevelopmentArtifact`-Build wird übersprungen), und Netzwerk
-beim ersten Lauf für den Runtime-Download.
+Prerequisites: Inno Setup 6, a **signed** artifact (the setup verifies it at installation time, an
+`-AllowUnsignedDevelopmentArtifact` build is skipped), and network access on the first run for the
+runtime download.
 
-Die ASP.NET-Core-Runtime wird zur Bauzeit geholt und dreifach geprüft: gegen den in Microsofts
-Release-Metadaten publizierten **SHA512**, gegen den eingecheckten Pin in
-[`runtime-payload.lock.json`](runtime-payload.lock.json), und per Authenticode auf „Microsoft
-Corporation". Es ist die **Standalone-Runtime**, nie das Hosting Bundle — das verdrahtet IIS und
-startet W3SVC neu, was auf geteilten Hosts unerwünscht ist. Nichts davon wird eingecheckt außer
-dem Pin; der macht das Payload reproduzierbar und jede Änderung daran reviewpflichtig.
+The ASP.NET Core runtime is fetched at build time and verified three ways: against the **SHA512**
+published in Microsoft's release metadata, against the checked-in pin in
+[`runtime-payload.lock.json`](runtime-payload.lock.json), and by Authenticode against "Microsoft
+Corporation". It is the **standalone runtime**, never the Hosting Bundle — that one wires up IIS and
+restarts W3SVC, which is undesirable on shared hosts. None of it is checked in except the pin; that
+makes the payload reproducible and every change to it review-worthy.
 
-Größe: ~52 MB (Desktop-Installer: ~176 MB — kein Electron, kein gebündeltes PostgreSQL).
+Size: ~52 MB (desktop installer: ~176 MB — no Electron, no bundled PostgreSQL).
 
-## Inno-Setup-Fallen, die hier gemessen wurden
+## Inno Setup traps measured here
 
-Alle sieben sind auf echter Infrastruktur aufgetreten, nicht aus der Doku abgeleitet:
+All seven occurred on real infrastructure, none were derived from the documentation:
 
-1. **`ssPostInstall` kann kein Scheitern melden.** Weder `RaiseException` noch `Abort` ändert dort
-   den Exit-Code — ein gescheiterter Lauf meldet 0. Unter SCCM wäre das eine Verteilung, die Erfolg
-   meldet und nichts installiert hat. Die Installation läuft deshalb in `PrepareToInstall`
-   (Rückgabe einer Meldung, Exit 7).
-2. **`[UninstallRun]` wertet `{code:…}` zur Installationszeit aus** und friert das Ergebnis in
-   `unins000.dat` ein. Eine zur Deinstallationszeit getroffene Entscheidung kann darüber nie
-   ankommen. Der Abschnitt existiert nicht; der Aufruf läuft aus `[Code]`.
-3. **`[Run]` kann keine Exit-Codes prüfen.** Existiert ebenfalls nicht; ein Vertragstest verbietet
-   beide Abschnitte.
-4. **Inno dedupliziert identische Quelldateien.** Ein `dontcopy`-Eintrag und ein
-   `DestDir`-Eintrag auf dieselbe Datei kollabieren zu einem; die `dontcopy`-Variante verschwindet
-   still. Deshalb zwei getrennte Staging-Bäume (`payload\` und `deploy\`).
-5. **`{app}` existiert während des Wizards noch nicht.** Readiness-Seite und `PrepareToInstall`
-   laufen vor dem Kopieren — alles zur Laufzeit Benötigte ist `dontcopy` und liegt in `{tmp}`.
-6. **Kein `SaveStringToUTF8File` in dieser Version**, nur `SaveStringsToUTF8File`
-   (`TArrayOfString`). Die AnsiString-Variante würde ein Passwort mit Umlauten in der
-   System-Codepage schreiben, was der Adapter dann ablehnt. Und `LoadStringFromFile` liefert
-   AnsiString — der Session-Pfad liegt deshalb unter `%ProgramData%` (garantiert ASCII), und ein
-   BOM wird beidseitig entfernt.
-7. **Keine Zeile in `[Code]` darf mit `#` beginnen** — der ISPP-Präprozessor liest das als
-   Direktive und bricht mit „Unknown preprocessor directive" ab. Trifft umgebrochene
-   `#13#10`-Fortsetzungen.
+1. **`ssPostInstall` cannot report a failure.** Neither `RaiseException` nor `Abort` changes the exit
+   code there — a failed run reports 0. Under SCCM that would be a deployment reporting success having
+   installed nothing. The installation therefore runs in `PrepareToInstall` (returning a message,
+   exit 7).
+2. **`[UninstallRun]` evaluates `{code:…}` at installation time** and freezes the result into
+   `unins000.dat`. A decision made at uninstall time can never get through that way. The section does
+   not exist; the call is made from `[Code]`.
+3. **`[Run]` cannot check exit codes.** Also does not exist; a contract test forbids both sections.
+4. **Inno deduplicates identical source files.** A `dontcopy` entry and a `DestDir` entry for the same
+   file collapse into one; the `dontcopy` variant silently disappears. Hence two separate staging trees
+   (`payload\` and `deploy\`).
+5. **`{app}` does not exist yet during the wizard.** The readiness page and `PrepareToInstall` run
+   before the copy — everything needed at that time is `dontcopy` and lives in `{tmp}`.
+6. **No `SaveStringToUTF8File` in this version**, only `SaveStringsToUTF8File` (`TArrayOfString`). The
+   AnsiString variant would write a password containing umlauts in the system code page, which the
+   adapter then rejects. And `LoadStringFromFile` returns AnsiString — so the session path lives under
+   `%ProgramData%` (guaranteed ASCII), and a BOM is stripped on both sides.
+7. **No line in `[Code]` may start with `#`** — the ISPP preprocessor reads that as a directive and
+   aborts with "Unknown preprocessor directive". This affects wrapped `#13#10` continuations.
 
-Und eine außerhalb von Inno, aber gleich teuer: **`icacls /grant '<SID>:(OI)(CI)F'` auf eine
-Blattdatei meldet Erfolg und fügt keine ACE hinzu.** `(OI)`/`(CI)` sind Container-Vererbungsflags
-und werden dort verworfen. Ohne sie funktioniert es. Betrifft `-PurgeData`, das sonst an dem
-owner-only `jwt-secret.key` scheitert.
+And one outside Inno, but equally expensive: **`icacls /grant '<SID>:(OI)(CI)F'` on a leaf file reports
+success and adds no ACE.** `(OI)`/`(CI)` are container inheritance flags and are discarded there.
+Without them it works. This affects `-PurgeData`, which otherwise fails on the owner-only
+`jwt-secret.key`.
 
-## Testabdeckung — und was fehlt
+## Test coverage — and what is missing
 
-**Automatisiert** (CI, beide PowerShell-Versionen):
-[`../Test-SetupAdapter.ps1`](../Test-SetupAdapter.ps1) prüft das Answer-File-Verhalten
-verhaltensbasiert (Torture-Round-Trip, Schema-Ablehnung mit Schlüsselnamen, Splat-Trennung pro
-Provider, SecureString, INI-Escaping, die Zweischichtigkeit des Pre-Flights).
-[`../Test-DeploymentTemplates.ps1`](../Test-DeploymentTemplates.ps1) pinnt statisch, was am
-`.iss`, am Adapter, am Runtime-Fetch und am Build prüfbar ist — jeder Vertrag mutationsgeprüft.
+**Automated** (CI, both PowerShell versions):
+[`../Test-SetupAdapter.ps1`](../Test-SetupAdapter.ps1) checks answer-file behaviour behaviourally
+(torture round-trip, schema rejection naming the key, splat separation per provider, SecureString, INI
+escaping, the two-layer nature of the pre-flight).
+[`../Test-DeploymentTemplates.ps1`](../Test-DeploymentTemplates.ps1) statically pins whatever is
+checkable in the `.iss`, the adapter, the runtime fetch and the build — every contract mutation-tested.
 
-**Nicht automatisiert, ehrlich benannt:**
+**Not automated, named honestly:**
 
-- **Der Pascal-Code selbst.** Seitenfluss, `ShouldSkipPage`-Matrix, JSON-Escaper, INI-Lesen,
-  Steuerelement-Zustände. Inno-Pascal hat dafür kein Werkzeug. Gegenmittel: minimaler Umfang plus
-  die Verträge oben. Was ein Compilerlauf abdeckt — Syntax und jeder verwendete Bezeichner —
-  bekommt man ohne Installer-Bau mit
-  `ISCC /Qp /O- /DStageDir=<stage> /DOutputDir=<out> NodePilotServer.iss`; dass dabei wirklich der
-  `[Code]`-Abschnitt übersetzt wird, lässt sich mit einem absichtlich falschen Bezeichner in einer
-  Kopie nachweisen. Läuft **nicht** in CI (kein ISCC auf dem Runner).
-- **Positionen berechneter Steuerelemente.** Dass die Zertifikatsliste *innerhalb* der Fläche
-  landet, erzwingt die Klemme in `CompactNetworkPage` und ein Contract darauf. Wie die Seite dann
-  aussieht — ob die Abstände stimmen oder es gedrängt wirkt — sieht man erst im laufenden Wizard.
-  Genau so ist die Liste beim ersten Mal abgeschnitten ausgeliefert worden.
-- **Die GUI wurde nie geklickt.** Alle Lab-Läufe waren unbeaufsichtigt. Der interaktive Pfad —
-  Readiness-Ampel, Auto-Fix-Checkboxen, Zertifikatsauswahl — ist ungetestet.
-- **Nur SQL Server + gMSA getestet.** Der PostgreSQL-Pfad und der LocalSystem-Pfad sind im Lab nie
-  gelaufen.
-- **Nur Windows Server 2025.** Server 2022 (die `MinVersion`) ist ungetestet.
+- **The Pascal code itself.** Page flow, the `ShouldSkipPage` matrix, the JSON escaper, INI reading,
+  control states. Inno Pascal has no tooling for it. Countermeasure: minimal surface plus the contracts
+  above. What a compiler run does cover — syntax and every identifier used — can be had without
+  building an installer via
+  `ISCC /Qp /O- /DStageDir=<stage> /DOutputDir=<out> NodePilotServer.iss`; that this really compiles the
+  `[Code]` section can be demonstrated with a deliberately wrong identifier in a copy. Does **not** run
+  in CI (no ISCC on the runner).
+- **Positions of computed controls.** That the certificate list lands *inside* the area is enforced by
+  the clamp in `CompactNetworkPage` and a contract on it. How the page then looks — whether the spacing
+  is right or it feels cramped — is only visible in the running wizard. That is exactly how the list
+  shipped cut off the first time.
+- **The GUI has never been clicked.** All lab runs were unattended. The interactive path — readiness
+  indicators, auto-fix checkboxes, certificate selection — is untested.
+- **Only SQL Server + gMSA tested.** The PostgreSQL path and the LocalSystem path have never run in the
+  lab.
+- **Only Windows Server 2025.** Server 2022 (the `MinVersion`) is untested.
 
-### Manuelle Smoke-Matrix vor jedem Release
+### Manual smoke matrix before each release
 
-| # | Fall | Erwartung |
+| # | Case | Expectation |
 |---|---|---|
-| 1 | Frisch, SQL Server + LocalSystem | Dienst läuft, `/healthz/ready` 200 |
-| 2 | Frisch, PostgreSQL + gMSA | dito |
-| 3 | Erneuter Lauf über Bestand | Update-Semantik, Config bleibt |
-| 4 | `/FULLREINSTALL` | Bestätigungsdialog erscheint, neuer API-Key |
-| 5 | `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE` | Exit 0, Dienst läuft |
-| 6 | Runtime fehlt, Angebot abgelehnt | „Weiter" bleibt gesperrt |
-| 7 | Rote Readiness-Zeile | „Weiter" gesperrt, Anleitung sichtbar |
-| 8 | Abbruch mitten im Wizard | kein Session-Verzeichnis bleibt zurück |
-| 9 | Deinstallation ohne Schalter | alles weg, Daten und Datenbank bleiben |
-| 10 | Deinstallation `/PURGEDATA=1` | zusätzlich Datenverzeichnis weg, Datenbank bleibt |
-| 11 | Modus-Seite → „Remove" | Uninstaller übernimmt, Setup schließt ohne Abbruch-Rückfrage |
-| 12 | Neustart nach Installation | Dienst kommt ohne Zutun hoch, auch wenn die DB später bereit ist |
-| 13 | Abschlussseite nach Neuinstallation | URL, Setup-Token, API-Key, Thumbprint, Pfade sichtbar und markierbar |
-| 14 | Abschlussseite nach Update | URL aus der installierten Config, kein Token, kein neuer API-Key |
-| 15 | Update über laufenden Dienst | wartet den Prozess ab statt abzubrechen |
-| 16 | TLS-Seite, Zertifikat aus der Liste gewählt | Thumbprint steht im Feld darüber, Readiness-Zeile grün |
-| 17 | TLS-Seite, leerer Zertifikatsspeicher | Hinweiszeile statt Auswahl, „Weiter" bleibt möglich |
-| 18 | HTTP-Port 80 auf einem Host mit IIS | Readiness-Zeile rot mit „reserved by Windows", „Weiter" gesperrt |
-| 19 | HTTP-Port 0 | Zeile grün, „HTTP disabled" |
-| 20 | Installation interaktiv | Balken und Phasentext laufen, Fenster bleibt bedienbar, kein „Keine Rückmeldung" |
-| 21 | Installation unbeaufsichtigt | keine Oberfläche, Exit-Code unverändert |
-| 22 | Unbeaufsichtigt mit `bootstrap.adminUsername` | Exit 0, Zugangsdatei da (ACL nur SYSTEM + Administratoren), Anmeldung damit ohne Token, `admin-setup.token` weg |
-| 23 | Unbeaufsichtigt ohne `bootstrap`-Gruppe | wie bisher: Token auf der Abschlussseite, kein Konto |
-| 24 | Unbeaufsichtigt mit `seed`-Gruppe, leere Instanz | Anmeldung mit einem Benutzer **aus dem Backup**, kein Token, keine Zugangsdatei, Seed-Datei gelöscht |
-| 25 | Derselbe Seed gegen eine befüllte Instanz | nichts passiert, keine Duplikate, Seed-Datei bleibt liegen |
-| 26 | Falsche Seed-Passphrase | Dienst startet **nicht**, Meldung nennt die Passphrase, kein Teilbestand in der DB |
-| 27 | SQL Server ohne Login für die Dienst-Identität | Zeile rot **und vorangehakt**, „Weiter" legt Login + Benutzer + `db_owner` an, danach grün |
-| 28 | Derselbe Lauf mit bereits vorhandenem Login | Zeile grün ohne Checkbox, nichts wird verändert |
-| 29 | Fix ohne `sysadmin` | nichts verändert, Meldung nennt den Grund, Haken danach gelöscht (keine Schleife) |
-| 30 | Unbeaufsichtigt mit `provisioning.createDatabaseAndLogin` | Exit 0, Datenbank + Login angelegt, `/healthz/ready` 200 |
-| 31 | Abgelaufenes Zertifikat gewählt | Zeile rot mit Ablaufdatum, „Weiter" gesperrt, kein Auto-Fix angeboten |
-| 32 | Zertifikat mit fremdem SAN | Zeile **gelb**, nennt beide Namen, „Weiter" bleibt möglich |
-| 33 | Postgres ohne Rolle/Datenbank, Superuser angegeben | Zeile rot mit Checkbox, „Weiter" legt beides an, Neuprüfung grün |
-| 34 | Dasselbe ohne Superuser-Felder | Zeile rot **ohne** Checkbox, Server-Meldung wörtlich, Snippet sichtbar |
-| 35 | Postgres mit falschem Rollen-Passwort | Zeile rot, nennt „beide vorhanden", kein Fix-Angebot, Passwort bleibt unverändert |
-| 36 | Installer ohne `-PgBinariesPath` gebaut, Postgres gewählt | Zeile **gelb**: erreichbar, Anmeldung ungeprüft |
-| 37 | Neuinstallation mit gMSA über eine LocalSystem-Installation | Exit 0, Dienst läuft als gMSA, `jwt-secret.key` gehört jetzt dem gMSA |
-| 38 | Fehlschlag **nach** dem ACL-Schritt | Rollback stellt Dienst **und** Verzeichnis-ACL wieder her, die vorherige Installation läuft weiter |
-| 39 | Thumbprint-Feld leer gelassen | „Weiter" führt auf die Prüfseite, Zeile rot mit „No certificate selected" + **nicht** vorangehaktem Angebot; Haken + „Weiter" erzeugt eins, schreibt den Thumbprint ins Feld zurück, Neuprüfung grün |
-| 40 | Feld mit 12 Zeichen gefüllt | Meldung „40 hexadecimal characters", Seite bleibt stehen |
-| 41 | Host, der den Herausgeber nicht kennt | Zeile „Artifact publisher" **gelb**, „Weiter" bleibt frei, Installation läuft **ohne** Import durch |
-| 42 | Derselbe Fall, Angebot angehakt | Haken + „Weiter" importiert nach `LocalMachine\Root`, Neuprüfung grün, danach meldet `Get-AuthenticodeSignature` auf der Setup-`.exe` `Valid` |
-| 43 | Abgelaufenes Herausgeber-Zertifikat | Zeile **rot**, „Weiter" gesperrt, **kein** Angebot (ein Import repariert es nicht) |
-| 44 | Nur die **32-Bit**- oder eine ältere Runtime (< 10.0.11) installiert | Zeile „ASP.NET Core 10.0.11+ runtime" **rot** und nennt Architektur bzw. gefundene Version samt Pfad, Angebot vorhanden |
-| 45 | x64-Runtime da, x86 zuerst im `PATH` | Zeile **grün** und nennt den 64-Bit-Host, den sie gefragt hat |
+| 1 | Fresh, SQL Server + LocalSystem | Service runs, `/healthz/ready` 200 |
+| 2 | Fresh, PostgreSQL + gMSA | ditto |
+| 3 | Repeat run over an existing installation | Update semantics, configuration preserved |
+| 4 | `/FULLREINSTALL` | Confirmation dialog appears, new API key |
+| 5 | `/VERYSILENT /SUPPRESSMSGBOXES /ANSWERFILE` | Exit 0, service runs |
+| 6 | Runtime missing, offer declined | "Next" stays disabled |
+| 7 | Red readiness row | "Next" disabled, instructions visible |
+| 8 | Cancel mid-wizard | No session directory left behind |
+| 9 | Uninstall without switches | Everything gone, data and database remain |
+| 10 | Uninstall `/PURGEDATA=1` | Data directory gone as well, database remains |
+| 11 | Mode page → "Remove" | Uninstaller takes over, setup closes without a cancel prompt |
+| 12 | Reboot after installation | Service comes up unattended, even if the database becomes ready later |
+| 13 | Finish page after a new installation | URL, setup token, API key, thumbprint, paths visible and selectable |
+| 14 | Finish page after an update | URL from the installed configuration, no token, no new API key |
+| 15 | Update over a running service | Waits for the process instead of aborting |
+| 16 | TLS page, certificate chosen from the list | Thumbprint appears in the field above, readiness row green |
+| 17 | TLS page, empty certificate store | Informational row instead of a list, "Next" stays available |
+| 18 | HTTP port 80 on a host with IIS | Readiness row red with "reserved by Windows", "Next" disabled |
+| 19 | HTTP port 0 | Row green, "HTTP disabled" |
+| 20 | Interactive installation | Bar and phase text advance, window stays responsive, no "Not responding" |
+| 21 | Unattended installation | No UI, exit code unchanged |
+| 22 | Unattended with `bootstrap.adminUsername` | Exit 0, credential file present (ACL SYSTEM + Administrators only), sign-in works without a token, `admin-setup.token` gone |
+| 23 | Unattended without a `bootstrap` group | As before: token on the finish page, no account |
+| 24 | Unattended with a `seed` group, empty instance | Sign-in with a user **from the backup**, no token, no credential file, seed file deleted |
+| 25 | The same seed against a populated instance | Nothing happens, no duplicates, seed file left in place |
+| 26 | Wrong seed passphrase | Service does **not** start, the message names the passphrase, no partial data in the database |
+| 27 | SQL Server without a login for the service identity | Row red **and pre-ticked**, "Next" creates login + user + `db_owner`, green afterwards |
+| 28 | The same run with the login already present | Row green without a checkbox, nothing is changed |
+| 29 | Fix without `sysadmin` | Nothing changed, the message names the reason, tick cleared afterwards (no loop) |
+| 30 | Unattended with `provisioning.createDatabaseAndLogin` | Exit 0, database + login created, `/healthz/ready` 200 |
+| 31 | Expired certificate selected | Row red with the expiry date, "Next" disabled, no auto-fix offered |
+| 32 | Certificate with a foreign SAN | Row **amber**, names both names, "Next" stays available |
+| 33 | Postgres without role/database, superuser supplied | Row red with a checkbox, "Next" creates both, re-check green |
+| 34 | The same without superuser fields | Row red **without** a checkbox, server message verbatim, snippet visible |
+| 35 | Postgres with a wrong role password | Row red, says "both present", no fix offered, password unchanged |
+| 36 | Installer built without `-PgBinariesPath`, Postgres selected | Row **amber**: reachable, sign-in unverified |
+| 37 | New installation with gMSA over a LocalSystem installation | Exit 0, service runs as the gMSA, `jwt-secret.key` now owned by the gMSA |
+| 38 | Failure **after** the ACL step | Rollback restores the service **and** the directory ACL, the previous installation keeps running |
+| 39 | Thumbprint field left empty | "Next" leads to the readiness page, row red with "No certificate selected" plus a **not** pre-ticked offer; tick + "Next" creates one, writes the thumbprint back into the field, re-check green |
+| 40 | Field filled with 12 characters | Message "40 hexadecimal characters", the page stays put |
+| 41 | Host that does not know the publisher | Row "Artifact publisher" **amber**, "Next" stays available, installation completes **without** an import |
+| 42 | The same case, offer ticked | Tick + "Next" imports into `LocalMachine\Root`, re-check green, afterwards `Get-AuthenticodeSignature` on the setup `.exe` reports `Valid` |
+| 43 | Expired publisher certificate | Row **red**, "Next" disabled, **no** offer (an import does not repair it) |
+| 44 | Only the **32-bit** or an older runtime (< 10.0.11) installed | Row "ASP.NET Core 10.0.11+ runtime" **red**, naming the architecture or the version found together with its path, offer present |
+| 45 | x64 runtime present, x86 first in `PATH` | Row **green**, naming the 64-bit host it queried |
 
-Stand: 1, 3, 5, 9, 10, 22, 23, 30, 37 und 38 sind im Hyper-V-Lab gegen echtes AD, echte gMSA und
-SQL Server 2022 CU gelaufen. Am **2026-08-06** kam die **Logik** hinter 39, 40, 41, 43 und 44 dazu —
-über den Adapter gegen die laufende CM1-Installation (`InitSession` → `Probe` → `Certificates` →
-`Cleanup`, Zertifikate als In-Memory-Fixtures, kein Store-Schreibzugriff): alle zehn Zeilen grün,
-Answer-File mit leerem Thumbprint akzeptiert und Exit 2, mit zwölf Zeichen abgelehnt und Exit 3,
-`Cleanup` ließ weder Session-Verzeichnis noch Answer-File zurück, Dienst danach weiter `Running` und
-`/healthz/ready` 200. Was dort fehlt, ist wie bei 33 bis 35 die **Seite**.
+Status: 1, 3, 5, 9, 10, 22, 23, 30, 37 and 38 have been run in the Hyper-V lab against real AD, a real
+gMSA and SQL Server 2022 CU. On **2026-08-06** the **logic** behind 39, 40, 41, 43 and 44 was added —
+through the adapter against the running CM1 installation (`InitSession` → `Probe` → `Certificates` →
+`Cleanup`, certificates as in-memory fixtures, no store writes): all ten rows green, an answer file with
+an empty thumbprint accepted with exit 2, one with twelve characters rejected with exit 3, `Cleanup`
+left behind neither the session directory nor the answer file, the service still `Running` afterwards
+and `/healthz/ready` 200. What is missing there, as with 33 to 35, is the **page**.
 
-Offen: 2, 4, 6, 7, 8, 11 bis 21, 24 bis 29, 31 bis 36, 42 und 45. 42 schriebe maschinenweit nach
-`LocalMachine\Root`; 45 braucht einen Host mit **beiden** Runtimes — auf dem Entwicklungsrechner
-nachgewiesen (x86 zuerst im `PATH`, Zeile bleibt grün und nennt den x64-Host), im Lab gibt es keine
-32-Bit-Runtime. Die **Logik** hinter 33 bis 35 lief gegen einen echten PostgreSQL 16 mit TLS (siehe
-unten).
+Open: 2, 4, 6, 7, 8, 11 to 21, 24 to 29, 31 to 36, 42 and 45. 42 would write machine-wide into
+`LocalMachine\Root`; 45 needs a host with **both** runtimes — demonstrated on the development machine
+(x86 first in `PATH`, row stays green and names the x64 host), and there is no 32-bit runtime in the
+lab. The **logic** behind 33 to 35 ran against a real PostgreSQL 16 with TLS (see below).
 
-Zusatz 2026-08-06 (zweiter Befund): Auf einem frischen Host waren **alle** Zeilen grün und die
-Installation brach danach mit Exit 4 und Rollback ab — `CheckSignature` scheiterte an der Kette des
-selbstsignierten Herausgebers. Die Prüfseite kannte diese Anforderung schlicht nicht (neun IDs,
-keine davon `signer`), und der Fix, der seit jeher im Adapter liegt, war im Wizard hart auf `false`
-verdrahtet. Dazu ein zweiter, unabhängiger Fehler: `Invoke-ProvisionSigner` suchte die `.cer` unter
-`signer\` — ein Ordner, den der Build nie anlegt, weil `[Files]` mit `dontcopy` **ohne**
-`recursesubdirs` alles flach nach `{tmp}` legt. Der Auto-Fix hätte also auch dann nichts gefunden,
-wenn man ihn über die Answer-File angefordert hätte. Beides behoben — und beim ersten Lauf mit der
-neuen Zeile schlug prompt der Layout-Vorbehalt zu: Die zehnte Zeile war fünf Zeilen hoch, damit
-rutschte ihre eigene Checkbox hinter die Buttons. Ein Fix, den man sieht, erklärt bekommt und nicht
-anhaken kann. Zwei Korrekturen: die Meldung ist auf zwei Zeilen gekürzt (die Kettenbegründung des
-Betriebssystems steht jetzt im scrollbaren Anleitungsfeld), und `LayoutReadiness` zählt die
-sichtbaren Fix-Boxen vorab und garantiert jeder einen klickbaren Streifen über den Buttons. Die
-Zeilen 41/42 unten decken den Fall ab und sind **noch nicht** geklickt.
+Addendum 2026-08-06 (second finding): on a fresh host **all** rows were green and the installation then
+aborted with exit 4 and a rollback — `CheckSignature` failed on the chain of the self-signed publisher.
+The readiness page simply did not know about this requirement (nine IDs, none of them `signer`), and the
+fix, which has always been in the adapter, was hard-wired to `false` in the wizard. On top of that a
+second, independent defect: `Invoke-ProvisionSigner` looked for the `.cer` under `signer\` — a folder the
+build never creates, because `[Files]` with `dontcopy` and **without** `recursesubdirs` puts everything
+flat into `{tmp}`. So the auto-fix would have found nothing even if it had been requested through the
+answer file. Both fixed — and on the first run with the new row the layout caveat struck immediately:
+the tenth row was five lines tall, which pushed its own checkbox behind the buttons. A fix you can see,
+have explained to you, and cannot tick. Two corrections: the message is shortened to two lines (the
+operating system's chain reasoning now lives in the scrollable instructions field), and `LayoutReadiness`
+counts the visible fix boxes up front and guarantees each one a clickable strip above the buttons. Rows
+41/42 below cover the case and have **not** been clicked yet.
 
-Nachtrag zur Konsequenz: Die Zeile hat ihre Sperrwirkung inzwischen wieder verloren — nicht weil sie
-falsch war, sondern weil die **Anforderung** falsch war. `Install-NodePilot.ps1` prüft die Signatur
-jetzt ohne Kette gegen den einkompilierten Thumbprint und ersetzt explizit, was die Kette
-mitgeliefert hatte (Codesignatur-EKU, KeyUsage, Gültigkeitsfenster). Damit braucht keine
-Erstinstallation mehr einen Root-Import; die Zeile ist gelb und das Angebot optional. Rot bleibt
-sie für alles, was der Installer selbst ablehnt.
+Follow-up on the consequence: the row has since lost its blocking effect again — not because it was
+wrong, but because the **requirement** was. `Install-NodePilot.ps1` now verifies the signature without
+the chain against the compiled-in thumbprint and explicitly replaces what the chain used to supply
+(code-signing EKU, KeyUsage, validity window). No first installation needs a root import any more; the
+row is amber and the offer optional. It stays red for everything the installer itself rejects.
 
-Aus demselben Feldlauf drei Lesbarkeitsfehler im Log, alle behoben: Der Adapter schrieb jede
-Installer-Zeile ein zweites Mal (`Write-Host` erreicht die Transkript-Aufzeichnung auch dann, wenn
-der Informationsstrom umgeleitet ist — jede Zeile stand doppelt drin und las sich, als sei jeder
-Schritt zweimal gelaufen). Und der Rollback erzählte auf einer **frischen** Maschine vom
-Wiederherstellen einer Installation, die es nie gab: „Restoring the previous installation" plus
-„Existing service found - stopping and removing" für den Dienst, den derselbe Lauf zwei Minuten
-vorher selbst registriert hatte. Die Handlung war jeweils richtig, nur die Worte stammten aus dem
-Upgrade-Fall. Unterschieden wird jetzt an `$previousService`.
+From the same field run, three readability defects in the log, all fixed: the adapter wrote every
+installer line a second time (`Write-Host` reaches the transcript even when the information stream is
+redirected — every line appeared twice and read as if every step had run twice). And on a **fresh**
+machine the rollback talked about restoring an installation that never existed: "Restoring the previous
+installation" plus "Existing service found - stopping and removing" for the service the same run had
+registered two minutes earlier. The action was right in each case, only the words came from the upgrade
+path. It is now distinguished by `$previousService`.
 
-Zusatz 2026-08-06: Zeile 39 ist im Feld aufgeschlagen — leeres Feld, und der Probe-Lauf starb mit
-„Answer file is missing required key 'certificate.thumbprint'", weil die Vertragsprüfung Pflicht mit
-nicht-leer gleichsetzte. Behoben; danach mit einer echten Answer-File (leerer Thumbprint) gegen
-`-Mode Probe` nachgestellt: Exit 2 (`ExitProbeFailed`, die erwartete Antwort für eine rote
-Pflicht-Zeile), `check.certificate` meldet „No certificate selected" mit `canAutoFix=1` und
-`autoFixDefault=0`. Was damit **noch nicht** geklickt ist: der Haken selbst und das Zurückschreiben
-des erzeugten Thumbprints in das Feld — also die zweite Hälfte von Zeile 39.
+Addendum 2026-08-06: row 39 surfaced in the field — empty field, and the probe run died with "Answer
+file is missing required key 'certificate.thumbprint'", because the contract check equated mandatory
+with non-empty. Fixed; then reproduced with a real answer file (empty thumbprint) against `-Mode Probe`:
+exit 2 (`ExitProbeFailed`, the expected answer for a red blocking row), `check.certificate` reports
+"No certificate selected" with `canAutoFix=1` and `autoFixDefault=0`. What is **still** not clicked:
+the tick itself and writing the generated thumbprint back into the field — that is, the second half of
+row 39.
 
-Zusatz 2026-08-04: Der unbeaufsichtigte Pfad wurde in **beide** Richtungen gegen CM1 gefahren.
-`httpPort: 80` bricht nach 7 s mit Exit 7 ab — Dienst, Binaries und Config nachweislich unverändert,
-`healthz` durchgehend 200 —, `httpPort: 0` installiert mit Exit 0 durch. Die Port-Zeile der
-Readiness-**Seite** (18/19) ist damit noch nicht geklickt, nur der Check dahinter.
+Addendum 2026-08-04: the unattended path was run against CM1 in **both** directions. `httpPort: 80`
+aborts after 7 s with exit 7 — service, binaries and configuration demonstrably unchanged, `healthz`
+200 throughout — while `httpPort: 0` installs through with exit 0. The port row of the readiness **page**
+(18/19) has therefore still not been clicked, only the check behind it.
 
-Zusatz 2026-08-05: Der DB-Zugriffs-Check gegen echten SQL Server 2022, alle drei Verdikte —
-vorhandener `db_owner` → grün (auch bei abweichender Groß-/Kleinschreibung des Benutzernamens, weil
-über SID aufgelöst wird), Login ohne Rolle → rot mit Fix-Angebot, Login gar nicht vorhanden → rot.
-`autoFixDefault=1` kommt nachweislich in der `probe.ini` an. Der Fix selbst zweimal hintereinander
-gefahren: beim zweiten Mal `Pass` ohne Änderung. Fall 30 end-to-end: Datenbank existierte nicht,
-`/VERYSILENT /ANSWERFILE` mit `createDatabaseAndLogin` → Exit 0, Datenbank + Login + `db_owner`
-angelegt, 36 Tabellen migriert, `healthz` 200. Gegenprobe ohne den Schlüssel: Exit 7 im Pre-Flight,
-nichts angefasst. Was weiter fehlt, ist die **Seite** (27–29): die Checkbox ist nie geklickt worden.
+Addendum 2026-08-05: the database-access check against a real SQL Server 2022, all three verdicts —
+existing `db_owner` → green (also with a differently cased user name, because it is resolved by SID),
+login without the role → red with a fix offered, login absent entirely → red. `autoFixDefault=1`
+demonstrably arrives in `probe.ini`. The fix itself was run twice in a row: the second time `Pass`
+without changes. Case 30 end to end: the database did not exist, `/VERYSILENT /ANSWERFILE` with
+`createDatabaseAndLogin` → exit 0, database + login + `db_owner` created, 36 tables migrated, `healthz`
+200. Counter-test without the key: exit 7 in the pre-flight, nothing touched. What is still missing is
+the **page** (27–29): the checkbox has never been clicked.
 
-Zusatz 2026-08-05 (PostgreSQL): gegen einen eigens aufgesetzten PostgreSQL 16 mit `ssl = on` und
-`sslmode=verify-full`, sieben Fälle. Rolle und Datenbank fehlen, Superuser vorhanden → rot, beide
-namentlich genannt, Fix angeboten; dasselbe ohne Superuser → rot, deutsche Server-Meldung wörtlich,
-kein Fix. Fix legt beides an und meldet sich zur Kontrolle als die Rolle an; zweiter Lauf ändert
-nichts (`Pass`); Neuprüfung grün ohne Checkbox. Fix mit einem Konto ohne `CREATEROLE`/`CREATEDB` →
-`Skipped`, und im Katalog nachgesehen: **nichts** angelegt. Falsches Rollen-Passwort bei
-vorhandener Rolle → rot mit „beide vorhanden", kein Fix, Passwort unverändert.
+Addendum 2026-08-05 (PostgreSQL): against a purpose-built PostgreSQL 16 with `ssl = on` and
+`sslmode=verify-full`, seven cases. Role and database missing, superuser present → red, both named
+explicitly, fix offered; the same without a superuser → red, German server message verbatim, no fix. The
+fix creates both and signs in as the role to verify; a second run changes nothing (`Pass`); re-check
+green without a checkbox. The fix with an account lacking `CREATEROLE`/`CREATEDB` → `Skipped`, and
+verified in the catalog: **nothing** created. Wrong role password with the role present → red with "both
+present", no fix, password unchanged.
 
-Der Cluster antwortete auf Deutsch — was den Entwurf geändert hat: die ursprüngliche
-Fehlerklassifikation las psql-Meldungen und hätte „Rolle »nodepilot« existiert nicht" als
-„abgelehnt" durchgereicht. Seitdem wird `pg_roles`/`pg_database` gefragt statt geparst.
+The cluster answered in German — which changed the design: the original error classification read psql
+messages and would have passed "Rolle »nodepilot« existiert nicht" through as "rejected". Since then
+`pg_roles`/`pg_database` are queried rather than parsed.
 
-Zusatz 2026-08-05 (Identitätswechsel): gemeldeter Fall reproduziert — LocalSystem installieren, dann
-frisch mit gMSA. Zwei Defekte, beide behoben und nachgemessen.
+Addendum 2026-08-05 (identity change): reported case reproduced — install as LocalSystem, then fresh
+with a gMSA. Two defects, both fixed and re-measured.
 
-Erstens schrieb der Dienst `jwt-secret.key` mit Owner und **einer** ACE für sich selbst; nach dem
-Wechsel kam die neue Identität nicht mehr an die eigene Datei („the file, its owner, or its ACL
-could not be verified"). Der Installer übergibt sie jetzt.
+First, the service wrote `jwt-secret.key` with itself as owner and **one** ACE for itself; after the
+change the new identity could no longer reach its own file ("the file, its owner, or its ACL could not
+be verified"). The installer now hands it over.
 
-Zweitens — und das war der schlimmere Teil — ließ der **Rollback** die ACE der neuen Identität auf
-dem Datenverzeichnis stehen. Aus Sicht der zurückgestellten Identität ist das ein *untrusted
-principal* mit Mutationsrechten am Elternverzeichnis des JWT-Keys, also startete auch die
-wiederhergestellte Installation nicht mehr: im Log „ROLLBACK ALSO FAILED", auf dem Bildschirm die
-Meldung mit „grants mutation rights to an untrusted principal" — die aus dem *zurückgerollten*
-Dienst stammte, nicht aus dem neuen. Ein gescheiterter Identitätswechsel riss damit die laufende
-Installation mit. Nachgemessen: die ACE entfernen, Dienst startet wieder.
+Second — and this was the worse part — the **rollback** left the new identity's ACE on the data
+directory. From the restored identity's point of view that is an *untrusted principal* with mutation
+rights on the parent directory of the JWT key, so the restored installation no longer started either:
+"ROLLBACK ALSO FAILED" in the log, and on screen the message about "grants mutation rights to an
+untrusted principal" — which came from the *rolled-back* service, not the new one. A failed identity
+change thereby took the running installation down with it. Re-measured: remove the ACE and the service
+starts again.
 
-Nachher, beides gegen CM1: gMSA-Installation über LocalSystem → Exit 0, Dienst läuft als
-`CORP\q-sdvorch2$`, Key-Owner mitgewandert. Erzwungener Fehlschlag nach dem ACL-Schritt → Exit 7,
-Dienst **weiterhin laufend** unter der alten Identität, Verzeichnis-ACL und Key-Owner
-zurückgestellt.
+Afterwards, both against CM1: gMSA installation over LocalSystem → exit 0, service runs as
+`CORP\q-sdvorch2$`, key ownership moved with it. Forced failure after the ACL step → exit 7, service
+**still running** under the old identity, directory ACL and key ownership restored.
 
-Dabei gefunden und behoben: eine `AllowedHosts`-Liste ohne `localhost` ließ die Installation an
-ihrer **eigenen** Health-Probe scheitern — `UseHostFiltering` antwortet auf `Host: localhost` mit
-400, die Probe geht aber an `https://localhost:<port>/healthz/ready`. Ergebnis war ein Rollback
-nach erfolgreicher Migration, mit „did not report /healthz/ready within 180s" als einzigem Hinweis.
-Der Installer hängt `localhost` jetzt immer an. Fremde Hosts bleiben abgewiesen (nachgemessen:
-`Host: evil.example` → 400).
+Found and fixed along the way: an `AllowedHosts` list without `localhost` made the installation fail on
+its **own** health probe — `UseHostFiltering` answers `Host: localhost` with 400, but the probe goes to
+`https://localhost:<port>/healthz/ready`. The result was a rollback after a successful migration, with
+"did not report /healthz/ready within 180s" as the only hint. The installer now always appends
+`localhost`. Foreign hosts stay rejected (measured: `Host: evil.example` → 400).

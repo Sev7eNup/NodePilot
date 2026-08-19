@@ -41,18 +41,34 @@ public class DocumentationCountsTests
         yield return Row("CLAUDE.md", @"\((\d+) Tools, \d+ Resources[,)]", toolTotal, "MCP tools (CLAUDE.md MCP section)");
         yield return Row("README.md", @"— (\d+) tools over", toolTotal, "MCP tools (README)");
         yield return Row("README.md", @"with (\d+) activity types", activities, "activity types (README highlights)");
-        yield return Row("README.md", @"Beyond the (\d+) executable Activity", activities, "activity types (README annotation nodes)");
+        // The README's "Beyond the N executable Activity types…" annotation-node claim was retired
+        // when the README stopped duplicating the documentation site. The count is still guarded
+        // twice — in the highlights row above, and in both language versions of the doc site's
+        // concepts/workflows page — so no coverage was lost by dropping the row rather than
+        // re-inserting a sentence the README no longer needs.
         yield return Row("docs/mcp-server.md", @"(\d+) default tools", defaultTools, "default MCP tools (docs)");
         yield return Row("docs/mcp-server.md", @"(\d+) gated destructive tools", destructive, "destructive MCP tools (docs)");
         yield return Row("docs/mcp-server.md", @"\((\d+) total\)", toolTotal, "total MCP tools (docs)");
-        yield return Row("src/nodepilot-docs-ui/content/mcp-server.md", @"(\d+) Tools über", toolTotal, "MCP tools (doc site)");
         // The doc site carried its own stale counts that no guard covered: "26+ Activity-Typen"
         // (the very number this test was written to retire) and "8 Skins" against a 7-entry
         // registry. Both are now derived from code like every row above.
-        yield return Row("src/nodepilot-docs-ui/content/concepts/workflows.md",
-            @"aller (\d+) Activity-Typen", activities, "activity types (doc site)");
-        yield return Row("src/nodepilot-docs-ui/content/designer/overview.md",
-            @"Popover mit (\d+) Skins", skins, "colour skins (doc site)");
+        //
+        // The site ships bilingually (content/de + content/en), so every claim is guarded in
+        // BOTH languages: a count corrected in one translation and forgotten in the other is
+        // precisely the drift a bilingual corpus adds, and it is invisible to a reader who only
+        // ever opens one language.
+        yield return Row("src/nodepilot-docs-ui/content/de/mcp-server.md",
+            @"(\d+) Tools über", toolTotal, "MCP tools (doc site, de)");
+        yield return Row("src/nodepilot-docs-ui/content/en/mcp-server.md",
+            @"(\d+) tools\s+across", toolTotal, "MCP tools (doc site, en)");
+        yield return Row("src/nodepilot-docs-ui/content/de/concepts/workflows.md",
+            @"aller (\d+) Activity-Typen", activities, "activity types (doc site, de)");
+        yield return Row("src/nodepilot-docs-ui/content/en/concepts/workflows.md",
+            @"all (\d+) activity types", activities, "activity types (doc site, en)");
+        yield return Row("src/nodepilot-docs-ui/content/de/designer/overview.md",
+            @"Popover mit (\d+) Skins", skins, "colour skins (doc site, de)");
+        yield return Row("src/nodepilot-docs-ui/content/en/designer/overview.md",
+            @"popover with (\d+) skins", skins, "colour skins (doc site, en)");
     }
 
     [Theory]

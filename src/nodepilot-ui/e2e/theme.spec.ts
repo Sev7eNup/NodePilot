@@ -340,7 +340,7 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
   test('17.9 - light-bank skin: light base, semantic red tokens, flat CTA, and persisted picker selection', async ({ page }) => {
     // Boot directly in Bank Hell so the skin is applied before the app first renders.
     await page.addInitScript(() =>
-      localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'light-sparkasse' }, version: 0 })),
+      localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'light-bank' }, version: 0 })),
     );
     await page.route((url) => url.pathname === '/api/stats/dashboard', (route) => route.fulfill({
       status: 200,
@@ -352,7 +352,7 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
 
     // The skin keeps the light base, writes its marker, and opts into blue-to-red remapping.
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('dark'))).toBe(false);
-    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-sparkasse');
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-bank');
     await expect.poll(() => page.evaluate(() => document.documentElement.classList.contains('np-accent-remap'))).toBe(true);
 
     // Bank Hell's semantic shell palette is intentionally explicit: neutral banking surfaces,
@@ -455,11 +455,11 @@ test.describe('Theme & UX-Features (Teil 17)', () => {
     const lightBank = appearance.getByRole('button', { name: /^light bank$/i });
     await expect(lightBank).toBeVisible();
     await lightBank.click();
-    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-sparkasse');
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('nodepilot.theme'))).toContain('"theme":"light-sparkasse"');
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-bank');
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('nodepilot.theme'))).toContain('"theme":"light-bank"');
     await page.reload();
     await expect(page.getByRole('heading', { name: /appearance/i })).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-sparkasse');
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-bank');
   });
 
   test('17.10 — nebula skin: dark base + cyan accent, glowing sidebar, glass cards, designer chrome cyan / canvas neutral', async ({ page }) => {

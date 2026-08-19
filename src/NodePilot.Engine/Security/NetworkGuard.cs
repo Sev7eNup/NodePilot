@@ -247,6 +247,11 @@ public static class NetworkGuard
         {
             var bytes = ip.GetAddressBytes();
             if (bytes[0] == 127) return true;
+            // M-34: 0.0.0.0/8 "this network". Connecting to 0.0.0.0 reaches the LOCAL host on
+            // Windows (and on Linux), so it is a plain loopback spelling that IPAddress.IsLoopback
+            // does not recognise — without this line `http://0.0.0.0:5000/` walks straight through
+            // RestApi:BlockPrivateNetworks.
+            if (bytes[0] == 0) return true;
             if (bytes[0] == 10) return true;
             if (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) return true;
             if (bytes[0] == 192 && bytes[1] == 168) return true;
@@ -256,6 +261,8 @@ public static class NetworkGuard
         if (ip.AddressFamily == AddressFamily.InterNetworkV6)
         {
             if (ip.IsIPv6SiteLocal) return true;
+            // M-34: :: (unspecified) — the IPv6 counterpart of 0.0.0.0, same reasoning as above.
+            if (ip.Equals(IPAddress.IPv6Any)) return true;
             var bytes = ip.GetAddressBytes();
             if ((bytes[0] & 0xFE) == 0xFC) return true; // fc00::/7 ULA
             if (ip.IsIPv4MappedToIPv6)

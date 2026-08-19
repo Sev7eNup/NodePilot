@@ -8,8 +8,7 @@ import {
   RadioButton,
   View,
 } from '@carbon/icons-react';
-import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
@@ -17,7 +16,6 @@ import type { Node } from '@xyflow/react';
 import { api } from '../../api/client';
 import type { WorkflowExecution, Workflow } from '../../types/api';
 import type { LiveExecution } from '../../hooks/useSignalR';
-import { KinskiEasterEgg } from '../easter-eggs/KinskiEasterEgg';
 import { OutputTab } from './execution/OutputTab';
 import { WatchTab } from './execution/WatchTab';
 import { HistoryTab } from './execution/HistoryTab';
@@ -59,27 +57,6 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
   const expertMode = useDesignStore((s) => s.designerMode === 'expert');
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [activeTab, setActiveTab] = useState<'live' | 'history' | 'output' | 'watch'>('live');
-  const [kinskiClickCount, setKinskiClickCount] = useState(0);
-  const [showKinski, setShowKinski] = useState(false);
-  const outputTabRef = useRef<HTMLButtonElement>(null);
-
-  // The Kinski easter egg needs 10 *consecutive* clicks on the Output tab. As soon as
-  // the user clicks anywhere else (canvas, another tab, properties, …), the counter must be
-  // reset — otherwise 10 clicks scattered across a session would still trigger the egg.
-  // The effect depends on a boolean (counter > 0) so the listener attaches only once on the
-  // 0→1 transition and detaches again on reset — no re-attaching on every increment, and no
-  // global click handler at all while the user isn't counting. We recognize output-tab clicks
-  // via the ref and ignore them here (the increment itself happens in TabButton's onClick).
-  const kinskiCounting = kinskiClickCount > 0;
-  useEffect(() => {
-    if (!kinskiCounting) return;
-    const handler = (e: MouseEvent) => {
-      if (outputTabRef.current?.contains(e.target as globalThis.Node)) return;
-      setKinskiClickCount(0);
-    };
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
-  }, [kinskiCounting]);
 
   // When the user just started a simulation, they should see the result right away —
   // not miss it behind a collapsed panel or the History tab. We expand the panel and switch to
@@ -201,12 +178,7 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
               </span>
             )}
           </TabButton>
-          <TabButton ref={outputTabRef} active={activeTab === 'output'} onClick={() => {
-            setActiveTab('output');
-            const next = kinskiClickCount + 1;
-            if (next >= 10) { setShowKinski(true); setKinskiClickCount(0); }
-            else setKinskiClickCount(next);
-          }}>
+          <TabButton active={activeTab === 'output'} onClick={() => setActiveTab('output')}>
             <DataBase size={13} />
             {t('execution.tabs.output')}
             {databusEntryCount > 0 && (
@@ -250,7 +222,6 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
           </Link>
         </div>
       )}
-      {showKinski && createPortal(<KinskiEasterEgg onClose={() => setShowKinski(false)} />, document.body)}
       <div className="flex-1 overflow-hidden">
         {activeTab === 'live' ? (
           <LiveTab
@@ -286,10 +257,9 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
 
 /* ---- Tab Button ---- */
 
-function TabButton({ active, onClick, children, ref }: Readonly<{ active: boolean; onClick: () => void; children: React.ReactNode; ref?: React.Ref<HTMLButtonElement> }>) {
+function TabButton({ active, onClick, children }: Readonly<{ active: boolean; onClick: () => void; children: React.ReactNode }>) {
   return (
     <button
-      ref={ref}
       onClick={onClick}
       className={`flex items-center gap-1.5 px-4 py-2.5 text-xs font-label font-semibold border-b-2 transition-colors ${
         active

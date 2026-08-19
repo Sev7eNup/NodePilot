@@ -67,7 +67,11 @@ description = "Documented external-trigger API-key placeholder"
 targetRules = ["curl-auth-header"]
 condition = "AND"
 regexTarget = "line"
-paths = ['''^E2ETests\.md$''']
+# Both paths on purpose. The scan walks every reachable commit, and E2ETests.md lived at the
+# repository root from 1.0.0 until it moved under docs/testing/. History keeps the old path
+# forever, so dropping it here would re-flag every historical commit — which is exactly what
+# happened when the move was first made. A path-anchored allowlist has to outlive the move.
+paths = ['''^docs/testing/E2ETests\.md$''', '''^E2ETests\.md$''']
 regexes = ['''X-Api-Key:''']
 
 [[allowlists]]

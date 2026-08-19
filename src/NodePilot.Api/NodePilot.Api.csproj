@@ -55,8 +55,15 @@
          (ContentRoot/knowledge/docs) so the global "AI Chat" knowledge assistant can LIVE-READ it
          in dev (dotnet run) AND prod (dotnet publish) — flows through both with no deploy-script
          edit. Live-read, NOT embedded: doc edits flow in on the next build/deploy, nothing to
-         re-index. The source-code corpus is shipped separately by deploy/Build-Artifact.ps1. -->
-    <Content Include="..\nodepilot-docs-ui\content\**\*.md"
+         re-index. The source-code corpus is shipped separately by deploy/Build-Artifact.ps1.
+
+         ENGLISH ONLY, deliberately. The doc site ships bilingually (content/de + content/en),
+         but a bare content\**\*.md glob would embed every page twice and silently double the
+         assistant's token cost and retrieval noise for no gain — the model answers in the
+         asker's language regardless of the corpus language. `en` is the site's default and the
+         canonical text; `%(RecursiveDir)` stays relative to the glob root, so the shipped
+         layout (knowledge/docs/getting-started/…) is unchanged. -->
+    <Content Include="..\nodepilot-docs-ui\content\en\**\*.md"
              Link="knowledge\docs\%(RecursiveDir)%(Filename)%(Extension)"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />

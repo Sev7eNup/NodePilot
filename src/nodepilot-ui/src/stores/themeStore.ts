@@ -37,10 +37,10 @@ export interface ThemeDef {
 export const THEMES = [
   { id: 'light', base: 'light', labelKey: 'themeLight' },
   { id: 'light-grey', base: 'light', labelKey: 'themeLightGrey', remapBlue: true },
-  { id: 'light-sparkasse', base: 'light', labelKey: 'themeSparkasseLight', remapBlue: true },
+  { id: 'light-bank', base: 'light', labelKey: 'themeBankLight', remapBlue: true },
   { id: 'dark', base: 'dark', labelKey: 'themeDark', remapBlue: true },
   { id: 'dark-lila', base: 'dark', labelKey: 'themeDarkLila', remapBlue: true },
-  { id: 'dark-sparkasse', base: 'dark', labelKey: 'themeSparkasseDark', remapBlue: true },
+  { id: 'dark-bank', base: 'dark', labelKey: 'themeBankDark', remapBlue: true },
   { id: 'dark-nebula', base: 'dark', labelKey: 'themeDarkNebula', remapBlue: true },
 ] as const satisfies readonly ThemeDef[];
 

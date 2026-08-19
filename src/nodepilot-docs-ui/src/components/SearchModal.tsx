@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { allPages } from '../data/nav'
-import { contentMap } from '../lib/content'
+import { useTranslation } from 'react-i18next'
+import { allPages, navTitleKey } from '../data/nav'
+import { contentByLang } from '../lib/content'
+import { DEFAULT_LANG, type Lang } from '../i18n/languages'
 import { ArrowRight, Close, Search } from '@carbon/icons-react'
 
 interface SearchModalProps {
+  /** Active language — both the corpus searched and the routes minted. */
+  lang: Lang
   open: boolean
   onClose: () => void
 }
@@ -15,11 +19,12 @@ interface Hit {
   snippet: string
 }
 
-export default function SearchModal({ open, onClose }: SearchModalProps) {
+export default function SearchModal({ lang, open, onClose }: SearchModalProps) {
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
+  const { t } = useTranslation()
 
   useEffect(() => {
     if (open) {
@@ -39,39 +44,45 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
   }, [open, onClose])
 
   const results: Hit[] = useMemo(() => {
+    // Search the reader's language, falling back per page so an untranslated page is
+    // still findable rather than invisible.
+    const corpus = (path: string) =>
+      contentByLang[lang]?.[path] ?? contentByLang[DEFAULT_LANG]?.[path]
+
     const q = query.trim().toLowerCase()
     if (!q) {
       return allPages.slice(0, 8).map((p) => ({
         path: p.path,
-        title: p.title,
-        snippet: excerpt(contentMap[p.path] ?? ''),
+        title: t(navTitleKey(p.path)),
+        snippet: excerpt(corpus(p.path) ?? ''),
       }))
     }
     const hits: Hit[] = []
     for (const page of allPages) {
-      const md = contentMap[page.path]
+      const md = corpus(page.path)
       if (!md) continue
+      const title = t(navTitleKey(page.path))
       const lower = md.toLowerCase()
       const idx = lower.indexOf(q)
-      const titleHit = page.title.toLowerCase().includes(q)
+      const titleHit = title.toLowerCase().includes(q)
       if (idx >= 0 || titleHit) {
         hits.push({
           path: page.path,
-          title: page.title,
+          title,
           snippet: idx >= 0 ? snippetAround(md, idx) : excerpt(md),
         })
       }
       if (hits.length >= 30) break
     }
     return hits
-  }, [query])
+  }, [query, lang, t])
 
   useEffect(() => setCursor(0), [query])
 
   if (!open) return null
 
   const go = (path: string) => {
-    navigate(`/${path}`)
+    navigate(`/${lang}/${path}`)
     onClose()
   }
 
@@ -80,7 +91,7 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
       className="fixed inset-0 z-50 flex justify-center bg-black/40 px-4 pt-[12vh] backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
-      aria-label="Suche"
+      aria-label={t('ui.search')}
     >
       {/* `np-card` carries the lit-plate treatment (and its own shadow in dark) — adding
           a `shadow-2xl` utility here would be a second unlayered rule fighting it. */}
@@ -106,14 +117,14 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
                 go(results[cursor].path)
               }
             }}
-            placeholder="Dokumentation durchsuchen…"
+            placeholder={t('ui.searchPlaceholder')}
             className="h-12 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-on-surface-variant"
           />
           <button
             type="button"
             onClick={onClose}
             className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-on-surface-variant hover:bg-surface-container hover:text-on-surface"
-            aria-label="Schließen"
+            aria-label={t('ui.close')}
           >
             <Close size={16} />
           </button>
@@ -122,7 +133,7 @@ export default function SearchModal({ open, onClose }: SearchModalProps) {
         <ul className="overflow-y-auto py-2">
           {results.length === 0 && (
             <li className="px-4 py-6 text-center text-sm text-on-surface-variant">
-              Keine Treffer für „{query}“.
+              {t('ui.noResults', { query })}
             </li>
           )}
           {results.map((hit, i) => (

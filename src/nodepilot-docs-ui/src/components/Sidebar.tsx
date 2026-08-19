@@ -1,12 +1,17 @@
 import { useState } from 'react'
 import { NavLink } from 'react-router'
-import { Asleep, ChevronRight, Close, Light, LogoGithub, Search } from '@carbon/icons-react'
-import { navGroups, type NavPage } from '../data/nav'
+import { useTranslation } from 'react-i18next'
+import { Asleep, ChevronRight, Close, Download, Light, LogoGithub, Search } from '@carbon/icons-react'
+import { navGroups, navGroupKey, navTitleKey, type NavPage } from '../data/nav'
 import { useTheme } from '../lib/useTheme'
+import LanguageSwitcher from './LanguageSwitcher'
+import type { Lang } from '../i18n/languages'
 import logoLight from '../assets/logo-light.png'
 import logoDark from '../assets/logo-dark.png'
 
 interface SidebarProps {
+  /** Active language — every nav link is minted under it. */
+  lang: Lang
   /** Active content path, e.g. "getting-started/introduction". */
   current: string
   /** Drawer state — only meaningful below `lg`, where the same <aside> is the off-canvas drawer. */
@@ -22,8 +27,9 @@ interface SidebarProps {
  * a `translate` that survives into the desktop layout would make the element a containing
  * block for `position: fixed` descendants and its own stacking context.
  */
-export default function Sidebar({ current, open, onClose, onOpenSearch }: SidebarProps) {
+export default function Sidebar({ lang, current, open, onClose, onOpenSearch }: SidebarProps) {
   const { theme, toggle } = useTheme()
+  const { t } = useTranslation()
   const logo = theme === 'dark' ? logoDark : logoLight
 
   return (
@@ -45,10 +51,10 @@ export default function Sidebar({ current, open, onClose, onOpenSearch }: Sideba
               <span className="truncate bg-gradient-to-r from-primary to-primary-container bg-clip-text text-[16px] font-bold leading-none text-transparent">
                 NodePilot
               </span>
-              <span className="np-brand-edition shrink-0">Docs</span>
+              <span className="np-brand-edition shrink-0">{t('ui.brandEdition')}</span>
             </div>
             <p className="mt-1 truncate text-[10px] font-semibold uppercase leading-none tracking-[0.09em] text-on-surface-variant/70">
-              Workflow Orchestration Platform
+              {t('ui.tagline')}
             </p>
           </div>
         </div>
@@ -56,7 +62,7 @@ export default function Sidebar({ current, open, onClose, onOpenSearch }: Sideba
           type="button"
           onClick={onClose}
           className="-mr-1 shrink-0 rounded p-1 text-on-surface-variant transition-colors hover:bg-surface-highest hover:text-on-surface lg:hidden"
-          aria-label="Navigation schließen"
+          aria-label={t('ui.closeNav')}
         >
           <Close size={18} />
         </button>
@@ -71,10 +77,10 @@ export default function Sidebar({ current, open, onClose, onOpenSearch }: Sideba
             className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/60"
           />
           <button type="button" onClick={onOpenSearch} className="np-sb-search-input">
-            Dokumentation durchsuchen…
+            {t('ui.searchPlaceholder')}
           </button>
           <span className="np-sb-search-kbd pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 select-none">
-            Strg K
+            {t('ui.searchShortcut')}
           </span>
         </div>
       </div>
@@ -83,9 +89,10 @@ export default function Sidebar({ current, open, onClose, onOpenSearch }: Sideba
       <nav className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 pb-[22px] pt-1">
         {navGroups.map((group, gi) => (
           <SidebarGroup
-            key={group.label}
-            label={group.label}
+            key={group.id}
+            id={group.id}
             items={group.items}
+            lang={lang}
             current={current}
             first={gi === 0}
             onNavigate={onClose}
@@ -93,24 +100,41 @@ export default function Sidebar({ current, open, onClose, onOpenSearch }: Sideba
         ))}
       </nav>
 
-      {/* Footer — theme toggle + repo link. Extra bottom padding clears the phone's
-          system navigation bar (0 on desktop). */}
+      {/* Download call-to-action. A reader who has understood the docs needs somewhere to go
+          next, and `/releases/latest` is the one GitHub URL that always resolves to the newest
+          release. It cannot be a fourth button in the footer row below: `.np-skin-btn` is a
+          fixed 40x38 icon cell with no room for a word. */}
+      <div className="px-[18px] pb-4">
+        <a
+          href="https://github.com/Sev7eNup/NodePilot/releases/latest"
+          target="_blank"
+          rel="noreferrer"
+          className="np-sb-download"
+        >
+          <Download size={16} aria-hidden />
+          <span>{t('ui.download')}</span>
+        </a>
+      </div>
+
+      {/* Footer — theme toggle, language and repo link. Extra bottom padding clears the
+          phone's system navigation bar (0 on desktop). */}
       <div className="flex items-center gap-2 border-t border-outline-variant/60 px-3 pb-[calc(0.75rem_+_env(safe-area-inset-bottom))] pt-3">
         <button
           type="button"
           onClick={toggle}
           className="np-skin-btn"
-          aria-label={theme === 'dark' ? 'Light-Modus' : 'Dark-Modus'}
-          title={theme === 'dark' ? 'Light-Modus' : 'Dark-Modus'}
+          aria-label={theme === 'dark' ? t('ui.lightMode') : t('ui.darkMode')}
+          title={theme === 'dark' ? t('ui.lightMode') : t('ui.darkMode')}
         >
           {theme === 'dark' ? <Light size={16} /> : <Asleep size={16} />}
         </button>
+        <LanguageSwitcher lang={lang} current={current} />
         <a
           href="https://github.com/Sev7eNup/NodePilot"
           target="_blank"
           rel="noreferrer"
           className="np-skin-btn"
-          aria-label="GitHub-Repository"
+          aria-label={t('ui.github')}
           title="GitHub"
         >
           <LogoGithub size={16} />
@@ -121,18 +145,21 @@ export default function Sidebar({ current, open, onClose, onOpenSearch }: Sideba
 }
 
 function SidebarGroup({
-  label,
+  id,
   items,
+  lang,
   current,
   first,
   onNavigate,
 }: {
-  label: string
+  id: string
   items: NavPage[]
+  lang: Lang
   current: string
   first: boolean
   onNavigate: () => void
 }) {
+  const { t } = useTranslation()
   // Default: the group holding the current page is open, so arriving via search or
   // prev/next always reveals the active item. A manual toggle wins from then on.
   const [override, setOverride] = useState<boolean | null>(null)
@@ -148,7 +175,7 @@ function SidebarGroup({
         className="np-sb-section-title mb-[5px]"
         aria-expanded={open}
       >
-        <span>{label}</span>
+        <span>{t(navGroupKey(id))}</span>
         <ChevronRight
           size={12}
           className={`shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
@@ -156,12 +183,12 @@ function SidebarGroup({
       </button>
       {open && (
         <div className="grid gap-[3px]">
-          {items.map(({ path, title, icon: Icon }) => (
-            <NavLink key={path} to={`/${path}`} end onClick={onNavigate} className="np-nav">
+          {items.map(({ path, icon: Icon }) => (
+            <NavLink key={path} to={`/${lang}/${path}`} end onClick={onNavigate} className="np-nav">
               <span className="np-nav-icon">
                 <Icon size={18} aria-hidden />
               </span>
-              <span>{title}</span>
+              <span>{t(navTitleKey(path))}</span>
             </NavLink>
           ))}
         </div>

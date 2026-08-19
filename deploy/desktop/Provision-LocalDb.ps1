@@ -40,7 +40,13 @@ param(
     [int]    $PgPortRangeStart    = 47100,
     [int]    $PgPortRangeEnd      = 47149,
     [string] $DbName = 'nodepilot',
-    [string] $DbRole = 'nodepilot'
+    [string] $DbRole = 'nodepilot',
+    # Where the first-run handoff is written. Normally resolved from the interactive (console)
+    # user, because THAT is who Inno launches the Electron shell as ([Run] runasoriginaluser) and
+    # therefore whose %LOCALAPPDATA% the shell reads. Only override this for the dev loop or a
+    # test; see Set-AdminSetupHandoff for why the elevated process's own profile is the wrong
+    # answer whenever the installer was elevated with someone else's credentials.
+    [string] $HandoffUserProfile
 )
 
 Set-StrictMode -Version 3.0
@@ -85,6 +91,58 @@ function New-RandomSecret([int] $bytes = 32) {
     try { $rng.GetBytes($buf) } finally { $rng.Dispose() }
     # URL/shell-safe base64 without padding-sensitive characters that complicate connection strings.
     return ([Convert]::ToBase64String($buf)) -replace '[+/=]', ''
+}
+
+# The interactive (console) user, as SID + %LOCALAPPDATA%, or $null when there is none.
+#
+# This exists because "the user running this script" and "the user the Electron shell will run as"
+# are NOT the same principal. Inno runs the whole installer elevated (PrivilegesRequired=admin)
+# but launches the shell with `runasoriginaluser`, i.e. as whoever is sitting at the machine. When
+# a standard user starts the installer and types a *different* administrator's credentials at the
+# UAC prompt - the normal case on a managed Windows box, and common on home machines with a
+# separate admin account - this script runs as that administrator while the shell runs as the
+# standard user. Writing the handoff into $env:LOCALAPPDATA then puts it in the administrator's
+# profile, the shell never finds it, and the user is stranded on a login form for an account that
+# does not exist yet. Inno's own {localappdata} is no help: it expands in the elevated context too.
+#
+# Win32_ComputerSystem.UserName is the console session's user, which is exactly the principal
+# `runasoriginaluser` targets. The profile path comes from the ProfileList registry rather than a
+# string built out of the user name, so redirected or renamed profiles still resolve.
+function Get-InteractiveUserProfile {
+    try {
+        $userName = (Get-CimInstance -ClassName Win32_ComputerSystem -ErrorAction Stop).UserName
+    } catch {
+        return $null
+    }
+    if ([string]::IsNullOrWhiteSpace($userName)) { return $null }
+
+    try {
+        $sid = (New-Object System.Security.Principal.NTAccount($userName)).Translate(
+            [System.Security.Principal.SecurityIdentifier])
+    } catch {
+        Write-Warning "Could not resolve the SID of interactive user '$userName': $($_.Exception.Message)"
+        return $null
+    }
+
+    $profileKey = "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProfileList\$($sid.Value)"
+    try {
+        $profilePath = (Get-ItemProperty -Path $profileKey -Name 'ProfileImagePath' -ErrorAction Stop).ProfileImagePath
+    } catch {
+        Write-Warning "No profile directory registered for interactive user '$userName' ($($sid.Value))."
+        return $null
+    }
+    # ProfileImagePath is commonly a REG_EXPAND_SZ holding %SystemDrive%\Users\<name>.
+    $profilePath = [Environment]::ExpandEnvironmentVariables($profilePath)
+    if ([string]::IsNullOrWhiteSpace($profilePath) -or -not (Test-Path -LiteralPath $profilePath)) {
+        Write-Warning "Profile directory '$profilePath' for '$userName' does not exist."
+        return $null
+    }
+
+    return [pscustomobject]@{
+        UserName     = $userName
+        Sid          = $sid
+        LocalAppData = (Join-Path $profilePath 'AppData\Local')
+    }
 }
 
 function Get-FreePort([int] $start, [int] $end) {
@@ -547,9 +605,9 @@ for ($i = 0; $i -lt 90; $i++) {
 # shell show the first-run "create administrator" page; skipping it strands the user on the normal
 # login form, which cannot send the required X-Setup-Token header.
 # The API wrote a SYSTEM-owned one-shot setup token under DataPath during first boot. Copy it
-# into the installing user's profile so the user-context Electron shell (started next) can read
-# it and drive first-run admin creation. ACL-restricted to the installing user + SYSTEM. No-op
-# on re-install (token absent once users exist).
+# into the INTERACTIVE user's profile - the one Inno starts the shell as - so the user-context
+# Electron shell can read it and drive first-run admin creation. ACL-restricted to that user +
+# SYSTEM. No-op on re-install (token absent once users exist).
 Write-Step 'Writing admin setup handoff'
 $tokenPath = Join-Path $DataPath 'admin-setup.token'
 if (Test-Path -LiteralPath $tokenPath) {
@@ -562,7 +620,31 @@ if (Test-Path -LiteralPath $tokenPath) {
     & takeown.exe /f $tokenPath /a | Out-Null
     & icacls.exe $tokenPath /grant '*S-1-5-32-544:(R)' | Out-Null
 
-    $handoffDir = Join-Path $env:LOCALAPPDATA 'NodePilot'
+    # Resolve WHOSE profile the handoff belongs in, and which SID may read it. Explicit parameter
+    # wins (dev loop / test), then the interactive user, and only then this process - the last of
+    # which is correct exactly when the installing user elevated their own session.
+    $handoffOwnerSid = $null
+    if (-not [string]::IsNullOrWhiteSpace($HandoffUserProfile)) {
+        $handoffBase = $HandoffUserProfile
+        Write-Host "    Handoff target from -HandoffUserProfile: $handoffBase"
+    } else {
+        $interactive = Get-InteractiveUserProfile
+        if ($interactive) {
+            $handoffBase     = $interactive.LocalAppData
+            $handoffOwnerSid = $interactive.Sid
+            Write-Host "    Handoff target: interactive user $($interactive.UserName)"
+        } else {
+            $handoffBase = $env:LOCALAPPDATA
+            Write-Warning ("No interactive user could be determined; falling back to this process's " +
+                           "profile. If the installer was elevated with a different account, the " +
+                           "first-run setup page will not appear - see docs/desktop-troubleshooting.md.")
+        }
+    }
+    if ($null -eq $handoffOwnerSid) {
+        $handoffOwnerSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User
+    }
+
+    $handoffDir = Join-Path $handoffBase 'NodePilot'
     New-Item -ItemType Directory -Force -Path $handoffDir | Out-Null
     $handoffPath = Join-Path $handoffDir 'admin-setup.handoff'
     $tokenValue = [System.IO.File]::ReadAllText($tokenPath)
@@ -571,7 +653,7 @@ if (Test-Path -LiteralPath $tokenPath) {
     if ([string]::IsNullOrWhiteSpace($tokenValue)) {
         throw "Bootstrap token at $tokenPath could not be read (empty). First-run setup cannot be prepared."
     }
-    $userSid = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User
+    $userSid = $handoffOwnerSid
     if (Test-Path -LiteralPath $handoffPath) { Remove-Item -LiteralPath $handoffPath -Force }
     New-Item -ItemType File -Path $handoffPath | Out-Null
     $hacl = New-Object System.Security.AccessControl.FileSecurity

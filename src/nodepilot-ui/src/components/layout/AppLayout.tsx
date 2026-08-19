@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Outlet, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
-import { ScorchEasterEgg } from '../easter-eggs/ScorchEasterEgg';
 import { useIsMobile } from '../../hooks/useMediaQuery';
 
 // Lazy so @xyflow stays out of the main bundle — only loaded when a phone user opens a
@@ -12,33 +11,13 @@ const MobileWorkflowView = lazy(() =>
   import('../../pages/MobileWorkflowView').then((m) => ({ default: m.MobileWorkflowView })),
 );
 
-const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ArrowLeft', 'ArrowRight', 'b', 'a'];
-
 export function AppLayout() {
   const location = useLocation();
   const { t } = useTranslation(['nav']);
   const isMobile = useIsMobile();
-  const [showScorch, setShowScorch] = useState(false);
   // Transient: the mobile nav drawer. Deliberately not persisted — it must start closed
   // on every load and auto-close on navigation (effect below) and on backdrop click.
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const konamiIdx = useRef(0);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === KONAMI[konamiIdx.current]) {
-        konamiIdx.current++;
-        if (konamiIdx.current === KONAMI.length) {
-          setShowScorch(true);
-          konamiIdx.current = 0;
-        }
-      } else {
-        konamiIdx.current = e.key === KONAMI[0] ? 1 : 0;
-      }
-    };
-    globalThis.addEventListener('keydown', handler);
-    return () => globalThis.removeEventListener('keydown', handler);
-  }, []);
 
   // Close the mobile drawer whenever the route changes (tapping a nav link navigates).
   useEffect(() => {
@@ -58,7 +37,6 @@ export function AppLayout() {
         ) : (
           <Outlet />
         )}
-        {showScorch && <ScorchEasterEgg onClose={() => setShowScorch(false)} />}
       </>
     );
   }
@@ -85,7 +63,6 @@ export function AppLayout() {
           </div>
         </main>
       </div>
-      {showScorch && <ScorchEasterEgg onClose={() => setShowScorch(false)} />}
     </>
   );
 }

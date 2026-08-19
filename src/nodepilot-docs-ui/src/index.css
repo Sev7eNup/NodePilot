@@ -328,6 +328,43 @@ button.np-sb-search-input {
   font-weight: 700;
 }
 
+/* ── Download CTA ──────────────────────────────────────────────────────────── */
+/* Shares the search field's geometry so the rail keeps one rhythm, but is the only
+   accent-filled control in the sidebar — it is the single action the site is trying to
+   produce, and nothing else competes with it. Colours come from the skin tokens, so it
+   follows light/dark without a second rule. */
+.np-sb-download {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: 40px;
+  border: 1px solid color-mix(in srgb, var(--np-accent) 55%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--np-accent) 16%, transparent);
+  color: var(--np-accent-text);
+  font-size: 13px;
+  font-weight: 600;
+  transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+/* Hover deepens the fill toward the accent — but the label is drawn IN the accent, so a
+   deeper fill moves background and text together and costs contrast. 22% is the ceiling
+   that still clears AA in the light skin (4.76:1; 26% lands at 4.43:1 and fails). Dark is
+   not the binding case here — its label is the far lighter --np-accent-text. */
+.np-sb-download:hover {
+  border-color: color-mix(in srgb, var(--np-accent) 78%, transparent);
+  background: color-mix(in srgb, var(--np-accent) 22%, transparent);
+}
+/* A real outline, not a tinted box-shadow. A translucent accent halo over this rail
+   measures ~1.3:1 and is invisible — far below the 3:1 WCAG 1.4.11 asks of a focus
+   indicator. An opaque outline in --np-accent-text gives 6.8:1 (light) / 7.5:1 (dark),
+   and unlike box-shadow it survives forced-colors/high-contrast mode. */
+.np-sb-download:focus-visible {
+  outline: 2px solid var(--np-accent-text);
+  outline-offset: 2px;
+}
+
 /* ── Sections ──────────────────────────────────────────────────────────────── */
 /* Category label with a divider line filling the rest of the row. Rendered as a
    <button> here (the docs groups collapse), so it needs the cursor back — Tailwind v4
@@ -443,6 +480,45 @@ button.np-sb-search-input {
   color: var(--color-primary);
   transform: translateY(-1px);
   box-shadow: 0 5px 16px color-mix(in srgb, #000 10%, transparent);
+}
+
+/* ── Language segment (DE | EN) ────────────────────────────────────────────── */
+/* Shares the height and shell of .np-skin-btn so the footer row stays one line of
+   controls, but carries two text segments instead of a glyph. Text-only by design:
+   a flag would be wrong (languages are not countries) and a globe says "language"
+   without saying WHICH — the two codes say both at a glance. */
+.np-sb-lang {
+  display: flex;
+  height: 38px;
+  overflow: hidden;
+  border: 1px solid var(--np-sb-border);
+  border-radius: 10px;
+  background: var(--np-sb-control);
+}
+.np-sb-lang > button {
+  padding: 0 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: color-mix(in srgb, var(--color-on-surface-variant) 78%, transparent);
+  transition: color .16s ease, background .16s ease;
+}
+/* Hairline between the segments, drawn on the second one so it never sits on an edge. */
+.np-sb-lang > button + button {
+  border-left: 1px solid var(--np-sb-border);
+}
+.np-sb-lang > button:hover:not(.is-active) {
+  background: color-mix(in srgb, var(--color-primary) 9%, transparent);
+  color: var(--color-primary);
+}
+.np-sb-lang > button.is-active {
+  background: color-mix(in srgb, var(--np-accent) 20%, transparent);
+  color: var(--np-accent-text);
+  cursor: default;
+}
+.np-sb-lang > button:focus-visible {
+  outline: 2px solid var(--np-accent-text);
+  outline-offset: -2px;
 }
 
 /* The mobile drawer is always mounted (one <aside> serves both layouts), so it must be

@@ -82,7 +82,10 @@ test.db
 
 # Personal/local-only files (machines snapshot, copied hosts file)
 /machines.json
-**/flori-hosts-copy.txt
+**/*-hosts-copy.txt
+
+# Product-naming scratch — brainstorming, not a decision. Must not reach the public repo.
+/newnames.md
 
 # Personal workflow scratch under scripts/ — exported via the UI for ad-hoc work,
 # not committed. Test-Workflows for the suite still live under scripts/test-*-workflow.json

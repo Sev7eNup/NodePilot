@@ -1,0 +1,81 @@
+name: Docs site
+
+# Publishes the documentation SPA (src/nodepilot-docs-ui) to GitHub Pages at
+# https://sev7enup.github.io/NodePilot/.
+#
+# ONE-TIME MANUAL STEP: Settings -> Pages -> Build and deployment -> Source -> "GitHub Actions".
+# Nothing here can do it for you. actions/configure-pages does expose an `enablement` input, but
+# its own description rules out the default token ("requires a token other than GITHUB_TOKEN" —
+# a PAT with repo scope, or a GitHub App with administration:write). Until a human flips that
+# switch, deploy-pages fails with a 404 that names the settings URL.
+#
+# configure-pages is deliberately NOT used. Its only other job is injecting a base path into a
+# known SSG, and it recognises exactly nuxt/next/gatsby/sveltekit — Vite is not among them. The
+# docs site already builds location-independent: `base: './'` emits relative asset URLs, and the
+# app uses HashRouter, so every route lives in the fragment and the server only ever serves
+# /NodePilot/index.html. That also means no 404.html SPA fallback is needed.
+on:
+  push:
+    branches: [main]
+    # Only the docs package can change what gets published. A backend-only commit would
+    # otherwise redeploy a byte-identical site on every push to main.
+    paths:
+      - 'src/nodepilot-docs-ui/**'
+      - '.github/workflows/docs-pages.yml'
+  # Manual re-deploy: useful after enabling Pages for the first time, and after a failed run
+  # whose cause was fixed outside this repository.
+  workflow_dispatch:
+
+# The repository's default workflow token is read-only, so nothing here is inherited —
+# every permission a Pages deployment needs has to be named.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A single global queue for Pages, and NOT cancel-in-progress: a deployment already writing
+# to the live site should be allowed to finish rather than be killed halfway by a newer push.
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build + deploy to Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    defaults:
+      run:
+        working-directory: src/nodepilot-docs-ui
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: src/nodepilot-docs-ui/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # Lint and the de/en corpus parity guard already gate every PR in ci.yml; this job runs
+      # after the merge, on a tree that has passed them. It re-runs the tests anyway — they take
+      # ~2s and are the only thing standing between a bad merge and the live site.
+      - name: Tests
+        run: npm run test:run
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: src/nodepilot-docs-ui/dist
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

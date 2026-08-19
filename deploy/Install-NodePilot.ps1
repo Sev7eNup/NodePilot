@@ -8,9 +8,13 @@
 
 .DESCRIPTION
     Prerequisites (see deploy\README.md for details):
-      - Windows Server 2022/2025, domain-joined
-      - .NET 10 ASP.NET Core Runtime / Hosting Bundle installed
-      - gMSA created in AD, installed on this host (Test-ADServiceAccount green)
+      - Windows Server 2022/2025. Domain-joined for the gMSA path; -UseLocalSystem installs
+        without a domain (the service then authenticates as the computer account DOMAIN\HOST$).
+      - ASP.NET Core Runtime 10.0.11 or newer in the 10.x line, x64 - the PLAIN runtime, NOT the
+        Hosting Bundle. The bundle wires up IIS and restarts W3SVC, which you do not want on a
+        shared host; the pre-flight rejects a 32-bit runtime by name rather than passing it.
+      - gMSA created in AD, installed on this host (Test-ADServiceAccount green) - unless
+        -UseLocalSystem is used.
       - SQL Server path: gMSA has SQL login with db_owner on the target DB
       - Postgres path: role created with CREATEDB or the DB already exists + owned by role
       - TLS cert imported into Cert:\LocalMachine\My (with private key)

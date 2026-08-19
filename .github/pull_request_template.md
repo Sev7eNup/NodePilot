@@ -25,4 +25,4 @@
 - [ ] Architecture guard tests still pass (catalog/DTO/RBAC/audit/admin-settings parity)
 - [ ] Added an ADR under `docs/adr/` if this is a lasting architectural decision
       (see [`docs/adr/README.md`](../docs/adr/README.md))
-- [ ] Docs updated (README / CLAUDE.md / docs/ / docs-ui `content/`) if behavior or config changed
+- [ ] Docs updated (README / CLAUDE.md / docs/ / docs-ui `content/de/` **and** `content/en/`) if behavior or config changed

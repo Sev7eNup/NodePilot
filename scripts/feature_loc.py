@@ -101,8 +101,6 @@ def classify(lower_path, filename_lower):
         return 'Workflow-Liste (FE)'
     if re.search(r'nodepilot-ui[\\/]src[\\/]components[\\/]layout', p):
         return 'Layout/Nav (FE)'
-    if re.search(r'nodepilot-ui[\\/]src[\\/]components[\\/]easter-eggs', p):
-        return 'Easter-Eggs'
     if re.search(r'nodepilot-ui[\\/]src[\\/]components[\\/]common', p):
         return 'Common-Components (FE)'
     if re.search(r'nodepilot-ui[\\/]src[\\/]pages', p):
@@ -308,7 +306,6 @@ GROUPS = {
         'Deploy-Skripte', 'Scripts (sonst)', 'Stress-Tests', 'Samples', 'Grafana-Dashboards',
     ],
     'i18n (DE/EN)': ['i18n (DE/EN)'],
-    'Easter-Eggs': ['Easter-Eggs'],
 }
 
 print('=== TOP-FEATURES (logisch gruppiert) ===')

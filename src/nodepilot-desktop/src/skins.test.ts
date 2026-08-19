@@ -24,7 +24,7 @@ describe('skinFromFaviconUrl', () => {
   it.each([
     ['https://localhost:5001/appicon-dark.png', 'dark'],
     ['https://localhost:5001/appicon-light.png', 'light'],
-    ['https://localhost:5001/appicon-dark-sparkasse.png', 'dark-sparkasse'],
+    ['https://localhost:5001/appicon-dark-bank.png', 'dark-bank'],
     ['https://127.0.0.1:5001/sub/path/appicon-dark-nebula.png?v=2', 'dark-nebula'],
   ])('extracts the skin id from %s', (url, expected) => {
     expect(skinFromFaviconUrl(url)).toBe(expected);
