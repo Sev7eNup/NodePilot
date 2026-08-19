@@ -18,6 +18,16 @@ describe('normalizeQuartzCron', () => {
     expect(normalizeQuartzCron('0 */5 * * * *')).toBe('0 */5 * * * *');
   });
 
+  it('leavesShortExpressionsUnpadded_paddingIsTheParsersJob', () => {
+    // Deliberate: the normalizer only truncates and translates `?`. Padding a short
+    // expression to six fields is cron-parser's business, and it prepends the missing
+    // leading fields — so a 5-field Unix cron keeps reading minute-first, not
+    // seconds-first. Pinning that here means a normalizer that starts padding on its
+    // own (and would shift every field by one) fails loudly.
+    expect(normalizeQuartzCron('0 2 * * *')).toBe('0 2 * * *');
+    expect(normalizeQuartzCron('20 15 * *')).toBe('20 15 * *');
+  });
+
   it('emptyInput_returnsEmpty', () => {
     expect(normalizeQuartzCron('')).toBe('');
     expect(normalizeQuartzCron('   ')).toBe('');
@@ -56,6 +66,42 @@ describe('previewSchedule', () => {
     const result = previewSchedule('0 0 8 ? * MON-FRI');
     expect(result.error).toBeNull();
     expect(result.fireTimes.length).toBeGreaterThan(0);
+  });
+
+  // ── Short expressions ──────────────────────────────────────────────────────
+  // The designer accepts free text, so a user who knows standard Unix cron types five
+  // fields, and a typo leaves four. Neither form is Quartz, but both reach the preview,
+  // and until cron-parser 5.10.0 the shorter ones were padded from the wrong end: the
+  // seconds default landed last instead of first, so `20 15 * *` previewed as "every
+  // second". Every other case in this file uses six or seven fields, which is exactly
+  // why that stayed invisible. These two pin the behaviour the preview depends on.
+  //
+  // Both assert *relative* spacing rather than wall-clock times: previewSchedule reads
+  // `new Date()` internally, so there is no base date to pin.
+
+  it('fiveFieldUnixCron_readsMinuteFirst_matchingItsSixFieldEquivalent', () => {
+    // `0 2 * * *` (Unix) and `0 0 2 * * *` (Quartz) are the same schedule: 02:00 daily.
+    // If the parser ever padded from the wrong end, the five-field form would collapse
+    // to "second 0 of minute 2 of every hour" and the two would diverge.
+    const short = previewSchedule('0 2 * * *', 3);
+    const long = previewSchedule('0 0 2 * * *', 3);
+
+    expect(short.error).toBeNull();
+    expect(short.fireTimes.map((d) => d.getTime())).toEqual(long.fireTimes.map((d) => d.getTime()));
+  });
+
+  it('fourFieldCron_doesNotCollapseToEverySecond', () => {
+    // The regression this guards: pre-5.10.0 cron-parser padded `20 15 * *` such that
+    // it fired once per second. A preview claiming a per-second schedule for what the
+    // user meant as a daily job is worse than an error message.
+    const { fireTimes, error } = previewSchedule('20 15 * *', 3);
+
+    expect(error).toBeNull();
+    expect(fireTimes.length).toBe(3);
+    for (let i = 1; i < fireTimes.length; i++) {
+      const gapSeconds = (fireTimes[i].getTime() - fireTimes[i - 1].getTime()) / 1000;
+      expect(gapSeconds).toBeGreaterThanOrEqual(60);
+    }
   });
 });
 
