@@ -15,11 +15,11 @@ window is open. So the backend runs as an always-on service and the Electron she
 
 ```
 Installer (.exe, signed)
- ├─ C:\Program Files\NodePilot\   app\ (self-contained API + wwwroot + Modules) · desktop\ (Electron) · pgsql\ (PG16 server runtime) · deploy\
+ ├─ C:\Program Files\NodePilot\   app\ (self-contained API + wwwroot + Modules) · desktop\ (Electron) · pgsql\ (PG16 server runtime) · deploy\ · tools\np (np CLI) · tools\mcp (nodepilot-mcp)
  ├─ C:\ProgramData\NodePilot\     pgdata\ · logs\ · secrets\ · keys · admin-setup.token · desktop.json · backups\
  ├─ Service "NodePilotDb"  (postgres, NetworkService, 127.0.0.1:<pgport>, boot-start)
  ├─ Service "NodePilot"    (NodePilot.Api.exe, LocalSystem, https://127.0.0.1:<apiport>, boot-start, depend= NodePilotDb)
- └─ Start Menu / Desktop → NodePilot.exe (Electron → loads the origin from desktop.json)
+ └─ Start Menu (+ Desktop shortcut, optional) → NodePilot.exe (Electron → loads the origin from desktop.json)
 ```
 
 The .NET backend already serves the SPA same-origin (`UseStaticFiles` + `MapFallbackToFile`), so the
@@ -98,9 +98,20 @@ service-environment value.
 2. The elevated installer hands it to the user session. The token's ACL is owner-only, so even an
    elevated Administrator can neither read it nor change its DACL — the provisioner therefore first
    takes ownership for `BUILTIN\Administrators` (`takeown /a`) and grants that group read, then
-   writes the value to `%LOCALAPPDATA%\NodePilot\admin-setup.handoff` (restricted to the installing
-   user + SYSTEM) and launches Electron as that user. Owner and every remaining ACE stay inside the
+   writes the value to `%LOCALAPPDATA%\NodePilot\admin-setup.handoff` (restricted to that user +
+   SYSTEM) and Inno launches Electron as that user. Owner and every remaining ACE stay inside the
    backend's trusted set, so `AdminBootstrap.Validate` still accepts the token.
+
+   **Which user is "that user" is resolved explicitly, not assumed.** The installer runs elevated
+   but launches the shell with `runasoriginaluser`, so the two are different principals whenever a
+   standard user elevates with someone *else's* administrator credentials — the normal case on a
+   managed machine. `Get-InteractiveUserProfile` therefore resolves the console user via
+   `Win32_ComputerSystem.UserName` and reads their profile directory out of the `ProfileList`
+   registry, instead of using the elevated process's own `%LOCALAPPDATA%`. Inno's `{localappdata}`
+   would be no better: it expands in the elevated context too. `-HandoffUserProfile` overrides the
+   resolution for the dev loop and for tests. Getting this wrong strands the user on a login form
+   for an account that does not exist yet, with the only remaining token copy SYSTEM-owned —
+   recovery steps are in [`docs/desktop-troubleshooting.md`](../../docs/desktop-troubleshooting.md).
 3. Electron shows a **local** setup page whose only bridge is `completeAdminSetup({username,password})`.
 4. The main process reads the handoff token, `POST /api/auth/login` with header `X-Setup-Token`, shares
    the returned cookies with the SPA session, deletes **both** token copies, and opens the preload-less
@@ -111,16 +122,24 @@ service-environment value.
 Requirements: .NET 10 SDK, Node + npm, [Inno Setup 6](https://jrsoftware.org/isdl.php) (`ISCC.exe`),
 and a PostgreSQL 16 binaries folder (the `pgsql` directory from the EDB zip distribution).
 
+The major version is enforced, not assumed: the build reads it out of `pgsql\bin\postgres.exe` — the
+binary, never the path, because EDB's portable zip unpacks to a plain `pgsql` folder with no version
+in it, and a path that does carry one is still just a renameable label — and refuses
+anything but 16 before it stages a single file. A cluster initialised by one major cannot be opened
+by another, and this package upgrades in place over an existing `pgdata` — so a 17.x payload would
+compile, sign and ship without a warning, then fail against every installation it reached.
+
 ```powershell
 ./Build-DesktopInstaller.ps1 -PgBinariesPath 'C:\path\to\pgsql' -Version 1.0.0
 # -> out\NodePilot-Desktop-Setup-1.0.0.exe   (sign with your Authenticode cert before distribution)
 ```
 
 The build generates the icons via `scripts/generate-desktop-icons.ps1` (see **Icons** below),
-publishes the API self-contained (`-r win-x64
---self-contained true`, no single-file — the PowerShell SDK is folder-deployed), builds the SPA into
-`app\wwwroot`, packages the Electron shell with Electron Packager, stages the Postgres server runtime +
-scripts, and compiles the installer.
+publishes the API self-contained (`-r win-x64 --self-contained true`, no single-file — the PowerShell
+SDK is folder-deployed), publishes the operator clients (`np`, `nodepilot-mcp`) self-contained to
+`tools\np` and `tools\mcp` (self-contained because the desktop package promises zero prerequisites),
+builds the SPA into `app\wwwroot`, packages the Electron shell with Electron Packager, stages the
+Postgres server runtime + scripts, and compiles the installer.
 
 Two build steps are load-bearing and easy to break by accident:
 
@@ -167,7 +186,14 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
 
 - **Install:** run the `.exe` as a local administrator (UAC). It lays down files, runs
   `Provision-LocalDb.ps1` (Postgres cluster + service, cert, config, API service, desktop.json, token
-  handoff), and launches the shell.
+  handoff), and launches the shell. Provisioning runs from `CurStepChanged`/`ssPostInstall`, **not**
+  from `[Run]`, so its exit code is inspected: a failed run reports an error naming
+  `%TEMP%\nodepilot-provision.log` and suppresses the "Launch NodePilot" step, instead of finishing
+  green with a dead app. Setup is deliberately not rolled back at that point — the files are already
+  in place and a rollback would take the database with it.
+- **When something goes wrong:** [`docs/desktop-troubleshooting.md`](../../docs/desktop-troubleshooting.md)
+  — log locations, the "setup page never appeared" recovery, port-pool exhaustion, and the uninstall
+  ordering trap below.
 - **Update:** run a newer installer. On an existing cluster it takes an ACL-protected `pg_dump` first,
   overwrites binaries, and re-provisions. Re-provisioning is repeatable but not side-effect free: step 0
   **stops and deletes** both services and recreates them, and the existing cluster is reused (`initdb`
@@ -178,6 +204,10 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
   are preserved** unless `-PurgeData` is used. The script lives inside the installation and takes a
   mandatory `-InstallPath`:
   `& 'C:\Program Files\NodePilot\deploy\Uninstall-Desktop.ps1' -InstallPath 'C:\Program Files\NodePilot' -PurgeData`
+  **Run the purge before the normal uninstall, not after** — the uninstaller deletes that very
+  script, and what is left behind is a `ProgramData\NodePilot` whose ACL excludes the current user.
+  The manual way out is in
+  [`docs/desktop-troubleshooting.md`](../../docs/desktop-troubleshooting.md#removing-nodepilot-completely).
 - **Antivirus:** the installer sets no AV exclusions. Electron's Chromium native DLLs, Postgres' WAL
   I/O and the generated `%TEMP%\nodepilot_*.ps1` scripts are the usual false-positive sources — a
   hand-off list with per-entry rationale and residual risk is in [`docs/av-exclusions.md`](../../docs/av-exclusions.md).
@@ -186,7 +216,7 @@ Running the Electron shell straight from source (`npm start`, see below) starts 
 
 | File | Role |
 |---|---|
-| `Build-DesktopInstaller.ps1` | Build orchestrator (icons + publish + SPA + Modules + Electron + PG subset + ISCC). |
+| `Build-DesktopInstaller.ps1` | Build orchestrator (icons + publish + SPA + Modules + Electron + operator clients → `tools\{np,mcp}` + PG subset + ISCC). |
 | `../../scripts/generate-desktop-icons.ps1` | Icon set from the SPA brand assets (default + per-skin); also runnable standalone. |
 | `Sync-DesktopApp.ps1` | Dev loop: pushes local changes into an installed app in ~1 min (see below). |
 | `NodePilot.iss` | Inno Setup installer definition. |

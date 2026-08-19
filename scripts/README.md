@@ -1,85 +1,87 @@
-# Muster- & Test-Workflows
+# Sample & test workflows
 
-Kuratiertes, importierbares Set an Beispiel-Workflows, das **jede** der 27 Aktivitäten und 6 Trigger
-abdeckt — einzeln und in Kombination. Import über die UI (`Import`) oder `POST /api/workflows/import`.
+A curated, importable set of example workflows covering **every** one of the 27 activities and 6
+triggers — individually and in combination. Import through the UI (`Import`) or
+`POST /api/workflows/import`.
 
-## Das saubere Muster-Set
+## The clean sample set
 
-| Datei | Inhalt |
+| File | Contents |
 |---|---|
-| `muster-alle-aktivitaeten.json` | **Master**: 1 Workflow der alle 27 Aktivitäten in Variation anwendet (alle 14 Edge-Operatoren, AND/OR/NOT, disabled Edges/Nodes, Retry, alle 3 Junction-Modi, decision/forEach/startWorkflow) + Child. Roots: manualTrigger (aktiv) + scheduleTrigger (disabled, demonstrativ). |
-| `muster-einzeltests.json` | **33 Einzeltests** — je 1 Workflow pro Aktivität (`Test — <activity>`) und pro Trigger. Jeder Aktivitäts-Workflow spielt **alle (sicheren) Varianten** seiner Aktivität durch (z.B. fileOperation create/exists/copy/rename/move/delete, folderOperation +list, fileHash SHA256/SHA1/MD5/SHA384/SHA512, zipOperation compress+extract mit allen 3 compressionLevel, registry alle 8 Operationen + alle 6 valueTypes, textFileEdit alle 6 Operationen + encoding/lineEnding/occurrences/appendIfMissing/backupSuffix/dryRun, waitForCondition script/pathExists/serviceRunning/portOpen/httpOk, restApi alle 6 HTTP-Methoden, wmiQuery query/wql/invokeMethod, xml-/jsonQuery inline+file × single+all, generateText alle 7 Modi, junction alle 3 Modi, forEach auto/json/lines, runScript engine+isolated+transcript+successExitCodes, startWorkflow wait+fire-forget). Destruktive Varianten (serviceManagement stop/restart/create/delete, powerManagement shutdown/restart, scheduledTask register/unregister) werden **nicht** gegen echte Ressourcen ausgeführt. Plus gemeinsamer `Muster Test: Child`. |
-| `muster-kombinationen.json` | **Kombinationen/Topologie**: `Muster — Trigger → Databus` (beweist, dass Trigger-Output-Parameter auf dem Databus landen), `Muster — Variable-Pipe` (Databus-Durchreichung runScript→jsonQuery→decision) und `Muster — Sub-Workflow (Parent)` + Child (startWorkflow + forEach Fan-out). |
+| `muster-alle-aktivitaeten.json` | **The master**: one workflow that exercises all 27 activities in variation (all 14 edge operators, AND/OR/NOT, disabled edges/nodes, retry, all 3 junction modes, decision/forEach/startWorkflow) plus a child. Roots: manualTrigger (active) + scheduleTrigger (disabled, for demonstration). |
+| `muster-einzeltests.json` | **33 individual tests** — one workflow per activity (`Test — <activity>`) and per trigger. Each activity workflow runs through **all (safe) variants** of its activity (for example fileOperation create/exists/copy/rename/move/delete, folderOperation plus list, fileHash SHA256/SHA1/MD5/SHA384/SHA512, zipOperation compress+extract with all 3 compression levels, registry all 8 operations + all 6 value types, textFileEdit all 6 operations + encoding/lineEnding/occurrences/appendIfMissing/backupSuffix/dryRun, waitForCondition script/pathExists/serviceRunning/portOpen/httpOk, restApi all 6 HTTP methods, wmiQuery query/wql/invokeMethod, xml/jsonQuery inline+file × single+all, generateText all 7 modes, junction all 3 modes, forEach auto/json/lines, runScript engine+isolated+transcript+successExitCodes, startWorkflow wait+fire-and-forget). Destructive variants (serviceManagement stop/restart/create/delete, powerManagement shutdown/restart, scheduledTask register/unregister) are **not** run against real resources. Plus a shared `Muster Test: Child`. |
+| `muster-kombinationen.json` | **Combinations/topology**: `Muster — Trigger → Databus` (proving that trigger output parameters land on the data bus), `Muster — Variable-Pipe` (passing data through runScript→jsonQuery→decision) and `Muster — Sub-Workflow (Parent)` + child (startWorkflow + forEach fan-out). |
 
-Remote-Aktivitäten nutzen `targetMachineId: "localhost"` → laufen via **Localhost-Bypass in-process**
-auf dem API-Host, sind also ohne WinRM-Ziel real ausführbar.
+Remote activities use `targetMachineId: "localhost"` → they run **in-process through the localhost
+bypass** on the API host, so they are genuinely executable without a WinRM target.
 
-**Umgebungsabhängige Nodes** (Config korrekt, Ausführung host-/config-abhängig): `emailNotification`
-(braucht SMTP), `llmQuery` (braucht `Llm:Enabled=true`), `scheduledTask` (braucht funktionierende
-Task-Scheduler-CIM auf dem Ziel).
+**Environment-dependent nodes** (the configuration is correct, execution depends on the host and
+configuration): `emailNotification` (needs SMTP), `llmQuery` (needs `Llm:Enabled=true`),
+`scheduledTask` (needs a working Task Scheduler CIM provider on the target).
 
-**Selbstprobe der eigenen API — Port beachten.** Die beiden Netzwerk-Proben in
-`Test — waitForCondition` (`portOpen` / `httpOk`) zielen auf die eigene NodePilot-API. Ihre Ziele
-liegen als Trigger-Parameter `probePort`/`probeUrl` am Workflow und sind auf den **Dev**-Port `5000`
-vorbelegt (`launchSettings.json`). Auf einer Installation hört Kestrel auf dem beim Setup gewählten
-HTTPS-Port — beim Ausführen also z. B. `probeUrl = https://localhost:<HTTPS-Port>/healthz/live` und
-`probePort = <HTTPS-Port>` setzen, sonst laufen beide Steps korrekterweise in den Timeout. Der Host
-muss zusätzlich in `WaitForCondition:AllowedHosts` stehen (Default: `localhost`); `RestApi:*` ist
-für diese Proben **nicht** zuständig.
+**Self-probing your own API — mind the port.** The two network probes in
+`Test — waitForCondition` (`portOpen` / `httpOk`) target NodePilot's own API. Their targets live on
+the workflow as the trigger parameters `probePort`/`probeUrl` and are preset to the **development**
+port `5000` (`launchSettings.json`). On an installation, Kestrel listens on the HTTPS port chosen
+during setup — so when running there, set for example
+`probeUrl = https://localhost:<HTTPS-port>/healthz/live` and `probePort = <HTTPS-port>`, otherwise
+both steps correctly run into their timeout. The host additionally has to be listed in
+`WaitForCondition:AllowedHosts` (default: `localhost`); `RestApi:*` is **not** responsible for these
+probes.
 
-Die `restApi`-Nodes von `Test — restApi` zielen aus demselben Grund auf `http://localhost:5000`.
-Sie sind auf einer gehärteten Installation **absichtlich** geblockt: `RestApi:BlockPrivateNetworks`
-steht produktiv auf `true` und `RestApi:AllowedHosts` ist leer. Wer sie dort laufen lassen will,
-trägt den Host bewusst in `RestApi:AllowedHosts` ein (restart-pflichtig) — das öffnet outbound-HTTP
-auf Loopback und ist deshalb eine eigene Entscheidung, keine Nebenwirkung der Probe-Liste.
+The `restApi` nodes of `Test — restApi` target `http://localhost:5000` for the same reason. On a
+hardened installation they are blocked **deliberately**: `RestApi:BlockPrivateNetworks` is `true` in
+production and `RestApi:AllowedHosts` is empty. To run them there, add the host to
+`RestApi:AllowedHosts` consciously (which requires a restart) — that opens outbound HTTP to loopback
+and is therefore its own decision, not a side effect of the probe list.
 
-**Bewusst nicht enthaltene Varianten** — sie wären auf einem normalen Host ein dauerhaft roter Schritt
-statt eines Tests:
+**Variants deliberately not included** — on a normal host they would be a permanently red step rather
+than a test:
 
-| Variante | Grund |
+| Variant | Reason |
 |---|---|
-| `runScript` `engine: pwsh` | setzt eine installierte PowerShell 7 voraus |
-| `startProgram` `useShellExecute: true` | unter Produktionsdefaults per `StartProgram:DisallowShellExecute` geblockt |
-| `sql` `provider: sqlserver`/`postgres` | braucht eine erreichbare DB; ohne `connectionRef` stünde ein Passwort im Workflow-JSON (das der Export ohnehin zu `***` redigiert) |
-| `powerManagement` außer `abort` | fährt den Host herunter |
-| `serviceManagement` stop/restart/create/delete/setStartType, `scheduledTask` register/unregister/start/stop/enable/disable | verändern echten Systemzustand; im Minutentakt wären das >1400 Dienst-/Task-Mutationen pro Tag |
+| `runScript` with `engine: pwsh` | Requires PowerShell 7 to be installed |
+| `startProgram` with `useShellExecute: true` | Blocked under production defaults by `StartProgram:DisallowShellExecute` |
+| `sql` with `provider: sqlserver`/`postgres` | Needs a reachable database; without a `connectionRef`, a password would sit in the workflow JSON (which the export redacts to `***` anyway) |
+| `powerManagement` other than `abort` | Shuts the host down |
+| `serviceManagement` stop/restart/create/delete/setStartType, `scheduledTask` register/unregister/start/stop/enable/disable | They change real system state; at one-minute intervals that would be >1,400 service/task mutations per day |
 
-## Kontinuierlicher Lauf
+## Continuous run
 
-`scripts/continuous-test-1min/` installiert 10 Orchestratoren, die **jede Minute** zusammen 30 dieser
-Testworkflows per `startWorkflow` (fire-and-forget) starten. Details: `scripts/continuous-test-1min/README.md`.
-Die fünf Hintergrund-Trigger-Tests lassen sich von dort **nicht** antreiben — `startWorkflow` nimmt den
-Engine-Pfad, nicht den Trigger-Pfad.
+`scripts/continuous-test-1min/` installs 10 orchestrators that together start 30 of these test
+workflows **every minute** through `startWorkflow` (fire and forget). Details:
+`scripts/continuous-test-1min/README.md`. The five background trigger tests **cannot** be driven from
+there — `startWorkflow` takes the engine path, not the trigger path.
 
-Reine Hintergrund-Trigger-Tests (`scheduleTrigger`/`webhookTrigger`/`databaseTrigger`/
-`fileWatcherTrigger`/`eventLogTrigger`) werden **disabled** importiert, damit sie nicht im Hintergrund
-feuern/pollen — zum Testen einfach aktivieren.
+Pure background trigger tests (`scheduleTrigger`/`webhookTrigger`/`databaseTrigger`/
+`fileWatcherTrigger`/`eventLogTrigger`) are imported **disabled**, so that they do not fire or poll in
+the background — simply enable them to test.
 
-## Trigger-Output-Parameter auf dem Databus
+## Trigger output parameters on the data bus
 
-Jeder Trigger publisht seine Event-Daten auf den Databus. Verifiziert (fileWatcher → `filePath`/
-`fileName`/`fileAction`, webhook → `webhookBody`/`webhookMethod`/`webhookPath` + JSONPath-`fieldMappings`,
-manual → deklarierte Parameter). **Lies sie über `{{<triggerNode>.param.<key>}}`** — das ist der
-universelle, Contract-korrekte Weg, der in Engine-local-Configs (log/returnData) auflöst. `{{manual.<key>}}`
-ist eine flache runScript-Variable und bleibt in Configs Literal — daher nutzen alle Trigger-Muster
-`{{trg.param.X}}`.
+Every trigger publishes its event data onto the data bus. Verified (fileWatcher → `filePath`/
+`fileName`/`fileAction`, webhook → `webhookBody`/`webhookMethod`/`webhookPath` + JSONPath
+`fieldMappings`, manual → the declared parameters). **Read them through
+`{{<triggerNode>.param.<key>}}`** — that is the universal, contract-correct route that resolves in
+engine-local configurations (log/returnData). `{{manual.<key>}}` is a flat runScript variable and
+stays literal in configurations — which is why all trigger samples use `{{trg.param.X}}`.
 
-> **Wichtig:** Trigger-ausgelöste Läufe brauchen einen *effective principal* (`Workflow.PublishedByUserId`),
-> sonst werden sie mit `missing_effective_principal` abgebrochen (Enterprise-SSO-Härtung). Import setzt
-> ihn nicht — Workflow **publishen** (nicht nur enablen) oder `PublishedByUserId` setzen, dann feuern
-> Trigger-Läufe sauber durch.
+> **Important:** trigger-fired runs need an *effective principal* (`Workflow.PublishedByUserId`),
+> otherwise they are aborted with `missing_effective_principal` (enterprise SSO hardening). Import does
+> not set it — **publish** the workflow (not just enable it), or set `PublishedByUserId`, and then
+> trigger runs go through cleanly.
 
-## Referenz / Anker (nicht Teil des Import-Sets)
+## Reference / anchor (not part of the import set)
 
-- `test-master-all-activities.json` — lebendes **Styleguide-Referenz-Beispiel** (siehe `docs/workflow-styleguide.md`)
-  und Few-Shot für die KI-Workflow-Generierung (`src/NodePilot.Ai/Prompts/workflow-example.json`). Nicht verändern.
+- `test-master-all-activities.json` — the living **style-guide reference example** (see `docs/workflow-styleguide.md`)
+  and the few-shot for AI workflow generation (`src/NodePilot.Ai/Prompts/workflow-example.json`). Do not modify.
 
-## Realistische Betriebs-Beispiele (hand-gebaut)
+## Realistic operational examples (hand-built)
 
-- `example-windows-update-health-workflow.json` — Windows-Update-Health-Check eines Hosts (CBS-/WU-Log-Tails, Service-/Registry-/WMI-/FS-Probes, `decision`-Klassifikation).
-- `endsystem-log-korrelation-workflow.json` — **Stündliche KI-Log-Korrelation** über drei Endsysteme: SCCM-Server (CCM/CBS/VSS), Billing-Block (konfigurierbare App-Logs) und PostgreSQL-DB-Server. `scheduleTrigger` (`0 0 * * * ? *`) + manueller Run; je System `runScript`-Sammler → `llmQuery`-Triage, dann `waitAll` → `llmQuery`-Korrelation (`jsonMode`) → `jsonQuery` (severity/summary) → `decision` → Log + `returnData`. Konfiguration (Hosts, Log-Pfade, Tail, Fehler-Regex) im **CONFIG-Block des `init`-Nodes**. Braucht `Llm:Enabled=true`; die drei Ziel-Hosts sind Platzhalter-Hostnamen → für echten WinRM-Lauf via `/api/machines` + `/api/credentials` registrieren und im CONFIG-Block eintragen.
+- `example-windows-update-health-workflow.json` — a Windows Update health check of a host (CBS/WU log tails, service/registry/WMI/file-system probes, `decision` classification).
+- `endsystem-log-korrelation-workflow.json` — **hourly AI log correlation** across three end systems: an SCCM server (CCM/CBS/VSS), a billing block (configurable application logs) and a PostgreSQL database server. A `scheduleTrigger` (`0 0 * * * ? *`) plus a manual run; per system a `runScript` collector → `llmQuery` triage, then `waitAll` → `llmQuery` correlation (`jsonMode`) → `jsonQuery` (severity/summary) → `decision` → log + `returnData`. The configuration (hosts, log paths, tail, error regex) is in the **CONFIG block of the `init` node**. It needs `Llm:Enabled=true`; the three target hosts are placeholder host names → for a real WinRM run, register them through `/api/machines` + `/api/credentials` and enter them in the CONFIG block.
 
-## Kreative Demo-Workflows (hand-gebaut)
+## Creative demo workflows (hand-built)
 
 `example-uboot-workflow.json`, `decorative-flower.json`.
-(Weitere lokale Demo-Workflows sind bewusst gitignored und nicht Teil des Repos.)
+(Further local demo workflows are deliberately gitignored and not part of the repository.)

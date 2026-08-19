@@ -78,7 +78,7 @@ html .np-designer.wd-atelier {
 /* ── B. Palette — base DARK (default dark skin "Azur" adapted: azure accent on
        cool graphite, mirroring the app's dark scheme).
        NOTE: the two shadow vars are the only entries the per-skin blocks below do
-       NOT redeclare, so they are shared by dark-lila / dark-sparkasse /
+       NOT redeclare, so they are shared by dark-lila / dark-bank /
        dark-nebula. They are achromatic; keep them that way. ────────────────── */
 html.dark.wd-atelier-on,
 html.dark .np-designer.wd-atelier {
@@ -144,9 +144,9 @@ html.dark[data-skin="dark-lila"] .np-designer.wd-atelier {
   --wd-outline-variant: #343434;
 }
 
-/* dark-sparkasse: signal red on neutral near-black */
-html.dark[data-skin="dark-sparkasse"].wd-atelier-on,
-html.dark[data-skin="dark-sparkasse"] .np-designer.wd-atelier {
+/* dark-bank: signal red on neutral near-black */
+html.dark[data-skin="dark-bank"].wd-atelier-on,
+html.dark[data-skin="dark-bank"] .np-designer.wd-atelier {
   --wd-accent:             #ff0002;
   --wd-accent-deep:        #cc0001;
   --wd-accent-surface:     #5c0001;
@@ -234,9 +234,9 @@ html[data-skin="light-grey"] .np-designer.wd-atelier {
   --wd-outline-variant: #ddd5ca;
 }
 
-/* light-sparkasse ("Bank Hell"): banking red on cool bright neutral */
-html[data-skin="light-sparkasse"].wd-atelier-on,
-html[data-skin="light-sparkasse"] .np-designer.wd-atelier {
+/* light-bank ("Bank Hell"): banking red on cool bright neutral */
+html[data-skin="light-bank"].wd-atelier-on,
+html[data-skin="light-bank"] .np-designer.wd-atelier {
   --wd-accent:             #c80000;
   --wd-accent-deep:        #ee0000;
   --wd-accent-surface:     #fff1f1;
@@ -346,7 +346,7 @@ html .np-designer.wd-atelier {
   --color-on-info-container: #3b4657;
 
   /* Running keeps its own steady cobalt voice in every skin — tying it to the
-     skin accent would collide with error-red (sparkasse) or paused-amber. */
+     skin accent would collide with error-red (bank) or paused-amber. */
   --color-running:              #3e63e8;
   --color-running-container:    #e2e8fd;
   --color-on-running-container: #24398f;
@@ -445,7 +445,7 @@ html.dark .np-designer.wd-atelier .react-flow {
   --color-on-primary:          var(--wd-accent-on);
   --color-on-primary-container:var(--wd-accent-on-deep);
   --color-inverse-primary:     var(--wd-accent-inverse);
-  /* The nebula/sparkasse shields pin the edge colour to base-dark — re-assert the
+  /* The nebula/bank shields pin the edge colour to base-dark — re-assert the
      Atelier (skin-tinted) hairline so idle edges sit right on the tinted ground. */
   --color-outline-variant:     var(--wd-outline-variant);
 }

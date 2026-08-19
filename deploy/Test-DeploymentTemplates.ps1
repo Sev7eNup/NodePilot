@@ -27,6 +27,8 @@ param(
     [string]$ServerBuildScriptPath,
     [string]$PublishSettingsHygienePath,
     [string]$DesktopBuildScriptPath,
+    [string]$DesktopIssPath,
+    [string]$DesktopProvisionScriptPath,
     [string[]]$PackageLockPaths,
     [string[]]$ChecksumDocPaths
 )
@@ -92,6 +94,12 @@ if ([string]::IsNullOrWhiteSpace($PublishSettingsHygienePath)) {
 if ([string]::IsNullOrWhiteSpace($DesktopBuildScriptPath)) {
     $DesktopBuildScriptPath = Join-Path $scriptDirectory 'desktop\Build-DesktopInstaller.ps1'
 }
+if ([string]::IsNullOrWhiteSpace($DesktopIssPath)) {
+    $DesktopIssPath = Join-Path $scriptDirectory 'desktop\NodePilot.iss'
+}
+if ([string]::IsNullOrWhiteSpace($DesktopProvisionScriptPath)) {
+    $DesktopProvisionScriptPath = Join-Path $scriptDirectory 'desktop\Provision-LocalDb.ps1'
+}
 if ($null -eq $PackageLockPaths -or $PackageLockPaths.Count -eq 0) {
     $PackageLockPaths = @(
         (Join-Path $scriptDirectory '..\src\nodepilot-ui\package-lock.json')
@@ -105,9 +113,15 @@ if ($null -eq $ChecksumDocPaths -or $ChecksumDocPaths.Count -eq 0) {
         (Join-Path $scriptDirectory '..\docs\deployment-guide.md')
         (Join-Path $scriptDirectory 'README.md')
         (Join-Path $scriptDirectory 'desktop\README.md')
-        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\deployment\production.md')
-        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\deployment\desktop.md')
-        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\getting-started\installation.md')
+        # The doc site is bilingual: the checksum/trust wording is a contract in BOTH
+        # translations, so both are asserted. A German reader following the German page must
+        # get the same verification steps as an English one.
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\en\deployment\production.md')
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\en\deployment\desktop.md')
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\en\getting-started\installation.md')
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\de\deployment\production.md')
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\de\deployment\desktop.md')
+        (Join-Path $scriptDirectory '..\src\nodepilot-docs-ui\content\de\getting-started\installation.md')
     )
 }
 
@@ -154,7 +168,7 @@ function Remove-CommentLines {
     }) -join "`n")
 }
 
-foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $SetupContractPath, $ArtifactSecurityPath, $ServerIssPath, $RuntimePayloadScriptPath, $PublishSettingsHygienePath, $DesktopBuildScriptPath)) {
+foreach ($path in @($HaproxyTemplatePath, $AppSettingsTemplatePath, $InstallerPath, $SsoDocumentationPath, $BuildScriptPath, $BuildPropsPath, $UpdateScriptPath, $PreflightScriptPath, $UninstallScriptPath, $SetupAdapterPath, $SetupContractPath, $ArtifactSecurityPath, $ServerIssPath, $RuntimePayloadScriptPath, $PublishSettingsHygienePath, $DesktopBuildScriptPath, $DesktopIssPath, $DesktopProvisionScriptPath)) {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
         throw "Deployment template check failed: missing file '$path'."
     }
@@ -1018,9 +1032,9 @@ Assert-TextDoesNotMatch -Name 'the grant must not carry container inheritance fl
 # and the residual gap is written down in deploy/server/README.md rather than left implied.
 $serverIss = Get-Content -LiteralPath $ServerIssPath -Raw
 
-# [Run] cannot inspect an exit code. The desktop installer's [Run] entry silently swallows a
-# failed provisioning run - it calls exit 1 and Inno still reports success. Forbidding the section
-# outright makes that class of defect structurally impossible here rather than merely absent today.
+# [Run] cannot inspect an exit code. Forbidding the section outright makes that class of defect
+# structurally impossible here rather than merely absent today. (The desktop installer used to have
+# exactly this defect; it now runs provisioning from [Code] too - pinned further down.)
 Assert-TextDoesNotMatch -Name 'the server setup must not use a [Run] section' `
     -Text $serverIss -Pattern '(?mi)^\s*\[Run\]'
 Assert-TextMatches -Name 'every Exec result is inspected' `
@@ -2232,11 +2246,107 @@ foreach ($pathConsumer in @(
         -Text $pathConsumer.Text -Pattern "Join-Path \`$InstallPath 'tools\\np'"
 }
 
+# --- desktop installer contracts ----------------------------------------------------------------
+# Two defects that both looked like a successful installation and were only visible to the user as
+# "the app does not work". Neither had any automated coverage before.
+$desktopIss = Get-Content -LiteralPath $DesktopIssPath -Raw
+$desktopProvision = Get-Content -LiteralPath $DesktopProvisionScriptPath -Raw
+
+# 1. Provisioning ran as a [Run] entry, which discards the exit code: a run that aborted (port pool
+#    exhausted, API never healthy, cluster secrets gone) still produced "Setup completed
+#    successfully" and a dead app. It must run from [Code], where ResultCode can be read.
+Assert-TextDoesNotMatch -Name 'the desktop setup must not provision from a [Run] entry' `
+    -Text $desktopIss -Pattern '(?mi)^\s*Filename:\s*"powershell\.exe".*Provision-LocalDb\.ps1'
+Assert-TextMatches -Name 'the desktop setup provisions at ssPostInstall' `
+    -Text $desktopIss -Pattern '(?s)CurStep\s*=\s*ssPostInstall\s*then\s*ProvisionRuntime\(\)'
+Assert-TextMatches -Name 'the desktop provisioning exit code is inspected' `
+    -Text $desktopIss -Pattern '(?s)procedure ProvisionRuntime\(\).*?ProvisionOk\s*:=\s*\(ResultCode\s*=\s*0\)'
+Assert-TextMatches -Name 'a failed desktop provisioning names its log' `
+    -Text $desktopIss -Pattern 'nodepilot-provision\.log'
+# The launch step must be gated, otherwise a failed provisioning is followed by the shell throwing
+# its own error dialog for a problem the user was already told about.
+Assert-TextMatches -Name 'the desktop shell launch is gated on provisioning success' `
+    -Text $desktopIss -Pattern '(?s)Filename:\s*"\{app\}\\desktop\\NodePilot\.exe".*?Check:\s*ProvisionSucceeded'
+
+# 2. The first-run handoff was written to the ELEVATED process's profile while Inno launches the
+#    shell as the interactive user (runasoriginaluser). Whenever a standard user elevated with a
+#    different administrator's credentials those are two different profiles, the shell never found
+#    the token, and the only remaining copy was SYSTEM-owned and unreadable. Pin that the profile is
+#    resolved rather than assumed - asserting merely that the function is *called* would not catch a
+#    regression that passes it the wrong value, which is how the 1.2.8 PATH defect slipped through.
+Assert-TextMatches -Name 'the handoff profile is resolved from the interactive user' `
+    -Text $desktopProvision -Pattern '(?s)function Get-InteractiveUserProfile.*?Win32_ComputerSystem'
+Assert-TextMatches -Name 'the handoff target comes from the resolved profile, not the current process' `
+    -Text $desktopProvision -Pattern '(?s)\$handoffBase\s*=\s*\$interactive\.LocalAppData'
+Assert-TextMatches -Name 'the handoff ACL is granted to the resolved user' `
+    -Text $desktopProvision -Pattern '(?s)\$handoffOwnerSid\s*=\s*\$interactive\.Sid'
+Assert-TextMatches -Name 'the handoff directory is built from the resolved base' `
+    -Text $desktopProvision -Pattern "\`$handoffDir = Join-Path \`$handoffBase 'NodePilot'"
+
+# 3. The bundled PostgreSQL major. A cluster initialised by one major cannot be opened by another,
+#    and this package upgrades in place over the pgdata a previous version created. Staging a
+#    runtime from a different major compiles, signs and ships without a single warning, and then
+#    fails against every installation it lands on - the operator's first symptom is a database
+#    service that will not start. Minor versions may move freely; the major is a contract.
+$desktopPayloadHelperPath = Join-Path $scriptDirectory 'desktop\Assert-DesktopRuntimePayload.ps1'
+if (-not (Test-Path -LiteralPath $desktopPayloadHelperPath -PathType Leaf)) {
+    throw "Deployment template check failed: missing file '$desktopPayloadHelperPath'."
+}
+$desktopPayloadHelper = Remove-CommentLines -Text (Get-Content -LiteralPath $desktopPayloadHelperPath -Raw)
+$desktopBuildCode = Remove-CommentLines -Text $desktopBuildScript
+
+Assert-TextMatches -Name 'the bundled PostgreSQL major is one named constant' `
+    -Text $desktopBuildCode -Pattern '\$DesktopPostgresMajorVersion\s*=\s*16\b'
+Assert-TextMatches -Name 'the desktop build asserts the bundled PostgreSQL major' `
+    -Text $desktopBuildCode `
+    -Pattern 'Assert-DesktopPostgresPayload\s+-PgRootPath\s+\$PgBinariesPath\s+-ExpectedMajorVersion\s+\$DesktopPostgresMajorVersion'
+
+# Before the binaries are copied, so a wrong distribution costs seconds rather than a full
+# publish + SPA + Electron build - and so it can never be staged in the first place.
+$pgAssertIndex = $desktopBuildScript.IndexOf('Assert-DesktopPostgresPayload -PgRootPath $PgBinariesPath')
+$pgStageIndex = $desktopBuildScript.IndexOf("Write-Step 'Staging PostgreSQL binaries")
+if ($pgAssertIndex -lt 0 -or $pgStageIndex -lt 0 -or $pgAssertIndex -gt $pgStageIndex) {
+    throw 'Deployment template check failed: the bundled PostgreSQL major must be asserted before those binaries are staged.'
+}
+
+# Read out of the binary, never out of the folder name: every EDB distribution unpacks to a
+# directory called plain 'pgsql', so there is no version in the path to trust in the first place.
+Assert-TextMatches -Name 'the PostgreSQL major is read from the payload binary' `
+    -Text $desktopPayloadHelper -Pattern "Join-Path \`$PgRootPath 'bin\\postgres\.exe'"
+Assert-TextMatches -Name 'the PostgreSQL major comes from that binary version resource' `
+    -Text $desktopPayloadHelper -Pattern 'FileVersionInfo\]::GetVersionInfo\(\$postgresExe\)'
+Assert-TextDoesNotMatch -Name 'the PostgreSQL major must not be parsed out of the path' `
+    -Text $desktopPayloadHelper -Pattern '\$PgRootPath\s*-(match|like|split)\b'
+# An operator staring at a failed build needs both numbers; "wrong version" only sends them guessing.
+Assert-TextMatches -Name 'a PostgreSQL major mismatch names the found and the expected version' `
+    -Text $desktopPayloadHelper -Pattern '(?s)major version \$actualMajor[\s\S]{0,200}\$ExpectedMajorVersion'
+
+# 4. The desktop shortcut was unconditional. On a shared or managed machine that is somebody else's
+#    decision, and Inno's [Tasks] idiom is exactly the place to hand it back - checked by default,
+#    as is conventional for a desktop application.
+Assert-TextMatches -Name 'the desktop setup declares an opt-out desktop-icon task' `
+    -Text $desktopIss -Pattern '(?m)^Name:\s*"desktopicon";'
+Assert-TextMatches -Name 'the desktop shortcut is bound to that task' `
+    -Text $desktopIss -Pattern '(?m)^Name:\s*"\{commondesktop\}\\NodePilot";.*\bTasks:\s*desktopicon\b'
+# Unticking a shortcut must not cost the user their only entry point.
+Assert-TextDoesNotMatch -Name 'the Start-Menu entry stays unconditional' `
+    -Text $desktopIss -Pattern '(?m)^Name:\s*"\{group\}\\NodePilot";.*\bTasks:'
+# 'unchecked' on this task would quietly reverse the convention it exists to follow.
+Assert-TextDoesNotMatch -Name 'the desktop-icon task is checked by default' `
+    -Text $desktopIss -Pattern '(?m)^Name:\s*"desktopicon";[^\r\n]*\bFlags:[^\r\n]*\bunchecked\b'
+# Inno concatenates a repeated section header instead of rejecting it, so a second, contradicting
+# task list would be merged in silently.
+$desktopTaskSections = @([regex]::Matches($desktopIss, '(?m)^\s*\[Tasks\]\s*$'))
+if ($desktopTaskSections.Count -ne 1) {
+    throw ("Deployment template check failed: the desktop setup declares " +
+           "$($desktopTaskSections.Count) [Tasks] sections; expected exactly 1.")
+}
+
 $ssoDocumentation = Get-Content -LiteralPath $SsoDocumentationPath -Raw
 Assert-TextMatches -Name 'SPN examples use duplicate-safe registration' `
     -Text $ssoDocumentation -Pattern '(?m)^\s*setspn\s+-S\s+HTTP/'
 Assert-TextDoesNotMatch -Name 'SPN examples must not use duplicate-unsafe registration' `
     -Text $ssoDocumentation -Pattern '(?m)^\s*setspn\s+-A\s+HTTP/'
 
-Write-Host ("Deployment template checks passed ({0} HAProxy contracts, appsettings JSON, installer, update, pre-flight, uninstall, server setup, adapter, runtime payload and SPN contracts)." -f `
+Write-Host ("Deployment template checks passed ({0} HAProxy contracts, appsettings JSON, installer, update, pre-flight, uninstall, server setup, desktop setup, adapter, runtime payload and SPN contracts)." -f `
     $requiredHaproxyContracts.Count) -ForegroundColor Green

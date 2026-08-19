@@ -13,8 +13,8 @@ describe('appIcon', () => {
     ['dark', 'dark', '/appicon-dark.png'],
     ['dark-lila', 'dark', '/appicon-dark-lila.png'],
     ['light-grey', 'light', '/appicon-light-grey.png'],
-    ['dark-sparkasse', 'dark', '/appicon-dark-sparkasse.png'],
-    ['light-sparkasse', 'light', '/appicon-light-sparkasse.png'],
+    ['dark-bank', 'dark', '/appicon-dark-bank.png'],
+    ['light-bank', 'light', '/appicon-light-bank.png'],
     ['dark-nebula', 'dark', '/appicon-dark-nebula.png'],
   ])('resolves the %s skin icon', (theme, resolved, expected) => {
     expect(appIconForTheme(theme as never, resolved as never)).toBe(expected);
@@ -64,9 +64,9 @@ describe('appIcon', () => {
 
   it('swaps the href when the skin changes', () => {
     applyFavicon('light', 'light');
-    applyFavicon('dark-sparkasse', 'dark');
+    applyFavicon('dark-bank', 'dark');
     expect(
       (document.querySelector('link[rel="icon"]') as HTMLLinkElement).getAttribute('href'),
-    ).toBe('/appicon-dark-sparkasse.png');
+    ).toBe('/appicon-dark-bank.png');
   });
 });

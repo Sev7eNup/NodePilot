@@ -342,6 +342,21 @@ callers who kept access simply resubscribe and callers who lost it are refused.
 - [SharedWorkflowFoldersController.cs](../src/NodePilot.Api/Controllers/SharedWorkflowFoldersController.cs) — `RevokeLiveSubscriptionsAsync` on both `MoveWorkflow` and folder `Move`
 - [SignalRExecutionNotifier.cs](../src/NodePilot.Api/Hubs/SignalRExecutionNotifier.cs) — `IWorkflowFolderProjection.InvalidateWorkflowFolder`. The per-connection ops-feed scope is a documented snapshot, but the notifier's `workflowId → folderId` cache is a *server-side* mapping: left stale it routes a moved workflow's status events to the old folder's watchers indefinitely, and hides them from the new folder's.
 
+### M-34 — SSRF Guard Missed the Unspecified Address
+`0.0.0.0` and its IPv6 counterpart `::` reach the **local host** when used as a connect target,
+but neither is a loopback address as far as `IPAddress.IsLoopback` is concerned, and neither falls
+into any RFC1918 / ULA range. The private-network set therefore did not contain them, and
+`RestApi:BlockPrivateNetworks` — on by default — waved them through: `http://0.0.0.0:5000/`
+reached every service bound on the machine, NodePilot's own API included, from a `restApi` step
+whose URL can be assembled out of trigger payloads.
+
+Both spellings now count as private. They are deliberately part of the *private* set rather than
+the unconditionally-blocked link-local set, so they behave exactly like `127.0.0.1`: refused by
+default, reachable in a development setup that switches the guard off on purpose.
+
+- [NetworkGuard.cs](../src/NodePilot.Engine/Security/NetworkGuard.cs) — `IsPrivateNetwork`, one line per address family
+- [NetworkGuardTests.cs](../tests/NodePilot.Engine.Tests/Security/NetworkGuardTests.cs) — `Default_BlocksUnspecifiedAddress` / `WhenExplicitlyDisabled_AllowsUnspecifiedAddress`, verified in both directions (the guard tests fail without the fix)
+
 ## Low
 
 ### L-2 — Resume-Override Size Caps

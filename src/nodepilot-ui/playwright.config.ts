@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Playwright config for NodePilot UI E2E tests.
  *
- * Scenario catalogue: see [E2ETests.md](../../E2ETests.md) at the repo root —
+ * Scenario catalogue: see [E2ETests.md](../../docs/testing/E2ETests.md) —
  * that document is the source of truth for what each E2E test covers, the
  * happy-path tour, and the manual checklists that are executed via the
  * Playwright MCP browser. Test files in this folder are the automated subset

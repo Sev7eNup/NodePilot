@@ -273,7 +273,7 @@ test.describe('Dashboard (Teil 11)', () => {
 
   test('11.4 - Bank Hell quick actions keep red-accented secondary buttons', async ({ page }) => {
     await page.addInitScript(() =>
-      localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'light-sparkasse' }, version: 0 })),
+      localStorage.setItem('nodepilot.theme', JSON.stringify({ state: { theme: 'light-bank' }, version: 0 })),
     );
     await page.route('**/api/stats/dashboard**', (route) =>
       route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(dashboardStats()) }),
@@ -281,7 +281,7 @@ test.describe('Dashboard (Teil 11)', () => {
 
     await page.goto('/');
     await expect(page.getByRole('heading', { name: /^dashboard$/i })).toBeVisible({ timeout: 15_000 });
-    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-sparkasse');
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.skin)).toBe('light-bank');
 
     const primary = page.getByRole('button', { name: /new workflow|neuer workflow/i });
     const secondary = page.getByRole('button', { name: /start workflow|workflow starten/i });

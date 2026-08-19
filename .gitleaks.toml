@@ -67,7 +67,7 @@ description = "Documented external-trigger API-key placeholder"
 targetRules = ["curl-auth-header"]
 condition = "AND"
 regexTarget = "line"
-paths = ['''^E2ETests\.md$''']
+paths = ['''^docs/testing/E2ETests\.md$''']
 regexes = ['''X-Api-Key:''']
 
 [[allowlists]]

@@ -2,7 +2,7 @@
 
 Hermetic Playwright specs for the React SPA. They mock every API call with `page.route`
 (no backend, no Postgres, no WinRM) and run against a `vite preview` build. The full
-`E2ETests.md` catalogue (83 Teile) is the source of truth; this suite is the **automated
+[`docs/testing/E2ETests.md`](../../../docs/testing/E2ETests.md) catalogue (83 Teile) is the source of truth; this suite is the **automated
 UI subset**. Backend-only and environment-bound scenarios are covered elsewhere (noted below).
 
 ## Running

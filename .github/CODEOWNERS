@@ -1,0 +1,8 @@
+# Code owners for NodePilot.
+#
+# NodePilot is a single-contributor project, so this file exists for one practical reason:
+# GitHub requests a review from the owner on every pull request automatically, which means an
+# outside contribution can never sit unnoticed and a Dependabot PR always lands in one inbox.
+#
+# Everything, everywhere.
+*   @Sev7eNup

@@ -12,8 +12,8 @@ export const APP_ICON_BY_SKIN: Record<SkinId, string> = {
   dark: '/appicon-dark.png',
   'dark-lila': '/appicon-dark-lila.png',
   'light-grey': '/appicon-light-grey.png',
-  'dark-sparkasse': '/appicon-dark-sparkasse.png',
-  'light-sparkasse': '/appicon-light-sparkasse.png',
+  'dark-bank': '/appicon-dark-bank.png',
+  'light-bank': '/appicon-light-bank.png',
   'dark-nebula': '/appicon-dark-nebula.png',
 };
 

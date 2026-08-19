@@ -1,13 +1,48 @@
 <!doctype html>
-<html lang="de">
+<!-- lang is the STATIC value crawlers and no-JS readers get; English is the site default
+     (see src/i18n/languages.ts DEFAULT_LANG). App.tsx overwrites it per navigation once the
+     bundle runs, so this attribute is about the first response, not the running app. -->
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link id="docs-favicon" rel="icon" type="image/png" href="./src/assets/logo-light.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f8f9fb" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#111216" media="(prefers-color-scheme: dark)" />
-    <title>NodePilot Docs</title>
-    <meta name="description" content="Agentless Workflow-Orchestrierung für Windows-Umgebungen via WinRM." />
+    <title>NodePilot Documentation — Agentless Windows Workflow Orchestration</title>
+    <meta
+      name="description"
+      content="NodePilot documentation: agentless workflow orchestration for Windows over WinRM — an open, modern replacement for Microsoft System Center Orchestrator."
+    />
+
+    <!-- Link previews. ONE generic card for the whole site, on purpose: routes live in the
+         URL fragment (#/en/cli), which is never sent to the server, so every page returns this
+         same HTML. Per-page OG tags are therefore impossible — and a runtime hook that rewrites
+         them would be dead code, because facebookexternalhit/Twitterbot/Slackbot/LinkedInBot
+         do not execute JavaScript.
+         For the same reason there is no hreflang pair and no sitemap: search engines strip the
+         fragment, so #/en/… and #/de/… are one URL to them and both would be decoration.
+         og:url and canonical carry NO fragment — og:url is the object's permanent id.
+         og:image must be an ABSOLUTE https URL; a relative one silently yields no card image on
+         most platforms. public/ files are copied to the site root untouched by `base`. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="NodePilot Docs" />
+    <meta property="og:title" content="NodePilot Documentation" />
+    <meta
+      property="og:description"
+      content="Agentless workflow orchestration for Windows over WinRM — an open replacement for System Center Orchestrator."
+    />
+    <meta property="og:url" content="https://sev7enup.github.io/NodePilot/" />
+    <meta property="og:image" content="https://sev7enup.github.io/NodePilot/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="NodePilot — agentless Windows workflow orchestration" />
+    <!-- The only twitter:* tag worth having: title/description/image are inherited from og:*.
+         twitter:site/creator are omitted deliberately — they need a real handle. -->
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="canonical" href="https://sev7enup.github.io/NodePilot/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <!-- Resolve the theme BEFORE first paint, otherwise dark-mode users get a white flash.
          Must stay a classic (non-module) inline script — a module would be deferred and
          the flash would return. `useTheme` seeds its state from the class this sets, so

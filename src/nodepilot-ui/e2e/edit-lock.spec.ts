@@ -6,7 +6,7 @@ import { installDefaultMocks } from './fixtures/mockApi';
  * common-regression area because the button labels + endpoint dispatch change with
  * `IsEnabled` × `CheckedOutByUserId` combinations.
  *
- * Maps to scenarios in [E2ETests.md](../../../E2ETests.md) Teil 27:
+ * Maps to scenarios in [E2ETests.md](../../../docs/testing/E2ETests.md) Teil 27:
  *   - Test 27.1 — State A: Productive (no lock) → "Bearbeiten" + "Disable" visible.
  *   - Test 27.2 — Bearbeiten → State B: lock-by-me + IsEnabled=false.
  *   - Test 27.7 — State D: lock-by-other → Designer read-only + lock-banner.

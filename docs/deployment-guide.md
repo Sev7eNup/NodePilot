@@ -69,7 +69,7 @@ unsigned or tampered artifacts, so a code-signing certificate is part of the set
   child processes and executes generated scripts out of `%TEMP%`; without exceptions,
   endpoint protection blocks individual steps or the install-directory swap during an
   upgrade. Hand-off list with per-entry rationale and residual risk:
-  [av-exclusions.md](av-exclusions.md) (German).
+  [av-exclusions.md](av-exclusions.md).
 
 ### The three certificates
 
@@ -119,17 +119,33 @@ which — it cares that the artifact is signed and that you tell it which publis
 
 Take these from the [latest release](https://github.com/Sev7eNup/NodePilot/releases/latest):
 
-- `NodePilot-<version>.zip`
+- `NodePilot-<version>.zip` — the artifact the service is installed from
 - `NodePilot-<version>.zip.manifest.json`
 - `NodePilot-<version>.zip.manifest.json.p7s`
+- `NodePilot-Deploy-Scripts-<version>.zip` — **the installer scripts you run below**
 - `NodePilot-<version>.SHA256SUMS.txt`
 - `nodepilot-release-signing.cer` — the public signing certificate
 
-Verify the download:
+Unpack the scripts next to the artifact — this is where `deploy\Install-NodePilot.ps1` comes from,
+and every step after this one runs out of it:
 
 ```powershell
-# 1. Checksums (compare against NodePilot-1.2.0.SHA256SUMS.txt)
-Get-FileHash .\NodePilot-1.2.0.zip -Algorithm SHA256 | Format-List
+Expand-Archive .\NodePilot-Deploy-Scripts-<version>.zip -DestinationPath .
+# -> .\deploy\Install-NodePilot.ps1 (+ Update-, Uninstall-, the helpers they need, and templates\)
+```
+
+> The scripts ship as their own archive on purpose. They also travel inside the artifact, but only
+> under `knowledge\source\` for the AI assistant — and taking them from there would mean extracting
+> the **unverified** archive to obtain the very script whose job is to verify it. Verify this small
+> zip against `SHA256SUMS`, then let the script it contains verify the artifact.
+
+Verify the download — every file, including the certificate and the script archive, has a line in
+`NodePilot-<version>.SHA256SUMS.txt`:
+
+```powershell
+# 1. Checksums for everything you downloaded, compared against NodePilot-<version>.SHA256SUMS.txt
+Get-ChildItem NodePilot-*, nodepilot-release-signing.cer -File |
+    Get-FileHash -Algorithm SHA256 | Format-Table Hash, Path
 
 # 2. The publisher you are about to pin is the one named in the release notes
 (Get-PfxCertificate .\nodepilot-release-signing.cer).Thumbprint
@@ -181,7 +197,7 @@ Two things have to be true for it to appear, and both are true for a downloaded 
 You can see the mark for yourself:
 
 ```powershell
-Get-Content -LiteralPath .\NodePilot-Server-Setup-1.2.10.exe -Stream Zone.Identifier
+Get-Content -LiteralPath .\NodePilot-Server-Setup-<version>.exe -Stream Zone.Identifier
 # ZoneId=3   (3 = Internet)
 ```
 
@@ -190,11 +206,11 @@ and the publisher thumbprint are:
 
 ```powershell
 # 1. The file is the one that was published
-Get-FileHash .\NodePilot-Server-Setup-1.2.10.exe -Algorithm SHA256 | Format-List
-#    compare against NodePilot-1.2.10.SHA256SUMS.txt
+Get-FileHash .\NodePilot-Server-Setup-<version>.exe -Algorithm SHA256 | Format-List
+#    compare against NodePilot-<version>.SHA256SUMS.txt
 
 # 2. It carries the publisher named in the release notes
-(Get-AuthenticodeSignature .\NodePilot-Server-Setup-1.2.10.exe).SignerCertificate.Thumbprint
+(Get-AuthenticodeSignature .\NodePilot-Server-Setup-<version>.exe).SignerCertificate.Thumbprint
 ```
 
 `Get-AuthenticodeSignature` reports `UnknownError` here, and that is the expected result rather
@@ -204,7 +220,7 @@ meaningful is the thumbprint and the checksum. Once both match, choose *More inf
 Clearing the mark instead of clicking through it has the same effect and is easier to script:
 
 ```powershell
-Unblock-File -Path .\NodePilot-Server-Setup-1.2.10.exe
+Unblock-File -Path .\NodePilot-Server-Setup-<version>.exe
 ```
 
 **The ZIP route needs the same treatment.** `Install-NodePilot.ps1` unpacks a downloaded archive
@@ -212,8 +228,8 @@ and runs PowerShell out of it; files extracted from a marked ZIP inherit the mar
 Windows treat those scripts as downloaded content. Unblock the archive before extracting:
 
 ```powershell
-Unblock-File -Path .\NodePilot-1.2.10.zip
-Expand-Archive -Path .\NodePilot-1.2.10.zip -DestinationPath .\NodePilot-1.2.10
+Unblock-File -Path .\NodePilot-<version>.zip
+Expand-Archive -Path .\NodePilot-<version>.zip -DestinationPath .\NodePilot-<version>
 ```
 
 Antivirus exclusions do not change any of this. SmartScreen is a separate reputation service and
@@ -247,17 +263,22 @@ when you want something else:
     -InstallerSigningCertificateThumbprint $signer.Thumbprint
 ```
 
-Copy **four files** to the target server (e.g. `C:\Temp`):
+Copy these to the target server (e.g. `C:\Temp`):
 
-- `out\NodePilot-1.2.0.zip`
-- `out\NodePilot-1.2.0.zip.manifest.json`
-- `out\NodePilot-1.2.0.zip.manifest.json.p7s`
-- `nodepilot-signer.cer`
+- `out\NodePilot-<version>.zip`
+- `out\NodePilot-<version>.zip.manifest.json`
+- `out\NodePilot-<version>.zip.manifest.json.p7s`
+- `out\nodepilot-release-signing.cer` — exported by the build from the signer you passed
+- `out\NodePilot-Deploy-Scripts-<version>.zip` — or, since you have the checkout, the `deploy\`
+  folder directly
 
-`out\NodePilot-1.2.0.SHA256SUMS.txt` covers everything the run produced, if you want to verify the
-transfer.
+`out\NodePilot-<version>.SHA256SUMS.txt` covers everything the run produced, if you want to verify
+the transfer.
 
-plus the `deploy\` folder itself (`Install-NodePilot.ps1` + `ArtifactSecurity.ps1`).
+Whichever way you bring the scripts across, `Install-NodePilot.ps1` needs the helpers it
+dot-sources next to it — `ArtifactSecurity.ps1`, `Preflight.ps1`, `ServiceControl.ps1`,
+`MachinePath.ps1` — plus `templates\`. The deploy-scripts archive contains exactly that set;
+copying the single `.ps1` on its own fails at the first dot-source.
 
 ## Step 2 — Prepare SQL Server
 
@@ -341,7 +362,7 @@ Run the installer (elevated Windows PowerShell 5.1):
 
 ```powershell
 .\Install-NodePilot.ps1 `
-    -ArtifactPath C:\Temp\NodePilot-1.0.0.zip `
+    -ArtifactPath C:\Temp\NodePilot-<version>.zip `
     -TrustedArtifactSignerThumbprint '<signer thumbprint>' `
     -ServiceAccount 'CORP\svc-nodepilot$' `
     -SqlServer 'sql1.corp.example.com' `
@@ -517,7 +538,7 @@ A Content-Security-Policy problem is *not* a candidate: the browser words that d
 
 ```powershell
 .\Update-NodePilot.ps1 `
-    -ArtifactPath C:\Temp\NodePilot-1.2.0.zip `
+    -ArtifactPath C:\Temp\NodePilot-<version>.zip `
     -TrustedArtifactSignerThumbprint '<signer thumbprint>'
 ```
 

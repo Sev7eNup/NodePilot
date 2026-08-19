@@ -42,6 +42,32 @@ public class NetworkGuardTests
     }
 
     [Theory]
+    [InlineData("http://0.0.0.0/")]        // IPv4 "this network" — routes to the local host
+    [InlineData("http://0.0.0.0:5000/")]   // …which is where NodePilot's own API listens
+    [InlineData("http://[::]/")]           // IPv6 unspecified, same reachability
+    public void Default_BlocksUnspecifiedAddress(string url)
+    {
+        // 0.0.0.0 and :: are loopback spellings that IPAddress.IsLoopback does not recognise:
+        // a connect to either reaches THIS host. Without them in the private-network set they
+        // are a one-line bypass of RestApi:BlockPrivateNetworks that reaches every service
+        // bound to the machine, NodePilot's own API included.
+        Action act = () => NetworkGuard.ValidateUrl(Cfg(null), url);
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Theory]
+    [InlineData("http://0.0.0.0/")]
+    [InlineData("http://[::]/")]
+    public void WhenExplicitlyDisabled_AllowsUnspecifiedAddress(string url)
+    {
+        // Treated exactly like 127.0.0.1: it is loopback, so the same dev-mode escape hatch
+        // applies. The point of the guard is that it takes an explicit decision, not that
+        // this particular spelling is special.
+        Action act = () => NetworkGuard.ValidateUrl(Cfg("false"), url);
+        act.Should().NotThrow();
+    }
+
+    [Theory]
     [InlineData("http://169.254.169.254/latest/meta-data/")] // AWS metadata endpoint
     [InlineData("http://169.254.170.2/")]                    // ECS task metadata
     public void Default_AlwaysBlocksLinkLocal(string url)

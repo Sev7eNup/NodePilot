@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 
 interface Heading {
   id: string
@@ -8,7 +9,7 @@ interface Heading {
 }
 
 /**
- * Right-side "Auf dieser Seite" navigation.
+ * Right-side "on this page" navigation.
  *
  * Headings are read from the **rendered DOM** (the article's `h2[id]`/`h3[id]`,
  * whose ids come from `rehype-slug` → `github-slugger`) rather than recomputed
@@ -23,6 +24,7 @@ export default function Toc({
   articleRef: RefObject<HTMLElement | null>
   path: string
 }) {
+  const { t } = useTranslation()
   const [headings, setHeadings] = useState<Heading[]>([])
   const [active, setActive] = useState<string | undefined>(undefined)
   const observerRef = useRef<IntersectionObserver | null>(null)
@@ -72,11 +74,11 @@ export default function Toc({
     // A <nav> landmark, not an <aside>: it *is* navigation, and it keeps the sidebar's
     // `aside`-scoped rail styling from ever reaching this rail.
     <nav
-      aria-label="Auf dieser Seite"
+      aria-label={t('ui.onThisPage')}
       className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 overflow-y-auto pr-6 pt-8 xl:block"
     >
       <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-        Auf dieser Seite
+        {t('ui.onThisPage')}
       </p>
       <ul className="border-l border-outline-variant text-sm">
         {headings.map((h) => (

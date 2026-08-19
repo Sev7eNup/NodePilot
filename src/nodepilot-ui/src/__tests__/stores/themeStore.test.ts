@@ -79,25 +79,25 @@ describe('skins / data-skin attribute', () => {
 
   it('registryContainsAllSevenSkins', () => {
     const ids = THEMES.map((t) => t.id);
-    expect(ids).toEqual(['light', 'light-grey', 'light-sparkasse', 'dark', 'dark-lila', 'dark-sparkasse', 'dark-nebula']);
+    expect(ids).toEqual(['light', 'light-grey', 'light-bank', 'dark', 'dark-lila', 'dark-bank', 'dark-nebula']);
     expect(THEMES.find((t) => t.id === 'dark-lila')?.base).toBe('dark');
     expect(THEMES.find((t) => t.id === 'light-grey')?.base).toBe('light');
-    expect(THEMES.find((t) => t.id === 'dark-sparkasse')?.base).toBe('dark');
-    expect(THEMES.find((t) => t.id === 'light-sparkasse')?.base).toBe('light');
+    expect(THEMES.find((t) => t.id === 'dark-bank')?.base).toBe('dark');
+    expect(THEMES.find((t) => t.id === 'light-bank')?.base).toBe('light');
     expect(THEMES.find((t) => t.id === 'dark-nebula')?.base).toBe('dark');
   });
 
-  it('applyTheme_darkSparkasse_addsDarkClassAndDataSkinAndRemap', () => {
-    applyTheme('dark-sparkasse');
+  it('applyTheme_darkBank_addsDarkClassAndDataSkinAndRemap', () => {
+    applyTheme('dark-bank');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
-    expect(document.documentElement.dataset.skin).toBe('dark-sparkasse');
+    expect(document.documentElement.dataset.skin).toBe('dark-bank');
     expect(document.documentElement.classList.contains('np-accent-remap')).toBe(true);
   });
 
-  it('applyTheme_lightSparkasse_lightBaseWithSkinMarkerAndRemap', () => {
-    applyTheme('light-sparkasse');
+  it('applyTheme_lightBank_lightBaseWithSkinMarkerAndRemap', () => {
+    applyTheme('light-bank');
     expect(document.documentElement.classList.contains('dark')).toBe(false);
-    expect(document.documentElement.dataset.skin).toBe('light-sparkasse');
+    expect(document.documentElement.dataset.skin).toBe('light-bank');
     expect(document.documentElement.classList.contains('np-accent-remap')).toBe(true);
   });
 

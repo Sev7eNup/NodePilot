@@ -15,8 +15,8 @@ computes in-process against `NodePilot.Core`).
 ```powershell
 # From the repo. Not a dotnet global tool: PackAsTool rejects the net10.0-windows TFM this
 # project inherits (NETSDK1146), so `dotnet pack` fails. Publish and reference the .exe.
-# Beide Installer liefern den Server bereits mit: <install>\tools\mcp\nodepilot-mcp.exe.
-# Nur aus einem Source-Checkout selbst bauen:
+# Both installers already ship the server: <install>\tools\mcp\nodepilot-mcp.exe.
+# Build it yourself only from a source checkout:
 dotnet publish src/NodePilot.Mcp -c Release -o C:\Tools\NodePilot-Mcp
 ```
 
@@ -122,36 +122,38 @@ secrets protected, validate-before-save) · `create_workflow` · `duplicate_work
 `get_dashboard_stats` · `get_operations_graph` · `get_workflow_coverage` · `get_workflow_step_health` ·
 `get_workflow_step_stats` · `query_audit_log` (Admin) · `get_support_diagnostics` (Admin)
 
-`get_operations_graph` deckelt `recent` zusätzlich zum Server-Cap auf die **neuesten 200** und weist die
-Kürzung in `meta.recentToolCap` / `meta.recentWithheldByTool` aus. Der Server-Cap (4000) ist ein
-Render-Budget für eine Timeline, die jeden Balken zeichnet — für ein Agenten-Kontextfenster wären das
-~900 KB GUIDs und ISO-Zeitstempel. `running` wird **nie** gekürzt: das ist die Antwort auf „was läuft
-gerade“. Gefensterte Gesamtzahlen kommen ohnehin aus `density[]`, nicht aus der Balkenliste.
+`get_operations_graph` caps `recent` to the **most recent 200** on top of the server cap and reports
+the truncation in `meta.recentToolCap` / `meta.recentWithheldByTool`. The server cap (4,000) is a
+render budget for a timeline that draws every bar — for an agent's context window that would be
+~900 KB of GUIDs and ISO timestamps. `running` is **never** truncated: that is the answer to "what is
+running right now". Windowed totals come from `density[]` anyway, not from the bar list.
 
 ### DB / text2sql (Admin; read-only)
 `list_db_tables` · `get_db_info` · `run_readonly_sql`. Schema discovery + single read-only SQL
 statement against the NodePilot App-DB (the agent does the NL→SQL translation). Read keyword
 whitelist + rollback enforced server-side; no write tool. `list_db_tables` hides secret columns
-(`PasswordHash`/`EncryptedPassword`) und maskiert `GlobalVariable.Value`. PostgreSQL-`U&"…"`-Identifier
-und dynamische XML-Exporter (`query_to_xml` & Co.) sind im serverseitigen Read-Guard generell gesperrt.
+(`PasswordHash`/`EncryptedPassword`) and masks `GlobalVariable.Value`. PostgreSQL `U&"…"` identifiers
+and dynamic XML exporters (`query_to_xml` and friends) are blocked outright in the server-side read
+guard.
 
-`Workflows`, `WorkflowVersions` und die Custom-Activity-Tabellen sind **bewusst nicht** gesperrt: die
-Tools sind Admin-only, und ein Admin liest dieselben Zeilen ohnehin über DbAdmin. Eine Sperre hätte nur
-Bestandsfragen („welche Workflows gibt es") unbeantwortbar gemacht. Für Definitionen inklusive
-Secret-Redaction bleibt `get_workflow_definition` der bequemere Weg.
+`Workflows`, `WorkflowVersions` and the custom-activity tables are **deliberately not** blocked: the
+tools are admin-only, and an admin reads the same rows through DbAdmin anyway. Blocking them would
+only have made inventory questions ("which workflows exist?") unanswerable. For definitions including
+secret redaction, `get_workflow_definition` remains the more convenient route.
 
-Für die übrigen Secret-Spalten gelten drei serverseitige Schichten im `DbAdminSecretColumns`-Contract:
+For the remaining secret columns, three server-side layers apply in the `DbAdminSecretColumns`
+contract:
 
-1. Nennt das Statement eine geschützte Spalte → Ablehnung (`protected_column`).
-2. Wildcard-Select → die geschützten Ergebnis-Spalten kommen als `***` zurück.
-3. Serialisiert das Statement eine **ganze Zeile** einer Tabelle mit Secret-Spalte
-   (`to_json`/`row_to_json`/`to_jsonb`/`json_agg`/`::text`/`FOR JSON`/`FOR XML`) → Ablehnung
-   (`protected_row_projection`). Schicht 1 und 2 arbeiten beide über **Namen**; eine Row-
-   Serialisierung nennt die Spalte nie und liefert sie unter einem harmlosen Ergebnis-Spaltennamen
-   aus — sie umging damit beide auf einen Schlag (Security-Audit 2026-07-26).
+1. If the statement names a protected column → rejection (`protected_column`).
+2. A wildcard select → the protected result columns come back as `***`.
+3. If the statement serializes a **whole row** of a table with a secret column
+   (`to_json`/`row_to_json`/`to_jsonb`/`json_agg`/`::text`/`FOR JSON`/`FOR XML`) → rejection
+   (`protected_row_projection`). Layers 1 and 2 both work through **names**; a row serialization never
+   names the column and returns it under an innocuous result-column name — so it bypassed both at
+   once (security audit 2026-07-26).
 
-So landet kein Secret im Kontext des Agents. Schicht 3 ist bewusst grob und greift auch bei
-harmlosen Casts auf diesen Secret-Tabellen; explizit benannte, nicht geschützte Spalten funktionieren.
+That way no secret lands in the agent's context. Layer 3 is deliberately coarse and also triggers on
+harmless casts against these secret tables; explicitly named, unprotected columns work fine.
 
 ### Supporting resources (secrets never surfaced)
 `list_machines` · `get_machine` · `create_machine` · `update_machine` · `test_machine` ·

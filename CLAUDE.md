@@ -178,7 +178,7 @@ User-definierte Regeln, die bei passenden Ereignissen über Kanäle (SMTP / Gene
 - **Neuer API Controller:** In `Api/Controllers/`, DTOs in `Api/Dtos/`. **Immer parallel** CLI-Command *und* MCP-Tool anlegen — Mechanik in `src/NodePilot.Cli/CLAUDE.md` bzw. `src/NodePilot.Mcp/CLAUDE.md`.
 - **Frontend:** Seiten/Nodes/i18n/State-Konventionen in `src/nodepilot-ui/CLAUDE.md`. **Farben immer über Design-Tokens/CSS-Variablen** — nie Tailwind-Farbliterale hardcoden (`text-gray-900`, `bg-white` brechen die Dark-Skins). Natives `<select>`: `option:hover` ist in Chromium nicht stylbar → Custom-Dropdown-Komponente verwenden.
 - **Models/Interfaces:** Immer in `NodePilot.Core`
-- **Doc-Sync:** Feature-Änderungen halten alle Doku-Flächen synchron — README, `docs/*.md`, `E2ETests.md` + `e2e/README.md` und die Doku-Website `src/nodepilot-docs-ui/content/` (eigener kuratierter Korpus, kein Render von `docs/`).
+- **Doc-Sync:** Feature-Änderungen halten alle Doku-Flächen synchron — README, `docs/*.md`, `docs/testing/E2ETests.md` + `e2e/README.md` und die Doku-Website `src/nodepilot-docs-ui/content/` (eigener kuratierter Korpus, kein Render von `docs/`). **Die Website ist zweisprachig:** jede Seite existiert unter `content/de/<pfad>.md` **und** `content/en/<pfad>.md` — beide Bäume sind deckungsgleich, eine neue Seite braucht beide Dateien plus je einen Titel-Eintrag in `src/i18n/locales/{de,en}.json`. Markdown-Querverweise werden **ohne** Sprach-Präfix geschrieben (`../enterprise/folder-rbac`); die aktive Sprache setzt `DocPage` zur Laufzeit davor. Der AI-Wissenskorpus (`NodePilot.Api.csproj`) zieht bewusst **nur** `content/en/`.
 
 ## Workflow-JSON Format
 

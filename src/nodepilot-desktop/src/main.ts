@@ -14,8 +14,16 @@ const PARTITION = 'persist:nodepilot';
 const ASSETS_DIR = join(__dirname, '..', 'assets');
 
 /** Per-user handoff copy of the admin bootstrap token, written by the elevated installer into the
- *  installing user's profile (the real token under ProgramData is SYSTEM-owned and unreadable here). */
+ *  INTERACTIVE user's profile — this process's user (the real token under ProgramData is
+ *  SYSTEM-owned and unreadable here). The installer resolves that user explicitly rather than
+ *  using its own profile, because it runs elevated and those are not always the same account. */
 const HANDOFF_PATH = join(process.env.LOCALAPPDATA ?? '', 'NodePilot', 'admin-setup.handoff');
+
+/** Must stay ABOVE the provisioner's own readiness budget (180 s in Provision-LocalDb.ps1).
+ *  At the previous 120 s the shell gave up while the installer was still legitimately waiting for
+ *  the first EF migration against a freshly initdb'd cluster, and reported a dead backend that was
+ *  merely slow. */
+const READY_TIMEOUT_MS = 240_000;
 
 let config: DesktopConfig;
 let mainWindow: BrowserWindow | null = null;
@@ -66,12 +74,15 @@ async function bootstrap(): Promise<void> {
   hardenSession(appSession(), config.certificateSha256);
 
   showSplash();
-  const ready = await waitForReady(config.origin, 120_000);
+  const ready = await waitForReady(config.origin, READY_TIMEOUT_MS);
   closeSplash();
 
   if (!ready) {
     fatal(new Error(
-      `The NodePilot backend did not become ready. Check the "${config.serviceName}" service in services.msc.`));
+      `The NodePilot backend did not become ready within ${READY_TIMEOUT_MS / 1000} seconds.\n\n` +
+      `Check the "${config.serviceName}" service in services.msc, and the logs under ` +
+      `%ProgramData%\\NodePilot\\logs (installation issues: %TEMP%\\nodepilot-provision.log).\n\n` +
+      'If the service is running but slow to start, closing this and launching NodePilot again is enough.'));
     return;
   }
 
