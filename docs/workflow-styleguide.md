@@ -1,95 +1,95 @@
 # NodePilot Workflow Layout Styleguide
 
-Konventionen für hand-layoutete Workflow-JSONs (`nodes`/`edges`), die in der GUI ohne Überlappungen und mit lesbaren Edge-Labels dargestellt werden. Abgeleitet aus dem Master-Test-Workflow [scripts/test-master-all-activities.json](../scripts/test-master-all-activities.json) — dort ist das lebende Referenz-Beispiel (alle Activities, alle 14 Edge-Operatoren, alle 3 Junction-Modes).
+Conventions for hand-laid-out workflow JSON (`nodes`/`edges`) that renders in the GUI without overlaps and with readable edge labels. Derived from the master test workflow [scripts/test-master-all-activities.json](../scripts/test-master-all-activities.json) — the living reference example there covers every activity, all 14 edge operators and all 3 junction modes.
 
-> Hinweis: Die UI bietet einen Dagre-Auto-Layout-Button ([autoLayout.ts](../src/nodepilot-ui/src/lib/autoLayout.ts), `rankdir:LR, ranksep:180, nodesep:80`). Für hand-kuratierte Demo-Workflows mit vielen Condition-Labels reicht Dagre nicht — die Regeln unten sind dafür.
+> Note: the UI has a Dagre auto-layout button ([autoLayout.ts](../src/nodepilot-ui/src/lib/autoLayout.ts), `rankdir:LR, ranksep:180, nodesep:80`). For hand-curated demo workflows with many condition labels, Dagre is not enough — the rules below are for those.
 
 ---
 
-## 1 — Leitprinzipien
+## 1 — Guiding principles
 
-Es gibt **keine vorgeschriebene Flussrichtung**. LTR, TTB, sternförmig, zwei parallele Spalten, Mischung aus mehreren Sub-Topologien — was den Workflow für einen menschlichen Leser am klarsten macht, ist richtig. Dank Flexible Ports (Abschnitt 7.1) kann jede Edge frei eine Seite des Source-/Target-Nodes wählen, statt sich in ein Layout-Korsett zwängen zu müssen.
+There is **no prescribed flow direction**. LTR, TTB, radial, two parallel columns, a mix of several sub-topologies — whatever makes the workflow clearest to a human reader is right. Thanks to flexible ports (section 7.1) every edge can freely pick a side of its source and target node instead of being forced into a layout corset.
 
-Drei harte Regeln, an denen alles andere hängt:
+Three hard rules everything else hangs on:
 
-1. **Keine Überlappungen** — weder Node-auf-Node, noch Edges durch Nodes hindurch, noch Labels über Labels. Bei Konflikt: mehr Platz lassen. Lieber ein zu großer Workflow auf dem Canvas als ein zu enger, der nicht lesbar ist.
-2. **Edge-Labels müssen ohne Zoomen lesbar sein** — kurze, semantische Bedingungen. Wenn ein Label zu lang wird, splittet man die Logik auf zwei sequenzielle Edges, fasst sie zu einer Sub-Pattern-Phrase zusammen, oder zieht den Operator-Spellout in das nachfolgende Node-Label.
-3. **Flussrichtung ist innerhalb einer Region konsistent** — wenn ein Abschnitt LTR fließt, fließt er ganz LTR; man wechselt nicht mittendrin ohne semantischen Grund. Loop-Backs, Retry-Pfade und „springt zurück nach Phase X bei Fehler" sind legitime Ausnahmen — die sollen visuell auffallen.
+1. **No overlaps** — not node on node, not edges cutting through nodes, not labels over labels. When in conflict: leave more room. A workflow that is too large on the canvas beats one that is too tight to read.
+2. **Edge labels must be readable without zooming** — short, semantic conditions. If a label grows too long, split the logic across two sequential edges, condense it into a sub-pattern phrase, or move the operator spell-out into the following node label.
+3. **Flow direction is consistent within a region** — if a section flows LTR, it flows LTR throughout; you do not switch mid-way without a semantic reason. Loop-backs, retry paths and "jumps back to phase X on failure" are legitimate exceptions — those *should* stand out visually.
 
-Alle weiteren Abschnitte sind **Konventionen für den häufigsten Fall (LTR mit klarer Haupt-Lane)**. Wer eine andere Topologie wählt, übersetzt die Abstandsmaße entsprechend (für TTB: x↔y vertauschen; für radiale Layouts: in Slot-Winkeln denken).
+Every further section is a **convention for the most common case (LTR with a clear main lane)**. If you pick a different topology, translate the spacing figures accordingly (for TTB: swap x↔y; for radial layouts: think in slot angles).
 
-## 1.5 — Kompaktheit (wichtiger als alles andere)
+## 1.5 — Compactness (more important than anything else)
 
-**Das Endprodukt soll bei `fit-view` ohne Scrollen lesbar bleiben.** Hand-layoutete Workflows haben einen impliziten Größen-Etat — wer ihn überzieht, produziert ein 35%-Mini-Diagramm in dem niemand mehr was erkennt. Daumenregel pro Activity-Count:
+**The end result should stay readable at `fit-view` without scrolling.** Hand-laid-out workflows have an implicit size budget — overrun it and you produce a 35 % mini-diagram nobody can read. Rule of thumb per activity count:
 
-| Aktivitäten | Ziel-Canvas (px) | Layout-Strategie |
+| Activities | Target canvas (px) | Layout strategy |
 |---|---|---|
-| ≤ 15 | ≤ 2500 × 1200 | reines LTR oder TTB, 1 Zeile |
-| 16–30 | ≤ 3500 × 1800 | Snake mit 2 Zeilen |
-| 31–50 | ≤ 4500 × 2200 | Snake mit 3 Zeilen |
-| > 50 | — | SubWorkflows extrahieren statt Canvas wachsen lassen |
+| ≤ 15 | ≤ 2500 × 1200 | plain LTR or TTB, 1 row |
+| 16–30 | ≤ 3500 × 1800 | snake with 2 rows |
+| 31–50 | ≤ 4500 × 2200 | snake with 3 rows |
+| > 50 | — | extract sub-workflows instead of growing the canvas |
 
-**Snake-Pattern** (das wichtigste Werkzeug für kompakte Layouts):
+**The snake pattern** (the most important tool for compact layouts):
 
-1. ROW 1: LTR von links nach rechts
-2. Übergang am rechten Rand: `sourceHandle: bottom` → `targetHandle: top`
-3. ROW 2: RTL von rechts nach links (`sourceHandle: left` → `targetHandle: right`)
-4. Übergang am linken Rand: `sourceHandle: bottom` → `targetHandle: top`
-5. ROW 3: wieder LTR
+1. ROW 1: LTR, left to right
+2. Transition at the right edge: `sourceHandle: bottom` → `targetHandle: top`
+3. ROW 2: RTL, right to left (`sourceHandle: left` → `targetHandle: right`)
+4. Transition at the left edge: `sourceHandle: bottom` → `targetHandle: top`
+5. ROW 3: LTR again
 
-Snake-Übergänge **nur an Zeilen-Enden** — nicht in der Mitte einer Zeile abknicken (verwirrt den Leser, wirkt wie ein Fehler). Pro Zeile maximal ein Richtungswechsel. Branches/Fans hängen rechtwinklig zur Zeilenrichtung — eine Fan-Branch fan't z.B. in einer LTR-Zeile nach oben/unten weg, nicht nach hinten gegen die Flussrichtung.
+Snake transitions belong **at row ends only** — do not bend mid-row (it confuses the reader and looks like a mistake). At most one direction change per row. Branches and fans hang perpendicular to the row direction — a fan branch in an LTR row fans upward/downward, not backwards against the flow.
 
-**Kompaktheits-Tradeoffs:**
+**Compactness trade-offs:**
 
-- y-Spread von 160 px (statt 180) ist OK bei kurzen Branch-Labels; bei >40 Zeichen Label-Wrap unbedingt 180+ behalten.
-- x-Step von 280 (statt 300) ist OK bei normalen 1→1-Ketten. Fan-Out/Fan-In braucht weiterhin 340–400.
-- Mehr als 3 Snake-Zeilen heißt: der Workflow ist zu groß für eine Single-Definition. Sub-Workflows via `startWorkflow` extrahieren.
-- StickyNotes sparsam einsetzen — eine pro Zeilen-/Phasen-Übergang reicht. Jede Note klaut visuellen Platz, der für lesbare Edge-Labels gebraucht wird.
+- A y-spread of 160 px (instead of 180) is fine with short branch labels; with labels wrapping beyond 40 characters, keep 180+.
+- An x-step of 280 (instead of 300) is fine for ordinary 1→1 chains. Fan-out/fan-in still needs 340–400.
+- More than 3 snake rows means the workflow is too big for a single definition. Extract sub-workflows via `startWorkflow`.
+- Use sticky notes sparingly — one per row or phase transition is enough. Every note steals visual space needed for readable edge labels.
 
-## 2 — Abstände (LTR-Beispielmaße)
+## 2 — Spacing (LTR example figures)
 
-| Situation | x-Step | y-Lane |
+| Situation | x-step | y-lane |
 |---|---|---|
-| Normale Kette (1→1) | **300 px** | — |
-| Kurze Labels, 1→1 | 280 px minimum | — |
-| Fan-Out mit ≥5 Condition-Labels | **340–400 px** | — |
-| Fan-In mit ≥5 Branches | **340–400 px** | — |
-| 2–3 parallele Branches | — | 160 px |
-| 4–5 parallele Branches | — | **180 px** |
-| 6+ parallele Branches | — | **180–200 px** |
+| Ordinary chain (1→1) | **300 px** | — |
+| Short labels, 1→1 | 280 px minimum | — |
+| Fan-out with ≥ 5 condition labels | **340–400 px** | — |
+| Fan-in with ≥ 5 branches | **340–400 px** | — |
+| 2–3 parallel branches | — | 160 px |
+| 4–5 parallel branches | — | **180 px** |
+| 6+ parallel branches | — | **180–200 px** |
 
-Die Fan-Out/Fan-In-Regel ist die wichtigste: bei 7 Edges, die radial aus einer Junction zu Phase E gehen, clustern sich die Midpoint-Labels ohne extra Abstand und werden unlesbar. Breiter horizontal = mehr Midpoint-Spread = weniger Label-Kollision.
+The fan-out/fan-in rule is the most important one: with 7 edges radiating from a junction to phase E, the midpoint labels cluster without extra spacing and become unreadable. Wider horizontally = more midpoint spread = fewer label collisions.
 
-Fan-Branches **symmetrisch um die Haupt-Lane** zentrieren, wenn die Anzahl ungerade ist. Bei gerader Anzahl: leicht asymmetrisch akzeptieren, aber Span nicht größer als nötig — jedes extra y-Pixel kostet vertikalen Scroll-Raum.
+Centre fan branches **symmetrically around the main lane** when their count is odd. With an even count, accept slight asymmetry but keep the span no larger than necessary — every extra y-pixel costs vertical scroll space.
 
-**Shape-Bonus für Trigger-Nodes**: Triggers werden zu Oktagonen mit 1.55× Bbox (siehe Abschnitt 8). Direkt nach einem Trigger entsprechend **+80–100 px extra x-Vorlauf** einplanen, sonst überlappt der Oktagon-Rand mit dem nachfolgenden Node.
+**Shape bonus for trigger nodes:** triggers render as octagons at 1.55× bounding box (see section 8). Plan **+80–100 px of extra x-headroom** right after a trigger, or the octagon edge overlaps the following node.
 
-## 3 — Node-Labels
+## 3 — Node labels
 
-- **Mit Activity-Prefix starten**: `"runScript: collect host info"`, `"Junction: waitAll (5)"`, `"Log: no PANIC"`. So sieht man auf einen Blick, was für ein Step das ist.
-- **Card-Mode-Breite 220–280 px**: Labels länger als ~40 Zeichen werden abgeschnitten oder umgebrochen.
-- **Keine Operator-Hints im Node-Label**, wenn die Bedingung schon auf der Edge steht: statt `"Log: env == production (AND ==, !=)"` einfach `"Log: env is production"`.
-- **Technische Parameter kurz**: `"Junction: waitNofM (2/3)"` statt `"Junction: waitNofM (requiredCount=2 of 3)"`.
+- **Start with the activity prefix**: `"runScript: collect host info"`, `"Junction: waitAll (5)"`, `"Log: no PANIC"`. That way the kind of step is obvious at a glance.
+- **Card-mode width 220–280 px**: labels longer than ~40 characters get truncated or wrapped.
+- **No operator hints in the node label** when the condition is already on the edge: instead of `"Log: env == production (AND ==, !=)"`, simply `"Log: env is production"`.
+- **Keep technical parameters short**: `"Junction: waitNofM (2/3)"` rather than `"Junction: waitNofM (requiredCount=2 of 3)"`.
 
-## 4 — Edge-Labels
+## 4 — Edge labels
 
-- **Semantisch, nicht strukturell**: `"env==prod & env!=stg"` statt `"AND(env=='production', env!='staging')"`.
-- **ASCII-Symbole**: `&` für AND, `OR` für OR, `NOT` für NOT, `!=`, `>=`, `<=`, `!x` für Negation.
-- **Bereiche** statt zwei-Operator-Spellout: `"cpu in [1..128]"` statt `"AND(cpu >= 1, cpu <= 128)"`.
-- **≤ 30 Zeichen** wo möglich. Bei langen Bedingungen: entweder zu einem Sub-Pattern zusammenfassen (`"4× string ops"`) und im nachfolgenden Node-Label detaillieren — oder auf zwei sequenzielle Edges/Decision-Nodes splitten.
-- **Standard-Phrasen**:
-  - `"Always"` — unbedingte Edge (kein `condition` / `conditionExpression`)
-  - `"On Success"` — Shortcut `condition: "<stepId>.success"`
-  - `"On Failure"` — Shortcut `condition: "<stepId>.failed"`
-- **Disabled Edges**: Label `"DISABLED edge"` + `data.disabled: true`. Target-Node im Label markieren: `"Log (disabled edge target)"`.
+- **Semantic, not structural**: `"env==prod & env!=stg"` rather than `"AND(env=='production', env!='staging')"`.
+- **ASCII symbols**: `&` for AND, `OR` for OR, `NOT` for NOT, `!=`, `>=`, `<=`, `!x` for negation.
+- **Ranges** instead of a two-operator spell-out: `"cpu in [1..128]"` rather than `"AND(cpu >= 1, cpu <= 128)"`.
+- **≤ 30 characters** where possible. For long conditions: either condense into a sub-pattern (`"4× string ops"`) and give the detail in the following node label — or split across two sequential edges/decision nodes.
+- **Standard phrases**:
+  - `"Always"` — unconditional edge (no `condition` / `conditionExpression`)
+  - `"On Success"` — the `condition: "<stepId>.success"` shortcut
+  - `"On Failure"` — the `condition: "<stepId>.failed"` shortcut
+- **Disabled edges**: label `"DISABLED edge"` plus `data.disabled: true`. Mark the target node in its label too: `"Log (disabled edge target)"`.
 
-## 5 — Condition-Operator-Coverage-Pattern
+## 5 — The condition-operator coverage pattern
 
-Für Demo-Workflows, die **alle 14 Operatoren + AND/OR/NOT** zeigen sollen, die Operatoren in 6–7 Branches gruppieren — jede Branch kombiniert 2–4 Operatoren zu einer **semantisch sinnvollen Regel**. Nicht ein Operator pro Branch (bläht den Workflow auf), nicht alles in eine Branch packen (dann zeigt der Demo nichts).
+For demo workflows meant to show **all 14 operators plus AND/OR/NOT**, group the operators into 6–7 branches — each branch combining 2–4 operators into a **semantically meaningful rule**. Not one operator per branch (that bloats the workflow), and not everything in one branch (then the demo shows nothing).
 
-Bewährte Gruppierung (aus [test-master-all-activities.json](../scripts/test-master-all-activities.json)):
+A grouping that works well (from [test-master-all-activities.json](../scripts/test-master-all-activities.json)):
 
-| Branch | Regel | Operatoren |
+| Branch | Rule | Operators |
 |---|---|---|
 | 1 | `env==prod & env!=stg` | `==`, `!=`, AND |
 | 2 | `cpu in [1..128]` | `>=`, `<=`, AND |
@@ -99,29 +99,29 @@ Bewährte Gruppierung (aus [test-master-all-activities.json](../scripts/test-mas
 | 6 | `empty & !dry` | `isEmpty`, `isFalse`, AND |
 | 7 | `NOT contains PANIC` | `NOT`, `contains` |
 
-## 6 — Engine-Gotchas (must-know beim JSON-Bauen)
+## 6 — Engine gotchas (must-know while building JSON)
 
-| Gotcha | Richtig | Falsch |
+| Gotcha | Right | Wrong |
 |---|---|---|
-| `waitNofM`-Config | `"requiredCount": 2` | `"n": 2` (silent default 1) — siehe [WorkflowEngine.cs:535](../src/NodePilot.Engine/WorkflowEngine.cs#L535) |
-| `manualTrigger`-Params | Alle `type: "string"`, Defaults als Strings (`"80"`, `"false"`) | `type: "number"` → UI sendet Zahl → 400 "cannot convert to System.String" beim Execute |
-| `isTrue`/`isFalse` | Operiert auf Strings: `""`, `"false"` (case-insensitive), `"0"` sind falsy | Alles andere truthy — `"False"` (PowerShell `[string]$false`) ist falsy ✓ |
-| `runScript` Params | Alle deklarierten PS-Variablen werden automatisch als `param.*` captured — [ProcessExecutionEngine.cs:85](../src/NodePilot.Engine/PowerShell/ProcessExecutionEngine.cs#L85) hängt einen Capture-Block an | Kein `###NODEPILOT_PARAMS###`-Marker selbst einfügen |
-| `targetMachineId` | Leer/`"localhost"` → In-Process-Bypass (läuft engine-local; Script kann via `Invoke-Command`/`New-PSSession` **selbst** remoten, SCOrch-Stil — siehe [claude-reference.md](claude-reference.md#runscript--ausführungsort-local-vs-remote--self-managed-remoting)). GUID → managed WinRM | Echte Machines brauchen GUID aus DB |
-| `==` / `!=` | Numerisch wenn BEIDE parseable, sonst String-Compare | `"80" == 80` → numerisch gleich ✓ |
-| Node-Skip | `data.disabled: true` auf dem Node → Step wird als `Skipped` markiert, Downstream-Nodes ohne andere aktive Quellen kaskadieren auf `Skipped` | Nicht mit Edge-Disable verwechseln — letzteres skippt nur die eine Kante, nicht den Node |
-| Breakpoint | `data.breakpoint: true` → bei `POST /execute` mit `{"debug": true}` pausiert die Engine vor dem Step. Resume via `POST /executions/{id}/resume` | Außerhalb des Debug-Modus wird das Flag ignoriert |
-| **Databus-Sichtbarkeit** | Ein Step liest nur Ergebnisse seiner **Graph-Vorgänger**. Wer `{{X.output}}` referenziert, braucht einen Pfad von `X` zum lesenden Knoten | Referenz auf einen **Parallelzweig** schlägt immer fehl — auch wenn der Zweig schneller ist. Bei `runScript` blieb das früher als Literal im Skript stehen und der Step wurde **grün mit Platzhalter** |
-| **Trigger-Parameter** | `{{<triggerNodeId>.param.<name>}}` — z.B. `{{trg.param.filePath}}`, alternativ `{{manual.<name>}}` | `{{trigger.doctorEmail}}` ohne `param.` — kein gültiger Tail, bleibt Literal und landet z.B. als E-Mail-Adresse in der Config |
-| **Verwaiste Knoten** | Jeder Nicht-Trigger-Knoten braucht mindestens **eine aktive eingehende Kante** | Ohne eingehende Kante läuft der Knoten nie (`Skipped`) — und eine `waitAll`-Junction, die auf ihn wartet, skippt mit, samt allem dahinter. Der Lauf meldet trotzdem **`Succeeded`**, weil Skipped kein Fehler ist |
+| `waitNofM` config | `"requiredCount": 2` | `"n": 2` (silently defaults to 1) — see [WorkflowEngine.cs:535](../src/NodePilot.Engine/WorkflowEngine.cs#L535) |
+| `manualTrigger` params | All `type: "string"`, defaults as strings (`"80"`, `"false"`) | `type: "number"` → the UI sends a number → 400 "cannot convert to System.String" on execute |
+| `isTrue`/`isFalse` | Operates on strings: `""`, `"false"` (case-insensitive) and `"0"` are falsy | Everything else is truthy — `"False"` (PowerShell's `[string]$false`) is falsy ✓ |
+| `runScript` params | Every declared PS variable is captured automatically as `param.*` — [ProcessExecutionEngine.cs:85](../src/NodePilot.Engine/PowerShell/ProcessExecutionEngine.cs#L85) appends a capture block | Do not insert a `###NODEPILOT_PARAMS###` marker yourself |
+| `targetMachineId` | Empty or `"localhost"` → in-process bypass (runs engine-local; the script can remote **itself** via `Invoke-Command`/`New-PSSession`, SCOrch style — see [claude-reference.md](claude-reference.md#runscript--ausführungsort-local-vs-remote--self-managed-remoting)). A GUID → managed WinRM | Real machines need the GUID from the database |
+| `==` / `!=` | Numeric when BOTH sides parse as numbers, otherwise a string compare | `"80" == 80` → numerically equal ✓ |
+| Node skip | `data.disabled: true` on the node → the step is marked `Skipped`, and downstream nodes with no other active source cascade to `Skipped` | Do not confuse this with disabling an edge — that skips only that one edge, not the node |
+| Breakpoint | `data.breakpoint: true` → with `POST /execute` and `{"debug": true}`, the engine pauses before the step. Resume via `POST /executions/{id}/resume` | Outside debug mode the flag is ignored |
+| **Data-bus visibility** | A step only reads results of its **graph ancestors**. Anything referencing `{{X.output}}` needs a path from `X` to the reading node | A reference into a **parallel branch** always fails — even if that branch finishes first. With `runScript` this used to survive as a literal in the script and the step went **green with a placeholder** |
+| **Trigger parameters** | `{{<triggerNodeId>.param.<name>}}` — e.g. `{{trg.param.filePath}}`, or alternatively `{{manual.<name>}}` | `{{trigger.doctorEmail}}` without `param.` — not a valid tail, stays a literal, and ends up in the config as (for example) an email address |
+| **Orphan nodes** | Every non-trigger node needs at least **one active incoming edge** | Without one the node never runs (`Skipped`) — and a `waitAll` junction waiting on it skips too, along with everything behind it. The run still reports **`Succeeded`**, because skipped is not a failure |
 
-## 7 — JSON-Schema-Erweiterungen seit Initial-Version
+## 7 — JSON schema extensions since the initial version
 
-Vier Designer-Features, die im Workflow-JSON sichtbar sind und beim Generieren bewusst gesetzt werden können.
+Four designer features that are visible in the workflow JSON and can be set deliberately when generating one.
 
-### 7.1 Flexible Ports — `sourceHandle` / `targetHandle`
+### 7.1 Flexible ports — `sourceHandle` / `targetHandle`
 
-Jeder Activity-Node hat vier Handles: `top` | `right` | `bottom` | `left`. Default ohne explizite Angabe ist `right` → `left` (klassisch LTR). Für vertikale Layouts, Junction-Anläufe von unten, Loop-Back-Edges oder gemischte Topologien können Edges explizit andere Seiten wählen:
+Every activity node has four handles: `top` | `right` | `bottom` | `left`. Without an explicit value the default is `right` → `left` (classic LTR). For vertical layouts, junctions approached from below, loop-back edges or mixed topologies, edges can pick other sides explicitly:
 
 ```json
 {
@@ -131,15 +131,15 @@ Jeder Activity-Node hat vier Handles: `top` | `right` | `bottom` | `left`. Defau
 }
 ```
 
-Implementierung in [edgePorts.ts](../src/nodepilot-ui/src/lib/edgePorts.ts). Der Toolbar-Toggle „Flexible Ports" macht im UI alle vier Handles anklickbar — aber **die JSON-Felder funktionieren unabhängig vom Toggle**. Ein Agent darf `sourceHandle`/`targetHandle` immer setzen, wenn das Layout es braucht; die EdgePropertiesPanel zeigt die Port-Auswahl automatisch, sobald eine Edge nicht-default-Handles hat.
+Implemented in [edgePorts.ts](../src/nodepilot-ui/src/lib/edgePorts.ts). The toolbar's "flexible ports" toggle makes all four handles clickable in the UI — but **the JSON fields work independently of the toggle**. An agent may always set `sourceHandle`/`targetHandle` when the layout needs it; the edge properties panel shows the port selection automatically as soon as an edge carries non-default handles.
 
-**Wann nutzen:** vertikale Phasen-Sektionen, Loop-Back-Edges (von rechts unten zurück nach links oben), zentrale Hub-Topologien, Junctions, die von mehreren Seiten gespeist werden. **Wann weglassen:** klassisches LTR — die Default-Belegung ist sauber, explizite Handles wären nur Rauschen.
+**When to use:** vertical phase sections, loop-back edges (from bottom-right back to top-left), central hub topologies, junctions fed from several sides. **When to omit:** classic LTR — the default assignment is clean, and explicit handles would only be noise.
 
-**Anti-Pattern:** Edges mit konfliktierenden Handles, die durch andere Nodes hindurch zwängen würden. Erst Layout planen, dann Handles wählen — nicht umgekehrt.
+**Anti-pattern:** edges with conflicting handles that would have to squeeze through other nodes. Plan the layout first, then choose handles — not the other way round.
 
-### 7.2 Edge-Reshape — `data.controlPoints`
+### 7.2 Edge reshape — `data.controlPoints`
 
-Hand-gebogene Edges (cubic-Bezier) overriden alle Auto-Routing-Modi (smart/curved/straight und Backward-U-Loop):
+Hand-bent edges (cubic Bézier) override every auto-routing mode (smart/curved/straight and the backward U-loop):
 
 ```json
 {
@@ -150,24 +150,24 @@ Hand-gebogene Edges (cubic-Bezier) overriden alle Auto-Routing-Modi (smart/curve
 }
 ```
 
-Details in [smartEdgePath.ts](../src/nodepilot-ui/src/components/designer/edges/smartEdgePath.ts) + [EdgeReshapeHandles.tsx](../src/nodepilot-ui/src/components/designer/edges/EdgeReshapeHandles.tsx). Round-Trip-stabil: Save/Load/Export/Import strippt das Feld nicht.
+Details in [smartEdgePath.ts](../src/nodepilot-ui/src/components/designer/edges/smartEdgePath.ts) and [EdgeReshapeHandles.tsx](../src/nodepilot-ui/src/components/designer/edges/EdgeReshapeHandles.tsx). Round-trip stable: save/load/export/import does not strip the field.
 
-**Beim Neu-Generieren** eines Workflows in der Regel weglassen — Auto-Routing ist gut genug und der User kann später hand-anpassen. **Beim Re-Generieren mit Layout-Preservation** (AI-Refactor eines bestehenden Workflows) das Feld unbedingt erhalten, sonst verliert der User seine hand-gebogenen Kurven.
+**When generating a workflow from scratch**, usually leave it out — auto-routing is good enough and the user can adjust by hand later. **When re-generating with layout preservation** (an AI refactor of an existing workflow) the field must be preserved, or the user loses their hand-bent curves.
 
-### 7.3 Node-Level Disable & Breakpoint
+### 7.3 Node-level disable and breakpoint
 
-Zwei Boolean-Flags im `data`-Object jedes Activity-Nodes:
+Two boolean flags in the `data` object of every activity node:
 
-- **`data.disabled: true`** — Node wird beim Execute als `Skipped` markiert. Downstream-Nodes ohne andere aktive Quellen kaskadieren ebenfalls auf `Skipped`. Erlaubt „kommentiere diesen Step temporär aus" ohne die Edge-Topologie anzufassen — ideal für „diese Branch ist noch nicht fertig, soll aber nicht aus dem Workflow gelöscht werden".
-- **`data.breakpoint: true`** — Engine pausiert vor dem Step, wenn der Run mit `{"debug": true}` gestartet wurde. SignalR-Event `StepPaused` triggert den Variable-Inspector im UI. Resume via `POST /executions/{id}/resume`.
+- **`data.disabled: true`** — the node is marked `Skipped` on execute. Downstream nodes with no other active source cascade to `Skipped` as well. This allows "comment out this step for now" without touching the edge topology — ideal for "this branch is not finished yet, but should not be deleted from the workflow".
+- **`data.breakpoint: true`** — the engine pauses before the step when the run was started with `{"debug": true}`. The SignalR event `StepPaused` opens the variable inspector in the UI. Resume via `POST /executions/{id}/resume`.
 
-Beide standen im Initial-Styleguide nicht, sind aber Teil des stabilen JSON-Vertrags.
+Neither was in the initial styleguide, but both are part of the stable JSON contract.
 
-### 7.4 StickyNote- & Group-Nodes
+### 7.4 Sticky-note and group nodes
 
-Neben `type: "activity"` existieren zwei Annotations-/Gruppierungs-Knoten ([StickyNoteNode.tsx](../src/nodepilot-ui/src/components/designer/nodes/StickyNoteNode.tsx), [GroupNode.tsx](../src/nodepilot-ui/src/components/designer/nodes/GroupNode.tsx)). Die Engine ignoriert beide vollständig (StickyNotes haben keine Handles, GroupNodes sind reine Layout-Container).
+Besides `type: "activity"` there are two annotation/grouping nodes ([StickyNoteNode.tsx](../src/nodepilot-ui/src/components/designer/nodes/StickyNoteNode.tsx), [GroupNode.tsx](../src/nodepilot-ui/src/components/designer/nodes/GroupNode.tsx)). The engine ignores both entirely (sticky notes have no handles, group nodes are pure layout containers).
 
-**StickyNote** — Inline-Kommentar im Workflow, z.B. eine Erklärung pro Phase. Sehr empfehlenswert für agentisch generierte Demo-/Lehr-Workflows:
+**Sticky note** — an inline comment in the workflow, for example one explanation per phase. Highly recommended for agent-generated demo and teaching workflows:
 
 ```json
 {
@@ -175,58 +175,58 @@ Neben `type: "activity"` existieren zwei Annotations-/Gruppierungs-Knoten ([Stic
   "position": { "x": 1200, "y": 60 },
   "data": {
     "label": "Note", "activityType": "note",
-    "text": "Phase B: 7-fach Operator-Coverage-Fan — jede Branch deckt 2-4 Operatoren ab.",
+    "text": "Phase B: 7-way operator-coverage fan — each branch covers 2-4 operators.",
     "disabled": true
   }
 }
 ```
 
-`data.disabled: true` ist Pflicht — schützt davor, dass ein versehentlicher Edge-Import die Note zum Endpoint macht. `data.fontSize` (Preset-Werte 11/13/16/20/28) ist optional, Default 13.
+`data.disabled: true` is mandatory — it stops an accidental edge import from turning the note into an endpoint. `data.fontSize` (preset values 11/13/16/20/28) is optional and defaults to 13.
 
-**GroupNode** — visueller Container, der mehrere Nodes umrahmt. Phase-Boundaries oder „diese fünf Nodes gehören zusammen"-Cluster.
+**Group node** — a visual container framing several nodes. Good for phase boundaries or "these five nodes belong together" clusters.
 
-## 8 — Visuelle Effekte ohne JSON-Wirkung
+## 8 — Visual effects with no JSON footprint
 
-Zwei Designer-Features, die das Erscheinungsbild beeinflussen, aber **nicht im JSON kodiert** sind:
+Two designer features that affect appearance but are **not encoded in the JSON**:
 
-- **Node-Shape-System** ([shapes.ts](../src/nodepilot-ui/src/components/designer/nodes/shapes.ts)): aus `activityType` abgeleitet. Triggers → Oktagon (1.55× Bbox), Control-Flow-Nodes (`junction`, `decision`, `forEach`, `waitForCondition`) → Raute (1.18×), `returnData` → Pentagon-Flag (1.10×), Rest → Quadrat. **Auswirkung aufs Layout**: bei Trigger-Nodes mehr horizontalen Vorlauf einplanen (typisch 380–400 px statt 300), bei Rauten den Platz für die Diamond-Spitzen mitdenken — sonst überlappen die Shapes mit Nachbar-Nodes.
-- **Coverage-Heatmap**: Toolbar-Toggle tinted Nodes nach Ausführungs-Häufigkeit der letzten N Tage. „Nie ausgeführt" → 40% Opacity + Grayscale, „rare" → 80% Opacity. Für hand-gebaute Demo-Workflows, die als Tutorial taugen sollen, ist es sinnvoll, alle Pfade so zu konstruieren, dass sie mit Default-Trigger-Parametern erreichbar sind — sonst zeigt die Heatmap nach dem ersten Run viel Grau.
+- **The node shape system** ([shapes.ts](../src/nodepilot-ui/src/components/designer/nodes/shapes.ts)): derived from `activityType`. Triggers → octagon (1.55× bounding box), control-flow nodes (`junction`, `decision`, `forEach`, `waitForCondition`) → diamond (1.18×), `returnData` → pentagon flag (1.10×), everything else → square. **Layout impact**: plan more horizontal headroom after trigger nodes (typically 380–400 px instead of 300), and account for the diamond tips — otherwise the shapes overlap their neighbours.
+- **The coverage heatmap**: a toolbar toggle tints nodes by how often they ran over the last N days. "Never executed" → 40 % opacity plus grayscale, "rare" → 80 % opacity. For hand-built demo workflows meant to work as a tutorial, it pays to construct every path so it is reachable with the default trigger parameters — otherwise the heatmap shows a lot of grey after the first run.
 
-## 9 — Lebendes Referenz-Beispiel
+## 9 — The living reference example
 
-[scripts/test-master-all-activities.json](../scripts/test-master-all-activities.json) — 45 Nodes, 54 Edges, ~7900×1320 px. Identisch eingebettet in [workflow-example.json](../src/NodePilot.Ai/Prompts/workflow-example.json) als Few-Shot für die KI-Workflow-Generierung.
+[scripts/test-master-all-activities.json](../scripts/test-master-all-activities.json) — 45 nodes, 54 edges, roughly 7900 × 1320 px. Embedded identically in [workflow-example.json](../src/NodePilot.Ai/Prompts/workflow-example.json) as the few-shot example for AI workflow generation.
 
-- **Phase A** (Trigger + Init): x=0…600, y=600 — `scheduleTrigger` (cron `0 0/5 * * * ? *`) → `runScript` (init vars) → `log`. Plus dead-end `log_fail` (legacy `.failed`-Edge).
-- **Phase B** (7-fach Condition-Coverage-Fan): Branch-Logs bei x=1340, y=60/240/420/600/780/960/1140 (180-Spread). Jede der 7 Edges deckt 2–4 Operatoren ab — zusammen alle 14 + AND/OR/NOT. Plus 1 disabled Edge zu `disabled_log` (y=1320). Junction `waitAll` bei x=1680.
-- **Phase C** (3-fach Activity-Fan → Junction `waitAny`): Branch-1 (File/Hash/Zip) bei y=200, Branch-2 (Data: json/xml/rest+retry/sql) bei y=600, Branch-3 (System/Process: svc/reg×4/wmi/startProgram/scheduledTask) bei y=1000. Junction bei x=4500.
-- **Phase D** (Decision + waitNofM): `decision` (mit `breakpoint:true`) bei x=4900, 3 Case-Logs bei y=420/600/780, Junction `waitNofM` (`requiredCount:1`) bei x=5500.
-- **Phase E** (Async + Loop): `delay` → `waitForCondition` → `forEach` (3 items, parallel=2) → `startWorkflow` (fire-and-forget) bei x=5800…6700.
-- **Phase F** (Finish): `emailNotification` → `powerManagement` (`disabled:true`) → `log` → `returnData` bei x=7000…7900.
+- **Phase A** (trigger + init): x=0…600, y=600 — `scheduleTrigger` (cron `0 0/5 * * * ? *`) → `runScript` (init vars) → `log`. Plus a dead-end `log_fail` (legacy `.failed` edge).
+- **Phase B** (7-way condition-coverage fan): branch logs at x=1340, y=60/240/420/600/780/960/1140 (180 spread). Each of the 7 edges covers 2–4 operators — together all 14 plus AND/OR/NOT. Plus one disabled edge to `disabled_log` (y=1320). Junction `waitAll` at x=1680.
+- **Phase C** (3-way activity fan → junction `waitAny`): branch 1 (file/hash/zip) at y=200, branch 2 (data: json/xml/rest+retry/sql) at y=600, branch 3 (system/process: svc/reg×4/wmi/startProgram/scheduledTask) at y=1000. Junction at x=4500.
+- **Phase D** (decision + waitNofM): `decision` (with `breakpoint:true`) at x=4900, 3 case logs at y=420/600/780, junction `waitNofM` (`requiredCount:1`) at x=5500.
+- **Phase E** (async + loop): `delay` → `waitForCondition` → `forEach` (3 items, parallel=2) → `startWorkflow` (fire-and-forget) at x=5800…6700.
+- **Phase F** (finish): `emailNotification` → `powerManagement` (`disabled:true`) → `log` → `returnData` at x=7000…7900.
 
-**Child-Workflow** (`Master Test Child: Simple Task`): Minimale `manualTrigger → log → returnData`-Kette für `forEach`/`startWorkflow`-Aufrufe. Im Export gebündelt.
+**Child workflow** (`Master Test Child: Simple Task`): a minimal `manualTrigger → log → returnData` chain for `forEach`/`startWorkflow` calls. Bundled in the export.
 
-Das Beispiel ist LTR aufgebaut — als ein gut funktionierender Default-Stil, nicht als verbindliche Vorlage. Andere Topologien sind ausdrücklich erlaubt, solange die Leitprinzipien (Abschnitt 1) erfüllt sind.
+The example is built LTR — as a default style that works well, not as a binding template. Other topologies are explicitly allowed as long as the guiding principles (section 1) hold.
 
-## 10 — Checkliste vor dem Import
+## 10 — Checklist before importing
 
-Bevor du einen hand-gebauten Workflow via `POST /api/workflows/import` oder `POST /api/workflows` pushst:
+Before you push a hand-built workflow via `POST /api/workflows/import` or `POST /api/workflows`:
 
-- [ ] **Canvas-Gesamtmaße innerhalb des Etats** (siehe Abschnitt 1.5): ≤3500×1800 für 16–30 Activities, ≤4500×2200 für 31–50
-- [ ] Bei >15 Activities: Snake-Layout statt einer einzigen riesigen Zeile
-- [ ] Keine zwei Nodes überlappen sich (Bbox-Check, inkl. Trigger-Oktagon und Control-Flow-Raute)
-- [ ] Keine Edge schneidet einen Node, durch den sie nicht durch soll
-- [ ] Edge-Labels sind ohne Zoomen lesbar (keine Cluster, ≤30–50 Zeichen)
-- [ ] Node-Labels haben Activity-Prefix und keine Operator-Redundanz zu Edge-Labels
-- [ ] Flussrichtung ist innerhalb jeder Region konsistent (Loop-Backs/Retries dürfen visuell ausbrechen)
-- [ ] `sourceHandle`/`targetHandle` nur gesetzt, wo das Routing es semantisch braucht — sonst weglassen
-- [ ] Trigger-Nodes haben +80–100 px extra horizontalen Vorlauf wegen Oktagon-Shape
-- [ ] Alle `position.x`/`position.y` in 20er-Schritten ausgerichtet (Snap-Grid-Feeling)
-- [ ] Fan-Out/Fan-In mit ≥5 Branches hat +340 px x-Gap zum nächsten Node
-- [ ] Trigger-Params (falls `manualTrigger`) alle `type: "string"` mit String-Defaults
-- [ ] `waitNofM`-Junctions nutzen `requiredCount`, nicht `n`
-- [ ] Keine Edge referenziert einen nicht-existierenden Source/Target (Dangling-Check)
-- [ ] **Jedes `{{X.…}}` zeigt auf einen Vorgänger** des lesenden Knotens (Pfad von `X` dorthin) — Referenzen quer über Parallelzweige schlagen fehl
-- [ ] **Kein Nicht-Trigger-Knoten ohne aktive eingehende Kante** — er liefe nie und würde eine wartende `waitAll`-Junction mit blockieren
-- [ ] Trigger-Parameter als `{{<triggerNodeId>.param.<name>}}` geschrieben, **nicht** `{{trigger.<name>}}`
-- [ ] Referenzen in `startWorkflow.workflowNameOrId` zeigen auf existierende Workflow-Namen (Child zuerst posten!)
-- [ ] StickyNotes haben `data.disabled: true` (Schutz vor versehentlichen Edges)
+- [ ] **Total canvas size within budget** (see section 1.5): ≤ 3500×1800 for 16–30 activities, ≤ 4500×2200 for 31–50
+- [ ] Beyond 15 activities: snake layout rather than one enormous row
+- [ ] No two nodes overlap (bounding-box check, including the trigger octagon and the control-flow diamond)
+- [ ] No edge cuts through a node it is not meant to pass
+- [ ] Edge labels readable without zooming (no clusters, ≤ 30–50 characters)
+- [ ] Node labels carry the activity prefix and no operator redundancy with the edge labels
+- [ ] Flow direction is consistent within each region (loop-backs and retries may break out visually)
+- [ ] `sourceHandle`/`targetHandle` set only where the routing semantically needs it — otherwise omitted
+- [ ] Trigger nodes have +80–100 px of extra horizontal headroom for the octagon shape
+- [ ] All `position.x`/`position.y` aligned to steps of 20 (snap-grid feel)
+- [ ] Fan-out/fan-in with ≥ 5 branches has a +340 px x-gap to the next node
+- [ ] Trigger params (if `manualTrigger`) are all `type: "string"` with string defaults
+- [ ] `waitNofM` junctions use `requiredCount`, not `n`
+- [ ] No edge references a non-existent source or target (dangling check)
+- [ ] **Every `{{X.…}}` points at an ancestor** of the reading node (a path from `X` to it) — references across parallel branches fail
+- [ ] **No non-trigger node without an active incoming edge** — it would never run, and would block a waiting `waitAll` junction with it
+- [ ] Trigger parameters written as `{{<triggerNodeId>.param.<name>}}`, **not** `{{trigger.<name>}}`
+- [ ] References in `startWorkflow.workflowNameOrId` point at existing workflow names (post the child first!)
+- [ ] Sticky notes carry `data.disabled: true` (protection against accidental edges)
