@@ -396,7 +396,7 @@ Everything below the surface lives on the **[documentation site](https://sev7enu
 
 | | |
 |---|---|
-| **Start here** | [Introduction](https://sev7enup.github.io/NodePilot/#/en/getting-started/introduction) · [Quick start](https://sev7enup.github.io/NodePilot/#/en/getting-started/quickstart) · [Architecture](https://sev7enup.github.io/NodePilot/#/en/getting-started/architecture) |
+| **Start here** | [Introduction](https://sev7enup.github.io/NodePilot/#/en/getting-started/introduction) · [Installation](https://sev7enup.github.io/NodePilot/#/en/getting-started/installation) · [Architecture](https://sev7enup.github.io/NodePilot/#/en/getting-started/architecture) |
 | **Building workflows** | [Workflows & activities](https://sev7enup.github.io/NodePilot/#/en/concepts/workflows) · [Data bus & variables](https://sev7enup.github.io/NodePilot/#/en/concepts/data-bus) · [Edge conditions](https://sev7enup.github.io/NodePilot/#/en/concepts/edge-conditions) · [Sub-workflows](https://sev7enup.github.io/NodePilot/#/en/concepts/sub-workflows) |
 | **The designer** | [Overview](https://sev7enup.github.io/NodePilot/#/en/designer/overview) · [Canvas, nodes & edges](https://sev7enup.github.io/NodePilot/#/en/designer/canvas-nodes-edges) · [Properties, modes & shortcuts](https://sev7enup.github.io/NodePilot/#/en/designer/properties-modes) |
 | **Reference** | [All 27 activities](https://sev7enup.github.io/NodePilot/#/en/activities-reference) · [Triggers](https://sev7enup.github.io/NodePilot/#/en/triggers) · [API endpoints](https://sev7enup.github.io/NodePilot/#/en/api/endpoints) · [`np` CLI](https://sev7enup.github.io/NodePilot/#/en/cli) · [MCP server](https://sev7enup.github.io/NodePilot/#/en/mcp-server) |
@@ -533,7 +533,7 @@ NodePilot is licensed under the [Apache License 2.0](LICENSE). You are free to u
 
 ## Further Reading
 
-- **[📚 sev7enup.github.io/NodePilot](https://sev7enup.github.io/NodePilot/)** — the documentation website: 42 pages in English and German, with search, sidebar navigation and light/dark themes. Start at [Introduction](https://sev7enup.github.io/NodePilot/#/en/getting-started/introduction) or jump to the [Quick start](https://sev7enup.github.io/NodePilot/#/en/getting-started/quickstart).
+- **[📚 sev7enup.github.io/NodePilot](https://sev7enup.github.io/NodePilot/)** — the documentation website: 42 pages in English and German, with search, sidebar navigation and light/dark themes. Start at [Introduction](https://sev7enup.github.io/NodePilot/#/en/getting-started/introduction) or jump to [Installation](https://sev7enup.github.io/NodePilot/#/en/getting-started/installation).
 - **[CLAUDE.md](CLAUDE.md)** — architecture conventions, full activity/trigger reference, variable resolution details, edge-condition grammar, test guidelines, and the complete API endpoint table.
 - **[src/nodepilot-docs-ui/](src/nodepilot-docs-ui/)** — standalone documentation website (Vite + React SPA) with client-side search, sidebar navigation, light/dark theme, and **English/German** via i18next (the language lives in the route: `#/en/…`, `#/de/…`). Note: it ships its own curated markdown corpus under `content/en/` and `content/de/` — changes to `docs/` must be mirrored there deliberately (it is not a 1:1 render), and both languages must be kept in step or the parity test fails.
 - **[docs/workflow-designer-features.md](docs/workflow-designer-features.md)** — complete feature inventory of the workflow designer (canvas, nodes, edges, properties, overlays, modes, shortcuts, mobile), organized by area.
