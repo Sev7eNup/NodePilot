@@ -311,7 +311,7 @@ entirely inside `NodePilot.Api.exe`.
 
 ## Related documentation
 
-- [deployment-guide.md](deployment-guide.md) — end-to-end production deployment
+- [deployment-guide.md](deployment-guide.md) — artifact verification, building from source, and deployment troubleshooting
 - [desktop-troubleshooting.md](desktop-troubleshooting.md) — desktop app troubleshooting
 - [claude-reference.md](claude-reference.md) — deployment architecture, gMSA, Kestrel HTTPS, configuration keys
 - `deploy/README.md` — the server installer in detail

@@ -1,10 +1,14 @@
 # NodePilot Production Deployment Guide
 
-End-to-end walkthrough for installing NodePilot on a Windows server — from building the
-signed artifact to the first admin login. Written for operators deploying NodePilot for the
-first time. Every step has been validated on a domain-joined Windows Server co-installed
-next to an SCCM site server, against SQL Server 2022, without an enterprise PKI
-(self-signed certificates throughout).
+Everything you need to do *before* and *after* the installation itself: obtaining the signed
+artifact and verifying it against the release checksums and the publisher's code-signing
+certificate; building the artifact from source; and a troubleshooting table for what
+actually goes wrong in production. The installation walkthrough — service identity, both
+database providers, certificates, first admin account — is on the
+[documentation site](https://sev7enup.github.io/NodePilot/#/en/deployment/production).
+
+Validated on a domain-joined Windows Server co-installed next to an SCCM site server, with
+SQL Server 2022, without an enterprise PKI (self-signed certificates throughout).
 
 Parameter-by-parameter reference and HA/cluster setup live in
 [`deploy/README.md`](../deploy/README.md); the desktop installer has its own guide in
