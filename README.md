@@ -15,7 +15,7 @@ Design, schedule, debug, and observe multi-step automation in your browser. Run 
 [![Latest release](https://img.shields.io/github/v/release/Sev7eNup/NodePilot?logo=github&label=release)](https://github.com/Sev7eNup/NodePilot/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-**[📚 Documentation](https://sev7enup.github.io/NodePilot/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Quick start](https://sev7enup.github.io/NodePilot/#/en/getting-started/quickstart)**
+**[📚 Documentation](https://sev7enup.github.io/NodePilot/)** · **[⬇️ Download](https://github.com/Sev7eNup/NodePilot/releases/latest)** · **[🚀 Install](https://sev7enup.github.io/NodePilot/#/en/getting-started/installation)**
 
 </div>
 
