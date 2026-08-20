@@ -17,6 +17,74 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Decides whether the code-only jobs have anything to do. A pull request that moves
+  # documentation around used to spend ~40 job-minutes proving that nothing changed.
+  #
+  # Deliberately narrow. Only jobs that provably cannot read documentation are gated:
+  # frontend, desktop and e2e. **Backend and docs-ui always run**, because markdown is an
+  # input to them — DocumentationCountsTests reads README.md, CLAUDE.md, docs/mcp-server.md
+  # and six pages of the doc site; MonitoringDeploymentSecurityTests reads README.md and
+  # grafana/README.md; the doc-site parity guard reads content/{de,en}. A blanket
+  # `paths-ignore: ['**/*.md']` would have waved through exactly the README breakages this
+  # CI caught while the README was being cut down.
+  #
+  # Pull requests only. A push to main — a merge, a direct commit, a release cut — always
+  # gets the full suite, because that is the branch everything else is measured against.
+  changes:
+    name: Detect what changed
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Classify the changed files
+        id: filter
+        shell: bash
+        run: |
+          # Deliberately NOT `set -e`. A gated job is skipped when this one fails, so an error
+          # in the detection would silently remove coverage — the one outcome worth engineering
+          # out. Every failure path below therefore ends at code=true: if we cannot prove the
+          # change is documentation-only, we run everything.
+          set -uo pipefail
+
+          decide() { echo "code=$1" >> "$GITHUB_OUTPUT"; echo "=> $2"; exit 0; }
+
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            decide true "not a pull request (push or manual) — running every job"
+          fi
+
+          # Fetch the base branch explicitly rather than trusting the checkout's default
+          # refspec to have produced origin/<base>.
+          if ! git fetch --no-tags --prune origin \
+                 "+refs/heads/${{ github.base_ref }}:refs/remotes/origin/${{ github.base_ref }}"; then
+            decide true "could not fetch the base branch — running every job to be safe"
+          fi
+
+          base="$(git merge-base HEAD "origin/${{ github.base_ref }}" 2>/dev/null || true)"
+          if [[ -z "$base" ]]; then
+            decide true "no merge base against ${{ github.base_ref }} — running every job to be safe"
+          fi
+
+          changed="$(git diff --name-only "$base" HEAD 2>/dev/null || true)"
+          if [[ -z "$changed" ]]; then
+            decide true "could not determine the changed files — running every job to be safe"
+          fi
+
+          echo "Changed files:"
+          printf '%s\n' "$changed" | sed 's/^/  /'
+
+          # Anything that is not a markdown file or a documentation image counts as code.
+          if printf '%s\n' "$changed" | grep -qvE '(\.md$|^docs/images/)'; then
+            decide true "non-documentation changes present — running every job"
+          fi
+
+          echo "code=false" >> "$GITHUB_OUTPUT"
+          echo "=> documentation only — skipping frontend, desktop and e2e."
+          echo "   Backend and docs-ui still run: markdown is an input to both."
+
   backend:
     name: Backend build + tests
     runs-on: windows-latest
@@ -152,6 +220,9 @@ jobs:
 
   frontend:
     name: Frontend build + tests
+    # Its tests read CSS, TypeScript and package.json — never markdown. Verified, not assumed.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -234,6 +305,8 @@ jobs:
 
   desktop:
     name: Desktop shell typecheck + tests
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -266,6 +339,10 @@ jobs:
 
   e2e:
     name: Frontend E2E (Playwright)
+    # Hermetic specs against the built SPA with every API mocked; nothing here reads a
+    # documentation file. The single longest job in the workflow, so the one worth gating.
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
