@@ -1,76 +1,76 @@
 # ADR 0011 – Database-Availability Breaker
 
 **Status:** Accepted – 2026-08-07  
-**Scope:** Ausfall oder Hängen der Anwendungsdatenbank im laufenden Betrieb. Der Boot-Pfad bleibt
+**Scope:** The application database failing or hanging during operation. The boot path stays
 fail-closed.
 
-## Kontext
+## Context
 
-Ohne gemeinsamen Ausfallzustand warteten HTTP-Requests und Hintergrunddienste jeweils bis zu ihren
-eigenen Datenbank-Timeouts. Ein hängender Server konnte dadurch den Prozess minutenlang unbenutzbar
-machen, obwohl Liveness weiter 200 meldete. Gleichzeitig darf eine einzelne langsame Abfrage nicht
-die gesamte Installation als ausgefallen markieren.
+Without a shared failure state, HTTP requests and background services each waited out their own
+database timeouts. A hanging server could therefore leave the process unusable for minutes while
+liveness still reported 200. At the same time, a single slow query must not mark the whole
+installation as failed.
 
-## Entscheidung
+## Decision
 
-Ein prozessweiter Breaker verwaltet vier Zustände:
+A process-wide breaker manages four states:
 
-| Zustand | Bedeutung | API | Readiness |
+| State | Meaning | API | Readiness |
 |---|---|---|---|
-| `Booting` | Migration und Startup-Recovery laufen | noch keine Pipeline | – |
-| `Available` | Datenbank ist bestätigt nutzbar | normal | 200 |
-| `Armed` | Timeout beobachtet, Sonde entscheidet | normal | 503 |
-| `Unavailable` | Ausfall bestätigt | 503 | 503 |
+| `Booting` | Migration and startup recovery are running | no pipeline yet | – |
+| `Available` | The database is confirmed usable | normal | 200 |
+| `Armed` | A timeout was observed; the probe decides | normal | 503 |
+| `Unavailable` | The outage is confirmed | 503 | 503 |
 
-Nach dem Boot darf ausschließlich die Recovery-Sonde wieder `Available` veröffentlichen.
-Interceptors dürfen den Zustand nur verschlechtern.
+After boot, only the recovery probe may publish `Available` again. Interceptors may only degrade
+the state.
 
-### Erkennung und Recovery
+### Detection and recovery
 
-- Klassifizierte Verbindungsfehler öffnen den Breaker. Unbekannte Open-Fehler und Command-Timeouts setzen zunächst nur `Armed`.
-- Eine separate, ungepoolte Verbindung prüft mit `SELECT 1`. Open, Command und Cleanup besitzen
-  harte Zeitgrenzen.
-- Zwei erfolgreiche Probes schließen den Breaker. Der Application-Pool wird genau einmal pro
-  tatsächlicher Ausfall-Episode geleert, nicht bereits bei `Armed`.
-- `RejectedByServer` ist für die Episode sticky und kennzeichnet Zugangsdaten-, Datenbank- oder
-  TLS-Fehler. Der Zustand benötigt einen Administrator; geänderte NodePilot-Verbindungsdaten werden
-  erst nach einem Neustart wirksam.
+- Classified connection errors open the breaker. Unknown open errors and command timeouts only set `Armed` at first.
+- A separate, unpooled connection probes with `SELECT 1`. Open, command and cleanup each carry hard
+  time limits.
+- Two successful probes close the breaker. The application pool is cleared exactly once per actual
+  outage episode, not already at `Armed`.
+- `RejectedByServer` is sticky for the episode and marks credential, database or TLS errors. That
+  state needs an administrator; changed NodePilot connection details only take effect after a
+  restart.
 
-### HTTP, Health und UI
+### HTTP, health and UI
 
-- Die Availability-Middleware läuft vor Authentifizierung und beendet `/api`, die Hub-HTTP-Fläche,
-  `/signin-oidc` und geschützte `/metrics` ohne Datenbankzugriff.
-- Die statische SPA-Shell und Assets bleiben erreichbar. Die UI zeigt Banner und Status-Ampel,
-  unterdrückt Toast-Stürme und lädt Daten nach Recovery neu.
-- `/healthz/live` bleibt 200. `/healthz/ready` ist das Traffic-Gate. `/healthz/database`
-  antwortet immer 200 mit `ok | armed | unavailable` und grober Ursache.
-- HTTP-Fehler verwenden den gemeinsamen Body
+- The availability middleware runs before authentication and terminates `/api`, the hub HTTP
+  surface, `/signin-oidc` and protected `/metrics` without touching the database.
+- The static SPA shell and its assets stay reachable. The UI shows a banner and a status light,
+  suppresses toast storms, and reloads data after recovery.
+- `/healthz/live` stays 200. `/healthz/ready` is the traffic gate. `/healthz/database` always
+  answers 200 with `ok | armed | unavailable` and a coarse cause.
+- HTTP errors use the shared body
   `{code, message, retryAfterSeconds, reason, retryable}`.
-  `DATABASE_TIMEOUT` bleibt die Antwort für eine langsame, aber nicht bestätigte ausgefallene
-  Datenbank; die Fehlerform ist in [ADR 0007](0007-api-validation-and-error-contract.md) definiert.
-- Etablierte WebSockets werden durch einen Hub-Filter geschützt. Generische I/O- oder Timeout-Fehler
-  werden nur mit Breaker- oder Datenbank-Provider-Evidenz als Datenbankfehler übersetzt.
+  `DATABASE_TIMEOUT` remains the answer for a slow but not confirmed-failed database; the error
+  shape is defined in [ADR 0007](0007-api-validation-and-error-contract.md).
+- Established WebSockets are protected by a hub filter. Generic I/O or timeout errors are only
+  translated into database errors given breaker or database-provider evidence.
 
-### Workflows und Hintergrunddienste
+### Workflows and background services
 
-- Vor einer Activity ist der `Running`-Step mit stabiler GUID dauerhaft gespeichert.
-- Nach der Activity ist der terminale Step-Write eine Barriere: Bei Ausfall wartet die Engine,
-  verwendet einen frischen DbContext und betritt erst danach die nächste Kante.
-- Auch der terminale Workflow-CAS wartet bis Recovery oder Host-Shutdown. Benutzer-Cancellation
-  beendet nicht den abschließenden Persistenzversuch.
-- Der Dispatcher reiht nur Fehler erneut ein, die sicher vor Engine-Start auftraten.
-- Datenbankabhängige Hosted Services parken am gemeinsamen Availability-Signal. Support-Events
-  werden während des Ausfalls gezählt verworfen und nach Recovery einmal zusammengefasst.
-- Trigger-Fires, die aktive Sources während des Ausfalls beobachten, werden gezählt verworfen und
-  nicht nachgeholt. Leadership-Loss entsorgt Sources; Persistenz und Dispatch prüfen die Lease-Epoch.
-- Notification Delivery bleibt at-least-once. Webhooks tragen `eventKey` im JSON und in
-  `X-NodePilot-Event-Key` zur Empfänger-Deduplizierung.
+- Before an activity runs, the `Running` step is durably stored with a stable GUID.
+- After the activity, the terminal step write is a barrier: on failure the engine waits, takes a
+  fresh DbContext, and only then enters the next edge.
+- The terminal workflow CAS waits as well, until recovery or host shutdown. User cancellation does
+  not abort the final persistence attempt.
+- The dispatcher only re-queues failures that provably happened before the engine started.
+- Database-dependent hosted services park on the shared availability signal. Support events are
+  dropped with a counter during the outage and summarised once after recovery.
+- Trigger fires that active sources observe during the outage are dropped with a counter and never
+  replayed. Leadership loss disposes of the sources; persistence and dispatch check the lease epoch.
+- Notification delivery stays at-least-once. Webhooks carry `eventKey` in the JSON body and in
+  `X-NodePilot-Event-Key` so recipients can deduplicate.
 
-### Konfiguration und Betrieb
+### Configuration and operation
 
-Alle Availability-Werte sind positive, restart-pflichtige Boot-Konfiguration:
+Every availability value is positive, boot-time configuration and requires a restart:
 
-| Einstellung | Default |
+| Setting | Default |
 |---|---:|
 | `Database:ConnectTimeoutSeconds` | 5 |
 | `Database:AuthReadTimeoutSeconds` | 3 |
@@ -79,22 +79,22 @@ Alle Availability-Werte sind positive, restart-pflichtige Boot-Konfiguration:
 | `Database:Probe:IdleIntervalSeconds` / `OutageIntervalSeconds` | 5 / 5 |
 | `Database:Probe:SuccessesToRecover` / `FailureThreshold` | 2 / 2 |
 
-`0` wird abgelehnt, weil Provider damit teilweise unbegrenzte Timeouts aktivieren.
+`0` is rejected, because some providers read it as an unbounded timeout.
 
-Wichtige Signale:
+Signals that matter:
 
-- Metriken: `nodepilot.database.requests_rejected`, `nodepilot.database.outages`,
-  `nodepilot.database.probe_cleanup_timeouts` und
+- Metrics: `nodepilot.database.requests_rejected`, `nodepilot.database.outages`,
+  `nodepilot.database.probe_cleanup_timeouts` and
   `nodepilot.scheduler.triggers.dropped_db_unavailable`.
-- Audit: genau ein `DATABASE_RECOVERED` pro prozesslokaler Recovery-Episode; kein Trip-Audit,
-  weil die Datenbank beim Öffnen nicht zuverlässig schreibbar ist.
-- Logs: Öffnen, echte Reason-Wechsel und Schließen einer Episode, nicht jeder Probe-Tick.
+- Audit: exactly one `DATABASE_RECOVERED` per process-local recovery episode; no trip audit,
+  because the database is not reliably writable at the moment the breaker opens.
+- Logs: the opening, real reason changes and the closing of an episode — not every probe tick.
 
-## Konsequenzen und Grenzen
+## Consequences and limits
 
-- Kaltstart ohne Datenbank bleibt fail-fast; der Service-Control-Manager übernimmt den Neustart.
-- Prozessverlust oder HA-Failover während einer mehrdeutigen Activity führt weiterhin zu
-  `Interrupted/Cancelled`, nicht zu automatischer Wiederholung externer Side Effects.
-- Bereits laufende, im Provider blockierte Commands werden durch ein späteres Öffnen des Breakers
-  nicht global abgebrochen. Neue Zugriffe werden dagegen sofort gegatet.
-- Trigger besitzen bewusst kein Catch-up; Notification-Empfänger müssen Deduplizierung unterstützen.
+- A cold start without a database stays fail-fast; the Service Control Manager handles the restart.
+- Losing the process, or an HA failover during an ambiguous activity, still ends in
+  `Interrupted/Cancelled` rather than an automatic retry of external side effects.
+- Commands already running and blocked inside the provider are not aborted globally when the
+  breaker opens later. New access, by contrast, is gated immediately.
+- Triggers deliberately have no catch-up; notification recipients must support deduplication.
