@@ -1,44 +1,45 @@
 # ADR 0001 — System Configuration Backup & Restore
 
-**Status:** Implemented (Phasen 1–4) — 2026-05-29
+**Status:** Implemented (phases 1–4) — 2026-05-29
 **Scope:** New top-level Backup feature (API + CLI + UI). Implementation in 4 phases.
 
-## Kontext
+## Context
 
-NodePilot hat heute nur einen *Workflow*-Export (`/api/workflows/export`), der bewusst
-Secrets **redigiert** (`WorkflowsControllerBase.RedactSecretsInDefinition`) — ein
-*Teilen*-Artefakt, kein Restore-Artefakt. Für den produktiven Single-Node-Betrieb fehlt
-ein Disaster-Recovery-Pfad: DB weg = alles neu klicken (Machines, Credentials, Globals,
-Users, Settings, Folder-Sharing). Ein roher DB-Dump hilft nicht, weil Credential-Secrets
-über `ISecretProtector` entweder per DPAPI (maschinen-/user-gebunden, **nicht portabel**)
-oder per AES-GCM mit `Secrets:MasterKey` verschlüsselt sind.
+NodePilot today only has a *workflow* export (`/api/workflows/export`), which deliberately
+**redacts** secrets (`WorkflowsControllerBase.RedactSecretsInDefinition`) — a *sharing*
+artifact, not a restore artifact. Productive single-node operation has no disaster-recovery
+path: lose the database and everything gets clicked in again (machines, credentials, globals,
+users, settings, folder sharing). A raw database dump does not help, because credential secrets
+are encrypted through `ISecretProtector` either with DPAPI (machine- and user-bound, **not
+portable**) or with AES-GCM under `Secrets:MasterKey`.
 
-## Entscheidung (Leitprinzip)
+## Decision (guiding principle)
 
-Trennung nach **Intent**, gemeinsamer Code darunter:
+Split by **intent**, share the code beneath:
 
-| | Kontext-Export (bleibt) | System-Backup (neu) |
+| | Context export (stays) | System backup (new) |
 |---|---|---|
-| Zweck | *einen* Workflow teilen | DR der ganzen Konfiguration |
-| Ort | Workflows-Seite | eigener Admin-Menüpunkt `/backup` |
-| Secrets | redigiert | rewrapped hinter Passphrase |
-| Umfang | nur Workflows | Workflows+Folders/Sharing, Machines, Credentials, Globals, Users, Settings |
+| Purpose | share *one* workflow | DR of the whole configuration |
+| Location | Workflows page | its own admin entry `/backup` |
+| Secrets | redacted | rewrapped behind a passphrase |
+| Scope | workflows only | workflows+folders/sharing, machines, credentials, globals, users, settings |
 
-Workflow-Export-Mapping wandert in einen geteilten Helper; `/api/workflows/export` und das
-Backup rufen denselben Code mit unterschiedlichem **SecretHandling** auf. Kein dupliziertes
-Mapping, kein Export-Button pro Menüpunkt.
+The workflow export mapping moves into a shared helper; `/api/workflows/export` and the backup
+call the same code with different **SecretHandling**. No duplicated mapping, no export button per
+menu entry.
 
-### Abgrenzung — was das Backup NICHT ist
+### Boundary — what the backup is NOT
 
-Es ist ein **System *Configuration* Backup**, kein Voll-DB-Backup. **Nicht** enthalten:
-AuditLog, Execution-History, StepExecutions, SupportEvents, WorkflowVersions, Stats,
-Idempotency-Keys. Das muss UI **und** Doku klar sagen. Für echte DB-Sicherung gilt weiterhin
-der Postgres/SQL-Server-Backup-Pfad des DBAs.
+It is a **system *configuration* backup**, not a full database backup. **Not** included: audit
+log, execution history, step executions, support events, workflow versions, stats, idempotency
+keys. Both the UI **and** the documentation have to say so plainly. For real database backups the
+DBA's Postgres/SQL Server path still applies.
 
-## Datei-Format `nodepilot-system-backup/v1`
+## File format `nodepilot-system-backup/v1`
 
-`.npbackup` (JSON). Struktur lesbar/diffbar; **nur Secret-Felder** sind passphrase-verschlüsselt.
-Über die **gesamte** Datei läuft zusätzlich ein passphrase-basierter MAC (siehe Integrität).
+`.npbackup` (JSON). The structure is readable and diffable; **only secret fields** are
+passphrase-encrypted. A passphrase-based MAC additionally covers the **whole** file (see
+Integrity).
 
 ```jsonc
 {
@@ -47,231 +48,242 @@ der Postgres/SQL-Server-Backup-Pfad des DBAs.
   "createdAt": "…Z", "createdBy": "admin",
   "crypto": { "kdf":"PBKDF2-SHA256","iterations":600000,"salt":"<b64>",
               "subkeys":"HKDF-SHA256→{enc,mac,verifier}", "verifier":"<b64>" },
-  "mac": "<b64 HMAC-SHA256(macKey) über kanonisches JSON ohne dieses Feld>",
+  "mac": "<b64 HMAC-SHA256(macKey) over canonical JSON without this field>",
   "sections": {
-    // JEDES remapbare Item trägt "sourceId" (Original-Guid) — siehe K3.
-    "folders":        { "structure":[ { "sourceId":"<guid>", … } ], "grants":[…] },  // getrennt! (K4)
+    // EVERY remappable item carries "sourceId" (the original GUID) — see K3.
+    "folders":        { "structure":[ { "sourceId":"<guid>", … } ], "grants":[…] },  // separate! (K4)
     "users":          { "items":[ { "sourceId":"<guid>", …, "passwordHash": {"$enc":"…"} } ] },
     "credentials":    { "items":[ { "sourceId":"<guid>", …, "password": {"$enc":"…"} } ] },
     "machines":       { "items":[ { "sourceId":"<guid>", … } ] },
     "globalVariables":{ "items":[ { "sourceId":"<guid>", …, "value": {"$enc":"…"} | "plain" } ] },
     "workflows":      { "items":[ { "sourceId":"<guid>", "definition":{…} } ] },
-    "settings":       { "runtimeJson": {…} }               // roher appsettings.runtime.json-Inhalt
+    "settings":       { "runtimeJson": {…} }               // raw appsettings.runtime.json content
   }
 }
 ```
 
-## Korrekturen ggü. Erstentwurf (verbindlich vor Phase 1)
+## Corrections to the first draft (binding before phase 1)
 
-### K1 — Kein neuer Interface-Typ
-`ISecretProtector` existiert bereits in `NodePilot.Core/Interfaces`. Es wird **nur** eine neue
-Implementierung `PassphraseSecretProtector` in `NodePilot.Data/Security/` angelegt (neben den
-bestehenden Protectors). Kein Interface in `Data/Security`.
+### K1 — No new interface type
+`ISecretProtector` already exists in `NodePilot.Core/Interfaces`. **Only** a new implementation
+`PassphraseSecretProtector` is added in `NodePilot.Data/Security/`, alongside the existing
+protectors. No interface in `Data/Security`.
 
-### K2 — Workflow-Secrets: SecretHandling-Enum statt bool
-Workflow-Secrets liegen **inline in `DefinitionJson`** (`secret`, `apiKey`, `password`,
-`authToken`, `bearer`, `connectionString` — siehe `SecretConfigKeys`). `redactSecrets:false`
-darf **nicht** Klartext in die Backup-Datei schreiben. Der Workflow-Exporter bekommt:
+### K2 — Workflow secrets: a SecretHandling enum rather than a bool
+Workflow secrets live **inline in `DefinitionJson`** (`secret`, `apiKey`, `password`,
+`authToken`, `bearer`, `connectionString` — see `SecretConfigKeys`). `redactSecrets:false` must
+**not** write plaintext into the backup file. The workflow exporter gets:
 
 ```
 enum SecretHandling { Redact, EncryptForBackup, PlainInternal }
 ```
 
-- `Redact` — heutiges Verhalten, Kontext-Export/Teilen.
-- `EncryptForBackup` — inline-Secret-Felder werden zu `{"$enc":…}` (Passphrase-Rewrap), Backup.
-- `PlainInternal` — nur intern (z. B. Round-Trip-Tests), nie über die Wire.
+- `Redact` — today's behaviour, for the context export / sharing.
+- `EncryptForBackup` — inline secret fields become `{"$enc":…}` (passphrase rewrap), for backups.
+- `PlainInternal` — internal only (round-trip tests, for example), never over the wire.
 
-`targetMachineId`/`credentialId` sind **keine** Secrets → kein `$enc`, sondern ID-Remap (K3).
+`targetMachineId`/`credentialId` are **not** secrets → no `$enc`, an ID remap instead (K3).
 
-### K3 — Restore braucht sourceId → targetId-Map (Pflicht)
-By-name reicht nicht: Workflows/Machines/Credentials haben keine harte Unique-Garantie, und
-Definitionen/Entities referenzieren GUIDs. **Jede remapbare Sektion** (Folders, Users,
-Credentials, Machines, Global Variables, Workflows) trägt darum im Format eine explizite
-`sourceId` (Original-Guid). Restore ist zwei-phasig:
+### K3 — Restore needs a sourceId → targetId map (mandatory)
+By name is not enough: workflows, machines and credentials carry no hard uniqueness guarantee,
+and definitions and entities reference GUIDs. **Every remappable section** (folders, users,
+credentials, machines, global variables, workflows) therefore carries an explicit `sourceId` (the
+original GUID) in the format. Restore runs in two phases:
 
-1. **Anlegen:** je Ressource neue (oder bei `overwrite`/`skip` die Ziel-)Id vergeben,
-   `Dictionary<Guid,Guid>` pro Typ füllen (`folderMap`, `userMap`, `credentialMap`,
-   `machineMap`, `globalMap`, `workflowMap`). `globalMap` nur falls je per-Id referenziert.
-2. **Referenzen umschreiben** über die Maps:
-   - `ManagedMachine.DefaultCredentialId` → `credentialMap` (siehe Reihenfolge K4).
+1. **Create:** assign each resource a new id (or, under `overwrite`/`skip`, the target id) and
+   fill a `Dictionary<Guid,Guid>` per type (`folderMap`, `userMap`, `credentialMap`,
+   `machineMap`, `globalMap`, `workflowMap`). `globalMap` only if globals are ever referenced by id.
+2. **Rewrite references** through the maps:
+   - `ManagedMachine.DefaultCredentialId` → `credentialMap` (see the ordering in K4).
    - `SharedWorkflowFolder.ParentFolderId` → `folderMap`; `CreatedByUserId` → `userMap` (K17).
    - `SharedFolderPermission`: `FolderId` → `folderMap`, `GrantedByUserId` → `userMap`,
-     `PrincipalKey` → `userMap` **nur wenn es eine User-Guid ist**; AD-Group-SIDs bleiben unverändert.
-   - Workflow-Definition: **nur** `data.targetMachineId` → `machineMap` und `data.credentialId`
-     → `credentialMap`, und **nur wenn der Feldwert ein parsebarer GUID-String ist** (K13).
+     `PrincipalKey` → `userMap` **only when it is a user GUID**; AD group SIDs stay untouched.
+   - Workflow definition: **only** `data.targetMachineId` → `machineMap` and `data.credentialId`
+     → `credentialMap`, and **only when the field value is a parsable GUID string** (K13).
 
-Bei Konflikt-Policy `rename`/`skip` zeigt die Map auf die tatsächlich verwendete Ziel-Id, damit
-Referenzen nicht ins Leere laufen.
+Under the `rename`/`skip` conflict policies the map points at the id actually used, so references
+do not dangle.
 
-### K13 — Workflow-ID-Rewrite eng gefasst
-Der Definition-Rewrite remappt ausschließlich die bekannten Felder `data.targetMachineId` und
-`data.credentialId` und **nur**, wenn der Wert per `Guid.TryParse` parsebar ist. Alles andere
-bleibt byte-für-byte erhalten — insbesondere Template-Ausdrücke wie `{{globals.X}}`,
-`{{step.output}}`, Node-Ids (`step-123`), Scripts und Edge-Conditions. Kein „such alle GUIDs“.
+### K13 — Keep the workflow ID rewrite narrow
+The definition rewrite remaps exactly the known fields `data.targetMachineId` and
+`data.credentialId`, and **only** when the value parses via `Guid.TryParse`. Everything else is
+preserved byte for byte — in particular template expressions such as `{{globals.X}}` and
+`{{step.output}}`, node ids (`step-123`), scripts and edge conditions. No "find every GUID".
 
-### K4 — Folder: Struktur und Grants trennen, Reihenfolge fix
-Folder-Grants (`SharedFolderPermission.PrincipalKey` = User-Guid oder AD-SID) brauchen die User;
-`ManagedMachine.DefaultCredentialId` braucht die Credentials → **Credentials vor Machines**.
-`SharedWorkflowFolder.CreatedByUserId` ist eine User-Id und wird beim Struktur-Restore über
-`userMap` remappt (K17) — deshalb Users vor Folder-Struktur. Reihenfolge (alles außer Settings in
-**einer** DB-Transaktion):
+### K4 — Folders: separate structure from grants, and fix the ordering
+Folder grants (`SharedFolderPermission.PrincipalKey` = user GUID or AD SID) need the users;
+`ManagedMachine.DefaultCredentialId` needs the credentials → **credentials before machines**.
+`SharedWorkflowFolder.CreatedByUserId` is a user id and is remapped through `userMap` during the
+structure restore (K17) — hence users before folder structure. Order (everything except settings
+inside **one** database transaction):
 
 ```
-1. Users                           5. Global Variables
-2. Folder-Struktur (ohne Grants;   6. Workflows  (Refs via Maps — K13)
-   CreatedByUserId via userMap)     7. Folder-Grants/Permissions (spät, remapped)
-3. Credentials                     8. Settings  (separat, NICHT in der TX — K8)
+1. Users                           5. Global variables
+2. Folder structure (no grants;    6. Workflows  (refs via the maps — K13)
+   CreatedByUserId via userMap)     7. Folder grants/permissions (late, remapped)
+3. Credentials                     8. Settings  (separate, NOT in the TX — K8)
 4. Machines (DefaultCredentialId
    via credentialMap)
 ```
 
-Alternative für Machines (falls eine Ordnung ohne Credentials-Vorbedingung gewünscht ist): erst
-ohne `DefaultCredentialId` anlegen, nach Credentials patchen. Default ist die Reihenfolge oben.
+An alternative for machines, if an ordering without the credentials precondition is wanted:
+create them without `DefaultCredentialId` and patch it after the credentials. The order above is
+the default.
 
-### K5 — Whole-file-Integrität (MAC)
-GCM-pro-Secret schützt nur verschlüsselte Felder. Klartext (Scripts, Hostnames, Rollen,
-Settings-Struktur) wäre manipulierbar. Daher zusätzlich **passphrase-basierter HMAC-SHA256
-über kanonisches JSON** der gesamten Datei (Feld `mac`).
-- **Restore** verlangt Passphrase → verifiziert MAC **bevor** geschrieben wird. Mismatch → Abbruch.
-- **Preview ohne Passphrase** bleibt möglich, liefert aber Status `integrityUnverified` und
-  diffte nur Struktur/Counts/Namen — **keine** Secret-Identität (K10).
+### K5 — Whole-file integrity (MAC)
+Per-secret GCM only protects the encrypted fields. Plaintext (scripts, hostnames, roles, the
+settings structure) would be tamperable. Hence an additional **passphrase-based HMAC-SHA256 over
+the canonical JSON** of the entire file (field `mac`).
+- **Restore** requires the passphrase → verifies the MAC **before** anything is written. A
+  mismatch aborts.
+- **Preview without a passphrase** stays possible but reports status `integrityUnverified` and
+  diffs only structure, counts and names — **never** secret identity (K10).
 
-### K6 — Upload als multipart/form-data
-`preview`/`restore` nehmen die Datei als `multipart/form-data` (Feld `file` + Feld `passphrase`),
-**nicht** als JSON-Body mit eingebettetem File. Export bleibt JSON-Request → File-Download.
+### K6 — Upload as multipart/form-data
+`preview`/`restore` take the file as `multipart/form-data` (field `file` plus field
+`passphrase`), **not** as a JSON body with an embedded file. Export stays a JSON request → file
+download.
 
 ## Crypto — `PassphraseSecretProtector`
-Gleiche Primitive wie der bestehende AES-GCM-Provider. Passphrase → PBKDF2-SHA256 (600k Iter.,
-zufälliger Salt) → 256-bit Master-Secret.
+The same primitives as the existing AES-GCM provider. Passphrase → PBKDF2-SHA256 (600k
+iterations, random salt) → a 256-bit master secret.
 
-**K14 — Key-Separation:** das PBKDF2-Ergebnis wird **nicht** direkt mehrfach verwendet. Per
-HKDF-SHA256-Expand (distinkte `info`-Labels) drei Subkeys ableiten: `encKey` (AES-256-GCM der
-`$enc`-Felder), `macKey` (Whole-file-HMAC, K5) und `verifierKey` (GCM des bekannten Tokens →
-Passphrase-Check vor jedem Schreiben). Salt + Iterationen + `verifier` stehen im `crypto`-Header.
+**K14 — key separation:** the PBKDF2 result is **not** reused directly for several purposes.
+Three subkeys are derived via HKDF-SHA256-Expand with distinct `info` labels: `encKey`
+(AES-256-GCM for the `$enc` fields), `macKey` (whole-file HMAC, K5) and `verifierKey` (GCM of a
+known token → passphrase check before every write). Salt, iterations and `verifier` live in the
+`crypto` header.
 
-**Rewrap** exakt nach `CredentialStore.ReencryptAllCredentialsAsync`:
-- Export: mit laufendem `ISecretProtector` entschlüsseln → mit Passphrase-Protector verschlüsseln.
-- Restore: mit Passphrase-Protector entschlüsseln → mit **Ziel**-`ISecretProtector` neu verschlüsseln.
-User-BCrypt-Hashes werden nicht re-hashed, nur als Feld hinter die Passphrase gelegt + 1:1 restored.
+**Rewrap** exactly as in `CredentialStore.ReencryptAllCredentialsAsync`:
+- Export: decrypt with the running `ISecretProtector` → encrypt with the passphrase protector.
+- Restore: decrypt with the passphrase protector → re-encrypt with the **target**
+  `ISecretProtector`.
+
+User BCrypt hashes are not re-hashed — they are placed behind the passphrase as a field and
+restored 1:1.
 
 ## Backend
-`IBackupPart`-Implementierungen in `NodePilot.Api/Services/Backup/` je Ressource
+`IBackupPart` implementations in `NodePilot.Api/Services/Backup/`, one per resource
 (`FolderBackupPart`, `UserBackupPart`, `MachineBackupPart`, `CredentialBackupPart`,
-`GlobalVariableBackupPart`, `WorkflowBackupPart`, `SettingsBackupPart`) mit
+`GlobalVariableBackupPart`, `WorkflowBackupPart`, `SettingsBackupPart`), each with
 `Export / Preview / Restore(ConflictPolicy, IdMaps)`.
 
 `BackupController` (`[Authorize(Roles="Admin")]`):
 
-| Endpoint | Body | Zweck |
+| Endpoint | Body | Purpose |
 |---|---|---|
-| `GET /api/backup/manifest` | — | Counts pro Sektion (UI-Checkboxen) |
-| `POST /api/backup/export` | `{ sections[], passphrase }` | streamt `.npbackup` |
-| `POST /api/backup/preview` | multipart `file` + `passphrase?` | Diff je Sektion + `integrityUnverified` |
-| `POST /api/backup/restore` | multipart `file` + `passphrase` + `policy{}` | wendet an |
+| `GET /api/backup/manifest` | — | per-section counts (UI checkboxes) |
+| `POST /api/backup/export` | `{ sections[], passphrase }` | streams the `.npbackup` |
+| `POST /api/backup/preview` | multipart `file` + `passphrase?` | per-section diff + `integrityUnverified` |
+| `POST /api/backup/restore` | multipart `file` + `passphrase` + `policy{}` | applies it |
 
-**Konflikt-Policy** (by-name-Match wie Import; Default `skip`): `skip` / `rename` (Suffix) / `overwrite`.
+**Conflict policy** (by-name match, as with import; default `skip`): `skip` / `rename` (suffix) /
+`overwrite`.
 
-### K11 — Last-Admin-Schutz
-Restore darf **nicht** dazu führen, dass danach kein aktiver Admin mehr existiert. Vor Commit
-prüfen: ≥1 `IsActive` User mit `Role == Admin`. Sonst Abbruch der User-Sektion mit klarer
-Fehlermeldung (Rest des Restores kann durchlaufen, User-Sektion wird verweigert).
+### K11 — Last-admin protection
+A restore must **not** be able to leave the system with no active admin. Before committing,
+check: at least one `IsActive` user with `Role == Admin`. Otherwise abort the user section with a
+clear error (the rest of the restore may proceed; the user section is refused).
 
-### K16 — User-Restore invalidiert Sessions
-Beim `overwrite` eines bestehenden Ziel-Users muss bei Änderung von `Role`, `IsActive` **oder**
-`PasswordHash`: `SecurityStamp` inkrementieren (entwertet bestehende JWTs, vgl. `jti`/Stamp-Logik),
-und bei Passwort-/Hash-Änderung zusätzlich `PasswordChangedAt = UtcNow` setzen. Sonst bleiben alte
-Sessions der Zielinstanz nach einem Rollen-Downgrade oder Passwort-Reset gültig.
+### K16 — Restoring a user invalidates sessions
+When `overwrite` changes an existing target user's `Role`, `IsActive` **or** `PasswordHash`, the
+`SecurityStamp` must be incremented (invalidating existing JWTs — compare the `jti`/stamp logic),
+and on a password or hash change `PasswordChangedAt = UtcNow` must be set as well. Otherwise old
+sessions on the target instance survive a role downgrade or a password reset.
 
-### K17 — Folder.CreatedByUserId remappen
-`SharedWorkflowFolder.CreatedByUserId` ist eine User-Id und wird beim Struktur-Restore über
-`userMap` remappt. Ist die Quell-User-Id nicht im Backup/Ziel auflösbar → bewusst auf `null`
-setzen (nicht die fremde Guid übernehmen).
+### K17 — Remap Folder.CreatedByUserId
+`SharedWorkflowFolder.CreatedByUserId` is a user id and is remapped through `userMap` during the
+structure restore. If the source user id cannot be resolved in the backup or the target, set it
+to `null` deliberately rather than carrying over a foreign GUID.
 
-### K12 — Partial-Restore & Dependency-Auflösung
-Wählt der Caller nur eine Teilmenge (z. B. nur `workflows` ohne `machines`/`credentials`/`folders`),
-entstehen sonst kaputte Referenzen. Regeln:
-- **Export** zieht harte Dependencies der gewählten Sektionen automatisch mit (Workflows →
-  referenzierte Machines/Credentials/Folder), mit sichtbarem UI-/CLI-Hinweis welche Sektionen
-  ergänzt wurden.
-- **Preview/Restore** validiert zusätzlich jede remapbare Referenz: Ziel muss entweder im Backup
-  enthalten **oder** in der Ziel-DB bereits per `sourceId`-Match vorhanden sein. Nicht auflösbare
-  Refs → harte Warnung im Preview und **Abbruch** im Restore (kein stilles Null-Setzen von
-  `targetMachineId`/`credentialId`).
+### K12 — Partial restore and dependency resolution
+If the caller picks only a subset (say only `workflows` without `machines`/`credentials`/
+`folders`), broken references would result. The rules:
+- **Export** automatically pulls in the hard dependencies of the selected sections (workflows →
+  the machines/credentials/folders they reference), with a visible UI/CLI note about which
+  sections were added.
+- **Preview/restore** additionally validate every remappable reference: the target must either be
+  contained in the backup **or** already present in the target database via a `sourceId` match.
+  Unresolvable references produce a hard warning in the preview and **abort** the restore — no
+  silently nulled `targetMachineId`/`credentialId`.
 
-### K18 — Restore-Transaktion in EF-Execution-Strategy kapseln (nachträglich, Field-Test)
-Postgres **und** SQL Server konfigurieren eine *retrying* Execution-Strategy
-(`NpgsqlRetryingExecutionStrategy` / `SqlServerRetryingExecutionStrategy`), die eine
-direkte `BeginTransactionAsync` mit `InvalidOperationException` ablehnt. Die komplette
-Restore-Einheit (Load + Validate + Transaktion) läuft daher in
-`db.Database.CreateExecutionStrategy().ExecuteAsync(...)`; jeder Versuch leert den
-ChangeTracker und baut den State neu auf, damit ein Retry sauber startet. SQLite (Tests)
-liefert eine non-retrying Strategy → ein Durchlauf. **Test-Lücke:** der Wrapper wird von
-den Tests ausgeführt, aber nicht erzwungen (SQLite bräuchte ihn nicht) — Invariante nur
-per Kommentar gesichert.
+### K18 — Wrap the restore transaction in the EF execution strategy (added later, from field testing)
+Postgres **and** SQL Server both configure a *retrying* execution strategy
+(`NpgsqlRetryingExecutionStrategy` / `SqlServerRetryingExecutionStrategy`), which rejects a direct
+`BeginTransactionAsync` with an `InvalidOperationException`. The complete restore unit (load +
+validate + transaction) therefore runs inside
+`db.Database.CreateExecutionStrategy().ExecuteAsync(...)`; every attempt clears the change tracker
+and rebuilds the state so a retry starts clean. SQLite (tests) supplies a non-retrying strategy →
+a single pass. **Test gap:** the tests execute the wrapper but do not enforce it (SQLite would not
+need it) — the invariant is only held by a comment.
 
-### K8 — Settings als separater, nicht-atomarer Schritt
-DB-Transaktion deckt nur DB-Sektionen. Settings-Restore läuft über `RuntimeOverridesWriter`
-(File `appsettings.runtime.json`) → **nach** Commit der DB-TX, mit **eigener Ergebniszeile**
-(success/fail unabhängig). Kein DDL-/Datei-Hotpatch.
+### K8 — Settings as a separate, non-atomic step
+The database transaction only covers database sections. The settings restore runs through
+`RuntimeOverridesWriter` (the file `appsettings.runtime.json`) → **after** the database
+transaction commits, with **its own result line** (success/failure independently). No DDL or file
+hot-patching.
 
-### K9 — Settings-Export nur runtime-Overrides, roher Datei-Inhalt
-Exportiert wird **nur** der **rohe JSON-Inhalt** von `appsettings.runtime.json` (die DB-/File-
-Overrides), **nicht** `IConfigurationRoot` — denn der ist bereits entschlüsselt und mit
-Env/CLI/appsettings.json gemerged; das würde Host-/Env-Secrets in die Datei ziehen. Die Datei
-wird also als Text/JSON gelesen. Verschlüsselte Werte darin
-(`EncryptingJsonConfigurationProvider`-Markierung) werden auf Feldebene rewrapped.
+### K9 — Export only the runtime overrides, as raw file content
+What is exported is **only** the **raw JSON content** of `appsettings.runtime.json` (the
+database/file overrides), **not** `IConfigurationRoot` — that one is already decrypted and merged
+with env, CLI and appsettings.json, which would drag host and environment secrets into the file.
+So the file is read as text/JSON. Encrypted values within it (marked by
+`EncryptingJsonConfigurationProvider`) are rewrapped at field level.
 
 ## CLI (`np backup …`) — headless
-`BackupCommands` + `NodePilotApiClient`-Methoden, DTOs in `Cli/Api/Dtos/` dupliziert.
+`BackupCommands` plus `NodePilotApiClient` methods, with DTOs duplicated in `Cli/Api/Dtos/`.
 ```
 np backup export  --out sys.npbackup --sections all|workflows,machines,… --passphrase-env NP_BACKUP_PASS
 np backup preview sys.npbackup --passphrase-env NP_BACKUP_PASS
 np backup restore sys.npbackup --passphrase-env NP_BACKUP_PASS --policy workflows=skip,users=overwrite
 ```
-Passphrase **nie** als Flag (Prozessliste/History) — `--passphrase-env`, `--passphrase-file` oder
-interaktiver Prompt. Ermöglicht Cron-/Scheduled-DR-Backup.
+The passphrase is **never** a flag (process list, shell history) — `--passphrase-env`,
+`--passphrase-file` or an interactive prompt. This makes cron/scheduled DR backups possible.
 
-## Frontend — `/backup` (Admin-only)
-Sidebar-Eintrag in Admin-Gruppe, Route mit `<AdminOnly>` + lazy, i18n-Namespace `backup` (DE/EN).
-Banner: „Konfigurations-Backup — enthält keine Ausführungshistorie/Audit“ (Abgrenzung).
-- **Tab Backup:** Sektions-Checkboxen mit Counts (`/manifest`), Passphrase + Bestätigung + Stärke,
-  Button → `POST /export` → Download.
-- **Tab Restore:** Upload → `POST /preview` (Passphrase optional, sonst `integrityUnverified`-Hinweis)
-  → Diff-Tabelle je Sektion → Policy-Dropdown je Sektion → `POST /restore` → Ergebnis-Summary
-  (inkl. separater Settings-Zeile, K8).
+## Frontend — `/backup` (admin only)
+A sidebar entry in the admin group, the route behind `<AdminOnly>` and lazy-loaded, i18n namespace
+`backup` (DE/EN). Banner: "Configuration backup — contains no execution history or audit log"
+(the boundary).
+- **Backup tab:** section checkboxes with counts (`/manifest`), passphrase plus confirmation and
+  strength, button → `POST /export` → download.
+- **Restore tab:** upload → `POST /preview` (passphrase optional, otherwise the
+  `integrityUnverified` note) → per-section diff table → per-section policy dropdown →
+  `POST /restore` → result summary (including the separate settings line, K8).
 
-## Security & Audit
-Alles Admin-only. Audit nach `SaveChanges`: `BACKUP_EXPORTED` (Sektionen, Counts, Secrets ja/nein),
-`BACKUP_RESTORED` (Policy, angelegt/überschrieben je Sektion, Settings-Resultat). Passphrase nie
-ins Audit/Log. `RequestSizeLimit` + Rate-Limit auf Restore. Passphrase-Mindestlänge erzwungen.
+## Security & audit
+Everything is admin-only. Audit after `SaveChanges`: `BACKUP_EXPORTED` (sections, counts, secrets
+yes/no), `BACKUP_RESTORED` (policy, created/overwritten per section, settings result). The
+passphrase never reaches the audit or the log. `RequestSizeLimit` plus a rate limit on restore. A
+minimum passphrase length is enforced.
 
-## DB / Migration
-**Keine Schema-Änderung** — Backup liest/schreibt nur bestehende Tabellen.
+## Database / migration
+**No schema change** — the backup only reads and writes existing tables.
 
-## Tests (Pflicht)
-- Crypto-Unit: Round-Trip, falsche Passphrase, Tamper an Klartext → MAC-Fail, Tamper an `$enc` →
-  GCM-Fail, Key-Separation (encKey ≠ macKey ≠ verifierKey).
-- Backend: Export→Restore-Round-Trip mit Gleichheit je Sektion; **ID-Remap** (Workflow mit
-  `targetMachineId`/`credentialId` zeigt nach Restore auf neue Ids; `{{globals.X}}` unverändert —
-  K13); `Machine.DefaultCredentialId`-Remap (K4); `Folder.ParentFolderId`/`CreatedByUserId`- und
-  Grant-Remap; Konflikt-Policies; **Partial-Restore mit fehlender Dependency → Abbruch** (K12);
-  User-Overwrite erhöht `SecurityStamp` + setzt `PasswordChangedAt` (K16); Last-Admin-Schutz (K11);
-  Settings-Separat-Pfad (K8); RBAC (Non-Admin 403).
-- CLI: WireMock für export/preview/restore.
-- Frontend: BackupPage — Sektionsauswahl, Passphrase-Validierung, Preview-Diff inkl.
-  `integrityUnverified`-Status.
+## Tests (mandatory)
+- Crypto units: round trip, wrong passphrase, tampering with plaintext → MAC failure, tampering
+  with `$enc` → GCM failure, key separation (encKey ≠ macKey ≠ verifierKey).
+- Backend: export→restore round trip with per-section equality; **ID remap** (a workflow with
+  `targetMachineId`/`credentialId` points at the new ids after restore; `{{globals.X}}` unchanged
+  — K13); `Machine.DefaultCredentialId` remap (K4); `Folder.ParentFolderId`/`CreatedByUserId` and
+  grant remap; conflict policies; **partial restore with a missing dependency → abort** (K12);
+  a user overwrite raises `SecurityStamp` and sets `PasswordChangedAt` (K16); last-admin protection
+  (K11); the separate settings path (K8); RBAC (non-admin gets 403).
+- CLI: WireMock for export/preview/restore.
+- Frontend: BackupPage — section selection, passphrase validation, preview diff including the
+  `integrityUnverified` status.
 
-## Phasen
-1. Crypto (`PassphraseSecretProtector` + HKDF-Subkeys + MAC) + Envelope (sourceId je Sektion) +
-   `IBackupPart` (alle Sektionen) + Workflow-Export-Refactor (SecretHandling) + Export-Dependency-
-   Auto-Include (K12) + `GET /manifest` + `POST /export` + CLI `export`.
-2. `POST /preview` + `POST /restore` (zwei-phasiges ID-Remap K3/K13, Konflikt-Policy,
-   Dependency-Validierung K12, User-Session-Invalidierung K16, Last-Admin-Schutz K11,
-   Settings-separat K8) + CLI `preview`/`restore`.
-3. Frontend `/backup` (beide Tabs) + Nav + i18n.
-4. Hardening & Docs (`deploy/README.md`, `docs/claude-reference.md`).
+## Phases
+1. Crypto (`PassphraseSecretProtector` + HKDF subkeys + MAC) + envelope (sourceId per section) +
+   `IBackupPart` (all sections) + workflow export refactor (SecretHandling) + export dependency
+   auto-include (K12) + `GET /manifest` + `POST /export` + CLI `export`.
+2. `POST /preview` + `POST /restore` (two-phase ID remap K3/K13, conflict policy, dependency
+   validation K12, user session invalidation K16, last-admin protection K11, settings separately
+   K8) + CLI `preview`/`restore`.
+3. Frontend `/backup` (both tabs) + navigation + i18n.
+4. Hardening and docs (`deploy/README.md`, `docs/claude-reference.md`).
 
-## Konsequenzen
-- Portables, sicheres DR-Artefakt; Restore auf frischer Maschine möglich (Passphrase genügt).
-- Kontext-Workflow-Export bleibt unverändert (redigiert).
-- Kein Voll-DB-Backup-Ersatz — bewusst abgegrenzt.
+## Consequences
+- A portable, secure DR artifact; a restore onto a fresh machine is possible (the passphrase is
+  enough).
+- The context workflow export stays unchanged (redacted).
+- No replacement for a full database backup — deliberately out of scope.
