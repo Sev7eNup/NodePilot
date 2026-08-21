@@ -12,6 +12,12 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.11] - 2026-08-21
+
+The release 1.2.10 should have been. Everything below was on `main` while 1.2.10 was the only
+download, including an unlicensed image in the shipped bundle, an SSRF bypass, three desktop
+first-run blockers, and the two release assets the deployment guide tells people to verify against.
+
 ### Added
 
 - **The documentation website is published** at <https://sev7enup.github.io/NodePilot/> and is now
@@ -50,6 +56,10 @@ exhaustive.
 - The three npm manifests carried 1.2.5 while the product was on 1.2.10, so "Programs and Features"
   and the executable's file properties disagreed. A parity test now enforces all four version
   sources.
+- The schedule preview reads a five-field Unix cron the way the user means it. Shorter expressions
+  were padded from the wrong end, so the seconds default landed last instead of first and
+  `20 15 * *` previewed as "every second". Fixed by cron-parser 5.10.0 and pinned by two tests —
+  every existing case used six or seven fields, which is why it stayed invisible.
 
 ### Changed
 
@@ -64,6 +74,17 @@ exhaustive.
   the certificate thumbprint before dismissing it, and why unblocking a ZIP has to happen before
   extraction. Covers the README, the deployment guide, `docs/av-exclusions.md` and the
   documentation site.
+- The Windows Server walkthrough exists once, on the documentation site. Two full walkthroughs had
+  drifted: the deployment guide's database chapter was SQL Server end to end while PostgreSQL — the
+  default provider — got one sentence. The guide keeps what only it does: verifying the artifact
+  against its checksums and publisher, SmartScreen, building it yourself, and troubleshooting.
+- Every getting-started link in the README points at Installation rather than Quick start, which
+  lists a running instance as a prerequisite.
+- PowerShell SDK 7.6.5 — it ships inside the artifact — plus frontend and documentation-site
+  dependency updates.
+- A pull request that touches only Markdown or documentation images skips the frontend, desktop and
+  E2E jobs. Backend and the documentation site still run: Markdown is an input to both, and a blunt
+  `paths-ignore` would have let through exactly the README breakages CI has caught.
 
 ### Removed
 
@@ -528,7 +549,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.10...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.11...main
+[1.2.11]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.11
 [1.2.10]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.10
 [1.2.9]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.9
 [1.2.8]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.8
