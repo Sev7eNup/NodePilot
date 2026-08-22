@@ -174,7 +174,7 @@ public sealed class CanvasAssistantTools
         [Description("The workflow definition: { nodes: [...], edges: [...] }.")] JsonElement definition)
         => Wrap(() =>
         {
-            var reflowed = LayoutEngine.Reflow(definition);
+            var reflowed = WorkflowLayoutEngine.Reflow(definition, WorkflowLayoutOptions.Compact);
             // Returns the full definition → redact inline secrets before handing it back.
             return new { definition = DefinitionRedactor.Redact(JsonSerializer.SerializeToElement(reflowed)) };
         });
