@@ -35,8 +35,13 @@ exhaustive.
   (`warning#failed`), both of which the parser rejected, so the links routing a runbook's failures
   came out unconditional. `does not contain` no longer maps to `contains`, which made an edge fire
   under exactly the opposite condition.
-- Imported graphs are laid out for NodePilot instead of inheriting SCOrch's 75 px icon grid, so
-  nodes no longer arrive stacked on top of each other at negative coordinates.
+- Imported graphs keep their original arrangement. SCOrch's coordinates cannot be copied as they
+  are - it draws small icons on a 75 px grid where NodePilot draws cards several times that size,
+  so verbatim positions overlapped nearly everywhere and started off-canvas. The graph is scaled
+  uniformly instead, which is a similarity transform: every distance keeps its ratio, so it is the
+  same picture at a larger size. On the reference export that is a factor of four with zero
+  deviation. Where no scale works - activities sharing a position, or spaced too tightly for a
+  usable canvas - the import reports it and falls back to a left-to-right layout.
 - The import report says what the translation lost: references to fields the target activity does
   not publish, references across parallel branches, remote steps without a target machine, dropped
   run-as accounts, approximated schedules and links that ended up unconditional.

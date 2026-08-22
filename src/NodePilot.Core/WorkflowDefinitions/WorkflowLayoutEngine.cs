@@ -41,6 +41,25 @@ public sealed record WorkflowLayoutOptions(
 }
 
 /// <summary>
+/// Bounds for reproducing a graph's own geometry instead of re-laying it out.
+/// </summary>
+/// <param name="NodeWidth">Widest a node card can render. Card mode grows with the label.</param>
+/// <param name="NodeHeight">Tallest a node card can render.</param>
+/// <param name="Margin">Where the top-left of the graph lands.</param>
+/// <param name="GridSnap">Round every coordinate to a multiple of this. 0 disables snapping.</param>
+/// <param name="MaxScale">
+/// Refuse to preserve beyond this factor. A source graph whose nodes sit a few pixels apart would
+/// need a scale that turns the canvas into something nobody can navigate; falling back to a layered
+/// layout is better than a faithful but unusable one.
+/// </param>
+public sealed record PreservedLayoutOptions(
+    double NodeWidth = 280,
+    double NodeHeight = 110,
+    double Margin = 60,
+    double GridSnap = 20,
+    double MaxScale = 8);
+
+/// <summary>
 /// Simple left-to-right layered auto-layout: triggers/roots go in the leftmost column, each node
 /// sits one column right of its deepest predecessor, and nodes stack vertically within a column.
 /// Only node.position is rewritten — every other field is preserved verbatim.
@@ -52,6 +71,64 @@ public sealed record WorkflowLayoutOptions(
 /// </summary>
 public static class WorkflowLayoutEngine
 {
+    /// <summary>
+    /// Reproduces the graph's own arrangement instead of re-laying it out, by scaling it uniformly
+    /// until no two node cards can overlap and translating it to the margin.
+    ///
+    /// <para>A uniform scale is a similarity transform: every distance and angle keeps its ratio, so
+    /// the result is the SAME picture at a different size. That matters for an imported runbook —
+    /// the author's arrangement is what makes it recognisable, and re-laying it out means handing
+    /// someone a graph they have to read from scratch. The scale is needed because the source draws
+    /// activities as small icons while a NodePilot node is a card several times that size.</para>
+    ///
+    /// <para>Returns null when the arrangement cannot be reproduced: two nodes on the same point
+    /// (no scale separates them), fewer than two positions to go on, or a required scale beyond
+    /// <see cref="PreservedLayoutOptions.MaxScale"/>. The caller then falls back to
+    /// <see cref="Reflow(JsonElement, WorkflowLayoutOptions)"/>.</para>
+    /// </summary>
+    public static JsonObject? TryPreserveGeometry(JsonElement definition, PreservedLayoutOptions options)
+    {
+        var positions = ReadNodePositions(definition);
+        if (positions.Count < 2) return null;
+
+        // Snapping moves a node by up to half a grid step, so a pair can lose a full step of
+        // separation. Sizing the scale against an inflated card keeps the no-overlap guarantee a
+        // guarantee rather than something the rounding can quietly break.
+        var width = options.NodeWidth + options.GridSnap;
+        var height = options.NodeHeight + options.GridSnap;
+
+        double required = 0;
+        var points = positions.Values.ToList();
+        for (var i = 0; i < points.Count; i++)
+        {
+            for (var j = i + 1; j < points.Count; j++)
+            {
+                var dx = Math.Abs(points[i].X - points[j].X);
+                var dy = Math.Abs(points[i].Y - points[j].Y);
+                if (dx == 0 && dy == 0) return null; // coincident: no scale ever separates them
+
+                // The pair is clear as soon as EITHER axis separates it, so the cheaper axis decides.
+                var byX = dx > 0 ? width / dx : double.PositiveInfinity;
+                var byY = dy > 0 ? height / dy : double.PositiveInfinity;
+                required = Math.Max(required, Math.Min(byX, byY));
+            }
+        }
+
+        // Whole-number scale: it keeps the arithmetic exact and, where the source used a regular
+        // grid, lands the result back on one.
+        var scale = Math.Max(1, Math.Ceiling(required));
+        if (scale > options.MaxScale) return null;
+
+        var minX = points.Min(p => p.X);
+        var minY = points.Min(p => p.Y);
+
+        return RewritePositions(definition, positions.ToDictionary(
+            kv => kv.Key,
+            kv => (
+                X: Snap(options.Margin + (kv.Value.X - minX) * scale, options.GridSnap),
+                Y: Snap(options.Margin + (kv.Value.Y - minY) * scale, options.GridSnap))));
+    }
+
     public static JsonObject Reflow(JsonElement definition) => Reflow(definition, WorkflowLayoutOptions.Compact);
 
     public static JsonObject Reflow(JsonElement definition, WorkflowLayoutOptions options)
@@ -126,7 +203,13 @@ public static class WorkflowLayoutEngine
             posById[id] = (Snap(x, options.GridSnap), Snap(y, options.GridSnap));
         }
 
-        // Rebuild nodes preserving all fields, replacing only position.
+        return RewritePositions(definition, posById);
+    }
+
+    /// <summary>Rebuilds the definition preserving every field, replacing only node.position.</summary>
+    private static JsonObject RewritePositions(
+        JsonElement definition, IReadOnlyDictionary<string, (double X, double Y)> posById)
+    {
         var nodes = new JsonArray();
         if (definition.TryGetProperty("nodes", out var rawNodes) && rawNodes.ValueKind == JsonValueKind.Array)
         {
@@ -190,8 +273,11 @@ public static class WorkflowLayoutEngine
         => grid > 0 ? Math.Round(value / grid) * grid : value;
 
     private static Dictionary<string, double> ReadNodeY(JsonElement definition)
+        => ReadNodePositions(definition).ToDictionary(kv => kv.Key, kv => kv.Value.Y, StringComparer.Ordinal);
+
+    private static Dictionary<string, (double X, double Y)> ReadNodePositions(JsonElement definition)
     {
-        var map = new Dictionary<string, double>(StringComparer.Ordinal);
+        var map = new Dictionary<string, (double X, double Y)>(StringComparer.Ordinal);
         if (!definition.TryGetProperty("nodes", out var nodes) || nodes.ValueKind != JsonValueKind.Array)
             return map;
 
@@ -202,10 +288,10 @@ public static class WorkflowLayoutEngine
             if (id is null) continue;
             if (node.TryGetProperty("position", out var pos)
                 && pos.ValueKind == JsonValueKind.Object
-                && pos.TryGetProperty("y", out var y)
-                && y.ValueKind == JsonValueKind.Number)
+                && pos.TryGetProperty("x", out var x) && x.ValueKind == JsonValueKind.Number
+                && pos.TryGetProperty("y", out var y) && y.ValueKind == JsonValueKind.Number)
             {
-                map[id] = y.GetDouble();
+                map[id] = (x.GetDouble(), y.GetDouble());
             }
         }
         return map;

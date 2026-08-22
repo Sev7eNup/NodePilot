@@ -42,8 +42,10 @@ What the translation does:
 - **Triggers** — a runbook without one (SCOrch runbooks invoked by another need none) is given a
   manual trigger wired to its entry activities, because a NodePilot workflow with no trigger node
   has no root and fails on every run.
-- **Layout** — SCOrch coordinates are replaced by a layered layout at NodePilot's node spacing; the
-  original vertical order within a column is kept.
+- **Layout** — the graph keeps its own arrangement. SCOrch's coordinates cannot be copied verbatim
+  (it draws small icons, NodePilot draws cards), so the whole graph is scaled uniformly until the
+  cards fit — a similarity transform, so the picture is the author's, just larger. If that is
+  impossible, the import says so and lays the graph out left-to-right instead.
 
 What it does not do, and says so in the report: an activity with no NodePilot counterpart, or a
 mapping that cannot fill a required setting, becomes a **disabled** `log` placeholder carrying the

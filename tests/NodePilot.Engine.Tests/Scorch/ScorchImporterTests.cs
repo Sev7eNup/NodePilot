@@ -139,12 +139,13 @@ public class ScorchImporterTests
     }
 
     /// <summary>
-    /// SCOrch coordinates are not carried over. Its canvas draws activities as small icons on a
-    /// 75 px grid and its x is routinely negative; a NodePilot node is a 220x110 card, so the
-    /// copied positions overlapped almost everywhere and started far off-canvas.
+    /// SCOrch coordinates are reproduced, not copied. Its canvas draws activities as small icons on
+    /// a 75 px grid and its x is routinely negative; a NodePilot node is a card several times that
+    /// size, so copied positions overlapped almost everywhere and started far off-canvas. Scaling
+    /// the graph uniformly keeps the arrangement and makes the cards fit.
     /// </summary>
     [Fact]
-    public void Parse_ScorchCoordinates_AreReplacedByALayeredLayout()
+    public void Parse_ScorchCoordinates_AreReproducedScaledToTheCanvasOrigin()
     {
         var id = Guid.NewGuid();
         var xml = BuildExport(PolicyWith("RB",
@@ -153,11 +154,20 @@ public class ScorchImporterTests
 
         var result = Importer.Parse(xml);
         var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
-        var pos = ActivityNodes(def)[0].GetProperty("position");
 
-        // Layer 1 (behind the synthesized trigger): margin 60 + column 300 + trigger headroom 100.
-        pos.GetProperty("x").GetDouble().Should().Be(460);
-        pos.GetProperty("y").GetDouble().Should().Be(60);
+        // The synthesized trigger is placed one step left of the activity, and the pair is scaled
+        // until two node cards fit between them; the graph then starts at the 60 px margin.
+        var all = def.GetProperty("nodes").EnumerateArray()
+            .Select(n => n.GetProperty("position"))
+            .Select(p => (X: p.GetProperty("x").GetDouble(), Y: p.GetProperty("y").GetDouble()))
+            .ToList();
+
+        all.Min(p => p.X).Should().Be(60);
+        all.Min(p => p.Y).Should().Be(60);
+
+        var activity = ActivityNodes(def)[0].GetProperty("position");
+        activity.GetProperty("x").GetDouble().Should().BeGreaterThan(60, "the trigger sits to its left");
+        activity.GetProperty("y").GetDouble().Should().Be(60, "both sit on the same row, as in SCOrch");
     }
 
     [Fact]

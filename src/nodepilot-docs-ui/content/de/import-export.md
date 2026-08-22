@@ -44,8 +44,11 @@ Was die Übersetzung leistet:
 - **Trigger** — ein Runbook ohne eigenen Trigger (von einem anderen Runbook aufgerufene brauchen
   keinen) bekommt einen manuellen Trigger auf seine Einstiegsaktivitäten. Ohne Trigger-Node hat ein
   NodePilot-Workflow keinen Root und scheitert bei jedem Lauf.
-- **Layout** — SCOrch-Koordinaten werden durch ein Layered-Layout im NodePilot-Knotenabstand
-  ersetzt; die ursprüngliche vertikale Reihenfolge innerhalb einer Spalte bleibt erhalten.
+- **Layout** — der Graph behält seine eigene Anordnung. SCOrch-Koordinaten lassen sich nicht
+  wörtlich übernehmen (dort kleine Icons, hier Karten), deshalb wird der gesamte Graph
+  gleichmäßig skaliert, bis die Karten passen — eine Ähnlichkeitsabbildung, das Bild bleibt also
+  das des Autors, nur größer. Geht das nicht, sagt der Import es und legt den Graphen stattdessen
+  von links nach rechts aus.
 
 Was sie nicht leistet — und im Report benennt: eine Aktivität ohne NodePilot-Gegenstück, oder ein
 Mapping, das eine Pflichteinstellung nicht füllen kann, wird zu einem **deaktivierten**

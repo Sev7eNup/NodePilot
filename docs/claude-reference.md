@@ -248,7 +248,7 @@ und wurde erst an einem echten 2016-Export sichtbar:
 | `Monitor File` hat einen Filter-String | `Filters` ist verschachteltes XML; Ereignisse als vier `NotifyIf*`-Booleans |
 | Published-Data-Feldname ist punktfrei | `Compare Values` publiziert `Compare.CompareResult` — ein Muster, das am ersten Punkt stoppt, kürzt still |
 | `Compare Values` ist ein Logik-Knoten ohne Gegenstück | wird `decision`; die Links lesen sein Ergebnis, ein `log` hätte jeden Zweig dahinter getötet |
-| Positionen sind übernehmbar | 75-px-Raster, oft negativ — NodePilot-Nodes sind 220×110-Karten |
+| Positionen sind 1:1 übernehmbar | 75-px-Raster, oft negativ — NodePilot-Karten sind bis 280×110; verbatim kopiert überlappt fast alles |
 
 **Datenbus: Namen ≠ Namen.** Die Marker-Syntax zu übersetzen ist nicht dasselbe wie die *Daten* zu
 übersetzen. `PublishedFieldRenames` bildet nur die belegten 1:1-Fälle ab (`Query XML.queryResult` →
@@ -279,11 +279,23 @@ und ohne Properties entsteht nie ein lauffähig aussehender Node. Platzhalter si
 `LogActivity` immer `Success = true` liefert — ein enabled Platzhalter ließ ein halb übersetztes
 Runbook grün durchlaufen.
 
+**Layout — Original erhalten, nicht neu erfinden.** `WorkflowLayoutEngine.TryPreserveGeometry`
+skaliert den Graphen **gleichmäßig**, bis keine zwei Karten mehr überlappen, und schiebt ihn auf den
+Rand. Eine gleichmäßige Skalierung ist eine Ähnlichkeitsabbildung: alle Abstandsverhältnisse
+bleiben, das Bild ist dasselbe, nur größer — und genau die Anordnung macht ein importiertes Runbook
+für seinen Autor wiedererkennbar. Der nötige Faktor ergibt sich aus dem engsten Paar; die Kartenmaße
+werden dabei um die Rasterweite aufgeblasen, damit das Snapping die Überlappungsfreiheit nicht
+nachträglich kippt. Am Referenz-Export fällt **Faktor 4** heraus, Abweichung 0 px (SCOrch-Deltas sind
+75er-Vielfache, 75 × 4 = 300 liegt auf dem 20er-Raster). `null` — und damit Rückfall auf
+`Reflow`/`WorkflowLayoutOptions.Imported` **mit Warnung** — bei deckungsgleichen Knoten (kein Faktor
+trennt die je) oder wenn der nötige Faktor `MaxScale` reißt.
+
 **Weitere Eigenheiten:** importierte Runbooks ohne Trigger bekommen einen synthetischen
-`manualTrigger` (0 Roots ⇒ Execution `Failed`); `ComputerName` wandert **wörtlich** in
-`targetMachineId` (`MachineResolver` matcht Name/Hostname und synthetisiert sonst ad-hoc);
-`connectionString` wird bewusst **nicht** übernommen (Passwort im Klartext + `RequireConnectionRef`
-ist default-an); Layout via `WorkflowLayoutOptions.Imported`.
+`manualTrigger` (0 Roots ⇒ Execution `Failed`) — platziert **in den Quellkoordinaten** links vom
+Graphen, weil ein Knoten auf (0,0) sonst zufällig deckungsgleich läge und damit die Erhaltung der
+Original-Anordnung kippen würde; `ComputerName` wandert **wörtlich** in `targetMachineId`
+(`MachineResolver` matcht Name/Hostname und synthetisiert sonst ad-hoc); `connectionString` wird
+bewusst **nicht** übernommen (Passwort im Klartext + `RequireConnectionRef` ist default-an).
 
 ---
 
