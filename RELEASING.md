@@ -97,9 +97,17 @@ Then verify as a stranger would, from the output folder:
 
 ```powershell
 Get-FileHash .\NodePilot-<version>.zip -Algorithm SHA256      # must match SHA256SUMS
-Get-AuthenticodeSignature .\NodePilot-Server-Setup-<version>.exe   # Status must be Valid
+$sig = Get-AuthenticodeSignature .\NodePilot-Server-Setup-<version>.exe
+$sig.SignerCertificate.Subject      # CN=NodePilot Release Signing
+$sig.SignerCertificate.Thumbprint   # must equal the shipped .cer's thumbprint
 (Get-PfxCertificate .\nodepilot-release-signing.cer).Thumbprint    # goes into the release notes
 ```
+
+`Status` is **`UnknownError`, and that is the pass condition**, not a failure — the release
+certificate is self-signed and its root is in nobody's trust store, so `Get-AuthenticodeSignature`
+cannot build a chain. Every published release reports the same; check one if it looks wrong. What
+carries the meaning is the pair above: the signer's subject and a thumbprint equal to the
+certificate shipped alongside. Waiting for `Valid` means waiting for a public CA.
 
 ## 6. Tag and publish
 
