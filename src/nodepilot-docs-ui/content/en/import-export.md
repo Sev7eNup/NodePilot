@@ -19,7 +19,7 @@ Envelope: `nodepilot-workflow-export/v1`. **Secrets are redacted here** (`***`) 
 ### SCOrch import
 
 `POST /import-scorch` reads System Center Orchestrator's native `.ois_export` XML (body =
-the raw XML, `Content-Type: application/xml`, 50 MiB cap; folder targeting and RBAC as for
+the raw XML, `Content-Type: application/xml`, 300 MiB cap; folder targeting and RBAC as for
 `/import`). Also available as `np workflow import-scorch --file` and as the MCP tool
 `import_scorch_workflow`.
 
@@ -42,6 +42,11 @@ What the translation does:
 - **Triggers** — a runbook without one (SCOrch runbooks invoked by another need none) is given a
   manual trigger wired to its entry activities, because a NodePilot workflow with no trigger node
   has no root and fails on every run.
+- **Sub-runbook calls** — a call is matched to its child by the full path SCOrch stores. That
+  matters when importing a whole estate: SCOrch allows two runbooks of the same name in different
+  folders, NodePilot does not, so one is renamed on import and its callers are re-pointed at the
+  name it was actually given. A call into a runbook that is neither in the file nor already in
+  NodePilot is reported, since it would fail at run time.
 - **Folders** — an export carries its own tree, for runbooks and for global variables alike, and
   both are rebuilt below the destination you import into. Folders that already exist are reused
   (matched ignoring case), names longer than 120 characters are shortened, and a tree deeper than

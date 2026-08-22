@@ -777,6 +777,142 @@ public class WorkflowImportExportControllerTests
         response.Variables.Should().ContainSingle(v => v.Skipped && v.FolderPath == null);
     }
 
+    // ---------- sub-runbook calls at estate scale ----------
+
+    /// <summary>
+    /// A runbook that calls another, addressed the way SCOrch addresses it: by full path.
+    /// </summary>
+    private static string RunbookCalling(string name, string childPath, params string[] folders)
+    {
+        var policy =
+            $"<Policy><UniqueID>{Guid.NewGuid()}</UniqueID><Name>{name}</Name>"
+          + $"<Object><UniqueID>{Guid.NewGuid()}</UniqueID><Name>Invoke {childPath.Split('\\').Last()}</Name>"
+          + $"<ObjectTypeName>Trigger Policy</ObjectTypeName><Enabled>TRUE</Enabled>"
+          + $"<PolicyPath>{childPath}</PolicyPath></Object></Policy>";
+        for (var i = folders.Length - 1; i >= 0; i--)
+            policy = $"<Folder><Name>{folders[i]}</Name>{policy}</Folder>";
+        return policy;
+    }
+
+    private static string ChildNameOf(NodePilotDbContext db, string parentName) =>
+        JsonDocument.Parse(db.Workflows.Single(w => w.Name == parentName).DefinitionJson)
+            .RootElement.GetProperty("nodes").EnumerateArray()
+            .Where(n => n.GetProperty("data").GetProperty("activityType").GetString() == "startWorkflow")
+            .Select(n => n.GetProperty("data").GetProperty("config")
+                .GetProperty("workflowNameOrId").GetString()!)
+            .Single();
+
+    /// <summary>
+    /// SCOrch scopes runbook names per folder; NodePilot's are global. A whole-estate export
+    /// therefore routinely holds two runbooks with the same name in different folders — one gets
+    /// renamed on the way in, and the call into it still carried the original name. It would then
+    /// resolve to the OTHER runbook, silently, at run time, in a workflow that looks correct.
+    /// </summary>
+    [Fact]
+    public async Task ImportScorch_TwoChildRunbooksShareAName_EachCallFollowsItsOwnChild()
+    {
+        var db = CreateContext();
+        var h = NewController(db);
+        var xml = FolderTreeExport(
+            RunbookIn("Cleanup", "SCCM")
+          + RunbookIn("Cleanup", "Maintenance")
+          + RunbookCalling("Patch Run", @"Policies\SCCM\Cleanup")
+          + RunbookCalling("Nightly", @"Policies\Maintenance\Cleanup"),
+            "");
+
+        var response = await ImportXmlAsync(h, xml);
+
+        // One kept the name, the other was renamed — and each caller points at its OWN child.
+        var sccmChild = db.Workflows.Single(w => w.FolderId ==
+            db.SharedWorkflowFolders.Single(f => f.Name == "SCCM").Id).Name;
+        var maintenanceChild = db.Workflows.Single(w => w.FolderId ==
+            db.SharedWorkflowFolders.Single(f => f.Name == "Maintenance").Id).Name;
+        sccmChild.Should().NotBe(maintenanceChild, "global names force one of them to be renamed");
+
+        ChildNameOf(db, "Patch Run").Should().Be(sccmChild);
+        ChildNameOf(db, "Nightly").Should().Be(maintenanceChild);
+        response.Warnings.Should().Contain(w => w.Contains("was already taken") && w.Contains("re-pointed"));
+    }
+
+    /// <summary>
+    /// The same collision against a runbook that was already in NodePilot before this import.
+    /// </summary>
+    [Fact]
+    public async Task ImportScorch_ChildNameTakenByAnExistingWorkflow_CallFollowsTheImportedOne()
+    {
+        var db = CreateContext();
+        db.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "Cleanup",
+            DefinitionJson = """{"nodes":[],"edges":[]}""",
+        });
+        await db.SaveChangesAsync();
+        var h = NewController(db);
+
+        await ImportXmlAsync(h, FolderTreeExport(
+            RunbookIn("Cleanup", "SCCM") + RunbookCalling("Patch Run", @"Policies\SCCM\Cleanup"), ""));
+
+        var imported = db.Workflows.Single(w => w.FolderId ==
+            db.SharedWorkflowFolders.Single(f => f.Name == "SCCM").Id);
+        imported.Name.Should().NotBe("Cleanup");
+        ChildNameOf(db, "Patch Run").Should().Be(imported.Name,
+            "the call must follow the runbook it came in with, not the one that was already here");
+    }
+
+    /// <summary>
+    /// Nothing to follow means nothing is touched — a call whose child keeps its own name is left
+    /// exactly as the mapper wrote it, and produces no noise in the report.
+    /// </summary>
+    [Fact]
+    public async Task ImportScorch_ChildKeepsItsName_CallIsLeftAlone()
+    {
+        var db = CreateContext();
+        var h = NewController(db);
+
+        var response = await ImportXmlAsync(h, FolderTreeExport(
+            RunbookIn("Cleanup", "SCCM") + RunbookCalling("Patch Run", @"Policies\SCCM\Cleanup"), ""));
+
+        ChildNameOf(db, "Patch Run").Should().Be("Cleanup");
+        response.Warnings.Should().NotContain(w => w.Contains("re-pointed"));
+    }
+
+    /// <summary>
+    /// A call into a runbook that is in neither the file nor the database fails at run time with
+    /// nothing to go on, so the report says so. Only the import knows both halves of that.
+    /// </summary>
+    [Fact]
+    public async Task ImportScorch_ChildRunbookNotInTheExportOrTheDatabase_IsReported()
+    {
+        var db = CreateContext();
+        var h = NewController(db);
+
+        var response = await ImportXmlAsync(h, FolderTreeExport(
+            RunbookCalling("Orphan Caller", @"Policies\Elsewhere\Not Here"), ""));
+
+        response.Warnings.Should().Contain(w =>
+            w.Contains("'Not Here'") && w.Contains("neither in this export nor"));
+    }
+
+    [Fact]
+    public async Task ImportScorch_ChildRunbookAlreadyInNodePilot_IsNotReportedAsMissing()
+    {
+        var db = CreateContext();
+        db.Workflows.Add(new Workflow
+        {
+            Id = Guid.NewGuid(),
+            Name = "Log Error",
+            DefinitionJson = """{"nodes":[],"edges":[]}""",
+        });
+        await db.SaveChangesAsync();
+        var h = NewController(db);
+
+        var response = await ImportXmlAsync(h, FolderTreeExport(
+            RunbookCalling("Caller", @"Policies\Shared\Log Error"), ""));
+
+        response.Warnings.Should().NotContain(w => w.Contains("neither in this export nor"));
+    }
+
     [Fact]
     public async Task ExportOne_EmitsWorkflowExportedAudit()
     {

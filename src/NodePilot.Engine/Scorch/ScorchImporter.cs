@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
@@ -201,6 +202,71 @@ public sealed class ScorchImporter
             result.Variables.Add(variable);
         }
         return map;
+    }
+
+    /// <summary>
+    /// Every <c>startWorkflow</c> node's pointer at the runbook it calls, read back off the source
+    /// objects. The mapper puts the child's NAME into the config because that is what NodePilot
+    /// resolves; this keeps the full path alongside it so a caller that renames a runbook on the
+    /// way in can find which calls have to follow. See <see cref="ScorchChildReference"/>.
+    /// </summary>
+    private static List<ScorchChildReference> CollectChildReferences(
+        List<(XElement Source, Guid Id, ScorchActivityMapper.Mapping Mapping)> mapped)
+    {
+        var refs = new List<ScorchChildReference>();
+        foreach (var (obj, objId, mapping) in mapped)
+        {
+            if (mapping.ActivityType != "startWorkflow") continue;
+            if (mapping.Config.GetValueOrDefault("workflowNameOrId") is not string childName
+                || childName.Length == 0)
+            {
+                continue;
+            }
+
+            var rawPath = obj.Element("PolicyPath")?.Value ?? obj.Element("RunbookPath")?.Value ?? "";
+            var segments = rawPath.Split(['\\', '/'], StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .ToList();
+
+            // Same rule as FolderPathOf: the first segment is SCOrch's root container, which the
+            // import destination stands for. A single segment is a bare name with no folder.
+            IReadOnlyList<string>? folder = segments.Count >= 2
+                ? segments.Skip(1).Take(segments.Count - 2).ToList()
+                : null;
+
+            refs.Add(new ScorchChildReference(objId.ToString(), folder, childName));
+        }
+        return refs;
+    }
+
+    /// <summary>
+    /// Re-points <c>startWorkflow</c> nodes at the names their children were actually given.
+    /// Returns the definition unchanged when nothing applies, so the common case allocates nothing
+    /// beyond the parse.
+    /// </summary>
+    public static string RewriteChildWorkflowNames(
+        string definitionJson, IReadOnlyDictionary<string, string> newNameByNodeId)
+    {
+        if (newNameByNodeId.Count == 0) return definitionJson;
+
+        JsonNode? root;
+        try { root = JsonNode.Parse(definitionJson); }
+        catch (JsonException) { return definitionJson; }
+        if (root is not JsonObject obj || obj["nodes"] is not JsonArray nodes) return definitionJson;
+
+        var changed = false;
+        foreach (var node in nodes)
+        {
+            if (node is not JsonObject n) continue;
+            var id = n["id"]?.GetValue<string>();
+            if (id is null || !newNameByNodeId.TryGetValue(id, out var newName)) continue;
+            if (n["data"] is not JsonObject data || data["config"] is not JsonObject config) continue;
+            config["workflowNameOrId"] = newName;
+            changed = true;
+        }
+
+        return changed ? obj.ToJsonString() : definitionJson;
     }
 
     /// <summary>
@@ -414,7 +480,8 @@ public sealed class ScorchImporter
             ActivityCount: mapped.Count,
             HeuristicCount: heuristicCount,
             FallbackCount: fallbackCount,
-            FolderPath: FolderPathOf(policy));
+            FolderPath: FolderPathOf(policy),
+            ChildReferences: CollectChildReferences(mapped));
     }
 
     private static string? Trimmed(string? value)
@@ -1377,6 +1444,28 @@ public sealed class ScorchImportResult
     public List<string> Errors { get; } = new();
 }
 
+/// <summary>
+/// One <c>startWorkflow</c> node's pointer at the runbook it calls.
+///
+/// <para>SCOrch addresses the child by PATH (<c>Policies\Shared\Logging\Log Error</c>), and only
+/// the last segment of it is a name NodePilot can resolve. That is lossy in the one case a
+/// whole-estate import makes ordinary: SCOrch scopes runbook names per folder, NodePilot's are
+/// global, so two runbooks called <c>Cleanup</c> in different folders both import — one of them
+/// renamed — and a call that still says <c>Cleanup</c> lands on the wrong one or on nothing.
+/// Keeping the whole path lets the caller re-point it at the name that was actually assigned.</para>
+/// </summary>
+/// <param name="NodeId">The <c>startWorkflow</c> node in this runbook's definition.</param>
+/// <param name="TargetFolderPath">
+/// The child's folder, in the same terms as <see cref="ScorchRunbook.FolderPath"/>. Null when the
+/// export gave only a bare name — older files write <c>RunbookName</c> without a path — in which
+/// case the child can only be matched by name.
+/// </param>
+/// <param name="TargetName">The child runbook's name.</param>
+public sealed record ScorchChildReference(
+    string NodeId,
+    IReadOnlyList<string>? TargetFolderPath,
+    string TargetName);
+
 public sealed record ScorchRunbook(
     string Name,
     string? Description,
@@ -1384,7 +1473,8 @@ public sealed record ScorchRunbook(
     int ActivityCount,
     int HeuristicCount,
     int FallbackCount,
-    IReadOnlyList<string> FolderPath);
+    IReadOnlyList<string> FolderPath,
+    IReadOnlyList<ScorchChildReference> ChildReferences);
 
 public sealed record ScorchVariable(
     Guid SourceGuid,

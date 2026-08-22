@@ -291,10 +291,16 @@ public class WorkflowImportExportController : WorkflowsControllerBase
     [HttpPost("import-scorch")]
     [Authorize(Roles = "Admin,Operator")]
     [Consumes("application/xml", "text/xml")]
-    // H-16: CLAUDE.md documents a 50 MiB ceiling for Scorch XML imports; the prior 600 MiB cap
-    // contradicted that and let a single authenticated request tie up the XML parser on an
-    // attacker-supplied payload. Aligning here makes the doc match the code.
-    [RequestSizeLimit(50 * 1024 * 1024)] // Scorch XML cap per CLAUDE.md docs
+    // H-16 capped this at 50 MiB, down from 600, so one authenticated request could not pin the
+    // heap on an attacker-supplied payload. Raised to 300 MiB because that ceiling turned out to
+    // sit below the actual job: a whole-estate export is one file, and a measured runbook runs
+    // ~6.5 KiB per activity, so 50 MiB stopped at roughly 160 runbooks of realistic size.
+    //
+    // The cost is real and worth stating: the body is buffered whole and then parsed into an
+    // XDocument, whose in-memory tree runs several times the file size. A 300 MiB import is a
+    // multi-gigabyte working set on the server for the duration of the call. It is Admin/Operator
+    // only, one at a time per caller, and the item cap below bounds what it can write.
+    [RequestSizeLimit(300 * 1024 * 1024)]
     public async Task<ActionResult<ScorchImportResponse>> ImportScorch([FromQuery] Guid? folderId, CancellationToken ct)
     {
         var sw = Stopwatch.StartNew();
@@ -484,6 +490,90 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             var landedIn = workflowFolderByPath[string.Join("/", importedRunbooks[i].FolderPath)];
             workflowsToCreate[i].FolderId = landedIn;
             created[i] = created[i] with { FolderPath = workflowFolderPathById[landedIn] };
+        }
+
+        // 2c. Re-point every sub-runbook call at the name its child was actually given.
+        //
+        //     SCOrch scopes runbook names per folder; NodePilot's are global. A whole-estate export
+        //     therefore routinely contains two runbooks called the same thing in different folders,
+        //     one of which is renamed on the way in — while the call into it still carries the
+        //     original name and would resolve to the OTHER one, or to nothing. Silently, at run
+        //     time, in a workflow that looks correct.
+        //
+        //     Matching is by the child's full path, which is what SCOrch stores, so two same-named
+        //     runbooks stay distinguishable. A path-less reference (older exports write a bare
+        //     RunbookName) can only be matched by name, and only when that name is unambiguous.
+        var importedByPath = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var importedByName = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 0; i < importedRunbooks.Count; i++)
+        {
+            var rb = importedRunbooks[i];
+            importedByPath[string.Join("/", rb.FolderPath.Append(rb.Name))] = i;
+            if (!importedByName.TryGetValue(rb.Name, out var list))
+                importedByName[rb.Name] = list = [];
+            list.Add(i);
+        }
+
+        for (var i = 0; i < importedRunbooks.Count; i++)
+        {
+            var rewrites = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var childRef in importedRunbooks[i].ChildReferences)
+            {
+                int target;
+                if (childRef.TargetFolderPath is { } folder)
+                {
+                    if (!importedByPath.TryGetValue(
+                            string.Join("/", folder.Append(childRef.TargetName)), out target))
+                    {
+                        continue;
+                    }
+                }
+                else if (importedByName.TryGetValue(childRef.TargetName, out var byName) && byName.Count == 1)
+                {
+                    target = byName[0];
+                }
+                else
+                {
+                    continue;
+                }
+
+                var assigned = workflowsToCreate[target].Name;
+                if (assigned == childRef.TargetName) continue;
+
+                rewrites[childRef.NodeId] = assigned;
+                parsed.Warnings.Add(
+                    $"'{importedRunbooks[i].Name}': the sub-runbook '{childRef.TargetName}' was " +
+                    $"imported as '{assigned}' because that name was already taken, and the call " +
+                    "was re-pointed at it.");
+            }
+
+            if (rewrites.Count == 0) continue;
+            workflowsToCreate[i].DefinitionJson = NodePilot.Engine.Scorch.ScorchImporter
+                .RewriteChildWorkflowNames(workflowsToCreate[i].DefinitionJson, rewrites);
+            PopulateComputedColumns(workflowsToCreate[i]);
+        }
+
+        // A call into a runbook that is neither in this file nor already in NodePilot fails at run
+        // time with nothing to go on. Reported here because only now is "already in NodePilot"
+        // knowable — it may well have come from an earlier import.
+        var referencedNames = importedRunbooks
+            .SelectMany(rb => rb.ChildReferences.Select(r => r.TargetName))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(n => !importedByName.ContainsKey(n))
+            .ToList();
+        if (referencedNames.Count > 0)
+        {
+            var known = (await _db.Workflows.AsNoTracking()
+                    .Where(w => referencedNames.Contains(w.Name))
+                    .Select(w => w.Name).ToListAsync(ct))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var missing in referencedNames.Where(n => !known.Contains(n)).OrderBy(n => n, StringComparer.Ordinal))
+            {
+                parsed.Warnings.Add(
+                    $"A sub-runbook call points at '{missing}', which is neither in this export nor " +
+                    "already in NodePilot. Import that runbook too, or correct the step — the call " +
+                    "will fail at run time.");
+            }
         }
 
         var variablesCreated = variablesToCreate.Count;

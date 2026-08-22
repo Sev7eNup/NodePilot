@@ -372,6 +372,27 @@ beide. Punkte, die nicht offensichtlich sind:
   (`source: scorch-import`) — er ist eine RBAC-Grenze und muss im Audit auffindbar sein.
   Variablen-Ordner sind kosmetisch und bleiben in den Zählern des Import-Eintrags.
 
+**Sub-Runbook-Aufrufe bei Massenimport.** SCOrch vergibt Runbook-Namen **pro Ordner** eindeutig,
+NodePilot **global** — ein Gesamtexport enthält also regelmäßig zwei Runbooks gleichen Namens in
+verschiedenen Ordnern, von denen eines beim Import umbenannt wird (`" (Imported 2)"`). Der Aufruf
+zeigt danach weiter auf den alten Namen und landet **auf dem falschen Runbook** oder auf `Ambiguous`
+— still, zur Laufzeit, in einem Workflow der korrekt aussieht.
+
+Deshalb trägt `ScorchRunbook.ChildReferences` pro `startWorkflow`-Node den **vollen** `PolicyPath`
+mit (`ScorchChildReference`), nicht nur das letzte Segment, das im Config landet. Der Controller
+ordnet damit Aufruf→Kind über Ordnerpfad **plus** Name zu (pfadlose Altexporte: nur über den Namen,
+und nur wenn der eindeutig ist), und biegt nach der Namensvergabe die betroffenen Nodes per
+`ScorchImporter.RewriteChildWorkflowNames` um — mit Warnung, damit die Umbenennung sichtbar bleibt.
+Zeigt ein Aufruf auf ein Runbook, das **weder im Export noch schon in NodePilot** ist, wird auch das
+gemeldet; erst der Controller kennt beide Hälften.
+
+**Request-Größe:** `[RequestSizeLimit]` liegt bei **300 MiB** (vorher 50, H-16). Ein Gesamtexport ist
+eine einzige Datei, und bei gemessenen ~6,5 KiB pro Aktivität war bei rund 160 Runbooks Schluss. Der
+Body wird komplett gepuffert und dann zu einem `XDocument` geparst, dessen Baum ein Mehrfaches der
+Dateigröße belegt — ein 300-MiB-Import ist für die Dauer des Calls ein Working Set im Gigabyte-
+Bereich. Praktisch bindet ohnehin früher der **`MaxImportItems = 500`**-Cap (Workflows + Variablen
+zusammen), der begrenzt, was ein Body beliebiger Größe schreiben kann.
+
 **Weitere Eigenheiten:** importierte Runbooks ohne Trigger bekommen einen synthetischen
 `manualTrigger` (0 Roots ⇒ Execution `Failed`) — platziert **in den Quellkoordinaten** links vom
 Graphen, weil ein Knoten auf (0,0) sonst zufällig deckungsgleich läge und damit die Erhaltung der
