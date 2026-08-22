@@ -43,8 +43,18 @@ public sealed record WorkflowLayoutOptions(
 /// <summary>
 /// Bounds for reproducing a graph's own geometry instead of re-laying it out.
 /// </summary>
-/// <param name="NodeWidth">Widest a node card can render. Card mode grows with the label.</param>
-/// <param name="NodeHeight">Tallest a node card can render.</param>
+/// <param name="NodeWidth">
+/// How wide a node occupies on canvas. The defaults describe the designer's DEFAULT rendering —
+/// the classic icon view at the default size step, where the label column (108 px) is wider than
+/// the glyph and therefore sets the footprint. Sizing against the card view's 280 px instead spaced
+/// an imported graph nearly three times wider than it needed to be, and the whole point of keeping
+/// the original arrangement is being able to take it in at a glance.
+/// </param>
+/// <param name="NodeHeight">Icon plus a wrapped label at the default size step.</param>
+/// <param name="MinGap">
+/// Clear space to leave between two node edges. Must stay above <paramref name="GridSnap"/>, since
+/// snapping can move each of a pair by half a step and would otherwise close the gap.
+/// </param>
 /// <param name="Margin">Where the top-left of the graph lands.</param>
 /// <param name="GridSnap">Round every coordinate to a multiple of this. 0 disables snapping.</param>
 /// <param name="MaxScale">
@@ -53,8 +63,9 @@ public sealed record WorkflowLayoutOptions(
 /// layout is better than a faithful but unusable one.
 /// </param>
 public sealed record PreservedLayoutOptions(
-    double NodeWidth = 280,
-    double NodeHeight = 110,
+    double NodeWidth = 108,
+    double NodeHeight = 100,
+    double MinGap = 40,
     double Margin = 60,
     double GridSnap = 20,
     double MaxScale = 8);
@@ -91,11 +102,11 @@ public static class WorkflowLayoutEngine
         var positions = ReadNodePositions(definition);
         if (positions.Count < 2) return null;
 
-        // Snapping moves a node by up to half a grid step, so a pair can lose a full step of
-        // separation. Sizing the scale against an inflated card keeps the no-overlap guarantee a
-        // guarantee rather than something the rounding can quietly break.
-        var width = options.NodeWidth + options.GridSnap;
-        var height = options.NodeHeight + options.GridSnap;
+        // Centre-to-centre distance a pair needs: the node itself plus the gap we want to SEE
+        // between its edges. The gap doubles as the snapping allowance - rounding can move each of a
+        // pair by half a step, and MinGap is required to exceed a full step.
+        var width = options.NodeWidth + options.MinGap;
+        var height = options.NodeHeight + options.MinGap;
 
         double required = 0;
         var points = positions.Values.ToList();
@@ -114,9 +125,10 @@ public static class WorkflowLayoutEngine
             }
         }
 
-        // Whole-number scale: it keeps the arithmetic exact and, where the source used a regular
-        // grid, lands the result back on one.
-        var scale = Math.Max(1, Math.Ceiling(required));
+        // Rounded up to a quarter step rather than to a whole number. Whole numbers looked tidy but
+        // cost real estate: a graph needing 2.1x was pushed to 3x, spreading it half again as wide
+        // as it had to be, and a graph you cannot take in at a glance defeats keeping its layout.
+        var scale = Math.Max(1, Math.Ceiling(required * 4) / 4);
         if (scale > options.MaxScale) return null;
 
         var minX = points.Min(p => p.X);

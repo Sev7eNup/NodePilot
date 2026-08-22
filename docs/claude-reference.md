@@ -280,15 +280,24 @@ und ohne Properties entsteht nie ein lauffähig aussehender Node. Platzhalter si
 Runbook grün durchlaufen.
 
 **Layout — Original erhalten, nicht neu erfinden.** `WorkflowLayoutEngine.TryPreserveGeometry`
-skaliert den Graphen **gleichmäßig**, bis keine zwei Karten mehr überlappen, und schiebt ihn auf den
+skaliert den Graphen **gleichmäßig**, bis keine zwei Knoten mehr überlappen, und schiebt ihn auf den
 Rand. Eine gleichmäßige Skalierung ist eine Ähnlichkeitsabbildung: alle Abstandsverhältnisse
 bleiben, das Bild ist dasselbe, nur größer — und genau die Anordnung macht ein importiertes Runbook
-für seinen Autor wiedererkennbar. Der nötige Faktor ergibt sich aus dem engsten Paar; die Kartenmaße
-werden dabei um die Rasterweite aufgeblasen, damit das Snapping die Überlappungsfreiheit nicht
-nachträglich kippt. Am Referenz-Export fällt **Faktor 4** heraus, Abweichung 0 px (SCOrch-Deltas sind
-75er-Vielfache, 75 × 4 = 300 liegt auf dem 20er-Raster). `null` — und damit Rückfall auf
-`Reflow`/`WorkflowLayoutOptions.Imported` **mit Warnung** — bei deckungsgleichen Knoten (kein Faktor
-trennt die je) oder wenn der nötige Faktor `MaxScale` reißt.
+für seinen Autor wiedererkennbar. Der nötige Faktor ergibt sich aus dem engsten Paar.
+
+**Die angesetzte Knotengröße entscheidet, wie luftig das Ergebnis wird**, und die Vorgabe zielt auf
+die **Default-Darstellung des Designers**: Icon-Ansicht (`nodeStyle: 'classic'`) im Default-Schritt
+`lg` (`nodeScaleIndex: 3`), wo die **Label-Spalte mit 108 px** breiter ist als das Glyph und damit
+den Platzbedarf setzt — nicht die 220–280 px der Kartenansicht. Gegen 280 px gerechnet kam am
+Referenz-Export Faktor 4 und ein 6900 × 3000-Canvas heraus, mit 192 px Luft zwischen Knoten von
+108 px Breite. Mit 108 × 100 plus `MinGap` 40 fällt **Faktor 2** und ein **3460 × 1500**-Canvas
+heraus (Lücken 32/40 px) — der ganze Workflow passt bei 54 % Zoom auf einen 1920er-Schirm.
+`MinGap` deckt zugleich das Snapping ab und muss deshalb über `GridSnap` liegen; der Faktor wird auf
+Viertelschritte aufgerundet, weil ganze Zahlen einen 2,1er-Bedarf auf 3 hochgezogen hätten.
+In der Kartenansicht überlappt so ein Import — dafür gibt es „Tidy".
+
+`null` — und damit Rückfall auf `Reflow`/`WorkflowLayoutOptions.Imported` **mit Warnung** — bei
+deckungsgleichen Knoten (kein Faktor trennt die je) oder wenn der nötige Faktor `MaxScale` reißt.
 
 **Weitere Eigenheiten:** importierte Runbooks ohne Trigger bekommen einen synthetischen
 `manualTrigger` (0 Roots ⇒ Execution `Failed`) — platziert **in den Quellkoordinaten** links vom

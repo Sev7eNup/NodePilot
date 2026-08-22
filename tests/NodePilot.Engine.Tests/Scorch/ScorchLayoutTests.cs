@@ -19,8 +19,11 @@ namespace NodePilot.Engine.Tests.Scorch;
 /// </summary>
 public class ScorchLayoutTests
 {
-    private const double NodeWidth = 280;
-    private const double NodeHeight = 110;
+    // The designer's DEFAULT rendering: classic icon view at the default size step, where the label
+    // column is wider than the glyph and sets the footprint. Sizing an import against the card
+    // view's 280 px instead spread the graph nearly three times wider than it needed to be.
+    private const double NodeWidth = 108;
+    private const double NodeHeight = 100;
 
     private static JsonElement ImportFixture(out ScorchImportResult result)
     {
@@ -72,15 +75,20 @@ public class ScorchLayoutTests
         // Derive the scale from the widest span, where the grid rounding matters least.
         var widest = SourcePositions.OrderByDescending(kv => kv.Value.X - srcMinX).First();
         var scale = (imported[widest.Key].X - outMinX) / (widest.Value.X - srcMinX);
-        scale.Should().BeGreaterThan(1, "node cards are larger than SCOrch's icons");
+        // A source already spaced widely enough is only translated, never shrunk — the scale is the
+        // smallest one that fits the nodes, so 1 is a legitimate answer. The derived value sits a
+        // hair under it because it is read back off snapped coordinates.
+        scale.Should().BeGreaterThan(1 - 20.0 / (SourcePositions.Values.Max(p => p.X) - srcMinX));
 
-        // One grid step of tolerance: coordinates are snapped to 20, and that is the only licence
-        // the transform takes. Anything beyond it would be a different arrangement, not a rounding.
+        // Grid snapping is the only licence the transform takes, and it can bite twice here: once on
+        // the node under test and once on the reference point the scale was read off. Beyond that
+        // budget it would be a different arrangement, not a rounding.
+        const double tolerance = 25;
         foreach (var (id, (sx, sy)) in SourcePositions)
         {
-            imported[id].X.Should().BeApproximately(outMinX + (sx - srcMinX) * scale, 20,
+            imported[id].X.Should().BeApproximately(outMinX + (sx - srcMinX) * scale, tolerance,
                 "node {0} keeps its place horizontally", id);
-            imported[id].Y.Should().BeApproximately(outMinY + (sy - srcMinY) * scale, 20,
+            imported[id].Y.Should().BeApproximately(outMinY + (sy - srcMinY) * scale, tolerance,
                 "node {0} keeps its place vertically", id);
         }
     }
