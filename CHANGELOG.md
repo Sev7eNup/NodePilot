@@ -12,6 +12,35 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- **SCOrch import, measured against a real export.** The importer was written against an assumed
+  file format, and a real 2016 runbook showed how far that had drifted: of 47 activities only 11
+  were usable, and not one of the 147 Published Data references was translated — every marker in a
+  real export is written backslash-backtick, which neither rewrite pattern matched. Encrypted global
+  variables were classified as plaintext for the same reason and imported with their ciphertext as
+  the value.
+- Activity mapping now uses the names and properties SCOrch actually writes. *Invoke Runbook* is
+  `Trigger Policy` on the wire (a third of that runbook) and its child arguments were dropped;
+  *Run Program* carries `Program`/`Parameters`/`StartupDir`, so every imported node had an empty
+  path. *Query XML*, *Delete File*, *Delete Folder*, *Generate Random Text* and the file, folder,
+  archive, text-file, WMI and power activities are mapped as well. A mapping that cannot fill a
+  required setting now degrades to a placeholder instead of shipping a node that looks configured
+  and does nothing, and placeholders are disabled — an enabled one let a half-translated runbook run
+  green from end to end.
+- Runbooks without a trigger of their own get one. NodePilot starts from trigger nodes, so a
+  faithfully translated SCOrch runbook invoked by another runbook imported as something that failed
+  on every run.
+- On-success and on-failure links survive. SCOrch writes them with a bare GUID and an outcome *set*
+  (`warning#failed`), both of which the parser rejected, so the links routing a runbook's failures
+  came out unconditional. `does not contain` no longer maps to `contains`, which made an edge fire
+  under exactly the opposite condition.
+- Imported graphs are laid out for NodePilot instead of inheriting SCOrch's 75 px icon grid, so
+  nodes no longer arrive stacked on top of each other at negative coordinates.
+- The import report says what the translation lost: references to fields the target activity does
+  not publish, references across parallel branches, remote steps without a target machine, dropped
+  run-as accounts, approximated schedules and links that ended up unconditional.
+
 ## [1.2.11] - 2026-08-21
 
 The release 1.2.10 should have been. Everything below was on `main` while 1.2.10 was the only

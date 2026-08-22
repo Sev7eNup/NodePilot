@@ -99,20 +99,31 @@ the same people — on a stack that is still maintained.
 **Your runbooks come with you.** NodePilot reads SCOrch's native `.ois_export` XML directly
 (exports from 2012, 2016 and 2019 all parse) and turns runbooks into workflows:
 
-- **Activities are mapped, not dropped.** Thirteen of the common types translate directly — *Run
-  .Net Script*, *Run Program*, *Send Email*, *Monitor Date/Time*, *Monitor File*, *Get File
-  Status*, *Query Database*, *Write to Database*, *Invoke Web Services*, *Start/Stop Service*,
-  *Junction*, *Invoke Runbook*, *Compare Values* — and anything unrecognised is classified by its
-  properties instead of being discarded.
-- **Published Data becomes the data bus.** SCOrch's `` `d.T.~Vb/{GUID}` `` references are rewritten
-  into NodePilot's `{{globals.Name}}` and `{{step.param.field}}` syntax, so the wiring between
-  steps survives the move — this is usually the part that makes a migration expensive.
-- **Links, conditions and global variables come across**, including the `TRIGGERS` condition logic
-  on links.
-- **Nothing disappears silently.** An activity the importer cannot map becomes a visible
-  placeholder node carrying the original type name and its full property list, so you see exactly
-  what needs a human. Untranslatable link conditions become unconditional edges *with a warning*,
-  not with a guess.
+- **Activities are mapped, not dropped.** Roughly forty SCOrch type names translate directly —
+  scripts and programs, the file, folder, archive and text-file activities, *Query XML*, *Query
+  Database*, *Query WMI*, *Invoke Web Services*, *Send Email*, *Start/Stop Service*, *Restart
+  System*, *Generate Random Text*, the *Monitor* activities that have a NodePilot trigger, and the
+  Runbook Control set (*Initialize Data*, *Return Data*, *Junction*, and *Invoke Runbook*, which
+  SCOrch writes as `Trigger Policy`) including the arguments passed to a child runbook.
+- **Published Data becomes the data bus.** SCOrch's `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` references are
+  rewritten into NodePilot's `{{globals.Name}}` and `{{step.param.field}}` syntax, resolving through
+  a readable name derived from each activity rather than a bare GUID. This is usually the part that
+  makes a migration expensive.
+- **Links, conditions and global variables come across**, including on-success / on-failure links,
+  the `TRIGGERS` filter logic, and whether a link matched *all* or *any* of its filters.
+- **Every runbook is runnable on arrival.** NodePilot starts a workflow from a trigger node, and a
+  SCOrch runbook invoked by another needs no trigger of its own — so one is added and wired to the
+  entry activities.
+- **Nothing disappears silently.** An activity the importer cannot map becomes a *disabled*
+  placeholder carrying the original type name and its full property list; a mapping that cannot
+  fill a required setting degrades to one too, rather than leaving a node that looks configured and
+  does nothing. The import report names every lossy translation: a reference to a field the
+  NodePilot activity does not publish, a reference across parallel branches (SCOrch's data bus is
+  run-scoped, NodePilot's is ancestor-scoped), a remote step with no target machine, a dropped
+  run-as account, an approximated schedule, and any link that ended up unconditional.
+- **The canvas is laid out for NodePilot.** SCOrch positions activities as small icons on a tight
+  grid; NodePilot draws cards. Imported graphs are re-flowed into layers at NodePilot's spacing,
+  keeping the original vertical order, so nothing arrives stacked on top of itself.
 
 Import from the UI, from `POST /api/workflows/import-scorch`, or from the CLI:
 
@@ -120,9 +131,9 @@ Import from the UI, from `POST /api/workflows/import-scorch`, or from the CLI:
 np workflow import-scorch --file .\runbooks.ois_export
 ```
 
-Treat the result as a reviewed draft, not a finished migration — machine names, credentials and
-business conditions still need a pass. The point is that you start from your actual runbooks
-instead of a blank canvas.
+Treat the result as a reviewed draft, not a finished migration. Imported workflows arrive disabled,
+credentials are never reconstructed (SCOrch encrypts them), and anything the report flags needs a
+decision. The point is that you start from your actual runbooks instead of a blank canvas.
 
 ### How the two compare
 

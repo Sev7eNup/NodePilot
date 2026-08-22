@@ -61,7 +61,7 @@ The transport is **stdio** (streamable HTTP is planned as a later option). Windo
 
 - **Discovery:** `whoami`, `get_safety_status`, `list_activity_types`, `get_activity_config_reference`, `validate_cron`
 - **Reading workflows:** `list_workflows`, `get_workflow`, `get_workflow_definition` (redacted), `get_workflow_contract`, versions, `export_workflow`
-- **Editing workflows:** lock/unlock/`publish_workflow`/`update_workflow_definition`, `validate_workflow_definition`, `preview/apply_workflow_patch` (merge by ID, secret protection, validate before save), create/duplicate/enable/disable/rollback/import, step-test context
+- **Editing workflows:** lock/unlock/`publish_workflow`/`update_workflow_definition`, `validate_workflow_definition`, `preview/apply_workflow_patch` (merge by ID, secret protection, validate before save), create/duplicate/enable/disable/rollback/import (JSON via `import_workflow`, SCOrch `.ois_export` via `import_scorch_workflow`), step-test context
 - **Gated destructive:** `test_step` (runs a real activity; a configuration override additionally requires edit permission and your own lock), delete/force-unlock/cancel-all
 - **Executions:** list/get/steps/paused-steps, `execute_workflow`, cancel/retry/resume, `trigger_external_workflow`
 - **Telemetry:** dashboard, coverage/step-health/step-stats, `query_audit_log` (admin), `get_support_diagnostics` (admin)

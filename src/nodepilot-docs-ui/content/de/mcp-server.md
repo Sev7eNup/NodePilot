@@ -61,7 +61,7 @@ Transport ist **stdio** (Streamable HTTP ist als spätere Option vorgesehen). Wi
 
 - **Discovery:** `whoami`, `get_safety_status`, `list_activity_types`, `get_activity_config_reference`, `validate_cron`
 - **Workflow lesen:** `list_workflows`, `get_workflow`, `get_workflow_definition` (redigiert), `get_workflow_contract`, Versionen, `export_workflow`
-- **Workflow editieren:** lock/unlock/`publish_workflow`/`update_workflow_definition`, `validate_workflow_definition`, `preview/apply_workflow_patch` (Merge-by-ID, Secret-Schutz, Validate-before-Save), create/duplicate/enable/disable/rollback/import, step-test context
+- **Workflow editieren:** lock/unlock/`publish_workflow`/`update_workflow_definition`, `validate_workflow_definition`, `preview/apply_workflow_patch` (Merge-by-ID, Secret-Schutz, Validate-before-Save), create/duplicate/enable/disable/rollback/import (JSON via `import_workflow`, SCOrch-`.ois_export` via `import_scorch_workflow`), step-test context
 - **Gated destructive:** `test_step` (führt eine echte Activity aus; Config-Override zusätzlich nur mit Edit + eigenem Lock), delete/force-unlock/cancel-all
 - **Executions:** list/get/steps/paused-steps, `execute_workflow`, cancel/retry/resume, `trigger_external_workflow`
 - **Telemetrie:** dashboard, coverage/step-health/step-stats, `query_audit_log` (Admin), `get_support_diagnostics` (Admin)

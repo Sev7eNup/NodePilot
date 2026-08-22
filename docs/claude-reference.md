@@ -225,6 +225,45 @@ UI: [ContractMappingTable.tsx](../src/nodepilot-ui/src/components/designer/prope
 
 ---
 
+## SCOrch-Import — Format-Fallen & Degradations-Regel
+
+`POST /api/workflows/import-scorch` → [ScorchImporter.cs](../src/NodePilot.Engine/Scorch/ScorchImporter.cs)
++ [ScorchActivityMapper.cs](../src/NodePilot.Engine/Scorch/ScorchActivityMapper.cs). Fixture:
+`tests/NodePilot.Engine.Tests/Scorch/Fixtures/realistic-runbook.ois_export` (synthetisch, aber
+strukturtreu — echte Exports enthalten Kundendaten und gehören nicht ins öffentliche Repo).
+
+**Was am echten Format anders ist als es aussieht.** Jede dieser Annahmen war einmal falsch im Code
+und wurde erst an einem echten 2016-Export sichtbar:
+
+| Erwartung | Realität |
+|---|---|
+| Published-Data-Marker beginnt mit Backtick | **Backslash-Backtick** (`\`d.T.~Ed/{GUID}.Feld\`d.T.~Ed/`, Bytes `5c 60`) |
+| Aktivität heißt `Invoke Runbook` | `Trigger Policy`; Argumente im verschachtelten `TRIGGER_POLICY_PARAMETERS` |
+| `Run Program` hat `FilePath`/`Arguments`/`WorkingDirectory` | `Program`/`Parameters`/`StartupDir`/`ComputerName` |
+| `Compare Values` hat `ValueA`/`Operator`/`ValueB` | `StringToCompare`/`StringTestOption`/`StringToCompareTo` |
+| Link-Bedingung ist `does not equal` | `doesnotequal` — ohne Leerzeichen |
+| Erfolgs-Link hat `Data = {GUID}.feld` | `Data` = **blanke** GUID, Ausgang in `Value` |
+| `Value` ist ein Status | eine **Menge**, `#`-getrennt (`warning#failed`) |
+| `GroupID` trägt AND/OR | ist leer; die Absicht steckt im `<And>` des Links |
+| `Monitor File` hat einen Filter-String | `Filters` ist verschachteltes XML; Ereignisse als vier `NotifyIf*`-Booleans |
+| Positionen sind übernehmbar | 75-px-Raster, oft negativ — NodePilot-Nodes sind 220×110-Karten |
+
+**Degradations-Regel (trägt den Rest).** Property-Namen bleiben Vermutungen, also darf ein Mapping
+nur entstehen, wenn alle laut `activity-config-reference.json` `required`-Keys gefüllt sind — sonst
+Rückstufung auf einen **deaktivierten** `log`-Platzhalter. Zwei Guard-Tests erzwingen das über
+*jeden* unterstützten Typ (`ScorchMappingContractTests`): jeder emittierte Key existiert im Schema,
+und ohne Properties entsteht nie ein lauffähig aussehender Node. Platzhalter sind disabled, weil
+`LogActivity` immer `Success = true` liefert — ein enabled Platzhalter ließ ein halb übersetztes
+Runbook grün durchlaufen.
+
+**Weitere Eigenheiten:** importierte Runbooks ohne Trigger bekommen einen synthetischen
+`manualTrigger` (0 Roots ⇒ Execution `Failed`); `ComputerName` wandert **wörtlich** in
+`targetMachineId` (`MachineResolver` matcht Name/Hostname und synthetisiert sonst ad-hoc);
+`connectionString` wird bewusst **nicht** übernommen (Passwort im Klartext + `RequireConnectionRef`
+ist default-an); Layout via `WorkflowLayoutOptions.Imported`.
+
+---
+
 ## Step-Test mit Kontext — API-Details
 
 `POST /api/workflows/{id}/steps/{stepId}/test` führt einen einzelnen Step in Isolation aus, ohne `WorkflowExecution`-Row zu erzeugen. Body:
