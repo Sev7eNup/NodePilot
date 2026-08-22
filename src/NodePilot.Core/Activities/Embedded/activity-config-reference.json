@@ -12,7 +12,7 @@
       ],
       "configKeys": [
         { "key": "script", "type": "string", "required": true, "description": "PowerShell script body. Reference upstream values as {{step.output}} — inserted already single-quoted, so do NOT wrap in quotes." },
-        { "key": "engine", "type": "string", "required": false, "description": "auto | runspace | pwsh. 'pwsh' spawns an external PS7 process (needed for Start-Job)." },
+        { "key": "engine", "type": "string", "required": false, "description": "auto | runspace | pwsh | powershell. 'pwsh' spawns an external PS7 process (needed for Start-Job); 'powershell' spawns Windows PowerShell 5.1, which imported SCOrch scripts are written against." },
         { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Per-step timeout." },
         { "key": "isolated", "type": "boolean", "required": false, "description": "Local-only: run process-isolated in a Windows Job Object (crash/leak containment, no orphaned processes). No-op on the remote/WinRM path." },
         { "key": "successExitCodes", "type": "string", "required": false, "description": "Comma-separated exit codes treated as success (e.g. \"0\" or \"0,1\"). Makes any other non-zero exit a failure." },
@@ -130,6 +130,7 @@
         { "key": "workingDirectory", "type": "string", "required": false, "description": "Working directory." },
         { "key": "waitForExit", "type": "boolean", "required": false, "description": "Block until the process exits and capture stdout/stderr/exitCode." },
         { "key": "successExitCodes", "type": "string", "required": false, "description": "Comma-separated exit codes treated as success." },
+        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "How long to wait for the process when waitForExit is set." },
         { "key": "useShellExecute", "type": "boolean", "required": false, "description": "Use the shell to start the process. May be blocked by StartProgram:DisallowShellExecute." }
       ]
     },
@@ -170,6 +171,7 @@
         { "key": "method", "type": "string", "required": false, "description": "GET (default) | POST | PUT | PATCH | DELETE | HEAD." },
         { "key": "headers", "type": "object", "required": false, "description": "Request headers map." },
         { "key": "body", "type": "string", "required": false, "description": "Request body." },
+        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Per-request timeout." },
         { "key": "proxyMode", "type": "string", "required": false, "description": "Per-step proxy override." }
       ]
     },
@@ -180,6 +182,7 @@
       ],
       "configKeys": [
         { "key": "query", "type": "string", "required": true, "description": "SQL statement." },
+        { "key": "timeoutSeconds", "type": "number", "required": false, "description": "Command timeout." },
         { "key": "provider", "type": "string", "required": false, "description": "sqlserver (default) | postgres | sqlite." },
         { "key": "connectionRef", "type": "string", "required": false, "description": "Named connection ref (preferred)." },
         { "key": "connectionString", "type": "string", "required": false, "description": "Raw connection string (secret; dev/legacy only)." },

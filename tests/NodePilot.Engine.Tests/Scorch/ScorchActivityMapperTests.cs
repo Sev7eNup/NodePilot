@@ -56,8 +56,14 @@ public class ScorchActivityMapperTests
         result.Config["waitForExit"].Should().Be(true);
     }
 
+    /// <summary>
+    /// The SCOrch activity carries its own relay, sender and TLS flag; emailNotification reads none
+    /// of them, because NodePilot's SMTP settings are installation-wide. Writing them onto the node
+    /// produced four keys the engine ignores, so the imported mail silently went somewhere else than
+    /// the runbook said. They are now reported in the note instead of faked in the config.
+    /// </summary>
     [Fact]
-    public void Map_SendEmail_CapturesAllSmtpFields()
+    public void Map_SendEmail_KeepsOnlyTheKeysTheActivityReads_AndReportsTheRelay()
     {
         var props = new Dictionary<string, string>
         {
@@ -75,13 +81,12 @@ public class ScorchActivityMapperTests
 
         result.ActivityType.Should().Be("emailNotification");
         result.Config["to"].Should().Be("ops@example.com");
-        result.Config["from"].Should().Be("noreply@example.com");
         result.Config["subject"].Should().Be("Disk full alert");
         result.Config["body"].Should().Be("Server X is at 95%");
-        result.Config["smtpServer"].Should().Be("smtp.example.com");
-        result.Config["smtpPort"].Should().Be(587);
-        result.Config["smtpUseSsl"].Should().Be(true);
         result.Config["isHtml"].Should().Be(true);
+
+        result.Config.Keys.Should().NotContain(["from", "smtpServer", "smtpPort", "smtpUseSsl"]);
+        result.Note.Should().Contain("smtp.example.com").And.Contain("noreply@example.com");
     }
 
     [Fact]
@@ -96,7 +101,9 @@ public class ScorchActivityMapperTests
         var result = ScorchActivityMapper.Map(Obj("Monitor Date/Time"), props);
 
         result.ActivityType.Should().Be("scheduleTrigger");
-        result.Config["cronExpression"].Should().Be("0 0 0 */1 * ?");
+        // Not "*/1" on day-of-month: an increment there restarts the cycle every month, so a
+        // multi-day interval is not expressible and degrades to a plain daily fire.
+        result.Config["cronExpression"].Should().Be("0 0 0 * * ?");
     }
 
     [Fact]
@@ -108,7 +115,7 @@ public class ScorchActivityMapperTests
             ["EveryHourValue"] = "6",
         });
 
-        result.Config["cronExpression"].Should().Be("0 0 */6 * * ?");
+        result.Config["cronExpression"].Should().Be("0 0 0/6 * * ?");
     }
 
     [Fact]
@@ -120,7 +127,28 @@ public class ScorchActivityMapperTests
             ["EveryMinuteValue"] = "15",
         });
 
-        result.Config["cronExpression"].Should().Be("0 */15 * * * ?");
+        result.Config["cronExpression"].Should().Be("0 0/15 * * * ?");
+    }
+
+    /// <summary>
+    /// An increment above 59 in a minute field makes Quartz throw when the trigger is armed, so a
+    /// SCOrch interval that does not fit a minute field has to move up to the hour field. The old
+    /// builder emitted "0 */90 * * * ?" here and the schedule silently never started.
+    /// </summary>
+    [Fact]
+    public void Map_MonitorDateTime_IntervalLongerThanAnHour_StaysAValidCron()
+    {
+        var result = ScorchActivityMapper.Map(Obj("Monitor Date/Time"), new()
+        {
+            ["Type"] = "interval",
+            ["EveryMinuteValue"] = "90",
+        });
+
+        var cron = result.Config["cronExpression"]!.ToString()!;
+        cron.Should().Be("0 30 0/1 * * ?");
+        var act = () => new Quartz.CronExpression(cron);
+        act.Should().NotThrow("every emitted cron must be armable");
+        result.Note.Should().Contain("approximated");
     }
 
     [Fact]
@@ -195,8 +223,13 @@ public class ScorchActivityMapperTests
 
         result.ActivityType.Should().Be("sql");
         result.Config["provider"].Should().Be("sqlserver");
-        result.Config["connectionString"].Should().Be("Server=db;Database=ops");
         result.Config["query"].Should().Be("SELECT TOP 1 * FROM Orders");
+
+        // The SCOrch connection string routinely embeds a password, and SqlActivity requires a named
+        // connectionRef unless the deployment opts out — so copying it would both persist a secret
+        // in the workflow definition and fail on a default install.
+        result.Config.Should().NotContainKey("connectionString");
+        result.Note.Should().Contain("connectionRef");
     }
 
     [Fact]

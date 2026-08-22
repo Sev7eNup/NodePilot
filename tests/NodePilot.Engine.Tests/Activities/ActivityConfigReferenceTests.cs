@@ -28,6 +28,9 @@ public class ActivityConfigReferenceTests
         ["junction"] = ["requiredCount"],
         // RestApiHttpClientProvider resolves the per-step proxy override.
         ["restApi"] = ["proxyMode"],
+        // PowerShellOperation.TimeoutSecondsFromConfig reads the key; the activity only supplies
+        // the default. Documented because the SCOrch importer sets it and the AI catalog needs it.
+        ["startProgram"] = ["timeoutSeconds"],
         // WebhooksController / WebhookHmacSecurity verify the request before the trigger runs.
         ["webhookTrigger"] = ["secret", "signatureMode", "fieldMappings"],
     };

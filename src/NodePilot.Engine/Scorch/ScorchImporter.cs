@@ -1,7 +1,9 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using NodePilot.Core.Activities;
 
 namespace NodePilot.Engine.Scorch;
 
@@ -260,13 +262,34 @@ public sealed class ScorchImporter
 
         // Build React Flow nodes.
         var nodes = new List<object>();
+        var nodeIds = new List<string>();
+        var hasActiveTrigger = false;
         foreach (var (obj, objId, mapping) in mapped)
         {
             var label = obj.Element("Name")?.Value ?? "(unnamed)";
             double x = ParseDouble(obj.Element("PositionX")?.Value);
             double y = ParseDouble(obj.Element("PositionY")?.Value);
-            var disabled = obj.Element("Enabled")?.Value?.Equals("FALSE", StringComparison.OrdinalIgnoreCase) == true;
+            var disabled = obj.Element("Enabled")?.Value?.Equals("FALSE", StringComparison.OrdinalIgnoreCase) == true
+                           || mapping.Disabled;
 
+            // A remote activity without a target machine does not fall back to the engine host —
+            // BaseRemoteActivity fails the step outright. The two hybrids (runScript,
+            // waitForCondition) DO run locally instead, which is just as surprising if the runbook
+            // meant a named server, so both cases are reported.
+            if (mapping.TargetMachine is null && ActivityCatalog.RemoteTypes.Contains(mapping.ActivityType))
+            {
+                warnings.Add(ActivityCatalog.ByType[mapping.ActivityType].Category == ActivityCategory.Action
+                             && mapping.ActivityType is not ("runScript" or "waitForCondition")
+                    ? $"'{name}' / '{label}': no target machine in the export — this {mapping.ActivityType} " +
+                      "step will fail until one is set."
+                    : $"'{name}' / '{label}': no target machine in the export — this step will run on the " +
+                      "NodePilot host, not on a remote server.");
+            }
+
+            if (!disabled && ActivityCatalog.TriggerTypes.Contains(mapping.ActivityType))
+                hasActiveTrigger = true;
+
+            nodeIds.Add(objId.ToString());
             nodes.Add(new
             {
                 id = objId.ToString(),
@@ -278,6 +301,7 @@ public sealed class ScorchImporter
                     activityType = mapping.ActivityType,
                     config = mapping.Config,
                     outputVariable = mapping.OutputVariable,
+                    targetMachineId = mapping.TargetMachine,
                     disabled,
                 },
             });
@@ -286,12 +310,20 @@ public sealed class ScorchImporter
         // Build edges from link-objects. SCOrch links without an explicit TRIGGERS block are
         // unconditional; links with TRIGGERS become conditionExpression edges.
         var edges = new List<object>();
+        var edgeTargets = new HashSet<string>(StringComparer.Ordinal);
         int linkIdx = 0;
         foreach (var linkObj in linkObjects)
         {
             if (!Guid.TryParse(linkObj.Element("SourceObject")?.Value, out var src)) continue;
             if (!Guid.TryParse(linkObj.Element("TargetObject")?.Value, out var dst)) continue;
-            if (!activityGuids.Contains(src) || !activityGuids.Contains(dst)) continue;
+            if (!activityGuids.Contains(src) || !activityGuids.Contains(dst))
+            {
+                // The link points at an object we did not import (or could not identify). Dropping
+                // it silently made the summary's link count a claim the definition did not honour.
+                warnings.Add($"'{name}': dropped a link between {src} and {dst} — one end is not an " +
+                             "activity in this runbook.");
+                continue;
+            }
 
             var disabled = linkObj.Element("Enabled")?.Value?.Equals("FALSE", StringComparison.OrdinalIgnoreCase) == true;
             var label = linkObj.Element("Name")?.Value;
@@ -300,6 +332,7 @@ public sealed class ScorchImporter
             var (conditionExpression, labelHint) = BuildLinkCondition(linkObj, warnings, name);
             label ??= labelHint;
 
+            edgeTargets.Add(dst.ToString());
             edges.Add(new
             {
                 id = $"e{linkIdx++}-{src}-{dst}",
@@ -315,6 +348,8 @@ public sealed class ScorchImporter
             });
         }
 
+        AddSyntheticTriggerIfMissing(name, hasActiveTrigger, nodes, nodeIds, edges, edgeTargets, ref linkIdx, warnings);
+
         warnings.Add($"'{name}': {mapped.Count} activities, {edges.Count} links. " +
                      $"Heuristic mappings: {heuristicCount}, Placeholder fallbacks: {fallbackCount}.");
 
@@ -325,6 +360,84 @@ public sealed class ScorchImporter
             ActivityCount: mapped.Count,
             HeuristicCount: heuristicCount,
             FallbackCount: fallbackCount);
+    }
+
+    /// <summary>
+    /// Gives a runbook an explicit entry point when the translation produced no active trigger.
+    ///
+    /// <para>NodePilot's roots are exclusively enabled trigger nodes; a definition with none yields
+    /// zero roots and the execution fails on the spot. SCOrch has no equivalent rule — an invoked
+    /// runbook simply starts at its first activity, and most runbooks in a real estate are invoked
+    /// rather than monitored — so a faithful translation of one imports as something that can never
+    /// run. A manual trigger wired to every source-less activity is the smallest honest fix.</para>
+    /// </summary>
+    private static void AddSyntheticTriggerIfMissing(
+        string runbookName,
+        bool hasActiveTrigger,
+        List<object> nodes,
+        List<string> nodeIds,
+        List<object> edges,
+        HashSet<string> edgeTargets,
+        ref int linkIdx,
+        List<string> warnings)
+    {
+        if (hasActiveTrigger || nodes.Count == 0) return;
+
+        // Source-less activities are the runbook's real entry points. A runbook whose every node has
+        // an incoming link is a pure cycle; attach to the first node so the graph still has a root.
+        var entryPoints = nodeIds.Where(id => !edgeTargets.Contains(id)).ToList();
+        if (entryPoints.Count == 0) entryPoints.Add(nodeIds[0]);
+
+        var triggerId = DeriveSyntheticTriggerId(runbookName).ToString();
+        nodes.Insert(0, new
+        {
+            id = triggerId,
+            type = "activity",
+            position = new { x = 0d, y = 0d },
+            data = new
+            {
+                label = "Start (imported)",
+                activityType = "manualTrigger",
+                config = new Dictionary<string, object?> { ["parameters"] = new List<object>() },
+                outputVariable = (string?)null,
+                targetMachineId = (string?)null,
+                disabled = false,
+            },
+        });
+
+        foreach (var entry in entryPoints)
+        {
+            edges.Add(new
+            {
+                id = $"e{linkIdx++}-{triggerId}-{entry}",
+                source = triggerId,
+                target = entry,
+                type = "labeled",
+                data = new
+                {
+                    label = (string?)null,
+                    disabled = false,
+                    conditionExpression = (object?)null,
+                },
+            });
+        }
+
+        warnings.Add(
+            $"'{runbookName}': the runbook has no trigger of its own (SCOrch runbooks invoked by " +
+            $"another runbook do not need one). A manual trigger was added and wired to " +
+            $"{entryPoints.Count} entry activit{(entryPoints.Count == 1 ? "y" : "ies")}; without it the " +
+            "workflow would have no root and every run would fail.");
+    }
+
+    /// <summary>
+    /// Derived from the runbook name rather than random so that importing the same export twice
+    /// produces byte-identical definitions.
+    /// </summary>
+    private static Guid DeriveSyntheticTriggerId(string runbookName)
+    {
+        var hash = SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes("nodepilot/scorch/synthetic-trigger/" + runbookName));
+        return new Guid(hash.AsSpan(0, 16));
     }
 
     /// <summary>
@@ -395,9 +508,33 @@ public sealed class ScorchImporter
     private static void RewriteReferences(
         Dictionary<string, object?> cfg, RewriteContext ctx, string activityName)
     {
-        var keys = cfg.Keys.ToList();
-        foreach (var k in keys)
-            if (cfg[k] is string s) cfg[k] = RewriteString(s, ctx, activityName, k);
+        foreach (var k in cfg.Keys.ToList())
+            cfg[k] = RewriteValue(cfg[k], ctx, activityName, k);
+    }
+
+    /// <summary>
+    /// Rewrites nested values too, not just top-level strings. startWorkflow's <c>parameters</c> is a
+    /// map and manualTrigger's <c>parameters</c> a list, and those carry references as often as any
+    /// scalar does — a string-only pass shipped a sub-runbook call whose every argument was still
+    /// raw SCOrch marker text.
+    /// </summary>
+    private static object? RewriteValue(object? value, RewriteContext ctx, string activityName, string configKey)
+    {
+        switch (value)
+        {
+            case string s:
+                return RewriteString(s, ctx, activityName, configKey);
+            case IDictionary<string, object?> nested:
+                foreach (var k in nested.Keys.ToList())
+                    nested[k] = RewriteValue(nested[k], ctx, activityName, $"{configKey}.{k}");
+                return nested;
+            case IList<object> list:
+                for (var i = 0; i < list.Count; i++)
+                    list[i] = RewriteValue(list[i], ctx, activityName, configKey)!;
+                return list;
+            default:
+                return value;
+        }
     }
 
     private static string RewriteString(

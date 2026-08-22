@@ -20,6 +20,18 @@ public class ScorchImporterTests
 {
     private static readonly ScorchImporter Importer = new();
 
+    /// <summary>
+    /// The imported activities, without the manual trigger the importer synthesizes for a runbook
+    /// that brings none of its own. NodePilot roots are exclusively trigger nodes, so a runbook
+    /// translated faithfully from SCOrch — where an invoked runbook needs no trigger — would end up
+    /// with zero roots and fail on every run. The synthetic trigger is inserted first, which is why
+    /// these tests index into this list rather than into <c>nodes</c>.
+    /// </summary>
+    private static List<JsonElement> ActivityNodes(JsonElement definition) =>
+        definition.GetProperty("nodes").EnumerateArray()
+            .Where(n => n.GetProperty("data").GetProperty("label").GetString() != "Start (imported)")
+            .ToList();
+
     [Fact]
     public void Parse_NonExportRoot_Errors()
     {
@@ -51,7 +63,7 @@ public class ScorchImporterTests
         result.Errors.Should().BeEmpty();
         result.Workflows.Should().HaveCount(1);
         var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
-        var node = def.GetProperty("nodes")[0];
+        var node = ActivityNodes(def)[0];
         node.GetProperty("data").GetProperty("activityType").GetString().Should().Be("runScript");
         node.GetProperty("data").GetProperty("config").GetProperty("script").GetString()
             .Should().Be("Get-Service Spooler");
@@ -68,8 +80,11 @@ public class ScorchImporterTests
         var result = Importer.Parse(xml);
         result.Workflows[0].FallbackCount.Should().Be(1);
         var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
-        def.GetProperty("nodes")[0].GetProperty("data").GetProperty("activityType").GetString()
-            .Should().Be("log");
+        var placeholder = ActivityNodes(def)[0].GetProperty("data");
+        placeholder.GetProperty("activityType").GetString().Should().Be("log");
+        // Disabled on purpose: a log node always succeeds, so an enabled placeholder let a
+        // half-translated runbook run green from end to end.
+        placeholder.GetProperty("disabled").GetBoolean().Should().BeTrue();
     }
 
     [Fact]
@@ -88,10 +103,9 @@ public class ScorchImporterTests
         var result = Importer.Parse(xml);
         var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
 
-        def.GetProperty("nodes").GetArrayLength().Should().Be(2);
-        def.GetProperty("edges").GetArrayLength().Should().Be(1);
-        var edge = def.GetProperty("edges")[0];
-        edge.GetProperty("source").GetString().Should().Be(srcId.ToString());
+        ActivityNodes(def).Should().HaveCount(2);
+        var edge = def.GetProperty("edges").EnumerateArray()
+            .Should().ContainSingle(e => e.GetProperty("source").GetString() == srcId.ToString()).Subject;
         edge.GetProperty("target").GetString().Should().Be(dstId.ToString());
     }
 
@@ -133,8 +147,8 @@ public class ScorchImporterTests
                                           props: new[] { ("ScriptBody", "x") }) }));
 
         var result = Importer.Parse(xml);
-        var pos = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson)
-            .GetProperty("nodes")[0].GetProperty("position");
+        var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
+        var pos = ActivityNodes(def)[0].GetProperty("position");
         pos.GetProperty("x").GetDouble().Should().Be(-879);
         pos.GetProperty("y").GetDouble().Should().Be(152);
     }
@@ -193,7 +207,7 @@ public class ScorchImporterTests
         result.Variables[0].Description.Should().Be("Target hostname");
 
         var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
-        var script = def.GetProperty("nodes")[0].GetProperty("data").GetProperty("config").GetProperty("script").GetString();
+        var script = ActivityNodes(def)[0].GetProperty("data").GetProperty("config").GetProperty("script").GetString();
         script.Should().Contain("{{globals.MyHost}}");
     }
 
