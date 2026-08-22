@@ -39,9 +39,12 @@ exhaustive.
   are - it draws small icons on a 75 px grid where NodePilot draws cards several times that size,
   so verbatim positions overlapped nearly everywhere and started off-canvas. The graph is scaled
   uniformly instead, which is a similarity transform: every distance keeps its ratio, so it is the
-  same picture at a larger size. On the reference export that is a factor of four with zero
-  deviation. Where no scale works - activities sharing a position, or spaced too tightly for a
-  usable canvas - the import reports it and falls back to a left-to-right layout.
+  same picture at a larger size. The factor is sized against the designer's default rendering - the
+  icon view, where the label column sets the footprint - not against the card view, which spread the
+  reference export over 6900x3000 with more air between nodes than the nodes were wide. It now lands
+  on 3460x1500, small enough to take in at once. Where no scale works - activities sharing a
+  position, or spaced too tightly for a usable canvas - the import reports it and falls back to a
+  left-to-right layout.
 - The import report says what the translation lost: references to fields the target activity does
   not publish, references across parallel branches, remote steps without a target machine, dropped
   run-as accounts, approximated schedules and links that ended up unconditional.
