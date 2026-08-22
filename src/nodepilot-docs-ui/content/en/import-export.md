@@ -30,9 +30,15 @@ What the translation does:
   child-runbook arguments come across as `startWorkflow.parameters`.
 - **Published Data** — `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` and `` \`d.T.~Ed/{GUID}.field\`d.T.~Ed/ ``
   become `{{globals.Name}}` and `{{step.param.field}}`, resolving through a readable
-  `outputVariable` derived from each activity's name.
+  `outputVariable` derived from each activity's name. Field names are translated where the two
+  products name the same value differently (`Query XML`'s `queryResult` is `xmlQuery`'s `result`),
+  and a value NodePilot has no equivalent for is reported rather than pointed at the
+  nearest-looking name.
 - **Links** — on-success/on-failure links become the `stepId.success` / `stepId.failed` shortcut;
-  `TRIGGERS` filters become a `conditionExpression`, joined by the link's own ALL/ANY setting.
+  `TRIGGERS` filters become a `conditionExpression`, joined by the link's own ALL/ANY setting. A
+  filter reading a value its source does not publish is reported: such an edge would never match.
+- **Branches** — *Compare Values* becomes a `decision`, and the links reading its result are
+  re-pointed at the decision's case, so the branch still branches.
 - **Triggers** — a runbook without one (SCOrch runbooks invoked by another need none) is given a
   manual trigger wired to its entry activities, because a NodePilot workflow with no trigger node
   has no root and fails on every run.

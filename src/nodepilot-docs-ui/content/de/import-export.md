@@ -31,10 +31,16 @@ Was die Übersetzung leistet:
   `startWorkflow.parameters` mit.
 - **Published Data** — `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` und `` \`d.T.~Ed/{GUID}.feld\`d.T.~Ed/ ``
   werden zu `{{globals.Name}}` bzw. `{{step.param.feld}}` und lösen über eine lesbare
-  `outputVariable` auf, die aus dem Aktivitätsnamen abgeleitet wird.
+  `outputVariable` auf, die aus dem Aktivitätsnamen abgeleitet wird. Feldnamen werden mit übersetzt,
+  wo beide Produkte denselben Wert anders nennen (`Query XML`s `queryResult` ist `xmlQuery`s
+  `result`); ein Wert ohne NodePilot-Gegenstück wird gemeldet, statt auf den nächstbesten Namen
+  gebogen zu werden.
 - **Links** — Erfolgs-/Fehler-Links werden zum Kürzel `stepId.success` / `stepId.failed`;
   `TRIGGERS`-Filter werden zu einer `conditionExpression`, verknüpft nach der ALLE/EINE-Einstellung
-  des Links.
+  des Links. Ein Filter, der einen Wert liest, den seine Quelle nicht publiziert, wird gemeldet —
+  eine solche Kante würde nie greifen.
+- **Verzweigungen** — *Compare Values* wird zu einem `decision`; die Links, die sein Ergebnis lesen,
+  werden auf dessen Case umgebogen, damit der Zweig weiter verzweigt.
 - **Trigger** — ein Runbook ohne eigenen Trigger (von einem anderen Runbook aufgerufene brauchen
   keinen) bekommt einen manuellen Trigger auf seine Einstiegsaktivitäten. Ohne Trigger-Node hat ein
   NodePilot-Workflow keinen Root und scheitert bei jedem Lauf.

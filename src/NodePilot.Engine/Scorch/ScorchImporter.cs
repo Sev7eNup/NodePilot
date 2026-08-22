@@ -260,7 +260,9 @@ public sealed class ScorchImporter
         // Rewrite Published-Data + Variable references in every config value.
         var activityGuids = new HashSet<Guid>(mapped.Select(m => m.Id));
         var outputNames = AssignOutputVariables(mapped);
-        var rewriteCtx = new RewriteContext(variableMap, activityGuids, outputNames, warnings, name);
+        var fieldTranslation = BuildFieldTranslation(mapped);
+        var rewriteCtx = new RewriteContext(
+            variableMap, activityGuids, outputNames, fieldTranslation, warnings, name);
         foreach (var (obj, _, mapping) in mapped)
             RewriteReferences(mapping.Config, rewriteCtx, obj.Element("Name")?.Value ?? "(unnamed)");
 
@@ -310,6 +312,14 @@ public sealed class ScorchImporter
 
         // Build edges from link-objects. SCOrch links without an explicit TRIGGERS block are
         // unconditional; links with TRIGGERS become conditionExpression edges.
+        if (fieldTranslation.DecisionNodes.Count > 0)
+        {
+            warnings.Add(
+                $"'{name}': {fieldTranslation.DecisionNodes.Count} SCOrch comparison(s) became decision " +
+                "nodes. SCOrch compared case-insensitively by default; NodePilot's '==' is " +
+                "case-sensitive — check the operands if a branch does not take.");
+        }
+
         var edges = new List<object>();
         var edgeTargets = new HashSet<string>(StringComparer.Ordinal);
         int linkIdx = 0;
@@ -330,7 +340,7 @@ public sealed class ScorchImporter
             var label = linkObj.Element("Name")?.Value;
             if (string.IsNullOrWhiteSpace(label) || label == "Link") label = null;
 
-            var link = BuildLinkCondition(linkObj, warnings, name);
+            var link = BuildLinkCondition(linkObj, fieldTranslation, warnings, name);
             label ??= link.Label;
 
             edgeTargets.Add(dst.ToString());
@@ -831,8 +841,82 @@ public sealed class ScorchImporter
         IReadOnlyDictionary<Guid, ScorchVariable> Variables,
         IReadOnlySet<Guid> ActivityGuids,
         IReadOnlyDictionary<Guid, string> OutputNames,
+        FieldTranslation Fields,
         List<string> Warnings,
         string RunbookName);
+
+    /// <summary>
+    /// SCOrch published-data name → NodePilot output parameter, for the activities where the two
+    /// name the same value differently. Only 1:1 equivalents are listed: SCOrch's Monitor File
+    /// publishes <c>Path</c> (the watched FOLDER) and <c>FileName</c> (the name WITHOUT extension),
+    /// and fileWatcherTrigger has neither — bending those into the nearest-looking name would move
+    /// a wrong value instead of no value, so they stay unmapped and get reported.
+    ///
+    /// <para>Guarded by the NodePilot type: a Query XML that degraded to a placeholder must not have
+    /// its references renamed to a parameter the placeholder does not have either.</para>
+    /// </summary>
+    private static readonly Dictionary<string, (string ActivityType, Dictionary<string, string> Map)>
+        PublishedFieldRenames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Query XML"] = ("xmlQuery", new(StringComparer.OrdinalIgnoreCase) { ["queryResult"] = "result" }),
+            ["Generate Random Text"] = ("generateText", new(StringComparer.OrdinalIgnoreCase) { ["stringResult"] = "text" }),
+            ["Monitor File"] = ("fileWatcherTrigger", new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["FileNameExt"] = "fileName",
+                ["FullName"] = "filePath",
+            }),
+            ["Monitor Folder"] = ("fileWatcherTrigger", new(StringComparer.OrdinalIgnoreCase)
+            {
+                ["FileNameExt"] = "fileName",
+                ["FullName"] = "filePath",
+            }),
+        };
+
+    /// <summary>
+    /// Translates a SCOrch published-data field name to the parameter the imported activity actually
+    /// publishes. Both reference paths need this — step templates in a config value and the variable
+    /// operands of a link condition — and they must agree, or the same value resolves in one and not
+    /// in the other.
+    /// </summary>
+    private sealed record FieldTranslation(
+        IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, string>> Renames,
+        IReadOnlySet<Guid> DecisionNodes)
+    {
+        public static readonly FieldTranslation None =
+            new(new Dictionary<Guid, IReadOnlyDictionary<string, string>>(), new HashSet<Guid>());
+
+        public string Translate(Guid sourceId, string field)
+        {
+            // A Compare Values becomes a decision whose case name carries the comparison outcome.
+            if (DecisionNodes.Contains(sourceId) && field.StartsWith("Compare", StringComparison.OrdinalIgnoreCase))
+                return "case";
+
+            return Renames.TryGetValue(sourceId, out var map) && map.TryGetValue(field, out var renamed)
+                ? renamed
+                : field;
+        }
+    }
+
+    private static FieldTranslation BuildFieldTranslation(
+        IEnumerable<(XElement Source, Guid Id, ScorchActivityMapper.Mapping Mapping)> mapped)
+    {
+        var renames = new Dictionary<Guid, IReadOnlyDictionary<string, string>>();
+        var decisions = new HashSet<Guid>();
+
+        foreach (var (obj, id, mapping) in mapped)
+        {
+            if (mapping.ActivityType == "decision") decisions.Add(id);
+
+            var scorchType = (obj.Element("ObjectTypeName")?.Value ?? "").Trim();
+            if (PublishedFieldRenames.TryGetValue(scorchType, out var rename)
+                && rename.ActivityType == mapping.ActivityType)
+            {
+                renames[id] = rename.Map;
+            }
+        }
+
+        return new FieldTranslation(renames, decisions);
+    }
 
     /// <summary>
     /// Gives every activity a readable <c>outputVariable</c> derived from its SCOrch name, so
@@ -935,7 +1019,7 @@ public sealed class ScorchImporter
 
             var suffix = field.Equals("stdout", StringComparison.OrdinalIgnoreCase) ? "output"
                        : field.Equals("stderr", StringComparison.OrdinalIgnoreCase) ? "error"
-                       : $"param.{field}";
+                       : $"param.{ctx.Fields.Translate(g, field)}";
             var head = ctx.OutputNames.TryGetValue(g, out var named) ? named : g.ToString();
             return "{{" + head + "." + suffix + "}}";
         });
@@ -982,7 +1066,7 @@ public sealed class ScorchImporter
     private sealed record LinkCondition(object? Expression, string? Legacy, string? Label);
 
     private static LinkCondition BuildLinkCondition(
-        XElement linkObj, List<string> warnings, string runbookName)
+        XElement linkObj, FieldTranslation fields, List<string> warnings, string runbookName)
     {
         var triggers = linkObj.Element("TRIGGERS")?.Elements("Entry").ToList();
         if (triggers is null || triggers.Count == 0) return new LinkCondition(null, null, null);
@@ -1008,7 +1092,8 @@ public sealed class ScorchImporter
             var groupMembers = new List<object?>();
             foreach (var entry in group)
             {
-                var expr = BuildStatusComparison(entry) ?? BuildComparisonFromTrigger(entry, warnings, runbookName);
+                var expr = BuildStatusComparison(entry)
+                           ?? BuildComparisonFromTrigger(entry, fields, warnings, runbookName);
                 if (expr is not null) groupMembers.Add(expr);
                 else dropped++;
             }
@@ -1099,14 +1184,19 @@ public sealed class ScorchImporter
     private static string NormalizeStepId(string raw)
         => Guid.TryParse(raw, out var guid) ? guid.ToString() : raw;
 
-    private static object? BuildComparisonFromTrigger(XElement entry, List<string> warnings, string runbookName)
+    private static object? BuildComparisonFromTrigger(
+        XElement entry, FieldTranslation fields, List<string> warnings, string runbookName)
     {
         var cond = entry.Element("Condition")?.Value ?? "equals";
         var dataStr = entry.Element("Data")?.Value ?? "";
         var valueStr = entry.Element("Value")?.Value ?? "";
 
         // Data format: "{GUID}.fieldname"
-        var match = Regex.Match(dataStr, @"\{([0-9a-fA-F\-]+)\}\.([A-Za-z0-9_\-]+)", RegexOptions.None, TimeSpan.FromSeconds(1));
+        // The tail may be dotted — SCOrch's Compare Values publishes `Compare.CompareResult`. A
+        // pattern that stopped at the first dot silently truncated it to `Compare`, so the filter
+        // ended up reading a field that does not exist under any mapping.
+        var match = Regex.Match(dataStr, @"\{([0-9a-fA-F\-]+)\}\.([A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*)",
+            RegexOptions.None, TimeSpan.FromSeconds(1));
         if (!match.Success)
         {
             warnings.Add($"'{runbookName}': could not parse trigger Data '{dataStr}' — skipping this filter.");
@@ -1125,6 +1215,13 @@ public sealed class ScorchImporter
             return null;
         }
         var (op, negate) = mappedOp.Value;
+
+        // The same field translation the config-template rewrite uses, so a value resolves the same
+        // way whether it is read from a step's configuration or from a link's condition. A link out
+        // of a Compare Values, for instance, reads that activity's comparison result — which the
+        // decision mapping republishes as its case name.
+        if (Guid.TryParse(srcGuid, out var sourceId))
+            field = fields.Translate(sourceId, field);
 
         // Map SCOrch field to NodePilot operand: stdout → output, stderr → error, else param.
         var (npField, paramName) = field.ToLowerInvariant() switch

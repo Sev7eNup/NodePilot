@@ -107,8 +107,13 @@ the same people — on a stack that is still maintained.
   SCOrch writes as `Trigger Policy`) including the arguments passed to a child runbook.
 - **Published Data becomes the data bus.** SCOrch's `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` references are
   rewritten into NodePilot's `{{globals.Name}}` and `{{step.param.field}}` syntax, resolving through
-  a readable name derived from each activity rather than a bare GUID. This is usually the part that
-  makes a migration expensive.
+  a readable name derived from each activity rather than a bare GUID. Where the two products name
+  the same value differently the field is translated too, and where SCOrch published something
+  NodePilot has no equivalent for, the reference is reported instead of quietly pointing at the
+  nearest-looking name. This is usually the part that makes a migration expensive.
+- **Branches keep branching.** *Compare Values* becomes a `decision`, and the links that read its
+  result are re-pointed at it — a comparison whose outcome nothing could read would leave every
+  branch behind it dead.
 - **Links, conditions and global variables come across**, including on-success / on-failure links,
   the `TRIGGERS` filter logic, and whether a link matched *all* or *any* of its filters.
 - **Every runbook is runnable on arrival.** NodePilot starts a workflow from a trigger node, and a

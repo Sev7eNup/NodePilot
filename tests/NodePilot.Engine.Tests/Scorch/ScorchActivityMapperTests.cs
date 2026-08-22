@@ -321,21 +321,64 @@ public class ScorchActivityMapperTests
     }
 
     [Fact]
-    public void Map_CompareValues_PreservesOperandsInLogMessage()
+    public void Map_CompareValues_BecomesADecisionWithATrueCase()
     {
         var result = ScorchActivityMapper.Map(Obj("Compare Values"), new()
         {
-            ["ValueA"] = "{{count}}",
-            ["ComparisonOperator"] = "GreaterThan",
-            ["ValueB"] = "10",
+            ["StringToCompare"] = "{{step.param.state}}",
+            ["StringTestOption"] = "2",
+            ["StringToCompareTo"] = "READY",
         });
 
-        result.ActivityType.Should().Be("log");
-        result.Config["level"].Should().Be("info");
-        var msg = result.Config["message"]?.ToString() ?? "";
-        msg.Should().Contain("{{count}}");
-        msg.Should().Contain("GreaterThan");
-        msg.Should().Contain("10");
+        result.ActivityType.Should().Be("decision");
+        result.Disabled.Should().BeFalse();
+        result.Config["defaultCaseName"].Should().Be("false");
+
+        var cases = result.Config["cases"].Should().BeAssignableTo<List<object>>().Subject;
+        var single = cases.Single().Should().BeAssignableTo<Dictionary<string, object?>>().Subject;
+        single["name"].Should().Be("true");
+
+        var condition = single["condition"].Should().BeAssignableTo<Dictionary<string, object?>>().Subject;
+        condition["op"].Should().Be("==");
+    }
+
+    /// <summary>
+    /// SCOrch's "matches pattern" takes a glob; NodePilot's `matches` runs a .NET regex, where
+    /// <c>V9*</c> would mean "V followed by any number of 9s" rather than "starts with V9".
+    /// </summary>
+    [Fact]
+    public void Map_CompareValues_TranslatesTheWildcardPatternIntoARegex()
+    {
+        var result = ScorchActivityMapper.Map(Obj("Compare Values"), new()
+        {
+            ["StringToCompare"] = "{{step.param.name}}",
+            ["StringTestOption"] = "7",
+            ["StringToCompareTo"] = "V9*",
+        });
+
+        var cases = (List<object>)result.Config["cases"]!;
+        var condition = (Dictionary<string, object?>)((Dictionary<string, object?>)cases[0])["condition"]!;
+        condition["op"].Should().Be("matches");
+        ((Dictionary<string, object?>)condition["right"]!)["value"].Should().Be(@"^V9.*$");
+    }
+
+    /// <summary>
+    /// Only options 2 and 7 are attested by a real export. Guessing another one would silently
+    /// reverse a branch, so the node arrives with its operands filled in but disabled.
+    /// </summary>
+    [Fact]
+    public void Map_CompareValues_WithAnUndecodableOperator_ArrivesDisabled()
+    {
+        var result = ScorchActivityMapper.Map(Obj("Compare Values"), new()
+        {
+            ["StringToCompare"] = "{{step.param.count}}",
+            ["StringTestOption"] = "4",
+            ["StringToCompareTo"] = "10",
+        });
+
+        result.ActivityType.Should().Be("decision");
+        result.Disabled.Should().BeTrue();
+        result.Note.Should().Contain("'4'").And.Contain("set the real operator");
     }
 
     // ---------- heuristic fallbacks ----------
