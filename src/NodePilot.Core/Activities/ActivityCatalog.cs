@@ -294,6 +294,10 @@ public static class ActivityCatalog
                 Output("fileAction", "string"),
                 Output("filePath", "string"),
                 Output("fileName", "string"),
+                // Split-out parts of filePath. Templates have no expression language, so without
+                // these a workflow needs a script step just to address the event it already got.
+                Output("fileNameWithoutExtension", "string"),
+                Output("fileDirectory", "string"),
             ]),
         Trigger("databaseTrigger", "databaseTrigger", "database", isExternalTrigger: true,
             outputs:

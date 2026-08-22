@@ -873,12 +873,25 @@ public sealed class ScorchImporter
         List<string> Warnings,
         string RunbookName);
 
+    // Declared before PublishedFieldRenames on purpose: static initializers run in textual
+    // order, so a table referencing this one from above would capture it as null.
+    private static readonly Dictionary<string, string> MonitorFileFields = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["FileNameExt"] = "fileName",              // SCOrch: name WITH extension
+        ["FileName"] = "fileNameWithoutExtension", // SCOrch: name WITHOUT extension
+        ["Path"] = "fileDirectory",                // SCOrch: the watched folder, not the file
+        ["FullName"] = "filePath",
+    };
+
     /// <summary>
     /// SCOrch published-data name → NodePilot output parameter, for the activities where the two
-    /// name the same value differently. Only 1:1 equivalents are listed: SCOrch's Monitor File
-    /// publishes <c>Path</c> (the watched FOLDER) and <c>FileName</c> (the name WITHOUT extension),
-    /// and fileWatcherTrigger has neither — bending those into the nearest-looking name would move
-    /// a wrong value instead of no value, so they stay unmapped and get reported.
+    /// name the same value differently.
+    ///
+    /// <para>Only exact equivalents belong here. SCOrch's Monitor File distinguishes <c>FileName</c>
+    /// (WITHOUT extension) from <c>FileNameExt</c> (with it) and publishes the watched folder as
+    /// <c>Path</c>; mapping any of those onto fileWatcherTrigger's <c>fileName</c> would move a
+    /// wrong value rather than no value. They map cleanly now only because the trigger publishes
+    /// <c>fileNameWithoutExtension</c> and <c>fileDirectory</c> as well.</para>
     ///
     /// <para>Guarded by the NodePilot type: a Query XML that degraded to a placeholder must not have
     /// its references renamed to a parameter the placeholder does not have either.</para>
@@ -888,16 +901,8 @@ public sealed class ScorchImporter
         {
             ["Query XML"] = ("xmlQuery", new(StringComparer.OrdinalIgnoreCase) { ["queryResult"] = "result" }),
             ["Generate Random Text"] = ("generateText", new(StringComparer.OrdinalIgnoreCase) { ["stringResult"] = "text" }),
-            ["Monitor File"] = ("fileWatcherTrigger", new(StringComparer.OrdinalIgnoreCase)
-            {
-                ["FileNameExt"] = "fileName",
-                ["FullName"] = "filePath",
-            }),
-            ["Monitor Folder"] = ("fileWatcherTrigger", new(StringComparer.OrdinalIgnoreCase)
-            {
-                ["FileNameExt"] = "fileName",
-                ["FullName"] = "filePath",
-            }),
+            ["Monitor File"] = ("fileWatcherTrigger", MonitorFileFields),
+            ["Monitor Folder"] = ("fileWatcherTrigger", MonitorFileFields),
         };
 
     /// <summary>

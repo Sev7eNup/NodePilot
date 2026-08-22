@@ -71,7 +71,7 @@ Trigger-Sources seeden ihre Event-Daten als `manual.*`-Variablen in den Run (`Va
 |---|---|
 | `manualTrigger` | user-deklarierte Parameter-Namen → `{{manual.<name>}}` |
 | `scheduleTrigger` | `firedAt`, `nextFireAt` (ISO-8601 UTC) |
-| `fileWatcherTrigger` | `fileAction` (created/changed/deleted/renamed), `filePath`, `fileName` |
+| `fileWatcherTrigger` | `fileAction` (created/changed/deleted/renamed), `filePath`, `fileName`, `fileNameWithoutExtension`, `fileDirectory` |
 | `databaseTrigger` | `dbSentinel` (neuer Sentinel-Wert), `dbPrevious` |
 | `eventLogTrigger` | `eventSource`, `eventEntryType`, `eventId`, `eventMessage`, `eventTimeWritten` |
 | `webhookTrigger` | `webhookBody`, `webhookMethod`, `webhookPath`, `webhookQuery_<key>`, `webhookHeader_<key>` + pro `fieldMappings`-Eintrag der gemappte Name (JSONPath aus dem JSON-Body, Dialekt wie `jsonQuery`) |
@@ -252,10 +252,12 @@ und wurde erst an einem echten 2016-Export sichtbar:
 
 **Datenbus: Namen ≠ Namen.** Die Marker-Syntax zu übersetzen ist nicht dasselbe wie die *Daten* zu
 übersetzen. `PublishedFieldRenames` bildet nur die belegten 1:1-Fälle ab (`Query XML.queryResult` →
-`xmlQuery.result`, `Generate Random Text.stringResult` → `generateText.text`,
-`Monitor File.FileNameExt` → `fileWatcherTrigger.fileName`) — bewusst **nicht** `Monitor File.Path`
-(der überwachte Ordner) oder `.FileName` (Name **ohne** Endung), für die es kein Gegenstück gibt;
-die werden gemeldet statt auf den nächstbesten Namen gebogen. Beide Lesepfade — Templates in der
+`xmlQuery.result`, `Generate Random Text.stringResult` → `generateText.text`, und für
+`Monitor File`: `FileNameExt` → `fileName`, `FileName` (Name **ohne** Endung) →
+`fileNameWithoutExtension`, `Path` (der überwachte **Ordner**) → `fileDirectory`). Die letzten
+beiden gehen erst, seit `fileWatcherTrigger` diese Teile selbst publiziert — sie aus `filePath`
+abzuleiten geht in einem `{{…}}`-Template nicht, dort gibt es keine Ausdruckssprache. Alles ohne
+exaktes Gegenstück wird gemeldet statt auf den nächstbesten Namen gebogen. Beide Lesepfade — Templates in der
 Config **und** Variablen-Operanden in Link-Bedingungen — gehen durch dieselbe `FieldTranslation`,
 sonst löst derselbe Wert an einer Stelle auf und an der anderen nicht.
 

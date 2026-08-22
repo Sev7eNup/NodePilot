@@ -85,7 +85,7 @@ public class ScorchImporterFixtureTests
             .GetProperty("data").GetProperty("config").GetProperty("script").GetString()!;
 
         script.Should().Contain("{{" + MonitorFileVar + ".param.fileName}}");
-        script.Should().Contain("{{" + MonitorFileVar + ".param.Path}}");
+        script.Should().Contain("{{" + MonitorFileVar + ".param.fileDirectory}}");
         // Global referenced from inside a script body, under its sanitized name.
         script.Should().Contain("{{globals.Tools_Dir__x86}}");
     }
@@ -99,7 +99,7 @@ public class ScorchImporterFixtureTests
         var arguments = NodeById(def, RobocopyId)
             .GetProperty("data").GetProperty("config").GetProperty("arguments").GetString();
 
-        arguments.Should().Be("{{" + MonitorFileVar + @".param.Path}} D:\Staging /E");
+        arguments.Should().Be("{{" + MonitorFileVar + @".param.fileDirectory}} D:\Staging /E");
     }
 
     // SCOrch exposes runbook metadata as a DOTTED published-data name ({GUID}.Policy.Name).
@@ -187,7 +187,7 @@ public class ScorchImporterFixtureTests
         config.GetProperty("xpath").GetString().Should().Be("//Manifest/Status");
         config.GetProperty("source").GetString().Should().Be("file");
         config.GetProperty("path").GetString().Should()
-            .Be("{{" + MonitorFileVar + ".param.FileName}}.XML");
+            .Be("{{" + MonitorFileVar + ".param.fileNameWithoutExtension}}.XML");
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class ScorchImporterFixtureTests
             .GetProperty("data").GetProperty("config");
 
         config.GetProperty("operation").GetString().Should().Be("delete");
-        config.GetProperty("path").GetString().Should().Be("{{" + MonitorFileVar + ".param.Path}}");
+        config.GetProperty("path").GetString().Should().Be("{{" + MonitorFileVar + ".param.fileDirectory}}");
     }
 
     [Fact]
@@ -451,7 +451,7 @@ public class ScorchImporterFixtureTests
         var result = ParseFixture();
 
         result.Warnings.Should().Contain(w =>
-            w.Contains("param.FileName") && w.Contains("fileWatcherTrigger") && w.Contains("fileName"));
+            w.Contains("param.FileSize") && w.Contains("fileWatcherTrigger") && w.Contains("fileName"));
     }
 
     /// <summary>
@@ -482,7 +482,7 @@ public class ScorchImporterFixtureTests
         // The links out of 'Query Manifest Status' filter on queryResult; xmlQuery publishes
         // result/count, so those branches would never match.
         result.Warnings.Should().Contain(w =>
-            w.Contains("param.Path") && w.Contains("the link into") && w.Contains("fileWatcherTrigger"));
+            w.Contains("param.FileSize") && w.Contains("the link into") && w.Contains("fileWatcherTrigger"));
     }
 
     [Fact]

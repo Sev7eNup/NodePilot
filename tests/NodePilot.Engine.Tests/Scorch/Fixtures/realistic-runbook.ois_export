@@ -46,6 +46,7 @@
 $packageDir = '\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.Path\`d.T.~Ed/'
 $toolsDir = '\`d.T.~Vb/{33333333-0000-0000-0000-000000000002}\`d.T.~Vb/'
 $sourceRunbook = '\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.Policy.Name\`d.T.~Ed/'
+$dropSize = '\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.FileSize\`d.T.~Ed/'
 $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
     <Dependencies datatype="null"></Dependencies>
     <ExecutionData datatype="string">&lt;ExecutionData&gt;&lt;Item&gt;&lt;ID&gt;hasPayload&lt;/ID&gt;&lt;Text&gt;hasPayload&lt;/Text&gt;&lt;Type&gt;String&lt;/Type&gt;&lt;/Item&gt;&lt;/ExecutionData&gt;</ExecutionData>
@@ -374,8 +375,8 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
         <UniqueID datatype="string">{77777777-0000-0000-0000-000000000008}</UniqueID>
         <Type datatype="string">trigger</Type>
         <Condition datatype="string">doesnotequal</Condition>
-        <Data datatype="string">{22222222-0000-0000-0000-000000000001}.Path</Data>
-        <Value datatype="string">C:\Intake</Value>
+        <Data datatype="string">{22222222-0000-0000-0000-000000000001}.FileSize</Data>
+        <Value datatype="string">0</Value>
         <GroupID datatype="string"></GroupID>
       </Entry>
     </TRIGGERS>

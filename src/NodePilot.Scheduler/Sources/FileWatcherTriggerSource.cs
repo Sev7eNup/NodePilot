@@ -310,6 +310,12 @@ public class FileWatcherTriggerSource : ITriggerSource
                     ["fileAction"] = action,
                     ["filePath"] = path,
                     ["fileName"] = Path.GetFileName(path),
+                    // Both are trivially derivable from filePath, but not from a {{…}} template —
+                    // there is no expression language there. Without them, "take the dropped file's
+                    // name, put a different extension on it" and "work in the folder it landed in"
+                    // both need a script step for what is really just addressing the event.
+                    ["fileNameWithoutExtension"] = Path.GetFileNameWithoutExtension(path),
+                    ["fileDirectory"] = Path.GetDirectoryName(path) ?? "",
                 }),
                 _logger, ActivityType, _ctx.WorkflowId, _ctx.NodeId);
         }

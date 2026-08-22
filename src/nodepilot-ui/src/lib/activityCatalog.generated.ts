@@ -457,7 +457,9 @@ export const ACTIVITY_CATALOG = [
     "outputParameters": [
       { "name": "fileAction", "type": "string" },
       { "name": "filePath", "type": "string" },
-      { "name": "fileName", "type": "string" }
+      { "name": "fileName", "type": "string" },
+      { "name": "fileNameWithoutExtension", "type": "string" },
+      { "name": "fileDirectory", "type": "string" }
     ],
     "telemetryParameters": []
   },

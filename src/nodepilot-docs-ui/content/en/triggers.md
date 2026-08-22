@@ -134,7 +134,9 @@ Output data:
 
 - `fileAction`: the kind of change
 - `filePath`: the full file path
-- `fileName`: the file name
+- `fileName`: the file name, extension included
+- `fileNameWithoutExtension`: the file name with its extension removed
+- `fileDirectory`: the folder the file is in
 
 ## Database
 

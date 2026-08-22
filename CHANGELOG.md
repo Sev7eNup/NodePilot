@@ -12,7 +12,18 @@ exhaustive.
 
 ## [Unreleased]
 
+### Added
+
+- The file-watcher trigger publishes `fileNameWithoutExtension` and `fileDirectory` alongside
+  `filePath` and `fileName`. Both are trivially derived from the path — but not inside a `{{…}}`
+  template, which has no expression language, so "name the output after the dropped file with a
+  different extension" or "work in the folder it landed in" previously needed a script step for
+  what is really just addressing the event. It is also what lets a SCOrch import map Monitor File's
+  `FileName` (extension-less) and `Path` (the watched folder) instead of reporting them as having
+  no counterpart.
+
 ### Fixed
+
 
 - **SCOrch import, measured against a real export.** The importer was written against an assumed
   file format, and a real 2016 runbook showed how far that had drifted: of 47 activities only 11
