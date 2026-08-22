@@ -1,0 +1,496 @@
+<ExportData><EncryptionSalt>AAAAAAAAAAAAAAAAAAAAAA</EncryptionSalt><Policies><Folder><UniqueID>{00000000-0000-0000-0000-000000000000}</UniqueID><Name>Policies</Name>
+<Policy>
+  <UniqueID datatype="string">{11111111-0000-0000-0000-000000000001}</UniqueID>
+  <Name datatype="string">Sample Package Intake</Name>
+  <Description datatype="string">Structural fixture modelled on a real SCOrch export. Every value is synthetic; the shapes are not.</Description>
+  <ParentID datatype="string">{00000000-0000-0000-0000-000000000000}</ParentID>
+  <CreationTime datatype="date">132036017980000000</CreationTime>
+  <CreatedBy datatype="string">S-1-5-21-0-0-0-1000</CreatedBy>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-000000000001}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Monitor Intake Folder</Name>
+    <Description datatype="null"></Description>
+    <PositionX datatype="int">-1479</PositionX>
+    <PositionY datatype="int">377</PositionY>
+    <ObjectType datatype="string">{C9F4A2B1-0000-0000-0000-0000000000A1}</ObjectType>
+    <ObjectTypeName datatype="string">Monitor File</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <ASC_UseServiceSecurity datatype="null"></ASC_UseServiceSecurity>
+    <ASC_Username datatype="null"></ASC_Username>
+    <ASW_ObjectTimeout datatype="null"></ASW_ObjectTimeout>
+    <Path datatype="string">\`d.T.~Vb/{33333333-0000-0000-0000-000000000001}\`d.T.~Vb/\Intake</Path>
+    <Filters datatype="string">&lt;ItemRoot&gt;&lt;Entry&gt;&lt;FieldId&gt;\`~F/FileName\`~F/&lt;/FieldId&gt;&lt;Test&gt;matches pattern&lt;/Test&gt;&lt;FilterValue&gt;*.csv&lt;/FilterValue&gt;&lt;/Entry&gt;&lt;/ItemRoot&gt;</Filters>
+    <IncludeSubFolders datatype="string">False</IncludeSubFolders>
+    <NotifyIfCreated datatype="string">True</NotifyIfCreated>
+    <NotifyIfChanged datatype="string">True</NotifyIfChanged>
+    <NotifyIfRenamed datatype="string">False</NotifyIfRenamed>
+    <NotifyIfDeleted datatype="string">False</NotifyIfDeleted>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-000000000002}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Check Package Contents</Name>
+    <Description datatype="string">Decides whether the drop contains payload files.</Description>
+    <PositionX datatype="int">-1329</PositionX>
+    <PositionY datatype="int">377</PositionY>
+    <ObjectType datatype="string">{ED7F2A41-107A-4B74-BAFE-ADAE63632B79}</ObjectType>
+    <ObjectTypeName datatype="string">Run .Net Script</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <ASC_Username datatype="string">CONTOSO\svc-orchestrator</ASC_Username>
+    <ASW_ObjectTimeout datatype="string">600</ASW_ObjectTimeout>
+    <ScriptType datatype="string">PowerShell</ScriptType>
+    <ScriptBody datatype="string">$csvFileName = '\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.FileNameExt\`d.T.~Ed/'
+$packageDir = '\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.Path\`d.T.~Ed/'
+$toolsDir = '\`d.T.~Vb/{33333333-0000-0000-0000-000000000002}\`d.T.~Vb/'
+$sourceRunbook = '\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.Policy.Name\`d.T.~Ed/'
+$hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
+    <Dependencies datatype="null"></Dependencies>
+    <ExecutionData datatype="string">&lt;ExecutionData&gt;&lt;Item&gt;&lt;ID&gt;hasPayload&lt;/ID&gt;&lt;Text&gt;hasPayload&lt;/Text&gt;&lt;Type&gt;String&lt;/Type&gt;&lt;/Item&gt;&lt;/ExecutionData&gt;</ExecutionData>
+    <PublishedData datatype="string">&lt;ItemRoot&gt;&lt;Entry&gt;&lt;IsCollection&gt;false&lt;/IsCollection&gt;&lt;Name&gt;hasPayload&lt;/Name&gt;&lt;Type&gt;String&lt;/Type&gt;&lt;Variable&gt;hasPayload&lt;/Variable&gt;&lt;/Entry&gt;&lt;/ItemRoot&gt;</PublishedData>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-000000000003}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Query Manifest Status</Name>
+    <PositionX datatype="int">-1179</PositionX>
+    <PositionY datatype="int">377</PositionY>
+    <ObjectType datatype="string">{6D9637A3-F77B-4425-A308-3AE0568126E4}</ObjectType>
+    <ObjectTypeName datatype="string">Query XML</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <XmlFile datatype="string">\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.FileName\`d.T.~Ed/.XML</XmlFile>
+    <InputXmlFile datatype="string">True</InputXmlFile>
+    <InputXmlBlock datatype="string">False</InputXmlBlock>
+    <XmlBlock datatype="null"></XmlBlock>
+    <XmlTag datatype="string">//Manifest/Status</XmlTag>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-000000000004}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Archive Package?</Name>
+    <PositionX datatype="int">-1029</PositionX>
+    <PositionY datatype="int">377</PositionY>
+    <ObjectType datatype="string">{7ECD5536-2611-4C2F-822E-74D5B11CBDAC}</ObjectType>
+    <ObjectTypeName datatype="string">Compare Values</ObjectTypeName>
+    <SubType datatype="string">1</SubType>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <StringToCompare datatype="string">\`d.T.~Ed/{22222222-0000-0000-0000-000000000003}.queryResult\`d.T.~Ed/</StringToCompare>
+    <StringTestOption datatype="int">2</StringTestOption>
+    <StringToCompareTo datatype="string">ARCHIVE</StringToCompareTo>
+    <CaseSensitive datatype="int">0</CaseSensitive>
+    <ValueToCompare datatype="null"></ValueToCompare>
+    <ValueTestOption datatype="null"></ValueTestOption>
+    <ValueToCompareTo datatype="null"></ValueToCompareTo>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-000000000005}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Report Error</Name>
+    <PositionX datatype="int">-879</PositionX>
+    <PositionY datatype="int">152</PositionY>
+    <ObjectType datatype="string">{9C1BF9B4-515A-4FD2-A753-87D235D8BA1F}</ObjectType>
+    <ObjectTypeName datatype="string">Trigger Policy</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <PolicyObjectID datatype="string">{11111111-0000-0000-0000-000000000002}</PolicyObjectID>
+    <PolicyPath datatype="string">Policies\Shared\Logging\Log Error</PolicyPath>
+    <TriggerByPolicyPath datatype="bool">FALSE</TriggerByPolicyPath>
+    <TargetActionServers datatype="null"></TargetActionServers>
+    <WaitToComplete datatype="bool">TRUE</WaitToComplete>
+    <TRIGGER_POLICY_PARAMETERS>
+      <Entry>
+        <UniqueID datatype="string">{44444444-0000-0000-0000-000000000001}</UniqueID>
+        <ParentID datatype="string">{22222222-0000-0000-0000-000000000005}</ParentID>
+        <Parameter datatype="string">{55555555-0000-0000-0000-000000000001}</Parameter>
+        <ParameterName datatype="string">Identifier</ParameterName>
+        <Value datatype="string">\`d.T.~Ed/{22222222-0000-0000-0000-000000000003}.queryResult\`d.T.~Ed/</Value>
+        <GroupID datatype="string"></GroupID>
+      </Entry>
+      <Entry>
+        <UniqueID datatype="string">{44444444-0000-0000-0000-000000000002}</UniqueID>
+        <ParentID datatype="string">{22222222-0000-0000-0000-000000000005}</ParentID>
+        <Parameter datatype="string">{55555555-0000-0000-0000-000000000002}</Parameter>
+        <ParameterName datatype="string">ShareRoot</ParameterName>
+        <Value datatype="string">\`d.T.~Vb/{33333333-0000-0000-0000-000000000001}\`d.T.~Vb/</Value>
+        <GroupID datatype="string"></GroupID>
+      </Entry>
+    </TRIGGER_POLICY_PARAMETERS>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-000000000006}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Delete Manifest</Name>
+    <PositionX datatype="int">-879</PositionX>
+    <PositionY datatype="int">602</PositionY>
+    <ObjectType datatype="string">{B1A2C3D4-0000-0000-0000-0000000000D1}</ObjectType>
+    <ObjectTypeName datatype="string">Delete File</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <OriginFolder datatype="string">\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.FileName\`d.T.~Ed/.XML</OriginFolder>
+    <OriginOptions datatype="string">False</OriginOptions>
+    <FileAgeOptions datatype="string">(Kein Altersfilter)</FileAgeOptions>
+    <FileAgeDays datatype="null"></FileAgeDays>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-000000000007}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Purge Aged Drops</Name>
+    <PositionX datatype="int">-729</PositionX>
+    <PositionY datatype="int">602</PositionY>
+    <ObjectType datatype="string">{B1A2C3D4-0000-0000-0000-0000000000D1}</ObjectType>
+    <ObjectTypeName datatype="string">Delete File</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <OriginFolder datatype="string">\`d.T.~Vb/{33333333-0000-0000-0000-000000000001}\`d.T.~Vb/\Archive</OriginFolder>
+    <OriginOptions datatype="string">True</OriginOptions>
+    <FileAgeOptions datatype="string">Aelter als</FileAgeOptions>
+    <FileAgeDays datatype="string">30</FileAgeDays>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-000000000008}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Remove Package Folder</Name>
+    <PositionX datatype="int">-579</PositionX>
+    <PositionY datatype="int">602</PositionY>
+    <ObjectType datatype="string">{B1A2C3D4-0000-0000-0000-0000000000D2}</ObjectType>
+    <ObjectTypeName datatype="string">Delete Folder</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <Folder datatype="string">\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.Path\`d.T.~Ed/</Folder>
+    <DeleteOptions datatype="string">All</DeleteOptions>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-000000000009}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Generate Batch Suffix</Name>
+    <PositionX datatype="int">-429</PositionX>
+    <PositionY datatype="int">602</PositionY>
+    <ObjectType datatype="string">{B1A2C3D4-0000-0000-0000-0000000000E1}</ObjectType>
+    <ObjectTypeName datatype="string">Generate Random Text</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <StringLength datatype="string">5</StringLength>
+    <UseUpperCase datatype="string">True</UseUpperCase>
+    <UseLowerCase datatype="string">False</UseLowerCase>
+    <UseNumbers datatype="string">True</UseNumbers>
+    <UseSymbols datatype="string">False</UseSymbols>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-00000000000A}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Read First Line</Name>
+    <PositionX datatype="int">-279</PositionX>
+    <PositionY datatype="int">602</PositionY>
+    <ObjectType datatype="string">{B1A2C3D4-0000-0000-0000-0000000000E2}</ObjectType>
+    <ObjectTypeName datatype="string">Read Line</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <FileName datatype="string">\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.FileName\`d.T.~Ed/</FileName>
+    <Encoding datatype="string">ASCII</Encoding>
+    <Lines datatype="string">1</Lines>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-00000000000B}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Run Robocopy Sync</Name>
+    <PositionX datatype="int">-129</PositionX>
+    <PositionY datatype="int">527</PositionY>
+    <ObjectType datatype="string">{B1A2C3D4-0000-0000-0000-0000000000E3}</ObjectType>
+    <ObjectTypeName datatype="string">Run Program</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <Program datatype="string">C:\Windows\System32\robocopy.exe</Program>
+    <Parameters datatype="string">\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.Path\`d.T.~Ed/ D:\Staging /E</Parameters>
+    <StartupDir datatype="string">C:\Windows\System32</StartupDir>
+    <ComputerName datatype="string">FILESRV01</ComputerName>
+    <WaitForCompletion datatype="string">TRUE</WaitForCompletion>
+    <WaitTime datatype="string">0</WaitTime>
+    <ProgramMode datatype="string">0</ProgramMode>
+    <ExecutionMode datatype="string">1</ExecutionMode>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-00000000000C}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Clear File Attributes</Name>
+    <PositionX datatype="int">-129</PositionX>
+    <PositionY datatype="int">677</PositionY>
+    <ObjectType datatype="string">{B1A2C3D4-0000-0000-0000-0000000000E3}</ObjectType>
+    <ObjectTypeName datatype="string">Run Program</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <Program datatype="string">cmd /C attrib -h -r /s /d "\`d.T.~Ed/{22222222-0000-0000-0000-000000000001}.Path\`d.T.~Ed/"</Program>
+    <Parameters datatype="null"></Parameters>
+    <StartupDir datatype="null"></StartupDir>
+    <ComputerName datatype="null"></ComputerName>
+    <WaitForCompletion datatype="string">TRUE</WaitForCompletion>
+    <ProgramMode datatype="string">1</ProgramMode>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000001}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000001}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000002}</TargetObject>
+    <Color datatype="string">0</Color>
+    <And datatype="bool">FALSE</And>
+    <Label datatype="string"></Label>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000002}</UniqueID>
+    <Name datatype="string">on success</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000002}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000003}</TargetObject>
+    <Color datatype="string">65280</Color>
+    <And datatype="bool">FALSE</And>
+    <TRIGGERS>
+      <Entry>
+        <UniqueID datatype="string">{77777777-0000-0000-0000-000000000001}</UniqueID>
+        <Type datatype="string">trigger</Type>
+        <Condition datatype="string"></Condition>
+        <Data datatype="string">{22222222-0000-0000-0000-000000000002}</Data>
+        <Value datatype="string">success</Value>
+        <GroupID datatype="string"></GroupID>
+      </Entry>
+    </TRIGGERS>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000003}</UniqueID>
+    <Name datatype="string">has payload</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000003}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000004}</TargetObject>
+    <Color datatype="string">33023</Color>
+    <And datatype="bool">FALSE</And>
+    <TRIGGERS>
+      <Entry>
+        <UniqueID datatype="string">{77777777-0000-0000-0000-000000000002}</UniqueID>
+        <Type datatype="string">trigger</Type>
+        <Condition datatype="string">equals</Condition>
+        <Data datatype="string">{22222222-0000-0000-0000-000000000002}.hasPayload</Data>
+        <Value datatype="string">true</Value>
+        <GroupID datatype="string"></GroupID>
+      </Entry>
+    </TRIGGERS>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000004}</UniqueID>
+    <Name datatype="string">not archive</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000004}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000005}</TargetObject>
+    <Color datatype="string">33023</Color>
+    <And datatype="bool">FALSE</And>
+    <TRIGGERS>
+      <Entry>
+        <UniqueID datatype="string">{77777777-0000-0000-0000-000000000003}</UniqueID>
+        <Type datatype="string">trigger</Type>
+        <Condition datatype="string">doesnotequal</Condition>
+        <Data datatype="string">{22222222-0000-0000-0000-000000000003}.queryResult</Data>
+        <Value datatype="string">ARCHIVE</Value>
+        <GroupID datatype="string"></GroupID>
+      </Entry>
+    </TRIGGERS>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000005}</UniqueID>
+    <Name datatype="string">archive or stale</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000004}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000006}</TargetObject>
+    <Color datatype="string">33023</Color>
+    <And datatype="bool">FALSE</And>
+    <TRIGGERS>
+      <Entry>
+        <UniqueID datatype="string">{77777777-0000-0000-0000-000000000004}</UniqueID>
+        <Type datatype="string">trigger</Type>
+        <Condition datatype="string">equals</Condition>
+        <Data datatype="string">{22222222-0000-0000-0000-000000000003}.queryResult</Data>
+        <Value datatype="string">ARCHIVE</Value>
+        <GroupID datatype="string"></GroupID>
+      </Entry>
+      <Entry>
+        <UniqueID datatype="string">{77777777-0000-0000-0000-000000000005}</UniqueID>
+        <Type datatype="string">trigger</Type>
+        <Condition datatype="string">contains</Condition>
+        <Data datatype="string">{22222222-0000-0000-0000-000000000003}.queryResult</Data>
+        <Value datatype="string">STALE</Value>
+        <GroupID datatype="string"></GroupID>
+      </Entry>
+    </TRIGGERS>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000006}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">FALSE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000006}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000007}</TargetObject>
+    <And datatype="bool">FALSE</And>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000007}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000007}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000008}</TargetObject>
+    <And datatype="bool">FALSE</And>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000008}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000008}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000009}</TargetObject>
+    <And datatype="bool">FALSE</And>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000009}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000009}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-00000000000A}</TargetObject>
+    <And datatype="bool">FALSE</And>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-00000000000A}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-00000000000A}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-00000000000B}</TargetObject>
+    <And datatype="bool">FALSE</And>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-00000000000B}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-00000000000A}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-00000000000C}</TargetObject>
+    <And datatype="bool">FALSE</And>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-00000000000C}</UniqueID>
+    <Name datatype="string">dangling</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000003}</SourceObject>
+    <TargetObject datatype="string">{99999999-9999-9999-9999-999999999999}</TargetObject>
+    <And datatype="bool">FALSE</And>
+  </Object>
+
+</Policy>
+
+<Policy>
+  <UniqueID datatype="string">{11111111-0000-0000-0000-000000000002}</UniqueID>
+  <Name datatype="string">Log Error</Name>
+  <Description datatype="null"></Description>
+  <ParentID datatype="string">{00000000-0000-0000-0000-000000000000}</ParentID>
+
+  <Object>
+    <UniqueID datatype="string">{88888888-0000-0000-0000-000000000001}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000002}</ParentID>
+    <Name datatype="string">Initialize Data</Name>
+    <PositionX datatype="int">0</PositionX>
+    <PositionY datatype="int">0</PositionY>
+    <ObjectType datatype="string">{B1A2C3D4-0000-0000-0000-0000000000F1}</ObjectType>
+    <ObjectTypeName datatype="string">Initialize Data</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <PublishedData datatype="string">&lt;ItemRoot&gt;&lt;Entry&gt;&lt;Name&gt;Identifier&lt;/Name&gt;&lt;Type&gt;String&lt;/Type&gt;&lt;Variable&gt;Identifier&lt;/Variable&gt;&lt;/Entry&gt;&lt;Entry&gt;&lt;Name&gt;ShareRoot&lt;/Name&gt;&lt;Type&gt;String&lt;/Type&gt;&lt;Variable&gt;ShareRoot&lt;/Variable&gt;&lt;/Entry&gt;&lt;/ItemRoot&gt;</PublishedData>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{88888888-0000-0000-0000-000000000002}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000002}</ParentID>
+    <Name datatype="string">Return Outcome</Name>
+    <PositionX datatype="int">150</PositionX>
+    <PositionY datatype="int">0</PositionY>
+    <ObjectType datatype="string">{B1A2C3D4-0000-0000-0000-0000000000F2}</ObjectType>
+    <ObjectTypeName datatype="string">Return Data</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <PublishedData datatype="string">&lt;ItemRoot&gt;&lt;Entry&gt;&lt;Name&gt;Logged&lt;/Name&gt;&lt;Type&gt;String&lt;/Type&gt;&lt;Variable&gt;Logged&lt;/Variable&gt;&lt;/Entry&gt;&lt;/ItemRoot&gt;</PublishedData>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-00000000000D}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{88888888-0000-0000-0000-000000000001}</SourceObject>
+    <TargetObject datatype="string">{88888888-0000-0000-0000-000000000002}</TargetObject>
+    <And datatype="bool">FALSE</And>
+  </Object>
+
+</Policy>
+</Folder></Policies>
+<GlobalSettings>
+  <Counters></Counters>
+  <Variables>
+    <Folder>
+      <UniqueID>{00000000-0000-0000-0000-000000000000}</UniqueID>
+      <Name>Variables</Name>
+      <Object>
+        <UniqueID datatype="string">{33333333-0000-0000-0000-000000000001}</UniqueID>
+        <Name datatype="string">ShareRoot</Name>
+        <Description datatype="string">UNC root for package intake.</Description>
+        <ObjectTypeName datatype="string">Variable</ObjectTypeName>
+        <Value datatype="string">\\fileserver.example.test\packages</Value>
+      </Object>
+      <Object>
+        <UniqueID datatype="string">{33333333-0000-0000-0000-000000000002}</UniqueID>
+        <Name datatype="string">Tools Dir (x86)</Name>
+        <Description datatype="string">Helper tools used by several runbooks.</Description>
+        <ObjectTypeName datatype="string">Variable</ObjectTypeName>
+        <Value datatype="string">C:\Tools\Bin</Value>
+      </Object>
+      <Object>
+        <UniqueID datatype="string">{33333333-0000-0000-0000-000000000003}</UniqueID>
+        <Name datatype="string">ServiceAccountPassword</Name>
+        <Description datatype="null"></Description>
+        <ObjectTypeName datatype="string">Variable</ObjectTypeName>
+        <Value datatype="string">\`d.T.~Ec/AAAABBBBCCCCDDDD\`d.T.~Ec/</Value>
+      </Object>
+    </Folder>
+  </Variables>
+  <ComputerGroups></ComputerGroups>
+  <Schedules></Schedules>
+</GlobalSettings>
+</ExportData>

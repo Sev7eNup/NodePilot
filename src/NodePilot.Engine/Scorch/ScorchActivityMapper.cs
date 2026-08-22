@@ -24,8 +24,9 @@ internal static class ScorchActivityMapper
         var name = obj.Element("Name")?.Value ?? "";
 
         // Primary path: ObjectTypeName is a readable string SCOrch emits consistently.
-        // We match on the substrings rather than exact strings because the IP packs slightly
-        // vary ("Run Program" vs "Run .Net Program" etc.).
+        // Matching is EXACT and ordinal — a switch on string is nothing else. Names verified
+        // against a real 2016 export; note that SCOrch calls the "Invoke Runbook" activity
+        // `Trigger Policy` on the wire, which is why that case does not appear here yet.
         var matched = typeName switch
         {
             "Run .Net Script" => BuildRunScript(props),
@@ -79,9 +80,9 @@ internal static class ScorchActivityMapper
     private static Mapping BuildRunScript(Dictionary<string, string> p)
     {
         // SCOrch "Run .Net Script" exposes published variables via <PublishedData><ItemRoot><Entry>.
-        // We don't map those 1:1 to outputVariable (NodePilot auto-captures all script-scope
-        // vars as params), but we extract the first entry's Variable name as a hint for the
-        // outputVariable field so downstream consumers get a named reference.
+        // Those need no translation: NodePilot auto-captures every script-scope `$var` as
+        // {{step.param.<var>}}, under the same name SCOrch published. OutputVariable is left unset
+        // here, so references resolve via the step id.
         return new Mapping(
             ActivityType: "runScript",
             Config: new()

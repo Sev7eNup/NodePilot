@@ -52,8 +52,6 @@ public class RbacControllerCoverageGuardTests
         // AI helper endpoints — guarded by their own [Authorize(Roles="Admin,Operator")] +
         // explicit workflow-fetch with permission check inline.
         "AiController",
-        // Cluster / ScOrch / Health — no workflow-row reads.
-        "ScorchController",
     };
 
     [Fact]
