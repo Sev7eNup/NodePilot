@@ -414,6 +414,37 @@ public class ScorchImporterFixtureTests
             w.Contains("param.FileNameExt") && w.Contains("fileWatcherTrigger") && w.Contains("fileName"));
     }
 
+    /// <summary>
+    /// A runScript's real outputs are the variables its script assigns — the static catalog knows
+    /// only <c>exitCode</c>. Checking against the catalog alone flagged six perfectly good
+    /// references in the reference runbook; a report that tells an operator to fix working wiring is
+    /// worse than no report at all.
+    /// </summary>
+    [Fact]
+    public void Parse_ValueAScriptWritesToTheBus_IsNotReportedAsMissing()
+    {
+        var result = ParseFixture();
+
+        // 'Check Package Contents' assigns $hasPayload, and the link out of it filters on that value.
+        result.Warnings.Should().NotContain(w => w.Contains("param.hasPayload"));
+    }
+
+    /// <summary>
+    /// The same check applied to link conditions, which read the bus exactly like a node config
+    /// does. A filter reading a value its source never publishes makes the edge silently never
+    /// match — harder to notice than a broken step, and previously not examined at all.
+    /// </summary>
+    [Fact]
+    public void Parse_LinkConditionReadingAValueTheSourceDoesNotPublish_IsReported()
+    {
+        var result = ParseFixture();
+
+        // The links out of 'Query Manifest Status' filter on queryResult; xmlQuery publishes
+        // result/count, so those branches would never match.
+        result.Warnings.Should().Contain(w =>
+            w.Contains("param.queryResult") && w.Contains("the link into") && w.Contains("xmlQuery"));
+    }
+
     [Fact]
     public void Parse_ActivityDescriptionTimeoutAndRunAs_SurviveTheMetadataStrip()
     {

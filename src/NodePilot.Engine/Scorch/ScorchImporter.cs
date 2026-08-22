@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using NodePilot.Core.Activities;
+using NodePilot.Core.Models;
 using NodePilot.Core.WorkflowDefinitions;
 using NodePilot.Engine.Execution;
 
@@ -263,8 +264,6 @@ public sealed class ScorchImporter
         foreach (var (obj, _, mapping) in mapped)
             RewriteReferences(mapping.Config, rewriteCtx, obj.Element("Name")?.Value ?? "(unnamed)");
 
-        ReportUnavailableParameters(mapped, outputNames, name, warnings);
-
         // Build React Flow nodes.
         var nodes = new List<object>();
         var nodeIds = new List<string>();
@@ -359,7 +358,7 @@ public sealed class ScorchImporter
         var definitionJson = ApplyImportLayout(JsonSerializer.Serialize(new { nodes, edges },
             new JsonSerializerOptions { WriteIndented = false }));
 
-        ReportGraphFindings(definitionJson, mapped, outputNames, name, warnings);
+        ReportGraphFindings(definitionJson, name, warnings);
 
         return new ScorchRunbook(name, description, definitionJson,
             ActivityCount: mapped.Count,
@@ -438,12 +437,7 @@ public sealed class ScorchImporter
     /// tools use, so the import report cannot drift from what the canvas says about the same
     /// workflow.</para>
     /// </summary>
-    private static void ReportGraphFindings(
-        string definitionJson,
-        List<(XElement Source, Guid Id, ScorchActivityMapper.Mapping Mapping)> mapped,
-        IReadOnlyDictionary<Guid, string> outputNames,
-        string runbookName,
-        List<string> warnings)
+    private static void ReportGraphFindings(string definitionJson, string runbookName, List<string> warnings)
     {
         JsonElement definition;
         try
@@ -469,7 +463,106 @@ public sealed class ScorchImporter
                 warnings.Add($"'{runbookName}': [{group.Key}] … and {suppressed} more node(s) with the same finding.");
         }
 
-        ReportCrossBranchReferences(definition, mapped, runbookName, warnings);
+        var doc = WorkflowDefinitionDocument.FromJsonElement(definition);
+        ReportUnavailableParameters(doc, runbookName, warnings);
+        ReportCrossBranchReferences(doc, runbookName, warnings);
+    }
+
+    /// <summary>One <c>{{head.…}}</c> reference found in the produced definition.</summary>
+    private readonly record struct BusReference(string Head, string? Parameter, string OwnerId, string SourceLabel);
+
+    private static string LabelOf(WorkflowNode node) =>
+        string.IsNullOrWhiteSpace(node.Data.Label) ? node.Id : node.Data.Label!;
+
+    /// <summary>References made by node configuration.</summary>
+    private static IEnumerable<BusReference> ConfigReferences(WorkflowDefinitionDocument doc)
+    {
+        foreach (var node in doc.Nodes)
+        {
+            var label = LabelOf(node);
+            foreach (var text in JsonStrings(node.Data.Config))
+            {
+                foreach (Match m in VariableResolver.StepPattern.Matches(text))
+                {
+                    yield return new BusReference(
+                        m.Groups[1].Value,
+                        m.Groups[3].Success ? m.Groups[3].Value : null,
+                        node.Id,
+                        label);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// References made by edge conditions. A SCOrch link filter becomes a variable operand, so these
+    /// read the data bus exactly like a node config does — and a filter reading a parameter its
+    /// source never publishes makes the edge silently never match, which is harder to spot than a
+    /// broken step. Checking only node configs left the most consequential references unexamined.
+    /// </summary>
+    private static IEnumerable<BusReference> EdgeConditionReferences(WorkflowDefinitionDocument doc)
+    {
+        foreach (var edge in doc.Edges)
+        {
+            if (edge.ConditionExpression is not { } expression) continue;
+
+            var label = doc.NodesById.TryGetValue(edge.Target, out var target)
+                ? $"the link into '{LabelOf(target)}'"
+                : $"the link {edge.Source} → {edge.Target}";
+
+            foreach (var (stepId, parameter) in VariableOperands(expression))
+                yield return new BusReference(stepId, parameter, edge.Target, label);
+        }
+    }
+
+    /// <summary>Walks a condition AST for <c>{kind:"variable", field:"param", paramName:…}</c> operands.</summary>
+    private static IEnumerable<(string StepId, string Parameter)> VariableOperands(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                if (element.TryGetProperty("kind", out var kind)
+                    && kind.ValueKind == JsonValueKind.String
+                    && kind.GetString() == "variable"
+                    && element.TryGetProperty("field", out var field)
+                    && field.ValueKind == JsonValueKind.String
+                    && field.GetString() == "param"
+                    && element.TryGetProperty("stepId", out var stepId)
+                    && stepId.ValueKind == JsonValueKind.String
+                    && element.TryGetProperty("paramName", out var paramName)
+                    && paramName.ValueKind == JsonValueKind.String)
+                {
+                    yield return (stepId.GetString()!, paramName.GetString()!);
+                }
+
+                foreach (var property in element.EnumerateObject())
+                    foreach (var found in VariableOperands(property.Value)) yield return found;
+                break;
+
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                    foreach (var found in VariableOperands(item)) yield return found;
+                break;
+        }
+    }
+
+    private static IEnumerable<string> JsonStrings(JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                var value = element.GetString();
+                if (!string.IsNullOrEmpty(value)) yield return value;
+                break;
+            case JsonValueKind.Object:
+                foreach (var property in element.EnumerateObject())
+                    foreach (var s in JsonStrings(property.Value)) yield return s;
+                break;
+            case JsonValueKind.Array:
+                foreach (var item in element.EnumerateArray())
+                    foreach (var s in JsonStrings(item)) yield return s;
+                break;
+        }
     }
 
     /// <summary>
@@ -482,12 +575,8 @@ public sealed class ScorchImporter
     /// import time rather than at three in the morning.</para>
     /// </summary>
     private static void ReportCrossBranchReferences(
-        JsonElement definition,
-        List<(XElement Source, Guid Id, ScorchActivityMapper.Mapping Mapping)> mapped,
-        string runbookName,
-        List<string> warnings)
+        WorkflowDefinitionDocument doc, string runbookName, List<string> warnings)
     {
-        var doc = WorkflowDefinitionDocument.FromJsonElement(definition);
         var reported = new HashSet<string>(StringComparer.Ordinal);
 
         // Only steps that actually run can have a scope problem. A step no trigger reaches has no
@@ -502,37 +591,33 @@ public sealed class ScorchImporter
                 if (reachable.Add(t)) frontier.Enqueue(t);
         }
 
-        foreach (var (obj, id, mapping) in mapped)
+        var ancestorsByNode = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        foreach (var reference in ConfigReferences(doc))
         {
-            var nodeId = id.ToString();
-            if (!doc.NodesById.ContainsKey(nodeId) || !reachable.Contains(nodeId)) continue;
+            if (!reachable.Contains(reference.OwnerId)) continue;
 
-            var label = obj.Element("Name")?.Value ?? "(unnamed)";
-            HashSet<string>? ancestors = null;
+            var targetId = ResolveHead(doc, reference.Head);
+            if (targetId is null || targetId == reference.OwnerId) continue;
 
-            foreach (var value in EnumerateConfigStrings(mapping.Config))
-            {
-                foreach (Match m in VariableResolver.StepPattern.Matches(value))
-                {
-                    var head = m.Groups[1].Value;
-                    var targetId = doc.OutputVariableToStepId.TryGetValue(head, out var byName) ? byName
-                                 : doc.NodesById.ContainsKey(head) ? head
-                                 : null;
-                    if (targetId is null || targetId == nodeId) continue;
+            if (!ancestorsByNode.TryGetValue(reference.OwnerId, out var ancestors))
+                ancestorsByNode[reference.OwnerId] = ancestors = doc.FindAncestorNodeIds(reference.OwnerId);
+            if (ancestors.Contains(targetId)) continue;
 
-                    ancestors ??= doc.FindAncestorNodeIds(nodeId);
-                    if (ancestors.Contains(targetId)) continue;
-
-                    if (!reported.Add($"{nodeId}|{head}")) continue;
-                    warnings.Add(
-                        $"'{runbookName}' / '{label}': references " + "{{" + head + ".…}}" +
-                        ", which is not on this step's predecessor path. SCOrch let any activity read " +
-                        "any earlier activity's published data; NodePilot resolves ancestors only, so " +
-                        "this reference will never resolve. Re-route the link or move the value.");
-                }
-            }
+            if (!reported.Add($"{reference.OwnerId}|{reference.Head}")) continue;
+            warnings.Add(
+                $"'{runbookName}' / '{reference.SourceLabel}': references " + "{{" + reference.Head + ".…}}" +
+                ", which is not on this step's predecessor path. SCOrch let any activity read any " +
+                "earlier activity's published data; NodePilot resolves ancestors only, so this " +
+                "reference will never resolve. Re-route the link or move the value.");
         }
     }
+
+    /// <summary>Resolves a template head — a step id or an outputVariable alias — to a node id.</summary>
+    private static string? ResolveHead(WorkflowDefinitionDocument doc, string head)
+        => doc.OutputVariableToStepId.TryGetValue(head, out var byAlias) ? byAlias
+         : doc.NodesById.ContainsKey(head) ? head
+         : null;
 
     /// <summary>
     /// Checks every rewritten <c>{{step.param.X}}</c> against what the referenced activity actually
@@ -546,86 +631,61 @@ public sealed class ScorchImporter
     /// runs green with the literal placeholder in it. Renaming the fields would be guesswork
     /// (SCOrch's <c>Path</c> is a folder, <c>filePath</c> is a full file path), so the mismatch is
     /// reported instead, with the list of names that are actually available.</para>
+    ///
+    /// <para>What a step publishes is asked of <see cref="WorkflowDataBusAnalyzer.PublishedParameters"/>,
+    /// NOT of the static catalog: a runScript's real outputs are the variables its script assigns,
+    /// and the catalog knows only <c>exitCode</c>. Checking against the catalog alone flagged
+    /// six perfectly good references in the reference runbook — a report that tells an operator to
+    /// fix working wiring is worse than no report.</para>
     /// </summary>
     private static void ReportUnavailableParameters(
-        List<(XElement Source, Guid Id, ScorchActivityMapper.Mapping Mapping)> mapped,
-        IReadOnlyDictionary<Guid, string> outputNames,
-        string runbookName,
-        List<string> warnings)
+        WorkflowDefinitionDocument doc, string runbookName, List<string> warnings)
     {
-        var typeByHead = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var (_, id, mapping) in mapped)
-        {
-            typeByHead[id.ToString()] = mapping.ActivityType;
-            if (outputNames.TryGetValue(id, out var named)) typeByHead[named] = mapping.ActivityType;
-        }
-
         // Grouped by the reference itself, not by the step making it: one SCOrch field that has no
         // NodePilot counterpart is typically referenced from a dozen places, and reporting it a
         // dozen times says nothing the first line did not.
-        var offenders = new Dictionary<(string Head, string Parameter), (string Type, SortedSet<string> Labels)>();
+        var offenders = new Dictionary<(string Head, string Parameter), (WorkflowNode Target, SortedSet<string> Sources)>();
 
-        foreach (var (obj, _, mapping) in mapped)
+        foreach (var reference in ConfigReferences(doc).Concat(EdgeConditionReferences(doc)))
         {
-            var label = obj.Element("Name")?.Value ?? "(unnamed)";
-            foreach (var value in EnumerateConfigStrings(mapping.Config))
-            {
-                foreach (Match m in VariableResolver.StepPattern.Matches(value))
-                {
-                    // .output/.error/.success exist on every step; only named parameters can be wrong.
-                    if (!m.Groups[3].Success) continue;
+            // .output/.error/.success exist on every step; only named parameters can be wrong.
+            if (reference.Parameter is not { } parameter) continue;
 
-                    var head = m.Groups[1].Value;
-                    var parameter = m.Groups[3].Value;
-                    if (!typeByHead.TryGetValue(head, out var targetType)) continue;
-                    if (!ActivityCatalog.TryGet(targetType, out var descriptor) || descriptor is null) continue;
+            var targetId = ResolveHead(doc, reference.Head);
+            if (targetId is null || !doc.NodesById.TryGetValue(targetId, out var target)) continue;
 
-                    // Activities whose outputs are dynamic declare none statically — runScript's
-                    // script-scope variables, wmiQuery's captureProperties, registryOperation's
-                    // per-operation results. Checking those would only produce false alarms.
-                    if (descriptor.OutputParameters.Count == 0) continue;
-                    if (descriptor.OutputParameters.Any(o => string.Equals(o.Name, parameter, StringComparison.Ordinal)))
-                        continue;
+            var published = WorkflowDataBusAnalyzer.PublishedParameters(target);
 
-                    if (!offenders.TryGetValue((head, parameter), out var entry))
-                        offenders[(head, parameter)] = entry = (targetType, new SortedSet<string>(StringComparer.Ordinal));
-                    entry.Labels.Add(label);
-                }
-            }
+            // Empty means "not knowable from the definition" (a custom activity, a wmiQuery without
+            // captureProperties), not "publishes nothing".
+            if (published.Count == 0) continue;
+            if (published.Contains(parameter, StringComparer.Ordinal)) continue;
+
+            if (!offenders.TryGetValue((reference.Head, parameter), out var entry))
+                offenders[(reference.Head, parameter)] = entry = (target, new SortedSet<string>(StringComparer.Ordinal));
+            entry.Sources.Add(reference.SourceLabel);
         }
 
-        foreach (var ((head, parameter), (targetType, labels)) in offenders)
+        foreach (var ((head, parameter), (target, sources)) in offenders)
         {
-            var available = string.Join(", ",
-                ActivityCatalog.ByType[targetType].OutputParameters.Select(o => o.Name));
-            var steps = labels.Count == 1
-                ? $"'{labels.First()}'"
-                : $"{labels.Count} steps ({string.Join(", ", labels.Take(3).Select(l => $"'{l}'"))}" +
-                  (labels.Count > 3 ? ", …)" : ")");
+            var available = string.Join(", ", WorkflowDataBusAnalyzer.PublishedParameters(target));
+            var who = sources.Count == 1
+                ? $"'{sources.First()}'"
+                : $"{sources.Count} places ({string.Join(", ", sources.Take(3).Select(s => $"'{s}'"))}" +
+                  (sources.Count > 3 ? ", …)" : ")");
 
-            warnings.Add(
-                $"'{runbookName}': {steps} reference " + "{{" + head + ".param." + parameter + "}}" +
-                $", but {targetType} publishes {available}. SCOrch published different field names than " +
-                "the NodePilot activity does — point the references at one of those, or compute the " +
-                "value in a script step.");
-        }
-    }
+            // A `log` target is not a field-naming difference: the SCOrch activity had no NodePilot
+            // counterpart, so it produces nothing a downstream step or link condition can read. Said
+            // as a naming mismatch it would send the operator looking for the right field name.
+            var advice = target.Type == "log"
+                ? $"but '{LabelOf(target)}' was imported as a log node — the original SCOrch activity " +
+                  "has no NodePilot counterpart, so it publishes nothing to read. Replace it with an " +
+                  "activity that produces the value, or the reference (and any branch on it) stays dead."
+                : $"but {target.Type} '{LabelOf(target)}' publishes {available}. SCOrch published " +
+                  "different field names than the NodePilot activity does — point the references at " +
+                  "one of those, or compute the value in a script step.";
 
-    private static IEnumerable<string> EnumerateConfigStrings(object? value)
-    {
-        switch (value)
-        {
-            case string s when s.Length > 0:
-                yield return s;
-                break;
-            case IDictionary<string, object?> map:
-                foreach (var v in map.Values)
-                    foreach (var s in EnumerateConfigStrings(v)) yield return s;
-                break;
-            case IList<object> list:
-                foreach (var v in list)
-                    foreach (var s in EnumerateConfigStrings(v)) yield return s;
-                break;
+            warnings.Add($"'{runbookName}': {who} reference " + "{{" + head + ".param." + parameter + "}}, " + advice);
         }
     }
 
@@ -1029,10 +1089,15 @@ public sealed class ScorchImporter
         // NodePilot has no warning outcome — a step either succeeded or it did not. A set that
         // includes a failure is the error branch; anything else (success, success#warning) is the
         // success branch.
-        if (outcomes.Overlaps(["failed", "failure", "error"])) return (match.Groups[1].Value, false);
-        if (outcomes.Overlaps(["success", "warning"])) return (match.Groups[1].Value, true);
+        var stepId = NormalizeStepId(match.Groups[1].Value);
+        if (outcomes.Overlaps(["failed", "failure", "error"])) return (stepId, false);
+        if (outcomes.Overlaps(["success", "warning"])) return (stepId, true);
         return null;
     }
+
+    /// <summary>SCOrch writes GUIDs upper-case; node ids are <c>Guid.ToString()</c>.</summary>
+    private static string NormalizeStepId(string raw)
+        => Guid.TryParse(raw, out var guid) ? guid.ToString() : raw;
 
     private static object? BuildComparisonFromTrigger(XElement entry, List<string> warnings, string runbookName)
     {
@@ -1047,7 +1112,10 @@ public sealed class ScorchImporter
             warnings.Add($"'{runbookName}': could not parse trigger Data '{dataStr}' — skipping this filter.");
             return null;
         }
-        var srcGuid = match.Groups[1].Value;
+        // Normalized to the node-id form. SCOrch writes GUIDs upper-case, node ids are Guid.ToString()
+        // — the evaluator tolerates the mismatch, but the designer and the import checks match ids
+        // literally, so an unnormalized operand reads as a reference to a step that does not exist.
+        var srcGuid = NormalizeStepId(match.Groups[1].Value);
         var field = match.Groups[2].Value;
 
         var mappedOp = MapScorchCondition(cond);
