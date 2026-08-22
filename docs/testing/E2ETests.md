@@ -2195,37 +2195,45 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 ### Test 22.1 — SCOrch Runbook Import
 
 **Schritte:**
-1. Workflows-Liste → "Import SCOrch Runbook"
-2. Upload `*.ois_export` oder XML-Datei
-3. Import-Dialog zeigt erkannte Runbooks
-4. Auswahl + "Import"
+1. Workflows-Liste → Ordner im Sidebar wählen → Button **"Import SCOrch"**
+2. Datei wählen (`*.ois_export`) — es gibt **keinen** Auswahldialog, der Upload startet sofort
+3. Ergebnis-Modal erscheint
 
 **Prüfpunkte:**
-- [ ] XML bis 50 MiB akzeptiert
-- [ ] Heuristics-Konvertierung zeigt Activity-Typen-Mapping
-- [ ] Nicht-mappbare Activities → `runScript` Fallback mit Warning
-- [ ] Import-Report: Success/Warnings/Errors pro Runbook
+- [ ] XML bis 50 MiB akzeptiert (größer → Client-Fehlermeldung vor dem Upload)
+- [ ] Import landet im ausgewählten Ordner; Workflows sind **disabled**
+- [ ] Metrik-Leiste zeigt Activities / Heuristic / Placeholders
+- [ ] Nicht-mappbare Activities → **`log`-Platzhalter, Node ist disabled** (nicht `runScript`)
+- [ ] Import-Report: pro Runbook Name, Schrittzahl, Heuristik-/Platzhalter-Zähler; Warnings und
+      Errors als eigene Blöcke
+- [ ] Globale Variablen angelegt; Namenskollision → „skipped" mit Grund
 - [ ] Audit-Log `WORKFLOW_IMPORTED_SCORCH`
 
 **Erwartung:** SCOrch-Migration ist machbar
 
 ---
 
-### Test 22.2 — SCOrch Detailed Results
+### Test 22.2 — Ergebnis im Designer
 
 **Schritte:**
-1. Import großer SCOrch-Datei mit 20+ Runbooks
-2. Report zeigt pro Runbook:
-   - Imported Nodes Count
-   - Fallback-Activities (Count + Details)
-   - Warnings
+1. Im Ergebnis-Modal auf einen importierten Workflow klicken
+2. Designer öffnet den Workflow
 
 **Prüfpunkte:**
-- [ ] Detailed Report ist übersichtlich
-- [ ] Pro Runbook: Expand/Collapse
-- [ ] Export-Button für Report (JSON/CSV)
+- [ ] Jeder Workflow hat einen Trigger — bei trigger-losen Runbooks einen synthetischen
+      **„Start (imported)"**-manualTrigger
+- [ ] Nodes überlappen nicht, Graph beginnt oben links (kein negativer Offset)
+- [ ] Referenzen lesen sich als `{{Aktivitätsname.param.X}}`, nicht als GUID
+- [ ] Kanten aus SCOrch-Erfolgs-/Fehler-Links tragen `On Success` / `On Failure`
+- [ ] Platzhalter-Nodes sind sichtbar disabled und nennen im Text den Original-Typ
+- [ ] `Run Program` mit Zielrechner: `targetMachineId` ist gesetzt
 
-**Erwartung:** Report hilft bei Migration-Review
+**Erwartung:** Der importierte Workflow ist ohne Aufräumarbeit lesbar
+
+> **Hinweis:** Die eigentliche Format-Treue (Marker-Syntax, Typnamen, Property-Namen,
+> Link-Bedingungen, Layout) ist Backend-Sache und liegt in `dotnet test` — Fixture-getrieben in
+> `tests/NodePilot.Engine.Tests/Scorch/` gegen `Fixtures/realistic-runbook.ois_export`. Hier wird
+> nur geprüft, was davon in der UI ankommt.
 
 ---
 

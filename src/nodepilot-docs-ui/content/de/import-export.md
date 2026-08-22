@@ -16,6 +16,37 @@ NodePilot verwendet zwei getrennte Exportformate:
 
 Envelope: `nodepilot-workflow-export/v1`. **Secrets werden hier redigiert** (`***`) — Teilen-Artefakt, kein DR.
 
+### SCOrch-Import
+
+`POST /import-scorch` liest das native `.ois_export`-XML von System Center Orchestrator (Body =
+das rohe XML, `Content-Type: application/xml`, 50-MiB-Grenze; Ziel-Folder und RBAC wie bei
+`/import`). Ebenso verfügbar als `np workflow import-scorch --file` und als MCP-Tool
+`import_scorch_workflow`.
+
+Was die Übersetzung leistet:
+
+- **Aktivitäten** — rund vierzig SCOrch-Typnamen werden auf eine NodePilot-Aktivität abgebildet.
+  Achtung: SCOrch schreibt nicht immer die Namen, die sein Designer zeigt — *Invoke Runbook* heißt
+  auf der Leitung `Trigger Policy`, und dessen Argumente für das Kind-Runbook kommen als
+  `startWorkflow.parameters` mit.
+- **Published Data** — `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` und `` \`d.T.~Ed/{GUID}.feld\`d.T.~Ed/ ``
+  werden zu `{{globals.Name}}` bzw. `{{step.param.feld}}` und lösen über eine lesbare
+  `outputVariable` auf, die aus dem Aktivitätsnamen abgeleitet wird.
+- **Links** — Erfolgs-/Fehler-Links werden zum Kürzel `stepId.success` / `stepId.failed`;
+  `TRIGGERS`-Filter werden zu einer `conditionExpression`, verknüpft nach der ALLE/EINE-Einstellung
+  des Links.
+- **Trigger** — ein Runbook ohne eigenen Trigger (von einem anderen Runbook aufgerufene brauchen
+  keinen) bekommt einen manuellen Trigger auf seine Einstiegsaktivitäten. Ohne Trigger-Node hat ein
+  NodePilot-Workflow keinen Root und scheitert bei jedem Lauf.
+- **Layout** — SCOrch-Koordinaten werden durch ein Layered-Layout im NodePilot-Knotenabstand
+  ersetzt; die ursprüngliche vertikale Reihenfolge innerhalb einer Spalte bleibt erhalten.
+
+Was sie nicht leistet — und im Report benennt: eine Aktivität ohne NodePilot-Gegenstück, oder ein
+Mapping, das eine Pflichteinstellung nicht füllen kann, wird zu einem **deaktivierten**
+`log`-Platzhalter mit Original-Typname und -Properties. Credentials werden nie rekonstruiert
+(SCOrch verschlüsselt sie). Importierte Workflows entstehen immer disabled. Warnungen vor dem
+Aktivieren durchsehen.
+
 ## System-Configuration Backup (ADR 0001)
 
 Voller DR-Snapshot der Konfiguration: Workflows + Folders/Sharing, Machines, Credentials, Globals + Global-Variable-Ordner, Custom Activities, Alerting, Users, Settings. **Nicht enthalten:** Execution-History, Audit, Stats. Admin-only. Envelope `nodepilot-system-backup/v3` (`.npbackup`) — v2 ergänzte die `alerting`-Sektion; v3 schützt vollständige Workflowdefinitionen mit `$encDefinition` sowie Custom-Activity-Skripte und Eingabe-Defaults mit `$enc`. Ein Workflow-Export zieht Custom Activities automatisch als harte Abhängigkeit mit. Der Reader akzeptiert v1, v2 und v3 (inklusive alter Plaintext-Custom-Activity-Felder), geschrieben wird ausschließlich v3. Ältere Builds lehnen v3 sichtbar ab.
