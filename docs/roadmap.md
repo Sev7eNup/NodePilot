@@ -200,6 +200,21 @@ Jeder Posten trägt seine Auslösebedingung. Ohne Trigger wird nicht gestartet.
 | Echte Health für `eventLogTrigger` (eigene Probe-Schleife statt konstant `Healthy`) | Erster gemeldeter Fall einer stillen toten `eventLogTrigger`-Subscription. `EventLog` hat keinen Fault-Kanal; die einzige Probe wäre RPC an den EventLog-Dienst. |
 | Lese-API für Laufzeit-Trigger-State (`GET /api/triggers/status` + CLI + MCP) | Operator will Live-Zustand inspizieren, ohne auf einen Alert zu warten. Die System-Policy `trigger-unhealthy` deckt „sag mir Bescheid" bereits ab; das hier wäre „lass mich stöbern". |
 
+### Engine & Datenbus
+
+| Posten | Auslöser |
+|---|---|
+| **`{{run.*}}` — Metadaten des laufenden Workflows im Template** (`run.workflowName`, `run.executionId`, ggf. `run.workflowId`/`run.startedAt`) | Ein produktiv gehender SCOrch-Import, dessen Runbooks `Policy.Name`/`Policy.PID` benutzen — **oder** der erste eigene Bedarf, Lauf und Workflow in Text zu benennen (Ticket-Betreff, Log-Zeile, Korrelations-ID). Am Referenz-Export gemessen: **13 der 46 Warnungen** sind genau diese beiden Felder. |
+
+Heute gibt es dafür **nichts**: `VariableResolver` kennt `globals.`, `manual.` und `StepPattern`
+(vier Tails). `__executionId`/`__workflowName` existieren nur als Ausgaben eines **Child**-Laufs,
+den `startWorkflow` gestartet hat — von innen kommt ein Workflow nicht an seine eigenen Daten.
+
+**Gotcha, falls der Posten startet:** ein neuer Namespace braucht ein **eigenes Regex-Muster** und
+wird von `StepPattern` prinzipiell nicht mitgetroffen — genau daran ist `manual.NAME` bis 1.2.7
+still gescheitert (Platzhalter blieb stehen, der Step meldete Erfolg). Dazu Seeding in der Engine,
+`TemplateGrammarParityTests`, Designer-Variablenpicker, MCP-/AI-Analyzer und Doku.
+
 ### KI
 
 | Posten | Auslöser |
