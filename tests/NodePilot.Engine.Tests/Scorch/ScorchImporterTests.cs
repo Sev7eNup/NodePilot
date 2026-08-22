@@ -464,6 +464,33 @@ public class ScorchImporterTests
     }
 
     /// <summary>
+    /// The value a script writes to the bus resolves; a name it never assigns does not. Both sides
+    /// matter: silence on the first, a warning on the second.
+    /// </summary>
+    [Fact]
+    public void Parse_ScriptPublishedValues_AreRecognised_ButUnknownOnesAreReported()
+    {
+        var srcId = Guid.NewGuid();
+        var dstId = Guid.NewGuid();
+        var consumer = "$a = '\\`d.T.~Ed/{" + srcId + "}.harvested\\`d.T.~Ed/'\n"
+                     + "$b = '\\`d.T.~Ed/{" + srcId + "}.neverAssigned\\`d.T.~Ed/'";
+
+        var xml = BuildExport(PolicyWith("RB", new[]
+        {
+            ActivityXml(srcId, "Producer", "Run .Net Script",
+                props: new[] { ("ScriptBody", "$harvested = Get-Date") }),
+            ActivityXml(dstId, "Consumer", "Run .Net Script", props: new[] { ("ScriptBody", consumer) }),
+            LinkXml(Guid.NewGuid(), srcId, dstId),
+        }));
+
+        var result = Importer.Parse(xml);
+
+        result.Warnings.Should().NotContain(w => w.Contains("param.harvested"),
+            "the script assigns $harvested, so runScript publishes it");
+        result.Warnings.Should().ContainSingle(w => w.Contains("param.neverAssigned"));
+    }
+
+    /// <summary>
     /// SCOrch encodes a link's outcome trigger as a SET joined by '#'. The classic error link is
     /// "warning#failed"; reading it as a single token left every one of those unparsed, so the link
     /// that routes a runbook's failures came out unconditional and fired on success too.

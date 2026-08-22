@@ -94,6 +94,28 @@ public static class WorkflowDataBusAnalyzer
         return unresolved;
     }
 
+    /// <summary>
+    /// Every parameter name a node writes to the data bus: the catalog's static outputs plus the
+    /// ones that only exist once the node is configured — a runScript's script-scope variables, a
+    /// webhook's field mappings, returnData's keys, a wmiQuery's captured properties.
+    ///
+    /// <para>Public because "what does this step publish" is not only a designer question. The
+    /// SCOrch importer needs it to tell a reference that will resolve from one that will not, and
+    /// the static catalog alone answers that a runScript publishes nothing but its exit code —
+    /// which would flag every reference to a value its script actually produces.</para>
+    ///
+    /// <para>An empty result means "not knowable from the definition" (a custom activity, a
+    /// wmiQuery without captureProperties), not "publishes nothing" — callers should not treat it
+    /// as grounds to reject a reference.</para>
+    /// </summary>
+    public static IReadOnlyList<string> PublishedParameters(WorkflowNode node)
+    {
+        var names = new List<string>(DynamicParams(node));
+        if (ActivityCatalog.TryGet(node.Type, out var desc) && desc is not null)
+            names.AddRange(desc.OutputParameters.Select(p => p.Name));
+        return names.Distinct(StringComparer.Ordinal).ToList();
+    }
+
     // Mirrors the FE describeNodeOutputs: the full set of {{name.…}} expressions a node exposes.
     private static IEnumerable<string> DescribeNode(WorkflowNode node, string name)
     {
@@ -103,9 +125,7 @@ public static class WorkflowDataBusAnalyzer
             $"{{{{{name}.error}}}}",
             $"{{{{{name}.success}}}}",
         };
-        foreach (var p in DynamicParams(node)) refs.Add($"{{{{{name}.param.{p}}}}}");
-        if (ActivityCatalog.TryGet(node.Type, out var desc) && desc is not null)
-            foreach (var p in desc.OutputParameters) refs.Add($"{{{{{name}.param.{p.Name}}}}}");
+        foreach (var p in PublishedParameters(node)) refs.Add($"{{{{{name}.param.{p}}}}}");
         return refs.Distinct();
     }
 
