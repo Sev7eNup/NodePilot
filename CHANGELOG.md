@@ -40,6 +40,17 @@ exhaustive.
 - The import report says what the translation lost: references to fields the target activity does
   not publish, references across parallel branches, remote steps without a target machine, dropped
   run-as accounts, approximated schedules and links that ended up unconditional.
+- Values a step writes to the bus at run time are recognised. The check asked the static activity
+  catalog what a step publishes, which for a runScript is only its exit code, so every reference to
+  a value a script produced was reported as broken. Link conditions are checked as well — a filter
+  reading a value its source never publishes makes the edge silently never match.
+- *Compare Values* becomes a `decision` instead of a `log`, and the links reading its result are
+  re-pointed at the decision's case. As a log it published nothing those links could read, so every
+  branch behind a comparison was dead — eleven of them in the reference runbook.
+- Published-data field names are translated where the two products name the same value differently
+  (`Query XML`'s `queryResult` is `xmlQuery`'s `result`). Only the exact equivalents are mapped:
+  SCOrch's `Monitor File` publishes the watched folder and the extension-less file name, and
+  NodePilot has neither, so those stay reported rather than bent onto the nearest-looking name.
 
 ## [1.2.11] - 2026-08-21
 

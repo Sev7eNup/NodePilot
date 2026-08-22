@@ -246,7 +246,30 @@ und wurde erst an einem echten 2016-Export sichtbar:
 | `Value` ist ein Status | eine **Menge**, `#`-getrennt (`warning#failed`) |
 | `GroupID` trägt AND/OR | ist leer; die Absicht steckt im `<And>` des Links |
 | `Monitor File` hat einen Filter-String | `Filters` ist verschachteltes XML; Ereignisse als vier `NotifyIf*`-Booleans |
+| Published-Data-Feldname ist punktfrei | `Compare Values` publiziert `Compare.CompareResult` — ein Muster, das am ersten Punkt stoppt, kürzt still |
+| `Compare Values` ist ein Logik-Knoten ohne Gegenstück | wird `decision`; die Links lesen sein Ergebnis, ein `log` hätte jeden Zweig dahinter getötet |
 | Positionen sind übernehmbar | 75-px-Raster, oft negativ — NodePilot-Nodes sind 220×110-Karten |
+
+**Datenbus: Namen ≠ Namen.** Die Marker-Syntax zu übersetzen ist nicht dasselbe wie die *Daten* zu
+übersetzen. `PublishedFieldRenames` bildet nur die belegten 1:1-Fälle ab (`Query XML.queryResult` →
+`xmlQuery.result`, `Generate Random Text.stringResult` → `generateText.text`,
+`Monitor File.FileNameExt` → `fileWatcherTrigger.fileName`) — bewusst **nicht** `Monitor File.Path`
+(der überwachte Ordner) oder `.FileName` (Name **ohne** Endung), für die es kein Gegenstück gibt;
+die werden gemeldet statt auf den nächstbesten Namen gebogen. Beide Lesepfade — Templates in der
+Config **und** Variablen-Operanden in Link-Bedingungen — gehen durch dieselbe `FieldTranslation`,
+sonst löst derselbe Wert an einer Stelle auf und an der anderen nicht.
+
+**Was ein Step publiziert**, kommt von `WorkflowDataBusAnalyzer.PublishedParameters`, nie vom
+statischen Katalog allein: die echten Outputs eines `runScript` sind die Variablen, die sein Skript
+zuweist — der Katalog kennt nur `exitCode`. Gegen den Katalog geprüft meldete der Import sechs
+einwandfreie Referenzen des Referenz-Runbooks als kaputt.
+
+**`Compare Values` → `decision`:** ein Case namens `true`, `defaultCaseName` `false` — damit trägt
+`param.case` exakt die Werte, gegen die SCOrchs Link-Filter ohnehin vergleichen. Vom Test-Enum sind
+nur **2 = equals** und **7 = matches-pattern** belegt (letzteres ein Glob, der nach Regex übersetzt
+werden muss — `V9*` hieße als Regex „V, dann beliebig viele 9"). Jede andere Option kommt mit
+gefüllten Operanden, aber **disabled** an: ein geratener Operator dreht einen Zweig um, ohne dass
+irgendwo etwas falsch aussieht.
 
 **Degradations-Regel (trägt den Rest).** Property-Namen bleiben Vermutungen, also darf ein Mapping
 nur entstehen, wenn alle laut `activity-config-reference.json` `required`-Keys gefüllt sind — sonst

@@ -49,7 +49,7 @@ internal static class ScorchActivityMapper
         ["Delete Folder"] = (_, p) => BuildFolderOperation(p, "delete"),
         ["Generate Random Text"] = (_, p) => BuildGenerateText(p),
         ["Monitor File"] = (_, p) => BuildFileWatcher(p),
-        ["Compare Values"] = (_, p) => BuildCompareValues(p),
+        ["Compare Values"] = BuildCompareValues,
         ["Initialize Data"] = (o, _) => BuildManualTrigger(o),
         ["Return Data"] = (o, _) => BuildReturnData(o),
 
@@ -782,26 +782,107 @@ internal static class ScorchActivityMapper
     }
 
     /// <summary>
-    /// SCOrch "Compare Values" is a logic-only node with no NodePilot counterpart: the comparison it
-    /// performs is re-expressed on the outgoing links' conditions, which the link translation
-    /// handles. The node is kept as an info-level log so the original intent stays visible on canvas.
+    /// SCOrch "Compare Values" evaluates one comparison and publishes the outcome; its outgoing
+    /// links then branch on that outcome. NodePilot's <c>decision</c> is the same shape, so the
+    /// comparison becomes a single case named <c>true</c> with <c>defaultCaseName</c> <c>false</c> —
+    /// which makes <c>param.case</c> carry literally "true"/"false", the very values the SCOrch link
+    /// filters compare against.
+    ///
+    /// <para>Importing it as a <c>log</c> instead (as this did) kept the node visible but killed
+    /// every branch behind it: a log publishes nothing, so the links reading the comparison result
+    /// could never match.</para>
     /// </summary>
-    private static Mapping BuildCompareValues(Dictionary<string, string> p)
+    private static Mapping BuildCompareValues(XElement obj, Dictionary<string, string> p)
     {
-        var left = FirstNonEmpty(p, "StringToCompare", "ValueToCompare", "ValueA", "Value1");
-        var op = FirstNonEmpty(p, "StringTestOption", "ValueTestOption", "ComparisonOperator", "Operator");
-        var right = FirstNonEmpty(p, "StringToCompareTo", "ValueToCompareTo", "ValueB", "Value2");
+        // The activity carries a string comparison and a numeric one; only the populated pair counts.
+        var left = FirstNonEmpty(p, "StringToCompare", "ValueA", "Value1");
+        var right = FirstNonEmpty(p, "StringToCompareTo", "ValueB", "Value2");
+        var rawOption = FirstNonEmpty(p, "StringTestOption");
+        if (left.Length == 0 && right.Length == 0)
+        {
+            left = FirstNonEmpty(p, "ValueToCompare");
+            right = FirstNonEmpty(p, "ValueToCompareTo");
+            rawOption = FirstNonEmpty(p, "ValueTestOption");
+        }
 
-        return new Mapping(
-            ActivityType: "log",
+        if (left.Length == 0)
+        {
+            return Placeholder(obj, p,
+                "SCOrch 'Compare Values' carries no comparison operand — rebuild the branch by hand.");
+        }
+
+        var (op, decoded) = DecodeComparisonOption(rawOption);
+        var rightOperand = op == "matches" ? GlobToRegex(right) : right;
+
+        var condition = new Dictionary<string, object?>
+        {
+            ["type"] = "comparison",
+            ["op"] = op,
+            // Literal operands, because the SCOrch operand is a Published-Data expression that the
+            // reference rewrite turns into a {{…}} template — and ConditionEvaluator resolves
+            // templates inside literals.
+            ["left"] = new Dictionary<string, object?> { ["kind"] = "literal", ["value"] = left },
+            ["right"] = new Dictionary<string, object?> { ["kind"] = "literal", ["value"] = rightOperand },
+        };
+
+        var mapping = new Mapping(
+            ActivityType: "decision",
             Config: new()
             {
-                ["level"] = "info",
-                ["message"] = $"[SCOrch Compare Values] Left='{left}', TestOption='{op}', Right='{right}'. " +
-                              "The comparison itself is carried by the outgoing link conditions.",
-            },
-            Note: "SCOrch 'Compare Values' imported as log — the actual comparison lives on the " +
-                  "outgoing link conditions.");
+                ["cases"] = new List<object>
+                {
+                    new Dictionary<string, object?> { ["name"] = "true", ["condition"] = condition },
+                },
+                ["defaultCaseName"] = "false",
+            });
+
+        if (decoded) return mapping;
+
+        // An undecodable comparison operator is the one thing here that must not be guessed: the
+        // wrong operator inverts a branch and nothing downstream looks wrong. The operands are
+        // filled in so fixing it is one dropdown, but the node stays disabled until someone does.
+        return mapping with
+        {
+            Disabled = true,
+            Fallback = true,
+            Note = $"SCOrch 'Compare Values' used comparison option '{rawOption}', which we cannot " +
+                   "decode (only 2 = equals and 7 = matches-pattern are attested). The operands were " +
+                   "imported and '==' filled in as a placeholder — set the real operator, then enable " +
+                   "the node.",
+        };
+    }
+
+    /// <summary>
+    /// SCOrch stores the comparison as a numeric option. Two are attested by a real export: 2 is
+    /// equality (compared against TRUE / XPKG / SYNCPAC / 1) and 7 is its wildcard "matches pattern"
+    /// (compared against <c>V9*</c>). The other numbers are not verifiable from anything we have,
+    /// and a guessed operator silently reverses a branch — so they are reported, not invented.
+    /// </summary>
+    private static (string Op, bool Decoded) DecodeComparisonOption(string rawOption) =>
+        rawOption.Trim() switch
+        {
+            "2" => ("==", true),
+            "7" => ("matches", true),
+            _ => ("==", false),
+        };
+
+    /// <summary>
+    /// SCOrch's "matches pattern" takes a glob; NodePilot's <c>matches</c> runs a .NET regex, where
+    /// <c>V9*</c> would mean "V followed by any number of 9s" instead of "starts with V9".
+    /// </summary>
+    private static string GlobToRegex(string glob)
+    {
+        var sb = new System.Text.StringBuilder("^");
+        foreach (var c in glob)
+        {
+            sb.Append(c switch
+            {
+                '*' => ".*",
+                '?' => ".",
+                _ => System.Text.RegularExpressions.Regex.Escape(c.ToString()),
+            });
+        }
+        return sb.Append('$').ToString();
     }
 
     // -------- heuristics ----------------------------------------------------------------

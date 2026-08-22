@@ -84,7 +84,7 @@ public class ScorchImporterFixtureTests
         var script = NodeById(def, RunScriptId)
             .GetProperty("data").GetProperty("config").GetProperty("script").GetString()!;
 
-        script.Should().Contain("{{" + MonitorFileVar + ".param.FileNameExt}}");
+        script.Should().Contain("{{" + MonitorFileVar + ".param.fileName}}");
         script.Should().Contain("{{" + MonitorFileVar + ".param.Path}}");
         // Global referenced from inside a script body, under its sanitized name.
         script.Should().Contain("{{globals.Tools_Dir__x86}}");
@@ -173,7 +173,7 @@ public class ScorchImporterFixtureTests
 
         var parameters = config.GetProperty("parameters");
         parameters.GetProperty("Identifier").GetString().Should()
-            .Be("{{" + QueryXmlVar + ".param.queryResult}}");
+            .Be("{{" + QueryXmlVar + ".param.result}}");
         parameters.GetProperty("ShareRoot").GetString().Should().Be("{{globals.ShareRoot}}");
     }
 
@@ -350,7 +350,7 @@ public class ScorchImporterFixtureTests
     public void Parse_TwoFiltersWithAndFalse_AreOrJoined()
     {
         var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
-        var expr = EdgeFrom(def, "22222222-0000-0000-0000-000000000004", "22222222-0000-0000-0000-000000000006")
+        var expr = EdgeFrom(def, "22222222-0000-0000-0000-000000000006", "22222222-0000-0000-0000-000000000007")
             .GetProperty("data").GetProperty("conditionExpression");
 
         expr.GetProperty("type").GetString().Should().Be("group");
@@ -362,7 +362,7 @@ public class ScorchImporterFixtureTests
     public void Parse_NegatedOperator_KeepsItsMeaning()
     {
         var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
-        var expr = EdgeFrom(def, "22222222-0000-0000-0000-000000000004", "22222222-0000-0000-0000-000000000005")
+        var expr = EdgeFrom(def, "22222222-0000-0000-0000-000000000007", "22222222-0000-0000-0000-000000000008")
             .GetProperty("data").GetProperty("conditionExpression");
 
         // 'doesnotequal' — written without spaces in a real export, which the spaced-only table
@@ -382,7 +382,47 @@ public class ScorchImporterFixtureTests
                    || data.GetProperty("conditionExpression").ValueKind != JsonValueKind.Null;
         });
 
-        conditional.Should().Be(4, "the fixture has four links with a TRIGGERS block");
+        conditional.Should().Be(6, "the fixture has six links with a TRIGGERS block");
+    }
+
+    /// <summary>
+    /// SCOrch's Compare Values evaluates one comparison and its outgoing links branch on the result.
+    /// Imported as a `log` it kept the node visible but killed every branch behind it, because a log
+    /// publishes nothing for the links to read. As a `decision` whose single case is named "true"
+    /// with defaultCaseName "false", <c>param.case</c> carries exactly the values the SCOrch filters
+    /// already compare against — so the whole remap is the field name.
+    /// </summary>
+    [Fact]
+    public void Parse_CompareValues_BecomesADecision_AndItsLinksReadTheCase()
+    {
+        var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
+        const string CompareId = "22222222-0000-0000-0000-000000000004";
+
+        var data = NodeById(def, CompareId).GetProperty("data");
+        data.GetProperty("activityType").GetString().Should().Be("decision");
+        data.GetProperty("disabled").GetBoolean().Should().BeFalse();
+
+        var config = data.GetProperty("config");
+        config.GetProperty("defaultCaseName").GetString().Should().Be("false");
+        var singleCase = config.GetProperty("cases").EnumerateArray().Single();
+        singleCase.GetProperty("name").GetString().Should().Be("true");
+
+        var condition = singleCase.GetProperty("condition");
+        condition.GetProperty("type").GetString().Should().Be("comparison");
+        condition.GetProperty("op").GetString().Should().Be("==");
+        // The left operand is a Published-Data expression, rewritten like any other reference.
+        condition.GetProperty("left").GetProperty("value").GetString()
+            .Should().Be("{{" + QueryXmlVar + ".param.result}}");
+        condition.GetProperty("right").GetProperty("value").GetString().Should().Be("ARCHIVE");
+
+        // Both outgoing links read the decision's case rather than SCOrch's Compare.CompareResult.
+        foreach (var target in new[] { "22222222-0000-0000-0000-000000000005", "22222222-0000-0000-0000-000000000006" })
+        {
+            var operand = EdgeFrom(def, CompareId, target)
+                .GetProperty("data").GetProperty("conditionExpression").GetProperty("left");
+            operand.GetProperty("stepId").GetString().Should().Be(CompareId);
+            operand.GetProperty("paramName").GetString().Should().Be("case");
+        }
     }
 
     // ---------- data bus ----------
@@ -411,7 +451,7 @@ public class ScorchImporterFixtureTests
         var result = ParseFixture();
 
         result.Warnings.Should().Contain(w =>
-            w.Contains("param.FileNameExt") && w.Contains("fileWatcherTrigger") && w.Contains("fileName"));
+            w.Contains("param.FileName") && w.Contains("fileWatcherTrigger") && w.Contains("fileName"));
     }
 
     /// <summary>
@@ -442,7 +482,7 @@ public class ScorchImporterFixtureTests
         // The links out of 'Query Manifest Status' filter on queryResult; xmlQuery publishes
         // result/count, so those branches would never match.
         result.Warnings.Should().Contain(w =>
-            w.Contains("param.queryResult") && w.Contains("the link into") && w.Contains("xmlQuery"));
+            w.Contains("param.Path") && w.Contains("the link into") && w.Contains("fileWatcherTrigger"));
     }
 
     [Fact]

@@ -289,7 +289,7 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
 
   <Object>
     <UniqueID datatype="string">{66666666-0000-0000-0000-000000000004}</UniqueID>
-    <Name datatype="string">not archive</Name>
+    <Name datatype="string">No</Name>
     <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
     <ObjectTypeName datatype="string">Link</ObjectTypeName>
     <Enabled datatype="bool">TRUE</Enabled>
@@ -301,9 +301,9 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
       <Entry>
         <UniqueID datatype="string">{77777777-0000-0000-0000-000000000003}</UniqueID>
         <Type datatype="string">trigger</Type>
-        <Condition datatype="string">doesnotequal</Condition>
-        <Data datatype="string">{22222222-0000-0000-0000-000000000003}.queryResult</Data>
-        <Value datatype="string">ARCHIVE</Value>
+        <Condition datatype="string">equals</Condition>
+        <Data datatype="string">{22222222-0000-0000-0000-000000000004}.Compare.CompareResult</Data>
+        <Value datatype="string">false</Value>
         <GroupID datatype="string"></GroupID>
       </Entry>
     </TRIGGERS>
@@ -311,7 +311,7 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
 
   <Object>
     <UniqueID datatype="string">{66666666-0000-0000-0000-000000000005}</UniqueID>
-    <Name datatype="string">archive or stale</Name>
+    <Name datatype="string">Yes</Name>
     <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
     <ObjectTypeName datatype="string">Link</ObjectTypeName>
     <Enabled datatype="bool">TRUE</Enabled>
@@ -324,12 +324,33 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
         <UniqueID datatype="string">{77777777-0000-0000-0000-000000000004}</UniqueID>
         <Type datatype="string">trigger</Type>
         <Condition datatype="string">equals</Condition>
+        <Data datatype="string">{22222222-0000-0000-0000-000000000004}.Compare.CompareResult</Data>
+        <Value datatype="string">true</Value>
+        <GroupID datatype="string"></GroupID>
+      </Entry>
+    </TRIGGERS>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000006}</UniqueID>
+    <Name datatype="string">archive or stale</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">FALSE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000006}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000007}</TargetObject>
+    <And datatype="bool">FALSE</And>
+    <TRIGGERS>
+      <Entry>
+        <UniqueID datatype="string">{77777777-0000-0000-0000-000000000006}</UniqueID>
+        <Type datatype="string">trigger</Type>
+        <Condition datatype="string">equals</Condition>
         <Data datatype="string">{22222222-0000-0000-0000-000000000003}.queryResult</Data>
         <Value datatype="string">ARCHIVE</Value>
         <GroupID datatype="string"></GroupID>
       </Entry>
       <Entry>
-        <UniqueID datatype="string">{77777777-0000-0000-0000-000000000005}</UniqueID>
+        <UniqueID datatype="string">{77777777-0000-0000-0000-000000000007}</UniqueID>
         <Type datatype="string">trigger</Type>
         <Condition datatype="string">contains</Condition>
         <Data datatype="string">{22222222-0000-0000-0000-000000000003}.queryResult</Data>
@@ -340,25 +361,24 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
   </Object>
 
   <Object>
-    <UniqueID datatype="string">{66666666-0000-0000-0000-000000000006}</UniqueID>
-    <Name datatype="string">Link</Name>
-    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
-    <ObjectTypeName datatype="string">Link</ObjectTypeName>
-    <Enabled datatype="bool">FALSE</Enabled>
-    <SourceObject datatype="string">{22222222-0000-0000-0000-000000000006}</SourceObject>
-    <TargetObject datatype="string">{22222222-0000-0000-0000-000000000007}</TargetObject>
-    <And datatype="bool">FALSE</And>
-  </Object>
-
-  <Object>
     <UniqueID datatype="string">{66666666-0000-0000-0000-000000000007}</UniqueID>
-    <Name datatype="string">Link</Name>
+    <Name datatype="string">not archive</Name>
     <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
     <ObjectTypeName datatype="string">Link</ObjectTypeName>
     <Enabled datatype="bool">TRUE</Enabled>
     <SourceObject datatype="string">{22222222-0000-0000-0000-000000000007}</SourceObject>
     <TargetObject datatype="string">{22222222-0000-0000-0000-000000000008}</TargetObject>
     <And datatype="bool">FALSE</And>
+    <TRIGGERS>
+      <Entry>
+        <UniqueID datatype="string">{77777777-0000-0000-0000-000000000008}</UniqueID>
+        <Type datatype="string">trigger</Type>
+        <Condition datatype="string">doesnotequal</Condition>
+        <Data datatype="string">{22222222-0000-0000-0000-000000000001}.Path</Data>
+        <Value datatype="string">C:\Intake</Value>
+        <GroupID datatype="string"></GroupID>
+      </Entry>
+    </TRIGGERS>
   </Object>
 
   <Object>
