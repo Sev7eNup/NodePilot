@@ -575,4 +575,47 @@ public class ScorchImporterFixtureTests
             nodeIds.Should().Contain(edge.GetProperty("target").GetString());
         }
     }
+
+    // ---------- the folder trees an export carries ----------
+
+    /// <summary>
+    /// SCOrch files both runbooks and global variables in a folder tree, and both trees are worth
+    /// keeping: a whole-estate export is the case this feature exists for, and re-filing a few
+    /// hundred workflows by hand is the work a migration should not create. The importer reports
+    /// each object's path; the destination the operator picks stands for the export's own root, so
+    /// that level is dropped.
+    /// </summary>
+    [Fact]
+    public void Parse_RunbookInANestedFolder_ReportsItsPathBelowTheExportRoot()
+    {
+        var result = ParseFixture();
+
+        result.Workflows.Single(w => w.Name == "Sample Package Intake")
+            .FolderPath.Should().BeEmpty("it sits in the export's root folder");
+        result.Workflows.Single(w => w.Name == "Log Error")
+            .FolderPath.Should().Equal("Shared", "Logging");
+    }
+
+    [Fact]
+    public void Parse_VariableInANestedFolder_ReportsItsPathBelowTheExportRoot()
+    {
+        var result = ParseFixture();
+
+        result.Variables.Single(v => v.Name == "ShareRoot").FolderPath.Should().BeEmpty();
+        result.Variables.Single(v => v.Name == "Tools_Dir__x86").FolderPath.Should().Equal("Shared", "Tools");
+    }
+
+    /// <summary>
+    /// The comparison warning names the nodes it is about. The difference it warns of is silent —
+    /// SCOrch compared case-insensitively, NodePilot's <c>==</c> does not, so a branch that took
+    /// there simply goes quiet here with no error anywhere. A bare count left the operator hunting.
+    /// </summary>
+    [Fact]
+    public void Parse_CaseSensitivityWarning_NamesTheComparisonNodes()
+    {
+        var result = ParseFixture();
+
+        result.Warnings.Should().ContainSingle(w => w.Contains("became decision nodes"))
+            .Which.Should().Contain("'Archive Package?'").And.Contain("case-sensitive");
+    }
 }

@@ -42,6 +42,12 @@ What the translation does:
 - **Triggers** — a runbook without one (SCOrch runbooks invoked by another need none) is given a
   manual trigger wired to its entry activities, because a NodePilot workflow with no trigger node
   has no root and fails on every run.
+- **Folders** — an export carries its own tree, for runbooks and for global variables alike, and
+  both are rebuilt below the destination you import into. Folders that already exist are reused
+  (matched ignoring case), names longer than 120 characters are shortened, and a tree deeper than
+  NodePilot's five levels is merged into the deepest level that fits — the last two are reported.
+  Creating them needs no permission beyond the edit rights on the destination you already need,
+  since every new folder sits underneath it and inherits its access.
 - **Layout** — the graph keeps its own arrangement. SCOrch's coordinates cannot be copied verbatim
   (it draws small icons, NodePilot draws cards), so the whole graph is scaled uniformly until the
   cards fit — a similarity transform, so the picture is the author's, just larger. Links are then

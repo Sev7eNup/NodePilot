@@ -135,10 +135,12 @@ public sealed record ResumeDebugRequest(string StepId, string Mode, Dictionary<s
 
 public sealed record ScorchImportedWorkflowInfo(
     Guid Id, string Name, string? OriginalName,
-    int ActivityCount, int HeuristicCount, int FallbackCount);
+    int ActivityCount, int HeuristicCount, int FallbackCount,
+    string? FolderPath);
 
 public sealed record ScorchImportedVariableInfo(
-    string Name, string? OriginalName, bool CreatedNow, bool Skipped, string? SkipReason);
+    string Name, string? OriginalName, bool CreatedNow, bool Skipped, string? SkipReason,
+    string? FolderPath);
 
 public sealed record ScorchImportResponse(
     int Created,

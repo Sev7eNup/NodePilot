@@ -195,11 +195,35 @@ public sealed class ScorchImporter
                 value = "[ENCRYPTED - set actual value after import]";
             }
 
-            var variable = new ScorchVariable(guid, name, description, value, IsSecret: isSecret);
+            var variable = new ScorchVariable(
+                guid, name, description, value, IsSecret: isSecret, FolderPath: FolderPathOf(obj));
             map[guid] = variable;
             result.Variables.Add(variable);
         }
         return map;
+    }
+
+    /// <summary>
+    /// The folder names an object sits under, outermost first.
+    ///
+    /// <para>SCOrch organises both of the things an export carries — runbooks under
+    /// <c>&lt;Policies&gt;</c>, global variables under <c>&lt;GlobalSettings&gt;/&lt;Variables&gt;</c>
+    /// — in a folder tree, and each section is wrapped in one root <c>&lt;Folder&gt;</c>. That root
+    /// stands for the destination the operator picked on import, so it is dropped; only the levels
+    /// below it are the author's own structure.</para>
+    ///
+    /// <para>Blank names are dropped rather than turned into an empty folder: SCOrch writes them
+    /// (its section roots have no <c>&lt;Name&gt;</c> at all), NodePilot cannot store one.</para>
+    /// </summary>
+    private static IReadOnlyList<string> FolderPathOf(XElement obj)
+    {
+        var chain = obj.Ancestors("Folder").Reverse().ToList();
+        if (chain.Count == 0) return [];
+        chain.RemoveAt(0); // the section's own root folder — the import destination stands for it
+        return chain
+            .Select(f => f.Element("Name")?.Value?.Trim() ?? "")
+            .Where(n => n.Length > 0)
+            .ToList();
     }
 
     private static string SanitizeVariableName(string raw)
@@ -316,10 +340,22 @@ public sealed class ScorchImporter
         // unconditional; links with TRIGGERS become conditionExpression edges.
         if (fieldTranslation.DecisionNodes.Count > 0)
         {
+            // Naming them matters: the difference is silent. A comparison that matched in SCOrch
+            // because it ignored case simply does not take here, and the branch behind it goes
+            // quiet without an error anywhere. A bare count leaves the operator hunting.
+            var comparisons = mapped
+                .Where(m => fieldTranslation.DecisionNodes.Contains(m.Id))
+                .Select(m => m.Source.Element("Name")?.Value ?? "(unnamed)")
+                .OrderBy(l => l, StringComparer.Ordinal)
+                .ToList();
+            const int listCap = 12;
+            var listed = string.Join(", ", comparisons.Take(listCap).Select(l => $"'{l}'"));
+            if (comparisons.Count > listCap) listed += $" and {comparisons.Count - listCap} more";
+
             warnings.Add(
-                $"'{name}': {fieldTranslation.DecisionNodes.Count} SCOrch comparison(s) became decision " +
-                "nodes. SCOrch compared case-insensitively by default; NodePilot's '==' is " +
-                "case-sensitive — check the operands if a branch does not take.");
+                $"'{name}': {comparisons.Count} SCOrch comparison(s) became decision nodes — {listed}. " +
+                "SCOrch compared case-insensitively by default; NodePilot's '==' is case-sensitive — " +
+                "check the operands on those nodes if a branch does not take.");
         }
 
         var edges = new List<object>();
@@ -377,7 +413,8 @@ public sealed class ScorchImporter
         return new ScorchRunbook(name, description, definitionJson,
             ActivityCount: mapped.Count,
             HeuristicCount: heuristicCount,
-            FallbackCount: fallbackCount);
+            FallbackCount: fallbackCount,
+            FolderPath: FolderPathOf(policy));
     }
 
     private static string? Trimmed(string? value)
@@ -1346,11 +1383,13 @@ public sealed record ScorchRunbook(
     string DefinitionJson,
     int ActivityCount,
     int HeuristicCount,
-    int FallbackCount);
+    int FallbackCount,
+    IReadOnlyList<string> FolderPath);
 
 public sealed record ScorchVariable(
     Guid SourceGuid,
     string Name,
     string? Description,
     string Value,
-    bool IsSecret);
+    bool IsSecret,
+    IReadOnlyList<string> FolderPath);

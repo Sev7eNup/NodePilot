@@ -22,12 +22,20 @@ public record ImportWorkflowsResponse(
     List<ImportedWorkflowInfo> Workflows,
     List<string> Errors);
 
+/// <param name="FolderPath">
+/// Where the workflow landed, as a display path. A SCOrch export carries its own folder tree and
+/// the import rebuilds it below the chosen destination, so this is not simply the destination.
+/// Null only for a workflow the import did not create.
+/// </param>
 public record ScorchImportedWorkflowInfo(
     Guid Id, string Name, string? OriginalName,
-    int ActivityCount, int HeuristicCount, int FallbackCount);
+    int ActivityCount, int HeuristicCount, int FallbackCount,
+    string? FolderPath);
 
+/// <param name="FolderPath">Where the variable landed; null when it was skipped.</param>
 public record ScorchImportedVariableInfo(
-    string Name, string? OriginalName, bool CreatedNow, bool Skipped, string? SkipReason);
+    string Name, string? OriginalName, bool CreatedNow, bool Skipped, string? SkipReason,
+    string? FolderPath);
 
 public record ScorchImportResponse(
     int Created,

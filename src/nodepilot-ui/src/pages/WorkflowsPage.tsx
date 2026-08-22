@@ -39,10 +39,14 @@ type ImportResponse = { created: number; workflows: ImportedWorkflowInfo[]; erro
 type ScorchImportedWorkflowInfo = {
   id: string; name: string; originalName: string | null;
   activityCount: number; heuristicCount: number; fallbackCount: number;
+  /** Where it landed. A SCOrch export carries its own folder tree, which the import rebuilds
+   *  below the chosen destination — so this is not necessarily the folder that was picked. */
+  folderPath: string | null;
 };
 type ScorchImportedVariableInfo = {
   name: string; originalName: string | null;
   createdNow: boolean; skipped: boolean; skipReason: string | null;
+  folderPath: string | null;
 };
 type ScorchImportResponse = {
   created: number;
@@ -1327,6 +1331,11 @@ function ScorchImportResultModal({
                           {t('workflows:scorch.originalWas', { name: w.originalName })}
                         </span>
                       )}
+                      {/* An export brings its own folder tree, so this is not necessarily the
+                          folder that was picked in the dialog. */}
+                      {w.folderPath && w.folderPath !== '/' && (
+                        <span className="text-xs text-outline font-mono truncate">{w.folderPath}</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 text-[11px] tabular-nums shrink-0">
                       <span className="text-on-surface-variant">{t('workflows:scorch.stepsCount', { count: w.activityCount })}</span>
@@ -1356,6 +1365,9 @@ function ScorchImportResultModal({
                       <span className="text-sm font-mono text-on-surface truncate">{v.name}</span>
                       {v.originalName && (
                         <span className="text-xs text-outline">{t('workflows:scorch.varOriginalWas', { name: v.originalName })}</span>
+                      )}
+                      {v.folderPath && v.folderPath !== '/' && (
+                        <span className="text-xs text-outline font-mono truncate">{v.folderPath}</span>
                       )}
                     </div>
                     <div className="text-xs shrink-0">

@@ -56,6 +56,18 @@ exhaustive.
   on 3460x1500, small enough to take in at once. Where no scale works - activities sharing a
   position, or spaced too tightly for a usable canvas - the import reports it and falls back to a
   left-to-right layout.
+- The folder tree an export carries is rebuilt instead of flattened. SCOrch files both runbooks and
+  global variables in folders, and the importer read neither — every workflow landed in the one
+  folder chosen at import time and every variable in the root, so a whole-estate migration arrived
+  as a flat list to re-file by hand. Both trees are now recreated below the destination, with
+  existing folders reused (matched ignoring case, so an import cannot produce `SCCM` next to
+  `sccm`). Names over 120 characters are shortened and a tree deeper than NodePilot's five levels is
+  merged into the deepest that fits, both reported. No new permission is involved: everything
+  created sits under the destination the caller already needs edit rights on and inherits its
+  access, and each new shared folder is audited like a hand-created one.
+- The case-sensitivity warning names the comparisons it is about. SCOrch compares case-insensitively
+  by default and NodePilot's `==` does not, so a branch that took there goes quiet here with no
+  error anywhere — a bare count of affected nodes left the operator hunting for which ones.
 - Imported links are drawn as curves rather than rectangular loops. Scaling a graph faithfully keeps
   every edge pointing the way it did, and that includes backwards: the designer routes a backward
   right-to-left edge as an angular U below both nodes, and because the offset is measured between

@@ -342,6 +342,36 @@ ausschließlich `node.position`.
 deckungsgleichen Knoten (kein Faktor trennt die je), wenn der nötige Faktor `MaxScale` reißt, oder
 wenn Zug und Entzerren sich in `placed.Count + 4` Durchläufen nicht einigen.
 
+**Ordnerbäume — zwei, nicht einer.** Ein Export trägt sein eigenes Layout mit: Runbooks unter
+`<Policies>`, globale Variablen unter `<GlobalSettings>/<Variables>`, beide in einem
+`<Folder>`-Baum. `ScorchImporter.FolderPathOf` liest den Pfad aus den Vorfahren; **der äußerste
+`<Folder>` fällt weg** — er ist der Wurzelcontainer der Sektion, für den das gewählte Importziel
+steht. Leere Namen fallen ebenfalls weg (SCOrch schreibt sie, NodePilot kann sie nicht speichern).
+
+Der Controller (`WorkflowImportExportController.PlanFolderTree`) legt daraus beide Bäume an —
+`SharedWorkflowFolder` unter dem Ziel, `GlobalVariableFolder` unter dessen Root. Die beiden Entitäten
+sind strukturgleich (selbstreferenzierender Parent + materialisierter `Path` + `Depth`, ein
+Singleton-Root) und unterscheiden sich nur darin, ob RBAC daran hängt, deshalb **ein** Planer für
+beide. Punkte, die nicht offensichtlich sind:
+
+- **RBAC: eine Prüfung reicht.** Alles Erzeugte hängt unter `targetFolderId`, auf dem der Caller
+  schon `Edit` hat, und ein neuer Ordner erbt die Grants seines Parents — dieselbe Begründung, die
+  der Create-Endpoint nennt („creating a child is a parent-edit"). Danach **`_authz.InvalidateAll()`**,
+  sonst läuft ein Capability-Lookup über eine Ahnenkette, die die neuen Zeilen noch nicht enthält.
+- **Ids werden vor der Transaktion vergeben** (`PlannedFolder`), genau wie die Workflow-Zeilen: die
+  Execution-Strategy darf den Versuch wiederholen, und ein Replay mit frischen Guids könnte „meine
+  Ordner sind schon da" nicht von „fremde sind da" unterscheiden. Die Verify-Callback zählt sie mit.
+- **Variablen-Ordner werden vor den Variablen committed** (eigener `SaveChanges`), weil
+  `IGlobalVariableStore.CreateAsync` die Folder-Id sofort schreibt.
+- **Wiederverwendung matcht case-insensitiv**, sonst entsteht `SCCM` neben `sccm`. Namen > 120
+  Zeichen werden gekürzt, Pfade tiefer als `MaxDepth` (5) in die tiefste passende Ebene gefaltet —
+  beides mit Warnung, nie still.
+- **Geplant wird nur für das, was wirklich entsteht** — eine wegen Namenskollision übersprungene
+  Variable darf keinen leeren Ordner hinterlassen.
+- **Audit:** jeder neue `SharedWorkflowFolder` bekommt ein eigenes `FOLDER_CREATED`
+  (`source: scorch-import`) — er ist eine RBAC-Grenze und muss im Audit auffindbar sein.
+  Variablen-Ordner sind kosmetisch und bleiben in den Zählern des Import-Eintrags.
+
 **Weitere Eigenheiten:** importierte Runbooks ohne Trigger bekommen einen synthetischen
 `manualTrigger` (0 Roots ⇒ Execution `Failed`) — platziert **in den Quellkoordinaten** links vom
 Graphen, weil ein Knoten auf (0,0) sonst zufällig deckungsgleich läge und damit die Erhaltung der
