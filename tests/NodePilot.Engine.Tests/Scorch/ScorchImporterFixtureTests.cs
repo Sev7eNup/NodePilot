@@ -308,6 +308,83 @@ public class ScorchImporterFixtureTests
             w.Contains("Read First Line") && w.Contains("Get-Content"));
     }
 
+    // ---------- link conditions ----------
+
+    private static JsonElement EdgeFrom(JsonElement definition, string sourceId, string targetId) =>
+        definition.GetProperty("edges").EnumerateArray().Single(e =>
+            e.GetProperty("source").GetString() == sourceId && e.GetProperty("target").GetString() == targetId);
+
+    /// <summary>
+    /// SCOrch's "on success" link carries a bare {GUID} in Data and the outcome in Value. The parser
+    /// required {GUID}.field, so it reported every one as unparseable and dropped it — turning the
+    /// most common conditional link in any runbook into an unconditional edge.
+    /// </summary>
+    [Fact]
+    public void Parse_StatusOnlyLink_BecomesTheSuccessShortcut()
+    {
+        var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
+        var data = EdgeFrom(def, RunScriptId, QueryXmlId).GetProperty("data");
+
+        data.GetProperty("condition").GetString().Should().Be(RunScriptId + ".success");
+        data.GetProperty("conditionExpression").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public void Parse_SingleFilterLink_BecomesAComparison()
+    {
+        var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
+        var expr = EdgeFrom(def, QueryXmlId, "22222222-0000-0000-0000-000000000004")
+            .GetProperty("data").GetProperty("conditionExpression");
+
+        expr.GetProperty("type").GetString().Should().Be("comparison");
+        expr.GetProperty("op").GetString().Should().Be("==");
+        expr.GetProperty("left").GetProperty("paramName").GetString().Should().Be("hasPayload");
+    }
+
+    /// <summary>
+    /// GroupID is empty in every real export, so the link's &lt;And&gt; is the only thing carrying
+    /// ALL-vs-ANY. Inferring AND from the group alone turned every "match any of these" link into
+    /// "match all of these".
+    /// </summary>
+    [Fact]
+    public void Parse_TwoFiltersWithAndFalse_AreOrJoined()
+    {
+        var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
+        var expr = EdgeFrom(def, "22222222-0000-0000-0000-000000000004", "22222222-0000-0000-0000-000000000006")
+            .GetProperty("data").GetProperty("conditionExpression");
+
+        expr.GetProperty("type").GetString().Should().Be("group");
+        expr.GetProperty("op").GetString().Should().Be("OR");
+        expr.GetProperty("children").GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
+    public void Parse_NegatedOperator_KeepsItsMeaning()
+    {
+        var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
+        var expr = EdgeFrom(def, "22222222-0000-0000-0000-000000000004", "22222222-0000-0000-0000-000000000005")
+            .GetProperty("data").GetProperty("conditionExpression");
+
+        // 'doesnotequal' — written without spaces in a real export, which the spaced-only table
+        // did not recognise, so the filter was dropped and the edge became unconditional.
+        expr.GetProperty("op").GetString().Should().Be("!=");
+    }
+
+    [Fact]
+    public void Parse_EveryLinkThatCarriedFilters_StillCarriesACondition()
+    {
+        var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
+
+        var conditional = def.GetProperty("edges").EnumerateArray().Count(e =>
+        {
+            var data = e.GetProperty("data");
+            return data.GetProperty("condition").ValueKind != JsonValueKind.Null
+                   || data.GetProperty("conditionExpression").ValueKind != JsonValueKind.Null;
+        });
+
+        conditional.Should().Be(4, "the fixture has four links with a TRIGGERS block");
+    }
+
     // ---------- data bus ----------
 
     [Fact]

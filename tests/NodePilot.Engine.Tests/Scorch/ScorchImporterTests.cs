@@ -138,8 +138,13 @@ public class ScorchImporterTests
         expr.GetProperty("right").GetProperty("value").GetString().Should().Be("True");
     }
 
+    /// <summary>
+    /// SCOrch coordinates are not carried over. Its canvas draws activities as small icons on a
+    /// 75 px grid and its x is routinely negative; a NodePilot node is a 220x110 card, so the
+    /// copied positions overlapped almost everywhere and started far off-canvas.
+    /// </summary>
     [Fact]
-    public void Parse_PositionXY_PreservedOnNode()
+    public void Parse_ScorchCoordinates_AreReplacedByALayeredLayout()
     {
         var id = Guid.NewGuid();
         var xml = BuildExport(PolicyWith("RB",
@@ -149,8 +154,10 @@ public class ScorchImporterTests
         var result = Importer.Parse(xml);
         var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
         var pos = ActivityNodes(def)[0].GetProperty("position");
-        pos.GetProperty("x").GetDouble().Should().Be(-879);
-        pos.GetProperty("y").GetDouble().Should().Be(152);
+
+        // Layer 1 (behind the synthesized trigger): margin 60 + column 300 + trigger headroom 100.
+        pos.GetProperty("x").GetDouble().Should().Be(460);
+        pos.GetProperty("y").GetDouble().Should().Be(60);
     }
 
     [Fact]
@@ -454,6 +461,36 @@ public class ScorchImporterTests
             .ToList();
 
         names.Should().BeEquivalentTo(["Check", "Check_2"]);
+    }
+
+    /// <summary>
+    /// SCOrch encodes a link's outcome trigger as a SET joined by '#'. The classic error link is
+    /// "warning#failed"; reading it as a single token left every one of those unparsed, so the link
+    /// that routes a runbook's failures came out unconditional and fired on success too.
+    /// </summary>
+    [Theory]
+    [InlineData("success", ".success")]
+    [InlineData("success#warning", ".success")]
+    [InlineData("warning#failed", ".failed")]
+    [InlineData("failed", ".failed")]
+    public void Parse_StatusTriggerOutcomeSet_PicksTheRightBranch(string value, string expectedSuffix)
+    {
+        var srcId = Guid.NewGuid();
+        var dstId = Guid.NewGuid();
+        var xml = BuildExport(PolicyWith("RB", new[]
+        {
+            ActivityXml(srcId, "Src", "Run .Net Script", props: new[] { ("ScriptBody", "x") }),
+            ActivityXml(dstId, "Dst", "Run .Net Script", props: new[] { ("ScriptBody", "y") }),
+            LinkXml(Guid.NewGuid(), srcId, dstId,
+                triggerData: "{" + srcId + "}", triggerCondition: "", triggerValue: value),
+        }));
+
+        var def = JsonSerializer.Deserialize<JsonElement>(Importer.Parse(xml).Workflows[0].DefinitionJson);
+        var edge = def.GetProperty("edges").EnumerateArray()
+            .Single(e => e.GetProperty("source").GetString() == srcId.ToString());
+
+        edge.GetProperty("data").GetProperty("condition").GetString()
+            .Should().Be(srcId + expectedSuffix);
     }
 
     // ---- helpers ----------------------------------------------------------------------------

@@ -331,8 +331,8 @@ public sealed class ScorchImporter
             var label = linkObj.Element("Name")?.Value;
             if (string.IsNullOrWhiteSpace(label) || label == "Link") label = null;
 
-            var (conditionExpression, labelHint) = BuildLinkCondition(linkObj, warnings, name);
-            label ??= labelHint;
+            var link = BuildLinkCondition(linkObj, warnings, name);
+            label ??= link.Label;
 
             edgeTargets.Add(dst.ToString());
             edges.Add(new
@@ -345,7 +345,8 @@ public sealed class ScorchImporter
                 {
                     label,
                     disabled,
-                    conditionExpression,
+                    condition = link.Legacy,
+                    conditionExpression = link.Expression,
                 },
             });
         }
@@ -355,8 +356,8 @@ public sealed class ScorchImporter
         warnings.Add($"'{name}': {mapped.Count} activities, {edges.Count} links. " +
                      $"Heuristic mappings: {heuristicCount}, Placeholder fallbacks: {fallbackCount}.");
 
-        var definitionJson = JsonSerializer.Serialize(new { nodes, edges },
-            new JsonSerializerOptions { WriteIndented = false });
+        var definitionJson = ApplyImportLayout(JsonSerializer.Serialize(new { nodes, edges },
+            new JsonSerializerOptions { WriteIndented = false }));
 
         ReportGraphFindings(definitionJson, mapped, outputNames, name, warnings);
 
@@ -368,6 +369,30 @@ public sealed class ScorchImporter
 
     private static string? Trimmed(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// Replaces SCOrch's coordinates with a NodePilot layout.
+    ///
+    /// <para>SCOrch draws activities as small icons on a 75 px grid; a NodePilot node is a 220x110
+    /// card. Copying the coordinates therefore put almost every node on top of its neighbours, and
+    /// SCOrch's routinely negative x landed the whole graph off-canvas — so the first thing anyone
+    /// did after an import was drag 47 nodes apart.</para>
+    ///
+    /// <para>The re-flow keeps what is worth keeping: rows within a layer are ordered by the y the
+    /// activity had, so the author's vertical arrangement survives at NodePilot's spacing.</para>
+    /// </summary>
+    private static string ApplyImportLayout(string definitionJson)
+    {
+        try
+        {
+            var definition = JsonSerializer.Deserialize<JsonElement>(definitionJson);
+            return WorkflowLayoutEngine.Reflow(definition, WorkflowLayoutOptions.Imported).ToJsonString();
+        }
+        catch (JsonException)
+        {
+            return definitionJson; // Keep the original; the controller validates the definition anyway.
+        }
+    }
 
     /// <summary>
     /// Rescues three per-activity settings that <see cref="ExtractProperties"/> drops as "standard
@@ -430,8 +455,19 @@ public sealed class ScorchImporter
             return; // The controller rejects an unparseable definition on its own.
         }
 
-        foreach (var finding in WorkflowAnalyzer.Analyze(definition).Findings)
-            warnings.Add($"'{runbookName}': [{finding.Code}] {finding.Message}");
+        // Capped per code. One disabled activity part-way through a real runbook makes every node
+        // behind it unreachable, and 44 identical findings is not a report — it buries the six
+        // warnings that actually need a decision.
+        const int MaxPerCode = 5;
+        foreach (var group in WorkflowAnalyzer.Analyze(definition).Findings.GroupBy(f => f.Code))
+        {
+            foreach (var finding in group.Take(MaxPerCode))
+                warnings.Add($"'{runbookName}': [{finding.Code}] {finding.Message}");
+
+            var suppressed = group.Count() - MaxPerCode;
+            if (suppressed > 0)
+                warnings.Add($"'{runbookName}': [{group.Key}] … and {suppressed} more node(s) with the same finding.");
+        }
 
         ReportCrossBranchReferences(definition, mapped, runbookName, warnings);
     }
@@ -454,10 +490,22 @@ public sealed class ScorchImporter
         var doc = WorkflowDefinitionDocument.FromJsonElement(definition);
         var reported = new HashSet<string>(StringComparer.Ordinal);
 
+        // Only steps that actually run can have a scope problem. A step no trigger reaches has no
+        // ancestors from a root, so EVERY reference it makes would look cross-branch — dozens of
+        // follow-on complaints about a graph whose real problem the analyzer already named once.
+        var reachable = new HashSet<string>(doc.RootNodes.Select(r => r.Id), StringComparer.Ordinal);
+        var frontier = new Queue<string>(reachable);
+        while (frontier.Count > 0)
+        {
+            if (!doc.Adjacency.TryGetValue(frontier.Dequeue(), out var next)) continue;
+            foreach (var t in next)
+                if (reachable.Add(t)) frontier.Enqueue(t);
+        }
+
         foreach (var (obj, id, mapping) in mapped)
         {
             var nodeId = id.ToString();
-            if (!doc.NodesById.ContainsKey(nodeId)) continue;
+            if (!doc.NodesById.ContainsKey(nodeId) || !reachable.Contains(nodeId)) continue;
 
             var label = obj.Element("Name")?.Value ?? "(unnamed)";
             HashSet<string>? ancestors = null;
@@ -512,7 +560,11 @@ public sealed class ScorchImporter
             if (outputNames.TryGetValue(id, out var named)) typeByHead[named] = mapping.ActivityType;
         }
 
-        var reported = new HashSet<string>(StringComparer.Ordinal);
+        // Grouped by the reference itself, not by the step making it: one SCOrch field that has no
+        // NodePilot counterpart is typically referenced from a dozen places, and reporting it a
+        // dozen times says nothing the first line did not.
+        var offenders = new Dictionary<(string Head, string Parameter), (string Type, SortedSet<string> Labels)>();
+
         foreach (var (obj, _, mapping) in mapped)
         {
             var label = obj.Element("Name")?.Value ?? "(unnamed)";
@@ -535,15 +587,27 @@ public sealed class ScorchImporter
                     if (descriptor.OutputParameters.Any(o => string.Equals(o.Name, parameter, StringComparison.Ordinal)))
                         continue;
 
-                    if (!reported.Add($"{label}|{head}.{parameter}")) continue;
-                    warnings.Add(
-                        $"'{runbookName}' / '{label}': references " + "{{" + head + ".param." + parameter + "}}" +
-                        $", but {targetType} publishes " +
-                        string.Join(", ", descriptor.OutputParameters.Select(o => o.Name)) +
-                        ". SCOrch published different field names than the NodePilot activity does — " +
-                        "point the reference at one of those, or compute the value in a script step.");
+                    if (!offenders.TryGetValue((head, parameter), out var entry))
+                        offenders[(head, parameter)] = entry = (targetType, new SortedSet<string>(StringComparer.Ordinal));
+                    entry.Labels.Add(label);
                 }
             }
+        }
+
+        foreach (var ((head, parameter), (targetType, labels)) in offenders)
+        {
+            var available = string.Join(", ",
+                ActivityCatalog.ByType[targetType].OutputParameters.Select(o => o.Name));
+            var steps = labels.Count == 1
+                ? $"'{labels.First()}'"
+                : $"{labels.Count} steps ({string.Join(", ", labels.Take(3).Select(l => $"'{l}'"))}" +
+                  (labels.Count > 3 ? ", …)" : ")");
+
+            warnings.Add(
+                $"'{runbookName}': {steps} reference " + "{{" + head + ".param." + parameter + "}}" +
+                $", but {targetType} publishes {available}. SCOrch published different field names than " +
+                "the NodePilot activity does — point the references at one of those, or compute the " +
+                "value in a script step.");
         }
     }
 
@@ -620,6 +684,7 @@ public sealed class ScorchImporter
                 {
                     label = (string?)null,
                     disabled = false,
+                    condition = (string?)null,
                     conditionExpression = (object?)null,
                 },
             });
@@ -854,32 +919,45 @@ public sealed class ScorchImporter
     /// <c>condition</c> shortcut string is only used for pure success/failure semantics
     /// which SCOrch's TRIGGERS model doesn't align with cleanly.
     /// </summary>
-    private static (object? Expression, string? Label) BuildLinkCondition(
+    private sealed record LinkCondition(object? Expression, string? Legacy, string? Label);
+
+    private static LinkCondition BuildLinkCondition(
         XElement linkObj, List<string> warnings, string runbookName)
     {
         var triggers = linkObj.Element("TRIGGERS")?.Elements("Entry").ToList();
-        if (triggers is null || triggers.Count == 0) return (null, null);
+        if (triggers is null || triggers.Count == 0) return new LinkCondition(null, null, null);
 
-        // Group by GroupID → AND within, OR across.
+        // A single status trigger is SCOrch's "on success" / "on failure" link. NodePilot expresses
+        // that with the legacy shortcut string, which is both idiomatic and what the designer
+        // renders as a plain success/failure edge — so keep it out of the expression tree.
+        if (triggers.Count == 1 && TryBuildStatusShortcut(triggers[0]) is { } shortcut)
+            return new LinkCondition(null, shortcut.Condition, shortcut.Label);
+
+        // Within a group the link's <And> decides ALL vs. ANY; different GroupIDs are OR-joined.
+        // GroupID is empty in real exports, so <And> is the only thing that carries the intent —
+        // inferring AND from the group alone turned every "match any of these" link into "match all".
+        var joinWithAnd = ParseScorchBool(linkObj.Element("And")?.Value, false);
         var groups = triggers
             .GroupBy(t => int.TryParse(t.Element("GroupID")?.Value, out var g) ? g : 0)
             .ToList();
 
         var groupExprs = new List<object?>();
+        var dropped = 0;
         foreach (var group in groups)
         {
             var groupMembers = new List<object?>();
             foreach (var entry in group)
             {
-                var expr = BuildComparisonFromTrigger(entry, warnings, runbookName);
+                var expr = BuildStatusComparison(entry) ?? BuildComparisonFromTrigger(entry, warnings, runbookName);
                 if (expr is not null) groupMembers.Add(expr);
+                else dropped++;
             }
             if (groupMembers.Count == 0) continue;
             if (groupMembers.Count == 1) groupExprs.Add(groupMembers[0]);
             else groupExprs.Add(new
             {
                 type = "group",
-                op = "AND",
+                op = joinWithAnd ? "AND" : "OR",
                 children = groupMembers,
             });
         }
@@ -891,12 +969,69 @@ public sealed class ScorchImporter
             _ => new { type = "group", op = "OR", children = groupExprs },
         };
 
-        var labelHint = triggers.Count switch
+        // A link whose every filter was dropped is not "a link without conditions" — it is a link
+        // that now fires unconditionally, which silently changes the runbook's branching.
+        if (expression is null && dropped > 0)
         {
-            1 => "if condition",
-            _ => "if conditions",
+            warnings.Add($"'{runbookName}': a link's {dropped} filter(s) could not be translated, so " +
+                         "the edge is now UNCONDITIONAL and will always be taken. Re-add the condition " +
+                         "by hand before enabling the workflow.");
+        }
+
+        var labelHint = triggers.Count == 1 ? "if condition" : "if conditions";
+        return new LinkCondition(expression, null, expression is null ? null : labelHint);
+    }
+
+    /// <summary>
+    /// SCOrch's status triggers carry a bare <c>{GUID}</c> in <c>Data</c> (no field) and the outcome
+    /// in <c>Value</c>. The old parser required <c>{GUID}.field</c>, so every one of them was
+    /// reported as unparseable and dropped — turning "on success" links into unconditional ones.
+    /// </summary>
+    private static (string Condition, string Label)? TryBuildStatusShortcut(XElement entry)
+    {
+        var status = ParseStatusTrigger(entry);
+        if (status is null) return null;
+        var (stepId, succeeded) = status.Value;
+        return succeeded
+            ? ($"{stepId}.success", "On Success")
+            : ($"{stepId}.failed", "On Failure");
+    }
+
+    private static object? BuildStatusComparison(XElement entry)
+    {
+        var status = ParseStatusTrigger(entry);
+        if (status is null) return null;
+        var (stepId, succeeded) = status.Value;
+        return new
+        {
+            type = "comparison",
+            op = "==",
+            left = new { kind = "variable", stepId, field = "success" },
+            right = new { kind = "literal", value = succeeded ? "true" : "false" },
         };
-        return (expression, labelHint);
+    }
+
+    private static (string StepId, bool Succeeded)? ParseStatusTrigger(XElement entry)
+    {
+        var data = (entry.Element("Data")?.Value ?? "").Trim();
+        var match = Regex.Match(data, @"^\{?([0-9a-fA-F\-]{36})\}?$", RegexOptions.None, TimeSpan.FromSeconds(1));
+        if (!match.Success) return null;
+
+        // Value is a SET of outcomes joined by '#': the classic error link is "warning#failed".
+        // Treating it as a single token left every one of those unparsed, so the link that routes a
+        // runbook's failures came out unconditional.
+        var outcomes = (entry.Element("Value")?.Value ?? "")
+            .Split('#', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(v => v.ToLowerInvariant())
+            .ToHashSet(StringComparer.Ordinal);
+        if (outcomes.Count == 0) return null;
+
+        // NodePilot has no warning outcome — a step either succeeded or it did not. A set that
+        // includes a failure is the error branch; anything else (success, success#warning) is the
+        // success branch.
+        if (outcomes.Overlaps(["failed", "failure", "error"])) return (match.Groups[1].Value, false);
+        if (outcomes.Overlaps(["success", "warning"])) return (match.Groups[1].Value, true);
+        return null;
     }
 
     private static object? BuildComparisonFromTrigger(XElement entry, List<string> warnings, string runbookName)
@@ -915,12 +1050,13 @@ public sealed class ScorchImporter
         var srcGuid = match.Groups[1].Value;
         var field = match.Groups[2].Value;
 
-        var op = MapScorchCondition(cond);
-        if (op is null)
+        var mappedOp = MapScorchCondition(cond);
+        if (mappedOp is null)
         {
             warnings.Add($"'{runbookName}': unsupported trigger condition '{cond}' — skipping this filter.");
             return null;
         }
+        var (op, negate) = mappedOp.Value;
 
         // Map SCOrch field to NodePilot operand: stdout → output, stderr → error, else param.
         var (npField, paramName) = field.ToLowerInvariant() switch
@@ -934,30 +1070,58 @@ public sealed class ScorchImporter
             ? new { kind = "variable", stepId = srcGuid, field = npField }
             : new { kind = "variable", stepId = srcGuid, field = npField, paramName };
 
-        return new
+        object comparison = new
         {
             type = "comparison",
             op,
             left = leftOperand,
             right = new { kind = "literal", value = valueStr },
         };
+
+        // ConditionEvaluator supports a `not` wrapper, so a negated operator is expressed exactly
+        // rather than approximated. Mapping "does not contain" onto "contains" made the imported
+        // edge fire under precisely the opposite condition, with nothing reported.
+        return negate ? new { type = "not", child = comparison } : comparison;
     }
 
-    private static string? MapScorchCondition(string cond) => cond.ToLowerInvariant() switch
+    /// <summary>
+    /// Maps a SCOrch trigger condition to a NodePilot operator plus whether it must be negated.
+    ///
+    /// <para>Real exports write the condition as a single lower-case token without spaces
+    /// (<c>doesnotequal</c>), while the designer shows it spaced ("does not equal"). Whitespace is
+    /// stripped before matching so one table covers both — the previous spaced-only table silently
+    /// dropped every negative condition a real file contained.</para>
+    /// </summary>
+    private static (string Op, bool Negate)? MapScorchCondition(string cond)
     {
-        "equals" => "==",
-        "does not equal" => "!=",
-        "is less than" => "<",
-        "is less than or equals to" or "is less than or equal to" => "<=",
-        "is greater than" => ">",
-        "is greater than or equals to" or "is greater than or equal to" => ">=",
-        "contains" => "contains",
-        "does not contain" => "contains", // note: NodePilot has no "does not contain" op directly; we approximate
-        "matches pattern" => "matches",
-        "begins with" or "starts with" => "startsWith",
-        "ends with" => "endsWith",
-        _ => null,
-    };
+        var key = new string(cond.Where(c => !char.IsWhiteSpace(c)).ToArray()).ToLowerInvariant();
+        return key switch
+        {
+            "equals" or "isequalto" => ("==", false),
+            "doesnotequal" or "isnotequalto" => ("!=", false),
+            "islessthan" or "isless" => ("<", false),
+            "islessthanorequalsto" or "islessthanorequalto" or "islessorequal" => ("<=", false),
+            "isgreaterthan" or "isgreater" => (">", false),
+            "isgreaterthanorequalsto" or "isgreaterthanorequalto" or "isgreaterorequal" => (">=", false),
+            "contains" => ("contains", false),
+            "doesnotcontain" => ("contains", true),
+            "matchespattern" or "matches" => ("matches", false),
+            "doesnotmatchpattern" => ("matches", true),
+            "beginswith" or "startswith" => ("startsWith", false),
+            "doesnotbeginwith" or "doesnotstartwith" => ("startsWith", true),
+            "endswith" => ("endsWith", false),
+            "doesnotendwith" => ("endsWith", true),
+            "isempty" => ("isEmpty", false),
+            "isnotempty" => ("isNotEmpty", false),
+            _ => null,
+        };
+    }
+
+    private static bool ParseScorchBool(string? value, bool fallback)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return fallback;
+        return value.Trim().Equals("TRUE", StringComparison.OrdinalIgnoreCase) || value.Trim() == "1";
+    }
 
     // -------- helpers ---------------------------------------------------------------------
 
