@@ -64,7 +64,10 @@ exhaustive.
   SCOrch stores, not by the last segment of it, and re-pointed at the name that was actually
   assigned; the report says which. A call into a runbook that is in neither the file nor NodePilot
   is reported too — only the import knows both halves of that.
-- The SCOrch import accepts bodies up to 300 MiB, raised from 50. A whole-estate export is a single
+- The SCOrch import accepts bodies up to 300 MiB, raised from 50. The XML reader's own document
+  ceiling moves with it — it was pinned to the old 50 MiB and would have rejected anything past it
+  as "Failed to parse XML" after the endpoint had already accepted the upload. The two limits live
+  in different projects and are now held together by a test rather than by a comment. A whole-estate export is a single
   file and at a measured ~6.5 KiB per activity the old ceiling stopped at roughly 160 runbooks. The
   500-item cap on what one import may create is unchanged and now binds first.
 - The folder tree an export carries is rebuilt instead of flattened. SCOrch files both runbooks and

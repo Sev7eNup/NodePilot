@@ -144,7 +144,10 @@ internal static class ScorchActivityMapper
         // stable (IncludeSubFolders vs. IncludeSubfolders in the same format), so every lookup here
         // is meant to be case-insensitive — and a caller passing an ordinal dictionary would
         // silently get different mappings than the importer does.
-        var props = rawProps.Comparer == StringComparer.OrdinalIgnoreCase
+        // ReferenceEquals rather than ==: the check is "is this the singleton we would have used",
+        // and == on an abstract comparer reads like a value comparison it cannot perform. A
+        // different-but-equivalent comparer simply gets copied, which is correct, only not free.
+        var props = ReferenceEquals(rawProps.Comparer, StringComparer.OrdinalIgnoreCase)
             ? rawProps
             : new Dictionary<string, string>(rawProps, StringComparer.OrdinalIgnoreCase);
 
