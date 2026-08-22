@@ -56,6 +56,17 @@ exhaustive.
   on 3460x1500, small enough to take in at once. Where no scale works - activities sharing a
   position, or spaced too tightly for a usable canvas - the import reports it and falls back to a
   left-to-right layout.
+- Sub-runbook calls follow their child through the rename an import may give it. SCOrch scopes
+  runbook names per folder and NodePilot's are global, so a whole-estate export routinely holds two
+  runbooks with the same name in different folders — one is renamed on the way in, while the call
+  into it still carried the original name and resolved to the other one, or to nothing. Silently, at
+  run time, in a workflow that looked correct. Calls are now matched to their child by the full path
+  SCOrch stores, not by the last segment of it, and re-pointed at the name that was actually
+  assigned; the report says which. A call into a runbook that is in neither the file nor NodePilot
+  is reported too — only the import knows both halves of that.
+- The SCOrch import accepts bodies up to 300 MiB, raised from 50. A whole-estate export is a single
+  file and at a measured ~6.5 KiB per activity the old ceiling stopped at roughly 160 runbooks. The
+  500-item cap on what one import may create is unchanged and now binds first.
 - The folder tree an export carries is rebuilt instead of flattened. SCOrch files both runbooks and
   global variables in folders, and the importer read neither — every workflow landed in the one
   folder chosen at import time and every variable in the root, so a whole-estate migration arrived

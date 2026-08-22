@@ -113,8 +113,11 @@ they ran with `CancellationToken.None` so a parent cancel would orphan them.
 - [StartWorkflowActivity.cs:212](../src/NodePilot.Engine/Activities/StartWorkflowActivity.cs#L212) — token propagation
 
 ### H-16 — Import-Body Size Cap
-600 MiB → realistic ceilings: 6 MiB single-workflow, 50 MiB SCOrch XML import. Prevents
-a /api/workflows/import call from pinning the heap with a malicious payload.
+600 MiB → realistic ceilings: 6 MiB single-workflow, 300 MiB SCOrch XML import. Prevents
+a /api/workflows/import call from pinning the heap with a malicious payload. The SCOrch
+ceiling was later raised from 50 MiB: a whole-estate export is a single file, and at a
+measured ~6.5 KiB per activity 50 MiB stopped at roughly 160 runbooks. That endpoint is
+Admin/Operator-only and its 500-item cap bounds what a body of any size can write.
 
 - [WorkflowImportExportController.cs:73](../src/NodePilot.Api/Controllers/WorkflowImportExportController.cs#L73) — workflow-import cap
 - [WorkflowImportExportController.cs:183](../src/NodePilot.Api/Controllers/WorkflowImportExportController.cs#L183) — SCOrch-XML-import cap
