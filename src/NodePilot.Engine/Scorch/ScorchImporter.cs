@@ -73,10 +73,14 @@ public sealed class ScorchImporter
         => ParseFromReader(() => XmlReader.Create(new StringReader(xml), HardenedReaderSettings));
 
     /// <summary>
-    /// M-14: Stream-based overload. Preferred over <see cref="Parse(string)"/> for large
-    /// uploads — reading the whole body into a <c>string</c> first, then into an
-    /// <see cref="XDocument"/>, doubles peak memory (UTF-8 bytes + UTF-16 string + object
-    /// tree). Streaming straight into the XmlReader lets the XML parser hold only one copy.
+    /// Stream-based overload, and the one the API uses. Two things it buys over
+    /// <see cref="Parse(string)"/>: the reader sees the raw bytes, so the document's BOM and
+    /// <c>&lt;?xml encoding=...?&gt;</c> declaration decide the encoding instead of a caller-chosen
+    /// default; and no UTF-16 copy of the whole document is materialised alongside the tree.
+    ///
+    /// <para>Reads SYNCHRONOUSLY. Callers on an ASP.NET Core request path must pass a buffered
+    /// stream, not <c>Request.Body</c> — Kestrel's <c>AllowSynchronousIO</c> is false by default
+    /// and would throw. A MemoryStream-backed unit test does not reproduce that.</para>
     /// </summary>
     public ScorchImportResult Parse(Stream xmlStream)
         => ParseFromReader(() => XmlReader.Create(xmlStream, HardenedReaderSettings));
@@ -169,11 +173,15 @@ public sealed class ScorchImporter
             var description = obj.Element("Description")?.Value;
             if (string.IsNullOrEmpty(description)) description = null;
 
-            // SCOrch marks encrypted values with the `d.T.~Ec/ prefix (Ec = Encrypted).
-            // We can't decrypt them — flag as secret with a placeholder so the operator
-            // knows to supply the actual value after import.
-            const string EncryptedMarker = "`d.T.~Ec/";
-            bool isSecret = value.StartsWith(EncryptedMarker, StringComparison.Ordinal);
+            // SCOrch marks encrypted values with an Ec (Encrypted) or De (DataEncrypted) marker.
+            // We can't decrypt them — flag as secret with a placeholder so the operator knows to
+            // supply the actual value after import.
+            //
+            // Anchoring this on the type code rather than on a literal leading backtick matters:
+            // real exports write the marker backslash-prefixed, so a StartsWith("`d.T.~Ec/") check
+            // classified every encrypted variable in a real file as plaintext and imported the
+            // ciphertext as its value.
+            bool isSecret = EncryptedMarkerRx.IsMatch(value);
             if (isSecret)
             {
                 result.Warnings.Add(
@@ -246,8 +254,9 @@ public sealed class ScorchImporter
 
         // Rewrite Published-Data + Variable references in every config value.
         var activityGuids = new HashSet<Guid>(mapped.Select(m => m.Id));
-        foreach (var (_, _, mapping) in mapped)
-            RewriteReferences(mapping.Config, variableMap, activityGuids);
+        var rewriteCtx = new RewriteContext(variableMap, activityGuids, warnings, name);
+        foreach (var (obj, _, mapping) in mapped)
+            RewriteReferences(mapping.Config, rewriteCtx, obj.Element("Name")?.Value ?? "(unnamed)");
 
         // Build React Flow nodes.
         var nodes = new List<object>();
@@ -341,54 +350,118 @@ public sealed class ScorchImporter
     // -------- reference rewriting ---------------------------------------------------------
 
     /// <summary>
-    /// SCOrch Published-Data reference patterns. All share the prefix <c>`d.T.~</c> and end
-    /// with a type-code + <c>/</c> before the closing mirror-marker. We accept both the
-    /// symmetric form (<c>`d.T.~Vb/{GUID}`d.T.~Vb/</c>) and the curly-brace-only variants
-    /// seen in older exports.
+    /// SCOrch Published-Data reference patterns. All share the prefix <c>`d.T.~</c>, a two-letter
+    /// type code (Vb = Variable, Ed = ExecutionData, Ec/De = encrypted) and a mirrored closing
+    /// marker.
+    ///
+    /// <para>The leading <c>\</c> is NOT optional decoration — every marker in a real export is
+    /// written as backslash-backtick (bytes <c>5c 60</c>), e.g.
+    /// <c>\`d.T.~Ed/{GUID}.FileName\`d.T.~Ed/</c>. Patterns that expected a bare backtick right
+    /// after the field name matched none of the 147 references in the reference export, so the raw
+    /// markers travelled into the node configs untouched. It stays optional here only because we
+    /// have not seen every SCOrch version's writer.</para>
+    ///
+    /// <para>The field group accepts dots so that names like <c>{GUID}.Policy.Name</c> are
+    /// RECOGNISED — they cannot be expressed (NodePilot's <c>param</c> tail has no nested dots),
+    /// but matching them lets us report them instead of silently emitting a broken template.</para>
     /// </summary>
     private static readonly Regex VariableRefRx =
-        new(@"`d\.T\.~Vb/\{([0-9a-fA-F\-]+)\}`d\.T\.~Vb/", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+        new(@"\\?`d\.T\.~Vb/\{([0-9a-fA-F\-]+)\}\\?`d\.T\.~Vb/", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
     private static readonly Regex ExecutionDataRefRx =
-        new(@"`d\.T\.~Ed/\{([0-9a-fA-F\-]+)\}\.([A-Za-z0-9_\-]+)`d\.T\.~Ed/", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+        new(@"\\?`d\.T\.~Ed/\{([0-9a-fA-F\-]+)\}\.([A-Za-z0-9_\-]+(?:\.[A-Za-z0-9_\-]+)*)\\?`d\.T\.~Ed/",
+            RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    /// <summary>
+    /// Any <c>`d.T.~XX/</c> still present after rewriting is a reference we could not express:
+    /// an encrypted value (<c>Ec</c>/<c>De</c>), a field reference (<c>F</c>, used inside
+    /// Monitor File's nested filter XML), a variable GUID that isn't in this export, or a step in
+    /// a different runbook. Detecting the leftover generically beats enumerating the type codes —
+    /// the operator gets told the value is incomplete either way.
+    /// </summary>
+    private static readonly Regex ResidualMarkerRx =
+        new(@"\\?`d\.T\.~([A-Za-z]{1,2})/", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    /// <summary>Encrypted (<c>Ec</c>) and data-encrypted (<c>De</c>) value markers.</summary>
+    private static readonly Regex EncryptedMarkerRx =
+        new(@"\\?`d\.T\.~(Ec|De)/", RegexOptions.Compiled, TimeSpan.FromSeconds(1));
+
+    /// <summary>Everything a rewrite needs to resolve a marker and report what it could not.</summary>
+    private sealed record RewriteContext(
+        IReadOnlyDictionary<Guid, ScorchVariable> Variables,
+        IReadOnlySet<Guid> ActivityGuids,
+        List<string> Warnings,
+        string RunbookName);
 
     private static void RewriteReferences(
-        Dictionary<string, object?> cfg,
-        IReadOnlyDictionary<Guid, ScorchVariable> variableMap,
-        IReadOnlySet<Guid> activityGuids)
+        Dictionary<string, object?> cfg, RewriteContext ctx, string activityName)
     {
         var keys = cfg.Keys.ToList();
         foreach (var k in keys)
-            if (cfg[k] is string s) cfg[k] = RewriteString(s, variableMap, activityGuids);
+            if (cfg[k] is string s) cfg[k] = RewriteString(s, ctx, activityName, k);
     }
 
     private static string RewriteString(
-        string input,
-        IReadOnlyDictionary<Guid, ScorchVariable> variableMap,
-        IReadOnlySet<Guid> activityGuids)
+        string input, RewriteContext ctx, string activityName, string configKey)
     {
         if (string.IsNullOrEmpty(input)) return input;
 
+        var dottedFields = new List<string>();
+
         // 1. Variable refs → {{globals.Name}}
         var rewritten = VariableRefRx.Replace(input, m =>
-        {
-            return Guid.TryParse(m.Groups[1].Value, out var g) && variableMap.TryGetValue(g, out var v)
+            Guid.TryParse(m.Groups[1].Value, out var g) && ctx.Variables.TryGetValue(g, out var v)
                 ? "{{globals." + v.Name + "}}"
-                : m.Value;
-        });
+                : m.Value);
 
         // 2. Execution-data refs → {{stepId.param.field}} or {{stepId.output}}
         rewritten = ExecutionDataRefRx.Replace(rewritten, m =>
         {
-            if (!Guid.TryParse(m.Groups[1].Value, out var g) || !activityGuids.Contains(g))
+            if (!Guid.TryParse(m.Groups[1].Value, out var g) || !ctx.ActivityGuids.Contains(g))
                 return m.Value;
+
             var field = m.Groups[2].Value;
+            if (field.Contains('.'))
+            {
+                // SCOrch runbook metadata (Policy.Name, Policy.PID) and other nested names.
+                // NodePilot's {{step.param.X}} tail has no nested dots, so substituting here would
+                // emit a template that can never resolve. Leave the marker visible and report it.
+                dottedFields.Add(field);
+                return m.Value;
+            }
+
             var suffix = field.Equals("stdout", StringComparison.OrdinalIgnoreCase) ? "output"
                        : field.Equals("stderr", StringComparison.OrdinalIgnoreCase) ? "error"
                        : $"param.{field}";
             return "{{" + g + "." + suffix + "}}";
         });
 
+        ReportResidualMarkers(rewritten, dottedFields, ctx, activityName, configKey);
         return rewritten;
+    }
+
+    /// <summary>
+    /// A config value that still carries a SCOrch marker after rewriting is incomplete, and the
+    /// step will run with literal marker text in it. That used to be invisible; now it is named
+    /// together with the config key so the operator knows exactly which field to fix.
+    /// </summary>
+    private static void ReportResidualMarkers(
+        string value, List<string> dottedFields, RewriteContext ctx, string activityName, string configKey)
+    {
+        var codes = ResidualMarkerRx.Matches(value)
+            .Select(m => m.Groups[1].Value)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (codes.Count == 0) return;
+
+        var reason = dottedFields.Count > 0
+            ? $"nested published-data name(s) {string.Join(", ", dottedFields.Distinct(StringComparer.Ordinal))} " +
+              "have no NodePilot equivalent"
+            : "the referenced variable/step is not part of this export, or the value is encrypted";
+
+        ctx.Warnings.Add(
+            $"'{ctx.RunbookName}' / '{activityName}': config '{configKey}' still contains an unresolved " +
+            $"SCOrch reference [{string.Join(", ", codes)}] — {reason}. Set the value manually.");
     }
 
     // -------- link condition translation --------------------------------------------------

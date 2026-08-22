@@ -308,17 +308,25 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         {
             return BadRequest(new { error = "folderId does not exist" });
         }
-        // Read the raw body as text — the payload is XML, not JSON.
-        string xml;
-        using (var reader = new StreamReader(Request.Body, System.Text.Encoding.UTF8))
-        {
-            xml = await reader.ReadToEndAsync(ct);
-        }
-        if (string.IsNullOrWhiteSpace(xml))
+        // Buffer the body as BYTES and hand the stream to the XmlReader, rather than decoding it
+        // to a string first. Two reasons:
+        //   - Encoding: a StreamReader pinned to UTF-8 mis-decodes any export written in UTF-16 or
+        //     a legacy code page. Feeding raw bytes lets the XmlReader honour the BOM and the
+        //     document's own <?xml encoding=...?> declaration, which is the only correct source.
+        //   - Memory: the previous path held the UTF-8 bytes, a UTF-16 string of the same document
+        //     and the XDocument tree simultaneously. The string copy is now gone.
+        // The buffer stays: XmlReader reads synchronously, and Kestrel's AllowSynchronousIO
+        // defaults to false, so passing Request.Body straight through would throw at runtime on a
+        // real server while a MemoryStream-backed unit test happily passed.
+        using var buffered = new MemoryStream(
+            Request.ContentLength is > 0 and <= int.MaxValue ? (int)Request.ContentLength.Value : 0);
+        await Request.Body.CopyToAsync(buffered, ct);
+        if (buffered.Length == 0)
             return BadRequest(new { error = "Request body is empty." });
+        buffered.Position = 0;
 
         var importer = new NodePilot.Engine.Scorch.ScorchImporter();
-        var parsed = importer.Parse(xml);
+        var parsed = importer.Parse(buffered);
 
         if (parsed.Workflows.Count == 0 && parsed.Variables.Count == 0)
             return BadRequest(new

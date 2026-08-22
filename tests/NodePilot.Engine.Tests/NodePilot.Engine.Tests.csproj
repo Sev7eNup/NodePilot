@@ -26,6 +26,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- SCOrch fixtures are real-shaped .ois_export XML, not an MSBuild-known item type, so they
+         need an explicit Include. Kept as files rather than inline C# strings because the format's
+         published-data markers contain backslash+backtick sequences that C# raw strings obscure. -->
+    <Content Include="Scorch\Fixtures\*.ois_export" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\NodePilot.Engine\NodePilot.Engine.csproj" />
     <ProjectReference Include="..\..\src\NodePilot.Core\NodePilot.Core.csproj" />
     <ProjectReference Include="..\..\src\NodePilot.Data\NodePilot.Data.csproj" />
