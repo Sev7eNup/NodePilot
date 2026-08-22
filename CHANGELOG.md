@@ -12,6 +12,12 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.12] - 2026-08-22
+
+Everything here is the SCOrch import, measured against a real 2016 export rather than against the
+format the importer had assumed. Of 47 activities, 11 were usable and not one of the 147 Published
+Data references was translated.
+
 ### Added
 
 - The file-watcher trigger publishes `fileNameWithoutExtension` and `fileDirectory` alongside
@@ -644,7 +650,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.11...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.12...main
+[1.2.12]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.12
 [1.2.11]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.11
 [1.2.10]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.10
 [1.2.9]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.9
