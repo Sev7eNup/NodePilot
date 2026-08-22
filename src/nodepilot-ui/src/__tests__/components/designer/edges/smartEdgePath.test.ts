@@ -58,6 +58,48 @@ describe('smartEdgePath — controlPoints override', () => {
   });
 });
 
+/**
+ * Two nodes in the SAME column, one above the other. The backward U-loop is keyed on the port
+ * pair, and the offset is measured between ports — so with the default Right→Left the source's
+ * right port already sits a full node width past the target's left port and the edge kinks, no
+ * matter that the nodes are perfectly aligned. Docking the pair vertically instead sidesteps the
+ * branch entirely.
+ *
+ * This is what lets the SCOrch import keep a stacked arrangement without kinking its edges: on a
+ * real 47-activity runbook, 13 of 15 kinked edges were exactly this case.
+ */
+describe('smartEdgePath — a stacked pair docks vertically instead of looping', () => {
+  // Both nodes at x = 0, 108 px wide, target 150 px below.
+  const rightToLeft = {
+    sourceX: 108, sourceY: 0,   // source's RIGHT port
+    targetX: 0, targetY: 150,   // target's LEFT port
+    sourcePosition: Position.Right,
+    targetPosition: Position.Left,
+  };
+
+  const bottomToTop = {
+    sourceX: 54, sourceY: 50,   // source's BOTTOM port (node centre x)
+    targetX: 54, targetY: 100,  // target's TOP port
+    sourcePosition: Position.Bottom,
+    targetPosition: Position.Top,
+  };
+
+  it('rightToLeftPorts_produceTheAngularTwoSegmentLoop', () => {
+    expect(getSmartEdgePath(rightToLeft)).toHaveLength(2);
+  });
+
+  it('bottomToTopPorts_produceASingleSmoothCurve', () => {
+    const segs = getSmartEdgePath(bottomToTop);
+    expect(segs).toHaveLength(1);
+    expect(segs[0][0]).toMatch(/^M .* C /);
+  });
+
+  it('bottomToTopPorts_stayCurvedEvenWhenTheTargetIsAbove', () => {
+    const upward = { ...bottomToTop, sourcePosition: Position.Top, targetPosition: Position.Bottom, targetY: -100 };
+    expect(getSmartEdgePath(upward)).toHaveLength(1);
+  });
+});
+
 describe('smartEdgePath — arrowhead allocation', () => {
   it('shortensCubicAtTheArrowBase_andKeepsArrowTipAtOriginalTarget', () => {
     const segs = getSmartEdgePath({

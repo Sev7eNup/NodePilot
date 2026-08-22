@@ -47,7 +47,13 @@ Was die Übersetzung leistet:
 - **Layout** — der Graph behält seine eigene Anordnung. SCOrch-Koordinaten lassen sich nicht
   wörtlich übernehmen (dort kleine Icons, hier Karten), deshalb wird der gesamte Graph
   gleichmäßig skaliert, bis die Karten passen — eine Ähnlichkeitsabbildung, das Bild bleibt also
-  das des Autors, nur größer. Geht das nicht, sagt der Import es und legt den Graphen stattdessen
+  das des Autors, nur größer. Anschließend werden die Links auf geschwungene Kurven gebracht: für
+  eine rückwärts laufende Kante zeichnet der Designer einen eckigen Bogen unter beiden Knoten, und
+  nach einer originalgetreuen Skalierung trifft das jedes Knotenpaar, das in derselben Spalte
+  übereinandersteht. So ein Paar wird stattdessen oben/unten angedockt — das kostet keinerlei
+  Bewegung; wo ein vertikaler Andock nicht hilft, rückt das Ziel nach rechts. Zeilen bleiben immer
+  unberührt, und ein echter Rücksprung auf einen früheren Schritt behält seinen Bogen bewusst. Lässt
+  sich die Anordnung gar nicht reproduzieren, sagt der Import es und legt den Graphen stattdessen
   von links nach rechts aus.
 
 Was sie nicht leistet — und im Report benennt: eine Aktivität ohne NodePilot-Gegenstück, oder ein

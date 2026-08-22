@@ -55,41 +55,75 @@ public class ScorchLayoutTests
         ["22222222-0000-0000-0000-00000000000a"] = (-279, 602),
         ["22222222-0000-0000-0000-00000000000b"] = (-129, 527),
         ["22222222-0000-0000-0000-00000000000c"] = (-129, 677),
+        // Drawn directly BELOW 000c at the same x, and then far LEFT of that again. Both are shapes
+        // a SCOrch author produces routinely and both render as an angular U-loop if the import
+        // reproduces them literally — see the two tests at the bottom of this file.
+        ["22222222-0000-0000-0000-00000000000d"] = (-129, 827),
+        ["22222222-0000-0000-0000-00000000000e"] = (-879, 827),
     };
 
+    private const string StackedAbove = "22222222-0000-0000-0000-00000000000c";
+    private const string StackedBelow = "22222222-0000-0000-0000-00000000000d";
+    private const string DrawnFarLeft = "22222222-0000-0000-0000-00000000000e";
+
     /// <summary>
-    /// The heart of it: the imported graph must be the SOURCE graph, scaled. Every distance keeps
-    /// its ratio to every other, which is what makes the result recognisable as the runbook its
-    /// author drew rather than a fresh arrangement of the same nodes.
+    /// The scale the import applied, read back off the vertical span — which the import reproduces
+    /// exactly. Reading it off x would be circular: x is deliberately no longer a pure similarity.
+    /// </summary>
+    private static double DerivedScale(Dictionary<string, (double X, double Y)> imported)
+    {
+        var srcMinY = SourcePositions.Values.Min(p => p.Y);
+        var tallest = SourcePositions.OrderByDescending(kv => kv.Value.Y - srcMinY).First();
+        var outMinY = SourcePositions.Keys.Min(id => imported[id].Y);
+        return (imported[tallest.Key].Y - outMinY) / (tallest.Value.Y - srcMinY);
+    }
+
+    // Grid snapping is the only licence the transform takes, and it bites twice in these
+    // comparisons: once on the node under test, once on the reference point the scale was read off.
+    private const double SnapTolerance = 25;
+
+    /// <summary>
+    /// The vertical arrangement survives untouched — which rows belong together, which branch sits
+    /// above which, is most of what makes a runbook recognisable to the person who drew it. Nothing
+    /// in the import moves a node vertically.
     /// </summary>
     [Fact]
-    public void ImportedGraph_IsTheOriginalArrangementScaledUniformly()
+    public void ImportedGraph_ReproducesTheVerticalArrangementExactly()
     {
         var imported = Positions(ImportFixture(out _));
-
-        var srcMinX = SourcePositions.Values.Min(p => p.X);
         var srcMinY = SourcePositions.Values.Min(p => p.Y);
-        var outMinX = SourcePositions.Keys.Min(id => imported[id].X);
         var outMinY = SourcePositions.Keys.Min(id => imported[id].Y);
+        var scale = DerivedScale(imported);
 
-        // Derive the scale from the widest span, where the grid rounding matters least.
-        var widest = SourcePositions.OrderByDescending(kv => kv.Value.X - srcMinX).First();
-        var scale = (imported[widest.Key].X - outMinX) / (widest.Value.X - srcMinX);
-        // A source already spaced widely enough is only translated, never shrunk — the scale is the
-        // smallest one that fits the nodes, so 1 is a legitimate answer. The derived value sits a
-        // hair under it because it is read back off snapped coordinates.
-        scale.Should().BeGreaterThan(1 - 20.0 / (SourcePositions.Values.Max(p => p.X) - srcMinX));
-
-        // Grid snapping is the only licence the transform takes, and it can bite twice here: once on
-        // the node under test and once on the reference point the scale was read off. Beyond that
-        // budget it would be a different arrangement, not a rounding.
-        const double tolerance = 25;
-        foreach (var (id, (sx, sy)) in SourcePositions)
+        foreach (var (id, (_, sy)) in SourcePositions)
         {
-            imported[id].X.Should().BeApproximately(outMinX + (sx - srcMinX) * scale, tolerance,
-                "node {0} keeps its place horizontally", id);
-            imported[id].Y.Should().BeApproximately(outMinY + (sy - srcMinY) * scale, tolerance,
+            imported[id].Y.Should().BeApproximately(outMinY + (sy - srcMinY) * scale, SnapTolerance,
                 "node {0} keeps its place vertically", id);
+        }
+    }
+
+    /// <summary>
+    /// Horizontally the import is allowed one liberty, and only one: a node may be pushed RIGHT of
+    /// where the scale put it, so the link into it stops rendering as an angular loop. It is never
+    /// pulled left, so no activity ends up ahead of a step the author drew before it, and the
+    /// leftmost node still lands on the margin (see the canvas-origin test below).
+    ///
+    /// <para>Note what this deliberately does NOT claim: that the x ORDER survives. A link drawn
+    /// right-to-left is exactly the case the push exists for, and resolving it necessarily swaps
+    /// those two nodes over. That is the trade — a step that runs later reads later.</para>
+    /// </summary>
+    [Fact]
+    public void ImportedGraph_OnlyEverPushesNodesRightOfTheirScaledPosition()
+    {
+        var imported = Positions(ImportFixture(out _));
+        var srcMinX = SourcePositions.Values.Min(p => p.X);
+        var outMinX = SourcePositions.Keys.Min(id => imported[id].X);
+        var scale = DerivedScale(imported);
+
+        foreach (var (id, (sx, _)) in SourcePositions)
+        {
+            imported[id].X.Should().BeGreaterThanOrEqualTo(outMinX + (sx - srcMinX) * scale - SnapTolerance,
+                "node {0} is never moved left of where the scale put it", id);
         }
     }
 
@@ -164,6 +198,79 @@ public class ScorchLayoutTests
             """);
 
         WorkflowLayoutEngine.TryPreserveGeometry(definition, new PreservedLayoutOptions()).Should().BeNull();
+    }
+
+    // ---------- edges have to be readable, not just nodes ----------
+
+    private readonly record struct ImportedEdge(string Source, string Target, string? SourceHandle, string? TargetHandle);
+
+    private static List<ImportedEdge> Edges(JsonElement definition) =>
+        definition.GetProperty("edges").EnumerateArray().Select(e => new ImportedEdge(
+            e.GetProperty("source").GetString()!,
+            e.GetProperty("target").GetString()!,
+            e.TryGetProperty("sourceHandle", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null,
+            e.TryGetProperty("targetHandle", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null))
+            .ToList();
+
+    /// <summary>
+    /// The designer routes a right-to-left edge as a rectangular U-loop below both nodes once the
+    /// target's left port sits more than <c>BACKWARD_THRESHOLD</c> = 60 px behind the source's right
+    /// port (<c>designer/edges/smartEdgePath.ts</c>). Measured between PORTS, so a pair sitting in
+    /// the same column trips it just by being a node wide — which, on a source that stacks steps
+    /// vertically, is most of the graph. Not one imported edge may come out that way.
+    /// </summary>
+    [Fact]
+    public void ImportedEdges_NeverRenderAsTheAngularBackwardLoop()
+    {
+        var definition = ImportFixture(out _);
+        var pos = Positions(definition);
+        const double backwardThreshold = 60;
+
+        var angular = Edges(definition)
+            .Where(e => pos.ContainsKey(e.Source) && pos.ContainsKey(e.Target))
+            // Only the default right/left docking draws the loop; a vertical dock never does.
+            .Where(e => e.SourceHandle is null or "right" && e.TargetHandle is null or "left")
+            .Where(e => pos[e.Target].X < pos[e.Source].X + NodeWidth - backwardThreshold)
+            .Select(e => $"{e.Source}->{e.Target}")
+            .ToList();
+
+        angular.Should().BeEmpty("every link must render as a curve: {0}", string.Join(", ", angular));
+    }
+
+    /// <summary>
+    /// The cheap remedy, and the one that covers most of the real cases: a pair drawn one above the
+    /// other docks bottom-to-top instead of right-to-left. The loop is keyed on the port pair, so
+    /// this settles it without either node moving a pixel — the arrangement is what we came to keep.
+    /// </summary>
+    [Fact]
+    public void StackedPair_DocksVerticallyInsteadOfMovingEitherNode()
+    {
+        var definition = ImportFixture(out _);
+        var pos = Positions(definition);
+
+        var edge = Edges(definition).Single(e => e.Source == StackedAbove && e.Target == StackedBelow);
+        edge.SourceHandle.Should().Be("bottom");
+        edge.TargetHandle.Should().Be("top");
+
+        pos[StackedBelow].X.Should().Be(pos[StackedAbove].X, "neither node had to move");
+        pos[StackedBelow].Y.Should().BeGreaterThan(pos[StackedAbove].Y, "and the lower one stays lower");
+    }
+
+    /// <summary>
+    /// The other remedy, for a link a vertical dock cannot help: an activity drawn far to the LEFT
+    /// of the step that leads into it. Docking it vertically would draw a long diagonal across the
+    /// canvas, so it is pushed right instead — far enough to clear the loop threshold, and then far
+    /// enough again to clear the node it lands next to. Its row is untouched either way.
+    /// </summary>
+    [Fact]
+    public void BackwardLink_IsPushedForwardInsteadOfLoopingBack()
+    {
+        var definition = ImportFixture(out _);
+        var pos = Positions(definition);
+
+        pos[DrawnFarLeft].X.Should().BeGreaterThan(pos[StackedBelow].X,
+            "the activity was drawn 750 px to the left of its predecessor and had to come forward");
+        pos[DrawnFarLeft].Y.Should().Be(pos[StackedBelow].Y, "but its row is never touched");
     }
 
     // ---------- the layered fallback, exercised directly ----------

@@ -44,8 +44,13 @@ What the translation does:
   has no root and fails on every run.
 - **Layout** — the graph keeps its own arrangement. SCOrch's coordinates cannot be copied verbatim
   (it draws small icons, NodePilot draws cards), so the whole graph is scaled uniformly until the
-  cards fit — a similarity transform, so the picture is the author's, just larger. If that is
-  impossible, the import says so and lays the graph out left-to-right instead.
+  cards fit — a similarity transform, so the picture is the author's, just larger. Links are then
+  made to read as curves: the designer draws an angular loop below both nodes for an edge that runs
+  backwards, and after a faithful scale that catches every pair stacked in one column. Such a pair
+  is docked top-to-bottom instead, which costs no movement at all; a link that a vertical dock
+  cannot help has its target nudged to the right. Rows are never touched, and a genuine loop back to
+  an earlier step keeps its loop on purpose. If the arrangement cannot be reproduced at all, the
+  import says so and lays the graph out left-to-right instead.
 
 What it does not do, and says so in the report: an activity with no NodePilot counterpart, or a
 mapping that cannot fill a required setting, becomes a **disabled** `log` placeholder carrying the

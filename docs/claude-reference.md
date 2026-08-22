@@ -298,8 +298,49 @@ heraus (Lücken 32/40 px) — der ganze Workflow passt bei 54 % Zoom auf einen 1
 Viertelschritte aufgerundet, weil ganze Zahlen einen 2,1er-Bedarf auf 3 hochgezogen hätten.
 In der Kartenansicht überlappt so ein Import — dafür gibt es „Tidy".
 
+**Kanten-Pass danach — der Grund, warum x keine reine Ähnlichkeit mehr ist.** Die Skalierung erhält
+die Richtung jeder Kante, und „dieselbe Richtung" schließt *rückwärts* ein: der Designer zeichnet
+eine Right→Left-Kante als rechteckigen U-Bogen unter beiden Knoten, sobald der Ziel-Port mehr als
+`BACKWARD_THRESHOLD` = 60 px hinter dem Quell-Port liegt (`designer/edges/smartEdgePath.ts`).
+Gemessen wird zwischen **Ports** — ein Paar in derselben Spalte reißt die Schwelle also allein
+dadurch, dass ein Knoten breit ist. Am Referenz-Export waren das 15 eckige Kanten, 13 davon
+Knotenpaare mit identischem x, weil SCOrch gern vertikal stapelt.
+
+`MakeEdgesReadable` räumt das in dieser Reihenfolge auf, billigster Hebel zuerst:
+
+1. **Rückkanten eines Zyklus** (DFS-Färbung über *alle* Kanten, von jedem Knoten aus geseedet — nicht
+   nur von Roots, sonst bleibt ein abgehängter Zyklus ungefärbt und die Relaxation läuft ewig) sind
+   ausgenommen. Ein echter Zyklus kann nicht komplett vorwärts laufen, und der Styleguide will, dass
+   ein Loop-Back auffällt.
+2. **Gestapeltes Paar** (`|dx| < NodeWidth` **und** `|dy| >= NodeHeight`) → `sourceHandle`/
+   `targetHandle` auf `bottom`/`top` (bzw. `top`/`bottom`). Der U-Bogen hängt am Port-Paar, also
+   verschwindet er, **ohne dass sich ein Knoten bewegt** — und die Anordnung ist das, was erhalten
+   werden soll. Am Referenz-Export deckt das 16 Kanten ab.
+3. **Alles andere** wird horizontal auseinandergezogen: `x(target) >= x(source) + MinForwardGap`,
+   danach Entzerren auf `NodeWidth + MinGap`, beides im selben Fixpunkt bis nichts mehr wandert.
+   Nur das Ziel bewegt sich, nur nach rechts, **y wird nie angefasst**.
+
+Drei Fallen, die alle drei einmal zugeschlagen haben:
+
+- **`MinForwardGap` ist 68, nicht 148.** Es spiegelt die Render-Schwelle (`NodeWidth − 60`) plus
+  einen Rasterschritt, **nicht** die Knotenbreite. Kollidierende Knoten sind Aufgabe von `MinGap` im
+  selben Pass; die Knotenbreite hier zu fordern hat Graphen hunderte Pixel breiter gezogen, als
+  irgendetwas auf dem Schirm gebraucht hätte.
+- **Jeder Zug rastet mit `SnapUp` (Ceiling), nicht mit `Snap` (`Math.Round`).** 68 bzw. 148 sind
+  keine Vielfachen von `GridSnap` 20, und kaufmännisches Runden landet *unter* der Forderung — die
+  Bedingung feuert im nächsten Pass erneut, die Schleife dreht bis zum Cap und das Ergebnis erfüllt
+  die Zusicherung trotzdem nicht.
+- **Danach wird auf den Rand zurücktranslatiert.** Der Zug schiebt nur nach rechts, also wandert der
+  linkeste Knoten weg vom Margin, sobald er selbst Ziel einer Kante ist.
+
+**Constraint-Menge sind *alle* Kanten, auch deaktivierte** — die werden weiterhin gezeichnet
+(gestrichelt, ausgegraut) und wären sonst weiterhin eckig. Der Pass läuft **nur** auf dem
+Erhaltungspfad; `Reflow` (und damit MCP `suggest_layout`) ist unberührt und schreibt weiterhin
+ausschließlich `node.position`.
+
 `null` — und damit Rückfall auf `Reflow`/`WorkflowLayoutOptions.Imported` **mit Warnung** — bei
-deckungsgleichen Knoten (kein Faktor trennt die je) oder wenn der nötige Faktor `MaxScale` reißt.
+deckungsgleichen Knoten (kein Faktor trennt die je), wenn der nötige Faktor `MaxScale` reißt, oder
+wenn Zug und Entzerren sich in `placed.Count + 4` Durchläufen nicht einigen.
 
 **Weitere Eigenheiten:** importierte Runbooks ohne Trigger bekommen einen synthetischen
 `manualTrigger` (0 Roots ⇒ Execution `Failed`) — platziert **in den Quellkoordinaten** links vom

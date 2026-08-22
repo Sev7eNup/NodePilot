@@ -129,9 +129,12 @@ the same people — on a stack that is still maintained.
 - **The canvas looks like your runbook.** SCOrch positions activities as small icons on a tight
   grid; NodePilot draws cards several times that size, so the coordinates cannot be copied as they
   are. The graph is scaled uniformly instead — a similarity transform, so every distance keeps its
-  ratio and the arrangement is the one its author drew, just larger. Where that is impossible
-  (activities sharing a position, or spaced too tightly for any usable canvas) the import says so
-  and falls back to a left-to-right layout.
+  ratio and the arrangement is the one its author drew, just larger. Links are then made to read as
+  curves rather than the angular loop the designer draws for an edge running backwards: a pair
+  stacked in one column docks top-to-bottom without either node moving, and anything else is nudged
+  apart horizontally. Rows are never touched. Where the arrangement cannot be reproduced (activities
+  sharing a position, or spaced too tightly for any usable canvas) the import says so and falls back
+  to a left-to-right layout.
 
 Import from the UI, from `POST /api/workflows/import-scorch`, or from the CLI:
 

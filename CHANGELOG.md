@@ -56,6 +56,16 @@ exhaustive.
   on 3460x1500, small enough to take in at once. Where no scale works - activities sharing a
   position, or spaced too tightly for a usable canvas - the import reports it and falls back to a
   left-to-right layout.
+- Imported links are drawn as curves rather than rectangular loops. Scaling a graph faithfully keeps
+  every edge pointing the way it did, and that includes backwards: the designer routes a backward
+  right-to-left edge as an angular U below both nodes, and because the offset is measured between
+  ports rather than nodes, two activities in the same column trip it just by being a node wide. On
+  the reference export that was 15 of 49 links, 13 of them stacked pairs, and clearing them by hand
+  took five minutes of dragging. Such a pair now docks top-to-bottom, which fixes the edge without
+  moving either node; a link no dock can help has its target nudged right until the edge reads
+  forward. Rows are never touched, a genuine loop back to an earlier step keeps its loop so it still
+  stands out, and disabled links count too - they are drawn, so they are part of the picture. The
+  reference export comes out with none of its 49 links angular, on the same 3460x1500 canvas.
 - The import report says what the translation lost: references to fields the target activity does
   not publish, references across parallel branches, remote steps without a target machine, dropped
   run-as accounts, approximated schedules and links that ended up unconditional.
