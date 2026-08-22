@@ -123,7 +123,12 @@ public sealed class WorkflowImportScorchCommand : BaseCommand<WorkflowImportSett
         var result = await api.ImportScorchAsync(xml, settings.TargetFolder, ct);
         writer.Success($"SCOrch import: {result.Created} Workflows, {result.Variables.Count(v => v.CreatedNow)} neue Variablen.");
         foreach (var w in result.Workflows)
-            writer.Info($"  + [bold]{Markup.Escape(w.Name)}[/] — {w.ActivityCount} Activities ({w.HeuristicCount} heuristisch, {w.FallbackCount} Fallbacks)");
+        {
+            // The folder is worth printing: an export brings its own tree, so a workflow does not
+            // necessarily land in the folder that was passed on the command line.
+            var folder = w.FolderPath is null or "/" ? "" : $" [dim]in {Markup.Escape(w.FolderPath)}[/]";
+            writer.Info($"  + [bold]{Markup.Escape(w.Name)}[/]{folder} — {w.ActivityCount} Activities ({w.HeuristicCount} heuristisch, {w.FallbackCount} Fallbacks)");
+        }
         foreach (var w in result.Warnings) writer.Warning($"  ! {w}");
         foreach (var e in result.Errors) writer.Error($"  - {e}");
         // Errors should fail the command — translation may have produced unusable runbooks.

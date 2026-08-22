@@ -574,6 +574,209 @@ public class WorkflowImportExportControllerTests
         (await db.Workflows.AsNoTracking().ToListAsync()).Should().BeEmpty();
     }
 
+    // ---------- the folder trees a SCOrch export carries ----------
+
+    /// <summary>
+    /// An export from a whole SCOrch estate carries the folder tree its console showed, for both
+    /// runbooks and global variables. Re-filing a few hundred imported workflows by hand is the
+    /// work a migration should not create, so the tree is rebuilt below the chosen destination.
+    /// The export's own root folder stands for that destination and is not reproduced as a level.
+    /// </summary>
+    private static string FolderTreeExport(string runbookFolders, string variableFolders) => $$"""
+        <ExportData>
+          <Policies>
+            <Folder>
+              <Name>Policies</Name>
+              {{runbookFolders}}
+            </Folder>
+          </Policies>
+          <GlobalSettings>
+            <Variables>
+              <Folder>
+                <Name>Variables</Name>
+                {{variableFolders}}
+              </Folder>
+            </Variables>
+          </GlobalSettings>
+        </ExportData>
+        """;
+
+    private static string RunbookIn(string name, params string[] folders)
+    {
+        var policy = $"<Policy><UniqueID>{Guid.NewGuid()}</UniqueID><Name>{name}</Name></Policy>";
+        for (var i = folders.Length - 1; i >= 0; i--)
+            policy = $"<Folder><Name>{folders[i]}</Name>{policy}</Folder>";
+        return policy;
+    }
+
+    private static string VariableIn(string name, params string[] folders)
+    {
+        var obj = $"<Object><ObjectTypeName>Variable</ObjectTypeName>"
+                + $"<UniqueID>{Guid.NewGuid()}</UniqueID><Name>{name}</Name><Value>v</Value></Object>";
+        for (var i = folders.Length - 1; i >= 0; i--)
+            obj = $"<Folder><Name>{folders[i]}</Name>{obj}</Folder>";
+        return obj;
+    }
+
+    private static async Task<ScorchImportResponse> ImportXmlAsync(
+        WorkflowControllerHarness h, string xml, Guid? folderId = null)
+    {
+        h.ImportExport.Request.Body = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+        var result = await h.ImportExport.ImportScorch(folderId, CancellationToken.None);
+        return result.Result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<ScorchImportResponse>().Subject;
+    }
+
+    [Fact]
+    public async Task ImportScorch_ExportWithFolderTree_RebuildsItForWorkflowsAndVariables()
+    {
+        var db = CreateContext();
+        var h = NewController(db);
+        var xml = FolderTreeExport(
+            RunbookIn("Root Level") + RunbookIn("Nested", "Shared", "Logging"),
+            VariableIn("RootVar") + VariableIn("NestedVar", "Shared", "Tools"));
+
+        var response = await ImportXmlAsync(h, xml);
+
+        var logging = db.SharedWorkflowFolders.Single(f => f.Name == "Logging");
+        var shared = db.SharedWorkflowFolders.Single(f => f.Name == "Shared");
+        logging.ParentFolderId.Should().Be(shared.Id);
+        shared.ParentFolderId.Should().Be(SharedWorkflowFolder.RootFolderId);
+        logging.Path.Should().Be("/Shared/Logging");
+        logging.Depth.Should().Be(2);
+
+        db.Workflows.Single(w => w.Name == "Nested").FolderId.Should().Be(logging.Id);
+        db.Workflows.Single(w => w.Name == "Root Level").FolderId
+            .Should().Be(SharedWorkflowFolder.RootFolderId, "the export's own root is the destination");
+
+        var tools = db.GlobalVariableFolders.Single(f => f.Name == "Tools");
+        tools.Path.Should().Be("/Shared/Tools");
+        db.GlobalVariables.Single(v => v.Name == "NestedVar").FolderId.Should().Be(tools.Id);
+        db.GlobalVariables.Single(v => v.Name == "RootVar").FolderId
+            .Should().Be(GlobalVariableFolder.RootFolderId);
+
+        response.Workflows.Single(w => w.Name == "Nested").FolderPath.Should().Be("/Shared/Logging");
+        response.Variables.Single(v => v.Name == "NestedVar").FolderPath.Should().Be("/Shared/Tools");
+    }
+
+    /// <summary>
+    /// Importing into a chosen destination nests the export's tree below it, rather than beside it.
+    /// </summary>
+    [Fact]
+    public async Task ImportScorch_IntoAChosenFolder_NestsTheExportTreeBelowIt()
+    {
+        var db = CreateContext();
+        var destination = new SharedWorkflowFolder
+        {
+            Id = Guid.NewGuid(),
+            ParentFolderId = SharedWorkflowFolder.RootFolderId,
+            Name = "Migration",
+            Path = "/Migration",
+            Depth = 1,
+        };
+        db.SharedWorkflowFolders.Add(destination);
+        await db.SaveChangesAsync();
+        var h = NewController(db);
+
+        await ImportXmlAsync(h, FolderTreeExport(RunbookIn("Nested", "Shared"), ""), destination.Id);
+
+        var shared = db.SharedWorkflowFolders.Single(f => f.Name == "Shared");
+        shared.ParentFolderId.Should().Be(destination.Id);
+        shared.Path.Should().Be("/Migration/Shared");
+        shared.Depth.Should().Be(2);
+    }
+
+    /// <summary>
+    /// A second import of the same estate must land in the folders the first one made, not beside
+    /// them — and a name that differs only in case is the same folder, or an import would quietly
+    /// produce <c>SCCM</c> next to <c>sccm</c>.
+    /// </summary>
+    [Fact]
+    public async Task ImportScorch_FolderThatAlreadyExists_IsReusedRegardlessOfCase()
+    {
+        var db = CreateContext();
+        db.SharedWorkflowFolders.Add(new SharedWorkflowFolder
+        {
+            Id = Guid.NewGuid(),
+            ParentFolderId = SharedWorkflowFolder.RootFolderId,
+            Name = "SCCM",
+            Path = "/SCCM",
+            Depth = 1,
+        });
+        await db.SaveChangesAsync();
+        var h = NewController(db);
+
+        await ImportXmlAsync(h, FolderTreeExport(RunbookIn("Second Pass", "sccm", "Packaging"), ""));
+
+        db.SharedWorkflowFolders.Where(f => f.Name == "SCCM" || f.Name == "sccm")
+            .Should().ContainSingle("a case variant is the same folder");
+        var packaging = db.SharedWorkflowFolders.Single(f => f.Name == "Packaging");
+        packaging.Path.Should().Be("/SCCM/Packaging");
+        db.Workflows.Single().FolderId.Should().Be(packaging.Id);
+    }
+
+    /// <summary>
+    /// SCOrch has no depth limit; NodePilot caps folders at
+    /// <see cref="SharedWorkflowFolder.MaxDepth"/> so permission traversal stays bounded. The
+    /// levels that do not fit are merged into the deepest one that does — reported, not silent.
+    /// </summary>
+    [Fact]
+    public async Task ImportScorch_FolderTreeDeeperThanTheLimit_IsFlattenedAndReported()
+    {
+        var db = CreateContext();
+        var h = NewController(db);
+        var tooDeep = Enumerable.Range(1, SharedWorkflowFolder.MaxDepth + 3)
+            .Select(i => $"L{i}").ToArray();
+
+        var response = await ImportXmlAsync(h, FolderTreeExport(RunbookIn("Deep", tooDeep), ""));
+
+        db.SharedWorkflowFolders.Where(f => f.Id != SharedWorkflowFolder.RootFolderId)
+            .Should().HaveCount(SharedWorkflowFolder.MaxDepth);
+        db.SharedWorkflowFolders.Max(f => f.Depth).Should().Be(SharedWorkflowFolder.MaxDepth);
+        db.Workflows.Single().FolderId.Should().Be(
+            db.SharedWorkflowFolders.Single(f => f.Depth == SharedWorkflowFolder.MaxDepth).Id);
+        response.Warnings.Should().Contain(w => w.Contains("deeper than NodePilot's limit"));
+    }
+
+    /// <summary>
+    /// A shared folder is an RBAC boundary, so one the import minted has to be findable in the
+    /// audit log the same way a hand-created one is. Variable folders are cosmetic and stay inside
+    /// the import's own summary entry.
+    /// </summary>
+    [Fact]
+    public async Task ImportScorch_CreatedWorkflowFolders_AreAudited()
+    {
+        var db = CreateContext();
+        var (h, audit) = NewControllerWithAudit(db);
+
+        await ImportXmlAsync(h, FolderTreeExport(
+            RunbookIn("Nested", "Shared"), VariableIn("NestedVar", "Cosmetic")));
+
+        audit.Calls.Where(c => c.Action == "FOLDER_CREATED").Should()
+            .ContainSingle().Which.Details.Should().Contain("/Shared").And.Contain("scorch-import");
+        audit.Calls.Should().ContainSingle(c => c.Action == "WORKFLOW_IMPORTED_SCORCH")
+            .Which.Details.Should().Contain("\"workflowFoldersCreated\":1")
+            .And.Contain("\"variableFoldersCreated\":1");
+    }
+
+    /// <summary>
+    /// A variable skipped because its name is taken must not leave an empty folder behind — the
+    /// tree is planned from what actually gets created, not from what the file contains.
+    /// </summary>
+    [Fact]
+    public async Task ImportScorch_VariableSkippedAsDuplicate_DoesNotCreateItsFolder()
+    {
+        var db = CreateContext();
+        db.GlobalVariables.Add(new GlobalVariable { Id = Guid.NewGuid(), Name = "Taken", Value = "existing" });
+        await db.SaveChangesAsync();
+        var h = NewController(db);
+
+        var response = await ImportXmlAsync(h, FolderTreeExport("", VariableIn("Taken", "Orphan")));
+
+        db.GlobalVariableFolders.Should().NotContain(f => f.Name == "Orphan");
+        response.Variables.Should().ContainSingle(v => v.Skipped && v.FolderPath == null);
+    }
+
     [Fact]
     public async Task ExportOne_EmitsWorkflowExportedAudit()
     {

@@ -356,13 +356,17 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         // identity, so anyone able to import a runbook can put the same value straight into a
         // step. The gate would only split Orchestrator migrations into two manual passes without
         // removing a capability. Collisions are still never overwritten (see above).
+        // Where each created variable's report entry sits, so the folder it landed in can be filled
+        // in once the tree below is planned — without reordering the report or losing which of two
+        // same-named variables in one file was the one that got created.
+        var createdVariableSlots = new List<int>();
         foreach (var v in parsed.Variables)
         {
             if (existingGlobalNames.Contains(v.Name))
             {
                 importedVariables.Add(new ScorchImportedVariableInfo(
                     v.Name, null, CreatedNow: false, Skipped: true,
-                    SkipReason: "A global variable with this name already exists."));
+                    SkipReason: "A global variable with this name already exists.", FolderPath: null));
                 continue;
             }
             // Plan all writes before opening the transaction. Adding the name now also makes a
@@ -370,8 +374,39 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             // database-provider-specific unique-constraint failure halfway through the batch.
             variablesToCreate.Add(v);
             existingGlobalNames.Add(v.Name);
+            createdVariableSlots.Add(importedVariables.Count);
             importedVariables.Add(new ScorchImportedVariableInfo(
-                v.Name, null, CreatedNow: true, Skipped: false, SkipReason: null));
+                v.Name, null, CreatedNow: true, Skipped: false, SkipReason: null, FolderPath: null));
+        }
+
+        // 1b. Rebuild the variable folders the export brought with it. SCOrch groups globals in a
+        //     tree and a real estate leans on it — dropping them all into Root throws away the only
+        //     organisation the author had. These folders are cosmetic (a global resolves by its
+        //     bare name regardless of where it sits), so creating them is strictly less privileged
+        //     than creating the variables themselves, which an Operator may already do here.
+        //     Planned only for the variables that survived the collision check above: a skipped
+        //     variable must not leave an empty folder behind.
+        var existingVariableFolders = await _db.GlobalVariableFolders.AsNoTracking()
+            .Select(f => new { f.Id, f.ParentFolderId, f.Name, f.Path, f.Depth })
+            .ToListAsync(ct);
+        var plannedVariableFolders = new List<PlannedFolder>();
+        var variableFolderByPath = PlanFolderTree(
+            variablesToCreate.Select(v => v.FolderPath),
+            GlobalVariableFolder.RootFolderId,
+            existingVariableFolders.Select(f => (f.Id, f.ParentFolderId, f.Name, f.Path, f.Depth)).ToList(),
+            GlobalVariableFolder.MaxDepth,
+            plannedVariableFolders,
+            parsed.Warnings);
+
+        var variableFolderPathById = existingVariableFolders.ToDictionary(f => f.Id, f => f.Path);
+        foreach (var f in plannedVariableFolders) variableFolderPathById[f.Id] = f.Path;
+
+        var variableFolderIds = new Guid[variablesToCreate.Count];
+        for (var i = 0; i < variablesToCreate.Count; i++)
+        {
+            variableFolderIds[i] = variableFolderByPath[string.Join("/", variablesToCreate[i].FolderPath)];
+            importedVariables[createdVariableSlots[i]] = importedVariables[createdVariableSlots[i]]
+                with { FolderPath = variableFolderPathById[variableFolderIds[i]] };
         }
 
         // 2. Create workflows (disabled).
@@ -381,6 +416,7 @@ public class WorkflowImportExportController : WorkflowsControllerBase
 
         var created = new List<ScorchImportedWorkflowInfo>();
         var workflowsToCreate = new List<Workflow>();
+        var importedRunbooks = new List<NodePilot.Engine.Scorch.ScorchRunbook>();
         var errors = new List<string>(parsed.Errors);
 
         foreach (var rb in parsed.Workflows)
@@ -411,14 +447,48 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             };
             PopulateComputedColumns(workflow);
             workflowsToCreate.Add(workflow);
+            importedRunbooks.Add(rb);
             created.Add(new ScorchImportedWorkflowInfo(
                 workflow.Id, finalName,
                 finalName == rb.Name ? null : rb.Name,
-                rb.ActivityCount, rb.HeuristicCount, rb.FallbackCount));
+                rb.ActivityCount, rb.HeuristicCount, rb.FallbackCount,
+                FolderPath: null));
+        }
+
+        // 2b. Rebuild the runbook folders below the destination the operator chose. A single-runbook
+        //     export carries none and everything lands in the destination itself; a whole-estate
+        //     export carries the tree the SCOrch console showed, and re-filing a few hundred
+        //     workflows by hand is the kind of work a migration should not create.
+        //
+        //     RBAC: everything created here descends from targetFolderId, which the caller already
+        //     holds Edit on, and a new folder inherits its parent's grants — the same reasoning the
+        //     folder create endpoint states ("creating a child is a parent-edit"). One check on the
+        //     destination therefore covers the whole subtree.
+        var existingWorkflowFolders = await _db.SharedWorkflowFolders.AsNoTracking()
+            .Select(f => new { f.Id, f.ParentFolderId, f.Name, f.Path, f.Depth })
+            .ToListAsync(ct);
+        var plannedWorkflowFolders = new List<PlannedFolder>();
+        var workflowFolderByPath = PlanFolderTree(
+            importedRunbooks.Select(rb => rb.FolderPath),
+            targetFolderId,
+            existingWorkflowFolders.Select(f => (f.Id, f.ParentFolderId, f.Name, f.Path, f.Depth)).ToList(),
+            SharedWorkflowFolder.MaxDepth,
+            plannedWorkflowFolders,
+            parsed.Warnings);
+
+        var workflowFolderPathById = existingWorkflowFolders.ToDictionary(f => f.Id, f => f.Path);
+        foreach (var f in plannedWorkflowFolders) workflowFolderPathById[f.Id] = f.Path;
+
+        for (var i = 0; i < workflowsToCreate.Count; i++)
+        {
+            var landedIn = workflowFolderByPath[string.Join("/", importedRunbooks[i].FolderPath)];
+            workflowsToCreate[i].FolderId = landedIn;
+            created[i] = created[i] with { FolderPath = workflowFolderPathById[landedIn] };
         }
 
         var variablesCreated = variablesToCreate.Count;
-        if (workflowsToCreate.Count > 0 || variablesToCreate.Count > 0)
+        if (workflowsToCreate.Count > 0 || variablesToCreate.Count > 0
+            || plannedWorkflowFolders.Count > 0 || plannedVariableFolders.Count > 0)
         {
             // GlobalVariableStore is scoped with this controller and therefore shares _db.
             // Its per-variable SaveChanges calls and the workflow insert must commit as one
@@ -430,7 +500,10 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 workflowsToCreate,
                 variablesToCreate,
                 triggeredBy,
-                new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase));
+                new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase),
+                plannedWorkflowFolders,
+                plannedVariableFolders,
+                variableFolderIds);
             await strategy.ExecuteInTransactionAsync(
                 attempt,
                 async (state, token) =>
@@ -439,12 +512,42 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                     // Unchanged before an ambiguous commit. Variable IDs are attempt-local.
                     _db.ChangeTracker.Clear();
                     state.CreatedVariableIds.Clear();
+
+                    // Folders first, shallowest first: a variable is created with its folder id, so
+                    // the row it points at has to exist inside this same unit of work.
+                    _db.SharedWorkflowFolders.AddRange(state.WorkflowFolders
+                        .OrderBy(f => f.Depth)
+                        .Select(f => new SharedWorkflowFolder
+                        {
+                            Id = f.Id,
+                            ParentFolderId = f.ParentId,
+                            Name = f.Name,
+                            Path = f.Path,
+                            Depth = f.Depth,
+                            CreatedAt = DateTime.UtcNow,
+                            CreatedByUserId = this.GetCurrentUserId(),
+                        }));
+                    _db.GlobalVariableFolders.AddRange(state.VariableFolders
+                        .OrderBy(f => f.Depth)
+                        .Select(f => new GlobalVariableFolder
+                        {
+                            Id = f.Id,
+                            ParentFolderId = f.ParentId,
+                            Name = f.Name,
+                            Path = f.Path,
+                            Depth = f.Depth,
+                            CreatedAt = DateTime.UtcNow,
+                            CreatedByUserId = this.GetCurrentUserId(),
+                        }));
+                    if (state.VariableFolders.Count > 0) await _db.SaveChangesAsync(token);
+
                     _db.Workflows.AddRange(state.Workflows);
-                    foreach (var v in state.Variables)
+                    for (var i = 0; i < state.Variables.Count; i++)
                     {
+                        var v = state.Variables[i];
                         var createdVariable = await _globals.CreateAsync(
                             v.Name, v.Value, v.IsSecret, v.Description,
-                            GlobalVariableFolder.RootFolderId, state.TriggeredBy, token);
+                            state.VariableFolderIds[i], state.TriggeredBy, token);
                         state.CreatedVariableIds[v.Name] = createdVariable.Id;
                     }
 
@@ -457,6 +560,20 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                     // allowing the execution strategy to replay the import.
                     _db.ChangeTracker.Clear();
                     if (state.CreatedVariableIds.Count != state.Variables.Count) return false;
+
+                    // The folders carry pre-generated ids for exactly this check: a replay must be
+                    // able to tell "the tree I planned is already there" from "someone else's is".
+                    var workflowFolderIds = state.WorkflowFolders.Select(f => f.Id).ToArray();
+                    if (workflowFolderIds.Length > 0
+                        && await _db.SharedWorkflowFolders.AsNoTracking()
+                            .CountAsync(f => workflowFolderIds.Contains(f.Id), token) != workflowFolderIds.Length)
+                        return false;
+
+                    var variableFolderRowIds = state.VariableFolders.Select(f => f.Id).ToArray();
+                    if (variableFolderRowIds.Length > 0
+                        && await _db.GlobalVariableFolders.AsNoTracking()
+                            .CountAsync(f => variableFolderRowIds.Contains(f.Id), token) != variableFolderRowIds.Length)
+                        return false;
 
                     var workflowIds = state.Workflows.Select(workflow => workflow.Id).ToArray();
                     var variableIds = state.CreatedVariableIds.Values.ToArray();
@@ -475,7 +592,18 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 ct);
         }
 
-        if (created.Count > 0 || variablesCreated > 0)
+        // A shared folder is an RBAC boundary, so each one the import minted gets the same audit
+        // entry a hand-created folder does — "who created the folder my workflows sit in" must be
+        // answerable from the audit log, not only inferable from the import summary. Variable
+        // folders are cosmetic and stay inside the import's own entry.
+        foreach (var f in plannedWorkflowFolders)
+        {
+            await _audit.LogAsync(AuditActions.FolderCreated, "SharedWorkflowFolder", f.Id,
+                AuditDetails.Json(("name", f.Name), ("path", f.Path), ("parentId", f.ParentId),
+                    ("source", "scorch-import")), ct);
+        }
+
+        if (created.Count > 0 || variablesCreated > 0 || plannedWorkflowFolders.Count > 0)
         {
             var detailsJson = JsonSerializer.Serialize(new
             {
@@ -485,9 +613,15 @@ public class WorkflowImportExportController : WorkflowsControllerBase
                 fallbacks = created.Sum(c => c.FallbackCount),
                 heuristics = created.Sum(c => c.HeuristicCount),
                 folderId = targetFolderId,
+                workflowFoldersCreated = plannedWorkflowFolders.Count,
+                variableFoldersCreated = plannedVariableFolders.Count,
             });
             await _audit.LogAsync(AuditActions.WorkflowImportedScorch, "Workflow", null, detailsJson, ct);
         }
+
+        // The per-request authorization cache was loaded before these folders existed, so a
+        // capability lookup on one would walk an ancestry chain that has no row for it.
+        if (plannedWorkflowFolders.Count > 0) _authz.InvalidateAll();
 
         sw.Stop();
         ApiMetrics.ImportExportOperations.Add(1,
@@ -498,6 +632,90 @@ public class WorkflowImportExportController : WorkflowsControllerBase
             new("result", "success"));
 
         return Ok(new ScorchImportResponse(created.Count, created, importedVariables, parsed.Warnings, errors));
+    }
+
+    /// <summary>One folder the import has to create, with its identity fixed up front.</summary>
+    /// <remarks>
+    /// The id is generated before the transaction opens, exactly like the workflow rows: the
+    /// execution strategy may replay the whole attempt, and a replay that minted fresh ids could
+    /// not tell "my folders committed" from "someone else's did".
+    /// </remarks>
+    private sealed record PlannedFolder(Guid Id, Guid ParentId, string Name, string Path, int Depth);
+
+    /// <summary>
+    /// Maps each folder path an export carries to a folder id under <paramref name="rootId"/>,
+    /// planning the levels that do not exist yet.
+    ///
+    /// <para>Shared by both trees an export carries. <c>SharedWorkflowFolder</c> and
+    /// <c>GlobalVariableFolder</c> are structurally the same shape — self-referencing parent,
+    /// materialized path, depth from a singleton root — and differ only in whether RBAC hangs off
+    /// them, which does not affect where a row belongs. The caller materializes the plan into
+    /// whichever entity it owns.</para>
+    ///
+    /// <para>Existing folders are reused, matched case-insensitively so an import cannot end up
+    /// with <c>SCCM</c> next to <c>sccm</c>. Names longer than the 120 the create endpoint allows
+    /// are truncated, and a path deeper than <paramref name="maxDepth"/> is flattened into the
+    /// deepest level that fits — both reported, never silent.</para>
+    /// </summary>
+    private static Dictionary<string, Guid> PlanFolderTree(
+        IEnumerable<IReadOnlyList<string>> sourcePaths,
+        Guid rootId,
+        IReadOnlyList<(Guid Id, Guid? ParentId, string Name, string Path, int Depth)> existing,
+        int maxDepth,
+        List<PlannedFolder> planned,
+        List<string> warnings)
+    {
+        const int maxNameLength = 120;
+        static string ChildKey(Guid parent, string name) => $"{parent:N}/{name.ToLowerInvariant()}";
+
+        var byParentAndName = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        var shape = new Dictionary<Guid, (string Path, int Depth)>();
+        foreach (var f in existing)
+        {
+            shape[f.Id] = (f.Path, f.Depth);
+            if (f.ParentId is { } parent) byParentAndName[ChildKey(parent, f.Name)] = f.Id;
+        }
+        if (!shape.ContainsKey(rootId)) shape[rootId] = ("/", 0);
+
+        var resolved = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+        foreach (var path in sourcePaths)
+        {
+            var key = string.Join("/", path);
+            if (resolved.ContainsKey(key)) continue;
+
+            var currentId = rootId;
+            foreach (var rawSegment in path)
+            {
+                var segment = rawSegment.Length > maxNameLength ? rawSegment[..maxNameLength] : rawSegment;
+                if (segment != rawSegment)
+                    warnings.Add($"Folder name '{rawSegment}' was truncated to '{segment}' ({maxNameLength} characters max).");
+
+                var (parentPath, parentDepth) = shape[currentId];
+                if (parentDepth + 1 > maxDepth)
+                {
+                    warnings.Add(
+                        $"Folder path '{key}' from the export is deeper than NodePilot's limit of " +
+                        $"{maxDepth} levels; the remaining levels were merged into '{parentPath}'.");
+                    break;
+                }
+
+                if (byParentAndName.TryGetValue(ChildKey(currentId, segment), out var existingId))
+                {
+                    currentId = existingId;
+                    continue;
+                }
+
+                var id = Guid.NewGuid();
+                var childPath = parentPath == "/" ? $"/{segment}" : $"{parentPath}/{segment}";
+                planned.Add(new PlannedFolder(id, currentId, segment, childPath, parentDepth + 1));
+                byParentAndName[ChildKey(currentId, segment)] = id;
+                shape[id] = (childPath, parentDepth + 1);
+                currentId = id;
+            }
+
+            resolved[key] = currentId;
+        }
+        return resolved;
     }
 
     /// <summary>
@@ -558,7 +776,10 @@ public class WorkflowImportExportController : WorkflowsControllerBase
         IReadOnlyList<Workflow> Workflows,
         IReadOnlyList<NodePilot.Engine.Scorch.ScorchVariable> Variables,
         string? TriggeredBy,
-        Dictionary<string, Guid> CreatedVariableIds);
+        Dictionary<string, Guid> CreatedVariableIds,
+        IReadOnlyList<PlannedFolder> WorkflowFolders,
+        IReadOnlyList<PlannedFolder> VariableFolders,
+        IReadOnlyList<Guid> VariableFolderIds);
 
     private IActionResult ExportEnvelopeResult(WorkflowExportEnvelope envelope, string filename)
     {

@@ -126,6 +126,10 @@ the same people — on a stack that is still maintained.
   NodePilot activity does not publish, a reference across parallel branches (SCOrch's data bus is
   run-scoped, NodePilot's is ancestor-scoped), a remote step with no target machine, a dropped
   run-as account, an approximated schedule, and any link that ended up unconditional.
+- **Your folder tree comes with you.** A SCOrch export carries the structure its console showed —
+  for runbooks and for global variables — and the import rebuilds both below the destination you
+  pick, reusing folders that are already there. Re-filing a few hundred workflows by hand is work a
+  migration should not create.
 - **The canvas looks like your runbook.** SCOrch positions activities as small icons on a tight
   grid; NodePilot draws cards several times that size, so the coordinates cannot be copied as they
   are. The graph is scaled uniformly instead — a similarity transform, so every distance keeps its

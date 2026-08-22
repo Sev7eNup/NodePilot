@@ -44,6 +44,12 @@ Was die Übersetzung leistet:
 - **Trigger** — ein Runbook ohne eigenen Trigger (von einem anderen Runbook aufgerufene brauchen
   keinen) bekommt einen manuellen Trigger auf seine Einstiegsaktivitäten. Ohne Trigger-Node hat ein
   NodePilot-Workflow keinen Root und scheitert bei jedem Lauf.
+- **Ordner** — ein Export bringt seinen eigenen Baum mit, für Runbooks ebenso wie für globale
+  Variablen, und beide werden unterhalb des gewählten Zielordners nachgebaut. Bereits vorhandene
+  Ordner werden wiederverwendet (Groß-/Kleinschreibung wird dabei ignoriert), Namen über 120 Zeichen
+  gekürzt, und ein Baum tiefer als NodePilots fünf Ebenen wird in die tiefste passende Ebene
+  gefaltet — die letzten beiden Fälle werden gemeldet. Zusätzliche Rechte braucht das nicht: alles
+  Erzeugte liegt unter dem Ziel, für das ohnehin Schreibrecht nötig ist, und erbt dessen Zugriff.
 - **Layout** — der Graph behält seine eigene Anordnung. SCOrch-Koordinaten lassen sich nicht
   wörtlich übernehmen (dort kleine Icons, hier Karten), deshalb wird der gesamte Graph
   gleichmäßig skaliert, bis die Karten passen — eine Ähnlichkeitsabbildung, das Bild bleibt also

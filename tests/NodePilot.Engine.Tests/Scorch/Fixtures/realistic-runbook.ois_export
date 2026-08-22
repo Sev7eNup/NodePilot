@@ -498,6 +498,12 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
 
 </Policy>
 
+<Folder>
+  <UniqueID>{44444444-0000-0000-0000-000000000001}</UniqueID>
+  <Name>Shared</Name>
+  <Folder>
+    <UniqueID>{44444444-0000-0000-0000-000000000002}</UniqueID>
+    <Name>Logging</Name>
 <Policy>
   <UniqueID datatype="string">{11111111-0000-0000-0000-000000000002}</UniqueID>
   <Name datatype="string">Log Error</Name>
@@ -540,6 +546,8 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
   </Object>
 
 </Policy>
+  </Folder>
+</Folder>
 </Folder></Policies>
 <GlobalSettings>
   <Counters></Counters>
@@ -554,13 +562,21 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
         <ObjectTypeName datatype="string">Variable</ObjectTypeName>
         <Value datatype="string">\\fileserver.example.test\packages</Value>
       </Object>
-      <Object>
+      <Folder>
+        <UniqueID>{55555555-0000-0000-0000-000000000001}</UniqueID>
+        <Name>Shared</Name>
+        <Folder>
+          <UniqueID>{55555555-0000-0000-0000-000000000002}</UniqueID>
+          <Name>Tools</Name>
+          <Object>
         <UniqueID datatype="string">{33333333-0000-0000-0000-000000000002}</UniqueID>
         <Name datatype="string">Tools Dir (x86)</Name>
         <Description datatype="string">Helper tools used by several runbooks.</Description>
         <ObjectTypeName datatype="string">Variable</ObjectTypeName>
         <Value datatype="string">C:\Tools\Bin</Value>
       </Object>
+        </Folder>
+      </Folder>
       <Object>
         <UniqueID datatype="string">{33333333-0000-0000-0000-000000000003}</UniqueID>
         <Name datatype="string">ServiceAccountPassword</Name>
