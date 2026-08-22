@@ -228,8 +228,10 @@ public class ScorchImporterTests
         var def = JsonSerializer.Deserialize<JsonElement>(result.Workflows[0].DefinitionJson);
         var useNode = def.GetProperty("nodes").EnumerateArray()
             .First(n => n.GetProperty("id").GetString() == dstId.ToString());
+        // References resolve through the source node's outputVariable, derived from its SCOrch name,
+        // so an imported canvas shows "{{Get.param.X}}" rather than a bare GUID.
         var scriptOut = useNode.GetProperty("data").GetProperty("config").GetProperty("script").GetString();
-        scriptOut.Should().Contain("{{" + srcId + ".param.LastModificationDateTime}}");
+        scriptOut.Should().Contain("{{Get.param.LastModificationDateTime}}");
     }
 
     [Fact]
@@ -400,6 +402,58 @@ public class ScorchImporterTests
         v.IsSecret.Should().BeTrue();
         v.Value.Should().Be("[ENCRYPTED - set actual value after import]");
         result.Warnings.Should().ContainSingle(w => w.Contains("SmtpPassword") && w.Contains("encrypted"));
+    }
+
+    /// <summary>
+    /// SCOrch's data bus is run-scoped: an activity may read any earlier activity's published data,
+    /// including one on a parallel branch. NodePilot resolves ancestors only, so such a reference
+    /// imports as a well-formed template that can never resolve — and inside a runScript body it
+    /// stays as literal text, letting the step run green with the placeholder in it.
+    /// </summary>
+    [Fact]
+    public void Parse_ReferenceAcrossParallelBranches_IsReported()
+    {
+        var root = Guid.NewGuid();
+        var branchA = Guid.NewGuid();
+        var branchB = Guid.NewGuid();
+        var crossReference = "$x = '\\`d.T.~Ed/{" + branchA + "}.result\\`d.T.~Ed/'";
+
+        var xml = BuildExport(PolicyWith("Fork", new[]
+        {
+            ActivityXml(root, "Root", "Run .Net Script", props: new[] { ("ScriptBody", "start") }),
+            ActivityXml(branchA, "Branch A", "Run .Net Script", props: new[] { ("ScriptBody", "a") }),
+            ActivityXml(branchB, "Branch B", "Run .Net Script", props: new[] { ("ScriptBody", crossReference) }),
+            LinkXml(Guid.NewGuid(), root, branchA),
+            LinkXml(Guid.NewGuid(), root, branchB),
+        }));
+
+        var result = Importer.Parse(xml);
+
+        result.Warnings.Should().ContainSingle(w =>
+            w.Contains("Branch B") && w.Contains("predecessor path"));
+    }
+
+    /// <summary>
+    /// SCOrch activity names are not unique within a runbook, and two nodes sharing an
+    /// outputVariable make downstream references resolve to whichever ran last.
+    /// </summary>
+    [Fact]
+    public void Parse_ActivitiesSharingAName_GetDistinctOutputVariables()
+    {
+        var first = Guid.NewGuid();
+        var second = Guid.NewGuid();
+        var xml = BuildExport(PolicyWith("Dupes", new[]
+        {
+            ActivityXml(first, "Check", "Run .Net Script", props: new[] { ("ScriptBody", "1") }),
+            ActivityXml(second, "Check", "Run .Net Script", props: new[] { ("ScriptBody", "2") }),
+        }));
+
+        var def = JsonSerializer.Deserialize<JsonElement>(Importer.Parse(xml).Workflows[0].DefinitionJson);
+        var names = ActivityNodes(def)
+            .Select(n => n.GetProperty("data").GetProperty("outputVariable").GetString())
+            .ToList();
+
+        names.Should().BeEquivalentTo(["Check", "Check_2"]);
     }
 
     // ---- helpers ----------------------------------------------------------------------------

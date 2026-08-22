@@ -44,7 +44,12 @@ public class ScorchImporterFixtureTests
 
     private const string MonitorFileId = "22222222-0000-0000-0000-000000000001";
     private const string RunScriptId = "22222222-0000-0000-0000-000000000002";
+    private const string QueryXmlId = "22222222-0000-0000-0000-000000000003";
     private const string RobocopyId = "22222222-0000-0000-0000-00000000000b";
+
+    // References resolve through each node's outputVariable, derived from its SCOrch name.
+    private const string MonitorFileVar = "Monitor_Intake_Folder";
+    private const string QueryXmlVar = "Query_Manifest_Status";
 
     [Fact]
     public void Parse_RealExportShapedFixture_ProducesBothRunbooks()
@@ -79,8 +84,8 @@ public class ScorchImporterFixtureTests
         var script = NodeById(def, RunScriptId)
             .GetProperty("data").GetProperty("config").GetProperty("script").GetString()!;
 
-        script.Should().Contain("{{" + MonitorFileId + ".param.FileNameExt}}");
-        script.Should().Contain("{{" + MonitorFileId + ".param.Path}}");
+        script.Should().Contain("{{" + MonitorFileVar + ".param.FileNameExt}}");
+        script.Should().Contain("{{" + MonitorFileVar + ".param.Path}}");
         // Global referenced from inside a script body, under its sanitized name.
         script.Should().Contain("{{globals.Tools_Dir__x86}}");
     }
@@ -94,7 +99,7 @@ public class ScorchImporterFixtureTests
         var arguments = NodeById(def, RobocopyId)
             .GetProperty("data").GetProperty("config").GetProperty("arguments").GetString();
 
-        arguments.Should().Be("{{" + MonitorFileId + @".param.Path}} D:\Staging /E");
+        arguments.Should().Be("{{" + MonitorFileVar + @".param.Path}} D:\Staging /E");
     }
 
     // SCOrch exposes runbook metadata as a DOTTED published-data name ({GUID}.Policy.Name).
@@ -168,7 +173,7 @@ public class ScorchImporterFixtureTests
 
         var parameters = config.GetProperty("parameters");
         parameters.GetProperty("Identifier").GetString().Should()
-            .Be("{{22222222-0000-0000-0000-000000000003.param.queryResult}}");
+            .Be("{{" + QueryXmlVar + ".param.queryResult}}");
         parameters.GetProperty("ShareRoot").GetString().Should().Be("{{globals.ShareRoot}}");
     }
 
@@ -182,7 +187,7 @@ public class ScorchImporterFixtureTests
         config.GetProperty("xpath").GetString().Should().Be("//Manifest/Status");
         config.GetProperty("source").GetString().Should().Be("file");
         config.GetProperty("path").GetString().Should()
-            .Be("{{" + MonitorFileId + ".param.FileName}}.XML");
+            .Be("{{" + MonitorFileVar + ".param.FileName}}.XML");
     }
 
     [Fact]
@@ -220,7 +225,7 @@ public class ScorchImporterFixtureTests
             .GetProperty("data").GetProperty("config");
 
         config.GetProperty("operation").GetString().Should().Be("delete");
-        config.GetProperty("path").GetString().Should().Be("{{" + MonitorFileId + ".param.Path}}");
+        config.GetProperty("path").GetString().Should().Be("{{" + MonitorFileVar + ".param.Path}}");
     }
 
     [Fact]
@@ -301,6 +306,62 @@ public class ScorchImporterFixtureTests
         data.GetProperty("disabled").GetBoolean().Should().BeTrue();
         result.Warnings.Should().ContainSingle(w =>
             w.Contains("Read First Line") && w.Contains("Get-Content"));
+    }
+
+    // ---------- data bus ----------
+
+    [Fact]
+    public void Parse_OutputVariable_IsDerivedFromTheScorchActivityName()
+    {
+        var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
+
+        NodeById(def, MonitorFileId).GetProperty("data").GetProperty("outputVariable")
+            .GetString().Should().Be(MonitorFileVar);
+        NodeById(def, QueryXmlId).GetProperty("data").GetProperty("outputVariable")
+            .GetString().Should().Be(QueryXmlVar);
+    }
+
+    /// <summary>
+    /// Rewriting the marker syntax is not the same as translating the data. SCOrch's Monitor File
+    /// publishes Path/FileName/FileNameExt; fileWatcherTrigger publishes fileAction/filePath/
+    /// fileName. The reference comes out well-formed and still resolves to nothing — and inside a
+    /// runScript body an unresolved template is legal script text, so the step would run green with
+    /// the literal placeholder in it.
+    /// </summary>
+    [Fact]
+    public void Parse_ReferenceToAFieldTheTargetDoesNotPublish_IsReported()
+    {
+        var result = ParseFixture();
+
+        result.Warnings.Should().Contain(w =>
+            w.Contains("param.FileNameExt") && w.Contains("fileWatcherTrigger") && w.Contains("fileName"));
+    }
+
+    [Fact]
+    public void Parse_ActivityDescriptionTimeoutAndRunAs_SurviveTheMetadataStrip()
+    {
+        var result = ParseFixture();
+        var def = DefinitionOf(result, "Sample Package Intake");
+        var data = NodeById(def, RunScriptId).GetProperty("data");
+
+        data.GetProperty("description").GetString().Should().Contain("payload files");
+        // ASW_ObjectTimeout=600 overrides the mapper's default, and runScript documents the key.
+        data.GetProperty("config").GetProperty("timeoutSeconds").GetInt32().Should().Be(600);
+        result.Warnings.Should().ContainSingle(w =>
+            w.Contains(@"CONTOSO\svc-orchestrator") && w.Contains("no credential was created"));
+    }
+
+    /// <summary>
+    /// The import report reuses the workflow analyzer, so it says the same thing about a workflow
+    /// that the canvas and the MCP tools do. The fixture's disabled placeholder cuts a branch loose,
+    /// which is precisely the finding an operator needs to see.
+    /// </summary>
+    [Fact]
+    public void Parse_AnalyzerFindings_AreFoldedIntoTheImportReport()
+    {
+        var result = ParseFixture();
+
+        result.Warnings.Should().Contain(w => w.Contains("[unreachable-node]"));
     }
 
     // ---------- runnability ----------
