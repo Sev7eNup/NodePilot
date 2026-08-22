@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using NodePilot.Core.Activities;
+using NodePilot.Core.WorkflowDefinitions;
+using NodePilot.Engine.Execution;
 
 namespace NodePilot.Engine.Scorch;
 
@@ -246,7 +248,7 @@ public sealed class ScorchImporter
                 continue;
             }
             var props = ExtractProperties(obj);
-            var mapping = ScorchActivityMapper.Map(obj, props);
+            var mapping = CarryActivityMetadata(obj, ScorchActivityMapper.Map(obj, props), name, warnings);
             if (mapping.Fallback) fallbackCount++;
             else if (mapping.UsedHeuristic) heuristicCount++;
             if (mapping.Note is not null)
@@ -256,9 +258,12 @@ public sealed class ScorchImporter
 
         // Rewrite Published-Data + Variable references in every config value.
         var activityGuids = new HashSet<Guid>(mapped.Select(m => m.Id));
-        var rewriteCtx = new RewriteContext(variableMap, activityGuids, warnings, name);
+        var outputNames = AssignOutputVariables(mapped);
+        var rewriteCtx = new RewriteContext(variableMap, activityGuids, outputNames, warnings, name);
         foreach (var (obj, _, mapping) in mapped)
             RewriteReferences(mapping.Config, rewriteCtx, obj.Element("Name")?.Value ?? "(unnamed)");
+
+        ReportUnavailableParameters(mapped, outputNames, name, warnings);
 
         // Build React Flow nodes.
         var nodes = new List<object>();
@@ -272,18 +277,14 @@ public sealed class ScorchImporter
             var disabled = obj.Element("Enabled")?.Value?.Equals("FALSE", StringComparison.OrdinalIgnoreCase) == true
                            || mapping.Disabled;
 
-            // A remote activity without a target machine does not fall back to the engine host —
-            // BaseRemoteActivity fails the step outright. The two hybrids (runScript,
-            // waitForCondition) DO run locally instead, which is just as surprising if the runbook
-            // meant a named server, so both cases are reported.
-            if (mapping.TargetMachine is null && ActivityCatalog.RemoteTypes.Contains(mapping.ActivityType))
+            // The hybrids run on the NodePilot host when no target is set, which is silent and
+            // surprising if the runbook meant a named server. The strictly-remote types are covered
+            // by the analyzer's own missing-target-machine finding (it exempts exactly these two),
+            // so reporting them here as well would only duplicate it.
+            if (mapping.TargetMachine is null && mapping.ActivityType is "runScript" or "waitForCondition")
             {
-                warnings.Add(ActivityCatalog.ByType[mapping.ActivityType].Category == ActivityCategory.Action
-                             && mapping.ActivityType is not ("runScript" or "waitForCondition")
-                    ? $"'{name}' / '{label}': no target machine in the export — this {mapping.ActivityType} " +
-                      "step will fail until one is set."
-                    : $"'{name}' / '{label}': no target machine in the export — this step will run on the " +
-                      "NodePilot host, not on a remote server.");
+                warnings.Add($"'{name}' / '{label}': no target machine in the export — this step will " +
+                             "run on the NodePilot host, not on a remote server.");
             }
 
             if (!disabled && ActivityCatalog.TriggerTypes.Contains(mapping.ActivityType))
@@ -298,9 +299,10 @@ public sealed class ScorchImporter
                 data = new
                 {
                     label,
+                    description = Trimmed(obj.Element("Description")?.Value),
                     activityType = mapping.ActivityType,
                     config = mapping.Config,
-                    outputVariable = mapping.OutputVariable,
+                    outputVariable = outputNames.GetValueOrDefault(objId),
                     targetMachineId = mapping.TargetMachine,
                     disabled,
                 },
@@ -356,10 +358,211 @@ public sealed class ScorchImporter
         var definitionJson = JsonSerializer.Serialize(new { nodes, edges },
             new JsonSerializerOptions { WriteIndented = false });
 
+        ReportGraphFindings(definitionJson, mapped, outputNames, name, warnings);
+
         return new ScorchRunbook(name, description, definitionJson,
             ActivityCount: mapped.Count,
             HeuristicCount: heuristicCount,
             FallbackCount: fallbackCount);
+    }
+
+    private static string? Trimmed(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    /// <summary>
+    /// Rescues three per-activity settings that <see cref="ExtractProperties"/> drops as "standard
+    /// metadata". They are metadata to the parser but not to the operator: the timeout changes
+    /// behaviour, and the run-as account changes who the step runs as.
+    /// </summary>
+    private static ScorchActivityMapper.Mapping CarryActivityMetadata(
+        XElement obj, ScorchActivityMapper.Mapping mapping, string runbookName, List<string> warnings)
+    {
+        var label = obj.Element("Name")?.Value ?? "(unnamed)";
+
+        // ASW_ObjectTimeout is SCOrch's per-activity timeout. Only set it where the target activity
+        // documents the key — an undocumented key is one its executor never reads.
+        if (int.TryParse(obj.Element("ASW_ObjectTimeout")?.Value,
+                System.Globalization.NumberStyles.Integer,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+            && seconds > 0
+            && ActivityConfigReference.TryGet(mapping.ActivityType) is { } entry
+            && entry.ConfigKeys.Any(k => k.Key == "timeoutSeconds"))
+        {
+            mapping.Config["timeoutSeconds"] = seconds;
+        }
+
+        // The run-as password is DPAPI-encrypted in the export and cannot be recovered, so no
+        // credential is invented — the account is named so the operator can attach the right one.
+        var runAs = Trimmed(obj.Element("ASC_Username")?.Value);
+        if (runAs is not null)
+        {
+            warnings.Add($"'{runbookName}' / '{label}': ran as '{runAs}' in SCOrch. The password is " +
+                         "encrypted in the export, so no credential was created — attach one to the node " +
+                         "if the step needs that identity.");
+        }
+
+        return mapping;
+    }
+
+    /// <summary>
+    /// Runs the workflow analyzer over the produced definition and folds its findings into the
+    /// import report, then adds the one check it cannot make.
+    ///
+    /// <para>Reusing the analyzer means "no trigger", "unreachable node", "cycle", "unknown activity
+    /// type" and "missing target machine" are reported by the same code the designer and the MCP
+    /// tools use, so the import report cannot drift from what the canvas says about the same
+    /// workflow.</para>
+    /// </summary>
+    private static void ReportGraphFindings(
+        string definitionJson,
+        List<(XElement Source, Guid Id, ScorchActivityMapper.Mapping Mapping)> mapped,
+        IReadOnlyDictionary<Guid, string> outputNames,
+        string runbookName,
+        List<string> warnings)
+    {
+        JsonElement definition;
+        try
+        {
+            definition = JsonSerializer.Deserialize<JsonElement>(definitionJson);
+        }
+        catch (JsonException)
+        {
+            return; // The controller rejects an unparseable definition on its own.
+        }
+
+        foreach (var finding in WorkflowAnalyzer.Analyze(definition).Findings)
+            warnings.Add($"'{runbookName}': [{finding.Code}] {finding.Message}");
+
+        ReportCrossBranchReferences(definition, mapped, runbookName, warnings);
+    }
+
+    /// <summary>
+    /// The one check the analyzer cannot make, because the referenced step genuinely exists.
+    ///
+    /// <para>SCOrch's data bus is run-scoped: any activity can read the published data of any
+    /// activity that already ran, including one on a parallel branch. NodePilot's is ancestor-scoped
+    /// — a reference resolves only if the target is on this step's own predecessor path. Such a
+    /// reference is idiomatic in a runbook and never resolves after import, so it is worth naming at
+    /// import time rather than at three in the morning.</para>
+    /// </summary>
+    private static void ReportCrossBranchReferences(
+        JsonElement definition,
+        List<(XElement Source, Guid Id, ScorchActivityMapper.Mapping Mapping)> mapped,
+        string runbookName,
+        List<string> warnings)
+    {
+        var doc = WorkflowDefinitionDocument.FromJsonElement(definition);
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var (obj, id, mapping) in mapped)
+        {
+            var nodeId = id.ToString();
+            if (!doc.NodesById.ContainsKey(nodeId)) continue;
+
+            var label = obj.Element("Name")?.Value ?? "(unnamed)";
+            HashSet<string>? ancestors = null;
+
+            foreach (var value in EnumerateConfigStrings(mapping.Config))
+            {
+                foreach (Match m in VariableResolver.StepPattern.Matches(value))
+                {
+                    var head = m.Groups[1].Value;
+                    var targetId = doc.OutputVariableToStepId.TryGetValue(head, out var byName) ? byName
+                                 : doc.NodesById.ContainsKey(head) ? head
+                                 : null;
+                    if (targetId is null || targetId == nodeId) continue;
+
+                    ancestors ??= doc.FindAncestorNodeIds(nodeId);
+                    if (ancestors.Contains(targetId)) continue;
+
+                    if (!reported.Add($"{nodeId}|{head}")) continue;
+                    warnings.Add(
+                        $"'{runbookName}' / '{label}': references " + "{{" + head + ".…}}" +
+                        ", which is not on this step's predecessor path. SCOrch let any activity read " +
+                        "any earlier activity's published data; NodePilot resolves ancestors only, so " +
+                        "this reference will never resolve. Re-route the link or move the value.");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks every rewritten <c>{{step.param.X}}</c> against what the referenced activity actually
+    /// publishes.
+    ///
+    /// <para>Translating the marker syntax is not the same as translating the DATA. SCOrch's Monitor
+    /// File publishes <c>Path</c>, <c>FileName</c> and <c>FileNameExt</c>; NodePilot's
+    /// fileWatcherTrigger publishes <c>filePath</c>, <c>fileName</c> and <c>fileAction</c>. A
+    /// rewritten reference therefore looks perfectly well-formed and still resolves to nothing —
+    /// and inside a runScript body an unresolved template is legitimate script text, so the step
+    /// runs green with the literal placeholder in it. Renaming the fields would be guesswork
+    /// (SCOrch's <c>Path</c> is a folder, <c>filePath</c> is a full file path), so the mismatch is
+    /// reported instead, with the list of names that are actually available.</para>
+    /// </summary>
+    private static void ReportUnavailableParameters(
+        List<(XElement Source, Guid Id, ScorchActivityMapper.Mapping Mapping)> mapped,
+        IReadOnlyDictionary<Guid, string> outputNames,
+        string runbookName,
+        List<string> warnings)
+    {
+        var typeByHead = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (_, id, mapping) in mapped)
+        {
+            typeByHead[id.ToString()] = mapping.ActivityType;
+            if (outputNames.TryGetValue(id, out var named)) typeByHead[named] = mapping.ActivityType;
+        }
+
+        var reported = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var (obj, _, mapping) in mapped)
+        {
+            var label = obj.Element("Name")?.Value ?? "(unnamed)";
+            foreach (var value in EnumerateConfigStrings(mapping.Config))
+            {
+                foreach (Match m in VariableResolver.StepPattern.Matches(value))
+                {
+                    // .output/.error/.success exist on every step; only named parameters can be wrong.
+                    if (!m.Groups[3].Success) continue;
+
+                    var head = m.Groups[1].Value;
+                    var parameter = m.Groups[3].Value;
+                    if (!typeByHead.TryGetValue(head, out var targetType)) continue;
+                    if (!ActivityCatalog.TryGet(targetType, out var descriptor) || descriptor is null) continue;
+
+                    // Activities whose outputs are dynamic declare none statically — runScript's
+                    // script-scope variables, wmiQuery's captureProperties, registryOperation's
+                    // per-operation results. Checking those would only produce false alarms.
+                    if (descriptor.OutputParameters.Count == 0) continue;
+                    if (descriptor.OutputParameters.Any(o => string.Equals(o.Name, parameter, StringComparison.Ordinal)))
+                        continue;
+
+                    if (!reported.Add($"{label}|{head}.{parameter}")) continue;
+                    warnings.Add(
+                        $"'{runbookName}' / '{label}': references " + "{{" + head + ".param." + parameter + "}}" +
+                        $", but {targetType} publishes " +
+                        string.Join(", ", descriptor.OutputParameters.Select(o => o.Name)) +
+                        ". SCOrch published different field names than the NodePilot activity does — " +
+                        "point the reference at one of those, or compute the value in a script step.");
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<string> EnumerateConfigStrings(object? value)
+    {
+        switch (value)
+        {
+            case string s when s.Length > 0:
+                yield return s;
+                break;
+            case IDictionary<string, object?> map:
+                foreach (var v in map.Values)
+                    foreach (var s in EnumerateConfigStrings(v)) yield return s;
+                break;
+            case IList<object> list:
+                foreach (var v in list)
+                    foreach (var s in EnumerateConfigStrings(v)) yield return s;
+                break;
+        }
     }
 
     /// <summary>
@@ -502,8 +705,47 @@ public sealed class ScorchImporter
     private sealed record RewriteContext(
         IReadOnlyDictionary<Guid, ScorchVariable> Variables,
         IReadOnlySet<Guid> ActivityGuids,
+        IReadOnlyDictionary<Guid, string> OutputNames,
         List<string> Warnings,
         string RunbookName);
+
+    /// <summary>
+    /// Gives every activity a readable <c>outputVariable</c> derived from its SCOrch name, so
+    /// references read <c>{{Check_Package_Contents.param.hasPayload}}</c> rather than
+    /// <c>{{8dc7ff8a-1ea1-4037-baeb-65416a060aac.param.hasPayload}}</c>. Both resolve; only one is
+    /// legible in a 47-node imported canvas.
+    ///
+    /// <para>Names are forced into the template grammar (<c>[\w-]+</c>) and de-duplicated, because
+    /// two steps sharing an outputVariable make downstream references resolve to whichever ran
+    /// last — SCOrch activity names are not unique within a runbook.</para>
+    /// </summary>
+    private static Dictionary<Guid, string> AssignOutputVariables(
+        IEnumerable<(XElement Source, Guid Id, ScorchActivityMapper.Mapping Mapping)> mapped)
+    {
+        var assigned = new Dictionary<Guid, string>();
+        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (obj, id, _) in mapped)
+        {
+            var baseName = SanitizeIdentifier(obj.Element("Name")?.Value ?? "");
+            if (baseName.Length == 0) baseName = "step";
+
+            var candidate = baseName;
+            for (var n = 2; !taken.Add(candidate); n++) candidate = $"{baseName}_{n}";
+            assigned[id] = candidate;
+        }
+        return assigned;
+    }
+
+    private static string SanitizeIdentifier(string raw)
+    {
+        var sb = new System.Text.StringBuilder(raw.Length);
+        foreach (var c in raw.Trim())
+            sb.Append(char.IsLetterOrDigit(c) || c is '_' or '-' ? c : '_');
+        // Collapse runs of underscores so "Query XML - Status?" does not become "Query_XML___Status_".
+        var collapsed = Regex.Replace(sb.ToString(), "_{2,}", "_", RegexOptions.None, TimeSpan.FromSeconds(1));
+        return collapsed.Trim('_', '-');
+    }
 
     private static void RewriteReferences(
         Dictionary<string, object?> cfg, RewriteContext ctx, string activityName)
@@ -569,7 +811,8 @@ public sealed class ScorchImporter
             var suffix = field.Equals("stdout", StringComparison.OrdinalIgnoreCase) ? "output"
                        : field.Equals("stderr", StringComparison.OrdinalIgnoreCase) ? "error"
                        : $"param.{field}";
-            return "{{" + g + "." + suffix + "}}";
+            var head = ctx.OutputNames.TryGetValue(g, out var named) ? named : g.ToString();
+            return "{{" + head + "." + suffix + "}}";
         });
 
         ReportResidualMarkers(rewritten, dottedFields, ctx, activityName, configKey);
