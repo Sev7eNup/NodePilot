@@ -777,6 +777,35 @@ public class WorkflowImportExportControllerTests
         response.Variables.Should().ContainSingle(v => v.Skipped && v.FolderPath == null);
     }
 
+    /// <summary>
+    /// The endpoint's body limit and the importer's document limit have to agree, and they live in
+    /// different projects. Raise one without the other and a body the controller happily accepts
+    /// dies inside <see cref="NodePilot.Engine.Scorch.ScorchImporter"/> with a flat "Failed to parse
+    /// XML" — which is precisely what happened when the endpoint went from 50 to 300 MiB.
+    /// </summary>
+    [Fact]
+    public void ImportScorch_BodyLimit_DoesNotExceedWhatTheImporterWillParse()
+    {
+        var limit = typeof(WorkflowImportExportController)
+            .GetMethod(nameof(WorkflowImportExportController.ImportScorch))!
+            .GetCustomAttributes(typeof(RequestSizeLimitAttribute), inherit: false)
+            .Cast<RequestSizeLimitAttribute>()
+            .Single();
+
+        // The attribute keeps the limit in a private field whose name is framework-internal, so it
+        // is read by shape rather than by name: it holds exactly one 64-bit number.
+        var bytes = limit.GetType()
+            .GetFields(System.Reflection.BindingFlags.Instance
+                | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)
+            .Select(f => f.GetValue(limit))
+            .OfType<long>()
+            .Single();
+
+        ((long)NodePilot.Engine.Scorch.ScorchImporter.MaxCharactersInScorchXml)
+            .Should().BeGreaterThanOrEqualTo(bytes,
+                "a body the endpoint accepts must not then be refused by the XML reader");
+    }
+
     // ---------- sub-runbook calls at estate scale ----------
 
     /// <summary>

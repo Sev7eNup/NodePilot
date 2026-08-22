@@ -60,9 +60,22 @@ public sealed class ScorchImporter
     //   - billion-laughs / XML-bomb entity expansion (MaxCharactersFromEntities=0 disables
     //     entity text entirely — SCOrch exports don't use entities)
     //   - "how big could this possibly get" DoS via an attacker-supplied 10 GiB payload:
-    //     MaxCharactersInDocument caps total character count to 50 MiB × 2 (chars are
-    //     16-bit), matching the 50 MiB RequestSizeLimit on the controller.
-    private const int MaxCharactersInScorchXml = 50 * 1024 * 1024;
+    //     MaxCharactersInDocument caps the document's character count.
+    //
+    /// <summary>
+    /// Largest document this importer will parse, in characters.
+    ///
+    /// <para>Has to track the <c>RequestSizeLimit</c> on the import endpoint, which lives in another
+    /// project — set below it and a body the controller accepts dies in the parser instead,
+    /// reported as a flat "Failed to parse XML". That is exactly what happened when the endpoint
+    /// went from 50 to 300 MiB and this stayed behind, so the two are pinned against each other by
+    /// a test rather than by a comment.</para>
+    ///
+    /// <para>A character count against a byte limit: equal for the ASCII an export is almost
+    /// entirely made of, and generous beyond it, since a multi-byte character costs more bytes than
+    /// the single character it counts as here.</para>
+    /// </summary>
+    public const int MaxCharactersInScorchXml = 300 * 1024 * 1024;
 
     // Settings are immutable after first use by XmlReader, and the reader settings expose no
     // shared state — caching as a static readonly field is safe and saves the per-parse alloc.

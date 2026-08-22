@@ -343,7 +343,7 @@ public class WorkflowLayoutEnginePreservationTests
         {
             // Each step is drawn LEFT of the one before it, all in two tight rows — so every edge
             // needs a push, and every push lands the node on top of the row above.
-            nodes.Add(Node($"n{i}", 900 - i * 120, i % 2 * 130));
+            nodes.Add(Node($"n{i}", 900d - i * 120d, i % 2 * 130d));
             if (i > 0) edges.Add(Edge($"n{i - 1}", $"n{i}"));
         }
 
