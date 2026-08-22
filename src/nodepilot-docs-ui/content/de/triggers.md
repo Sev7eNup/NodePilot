@@ -136,7 +136,9 @@ Ausgabedaten:
 
 - `fileAction`: Art der Änderung
 - `filePath`: vollständiger Dateipfad
-- `fileName`: Dateiname
+- `fileName`: Dateiname inklusive Endung
+- `fileNameWithoutExtension`: Dateiname ohne Endung
+- `fileDirectory`: Ordner, in dem die Datei liegt
 
 ## Datenbank
 
