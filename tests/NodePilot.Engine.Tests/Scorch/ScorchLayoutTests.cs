@@ -9,17 +9,17 @@ namespace NodePilot.Engine.Tests.Scorch;
 /// <summary>
 /// Layout guarantees for imported runbooks.
 ///
-/// <para>The importer used to copy SCOrch's PositionX/PositionY verbatim. SCOrch draws activities as
-/// small icons on a 75 px grid and its x is routinely negative (the reference export spans
-/// x −1479…246), while a NodePilot node is a 220x110 card — so an imported graph opened as a pile of
-/// overlapping nodes somewhere off-canvas, and the first thing anyone did was drag them apart.</para>
-///
-/// <para>Non-overlap here is a property, not a hope: with a column of 300 and a row of 180 against a
-/// 220x110 card, bounding boxes are disjoint for any node count.</para>
+/// <para>The arrangement of a runbook carries information — which branch is the happy path, what
+/// belongs together — so an import reproduces it rather than re-deriving one. It cannot be copied
+/// verbatim: SCOrch draws activities as small icons on a 75 px grid (the reference export spans
+/// x −1479…246) while a NodePilot node is a card several times that size, so copied coordinates
+/// overlapped nearly everywhere and started off-canvas. Scaling the whole graph uniformly is a
+/// similarity transform — every distance keeps its ratio, so it is the same picture, just bigger.
+/// </para>
 /// </summary>
 public class ScorchLayoutTests
 {
-    private const double NodeWidth = 220;
+    private const double NodeWidth = 280;
     private const double NodeHeight = 110;
 
     private static JsonElement ImportFixture(out ScorchImportResult result)
@@ -31,18 +31,64 @@ public class ScorchLayoutTests
             result.Workflows.Single(w => w.Name == "Sample Package Intake").DefinitionJson);
     }
 
-    private static List<(string Id, double X, double Y)> Positions(JsonElement definition) =>
-        definition.GetProperty("nodes").EnumerateArray()
-            .Select(n => (
-                Id: n.GetProperty("id").GetString()!,
-                X: n.GetProperty("position").GetProperty("x").GetDouble(),
-                Y: n.GetProperty("position").GetProperty("y").GetDouble()))
-            .ToList();
+    private static Dictionary<string, (double X, double Y)> Positions(JsonElement definition) =>
+        definition.GetProperty("nodes").EnumerateArray().ToDictionary(
+            n => n.GetProperty("id").GetString()!,
+            n => (n.GetProperty("position").GetProperty("x").GetDouble(),
+                  n.GetProperty("position").GetProperty("y").GetDouble()));
+
+    // The fixture's own coordinates, straight out of the .ois_export.
+    private static readonly Dictionary<string, (double X, double Y)> SourcePositions = new()
+    {
+        ["22222222-0000-0000-0000-000000000001"] = (-1479, 377),
+        ["22222222-0000-0000-0000-000000000002"] = (-1329, 377),
+        ["22222222-0000-0000-0000-000000000003"] = (-1179, 377),
+        ["22222222-0000-0000-0000-000000000004"] = (-1029, 377),
+        ["22222222-0000-0000-0000-000000000005"] = (-879, 152),
+        ["22222222-0000-0000-0000-000000000006"] = (-879, 602),
+        ["22222222-0000-0000-0000-000000000007"] = (-729, 602),
+        ["22222222-0000-0000-0000-000000000008"] = (-579, 602),
+        ["22222222-0000-0000-0000-000000000009"] = (-429, 602),
+        ["22222222-0000-0000-0000-00000000000a"] = (-279, 602),
+        ["22222222-0000-0000-0000-00000000000b"] = (-129, 527),
+        ["22222222-0000-0000-0000-00000000000c"] = (-129, 677),
+    };
+
+    /// <summary>
+    /// The heart of it: the imported graph must be the SOURCE graph, scaled. Every distance keeps
+    /// its ratio to every other, which is what makes the result recognisable as the runbook its
+    /// author drew rather than a fresh arrangement of the same nodes.
+    /// </summary>
+    [Fact]
+    public void ImportedGraph_IsTheOriginalArrangementScaledUniformly()
+    {
+        var imported = Positions(ImportFixture(out _));
+
+        var srcMinX = SourcePositions.Values.Min(p => p.X);
+        var srcMinY = SourcePositions.Values.Min(p => p.Y);
+        var outMinX = SourcePositions.Keys.Min(id => imported[id].X);
+        var outMinY = SourcePositions.Keys.Min(id => imported[id].Y);
+
+        // Derive the scale from the widest span, where the grid rounding matters least.
+        var widest = SourcePositions.OrderByDescending(kv => kv.Value.X - srcMinX).First();
+        var scale = (imported[widest.Key].X - outMinX) / (widest.Value.X - srcMinX);
+        scale.Should().BeGreaterThan(1, "node cards are larger than SCOrch's icons");
+
+        // One grid step of tolerance: coordinates are snapped to 20, and that is the only licence
+        // the transform takes. Anything beyond it would be a different arrangement, not a rounding.
+        foreach (var (id, (sx, sy)) in SourcePositions)
+        {
+            imported[id].X.Should().BeApproximately(outMinX + (sx - srcMinX) * scale, 20,
+                "node {0} keeps its place horizontally", id);
+            imported[id].Y.Should().BeApproximately(outMinY + (sy - srcMinY) * scale, 20,
+                "node {0} keeps its place vertically", id);
+        }
+    }
 
     [Fact]
     public void ImportedNodes_NeverOverlap()
     {
-        var positions = Positions(ImportFixture(out _));
+        var positions = Positions(ImportFixture(out _)).ToList();
 
         var overlaps = new List<string>();
         for (var i = 0; i < positions.Count; i++)
@@ -51,8 +97,8 @@ public class ScorchLayoutTests
             {
                 var a = positions[i];
                 var b = positions[j];
-                if (Math.Abs(a.X - b.X) < NodeWidth && Math.Abs(a.Y - b.Y) < NodeHeight)
-                    overlaps.Add($"{a.Id} vs {b.Id}");
+                if (Math.Abs(a.Value.X - b.Value.X) < NodeWidth && Math.Abs(a.Value.Y - b.Value.Y) < NodeHeight)
+                    overlaps.Add($"{a.Key} vs {b.Key}");
             }
         }
 
@@ -62,7 +108,7 @@ public class ScorchLayoutTests
     [Fact]
     public void ImportedCoordinates_AreOnTheTwentyPixelGrid()
     {
-        foreach (var (id, x, y) in Positions(ImportFixture(out _)))
+        foreach (var (id, (x, y)) in Positions(ImportFixture(out _)))
         {
             (x % 20).Should().Be(0, "node {0} x={1}", id, x);
             (y % 20).Should().Be(0, "node {0} y={1}", id, y);
@@ -72,30 +118,47 @@ public class ScorchLayoutTests
     [Fact]
     public void ImportedGraph_StartsAtTheCanvasOrigin_NotAtScorchNegativeCoordinates()
     {
-        var positions = Positions(ImportFixture(out _));
+        var positions = Positions(ImportFixture(out _)).Values.ToList();
 
         positions.Min(p => p.X).Should().Be(60);
         positions.Min(p => p.Y).Should().Be(60);
     }
 
     /// <summary>
-    /// Within a column, nodes keep the order the SCOrch author gave them vertically. That is the
-    /// difference between "my runbook, tidied up" and "a graph I have to re-read".
+    /// Two source nodes on the same point cannot be pulled apart by any scale, so the arrangement is
+    /// not reproducible and the import falls back to laying the graph out — visibly, not silently.
     /// </summary>
     [Fact]
-    public void NodesInTheSameColumn_KeepTheirOriginalVerticalOrder()
+    public void SourceWithCoincidentPositions_FallsBackToALayeredLayout()
     {
-        var definition = ImportFixture(out _);
-        var positions = Positions(definition).ToDictionary(p => p.Id, p => p);
+        var definition = JsonSerializer.Deserialize<JsonElement>("""
+            {"nodes":[
+              {"id":"a","type":"activity","position":{"x":10,"y":10},"data":{"activityType":"log"}},
+              {"id":"b","type":"activity","position":{"x":10,"y":10},"data":{"activityType":"log"}}],
+             "edges":[]}
+            """);
 
-        // In the fixture these two share a column: both are reached in the same number of steps
-        // from the trigger, and 'Run Robocopy Sync' sits above 'Clear File Attributes' (y 527 < 677).
-        var robocopy = positions["22222222-0000-0000-0000-00000000000b"];
-        var attrib = positions["22222222-0000-0000-0000-00000000000c"];
-
-        robocopy.X.Should().Be(attrib.X, "both are one step behind 'Read First Line'");
-        robocopy.Y.Should().BeLessThan(attrib.Y, "SCOrch had them in that order");
+        WorkflowLayoutEngine.TryPreserveGeometry(definition, new PreservedLayoutOptions()).Should().BeNull();
     }
+
+    /// <summary>
+    /// A source drawn so tightly that fitting node cards between its activities would need an
+    /// unusable canvas is refused too — a faithful graph nobody can navigate is not an improvement.
+    /// </summary>
+    [Fact]
+    public void SourceSpacedTooTightly_IsRefusedRatherThanScaledIntoAnUnusableCanvas()
+    {
+        var definition = JsonSerializer.Deserialize<JsonElement>("""
+            {"nodes":[
+              {"id":"a","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"log"}},
+              {"id":"b","type":"activity","position":{"x":2,"y":0},"data":{"activityType":"log"}}],
+             "edges":[]}
+            """);
+
+        WorkflowLayoutEngine.TryPreserveGeometry(definition, new PreservedLayoutOptions()).Should().BeNull();
+    }
+
+    // ---------- the layered fallback, exercised directly ----------
 
     /// <summary>
     /// A part of the graph no trigger reaches gets its own band below the main flow, laid out by its
@@ -104,25 +167,29 @@ public class ScorchLayoutTests
     /// came out stacked nearly 8000 px deep — technically non-overlapping, practically unreadable.
     /// </summary>
     [Fact]
-    public void DetachedPartOfTheGraph_IsLaidOutBelowTheMainFlow_NotInOneTallColumn()
+    public void Reflow_DetachedComponent_IsLaidOutBelowTheMainFlow_NotInOneTallColumn()
     {
-        var definition = ImportFixture(out _);
-        var positions = Positions(definition).ToDictionary(p => p.Id, p => p);
+        var definition = JsonSerializer.Deserialize<JsonElement>("""
+            {"nodes":[
+              {"id":"t","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"manualTrigger"}},
+              {"id":"m","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"log"}},
+              {"id":"d1","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"log"}},
+              {"id":"d2","type":"activity","position":{"x":0,"y":0},"data":{"activityType":"log"}}],
+             "edges":[
+              {"id":"e1","source":"t","target":"m"},
+              {"id":"e2","source":"d1","target":"d2"}]}
+            """);
 
-        // The fixture's 006 → 007 link is disabled, so everything from 007 on is unreachable. 007
-        // itself is the age-filtered Delete File, which imports as a disabled placeholder — so the
-        // component that still has live links starts at 008.
-        var lastReachable = positions["22222222-0000-0000-0000-000000000006"];
-        var detachedHead = positions["22222222-0000-0000-0000-000000000008"];
-        var detachedNext = positions["22222222-0000-0000-0000-000000000009"];
+        var positions = Positions(JsonSerializer.SerializeToElement(
+            WorkflowLayoutEngine.Reflow(definition, WorkflowLayoutOptions.Imported)));
 
-        detachedHead.Y.Should().BeGreaterThan(lastReachable.Y, "the detached part starts its own band");
-        detachedNext.X.Should().BeGreaterThan(detachedHead.X, "and is laid out by its own depth");
+        positions["d1"].Y.Should().BeGreaterThan(positions["m"].Y, "the detached part starts its own band");
+        positions["d2"].X.Should().BeGreaterThan(positions["d1"].X, "and is laid out by its own depth");
     }
 
     /// <summary>
-    /// The MCP <c>suggest_layout</c> tool shares this engine now. Its preset must keep producing
-    /// exactly what it always did — the move into Core was a relocation, not a behaviour change.
+    /// The MCP <c>suggest_layout</c> tool shares this engine. Its preset must keep producing exactly
+    /// what it always did — the move into Core was a relocation, not a behaviour change.
     /// </summary>
     [Fact]
     public void CompactPreset_KeepsTheSpacingSuggestLayoutHasAlwaysUsed()

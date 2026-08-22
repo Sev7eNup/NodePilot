@@ -269,6 +269,7 @@ public sealed class ScorchImporter
         // Build React Flow nodes.
         var nodes = new List<object>();
         var nodeIds = new List<string>();
+        var positionsById = new Dictionary<string, (double X, double Y)>(StringComparer.Ordinal);
         var hasActiveTrigger = false;
         foreach (var (obj, objId, mapping) in mapped)
         {
@@ -292,6 +293,7 @@ public sealed class ScorchImporter
                 hasActiveTrigger = true;
 
             nodeIds.Add(objId.ToString());
+            positionsById[objId.ToString()] = (x, y);
             nodes.Add(new
             {
                 id = objId.ToString(),
@@ -360,13 +362,15 @@ public sealed class ScorchImporter
             });
         }
 
-        AddSyntheticTriggerIfMissing(name, hasActiveTrigger, nodes, nodeIds, edges, edgeTargets, ref linkIdx, warnings);
+        AddSyntheticTriggerIfMissing(
+            name, hasActiveTrigger, nodes, nodeIds, positionsById, edges, edgeTargets, ref linkIdx, warnings);
 
         warnings.Add($"'{name}': {mapped.Count} activities, {edges.Count} links. " +
                      $"Heuristic mappings: {heuristicCount}, Placeholder fallbacks: {fallbackCount}.");
 
-        var definitionJson = ApplyImportLayout(JsonSerializer.Serialize(new { nodes, edges },
-            new JsonSerializerOptions { WriteIndented = false }));
+        var definitionJson = ApplyImportLayout(
+            JsonSerializer.Serialize(new { nodes, edges }, new JsonSerializerOptions { WriteIndented = false }),
+            name, warnings);
 
         ReportGraphFindings(definitionJson, name, warnings);
 
@@ -390,17 +394,30 @@ public sealed class ScorchImporter
     /// <para>The re-flow keeps what is worth keeping: rows within a layer are ordered by the y the
     /// activity had, so the author's vertical arrangement survives at NodePilot's spacing.</para>
     /// </summary>
-    private static string ApplyImportLayout(string definitionJson)
+    private static string ApplyImportLayout(string definitionJson, string runbookName, List<string> warnings)
     {
+        JsonElement definition;
         try
         {
-            var definition = JsonSerializer.Deserialize<JsonElement>(definitionJson);
-            return WorkflowLayoutEngine.Reflow(definition, WorkflowLayoutOptions.Imported).ToJsonString();
+            definition = JsonSerializer.Deserialize<JsonElement>(definitionJson);
         }
         catch (JsonException)
         {
             return definitionJson; // Keep the original; the controller validates the definition anyway.
         }
+
+        // Preferred: keep the author's own arrangement, scaled up until the cards fit. The layout of
+        // a runbook carries real information — which branch is the happy path, what belongs together
+        // — and that is exactly what makes an imported graph recognisable to the person who wrote it.
+        var preserved = WorkflowLayoutEngine.TryPreserveGeometry(definition, new PreservedLayoutOptions());
+        if (preserved is not null) return preserved.ToJsonString();
+
+        warnings.Add(
+            $"'{runbookName}': the original activity positions could not be reproduced (activities " +
+            "sharing a position, or spaced so tightly that fitting NodePilot's node cards between " +
+            "them would need an unusable canvas). The graph was laid out left-to-right instead.");
+
+        return WorkflowLayoutEngine.Reflow(definition, WorkflowLayoutOptions.Imported).ToJsonString();
     }
 
     /// <summary>
@@ -713,6 +730,7 @@ public sealed class ScorchImporter
         bool hasActiveTrigger,
         List<object> nodes,
         List<string> nodeIds,
+        IReadOnlyDictionary<string, (double X, double Y)> positionsById,
         List<object> edges,
         HashSet<string> edgeTargets,
         ref int linkIdx,
@@ -725,12 +743,22 @@ public sealed class ScorchImporter
         var entryPoints = nodeIds.Where(id => !edgeTargets.Contains(id)).ToList();
         if (entryPoints.Count == 0) entryPoints.Add(nodeIds[0]);
 
+        // Placed in the source's own coordinate space, one grid step left of the leftmost activity
+        // and level with the first entry point. Dropping it at the origin instead would put it on
+        // top of an activity often enough — and a coincident pair is the one thing that stops the
+        // original arrangement from being reproducible at all.
+        var known = positionsById.Values.ToList();
+        var triggerX = (known.Count > 0 ? known.Min(p => p.X) : 0) - 150;
+        var triggerY = positionsById.TryGetValue(entryPoints[0], out var firstEntry)
+            ? firstEntry.Y
+            : known.Count > 0 ? known.Min(p => p.Y) : 0;
+
         var triggerId = DeriveSyntheticTriggerId(runbookName).ToString();
         nodes.Insert(0, new
         {
             id = triggerId,
             type = "activity",
-            position = new { x = 0d, y = 0d },
+            position = new { x = triggerX, y = triggerY },
             data = new
             {
                 label = "Start (imported)",

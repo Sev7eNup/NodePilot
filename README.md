@@ -126,9 +126,12 @@ the same people — on a stack that is still maintained.
   NodePilot activity does not publish, a reference across parallel branches (SCOrch's data bus is
   run-scoped, NodePilot's is ancestor-scoped), a remote step with no target machine, a dropped
   run-as account, an approximated schedule, and any link that ended up unconditional.
-- **The canvas is laid out for NodePilot.** SCOrch positions activities as small icons on a tight
-  grid; NodePilot draws cards. Imported graphs are re-flowed into layers at NodePilot's spacing,
-  keeping the original vertical order, so nothing arrives stacked on top of itself.
+- **The canvas looks like your runbook.** SCOrch positions activities as small icons on a tight
+  grid; NodePilot draws cards several times that size, so the coordinates cannot be copied as they
+  are. The graph is scaled uniformly instead — a similarity transform, so every distance keeps its
+  ratio and the arrangement is the one its author drew, just larger. Where that is impossible
+  (activities sharing a position, or spaced too tightly for any usable canvas) the import says so
+  and falls back to a left-to-right layout.
 
 Import from the UI, from `POST /api/workflows/import-scorch`, or from the CLI:
 
