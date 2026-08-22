@@ -59,7 +59,7 @@ public class ScorchImporterFixtureTests
         result.Errors.Should().BeEmpty();
         result.Workflows.Select(w => w.Name).Should()
             .BeEquivalentTo(["Sample Package Intake", "Log Error"]);
-        result.Workflows.Single(w => w.Name == "Sample Package Intake").ActivityCount.Should().Be(12);
+        result.Workflows.Single(w => w.Name == "Sample Package Intake").ActivityCount.Should().Be(14);
     }
 
     // The regression that motivated this file: backslash-backtick markers must resolve.

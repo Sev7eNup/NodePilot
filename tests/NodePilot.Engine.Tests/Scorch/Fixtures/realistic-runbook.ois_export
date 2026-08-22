@@ -437,6 +437,65 @@ $hasPayload = (Get-ChildItem $packageDir).Count -gt 0</ScriptBody>
     <And datatype="bool">FALSE</And>
   </Object>
 
+  <!-- Two activities that exist for the LAYOUT, not the mapping. SCOrch stacks steps in a column
+       and drops a cleanup step back at the left margin; both shapes render as rectangular U-loops
+       unless the import does something about them, and neither existed in this fixture before. -->
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-00000000000d}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Archive Manifest</Name>
+    <Description datatype="string">Directly BELOW its predecessor at the same x - the stacked pair.</Description>
+    <PositionX datatype="int">-129</PositionX>
+    <PositionY datatype="int">827</PositionY>
+    <ObjectType datatype="string">{D5E6F7A8-0000-0000-0000-0000000000B4}</ObjectType>
+    <ObjectTypeName datatype="string">Run .Net Script</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <ScriptBody datatype="string">Move-Item -Path D:\Staging\manifest.xml -Destination D:\Archive</ScriptBody>
+    <ScriptType datatype="string">PowerShell</ScriptType>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{22222222-0000-0000-0000-00000000000e}</UniqueID>
+    <ParentID datatype="string">{11111111-0000-0000-0000-000000000001}</ParentID>
+    <Name datatype="string">Release Intake Lock</Name>
+    <Description datatype="string">Drawn far LEFT of its predecessor - a forward link that runs backwards on canvas.</Description>
+    <PositionX datatype="int">-879</PositionX>
+    <PositionY datatype="int">827</PositionY>
+    <ObjectType datatype="string">{D5E6F7A8-0000-0000-0000-0000000000B4}</ObjectType>
+    <ObjectTypeName datatype="string">Run .Net Script</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <ScriptBody datatype="string">Remove-Item -Path D:\Staging\intake.lock -Force</ScriptBody>
+    <ScriptType datatype="string">PowerShell</ScriptType>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-00000000000E}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-00000000000c}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-00000000000d}</TargetObject>
+    <Color datatype="string">0</Color>
+    <And datatype="bool">FALSE</And>
+    <Label datatype="string"></Label>
+  </Object>
+
+  <Object>
+    <UniqueID datatype="string">{66666666-0000-0000-0000-00000000000F}</UniqueID>
+    <Name datatype="string">Link</Name>
+    <ObjectType datatype="string">{7A65BD17-9532-4D07-A6DA-E0F89FA0203E}</ObjectType>
+    <ObjectTypeName datatype="string">Link</ObjectTypeName>
+    <Enabled datatype="bool">TRUE</Enabled>
+    <SourceObject datatype="string">{22222222-0000-0000-0000-00000000000d}</SourceObject>
+    <TargetObject datatype="string">{22222222-0000-0000-0000-00000000000e}</TargetObject>
+    <Color datatype="string">0</Color>
+    <And datatype="bool">FALSE</And>
+    <Label datatype="string"></Label>
+  </Object>
+
+
 </Policy>
 
 <Policy>

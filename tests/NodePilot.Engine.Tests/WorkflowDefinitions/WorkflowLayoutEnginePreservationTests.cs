@@ -28,9 +28,14 @@ public class WorkflowLayoutEnginePreservationTests
              + "},\"data\":{\"activityType\":\"log\"}}";
     }
 
-    private static JsonElement Definition(IEnumerable<string> nodes) =>
+    /// <summary>Builds one edge object, using its endpoints as its id.</summary>
+    private static string Edge(string source, string target) =>
+        "{\"id\":\"" + source + "->" + target + "\",\"source\":\"" + source + "\",\"target\":\"" + target + "\"}";
+
+    private static JsonElement Definition(IEnumerable<string> nodes, IEnumerable<string>? edges = null) =>
         JsonSerializer.Deserialize<JsonElement>(
-            "{\"nodes\":[" + string.Join(",", nodes) + "],\"edges\":[]}");
+            "{\"nodes\":[" + string.Join(",", nodes)
+            + "],\"edges\":[" + string.Join(",", edges ?? []) + "]}");
 
     /// <summary>A grid of nodes <paramref name="step"/> apart, optionally with odd rows offset.</summary>
     private static JsonElement Grid(int columns, int rows, double step, double jitter = 0)
@@ -88,6 +93,10 @@ public class WorkflowLayoutEnginePreservationTests
     /// <summary>
     /// A source that is already roomy enough must not be blown up further — the scale is the
     /// smallest one that fits, so a wide-drawn runbook keeps its size and is only moved to the origin.
+    ///
+    /// <para>Edge-free on purpose, as is <see cref="TighterSources_AreScaledUpMoreThanRoomierOnes"/>:
+    /// both read spacing off the distinct x values, and the edge pass is allowed to push individual
+    /// nodes right, which would turn "the spacing" into a set of different numbers.</para>
     /// </summary>
     [Fact]
     public void SourceAlreadyRoomyEnough_IsTranslatedButNotEnlarged()
@@ -228,5 +237,188 @@ public class WorkflowLayoutEnginePreservationTests
             (OutDist(p, q) / SourceDist(p, q)).Should().BeApproximately(reference, 0.15,
                 "the {0}-{1} distance keeps its ratio to every other", p, q);
         }
+    }
+
+    // ---------- the edge pass ----------
+    //
+    // Everything above works on positions alone. Scaling a graph up keeps its edges pointing the
+    // same way, but "the same way" includes backwards — and the designer draws a backward
+    // right-to-left edge as a rectangular U-loop below both nodes. So after the scale, edges get a
+    // pass of their own: dock a vertically-stacked pair top-to-bottom, and push anything else far
+    // enough right that the loop no longer applies. These pin what that pass may and may not do.
+
+    private const double BackwardThreshold = 60; // designer/edges/smartEdgePath.ts
+
+    private static void AssertNoAngularEdge(
+        List<(string Id, double X, double Y)> pts, JsonElement source, System.Text.Json.Nodes.JsonObject result)
+    {
+        var pos = pts.ToDictionary(p => p.Id, p => (p.X, p.Y));
+        var handled = result["edges"]!.AsArray()
+            .Where(e => e!["sourceHandle"] is not null)
+            .Select(e => e!["id"]!.GetValue<string>())
+            .ToHashSet(StringComparer.Ordinal);
+
+        foreach (var edge in source.GetProperty("edges").EnumerateArray())
+        {
+            var id = edge.GetProperty("id").GetString()!;
+            var s = edge.GetProperty("source").GetString()!;
+            var t = edge.GetProperty("target").GetString()!;
+            if (handled.Contains(id) || s == t) continue;
+
+            (pos[t].X >= pos[s].X + Options.NodeWidth - BackwardThreshold).Should().BeTrue(
+                "edge {0} must not render as the angular loop (source x={1}, target x={2})", id, pos[s].X, pos[t].X);
+        }
+    }
+
+    /// <summary>
+    /// The cheap remedy: a pair one above the other keeps both positions and docks vertically. The
+    /// loop is keyed on the port pair, so changing the ports settles it without moving anything —
+    /// which matters, because the arrangement is the thing being preserved.
+    /// </summary>
+    [Fact]
+    public void VerticallyStackedPair_ChangesItsPortsAndNotItsPositions()
+    {
+        var source = Definition(
+            [Node("a", 0, 0), Node("b", 0, 300), Node("c", 600, 150)],
+            [Edge("a", "b"), Edge("b", "c")]);
+
+        var result = WorkflowLayoutEngine.TryPreserveGeometry(source, Options)!;
+        var pts = Positions(result).ToDictionary(p => p.Id, p => (p.X, p.Y));
+
+        pts["a"].X.Should().Be(pts["b"].X, "a vertical dock costs no movement at all");
+
+        var ab = result["edges"]!.AsArray().Single(e => e!["id"]!.GetValue<string>() == "a->b")!;
+        ab["sourceHandle"]!.GetValue<string>().Should().Be("bottom");
+        ab["targetHandle"]!.GetValue<string>().Should().Be("top");
+
+        // The forward edge needs nothing: it already reads left-to-right.
+        var bc = result["edges"]!.AsArray().Single(e => e!["id"]!.GetValue<string>() == "b->c")!;
+        bc["sourceHandle"].Should().BeNull();
+    }
+
+    /// <summary>
+    /// The other remedy: an edge pointing left with the two nodes at nearly the same height cannot
+    /// be helped by ports, so the target is pushed right instead. Only the target, only rightwards,
+    /// and never vertically.
+    ///
+    /// <para>Compared against the source node rather than against the canvas: the finished graph is
+    /// translated back to the margin, so if the pushed node was the leftmost one, every absolute x
+    /// shifts. What must hold is that nothing moves relative to anything else except the target.</para>
+    /// </summary>
+    [Fact]
+    public void EdgePointingLeft_PushesOnlyItsTarget_OnlyRight_AndNeverVertically()
+    {
+        var nodes = new[] { Node("s", 800, 0), Node("t", 0, 0), Node("far", 800, 400) };
+        var withoutEdges = Positions(WorkflowLayoutEngine.TryPreserveGeometry(Definition(nodes), Options)!)
+            .ToDictionary(p => p.Id, p => (p.X, p.Y));
+
+        var source = Definition(nodes, [Edge("s", "t")]);
+        var result = WorkflowLayoutEngine.TryPreserveGeometry(source, Options)!;
+        var pts = Positions(result);
+        var moved = pts.ToDictionary(p => p.Id, p => (p.X, p.Y));
+
+        double OffsetBefore(string id) => withoutEdges[id].X - withoutEdges["s"].X;
+        double OffsetAfter(string id) => moved[id].X - moved["s"].X;
+
+        OffsetAfter("t").Should().BeGreaterThan(OffsetBefore("t"), "the target came forward");
+        OffsetAfter("far").Should().Be(OffsetBefore("far"), "an uninvolved node keeps its place in the graph");
+        foreach (var id in new[] { "s", "t", "far" })
+            moved[id].Y.Should().Be(withoutEdges[id].Y, "{0} keeps its row", id);
+
+        AssertNoAngularEdge(pts, source, result);
+        AssertNoOverlap(pts, Options);
+    }
+
+    /// <summary>
+    /// The two remedies against each other, on an arrangement built to make them fight: pushing a
+    /// node right to clear one edge lands it on a neighbour, and separating that neighbour undoes
+    /// the push. The pass has to settle anyway — and settle on the 20 px grid, without overlaps.
+    /// </summary>
+    [Fact]
+    public void PushAndSeparation_SettleTogether_OnGrid_WithoutOverlaps()
+    {
+        var nodes = new List<string>();
+        var edges = new List<string>();
+        for (var i = 0; i < 8; i++)
+        {
+            // Each step is drawn LEFT of the one before it, all in two tight rows — so every edge
+            // needs a push, and every push lands the node on top of the row above.
+            nodes.Add(Node($"n{i}", 900 - i * 120, i % 2 * 130));
+            if (i > 0) edges.Add(Edge($"n{i - 1}", $"n{i}"));
+        }
+
+        var source = Definition(nodes, edges);
+        var result = WorkflowLayoutEngine.TryPreserveGeometry(source, Options);
+
+        result.Should().NotBeNull("the pass has to converge, not give up on an ordinary chain");
+        var pts = Positions(result!);
+        AssertNoOverlap(pts, Options);
+        AssertNoAngularEdge(pts, source, result!);
+        pts.Should().OnlyContain(p => p.X % Options.GridSnap == 0 && p.Y % Options.GridSnap == 0);
+        pts.Min(p => p.X).Should().Be(Options.Margin, "pushing right must not lift the graph off the margin");
+    }
+
+    /// <summary>
+    /// A cycle cannot have all of its edges pointing forward, so the pass exempts the edges that
+    /// close one — and must not spin trying to satisfy them. Both shapes matter: a cycle hanging off
+    /// the rest of the graph, and one with no path into it at all. The second is the one a
+    /// roots-only traversal never colours, and it hangs rather than fails.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void CyclicSource_Terminates_AndKeepsTheLoopBackVisible(bool reachable)
+    {
+        var nodes = new List<string>
+        {
+            Node("a", 0, 0), Node("b", 400, 0), Node("c", 800, 0), Node("lone", 400, 400),
+        };
+        var edges = new List<string> { Edge("a", "b"), Edge("b", "c"), Edge("c", "a") };
+        if (reachable) { nodes.Add(Node("entry", -400, 0)); edges.Add(Edge("entry", "a")); }
+
+        var result = WorkflowLayoutEngine.TryPreserveGeometry(Definition(nodes, edges), Options);
+
+        result.Should().NotBeNull();
+        AssertNoOverlap(Positions(result!), Options);
+
+        // c->a closes the loop. It keeps the default ports and its backward run, on purpose: the
+        // styleguide wants a loop-back to stand out rather than blend into the forward flow.
+        var loop = result!["edges"]!.AsArray().Single(e => e!["id"]!.GetValue<string>() == "c->a")!;
+        loop["sourceHandle"].Should().BeNull();
+    }
+
+    /// <summary>
+    /// Edges to nodes that are not in the graph, and edges a node points at itself, must not derail
+    /// the pass — an import is exactly where malformed references turn up.
+    /// </summary>
+    [Fact]
+    public void DanglingAndSelfEdges_AreIgnored()
+    {
+        var source = Definition(
+            [Node("a", 0, 0), Node("b", 400, 200)],
+            [Edge("a", "a"), Edge("a", "ghost"), Edge("ghost", "b"), Edge("a", "b")]);
+
+        var result = WorkflowLayoutEngine.TryPreserveGeometry(source, Options);
+
+        result.Should().NotBeNull();
+        result!["edges"]!.AsArray().Should().HaveCount(4, "every edge is handed back, sound or not");
+    }
+
+    /// <summary>
+    /// A disabled edge still gets drawn — dashed and faded, but drawn — so it is part of the picture
+    /// this pass exists to fix, and it constrains the layout like any other.
+    /// </summary>
+    [Fact]
+    public void DisabledEdges_ConstrainTheLayoutToo_BecauseTheyStillRender()
+    {
+        var disabled = "{\"id\":\"s->t\",\"source\":\"s\",\"target\":\"t\",\"data\":{\"disabled\":true}}";
+        var nodes = new[] { Node("s", 800, 0), Node("t", 0, 0) };
+
+        var withoutEdges = Positions(WorkflowLayoutEngine.TryPreserveGeometry(Definition(nodes), Options)!)
+            .ToDictionary(p => p.Id, p => p.X);
+        var withDisabled = Positions(WorkflowLayoutEngine.TryPreserveGeometry(Definition(nodes, [disabled]), Options)!)
+            .ToDictionary(p => p.Id, p => p.X);
+
+        withDisabled["t"].Should().BeGreaterThan(withoutEdges["t"]);
     }
 }

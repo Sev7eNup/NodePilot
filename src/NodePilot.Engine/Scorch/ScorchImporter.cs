@@ -414,8 +414,9 @@ public sealed class ScorchImporter
 
         warnings.Add(
             $"'{runbookName}': the original activity positions could not be reproduced (activities " +
-            "sharing a position, or spaced so tightly that fitting NodePilot's node cards between " +
-            "them would need an unusable canvas). The graph was laid out left-to-right instead.");
+            "sharing a position, spaced so tightly that fitting NodePilot's node cards between them " +
+            "would need an unusable canvas, or links that could not be spread out without pushing " +
+            "activities back onto each other). The graph was laid out left-to-right instead.");
 
         return WorkflowLayoutEngine.Reflow(definition, WorkflowLayoutOptions.Imported).ToJsonString();
     }
