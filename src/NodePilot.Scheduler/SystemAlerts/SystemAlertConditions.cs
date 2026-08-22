@@ -26,4 +26,22 @@ public static class SystemAlertConditions
         left = new { kind = "variable", source = "event", name = field },
         op,
     });
+
+    /// <summary>
+    /// An OR-group of equality comparisons of one event field against each literal, e.g.
+    /// <c>AnyOf("action", "USER_ROLE_CHANGED", "USER_DELETED")</c> — the <c>group</c> node shape the
+    /// evaluator and the strict alerting validator both read.
+    /// </summary>
+    public static string AnyOf(string field, params string[] literals) => JsonSerializer.Serialize(new
+    {
+        type = "group",
+        op = "OR",
+        children = literals.Select(literal => new
+        {
+            type = "comparison",
+            left = new { kind = "variable", source = "event", name = field },
+            op = "==",
+            right = new { kind = "literal", value = literal },
+        }).ToArray(),
+    });
 }

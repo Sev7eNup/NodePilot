@@ -12,12 +12,23 @@ exhaustive.
 
 ## [Unreleased]
 
+### Added
+
+- System-alert source `audit-event` (category *Security*): the audit log is alertable in-product.
+  A policy filters on the audit code, outcome, category, user, IP address or the redacted details
+  JSON and delivers by email or webhook; presets cover failed logins, lockouts, break-glass sign-ins
+  and privilege changes. An optional `actions` parameter narrows the scan server-side. Previously a
+  failed login reached an operator only through the SIEM stream or aggregate Prometheus counters.
+
 ### Changed
 
 - The AI chat page trims its empty state below the `lg` breakpoint: the subtitle, the source-badge
   row and the intro line are hidden, and four of the eight starter prompts are shown. Together they
   filled a phone screen before the first prompt, leaving the composer as the only thing a thumb
   could reach. On a desktop everything is unchanged.
+- The system-alert evaluator no longer persists a policy-state row for an observation whose
+  condition does not hold; non-matching observations used to leave one row each until the 90-day
+  retention sweep.
 
 ### Fixed
 
@@ -30,6 +41,10 @@ exhaustive.
   port on *both* sides — on a phone the icon, the heading and all but the last line of the intro
   sat above the scroll origin, unreachable, leaving a dangling "…so nothing changes." at the top.
   It now falls back to top-aligned once it no longer fits. Same fix in the designer's chat panel.
+- On PostgreSQL every system-alert episode produced two delivery attempts: the episode start's
+  100-ns ticks are part of the event key, but the stored timestamp comes back at microsecond
+  precision, so the second dispatcher pass keyed the same episode differently. The episode start is
+  now millisecond-aligned, which both database providers round-trip intact.
 
 ## [1.2.12] - 2026-08-22
 

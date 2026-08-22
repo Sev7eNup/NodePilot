@@ -4356,6 +4356,15 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 > (inkl. `signalValue`), `cancelledBy`-Filter sowie `DeliveriesModal` (Status-Filter, leere Liste) ab.
 > Ein hermetischer Playwright-Spec ist ein Follow-up.
 
+### Test 78.9 — Audit-Event-Quelle (Kategorie Sicherheit)
+1. `/alerts` → Tab **System-Alarme** → Karte **Audit-Ereignis** (Kategorie **Sicherheit**) → **Policy hinzufügen**.
+2. Preset **failed-login** wählen → Condition zeigt `action == LOGIN_FAILED`; Parameter `lookbackSeconds` (300) und `actions` (leer) sichtbar; E-Mail- oder Webhook-Route setzen; aktivieren.
+3. Ausloggen, zweimal mit falschem Passwort anmelden, wieder anmelden.
+4. Policy → **Aktuelle Werte prüfen** → die beiden `LOGIN_FAILED`-Zeilen erscheinen mit dem versuchten Benutzernamen (aus Details), IP und Zeitstempel.
+5. Binnen ≤ 60 s zeigt das **Deliveries**-Modal je Fehlversuch eine Zustellung; Titel `Audit LOGIN_FAILED: <user>`.
+6. `actions` auf `LOGIN_LOCKED` setzen → **Aktuelle Werte prüfen** liefert für dieselben Fehlversuche keinen Treffer (serverseitiger Vorfilter).
+- [ ] Quelle sichtbar unter Sicherheit; Preset füllt Condition; Username-Fallback; Zustellung; `actions`-Vorfilter greift.
+
 ---
 
 ## Teil 79: Toolbar-Layout-Umschalter (kompakt ⇄ klassisch)

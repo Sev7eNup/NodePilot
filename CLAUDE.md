@@ -167,7 +167,7 @@ User-authored, PowerShell-backed Activities (UI: „Custom Nodes") — reine **r
 
 User-definierte Regeln, die bei passenden Ereignissen über Kanäle (SMTP / Generic-Webhook + HMAC) benachrichtigen. Opt-in **per Daten** (idle bis eine Regel existiert). Volle Doku: `docs/alerting.md`.
 
-- **Zwei Arten:** Custom-Regeln (`Kind=Custom`, Execution-Events, Filter-AST = derselbe `ConditionEvaluator` wie Edge-Conditions) und System-Policies (`Kind=System`, ADR 0008 — 12 katalogisierte `ISystemAlertSource`s für Infra-/Signal-Alerts, ausgewertet vom `SystemAlertEvaluator`).
+- **Zwei Arten:** Custom-Regeln (`Kind=Custom`, Execution-Events, Filter-AST = derselbe `ConditionEvaluator` wie Edge-Conditions) und System-Policies (`Kind=System`, ADR 0008 — 14 katalogisierte `ISystemAlertSource`s für Infra-/Signal-/Security-Alerts, ausgewertet vom `SystemAlertEvaluator`; `audit-event` macht das Audit-Log in-product alarmierbar).
 - **Kern:** Entität `NotificationRule` (+ Routes/Targets) + getrennte State-Tabellen (Suppression, Delivery-Ledger `NotificationDeliveryAttempt`, Dispatcher-Watermark). `NotificationDispatcher` (leader-gated, ~30 s) matcht → suppressed (Cooldown/Flap) → persistiert Pending-Attempt VOR jedem I/O → sendet (exactly-once pro `(rule, route, occurrence)`).
 - **Governance:** Read Admin/Op; alle Mutationen + Test-Fire Admin-only; neue Regeln entstehen disabled. Secrets in Responses redigiert.
 - **Frontend/CLI/MCP:** Seite `/alerts` (2 Tabs, wiederverwendeter `ConditionBuilder`), `np alerting` + `np system-alert`, MCP-Tools für beides.

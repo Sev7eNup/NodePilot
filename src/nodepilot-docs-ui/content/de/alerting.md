@@ -56,6 +56,7 @@ System-Alarme überwachen von NodePilot bereitgestellte Messwerte. Für eine Que
 | Zeitplan | Zeitplan verpasst | erwarteter geplanter Start ohne passende Ausführung |
 | Zeitplan | Kein aktueller Workflow-Erfolg | geplanter Workflow ohne aktuellen erfolgreichen Lauf |
 | Credentials | Credential läuft ab | bevorstehendes oder bereits erreichtes Ablaufdatum |
+| Sicherheit | Audit-Ereignis | Einträge des Audit-Logs wie fehlgeschlagene Logins, Sperrungen, Break-Glass-Anmeldungen, Rollenwechsel oder Credential-Löschungen — filterbar nach Code, Ergebnis, Benutzer, IP und dem Details-JSON |
 
 Eine Quelle kann als **Nicht verfügbar** erscheinen, wenn die benötigten Daten fehlen. Beispiele:
 

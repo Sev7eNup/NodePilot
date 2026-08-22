@@ -51,7 +51,7 @@ Introduce three code-owned concepts and one central evaluator.
   leader/lease-epoch-gated dispatch, cooldown/flap suppression).
 
 **One pipeline, not two.** The eight legacy `IGaugeSignalProvider`s and the `GaugeSignalCollector` were
-**removed** once the `ISystemAlertSource` catalog covered them (12 sources today). Infra/signal alerts —
+**removed** once the `ISystemAlertSource` catalog covered them (14 sources today). Infra/signal alerts —
 backlog, pending, cancel-rate, machine health, service staleness, credential expiry, schedule-missed,
 no-recent-success — are now **system policies only**; their `NotificationEventType` values remain
 (append-only persisted contract) but were dropped from `NotificationRuleSemantics.SupportedEventTypes`, so

@@ -97,6 +97,12 @@ public sealed class SystemAlertEvaluator
 
             if (!byInstance.TryGetValue(obs.InstanceKey, out var state))
             {
+                // Nothing to track yet for an instance that doesn't match: the row only matters once a
+                // match starts (MatchStartedAt) or has to be reset. Creating it unconditionally persisted
+                // one state row per non-matching observation per policy — every succeeded execution, every
+                // audit entry — until the retention sweep pruned it 90 days later.
+                if (!holds) continue;
+
                 state = new SystemAlertPolicyState
                 {
                     Id = Guid.NewGuid(),
@@ -122,7 +128,11 @@ public sealed class SystemAlertEvaluator
                     && now >= started.AddSeconds(Math.Max(0, policy.SustainForSeconds));
                 if (sustainOver)
                 {
-                    state.EpisodeStartedAt ??= now;
+                    // Millisecond-aligned on purpose: the episode start's ticks are part of the EventKey,
+                    // and PostgreSQL stores timestamps at microsecond precision. With raw 100-ns ticks the
+                    // first pass keyed the attempt on the in-memory value and every later pass on the
+                    // rounded value read back from the row — two keys, two deliveries, for one episode.
+                    state.EpisodeStartedAt ??= TruncateToMilliseconds(now);
                     // Emit every pass while the episode is open; the delivery ledger's (rule,route,eventKey)
                     // guard makes this idempotent and recovers a persist-before-send crash on the next pass.
                     fires.Add(new SystemAlertFire(policy,
@@ -305,6 +315,10 @@ public sealed class SystemAlertEvaluator
         return long.TryParse(rest[(lastColon + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var ticks)
             && TryTicks(ticks, out episodeStart);
     }
+
+    /// <summary>Drops sub-millisecond ticks — the precision every supported provider round-trips intact.</summary>
+    public static DateTime TruncateToMilliseconds(DateTime value)
+        => new(value.Ticks - value.Ticks % TimeSpan.TicksPerMillisecond, value.Kind);
 
     private static bool TryTicks(long ticks, out DateTime dt)
     {

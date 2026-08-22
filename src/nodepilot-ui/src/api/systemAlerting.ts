@@ -31,7 +31,7 @@ export interface SystemAlertPreset {
 
 export interface SystemAlertSource {
   sourceId: string;
-  category: string; // Execution | Queue | Health | Schedule | Credential
+  category: string; // Execution | Queue | Health | Schedule | Credential | Security
   scopeCapability: 'GlobalOnly' | 'WorkflowScoped';
   defaultSeverity: string;
   fields: SystemAlertField[];

@@ -56,6 +56,7 @@ System alerts monitor measurements NodePilot provides. Several policies with dif
 | Schedule | Missed schedule | An expected scheduled start with no matching execution |
 | Schedule | No recent workflow success | A scheduled workflow without a recent successful run |
 | Credentials | Credential expiring | An upcoming or already reached expiry date |
+| Security | Audit event | Audit-log entries such as failed logins, lockouts, break-glass sign-ins, role changes or credential deletions — filterable by code, outcome, user, IP and the details JSON |
 
 A source can appear as **unavailable** if the required data is missing. Examples:
 

@@ -83,7 +83,10 @@ public static class BackgroundServicesSetup
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.StuckExecutionSource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.WorkflowHealthSource>();
         services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.AlertDeliveryFailureSource>();
-        // Unlike its twelve siblings this one reads process memory, not the database: trigger
+        // Audit-log entries (failed logins, lockouts, break-glass sign-ins, privilege changes) — the one
+        // source that makes security events alertable in-product rather than only via the SIEM stream.
+        services.AddSingleton<NodePilot.Scheduler.SystemAlerts.ISystemAlertSource, NodePilot.Scheduler.SystemAlerts.Sources.AuditEventSource>();
+        // Unlike its thirteen siblings this one reads process memory, not the database: trigger
         // registrations are process-local, so their health has no meaningful DB representation
         // (see TriggerHealthRegistry). The orchestrator writes it, the evaluator reads it, and
         // both are leader-gated in this process.
