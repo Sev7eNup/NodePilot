@@ -34,6 +34,7 @@ public class SystemAlertCatalogTests
         new WorkflowHealthSource(),
         new AlertDeliveryFailureSource(),
         new TriggerUnhealthySource(new NodePilot.Scheduler.TriggerHealthRegistry()),
+        new AuditEventSource(),
     ];
 
     [Fact]
@@ -42,9 +43,9 @@ public class SystemAlertCatalogTests
         var catalog = new SystemAlertCatalog(RealSources());
 
         catalog.Descriptors.Select(d => d.SourceId).Should().Equal(
-            "alert-delivery-failed", "backlog", "cancel-rate", "credential-expiring", "execution-result",
-            "execution-stuck", "machine-unreachable", "pending", "schedule-missed", "service-stale",
-            "trigger-unhealthy", "workflow-health", "workflow-no-recent-success");
+            "alert-delivery-failed", "audit-event", "backlog", "cancel-rate", "credential-expiring",
+            "execution-result", "execution-stuck", "machine-unreachable", "pending", "schedule-missed",
+            "service-stale", "trigger-unhealthy", "workflow-health", "workflow-no-recent-success");
     }
 
     [Fact]
@@ -116,6 +117,42 @@ public class SystemAlertCatalogTests
                 fieldNames.Should().Contain(referenced,
                     $"preset '{d.SourceId}/{preset.PresetId}' references undeclared field '{referenced}'");
         }
+    }
+
+    [Theory]
+    [InlineData("de")]
+    [InlineData("en")]
+    public void EverySource_AndCategory_HasFrontendLabel(string lang)
+    {
+        // The UI falls back to the raw id when a label is missing, so nothing else would notice a
+        // forgotten `system.sourceLabels` / `system.categories` entry when a source is added.
+        var system = ReadAlertsJson(lang).GetProperty("system");
+        var sourceLabels = system.GetProperty("sourceLabels").EnumerateObject().Select(p => p.Name).ToHashSet();
+        var categories = system.GetProperty("categories").EnumerateObject().Select(p => p.Name).ToHashSet();
+
+        foreach (var d in new SystemAlertCatalog(RealSources()).Descriptors)
+        {
+            sourceLabels.Should().Contain(d.SourceId, $"{lang}/alerts.json must label source '{d.SourceId}'");
+            categories.Should().Contain(d.Category.ToString(), $"{lang}/alerts.json must label category '{d.Category}'");
+        }
+        foreach (var category in Enum.GetNames<SystemAlertCategory>())
+            categories.Should().Contain(category, $"{lang}/alerts.json must label category '{category}'");
+    }
+
+    private static JsonElement ReadAlertsJson(string lang)
+    {
+        var path = Path.Combine(FindRepoRoot(), "src", "nodepilot-ui", "src", "i18n", "locales", lang, "alerts.json");
+        File.Exists(path).Should().BeTrue($"{lang}/alerts.json must exist at {path}");
+        return JsonDocument.Parse(File.ReadAllText(path)).RootElement.Clone();
+    }
+
+    private static string FindRepoRoot()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        for (var i = 0; i < 10 && dir is not null; i++, dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "NodePilot.slnx")))
+                return dir.FullName;
+        throw new InvalidOperationException($"Could not locate NodePilot.slnx walking up from {AppContext.BaseDirectory}");
     }
 
     // Collects every source:"event" operand name in an AST so a preset can't reference a field the

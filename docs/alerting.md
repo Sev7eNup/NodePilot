@@ -215,10 +215,11 @@ window, scope, and routes. See [ADR 0008](adr/0008-modular-system-alert-sources.
 (source / observation / policy, source-vs-policy state separation, one-pipeline decision, phasing) and the
 rationale for choosing compiled modules over a text query language.
 
-The catalog currently ships **13** sources: `backlog`, `pending`, `cancel-rate`, `machine-unreachable`,
+The catalog currently ships **14** sources: `backlog`, `pending`, `cancel-rate`, `machine-unreachable`,
 `service-stale`, `credential-expiring`, `workflow-no-recent-success`, `schedule-missed`, `execution-result`,
 `execution-stuck` (live-hang detection), `workflow-health` (rolling failure-rate / p95 from `WorkflowStats`),
-`alert-delivery-failed` (self-monitoring: the alarm about broken alarms), and `trigger-unhealthy`.
+`alert-delivery-failed` (self-monitoring: the alarm about broken alarms), `trigger-unhealthy`, and
+`audit-event` (security: the audit log, category `Security`).
 
 `trigger-unhealthy` reports triggers the orchestrator cannot keep registered — a `fileWatcherTrigger`
 whose UNC share went away, a cron the scheduler rejects — exposing `unhealthySeconds`,
@@ -234,6 +235,48 @@ explains it. Runtime mechanics: see the trigger-liveness section in `docs/claude
 > process that owns it. Consequence in an HA pair: the catalog and the policy preview are served by
 > whichever node answers the request, so a **follower** — which runs no triggers — shows this source
 > as *unavailable* even while the leader alerts correctly. Single-node deployments never see this.
+
+`audit-event` makes the audit log alertable in-product — before it, a failed login, a lockout, a
+break-glass sign-in or a role change reached an operator only through the ECS-JSON SIEM stream, an OTLP
+collector, or the aggregate `nodepilot_auth_*` Prometheus counters (which cannot say *who*). It is the
+second event-style source after `execution-result` and follows the same stateless lookback pattern:
+each pass reads the `AuditLog` rows of the last `lookbackSeconds` (default 300), one observation per
+row, `InstanceKey` = row id, `OccurredAt` = the row's timestamp, so the per-policy activation watermark
+and the delivery ledger keep a row from alerting twice. Fields: `action` (the `AuditActions` code — a
+free string, not an enum, so the 157 codes are not duplicated into the descriptor), `outcome`
+(`success`/`failure`/`unknown`) and `category` (`iam`/`process`/`configuration`) via the same
+`AuditEventClassification` the SIEM forwarder uses, `username`, `ipAddress`, `resourceType`, and
+`details` — the write-side redacted details JSON, which lets a condition match what a code alone
+cannot express (`contains "\"source\":\"Ldap\""`, `contains "\"breakGlass\":true"`). For an
+anonymous login failure the actor column is empty, so `username` falls back to `Details.username`
+(the attempted name). Presets: `failed-login`, `account-locked` (Critical), `break-glass-login`
+(Critical), `privileged-change` (role/break-glass/password-reset/deactivate/delete, credential delete,
+force-unlock, backup restore, authentication-settings change). Scope is global only.
+
+Two knobs bound the scan. `actions` (optional, comma-separated codes, case-insensitive) is applied in
+the query, not the condition, so non-matching rows never become observations; left empty it reads
+every code **except** `CREDENTIAL_DECRYPTED` (one per credential-resolving step) and `TOKEN_REFRESHED`
+(one per session rotation) — naming either explicitly includes it. Each pass is capped at **200**
+rows, oldest first (`AuditEventSource.ScanBatchSize`, the budget the custom-rule collectors use); an
+install that sustains more than 200 matching rows per lookback window can miss events, and `actions`
+is the remedy. Presets deliberately ship a condition only and no `actions` value — a pre-filter that
+silently contradicts a later-edited condition would be a policy that looks right and never fires.
+
+> **What leaves the system.** Username and IP are part of the alert's title and summary, so they go
+> to whatever route an Admin configured (email recipient, webhook URL). The details field is the
+> already-redacted JSON — no secrets — and the `sourceKey` / `X-NodePilot-Event-Key` header carry the
+> row id only, never the username. The webhook's `occurredAt` is the evaluation time; the audit
+> timestamp is in the summary.
+
+Adding this source also removed a cost every source paid: the evaluator no longer creates a
+`SystemAlertPolicyStates` row for an observation whose condition does not hold (it only resets an
+existing one). Before, every non-matching observation — every succeeded execution, every audit row —
+left a state row behind until the 90-day retention sweep. Its live test also surfaced a duplicate
+delivery every source had on PostgreSQL: the episode start's ticks are part of the `EventKey`, and
+Postgres stores timestamps at microsecond precision — pass 1 keyed the attempt on the in-memory
+100-ns value, pass 2 on the rounded value read back, so one episode produced two attempts. The episode
+start is now millisecond-aligned (`SystemAlertEvaluator.TruncateToMilliseconds`), which both providers
+round-trip intact.
 
 Delivered so far (foundation phase, non-destructive — the custom rules above are unchanged):
 

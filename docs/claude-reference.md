@@ -580,6 +580,8 @@ Globale Flags: `--server`, `--profile`, `-o table|json|yaml`, `--no-color`, `-v`
 
 > **Autoritative Quelle:** `NodePilot.Core.Audit.AuditActions` (Konstanten-Katalog). Die Liste unten ist eine Prosa-Übersicht; der Guard `AuditActionsCatalogTests` (Api.Tests) hält Katalog ↔ Verwendung in Sync. Neue Codes dort registrieren, nie als rohes Literal.
 
+> **Alarmierbar:** jeder Code ist über die System-Policy-Quelle `audit-event` (Kategorie `Security`, Felder `action`/`outcome`/`category`/`username`/`ipAddress`/`resourceType`/`details`, Presets für Failed-Login, Lockout, Break-Glass-Login, Privileged-Change) per Mail/Webhook alarmierbar — Details in `docs/alerting.md`. Der SIEM-Stream bleibt der Weg für externe Detection-Rules.
+
 - `WORKFLOW_CREATED|UPDATED|DELETED|DUPLICATED|ROLLED_BACK|ENABLED|DISABLED|CANCEL_ALL`
 - `WORKFLOW_LOCKED|UNLOCKED|PUBLISHED|FORCE_UNLOCKED` (Edit-Lock-Lifecycle)
 - `MACHINE_CREATED|UPDATED|DELETED|CONNECTION_TESTED|CONNECTION_TEST_FAILED`

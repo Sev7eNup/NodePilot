@@ -133,7 +133,8 @@
       "Queue": "Warteschlange",
       "Health": "Systemzustand",
       "Schedule": "Zeitplan",
-      "Credential": "Credentials"
+      "Credential": "Credentials",
+      "Security": "Sicherheit"
     },
     "sourceLabels": {
       "backlog": "Execution-Backlog",
@@ -148,7 +149,8 @@
       "workflow-health": "Workflow-Gesundheit",
       "alert-delivery-failed": "Alarm-Zustellung fehlgeschlagen",
       "schedule-missed": "Zeitplan verpasst",
-      "trigger-unhealthy": "Trigger nicht registriert"
+      "trigger-unhealthy": "Trigger nicht registriert",
+      "audit-event": "Audit-Ereignis"
     },
     "editor": {
       "name": "Name",

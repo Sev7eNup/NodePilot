@@ -53,6 +53,10 @@ Every audit write flows through `IAuditStager` (in `NodePilot.Core/Audit/`). HTT
 
 Admin only, cursor pagination, export as CSV/NDJSON (`GET /api/audit/export?format=csv|ndjson`). The export itself writes `AUDIT_LOG_EXPORTED` with the filters and the actual row count.
 
+## Alerting
+
+The system-alert source **Audit event** (category *Security* on the Alerts page) turns audit entries into notifications without a SIEM: a policy filters on the code (`action`), the outcome, the user, the IP address or the details JSON and delivers by email or webhook. Presets cover failed logins, lockouts, break-glass sign-ins and privilege changes; the optional `actions` parameter narrows the scan to specific codes. Username and IP travel in the alert text to the configured recipient — see [Alerting](../alerting).
+
 ## SIEM forwarding
 
 With `Logging:Format=ecs-json`, every successful audit row is additionally emitted as a structured ECS event through Serilog — see [SIEM logging](../enterprise/siem-logging).

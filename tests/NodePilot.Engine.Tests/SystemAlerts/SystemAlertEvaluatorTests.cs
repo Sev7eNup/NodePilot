@@ -95,6 +95,40 @@ public class SystemAlertEvaluatorTests
     }
 
     [Fact]
+    public async Task ConditionFalse_CreatesNoStateRow()
+    {
+        // An event source like audit-event yields hundreds of non-matching observations per pass; a state
+        // row for each would sit in SystemAlertPolicyStates until the 90-day retention sweep.
+        await using var db = TestDbFactory.Create();
+        var (ev, src) = Build();
+        src.Observations = () => [Obs(100, "a"), Obs(200, "b")];
+
+        await Eval(ev, db, Policy(filter: DepthOver500), DateTime.UtcNow);
+
+        db.SystemAlertPolicyStates.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ConditionFalse_AfterMatch_ResetsExistingRow_AndKeepsIt()
+    {
+        await using var db = TestDbFactory.Create();
+        var (ev, src) = Build();
+        var p = Policy(filter: DepthOver500, sustain: 60);
+        var t0 = DateTime.UtcNow;
+
+        src.Observations = () => [Obs(600)];
+        await Eval(ev, db, p, t0);
+        src.Observations = () => [Obs(100)];
+        await Eval(ev, db, p, t0.AddSeconds(30));
+
+        var state = db.SystemAlertPolicyStates.Should().ContainSingle().Subject;
+        state.IsMatching.Should().BeFalse();
+        state.MatchStartedAt.Should().BeNull();
+        state.EpisodeStartedAt.Should().BeNull();
+        state.LastObservedAt.Should().Be(t0.AddSeconds(30));
+    }
+
+    [Fact]
     public async Task Sustain_HoldsFireUntilWindowElapses()
     {
         await using var db = TestDbFactory.Create();
@@ -124,6 +158,33 @@ public class SystemAlertEvaluatorTests
         second.Should().ContainSingle();
         second[0].Context.EventKey.Should().Be(first[0].Context.EventKey,
             "an open episode keeps its EventKey so the (rule,route,eventKey) guard dedups");
+    }
+
+    [Fact]
+    public async Task OpenEpisode_EventKey_SurvivesMicrosecondPrecisionRoundTrip()
+    {
+        // PostgreSQL stores timestamps at microsecond precision. Before the episode start was
+        // millisecond-aligned, pass 1 keyed the attempt on the in-memory 100-ns value and pass 2 on the
+        // rounded value read back from the row: two EventKeys, two deliveries, for one episode.
+        await using var db = TestDbFactory.Create();
+        var (ev, src) = Build();
+        src.Observations = () => [Obs(600)];
+        var p = Policy(filter: DepthOver500);
+        var t0 = new DateTime(2026, 8, 23, 0, 37, 0, DateTimeKind.Utc).AddTicks(6_388_941); // .6388941 s
+
+        var first = await Eval(ev, db, p, t0);
+
+        var state = db.SystemAlertPolicyStates.Single();
+        state.EpisodeStartedAt!.Value.Ticks.Should().Match(t => t % TimeSpan.TicksPerMillisecond == 0);
+        // Simulate the provider's microsecond truncation of what pass 1 persisted.
+        var stored = state.EpisodeStartedAt.Value;
+        state.EpisodeStartedAt = new DateTime(stored.Ticks - stored.Ticks % 10, DateTimeKind.Utc);
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var second = await Eval(ev, db, p, t0.AddSeconds(30));
+
+        second.Single().Context.EventKey.Should().Be(first.Single().Context.EventKey);
     }
 
     [Fact]

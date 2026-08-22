@@ -16,6 +16,8 @@ public enum SystemAlertCategory
     Schedule = 3,
     /// <summary>Credential expiry.</summary>
     Credential = 4,
+    /// <summary>Audit-log events: authentication, privilege and configuration changes.</summary>
+    Security = 5,
 }
 
 /// <summary>

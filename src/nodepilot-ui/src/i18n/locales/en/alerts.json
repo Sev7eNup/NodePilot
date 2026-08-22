@@ -133,7 +133,8 @@
       "Queue": "Queue",
       "Health": "Health",
       "Schedule": "Schedule",
-      "Credential": "Credentials"
+      "Credential": "Credentials",
+      "Security": "Security"
     },
     "sourceLabels": {
       "backlog": "Execution backlog",
@@ -148,7 +149,8 @@
       "workflow-health": "Workflow health",
       "alert-delivery-failed": "Alert delivery failing",
       "schedule-missed": "Schedule missed",
-      "trigger-unhealthy": "Trigger not registered"
+      "trigger-unhealthy": "Trigger not registered",
+      "audit-event": "Audit event"
     },
     "editor": {
       "name": "Name",
