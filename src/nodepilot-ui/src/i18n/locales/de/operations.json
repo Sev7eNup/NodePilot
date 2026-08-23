@@ -98,6 +98,9 @@
     "moreFinished_one": "+{{count}} weiterer beendeter Lauf",
     "moreFinished_other": "+{{count}} weitere beendete Läufe",
     "ago": "vor {{value}}",
-    "idleHint": "Sobald ein Workflow startet, erscheint er hier."
+    "idleHint": "Sobald ein Workflow startet, erscheint er hier.",
+    "failed": "Fehlgeschlagen",
+    "moreFailed_one": "+{{count}} weiterer fehlgeschlagener Lauf",
+    "moreFailed_other": "+{{count}} weitere fehlgeschlagene Läufe"
   }
 }

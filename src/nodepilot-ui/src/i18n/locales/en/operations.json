@@ -98,6 +98,9 @@
     "moreFinished_one": "+{{count}} more finished",
     "moreFinished_other": "+{{count}} more finished",
     "ago": "{{value}} ago",
-    "idleHint": "As soon as a workflow starts, it shows up here."
+    "idleHint": "As soon as a workflow starts, it shows up here.",
+    "failed": "Failed",
+    "moreFailed_one": "+{{count}} more failed",
+    "moreFailed_other": "+{{count}} more failed"
   }
 }

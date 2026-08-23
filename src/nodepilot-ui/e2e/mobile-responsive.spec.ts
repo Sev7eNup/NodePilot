@@ -269,10 +269,13 @@ test.describe('Mobile responsiveness', () => {
     await expect(list).toBeVisible({ timeout: 20_000 });
     await expect(page.getByTestId('ops-time-axis')).toHaveCount(0);
 
-    // Full workflow name, live elapsed time, and the failed run in its own section.
+    // Full workflow name and live elapsed time...
     await expect(list.getByText('Nightly Backup Of The Whole Estate')).toBeVisible();
     await expect(list.getByText(/running for/i)).toBeVisible();
-    await expect(list.getByText('Cleanup Temp')).toBeVisible();
+    // ...and the failure in its own section, where a long success list cannot bury it.
+    const failed = page.getByRole('region', { name: 'Failed' });
+    await expect(failed.getByText('Cleanup Temp')).toBeVisible();
+    await expect(list.getByText('1 failed')).toBeVisible();
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
     // Tapping a run opens the same drilldown the timeline opens, hosted as a full-height sheet.

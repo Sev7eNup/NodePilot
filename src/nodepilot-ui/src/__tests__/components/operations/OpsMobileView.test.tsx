@@ -109,7 +109,7 @@ describe('OpsMobileView', () => {
     renderView({
       recent: [
         recent({ executionId: 'ex-a', completedAt: new Date(NOW - 5 * MIN).toISOString() }),
-        recent({ executionId: 'ex-b', status: 'Failed', workflowId: 'wf-1', completedAt: new Date(NOW - MIN).toISOString() }),
+        recent({ executionId: 'ex-b', workflowId: 'wf-1', completedAt: new Date(NOW - MIN).toISOString() }),
       ],
     });
 
@@ -117,8 +117,58 @@ describe('OpsMobileView', () => {
     const rows = within(section).getAllByRole('button').map((b) => b.textContent ?? '');
     expect(rows[0]).toContain('Nightly Backup');
     expect(rows[0]).toContain('1:00 ago');
+    expect(rows[0]).toContain('Succeeded');
     expect(rows[1]).toContain('Report Gen');
+  });
+
+  // The regression this section exists for: on a busy estate "just finished" is thousands long,
+  // so a failure never survived the cap and the counter pointed at something unreachable.
+  it('gives failures their own section so a busy success list cannot bury them', () => {
+    renderView({
+      recent: [
+        ...Array.from({ length: 30 }, (_, i) => recent({
+          executionId: `ok-${i}`,
+          completedAt: new Date(NOW - (i + 1) * 1000).toISOString(),
+        })),
+        recent({ executionId: 'ex-bad', status: 'Failed', workflowId: 'wf-1', completedAt: new Date(NOW - 20 * MIN).toISOString() }),
+      ],
+    });
+
+    const failedSection = screen.getByRole('region', { name: 'Failed' });
+    expect(within(failedSection).getByText('Nightly Backup')).toBeInTheDocument();
     expect(screen.getByText('1 failed')).toBeInTheDocument();
+    // ...and it is not repeated among the successes.
+    const finished = screen.getByRole('region', { name: 'Just finished' });
+    expect(within(finished).queryByText('Nightly Backup')).not.toBeInTheDocument();
+  });
+
+  it('counts a timed-out run as failed and leaves a cancelled one in the general list', () => {
+    renderView({
+      recent: [
+        recent({ executionId: 'ex-timeout', status: 'TimedOut', workflowId: 'wf-1' }),
+        recent({ executionId: 'ex-cancelled', status: 'Cancelled' }),
+      ],
+    });
+
+    const failedSection = screen.getByRole('region', { name: 'Failed' });
+    expect(within(failedSection).getByText('Nightly Backup')).toBeInTheDocument();
+    // A cancellation was somebody's decision, not an incident — it stays where it happened.
+    const finished = screen.getByRole('region', { name: 'Just finished' });
+    expect(within(finished).getByText('Report Gen')).toBeInTheDocument();
+  });
+
+  it('names how many failures it left out instead of truncating silently', () => {
+    renderView({
+      recent: Array.from({ length: 13 }, (_, i) => recent({
+        executionId: `bad-${i}`,
+        status: 'Failed',
+        completedAt: new Date(NOW - (i + 1) * MIN).toISOString(),
+      })),
+    });
+
+    const section = screen.getByRole('region', { name: 'Failed' });
+    expect(within(section).getAllByRole('button')).toHaveLength(10);
+    expect(screen.getByText('+3 more failed')).toBeInTheDocument();
   });
 
   it('omits the folder line for root-folder workflows but keeps a real one', () => {

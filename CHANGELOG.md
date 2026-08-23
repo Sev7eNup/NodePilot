@@ -15,9 +15,12 @@ exhaustive.
 ### Added
 
 - Live-Ops is usable on a phone. Below the `lg` breakpoint the Gantt timeline is replaced by a run
-  list — a counter line, stuck runs first, then everything running with its full name and ticking
-  elapsed time, then what just finished — and the departure board stacks each start over its
-  workflow name. Tapping a run opens the same drilldown as on a desktop, hosted as a full-height
+  list — a counter line, then stuck runs, then failures in a box of their own, then everything
+  running with its full name and ticking elapsed time, then what just finished — and the departure
+  board stacks each start over its workflow name. Failures get their own section rather than a
+  colour among the successes because on a busy estate "just finished" is thousands of runs long:
+  the newest ten are all green, and a counter saying "3 failed" would point at rows the list could
+  never reach. Tapping a run opens the same drilldown as on a desktop, hosted as a full-height
   sheet, so cancel, retry, cancel-all and quarantine are all reachable from a phone. The timeline
   itself is unchanged and still what a desktop gets: measured at 390 px it left ~190 px of track,
   which draws a typical run as a 4 px sliver, and no lane-label width fixes that.

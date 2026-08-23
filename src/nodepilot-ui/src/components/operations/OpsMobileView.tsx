@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Activity, WarningAltFilled } from '@carbon/icons-react';
+import { Activity, ErrorFilled, WarningAltFilled } from '@carbon/icons-react';
 import type { OpsNode, OpsRecentExecution, OpsRunningExecution } from '../../types/api';
 import type { LocalSettled } from '../../stores/operationsStore';
 import {
@@ -30,6 +30,8 @@ import { EmptyState } from '../common/EmptyState';
 const RUNNING_CAP = 25;
 /** Finished runs listed. Short on purpose: "what just happened", not a history page. */
 const FINISHED_CAP = 10;
+/** Failures listed. Its own budget — failures must not be squeezed out by a busy success list. */
+const FAILED_CAP = 10;
 
 export function OpsMobileView({
   nowMs, running, recent, locallySettled, scopedWorkflowIds, nodesById, overdueMs,
@@ -48,18 +50,23 @@ export function OpsMobileView({
 }>) {
   const { t } = useTranslation(['operations', 'executions']);
 
-  const { stuck, live, finished, failedCount } = useMemo(() => {
+  const { stuck, live, failed, finished } = useMemo(() => {
     const stuckBars: TimelineBarInput[] = [];
     const liveBars: TimelineBarInput[] = [];
+    const failedBars: TimelineBarInput[] = [];
     const finishedBars: TimelineBarInput[] = [];
-    let failed = 0;
 
     for (const bar of buildTimelineBars(running, recent, locallySettled, scopedWorkflowIds)) {
       if (bar.completedAtMs === null && isActiveBarStatus(bar.status)) {
         (isOverdue(bar, nowMs, overdueMs) ? stuckBars : liveBars).push(bar);
+      } else if (npStatusFromExecution(bar.status) === 'failed') {
+        // Failures get their own section rather than a colour inside "just finished". On a busy
+        // estate that list is thousands long and the capped ten newest are all successes — the
+        // counter would name failures the list could never reach. A cancellation stays in the
+        // general list on purpose: that one was somebody's decision, not an incident.
+        failedBars.push(bar);
       } else {
         finishedBars.push(bar);
-        if (npStatusFromExecution(bar.status) === 'failed') failed++;
       }
     }
 
@@ -68,9 +75,11 @@ export function OpsMobileView({
     stuckBars.sort((a, b) => a.startedAtMs - b.startedAtMs);
     liveBars.sort((a, b) => a.startedAtMs - b.startedAtMs);
     // Newest completion first — reading downward walks back into the past.
-    finishedBars.sort((a, b) => (b.completedAtMs ?? 0) - (a.completedAtMs ?? 0));
+    const byNewest = (a: TimelineBarInput, b: TimelineBarInput) => (b.completedAtMs ?? 0) - (a.completedAtMs ?? 0);
+    failedBars.sort(byNewest);
+    finishedBars.sort(byNewest);
 
-    return { stuck: stuckBars, live: liveBars, finished: finishedBars, failedCount: failed };
+    return { stuck: stuckBars, live: liveBars, failed: failedBars, finished: finishedBars };
   }, [running, recent, locallySettled, scopedWorkflowIds, nowMs, overdueMs]);
 
   const nameFor = (workflowId: string) => nodesById.get(workflowId)?.name ?? workflowId;
@@ -84,8 +93,23 @@ export function OpsMobileView({
   const runningTotal = stuck.length + live.length;
   const shownLive = live.slice(0, RUNNING_CAP);
   const hiddenLive = live.length - shownLive.length;
+  const shownFailed = failed.slice(0, FAILED_CAP);
+  const hiddenFailed = failed.length - shownFailed.length;
   const shownFinished = finished.slice(0, FINISHED_CAP);
   const hiddenFinished = finished.length - shownFinished.length;
+
+  const card = (bar: TimelineBarInput) => (
+    <RunCard
+      key={bar.executionId}
+      bar={bar}
+      nowMs={nowMs}
+      name={nameFor(bar.workflowId)}
+      folderPath={folderFor(bar.workflowId)}
+      selected={bar.executionId === selectedExecutionId}
+      onSelect={onSelect}
+      t={t}
+    />
+  );
 
   return (
     <div className="space-y-3" data-testid="ops-mobile">
@@ -97,8 +121,8 @@ export function OpsMobileView({
         {stuck.length > 0 && (
           <span className={STATUS_TEXT_CLASS.warning}>{t('operations:mobile.countStuck', { count: stuck.length })}</span>
         )}
-        {failedCount > 0 && (
-          <span className={STATUS_TEXT_CLASS.failed}>{t('operations:mobile.countFailed', { count: failedCount })}</span>
+        {failed.length > 0 && (
+          <span className={STATUS_TEXT_CLASS.failed}>{t('operations:mobile.countFailed', { count: failed.length })}</span>
         )}
       </div>
 
@@ -108,18 +132,24 @@ export function OpsMobileView({
           icon={<WarningAltFilled size={13} aria-hidden="true" />}
           tone="warning"
         >
-          {stuck.map((bar) => (
-            <RunCard
-              key={bar.executionId}
-              bar={bar}
-              nowMs={nowMs}
-              name={nameFor(bar.workflowId)}
-              folderPath={folderFor(bar.workflowId)}
-              selected={bar.executionId === selectedExecutionId}
-              onSelect={onSelect}
-              t={t}
-            />
-          ))}
+          {stuck.map(card)}
+        </Section>
+      )}
+
+      {/* Failures sit above the running list: on a phone the top of the screen is the whole
+          message, and "something broke" outranks "something is going fine". */}
+      {failed.length > 0 && (
+        <Section
+          title={t('operations:mobile.failed')}
+          icon={<ErrorFilled size={13} aria-hidden="true" />}
+          tone="error"
+        >
+          {shownFailed.map(card)}
+          {hiddenFailed > 0 && (
+            <p className="px-1 pt-1 text-xs text-on-surface-variant">
+              {t('operations:mobile.moreFailed', { count: hiddenFailed })}
+            </p>
+          )}
         </Section>
       )}
 
@@ -133,18 +163,7 @@ export function OpsMobileView({
           />
         ) : (
           <>
-            {shownLive.map((bar) => (
-              <RunCard
-                key={bar.executionId}
-                bar={bar}
-                nowMs={nowMs}
-                name={nameFor(bar.workflowId)}
-                folderPath={folderFor(bar.workflowId)}
-                selected={bar.executionId === selectedExecutionId}
-                onSelect={onSelect}
-                t={t}
-              />
-            ))}
+            {shownLive.map(card)}
             {hiddenLive > 0 && (
               <p className="px-1 pt-1 text-xs text-on-surface-variant">
                 {t('operations:mobile.moreRunning', { count: hiddenLive })}
@@ -156,18 +175,7 @@ export function OpsMobileView({
 
       {shownFinished.length > 0 && (
         <Section title={t('operations:mobile.finished')}>
-          {shownFinished.map((bar) => (
-            <RunCard
-              key={bar.executionId}
-              bar={bar}
-              nowMs={nowMs}
-              name={nameFor(bar.workflowId)}
-              folderPath={folderFor(bar.workflowId)}
-              selected={bar.executionId === selectedExecutionId}
-              onSelect={onSelect}
-              t={t}
-            />
-          ))}
+          {shownFinished.map(card)}
           {hiddenFinished > 0 && (
             <p className="px-1 pt-1 text-xs text-on-surface-variant">
               {t('operations:mobile.moreFinished', { count: hiddenFinished })}
@@ -184,17 +192,19 @@ function Section({
 }: Readonly<{
   title: string;
   icon?: React.ReactNode;
-  tone?: 'warning';
+  tone?: 'warning' | 'error';
   children: React.ReactNode;
 }>) {
   return (
     <section
-      className={`rounded-2xl border bg-surface p-3 ${tone === 'warning' ? 'border-warning/40' : 'border-outline-variant'}`}
+      className={`rounded-2xl border bg-surface p-3 ${
+        tone === 'warning' ? 'border-warning/40' : tone === 'error' ? 'border-error/40' : 'border-outline-variant'
+      }`}
       aria-label={title}
     >
       <h2
         className={`mb-2 flex items-center gap-1.5 px-1 text-xs font-medium uppercase tracking-wide ${
-          tone === 'warning' ? STATUS_TEXT_CLASS.warning : 'text-on-surface-variant'
+          tone ? STATUS_TEXT_CLASS[tone === 'error' ? 'failed' : 'warning'] : 'text-on-surface-variant'
         }`}
       >
         {icon}
