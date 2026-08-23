@@ -1,5 +1,6 @@
 import type { Node, Edge } from '@xyflow/react';
 import i18n from '../i18n';
+import { randomUuid } from './uuid';
 
 /**
  * A workflow snippet is a predefined mini-pattern the user drops onto the canvas with one
@@ -152,7 +153,7 @@ export function insertSnippet(
   existingNodes: Node[],
   existingEdges: Edge[],
 ): { nodes: Node[]; edges: Edge[]; newNodeIds: string[] } {
-  const idSuffix = crypto.randomUUID().slice(0, 6);
+  const idSuffix = randomUuid().slice(0, 6);
   const idMap = new Map<string, string>();
   for (const n of snippet.nodes) {
     idMap.set(n.localId, `${n.localId}-${idSuffix}`);

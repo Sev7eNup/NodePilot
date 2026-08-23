@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import type { WorkflowChatProposal, ChatDoneMeta } from '../api/ai';
 import type { WorkflowDefinition } from '../lib/workflowDiff';
+import { randomUuid } from '../lib/uuid';
 import { AI_CHAT_STORAGE_KEY } from '../security/sensitiveBrowserState';
 
 /** One message in the workflow-assistant chat. */
@@ -78,7 +79,7 @@ export function aiChatFullKey(scope: string, threadId: string): string {
 }
 
 function makeThreadId(): string {
-  return `t-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 6)}`;
+  return `t-${Date.now().toString(36)}-${randomUuid().slice(0, 6)}`;
 }
 
 function makeThread(name: string): ChatThreadMeta {
