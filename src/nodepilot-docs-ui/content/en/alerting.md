@@ -144,5 +144,6 @@ Failed deliveries are retried and marked as failed after five unsuccessful attem
 - Webhook secrets are stored encrypted and are not shown again.
 - Webhook destinations are subject to the configured rules for outbound connections.
 - Changes and test firings are recorded in the audit log.
+- The preview ("check current values") of the **Audit event** source is admin-only because it returns audit rows — the same boundary as the audit log itself.
 
 Alerting currently sends no automatic all-clear when a state returns to normal.

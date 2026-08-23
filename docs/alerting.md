@@ -256,17 +256,27 @@ force-unlock, backup restore, authentication-settings change). Scope is global o
 Two knobs bound the scan. `actions` (optional, comma-separated codes, case-insensitive) is applied in
 the query, not the condition, so non-matching rows never become observations; left empty it reads
 every code **except** `CREDENTIAL_DECRYPTED` (one per credential-resolving step) and `TOKEN_REFRESHED`
-(one per session rotation) — naming either explicitly includes it. Each pass is capped at **200**
-rows, oldest first (`AuditEventSource.ScanBatchSize`, the budget the custom-rule collectors use); an
-install that sustains more than 200 matching rows per lookback window can miss events, and `actions`
-is the remedy. Presets deliberately ship a condition only and no `actions` value — a pre-filter that
-silently contradicts a later-edited condition would be a policy that looks right and never fires.
+(one per session rotation) — naming either explicitly includes it. `lookbackSeconds` is capped at
+86 400 (a day), so one sample never reads more than a day of rows. There is deliberately **no per-pass
+row cap**: over a sliding window an oldest-first cap is a cliff, not a load guard — once rows arrive
+faster than the cap per 30-second dispatcher pass, a growing band of them ages past the prefix and out
+of the window without ever being observed, and unlike a gauge an event row is observable exactly once.
+The scan cost is therefore "rows in the window", served by the `Timestamp` index; on an
+automation-heavy install (`WEBHOOK_TRIGGERED` at tens per second) `actions` is the way to keep it small.
+Presets deliberately ship a condition only and no `actions` value — a pre-filter that silently
+contradicts a later-edited condition would be a policy that looks right and never fires.
 
-> **What leaves the system.** Username and IP are part of the alert's title and summary, so they go
-> to whatever route an Admin configured (email recipient, webhook URL). The details field is the
-> already-redacted JSON — no secrets — and the `sourceKey` / `X-NodePilot-Event-Key` header carry the
-> row id only, never the username. The webhook's `occurredAt` is the evaluation time; the audit
-> timestamp is in the summary.
+> **What leaves the system.** Username, IP, resource id and the first 200 characters of the details
+> JSON are part of the alert's title and summary, so they go to whatever route an Admin configured
+> (email recipient, webhook URL). "Redacted" means what the audit write applies: `OutputRedactor`
+> scrubs secret-shaped values (passwords, tokens, connection-string credentials) on write, best-effort
+> — the rest of the details is operational data, and for `SETTINGS_*_UPDATED` rows that is the
+> before/after diff of a settings section (LDAP host, bind DN, OIDC issuer …). Route the
+> `privileged-change` preset to a third-party webhook with that in mind. The `sourceKey` /
+> `X-NodePilot-Event-Key` header carry the row id only, never the username. The webhook's `occurredAt` is the evaluation time; the audit
+> timestamp is in the summary. And because `POST /api/alerting/system/preview` echoes sampled rows back
+> to the caller, it answers **403 for `Security` sources unless the caller is Admin** — the audit log is
+> Admin-only everywhere else, and the policy editor that drives the preview is Admin-only in the UI.
 
 Adding this source also removed a cost every source paid: the evaluator no longer creates a
 `SystemAlertPolicyStates` row for an observation whose condition does not hold (it only resets an

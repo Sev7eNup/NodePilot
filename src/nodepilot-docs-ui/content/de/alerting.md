@@ -144,5 +144,6 @@ Fehlgeschlagene Zustellungen werden erneut versucht und nach fünf erfolglosen V
 - Webhook-Secrets werden verschlüsselt gespeichert und nicht wieder angezeigt.
 - Webhook-Ziele unterliegen den konfigurierten Regeln für ausgehende Verbindungen.
 - Änderungen und Testauslösungen werden im Audit-Log erfasst.
+- Die Vorschau („Aktuelle Werte prüfen") der Quelle **Audit-Ereignis** ist Admins vorbehalten, weil sie Audit-Zeilen zurückgibt — dieselbe Grenze wie beim Audit-Log selbst.
 
 Alerting versendet derzeit keine automatische Entwarnung, wenn ein Zustand wieder normal ist.
