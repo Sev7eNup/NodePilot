@@ -76,7 +76,7 @@ every main screen into `__screens__/*.png`; it documents visuals, it asserts not
 | 8 | Persistence / autosave | `persistence.spec.ts` |
 | 9 | Special scenarios | `special-scenarios.spec.ts` |
 | 10 | UI/UX (a11y, responsive) | `ui-ux.spec.ts` |
-| 10 (mobile) | Smartphone-responsive UI (drawer, card lists, read-only mobile graph, trimmed AI-chat header) | `mobile-responsive.spec.ts` |
+| 10 (mobile) | Smartphone-responsive UI (drawer, card lists, read-only mobile graph, trimmed AI-chat header, Live-Ops run list) | `mobile-responsive.spec.ts` |
 | 11 | Dashboard | `dashboard.spec.ts` |
 | 12 / 55 | Keyboard shortcuts | `shortcuts.spec.ts` |
 | 13 | Sticky-note & group nodes | `special-nodes.spec.ts` |

@@ -5,6 +5,7 @@ import type { OpsArmedTrigger } from '../../api/operations';
 import { formatDuration } from '../../lib/opsTimeline';
 import { formatTime } from '../../lib/format';
 import { STATUS_TEXT_CLASS } from '../../lib/statusTokens';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 
 // Next-fires "departure board": upcoming scheduled starts, soonest first, split-flap style.
 // Rows are keyed by workflow+nextFire so a changed fire time remounts the row and replays
@@ -17,6 +18,9 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
   nowMs: number;
 }>) {
   const { t } = useTranslation(['operations']);
+  // A branch, not `lg:hidden`: rendering both layouts would put every departure in the DOM twice,
+  // and a screen reader walking the page would read the whole board a second time.
+  const isMobile = useIsMobile();
 
   const rows = useMemo(() => {
     const sorted = [...triggers].sort((a, b) => {
@@ -41,6 +45,29 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
       {rows.length === 0 ? (
         <p className="text-sm text-outline">{t('operations:board.empty')}</p>
       ) : (
+        isMobile ? (
+        /* Phones stack each departure into two lines. The four-column board needs the workflow
+           name truncated to nothing at 390 px — and a board of "[Dauertest 1m] …" rows tells an
+           operator which starts are coming but not which workflows they belong to. */
+        <ul className="space-y-2 font-mono text-sm">
+          {rows.map((trigger) => {
+            const f = rowFacts(trigger, nowMs, t);
+            return (
+              <li key={`${trigger.workflowId}-${trigger.nextFireUtc ?? 'none'}`} className="np-ops-flap" title={f.blockedTitle}>
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className={`tabular-nums ${f.blocked ? `${STATUS_TEXT_CLASS.warning} line-through decoration-2` : 'text-primary'}`}>
+                    {f.timeLabel}
+                  </span>
+                  <span className={`shrink-0 text-xs tabular-nums ${f.blocked ? STATUS_TEXT_CLASS.warning : 'text-on-surface-variant'}`}>
+                    {f.tMinus}
+                  </span>
+                </div>
+                <div className="break-words font-sans text-on-surface">{trigger.workflowName}</div>
+              </li>
+            );
+          })}
+        </ul>
+        ) : (
         <table className="w-full font-mono text-sm">
           <thead>
             <tr className="text-left text-[10px] uppercase tracking-widest text-outline">
@@ -52,19 +79,11 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
           </thead>
           <tbody>
             {rows.map((trigger) => {
-              const fireMs = trigger.nextFireUtc ? Date.parse(trigger.nextFireUtc) : null;
-              const overdue = fireMs !== null && fireMs < nowMs;
-              // A blocked row keeps its sort position and stays visible on purpose: the whole
-              // point is that the operator reads "14:30 — Nightly Backup — blocked by X"
-              // instead of a start that silently never happens.
-              const blocked = trigger.blockedByWindowName;
-              const blockedTitle = blocked ? t('operations:board.blockedBy', { name: blocked }) : undefined;
+              const f = rowFacts(trigger, nowMs, t);
               return (
-                <tr key={`${trigger.workflowId}-${trigger.nextFireUtc ?? 'none'}`} className="np-ops-flap text-on-surface" title={blockedTitle}>
-                  <td className={`py-0.5 pr-4 tabular-nums ${blocked ? `${STATUS_TEXT_CLASS.warning} line-through decoration-2` : 'text-primary'}`}>
-                    {fireMs !== null
-                      ? formatTime(fireMs, { hour: '2-digit', minute: '2-digit' })
-                      : '—'}
+                <tr key={`${trigger.workflowId}-${trigger.nextFireUtc ?? 'none'}`} className="np-ops-flap text-on-surface" title={f.blockedTitle}>
+                  <td className={`py-0.5 pr-4 tabular-nums ${f.blocked ? `${STATUS_TEXT_CLASS.warning} line-through decoration-2` : 'text-primary'}`}>
+                    {f.timeLabel}
                   </td>
                   <td className="max-w-0 truncate py-0.5 pr-4 font-sans" title={trigger.workflowName}>
                     {trigger.workflowName}
@@ -72,24 +91,46 @@ export function OpsDepartureBoard({ triggers, nowMs }: Readonly<{
                   <td className="hidden py-0.5 pr-4 text-on-surface-variant sm:table-cell">
                     {trigger.triggerTypes.join(', ')}
                   </td>
-                  <td className={`py-0.5 text-right tabular-nums ${blocked ? STATUS_TEXT_CLASS.warning : 'text-on-surface-variant'}`}>
-                    {blocked ? (
-                      <span className="inline-flex items-center gap-1">
-                        <Tools size={12} aria-hidden="true" />
-                        {t('operations:board.blackout')}
-                      </span>
-                    ) : fireMs === null
-                      ? '—'
-                      : overdue
-                        ? t('operations:board.overdue')
-                        : t('operations:board.in', { value: formatDuration(fireMs - nowMs) })}
+                  <td className={`py-0.5 text-right tabular-nums ${f.blocked ? STATUS_TEXT_CLASS.warning : 'text-on-surface-variant'}`}>
+                    {f.tMinus}
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+        )
       )}
     </section>
   );
+}
+
+/**
+ * The cells both layouts share. A blocked row keeps its sort position and stays visible on
+ * purpose: the whole point is that the operator reads "14:30 — Nightly Backup — blocked by X"
+ * instead of a start that silently never happens.
+ */
+function rowFacts(
+  trigger: OpsArmedTrigger,
+  nowMs: number,
+  t: (k: string, opts?: Record<string, unknown>) => string,
+) {
+  const fireMs = trigger.nextFireUtc ? Date.parse(trigger.nextFireUtc) : null;
+  const overdue = fireMs !== null && fireMs < nowMs;
+  const blocked = trigger.blockedByWindowName;
+  return {
+    blocked,
+    blockedTitle: blocked ? t('operations:board.blockedBy', { name: blocked }) : undefined,
+    timeLabel: fireMs !== null ? formatTime(fireMs, { hour: '2-digit', minute: '2-digit' }) : '—',
+    tMinus: blocked ? (
+      <span className="inline-flex items-center gap-1">
+        <Tools size={12} aria-hidden="true" />
+        {t('operations:board.blackout')}
+      </span>
+    ) : fireMs === null
+      ? '—'
+      : overdue
+        ? t('operations:board.overdue')
+        : t('operations:board.in', { value: formatDuration(fireMs - nowMs) }),
+  };
 }

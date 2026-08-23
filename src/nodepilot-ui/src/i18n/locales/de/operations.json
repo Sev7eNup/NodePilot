@@ -83,5 +83,21 @@
     "actionFailed": "Die Aktion ist fehlgeschlagen.",
     "openEditor": "Im Editor öffnen",
     "loadFailed": "Details konnten nicht geladen werden."
+  },
+  "mobile": {
+    "running": "Läuft",
+    "finished": "Gerade fertig",
+    "countRunning_one": "{{count}} läuft",
+    "countRunning_other": "{{count}} laufen",
+    "countStuck_one": "{{count}} hängt",
+    "countStuck_other": "{{count}} hängen",
+    "countFailed_one": "{{count}} fehlgeschlagen",
+    "countFailed_other": "{{count}} fehlgeschlagen",
+    "moreRunning_one": "+{{count}} weiterer laufender Lauf",
+    "moreRunning_other": "+{{count}} weitere laufende Läufe",
+    "moreFinished_one": "+{{count}} weiterer beendeter Lauf",
+    "moreFinished_other": "+{{count}} weitere beendete Läufe",
+    "ago": "vor {{value}}",
+    "idleHint": "Sobald ein Workflow startet, erscheint er hier."
   }
 }

@@ -14,6 +14,13 @@ exhaustive.
 
 ### Added
 
+- Live-Ops is usable on a phone. Below the `lg` breakpoint the Gantt timeline is replaced by a run
+  list — a counter line, stuck runs first, then everything running with its full name and ticking
+  elapsed time, then what just finished — and the departure board stacks each start over its
+  workflow name. Tapping a run opens the same drilldown as on a desktop, hosted as a full-height
+  sheet, so cancel, retry, cancel-all and quarantine are all reachable from a phone. The timeline
+  itself is unchanged and still what a desktop gets: measured at 390 px it left ~190 px of track,
+  which draws a typical run as a 4 px sliver, and no lane-label width fixes that.
 - System-alert source `audit-event` (category *Security*): the audit log is alertable in-product.
   A policy filters on the audit code, outcome, category, user, IP address or the redacted details
   JSON and delivers by email or webhook; presets cover failed logins, lockouts, break-glass sign-ins

@@ -26,9 +26,10 @@ import { CopyableId } from '../common/CopyableId';
 const LANE_GAP = 8;
 /**
  * Lane-label column. Width lives in CSS (`.np-ops-lane-labels`) rather than here because it has to
- * shrink: at 380 px fixed, a 390 px viewport left the track about ten pixels wide and the timeline
- * was unusable on a phone. The axis strip below has to follow the same width, hence the shared
- * class rather than an inline number on both.
+ * shrink with the window: at 380 px fixed, a narrow desktop left almost nothing for the track. The
+ * axis strip below has to follow the same width, hence the shared class rather than an inline
+ * number on both. Phones no longer reach this component at all — below `lg` the page renders
+ * OpsMobileView instead, because no label width makes a 390 px Gantt readable.
  */
 /** Room the out-of-bar duration text needs before it is worth drawing. */
 const OUTSIDE_LABEL_PX = 46;
