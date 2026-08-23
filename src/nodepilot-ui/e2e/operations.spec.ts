@@ -351,8 +351,11 @@ test('timeline keyboard navigation is one tab stop and opens the active run', as
   await expect(board).toBeFocused();
 });
 
-test('a capped lane keeps every run and the time axis aligned at phone width', async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+// 1024x768 is the narrowest viewport the timeline is rendered at all: below Tailwind's `lg`
+// the page swaps it for the mobile run list (see mobile-responsive.spec.ts), because a 390px
+// screen leaves the track ~190px wide and every bar a sliver.
+test('a capped lane keeps every run and the time axis aligned at the narrowest desktop', async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
   await installDefaultMocks(page);
   const busy = GRAPH();
   await page.route('**/api/operations/graph*', (r) => json(r, {
@@ -383,7 +386,10 @@ test('a capped lane keeps every run and the time axis aligned at phone width', a
   const axis = await page.getByTestId('ops-time-axis').boundingBox();
   const labels = await page.locator('.np-ops-lane-labels').boundingBox();
   expect(track!.width).toBeGreaterThanOrEqual(120);
-  expect(labels!.width).toBeCloseTo(140, 0);
+  // The label column is `clamp(140px, 24vw, 380px)` — proportional, so the track keeps usable
+  // width as the window narrows. The exact value is CSS's business; the band is the contract.
+  expect(labels!.width).toBeGreaterThanOrEqual(140);
+  expect(labels!.width).toBeLessThanOrEqual(380);
   expect(Math.abs(axis!.x - track!.x)).toBeLessThanOrEqual(1);
 });
 

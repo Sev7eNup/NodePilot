@@ -233,6 +233,58 @@ test.describe('Mobile responsiveness', () => {
     expect(block!.y).toBeGreaterThanOrEqual(port!.y - 1);
   });
 
+  test('live-ops: phones get a run list instead of the timeline, and can still drill in', async ({ page }) => {
+    const MIN = 60_000;
+    const t0 = Date.now();
+    await page.route('**/api/operations/graph*', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        nodes: [
+          { workflowId: 'wf-1', name: 'Nightly Backup Of The Whole Estate', folderId: 'prod', folderPath: '/Prod', isEnabled: true, runningCount: 1, lastStatus: null, callFrequency: 2, canRun: true, canEdit: true },
+          { workflowId: 'wf-2', name: 'Cleanup Temp', folderId: 'prod', folderPath: '/Prod', isEnabled: true, runningCount: 0, lastStatus: 'Failed', callFrequency: 1, canRun: true, canEdit: true },
+        ],
+        edges: [],
+        running: [{ executionId: 'ex-1', workflowId: 'wf-1', status: 'Running', startedAt: new Date(t0 - 4 * MIN).toISOString(), parentExecutionId: null, stepsFinished: null, lastCompletedStepName: null, lastProgressAt: null, activeStepCount: null }],
+        recent: [{ executionId: 'ex-2', workflowId: 'wf-2', status: 'Failed', startedAt: new Date(t0 - 10 * MIN).toISOString(), completedAt: new Date(t0 - 8 * MIN).toISOString(), parentExecutionId: null }],
+        density: [],
+        meta: { overdueSeconds: 600, windowMinutes: 30, recentSinceUtc: new Date(0).toISOString(), oldestReturnedCompletedAt: null, recentTruncated: false, densityBucketSeconds: 0, densityCapped: false },
+      }),
+    }));
+    await page.route('**/api/executions/ex-1', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({
+        id: 'ex-1', workflowId: 'wf-1', status: 'Running',
+        startedAt: new Date(t0 - 4 * MIN).toISOString(), completedAt: null,
+        triggeredBy: 'schedule', errorMessage: null, traceId: null, spanId: null,
+        returnData: null, inputParametersJson: null, stepsTotal: 0, stepsCompleted: 0, failedSteps: null,
+      }),
+    }));
+
+    await page.setViewportSize(PHONE);
+    await page.goto('/operations');
+
+    // The Gantt timeline is gone, not shrunk: at 390px its track is ~190px wide, which renders a
+    // typical run as a 4px sliver next to a name truncated to nothing.
+    const list = page.getByTestId('ops-mobile');
+    await expect(list).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('ops-time-axis')).toHaveCount(0);
+
+    // Full workflow name, live elapsed time, and the failed run in its own section.
+    await expect(list.getByText('Nightly Backup Of The Whole Estate')).toBeVisible();
+    await expect(list.getByText(/running for/i)).toBeVisible();
+    await expect(list.getByText('Cleanup Temp')).toBeVisible();
+    expect(await hasNoHorizontalOverflow(page)).toBe(true);
+
+    // Tapping a run opens the same drilldown the timeline opens, hosted as a full-height sheet.
+    await list.getByText('Nightly Backup Of The Whole Estate').click();
+    await expect(page.getByTestId('ops-drilldown-sheet')).toBeVisible();
+    await expect(page.getByRole('complementary', { name: /execution detail/i })).toBeVisible();
+
+    await page.setViewportSize(DESKTOP);
+    await expect(page.getByTestId('ops-time-axis')).toBeVisible();
+    await expect(page.getByTestId('ops-mobile')).toHaveCount(0);
+  });
+
   test('designer: phones get a read-only graph (with edges) instead of the editor', async ({ page }) => {
     const WF = '20202020-2020-2020-2020-202020202020';
     await page.route(`**/api/workflows/${WF}`, (route) => route.fulfill({

@@ -16,9 +16,11 @@ import { useOperationsFeed } from '../hooks/useOperationsFeed';
 import { useOpsClock } from '../hooks/useOpsClock';
 import { useOperationsStore } from '../stores/operationsStore';
 import { OpsTimeline } from '../components/operations/OpsTimeline';
+import { OpsMobileView } from '../components/operations/OpsMobileView';
 import { OpsDepartureBoard } from '../components/operations/OpsDepartureBoard';
 import { OpsExecutionDrilldown } from '../components/operations/OpsExecutionDrilldown';
 import { EmptyState } from '../components/common/EmptyState';
+import { useIsMobile } from '../hooks/useMediaQuery';
 
 // Live-Ops Mission Control: the real-time execution timeline as the centerpiece (running +
 // recently-finished bars, drill-down + cancel) and the next-fires departure board at the
@@ -27,6 +29,9 @@ import { EmptyState } from '../components/common/EmptyState';
 
 export function OperationsPage() {
   const { t } = useTranslation(['operations', 'executions', 'common']);
+  // Not a Tailwind branch: the two views are entirely different component trees, and rendering
+  // both would run two live derivations (and, for the timeline, its ResizeObserver) per tick.
+  const isMobile = useIsMobile();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
@@ -260,11 +265,13 @@ export function OperationsPage() {
   }, [data, selectedContext, allNodesById]);
 
   return (
-    <div className="np-ops flex h-[calc(100dvh-6rem)] flex-col gap-3">
+    // Only the desktop pins itself to the viewport so the timeline can own the space between
+    // header and departure board. The phone list scrolls with the page like every other route.
+    <div className="np-ops flex flex-col gap-3 lg:h-[calc(100dvh-6rem)]">
       <header className="flex flex-wrap items-center justify-between gap-3 px-1">
         <div className="min-w-0">
           <h1 className="text-xl font-headline font-semibold text-on-surface">{t('operations:title')}</h1>
-          <p className="text-sm text-on-surface-variant">{t('operations:subtitle')}</p>
+          <p className="hidden text-sm text-on-surface-variant lg:block">{t('operations:subtitle')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {/* A frozen board must never pass for a dead system — loud badge, not a subtle hint. */}
@@ -288,7 +295,7 @@ export function OperationsPage() {
             {frozen ? t('operations:freeze.off') : t('operations:freeze.on')}
           </button>
           <label className="flex items-center gap-2 text-xs text-on-surface-variant">
-            <span className="font-medium uppercase tracking-wide">{t('operations:window.label')}</span>
+            <span className="hidden font-medium uppercase tracking-wide lg:inline">{t('operations:window.label')}</span>
             <select
               value={windowMinutes}
               onChange={(e) => setWindowMinutes(Number(e.target.value) as OpsWindowMinutes)}
@@ -301,7 +308,7 @@ export function OperationsPage() {
             </select>
           </label>
           <label className="flex items-center gap-2 text-xs text-on-surface-variant">
-          <span className="font-medium uppercase tracking-wide">{t('operations:folderFilter.label')}</span>
+          <span className="hidden font-medium uppercase tracking-wide lg:inline">{t('operations:folderFilter.label')}</span>
           <select
             value={folderFilter ?? ''}
             onChange={(e) => setFolderFilter(e.target.value || null)}
@@ -317,8 +324,11 @@ export function OperationsPage() {
         </div>
       </header>
 
-      {/* Main stage: timeline + drilldown overlay */}
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-outline-variant bg-surface p-3">
+      {/* Main stage: timeline (desktop) or run list (phone), plus the drilldown overlay */}
+      <div className={isMobile
+        ? 'relative'
+        : 'relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-outline-variant bg-surface p-3'}
+      >
         {isLoading && (
           <div className="flex h-full items-center justify-center text-on-surface-variant">{t('common:loading')}</div>
         )}
@@ -328,7 +338,20 @@ export function OperationsPage() {
         {data && scopedNodes.length === 0 && (
           <EmptyState icon={<WarningAltFilled size={22} />} title={t('operations:empty')} />
         )}
-        {data && scopedNodes.length > 0 && (
+        {data && scopedNodes.length > 0 && isMobile && (
+          <OpsMobileView
+            nowMs={nowMs}
+            running={data.running}
+            recent={data.recent}
+            locallySettled={locallySettled}
+            scopedWorkflowIds={scopedWorkflowIds}
+            nodesById={nodesById}
+            overdueMs={(data.meta?.overdueSeconds ?? 600) * 1000}
+            selectedExecutionId={selected}
+            onSelect={setSelected}
+          />
+        )}
+        {data && scopedNodes.length > 0 && !isMobile && (
           <OpsTimeline
             nowMs={nowMs}
             running={data.running}
@@ -350,6 +373,11 @@ export function OperationsPage() {
         )}
 
         {selected && selectedContext && selectedNode && (
+          <DrilldownHost
+            isMobile={isMobile}
+            dismissLabel={t('operations:drilldown.close')}
+            onDismiss={() => setSelected(null)}
+          >
           <OpsExecutionDrilldown
             executionId={selected}
             workflowName={selectedNode.name}
@@ -383,10 +411,39 @@ export function OperationsPage() {
             onSelectExecution={setSelected}
             onClose={() => setSelected(null)}
           />
+          </DrilldownHost>
         )}
       </div>
 
       <OpsDepartureBoard triggers={scopedTriggers} nowMs={nowMs} />
+    </div>
+  );
+}
+
+/**
+ * On a desktop the drilldown is an overlay inside the timeline card — right where the bar the
+ * operator clicked still is. A phone has no such card (the run list scrolls with the page), so
+ * the same panel is hosted in a viewport-fixed layer with a dismissable backdrop. That turns it
+ * into a sheet without the drilldown itself knowing anything about the two contexts.
+ */
+function DrilldownHost({
+  isMobile, dismissLabel, onDismiss, children,
+}: Readonly<{
+  isMobile: boolean;
+  dismissLabel: string;
+  onDismiss: () => void;
+  children: React.ReactNode;
+}>) {
+  if (!isMobile) return children;
+  return (
+    <div className="fixed inset-0 z-40" data-testid="ops-drilldown-sheet">
+      <button
+        type="button"
+        aria-label={dismissLabel}
+        onClick={onDismiss}
+        className="absolute inset-0 bg-black/40"
+      />
+      {children}
     </div>
   );
 }

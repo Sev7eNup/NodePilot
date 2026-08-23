@@ -83,5 +83,21 @@
     "actionFailed": "The action failed.",
     "openEditor": "Open in editor",
     "loadFailed": "Failed to load details."
+  },
+  "mobile": {
+    "running": "Running",
+    "finished": "Just finished",
+    "countRunning_one": "{{count}} running",
+    "countRunning_other": "{{count}} running",
+    "countStuck_one": "{{count}} stuck",
+    "countStuck_other": "{{count}} stuck",
+    "countFailed_one": "{{count}} failed",
+    "countFailed_other": "{{count}} failed",
+    "moreRunning_one": "+{{count}} more running",
+    "moreRunning_other": "+{{count}} more running",
+    "moreFinished_one": "+{{count}} more finished",
+    "moreFinished_other": "+{{count}} more finished",
+    "ago": "{{value}} ago",
+    "idleHint": "As soon as a workflow starts, it shows up here."
   }
 }
