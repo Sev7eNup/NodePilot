@@ -14,9 +14,10 @@ exhaustive.
 
 ### Changed
 
-- The AI chat page hides its subtitle and the source-badge row below the `lg` breakpoint. On a
-  phone the two wrapped to five lines above the fold and pushed the conversation off-screen; on a
-  desktop both are unchanged.
+- The AI chat page trims its empty state below the `lg` breakpoint: the subtitle, the source-badge
+  row and the intro line are hidden, and four of the eight starter prompts are shown. Together they
+  filled a phone screen before the first prompt, leaving the composer as the only thing a thumb
+  could reach. On a desktop everything is unchanged.
 
 ### Fixed
 
