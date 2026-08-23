@@ -83,7 +83,7 @@ export function WorkflowCallsInline({ refs }: Readonly<{ refs: WorkflowCallRef[]
             {r.target ? (
               <Link
                 to={`/workflows/${r.target.id}`}
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-primary bg-primary-fixed/40 ring-1 ring-primary/25 shadow-sm transition-all hover:bg-primary-fixed hover:shadow hover:-translate-y-px whitespace-nowrap"
+                className="np-call-pill np-call-pill--link inline-flex items-center gap-1 rounded-full px-2 text-primary bg-primary-fixed/40 transition-all hover:bg-primary-fixed hover:-translate-y-px whitespace-nowrap"
                 title={t('breadcrumbs.openChild', { name: r.target.name })}
               >
                 <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-primary/15">
@@ -93,7 +93,7 @@ export function WorkflowCallsInline({ refs }: Readonly<{ refs: WorkflowCallRef[]
               </Link>
             ) : (
               <span
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 bg-warning-container text-on-warning-container ring-1 ring-warning/30 shadow-sm transition-all hover:-translate-y-px whitespace-nowrap"
+                className="np-call-pill np-call-pill--broken inline-flex items-center gap-1 rounded-full px-2 bg-warning-container text-on-warning-container transition-all hover:-translate-y-px whitespace-nowrap"
                 title={t('breadcrumbs.notFound', { name: r.refName })}
               >
                 <span className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full bg-warning/20">

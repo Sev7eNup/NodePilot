@@ -26,6 +26,13 @@ exhaustive.
 
 ### Fixed
 
+- The "Calls →" pills in the editor status strip looked like a pair of brackets around the
+  workflow name in the light skins. Their outline was a 1 px ring drawn on the outside of a box
+  whose height came out fractional, so its top and bottom lines each split across two device
+  pixels, washed out against the near-white strip, and only the rounded ends survived. The pills
+  now have a fixed even height and draw the outline inside their own fill, where it keeps its
+  contrast at any sub-pixel offset — closed on all four sides in every skin, rather than a
+  light-only contrast bump.
 - The designer canvas dot grid was a hardcoded 42 % black in every light skin, and the minimap mask
   carried two more colour literals — one of them a warm tint no longer in use. All three are tokens
   now, declared for both bases, so the grid follows the skin instead of weighing the canvas down.

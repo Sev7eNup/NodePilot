@@ -1477,11 +1477,46 @@ html.dark { --np-toolbar-accent: #6da8ff; }
   position: relative;
   isolation: isolate;
 }
+/* The "Calls →" pills in the editor status strip draw their outline as an *inset* hairline on a
+   fixed even height — deliberately not as Tailwind's `ring-1`. An outset ring sits on the pill's
+   outer edge, and that edge was fractional (11px text + `py-0.5` = a 20.5px box): its top and
+   bottom lines then split across two device pixels at ~50% coverage each and, blended against the
+   near-white strip of the light skins, vanish. Only the semicircular ends survive — the pill reads
+   as a pair of brackets around the name. Composited inset over the pill's own fill, the line keeps
+   its contrast at any sub-pixel offset, and the even height keeps it crisp. Both variants also own
+   their drop shadow here, because `hover:shadow` would otherwise replace the whole box-shadow and
+   take the outline with it. */
+.np-call-pill {
+  height: 1.25rem;
+  line-height: 1;
+  box-shadow:
+    inset 0 0 0 1px var(--np-call-pill-ring),
+    0 1px 2px rgb(0 0 0 / 0.05);
+}
+.np-call-pill--link {
+  --np-call-pill-ring: color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+.np-call-pill--broken {
+  --np-call-pill-ring: color-mix(in srgb, var(--color-warning) 45%, transparent);
+}
+.np-call-pill:hover {
+  box-shadow:
+    inset 0 0 0 1px var(--np-call-pill-ring),
+    0 2px 4px rgb(0 0 0 / 0.08);
+}
+/* Light skins compress the surface ramp near white, so the link pill's `bg-primary-fixed/40` is
+   barely a tint there and the pill loses its body. Fill at full token opacity; dark keeps the 40%,
+   where it already separates from the strip. */
+html:not(.dark) .np-call-pill--link {
+  background-color: var(--color-primary-fixed);
+}
+
 /* Light skins compress the surface ramp near white: the clusters (drawn at 75% surface-container)
    wash into the surface-lowest header, so idle toolbar buttons look like they float and only the
    hover fill reads as a button. Give the clusters a full-opacity fill + hairline border so they
    read as raised trays at rest. Dark skins already separate via a much larger surface step, so
    they keep the subtler 75% look. */
+
 html:not(.dark) .np-toolbar-section {
   background-color: var(--color-surface-container);
   box-shadow:
