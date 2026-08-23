@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { installDefaultMocks } from './fixtures/mockApi';
+import { installDefaultMocks, capsJson, mockCaps } from './fixtures/mockApi';
 
 /**
  * Mobile / smartphone responsiveness.
@@ -180,6 +180,43 @@ test.describe('Mobile responsiveness', () => {
     await expect(page.getByRole('heading', { name: /add machine/i })).toBeVisible({ timeout: 15_000 });
     await expect(page.getByPlaceholder(/hostname or ip/i)).toBeVisible();
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
+  });
+
+  test('ai chat: phones drop the subtitle and the source badges, desktop keeps both', async ({ page }) => {
+    await mockCaps(page, capsJson());
+    await page.setViewportSize(PHONE);
+    await page.goto('/ai-chat');
+
+    const main = page.locator('#np-main-scroll');
+    await expect(main.getByRole('heading', { name: /^AI Chat$/i })).toBeVisible({ timeout: 20_000 });
+
+    // Both still exist in the DOM (`hidden lg:*`), they just must not take space on a phone —
+    // together they cost ~5 lines above the fold that the conversation needs.
+    await expect(main.getByText(/^Ask NodePilot — docs/i)).toBeHidden();
+    await expect(main.getByText(/^Sources:$/i)).toBeHidden();
+    await expect(main.getByText(/^Docs$/i)).toBeHidden();
+    expect(await hasNoHorizontalOverflow(page)).toBe(true);
+
+    await page.setViewportSize(DESKTOP);
+    await expect(main.getByText(/^Ask NodePilot — docs/i)).toBeVisible();
+    await expect(main.getByText(/^Sources:$/i)).toBeVisible();
+  });
+
+  test('ai chat: the empty state stays fully scrollable when it outgrows a phone screen', async ({ page }) => {
+    await mockCaps(page, capsJson());
+    await page.setViewportSize(PHONE);
+    await page.goto('/ai-chat');
+
+    await expect(page.getByRole('heading', { name: /Ask NodePilot anything/i })).toBeVisible({ timeout: 20_000 });
+
+    // The starter prompts are taller than a phone's scroll port. A centred flex block overflows
+    // on BOTH sides there, and everything above the scroll origin is unreachable by scrolling —
+    // the icon, the heading and all but the last line of the hint were cut off, leaving a
+    // dangling "…so nothing changes." at the top (measured: block top 73px above the port).
+    // So: the block must start at or below the top of its scroll port.
+    const port = await page.getByTestId('ai-chat-scroll').boundingBox();
+    const block = await page.getByTestId('ai-chat-empty').boundingBox();
+    expect(block!.y).toBeGreaterThanOrEqual(port!.y - 1);
   });
 
   test('designer: phones get a read-only graph (with edges) instead of the editor', async ({ page }) => {

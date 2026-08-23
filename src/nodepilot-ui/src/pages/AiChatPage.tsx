@@ -268,7 +268,7 @@ export function AiChatPage() {
 
       {/* Messages */}
       <div className="relative mt-6 min-h-0 flex-1">
-        <div ref={scrollRef} onScroll={onScroll} className="absolute inset-0 space-y-5 overflow-y-auto pr-1">
+        <div ref={scrollRef} onScroll={onScroll} data-testid="ai-chat-scroll" className="absolute inset-0 space-y-5 overflow-y-auto pr-1">
           {messages.length === 0 ? (
             <EmptyState
               examples={examples}
@@ -387,29 +387,37 @@ function EmptyState({
   t: (k: string) => string;
 }>) {
   return (
-    <div className="flex h-full flex-col items-center justify-center px-2 py-8 text-center">
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-fixed/40 text-primary">
-        <Chat size={28} />
-      </div>
-      <h2 className="mt-4 text-lg font-semibold text-on-surface">{t('ai:knowledge.emptyTitle')}</h2>
-      <p className="mt-1 max-w-md text-sm text-on-surface-variant">{t('ai:knowledge.emptyHint')}</p>
-      {examples.length > 0 && (
-        <div className="mt-6 grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
-          {examples.map((ex, i) => {
-            const Icon = icons[i] ?? Chat;
-            return (
-              <button
-                key={ex}
-                onClick={() => onPick(ex)}
-                className="group flex items-start gap-2.5 rounded-xl border border-outline-variant/40 bg-surface-high px-3 py-2.5 text-left text-sm text-on-surface transition-colors hover:border-primary/40 hover:bg-surface-highest"
-              >
-                <Icon size={18} className="mt-0.5 shrink-0 text-on-surface-variant transition-colors group-hover:text-primary" />
-                <span className="min-w-0">{ex}</span>
-              </button>
-            );
-          })}
+    // `m-auto` instead of `justify-center`: both centre the block while it fits, but once the
+    // prompt list outgrows the scroll port — a phone in portrait — `justify-center` pushes the
+    // overflow out on BOTH sides, and the part above the scroll origin cannot be scrolled back
+    // into view. The icon, the heading and all but the last line of the hint were simply gone,
+    // leaving a dangling "…so nothing changes." at the top. An `auto` margin collapses to 0 when
+    // there is no free space, so the block falls back to top-aligned and stays reachable.
+    <div className="flex min-h-full flex-col px-2 py-8">
+      <div data-testid="ai-chat-empty" className="m-auto flex w-full flex-col items-center text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-fixed/40 text-primary">
+          <Chat size={28} />
         </div>
-      )}
+        <h2 className="mt-4 text-lg font-semibold text-on-surface">{t('ai:knowledge.emptyTitle')}</h2>
+        <p className="mt-1 max-w-md text-sm text-on-surface-variant">{t('ai:knowledge.emptyHint')}</p>
+        {examples.length > 0 && (
+          <div className="mt-6 grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
+            {examples.map((ex, i) => {
+              const Icon = icons[i] ?? Chat;
+              return (
+                <button
+                  key={ex}
+                  onClick={() => onPick(ex)}
+                  className="group flex items-start gap-2.5 rounded-xl border border-outline-variant/40 bg-surface-high px-3 py-2.5 text-left text-sm text-on-surface transition-colors hover:border-primary/40 hover:bg-surface-highest"
+                >
+                  <Icon size={18} className="mt-0.5 shrink-0 text-on-surface-variant transition-colors group-hover:text-primary" />
+                  <span className="min-w-0">{ex}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -421,7 +429,9 @@ function PageHeader({ t }: { t: (k: string) => string }) {
         <Chat size={22} className="text-primary" />
         {t('ai:knowledge.title')}
       </h1>
-      <p className="mt-0.5 text-sm text-on-surface-variant">{t('ai:knowledge.subtitle')}</p>
+      {/* Phones drop the subtitle: it wraps to three lines next to the thread menu and costs more
+          vertical room than the chat can spare. */}
+      <p className="mt-0.5 hidden text-sm text-on-surface-variant lg:block">{t('ai:knowledge.subtitle')}</p>
     </div>
   );
 }
@@ -436,7 +446,9 @@ function SourceBadges({ caps, t }: { caps: KnowledgeCapabilities; t: (k: string)
   const active = badges.filter((b) => b.on);
   if (active.length === 0) return null;
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+    // Desktop-only: on a phone the badge row wraps to two lines and buys the reader nothing the
+    // answers don't already show. The space goes to the conversation instead.
+    <div className="mt-3 hidden flex-wrap items-center gap-1.5 lg:flex">
       <span className="text-xs text-on-surface-variant/70">{t('ai:knowledge.sourcesLabel')}</span>
       {active.map((b) => (
         <span key={b.label} className="inline-flex items-center gap-1 rounded-full bg-surface-highest px-2 py-0.5 text-xs text-on-surface-variant">

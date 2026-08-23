@@ -359,24 +359,29 @@ export function AiWorkflowChatPanel({
       <div className="relative min-h-0 flex-1">
         <div ref={scrollRef} onScroll={onScroll} className="absolute inset-0 space-y-4 overflow-y-auto px-3.5 py-4">
           {messages.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-              <div className="rounded-2xl bg-primary-fixed p-3 text-primary shadow-sm">
-                <MagicWandFilled size={22} />
-              </div>
-              <p className="max-w-[15rem] text-xs leading-relaxed text-on-surface-variant">{t('ai:chat.intro')}</p>
-              <div className="mt-1 flex flex-col gap-1.5">
-                {SUGGESTION_KEYS.map((sk) => {
-                  const label = t(`ai:chat.${sk}`);
-                  return (
-                    <button
-                      key={sk}
-                      onClick={() => sendQuestion(label)}
-                      className="rounded-full border border-primary/30 bg-primary-fixed/40 px-3 py-1.5 text-[11px] font-label text-primary transition-colors hover:bg-primary-fixed/70"
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
+            // `m-auto` rather than `justify-center` — a centred flex block that outgrows its
+            // scroll port overflows on both sides, and the half above the scroll origin can
+            // never be scrolled back into view. An auto margin collapses to 0 instead.
+            <div className="flex min-h-full flex-col px-6">
+              <div className="m-auto flex w-full flex-col items-center gap-3 text-center">
+                <div className="rounded-2xl bg-primary-fixed p-3 text-primary shadow-sm">
+                  <MagicWandFilled size={22} />
+                </div>
+                <p className="max-w-[15rem] text-xs leading-relaxed text-on-surface-variant">{t('ai:chat.intro')}</p>
+                <div className="mt-1 flex flex-col gap-1.5">
+                  {SUGGESTION_KEYS.map((sk) => {
+                    const label = t(`ai:chat.${sk}`);
+                    return (
+                      <button
+                        key={sk}
+                        onClick={() => sendQuestion(label)}
+                        className="rounded-full border border-primary/30 bg-primary-fixed/40 px-3 py-1.5 text-[11px] font-label text-primary transition-colors hover:bg-primary-fixed/70"
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           ) : (

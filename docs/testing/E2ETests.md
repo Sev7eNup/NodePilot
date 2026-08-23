@@ -1317,19 +1317,21 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 ### Test 10.2 — Mobile Responsiveness (Smartphone/Tablet)
 
-> Automatisiert in `e2e/mobile-responsive.spec.ts` (Kern-Guard: kein horizontaler Overflow bei 390px auf jeder Listen-Route + read-only Graph rendert Edges). Desktop-Layout bleibt ab `lg` unverändert.
+> Automatisiert in `e2e/mobile-responsive.spec.ts` (Kern-Guard: kein horizontaler Overflow bei 390px auf jeder Listen-Route + read-only Graph rendert Edges + KI-Chat trimmt Subtitle/Quellen-Badges und bleibt scrollbar). Desktop-Layout bleibt ab `lg` unverändert.
 
 **Schritte:**
 1. Öffne die SPA im Mobile-View (DevTools: 390px width)
 2. Toggle die Sidebar über das Hamburger-Menü in der TopBar (Drawer + abgedunkelter Backdrop, schließt automatisch bei Navigation)
 3. Öffne die Listen-Seiten (Workflows, Executions, Machines, Users, Global Variables, Maintenance Windows, Audit) — sie sollen als gestapelte Cards erscheinen, nicht als breite Tabelle
 4. Öffne einen Workflow → es erscheint die **read-only** Mobile-Graph-Ansicht (`MobileWorkflowView`); teste Pan/Pinch-Zoom
+5. Öffne `/ai-chat` → Untertitel und die Quellen-Badge-Zeile fehlen (Platz für die Konversation); der Empty-State beginnt mit Icon + Überschrift und lässt sich vollständig scrollen
 
 **Prüfpunkte:**
 - [ ] Sidebar-Drawer öffnet/schließt korrekt (Hamburger + Backdrop, Auto-Close bei Navigation)
 - [ ] Kein horizontaler Scroll/Overflow auf den Listen-Seiten bei 390px (Cards statt Tabelle)
 - [ ] Workflow öffnet als read-only Graph mit Live-Execution-Status (kein Editieren/Node-Erstellung auf Mobile)
 - [ ] Pan/Pinch-Zoom funktioniert; kein Crash
+- [ ] KI-Chat bei 390px: kein Untertitel, keine Quellen-Badges, Empty-State oben nicht abgeschnitten (ab `lg` sind beide wieder da)
 
 **Erwartung:** SPA voll nutzbar auf dem Smartphone; Designer-Editing bleibt Desktop-only (≥ `lg`).
 

@@ -12,6 +12,24 @@ exhaustive.
 
 ## [Unreleased]
 
+### Changed
+
+- The AI chat page hides its subtitle and the source-badge row below the `lg` breakpoint. On a
+  phone the two wrapped to five lines above the fold and pushed the conversation off-screen; on a
+  desktop both are unchanged.
+
+### Fixed
+
+- Opening the UI over a plain-HTTP address other than `localhost` — a phone pointed at the server's
+  LAN IP, for instance — is not a browser *secure context*, and there `crypto.randomUUID` does not
+  exist. The AI chat page crashed on mount with `crypto.randomUUID is not a function`, and the
+  designer did the same on the first node, paste or snippet insert. Id generation now falls back to
+  `crypto.getRandomValues`, which carries no such gate.
+- The AI chat's empty state was centred with `justify-center`, which overflows a too-short scroll
+  port on *both* sides — on a phone the icon, the heading and all but the last line of the intro
+  sat above the scroll origin, unreachable, leaving a dangling "…so nothing changes." at the top.
+  It now falls back to top-aligned once it no longer fits. Same fix in the designer's chat panel.
+
 ## [1.2.12] - 2026-08-22
 
 Everything here is the SCOrch import, measured against a real 2016 export rather than against the
