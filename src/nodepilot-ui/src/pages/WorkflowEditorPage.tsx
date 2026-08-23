@@ -43,7 +43,6 @@ import { getSmartDefaults } from '../lib/lastSimilarNode';
 import { reparentDraggedNodes, findDropTargetGroupId } from '../lib/groupReparenting';
 import { useDesignStore, LAYOUT_MODES, MACHINE_COLORS } from '../stores/designStore';
 import { usePointerFlowPosition } from '../stores/pointerFlowPositionStore';
-import { useThemeStore } from '../stores/themeStore';
 import { LabeledEdge, EdgeInsertContext } from '../components/designer/edges/LabeledEdge';
 import { NpEdgeMarkerDefs } from '../components/designer/edges/NpEdgeMarkerDefs';
 import { NpConnectionLine } from '../components/designer/edges/NpConnectionLine';
@@ -368,7 +367,6 @@ function WorkflowEditorInner() {
     replayExecutionId, replaySteps, scrubTimeMs,
     machines,
   });
-  const isDark = useThemeStore((s) => s.resolvedTheme === 'dark');
   const machineColoringEnabled = useDesignStore((s) => s.machineColoringEnabled);
   const coverageHeatmapEnabled = useDesignStore((s) => s.coverageHeatmapEnabled);
   const coverageWindowDays = useDesignStore((s) => s.coverageWindowDays);
@@ -1400,18 +1398,16 @@ function WorkflowEditorInner() {
               />
             ) : (
               // Free mode (Premium UND Classic): ein einzelnes Punktraster (Dot grid),
-              // für beide Modi identisch — alleine, ohne Karomuster. Deutlich sichtbar,
-              // aber nicht aufdringlich. Die hellen Skins tragen einen spürbar stärkeren
-              // Alpha als die dunklen: auf hellem Grund braucht es mehr Kontrast, damit das
-              // Raster klar liest; auf dunklem Grund reicht ein moderaterer Wert (weiß liest
-              // ohnehin lauter), damit es präsent, aber nicht dominant wirkt. Etwas größere
-              // Dots unterstützen die Sichtbarkeit, ohne das Raster schwer wirken zu lassen.
+              // für beide Modi identisch — alleine, ohne Karomuster. Die Farbe kommt aus
+              // `--np-canvas-dot`, das jede Base selbst setzt; hier steht bewusst KEIN
+              // `isDark`-Ternär mehr. Der helle Zweig war ein hartes `rgba(0,0,0,.42)` und
+              // damit der Grund, warum die Canvas im hellen Skin schwer und grau wirkte.
               <Background
                 id="np-bg-dots"
                 variant={BackgroundVariant.Dots}
                 gap={24}
                 size={1.6}
-                color={isDark ? 'var(--np-canvas-dot)' : 'rgba(0,0,0,.42)'}
+                color="var(--np-canvas-dot)"
               />
             )}
             {machineColoringEnabled && legendMachines.length > 0 && (
@@ -1434,9 +1430,7 @@ function WorkflowEditorInner() {
               pannable
               zoomable
               nodeStrokeWidth={3}
-              maskColor={isAtelier
-                ? (isDark ? 'var(--np-minimap-mask-atelier)' : 'rgba(234,231,224,0.65)')
-                : (isDark ? 'var(--np-minimap-mask)' : 'rgba(220,222,230,0.6)')}
+              maskColor={isAtelier ? 'var(--np-minimap-mask-atelier)' : 'var(--np-minimap-mask)'}
               // Node-Farbe im Mini-Map spiegelt den Activity-Typ grob via `borderColor` —
               // sonst sieht der MiniMap für große Graphen aus wie ein grauer Fleck und man
               // kann seinen Target-Node nicht ausfindig machen. Farben aus den semantischen

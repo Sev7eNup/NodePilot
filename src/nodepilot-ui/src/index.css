@@ -66,6 +66,18 @@
      light outline-variant; html.dark lifts it to a clearly-visible light grey so
      the dots read on the near-black node silhouettes across every dark skin. */
   --np-port-fill: var(--color-outline-variant);
+
+  /* Canvas dot grid. Dark skins declare their own further down; light had no token at
+     all and the component fell back to a hardcoded 42% black, which is what made the
+     canvas read grey and heavy under a light skin. Ink, not black, and much lighter:
+     the grid is an orientation aid, not a texture. */
+  --np-canvas-dot: rgba(23, 26, 31, 0.16);
+
+  /* MiniMap mask (the dimmed area outside the viewport). Same story as the dot grid: only
+     the dark skins declared it, so light carried two hardcoded rgba() literals in the TSX —
+     one of them the warm paper tint Atelier no longer uses. Both bases now answer here. */
+  --np-minimap-mask:         rgba(23, 26, 31, 0.10);
+  --np-minimap-mask-atelier: rgba(23, 26, 31, 0.12);
   --color-inverse-surface: #2e3132;
   --color-inverse-on-surface: #f0f1f3;
 
