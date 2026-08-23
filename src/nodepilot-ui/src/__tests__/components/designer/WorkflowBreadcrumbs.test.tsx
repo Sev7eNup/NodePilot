@@ -89,4 +89,22 @@ describe('WorkflowBreadcrumbs', () => {
     const { container } = renderBreadcrumbs([callNode('n1', '{{globals.Target}}')]);
     expect(container).toBeEmptyDOMElement();
   });
+
+  // Both pills carry the class hooks index.css keys their outline on — an inset hairline on a
+  // fixed even height. Drawn as Tailwind's outset `ring-1` instead, the pill's fractional edge
+  // splits the top and bottom lines across two device pixels, they wash out against the
+  // near-white strip of the light skins, and only the rounded ends survive: the pill reads as a
+  // pair of brackets around the name. Renaming the hooks, or bringing a `ring-*`/`shadow-*`
+  // utility back (the latter would replace the box-shadow that carries the outline), regresses it.
+  it('keeps the class hooks the pill-outline rule depends on', () => {
+    renderBreadcrumbs([callNode('n1', CHILD.id), callNode('n2', 'Does not exist')]);
+    const link = screen.getByRole('link', { name: /Child workflow/ });
+    const broken = screen.getByText('Does not exist');
+    expect(link.className).toContain('np-call-pill--link');
+    expect(broken.className).toContain('np-call-pill--broken');
+    for (const el of [link, broken]) {
+      expect(el.className).not.toMatch(/\bring-/);
+      expect(el.className).not.toMatch(/\bshadow-/);
+    }
+  });
 });
