@@ -54,25 +54,32 @@ html .np-designer.wd-atelier {
   --wd-accent-on-surface:  #1b2c74;
   --wd-accent-inverse:     #a9bbf7;
 
-  /* Ground & chrome — classic relationship: the canvas is the BRIGHTEST ground and the
-     floating chrome (header/sidebar/inspector) sits a step darker, like the old designer. */
-  --wd-canvas:     #faf8f3;
-  --wd-panel:      #ece9e1;
-  --wd-hairline:   rgba(27, 30, 36, 0.1);
+  /* Ground & chrome — the APP's relationship, not the old designer's.
+     Atelier used to invert it: the canvas was the brightest ground and the floating chrome sat a
+     step darker, on a warm paper ramp. Next to a dashboard of white plates on cool light grey that
+     reads as "the designer is greyer and darker than the rest of the product" — which is exactly
+     what it was. So the light skins now borrow the shell's vocabulary: the canvas is the page
+     ground (`--color-surface-low`), the floating chrome is a white plate (`--color-surface-lowest`),
+     and the ramp below is the skin's own. Atelier keeps everything else that makes it Atelier —
+     geometry, gutters, radii, accent, typography. Only the colours change, and only in light.
+     The dark blocks below are untouched: there the original relationship is right. */
+  --wd-canvas:     #f3f4f6;
+  --wd-panel:      #ffffff;
+  --wd-hairline:   rgba(23, 26, 31, 0.1);
 
-  /* Surface ramp + ink — raised elements (inputs/cards) stay bright above the panel tint. */
-  --wd-s-dim:      #ddd9d0;
-  --wd-s-bright:   #ffffff;
+  /* Surface ramp + ink — the app's light ramp verbatim (index.css `@theme`). */
+  --wd-s-dim:      #d9dadc;
+  --wd-s-bright:   #f8f9fb;
   --wd-s-lowest:   #ffffff;
-  --wd-s-low:      #f3f0e9;
-  --wd-s-container:#ede9e1;
-  --wd-s-high:     #e6e2d9;
-  --wd-s-highest:  #dfdad0;
-  --wd-s-variant:  #d8d3c8;
-  --wd-ink:        #1b1e24;
-  --wd-ink-muted:  #5c6470;
-  --wd-outline:    #8b9099;
-  --wd-outline-variant: #d8d4ca;
+  --wd-s-low:      #f3f4f6;
+  --wd-s-container:#edeef0;
+  --wd-s-high:     #e7e8ea;
+  --wd-s-highest:  #e1e2e4;
+  --wd-s-variant:  #e1e2e4;
+  --wd-ink:        #191c1e;
+  --wd-ink-muted:  #434655;
+  --wd-outline:    #737686;
+  --wd-outline-variant: #c3c6d7;
 }
 
 /* ── B. Palette — base DARK (default dark skin "Azur" adapted: azure accent on
@@ -204,7 +211,7 @@ html.dark[data-skin="dark-nebula"] .np-designer.wd-atelier {
   --wd-outline-variant: #232e4a;
 }
 
-/* light-grey: lilac on warm cream */
+/* light-grey: lilac on the skin's own warm ramp (see the ground/chrome note in block A) */
 html[data-skin="light-grey"].wd-atelier-on,
 html[data-skin="light-grey"] .np-designer.wd-atelier {
   --wd-accent:             #7c3aed;
@@ -216,22 +223,22 @@ html[data-skin="light-grey"] .np-designer.wd-atelier {
   --wd-accent-on-surface:  #2a0e63;
   --wd-accent-inverse:     #c9a9ff;
 
-  --wd-canvas:     #faf7f2;
-  --wd-panel:      #eee9e1;
+  --wd-canvas:     #f5f0eb;
+  --wd-panel:      #ffffff;
   --wd-hairline:   rgba(26, 26, 26, 0.09);
 
   --wd-s-dim:      #ded8d0;
   --wd-s-bright:   #ffffff;
   --wd-s-lowest:   #ffffff;
-  --wd-s-low:      #f4f0e9;
-  --wd-s-container:#efeae2;
-  --wd-s-high:     #e8e2d9;
-  --wd-s-highest:  #e2dbd1;
-  --wd-s-variant:  #d8d2c7;
+  --wd-s-low:      #f5f0eb;
+  --wd-s-container:#f0ebe4;
+  --wd-s-high:     #eae4dc;
+  --wd-s-highest:  #e8e0d8;
+  --wd-s-variant:  #ded8d0;
   --wd-ink:        #1a1a1a;
   --wd-ink-muted:  #6e6a64;
   --wd-outline:    #a89f93;
-  --wd-outline-variant: #ddd5ca;
+  --wd-outline-variant: #e0d9d0;
 }
 
 /* light-bank ("Bank Hell"): banking red on cool bright neutral */
@@ -247,21 +254,21 @@ html[data-skin="light-bank"] .np-designer.wd-atelier {
   --wd-accent-inverse:     #ff8080;
 
   --wd-canvas:     #f8fafc;
-  --wd-panel:      #e9edf2;
+  --wd-panel:      #ffffff;
   --wd-hairline:   rgba(21, 25, 31, 0.09);
 
-  --wd-s-dim:      #e2e7ed;
-  --wd-s-bright:   #ffffff;
+  --wd-s-dim:      #e9edf2;
+  --wd-s-bright:   #f8fafc;
   --wd-s-lowest:   #ffffff;
-  --wd-s-low:      #f1f4f7;
-  --wd-s-container:#eaeef3;
-  --wd-s-high:     #e3e8ee;
-  --wd-s-highest:  #dce2ea;
-  --wd-s-variant:  #d7dee7;
+  --wd-s-low:      #f8fafc;
+  --wd-s-container:#eef1f4;
+  --wd-s-high:     #e9edf2;
+  --wd-s-highest:  #e2e7ed;
+  --wd-s-variant:  #e4e7ec;
   --wd-ink:        #15191f;
   --wd-ink-muted:  #344054;
   --wd-outline:    #667085;
-  --wd-outline-variant: #dde2e9;
+  --wd-outline-variant: #e4e7ec;
 }
 
 /* ── D. Token mapping — palettes → the app's design tokens (declared ONCE;
