@@ -59,6 +59,8 @@ public class AuditEventSourceTests
         d.Fields.Single(f => f.Name == "action").Type.Should().Be(SystemAlertFieldType.String,
             "the 157 codes live in AuditActions — an enum copy here would be a second list to forget");
         d.Parameters.Select(p => p.Name).Should().Equal("lookbackSeconds", "actions");
+        d.Parameters.Single(p => p.Name == "lookbackSeconds").Max.Should().Be(AuditEventSource.MaxLookbackSeconds,
+            "an unbounded window would let one sample read the whole audit log");
         d.Parameters.Single(p => p.Name == "actions").Required.Should().BeFalse();
         d.Presets.Select(p => p.PresetId).Should().Equal(
             "failed-login", "account-locked", "break-glass-login", "privileged-change");
@@ -201,18 +203,31 @@ public class AuditEventSourceTests
     }
 
     [Fact]
-    public async Task Observe_CapsAtScanBatchSize_OldestFirst()
+    public async Task Observe_ClampsLookbackToMax()
     {
         await using var db = TestDbFactory.Create();
+        db.AuditLog.Add(Row(AuditActions.LoginFailed, at: DateTime.UtcNow.AddSeconds(-AuditEventSource.MaxLookbackSeconds - 60)));
+        await db.SaveChangesAsync();
+
+        (await Observe(db, Query(lookbackSeconds: int.MaxValue))).Should().BeEmpty(
+            "a policy restored with an out-of-range value must not turn one sample into a full-table scan");
+    }
+
+    [Fact]
+    public async Task Observe_HasNoRowCap_ReturnsEveryRowInWindow_OldestFirst()
+    {
+        // An oldest-first cap over a sliding window is a cliff, not a load guard: rows arriving faster than
+        // the cap per dispatcher interval would age past the prefix and out of the window unobserved.
+        await using var db = TestDbFactory.Create();
         var oldest = DateTime.UtcNow.AddSeconds(-250);
-        for (var i = 0; i < AuditEventSource.ScanBatchSize + 5; i++)
-            db.AuditLog.Add(Row(AuditActions.LoginFailed, at: oldest.AddMilliseconds(i * 10)));
+        for (var i = 0; i < 450; i++)
+            db.AuditLog.Add(Row(AuditActions.WebhookTriggered, at: oldest.AddMilliseconds(i * 10)));
         await db.SaveChangesAsync();
 
         var obs = await Observe(db);
 
-        obs.Should().HaveCount(AuditEventSource.ScanBatchSize);
-        obs.First().OccurredAt.Should().Be(oldest, "a burst drains oldest-first across passes instead of starving old rows");
+        obs.Should().HaveCount(450);
+        obs.First().OccurredAt.Should().Be(oldest);
         obs.Select(o => o.OccurredAt).Should().BeInAscendingOrder();
     }
 

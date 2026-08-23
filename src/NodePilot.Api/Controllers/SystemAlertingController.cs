@@ -167,6 +167,13 @@ public class SystemAlertingController : ControllerBase
         if (source is null) return BadRequest(new { message = $"Unknown source '{request.SourceId}'." });
         var descriptor = source.Describe();
 
+        // A Security source samples the audit log, and a preview echoes the sampled rows (username, IP,
+        // details) back to the caller. Reading the audit log is Admin-only everywhere else
+        // (AuditController), so the preview must not become an Operator's side door into it — the
+        // policy editor that drives this call is Admin-only in the UI anyway.
+        if (descriptor.Category == SystemAlertCategory.Security && !User.IsInRole("Admin"))
+            return Forbid();
+
         if (!TryBuildSourceParameters(descriptor, request.SourceParameters, out var paramsJson, out var paramError))
             return BadRequest(new { message = paramError });
         if (!SystemAlertConditionValidator.TryValidate(request.ConditionJson, descriptor.Fields, out var condErrors))

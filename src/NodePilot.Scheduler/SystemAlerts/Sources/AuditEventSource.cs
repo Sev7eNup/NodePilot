@@ -17,20 +17,18 @@ namespace NodePilot.Scheduler.SystemAlerts.Sources;
 /// Like <see cref="ExecutionResultSource"/> it is a stateless lookback window: the source contract is
 /// read-only, so there is no persisted cursor — the evaluator's activation watermark and the delivery
 /// ledger's per-occurrence key keep a row from alerting twice. The <c>actions</c> parameter pre-filters
-/// server-side so non-matching rows never become observations; the per-pass cap keeps a burst of
-/// automation-rate rows from turning one dispatcher pass into a full table scan.
+/// server-side so non-matching rows never become observations, and <c>lookbackSeconds</c> is capped at a
+/// day so the scan stays bounded. There is deliberately no per-pass row cap: over a sliding window an
+/// oldest-first cap is not a load guard but a cliff — once rows arrive faster than the cap per dispatcher
+/// interval, a growing band of them ages past the prefix and out of the window without ever being
+/// observed, and an event row is observable exactly once.
 /// </summary>
 public sealed class AuditEventSource : ISystemAlertSource
 {
     private const int DefaultLookbackSeconds = 300;
+    /// <summary>Upper bound of the lookback window: bounds one sample to a day of audit rows, whatever the policy says.</summary>
+    public const int MaxLookbackSeconds = 86_400;
     private const int SummaryDetailsChars = 200;
-
-    /// <summary>
-    /// Per-pass row cap, oldest-first — the same budget <c>ExecutionEventSupport.ScanBatchSize</c> gives the
-    /// custom-rule collectors. A sustained rate above the cap per lookback window drops rows that age out
-    /// before their turn; the <c>actions</c> parameter is the documented remedy on automation-heavy installs.
-    /// </summary>
-    public const int ScanBatchSize = 200;
 
     /// <summary>
     /// Housekeeping codes skipped when <c>actions</c> is empty: <c>CREDENTIAL_DECRYPTED</c> is written for every
@@ -61,7 +59,7 @@ public sealed class AuditEventSource : ISystemAlertSource
         Parameters:
         [
             new SystemAlertParameter("lookbackSeconds", SystemAlertFieldType.Duration,
-                Default: DefaultLookbackSeconds, Required: false, Unit: "seconds", Min: 1),
+                Default: DefaultLookbackSeconds, Required: false, Unit: "seconds", Min: 1, Max: MaxLookbackSeconds),
             // Comma-separated AuditActions codes (case-insensitive). Empty = every code except
             // DefaultExcludedActions. Applied in the query, not the condition, so it bounds the scan.
             new SystemAlertParameter("actions", SystemAlertFieldType.String, Default: null, Required: false),
@@ -89,7 +87,7 @@ public sealed class AuditEventSource : ISystemAlertSource
     public async Task<IReadOnlyList<SystemAlertObservation>> ObserveAsync(
         NodePilotDbContext db, SystemAlertQuery query, CancellationToken ct)
     {
-        var lookback = Math.Max(1, query.GetInt("lookbackSeconds", DefaultLookbackSeconds));
+        var lookback = Math.Clamp(query.GetInt("lookbackSeconds", DefaultLookbackSeconds), 1, MaxLookbackSeconds);
         var cutoff = DateTime.UtcNow.AddSeconds(-lookback);
         var actions = ParseActions(query.GetString("actions"));
 
@@ -100,7 +98,6 @@ public sealed class AuditEventSource : ISystemAlertSource
 
         var rows = await q
             .OrderBy(a => a.Timestamp).ThenBy(a => a.Id)
-            .Take(ScanBatchSize)
             .Select(a => new { a.Id, a.Timestamp, a.Username, a.Action, a.ResourceType, a.ResourceId, a.Details, a.IpAddress })
             .ToListAsync(ct);
 

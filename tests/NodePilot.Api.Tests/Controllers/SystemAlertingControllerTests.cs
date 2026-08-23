@@ -31,7 +31,7 @@ public class SystemAlertingControllerTests
 
     private static (SystemAlertingController ctrl, NotificationRuleStore store, RecordingSink sink) Build(NodePilotDbContext db)
     {
-        var catalog = new SystemAlertCatalog([new BacklogSource(), new MachineUnreachableSource(), new ExecutionResultSource()]);
+        var catalog = new SystemAlertCatalog([new BacklogSource(), new MachineUnreachableSource(), new ExecutionResultSource(), new AuditEventSource()]);
         var store = new NotificationRuleStore(db, new AesGcmSecretProtector(Key()));
         var sink = new RecordingSink(NotificationChannel.Email);
         var ctrl = new SystemAlertingController(catalog, db, store, NoopAuditWriter.Instance, [sink], NullLogger<SystemAlertingController>.Instance);
@@ -70,7 +70,7 @@ public class SystemAlertingControllerTests
         var catalog = (await ctrl.GetCatalog(CancellationToken.None)).Result.Should().BeOfType<OkObjectResult>()
             .Subject.Value.Should().BeOfType<SystemAlertCatalogResponse>().Subject;
 
-        catalog.Sources.Select(s => s.SourceId).Should().Equal("backlog", "execution-result", "machine-unreachable");
+        catalog.Sources.Select(s => s.SourceId).Should().Equal("audit-event", "backlog", "execution-result", "machine-unreachable");
         catalog.Sources.Single(s => s.SourceId == "execution-result").Parameters.Single().Name.Should().Be("lookbackSeconds");
         catalog.Sources.Single(s => s.SourceId == "machine-unreachable").Available.Should().BeFalse("no machines checked");
     }
@@ -214,6 +214,28 @@ public class SystemAlertingControllerTests
 
         resp.Available.Should().BeTrue();
         resp.Matches.Should().ContainSingle().Which.Matched.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Preview_SecuritySource_IsAdminOnly_OtherSourcesStayOperatorReadable()
+    {
+        // The preview echoes sampled rows back; for audit-event those are audit-log rows, which an
+        // Operator cannot read anywhere else (AuditController is Admin-only).
+        await using var db = TestDbFactory.Create();
+        var (ctrl, _, _) = Build(db);
+        db.AuditLog.Add(new AuditLogEntry { Id = Guid.NewGuid(), Action = "LOGIN_FAILED", Timestamp = DateTime.UtcNow,
+            Details = "{\"username\":\"mallory\"}" });
+        await db.SaveChangesAsync();
+        var auditRequest = new SystemAlertPreviewRequest("audit-event", null, null);
+        var backlogRequest = new SystemAlertPreviewRequest("backlog", null, null);
+
+        (await ctrl.Preview(auditRequest, CancellationToken.None)).Result.Should().BeOfType<OkObjectResult>("Admin may preview");
+
+        ctrl.ControllerContext.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Role, "Operator"), new Claim(ClaimTypes.Name, "op")], "test"));
+
+        (await ctrl.Preview(auditRequest, CancellationToken.None)).Result.Should().BeOfType<ForbidResult>();
+        (await ctrl.Preview(backlogRequest, CancellationToken.None)).Result.Should().BeOfType<OkObjectResult>();
     }
 
     [Fact]
