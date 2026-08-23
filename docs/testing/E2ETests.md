@@ -1325,7 +1325,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 3. Öffne die Listen-Seiten (Workflows, Executions, Machines, Users, Global Variables, Maintenance Windows, Audit) — sie sollen als gestapelte Cards erscheinen, nicht als breite Tabelle
 4. Öffne einen Workflow → es erscheint die **read-only** Mobile-Graph-Ansicht (`MobileWorkflowView`); teste Pan/Pinch-Zoom
 5. Öffne `/ai-chat` → Untertitel, Quellen-Badge-Zeile und Intro-Satz fehlen, es stehen 4 statt 8 Beispiel-Prompts (Platz für die Konversation); der Empty-State beginnt mit Icon + Überschrift und lässt sich auch auf einem kurzen Screen vollständig scrollen
-6. Öffne `/operations` → statt der Timeline erscheint die Lauf-Liste (Zähler-Zeile, Hängende zuerst, Laufende, gerade beendet), Workflow-Namen vollständig; Tap auf einen Lauf öffnet den Drilldown als Vollbild-Sheet mit denselben Aktionen; das Departure-Board stapelt Zeit/T-minus über den Namen
+6. Öffne `/operations` → statt der Timeline erscheint die Lauf-Liste (Zähler-Zeile, Hängende, Fehlgeschlagene in eigener Box, Laufende, gerade beendet), Workflow-Namen vollständig; Tap auf einen Lauf öffnet den Drilldown als Vollbild-Sheet mit denselben Aktionen; das Departure-Board stapelt Zeit/T-minus über den Namen
 
 **Prüfpunkte:**
 - [ ] Sidebar-Drawer öffnet/schließt korrekt (Hamburger + Backdrop, Auto-Close bei Navigation)
@@ -1333,7 +1333,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 - [ ] Workflow öffnet als read-only Graph mit Live-Execution-Status (kein Editieren/Node-Erstellung auf Mobile)
 - [ ] Pan/Pinch-Zoom funktioniert; kein Crash
 - [ ] KI-Chat bei 390px: kein Untertitel, keine Quellen-Badges, kein Intro-Satz, 4 Beispiel-Prompts, Empty-State oben nicht abgeschnitten (ab `lg` ist alles wieder da, 8 Prompts)
-- [ ] Live-Ops bei 390px: keine Timeline, sondern Lauf-Liste mit vollen Namen und tickender Laufzeit; Drilldown-Sheet inkl. Abbrechen/Erneut/Quarantäne erreichbar; ab `lg` wieder Timeline
+- [ ] Live-Ops bei 390px: keine Timeline, sondern Lauf-Liste mit vollen Namen und tickender Laufzeit; fehlgeschlagene Läufe stehen in einer eigenen Box über den laufenden (nicht in „gerade fertig“ vergraben); Drilldown-Sheet inkl. Abbrechen/Erneut/Quarantäne erreichbar; ab `lg` wieder Timeline
 
 **Erwartung:** SPA voll nutzbar auf dem Smartphone; Designer-Editing bleibt Desktop-only (≥ `lg`).
 
