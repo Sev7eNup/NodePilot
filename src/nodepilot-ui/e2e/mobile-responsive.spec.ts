@@ -182,7 +182,7 @@ test.describe('Mobile responsiveness', () => {
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
   });
 
-  test('ai chat: phones drop the subtitle and the source badges, desktop keeps both', async ({ page }) => {
+  test('ai chat: a phone gets the trimmed header and four starter prompts, desktop the full set', async ({ page }) => {
     await mockCaps(page, capsJson());
     await page.setViewportSize(PHONE);
     await page.goto('/ai-chat');
@@ -190,32 +190,46 @@ test.describe('Mobile responsiveness', () => {
     const main = page.locator('#np-main-scroll');
     await expect(main.getByRole('heading', { name: /^AI Chat$/i })).toBeVisible({ timeout: 20_000 });
 
-    // Both still exist in the DOM (`hidden lg:*`), they just must not take space on a phone —
-    // together they cost ~5 lines above the fold that the conversation needs.
+    // Everything here still exists in the DOM (`hidden lg:*`) and just must not take space on a
+    // phone: subtitle, source badges and the empty-state hint together cost ~8 lines above the
+    // fold, which is most of the screen. The heading alone carries the message.
     await expect(main.getByText(/^Ask NodePilot — docs/i)).toBeHidden();
     await expect(main.getByText(/^Sources:$/i)).toBeHidden();
     await expect(main.getByText(/^Docs$/i)).toBeHidden();
+    await expect(main.getByText(/^Docs, your installed workflows/i)).toBeHidden();
+    await expect(main.getByRole('heading', { name: /Ask NodePilot anything/i })).toBeVisible();
+
+    // Four of the eight starter prompts. Role selectors skip `display:none`, so this counts what
+    // is actually offered, not what is rendered.
+    const prompts = page.getByTestId('ai-chat-empty').getByRole('button');
+    await expect(prompts).toHaveCount(4);
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
     await page.setViewportSize(DESKTOP);
     await expect(main.getByText(/^Ask NodePilot — docs/i)).toBeVisible();
     await expect(main.getByText(/^Sources:$/i)).toBeVisible();
+    await expect(main.getByText(/^Docs, your installed workflows/i)).toBeVisible();
+    await expect(prompts).toHaveCount(8);
   });
 
-  test('ai chat: the empty state stays fully scrollable when it outgrows a phone screen', async ({ page }) => {
+  test('ai chat: the empty state stays fully scrollable when it outgrows the screen', async ({ page }) => {
     await mockCaps(page, capsJson());
-    await page.setViewportSize(PHONE);
+    // Deliberately SHORT, not PHONE: the trimmed mobile empty state (heading + four prompts) fits
+    // a 844px-tall phone with room to spare, so only a short screen — a landscape phone, a small
+    // split view — still reproduces the overflow this guards.
+    await page.setViewportSize({ width: 390, height: 520 });
     await page.goto('/ai-chat');
 
     await expect(page.getByRole('heading', { name: /Ask NodePilot anything/i })).toBeVisible({ timeout: 20_000 });
 
-    // The starter prompts are taller than a phone's scroll port. A centred flex block overflows
-    // on BOTH sides there, and everything above the scroll origin is unreachable by scrolling —
-    // the icon, the heading and all but the last line of the hint were cut off, leaving a
-    // dangling "…so nothing changes." at the top (measured: block top 73px above the port).
-    // So: the block must start at or below the top of its scroll port.
+    // A centred flex block that outgrows its scroll port overflows on BOTH sides, and everything
+    // above the scroll origin is unreachable by scrolling — the icon, the heading and all but the
+    // last line of the hint were cut off, leaving a dangling "…so nothing changes." at the top
+    // (measured: block top 73px above the port). So: the block must start at or below the top of
+    // its scroll port, and the port must genuinely be overflowing for that to mean anything.
     const port = await page.getByTestId('ai-chat-scroll').boundingBox();
     const block = await page.getByTestId('ai-chat-empty').boundingBox();
+    expect(block!.height).toBeGreaterThan(port!.height);
     expect(block!.y).toBeGreaterThanOrEqual(port!.y - 1);
   });
 

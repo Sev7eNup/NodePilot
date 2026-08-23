@@ -33,6 +33,9 @@ import {
 // A non-`__new__` sentinel workflowId so the store's `isPersistableScope` KEEPS this page's
 // threads across reloads (unlike an unsaved canvas). One shared scope per user.
 const GLOBAL_SCOPE = 'global';
+// Phones show the first four starter prompts; the rest come back at `lg`. Eight of them stack
+// into a column taller than the screen, so the composer is the only thing a thumb ever reaches.
+const MOBILE_EXAMPLE_COUNT = 4;
 const EMPTY_THREAD: ChatMessage[] = [];
 const EMPTY_THREADS: ChatThreadMeta[] = [];
 
@@ -399,7 +402,9 @@ function EmptyState({
           <Chat size={28} />
         </div>
         <h2 className="mt-4 text-lg font-semibold text-on-surface">{t('ai:knowledge.emptyTitle')}</h2>
-        <p className="mt-1 max-w-md text-sm text-on-surface-variant">{t('ai:knowledge.emptyHint')}</p>
+        {/* Desktop-only, like the page subtitle: on a phone the heading alone says it, and the
+            three wrapped lines only push the prompts further down. */}
+        <p className="mt-1 hidden max-w-md text-sm text-on-surface-variant lg:block">{t('ai:knowledge.emptyHint')}</p>
         {examples.length > 0 && (
           <div className="mt-6 grid w-full max-w-xl grid-cols-1 gap-2 sm:grid-cols-2">
             {examples.map((ex, i) => {
@@ -408,7 +413,7 @@ function EmptyState({
                 <button
                   key={ex}
                   onClick={() => onPick(ex)}
-                  className="group flex items-start gap-2.5 rounded-xl border border-outline-variant/40 bg-surface-high px-3 py-2.5 text-left text-sm text-on-surface transition-colors hover:border-primary/40 hover:bg-surface-highest"
+                  className={`group ${i < MOBILE_EXAMPLE_COUNT ? 'flex' : 'hidden lg:flex'} items-start gap-2.5 rounded-xl border border-outline-variant/40 bg-surface-high px-3 py-2.5 text-left text-sm text-on-surface transition-colors hover:border-primary/40 hover:bg-surface-highest`}
                 >
                   <Icon size={18} className="mt-0.5 shrink-0 text-on-surface-variant transition-colors group-hover:text-primary" />
                   <span className="min-w-0">{ex}</span>
