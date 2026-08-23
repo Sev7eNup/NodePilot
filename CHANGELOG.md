@@ -12,6 +12,13 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.13] - 2026-08-23
+
+Two views that a phone could not use, and a crash that only ever happened on one. NodePilot served
+over a plain-HTTP LAN address is not a browser *secure context*, which removes `crypto.randomUUID`
+— the AI chat page died on mount and the designer on the first node. Live-Ops and the AI chat then
+got layouts a 390 px screen can actually carry.
+
 ### Added
 
 - Live-Ops is usable on a phone. Below the `lg` breakpoint the Gantt timeline is replaced by a run
@@ -694,7 +701,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.12...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.13...main
+[1.2.13]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.13
 [1.2.12]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.12
 [1.2.11]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.11
 [1.2.10]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.10
