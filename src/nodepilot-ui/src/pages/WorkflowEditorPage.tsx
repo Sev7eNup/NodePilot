@@ -6,6 +6,7 @@ import type { Workflow, ManagedMachine, Credential } from '../types/api';
 import { Add, Chemistry, CircleDash, Close, Minimize } from '@carbon/icons-react';
 import { toPng } from 'html-to-image';
 import { autoLayout, autoLayoutTB, autoLayoutCompact, autoLayoutELK } from '../lib/autoLayout';
+import { randomUuid } from '../lib/uuid';
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ReactFlow,
@@ -1302,9 +1303,9 @@ function WorkflowEditorInner() {
               // is where the win actually shows up most often.
               const smart = isNote ? {} : getSmartDefaults(type, nodes);
               const newNode: Node = isNote
-                ? { id: `note-${crypto.randomUUID()}`, type: 'stickyNote', position, data: { label: 'Note', activityType: 'note', text: 'Double-click to edit…', disabled: true } }
+                ? { id: `note-${randomUuid()}`, type: 'stickyNote', position, data: { label: 'Note', activityType: 'note', text: 'Double-click to edit…', disabled: true } }
                 : {
-                    id: `step-${crypto.randomUUID()}`,
+                    id: `step-${randomUuid()}`,
                     type: 'activity',
                     position,
                     data: {

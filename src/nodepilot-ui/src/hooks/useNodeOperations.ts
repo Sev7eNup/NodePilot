@@ -3,6 +3,7 @@ import type { Node, Edge } from '@xyflow/react';
 import { WORKFLOW_SNIPPETS, insertSnippet } from '../lib/workflowSnippets';
 import { getSmartDefaults } from '../lib/lastSimilarNode';
 import { getCustomActivityFacts } from '../lib/customActivities';
+import { randomUuid } from '../lib/uuid';
 
 type SelectedItem = { type: 'node' | 'edge'; id: string } | null;
 
@@ -75,7 +76,7 @@ export function useNodeOperations({
     }
     const newNode: Node = isNote
       ? {
-          id: `note-${crypto.randomUUID()}`,
+          id: `note-${randomUuid()}`,
           type: 'stickyNote',
           position,
           // Default dimensions so NodeResizer has a concrete frame from the start — a new
@@ -85,7 +86,7 @@ export function useNodeOperations({
           data: { label: 'Note', activityType: 'note', text: 'Double-click to edit…', disabled: true },
         }
       : {
-          id: `step-${crypto.randomUUID()}`,
+          id: `step-${randomUuid()}`,
           type: 'activity',
           position,
           data: {
@@ -123,7 +124,7 @@ export function useNodeOperations({
   const duplicateNode = useCallback((nodeId: string) => {
     const source = nodes.find((n) => n.id === nodeId);
     if (!source) return;
-    const newId = `step-${crypto.randomUUID()}`;
+    const newId = `step-${randomUuid()}`;
     const newNode: Node = {
       ...source,
       id: newId,
@@ -155,7 +156,7 @@ export function useNodeOperations({
     const minY = Math.min(...sel.map((n) => n.position.y)) - PAD_TOP;
     const maxX = Math.max(...sel.map((n) => n.position.x + ((n.measured?.width as number) ?? 220))) + PAD_X;
     const maxY = Math.max(...sel.map((n) => n.position.y + ((n.measured?.height as number) ?? 60))) + PAD_BOT;
-    const groupId = `group-${crypto.randomUUID()}`;
+    const groupId = `group-${randomUuid()}`;
     const groupNode: Node = {
       id: groupId,
       type: 'group',

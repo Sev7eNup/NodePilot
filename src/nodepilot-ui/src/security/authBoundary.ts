@@ -1,4 +1,5 @@
 import { clearSensitiveBrowserState } from './sensitiveBrowserState';
+import { randomUuid } from '../lib/uuid';
 
 const CHANNEL_NAME = 'nodepilot.auth-boundary.v1';
 
@@ -72,18 +73,9 @@ export function assertAuthBoundaryGenerationCurrent(generation: number): void {
   if (!isAuthBoundaryGenerationCurrent(generation)) throw new AuthBoundaryChangedError();
 }
 
-function randomId(): string {
-  try {
-    return globalThis.crypto.randomUUID();
-  } catch {
-    // This is only a same-origin message de-duplication id, not a credential or security token.
-    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-  }
-}
-
 // A module instance maps to one browser tab. Events carrying this id came from this tab and must
 // not be applied twice (the caller already performed its local cleanup synchronously).
-const sourceId = randomId();
+const sourceId = randomUuid();
 
 function getChannel(): BroadcastChannel | null {
   if (channel !== undefined) return channel;
@@ -216,7 +208,7 @@ function envelope<T extends Omit<AuthBoundaryEvent, 'version' | 'sourceId' | 'ev
     ...payload,
     version: 1,
     sourceId,
-    eventId: randomId(),
+    eventId: randomUuid(),
   } as AuthBoundaryEvent;
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useState, type RefObject } from 'react';
 import { addEdge, type Node, type Edge, type FinalConnectionState } from '@xyflow/react';
 import { DEFAULT_SOURCE_PORT, edgeSourcePort, edgeTargetPort, normalizePort, oppositePort } from '../lib/edgePorts';
+import { randomUuid } from '../lib/uuid';
 
 type SelectedItem = { type: 'node' | 'edge'; id: string } | null;
 
@@ -75,7 +76,7 @@ export function useCanvasConnect({
 
   const handleQuickConnectPick = useCallback((type: string, label: string) => {
     if (!quickConnect) return;
-    const newNodeId = `step-${crypto.randomUUID()}`;
+    const newNodeId = `step-${randomUuid()}`;
     const newNode: Node = {
       id: newNodeId,
       type: 'activity',
@@ -83,7 +84,7 @@ export function useCanvasConnect({
       data: { label, activityType: type, targetMachineId: null, credentialId: null, config: {} },
     };
     const newEdge: Edge = {
-      id: `edge-${crypto.randomUUID()}`,
+      id: `edge-${randomUuid()}`,
       source: quickConnect.fromNodeId,
       target: newNodeId,
       sourceHandle: normalizePort(quickConnect.fromHandleId, DEFAULT_SOURCE_PORT),
@@ -109,10 +110,10 @@ export function useCanvasConnect({
     const target = edges.find((e) => e.id === insertAt.edgeId);
     if (!target) { setInsertAt(null); return; }
     commitHistory('Insert node');
-    const newNodeId = `step-${crypto.randomUUID()}`;
+    const newNodeId = `step-${randomUuid()}`;
     // Both edge halves share the same UUID prefix so they stay recognizable as a pair
     // (previously this was the same Date.now() value with an -a/-b suffix).
-    const edgePairId = crypto.randomUUID();
+    const edgePairId = randomUuid();
     const newNode: Node = {
       id: newNodeId,
       type: 'activity',

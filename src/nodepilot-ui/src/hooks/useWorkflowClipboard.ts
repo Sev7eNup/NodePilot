@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { type Node, type Edge, useReactFlow } from '@xyflow/react';
+import { randomUuid } from '../lib/uuid';
 
 type WorkflowClipboard = { nodes: Node[]; edges: Edge[] };
 
@@ -48,7 +49,7 @@ export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
     const sorted = [...buf.nodes].sort((a) => a.type === 'group' ? -1 : 1);
     const newNodes: Node[] = sorted.map((n) => {
       const prefix = n.type === 'group' ? 'group' : 'step';
-      const newId = `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+      const newId = `${prefix}-${randomUuid().slice(0, 8)}`;
       idMap.set(n.id, newId);
       return {
         ...n,
@@ -61,7 +62,7 @@ export function useWorkflowClipboard(commitHistory: (label?: string) => void) {
     });
     const newEdges: Edge[] = buf.edges.map((e) => ({
       ...e,
-      id: `edge-${crypto.randomUUID().slice(0, 8)}`,
+      id: `edge-${randomUuid().slice(0, 8)}`,
       source: idMap.get(e.source)!,
       target: idMap.get(e.target)!,
       selected: true,
