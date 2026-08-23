@@ -91,24 +91,30 @@ test.describe('Atelier-Designsprache', () => {
     await seedAtelier(page);
     await openEditor(page);
 
-    const readPalette = () => page.locator('.np-designer.wd-atelier').evaluate((el) => {
+    // Custom properties come back as AUTHORED, not as a normalised colour — and the production
+    // build shortens them: `#ffffff` reads as `#fff` off `vite preview`, which is what CI serves,
+    // but not off the dev server. Expand every value before comparing (the luminance maths also
+    // needs six digits), otherwise this spec passes locally and fails only in CI.
+    const readTokens = () => page.locator('.np-designer.wd-atelier').evaluate((el) => {
       const s = getComputedStyle(el);
-      return { accent: s.getPropertyValue('--wd-accent').trim(), canvas: s.getPropertyValue('--wd-canvas').trim() };
-    });
-
-    const readGround = () => page.locator('.np-designer.wd-atelier').evaluate((el) => {
-      const s = getComputedStyle(el);
-      const lum = (hex: string) => {
-        const n = hex.replace('#', '');
+      const hex = (name: string) => {
+        const v = s.getPropertyValue(name).trim();
+        return /^#[0-9a-f]{3}$/i.test(v) ? `#${[...v.slice(1)].map((c) => c + c).join('')}` : v;
+      };
+      const lum = (v: string) => {
+        const n = v.replace('#', '');
         return 0.299 * parseInt(n.slice(0, 2), 16) + 0.587 * parseInt(n.slice(2, 4), 16) + 0.114 * parseInt(n.slice(4, 6), 16);
       };
-      return {
-        canvas: s.getPropertyValue('--wd-canvas').trim(),
-        panel: s.getPropertyValue('--wd-panel').trim(),
-        canvasLum: lum(s.getPropertyValue('--wd-canvas').trim()),
-        panelLum: lum(s.getPropertyValue('--wd-panel').trim()),
-      };
+      const canvas = hex('--wd-canvas');
+      const panel = hex('--wd-panel');
+      return { accent: hex('--wd-accent'), canvas, panel, canvasLum: lum(canvas), panelLum: lum(panel) };
     });
+
+    const readPalette = async () => {
+      const { accent, canvas } = await readTokens();
+      return { accent, canvas };
+    };
+    const readGround = readTokens;
 
     // Default light skin: cobalt accent, and the SHELL's ground — `--color-surface-low`.
     expect(await readPalette()).toEqual({ accent: '#3e63e8', canvas: '#f3f4f6' });
