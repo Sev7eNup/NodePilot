@@ -1256,7 +1256,7 @@ function WorkflowEditorInner() {
         {/* Center: Canvas */}
         <section
           ref={canvasRef}
-          className={`flex-1 relative bg-surface overflow-hidden${premiumCanvas ? ' np-premium' : ''}`}
+          className={`np-canvas flex-1 relative bg-surface overflow-hidden${premiumCanvas ? ' np-premium' : ''}`}
           onPointerMove={handleCanvasPointerMove}
           onPointerLeave={handleCanvasPointerLeave}
         >

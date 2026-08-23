@@ -193,4 +193,35 @@ test.describe('Atelier-Designsprache', () => {
     await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
     await expect(page.locator('pattern[id$="np-bg-dots"]')).toHaveCount(1);
   });
+
+  test('atelier.6 — auch klassisch: helle Skins zeigen weisse Chrome auf dem Seitengrund', async ({ page }) => {
+    // The ground/chrome relationship is a property of the LIGHT BASE, not of the Atelier look.
+    // Classic used to invert it too — docks on `bg-surface-low` around a brighter `bg-surface`
+    // canvas — so a user with the toggle off still saw grey boxes around a white hole.
+    await openEditor(page);
+    await expect(page.locator('.np-designer.wd-atelier')).toHaveCount(0);
+
+    const read = () => page.evaluate(() => {
+      const bg = (sel: string) => {
+        const el = document.querySelector(sel);
+        return el ? getComputedStyle(el).backgroundColor : 'missing';
+      };
+      return { canvas: bg('.np-canvas'), dock: bg('.wd-dock:not(.wd-dock--rail)'), inspector: bg('.np-anim-panel') };
+    });
+
+    for (const skin of ['light', 'light-grey', 'light-bank']) {
+      await page.evaluate((s) => document.documentElement.setAttribute('data-skin', s), skin);
+      const seen = await read();
+      expect(seen.dock, `${skin} dock`).toBe('rgb(255, 255, 255)');
+      if (seen.inspector !== 'missing') expect(seen.inspector, `${skin} inspector`).toBe('rgb(255, 255, 255)');
+      expect(seen.canvas, `${skin} canvas must not be the plate colour`).not.toBe('rgb(255, 255, 255)');
+    }
+
+    // Dark keeps its own relationship — the realignment is light-only by design.
+    await page.evaluate(() => {
+      document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-skin', 'dark');
+    });
+    expect((await read()).dock).not.toBe('rgb(255, 255, 255)');
+  });
 });

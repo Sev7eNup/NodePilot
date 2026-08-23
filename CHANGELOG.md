@@ -17,11 +17,12 @@ exhaustive.
 - The workflow designer now uses the same surface vocabulary as the rest of the product in the
   three light skins: the canvas is the page ground the shell already paints, and the floating
   chrome — header, node library, inspector, run dock — is a white plate on top of it, exactly like
-  a card on any other page. The designer's own look had inverted that relationship on a warm paper
-  ramp, so next to a dashboard of white plates on cool light grey it read as grey boxes on a
-  darker, warmer surface. Each skin keeps its own character, because the designer now borrows that
-  skin's ramp rather than a palette of its own. The dark skins are unchanged: there the chrome
-  lifting off a deeper canvas floor is the intended reading.
+  a card on any other page. Both designer looks had inverted that relationship, Atelier on a warm
+  paper ramp and Classic in cool grey, so next to a dashboard of white plates on light grey the
+  designer read as grey boxes around a brighter hole. It now holds for either look, since the
+  relationship belongs to the light base rather than to a design language. Each skin keeps its own
+  character, because the designer borrows that skin's ramp rather than a palette of its own. The
+  dark skins are unchanged: there the chrome lifting off a deeper canvas floor is intended.
 
 ### Fixed
 

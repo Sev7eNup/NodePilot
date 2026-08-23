@@ -71,6 +71,22 @@ describe('designer light-skin parity', () => {
     });
   }
 
+  it('the classic look gets the same light relationship, and only in light', () => {
+    // Atelier carries this in its own palette; classic inherits the app tokens and the
+    // components choose `bg-surface` for the canvas and `bg-surface-low` for the docks, which
+    // in a light skin is the app's reading upside down. index.css re-points it.
+    const rule = blockAfter(indexCss, 'html:not(.dark) .np-designer:not(.wd-atelier) .wd-dock');
+    expect(rule).toContain('var(--color-surface-lowest)');
+
+    const ground = blockAfter(indexCss, 'html:not(.dark) .np-designer:not(.wd-atelier),');
+    expect(ground).toContain('var(--color-surface-low)');
+
+    // `html:not(.dark)` is what keeps it out of the dark skins — where the chrome lifting off a
+    // deeper canvas floor is the intended reading, not a bug.
+    const editor = readFileSync(join(CSS_DIR, 'pages', 'WorkflowEditorPage.tsx'), 'utf8');
+    expect(editor, 'the canvas needs its stable hook').toContain('np-canvas flex-1');
+  });
+
   it('the canvas dot grid and minimap masks are tokens in BOTH bases, not literals', () => {
     // The light values used to be hardcoded rgba() in WorkflowEditorPage.tsx, so the grid stayed
     // a flat 42% black no matter which light skin was on.
