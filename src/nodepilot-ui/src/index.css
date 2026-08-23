@@ -1015,6 +1015,32 @@ html.dark[data-skin="dark-nebula"] .np-execution-panel {
 }
 
 /* ════════════════════════════════════════════════════════════════════════════
+   CLASSIC DESIGNER, LIGHT BASE — same ground/chrome relationship as the shell.
+
+   Atelier carries this in its own palette (`designer-atelier.css`), but the classic look
+   inherits the app tokens verbatim and the components pick `bg-surface` for the canvas and
+   `bg-surface-low` for the docks. In a light skin that inverts the app's reading: the canvas
+   ends up the BRIGHTEST surface and the chrome sits a step darker — grey boxes around a white
+   hole, where every other page is white plates on a grey ground.
+
+   So the classic designer is re-pointed the same way, and only in light: the canvas drops to
+   the page ground, the floating chrome lifts to the plate. Dark is deliberately excluded —
+   there the chrome lifting off a deeper canvas floor is correct, and `--color-surface` in
+   `html.dark .np-designer` is already tuned one step below the shell for exactly that.
+
+   Written as background-color on the chrome rather than a token override: `--color-surface-low`
+   also feeds hovers and table rows inside these panels, which must keep stepping off the plate
+   rather than turning white with it. ───────────────────────────────────────────────────── */
+html:not(.dark) .np-designer:not(.wd-atelier),
+html:not(.dark) .np-designer:not(.wd-atelier) .np-canvas {
+  background-color: var(--color-surface-low);
+}
+html:not(.dark) .np-designer:not(.wd-atelier) .wd-dock,
+html:not(.dark) .np-designer:not(.wd-atelier) .np-anim-panel {
+  background-color: var(--color-surface-lowest);
+}
+
+/* ════════════════════════════════════════════════════════════════════════════
    SKIN: "light grey" — Voxwright LIGHT theme: warm cream surfaces + the same lilac
    accent. A LIGHT base (no `.dark` class), so it overrides the default light `:root`
    tokens via `html[data-skin="light-grey"]`. The blue→accent utility remap reaches it
