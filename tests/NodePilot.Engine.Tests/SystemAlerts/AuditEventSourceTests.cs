@@ -126,6 +126,31 @@ public class AuditEventSourceTests
     }
 
     [Fact]
+    public async Task Observe_SignInEvents_PreferAttemptedAccount_OverRequestActor()
+    {
+        // Seen live: a browser still holding an admin session failed a login as "eve.intruder" — the audit
+        // actor column said "npadmin" and the alert read "LOGIN_FAILED: npadmin". For sign-in codes the
+        // account being signed into is the one that matters; for everything else the actor stays.
+        await using var db = TestDbFactory.Create();
+        db.AuditLog.AddRange(
+            Row(AuditActions.LoginFailed, at: DateTime.UtcNow.AddSeconds(-30), username: "npadmin",
+                details: "{\"username\":\"eve.intruder\",\"reason\":\"local_login_policy\"}"),
+            Row(AuditActions.BreakGlassLoginSuccess, at: DateTime.UtcNow.AddSeconds(-20), username: "npadmin",
+                details: "{\"username\":\"npadmin\",\"breakGlass\":true}"),
+            Row(AuditActions.UserRoleChanged, at: DateTime.UtcNow.AddSeconds(-10), username: "npadmin",
+                details: "{\"username\":\"audittest.temp\",\"oldRole\":\"Viewer\",\"newRole\":\"Operator\"}"));
+        await db.SaveChangesAsync();
+
+        var obs = await Observe(db);
+
+        obs.Select(o => (o.Fields["action"], o.Fields["username"])).Should().Equal(
+            ("LOGIN_FAILED", "eve.intruder"),
+            ("BREAK_GLASS_LOGIN_SUCCESS", "npadmin"),
+            ("USER_ROLE_CHANGED", "npadmin"));
+        obs[0].Title.Should().Be("Audit LOGIN_FAILED: eve.intruder");
+    }
+
+    [Fact]
     public async Task Observe_NoActorAnywhere_ReportsSystem()
     {
         await using var db = TestDbFactory.Create();
