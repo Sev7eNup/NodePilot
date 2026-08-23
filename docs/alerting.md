@@ -247,9 +247,11 @@ free string, not an enum, so the 157 codes are not duplicated into the descripto
 (`success`/`failure`/`unknown`) and `category` (`iam`/`process`/`configuration`) via the same
 `AuditEventClassification` the SIEM forwarder uses, `username`, `ipAddress`, `resourceType`, and
 `details` — the write-side redacted details JSON, which lets a condition match what a code alone
-cannot express (`contains "\"source\":\"Ldap\""`, `contains "\"breakGlass\":true"`). For an
-anonymous login failure the actor column is empty, so `username` falls back to `Details.username`
-(the attempted name). Presets: `failed-login`, `account-locked` (Critical), `break-glass-login`
+cannot express (`contains "\"source\":\"Ldap\""`, `contains "\"breakGlass\":true"`). For sign-in
+codes (`LOGIN_*`, `BREAK_GLASS_LOGIN_SUCCESS`) `username` is the account being signed into
+(`Details.username`), not the request's actor — the actor column is empty for the usual anonymous
+`LOGIN_FAILED`, and when a browser that still holds a session fails a login as someone else it would
+name the wrong account. Every other code keeps the actor. Presets: `failed-login`, `account-locked` (Critical), `break-glass-login`
 (Critical), `privileged-change` (role/break-glass/password-reset/deactivate/delete, credential delete,
 force-unlock, backup restore, authentication-settings change). Scope is global only.
 

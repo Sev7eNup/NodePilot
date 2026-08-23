@@ -105,9 +105,13 @@ public sealed class AuditEventSource : ISystemAlertSource
         {
             var outcome = AuditEventClassification.Outcome(a.Action, a.Details);
             var category = AuditEventClassification.Category(a.Action);
-            // LOGIN_FAILED / LOGIN_LOCKED rows come from an anonymous request, so the actor column is empty
-            // and the attempted name lives only in Details.username — the field a failed-login policy needs.
-            var username = a.Username ?? DetailsString(a.Details, "username") ?? "";
+            // For a sign-in event the account that matters is the one being signed into, which lives in
+            // Details.username; the actor column is whoever sent the request — empty for the usual anonymous
+            // LOGIN_FAILED, but an already-signed-in browser that fails a second login would put *its* name
+            // there and mislabel the alert. Every other code keeps the actor (USER_ROLE_CHANGED is "by admin",
+            // its Details.username is the changed account).
+            var attempted = DetailsString(a.Details, "username");
+            var username = (IsSignInAction(a.Action) ? attempted ?? a.Username : a.Username ?? attempted) ?? "";
             var who = username.Length > 0 ? username : "system";
             var resource = a.ResourceType is null ? ""
                 : a.ResourceId is null ? a.ResourceType
@@ -140,6 +144,9 @@ public sealed class AuditEventSource : ISystemAlertSource
                 OccurredAt: a.Timestamp);
         }).ToList();
     }
+
+    private static bool IsSignInAction(string action)
+        => action.StartsWith("LOGIN_", StringComparison.Ordinal) || action == AuditActions.BreakGlassLoginSuccess;
 
     /// <summary>Splits the <c>actions</c> parameter into distinct, upper-cased codes; blanks are dropped.</summary>
     public static IReadOnlyList<string> ParseActions(string? raw)
