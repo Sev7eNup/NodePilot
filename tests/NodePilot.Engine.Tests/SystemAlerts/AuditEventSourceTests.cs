@@ -246,7 +246,7 @@ public class AuditEventSourceTests
         await using var db = TestDbFactory.Create();
         var oldest = DateTime.UtcNow.AddSeconds(-250);
         for (var i = 0; i < 450; i++)
-            db.AuditLog.Add(Row(AuditActions.WebhookTriggered, at: oldest.AddMilliseconds(i * 10)));
+            db.AuditLog.Add(Row(AuditActions.WebhookTriggered, at: oldest.AddMilliseconds(10.0 * i)));
         await db.SaveChangesAsync();
 
         var obs = await Observe(db);
