@@ -26,6 +26,16 @@ exhaustive.
 
 ### Fixed
 
+- SCOrch import turned program calls into script nodes. *Run Program* was classified as a whole
+  command line — and therefore degraded to `runScript` — as soon as its program field contained a
+  space and no separate arguments, which is the everyday case of a path under `C:\Program Files\`.
+  A space is not command-line evidence, and `startProgram` never had a problem with one: it needs
+  an absolute path, not a space-free one. The importer now separates an embedded command line into
+  the executable and its arguments, so those calls import as the program calls they are.
+  `runScript` is left for what a single launched process genuinely cannot do — a pipe, a redirect,
+  a chained command — or a program field with no identifiable executable. A program named without
+  a directory stays a program call and is reported in the import report instead of being buried in
+  a script. Already-imported runbooks are not rewritten; re-import to pick this up.
 - The "Calls →" pills in the editor status strip looked like a pair of brackets around the
   workflow name in the light skins. Their outline was a 1 px ring drawn on the outside of a box
   whose height came out fractional, so its top and bottom lines each split across two device

@@ -29,6 +29,12 @@ Was die Übersetzung leistet:
   Achtung: SCOrch schreibt nicht immer die Namen, die sein Designer zeigt — *Invoke Runbook* heißt
   auf der Leitung `Trigger Policy`, und dessen Argumente für das Kind-Runbook kommen als
   `startWorkflow.parameters` mit.
+- **Programmaufrufe** — *Run Program* wird zu `startProgram`, auch im Alltagsfall eines Pfads mit
+  Leerzeichen (`C:\Program Files\…`) und dann, wenn SCOrch die Argumente im Programmfeld statt im
+  eigenen Feld stehen hat: Programm und Argumente werden getrennt. Ein `runScript` entsteht nur,
+  wo ein gestarteter Prozess die Aufgabe wirklich nicht erledigen kann — Pipe, Umleitung,
+  verkettetes Kommando oder ein Programmfeld ohne erkennbare ausführbare Datei — und der
+  Import-Bericht sagt, welcher Knoten betroffen ist.
 - **Published Data** — `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` und `` \`d.T.~Ed/{GUID}.feld\`d.T.~Ed/ ``
   werden zu `{{globals.Name}}` bzw. `{{step.param.feld}}` und lösen über eine lesbare
   `outputVariable` auf, die aus dem Aktivitätsnamen abgeleitet wird. Feldnamen werden mit übersetzt,

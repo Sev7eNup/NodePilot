@@ -57,6 +57,90 @@ public class ScorchActivityMapperTests
     }
 
     /// <summary>
+    /// The classifier used to read a SPACE as command-line evidence, so an ordinary path under
+    /// "C:\Program Files\" without separate Parameters became a runScript — which is how a whole
+    /// runbook import came back with its program calls turned into script nodes. `filePath` is
+    /// handed to the process as a literal and only has to be fully qualified, never space-free.
+    /// </summary>
+    [Theory]
+    [InlineData(@"C:\Program Files\Tools\backup.exe")]
+    [InlineData(@"""C:\Program Files\Tools\backup.exe""")]
+    [InlineData(@"\\fileserver\tools\backup.exe")]
+    public void Map_RunProgram_PathWithSpacesOrQuotesStaysAProgramCall(string program)
+    {
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), new Dictionary<string, string> { ["Program"] = program });
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(program.Trim('"'));
+        result.Config["arguments"].Should().Be("");
+    }
+
+    /// <summary>
+    /// A real command line in <c>Program</c> is split rather than degraded: everything up to the
+    /// executable extension is the path, the rest are arguments. Only syntax a launched process
+    /// cannot express itself — pipes, redirects, chaining — still has to become a script.
+    /// </summary>
+    [Theory]
+    [InlineData(@"C:\Windows\System32\cmd.exe /c dir", @"C:\Windows\System32\cmd.exe", "/c dir")]
+    [InlineData(@"""C:\Program Files\7-Zip\7z.exe"" a out.zip", @"C:\Program Files\7-Zip\7z.exe", "a out.zip")]
+    [InlineData(@"C:\Tools\import.bat -quiet", @"C:\Tools\import.bat", "-quiet")]
+    public void Map_RunProgram_SplitsAnEmbeddedCommandLineIntoPathAndArguments(string program, string path, string args)
+    {
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), new Dictionary<string, string> { ["Program"] = program });
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(path);
+        result.Config["arguments"].Should().Be(args);
+    }
+
+    [Theory]
+    [InlineData(@"C:\Windows\System32\cmd.exe /c attrib -h C:\x | find ""y""")]   // pipe
+    [InlineData(@"C:\Windows\System32\ipconfig.exe > C:\temp\ip.txt")]            // redirect
+    [InlineData("cmd /c dir")]                                                     // no identifiable executable
+    public void Map_RunProgram_KeepsRunScriptForShellSyntaxAndUnidentifiableCommandLines(string program)
+    {
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), new Dictionary<string, string> { ["Program"] = program });
+
+        result.ActivityType.Should().Be("runScript");
+        result.Config["script"].Should().Be(program);
+        result.Note.Should().Contain("startProgram");
+    }
+
+    /// <summary>
+    /// A name without a directory is still a program call, so it keeps the activity type the
+    /// runbook meant — burying it in a script is the confusion this builder exists to avoid. The
+    /// engine requires an absolute path, and the import report says so rather than letting the
+    /// operator discover it at run time.
+    /// </summary>
+    [Fact]
+    public void Map_RunProgram_RelativeExecutableStaysAProgramCallAndIsReported()
+    {
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), new Dictionary<string, string> { ["Program"] = "tool.exe" });
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be("tool.exe");
+        result.Note.Should().Contain("fully qualified path");
+    }
+
+    /// <summary>Explicit Parameters are authoritative — the value in Program is the path, whatever
+    /// it looks like, and must not be re-split behind the author's back.</summary>
+    [Fact]
+    public void Map_RunProgram_DoesNotResplitWhenParametersAreSetExplicitly()
+    {
+        var props = new Dictionary<string, string>
+        {
+            ["Program"] = @"""C:\Program Files\Tools\backup.exe""",
+            ["Parameters"] = "/full /quiet",
+        };
+
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), props);
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(@"C:\Program Files\Tools\backup.exe");
+        result.Config["arguments"].Should().Be("/full /quiet");
+    }
+
+    /// <summary>
     /// The SCOrch activity carries its own relay, sender and TLS flag; emailNotification reads none
     /// of them, because NodePilot's SMTP settings are installation-wide. Writing them onto the node
     /// produced four keys the engine ignores, so the imported mail silently went somewhere else than

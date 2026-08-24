@@ -250,6 +250,18 @@ und wurde erst an einem echten 2016-Export sichtbar:
 | `Compare Values` ist ein Logik-Knoten ohne Gegenstück | wird `decision`; die Links lesen sein Ergebnis, ein `log` hätte jeden Zweig dahinter getötet |
 | Positionen sind 1:1 übernehmbar | 75-px-Raster, oft negativ — NodePilot-Karten sind bis 280×110; verbatim kopiert überlappt fast alles |
 
+**`Run Program`: Pfad oder Kommandozeile — das Leerzeichen entscheidet es nicht.** SCOrchs
+`<Program>` hält beides. `BuildRunProgram` trennt an einem führenden `"…"`-Token bzw. an der ersten
+`.exe`/`.cmd`/`.bat`/`.com`-Endung, die ein Token beendet, und füllt damit `filePath` + `arguments`.
+`runScript` bleibt nur für zwei Fälle: echte Shell-Syntax (`|`, `&`, `>`, `<`, was ein einzelner
+Prozess nicht kann) und ein Wert, in dem gar keine ausführbare Datei erkennbar ist (`cmd /c dir`).
+Ein Name **ohne** Verzeichnis (`tool.exe`) bleibt `startProgram` und wird im Import-Bericht
+gemeldet — die Engine verlangt einen absoluten Pfad, aber ein Programmaufruf gehört nicht in ein
+Script versteckt. **Ein Leerzeichen war früher das Kriterium**, und damit wurde jeder gewöhnliche
+Pfad unter `C:\Program Files\` ohne separate `Parameters` zum Script-Knoten — bei einem Import
+fällt das als „alle Programmaufrufe sind runScript" auf. `filePath` verträgt Leerzeichen
+(PowerShell-Literal an `$psi.FileName`); verlangt ist Absolutheit, nicht Leerzeichenfreiheit.
+
 **Datenbus: Namen ≠ Namen.** Die Marker-Syntax zu übersetzen ist nicht dasselbe wie die *Daten* zu
 übersetzen. `PublishedFieldRenames` bildet nur die belegten 1:1-Fälle ab (`Query XML.queryResult` →
 `xmlQuery.result`, `Generate Random Text.stringResult` → `generateText.text`, und für

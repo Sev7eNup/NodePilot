@@ -278,22 +278,45 @@ internal static class ScorchActivityMapper
         var workingDirectory = FirstNonEmpty(p, "StartupDir", "WorkingDirectory", "StartInFolder");
 
         // SCOrch lets <Program> hold either an executable path or a whole command line
-        // ("cmd /C attrib -h -r ..."). startProgram.filePath rejects anything that is not an
-        // executable path, so a command line has to become a script instead of a broken node.
-        var looksLikeCommandLine = arguments.Length == 0 && ContainsShellSyntax(program);
-        if (looksLikeCommandLine)
+        // ("cmd /C attrib -h -r ..."), and only the latter has no startProgram expression. What
+        // separates them is shell syntax — a pipe, a redirect, a chain — NOT a space: the common
+        // case is an ordinary path under "C:\Program Files\", and startProgram takes that happily
+        // (`filePath` is passed to the process as a literal; it must be fully qualified, not
+        // space-free). Treating a space as command-line evidence turned every such call into a
+        // runScript, which is how program calls came back as script nodes across a whole import.
+        string? note = null;
+        if (arguments.Length == 0 && program.Length > 0)
         {
-            return new Mapping(
-                ActivityType: "runScript",
-                Config: new()
-                {
-                    ["script"] = program,
-                    ["engine"] = "powershell",
-                    ["timeoutSeconds"] = 300,
-                },
-                Note: "SCOrch 'Run Program' held a full command line rather than an executable path, " +
-                      "so it was imported as runScript — startProgram only accepts an executable path.");
+            var split = SplitCommandLine(program);
+            // No executable token at all (no quoted head, no .exe/.cmd/.bat/.com) means the value is
+            // not a path we can trust — a bare "cmd /c dir" would become a filePath of that whole
+            // string. Together with real shell syntax that is what still has to degrade to a script.
+            if (ContainsShellSyntax(program) || split is null)
+            {
+                return new Mapping(
+                    ActivityType: "runScript",
+                    Config: new()
+                    {
+                        ["script"] = program,
+                        ["engine"] = "powershell",
+                        ["timeoutSeconds"] = 300,
+                    },
+                    Note: "SCOrch 'Run Program' held a command line rather than an executable path, so " +
+                          "it was imported as runScript — startProgram launches a single process and " +
+                          "cannot express pipes, redirects or command chaining.");
+            }
+
+            program = split.Value.Executable;
+            arguments = split.Value.Trailing;
         }
+
+        program = Unquote(program);
+        // A relative name ("tool.exe") stays a program call — it is one, and hiding it in a script
+        // is the very confusion this builder exists to avoid. The engine requires an absolute path,
+        // so the node would fail loudly; the import report says so up front instead.
+        if (program.Length > 0 && !Path.IsPathFullyQualified(program))
+            note = $"SCOrch 'Run Program' named '{program}' without a directory. startProgram needs a " +
+                   "fully qualified path — complete it before running the node.";
 
         return new Mapping(
             ActivityType: "startProgram",
@@ -301,14 +324,61 @@ internal static class ScorchActivityMapper
             {
                 ["filePath"] = program,
                 ["arguments"] = arguments,
-                ["workingDirectory"] = workingDirectory,
+                ["workingDirectory"] = Unquote(workingDirectory),
                 ["waitForExit"] = ParseBool(p, "WaitForCompletion", true),
                 ["timeoutSeconds"] = 300,
-            });
+            },
+            Note: note);
     }
 
+    /// <summary>
+    /// Splits a SCOrch <c>&lt;Program&gt;</c> value into the executable and whatever follows it.
+    /// A quoted head is the executable verbatim; otherwise the split runs after the first executable
+    /// extension that ends a token, so <c>C:\W\cmd.exe /c dir</c> separates while
+    /// <c>C:\Program Files\Tools\backup.exe</c> stays whole. Null when the value carries no
+    /// recognisable executable token at all — the caller degrades that to a script.
+    /// </summary>
+    private static (string Executable, string Trailing)? SplitCommandLine(string value)
+    {
+        var v = value.Trim();
+        if (v.StartsWith('"'))
+        {
+            var close = v.IndexOf('"', 1);
+            return close > 0 ? (v[1..close], v[(close + 1)..].Trim()) : null;
+        }
+
+        foreach (var ext in ExecutableExtensions)
+        {
+            var at = v.IndexOf(ext, StringComparison.OrdinalIgnoreCase);
+            while (at >= 0)
+            {
+                var end = at + ext.Length;
+                if (end == v.Length) return (v, "");
+                if (char.IsWhiteSpace(v[end])) return (v[..end], v[end..].Trim());
+                at = v.IndexOf(ext, end, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        // No extension: a single token is still a path (extension-less launchers exist), several
+        // tokens are a command line whose executable we cannot identify.
+        return v.AsSpan().ContainsAny(WhitespaceChars) ? null : (v, "");
+    }
+
+    private static readonly System.Buffers.SearchValues<char> WhitespaceChars =
+        System.Buffers.SearchValues.Create(" \t");
+
+    private static readonly string[] ExecutableExtensions = [".exe", ".cmd", ".bat", ".com"];
+
+    /// <summary>Strips one layer of surrounding quotes — the engine passes the value on as a
+    /// literal, so a quoted path would be looked up including its quotes.</summary>
+    private static string Unquote(string value) =>
+        value.Length > 1 && value.StartsWith('"') && value.EndsWith('"') ? value[1..^1] : value;
+
+    /// <summary>
+    /// Shell syntax proper: pipes, redirects and chaining, none of which a launched process can
+    /// express on its own. A space is deliberately NOT part of this — see <see cref="BuildRunProgram"/>.
+    /// </summary>
     private static bool ContainsShellSyntax(string value) =>
-        value.Length > 0 && (value.IndexOfAny(['|', '&', '>', '<']) >= 0 || value.Contains(' '));
+        value.IndexOfAny(['|', '&', '>', '<']) >= 0;
 
     private static Mapping BuildEmail(Dictionary<string, string> p) =>
         new(
