@@ -6,7 +6,7 @@
 .DESCRIPTION
     Stages four payloads and compiles them with Inno Setup:
       app\     : self-contained .NET 10 API publish (win-x64) + the built SPA under wwwroot
-      desktop\ : the packaged Electron 43.4.0 shell (Chromium + Node, shipped in full)
+      desktop\ : the packaged Electron 43.4.1 shell (Chromium + Node, shipped in full)
       pgsql\   : the bundled PostgreSQL binaries (from -PgBinariesPath)
       deploy\  : the provisioning / update / uninstall scripts + the appsettings template
 

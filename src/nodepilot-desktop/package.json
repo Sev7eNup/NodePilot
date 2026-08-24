@@ -26,7 +26,7 @@
   },
   "dependencies": {},
   "//types-node": [
-    "Electron 43.4.0 bundles Node 24.18.1. @types/node may be newer for tooling, so",
+    "Electron 43.4.1 bundles Node 24.18.1. @types/node may be newer for tooling, so",
     "runtime-only APIs must still be checked against the embedded Node release."
   ],
   "//archive-security": [
