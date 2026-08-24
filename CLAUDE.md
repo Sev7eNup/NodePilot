@@ -283,7 +283,7 @@ Standard-Invocations (`dotnet build|test`, in `src/nodepilot-ui` die `package.js
 
 ### Testumfang pro Änderung
 
-**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (~4.600 Backend-Testfälle, 197 Vitest-Dateien, 72 E2E-Specs) und liefert lokal kein neues Signal: das Netz hängt bereits dreifach — `ci.yml` auf **jedem PR und jedem Push auf main** (6 Jobs inkl. Coverage-Gate + E2E) und der Nightly-Task gegen main.
+**Tests schreiben ≠ alle Tests ausführen.** Die Pflicht oben gilt unverändert für das *Schreiben*; lokal *ausgeführt* wird nur, was die Änderung betrifft. Die Voll-Suite ist gemessen unverhältnismäßig (~4.600 Backend-Testfälle, 207 Vitest-Dateien, 73 E2E-Specs) und liefert lokal kein neues Signal: das Netz hängt bereits dreifach — `ci.yml` auf **jedem PR und jedem Push auf main** (6 Jobs inkl. Coverage-Gate + E2E) und der Nightly-Task gegen main.
 
 **Ausnahme, seit 2026-08-20:** Ein PR, der **ausschließlich** `*.md` oder `docs/images/**` anfasst, überspringt Frontend, Desktop und E2E — der vorgeschaltete `changes`-Job entscheidet das. **Backend und docs-ui laufen immer**, weil Markdown für sie eine Eingabe ist: `DocumentationCountsTests` liest README, CLAUDE.md, `docs/mcp-server.md` und sechs Seiten der Doku-Website, `MonitoringDeploymentSecurityTests` liest README + `grafana/README.md`, der Sprach-Parity-Guard liest `content/{de,en}`. Ein pauschales `paths-ignore: ['**/*.md']` hätte genau die README-Brüche durchgelassen, die CI beim Kürzen gefangen hat. Pushes auf `main` laufen **immer** vollständig; jeder Fehlerpfad der Erkennung endet bei „alles ausführen". CodeQL filtert separat über `paths-ignore` — es analysiert nur C#/TS, dort ist Markdown wirklich irrelevant.
 
@@ -328,6 +328,7 @@ Scoped Testing übersieht genau eine Fehlerklasse — die Parity-/Drift-Tests, d
 | Workflow-Analyzer (`WorkflowAnalyzer`/`WorkflowDataBusAnalyzer` in Core — MCP **und** AI-Chat) | `WorkflowAnalyzerFrontendParityTests` | Engine.Tests |
 | Template-Grammatik / Variable-Resolution | `TemplateGrammarParityTests` | Engine.Tests |
 | Metrics-Dashboard-Katalog | `MetricsDashboardCatalogTests` | Api.Tests |
+| `index.css` / `designer-atelier.css` designer-light tokens | `designerLightParity.test.ts` | nodepilot-ui |
 | Font-Tokens / Monaco-Stack | `fontTokens.test.ts` | nodepilot-ui |
 
 **E2E (Playwright):** hermetische Specs in `src/nodepilot-ui/e2e/`, alle APIs gemockt (kein Backend/Postgres nötig). Konventionen: `src/nodepilot-ui/CLAUDE.md` + `src/nodepilot-ui/e2e/README.md`.

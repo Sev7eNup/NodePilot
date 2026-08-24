@@ -59,7 +59,9 @@ function workflow(overrides: Record<string, unknown> = {}) {
  */
 async function rowNames(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    const cells = Array.from(document.querySelectorAll('table tbody tr td:first-child button'));
+    // Addressed by testid, not by column position — the table gained a leading selection
+    // column, and a positional selector silently returns [] instead of failing loudly.
+    const cells = Array.from(document.querySelectorAll('table tbody tr [data-testid="workflow-row-name"]'));
     return cells.map((c) => (c.textContent ?? '').trim());
   });
 }

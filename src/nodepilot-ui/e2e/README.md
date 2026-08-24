@@ -85,6 +85,7 @@ every main screen into `__screens__/*.png`; it documents visuals, it asserts not
 | 16 / 64 | Audit log + pagination/filter | `audit-log.spec.ts` |
 | 17 | Theme / minimap / typography | `theme.spec.ts` |
 | 18 / 52 | Folders / move | `workflow-organisation.spec.ts` |
+| 18 / 52 | Bulk selection (delete / move / enable / disable / export) | `workflow-bulk-actions.spec.ts` |
 | 19 | Version diff | `version-diff.spec.ts` |
 | 20 | Machines & credentials | `machines-credentials.spec.ts` |
 | 21 | Global variables | `global-variables.spec.ts` |
