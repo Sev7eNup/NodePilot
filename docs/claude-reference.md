@@ -272,6 +272,21 @@ die den Typ verfälscht, und keine, die den Befehl verliert. Ein bekannter Launc
 bliebe ein Knoten stehen, den die Engine ablehnt (`PATH` wird nicht durchsucht). `filePath` verträgt
 Leerzeichen (PowerShell-Literal an `$psi.FileName`); verlangt ist Absolutheit.
 
+**Zwei Fallen im Zerlegen, beide behoben.** (1) Die Endungssuche lief **typ-weise** — erst `.exe`
+über den ganzen String, dann `.cmd` —, also schlug ein `.exe` irgendwo hinten ein früheres `.cmd`:
+`C:\Tools\wrapper.cmd C:\Payload\setup.exe /S` trennte am Payload. Jetzt positionsweise, und eine
+Endung zählt nur, wenn **vor** ihr kein Switch-Token steht; sonst trifft das `.com` eines Hostnamens
+am Zeilenende (`python … --domain contoso.com`) und der ganze Befehl landet still in `filePath`.
+(2) Ein **Skript** im Programmfeld ergab einen toten Knoten: die Engine startet über `CreateProcess`
+(`useShellExecute` ist per Default hart gesperrt), das eine `.ps1`/`.vbs` nicht ausführen kann
+(Win32 193). `ResolveScriptHead` setzt darum den echten Interpreter in `filePath` — `.ps1` →
+`powershell.exe -NoProfile -File "<script>"`, WSH-Endungen → `cscript.exe //nologo //B`. Bewusst
+`cscript` statt der Dateizuordnung: die zeigt auf `wscript.exe`, den **fenster**basierten Host, der
+kein stdout liefert und aus einem `WScript.Echo` einen Dialog macht, den keine unbeaufsichtigte
+Sitzung beantwortet. Ebenso bewusst **ohne** `-ExecutionPolicy Bypass` — einen Interpreter zu
+ergänzen ist der kleinste ehrliche Schritt, die Policy still zu lockern wäre ein zweiter. Eine
+Endung ohne bekannten Interpreter bleibt stehen und wird gemeldet.
+
 **`<ProgramMode>` wird bewusst nicht gelesen** (`1` = Kommandozeilen-Modus, `0` = getrennte Felder).
 Es steht in Exporten, ist aber undokumentiert und bislang nur in wenigen Dateien gesehen; die
 strukturelle Prüfung erkennt die Form ohnehin selbst. Ein Signal, das nur bestätigt, was die Form

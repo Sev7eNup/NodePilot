@@ -37,7 +37,9 @@ Was die Übersetzung leistet:
   und Argumente getrennt — auch in SCOrchs Kommandozeilen-Modus, wo ein `|` beide trennt. Eine
   Kommandozeile, die wirklich eine Shell braucht (Pipe in ein zweites Programm, Umleitung), läuft
   über `cmd.exe /C`, so wie SCOrch sie selbst ausführt; ein Launcher ohne Pfad wie `cmd` wird auf
-  seinen absoluten Pfad vervollständigt, weil die Engine `PATH` nicht durchsucht. Jede solche
+  seinen absoluten Pfad vervollständigt, weil die Engine `PATH` nicht durchsucht. Ein Skript im
+  Programmfeld — eine `.ps1`, eine `.vbs` — bekommt seinen echten Interpreter in `filePath`: die
+  Engine startet über `CreateProcess`, das ein Skript gar nicht ausführen kann. Jede solche
   Rekonstruktion steht im Import-Bericht.
 - **Published Data** — `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` und `` \`d.T.~Ed/{GUID}.feld\`d.T.~Ed/ ``
   werden zu `{{globals.Name}}` bzw. `{{step.param.feld}}` und lösen über eine lesbare

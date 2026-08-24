@@ -36,7 +36,9 @@ What the translation does:
   including SCOrch's command-line mode, where a `|` separates the two. A command line that genuinely
   needs a shell (a pipe into another program, a redirect) runs through `cmd.exe /C`, which is how
   SCOrch runs one itself, and a bare launcher name such as `cmd` is completed to its absolute path
-  because the engine does not search `PATH`. Every such reconstruction is named in the import report.
+  because the engine does not search `PATH`, while a script in the program field — a `.ps1`, a `.vbs` —
+  gets its real interpreter in `filePath`, because the engine launches through `CreateProcess`, which
+  cannot start a script at all. Every such reconstruction is named in the import report.
 - **Published Data** — `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` and `` \`d.T.~Ed/{GUID}.field\`d.T.~Ed/ ``
   become `{{globals.Name}}` and `{{step.param.field}}`, resolving through a readable
   `outputVariable` derived from each activity's name. Field names are translated where the two

@@ -30,6 +30,14 @@ exhaustive.
   search `PATH`. Every reconstruction is named in the import report. Workflows imported before this
   release are unchanged — re-import to apply the new mapping.
 
+  Two further defects in the same builder went with it. The executable is now taken from the first
+  match by POSITION rather than by extension type, so `wrapper.cmd payload.exe /S` no longer hands
+  its own payload to `filePath`, and an extension only counts when nothing before it is a switch, so
+  the `.com` of a hostname at the end of a command line no longer swallows the whole value as the
+  path. And a script in the program field — a `.ps1`, a `.vbs` — now gets its real interpreter in
+  `filePath`: the engine launches through `CreateProcess`, which cannot start a script at all, so
+  such a node could never have run.
+
 ## [1.2.15] - 2026-08-24
 
 The workflow list gains multi-select, so clearing out or reorganising a folder is no longer one

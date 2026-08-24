@@ -308,6 +308,7 @@ internal static class ScorchActivityMapper
         }
 
         program = ResolveKnownLauncher(program, notes);
+        (program, arguments) = ResolveScriptHead(program, arguments, notes);
 
         // A relative name ("tool.exe") stays a program call — it is one. The engine requires an
         // absolute path and does not search PATH, so the node would fail loudly; the import report
@@ -444,6 +445,58 @@ internal static class ScorchActivityMapper
     }
 
     /// <summary>
+    /// Puts the real interpreter in <c>filePath</c> when the program is a script.
+    ///
+    /// <para>The engine launches through <c>CreateProcess</c> — <c>useShellExecute=true</c> is blocked
+    /// by configuration — and that cannot start a <c>.ps1</c> or a <c>.vbs</c>: it fails with Win32
+    /// 193, "not a valid Win32 application". Leaving the script in <c>filePath</c> therefore imports a
+    /// node that can never run, and routing it through <c>cmd</c> is worse than that: <c>.PS1</c> is
+    /// not in <c>PATHEXT</c> and has no association, so the launch falls through to the shell handler
+    /// and opens the file in an editor, where it sits until the step's timeout expires.</para>
+    ///
+    /// <para><c>cscript //nologo //B</c> rather than the file association on purpose: the association
+    /// for <c>.vbs</c> is <c>wscript.exe</c>, the WINDOWED host, which captures no stdout and turns a
+    /// <c>WScript.Echo</c> into a dialog no unattended session can answer. <c>-NoProfile -File</c>
+    /// deliberately WITHOUT <c>-ExecutionPolicy Bypass</c>: synthesizing an interpreter is already the
+    /// smallest honest step, and quietly relaxing the execution policy would be a second one the
+    /// export never asked for. If policy blocks the script it fails with a legible error.</para>
+    /// </summary>
+    private static (string Program, string Arguments) ResolveScriptHead(
+        string program, string arguments, List<string> notes)
+    {
+        if (program.Length == 0 || HoldsReference(program)) return (program, arguments);
+
+        var ext = Path.GetExtension(program);
+        if (ext.Length == 0 || ExecutableExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
+            return (program, arguments);
+
+        var tail = arguments.Length == 0 ? "" : $" {arguments}";
+
+        if (ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase))
+        {
+            notes.Add($"SCOrch 'Run Program' launched the script '{program}'. A script is not something " +
+                      "CreateProcess can start, so it now runs through PowerShell (-NoProfile -File).");
+            return (PowerShellExe, $@"-NoProfile -File ""{program}""{tail}");
+        }
+
+        if (WindowsScriptHostExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase))
+        {
+            notes.Add($"SCOrch 'Run Program' launched the script '{program}'. A script is not something " +
+                      "CreateProcess can start, so it now runs through cscript (//nologo //B), the " +
+                      "console host — the file association would use the windowed one, which captures " +
+                      "no output.");
+            return (CScriptExe, $@"//nologo //B ""{program}""{tail}");
+        }
+
+        notes.Add($"SCOrch 'Run Program' names '{program}', whose '{ext}' is not something CreateProcess " +
+                  "can start. Put its interpreter in filePath and the script in arguments before " +
+                  "enabling the node.");
+        return (program, arguments);
+    }
+
+    private static readonly string[] WindowsScriptHostExtensions = [".vbs", ".vbe", ".wsf"];
+
+    /// <summary>
     /// Whether a value is built from a reference rather than being a literal path: either a
     /// NodePilot template, or a SCOrch Published-Data marker still awaiting rewrite. The mapper runs
     /// BEFORE that rewrite, so the raw marker is what a program path built from a runbook variable
@@ -454,6 +507,8 @@ internal static class ScorchActivityMapper
         value.Contains("{{", StringComparison.Ordinal) || value.Contains("`d.T.~", StringComparison.Ordinal);
 
     private const string CmdExe = @"C:\Windows\System32\cmd.exe";
+    private const string PowerShellExe = @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe";
+    private const string CScriptExe = @"C:\Windows\System32\cscript.exe";
 
     /// <summary>
     /// Launchers whose bare name is unambiguous on every Windows installation. Deliberately short:
@@ -463,8 +518,8 @@ internal static class ScorchActivityMapper
     private static readonly Dictionary<string, string> KnownLaunchers = new(StringComparer.OrdinalIgnoreCase)
     {
         ["cmd"] = CmdExe,
-        ["powershell"] = @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
-        ["cscript"] = @"C:\Windows\System32\cscript.exe",
+        ["powershell"] = PowerShellExe,
+        ["cscript"] = CScriptExe,
         ["wscript"] = @"C:\Windows\System32\wscript.exe",
     };
 
@@ -487,29 +542,50 @@ internal static class ScorchActivityMapper
             return close > 0 ? (v[1..close], v[(close + 1)..].Trim()) : null;
         }
 
-        foreach (var ext in ExecutableExtensions)
+        // Scan left to right for the FIRST extension that ends a token, not extension-by-extension:
+        // iterating the list per type made ".exe" anywhere beat an earlier ".cmd", so
+        // "C:\Tools\wrapper.cmd C:\Payload\setup.exe /S" split at the payload and put the whole line
+        // in filePath.
+        //
+        // A match only counts when nothing before it looks like a switch. Without that,
+        // "python C:\S\check.py --domain contoso.com" matches the ".com" of the HOSTNAME at
+        // end-of-string and swallows the entire command line as the path — silently, since a
+        // full-line filePath draws no warning.
+        for (var i = 0; i < v.Length; i++)
         {
-            var at = v.IndexOf(ext, StringComparison.OrdinalIgnoreCase);
-            while (at >= 0)
-            {
-                var end = at + ext.Length;
-                if (end == v.Length) return (v, "");
-                if (char.IsWhiteSpace(v[end])) return (v[..end], v[end..].Trim());
-                at = v.IndexOf(ext, end, StringComparison.OrdinalIgnoreCase);
-            }
+            var ext = ExecutableExtensions.FirstOrDefault(
+                e => i + e.Length <= v.Length && v.AsSpan(i, e.Length).Equals(e, StringComparison.OrdinalIgnoreCase));
+            if (ext is null) continue;
+
+            var end = i + ext.Length;
+            if (end != v.Length && !char.IsWhiteSpace(v[end])) continue;
+            if (HasSwitchToken(v[..end])) break;
+
+            return end == v.Length ? (v, "") : (v[..end], v[end..].Trim());
         }
 
-        // No extension: a single token is still a path (extension-less launchers exist).
+        // No usable extension: a single token is still a path (extension-less launchers exist).
         if (!v.AsSpan().ContainsAny(WhitespaceChars)) return (v, "");
 
-        // Several tokens, no extension. A first token whose remainder is switch-shaped is a launcher
-        // with its switches ("cmd /c dir"); a path we merely failed to delimit is not, because its
-        // continuation is more path ("C:\Program Files\Acme\launcher -x" → "Files\Acme\…").
+        // Several tokens. A first token carrying no directory of its own is a command NAME with its
+        // arguments ("cmd /c dir", "python C:\S\check.py --domain x"): still a program call, and the
+        // absolute-path note below tells the operator to complete it. A value we merely failed to
+        // delimit is not, because its continuation is more path
+        // ("C:\Program Files\Acme\launcher -x" → "Files\Acme\…") — that one goes to the shell wrap.
         var head = v.Split(WhitespaceSeparators, 2, StringSplitOptions.RemoveEmptyEntries);
-        if (head.Length == 2 && (head[1][0] == '/' || head[1][0] == '-')) return (head[0], head[1].Trim());
+        if (head.Length == 2 && !head[0].AsSpan().ContainsAny(PathSeparators))
+            return (head[0], head[1].Trim());
 
         return null;
     }
+
+    /// <summary>Whether any whitespace-delimited token in the value starts a switch.</summary>
+    private static bool HasSwitchToken(string value) =>
+        value.Split(WhitespaceSeparators, StringSplitOptions.RemoveEmptyEntries)
+             .Any(t => t[0] is '-' or '/');
+
+    private static readonly System.Buffers.SearchValues<char> PathSeparators =
+        System.Buffers.SearchValues.Create(@"\/:");
 
     private static readonly System.Buffers.SearchValues<char> WhitespaceChars =
         System.Buffers.SearchValues.Create(" \t");

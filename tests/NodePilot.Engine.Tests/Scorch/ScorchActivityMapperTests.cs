@@ -238,6 +238,71 @@ public class ScorchActivityMapperTests
         result.Note.Should().BeNull();
     }
 
+    /// <summary>
+    /// The executable is the FIRST one positionally, not the first by extension type. Scanning
+    /// ".exe" across the whole value before ".cmd" made a wrapper hand its own payload to filePath.
+    /// And an extension only counts when nothing before it is a switch — otherwise the ".com" of a
+    /// hostname at the end of the line swallows the entire command line as the path, silently,
+    /// because a full-line filePath draws no warning of its own.
+    /// </summary>
+    [Theory]
+    [InlineData(@"C:\Tools\wrapper.cmd C:\Payload\setup.exe /S", @"C:\Tools\wrapper.cmd", @"C:\Payload\setup.exe /S")]
+    [InlineData(@"python C:\Scripts\check.py --domain contoso.com", "python", @"C:\Scripts\check.py --domain contoso.com")]
+    [InlineData(@"net use Z: \\srv\share /persistent:no", "net", @"use Z: \\srv\share /persistent:no")]
+    public void Map_RunProgram_TakesTheFirstExecutableTokenNotTheFirstExtensionType(
+        string program, string path, string args)
+    {
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), new Dictionary<string, string> { ["Program"] = program });
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(path);
+        result.Config["arguments"].Should().Be(args);
+    }
+
+    /// <summary>
+    /// The engine launches through CreateProcess — useShellExecute is blocked by configuration — and
+    /// that cannot start a script: Win32 193. A .ps1 left in filePath is a node that can never run,
+    /// and routing it through cmd is worse, because .PS1 has no association and the launch falls
+    /// through to an editor that sits there until the step times out.
+    /// </summary>
+    [Theory]
+    [InlineData(@"C:\Scripts\Deploy.ps1", "",
+                @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                @"-NoProfile -File ""C:\Scripts\Deploy.ps1""")]
+    [InlineData(@"C:\Scripts\Deploy.ps1", "-Env Prod",
+                @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                @"-NoProfile -File ""C:\Scripts\Deploy.ps1"" -Env Prod")]
+    [InlineData(@"C:\Scripts\Legacy.vbs", "",
+                @"C:\Windows\System32\cscript.exe",
+                @"//nologo //B ""C:\Scripts\Legacy.vbs""")]
+    public void Map_RunProgram_PutsTheInterpreterInFilePathForAScript(
+        string program, string parameters, string path, string args)
+    {
+        var props = new Dictionary<string, string> { ["Program"] = program };
+        if (parameters.Length > 0) props["Parameters"] = parameters;
+
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), props);
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(path);
+        result.Config["arguments"].Should().Be(args);
+        result.Note.Should().Contain("CreateProcess");
+    }
+
+    /// <summary>An extension we have no interpreter for stays put and says so — loud and one edit
+    /// away beats a silently wrong guess.</summary>
+    [Fact]
+    public void Map_RunProgram_ReportsAnExtensionItCannotLaunch()
+    {
+        var result = ScorchActivityMapper.Map(
+            Obj("Run Program"),
+            new Dictionary<string, string> { ["Program"] = @"C:\Tools\bundle.jar" });
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(@"C:\Tools\bundle.jar");
+        result.Note.Should().Contain("interpreter");
+    }
+
     /// <summary>The counterpart that must NOT move: an embedded script body stays a script node.
     /// The export distinguishes the two, and that distinction is the whole contract here.</summary>
     [Fact]
