@@ -28,6 +28,18 @@ On the **Workflows** page there are two routes to a folder's permissions dialog 
 - **Right-click** the folder in the tree → **Permissions…**. This also works on the root folder `\`, which can be neither renamed nor deleted and therefore has no other context-menu entry.
 - **Click the folder** (select it) → the **Permissions…** button at the bottom of the folder card.
 
+## Selecting multiple workflows
+
+Every row in the workflow list has a checkbox on the left, and the header checkbox selects all **visible** rows (those of the filtered folder). Holding `Shift` selects the range since the last click. As soon as something is selected, an action bar appears above the list with **Move**, **Enable**, **Disable**, **Export** and **Delete**.
+
+The bar calls no bulk API; it runs the same single-workflow actions one after another. Each one therefore keeps its own permission check, its own edit-lock check and its own audit entry — a bulk action is never a way around a permission. That shapes how it behaves:
+
+- A button is enabled only when the **whole** selection permits it; otherwise the tooltip names the reason. **Delete** requires the Admin role, everything else `FolderEditor`.
+- **Enable** is blocked as soon as one selected workflow is checked out — `POST /enable` rejects any lock with `423`, including the caller's own. **Disable** ignores locks (kill switch).
+- A failure does not stop the run: the remaining workflows are processed, a summary message names the failed ones, and exactly those stay selected — clicking again retries only them.
+- **Move** works through a destination dialog (folders without write access are disabled) **or** by drag and drop: drag a selected row onto a folder in the tree and the whole selection follows. Workflows already in the destination folder are skipped.
+- **Export** writes all selected workflows into **one** `nodepilot-workflow-export/v1` file — it can be read back unchanged via **Import**.
+
 ## Default mapping (migration + creation)
 
 | Global user role | Folder permission on the root |

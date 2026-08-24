@@ -3568,6 +3568,23 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ---
 
+### Test 52.5 — Mehrfachauswahl in der Workflow-Liste
+
+**Voraussetzung:** Mindestens drei Workflows in der Liste, Aufrufer ist Admin.
+
+**Prüfpunkte:**
+- [ ] Zeilen-Checkbox markiert eine Zeile ohne in den Designer zu navigieren; Kopf-Checkbox wählt alle **sichtbaren** Zeilen, `Shift`-Klick den Bereich seit dem letzten Klick.
+- [ ] Aktionsleiste erscheint erst ab einer Auswahl, zeigt die Anzahl und verschwindet nach **Auswahl aufheben**.
+- [ ] **Löschen:** ein einziger Bestätigungsdialog für die Auswahl, danach genau ein `DELETE /api/workflows/{id}` je markiertem Workflow.
+- [ ] **Verschieben:** Zielordner-Dialog → ein `POST /api/workflows/{id}/move-folder` je Workflow; bereits im Zielordner liegende werden übersprungen. Ordner ohne `canEdit` sind im Dialog deaktiviert.
+- [ ] **Drag & Drop:** Ziehen einer *ausgewählten* Zeile auf einen Ordner verschiebt die ganze Auswahl; Ziehen einer nicht ausgewählten Zeile bleibt Einzel-Move.
+- [ ] **Aktivieren/Deaktivieren:** je ein `POST .../enable` bzw. `.../disable` für die Workflows, die noch nicht im Zielzustand sind.
+- [ ] **Exportieren:** eine einzige Datei mit `schema: "nodepilot-workflow-export/v1"` und allen ausgewählten Workflows unter `workflows[]`; über **Importieren** wieder einlesbar.
+- [ ] **Rechte:** Ein ausgewählter Workflow ohne `canDelete` deaktiviert **Löschen**; einer ohne `canEdit` deaktiviert **Verschieben**/**Aktivieren**/**Deaktivieren**; ein ausgecheckter Workflow deaktiviert **Aktivieren** (nicht **Deaktivieren**). Der Tooltip nennt jeweils den Grund.
+- [ ] **Teilfehlschlag:** Ein `423` auf einem Workflow bricht den Lauf nicht ab — die übrigen laufen durch, eine Sammelmeldung nennt den gescheiterten namentlich, und genau dieser bleibt ausgewählt.
+
+---
+
 ## Teil 53: Schedule Next-Fires & AI Generate-Workflow
 
 ### Test 53.1 — Next-Fires
@@ -4711,7 +4728,7 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 49: Execution Retry & Cancel-All (49.1 — 49.4)
 [ ] Teil 50: Workflow Duplicate, By-Name-Lookup & Bulk-Export (50.1 — 50.6)
 [ ] Teil 51: Step Stats & Step Health (51.1 — 51.3)
-[ ] Teil 52: Folder Move — Shared Folders & Workflow Move-Folder (52.1 — 52.4)
+[ ] Teil 52: Folder Move — Shared Folders & Workflow Move-Folder (52.1 — 52.5)
 [ ] Teil 53: Schedule Next-Fires & AI Generate-Workflow (53.1 — 53.5)
 [ ] Teil 54: Designer-Overlays — Command Palette, Quick Switcher, Find & Replace (54.1 — 54.3)
 [ ] Teil 55: Erweiterte Keyboard-Shortcuts (55.1 — 55.4)
