@@ -51,7 +51,7 @@ built on GDI+ and is invoked through Windows PowerShell (5.1) both here and in t
 
 - **No runtime dependencies.** `dependencies` is empty and stays that way; everything that ships is
   Electron itself. Anything else belongs in the SPA or the backend.
-- **Electron is pinned exactly** (`"electron": "43.4.0"`). Runtime-only Node APIs must be checked
+- **Electron is pinned exactly** (`"electron": "43.4.1"`). Runtime-only Node APIs must be checked
   against Electron's embedded Node release rather than inferred from `@types/node` — typing against
   APIs the shipped runtime does not have is how this breaks silently.
 - **Archive extraction is vendor-hardened.** Packager 20.3.0 and Electron's native extractor 1.0.5

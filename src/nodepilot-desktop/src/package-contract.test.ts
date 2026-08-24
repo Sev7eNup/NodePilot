@@ -22,13 +22,13 @@ function readJson<T>(relativePath: string): T {
 }
 
 describe('desktop runtime dependency contract', () => {
-  it('pins Electron 43.4.0 consistently in the manifest and lockfile', () => {
+  it('pins Electron 43.4.1 consistently in the manifest and lockfile', () => {
     const manifest = readJson<PackageManifest>('../package.json');
     const lock = readJson<PackageLock>('../package-lock.json');
 
-    expect(manifest.devDependencies.electron).toBe('43.4.0');
-    expect(lock.packages[''].devDependencies?.electron).toBe('43.4.0');
-    expect(lock.packages['node_modules/electron'].version).toBe('43.4.0');
+    expect(manifest.devDependencies.electron).toBe('43.4.1');
+    expect(lock.packages[''].devDependencies?.electron).toBe('43.4.1');
+    expect(lock.packages['node_modules/electron'].version).toBe('43.4.1');
   });
 
   it('uses Electron vendor extraction without the vulnerable extract-zip package', () => {
