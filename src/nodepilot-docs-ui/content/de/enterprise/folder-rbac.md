@@ -28,6 +28,18 @@ Auf der Seite **Workflows** gibt es zwei Wege zum Berechtigungs-Dialog eines Ord
 - **Rechtsklick** auf den Ordner im Baum → **Berechtigungen…**. Funktioniert auch auf dem Root-Ordner `\`, der weder umbenannt noch gelöscht werden kann und deshalb sonst keinen Kontextmenü-Eintrag hat.
 - **Ordner anklicken** (auswählen) → Button **Berechtigungen…** am unteren Rand der Ordner-Karte.
 
+## Workflows mehrfach auswählen
+
+Jede Zeile der Workflow-Liste hat links eine Checkbox, die Kopfzeile wählt alle **sichtbaren** Zeilen (also die des gefilterten Ordners). Mit gedrückter `Shift`-Taste wird der Bereich seit dem letzten Klick markiert. Sobald etwas ausgewählt ist, erscheint über der Liste eine Aktionsleiste mit **Verschieben**, **Aktivieren**, **Deaktivieren**, **Exportieren** und **Löschen**.
+
+Die Leiste ruft keine Sammel-API auf, sondern führt dieselben Einzelaktionen nacheinander aus. Jede einzelne behält damit ihre Rechteprüfung, ihren Edit-Lock-Check und ihren Audit-Eintrag — eine Sammelaktion ist nie ein Weg an einer Berechtigung vorbei. Daraus folgt die Bedienlogik:
+
+- Ein Button ist nur aktiv, wenn die **gesamte** Auswahl ihn zulässt; sonst nennt der Tooltip den Grund. **Löschen** verlangt die Admin-Rolle, alles andere `FolderEditor`.
+- **Aktivieren** ist gesperrt, sobald ein ausgewählter Workflow ausgecheckt ist — `POST /enable` weist jeden Lock mit `423` ab, auch den eigenen. **Deaktivieren** ignoriert Locks (Kill-Switch).
+- Ein Fehlschlag stoppt den Lauf nicht: die übrigen Workflows werden fertig verarbeitet, eine Sammelmeldung nennt die gescheiterten namentlich, und genau diese bleiben ausgewählt — ein erneuter Klick wiederholt nur sie.
+- **Verschieben** geht über einen Zielordner-Dialog (Ordner ohne Schreibrecht sind deaktiviert) **oder** per Drag & Drop: zieht man eine ausgewählte Zeile auf einen Ordner im Baum, wandert die ganze Auswahl mit. Workflows, die bereits im Zielordner liegen, werden übersprungen.
+- **Exportieren** legt alle ausgewählten Workflows in **eine** Datei im Format `nodepilot-workflow-export/v1` — sie lässt sich über **Importieren** unverändert wieder einlesen.
+
 ## Default-Mapping (Migration + Create)
 
 | Globale UserRole | Folder-Permission auf Root |

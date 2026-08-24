@@ -18,6 +18,9 @@ import { useRole } from '../lib/rbac';
 import { useAuthStore } from '../stores/authStore';
 import { SharedFolderTree, WORKFLOW_DRAG_MIME } from '../components/workflows/SharedFolderTree';
 import { SharedFolderPermissionsModal } from '../components/workflows/SharedFolderPermissionsModal';
+import { WorkflowBulkBar } from '../components/workflows/WorkflowBulkBar';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { useWorkflowBulkActions } from '../hooks/useWorkflowBulkActions';
 import { ROOT_FOLDER_ID, sharedFoldersApi, type SharedFolder } from '../api/sharedFolders';
 import { ResizeHandle, CornerResizeHandle } from '../components/designer/library/NodeLibrary';
 import { useResizable } from '../hooks/useResizable';
@@ -55,6 +58,9 @@ type ScorchImportResponse = {
   warnings: string[];
   errors: string[];
 };
+
+/** Module-level so the identity stays stable across renders — useBulkSelection memoizes on it. */
+const workflowKey = (w: Workflow) => w.id;
 
 function buildTriggerMeta(t: (k: string) => string): Record<string, { label: string; icon: typeof Time; className: string }> {
   return {
@@ -445,6 +451,7 @@ export function WorkflowsPage() {
   type ResizableColKey = Exclude<ColKey, 'name'>;
   const NAME_MIN_WIDTH = 280;
   const ACTIONS_WIDTH = 220; // ≤7 buttons × ~28px + gap-1 + px-4 cell padding
+  const SELECT_WIDTH = 44;   // checkbox + px-3 cell padding
   const DEFAULT_WIDTHS: Record<ResizableColKey, number> = {
     activities: 90, triggers: 195, status: 160,
     lastRun: 110, successRate: 130, runtime: 90, created: 170, updated: 170,
@@ -521,6 +528,17 @@ export function WorkflowsPage() {
       return sortDir === 'asc' ? cmp : -cmp;
     });
   }, [filteredWorkflows, sortBy, sortDir]);
+
+  // Row multi-selection for the bulk action bar. Bound to `sortedWorkflows` — the list as
+  // rendered — so shift-range follows the visible order and the hook prunes ids that leave the
+  // list (folder switch, refetch, and the rows a bulk delete just removed).
+  const selection = useBulkSelection(sortedWorkflows, workflowKey);
+  const bulkActions = useWorkflowBulkActions(selection.retain);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    // `indeterminate` is a DOM property with no HTML attribute — React cannot set it via JSX.
+    if (selectAllRef.current) selectAllRef.current.indeterminate = selection.someSelected;
+  }, [selection.someSelected]);
 
   // Measure the scroll offset between #np-main-scroll and the tbody after the table
   // renders. Re-runs when loading completes (table appears) or mobile/desktop switches.
@@ -699,6 +717,13 @@ export function WorkflowsPage() {
                 queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
               }}
               onWorkflowDropped={(workflowId, targetFolderId) => {
+                // Dragging a row that is part of the multi-selection moves the WHOLE selection.
+                // The drag itself still carries a single id, so SharedFolderTree's contract is
+                // untouched — the fan-out is decided here, where the selection lives.
+                if (selection.isSelected(workflowId) && selection.selectedCount > 1) {
+                  void bulkActions.moveWorkflows(selection.selectedItems, targetFolderId);
+                  return;
+                }
                 // Skip a no-op move when the workflow is already in the target folder —
                 // saves a round-trip and keeps the audit log clean.
                 const wf = workflows?.find((w) => w.id === workflowId);
@@ -780,6 +805,20 @@ export function WorkflowsPage() {
         })()}
 
       <div className="flex-1 min-w-0 lg:ml-3">
+      {/* Bulk action bar — only present while something is selected, so the list keeps its
+          normal layout the rest of the time. Sits inside the right column so showing it never
+          shifts the folder tree. */}
+      {selection.selectedCount > 0 && (
+        <WorkflowBulkBar
+          selected={selection.selectedItems}
+          actions={bulkActions}
+          onClear={selection.clear}
+          canDelete={rowCanDelete}
+          canEdit={rowCanEdit}
+          canExport={canWrite}
+        />
+      )}
+
       {isLoading ? (
         <p className="text-outline">{t('common:loadingDots')}</p>
       ) : isError ? (
@@ -813,6 +852,24 @@ export function WorkflowsPage() {
           renderTitle={(w) => (
             <div className="min-w-0">
               <div className="flex items-center gap-2 min-w-0">
+                {/* The card's whole surface is the tap target and, unlike the desktop row, it has
+                    no click filter — so the checkbox stops propagation itself. Keeping it here
+                    also leaves MobileCardList (shared with other pages) untouched. */}
+                <span
+                  role="presentation"
+                  className="shrink-0 flex items-center"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    className="cursor-pointer align-middle"
+                    checked={selection.isSelected(w.id)}
+                    onChange={() => selection.toggle(w.id)}
+                    aria-label={t('workflows:bulk.selectRow', { name: w.name })}
+                    data-testid={`workflow-select-${w.id}`}
+                  />
+                </span>
                 <span className="text-sm font-semibold text-on-surface truncate">{w.name}</span>
                 <span className="text-[10px] font-medium text-outline bg-surface-container rounded px-1.5 py-0.5 shrink-0">v{w.version}</span>
               </div>
@@ -930,12 +987,25 @@ export function WorkflowsPage() {
               width: '100%',
               minWidth:
                 Object.values(colWidths).reduce((a, b) => a + b, 0)
+                + SELECT_WIDTH
                 + ACTIONS_WIDTH
                 + NAME_MIN_WIDTH,
             }}
           >
             <thead className="np-col-header text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
               <tr>
+                <th style={{ width: SELECT_WIDTH }} className="px-3 py-2">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    className="cursor-pointer align-middle"
+                    checked={selection.allSelected}
+                    onChange={selection.toggleAll}
+                    aria-label={t('workflows:bulk.selectAll')}
+                    title={t('workflows:bulk.selectAll')}
+                    data-testid="workflow-select-all"
+                  />
+                </th>
                 <th style={{ minWidth: NAME_MIN_WIDTH }} className="relative px-4 py-2 whitespace-nowrap overflow-hidden">
                   <button
                     onClick={() => handleSort('name')}
@@ -976,7 +1046,7 @@ export function WorkflowsPage() {
               {(() => {
                 const items = rowVirtualizer.getVirtualItems();
                 const top = (items[0]?.start ?? 0) - scrollMargin;
-                return top > 0 ? <tr><td colSpan={10} style={{ height: top }} /></tr> : null;
+                return top > 0 ? <tr><td colSpan={11} style={{ height: top }} /></tr> : null;
               })()}
               {rowVirtualizer.getVirtualItems().map((vRow) => {
                 const w = sortedWorkflows[vRow.index];
@@ -998,15 +1068,35 @@ export function WorkflowsPage() {
                   onDragStart={(e) => {
                     if (!canDrag) return;
                     e.dataTransfer.effectAllowed = 'move';
+                    // Always a single id: SharedFolderTree's drop contract stays untouched, and
+                    // the drop handler fans out to the whole selection when this row is part of
+                    // it. Dragging an UNselected row keeps moving just that row.
                     e.dataTransfer.setData(WORKFLOW_DRAG_MIME, w.id);
+                    const dragsSelection = selection.isSelected(w.id) && selection.selectedCount > 1;
                     // Plain-text fallback is useful for accidental drops into editors / debug.
-                    e.dataTransfer.setData('text/plain', w.name);
+                    e.dataTransfer.setData(
+                      'text/plain',
+                      dragsSelection
+                        ? t('workflows:bulk.dragCount', { count: selection.selectedCount })
+                        : w.name,
+                    );
                   }}
                 >
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      className="cursor-pointer align-middle"
+                      checked={selection.isSelected(w.id)}
+                      onChange={(e) => selection.toggle(w.id, (e.nativeEvent as MouseEvent).shiftKey)}
+                      aria-label={t('workflows:bulk.selectRow', { name: w.name })}
+                      data-testid={`workflow-select-${w.id}`}
+                    />
+                  </td>
                   <td className="px-4 py-2 overflow-hidden">
                     <div className="flex items-center gap-2 min-w-0">
                       <button
                         onClick={() => navigate(`/workflows/${w.id}`)}
+                        data-testid="workflow-row-name"
                         className="text-sm font-semibold text-on-surface-variant hover:text-primary transition-colors truncate text-left"
                       >
                         {w.name}
@@ -1194,7 +1284,7 @@ export function WorkflowsPage() {
               {(() => {
                 const items = rowVirtualizer.getVirtualItems();
                 const bottom = rowVirtualizer.getTotalSize() - (items.at(-1)?.end ?? 0);
-                return bottom > 0 ? <tr><td colSpan={10} style={{ height: bottom }} /></tr> : null;
+                return bottom > 0 ? <tr><td colSpan={11} style={{ height: bottom }} /></tr> : null;
               })()}
             </tbody>
           </table>

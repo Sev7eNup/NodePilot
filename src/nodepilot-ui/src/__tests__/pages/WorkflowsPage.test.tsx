@@ -1037,3 +1037,307 @@ describe('WorkflowsPage — load failure', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });
+
+const BULK_ROOT = '00000000-0000-0000-0000-000000000001';
+const BULK_CAPS = { canRead: true, canRun: true, canEdit: true, canAdmin: true };
+
+/** Root + one editable subfolder — the destination list the move dialog renders. */
+function bulkFolders(financeCount = 0) {
+  return [
+    { id: BULK_ROOT, parentFolderId: null, name: 'Root', path: '\\', depth: 0,
+      createdAt: '2026-06-01T00:00:00.000Z', createdByUserId: null, workflowCount: 2,
+      capabilities: BULK_CAPS },
+    { id: 'f-1', parentFolderId: BULK_ROOT, name: 'Finance', path: '\\Finance', depth: 1,
+      createdAt: '2026-06-01T00:00:00.000Z', createdByUserId: null, workflowCount: financeCount,
+      capabilities: BULK_CAPS },
+  ];
+}
+
+describe('WorkflowsPage — bulk selection', () => {
+  const TWO = [
+    mkWorkflow({ id: 'wf-1', name: 'Alpha' }),
+    mkWorkflow({ id: 'wf-2', name: 'Beta', isEnabled: false }),
+  ];
+
+  async function renderWithRows(rows: Workflow[] = TWO) {
+    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(rows)));
+    renderPage('Admin');
+    await waitFor(() => expect(screen.getByText(rows[0].name)).toBeInTheDocument());
+  }
+
+  const selectRow = (id: string) => fireEvent.click(screen.getByTestId(`workflow-select-${id}`));
+
+  it('shows no bulk bar until something is selected', async () => {
+    await renderWithRows();
+    expect(screen.queryByTestId('workflow-bulk-bar')).not.toBeInTheDocument();
+
+    selectRow('wf-1');
+    expect(await screen.findByTestId('workflow-bulk-bar')).toHaveTextContent('1 selected');
+  });
+
+  it('select-all selects every visible row and clears again', async () => {
+    await renderWithRows();
+    const selectAll = screen.getByTestId('workflow-select-all');
+
+    fireEvent.click(selectAll);
+    expect(await screen.findByTestId('workflow-bulk-bar')).toHaveTextContent('2 selected');
+    expect((screen.getByTestId('workflow-select-wf-2') as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(selectAll);
+    await waitFor(() => expect(screen.queryByTestId('workflow-bulk-bar')).not.toBeInTheDocument());
+  });
+
+  it('select-all renders indeterminate while only part of the list is selected', async () => {
+    await renderWithRows();
+    selectRow('wf-1');
+    await screen.findByTestId('workflow-bulk-bar');
+    expect((screen.getByTestId('workflow-select-all') as HTMLInputElement).indeterminate).toBe(true);
+
+    selectRow('wf-2');
+    await waitFor(() =>
+      expect((screen.getByTestId('workflow-select-all') as HTMLInputElement).indeterminate).toBe(false));
+  });
+
+  it('the clear button drops the selection', async () => {
+    await renderWithRows();
+    fireEvent.click(screen.getByTestId('workflow-select-all'));
+    fireEvent.click(await screen.findByTestId('bulk-clear'));
+    await waitFor(() => expect(screen.queryByTestId('workflow-bulk-bar')).not.toBeInTheDocument());
+  });
+
+  it('ticking a row checkbox does not navigate to the editor', async () => {
+    await renderWithRows();
+    selectRow('wf-1');
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  it('switching folders clears the selection', async () => {
+    server.use(http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json(bulkFolders())));
+    await renderWithRows([mkWorkflow({ id: 'wf-1', name: 'Alpha', folderId: BULK_ROOT })]);
+
+    selectRow('wf-1');
+    expect(await screen.findByTestId('workflow-bulk-bar')).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByText('Finance'));
+    // Alpha is not in /Finance, so the row leaves the list and the selection prunes with it.
+    await waitFor(() => expect(screen.queryByTestId('workflow-bulk-bar')).not.toBeInTheDocument());
+  });
+});
+
+describe('WorkflowsPage — bulk actions', () => {
+  const TWO = [
+    mkWorkflow({ id: 'wf-1', name: 'Alpha' }),
+    mkWorkflow({ id: 'wf-2', name: 'Beta' }),
+  ];
+
+  async function selectBoth(rows: Workflow[] = TWO, role: 'Admin' | 'Operator' | 'Viewer' = 'Admin') {
+    server.use(http.get(`${BASE}/api/workflows`, () => HttpResponse.json(rows)));
+    renderPage(role);
+    await waitFor(() => expect(screen.getByText(rows[0].name)).toBeInTheDocument());
+    fireEvent.click(screen.getByTestId('workflow-select-all'));
+    await screen.findByTestId('workflow-bulk-bar');
+  }
+
+  it('deletes every selected workflow after a single confirm', async () => {
+    const deleted: string[] = [];
+    server.use(http.delete(`${BASE}/api/workflows/:id`, ({ params }) => {
+      deleted.push(params.id as string);
+      return new HttpResponse(null, { status: 204 });
+    }));
+    await selectBoth();
+    // The confirm mock is module-level, so earlier tests in this file have already used it.
+    vi.mocked(confirmDialog).mockClear();
+
+    fireEvent.click(screen.getByTestId('bulk-delete'));
+
+    await waitFor(() => expect(deleted).toEqual(['wf-1', 'wf-2']));
+    // One confirm for the batch, not one per workflow — that is the whole point.
+    expect(confirmDialog).toHaveBeenCalledTimes(1);
+  });
+
+  it('deletes nothing when the confirm is declined', async () => {
+    const deleted: string[] = [];
+    server.use(http.delete(`${BASE}/api/workflows/:id`, ({ params }) => {
+      deleted.push(params.id as string);
+      return new HttpResponse(null, { status: 204 });
+    }));
+    vi.mocked(confirmDialog).mockResolvedValueOnce(false);
+    await selectBoth();
+
+    fireEvent.click(screen.getByTestId('bulk-delete'));
+    await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+    expect(deleted).toEqual([]);
+  });
+
+  it('a failing item does not stop the batch and stays selected for a retry', async () => {
+    server.use(http.delete(`${BASE}/api/workflows/:id`, ({ params }) =>
+      params.id === 'wf-1'
+        ? HttpResponse.json({ message: 'Workflow is checked out' }, { status: 423 })
+        : new HttpResponse(null, { status: 204 })));
+    await selectBoth();
+
+    fireEvent.click(screen.getByTestId('bulk-delete'));
+
+    // The failure report names the workflow that refused...
+    await waitFor(() => {
+      const toasts = useToastStore.getState().toasts;
+      expect(toasts.some((t) => t.kind === 'error' && t.message.includes('Alpha'))).toBe(true);
+    });
+    // ...and only that one is left selected.
+    await waitFor(() =>
+      expect(screen.getByTestId('workflow-bulk-bar')).toHaveTextContent('1 selected'));
+  });
+
+  it('moves every selected workflow into the chosen folder', async () => {
+    const moved: { id: string; target: string }[] = [];
+    server.use(
+      http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json(bulkFolders())),
+      http.post(`${BASE}/api/workflows/:id/move-folder`, async ({ params, request }) => {
+        const body = await request.json() as { targetFolderId: string };
+        moved.push({ id: params.id as string, target: body.targetFolderId });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await selectBoth([
+      mkWorkflow({ id: 'wf-1', name: 'Alpha', folderId: BULK_ROOT }),
+      mkWorkflow({ id: 'wf-2', name: 'Beta', folderId: BULK_ROOT }),
+    ]);
+
+    fireEvent.click(screen.getByTestId('bulk-move'));
+    fireEvent.click(await screen.findByTestId('bulk-move-target-f-1'));
+    fireEvent.click(screen.getByTestId('bulk-move-confirm'));
+
+    await waitFor(() => expect(moved).toEqual([
+      { id: 'wf-1', target: 'f-1' },
+      { id: 'wf-2', target: 'f-1' },
+    ]));
+  });
+
+  it('skips a workflow that already sits in the target folder', async () => {
+    const moved: string[] = [];
+    server.use(
+      http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json(bulkFolders(1))),
+      http.post(`${BASE}/api/workflows/:id/move-folder`, ({ params }) => {
+        moved.push(params.id as string);
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await selectBoth([
+      mkWorkflow({ id: 'wf-1', name: 'Alpha', folderId: 'f-1' }),
+      mkWorkflow({ id: 'wf-2', name: 'Beta', folderId: BULK_ROOT }),
+    ]);
+
+    fireEvent.click(screen.getByTestId('bulk-move'));
+    fireEvent.click(await screen.findByTestId('bulk-move-target-f-1'));
+    fireEvent.click(screen.getByTestId('bulk-move-confirm'));
+
+    await waitFor(() => expect(moved).toEqual(['wf-2']));
+  });
+
+  it('the move dialog disables folders the caller cannot edit', async () => {
+    server.use(http.get(`${BASE}/api/shared-workflow-folders`, () => HttpResponse.json([
+      bulkFolders()[0],
+      { ...bulkFolders()[1], capabilities: { ...BULK_CAPS, canEdit: false } },
+    ])));
+    await selectBoth();
+
+    fireEvent.click(screen.getByTestId('bulk-move'));
+    expect(await screen.findByTestId('bulk-move-target-f-1')).toBeDisabled();
+    expect(screen.getByTestId('bulk-move-confirm')).toBeDisabled();
+  });
+
+  it('enable posts only for the workflows that are not enabled yet', async () => {
+    const enabled: string[] = [];
+    server.use(http.post(`${BASE}/api/workflows/:id/enable`, ({ params }) => {
+      enabled.push(params.id as string);
+      return new HttpResponse(null, { status: 204 });
+    }));
+    await selectBoth([
+      mkWorkflow({ id: 'wf-1', name: 'Alpha', isEnabled: true }),
+      mkWorkflow({ id: 'wf-2', name: 'Beta', isEnabled: false }),
+    ]);
+
+    fireEvent.click(screen.getByTestId('bulk-enable'));
+    await waitFor(() => expect(enabled).toEqual(['wf-2']));
+  });
+
+  it('disable posts for every enabled workflow in the selection', async () => {
+    const disabled: string[] = [];
+    server.use(http.post(`${BASE}/api/workflows/:id/disable`, ({ params }) => {
+      disabled.push(params.id as string);
+      return new HttpResponse(null, { status: 204 });
+    }));
+    await selectBoth();
+
+    fireEvent.click(screen.getByTestId('bulk-disable'));
+    await waitFor(() => expect(disabled).toEqual(['wf-1', 'wf-2']));
+  });
+
+  // POST /enable answers 423 for ANY checked-out workflow — including one the caller locked
+  // themselves — so the button refuses up front instead of failing once per row.
+  it('enable is disabled when a checked-out workflow is selected', async () => {
+    await selectBoth([
+      mkWorkflow({ id: 'wf-1', name: 'Alpha' }),
+      mkWorkflow({ id: 'wf-2', name: 'Beta', checkedOutByUserId: 'u-9', checkedOutByUserName: 'otto' }),
+    ]);
+
+    expect(screen.getByTestId('bulk-enable')).toBeDisabled();
+    expect(screen.getByTestId('bulk-disable')).toBeEnabled();
+  });
+
+  it('delete is disabled when a selected row lacks the delete capability', async () => {
+    await selectBoth([
+      mkWorkflow({ id: 'wf-1', name: 'Alpha' }),
+      mkWorkflow({
+        id: 'wf-2', name: 'Beta',
+        capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: false, canAdmin: false },
+      }),
+    ]);
+
+    expect(screen.getByTestId('bulk-delete')).toBeDisabled();
+  });
+
+  it('move is disabled when a selected row lacks the edit capability', async () => {
+    await selectBoth([
+      mkWorkflow({ id: 'wf-1', name: 'Alpha' }),
+      mkWorkflow({
+        id: 'wf-2', name: 'Beta',
+        capabilities: { canRead: true, canRun: false, canEdit: false, canDelete: false, canAdmin: false },
+      }),
+    ]);
+
+    expect(screen.getByTestId('bulk-move')).toBeDisabled();
+  });
+
+  it('hides the bulk export button for a Viewer', async () => {
+    await selectBoth(TWO, 'Viewer');
+    expect(screen.queryByTestId('bulk-export')).not.toBeInTheDocument();
+  });
+
+  it('merges the per-workflow export envelopes into one downloaded file', async () => {
+    server.use(http.get(`${BASE}/api/workflows/:id/export`, ({ params }) => HttpResponse.json({
+      schema: 'nodepilot-workflow-export/v1',
+      exportVersion: 1,
+      exportedAt: '2026-04-26T10:00:00Z',
+      workflow: { name: params.id === 'wf-1' ? 'Alpha' : 'Beta' },
+    })));
+
+    const blobs: Blob[] = [];
+    const createUrl = vi.spyOn(URL, 'createObjectURL').mockImplementation((b) => {
+      blobs.push(b as Blob);
+      return 'blob:mock';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+
+    await selectBoth();
+    fireEvent.click(screen.getByTestId('bulk-export'));
+
+    await waitFor(() => expect(createUrl).toHaveBeenCalled());
+    const envelope = JSON.parse(await blobs[0].text());
+    // One v1 envelope carrying both workflows — exactly what POST /workflows/import accepts.
+    expect(envelope.schema).toBe('nodepilot-workflow-export/v1');
+    expect(envelope.workflows.map((w: { name: string }) => w.name)).toEqual(['Alpha', 'Beta']);
+    expect(envelope.workflow).toBeUndefined();
+  });
+});
