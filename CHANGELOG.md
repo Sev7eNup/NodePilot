@@ -12,40 +12,39 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.14] - 2026-08-24
+
+SCOrch import maps *Run Program* activities to `startProgram` instead of `runScript` in the common
+case of a program path containing spaces. The workflow designer adopts the application's
+ground/chrome relationship in the three light skins.
+
 ### Changed
 
-- The workflow designer now uses the same surface vocabulary as the rest of the product in the
-  three light skins: the canvas is the page ground the shell already paints, and the floating
-  chrome — header, node library, inspector, run dock — is a white plate on top of it, exactly like
-  a card on any other page. Both designer looks had inverted that relationship, Atelier on a warm
-  paper ramp and Classic in cool grey, so next to a dashboard of white plates on light grey the
-  designer read as grey boxes around a brighter hole. It now holds for either look, since the
-  relationship belongs to the light base rather than to a design language. Each skin keeps its own
-  character, because the designer borrows that skin's ramp rather than a palette of its own. The
-  dark skins are unchanged: there the chrome lifting off a deeper canvas floor is intended.
+- The workflow designer uses the same surface tokens as the rest of the application in the three
+  light skins: the canvas is the page ground (`--color-surface-low`) and the floating chrome —
+  header, node library, inspector, run dock — is the plate colour (`--color-surface-lowest`).
+  Previously both designer looks inverted this, Atelier on a separate warm paper ramp and Classic
+  on the inherited tokens in cool grey. The change applies to both looks, since the relationship
+  belongs to the light base rather than to one design language, and each skin keeps its own ramp.
+  The dark skins are unchanged.
 
 ### Fixed
 
-- SCOrch import turned program calls into script nodes. *Run Program* was classified as a whole
-  command line — and therefore degraded to `runScript` — as soon as its program field contained a
-  space and no separate arguments, which is the everyday case of a path under `C:\Program Files\`.
-  A space is not command-line evidence, and `startProgram` never had a problem with one: it needs
-  an absolute path, not a space-free one. The importer now separates an embedded command line into
-  the executable and its arguments, so those calls import as the program calls they are.
-  `runScript` is left for what a single launched process genuinely cannot do — a pipe, a redirect,
-  a chained command — or a program field with no identifiable executable. A program named without
-  a directory stays a program call and is reported in the import report instead of being buried in
-  a script. Already-imported runbooks are not rewritten; re-import to pick this up.
-- The "Calls →" pills in the editor status strip looked like a pair of brackets around the
-  workflow name in the light skins. Their outline was a 1 px ring drawn on the outside of a box
-  whose height came out fractional, so its top and bottom lines each split across two device
-  pixels, washed out against the near-white strip, and only the rounded ends survived. The pills
-  now have a fixed even height and draw the outline inside their own fill, where it keeps its
-  contrast at any sub-pixel offset — closed on all four sides in every skin, rather than a
-  light-only contrast bump.
-- The designer canvas dot grid was a hardcoded 42 % black in every light skin, and the minimap mask
-  carried two more colour literals — one of them a warm tint no longer in use. All three are tokens
-  now, declared for both bases, so the grid follows the skin instead of weighing the canvas down.
+- SCOrch import mapped *Run Program* activities to `runScript` whenever the program field
+  contained a space and no separate arguments — for example any path under `C:\Program Files\`.
+  The classifier treated a space as evidence of a command line; `startProgram.filePath` requires an
+  absolute path, not a space-free one. A program field that does hold a command line is now split
+  into executable and arguments. `runScript` remains for shell syntax a single process cannot
+  express (pipe, redirect, command chaining) and for a value with no identifiable executable in it;
+  both are named in the import report, as is a program given without a directory. Workflows
+  imported before this release are unchanged — re-import to apply the new mapping.
+- The "Calls →" pills in the editor status strip showed only their rounded ends in the light skins.
+  Their outline was a 1 px ring on the outside of a box with a fractional height, so the top and
+  bottom lines split across two device pixels and lost contrast against the near-white strip. The
+  pills now have a fixed even height and draw the outline inside their own fill, in every skin.
+- The designer canvas dot grid used a hardcoded 42 % black in every light skin, and the minimap
+  mask carried two further colour literals. All three are design tokens now, declared for the light
+  and dark bases, so the grid follows the active skin.
 
 ## [1.2.13] - 2026-08-23
 
@@ -736,7 +735,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.13...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.14...main
+[1.2.14]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.14
 [1.2.13]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.13
 [1.2.12]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.12
 [1.2.11]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.11
