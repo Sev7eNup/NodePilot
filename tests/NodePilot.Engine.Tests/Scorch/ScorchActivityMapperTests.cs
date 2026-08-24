@@ -76,9 +76,8 @@ public class ScorchActivityMapperTests
     }
 
     /// <summary>
-    /// A real command line in <c>Program</c> is split rather than degraded: everything up to the
-    /// executable extension is the path, the rest are arguments. Only syntax a launched process
-    /// cannot express itself — pipes, redirects, chaining — still has to become a script.
+    /// A real command line in <c>Program</c> is split: everything up to the executable extension is
+    /// the path, the rest are arguments.
     /// </summary>
     [Theory]
     [InlineData(@"C:\Windows\System32\cmd.exe /c dir", @"C:\Windows\System32\cmd.exe", "/c dir")]
@@ -93,17 +92,167 @@ public class ScorchActivityMapperTests
         result.Config["arguments"].Should().Be(args);
     }
 
+    /// <summary>
+    /// The whole point of the builder: the export already says whether an activity is an embedded
+    /// script or an external call, so the node type comes from the type name and is never overridden
+    /// by the shape of the value. Two earlier heuristics did override it — first a space (every path
+    /// under "C:\Program Files\"), then a shell metacharacter, which fired on the '&amp;' of an
+    /// ordinary powershell -Command call and on SCOrch's own field separator — and turned program
+    /// calls into script nodes across whole imports.
+    /// </summary>
     [Theory]
-    [InlineData(@"C:\Windows\System32\cmd.exe /c attrib -h C:\x | find ""y""")]   // pipe
-    [InlineData(@"C:\Windows\System32\ipconfig.exe > C:\temp\ip.txt")]            // redirect
-    [InlineData("cmd /c dir")]                                                     // no identifiable executable
-    public void Map_RunProgram_KeepsRunScriptForShellSyntaxAndUnidentifiableCommandLines(string program)
+    [InlineData(@"C:\Windows\System32\cmd.exe /c attrib -h C:\x | find ""y""")]              // pipe
+    [InlineData(@"C:\Windows\System32\ipconfig.exe > C:\temp\ip.txt")]                       // redirect
+    [InlineData("cmd /c dir & echo done")]                                                    // chaining
+    [InlineData(@"powershell.exe -ExecutionPolicy Bypass -Command ""& 'C:\S\D.ps1'""")]       // PS call operator
+    [InlineData(@"""C:\unterminated")]                                                        // unterminated quote
+    [InlineData("cmd /C | attrib -h -r /s /d \"C:\\x\\*.*\"")]                                // SCOrch separator
+    public void Map_RunProgram_IsNeverDegradedToARunScriptNode(string program)
     {
         var result = ScorchActivityMapper.Map(Obj("Run Program"), new Dictionary<string, string> { ["Program"] = program });
 
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().NotBe("");
+    }
+
+    /// <summary>
+    /// A value with no identifiable executable at its head still has to run. cmd.exe expresses
+    /// pipes, redirects and chaining, and it is how SCOrch runs a command-line-mode activity itself —
+    /// so the call stays a program call AND keeps working.
+    /// </summary>
+    [Theory]
+    [InlineData(@"C:\Windows\System32\ipconfig.exe > C:\temp\ip.txt")]   // redirect the exe cannot do
+    [InlineData(@"C:\Tools\a.exe | C:\Tools\b.exe")]                      // pipe between two programs
+    [InlineData(@"""C:\unterminated")]                                    // nothing delimitable
+    public void Map_RunProgram_WrapsAnUnsplittableCommandLineInCmdExe(string program)
+    {
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), new Dictionary<string, string> { ["Program"] = program });
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(@"C:\Windows\System32\cmd.exe");
+        result.Config["arguments"].Should().Be($"/C {program}");
+        result.Note.Should().Contain("cmd.exe /C");
+    }
+
+    /// <summary>
+    /// cmd already IS the shell: everything after /c is its own command line, so a pipe there needs
+    /// no second wrap. Same for a metacharacter inside a quoted argument — PowerShell's call
+    /// operator is not a chain, and reading it as one is what degraded these calls before.
+    /// </summary>
+    [Theory]
+    [InlineData(@"C:\Windows\System32\cmd.exe /c attrib -h C:\x | find ""y""",
+                @"C:\Windows\System32\cmd.exe", @"/c attrib -h C:\x | find ""y""")]
+    [InlineData(@"powershell.exe -ExecutionPolicy Bypass -Command ""& 'C:\S\D.ps1'""",
+                @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+                @"-ExecutionPolicy Bypass -Command ""& 'C:\S\D.ps1'""")]
+    public void Map_RunProgram_LeavesAShellsOwnCommandLineAlone(string program, string path, string args)
+    {
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), new Dictionary<string, string> { ["Program"] = program });
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(path);
+        result.Config["arguments"].Should().Be(args);
+        result.Note.Should().NotContain("cmd.exe /C");
+    }
+
+    /// <summary>
+    /// Verified against a real export: in command-line mode SCOrch writes "&lt;launcher&gt; | &lt;command&gt;",
+    /// where the bar separates the two fields. As a pipe "cmd /C | attrib" would not even be valid
+    /// shell syntax; read as a pipe it degraded the activity to a script node.
+    /// </summary>
+    [Theory]
+    [InlineData("1")]      // ProgramMode says command-line mode
+    [InlineData(null)]     // absent — the launcher-shaped head corroborates on its own
+    public void Map_RunProgram_DropsTheScorchFieldSeparator(string? programMode)
+    {
+        var props = new Dictionary<string, string>
+        {
+            ["Program"] = @"cmd /C | attrib -h -r /s /d ""C:\Packages\*.*""",
+        };
+        if (programMode is not null) props["ProgramMode"] = programMode;
+
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), props);
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(@"C:\Windows\System32\cmd.exe");
+        result.Config["arguments"].Should().Be(@"/C attrib -h -r /s /d ""C:\Packages\*.*""");
+        result.Note.Should().Contain("field separator");
+    }
+
+    /// <summary>A genuine pipe is not a separator: the head is a program, not a launcher, so the
+    /// value is left intact and runs through the cmd.exe wrap — which is what a pipe needs.</summary>
+    [Fact]
+    public void Map_RunProgram_DoesNotMistakeARealPipeForTheSeparator()
+    {
+        var result = ScorchActivityMapper.Map(
+            Obj("Run Program"),
+            new Dictionary<string, string> { ["Program"] = @"C:\Tools\a.exe | C:\Tools\b.exe" });
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["arguments"].Should().Be(@"/C C:\Tools\a.exe | C:\Tools\b.exe");
+        result.Note.Should().NotContain("field separator");
+    }
+
+    /// <summary>
+    /// The engine rejects a relative filePath and does not search PATH, so a bare launcher name
+    /// would import as a node that cannot run. Only the handful of names with exactly one right
+    /// answer are completed.
+    /// </summary>
+    [Theory]
+    [InlineData("cmd /c dir", @"C:\Windows\System32\cmd.exe", "/c dir")]
+    [InlineData(@"powershell -File C:\S\D.ps1", @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe", @"-File C:\S\D.ps1")]
+    public void Map_RunProgram_CompletesABareLauncherToItsAbsolutePath(string program, string path, string args)
+    {
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), new Dictionary<string, string> { ["Program"] = program });
+
+        result.Config["filePath"].Should().Be(path);
+        result.Config["arguments"].Should().Be(args);
+        result.Note.Should().Contain("without a path");
+    }
+
+    /// <summary>
+    /// A path that still holds a template placeholder resolves only at run time, so there is nothing
+    /// to judge statically — complaining about it would put a false warning on every SCOrch call
+    /// whose program path came from a runbook variable. This is the real export's robocopy activity.
+    /// </summary>
+    /// <remarks>
+    /// The raw SCOrch marker is the case that actually occurs: the mapper runs BEFORE Published-Data
+    /// is rewritten to <c>{{…}}</c>, so a program path built from a runbook variable still looks like
+    /// <c>\`d.T.~Vb/{GUID}\`d.T.~Vb/\robocopy</c> here. Both forms must be exempt.
+    /// </remarks>
+    [Theory]
+    [InlineData(@"{{globals.ToolDir}}\robocopy")]
+    [InlineData(@"\`d.T.~Vb/{0ECBC87C-C745-4829-B05E-338ABCD130D9}\`d.T.~Vb/\robocopy")]
+    public void Map_RunProgram_DoesNotDemandAnAbsolutePathFromAnUnresolvedReference(string program)
+    {
+        var props = new Dictionary<string, string>
+        {
+            ["Program"] = program,
+            ["Parameters"] = @"C:\src D:\dst /MOVE /S",
+        };
+
+        var result = ScorchActivityMapper.Map(Obj("Run Program"), props);
+
+        result.ActivityType.Should().Be("startProgram");
+        result.Config["filePath"].Should().Be(program);
+        result.Note.Should().BeNull();
+    }
+
+    /// <summary>The counterpart that must NOT move: an embedded script body stays a script node.
+    /// The export distinguishes the two, and that distinction is the whole contract here.</summary>
+    [Fact]
+    public void Map_RunDotNetScript_WithAnEmbeddedBodyStaysARunScriptNode()
+    {
+        var props = new Dictionary<string, string>
+        {
+            ["ScriptBody"] = "$dir = 'C:\\Packages'\nRemove-Item $dir -Force",
+            ["ScriptType"] = "PowerShell",
+        };
+
+        var result = ScorchActivityMapper.Map(Obj("Run .Net Script"), props);
+
         result.ActivityType.Should().Be("runScript");
-        result.Config["script"].Should().Be(program);
-        result.Note.Should().Contain("startProgram");
+        result.Config["script"].Should().Be("$dir = 'C:\\Packages'\nRemove-Item $dir -Force");
     }
 
     /// <summary>

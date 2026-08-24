@@ -271,52 +271,51 @@ internal static class ScorchActivityMapper
         };
     }
 
+    /// <summary>
+    /// SCOrch's <c>Run Program</c> — an external call — always becomes a <c>startProgram</c> node.
+    ///
+    /// <para>The export already draws the line this mapping needs: <c>Run .Net Script</c> carries an
+    /// embedded script body, <c>Run Program</c> launches something external. Deciding the node type
+    /// from the SHAPE of the value instead second-guesses that, and got it wrong across whole
+    /// imports — first on a space (any path under <c>C:\Program Files\</c>), then on a shell
+    /// metacharacter, which fired on the <c>&amp;</c> of a perfectly ordinary
+    /// <c>powershell.exe -Command "&amp; 'x.ps1'"</c> and on SCOrch's own field separator. So the type
+    /// is now taken from the export verbatim and never overridden.</para>
+    ///
+    /// <para>What remains is presentation: filling <c>filePath</c> and <c>arguments</c> so the node
+    /// runs. <see cref="AsProgramCall"/> does that, and its last resort — wrapping the value in
+    /// <c>cmd.exe /C</c> — is what makes "always startProgram" safe: a command line with a pipe, a
+    /// redirect or a chain is expressible after all, exactly the way SCOrch itself runs one in
+    /// command-line mode. No input can therefore produce the wrong node type, and none can lose the
+    /// original command.</para>
+    /// </summary>
     private static Mapping BuildRunProgram(Dictionary<string, string> p)
     {
         var program = FirstNonEmpty(p, "Program", "FilePath", "ProgramPath", "ApplicationPath");
         var arguments = FirstNonEmpty(p, "Parameters", "Arguments", "CommandLineArguments");
         var workingDirectory = FirstNonEmpty(p, "StartupDir", "WorkingDirectory", "StartInFolder");
+        var notes = new List<string>();
 
-        // SCOrch lets <Program> hold either an executable path or a whole command line
-        // ("cmd /C attrib -h -r ..."), and only the latter has no startProgram expression. What
-        // separates them is shell syntax — a pipe, a redirect, a chain — NOT a space: the common
-        // case is an ordinary path under "C:\Program Files\", and startProgram takes that happily
-        // (`filePath` is passed to the process as a literal; it must be fully qualified, not
-        // space-free). Treating a space as command-line evidence turned every such call into a
-        // runScript, which is how program calls came back as script nodes across a whole import.
-        string? note = null;
         if (arguments.Length == 0 && program.Length > 0)
         {
-            var split = SplitCommandLine(program);
-            // No executable token at all (no quoted head, no .exe/.cmd/.bat/.com) means the value is
-            // not a path we can trust — a bare "cmd /c dir" would become a filePath of that whole
-            // string. Together with real shell syntax that is what still has to degrade to a script.
-            if (ContainsShellSyntax(program) || split is null)
-            {
-                return new Mapping(
-                    ActivityType: "runScript",
-                    Config: new()
-                    {
-                        ["script"] = program,
-                        ["engine"] = "powershell",
-                        ["timeoutSeconds"] = 300,
-                    },
-                    Note: "SCOrch 'Run Program' held a command line rather than an executable path, so " +
-                          "it was imported as runScript — startProgram launches a single process and " +
-                          "cannot express pipes, redirects or command chaining.");
-            }
-
-            program = split.Value.Executable;
-            arguments = split.Value.Trailing;
+            var call = AsProgramCall(program, notes);
+            program = call.Executable;
+            arguments = call.Arguments;
+        }
+        else
+        {
+            program = Unquote(program.Trim());
         }
 
-        program = Unquote(program);
-        // A relative name ("tool.exe") stays a program call — it is one, and hiding it in a script
-        // is the very confusion this builder exists to avoid. The engine requires an absolute path,
-        // so the node would fail loudly; the import report says so up front instead.
-        if (program.Length > 0 && !Path.IsPathFullyQualified(program))
-            note = $"SCOrch 'Run Program' named '{program}' without a directory. startProgram needs a " +
-                   "fully qualified path — complete it before running the node.";
+        program = ResolveKnownLauncher(program, notes);
+
+        // A relative name ("tool.exe") stays a program call — it is one. The engine requires an
+        // absolute path and does not search PATH, so the node would fail loudly; the import report
+        // says so up front instead. A value built from a reference is exempt: its real path only
+        // exists at run time, so there is nothing to judge statically.
+        if (program.Length > 0 && !HoldsReference(program) && !Path.IsPathFullyQualified(program))
+            notes.Add($"SCOrch 'Run Program' named '{program}' without a directory. startProgram needs a " +
+                      "fully qualified path — complete it before running the node.");
 
         return new Mapping(
             ActivityType: "startProgram",
@@ -328,15 +327,156 @@ internal static class ScorchActivityMapper
                 ["waitForExit"] = ParseBool(p, "WaitForCompletion", true),
                 ["timeoutSeconds"] = 300,
             },
-            Note: note);
+            Note: notes.Count == 0 ? null : string.Join(" ", notes));
     }
+
+    // <ProgramMode> (1 = command-line mode, 0 = program and parameters as separate fields) is present
+    // in exports but deliberately not consulted: it is undocumented, we have seen it in very few
+    // exports, and the structural guard below recognises the command-line shape on its own. A signal
+    // that only ever confirms what the shape already says would add a dependency without adding
+    // certainty — and being wrong about it would cost a real pipe.
+
+    /// <summary>
+    /// Turns a SCOrch <c>&lt;Program&gt;</c> value into an executable plus arguments, trying the
+    /// cheapest reliable reading first and falling back to a shell wrap that cannot fail.
+    /// </summary>
+    private static (string Executable, string Arguments) AsProgramCall(string value, List<string> notes)
+    {
+        var v = value.Trim();
+
+        // SCOrch writes a command-line-mode value as "<launcher> | <command>". The bar is a field
+        // separator, not a pipe — "cmd /C | attrib …" is not valid shell syntax in the first place.
+        // Dropping it restores the command line the author typed.
+        //
+        // The guard is deliberately structural rather than trusting <ProgramMode>: exactly one bar,
+        // and a head that is nothing but a known launcher plus at most one switch. A real pipe never
+        // looks like that — "C:\W\cmd.exe /c attrib -h C:\x | find y" has five tokens before the bar
+        // and keeps its pipe. Mistaking a pipe for a separator would silently turn the second program
+        // into an argument, which is the one error the cmd.exe wrap below could not repair.
+        var bar = v.IndexOf('|');
+        if (bar > 0 && v.IndexOf('|', bar + 1) < 0)
+        {
+            var head = v[..bar].Trim();
+            var tail = v[(bar + 1)..].Trim();
+            if (head.Length > 0 && tail.Length > 0 && IsLauncherWithSwitch(head))
+            {
+                v = $"{head} {tail}";
+                notes.Add("SCOrch 'Run Program' stored this call in command-line mode; the '|' between " +
+                          "program and arguments is SCOrch's field separator and was removed.");
+            }
+        }
+
+        if (SplitCommandLine(v) is { } split && !NeedsShell(split.Executable, split.Trailing))
+            return (Unquote(split.Executable), split.Trailing);
+
+        // Either nothing identifiable sits at the head, or the arguments carry syntax the launched
+        // process would only receive as literal text — a pipe into another program, a redirect.
+        // cmd.exe expresses all of it, and it is how SCOrch runs a command line itself, so the call
+        // stays a program call AND keeps doing what the runbook did.
+        notes.Add("SCOrch 'Run Program' held a command line that needs a shell, so it runs through " +
+                  "cmd.exe /C — the same way SCOrch runs one. Review the arguments before enabling " +
+                  "the node.");
+        return (CmdExe, $"/C {v}");
+    }
+
+    /// <summary>
+    /// Whether the arguments carry syntax that only a shell performs, so launching the executable
+    /// directly would hand it the metacharacter as literal text instead.
+    ///
+    /// <para>Two things make this narrower than "contains <c>| &amp; &gt; &lt;</c>". Quoted spans do not
+    /// count: the <c>&amp;</c> in <c>-Command "&amp; 'x.ps1'"</c> is PowerShell's call operator inside an
+    /// argument, and reading it as a chain is what degraded ordinary PowerShell calls to script
+    /// nodes. And <c>cmd /c …</c> does not count either: everything after the switch is cmd's own
+    /// command line, so <c>cmd.exe /c dir | find "x"</c> already works as a single launched
+    /// process.</para>
+    /// </summary>
+    private static bool NeedsShell(string executable, string arguments)
+    {
+        if (arguments.Length == 0) return false;
+
+        var name = Path.GetFileNameWithoutExtension(Unquote(executable.Trim()));
+        if (name.Equals("cmd", StringComparison.OrdinalIgnoreCase)
+            && (arguments.StartsWith("/c", StringComparison.OrdinalIgnoreCase)
+                || arguments.StartsWith("/k", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        var quoted = false;
+        foreach (var c in arguments)
+        {
+            if (c == '"') quoted = !quoted;
+            else if (!quoted && (c is '|' or '&' or '>' or '<')) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a value is nothing but a known launcher and at most one switch — "cmd /C",
+    /// "powershell -Command", "cmd". That is the entire left-hand side SCOrch writes before its
+    /// field separator, and no real command line piping into a second program looks like it.
+    /// </summary>
+    private static bool IsLauncherWithSwitch(string head)
+    {
+        var tokens = head.Split(WhitespaceSeparators, StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length is 0 or > 2) return false;
+        if (tokens.Length == 2 && tokens[1][0] is not ('/' or '-')) return false;
+        return KnownLaunchers.ContainsKey(Path.GetFileNameWithoutExtension(Unquote(tokens[0])));
+    }
+
+    /// <summary>
+    /// Completes a bare launcher name to its absolute path. The engine rejects a relative
+    /// <c>filePath</c> and does not search PATH, so "cmd /C …" would import as a node that cannot
+    /// run. Only these few names are completed, and only when the value carries no directory of its
+    /// own — anything else stays exactly as the export wrote it.
+    /// </summary>
+    private static string ResolveKnownLauncher(string program, List<string> notes)
+    {
+        if (program.Length == 0 || HoldsReference(program)) return program;
+        if (program.Contains('\\') || program.Contains('/') || program.Contains(':')) return program;
+
+        var name = Path.GetFileNameWithoutExtension(program);
+        if (!KnownLaunchers.TryGetValue(name, out var resolved)) return program;
+
+        notes.Add($"SCOrch 'Run Program' named the launcher '{program}' without a path; imported as " +
+                  $"'{resolved}'.");
+        return resolved;
+    }
+
+    /// <summary>
+    /// Whether a value is built from a reference rather than being a literal path: either a
+    /// NodePilot template, or a SCOrch Published-Data marker still awaiting rewrite. The mapper runs
+    /// BEFORE that rewrite, so the raw marker is what a program path built from a runbook variable
+    /// actually looks like here — judging it as a path would put a bogus "needs an absolute path"
+    /// warning on every such call.
+    /// </summary>
+    private static bool HoldsReference(string value) =>
+        value.Contains("{{", StringComparison.Ordinal) || value.Contains("`d.T.~", StringComparison.Ordinal);
+
+    private const string CmdExe = @"C:\Windows\System32\cmd.exe";
+
+    /// <summary>
+    /// Launchers whose bare name is unambiguous on every Windows installation. Deliberately short:
+    /// completing a path the export did not contain is only defensible where there is exactly one
+    /// right answer.
+    /// </summary>
+    private static readonly Dictionary<string, string> KnownLaunchers = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["cmd"] = CmdExe,
+        ["powershell"] = @"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        ["cscript"] = @"C:\Windows\System32\cscript.exe",
+        ["wscript"] = @"C:\Windows\System32\wscript.exe",
+    };
+
+    private static readonly char[] WhitespaceSeparators = [' ', '\t'];
 
     /// <summary>
     /// Splits a SCOrch <c>&lt;Program&gt;</c> value into the executable and whatever follows it.
     /// A quoted head is the executable verbatim; otherwise the split runs after the first executable
     /// extension that ends a token, so <c>C:\W\cmd.exe /c dir</c> separates while
-    /// <c>C:\Program Files\Tools\backup.exe</c> stays whole. Null when the value carries no
-    /// recognisable executable token at all — the caller degrades that to a script.
+    /// <c>C:\Program Files\Tools\backup.exe</c> stays whole. Failing both, a first token followed by
+    /// switch-shaped arguments is the executable ("cmd /c dir"). Null when nothing identifiable is at
+    /// the head — the caller wraps that in cmd.exe rather than guessing.
     /// </summary>
     private static (string Executable, string Trailing)? SplitCommandLine(string value)
     {
@@ -358,9 +498,17 @@ internal static class ScorchActivityMapper
                 at = v.IndexOf(ext, end, StringComparison.OrdinalIgnoreCase);
             }
         }
-        // No extension: a single token is still a path (extension-less launchers exist), several
-        // tokens are a command line whose executable we cannot identify.
-        return v.AsSpan().ContainsAny(WhitespaceChars) ? null : (v, "");
+
+        // No extension: a single token is still a path (extension-less launchers exist).
+        if (!v.AsSpan().ContainsAny(WhitespaceChars)) return (v, "");
+
+        // Several tokens, no extension. A first token whose remainder is switch-shaped is a launcher
+        // with its switches ("cmd /c dir"); a path we merely failed to delimit is not, because its
+        // continuation is more path ("C:\Program Files\Acme\launcher -x" → "Files\Acme\…").
+        var head = v.Split(WhitespaceSeparators, 2, StringSplitOptions.RemoveEmptyEntries);
+        if (head.Length == 2 && (head[1][0] == '/' || head[1][0] == '-')) return (head[0], head[1].Trim());
+
+        return null;
     }
 
     private static readonly System.Buffers.SearchValues<char> WhitespaceChars =
@@ -372,13 +520,6 @@ internal static class ScorchActivityMapper
     /// literal, so a quoted path would be looked up including its quotes.</summary>
     private static string Unquote(string value) =>
         value.Length > 1 && value.StartsWith('"') && value.EndsWith('"') ? value[1..^1] : value;
-
-    /// <summary>
-    /// Shell syntax proper: pipes, redirects and chaining, none of which a launched process can
-    /// express on its own. A space is deliberately NOT part of this — see <see cref="BuildRunProgram"/>.
-    /// </summary>
-    private static bool ContainsShellSyntax(string value) =>
-        value.IndexOfAny(['|', '&', '>', '<']) >= 0;
 
     private static Mapping BuildEmail(Dictionary<string, string> p) =>
         new(

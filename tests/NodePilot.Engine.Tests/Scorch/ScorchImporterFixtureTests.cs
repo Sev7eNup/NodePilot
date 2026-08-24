@@ -244,11 +244,13 @@ public class ScorchImporterFixtureTests
     }
 
     /// <summary>
-    /// startProgram.filePath only accepts an executable path, so a SCOrch Program that holds a whole
-    /// command line has to become a script — the alternative is a node that always fails.
+    /// Both Run Program activities import as program calls, whatever their Program field holds — the
+    /// export says they are external calls and that is what decides the node type. The second is the
+    /// shape a real export uses in command-line mode: "cmd /C | attrib …", where the bar separates
+    /// program from arguments. Read as a pipe it used to degrade the activity to a script node.
     /// </summary>
     [Fact]
-    public void Parse_RunProgram_SplitsByWhetherProgramIsAPathOrACommandLine()
+    public void Parse_RunProgram_ImportsBothShapesAsProgramCalls()
     {
         var def = DefinitionOf(ParseFixture(), "Sample Package Intake");
 
@@ -258,8 +260,11 @@ public class ScorchImporterFixtureTests
             .Should().Be(@"C:\Windows\System32\robocopy.exe");
 
         var commandLine = NodeById(def, "22222222-0000-0000-0000-00000000000c").GetProperty("data");
-        commandLine.GetProperty("activityType").GetString().Should().Be("runScript");
-        commandLine.GetProperty("config").GetProperty("script").GetString().Should().StartWith("cmd /C attrib");
+        commandLine.GetProperty("activityType").GetString().Should().Be("startProgram");
+        commandLine.GetProperty("config").GetProperty("filePath").GetString()
+            .Should().Be(@"C:\Windows\System32\cmd.exe");
+        commandLine.GetProperty("config").GetProperty("arguments").GetString()
+            .Should().StartWith("/C attrib -h -r /s /d");
     }
 
     /// <summary>
