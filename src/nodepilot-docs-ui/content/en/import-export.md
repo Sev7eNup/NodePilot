@@ -28,6 +28,12 @@ What the translation does:
 - **Activities** — around forty SCOrch type names map to a NodePilot activity. Note that SCOrch's
   wire names are not always its designer labels: *Invoke Runbook* is `Trigger Policy`, and its
   child-runbook arguments come across as `startWorkflow.parameters`.
+- **Program calls** — *Run Program* becomes `startProgram`, including the everyday case of a path
+  with spaces (`C:\Program Files\…`) and one where SCOrch kept the arguments in the program field
+  instead of its own: the executable and its arguments are separated for you. It becomes a
+  `runScript` only where a launched process genuinely cannot do the job — a pipe, a redirect, a
+  chained command, or a program field with no identifiable executable in it — and the import
+  report says which.
 - **Published Data** — `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` and `` \`d.T.~Ed/{GUID}.field\`d.T.~Ed/ ``
   become `{{globals.Name}}` and `{{step.param.field}}`, resolving through a readable
   `outputVariable` derived from each activity's name. Field names are translated where the two
