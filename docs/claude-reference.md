@@ -250,17 +250,47 @@ und wurde erst an einem echten 2016-Export sichtbar:
 | `Compare Values` ist ein Logik-Knoten ohne Gegenstück | wird `decision`; die Links lesen sein Ergebnis, ein `log` hätte jeden Zweig dahinter getötet |
 | Positionen sind 1:1 übernehmbar | 75-px-Raster, oft negativ — NodePilot-Karten sind bis 280×110; verbatim kopiert überlappt fast alles |
 
-**`Run Program`: Pfad oder Kommandozeile — das Leerzeichen entscheidet es nicht.** SCOrchs
-`<Program>` hält beides. `BuildRunProgram` trennt an einem führenden `"…"`-Token bzw. an der ersten
-`.exe`/`.cmd`/`.bat`/`.com`-Endung, die ein Token beendet, und füllt damit `filePath` + `arguments`.
-`runScript` bleibt nur für zwei Fälle: echte Shell-Syntax (`|`, `&`, `>`, `<`, was ein einzelner
-Prozess nicht kann) und ein Wert, in dem gar keine ausführbare Datei erkennbar ist (`cmd /c dir`).
-Ein Name **ohne** Verzeichnis (`tool.exe`) bleibt `startProgram` und wird im Import-Bericht
-gemeldet — die Engine verlangt einen absoluten Pfad, aber ein Programmaufruf gehört nicht in ein
-Script versteckt. **Ein Leerzeichen war früher das Kriterium**, und damit wurde jeder gewöhnliche
-Pfad unter `C:\Program Files\` ohne separate `Parameters` zum Script-Knoten — bei einem Import
-fällt das als „alle Programmaufrufe sind runScript" auf. `filePath` verträgt Leerzeichen
-(PowerShell-Literal an `$psi.FileName`); verlangt ist Absolutheit, nicht Leerzeichenfreiheit.
+**`Run Program` wird immer `startProgram` — der Wert entscheidet den Knotentyp nicht.** Der Export
+unterscheidet den externen Aufruf (`Run Program`) bereits vom eingebetteten Skript
+(`Run .Net Script`); `BuildRunProgram` übernimmt das und kennt **keinen** `runScript`-Zweig mehr.
+Zwei Anläufe hatten den Typ am Inhalt festgemacht und beide gingen schief: erst ein **Leerzeichen**
+(damit wurde jeder Pfad unter `C:\Program Files\` zum Script-Knoten), dann ein **Shell-Metazeichen** —
+das traf das `&` eines gewöhnlichen `powershell.exe -Command "& 'x.ps1'"` **und** SCOrchs eigenen
+Feldtrenner. Bei einem Import fällt beides als „alle Programmaufrufe sind runScript" auf.
+
+Was bleibt, ist Feldübersetzung, nicht Typerkennung: `startProgram` hat `filePath` **und**
+`arguments` getrennt, SCOrch legt sie bei `ProgramMode=1` in *ein* Feld. Reihenfolge in
+`AsProgramCall`: (1) **Feldtrenner** `|` entfernen — nur bei genau einem `|`, dessen linke Seite aus
+nichts als einem bekannten Launcher plus höchstens einem Switch besteht (`cmd /C | attrib …`); eine
+echte Pipe sieht nie so aus. (2) Zerlegen an quotiertem Kopf, an der ersten `.exe`/`.cmd`/`.bat`/
+`.com`-Endung, die ein Token beendet, oder an einem ersten Token mit switch-förmigem Rest
+(`cmd /c dir`). (3) Braucht der Rest eine Shell — unquotiertes `|`, `&`, `>`, `<`, **außer** hinter
+`cmd /c` — läuft alles über `cmd.exe /C <Wert>`, wie SCOrch eine Kommandozeile selbst ausführt.
+Dieses Auffangnetz ist der Grund, warum „immer `startProgram`" gefahrlos ist: es gibt keine Eingabe,
+die den Typ verfälscht, und keine, die den Befehl verliert. Ein bekannter Launcher ohne Pfad
+(`cmd`, `powershell`, `cscript`, `wscript`) wird auf seinen absoluten Pfad vervollständigt, sonst
+bliebe ein Knoten stehen, den die Engine ablehnt (`PATH` wird nicht durchsucht). `filePath` verträgt
+Leerzeichen (PowerShell-Literal an `$psi.FileName`); verlangt ist Absolutheit.
+
+**Zwei Fallen im Zerlegen, beide behoben.** (1) Die Endungssuche lief **typ-weise** — erst `.exe`
+über den ganzen String, dann `.cmd` —, also schlug ein `.exe` irgendwo hinten ein früheres `.cmd`:
+`C:\Tools\wrapper.cmd C:\Payload\setup.exe /S` trennte am Payload. Jetzt positionsweise, und eine
+Endung zählt nur, wenn **vor** ihr kein Switch-Token steht; sonst trifft das `.com` eines Hostnamens
+am Zeilenende (`python … --domain contoso.com`) und der ganze Befehl landet still in `filePath`.
+(2) Ein **Skript** im Programmfeld ergab einen toten Knoten: die Engine startet über `CreateProcess`
+(`useShellExecute` ist per Default hart gesperrt), das eine `.ps1`/`.vbs` nicht ausführen kann
+(Win32 193). `ResolveScriptHead` setzt darum den echten Interpreter in `filePath` — `.ps1` →
+`powershell.exe -NoProfile -File "<script>"`, WSH-Endungen → `cscript.exe //nologo //B`. Bewusst
+`cscript` statt der Dateizuordnung: die zeigt auf `wscript.exe`, den **fenster**basierten Host, der
+kein stdout liefert und aus einem `WScript.Echo` einen Dialog macht, den keine unbeaufsichtigte
+Sitzung beantwortet. Ebenso bewusst **ohne** `-ExecutionPolicy Bypass` — einen Interpreter zu
+ergänzen ist der kleinste ehrliche Schritt, die Policy still zu lockern wäre ein zweiter. Eine
+Endung ohne bekannten Interpreter bleibt stehen und wird gemeldet.
+
+**`<ProgramMode>` wird bewusst nicht gelesen** (`1` = Kommandozeilen-Modus, `0` = getrennte Felder).
+Es steht in Exporten, ist aber undokumentiert und bislang nur in wenigen Dateien gesehen; die
+strukturelle Prüfung erkennt die Form ohnehin selbst. Ein Signal, das nur bestätigt, was die Form
+schon sagt, brächte eine Abhängigkeit ohne Gewinn — und läge es falsch, kostete es eine echte Pipe.
 
 **Datenbus: Namen ≠ Namen.** Die Marker-Syntax zu übersetzen ist nicht dasselbe wie die *Daten* zu
 übersetzen. `PublishedFieldRenames` bildet nur die belegten 1:1-Fälle ab (`Query XML.queryResult` →

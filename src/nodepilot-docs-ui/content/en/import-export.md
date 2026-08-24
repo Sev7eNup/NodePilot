@@ -28,12 +28,17 @@ What the translation does:
 - **Activities** — around forty SCOrch type names map to a NodePilot activity. Note that SCOrch's
   wire names are not always its designer labels: *Invoke Runbook* is `Trigger Policy`, and its
   child-runbook arguments come across as `startWorkflow.parameters`.
-- **Program calls** — *Run Program* becomes `startProgram`, including the everyday case of a path
-  with spaces (`C:\Program Files\…`) and one where SCOrch kept the arguments in the program field
-  instead of its own: the executable and its arguments are separated for you. It becomes a
-  `runScript` only where a launched process genuinely cannot do the job — a pipe, a redirect, a
-  chained command, or a program field with no identifiable executable in it — and the import
-  report says which.
+- **Program calls** — *Run Program* becomes `startProgram`, always. The export already distinguishes
+  an external call from an embedded script (*Run .Net Script*, which becomes `runScript`), and that
+  distinction is taken as given rather than second-guessed from what the program field happens to
+  contain. What the importer does do is fill the node's two fields: where SCOrch kept the arguments
+  in the program field instead of its own, the executable and its arguments are separated for you —
+  including SCOrch's command-line mode, where a `|` separates the two. A command line that genuinely
+  needs a shell (a pipe into another program, a redirect) runs through `cmd.exe /C`, which is how
+  SCOrch runs one itself, and a bare launcher name such as `cmd` is completed to its absolute path
+  because the engine does not search `PATH`, while a script in the program field — a `.ps1`, a `.vbs` —
+  gets its real interpreter in `filePath`, because the engine launches through `CreateProcess`, which
+  cannot start a script at all. Every such reconstruction is named in the import report.
 - **Published Data** — `` \`d.T.~Vb/{GUID}\`d.T.~Vb/ `` and `` \`d.T.~Ed/{GUID}.field\`d.T.~Ed/ ``
   become `{{globals.Name}}` and `{{step.param.field}}`, resolving through a readable
   `outputVariable` derived from each activity's name. Field names are translated where the two

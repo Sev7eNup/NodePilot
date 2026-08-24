@@ -12,6 +12,32 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- SCOrch import: a *Run Program* activity now always becomes a `startProgram` node. The export
+  already distinguishes an external call from an embedded script — *Run .Net Script*, which
+  continues to become `runScript` — and that distinction is now taken as given. Two earlier attempts
+  had decided the node type from the shape of the program field instead, and both got it wrong: a
+  space first (any path under `C:\Program Files\`), then a shell metacharacter, which fired on the
+  `&` of an ordinary `powershell.exe -Command "& 'script.ps1'"` and on SCOrch's own field separator.
+  Either way whole runbooks came back with their program calls turned into script nodes.
+
+  What is left is filling the node's two fields, because `startProgram` keeps `filePath` and
+  `arguments` apart while SCOrch's command-line mode puts both in one field, separated by a `|`.
+  That separator is now recognised and removed, a command line that genuinely needs a shell — a pipe
+  into a second program, a redirect — runs through `cmd.exe /C` the way SCOrch runs one itself, and
+  a bare launcher name such as `cmd` is completed to its absolute path because the engine does not
+  search `PATH`. Every reconstruction is named in the import report. Workflows imported before this
+  release are unchanged — re-import to apply the new mapping.
+
+  Two further defects in the same builder went with it. The executable is now taken from the first
+  match by POSITION rather than by extension type, so `wrapper.cmd payload.exe /S` no longer hands
+  its own payload to `filePath`, and an extension only counts when nothing before it is a switch, so
+  the `.com` of a hostname at the end of a command line no longer swallows the whole value as the
+  path. And a script in the program field — a `.ps1`, a `.vbs` — now gets its real interpreter in
+  `filePath`: the engine launches through `CreateProcess`, which cannot start a script at all, so
+  such a node could never have run.
+
 ## [1.2.15] - 2026-08-24
 
 The workflow list gains multi-select, so clearing out or reorganising a folder is no longer one
