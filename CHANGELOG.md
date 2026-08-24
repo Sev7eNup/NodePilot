@@ -12,6 +12,34 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.15] - 2026-08-24
+
+The workflow list gains multi-select, so clearing out or reorganising a folder is no longer one
+trash click and one confirm per workflow.
+
+### Added
+
+- The workflow list supports selecting multiple rows — a checkbox per row, a header checkbox for
+  every visible row of the filtered folder, and `Shift`-click for ranges. An action bar appears
+  with the first selection and offers move, enable, disable, export and delete. Moving works
+  through a destination dialog or by dragging a selected row onto a folder, which takes the whole
+  selection with it; deleting asks once for the batch; exporting writes all selected workflows
+  into one `nodepilot-workflow-export/v1` file that the existing import reads back unchanged.
+
+  There is no bulk endpoint behind this. Each action runs the same single-workflow requests one
+  after another, so every workflow keeps its own permission check, edit-lock check and audit
+  entry, and a bulk run can never reach past a permission the single action would have refused.
+  A button is therefore enabled only when the entire selection qualifies, with the reason in its
+  tooltip — notably, enable stays disabled while any selected workflow is checked out, because
+  that request rejects every lock, including the caller's own. A failure does not abandon the
+  batch: the remaining workflows are processed, the summary names the ones that refused, and
+  exactly those stay selected so a retry is a single click.
+
+### Changed
+
+- The desktop shell moves to Electron 43.4.1 (still on Node 24.18.1). Dependency groups for npm
+  and NuGet are refreshed across the API, the SPA and the documentation site.
+
 ## [1.2.14] - 2026-08-24
 
 SCOrch import maps *Run Program* activities to `startProgram` instead of `runScript` in the common
@@ -736,6 +764,7 @@ multi-step automation in the browser, with no agents on the targets.
 - Licensed under Apache-2.0
 
 [Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.14...main
+[1.2.15]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.15
 [1.2.14]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.14
 [1.2.13]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.13
 [1.2.12]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.12
