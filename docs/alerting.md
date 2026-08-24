@@ -82,7 +82,7 @@ State-degradation alerts (backlog/pending depth, cancel rate, machine reachabili
 staleness, credential expiry, schedule-missed, no-recent-success) are **no longer** a gauge collector. The
 legacy `GaugeSignalCollector` + eight `IGaugeSignalProvider`s were **removed** once the modular
 `ISystemAlertSource` catalog covered them; those signals are now **system policies** — see the
-[System alerts](#system-alerts--modular-sources-adr-0008-in-progress) section below, which lists the 12
+[System alerts](#system-alerts--modular-sources-adr-0008-in-progress) section below, which lists the 14
 sources and how a policy sets its own threshold/duration/severity/scope. Their `NotificationEventType`
 values (`ServiceStale`, `BacklogHigh`, …) remain as an append-only persisted contract but were dropped from
 `SupportedEventTypes`, so a **custom** rule no longer reacts to them (only execution-family events do).
