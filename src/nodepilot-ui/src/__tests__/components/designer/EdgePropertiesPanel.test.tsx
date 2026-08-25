@@ -44,7 +44,7 @@ function makeEdge(id: string, source: string, target: string, data: Record<strin
 
 beforeEach(() => {
   vi.mocked(confirmDialog).mockClear();
-  useDesignStore.setState({ flexiblePortsEnabled: false, designerMode: 'expert' });
+  useDesignStore.setState({ designerMode: 'expert' });
 });
 
 describe('EdgePropertiesPanel', () => {
@@ -69,14 +69,9 @@ describe('EdgePropertiesPanel', () => {
     expect(screen.getByText('Target Step')).toBeInTheDocument();
   });
 
-  it('hidesPortControlsInClassicModeForDefaultEdges', () => {
-    const props = defaultProps();
-    render(<EdgePropertiesPanel {...props} />);
-    expect(screen.queryByText('Connection ports')).not.toBeInTheDocument();
-  });
-
-  it('showsPortControlsWhenFlexiblePortsAreEnabled_andUpdatesHandles', () => {
-    useDesignStore.setState({ flexiblePortsEnabled: true });
+  it('showsPortControlsInExpertMode_andUpdatesHandles', () => {
+    // Alle vier Ports sind seit dem Wegfall der klassischen 2-Port-Variante immer
+    // verfuegbar; der Selektor haengt nur noch am Expert-Modus.
     const props = defaultProps();
     render(<EdgePropertiesPanel {...props} />);
 
@@ -86,13 +81,10 @@ describe('EdgePropertiesPanel', () => {
     expect(props.onUpdate).toHaveBeenCalledWith('e1', { sourceHandle: 'bottom' });
   });
 
-  it('showsPortControlsForExistingCustomPortsEvenWhenToggleIsOff', () => {
-    const props = defaultProps({
-      edge: { ...makeEdge('e1', 'step-1', 'step-2', { label: '', condition: '' }), sourceHandle: 'bottom', targetHandle: 'top' },
-    });
-    render(<EdgePropertiesPanel {...props} />);
-    expect(screen.getByText('Connection ports')).toBeInTheDocument();
-    expect(screen.getByText(/Flexible ports are off/)).toBeInTheDocument();
+  it('hidesPortControlsInStandardMode', () => {
+    useDesignStore.setState({ designerMode: 'standard' });
+    render(<EdgePropertiesPanel {...defaultProps()} />);
+    expect(screen.queryByText('Connection ports')).not.toBeInTheDocument();
   });
 
   it('labelInput_changeFiresOnUpdateWithNewLabel', () => {

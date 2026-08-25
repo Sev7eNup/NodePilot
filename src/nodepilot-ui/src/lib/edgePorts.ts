@@ -69,3 +69,47 @@ export function getPortPoint(
     case 'left': return { x: bounds.x, y: bounds.y + bounds.h / 2 };
   }
 }
+
+export interface PortPoint {
+  port: EdgePortSide;
+  x: number;
+  y: number;
+}
+
+/**
+ * Reihenfolge, in der bei Gleichstand gesucht wird — bewusst NICHT `EDGE_PORT_SIDES`, das die
+ * Button-Reihenfolge im Properties-Panel bestimmt und dort oben/rechts/unten/links lautet.
+ * Ein Klick exakt in der Node-Mitte liegt zu allen vier Punkten gleich weit entfernt; dass
+ * dann die Horizontale gewinnt, passt zum Links-nach-rechts-Default des Designers.
+ */
+const NEAREST_PORT_SCAN_ORDER: EdgePortSide[] = ['left', 'right', 'top', 'bottom'];
+
+/**
+ * Der Port, dessen Punkt `(x, y)` am nächsten liegt.
+ *
+ * Nimmt bewusst **explizite Punkte** statt einer Node-Größe: die Handles eines Nodes sitzen
+ * nicht zwangsläufig auf dem Rand seines Bounding-Rechtecks. Im Classic-Layout hängen sie am
+ * inneren Icon-/Shape-Wrapper, während das äußere Rechteck zusätzlich das Label darunter
+ * umfasst, und `handleInset` schiebt einzelne Seiten je nach Shape noch weiter nach innen.
+ * Aus `width`/`height` gerechnete Punkte lägen also neben den echten Handles — siehe
+ * `readHandlePoints` in `edgeDetach.ts`, das die Punkte aus dem DOM liest.
+ *
+ * Koordinatensystem ist egal, solange alle Punkte und `(x, y)` dasselbe benutzen: die
+ * Distanzen skalieren gleichförmig, der Gewinner ist damit zoom-invariant.
+ */
+export function nearestPortPoint(points: PortPoint[], x: number, y: number): PortPoint | null {
+  let best: PortPoint | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const side of NEAREST_PORT_SCAN_ORDER) {
+    const point = points.find((p) => p.port === side);
+    if (!point) continue;
+    const dx = point.x - x;
+    const dy = point.y - y;
+    const distance = dx * dx + dy * dy; // Quadrat reicht — Wurzel ändert die Ordnung nicht.
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = point;
+    }
+  }
+  return best;
+}

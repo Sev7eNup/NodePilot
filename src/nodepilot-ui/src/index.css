@@ -2573,13 +2573,16 @@ select:disabled {
 }
 
 /* ── Edge-Detach: Ziel-Ende hängt am Cursor, der nächste Node-Klick setzt es ──
-   Fadenkreuz signalisiert den Modus; der Hover-Ring markiert den Node, der beim
-   Klick zum neuen Ziel würde. Beides nur, solange die Canvas den Modifier trägt. */
+   Fadenkreuz signalisiert den Modus. Der Ring hängt bewusst NICHT an `:hover`,
+   sondern an `.np-dock-target` — die Klasse setzt useDisplayedGraph auf genau den
+   Node, an dem die Vorschau-Linie gerade andockt. Ein Hover-Ring hätte auch
+   Quell-Node, altes Ziel, Sticky-Notes und Duplikat-Ziele markiert und damit eine
+   Verbindung versprochen, die der Klick anschließend ablehnt. */
 .np-canvas--detaching .react-flow__pane,
 .np-canvas--detaching .react-flow__node {
   cursor: crosshair;
 }
-.np-canvas--detaching .react-flow__node:hover {
+.np-canvas--detaching .react-flow__node.np-dock-target {
   outline: 2px solid var(--color-primary);
   outline-offset: 3px;
   border-radius: var(--np-radius-sm);

@@ -96,17 +96,6 @@ test.describe('Editor-Toolbar View-Toggles (Teil 69)', () => {
     await expect(classic).toHaveAttribute('aria-checked', 'true');
   });
 
-  test('69.3 — flexible-ports switch flips its aria-checked', async ({ page }) => {
-    await openEditor(page);
-    await openCanvasSettings(page);
-
-    const flex = page.getByTestId('canvas-setting-flexible-ports');
-    await expect(flex).toBeVisible();
-    await expect(flex).toHaveAttribute('aria-checked', 'false'); // default off
-    await flex.click();
-    await expect(flex).toHaveAttribute('aria-checked', 'true');
-  });
-
   test('69.4 — data-flow overlay toggle flips its active class', async ({ page }) => {
     await openEditor(page);
 

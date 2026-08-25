@@ -176,8 +176,8 @@
     "detachTarget": "Detach target"
   },
   "edgeDetach": {
-    "hint": "\"{{edge}}\" is following the cursor — click the new target node. Esc cancels.",
-    "hintUnlabeled": "Edge is following the cursor — click the new target node. Esc cancels.",
+    "hint": "\"{{edge}}\" is following the cursor — click the target node. Esc cancels.",
+    "hintUnlabeled": "Edge is following the cursor — click the target node. Esc cancels.",
     "selfLoop": "An edge cannot point back at its own source node.",
     "duplicate": "This node already has an edge from that source.",
     "invalidTarget": "Only activity nodes can be an edge target."

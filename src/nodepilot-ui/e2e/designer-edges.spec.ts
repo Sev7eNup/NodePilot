@@ -33,17 +33,26 @@ interface DefOverrides {
   withAltTarget?: boolean;
 }
 
+/**
+ * Die Detach-Fixture (`withAltTarget`) stapelt alle drei Nodes in EINER Spalte statt sie
+ * nebeneinander zu legen. Das ist nicht Geschmack, sondern folgt aus zwei Eigenheiten der
+ * Canvas, die die Tests 4.6–4.9 sonst reihum treffen:
+ *
+ *  - Der Rechtsklick klappt das Connection-Panel auf, die Canvas wird schmaler, und
+ *    `onlyRenderVisibleElements` hängt die jetzt überstehende RECHTE Node-Spalte aus dem
+ *    DOM — genau die Nodes, die die Tests danach anklicken. Bei gleicher x-Koordinate für
+ *    alle Nodes kann horizontal nichts überstehen.
+ *  - Über der Canvas schweben Bedienelemente an festen Bildschirmpositionen: der
+ *    „New Workflow"-Button oben mittig und die MiniMap unten rechts. Beide schlucken Klicks.
+ *    In einer vertikal gespreizten Spalte liegen die angeklickten Nodes in der Mitte und
+ *    damit frei.
+ */
 function definition({ edgeData, withAltTarget }: DefOverrides = {}) {
   const altNode = withAltTarget
     ? [{
         id: NODE_C,
         type: 'activity',
-        // Die Position ist zweifach begründet, nicht kosmetisch: links (x=60), weil der
-        // Rechtsklick das Connection-Panel aufklappt, die Canvas dadurch schrumpft und
-        // `onlyRenderVisibleElements` die rechte Node-Spalte aus dem DOM hängt; und oben
-        // (negatives y), weil die MiniMap unten rechts sitzt und Klicks auf einen dort
-        // gelandeten Node abfängt.
-        position: { x: 60, y: -180 },
+        position: { x: 60, y: 540 },
         data: { label: 'Alternative', activityType: 'delay', config: { seconds: 2 } },
       }]
     : [];
@@ -59,7 +68,7 @@ function definition({ edgeData, withAltTarget }: DefOverrides = {}) {
       {
         id: NODE_B,
         type: 'activity',
-        position: { x: 320, y: 60 },
+        position: withAltTarget ? { x: 60, y: 300 } : { x: 320, y: 60 },
         data: { label: 'Consumer', activityType: 'delay', config: { seconds: 1 } },
       },
       ...altNode,
@@ -350,7 +359,7 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await expect(page.getByTestId('edge-detach-hint')).toBeVisible();
   }
 
-  test('4.6 — "Detach target" re-routes the edge to the clicked node; condition + label survive', async ({ page }) => {
+  test('4.6 — "Detach target" re-routes to the clicked node, picks the nearest port, keeps condition + label', async ({ page }) => {
     let putBody: { definitionJson?: string } | null = null;
     const body = workflowJson({ withAltTarget: true });
     await page.route(`**/api/workflows/${WF_ID}`, (route) => {
@@ -363,18 +372,30 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     await waitForCanvas(page, 3);
     await openDetach(page);
 
-    // Nahe der linken oberen Ecke klicken — hält den Klickpunkt frei von Ports und Badges.
-    await page.locator(`.react-flow__node[data-id="${NODE_C}"]`).click({ position: { x: 15, y: 15 } });
+    // Klickpunkt: horizontal auf dem Bottom-Handle, vertikal ein Stück DARUNTER. Drei Gründe,
+    // warum er so und nicht "irgendwo im Node" gewählt ist:
+    //  - horizontal mittig — an einer Ecke läge je nach Node-Proportion ein Seiten-Handle
+    //    näher, und der Test sähe `left` statt `bottom`, ohne dass etwas kaputt wäre.
+    //  - nicht auf dem Handle selbst: das sitzt mittig auf der Kante und ragt zur Hälfte
+    //    heraus; ein Treffer startet einen Verbindungs-Drag statt `onNodeClick`.
+    //  - die UNTERE Kante, nicht die obere: über dem Node schwebt der „New Workflow"-Button
+    //    der Canvas und schluckt Klicks dort.
+    const target = page.locator(`.react-flow__node[data-id="${NODE_C}"]`);
+    const handle = (await target.locator('[data-handleid="bottom"]').boundingBox())!;
+    await page.mouse.click(handle.x + handle.width / 2, handle.y + handle.height + 6);
     await expect(page.getByTestId('edge-detach-hint')).toHaveCount(0);
 
     await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
     await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
     const def = JSON.parse(putBody!.definitionJson as string) as {
-      edges: { source: string; target: string; data?: { condition?: string; label?: string } }[];
+      edges: { source: string; target: string; targetHandle?: string; data?: { condition?: string; label?: string } }[];
     };
     expect(def.edges).toHaveLength(1);
     expect(def.edges[0].source).toBe(NODE_A);   // Quelle bleibt, nur das Ziel zieht um
     expect(def.edges[0].target).toBe(NODE_C);
+    // Die eine Aussage, die kein Unit-Test treffen kann: Klickposition und persistierter
+    // Port passen zusammen. Unten geklickt → unten angedockt, nicht der alte 'left'-Port.
+    expect(def.edges[0].targetHandle).toBe('bottom');
     expect(def.edges[0].data?.condition).toBe(`${NODE_A}.success`);
     expect(def.edges[0].data?.label).toBe('On Success');
   });
@@ -401,5 +422,97 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     const panel = page.getByRole('heading', { name: /^connection$|^verbindung$/i }).locator('../..');
     await expect(panel.getByText('Consumer')).toBeVisible();
     expect(putSeen).toBe(false);
+  });
+
+  test('4.7b — right-click on empty canvas cancels a detach without opening any menu', async ({ page }) => {
+    let putSeen = false;
+    const body = workflowJson({ withAltTarget: true });
+    await page.route(`**/api/workflows/${WF_ID}`, (route) => {
+      if (route.request().method() === 'PUT') putSeen = true;
+      return route.fulfill({ status: 200, contentType: 'application/json', body });
+    });
+
+    await seedExpertMode(page);
+    await page.goto(`/workflows/${WF_ID}`);
+    await waitForCanvas(page, 3);
+    await openDetach(page);
+
+    // Bewusst ueber den Locator statt ueber Mauskoordinaten: Playwrights Actionability-Check
+    // stellt sicher, dass der Punkt wirklich die leere Pane trifft und nicht ein darueber
+    // liegendes Overlay (Edge-SVG, MiniMap, Controls) — sonst laeuft der Test still ins Leere.
+    await page.locator('.react-flow__pane').click({ button: 'right' });
+
+    await expect(page.getByTestId('edge-detach-hint')).toHaveCount(0);
+    // Der Rechtsklick ist vom Abbruch VERBRAUCHT — er darf kein Kontextmenue aufziehen.
+    await expect(page.getByText(/detach target|ziel lösen/i)).toHaveCount(0);
+
+    // Ursprungszustand: Edge unveraendert auf Consumer, nichts zu speichern.
+    await selectEdge(page);
+    const panel = page.getByRole('heading', { name: /^connection$|^verbindung$/i }).locator('../..');
+    await expect(panel.getByText('Consumer')).toBeVisible();
+    expect(putSeen).toBe(false);
+  });
+
+  test('4.9 — re-attaching to the CURRENT target node just moves the port', async ({ page }) => {
+    // Der bisherige Ziel-Node ist ein gueltiges Detach-Ziel: nur so laesst sich die Port-Seite
+    // wechseln, ohne die Edge samt Bedingung zu loeschen und neu zu ziehen. Frueher galt der
+    // Klick dort als Abbruch und tat gar nichts.
+    let putBody: { definitionJson?: string } | null = null;
+    const body = workflowJson({ withAltTarget: true });
+    await page.route(`**/api/workflows/${WF_ID}`, (route) => {
+      if (route.request().method() === 'PUT') putBody = route.request().postDataJSON();
+      return route.fulfill({ status: 200, contentType: 'application/json', body });
+    });
+
+    await seedExpertMode(page);
+    await page.goto(`/workflows/${WF_ID}`);
+    await waitForCanvas(page, 3);
+    await openDetach(page);
+
+    // Auf den UNVERAENDERTEN Ziel-Node klicken, aber unterhalb seines Bottom-Handles.
+    const target = page.locator(`.react-flow__node[data-id="${NODE_B}"]`);
+    const handle = (await target.locator('[data-handleid="bottom"]').boundingBox())!;
+    await page.mouse.click(handle.x + handle.width / 2, handle.y + handle.height + 6);
+    await expect(page.getByTestId('edge-detach-hint')).toHaveCount(0);
+
+    await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
+    await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
+    const def = JSON.parse(putBody!.definitionJson as string) as {
+      edges: { source: string; target: string; targetHandle?: string; data?: { condition?: string } }[];
+    };
+    expect(def.edges).toHaveLength(1);
+    expect(def.edges[0].source).toBe(NODE_A);
+    expect(def.edges[0].target).toBe(NODE_B);        // Ziel-Node unveraendert …
+    expect(def.edges[0].targetHandle).toBe('bottom'); // … nur der Anschlusspunkt zieht um
+    expect(def.edges[0].data?.condition).toBe(`${NODE_A}.success`);
+  });
+
+  test('4.8 — undoing a re-route restores the old target AND leaves the edge clickable', async ({ page }) => {
+    // Regression: `useWorkflowHistory` snapshottet React Flows Store, also den PROJIZIERTEN
+    // Graphen. Der Detach-Marker `__detached` wanderte dadurch beim Undo in die rohen Edges
+    // und liess LabeledEdge sie dauerhaft mit `pointerEvents: 'none'` rendern — die Edge war
+    // bis zum Reload nicht mehr anklickbar. Genau das prueft dieser Test: nach dem Undo muss
+    // ein Klick auf die Edge wieder das Connection-Panel oeffnen.
+    const body = workflowJson({ withAltTarget: true });
+    await page.route(`**/api/workflows/${WF_ID}`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body }),
+    );
+
+    await seedExpertMode(page);
+    await page.goto(`/workflows/${WF_ID}`);
+    await waitForCanvas(page, 3);
+    await openDetach(page);
+
+    const target = page.locator(`.react-flow__node[data-id="${NODE_C}"]`);
+    const handle = (await target.locator('[data-handleid="bottom"]').boundingBox())!;
+    await page.mouse.click(handle.x + handle.width / 2, handle.y + handle.height + 6);
+    await expect(page.getByTestId('edge-detach-hint')).toHaveCount(0);
+
+    await page.keyboard.press('Control+z');
+
+    // Die Edge zeigt wieder auf Consumer — und laesst sich anklicken, ohne Reload.
+    await selectEdge(page);
+    const panel = page.getByRole('heading', { name: /^connection$|^verbindung$/i }).locator('../..');
+    await expect(panel.getByText('Consumer')).toBeVisible();
   });
 });

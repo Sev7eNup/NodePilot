@@ -47,7 +47,7 @@ import { LabeledEdge, EdgeInsertContext } from '../components/designer/edges/Lab
 import { NpEdgeMarkerDefs } from '../components/designer/edges/NpEdgeMarkerDefs';
 import { NpConnectionLine } from '../components/designer/edges/NpConnectionLine';
 import { EdgeDetachPreview } from '../components/designer/edges/EdgeDetachPreview';
-import { classifyReattachTarget } from '../lib/edgeDetach';
+import { classifyReattachTarget, resolveDockTarget } from '../lib/edgeDetach';
 import { npStatusFromExecution, STATUS_COLOR_VAR } from '../lib/statusTokens';
 import { SubWorkflowPreviewContext } from '../components/designer/nodes/ActivityNode';
 import { SubWorkflowPreviewModal } from '../components/designer/overlays/SubWorkflowPreviewModal';
@@ -741,32 +741,56 @@ function WorkflowEditorInner() {
   // den neuen Ziel-Node angefasst. Abbrechen heißt deshalb schlicht: State auf null, keine
   // History, kein Dirty-Flag.
   const [edgeDetach, setEdgeDetach] = useState<{ edgeId: string } | null>(null);
-  const cancelEdgeDetach = useCallback(() => setEdgeDetach(null), []);
+  // Node, an dem die Vorschau-Linie gerade andockt. Wechselt nur beim Überqueren einer
+  // Node-Grenze (EdgeDetachPreview meldet entsprechend selten), nicht pro Mausbewegung.
+  const [dockTargetNodeId, setDockTargetNodeId] = useState<string | null>(null);
+  const cancelEdgeDetach = useCallback(() => {
+    setEdgeDetach(null);
+    setDockTargetNodeId(null);
+  }, []);
+
+  /**
+   * Rechtsklick bricht ein laufendes Detach ab — überall auf der Canvas, egal ob unter dem
+   * Cursor ein Node, eine Edge oder nur leere Fläche liegt. Der Klick wird dabei VERBRAUCHT:
+   * es öffnet sich kein Kontextmenü und auch nicht das des Browsers. „Rechtsklick" ist die
+   * gewohnte Abbruchgeste für eine schwebende Operation; würde er zusätzlich ein Menü
+   * aufziehen, müsste der Nutzer es gleich wieder wegklicken.
+   *
+   * Rückgabe: true, wenn der Klick als Abbruch verbraucht wurde.
+   */
+  const consumeContextMenuAsDetachCancel = useCallback((e: React.MouseEvent | MouseEvent): boolean => {
+    if (!edgeDetach) return false;
+    e.preventDefault();
+    cancelEdgeDetach();
+    return true;
+  }, [edgeDetach, cancelEdgeDetach]);
 
   // ---- Node Context Menu --------------------------------------------------
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
 
   const handleNodeContextMenu = useCallback((e: React.MouseEvent, node: Node) => {
+    // VOR der Node-Typ-Prüfung: ein Rechtsklick auf eine Gruppe oder Sticky-Note soll das
+    // Detach genauso abbrechen, obwohl diese Node-Typen kein eigenes Kontextmenü haben.
+    if (consumeContextMenuAsDetachCancel(e)) return;
     if (node.type !== 'activity') return;
     e.preventDefault();
-    cancelEdgeDetach();
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     setContextMenu({ nodeId: node.id, x: e.clientX - rect.left, y: e.clientY - rect.top });
-  }, [cancelEdgeDetach]);
+  }, [consumeContextMenuAsDetachCancel]);
 
   // ---- Edge Context Menu --------------------------------------------------
   const [edgeContextMenu, setEdgeContextMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
 
   const handleEdgeContextMenu = useCallback((e: React.MouseEvent, edge: Edge) => {
+    if (consumeContextMenuAsDetachCancel(e)) return;
     if (!canWrite) return;  // Viewers / read-only mode get no edit-actions menu
     e.preventDefault();
-    cancelEdgeDetach();
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     setEdgeContextMenu({ edgeId: edge.id, x: e.clientX - rect.left, y: e.clientY - rect.top });
     setSelected({ type: 'edge', id: edge.id });
-  }, [canWrite, cancelEdgeDetach]);
+  }, [canWrite, consumeContextMenuAsDetachCancel]);
 
   // ---- Quick-Connect (drag handle → empty canvas) + Edge-Insert (`+` on edge) ----
   const {
@@ -900,8 +924,11 @@ function WorkflowEditorInner() {
    * der Klick verbraucht wurde. Ablehnungen (Self-Loop/Duplikat/falscher Node-Typ) melden
    * sich über die Notice-Pille und LASSEN das Detach aktiv — ein Fehlklick soll die Aktion
    * nicht wegwerfen.
+   *
+   * Der **bisherige Ziel-Node ist ein gültiges Ziel**: dort erneut anzudocken ist der Weg,
+   * nur die Port-Seite zu wechseln, ohne die Edge zu löschen und neu zu ziehen.
    */
-  const completeEdgeReattach = useCallback((node: Node): boolean => {
+  const completeEdgeReattach = useCallback((event: React.MouseEvent, node: Node): boolean => {
     if (!edgeDetach) return false;
     const edge = edges.find((e) => e.id === edgeDetach.edgeId);
     if (!edge) { cancelEdgeDetach(); return true; }
@@ -909,23 +936,49 @@ function WorkflowEditorInner() {
       edges,
       edgeId: edge.id,
       sourceId: edge.source,
-      currentTargetId: edge.target,
       candidate: { id: node.id, type: node.type },
     });
-    if (verdict === 'cancel') { cancelEdgeDetach(); return true; }
     if (verdict !== 'ok') {
       showConnectionNotice(t(`editor:edgeDetach.${verdict}`));
       return true;
     }
-    // `targetHandle` bleibt absichtlich stehen: der Nutzer hat die Port-Seite einmal gewählt,
-    // das Umhängen des Ziel-Nodes ist kein Grund, sie zurückzusetzen. Gleiche History-Marke
-    // wie beim Drag-Reconnect — für den Nutzer ist es dieselbe Operation.
+    // Die Port-Seite folgt der Klickposition: derselbe Resolver, den die Vorschau-Linie im
+    // pointermove befragt — nur deshalb erzeugt der Klick garantiert genau das, was der
+    // Nutzer eben andocken gesehen hat. Findet er kein Handle (dürfte nie vorkommen), bleibt
+    // der bisherige `targetHandle` stehen statt einer willkürlichen Seite.
+    const dock = resolveDockTarget(event.target, event.clientX, event.clientY, (id) => id === node.id);
+    const nextPort = dock?.port ?? edgeTargetPort(edge);
+    // Landet die Edge exakt dort, wo sie schon hing (gleicher Node UND gleicher Port), ist
+    // nichts passiert: kein History-Eintrag, kein Dirty-Flag. Sonst würde jedes Zurücklegen
+    // aufs alte Ziel einen leeren Undo-Schritt erzeugen und "ungespeicherte Änderungen" melden.
+    if (node.id === edge.target && nextPort === edgeTargetPort(edge)) {
+      cancelEdgeDetach();
+      return true;
+    }
+    // Gleiche History-Marke wie beim Drag-Reconnect — für den Nutzer ist es dieselbe Operation.
     commitHistory('Move edge');
     markDirty();
-    setEdges((eds: Edge[]) => eds.map((e) => (e.id === edge.id ? { ...e, target: node.id } : e)));
+    setEdges((eds: Edge[]) => eds.map((e) => (
+      e.id === edge.id ? { ...e, target: node.id, targetHandle: nextPort } : e
+    )));
     cancelEdgeDetach();
     return true;
   }, [edgeDetach, edges, cancelEdgeDetach, commitHistory, markDirty, setEdges, showConnectionNotice, t]);
+
+  // Dockbarkeit für Vorschau UND Hover-Ring: jeder Node, den der Klick auch annehmen würde —
+  // inklusive des bisherigen Ziels, damit man dort sichtbar eine andere Port-Seite anfahren kann.
+  const canDockTo = useCallback((nodeId: string): boolean => {
+    if (!edgeDetach) return false;
+    const edge = edges.find((e) => e.id === edgeDetach.edgeId);
+    const candidate = nodes.find((n) => n.id === nodeId);
+    if (!edge || !candidate) return false;
+    return classifyReattachTarget({
+      edges,
+      edgeId: edge.id,
+      sourceId: edge.source,
+      candidate: { id: candidate.id, type: candidate.type },
+    }) === 'ok';
+  }, [edgeDetach, edges, nodes]);
 
   // Aufräumen, wenn dem Detach die Grundlage wegbricht: Schreibrecht verloren (Unlock,
   // Publish, Tidy) oder die Edge wurde inzwischen gelöscht.
@@ -940,7 +993,7 @@ function WorkflowEditorInner() {
   // ist der Klick dessen Ziel-Wahl und wird vorher abgefangen.
   const onNodeClick = useCallback((e: React.MouseEvent, node: Node) => {
     if (e.shiftKey || e.ctrlKey || e.metaKey) return;
-    if (completeEdgeReattach(node)) return;
+    if (completeEdgeReattach(e, node)) return;
     setAiChatOpen(false);
   }, [completeEdgeReattach]);
 
@@ -1190,6 +1243,7 @@ function WorkflowEditorInner() {
     nodes, edges, edgesAnimated, hiddenActivityTypes, dataFlowOverlayEnabled,
     simulation, revealIndex, lintResult, failureHeatmapEnabled,
     detachedEdgeId: edgeDetach?.edgeId ?? null,
+    dockTargetNodeId,
   });
 
   // Rohe (nicht projizierte) Edge des laufenden Detach — Quelle + Port-Seiten für die
@@ -1358,6 +1412,9 @@ function WorkflowEditorInner() {
             isValidConnection={isValidConnection}
             onNodeContextMenu={handleNodeContextMenu}
             onEdgeContextMenu={handleEdgeContextMenu}
+            // Nur für den Detach-Abbruch. Ohne aktives Detach passiert hier bewusst nichts,
+            // damit das Browser-Kontextmenü auf der leeren Fläche erhalten bleibt.
+            onPaneContextMenu={consumeContextMenuAsDetachCancel}
             onNodeDoubleClick={canWrite ? onNodeDoubleClick : undefined}
             onDragOver={(e) => {
               if (!canWrite) return;
@@ -1468,6 +1525,8 @@ function WorkflowEditorInner() {
                 sourcePort={edgeSourcePort(detachedEdge)}
                 targetPort={edgeTargetPort(detachedEdge)}
                 canvasRef={canvasRef}
+                canDockTo={canDockTo}
+                onDockTargetChange={setDockTargetNodeId}
               />
             )}
             {snapToGrid ? (

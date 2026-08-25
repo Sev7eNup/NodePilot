@@ -71,7 +71,6 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
   const nodeStyle = useDesignStore((s) => s.nodeStyle);
   const nodeIconStyle = useDesignStore((s) => s.nodeIconStyle);
   const autoHidePorts = useDesignStore((s) => s.autoHidePorts);
-  const flexiblePortsEnabled = useDesignStore((s) => s.flexiblePortsEnabled);
   // A non-null override (e.g. from the mobile read-only graph) wins over the persisted store
   // scale, so the phone view can render larger nodes without changing the desktop preference.
   const scaleOverride = useContext(NodeScaleOverrideContext);
@@ -365,7 +364,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
             }`}
             style={{ width: glyphFs, height: glyphFs }}
           >
-            <ActivityPortHandles size={hs} flexible={flexiblePortsEnabled} connectable={isConnectable} revealed={portsRevealed} />
+            <ActivityPortHandles size={hs} connectable={isConnectable} revealed={portsRevealed} />
             {/* Status glow behind the bare glyph. The icon view has no box/silhouette to carry a
                 coloured border or box-shadow, so the failure-heatmap / critical-path / failed-step
                 signals ride a blurred coloured halo (same approach as the shaped render path).
@@ -451,7 +450,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
           >
             <ActivityPortHandles
               size={hs}
-              flexible={flexiblePortsEnabled}
+             
               connectable={isConnectable}
               adjust={handleAdjustPx}
               revealed={portsRevealed}
@@ -624,7 +623,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
           // instead of the OUTER wrapper (whose width is dominated by the label → otherwise the
           // handles would sit far left/right of the icon in empty space).
           (<div className="relative np-btn-node-wrap" style={{ width: scale.iconBox, height: scale.iconBox, '--np-act-color': ac.color } as React.CSSProperties}>
-            <ActivityPortHandles size={hs} flexible={flexiblePortsEnabled} connectable={isConnectable} revealed={portsRevealed} />
+            <ActivityPortHandles size={hs} connectable={isConnectable} revealed={portsRevealed} />
             {/* Running indicator: expanding ping ring behind the node */}
             {liveStyle?.pulse && !isDisabled && (
               <span
@@ -769,7 +768,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
           style={{ outline: `2px solid ${entryAccentColor}`, outlineOffset: 2 }}
         />
       )}
-      <ActivityPortHandles size={12} flexible={flexiblePortsEnabled} connectable={isConnectable} borderWidth={2} revealed={portsRevealed} />
+      <ActivityPortHandles size={12} connectable={isConnectable} borderWidth={2} revealed={portsRevealed} />
       <div className={`h-10 flex items-center px-4 border-l-2 relative rounded-t-xl ${liveStyle?.pulse ? 'animate-[pulse_1s_ease-in-out_infinite] ring-2 ring-offset-0' : ''}`}
         style={{
           borderLeftColor: liveStyle?.borderColor ?? machineStripe ?? (showEntryMarker ? entryAccentColor : ac.color),
@@ -889,7 +888,7 @@ function ActivityNodeImpl({ data, selected, isConnectable, positionAbsoluteX, po
  * (e.g. a live-status update, a config edit). Reference equality on `data` is therefore the
  * right cut-point: same reference → no content change → the re-render can be skipped.
  *
- * The component's own useDesignStore subscriptions (nodeStyle, flexiblePortsEnabled, etc.)
+ * The component's own useDesignStore subscriptions (nodeStyle, autoHidePorts, etc.)
  * still trigger re-renders independently of this memo — that's intentional, otherwise style
  * switches wouldn't take effect.
  */
@@ -905,46 +904,46 @@ export const ActivityNode = memo(ActivityNodeImpl, (prev, next) => {
     && prev.height === next.height;
 });
 
+/**
+ * Alle vier Ports, in beide Richtungen verbindbar. Es gab bis 1.2.15 eine klassische
+ * 2-Port-Variante (nur links=Eingang / rechts=Ausgang) hinter einem Schalter — die gated
+ * aber nur die Maus: `sourceHandle`/`targetHandle` waren im JSON immer frei, und der
+ * Workflow-Styleguide erlaubt Agenten ausdrücklich, alle vier Seiten zu setzen. Ein Flag
+ * über einer ohnehin vorhandenen Fähigkeit, deshalb ersatzlos entfernt.
+ *
+ * Sichtbarkeit regelt weiterhin `revealed` (autoHidePorts): die Punkte erscheinen erst bei
+ * Cursor-Nähe, die Handles bleiben aber immer im DOM und verbindbar.
+ */
 function ActivityPortHandles({
   size,
-  flexible,
   connectable = true,
   adjust,
   borderWidth = 1,
   revealed = true,
 }: Readonly<{
   size: number;
-  flexible: boolean;
   connectable?: boolean;
   /** px to pull each port inward onto the silhouette (per shape's handleInset). */
   adjust?: Partial<Record<EdgePortSide, number>>;
   borderWidth?: 1 | 2;
-  /** When false, active ports render at opacity 0 (auto-hide) — handles stay present + connectable. */
+  /** When false, ports render at opacity 0 (auto-hide) — handles stay present + connectable. */
   revealed?: boolean;
 }>) {
   const { t } = useTranslation('designer');
   return (
     <>
-      {EDGE_PORT_SIDES.map((side) => {
-        const visibleInClassicMode = side === 'left' || side === 'right';
-        const visible = (flexible || visibleInClassicMode) && revealed;
-        const canStart = !!connectable && (flexible || side === 'right');
-        const canEnd = !!connectable && (flexible || side === 'left');
-        return (
-          <Handle
-            key={side}
-            id={side}
-            type="source"
-            position={portToPosition(side)}
-            isConnectable={!!connectable}
-            isConnectableStart={canStart}
-            isConnectableEnd={canEnd}
-            style={portHandleStyle(side, size, adjust?.[side] ?? 0, visible)}
-            className={`np-port-dot ${borderWidth === 2 ? '!border-2' : '!border'} !border-surface-lowest !rounded-full transition-opacity`}
-            title={flexible ? t('nodes.connectSide', { side: t(`edgePort.${side}`) }) : side === 'right' ? t('nodes.output') : side === 'left' ? t('nodes.input') : undefined}
-          />
-        );
-      })}
+      {EDGE_PORT_SIDES.map((side) => (
+        <Handle
+          key={side}
+          id={side}
+          type="source"
+          position={portToPosition(side)}
+          isConnectable={!!connectable}
+          style={portHandleStyle(side, size, adjust?.[side] ?? 0, revealed)}
+          className={`np-port-dot ${borderWidth === 2 ? '!border-2' : '!border'} !border-surface-lowest !rounded-full transition-opacity`}
+          title={t('nodes.connectSide', { side: t(`edgePort.${side}`) })}
+        />
+      ))}
     </>
   );
 }

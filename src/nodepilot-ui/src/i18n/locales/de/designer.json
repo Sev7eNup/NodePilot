@@ -235,8 +235,6 @@
       "returnData": "Rückgabedaten"
     },
     "connectSide": "{{side}} verbinden",
-    "output": "Ausgabe",
-    "input": "Eingabe",
     "breakpoint": {
       "paused": "An diesem Breakpoint pausiert",
       "conditional": "Bedingter Breakpoint — pausiert nur, wenn die Bedingung wahr ist (Debug-Lauf)",
@@ -356,7 +354,6 @@
     "ports": "Verbindungs-Ports",
     "from": "Von",
     "to": "Nach",
-    "flexiblePortsOff": "Flexible Ports sind aus. Vorhandene benutzerdefinierte Ports werden weiterhin gerendert; aktiviere den Toolbar-Schalter, um mehr zu erstellen.",
     "label": "Bezeichnung",
     "labelPlaceholder": "z. B. Bei Erfolg, Falls Wahr...",
     "displayedOnArrow": "Wird auf dem Verbindungspfeil angezeigt",
@@ -465,8 +462,6 @@
     "premiumCanvasOff": "Klassisches Design – auf Premium-Canvas wechseln",
     "nodeIconsToGlyph": "Geformte Nodes – auf Icon-Ansicht wechseln",
     "nodeIconsToShape": "Icon-Ansicht – auf geformte Nodes wechseln",
-    "flexiblePortsOn": "Flexible Ports an — von/zu jeder Seite verbinden",
-    "flexiblePortsOff": "Flexible Ports aus — klassische Rechts-nach-Links-Verbindungen",
     "portsAutoHideOn": "Ports werden automatisch ausgeblendet — sichtbar bei Cursor-Nähe / beim Verbinden. Klick für dauerhaft sichtbar.",
     "portsAutoHideOff": "Ports immer sichtbar — Klick, um sie bis zur Cursor-Nähe auszublenden.",
     "edgeThickness": "Kanten-(Pfeil-)Dicke",
@@ -535,10 +530,6 @@
     "labelFont": {
       "name": "Beschriftung",
       "desc": "Schriftgröße der Aktivitäts-Bezeichnung."
-    },
-    "flexiblePorts": {
-      "name": "Flexible Ports",
-      "desc": "Von/zu jeder Seite verbinden."
     },
     "autoHidePorts": {
       "name": "Ports ausblenden",

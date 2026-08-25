@@ -235,8 +235,6 @@
       "returnData": "Return Data"
     },
     "connectSide": "Connect {{side}}",
-    "output": "Output",
-    "input": "Input",
     "breakpoint": {
       "paused": "Paused at this breakpoint",
       "conditional": "Conditional breakpoint — pauses only when condition is truthy (Debug run)",
@@ -356,7 +354,6 @@
     "ports": "Connection ports",
     "from": "From",
     "to": "To",
-    "flexiblePortsOff": "Flexible ports are off. Existing custom ports still render; turn the toolbar toggle on to create more.",
     "label": "Label",
     "labelPlaceholder": "e.g. On Success, If True...",
     "displayedOnArrow": "Displayed on the connection arrow",
@@ -465,8 +462,6 @@
     "premiumCanvasOff": "Classic design – switch to premium canvas",
     "nodeIconsToGlyph": "Shaped nodes – switch to icon view",
     "nodeIconsToShape": "Icon view – switch to shaped nodes",
-    "flexiblePortsOn": "Flexible ports on — connect from/to any side",
-    "flexiblePortsOff": "Flexible ports off — classic right-to-left connections",
     "portsAutoHideOn": "Ports auto-hide — shown near the cursor / when connecting. Click to always show.",
     "portsAutoHideOff": "Ports always visible — click to auto-hide until the cursor nears a node.",
     "edgeThickness": "Edge (arrow) thickness",
@@ -535,10 +530,6 @@
     "labelFont": {
       "name": "Label",
       "desc": "Font size of the activity label."
-    },
-    "flexiblePorts": {
-      "name": "Flexible ports",
-      "desc": "Connect from/to any side."
     },
     "autoHidePorts": {
       "name": "Hide ports",

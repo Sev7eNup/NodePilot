@@ -9,7 +9,7 @@ import { usePointerFlowPosition } from '../../stores/pointerFlowPositionStore';
 // nodeIconStyle reset to 'shape' so a glyph-view test can't leak into later classic tests.
 // autoHidePorts reset + pointer store cleared so port-reveal tests don't leak across cases.
 beforeEach(() => {
-  useDesignStore.setState({ nodeStyle: 'card', nodeIconStyle: 'shape', flexiblePortsEnabled: false, autoHidePorts: true });
+  useDesignStore.setState({ nodeStyle: 'card', nodeIconStyle: 'shape', autoHidePorts: true });
   usePointerFlowPosition.setState({ x: null, y: null });
 });
 
@@ -54,22 +54,12 @@ describe('ActivityNode', () => {
     expect(screen.getByText('delay')).toBeInTheDocument();
   });
 
-  it('renders four neutral port handles while classic mode only enables right-start and left-end', () => {
+  it('rendersFourPortHandles_allConnectableInBothDirections', () => {
+    // Die klassische 2-Port-Variante (nur rechts-Start / links-Ende) ist ersatzlos entfallen:
+    // sie gated nur die Maus, während sourceHandle/targetHandle im JSON immer frei waren.
     const { container } = renderActivityNode({ label: 'Ports', activityType: 'runScript', config: {} });
 
     expect(container.querySelectorAll('.react-flow__handle')).toHaveLength(4);
-    expect(container.querySelector('[data-handleid="right"]')).toHaveClass('connectablestart');
-    expect(container.querySelector('[data-handleid="right"]')).not.toHaveClass('connectableend');
-    expect(container.querySelector('[data-handleid="left"]')).not.toHaveClass('connectablestart');
-    expect(container.querySelector('[data-handleid="left"]')).toHaveClass('connectableend');
-    expect(container.querySelector('[data-handleid="top"]')).not.toHaveClass('connectablestart');
-    expect(container.querySelector('[data-handleid="bottom"]')).not.toHaveClass('connectableend');
-  });
-
-  it('enables all port handles when flexible ports are active', () => {
-    useDesignStore.setState({ flexiblePortsEnabled: true });
-    const { container } = renderActivityNode({ label: 'Ports', activityType: 'runScript', config: {} });
-
     for (const side of ['top', 'right', 'bottom', 'left']) {
       expect(container.querySelector(`[data-handleid="${side}"]`)).toHaveClass('connectablestart');
       expect(container.querySelector(`[data-handleid="${side}"]`)).toHaveClass('connectableend');
