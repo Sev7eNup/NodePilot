@@ -212,6 +212,19 @@ Sichtbarkeit gegated durch `roleCanWrite` (Admin/Operator) — nicht durch Lock-
 
 ---
 
+## Edge-Detach — Implementierungsdetails
+
+Kontextmenü-Eintrag „Ziel lösen": das Zielende hängt am Cursor, der nächste Klick auf einen Activity-Node hängt es dort wieder an — mit unveränderter Bedingung, Label, `disabled`, `controlPoints` und `targetHandle`. **Nicht** expert-gegated (anders als Swap/Reset-Shape): Umhängen ist eine primäre Editier-Operation.
+
+- **Existiert zusätzlich zum Drag-Weg, ersetzt ihn nicht.** `edgesReconnectable={canWrite}` + `onReconnect` (React Flow nativ) sind seit jeher verdrahtet; der Drag verlangt aber einen präzisen Griff auf den Endpunkt und wird unbrauchbar, sobald Quelle und neues Ziel nicht gleichzeitig auf den Schirm passen.
+- [edgeDetach.ts](../src/nodepilot-ui/src/lib/edgeDetach.ts) — `classifyReattachTarget` (Verdikte `ok`/`cancel`/`selfLoop`/`duplicate`/`invalidTarget`; Reihenfolge ist bedeutungstragend) + `detachedSourcePoint` (Anker über das vorhandene `getPortPoint`). Bewusst React-Flow-frei, damit ohne Canvas testbar.
+- [EdgeDetachPreview.tsx](../src/nodepilot-ui/src/components/designer/edges/EdgeDetachPreview.tsx) — Vorschau-Linie in `<ViewportPortal>`, also in **Flow**-Koordinaten (Screen-Koordinaten würden ohne Mausbewegung beim Pannen veralten). Eigener rAF-gedrosselter `pointermove` auf der Canvas; der geteilte `pointerFlowPositionStore` scheidet aus, er ist an `autoHidePorts` gekoppelt. Optik über `ConnectionPreviewPath` aus `NpConnectionLine.tsx` — Drag- und Klick-Weg sehen identisch aus.
+- **Zustand ist transient.** `edgeDetach` in `WorkflowEditorPage` hält nur die Edge-ID; die Edge wird erst beim erfolgreichen Klick angefasst. Abbruch (Esc → erster Zweig im Escape-Handler, Pane-Klick, Rechtsklick, Klick aufs alte Ziel, Verlust von `canWrite`, gelöschte Edge) heißt schlicht State auf `null` — **kein** History-Eintrag, **kein** `isDirty`. Erfolg committet `'Move edge'`, dieselbe Marke wie der Drag-Reconnect.
+- Ablehnungen (Self-Loop / Duplikat / Gruppe+Sticky-Note) melden über die Notice-Pille und **lassen das Detach aktiv** — ein Fehlklick darf die Aktion nicht wegwerfen.
+- Der Geist der alten Route kommt über `data.__detached` aus der `useDisplayedGraph`-Projektion (gleiche Mechanik wie `__flowingVars`; `__`-Keys strippt `stripRuntimeDefinition` beim Speichern). `LabeledEdge` dimmt daraufhin die Pfad-`<g>` und unterdrückt `+`-Button und Reshape-Griffe; das Label-Pill bleibt voll deckend und benennt die Edge, die gerade umzieht.
+
+---
+
 ## Contract-Derivation — Semantik-Notizen
 
 - `HasManualTrigger=false` heißt **nicht** „nicht callable" — `startWorkflow` ruft jeden enabled Workflow. Heißt nur: kein deklarierter Input-Vertrag, UI fällt auf freie ParameterTable zurück.

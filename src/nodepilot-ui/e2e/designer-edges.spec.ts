@@ -24,13 +24,29 @@ import { installDefaultMocks, MOCK_USER, seedExpertMode } from './fixtures/mockA
 const WF_ID = 'e4e4e4e4-4444-4444-4444-444444444444';
 const NODE_A = 'step-src';
 const NODE_B = 'step-dst';
+const NODE_C = 'step-alt';
 const EDGE_ID = 'edge-main';
 
 interface DefOverrides {
   edgeData?: Record<string, unknown>;
+  /** Adds an unconnected third node — the re-route target for the edge-detach case (4.6). */
+  withAltTarget?: boolean;
 }
 
-function definition({ edgeData }: DefOverrides = {}) {
+function definition({ edgeData, withAltTarget }: DefOverrides = {}) {
+  const altNode = withAltTarget
+    ? [{
+        id: NODE_C,
+        type: 'activity',
+        // Die Position ist zweifach begründet, nicht kosmetisch: links (x=60), weil der
+        // Rechtsklick das Connection-Panel aufklappt, die Canvas dadurch schrumpft und
+        // `onlyRenderVisibleElements` die rechte Node-Spalte aus dem DOM hängt; und oben
+        // (negatives y), weil die MiniMap unten rechts sitzt und Klicks auf einen dort
+        // gelandeten Node abfängt.
+        position: { x: 60, y: -180 },
+        data: { label: 'Alternative', activityType: 'delay', config: { seconds: 2 } },
+      }]
+    : [];
   return JSON.stringify({
     nodes: [
       {
@@ -46,6 +62,7 @@ function definition({ edgeData }: DefOverrides = {}) {
         position: { x: 320, y: 60 },
         data: { label: 'Consumer', activityType: 'delay', config: { seconds: 1 } },
       },
+      ...altNode,
     ],
     edges: [
       {
@@ -74,9 +91,24 @@ function workflowJson(defOverrides: DefOverrides = {}, overrides: Record<string,
   });
 }
 
-async function waitForCanvas(page: Page) {
-  await expect(page.locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+async function waitForCanvas(page: Page, nodeCount = 2) {
+  await expect(page.locator('.react-flow__node')).toHaveCount(nodeCount, { timeout: 15_000 });
   await expect(page.locator('.react-flow__edge')).toHaveCount(1);
+}
+
+/** Screen coordinate that lies exactly ON the edge's SVG path. A horizontal edge's bounding
+ *  box has zero height, so box-centre arithmetic degenerates; getPointAtLength + getScreenCTM
+ *  works for curved edges too. Same helper as in edge-reshape.spec.ts. */
+async function pointOnEdge(page: Page): Promise<{ x: number; y: number }> {
+  return page.locator(`.react-flow__edge[data-id="${EDGE_ID}"] .react-flow__edge-path`).first()
+    .evaluate((el) => {
+      const path = el as unknown as SVGPathElement;
+      const p = path.getPointAtLength(path.getTotalLength() / 2);
+      const dom = path.ownerSVGElement!.createSVGPoint();
+      dom.x = p.x; dom.y = p.y;
+      const screen = dom.matrixTransform(path.getScreenCTM()!);
+      return { x: screen.x, y: screen.y };
+    });
 }
 
 /** Click the seeded edge → opens the Connection (EdgePropertiesPanel).
@@ -298,5 +330,76 @@ test.describe('Designer Edges & Bedingungen (Teil 4)', () => {
     const def = JSON.parse(putBody!.definitionJson as string) as { nodes: unknown[]; edges: unknown[] };
     expect(def.edges).toHaveLength(0);
     expect(def.nodes).toHaveLength(2);
+  });
+
+  /**
+   * Edge-Detach (Kontextmenü → „Ziel lösen" → Ziel-Node anklicken). Der Drag-Weg
+   * (React Flows `edgesReconnectable`) ist d3-drag und nicht synthetisierbar; der Klick-Weg
+   * ist es sehr wohl und trägt dieselbe Logik.
+   *
+   * Zwei getrennte Tests statt eines Durchlaufs mit zwei Runden: der Rechtsklick muss eine
+   * UNSELEKTIERTE Edge treffen. Nach der ersten Runde ist sie selektiert, und dann liegen
+   * `+`-Insert-Button und Reshape-Griffe genau auf dem Pfad-Mittelpunkt und schlucken den
+   * Klick — die zweite Runde im selben Test lief zuverlässig in einen Timeout.
+   */
+  async function openDetach(page: Page) {
+    await page.waitForTimeout(500); // fitView-Animation ausklingen lassen, bevor gemessen wird
+    const pt = await pointOnEdge(page);
+    await page.mouse.click(pt.x, pt.y, { button: 'right' });
+    await page.getByText(/detach target|ziel lösen/i).click();
+    await expect(page.getByTestId('edge-detach-hint')).toBeVisible();
+  }
+
+  test('4.6 — "Detach target" re-routes the edge to the clicked node; condition + label survive', async ({ page }) => {
+    let putBody: { definitionJson?: string } | null = null;
+    const body = workflowJson({ withAltTarget: true });
+    await page.route(`**/api/workflows/${WF_ID}`, (route) => {
+      if (route.request().method() === 'PUT') putBody = route.request().postDataJSON();
+      return route.fulfill({ status: 200, contentType: 'application/json', body });
+    });
+
+    await seedExpertMode(page);
+    await page.goto(`/workflows/${WF_ID}`);
+    await waitForCanvas(page, 3);
+    await openDetach(page);
+
+    // Nahe der linken oberen Ecke klicken — hält den Klickpunkt frei von Ports und Badges.
+    await page.locator(`.react-flow__node[data-id="${NODE_C}"]`).click({ position: { x: 15, y: 15 } });
+    await expect(page.getByTestId('edge-detach-hint')).toHaveCount(0);
+
+    await page.getByRole('button', { name: /save in place|zwischen.?speichern|speichern|^save/i }).first().click();
+    await expect.poll(() => putBody, { timeout: 10_000 }).not.toBeNull();
+    const def = JSON.parse(putBody!.definitionJson as string) as {
+      edges: { source: string; target: string; data?: { condition?: string; label?: string } }[];
+    };
+    expect(def.edges).toHaveLength(1);
+    expect(def.edges[0].source).toBe(NODE_A);   // Quelle bleibt, nur das Ziel zieht um
+    expect(def.edges[0].target).toBe(NODE_C);
+    expect(def.edges[0].data?.condition).toBe(`${NODE_A}.success`);
+    expect(def.edges[0].data?.label).toBe('On Success');
+  });
+
+  test('4.7 — Escape cancels a detach: edge keeps its old target and stays undirty', async ({ page }) => {
+    let putSeen = false;
+    const body = workflowJson({ withAltTarget: true });
+    await page.route(`**/api/workflows/${WF_ID}`, (route) => {
+      if (route.request().method() === 'PUT') putSeen = true;
+      return route.fulfill({ status: 200, contentType: 'application/json', body });
+    });
+
+    await seedExpertMode(page);
+    await page.goto(`/workflows/${WF_ID}`);
+    await waitForCanvas(page, 3);
+    await openDetach(page);
+
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('edge-detach-hint')).toHaveCount(0);
+
+    // Die Edge zeigt unverändert auf Consumer — und der Abbruch hat den Workflow nicht
+    // dirty gemacht, es gibt also nichts zu speichern.
+    await selectEdge(page);
+    const panel = page.getByRole('heading', { name: /^connection$|^verbindung$/i }).locator('../..');
+    await expect(panel.getByText('Consumer')).toBeVisible();
+    expect(putSeen).toBe(false);
   });
 });

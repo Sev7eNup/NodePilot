@@ -779,6 +779,39 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 ---
 
+### Test 4.6 — Edge-Ziel lösen und neu verbinden
+
+**Schritte:**
+1. Workflow mit drei Nodes und einer Edge `A → B` (Edge mit Label + Bedingung)
+2. Rechtsklick auf die Edge → "Ziel lösen"
+3. Hinweis-Pille erscheint, das Edge-Ende hängt am Cursor
+4. Klick auf Node C
+5. Speichern
+
+**Prüfpunkte:**
+- [ ] Menüeintrag ist auch im Standard-Modus sichtbar (nicht expert-gegated)
+- [ ] Edge zeigt danach auf C, Quelle bleibt A
+- [ ] Label, Bedingung und `disabled` sind unverändert
+- [ ] Klick auf Node A (Quelle), auf einen bereits von A erreichten Node oder auf eine Sticky-Note wird mit Meldung abgelehnt, der Modus bleibt aktiv
+
+**Erwartung:** Edges lassen sich per Kontextmenü umhängen, ohne die Bedingung neu zu bauen
+
+---
+
+### Test 4.7 — Detach abbrechen
+
+**Schritte:**
+1. Rechtsklick auf Edge → "Ziel lösen"
+2. Esc drücken (alternativ: Klick auf leere Canvas, Rechtsklick)
+
+**Prüfpunkte:**
+- [ ] Hinweis-Pille verschwindet, die Edge zeigt weiter auf ihr altes Ziel
+- [ ] Workflow ist **nicht** dirty (nichts zu speichern), Undo-Stack unverändert
+
+**Erwartung:** Der Abbruch hinterlässt keinerlei Spur
+
+---
+
 ## Teil 5: Properties Panel & Variablen
 
 ### Test 5.1 — Output Variable setzen & umbenennen
@@ -4680,7 +4713,7 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 1: Workflow-Management (1.1 — 1.4)
 [ ] Teil 2: Activity-Typen (2.1 — 2.13, 2.2b, 2.2c)
 [ ] Teil 3: Node-Operationen (3.1 — 3.5)
-[ ] Teil 4: Edges & Bedingungen (4.1 — 4.5)
+[ ] Teil 4: Edges & Bedingungen (4.1 — 4.7)
 [ ] Teil 5: Properties & Variablen (5.1 — 5.4)
 [ ] Teil 6: Workflow-Ausführung (6.1 — 6.7)
 [ ] Teil 7: Fehlerbehandlung (7.1 — 7.5)

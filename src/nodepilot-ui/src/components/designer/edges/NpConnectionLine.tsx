@@ -1,13 +1,25 @@
-import { getBezierPath, type ConnectionLineComponentProps } from '@xyflow/react';
+import { getBezierPath, type Position, type ConnectionLineComponentProps } from '@xyflow/react';
+
+interface PreviewPathProps {
+  fromX: number;
+  fromY: number;
+  toX: number;
+  toY: number;
+  fromPosition: Position;
+  toPosition: Position;
+}
 
 /**
- * Custom connection line drawn while the user drags a new edge. Replaces the
- * stock grey bezier with a primary-colored animated dash + a docking dot at the
- * cursor, so the preview matches the committed LabeledEdge look. Colors ride
- * `--color-primary`, which the `.np-designer .react-flow` shield keeps stable
- * across skins. The dash animation is defined in index.css (reduced-motion-gated).
+ * Das gemeinsame Aussehen jeder "noch nicht festgemachten" Verbindung: primary-farbener
+ * animierter Strich + Docking-Punkt am losen Ende, passend zur committeten LabeledEdge.
+ * Farben reiten auf `--color-primary`, das der `.np-designer .react-flow`-Schild über alle
+ * Skins stabil hält. Die Dash-Animation steht in index.css (reduced-motion-gegated).
+ *
+ * Zwei Aufrufer: der Drag einer neuen Edge (NpConnectionLine unten) und das per Kontextmenü
+ * gelöste Edge-Ende (EdgeDetachPreview). Beide Wege müssen gleich aussehen — es ist für den
+ * Nutzer dieselbe Handlung.
  */
-export function NpConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition }: ConnectionLineComponentProps) {
+export function ConnectionPreviewPath({ fromX, fromY, toX, toY, fromPosition, toPosition }: Readonly<PreviewPathProps>) {
   const [path] = getBezierPath({
     sourceX: fromX,
     sourceY: fromY,
@@ -37,5 +49,19 @@ export function NpConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosit
         strokeWidth={2}
       />
     </g>
+  );
+}
+
+/** Custom connection line drawn while the user drags a new edge. */
+export function NpConnectionLine({ fromX, fromY, toX, toY, fromPosition, toPosition }: ConnectionLineComponentProps) {
+  return (
+    <ConnectionPreviewPath
+      fromX={fromX}
+      fromY={fromY}
+      toX={toX}
+      toY={toY}
+      fromPosition={fromPosition}
+      toPosition={toPosition}
+    />
   );
 }

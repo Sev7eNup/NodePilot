@@ -20,6 +20,9 @@ interface EditorShortcutsOptions {
   setHelpOpen: (open: boolean | ((o: boolean) => boolean)) => void;
   findReplaceOpen: boolean;
   setFindReplaceOpen: (open: boolean) => void;
+  /** True while an edge's target end is detached and waiting for a node click. */
+  edgeDetachActive: boolean;
+  cancelEdgeDetach: () => void;
   toggleFullscreen: () => void;
   toggleQuickSwitcher: () => void;
   toggleCommandPalette: () => void;
@@ -84,6 +87,7 @@ export function useEditorKeyboardShortcuts({
   searchOpen, setSearchOpen, setSearchInput,
   helpOpen, setHelpOpen,
   findReplaceOpen, setFindReplaceOpen,
+  edgeDetachActive, cancelEdgeDetach,
   toggleFullscreen, toggleQuickSwitcher, toggleCommandPalette,
   triggerSave, triggerLock, triggerUnlock, triggerForceUnlock,
   triggerPublish, triggerTest, triggerDebug, triggerCancel,
@@ -131,8 +135,11 @@ export function useEditorKeyboardShortcuts({
           case 'b': case 'B': toggleSelectedBreakpoint(); e.preventDefault(); return;
         }
       }
-      // Escape closes open overlays first.
+      // Escape closes open overlays first. A detached edge end outranks every overlay: it
+      // is a canvas-wide modal state, and leaving it armed while Escape closes something
+      // else would strand the user mid-operation.
       if (e.key === 'Escape') {
+        if (edgeDetachActive) { cancelEdgeDetach(); e.preventDefault(); return; }
         if (findReplaceOpen) { setFindReplaceOpen(false); e.preventDefault(); return; }
         if (searchOpen) { setSearchOpen(false); setSearchInput(''); e.preventDefault(); return; }
         if (helpOpen) { setHelpOpen(false); e.preventDefault(); return; }
@@ -306,7 +313,8 @@ export function useEditorKeyboardShortcuts({
   }, [
     designerMode, undo, redo, copySelection, pasteBuffer, groupSelection, selectAll, zoomToSelection,
     navigateNode, searchOpen, setSearchOpen, setSearchInput, helpOpen, setHelpOpen,
-    findReplaceOpen, setFindReplaceOpen, toggleFullscreen, toggleQuickSwitcher, toggleCommandPalette,
+    findReplaceOpen, setFindReplaceOpen, edgeDetachActive, cancelEdgeDetach,
+    toggleFullscreen, toggleQuickSwitcher, toggleCommandPalette,
     triggerSave, triggerLock, triggerUnlock, triggerForceUnlock,
     triggerPublish, triggerTest, triggerDebug, triggerCancel,
     triggerTidy, toggleLintPanel,
