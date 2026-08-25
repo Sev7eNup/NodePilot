@@ -12,6 +12,21 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.16] - 2026-08-25
+
+SCOrch import stops second-guessing the export: a *Run Program* activity is a program call, whatever
+its program field holds. The designer gains a way to re-point an edge without redrawing it.
+
+### Added
+
+- **Detach target** in the edge context menu lifts an edge's target end; the next click on a node
+  drops it there, with a preview line following the pointer in between. Re-pointing an edge
+  previously meant deleting it and drawing a new one, which loses its label and condition. The edge
+  is not mutated while detached — the state is transient — so Escape, a click on the pane and a
+  right-click all simply drop it, leaving no history entry and no dirty flag. Clicking the edge's
+  existing target reads as "put it back" and cancels silently; the source node reports a self-loop,
+  a node the source already reaches reports a duplicate, and groups and sticky notes are refused.
+
 ### Fixed
 
 - SCOrch import: a *Run Program* activity now always becomes a `startProgram` node. The export
@@ -790,6 +805,7 @@ multi-step automation in the browser, with no agents on the targets.
 - Licensed under Apache-2.0
 
 [Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.14...main
+[1.2.16]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.16
 [1.2.15]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.15
 [1.2.14]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.14
 [1.2.13]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.13
