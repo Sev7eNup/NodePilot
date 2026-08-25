@@ -82,6 +82,7 @@ ist nicht nötig. **Immer erst `pg_ctl start`, dann `dotnet run`.**
 - **Jede Änderung an `.github/dependabot.yml` löst sofort alle Blöcke neu aus** (unabhängig vom Montags-Zeitplan) und erzeugt binnen Minuten neue PRs. Config-Edits deshalb **bündeln**, nicht nacheinander mergen.
 - **Scope:** Minimaler Root-Cause-Fix. Würde ein Fix deutlich mehr Dateien anfassen als das benannte Problem → stoppen und den geplanten Scope in 3 Bullets nennen, bevor editiert wird.
 - **PowerShell 5.1 / Windows:** Kein Inline-SQL durch PowerShell-Quoting — Query in eine `.sql`-Datei schreiben und per `psql -f` ausführen. Dateien als UTF-8 **ohne** BOM schreiben. Keine `sed`/Regex-Zeilen-Edits auf Source-Dateien (CRLF bricht sie) — Edit-Tool verwenden. Kein `$args`-Splatting; explizite benannte Parameter.
+- **Code-Kommentare:** Sachlich und kurz, in einfachem Englisch. Sie sagen, **was** der Code tut und **warum** — nicht mehr. Keine Herleitung, keine Erzählung, keine Rückblende auf frühere Fehlversuche, keine Messwerte oder Beispielzahlen als Beleg, kein „X used to …, which meant …". Wer den Hintergrund braucht, findet ihn in Commit-Message, PR oder `docs/`. Ein bis drei Zeilen reichen fast immer; ein Kommentar, der länger ist als der Code darunter, ist meist eine Erzählung. Die vorhandenen langen Kommentare im Repo sind **kein** Vorbild.
 - **Reporting:** Knapp berichten — was geändert, was verifiziert, was offen. Keine Per-File-Walkthroughs, kein Plan-Nacherzählen. Interaktive Rückfragen nur, wenn die Antwort wirklich blockiert.
 
 ## Datenbank

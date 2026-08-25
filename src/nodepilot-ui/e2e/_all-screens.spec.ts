@@ -79,8 +79,8 @@ async function mockAll(page: Page) {
         { id: 'mail', type: 'activity', position: { x: 580, y: 180 }, data: { label: 'Email Result', activityType: 'emailNotification', config: {} } },
       ],
       edges: [
-        { id: 'e1', source: 'trig', target: 'check', type: 'labeled', data: { label: 'Always' } },
-        { id: 'e2', source: 'trig', target: 'update', type: 'labeled', data: { label: 'Always' } },
+        { id: 'e1', source: 'trig', target: 'check', type: 'labeled', data: { label: '' } },
+        { id: 'e2', source: 'trig', target: 'update', type: 'labeled', data: { label: '' } },
         { id: 'e3', source: 'check', target: 'mail', type: 'labeled', data: { label: 'On Success', condition: 'check.success' } },
         { id: 'e4', source: 'update', target: 'mail', type: 'labeled', data: { label: 'On Success' } },
       ],

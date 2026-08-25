@@ -141,7 +141,10 @@ describe('EdgePropertiesPanel', () => {
 
     const [, patch] = (props.onUpdate as ReturnType<typeof vi.fn>).mock.calls[0];
     expect((patch.data as Record<string, unknown>).condition).toBe('');
-    expect((patch.data as Record<string, unknown>).label).toBe('Always');
+    // The label is CLEARED, not set to "Always". An edge with no condition runs always; persisting
+    // the word made the same state look two different ways depending on whether anyone had ever
+    // been through this panel.
+    expect((patch.data as Record<string, unknown>).label).toBe('');
   });
 
   it('switchToExpression_clearsSimpleConditionAndShowsBuilder', () => {

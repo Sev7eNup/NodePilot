@@ -12,6 +12,16 @@ exhaustive.
 
 ## [Unreleased]
 
+### Fixed
+
+- Designer: an edge without a condition no longer shows an `Always` label. The properties panel used
+  to write that word into the edge when a condition was cleared, so the same state looked different
+  depending on whether anyone had been through the panel — in one sample workflow 42 of 50 edges
+  carried it, crowding out the four labels that said something. An edge that runs always is now shown
+  by having no label, which is the convention elsewhere, and the state is still stated explicitly in
+  the properties panel. Saved workflows are not rewritten: an existing `Always` stays in the JSON and
+  is only skipped when drawing.
+
 ## [1.2.16] - 2026-08-25
 
 SCOrch import stops second-guessing the export: a *Run Program* activity is a program call, whatever
@@ -804,7 +814,7 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.14...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.16...main
 [1.2.16]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.16
 [1.2.15]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.15
 [1.2.14]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.14

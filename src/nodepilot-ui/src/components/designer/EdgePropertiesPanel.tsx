@@ -4,6 +4,7 @@ import { useTranslation, Trans } from 'react-i18next';
 import type { Edge, Node } from '@xyflow/react';
 import { getUpstreamVariables, describeNodeOutputs } from '../../lib/upstreamVariables';
 import { summarizeExpression } from '../../lib/summarizeExpression';
+import { CANONICAL_EDGE_LABELS } from '../../lib/edgeLabels';
 import { ConditionBuilder, type ExprNode } from './ConditionBuilder';
 import { useDesignStore } from '../../stores/designStore';
 import { EDGE_PORT_LABELS, EDGE_PORT_SIDES, edgeSourcePort, edgeTargetPort, type EdgePortSide } from '../../lib/edgePorts';
@@ -77,29 +78,28 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
     });
   };
 
-  // In LabeledEdge, the label wins over the condition-based fallback. A previously set
-  // "Always"/"On Success"/"On Failure" would otherwise stay stuck when the user changes
-  // the condition. So: if the current label is one of the canonical values (or empty), we sync it
-  // to the matching value. Custom manual labels are left alone.
+  // In LabeledEdge the label wins over the condition-based fallback, so a previously set
+  // "On Success"/"On Failure" would stay stuck when the condition changes. If the current label is
+  // canonical (or empty), sync it to the new condition; a custom label is left alone.
   //
-  // Returning '' means: clear the label, so LabeledEdge's fallback renders the summary or the
-  // condition text instead.
-  const CANONICAL_LABELS = new Set(['', 'Always', 'On Success', 'On Failure']);
+  // Returning '' clears the label, so LabeledEdge renders the expression summary or the condition
+  // text instead. An edge without a condition returns '' too: it runs always, and that is shown by
+  // having no label rather than by the word "Always".
   const deriveLabel = (cond: string, hasExpr: boolean): string => {
     if (hasExpr) return '';
-    if (!cond) return 'Always';
+    if (!cond) return '';
     if (cond.endsWith('.success')) return 'On Success';
     if (cond.endsWith('.failed')) return 'On Failure';
     return '';
   };
   const setCondition = (newCondition: string) => {
     const patch: Record<string, unknown> = { condition: newCondition };
-    if (CANONICAL_LABELS.has(label)) patch.label = deriveLabel(newCondition, hasExpression);
+    if (CANONICAL_EDGE_LABELS.has(label)) patch.label = deriveLabel(newCondition, hasExpression);
     updateEdgeData(patch);
   };
   const setConditionExpression = (next: ExprNode | null) => {
     const patch: Record<string, unknown> = { conditionExpression: next ?? undefined };
-    if (CANONICAL_LABELS.has(label)) patch.label = deriveLabel(condition, !!next);
+    if (CANONICAL_EDGE_LABELS.has(label)) patch.label = deriveLabel(condition, !!next);
     updateEdgeData(patch);
   };
 
