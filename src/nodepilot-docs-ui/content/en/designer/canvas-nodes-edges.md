@@ -51,6 +51,8 @@ The arrow direction shows the direction of execution. An edge can run always, on
 
 An edge's plus symbol inserts a new activity between two existing nodes.
 
+An existing edge can be re-routed to a different target without recreating it: either drag its target end onto the new node, or — more convenient on large graphs — right-click the edge, choose **Detach target**, and then click the new target node. Label, condition and the disabled state move along; Esc or a click on empty canvas cancels.
+
 ## State during an execution
 
 | State | Appearance |

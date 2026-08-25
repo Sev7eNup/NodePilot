@@ -100,6 +100,11 @@ export function LabeledEdge({
   const hasExpression = !!conditionExpression;
   const isDisabled = (edgeData.disabled as boolean) || false;
   const controlPoints = edgeData.controlPoints as ControlPoints | undefined;
+  // Edge-Detach: das Zielende hängt gerade am Cursor (EdgeDetachPreview zeichnet die
+  // Vorschau). Die alte Route bleibt als Geist stehen, damit sichtbar ist, was man gerade
+  // umhängt und wohin es zurückspringt, wenn man abbricht. Das Label-Pill behält volle
+  // Deckkraft — es benennt die Edge, die man bewegt.
+  const isDetached = !!edgeData.__detached;
   // Data-flow overlay: when the toggle is on, every edge carries the list of variable heads
   // that actually ride across it. Non-empty list → render a small chip; empty list →
   // de-emphasise the edge (it's pure control-flow with no data crossing).
@@ -242,11 +247,11 @@ export function LabeledEdge({
   // gap so a user actually reaching for it doesn't watch it disappear at the last moment.
   const [edgeHovered, setEdgeHovered] = useState(false);
   const [buttonHovered, setButtonHovered] = useState(false);
-  const showInsertButton = !isCollapsedSummary && (edgeHovered || buttonHovered || !!selected);
+  const showInsertButton = !isCollapsedSummary && !isDetached && (edgeHovered || buttonHovered || !!selected);
   // Reshape handles: only on single-segment edges (cubic Bezier can't represent the
   // backward-edge U-loop), only for users who can write, only when the edge is actually
   // selected. Hover alone is too noisy on dense graphs and competes with the +-button.
-  const showReshapeHandles = !isCollapsedSummary && !!selected && segments.length === 1 && canWrite;
+  const showReshapeHandles = !isCollapsedSummary && !isDetached && !!selected && segments.length === 1 && canWrite;
 
   return (
     <>
@@ -260,6 +265,7 @@ export function LabeledEdge({
         <g
           key={i}
           className={`np-edge-g ${conditionGlowClass}`}
+          style={isDetached ? { opacity: 0.28, pointerEvents: 'none' } : undefined}
           onMouseEnter={() => setEdgeHovered(true)}
           onMouseLeave={() => setEdgeHovered(false)}
         >

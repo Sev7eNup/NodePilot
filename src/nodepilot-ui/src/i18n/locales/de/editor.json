@@ -172,7 +172,15 @@
     "toggleDisabled": "Edge deaktivieren",
     "enableEdge": "Edge aktivieren",
     "swap": "Quelle ↔ Ziel tauschen",
-    "addControlPoints": "Form anpassen"
+    "addControlPoints": "Form anpassen",
+    "detachTarget": "Ziel lösen"
+  },
+  "edgeDetach": {
+    "hint": "„{{edge}}\" hängt am Cursor — klicke den neuen Ziel-Node an. Esc bricht ab.",
+    "hintUnlabeled": "Edge hängt am Cursor — klicke den neuen Ziel-Node an. Esc bricht ab.",
+    "selfLoop": "Eine Edge kann nicht auf ihren eigenen Quell-Node zeigen.",
+    "duplicate": "Von diesem Node führt bereits eine Edge dorthin.",
+    "invalidTarget": "Nur Activity-Nodes können Ziel einer Edge sein."
   },
   "contextMenu": {
     "copy": "Kopieren",

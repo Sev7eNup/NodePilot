@@ -7,11 +7,12 @@ beforeEach(() => useDesignStore.setState({ designerMode: 'expert' }));
 
 /**
  * EdgeContextMenu mirrors NodeContextMenu's interaction model. We pin:
- *   - All three actions render (Disable-or-Enable / Swap / Delete)
+ *   - All four actions render (Disable-or-Enable / Detach target / Swap / Delete)
  *   - isDisabled flips the toggle label from "Disable" to "Enable"
  *   - Each action call invokes its handler AND closes the menu
  *   - Outside-click + Escape close the menu
  *   - Mounting position respects x/y props (so it docks at the right-click coordinate)
+ *   - "Detach target" shows in STANDARD mode too, unlike swap/reset-shape
  *
  * "Edit condition" is intentionally absent: right-clicking an edge already auto-selects it,
  * which surfaces the EdgePropertiesPanel where conditions are edited. A duplicate menu item
@@ -25,6 +26,7 @@ function defaultProps(over: Partial<Parameters<typeof EdgeContextMenu>[0]> = {})
     isDisabled: false,
     hasCustomShape: false,
     onToggleDisabled: vi.fn(),
+    onDetachTarget: vi.fn(),
     onSwapSourceTarget: vi.fn(),
     onResetShape: vi.fn(),
     onDelete: vi.fn(),
@@ -34,10 +36,11 @@ function defaultProps(over: Partial<Parameters<typeof EdgeContextMenu>[0]> = {})
 }
 
 describe('EdgeContextMenu', () => {
-  it('rendersAllThreeActions', () => {
+  it('rendersAllFourActions', () => {
     render(<EdgeContextMenu {...defaultProps()} />);
 
     expect(screen.getByText('Disable edge')).toBeInTheDocument();
+    expect(screen.getByText('Detach target')).toBeInTheDocument();
     expect(screen.getByText('Swap source ↔ target')).toBeInTheDocument();
     expect(screen.getByText('Delete')).toBeInTheDocument();
   });
@@ -63,6 +66,27 @@ describe('EdgeContextMenu', () => {
 
     expect(props.onToggleDisabled).toHaveBeenCalledOnce();
     expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
+  it('clickDetachTarget_invokesAndCloses', () => {
+    const props = defaultProps();
+    render(<EdgeContextMenu {...props} />);
+
+    fireEvent.click(screen.getByText('Detach target'));
+
+    expect(props.onDetachTarget).toHaveBeenCalledOnce();
+    expect(props.onClose).toHaveBeenCalledOnce();
+  });
+
+  it('detachTargetItem_visibleInStandardMode', () => {
+    // Re-routing an edge is a primary editing operation, not a power-user affordance —
+    // unlike swap/reset-shape it must NOT disappear outside expert mode.
+    useDesignStore.setState({ designerMode: 'standard' });
+    render(<EdgeContextMenu {...defaultProps({ hasCustomShape: true })} />);
+
+    expect(screen.getByText('Detach target')).toBeInTheDocument();
+    expect(screen.queryByText('Swap source ↔ target')).not.toBeInTheDocument();
+    expect(screen.queryByText('Reset edge shape')).not.toBeInTheDocument();
   });
 
   it('clickSwap_invokesAndCloses', () => {

@@ -46,6 +46,8 @@ import { usePointerFlowPosition } from '../stores/pointerFlowPositionStore';
 import { LabeledEdge, EdgeInsertContext } from '../components/designer/edges/LabeledEdge';
 import { NpEdgeMarkerDefs } from '../components/designer/edges/NpEdgeMarkerDefs';
 import { NpConnectionLine } from '../components/designer/edges/NpConnectionLine';
+import { EdgeDetachPreview } from '../components/designer/edges/EdgeDetachPreview';
+import { classifyReattachTarget } from '../lib/edgeDetach';
 import { npStatusFromExecution, STATUS_COLOR_VAR } from '../lib/statusTokens';
 import { SubWorkflowPreviewContext } from '../components/designer/nodes/ActivityNode';
 import { SubWorkflowPreviewModal } from '../components/designer/overlays/SubWorkflowPreviewModal';
@@ -62,6 +64,8 @@ import {
 import {
   DEFAULT_SOURCE_PORT,
   DEFAULT_TARGET_PORT,
+  edgeSourcePort,
+  edgeTargetPort,
   normalizePort,
 } from '../lib/edgePorts';
 import { FolderPathBreadcrumb } from '../components/designer/FolderPathBreadcrumb';
@@ -542,13 +546,10 @@ function WorkflowEditorInner() {
   useEffect(() => {
     if (selected) setAiChatOpen(false);
   }, [selected]);
-  // Klick auf einen bereits selektierten Node feuert kein onSelectionChange — hier direkt
-  // schließen. Multi-Select-Klicks (Shift/Ctrl/Meta) bauen nur die Auswahl auf und lassen den
-  // Chat stehen: er zeigt die Mehrfachauswahl als Kontext-Chip.
-  const onNodeClick = useCallback((e: React.MouseEvent) => {
-    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
-    setAiChatOpen(false);
-  }, []);
+  // `onNodeClick` steht weiter unten, direkt bei `completeEdgeReattach` — es schließt den
+  // KI-Chat UND vollendet ein laufendes Edge-Detach und braucht dessen Handler in seiner
+  // Dependency-Liste.
+  //
   // Aktuelle Canvas-Selektion (Labels) für das „Auswahl"-Scoping im KI-Chat.
   const aiSelection = useMemo(() => ({
     nodeLabels: nodes.filter((n) => n.selected).map((n) => (n.data?.label as string) || n.id),
@@ -732,16 +733,27 @@ function WorkflowEditorInner() {
   // ---- Dry-Run / Simulate -------------------------------------------------
   const { simulation, revealIndex, runSimulation, clearSimulation } = useWorkflowSimulation(nodes, edges);
 
+  // ---- Edge-Detach ("Ziel lösen") -----------------------------------------
+  // Steht bewusst VOR den beiden Kontextmenü-Handlern: beide brechen ein laufendes Detach
+  // ab und brauchen `cancelEdgeDetach` bereits in ihrer Dependency-Liste.
+  //
+  // Der Zustand ist rein transient — die Edge selbst wird erst beim erfolgreichen Klick auf
+  // den neuen Ziel-Node angefasst. Abbrechen heißt deshalb schlicht: State auf null, keine
+  // History, kein Dirty-Flag.
+  const [edgeDetach, setEdgeDetach] = useState<{ edgeId: string } | null>(null);
+  const cancelEdgeDetach = useCallback(() => setEdgeDetach(null), []);
+
   // ---- Node Context Menu --------------------------------------------------
   const [contextMenu, setContextMenu] = useState<{ nodeId: string; x: number; y: number } | null>(null);
 
   const handleNodeContextMenu = useCallback((e: React.MouseEvent, node: Node) => {
     if (node.type !== 'activity') return;
     e.preventDefault();
+    cancelEdgeDetach();
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     setContextMenu({ nodeId: node.id, x: e.clientX - rect.left, y: e.clientY - rect.top });
-  }, []);
+  }, [cancelEdgeDetach]);
 
   // ---- Edge Context Menu --------------------------------------------------
   const [edgeContextMenu, setEdgeContextMenu] = useState<{ edgeId: string; x: number; y: number } | null>(null);
@@ -749,11 +761,12 @@ function WorkflowEditorInner() {
   const handleEdgeContextMenu = useCallback((e: React.MouseEvent, edge: Edge) => {
     if (!canWrite) return;  // Viewers / read-only mode get no edit-actions menu
     e.preventDefault();
+    cancelEdgeDetach();
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) return;
     setEdgeContextMenu({ edgeId: edge.id, x: e.clientX - rect.left, y: e.clientY - rect.top });
     setSelected({ type: 'edge', id: edge.id });
-  }, [canWrite]);
+  }, [canWrite, cancelEdgeDetach]);
 
   // ---- Quick-Connect (drag handle → empty canvas) + Edge-Insert (`+` on edge) ----
   const {
@@ -874,6 +887,62 @@ function WorkflowEditorInner() {
       return { ...e, data: restData };
     }));
   }, [setEdges, commitHistory, markDirty]);
+
+  const beginEdgeDetach = useCallback((edgeId: string) => {
+    // Selektiert lassen: das EdgePropertiesPanel zeigt währenddessen die Bedingung, die
+    // mit umzieht — genau die Information, die der Nutzer beim Umhängen im Blick haben will.
+    setSelected({ type: 'edge', id: edgeId });
+    setEdgeDetach({ edgeId });
+  }, []);
+
+  /**
+   * Klick auf einen Node, während ein Edge-Ziel gelöst ist. Rückgabe sagt dem Aufrufer, ob
+   * der Klick verbraucht wurde. Ablehnungen (Self-Loop/Duplikat/falscher Node-Typ) melden
+   * sich über die Notice-Pille und LASSEN das Detach aktiv — ein Fehlklick soll die Aktion
+   * nicht wegwerfen.
+   */
+  const completeEdgeReattach = useCallback((node: Node): boolean => {
+    if (!edgeDetach) return false;
+    const edge = edges.find((e) => e.id === edgeDetach.edgeId);
+    if (!edge) { cancelEdgeDetach(); return true; }
+    const verdict = classifyReattachTarget({
+      edges,
+      edgeId: edge.id,
+      sourceId: edge.source,
+      currentTargetId: edge.target,
+      candidate: { id: node.id, type: node.type },
+    });
+    if (verdict === 'cancel') { cancelEdgeDetach(); return true; }
+    if (verdict !== 'ok') {
+      showConnectionNotice(t(`editor:edgeDetach.${verdict}`));
+      return true;
+    }
+    // `targetHandle` bleibt absichtlich stehen: der Nutzer hat die Port-Seite einmal gewählt,
+    // das Umhängen des Ziel-Nodes ist kein Grund, sie zurückzusetzen. Gleiche History-Marke
+    // wie beim Drag-Reconnect — für den Nutzer ist es dieselbe Operation.
+    commitHistory('Move edge');
+    markDirty();
+    setEdges((eds: Edge[]) => eds.map((e) => (e.id === edge.id ? { ...e, target: node.id } : e)));
+    cancelEdgeDetach();
+    return true;
+  }, [edgeDetach, edges, cancelEdgeDetach, commitHistory, markDirty, setEdges, showConnectionNotice, t]);
+
+  // Aufräumen, wenn dem Detach die Grundlage wegbricht: Schreibrecht verloren (Unlock,
+  // Publish, Tidy) oder die Edge wurde inzwischen gelöscht.
+  useEffect(() => {
+    if (!edgeDetach) return;
+    if (!canWrite || !edges.some((e) => e.id === edgeDetach.edgeId)) cancelEdgeDetach();
+  }, [edgeDetach, canWrite, edges, cancelEdgeDetach]);
+
+  // Klick auf einen bereits selektierten Node feuert kein onSelectionChange — hier direkt
+  // schließen. Multi-Select-Klicks (Shift/Ctrl/Meta) bauen nur die Auswahl auf und lassen den
+  // Chat stehen: er zeigt die Mehrfachauswahl als Kontext-Chip. Läuft gerade ein Edge-Detach,
+  // ist der Klick dessen Ziel-Wahl und wird vorher abgefangen.
+  const onNodeClick = useCallback((e: React.MouseEvent, node: Node) => {
+    if (e.shiftKey || e.ctrlKey || e.metaKey) return;
+    if (completeEdgeReattach(node)) return;
+    setAiChatOpen(false);
+  }, [completeEdgeReattach]);
 
   // Mark dirty on any graph or name change (after initial load).
   const onNodesChangeDirty = useCallback((changes: Parameters<typeof onNodesChange>[0]) => {
@@ -1049,6 +1118,7 @@ function WorkflowEditorInner() {
     searchOpen, setSearchOpen, setSearchInput,
     helpOpen, setHelpOpen,
     findReplaceOpen, setFindReplaceOpen,
+    edgeDetachActive: !!edgeDetach, cancelEdgeDetach,
     toggleFullscreen, toggleQuickSwitcher, toggleCommandPalette,
     triggerSave, triggerLock, triggerUnlock, triggerForceUnlock,
     triggerPublish, triggerTest, triggerDebug, triggerCancel,
@@ -1119,7 +1189,13 @@ function WorkflowEditorInner() {
   const { displayedNodes, displayedEdges } = useDisplayedGraph({
     nodes, edges, edgesAnimated, hiddenActivityTypes, dataFlowOverlayEnabled,
     simulation, revealIndex, lintResult, failureHeatmapEnabled,
+    detachedEdgeId: edgeDetach?.edgeId ?? null,
   });
+
+  // Rohe (nicht projizierte) Edge des laufenden Detach — Quelle + Port-Seiten für die
+  // Vorschau-Linie und das Label für die Hinweis-Pille.
+  const detachedEdge = edgeDetach ? edges.find((e) => e.id === edgeDetach.edgeId) ?? null : null;
+  const detachedEdgeLabel = ((detachedEdge?.data as Record<string, unknown> | undefined)?.label as string) || '';
 
   const subWorkflowPreviewContextValue = useMemo(
     () => ({ onPreviewSubWorkflow: setPreviewSubWorkflowRef }),
@@ -1256,7 +1332,7 @@ function WorkflowEditorInner() {
         {/* Center: Canvas */}
         <section
           ref={canvasRef}
-          className={`np-canvas flex-1 relative bg-surface overflow-hidden${premiumCanvas ? ' np-premium' : ''}`}
+          className={`np-canvas flex-1 relative bg-surface overflow-hidden${premiumCanvas ? ' np-premium' : ''}${edgeDetach ? ' np-canvas--detaching' : ''}`}
           onPointerMove={handleCanvasPointerMove}
           onPointerLeave={handleCanvasPointerLeave}
         >
@@ -1321,7 +1397,7 @@ function WorkflowEditorInner() {
             }}
             onSelectionChange={onSelectionChange}
             onNodeClick={onNodeClick}
-            onPaneClick={() => setSelected(null)}
+            onPaneClick={() => { cancelEdgeDetach(); setSelected(null); }}
             onEdgeClick={(_event, edge) => setSelected({ type: 'edge', id: edge.id })}
             onNodeDragStart={() => commitHistory('Move nodes')}
             onNodeDrag={canWrite ? onNodeDrag : undefined}
@@ -1386,6 +1462,14 @@ function WorkflowEditorInner() {
                 `.react-flow__controls`-Block in index.css (--xy-controls-*) —
                 keine per-JSX !important-Overrides mehr. */}
             <Controls />
+            {detachedEdge && (
+              <EdgeDetachPreview
+                sourceNodeId={detachedEdge.source}
+                sourcePort={edgeSourcePort(detachedEdge)}
+                targetPort={edgeTargetPort(detachedEdge)}
+                canvasRef={canvasRef}
+              />
+            )}
             {snapToGrid ? (
               // Snap-to-grid mode: single Lines background aligned to the grid pitch.
               <Background
@@ -1526,6 +1610,19 @@ function WorkflowEditorInner() {
               {connectionNotice}
             </div>
           )}
+          {/* Edge-Detach: bleibt stehen, solange das Ende am Cursor hängt (die Notice oben
+              blendet sich nach ein paar Sekunden aus — hier wäre das falsch, der Zustand
+              besteht ja weiter). Rutscht nach unten, wenn beide gleichzeitig sichtbar sind. */}
+          {edgeDetach && (
+            <div
+              data-testid="edge-detach-hint"
+              className={`absolute ${connectionNotice ? 'top-16' : 'top-4'} left-1/2 -translate-x-1/2 z-30 max-w-[520px] px-4 py-2 rounded-md bg-surface-lowest text-on-surface border border-primary/50 shadow-lg text-sm font-label font-medium`}
+            >
+              {detachedEdgeLabel
+                ? t('editor:edgeDetach.hint', { edge: detachedEdgeLabel })
+                : t('editor:edgeDetach.hintUnlabeled')}
+            </div>
+          )}
           {insertAt && (
             <EdgeInserter
               x={insertAt.x}
@@ -1560,6 +1657,7 @@ function WorkflowEditorInner() {
                 onToggleDisabled={() => handleEdgeUpdate(edgeContextMenu.edgeId, {
                   data: { ...ed, disabled: !ed.disabled },
                 })}
+                onDetachTarget={() => beginEdgeDetach(edgeContextMenu.edgeId)}
                 onSwapSourceTarget={() => handleEdgeUpdate(edgeContextMenu.edgeId, {
                   source: edge.target,
                   target: edge.source,

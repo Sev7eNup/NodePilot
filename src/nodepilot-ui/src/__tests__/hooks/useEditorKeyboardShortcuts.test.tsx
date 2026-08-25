@@ -16,6 +16,7 @@ interface ShortcutMocks {
   setSearchInput: Mock<(input: string) => void>;
   setHelpOpen: Mock<(open: boolean | ((o: boolean) => boolean)) => void>;
   setFindReplaceOpen: Mock<(open: boolean) => void>;
+  cancelEdgeDetach: Mock<() => void>;
   toggleFullscreen: Mock<() => void>;
   toggleQuickSwitcher: Mock<() => void>;
   toggleCommandPalette: Mock<() => void>;
@@ -69,6 +70,7 @@ function newMocks(): ShortcutMocks {
     setSearchInput: vi.fn<(input: string) => void>(),
     setHelpOpen: vi.fn<(open: boolean | ((o: boolean) => boolean)) => void>(),
     setFindReplaceOpen: vi.fn<(open: boolean) => void>(),
+    cancelEdgeDetach: vi.fn<() => void>(),
     toggleFullscreen: vi.fn<() => void>(),
     toggleQuickSwitcher: vi.fn<() => void>(),
     toggleCommandPalette: vi.fn<() => void>(),
@@ -109,7 +111,7 @@ function newMocks(): ShortcutMocks {
   };
 }
 
-function mount(mocks: ShortcutMocks, overrides: { searchOpen?: boolean; helpOpen?: boolean; findReplaceOpen?: boolean; designerMode?: DesignerMode } = {}) {
+function mount(mocks: ShortcutMocks, overrides: { searchOpen?: boolean; helpOpen?: boolean; findReplaceOpen?: boolean; edgeDetachActive?: boolean; designerMode?: DesignerMode } = {}) {
   return renderHook(() =>
     useEditorKeyboardShortcuts({
       designerMode: overrides.designerMode ?? 'expert',
@@ -128,6 +130,8 @@ function mount(mocks: ShortcutMocks, overrides: { searchOpen?: boolean; helpOpen
       setHelpOpen: mocks.setHelpOpen,
       findReplaceOpen: overrides.findReplaceOpen ?? false,
       setFindReplaceOpen: mocks.setFindReplaceOpen,
+      edgeDetachActive: overrides.edgeDetachActive ?? false,
+      cancelEdgeDetach: mocks.cancelEdgeDetach,
       toggleFullscreen: mocks.toggleFullscreen,
       toggleQuickSwitcher: mocks.toggleQuickSwitcher,
       toggleCommandPalette: mocks.toggleCommandPalette,
@@ -329,12 +333,23 @@ describe('useEditorKeyboardShortcuts', () => {
     expect(mocks.setHelpOpen).toHaveBeenCalledOnce();
   });
 
+  it('Escape_cancelsEdgeDetach_beforeEveryOverlay', () => {
+    // Ein gelöstes Edge-Ende ist ein canvas-weiter Modus. Würde Escape stattdessen ein
+    // Overlay schließen, bliebe der Nutzer mitten in der Operation hängen.
+    mount(mocks, { edgeDetachActive: true, findReplaceOpen: true, searchOpen: true, helpOpen: true });
+    dispatchKey({ key: 'Escape' });
+    expect(mocks.cancelEdgeDetach).toHaveBeenCalledOnce();
+    expect(mocks.setFindReplaceOpen).not.toHaveBeenCalled();
+    expect(mocks.setSearchOpen).not.toHaveBeenCalled();
+  });
+
   it('Escape_closesFindReplace_first', () => {
     mount(mocks, { findReplaceOpen: true, searchOpen: true, helpOpen: true });
     dispatchKey({ key: 'Escape' });
     expect(mocks.setFindReplaceOpen).toHaveBeenCalledWith(false);
     expect(mocks.setSearchOpen).not.toHaveBeenCalled();
     expect(mocks.setHelpOpen).not.toHaveBeenCalled();
+    expect(mocks.cancelEdgeDetach).not.toHaveBeenCalled();
   });
 
   it('Escape_closesSearch_secondPriority', () => {

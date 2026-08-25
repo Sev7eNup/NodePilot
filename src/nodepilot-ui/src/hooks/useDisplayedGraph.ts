@@ -16,6 +16,8 @@ interface UseDisplayedGraphArgs {
   revealIndex: number;
   lintResult: LintResult;
   failureHeatmapEnabled: boolean;
+  /** Edge whose target end is currently detached (context menu → "Detach target"). */
+  detachedEdgeId?: string | null;
 }
 
 /**
@@ -37,6 +39,7 @@ export function useDisplayedGraph({
   revealIndex,
   lintResult,
   failureHeatmapEnabled,
+  detachedEdgeId = null,
 }: UseDisplayedGraphArgs): { displayedNodes: Node[]; displayedEdges: Edge[] } {
   // Variable-flow overlay: only computed when the toggle is on (the analysis touches every
   // node's config payload + transitive successor sets, so we don't pay for it during normal
@@ -70,15 +73,19 @@ export function useDisplayedGraph({
         : baseData.__flowingVars !== undefined
           ? (() => { const { __flowingVars: _, ...rest } = baseData as Record<string, unknown>; return rest; })()
           : baseData;
+      // Edge-Detach: dieselbe Patch-Mechanik wie oben. `__detached` kann in den rohen Edges
+      // nie vorkommen (nur diese Projektion setzt es, und sie leitet jedes Mal frisch aus
+      // `edges` ab) — deshalb braucht es hier keinen Aufräum-Zweig.
+      const finalData = e.id === detachedEdgeId ? { ...dataWithFlow, __detached: true } : dataWithFlow;
       if (
         withPorts === e
         && e.animated === edgesAnimated
         && !!e.hidden === shouldHide
-        && dataWithFlow === baseData
+        && finalData === baseData
       ) return e;
-      return { ...withPorts, animated: edgesAnimated, hidden: shouldHide, data: dataWithFlow };
+      return { ...withPorts, animated: edgesAnimated, hidden: shouldHide, data: finalData };
     });
-  }, [edges, edgesAnimated, nodes, hiddenActivityTypes, flowingVarsPerEdge, dataFlowOverlayEnabled]);
+  }, [edges, edgesAnimated, nodes, hiddenActivityTypes, flowingVarsPerEdge, dataFlowOverlayEnabled, detachedEdgeId]);
 
   // Compute in-degree per node for the fan-in badge (automatic Junction indicator)
   const nodesWithDegree = useMemo(() => {

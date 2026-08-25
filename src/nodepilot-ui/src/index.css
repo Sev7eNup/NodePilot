@@ -2572,6 +2572,19 @@ select:disabled {
   .np-connection-dash { animation: none; }
 }
 
+/* ── Edge-Detach: Ziel-Ende hängt am Cursor, der nächste Node-Klick setzt es ──
+   Fadenkreuz signalisiert den Modus; der Hover-Ring markiert den Node, der beim
+   Klick zum neuen Ziel würde. Beides nur, solange die Canvas den Modifier trägt. */
+.np-canvas--detaching .react-flow__pane,
+.np-canvas--detaching .react-flow__node {
+  cursor: crosshair;
+}
+.np-canvas--detaching .react-flow__node:hover {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 3px;
+  border-radius: var(--np-radius-sm);
+}
+
 /* ── Marquee / selection rectangle — token-tinted instead of stock RF blue ── */
 .np-designer .react-flow__selection {
   background: color-mix(in srgb, var(--color-primary) 8%, transparent);
