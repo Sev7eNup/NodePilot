@@ -12,8 +12,38 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.17] - 2026-08-25
+
+Detaching an edge now lets you say *where* on the target it lands, and every node offers all four
+connection points to everyone.
+
+### Changed
+
+- **The detach drops an edge on the port nearest the click** instead of keeping whichever side the
+  edge used before. The old behaviour re-attached at a port that no longer matched the new geometry,
+  so the edge looked as if it had picked a side at random. The preview line now docks visibly onto
+  that port while the pointer is over a node, and the highlight ring marks only nodes the click will
+  actually accept — the edge's own source, a node it already reaches, a group or a sticky note stay
+  unmarked and are refused with a message. Preview and click ask the same resolver, so the line
+  cannot promise a connection the click will not make.
+- **The edge's current target counts as a valid drop.** Clicking it used to read as "put it back"
+  and cancel; it now re-docks the edge at the nearest port on that same node, which is the only way
+  to move a connection point without deleting the edge and redrawing it with its condition. Landing
+  on the same node *and* the same port changes nothing and leaves no history entry.
+- **A right-click cancels an active detach** anywhere on the canvas — over a node, over an edge, or
+  on empty space, which had no handler at all before. The click is consumed by the cancel, so no
+  context menu opens on top of it.
+- **All four connection points are now always available.** The "flexible ports" toggle is gone: it
+  only ever gated the mouse, while the workflow JSON always allowed any of the four sides and the
+  properties panel already showed a port selector for edges that used them. An imported or
+  AI-generated workflow could therefore contain edges nobody could reproduce by hand. Ports still
+  stay hidden until the pointer nears a node, so the canvas looks the same at rest.
+
 ### Fixed
 
+- Undoing a re-pointed edge left it visible but unclickable until the page was reloaded. The undo
+  history records the graph as it is *drawn*, so the marker that dims a detached edge and turns off
+  its pointer events was written back into the saved graph and stayed there.
 - Designer: an edge without a condition no longer shows an `Always` label. The properties panel used
   to write that word into the edge when a condition was cleared, so the same state looked different
   depending on whether anyone had been through the panel — in one sample workflow 42 of 50 edges
@@ -814,7 +844,8 @@ multi-step automation in the browser, with no agents on the targets.
 - PostgreSQL or SQL Server; optional HA, LDAP / Windows SSO, ECS/SIEM logging
 - Licensed under Apache-2.0
 
-[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.16...main
+[Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.17...main
+[1.2.17]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.17
 [1.2.16]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.16
 [1.2.15]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.15
 [1.2.14]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.14
