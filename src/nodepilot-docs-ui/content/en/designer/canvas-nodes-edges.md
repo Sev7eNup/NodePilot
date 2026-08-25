@@ -47,7 +47,7 @@ The most important node types:
 2. Drop the connection on the target node's input port.
 3. Select the edge to set a label or a condition.
 
-The arrow direction shows the direction of execution. An edge can run always, only on success, only on failure, or based on a condition of your own. Details are in [Edge conditions](../concepts/edge-conditions).
+The arrow direction shows the direction of execution. An edge can run always, only on success, only on failure, or based on a condition of your own. Details are in [Edge conditions](../concepts/edge-conditions). An edge that runs always carries no label — only a condition, or a label you write yourself, is shown on the canvas.
 
 An edge's plus symbol inserts a new activity between two existing nodes.
 

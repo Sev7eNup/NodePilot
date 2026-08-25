@@ -13,6 +13,7 @@ import { NodeScaleOverrideContext } from '../nodeScaleContext';
 import { Add, MisuseOutline } from '@carbon/icons-react';
 import { useDesignStore, NODE_SCALES, EDGE_WIDTHS, LABEL_FONT_OFFSETS } from '../../../stores/designStore';
 import { summarizeExpression } from '../../../lib/summarizeExpression';
+import { LEGACY_ALWAYS_LABEL } from '../../../lib/edgeLabels';
 import type { ExprNode } from '../ConditionBuilder';
 
 /** Backward-compat re-export of the editing context under its old name. The old
@@ -230,7 +231,13 @@ export function LabeledEdge({
     ...(style || {}),
   };
 
-  const rawDisplayLabel = label
+  // Skip a stored "Always" on an edge that has no condition. Older workflows carry it because the
+  // properties panel used to write it; an edge without a condition runs always, so the word adds
+  // nothing. Skipped at render only — the workflow JSON keeps the value.
+  // The check is narrow: exact string, and only without a condition, so a hand-written label such
+  // as "Lane A" and an "Always" next to a real condition both still render.
+  const storedLabel = (!condition && !hasExpression && label === LEGACY_ALWAYS_LABEL) ? '' : label;
+  const rawDisplayLabel = storedLabel
     || (hasExpression ? (expressionSummary || 'ƒ(x)') : '')
     || (condition ? (condition.endsWith('.success') ? t('edges.onSuccess') : condition.endsWith('.failed') ? t('edges.onFailure') : condition) : '');
   // Edge labels are rendered directly on the graph canvas → hard-truncate overly long

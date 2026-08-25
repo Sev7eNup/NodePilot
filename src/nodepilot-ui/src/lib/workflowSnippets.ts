@@ -128,7 +128,7 @@ export function getWorkflowSnippets(): WorkflowSnippet[] {
     edges: [
       { fromLocalId: 'try',   toLocalId: 'continue', label: 'On Success', condition: 'try.success' },
       { fromLocalId: 'try',   toLocalId: 'catch',    label: 'On Failure', condition: 'try.failed' },
-      { fromLocalId: 'catch', toLocalId: 'continue', label: 'Always' },
+      { fromLocalId: 'catch', toLocalId: 'continue', label: '' },
     ],
   },
   ];

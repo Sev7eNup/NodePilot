@@ -47,7 +47,7 @@ Die wichtigsten Node-Typen:
 2. Verbindung am Eingangsport des Ziel-Nodes ablegen.
 3. Edge auswählen, um Beschriftung oder Bedingung festzulegen.
 
-Die Pfeilrichtung zeigt die Ausführungsrichtung. Eine Edge kann immer, nur bei Erfolg, nur bei Fehler oder anhand einer eigenen Bedingung ausgeführt werden. Details enthält [Edge-Bedingungen](../concepts/edge-conditions).
+Die Pfeilrichtung zeigt die Ausführungsrichtung. Eine Edge kann immer, nur bei Erfolg, nur bei Fehler oder anhand einer eigenen Bedingung ausgeführt werden. Details enthält [Edge-Bedingungen](../concepts/edge-conditions). Eine Edge, die immer läuft, trägt keine Beschriftung — auf der Leinwand steht nur eine Bedingung oder ein selbst vergebenes Label.
 
 Über das Plus-Symbol einer Edge kann eine neue Activity zwischen zwei vorhandenen Nodes eingefügt werden.
 

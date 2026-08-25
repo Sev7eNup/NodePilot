@@ -174,3 +174,70 @@ describe('LabeledEdge — disabled indicator', () => {
     expect(screen.getByTestId('premium-edge-arrow-e1')).toHaveAttribute('d', 'M 100,0 L 88,4 L 88,-4 Z');
   });
 });
+
+describe('LabeledEdge — label pill', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.designState.premiumCanvas = false;
+    mocks.smartSegments = [['M0,0 C50,0 50,0 100,0', 50, 0]] as unknown[];
+  });
+
+  const pill = () => document.querySelector('.np-edge-label-pill');
+
+  // Older workflows carry label="Always" because the properties panel used to write it.
+  // An edge without a condition runs always, so the label is not drawn.
+  it('draws no pill for a stored "Always" on an edge with no condition', () => {
+    render(
+      <svg>
+        <LabeledEdge {...baseProps} data={{ label: 'Always', condition: '' }} />
+      </svg>,
+    );
+
+    expect(pill()).toBeNull();
+    expect(screen.queryByText('Always')).not.toBeInTheDocument();
+  });
+
+  it('draws no pill for an edge with neither label nor condition', () => {
+    render(
+      <svg>
+        <LabeledEdge {...baseProps} data={{ label: '', condition: '' }} />
+      </svg>,
+    );
+
+    expect(pill()).toBeNull();
+  });
+
+  // Only the exact string "Always" is skipped; a user's own label still renders.
+  it('keeps a hand-written label on an edge with no condition', () => {
+    render(
+      <svg>
+        <LabeledEdge {...baseProps} data={{ label: 'Lane A', condition: '' }} />
+      </svg>,
+    );
+
+    expect(screen.getByText('Lane A')).toBeInTheDocument();
+  });
+
+  // With a condition present the label is kept, whatever it says.
+  it('keeps a stored "Always" when the edge does carry a condition', () => {
+    render(
+      <svg>
+        <LabeledEdge {...baseProps} data={{ label: 'Always', condition: 'step-1.success' }} />
+      </svg>,
+    );
+
+    expect(screen.getByText('Always')).toBeInTheDocument();
+  });
+
+  // Without a stored label the pill falls back to text derived from the condition.
+  it('falls back to the condition text when no label is stored', () => {
+    render(
+      <svg>
+        <LabeledEdge {...baseProps} data={{ label: '', condition: 'step-1.success' }} />
+      </svg>,
+    );
+
+    expect(pill()).not.toBeNull();
+    expect(pill()!.textContent).not.toBe('');
+  });
+});

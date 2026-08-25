@@ -161,9 +161,11 @@ describe('insertSnippet', () => {
     expect(onSuccess).toBeDefined();
     expect((onSuccess!.data as { condition: string }).condition).toBe('try.success');
 
-    // Edges without explicit condition get an empty string (not undefined) so the engine's
-    // schema validation doesn't reject the JSON.
-    const alwaysEdge = result.edges.find((e) => (e.data as { label: string }).label === 'Always');
+    // Edges without an explicit condition get an empty string (not undefined) so the engine's
+    // schema validation doesn't reject the JSON. They also carry no label: an edge that runs
+    // always is shown by having none.
+    const alwaysEdge = result.edges.find((e) => (e.data as { label: string }).label === '');
+    expect(alwaysEdge).toBeDefined();
     expect((alwaysEdge!.data as { condition: string }).condition).toBe('');
   });
 });
