@@ -113,9 +113,10 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 - **Inline insert:** the ⊕ button on an edge inserts a node between A→B (A→NEW→B); the first half is unconditional, the second inherits label and condition.
 - **Quick-connect picker:** drag an edge into empty space → the activity picker appears at the cursor; it creates the node and the connecting edge.
 - **Data-flow overlay:** chips show which variables travel across an edge.
-- **Context menu (right-click):** enable/disable, swap source↔target (Expert), reset shape (Expert), delete.
+- **Context menu (right-click):** enable/disable, detach target, swap source↔target (Expert), reset shape (Expert), delete.
+- **Detach target:** the target end follows the cursor; clicking an activity node re-attaches it there, keeping label, condition and disabled state, and docking at whichever of the four ports the click was nearest. The edge's **current** target counts as a valid node — clicking it moves the connection point without touching anything else. Esc, a click on empty canvas or a right-click cancels without a trace.
 - **Validation:** duplicate connections are prevented (with a toast).
-- **Edge properties panel:** source→target information, port selector (Expert plus flexible ports), a label field with a "use auto" reset, simple or expression condition, a disabled toggle, delete (with confirmation).
+- **Edge properties panel:** source→target information, port selector (Expert), a label field with a "use auto" reset, simple or expression condition, a disabled toggle, delete (with confirmation).
 
 ## 6. Edge conditions
 

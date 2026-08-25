@@ -73,7 +73,6 @@ interface DesignState {
   edgesAnimated: boolean;
   edgeWidthIndex: number;
   edgeRouting: EdgeRouting;
-  flexiblePortsEnabled: boolean;
   /** When true, node ports stay hidden until the cursor nears the node (or it's selected / a
    *  connection is being dragged toward it) — keeps the canvas clean. false = ports always shown. */
   autoHidePorts: boolean;
@@ -93,7 +92,6 @@ interface DesignState {
   edgeWidthInc: () => void;
   edgeWidthDec: () => void;
   setEdgeRouting: (mode: EdgeRouting) => void;
-  toggleFlexiblePorts: () => void;
   toggleAutoHidePorts: () => void;
   setSnapToGrid: (v: boolean) => void;
   setSnapGridSize: (v: SnapGridSize) => void;
@@ -142,12 +140,10 @@ export const useDesignStore = create<DesignState>()(
       edgesAnimated: true,
       edgeWidthIndex: 2, // 2px default — matches previous hardcoded width
       edgeRouting: 'smart' as EdgeRouting,
-      flexiblePortsEnabled: false,
       autoHidePorts: true,
       snapToGrid: false,
       snapGridSize: 20 as SnapGridSize,
       setEdgeRouting: (mode: EdgeRouting) => set({ edgeRouting: mode }),
-      toggleFlexiblePorts: () => set((s) => ({ flexiblePortsEnabled: !s.flexiblePortsEnabled })),
       toggleAutoHidePorts: () => set((s) => ({ autoHidePorts: !s.autoHidePorts })),
       setSnapToGrid: (v: boolean) => set({ snapToGrid: v }),
       setSnapGridSize: (v: SnapGridSize) => set({ snapGridSize: v }),
@@ -190,7 +186,7 @@ export const useDesignStore = create<DesignState>()(
     }),
     {
       name: 'nodepilot-design',
-      version: 2,
+      version: 3,
       // Profiles that already used the full designer retain the previous surface. Fresh
       // profiles use the standard-mode default above.
       migrate: (persisted, version) => {
@@ -200,6 +196,15 @@ export const useDesignStore = create<DesignState>()(
         // still sitting on the OLD default — a stored index of anything else is a deliberate
         // choice from the size stepper and must survive the bump.
         if (version < 2 && state.nodeScaleIndex === 1) state = { ...state, nodeScaleIndex: 3 };
+        // v3 hat die klassische 2-Port-Variante abgeschafft — alle vier Ports sind jetzt der
+        // einzige Weg. Der Key muss aktiv weg: Zustands Default-Merge ist
+        // `{...currentState, ...persistedState}`, ein verwaister Eintrag würde also in den
+        // Runtime-State kopiert und bei jedem Speichern weiter mitgeschleppt.
+        if (version < 3 && 'flexiblePortsEnabled' in state) {
+          const { flexiblePortsEnabled: _dropped, ...rest } = state as Partial<DesignState> & { flexiblePortsEnabled?: boolean };
+          void _dropped;
+          state = rest;
+        }
         return state;
       },
     },

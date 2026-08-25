@@ -8,7 +8,7 @@ Conventions for hand-laid-out workflow JSON (`nodes`/`edges`) that renders in th
 
 ## 1 — Guiding principles
 
-There is **no prescribed flow direction**. LTR, TTB, radial, two parallel columns, a mix of several sub-topologies — whatever makes the workflow clearest to a human reader is right. Thanks to flexible ports (section 7.1) every edge can freely pick a side of its source and target node instead of being forced into a layout corset.
+There is **no prescribed flow direction**. LTR, TTB, radial, two parallel columns, a mix of several sub-topologies — whatever makes the workflow clearest to a human reader is right. Every node exposes all four ports (section 7.1), so an edge can freely pick a side of its source and target instead of being forced into a layout corset.
 
 Three hard rules everything else hangs on:
 
@@ -131,7 +131,7 @@ Every activity node has four handles: `top` | `right` | `bottom` | `left`. Witho
 }
 ```
 
-Implemented in [edgePorts.ts](../src/nodepilot-ui/src/lib/edgePorts.ts). The toolbar's "flexible ports" toggle makes all four handles clickable in the UI — but **the JSON fields work independently of the toggle**. An agent may always set `sourceHandle`/`targetHandle` when the layout needs it; the edge properties panel shows the port selection automatically as soon as an edge carries non-default handles.
+Implemented in [edgePorts.ts](../src/nodepilot-ui/src/lib/edgePorts.ts). All four handles are always present and connectable in both directions — the "flexible ports" toggle that used to gate this is gone (it only ever gated the mouse; the JSON fields were always free, which made the two disagree). An agent may set `sourceHandle`/`targetHandle` whenever the layout needs it; the edge properties panel offers the port selection in Expert mode.
 
 **When to use:** vertical phase sections, loop-back edges (from bottom-right back to top-left), central hub topologies, junctions fed from several sides. **When to omit:** classic LTR — the default assignment is clean, and explicit handles would only be noise.
 

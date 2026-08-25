@@ -29,7 +29,6 @@ export function CanvasSettingsPanel() {
     labelFontOffsetIndex, labelFontInc, labelFontDec,
     edgesAnimated, toggleEdgesAnimated,
     edgeWidthIndex, edgeWidthInc, edgeWidthDec, edgeRouting, setEdgeRouting,
-    flexiblePortsEnabled, toggleFlexiblePorts,
     autoHidePorts, toggleAutoHidePorts,
     nodeScaleIndex, zoomIn, zoomOut,
     snapToGrid, snapGridSize, setSnapToGrid, setSnapGridSize,
@@ -185,13 +184,6 @@ export function CanvasSettingsPanel() {
               </svg>
             </Stepper>
           }
-        />
-        <SettingSwitchRow
-          label={t('canvasSettings.flexiblePorts.name')}
-          description={t('canvasSettings.flexiblePorts.desc')}
-          checked={flexiblePortsEnabled}
-          onToggle={toggleFlexiblePorts}
-          testId="canvas-setting-flexible-ports"
         />
         <SettingSwitchRow
           label={t('canvasSettings.autoHidePorts.name')}

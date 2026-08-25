@@ -39,7 +39,6 @@ export function ClassicDesignToggles() {
     labelFontOffsetIndex, labelFontInc, labelFontDec,
     edgesAnimated, toggleEdgesAnimated,
     edgeWidthIndex, edgeWidthInc, edgeWidthDec, edgeRouting, setEdgeRouting,
-    flexiblePortsEnabled, toggleFlexiblePorts,
     autoHidePorts, toggleAutoHidePorts,
     snapToGrid, snapGridSize, setSnapToGrid, setSnapGridSize,
     premiumCanvas, togglePremiumCanvas,
@@ -103,17 +102,6 @@ export function ClassicDesignToggles() {
           <Categories size={16} />
         </button>
       )}
-      <button
-        type="button"
-        onClick={toggleFlexiblePorts}
-        aria-pressed={flexiblePortsEnabled}
-        title={flexiblePortsEnabled ? t('toolbar.flexiblePortsOn') : t('toolbar.flexiblePortsOff')}
-        className={`flex items-center justify-center rounded-md h-9 w-9 transition-colors ${
-          flexiblePortsEnabled ? 'bg-primary/15 text-primary' : 'bg-transparent hover:bg-surface-high text-on-surface-variant'
-        }`}
-      >
-        <FlowConnection size={16} />
-      </button>
       <button
         type="button"
         onClick={toggleAutoHidePorts}

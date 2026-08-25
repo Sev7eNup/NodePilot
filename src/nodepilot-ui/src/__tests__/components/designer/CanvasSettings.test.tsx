@@ -17,7 +17,6 @@ beforeEach(() => {
     edgeRouting: 'smart',
     nodeStyle: 'classic',
     nodeIconStyle: 'shape',
-    flexiblePortsEnabled: false,
     autoHidePorts: true,
     nodeScaleIndex: 2,
     labelFontOffsetIndex: 2,
@@ -77,17 +76,6 @@ describe('CanvasSettings — controls affect design store', () => {
 
     expect(useDesignStore.getState().edgesAnimated).toBe(false);
     expect(sw).toHaveAttribute('aria-checked', 'false');
-  });
-
-  it('flexiblePortsSwitch_click_togglesStore', () => {
-    open();
-    const sw = screen.getByTestId('canvas-setting-flexible-ports');
-    expect(sw).toHaveAttribute('aria-checked', 'false');
-
-    fireEvent.click(sw);
-
-    expect(useDesignStore.getState().flexiblePortsEnabled).toBe(true);
-    expect(sw).toHaveAttribute('aria-checked', 'true');
   });
 
   it('autoHideAndPremiumSwitches_clickWholeRow_togglesStore', () => {

@@ -26,7 +26,6 @@ interface Props {
 export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDelete, onClose, width, canWrite = true }: Readonly<Props>) {
   const { t } = useTranslation('designer');
   const expertMode = useDesignStore((s) => s.designerMode === 'expert');
-  const flexiblePortsEnabled = useDesignStore((s) => s.flexiblePortsEnabled);
   const edgeData = (edge.data as Record<string, unknown>) || {};
   const label = (edgeData.label as string) || '';
   const condition = (edgeData.condition as string) || '';
@@ -40,8 +39,6 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
   const targetLabel = (targetNode?.data as Record<string, unknown>)?.label as string || edge.target;
   const sourcePort = edgeSourcePort(edge);
   const targetPort = edgeTargetPort(edge);
-  const hasCustomPorts = sourcePort !== 'right' || targetPort !== 'left';
-  const showPortControls = flexiblePortsEnabled || hasCustomPorts;
 
   // Upstream variables visible on this edge = source node's own outputs + everything reaching it
   const upstreamVars = [
@@ -139,7 +136,7 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
           </div>
         </div>
 
-        {expertMode && showPortControls && (
+        {expertMode && (
           <Section title={t('edgePanel.ports')}>
             <div className="grid grid-cols-[72px_1fr] gap-x-3 gap-y-2.5 items-center">
               <span className="text-xs font-label text-on-surface-variant">{t('edgePanel.from')}</span>
@@ -153,11 +150,6 @@ export function EdgePropertiesPanel({ edge, allNodes, allEdges, onUpdate, onDele
                 onChange={(side) => onUpdate(edge.id, { targetHandle: side })}
               />
             </div>
-            {!flexiblePortsEnabled && (
-              <p className="text-xs text-outline leading-snug">
-                {t('edgePanel.flexiblePortsOff')}
-              </p>
-            )}
           </Section>
         )}
 

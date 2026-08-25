@@ -63,7 +63,7 @@ export async function installDefaultMocks(page: Page) {
   //    click (the hazard e2e/README.md already warns about). Pin `sm` so a future size tweak can
   //    never reshuffle unrelated specs' canvas coordinates; the scale itself is covered by unit
   //    tests (designStore.test.ts, CanvasSettings.test.tsx).
-  // `version: 2` matches the store's current persist version so the seed is taken as-is — at
+  // `version: 3` matches the store's current persist version so the seed is taken as-is — at
   // version 1 the store's own migration would read this pinned `sm` as "still on the old default"
   // and lift it straight back to `lg`.
   //
@@ -78,7 +78,7 @@ export async function installDefaultMocks(page: Page) {
     try { appWritten = !!raw && JSON.parse(raw).state?.nodeStyle !== undefined; } catch { /* reseed */ }
     if (!appWritten) {
       localStorage.setItem('nodepilot-design', JSON.stringify({
-        state: { designerTheme: 'classic', nodeScaleIndex: 1 }, version: 2,
+        state: { designerTheme: 'classic', nodeScaleIndex: 1 }, version: 3,
       }));
     }
   });
@@ -191,7 +191,7 @@ function emptyArray(route: Route) {
  * Seed the designer into "expert" mode before the SPA boots. The default ("standard") mode hides
  * power-user affordances — node-context-menu breakpoints, the Debug-run toolbar button, and most
  * view-toggles — behind `designerMode === 'expert'` (designStore, persisted under the key
- * 'nodepilot-design', schema version 2). Specs that exercise those features must run in expert
+ * 'nodepilot-design', schema version 3). Specs that exercise those features must run in expert
  * mode. Call this BEFORE `page.goto(...)` so the init script wins over the store's default.
  */
 export async function seedExpertMode(page: Page) {
@@ -204,7 +204,7 @@ export async function seedExpertMode(page: Page) {
       'nodepilot-design',
       JSON.stringify({
         state: { designerMode: 'expert', designerTheme: 'classic', nodeScaleIndex: 1 },
-        version: 2,
+        version: 3,
       }),
     ),
   );
