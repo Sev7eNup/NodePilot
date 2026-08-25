@@ -176,8 +176,8 @@
     "detachTarget": "Ziel lösen"
   },
   "edgeDetach": {
-    "hint": "„{{edge}}\" hängt am Cursor — klicke den neuen Ziel-Node an. Esc bricht ab.",
-    "hintUnlabeled": "Edge hängt am Cursor — klicke den neuen Ziel-Node an. Esc bricht ab.",
+    "hint": "„{{edge}}\" hängt am Cursor — klicke den Ziel-Node an. Esc bricht ab.",
+    "hintUnlabeled": "Edge hängt am Cursor — klicke den Ziel-Node an. Esc bricht ab.",
     "selfLoop": "Eine Edge kann nicht auf ihren eigenen Quell-Node zeigen.",
     "duplicate": "Von diesem Node führt bereits eine Edge dorthin.",
     "invalidTarget": "Nur Activity-Nodes können Ziel einer Edge sein."

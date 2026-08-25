@@ -4,13 +4,15 @@ import { classifyReattachTarget, detachedSourcePoint } from '../../lib/edgeDetac
 
 /**
  * Edge-Detach ("Ziel lösen" im Edge-Kontextmenü). Gepinnt wird hier die reine Logik:
- *   - die Klassifikation eines angeklickten Nodes, inklusive ihrer Reihenfolge (das alte
- *     Ziel zählt als Abbruch, nicht als Duplikat; der Quell-Node bekommt seine eigene
- *     Meldung statt der generischen Typ-Ablehnung)
+ *   - die Klassifikation eines angeklickten Nodes, inklusive ihrer Reihenfolge (der
+ *     Quell-Node bekommt seine eigene Meldung statt der generischen Typ-Ablehnung)
  *   - der Ankerpunkt der Vorschau-Linie je Port-Seite
  *
- * Die Duplikat-Regel schließt die Edge, die gerade umgehängt wird, bewusst aus — sonst
- * würde sie sich selbst als Duplikat erkennen, sobald man sie auf ihr eigenes Ziel legt.
+ * Der BISHERIGE Ziel-Node ist ausdrücklich ein gültiges Ziel: dort erneut anzudocken ist der
+ * Weg, nur die Port-Seite zu wechseln. Die Duplikat-Regel schließt die bewegte Edge deshalb
+ * aus — sonst würde sie sich selbst als Duplikat erkennen, sobald man sie auf ihrem eigenen
+ * Ziel neu ablegt. Ob dabei überhaupt etwas passiert (gleicher Node UND gleicher Port =
+ * No-Op ohne History-Eintrag), entscheidet der Aufrufer in WorkflowEditorPage.
  */
 
 const EDGES: Edge[] = [
@@ -23,7 +25,6 @@ function classify(candidateId: string, type: string | undefined, edges: Edge[] =
     edges,
     edgeId: 'e1',
     sourceId: 'a',
-    currentTargetId: 'b',
     candidate: { id: candidateId, type },
   });
 }
@@ -36,8 +37,11 @@ describe('classifyReattachTarget', () => {
     expect(activity('d')).toBe('ok');
   });
 
-  it('currentTarget_returnsCancel', () => {
-    expect(activity('b')).toBe('cancel');
+  it('currentTarget_returnsOk_soThePortCanBeRepicked', () => {
+    // Das bisherige Ziel ist kein Sonderfall mehr: nur so lässt sich die Port-Seite wechseln,
+    // ohne die Edge samt Bedingung zu löschen und neu zu ziehen. Dass die Edge sich dabei
+    // nicht selbst als Duplikat sieht, hängt am `e.id !== edgeId`-Filter.
+    expect(activity('b')).toBe('ok');
   });
 
   it('sourceNode_returnsSelfLoop', () => {

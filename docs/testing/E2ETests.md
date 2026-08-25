@@ -790,11 +790,29 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 **Prüfpunkte:**
 - [ ] Menüeintrag ist auch im Standard-Modus sichtbar (nicht expert-gegated)
-- [ ] Edge zeigt danach auf C, Quelle bleibt A
+- [ ] Die Vorschau-Linie dockt beim Überfahren eines gültigen Ziels sichtbar am **nächstgelegenen der vier Ports** an und springt beim Umrunden des Nodes von Punkt zu Punkt; der Ring erscheint nur an genau diesem Node
+- [ ] Edge zeigt danach auf C, Quelle bleibt A, und `targetHandle` ist der Port, an dem die Vorschau angedockt hatte
 - [ ] Label, Bedingung und `disabled` sind unverändert
 - [ ] Klick auf Node A (Quelle), auf einen bereits von A erreichten Node oder auf eine Sticky-Note wird mit Meldung abgelehnt, der Modus bleibt aktiv
 
 **Erwartung:** Edges lassen sich per Kontextmenü umhängen, ohne die Bedingung neu zu bauen
+
+---
+
+### Test 4.6b — Anschlusspunkt am bestehenden Ziel-Node wechseln
+
+**Schritte:**
+1. Rechtsklick auf die Edge `A → B` → "Ziel lösen"
+2. Klick auf **B** — also den Node, an dem die Edge ohnehin schon hängt — nahe einer anderen Kante
+3. Speichern
+
+**Prüfpunkte:**
+- [ ] B ist während des Detach ein hervorgehobenes Ziel, die Vorschau dockt dort an
+- [ ] Nach dem Klick zeigt die Edge weiterhin auf B, aber `targetHandle` ist die angeklickte Seite
+- [ ] Bedingung und Label unverändert
+- [ ] Klick auf B **an derselben Seite wie vorher** ändert nichts: kein Undo-Schritt, kein „ungespeichert"
+
+**Erwartung:** Die Port-Seite lässt sich wechseln, ohne die Edge zu löschen und neu zu ziehen
 
 ---
 
@@ -807,8 +825,29 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 **Prüfpunkte:**
 - [ ] Hinweis-Pille verschwindet, die Edge zeigt weiter auf ihr altes Ziel
 - [ ] Workflow ist **nicht** dirty (nichts zu speichern), Undo-Stack unverändert
+- [ ] Der **Rechtsklick** bricht ebenfalls ab — auf leerer Fläche, auf einem Node und auf einer Edge — und zieht dabei **kein** Kontextmenü auf (auch nicht das des Browsers)
+- [ ] Ohne laufendes Detach ist der Rechtsklick unverändert: Node- bzw. Edge-Kontextmenü öffnen normal, auf leerer Fläche erscheint weiter das Browser-Menü
 
 **Erwartung:** Der Abbruch hinterlässt keinerlei Spur
+
+---
+
+### Test 4.8 — Umhängen rückgängig machen
+
+**Schritte:**
+1. Edge per "Ziel lösen" auf einen anderen Node umhängen
+2. Ctrl+Z (bzw. den Zurück-Button in der Toolbar)
+3. Die Edge anklicken — **ohne** vorher neu zu laden
+
+**Prüfpunkte:**
+- [ ] Die Edge zeigt wieder auf ihr altes Ziel, mit dem alten Port
+- [ ] Die Edge ist weiterhin **anklickbar** und nicht abgeschwächt dargestellt; das Connection-Panel öffnet sich
+
+**Erwartung:** Undo stellt den Dokumentzustand her, ohne einen Ansichts-Marker mitzuschleppen
+
+> Hintergrund: `useWorkflowHistory` snapshottet über React Flows Store, also den *projizierten*
+> Graphen. Ein Marker, den die Projektion nur setzt und nie entfernt, landet beim Undo im
+> Rohzustand — der Detach-Marker machte die Edge dadurch bis zum Reload unklickbar.
 
 ---
 
@@ -4713,7 +4752,7 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 1: Workflow-Management (1.1 — 1.4)
 [ ] Teil 2: Activity-Typen (2.1 — 2.13, 2.2b, 2.2c)
 [ ] Teil 3: Node-Operationen (3.1 — 3.5)
-[ ] Teil 4: Edges & Bedingungen (4.1 — 4.7)
+[ ] Teil 4: Edges & Bedingungen (4.1 — 4.8)
 [ ] Teil 5: Properties & Variablen (5.1 — 5.4)
 [ ] Teil 6: Workflow-Ausführung (6.1 — 6.7)
 [ ] Teil 7: Fehlerbehandlung (7.1 — 7.5)

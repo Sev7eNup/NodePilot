@@ -18,6 +18,8 @@ interface UseDisplayedGraphArgs {
   failureHeatmapEnabled: boolean;
   /** Edge whose target end is currently detached (context menu → "Detach target"). */
   detachedEdgeId?: string | null;
+  /** Node the detach preview is currently docking to — gets the highlight ring. */
+  dockTargetNodeId?: string | null;
 }
 
 /**
@@ -40,6 +42,7 @@ export function useDisplayedGraph({
   lintResult,
   failureHeatmapEnabled,
   detachedEdgeId = null,
+  dockTargetNodeId = null,
 }: UseDisplayedGraphArgs): { displayedNodes: Node[]; displayedEdges: Edge[] } {
   // Variable-flow overlay: only computed when the toggle is on (the analysis touches every
   // node's config payload + transitive successor sets, so we don't pay for it during normal
@@ -73,10 +76,18 @@ export function useDisplayedGraph({
         : baseData.__flowingVars !== undefined
           ? (() => { const { __flowingVars: _, ...rest } = baseData as Record<string, unknown>; return rest; })()
           : baseData;
-      // Edge-Detach: dieselbe Patch-Mechanik wie oben. `__detached` kann in den rohen Edges
-      // nie vorkommen (nur diese Projektion setzt es, und sie leitet jedes Mal frisch aus
-      // `edges` ab) — deshalb braucht es hier keinen Aufräum-Zweig.
-      const finalData = e.id === detachedEdgeId ? { ...dataWithFlow, __detached: true } : dataWithFlow;
+      // Edge-Detach: dieselbe Setzen-ODER-Entfernen-Mechanik wie oben — und der Aufräum-Zweig
+      // ist hier NICHT optional. `useWorkflowHistory` snapshottet über React Flows Store,
+      // also den PROJIZIERTEN Graphen, und schreibt ihn beim Undo in den Rohzustand zurück:
+      // ein Undo direkt nach dem Umhängen holte damit ein `__detached: true` in die rohen
+      // Edges, und LabeledEdge rendert die Edge dann dauerhaft gedimmt und mit
+      // `pointerEvents: 'none'` — sie war bis zum Reload nicht mehr anklickbar.
+      const isDetached = e.id === detachedEdgeId;
+      const finalData = isDetached
+        ? { ...dataWithFlow, __detached: true }
+        : dataWithFlow.__detached !== undefined
+          ? (() => { const { __detached: _, ...rest } = dataWithFlow; return rest; })()
+          : dataWithFlow;
       if (
         withPorts === e
         && e.animated === edgesAnimated
@@ -132,9 +143,13 @@ export function useDisplayedGraph({
         const stats = (n.data as Record<string, unknown>)?.__stats as { failureRate: number; totalRuns: number } | undefined;
         if (stats && stats.totalRuns > 0 && stats.failureRate > 0) dataPatch.__failureTint = stats.failureRate;
       }
-      return { ...n, data: dataPatch, hidden: isHidden };
+      // Edge-Detach: der Ring markiert GENAU den Node, an dem die Vorschau gerade andockt —
+      // nicht jeden Node unter dem Cursor. Sonst würden Quell-Node, altes Ziel, Sticky-Notes
+      // und Duplikat-Ziele eine Verbindung versprechen, die der Klick danach ablehnt.
+      const isDockTarget = n.id === dockTargetNodeId;
+      return { ...n, data: dataPatch, hidden: isHidden, className: isDockTarget ? 'np-dock-target' : undefined };
     });
-  }, [nodes, edges, simulation, revealIndex, lintResult, hiddenActivityTypes, failureHeatmapEnabled]);
+  }, [nodes, edges, simulation, revealIndex, lintResult, hiddenActivityTypes, failureHeatmapEnabled, dockTargetNodeId]);
 
   const collapsedGraphView = useMemo(
     () => buildCollapsedGraphView(nodesWithDegree, displayedEdges),
