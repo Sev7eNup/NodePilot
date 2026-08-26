@@ -80,6 +80,8 @@ public sealed record UpdateSharedFolderRequest(string Name);
 public sealed record MoveSharedFolderRequest(Guid? NewParentFolderId);
 public sealed record MoveWorkflowToFolderRequest(Guid TargetFolderId);
 
+public sealed record RecursiveFolderDeleteResponse(int DeletedFolders, int DeletedWorkflows);
+
 public sealed record SharedFolderPermissionResponse(
     Guid Id,
     Guid FolderId,

@@ -21,6 +21,16 @@ export function ConfirmHost() {
       <p className="mt-2 whitespace-pre-line break-words text-sm text-on-surface-variant">
         {pending.message}
       </p>
+      {pending.details && pending.details.length > 0 && (
+        <ul
+          data-testid="confirm-details"
+          className="mt-3 max-h-48 overflow-y-auto rounded-md bg-surface-low px-3 py-2 text-sm text-on-surface-variant"
+        >
+          {pending.details.map((line) => (
+            <li key={line} className="list-inside list-disc break-words">{line}</li>
+          ))}
+        </ul>
+      )}
       <div className="mt-5 flex justify-end gap-2">
         <button
           type="button"

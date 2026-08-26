@@ -132,6 +132,14 @@ public sealed class GlobalsFolderDeleteSettings : GlobalSettings
 {
     [CommandArgument(0, "<FOLDER-ID>")]
     public Guid Id { get; set; }
+
+    [CommandOption("--recursive")]
+    [Description("Löscht den Ordner samt Unterordnern und den darin liegenden Variablen.")]
+    public bool Recursive { get; set; }
+
+    [CommandOption("--yes")]
+    [Description("Bestätigt ein --recursive-Löschen ohne Rückfrage (für nicht-interaktive Läufe erforderlich).")]
+    public bool Yes { get; set; }
 }
 
 [SupportedOSPlatform("windows")]
@@ -140,12 +148,32 @@ public sealed class GlobalsFolderDeleteCommand : BaseCommand<GlobalsFolderDelete
     public GlobalsFolderDeleteCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
     protected override async Task<int> RunAsync(CommandContext _, GlobalsFolderDeleteSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (!Console.IsInputRedirected)
+        // `--yes` is only demanded for the recursive variant. A plain delete refuses non-empty
+        // folders server-side, so it cannot destroy anything unattended — and scripts relying on
+        // that have run without a flag since the command existed.
+        if (settings.Recursive && !settings.Yes && Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"Ordner [red]{settings.Id}[/] wirklich löschen? (muss leer sein)", defaultValue: false);
+            writer.Error("Rekursives Löschen ist destruktiv — in nicht-interaktiven Läufen mit --yes bestätigen.");
+            return ExitCodes.Error;
+        }
+
+        if (!settings.Yes && !Console.IsInputRedirected)
+        {
+            var prompt = settings.Recursive
+                ? $"Ordner [red]{settings.Id}[/] samt Unterordnern UND enthaltenen Variablen löschen? (unwiderruflich)"
+                : $"Ordner [red]{settings.Id}[/] wirklich löschen? (muss leer sein)";
+            var ok = await AnsiConsole.ConfirmAsync(prompt, defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
+
         var api = ClientFactory.Create(session);
+        if (settings.Recursive)
+        {
+            var result = await api.DeleteGlobalVariableFolderRecursiveAsync(settings.Id, ct);
+            writer.Success($"{result.DeletedFolders} Ordner und {result.DeletedVariables} Variablen gelöscht.");
+            return ExitCodes.Success;
+        }
+
         await api.DeleteGlobalVariableFolderAsync(settings.Id, ct);
         writer.Success("Ordner gelöscht.");
         return ExitCodes.Success;

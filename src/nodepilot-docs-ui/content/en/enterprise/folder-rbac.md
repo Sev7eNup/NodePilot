@@ -40,6 +40,16 @@ The bar calls no bulk API; it runs the same single-workflow actions one after an
 - **Move** works through a destination dialog (folders without write access are disabled) **or** by drag and drop: drag a selected row onto a folder in the tree and the whole selection follows. Workflows already in the destination folder are skipped.
 - **Export** writes all selected workflows into **one** `nodepilot-workflow-export/v1` file — it can be read back unchanged via **Import**.
 
+## Selecting and deleting several folders
+
+Every row in the folder tree except **Root** carries a checkbox too — Root cannot be deleted. A plain click on the row still filters the workflow list; only the checkbox selects, and `Shift` extends over a range. Selection covers what is **visible**: collapsing a branch drops its sub-folders from the selection. That costs nothing, because deleting the parent takes the branch anyway.
+
+Deletion includes **the contents**: sub-folders, the workflows inside them, and their execution history. The confirmation lists the affected folders with their workflow counts; the message afterwards reports the numbers the server actually deleted — the client cannot count folders it has no read permission on.
+
+There is no bulk API here either: exactly one request per top-most folder. A selected folder that sits below another selected folder is dropped beforehand, because the parent's request already takes it. Two refusals come from the server: **423** when the subtree holds a workflow checked out by someone else, and **409** when something was moved into the subtree mid-delete. In both cases **nothing** is deleted.
+
+The same applies to **Delete** in a single folder's right-click menu.
+
 ## Default mapping (migration + creation)
 
 | Global user role | Folder permission on the root |
@@ -57,6 +67,7 @@ The bar calls no bulk API; it runs the same single-workflow actions one after an
 | `PUT /api/shared-workflow-folders/{id}` | FolderEditor | Rename |
 | `POST /api/shared-workflow-folders/{id}/move` | FolderEditor on source + target | Move |
 | `DELETE /api/shared-workflow-folders/{id}` | FolderEditor (empty folders only) | Delete |
+| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | FolderEditor | Delete **with contents** (sub-folders + workflows); 423 if the subtree holds someone else's edit lock |
 | `POST /api/workflows/{id}/move-folder` | FolderEditor on source + target | Move a workflow |
 | `GET /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | List grants |
 | `POST /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grant |

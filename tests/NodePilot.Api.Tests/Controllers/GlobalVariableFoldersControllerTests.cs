@@ -113,6 +113,79 @@ public class GlobalVariableFoldersControllerTests
     }
 
     [Fact]
+    public async Task DeleteRecursive_NonEmpty_Returns200_WithServerCounts()
+    {
+        using var db = TestDbFactory.Create();
+        var folder = await FolderStore(db).CreateAsync(Root, "HasChild", null, CancellationToken.None);
+        var child = await FolderStore(db).CreateAsync(folder.Id, "Child", null, CancellationToken.None);
+        await VarStore(db).CreateAsync("IN_CHILD", "v", false, null, child.Id, "t", CancellationToken.None);
+        var (controller, _) = NewController(db);
+
+        var result = await controller.Delete(folder.Id, CancellationToken.None, recursive: true);
+
+        var ok = result.Should().BeOfType<OkObjectResult>().Subject;
+        ok.Value.Should().BeOfType<RecursiveGlobalFolderDeleteResponse>()
+            .Which.Should().BeEquivalentTo(new RecursiveGlobalFolderDeleteResponse(2, 1));
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_WritesOneAuditRowPerObject()
+    {
+        // A single summary row would make "who deleted variable X" unanswerable.
+        using var db = TestDbFactory.Create();
+        var folder = await FolderStore(db).CreateAsync(Root, "Tree", null, CancellationToken.None);
+        var child = await FolderStore(db).CreateAsync(folder.Id, "Child", null, CancellationToken.None);
+        var v1 = await VarStore(db).CreateAsync("ONE", "v", false, null, folder.Id, "t", CancellationToken.None);
+        var v2 = await VarStore(db).CreateAsync("TWO", "v", false, null, child.Id, "t", CancellationToken.None);
+        var (controller, audit) = NewController(db);
+
+        await controller.Delete(folder.Id, CancellationToken.None, recursive: true);
+
+        audit.Calls.Where(c => c.Action == "GLOBAL_VARIABLE_DELETED")
+            .Select(c => c.ResourceId).Should().BeEquivalentTo([v1.Id, v2.Id]);
+        audit.Calls.Where(c => c.Action == "GLOBAL_VARIABLE_FOLDER_DELETED")
+            .Select(c => c.ResourceId).Should().BeEquivalentTo([folder.Id, child.Id]);
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_AuditDetailsCarryNoVariableValue()
+    {
+        // Globals can be secrets. The audit detail names the variable, never its value.
+        using var db = TestDbFactory.Create();
+        var folder = await FolderStore(db).CreateAsync(Root, "Secrets", null, CancellationToken.None);
+        await VarStore(db).CreateAsync("TOKEN", "super-secret-value", true, null, folder.Id, "t", CancellationToken.None);
+        var (controller, audit) = NewController(db);
+
+        await controller.Delete(folder.Id, CancellationToken.None, recursive: true);
+
+        audit.Calls.Should().NotContain(c => c.Details != null && c.Details.Contains("super-secret-value"));
+        audit.Calls.Should().Contain(c => c.Action == "GLOBAL_VARIABLE_DELETED"
+            && c.Details != null && c.Details.Contains("TOKEN"));
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_Root_Returns400()
+    {
+        using var db = TestDbFactory.Create();
+        var (controller, _) = NewController(db);
+
+        var result = await controller.Delete(Root, CancellationToken.None, recursive: true);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_NotFound_Returns404()
+    {
+        using var db = TestDbFactory.Create();
+        var (controller, _) = NewController(db);
+
+        var result = await controller.Delete(Guid.NewGuid(), CancellationToken.None, recursive: true);
+
+        result.Should().BeOfType<NotFoundResult>();
+    }
+
+    [Fact]
     public async Task Delete_NotFound_Returns404()
     {
         using var db = TestDbFactory.Create();

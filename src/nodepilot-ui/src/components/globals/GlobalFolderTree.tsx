@@ -1,11 +1,20 @@
 import { Add, ChevronDown, ChevronRight, DataBase, Folder, FolderOpen, Renew } from '@carbon/icons-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { globalFoldersApi, ROOT_FOLDER_ID, GLOBAL_VARIABLE_DRAG_MIME, type GlobalFolder } from '../../api/globalFolders';
 import { SharedFolderContextMenu } from '../workflows/SharedFolderContextMenu';
-import { toast } from '../../stores/toastStore';
-import { confirmDialog } from '../../stores/confirmStore';
+import { FolderBulkBar } from '../common/FolderBulkBar';
+import { useBulkSelection } from '../../hooks/useBulkSelection';
+import { useFolderBulkDelete } from '../../hooks/useFolderBulkDelete';
+import { flattenVisible } from '../../lib/folderSelection';
+
+/** Stable identity for the selection hook — declared at module level so it never changes. */
+const folderKey = (folder: GlobalFolder) => folder.id;
+
+/** Module-level so the delete hook's memoized callbacks keep a stable dependency identity. */
+const EMPTY_FOLDERS: GlobalFolder[] = [];
+const INVALIDATE_KEYS = [['global-folders'], ['global-variables']] as const;
 
 /**
  * Sidebar tree of global-variable folders (mirror of the workflow SharedFolderTree, minus RBAC).
@@ -67,6 +76,42 @@ export function GlobalFolderTree({
 
   const tree = useMemo(() => buildTree(folders ?? []), [folders]);
 
+  // Selection runs over the VISIBLE rows, not the whole tree: `useBulkSelection` derives its
+  // shift-range from the index in this list and prunes ids that leave it, so a collapsed branch
+  // must not be in here. Root is excluded — it cannot be deleted.
+  const selectableFolders = useMemo(
+    () => (canManage
+      ? flattenVisible(tree, collapsedIds).filter((f) => f.id !== ROOT_FOLDER_ID)
+      : []),
+    [canManage, tree, collapsedIds],
+  );
+  const selection = useBulkSelection(selectableFolders, folderKey);
+
+  const deleteRecursive = useCallback(async (folder: GlobalFolder) => {
+    const result = await globalFoldersApi.deleteRecursive(folder.id);
+    return { deletedFolders: result.deletedFolders, deletedItems: result.deletedVariables };
+  }, []);
+
+  const bulkDelete = useFolderBulkDelete<GlobalFolder>({
+    folders: folders ?? EMPTY_FOLDERS,
+    deleteRecursive,
+    invalidateKeys: INVALIDATE_KEYS,
+    countOf: (f) => f.variableCount,
+    pathOf: (f) => f.path,
+    nameOf: (f) => f.name,
+    ns: 'globals',
+    selectedFolderId,
+    onFolderSelected,
+    rootFolderId: ROOT_FOLDER_ID,
+    onMutated: onTreeMutated,
+  });
+
+  const deleteSelected = async () => {
+    // Keep only what failed selected, so a retry is one click away.
+    const failedIds = await bulkDelete.deleteMany(selection.selectedItems);
+    selection.retain(failedIds);
+  };
+
   const submitCreate = async (parentId: string | null) => {
     if (!newFolderName.trim()) return;
     setBusy(true);
@@ -100,26 +145,6 @@ export function GlobalFolderTree({
       onTreeMutated?.();
     } catch (e) {
       setLocalError(t('globals:folder.renameFailed', { msg: (e as Error).message }));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const confirmAndDelete = async (folder: GlobalFolder) => {
-    const ok = await confirmDialog({
-      message: t('globals:folder.deleteConfirm', { name: folder.name }),
-      danger: true,
-    });
-    if (!ok) return;
-    setBusy(true);
-    setLocalError(null);
-    try {
-      await globalFoldersApi.delete(folder.id);
-      await queryClient.invalidateQueries({ queryKey: ['global-folders'] });
-      if (selectedFolderId === folder.id) onFolderSelected(ROOT_FOLDER_ID);
-      onTreeMutated?.();
-    } catch (e) {
-      toast.error(t('globals:folder.deleteFailed', { msg: (e as Error).message }));
     } finally {
       setBusy(false);
     }
@@ -196,6 +221,22 @@ export function GlobalFolderTree({
             onVariableDropped?.(variableId, node.folder.id);
           }}
         >
+          {/* Multi-select checkbox. Root has none — it cannot be deleted. The click is stopped
+              from bubbling because the row itself means "filter to this folder"; ticking a box
+              must not also navigate. */}
+          {canManage && !isRoot && (
+            <span role="presentation" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                className="shrink-0 accent-primary cursor-pointer"
+                checked={selection.isSelected(node.folder.id)}
+                aria-label={t('globals:folder.bulk.selectRow', { name: node.folder.name })}
+                onChange={(e) =>
+                  selection.toggle(node.folder.id, (e.nativeEvent as MouseEvent).shiftKey)}
+                data-testid={`global-folder-select-${node.folder.id}`}
+              />
+            </span>
+          )}
           {node.children.length > 0 ? (
             <button
               type="button"
@@ -286,6 +327,15 @@ export function GlobalFolderTree({
           <Renew size={12} />
         </button>
       </div>
+      {canManage && (
+        <FolderBulkBar
+          selectedCount={selection.selectedCount}
+          onDelete={deleteSelected}
+          onClear={selection.clear}
+          disabled={busy || bulkDelete.busy}
+          ns="globals"
+        />
+      )}
       <div className="flex-1 overflow-auto">
         {error && <div className="px-3 py-2 text-xs text-error">{t('globals:folder.loadError', { msg: error })}</div>}
         {isLoading && !error && <div className="px-3 py-2 text-xs text-on-surface-variant">{t('common:loadingDots')}</div>}
@@ -300,7 +350,7 @@ export function GlobalFolderTree({
             setRenameValue(menuState.folder.name);
             setLocalError(null);
           }}
-          onDelete={() => confirmAndDelete(menuState.folder)}
+          onDelete={() => bulkDelete.deleteOne(menuState.folder)}
           onClose={() => setMenuState(null)}
         />
       )}

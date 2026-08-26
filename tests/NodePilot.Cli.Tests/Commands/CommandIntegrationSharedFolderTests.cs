@@ -164,6 +164,38 @@ public class CommandIntegrationSharedFolderTests
     }
 
     [Fact]
+    public void SharedFolderDeleteRecursive_WithYes_SendsRecursiveQuery()
+    {
+        using var h = new CommandTestHarness();
+        var id = Guid.NewGuid();
+        h.Server.Given(Request.Create().WithPath($"/api/shared-workflow-folders/{id}")
+                .WithParam("recursive", "true").UsingDelete())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("{\"deletedFolders\":3,\"deletedWorkflows\":7}"));
+
+        var result = h.Run("shared-folder", "delete", id.ToString(), "--recursive", "--yes");
+
+        result.ExitCode.Should().Be(ExitCodes.Success);
+        // `writer.Success` goes to stderr, so the union is what carries the counts.
+        result.AnyOutput.Should().Contain("3").And.Contain("7");
+    }
+
+    [Fact]
+    public void SharedFolderDeleteRecursive_NonInteractiveWithoutYes_FailsWithoutRequest()
+    {
+        // Destructive and unattended is the one combination that has to be spelled out —
+        // same rule as `np backup restore`.
+        using var h = new CommandTestHarness();
+        var id = Guid.NewGuid();
+
+        var result = h.Run("shared-folder", "delete", id.ToString(), "--recursive");
+
+        result.ExitCode.Should().Be(ExitCodes.Error);
+        h.Server.LogEntries.Should().BeEmpty("nothing may be sent before the confirmation");
+    }
+
+    [Fact]
     public void SharedFolderDelete_NonEmptyFolder_SurfacesTheConflict()
     {
         using var h = new CommandTestHarness();

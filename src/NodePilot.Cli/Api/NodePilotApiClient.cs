@@ -451,6 +451,12 @@ public sealed class NodePilotApiClient
         await EnsureSuccessAsync(res, ct);
     }
 
+    public async Task<RecursiveGlobalFolderDeleteResponse> DeleteGlobalVariableFolderRecursiveAsync(Guid id, CancellationToken ct)
+    {
+        using var res = await _http.DeleteAsync($"api/global-variable-folders/{id}?recursive=true", ct);
+        return await ParseAsync<RecursiveGlobalFolderDeleteResponse>(res, ct);
+    }
+
     // ---- Maintenance Windows ------------------------------------------------
 
     public async Task<List<MaintenanceWindowResponse>> ListMaintenanceWindowsAsync(CancellationToken ct)
@@ -916,6 +922,14 @@ public sealed class NodePilotApiClient
     {
         using var res = await _http.DeleteAsync($"api/shared-workflow-folders/{id}", ct);
         await EnsureSuccessAsync(res, ct);
+    }
+
+    /// <summary>Deletes a folder together with its sub-folders and workflows. Returns what the
+    /// server actually removed — the caller cannot compute that itself.</summary>
+    public async Task<RecursiveFolderDeleteResponse> DeleteSharedFolderRecursiveAsync(Guid id, CancellationToken ct)
+    {
+        using var res = await _http.DeleteAsync($"api/shared-workflow-folders/{id}?recursive=true", ct);
+        return await ParseAsync<RecursiveFolderDeleteResponse>(res, ct);
     }
 
     public async Task MoveWorkflowToFolderAsync(Guid workflowId, MoveWorkflowToFolderRequest req, CancellationToken ct)

@@ -119,6 +119,20 @@
   "folder": {
     "sharedFoldersHeading": "Freigegebene Ordner",
     "resizeHandleTitle": "Größe ändern (Doppelklick: zurücksetzen)",
+    "bulk": {
+      "selected": "{{count}} ausgewählt",
+      "selectRow": "Ordner \"{{name}}\" auswählen",
+      "clear": "Auswahl aufheben",
+      "delete": "Löschen",
+      "noEditPermission": "Keine Schreibrechte auf diesem Ordner",
+      "deleteConfirm": "{{count}} Ordner samt Inhalt löschen?",
+      "deleteConfirmButton": "Löschen ({{items}} Workflows)",
+      "impactRow": "{{path}} — {{count}} Workflows",
+      "deleted": "{{folders}} Ordner und {{items}} Workflows gelöscht.",
+      "deletedCount": "{{count}} Ordner gelöscht.",
+      "failedHeader": "{{count}} fehlgeschlagen:",
+      "nothingSelected": "Die Auswahl ist nicht mehr aktuell — bitte erneut markieren."
+    },
     "rename": "Umbenennen",
     "delete": "Löschen",
     "deleteConfirm": "Folder \"{{name}}\" wirklich löschen?",

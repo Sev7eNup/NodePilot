@@ -107,6 +107,11 @@ public sealed class MoreToolsCoverageTests
         api.Server.Given(Request.Create().WithPath($"/api/credentials/{cid}").UsingDelete()).RespondWith(Response.Create().WithStatusCode(204));
         api.Server.Given(Request.Create().WithPath($"/api/global-variables/{gid}").UsingDelete()).RespondWith(Response.Create().WithStatusCode(204));
         var fid = Guid.NewGuid();
+        api.Server.Given(Request.Create().WithPath($"/api/global-variable-folders/{fid}")
+                .WithParam("recursive", "true").UsingDelete())
+            .RespondWith(Response.Create().WithStatusCode(200)
+                .WithHeader("Content-Type", "application/json")
+                .WithBody("{\"deletedFolders\":2,\"deletedVariables\":4}"));
         api.Server.Given(Request.Create().WithPath($"/api/global-variable-folders/{fid}").UsingDelete()).RespondWith(Response.Create().WithStatusCode(204));
 
         var tools = new DestructiveTools(api.Client());
@@ -116,6 +121,11 @@ public sealed class MoreToolsCoverageTests
         J(await tools.DeleteCredential(cid.ToString())).Should().Contain("\"deleted\":true");
         J(await tools.DeleteGlobalVariable(gid.ToString())).Should().Contain("\"deleted\":true");
         J(await tools.DeleteGlobalVariableFolder(fid.ToString())).Should().Contain("\"deleted\":true");
+        // recursive=true takes the subtree and reports what the server removed; the plain call
+        // above keeps the empty-only contract and has no body to read.
+        var recursive = J(await tools.DeleteGlobalVariableFolder(fid.ToString(), recursive: true));
+        recursive.Should().Contain("\"recursive\":true")
+            .And.Contain("\"deletedFolders\":2").And.Contain("\"deletedVariables\":4");
     }
 
     // ---- Canvas gaps --------------------------------------------------------

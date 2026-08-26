@@ -121,6 +121,38 @@ describe('useBulkSelection', () => {
     expect(result.current.isSelected('b')).toBe(true);
   });
 
+  // The defect this pins: `selectedCount` used to be the raw id-set size while every bulk action
+  // takes `selectedItems`. A row that left the list still counted, so the bar stayed open on a
+  // selection the action could not see — the button then did nothing at all, silently.
+  it('counts only rows that are still on screen', () => {
+    const { result, rerender } = setup();
+    act(() => result.current.toggle('a'));
+    act(() => result.current.toggle('d'));
+    expect(result.current.selectedCount).toBe(2);
+
+    // 'd' leaves the rendered list — a collapsed branch, a filter, a refetch.
+    rerender({ items: rows('a', 'b', 'c') });
+
+    expect(result.current.selectedCount).toBe(1);
+    expect(result.current.selectedItems.map(key)).toEqual(['a']);
+  });
+
+  it('selectedCount never exceeds what a bulk action would receive', () => {
+    const { result, rerender } = setup();
+    act(() => result.current.toggleAll());
+    rerender({ items: rows('b') });
+
+    expect(result.current.selectedCount).toBe(result.current.selectedItems.length);
+  });
+
+  it('someSelected follows the on-screen count, not the raw set', () => {
+    const { result, rerender } = setup();
+    act(() => result.current.toggle('d'));
+    rerender({ items: rows('a', 'b', 'c') });
+
+    expect(result.current.someSelected).toBe(false);
+  });
+
   it('allSelected is false for an empty list', () => {
     const { result } = setup([]);
     expect(result.current.allSelected).toBe(false);

@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 export interface BulkSelection<T> {
   /** The raw id set — pass to `isSelected` rather than reading it directly in render paths. */
   selectedIds: ReadonlySet<string>;
+  /** How many selected rows are actually on screen — i.e. `selectedItems.length`. Gate bulk
+   *  controls on this, never on `selectedIds.size`: only these rows reach a bulk action. */
   selectedCount: number;
   isSelected: (id: string) => boolean;
   /** The currently selected items, in the order of the `items` array handed to the hook. */
@@ -102,9 +104,15 @@ export function useBulkSelection<T>(items: T[], getId: (item: T) => string): Bul
 
   const allSelected = ids.length > 0 && selectedIds.size >= ids.length && ids.every((id) => selectedIds.has(id));
 
+  // Counted from `selectedItems`, not from the raw id set. The two differ whenever an id is
+  // selected but no longer rendered — the prune effect runs after render, and a collapsed branch
+  // or a refetch opens that window. A bar reading the raw size would then offer to act on rows
+  // the action itself (which takes `selectedItems`) cannot see, and the click would do nothing.
+  const selectedCount = selectedItems.length;
+
   return {
     selectedIds,
-    selectedCount: selectedIds.size,
+    selectedCount,
     isSelected,
     selectedItems,
     toggle,
@@ -112,6 +120,6 @@ export function useBulkSelection<T>(items: T[], getId: (item: T) => string): Bul
     clear,
     retain,
     allSelected,
-    someSelected: selectedIds.size > 0 && !allSelected,
+    someSelected: selectedCount > 0 && !allSelected,
   };
 }

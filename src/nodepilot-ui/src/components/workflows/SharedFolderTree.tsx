@@ -1,11 +1,20 @@
 import { Add, ChevronDown, ChevronRight, DataBase, Folder, FolderOpen, Renew } from '@carbon/icons-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { sharedFoldersApi, ROOT_FOLDER_ID, type SharedFolder } from '../../api/sharedFolders';
 import { SharedFolderContextMenu } from './SharedFolderContextMenu';
-import { toast } from '../../stores/toastStore';
-import { confirmDialog } from '../../stores/confirmStore';
+import { FolderBulkBar } from '../common/FolderBulkBar';
+import { useBulkSelection } from '../../hooks/useBulkSelection';
+import { useFolderBulkDelete } from '../../hooks/useFolderBulkDelete';
+import { flattenVisible } from '../../lib/folderSelection';
+
+/** Stable identity for the selection hook — declared at module level so it never changes. */
+const folderKey = (folder: SharedFolder) => folder.id;
+
+/** Module-level so the delete hook's memoized callbacks keep a stable dependency identity. */
+const EMPTY_FOLDERS: SharedFolder[] = [];
+const INVALIDATE_KEYS = [['shared-folders'], ['workflows']] as const;
 
 /**
  * Sidebar that renders the org-level shared-folder tree from
@@ -40,6 +49,14 @@ export interface SharedFolderTreeProps {
   /** When true, folder management affordances are hidden: no "+ new subfolder" button,
    *  no right-click rename/delete context menu. Suitable for navigation-only use. */
   hideManagement?: boolean;
+  /**
+   * Opt-in multi-select: a checkbox per row plus the bulk bar above the tree.
+   *
+   * Off by default on purpose — this component is also the designer's folder browser
+   * (`WorkflowBrowser`), where a delete affordance has no business being. Only the
+   * workflows page turns it on.
+   */
+  bulkDeleteEnabled?: boolean;
 }
 
 export const WORKFLOW_DRAG_MIME = 'application/x-nodepilot-workflow';
@@ -57,6 +74,7 @@ export function SharedFolderTree({
   onManagePermissions,
   compact = false,
   hideManagement = false,
+  bulkDeleteEnabled = false,
 }: Readonly<SharedFolderTreeProps>) {
   // Shared cache key with WorkflowsPage so any mutation that calls
   // `queryClient.invalidateQueries({queryKey: ['shared-folders']})` (workflow create,
@@ -103,6 +121,17 @@ export function SharedFolderTree({
   };
 
   const tree = useMemo(() => buildTree(folders ?? []), [folders]);
+
+  // Selection runs over the VISIBLE rows, not the whole tree: `useBulkSelection` derives its
+  // shift-range from the index in this list and prunes ids that leave it, so a collapsed branch
+  // must not be in here. Root is excluded — it cannot be deleted.
+  const selectableFolders = useMemo(
+    () => (bulkDeleteEnabled
+      ? flattenVisible(tree, collapsedIds).filter((f) => f.id !== ROOT_FOLDER_ID)
+      : []),
+    [bulkDeleteEnabled, tree, collapsedIds],
+  );
+  const selection = useBulkSelection(selectableFolders, folderKey);
 
   const submitCreate = async (parentId: string | null) => {
     if (!newFolderName.trim()) return;
@@ -153,36 +182,29 @@ export function SharedFolderTree({
     }
   };
 
-  const confirmAndDelete = async (folder: SharedFolder) => {
-    const ok = await confirmDialog({
-      message: t('workflows:folder.deleteConfirm', {
-        defaultValue: 'Folder "{{name}}" wirklich löschen?',
-        name: folder.name,
-      }),
-      danger: true,
-    });
-    if (!ok) return;
-    setBusy(true);
-    setLocalError(null);
-    try {
-      await sharedFoldersApi.delete(folder.id);
-      await queryClient.invalidateQueries({ queryKey: ['shared-folders'] });
-      // If the deleted folder was the one currently selected, reset the selection to
-      // root — otherwise WorkflowsPage would show "No workflows in this folder" for an
-      // id that no longer exists.
-      if (selectedFolderId === folder.id) onFolderSelected(ROOT_FOLDER_ID);
-      onTreeMutated?.();
-    } catch (e) {
-      // 409 conflict (folder not empty) or 400/403 — the backend message is already
-      // user-friendly (e.g. "Folder is not empty — move or delete sub-folders and
-      // workflows first"). Pass it through as-is.
-      toast.error(t('workflows:folder.deleteFailed', {
-        defaultValue: 'Löschen fehlgeschlagen: {{msg}}',
-        msg: (e as Error).message,
-      }));
-    } finally {
-      setBusy(false);
-    }
+  const deleteRecursive = useCallback(async (folder: SharedFolder) => {
+    const result = await sharedFoldersApi.deleteRecursive(folder.id);
+    return { deletedFolders: result.deletedFolders, deletedItems: result.deletedWorkflows };
+  }, []);
+
+  const bulkDelete = useFolderBulkDelete<SharedFolder>({
+    folders: folders ?? EMPTY_FOLDERS,
+    deleteRecursive,
+    invalidateKeys: INVALIDATE_KEYS,
+    countOf: (f) => f.workflowCount,
+    pathOf: (f) => f.path,
+    nameOf: (f) => f.name,
+    ns: 'workflows',
+    selectedFolderId,
+    onFolderSelected,
+    rootFolderId: ROOT_FOLDER_ID,
+    onMutated: onTreeMutated,
+  });
+
+  const deleteSelected = async () => {
+    // Keep only what failed selected, so a retry is one click away.
+    const failedIds = await bulkDelete.deleteMany(selection.selectedItems);
+    selection.retain(failedIds);
   };
 
   const renderNode = (node: TreeNode, depth: number) => {
@@ -269,6 +291,24 @@ export function SharedFolderTree({
             onWorkflowDropped?.(workflowId, node.folder.id);
           }}
         >
+          {/* Multi-select checkbox. Root has none — it cannot be deleted. The click is stopped
+              from bubbling because the row itself means "filter to this folder"; ticking a box
+              must not also navigate. */}
+          {bulkDeleteEnabled && !isRoot && (
+            <span role="presentation" onClick={(e) => e.stopPropagation()}>
+              <input
+                type="checkbox"
+                className="shrink-0 accent-primary cursor-pointer"
+                checked={selection.isSelected(node.folder.id)}
+                disabled={!canEdit}
+                title={canEdit ? undefined : t('workflows:folder.bulk.noEditPermission')}
+                aria-label={t('workflows:folder.bulk.selectRow', { name: node.folder.name })}
+                onChange={(e) =>
+                  selection.toggle(node.folder.id, (e.nativeEvent as MouseEvent).shiftKey)}
+                data-testid={`shared-folder-select-${node.folder.id}`}
+              />
+            </span>
+          )}
           {/* Chevron toggle or spacer for leaf nodes — both w-4 for consistent text alignment */}
           {node.children.length > 0 ? (
             <button
@@ -369,6 +409,15 @@ export function SharedFolderTree({
           </button>
         </div>
       )}
+      {bulkDeleteEnabled && (
+        <FolderBulkBar
+          selectedCount={selection.selectedCount}
+          onDelete={deleteSelected}
+          onClear={selection.clear}
+          disabled={busy || bulkDelete.busy}
+          ns="workflows"
+        />
+      )}
       <div className="flex-1 overflow-auto">
         {error && (
           <div className="px-3 py-2 text-xs text-error">
@@ -402,7 +451,7 @@ export function SharedFolderTree({
           }
           onDelete={
             menuState.folder.capabilities.canEdit && menuState.folder.id !== ROOT_FOLDER_ID
-              ? () => confirmAndDelete(menuState.folder)
+              ? () => bulkDelete.deleteOne(menuState.folder)
               : undefined
           }
           onClose={() => setMenuState(null)}

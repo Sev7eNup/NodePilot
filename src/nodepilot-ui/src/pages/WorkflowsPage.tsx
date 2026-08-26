@@ -712,6 +712,7 @@ export function WorkflowsPage() {
               selectedFolderId={selectedFolderId}
               onFolderSelected={setSelectedFolderId}
               onManagePermissions={setPermissionsModalFolderId}
+              bulkDeleteEnabled
               onTreeMutated={() => {
                 queryClient.invalidateQueries({ queryKey: ['workflows'] });
                 queryClient.invalidateQueries({ queryKey: ['shared-folders'] });

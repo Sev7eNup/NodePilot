@@ -471,6 +471,7 @@ Folder + Grants ändert ein globaler Admin via UI oder direkt am API.
 | `PUT /api/shared-workflow-folders/{id}` | FolderEditor | Rename |
 | `POST /api/shared-workflow-folders/{id}/move` | FolderEditor auf Source + Target | Move |
 | `DELETE /api/shared-workflow-folders/{id}` | FolderEditor (nur leere Folder) | Delete |
+| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | FolderEditor | Delete **samt Inhalt** — Unterordner und darin liegende Workflows. 423, wenn im Subtree ein Workflow von jemand anderem ausgecheckt ist |
 | `POST /api/workflows/{id}/move-folder` | FolderEditor auf Source + Target | Workflow umsortieren |
 | `GET /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grants listen |
 | `POST /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grant vergeben |

@@ -1,4 +1,8 @@
+using System.Data.Common;
 using FluentAssertions;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data.Security;
@@ -204,6 +208,145 @@ public class GlobalVariableFolderStoreTests
         var store = NewStore(db);
         var act = async () => await store.DeleteAsync(Root, CancellationToken.None);
         await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_Subtree_RemovesFoldersAndVariables()
+    {
+        using var db = TestDbFactory.Create();
+        var store = NewStore(db);
+        var varStore = NewVarStore(db);
+        var a = await store.CreateAsync(Root, "A", null, CancellationToken.None);
+        var child = await store.CreateAsync(a.Id, "Child", null, CancellationToken.None);
+        var sibling = await store.CreateAsync(Root, "Keep", null, CancellationToken.None);
+        await varStore.CreateAsync("IN_A", "v", false, null, a.Id, "t", CancellationToken.None);
+        await varStore.CreateAsync("IN_CHILD", "v", false, null, child.Id, "t", CancellationToken.None);
+        var survivor = await varStore.CreateAsync("OUTSIDE", "v", false, null, sibling.Id, "t", CancellationToken.None);
+
+        var result = await store.DeleteRecursiveAsync(a.Id, CancellationToken.None);
+
+        result.Folders.Select(f => f.Id).Should().BeEquivalentTo([a.Id, child.Id]);
+        result.Variables.Select(v => v.Name).Should().BeEquivalentTo(["IN_A", "IN_CHILD"]);
+        (await store.ExistsAsync(a.Id, CancellationToken.None)).Should().BeFalse();
+        (await store.ExistsAsync(child.Id, CancellationToken.None)).Should().BeFalse();
+        (await store.ExistsAsync(sibling.Id, CancellationToken.None)).Should().BeTrue();
+        db.GlobalVariables.Select(v => v.Id).Should().BeEquivalentTo([survivor.Id]);
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_EmptyFolder_Succeeds()
+    {
+        using var db = TestDbFactory.Create();
+        var store = NewStore(db);
+        var f = await store.CreateAsync(Root, "Empty", null, CancellationToken.None);
+
+        var result = await store.DeleteRecursiveAsync(f.Id, CancellationToken.None);
+
+        result.Folders.Should().ContainSingle();
+        result.Variables.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_ResultCarriesNoVariableValues()
+    {
+        // The result feeds the audit trail. A global's value is a secret and must not ride along
+        // on a delete path — the record type only exposes Id and Name, pinned here so a later
+        // "just add the value, it's handy" cannot pass unnoticed.
+        typeof(DeletedGlobalVariable).GetProperties().Select(p => p.Name)
+            .Should().BeEquivalentTo(["Id", "Name"]);
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_Root_Throws()
+    {
+        using var db = TestDbFactory.Create();
+        var store = NewStore(db);
+        var act = async () => await store.DeleteRecursiveAsync(Root, CancellationToken.None);
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_UnknownFolder_Throws404()
+    {
+        using var db = TestDbFactory.Create();
+        var store = NewStore(db);
+        var act = async () => await store.DeleteRecursiveAsync(Guid.NewGuid(), CancellationToken.None);
+        await act.Should().ThrowAsync<KeyNotFoundException>();
+    }
+
+    /// <summary>
+    /// Writes a variable into <paramref name="folderId"/> right before the subtree DELETE runs —
+    /// the window a concurrent writer would use.
+    ///
+    /// Hooked on the DELETE, not on the snapshot SELECT: an interceptor fires *before* the command
+    /// it wraps, so inserting at the SELECT would put the row INTO the snapshot — the opposite of
+    /// what the test needs.
+    /// </summary>
+    private sealed class InsertVariableBeforeDelete(SqliteConnection conn, Guid folderId) : DbCommandInterceptor
+    {
+        public bool Fired { get; private set; }
+
+        public override async ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command, CommandEventData eventData, InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (!Fired
+                && command.Transaction is not null
+                && command.CommandText.Contains("DELETE FROM \"GlobalVariables\"", StringComparison.Ordinal))
+            {
+                Fired = true;
+                // Written through EF on a second context so the column set comes from the model
+                // rather than a hand-written INSERT that drifts with the schema.
+                var options = new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(conn).Options;
+                await using var writer = new NodePilotDbContext(options);
+                await writer.Database.UseTransactionAsync(command.Transaction, cancellationToken);
+                writer.GlobalVariables.Add(new GlobalVariable
+                {
+                    Id = Guid.NewGuid(), Name = "LATECOMER", Value = "v", IsSecret = false,
+                    FolderId = folderId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow,
+                });
+                await writer.SaveChangesAsync(cancellationToken);
+            }
+            return result;
+        }
+    }
+
+    [Fact]
+    public async Task DeleteRecursive_VariableAppearsBetweenSnapshotAndDelete_Throws409_AndKeepsEverything()
+    {
+        // The window the snapshot-inside-the-transaction contract closes: a variable that lands in
+        // the subtree after the snapshot must not be swept up silently — it would vanish without an
+        // audit row and understate the reported count. It is refused instead, and nothing goes.
+        var (conn, db) = TestDbFactory.CreateWithConnection();
+        using (conn)
+        using (db)
+        {
+            var seedStore = NewStore(db);
+            var varStore = NewVarStore(db);
+            var a = await seedStore.CreateAsync(Root, "A", null, CancellationToken.None);
+            await varStore.CreateAsync("KNOWN", "v", false, null, a.Id, "t", CancellationToken.None);
+
+            var interceptor = new InsertVariableBeforeDelete(conn, a.Id);
+            var options = new DbContextOptionsBuilder<NodePilotDbContext>()
+                .UseSqlite(conn).AddInterceptors(interceptor).Options;
+            await using var raced = new NodePilotDbContext(options);
+
+            var act = async () => await new GlobalVariableFolderStore(raced)
+                .DeleteRecursiveAsync(a.Id, CancellationToken.None);
+
+            await act.Should().ThrowAsync<GlobalVariableFolderConflictException>();
+            interceptor.Fired.Should().BeTrue(
+                "the interceptor must fire inside the transaction, otherwise the test proves nothing");
+
+            db.ChangeTracker.Clear();
+            // Limit of the simulation: the interceptor writes inside the store's own transaction,
+            // so the latecomer disappears again with the rollback and cannot be asserted on. A real
+            // concurrent writer would sit in its own transaction and its row would survive. What
+            // this pins is what matters either way — the run is refused as a race rather than
+            // silently sweeping up a row it never snapshotted, and nothing else is lost.
+            db.GlobalVariableFolders.Any(f => f.Id == a.Id).Should().BeTrue();
+            db.GlobalVariables.Count(v => v.FolderId == a.Id).Should().Be(1);
+        }
     }
 
     [Fact]

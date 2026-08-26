@@ -126,6 +126,96 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Subtree delete. Mirrors the shared-workflow path, minus the edit-lock condition —
+    /// globals have no checkout, so the only refusal is a concurrent change.
+    ///
+    /// The snapshot is taken inside the transaction and the delete is keyed on its ids: deleting
+    /// by <c>FolderId</c> alone would also catch rows inserted after the snapshot, which would
+    /// then vanish without an audit row and understate the reported count.
+    /// </summary>
+    public async Task<RecursiveGlobalFolderDeleteResult> DeleteRecursiveAsync(Guid id, CancellationToken ct)
+    {
+        if (id == GlobalVariableFolder.RootFolderId)
+            throw new InvalidOperationException("Root folder cannot be deleted");
+
+        var all = await db.GlobalVariableFolders.AsNoTracking().ToListAsync(ct);
+        if (all.All(f => f.Id != id))
+            throw new KeyNotFoundException($"Folder {id} not found");
+
+        var subtreeIds = DescendantFolderIds(all, id);
+        var doomedFolders = all
+            .Where(f => subtreeIds.Contains(f.Id))
+            .OrderByDescending(f => f.Depth)   // bottom-up: Folder→Folder is Restrict, not Cascade
+            .ToList();
+
+        var strategy = db.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+            var snapshot = await db.GlobalVariables.AsNoTracking()
+                .Where(v => subtreeIds.Contains(v.FolderId))
+                .Select(v => new DeletedGlobalVariable(v.Id, v.Name))
+                .ToListAsync(ct);
+            var snapshotIds = snapshot.Select(v => v.Id).ToList();
+
+            // `subtreeIds.Contains` stays as a second condition: the row must still be where we
+            // saw it, so one moved out from under us is not deleted by its stale id.
+            var deleted = await db.GlobalVariables
+                .Where(v => snapshotIds.Contains(v.Id) && subtreeIds.Contains(v.FolderId))
+                .ExecuteDeleteAsync(ct);
+
+            if (deleted != snapshotIds.Count)
+            {
+                await tx.RollbackAsync(ct);
+                throw new GlobalVariableFolderConflictException(
+                    "Folder contents changed while deleting — nothing was deleted, please try again");
+            }
+
+            // Anything that entered the subtree after the snapshot is still there. Refusing here
+            // is an explicit check rather than a reliance on the Restrict FK firing, which is
+            // provider-dependent; the catch below stays as the backstop for the same race on
+            // sub-folders.
+            var leftover = await db.GlobalVariables.CountAsync(v => subtreeIds.Contains(v.FolderId), ct);
+            if (leftover > 0)
+            {
+                await tx.RollbackAsync(ct);
+                throw new GlobalVariableFolderConflictException(
+                    "Folder contents changed while deleting — nothing was deleted, please try again");
+            }
+
+            try
+            {
+                foreach (var doomed in doomedFolders)
+                {
+                    // Guarded on the parent we saw: a folder moved out of the subtree in the
+                    // meantime must not be deleted by its stale id.
+                    var removed = await db.GlobalVariableFolders
+                        .Where(f => f.Id == doomed.Id && f.ParentFolderId == doomed.ParentFolderId)
+                        .ExecuteDeleteAsync(ct);
+                    if (removed != 1)
+                    {
+                        await tx.RollbackAsync(ct);
+                        throw new GlobalVariableFolderConflictException(
+                            "Folder contents changed while deleting — nothing was deleted, please try again");
+                    }
+                }
+                await tx.CommitAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                await tx.RollbackAsync(ct);
+                throw new GlobalVariableFolderConflictException(
+                    "Folder contents changed while deleting — nothing was deleted, please try again");
+            }
+
+            return new RecursiveGlobalFolderDeleteResult(
+                snapshot,
+                doomedFolders.Select(f => new DeletedGlobalFolder(f.Id, f.Path)).ToList());
+        });
+    }
+
     private static string ValidateName(string name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -175,6 +265,24 @@ public class GlobalVariableFolderStore(NodePilotDbContext db) : IGlobalVariableF
             depth++;
         }
         return false;
+    }
+
+    /// <summary>The folder itself plus every descendant.</summary>
+    private static HashSet<Guid> DescendantFolderIds(List<GlobalVariableFolder> all, Guid rootId)
+    {
+        var byParent = all.GroupBy(f => f.ParentFolderId)
+            .ToDictionary(g => g.Key ?? Guid.Empty, g => g.ToList());
+        var result = new HashSet<Guid>();
+        var stack = new Stack<Guid>();
+        stack.Push(rootId);
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (!result.Add(current)) continue;
+            if (byParent.TryGetValue(current, out var children))
+                foreach (var child in children) stack.Push(child.Id);
+        }
+        return result;
     }
 
     private static int DescendantMaxDepth(List<GlobalVariableFolder> all, Guid rootId)

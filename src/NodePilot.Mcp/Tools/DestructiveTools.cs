@@ -111,14 +111,22 @@ public sealed class DestructiveTools
     }
 
     [McpServerTool(Name = "delete_global_variable_folder", Destructive = true)]
-    [Description("DESTRUCTIVE (Admin): permanently delete an EMPTY global-variable folder (fails 409 if it still has sub-folders or variables). Only available when NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true.")]
+    [Description("DESTRUCTIVE (Admin): permanently delete a global-variable folder. By default the folder must be EMPTY (fails 409 if it still has sub-folders or variables); with recursive=true the whole subtree goes, including every variable in it. Only available when NODEPILOT_MCP_ALLOW_DESTRUCTIVE=true.")]
     public async Task<object> DeleteGlobalVariableFolder(
         [Description("The folder GUID.")] string id,
+        [Description("Delete sub-folders and the variables inside them too. Default false.")] bool recursive = false,
         CancellationToken cancellationToken = default)
     {
         var guid = ExecutionTools.ParseGuid(id, "folder id");
-        await ApiErrorMapper.Guard(() => _api.DeleteGlobalFolderAsync(guid, cancellationToken));
-        return new { deleted = true, folderId = guid };
+        var result = await ApiErrorMapper.Guard(() => _api.DeleteGlobalFolderAsync(guid, cancellationToken, recursive));
+        return new
+        {
+            deleted = true,
+            folderId = guid,
+            recursive,
+            deletedFolders = result?.DeletedFolders,
+            deletedVariables = result?.DeletedVariables,
+        };
     }
 
     [McpServerTool(Name = "delete_alerting_rule", Destructive = true)]

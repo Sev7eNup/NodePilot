@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { ConfirmHost } from '../../../components/common/ConfirmHost';
 import { confirmDialog, useConfirmStore } from '../../../stores/confirmStore';
 
@@ -43,6 +43,35 @@ describe('ConfirmHost', () => {
     const dropBtn = screen.getByRole('button', { name: 'Drop' });
     expect(dropBtn.className).toContain('bg-error');
     expect(screen.getByRole('button', { name: 'Keep' })).toBeInTheDocument();
+  });
+
+  it('details_renderAsAList', async () => {
+    // Added for the folder delete: naming what goes lets the reader check the dialog against
+    // what they meant to select, which a bare count cannot.
+    render(<ConfirmHost />);
+    void confirmDialog({
+      message: 'Delete these?',
+      details: ['/Finance — 3 workflows', '/Archive — 9 workflows'],
+    });
+    const list = await screen.findByTestId('confirm-details');
+    expect(list.tagName).toBe('UL');
+    expect(within(list).getAllByRole('listitem')).toHaveLength(2);
+    expect(list).toHaveTextContent('/Finance — 3 workflows');
+  });
+
+  it('withoutDetails_rendersNoList', async () => {
+    // Every existing caller passes no details — they must not grow an empty box.
+    render(<ConfirmHost />);
+    void confirmDialog('Just a question?');
+    expect(await screen.findByText('Just a question?')).toBeInTheDocument();
+    expect(screen.queryByTestId('confirm-details')).not.toBeInTheDocument();
+  });
+
+  it('emptyDetails_rendersNoList', async () => {
+    render(<ConfirmHost />);
+    void confirmDialog({ message: 'Nothing to list', details: [] });
+    expect(await screen.findByText('Nothing to list')).toBeInTheDocument();
+    expect(screen.queryByTestId('confirm-details')).not.toBeInTheDocument();
   });
 
   it('secondConfirm_cancelsTheStaleOne', async () => {

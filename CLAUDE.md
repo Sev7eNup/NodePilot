@@ -77,6 +77,9 @@ ist nicht nötig. **Immer erst `pg_ctl start`, dann `dotnet run`.**
 
 ## Arbeitsweise für Claude
 
+- **Nichts nach außen ohne ausdrückliche Ansage.** `git commit`, `git push`, `gh pr create`, `gh pr merge`, `gh pr comment`, `gh release create`, Tags, Branch-Löschung — jeder dieser Schritte braucht eine eigene Aufforderung des Users. Lokal arbeiten (Branch anlegen, editieren, bauen, testen) ist frei; sobald etwas das Repository verlässt oder in `main` landet, wird gefragt.
+  - **„go", „mach das", „setz das um" heißt: implementieren.** Es heißt **nicht** committen, pushen, PR öffnen oder mergen. Wenn der User Commit/PR/Merge will, sagt er es (z. B. „pr und merge bitte") — und diese Freigabe gilt **nur für den einen Vorgang**, nicht für die nächste Aufgabe.
+  - Nach getaner Arbeit den Stand im Arbeitsbaum liegen lassen und knapp berichten, was bereitliegt. Nicht vorgreifend committen, „damit nichts verlorengeht".
 - **Branching:** Nicht-triviale Arbeit auf einem neuen Branch beginnen, **bevor** editiert wird; nachfragen nur, wenn der Branch-Name unklar ist. Triviale Einzeiler (z. B. `.gitignore`) bekommen **keinen** eigenen Branch/PR — in die laufende Arbeit einfalten.
 - **PR-Budget: maximal 5 PRs gleichzeitig** für eigene Arbeits-Batches (größere Vorhaben in ≤5 PRs schneiden). Für **Dependabot gilt diese Zahl nicht**: `.github/dependabot.yml` bündelt Minor/Patch pro Ökosystem in einen Sammel-PR (`open-pull-requests-limit: 1` je Block → max. 5 **Sammel**-PRs), aber die Gruppen deklarieren nur `update-types: [minor, patch]` — jeder offene **Major fällt heraus und bekommt einen eigenen PR**. Realistisch also „bis zu 5 Sammel-PRs plus je einer pro offenem Major" (gemessen 2026-08-09: 4 + 4 = 8). Majors bleiben bewusst ungruppiert, weil ein Bündel den Review verschlechtert — der Spectre-Split kam 2026-08-09 bei grünem CI durch einen Sammel-PR und fiel nur beim Diff-Lesen auf.
 - **Jede Änderung an `.github/dependabot.yml` löst sofort alle Blöcke neu aus** (unabhängig vom Montags-Zeitplan) und erzeugt binnen Minuten neue PRs. Config-Edits deshalb **bündeln**, nicht nacheinander mergen.
@@ -354,9 +357,23 @@ Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pf
 | `GET\|POST\|PUT /api/credentials` | ✓ | ✓ | ✗ |
 | `POST /api/executions/{id}/cancel` | ✓ | ✓ | ✗ |
 | `DELETE /{workflows,machines,credentials}/{id}` | ✓ | ✗ | ✗ |
+| `DELETE /api/shared-workflow-folders/{id}[?recursive=true]` | Folder-`Edit` — **auch mit Inhalt** | | |
 | `GET /api/alerting/rules`, `POST /preview-filter` | ✓ | ✓ | ✗ |
 | `POST/PUT/DELETE /api/alerting/rules`, `POST /{id}/enable\|disable\|test-fire` | ✓ | ✗ | ✗ |
 | `POST /api/trigger/{name}` | API-Key via `X-Api-Key`-Header |
+
+**Ordner-Löschen weicht bewusst ab:** es hängt an Folder-`Edit`, nicht an Admin — auch mit
+`?recursive=true`, das Unterordner und die darin liegenden Workflows mitnimmt. Ein FolderEditor
+kann darüber also Workflows löschen, die ihm `DELETE /api/workflows/{id}` (Admin-only) verwehrt.
+Produkt-Entscheidung, kein Versehen: der Ordner ist die Einheit, die ein Team verwaltet. Die
+Rechte auf dem Subtree sind dabei gedeckt, weil Grants über die Ahnenkette wirken.
+
+**Der Global-Variablen-Ordnerbaum kennt dieselbe Mechanik, bleibt aber Admin-only.**
+`DELETE /api/global-variable-folders/{id}[?recursive=true]` löscht Unterordner samt Variablen,
+hängt aber wie jede Globals-Mutation an `[Authorize(Roles = "Admin")]` — es gibt dort kein
+Per-Ordner-RBAC, an dem sich lockern ließe. Frontend-seitig teilen sich beide Bäume die
+Löschmechanik (`hooks/useFolderBulkDelete.ts`, `components/common/FolderBulkBar.tsx`,
+`lib/folderSelection.ts`); die Baum-Komponenten selbst sind weiterhin Klone.
 
 Initial-Admin: erster Login bei leerer DB (One-Shot-Token `admin-setup.token`).
 

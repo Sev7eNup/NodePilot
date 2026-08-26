@@ -396,4 +396,121 @@ test.describe('Teil 21 — Global Variables', () => {
     await expect.poll(() => postedBody).not.toBeNull();
     expect(postedBody).toMatchObject({ name: 'Databases', parentFolderId: ROOT_FOLDER });
   });
+  test('21.8 - deleting a non-empty folder removes it with its contents', async ({ page }) => {
+    // "Delete only when empty" was the limitation this replaced. The confirmation naming the
+    // blast radius is what makes it safe, so that is what is asserted.
+    await page.route('**/api/global-variable-folders', (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          folderJson(),
+          folderJson({ id: 'f-db', parentFolderId: ROOT_FOLDER, name: 'Databases', path: '/Databases', depth: 1, variableCount: 3 }),
+        ]),
+      });
+    });
+    let recursiveUrl: string | null = null;
+    await page.route('**/api/global-variable-folders/f-db*', (route) => {
+      if (route.request().method() !== 'DELETE') return route.fallback();
+      recursiveUrl = route.request().url();
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ deletedFolders: 1, deletedVariables: 3 }),
+      });
+    });
+    await page.route('**/api/global-variables', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }),
+    );
+
+    await page.goto('/global-variables');
+    const dbRow = page.getByTestId('global-folder-f-db');
+    await expect(dbRow).toBeVisible({ timeout: 15_000 });
+
+    await dbRow.click({ button: 'right' });
+    await page.getByTestId('shared-folder-menu-delete').click();
+
+    await expect(page.getByTestId('confirm-details')).toContainText('/Databases');
+    await page.getByRole('button', { name: /^(OK|Delete|Löschen)/ }).click();
+
+    await expect.poll(() => recursiveUrl, { timeout: 10_000 }).toContain('recursive=true');
+    await expect(page.getByTestId('toast-success')).toBeVisible({ timeout: 10_000 });
+  });
+
+  test('21.9 - selecting two folders deletes each with one DELETE, after a single confirm', async ({ page }) => {
+    await page.route('**/api/global-variable-folders', (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          folderJson(),
+          folderJson({ id: 'f-db', parentFolderId: ROOT_FOLDER, name: 'Databases', path: '/Databases', depth: 1, variableCount: 1 }),
+          folderJson({ id: 'f-keys', parentFolderId: ROOT_FOLDER, name: 'Keys', path: '/Keys', depth: 1, variableCount: 2 }),
+        ]),
+      });
+    });
+    const deleted: string[] = [];
+    await page.route('**/api/global-variable-folders/*', (route) => {
+      if (route.request().method() !== 'DELETE') return route.fallback();
+      deleted.push(new URL(route.request().url()).pathname.split('/').pop()!);
+      return route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify({ deletedFolders: 1, deletedVariables: 1 }),
+      });
+    });
+    await page.route('**/api/global-variables', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify([]) }),
+    );
+
+    await page.goto('/global-variables');
+    await expect(page.getByTestId('global-folder-f-db')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId('global-folder-select-f-db').check();
+    await page.getByTestId('global-folder-select-f-keys').check();
+    await expect(page.getByTestId('folder-bulk-bar')).toBeVisible();
+
+    await page.getByTestId('folder-bulk-delete').click();
+    // Scoped to the dialog: the bulk bar carries a "Delete" button of its own, and ModalShell
+    // has no dialog role to select on.
+    const dialog = page.getByTestId('confirm-details').locator('..');
+    await dialog.getByRole('button', { name: /^(OK|Delete|Löschen)/ }).click();
+
+    // Siblings, so both are top-most: one DELETE each, and only one dialog for the run.
+    await expect.poll(() => deleted.length, { timeout: 10_000 }).toBe(2);
+    expect(deleted).toEqual(expect.arrayContaining(['f-db', 'f-keys']));
+  });
+
+  test('21.10 - multi-selecting variables deletes each with its own request', async ({ page }) => {
+    // No batch endpoint: every variable keeps its own authorization check and audit row.
+    await page.route('**/api/global-variables', (route) =>
+      route.fulfill({
+        status: 200, contentType: 'application/json',
+        body: JSON.stringify([
+          variableJson({ id: 'g-1', name: 'ALPHA', value: 'a' }),
+          variableJson({ id: 'g-2', name: 'BRAVO', value: 'b' }),
+        ]),
+      }),
+    );
+    const deleted: string[] = [];
+    await page.route('**/api/global-variables/*', (route) => {
+      if (route.request().method() !== 'DELETE') return route.fallback();
+      deleted.push(new URL(route.request().url()).pathname.split('/').pop()!);
+      return route.fulfill({ status: 204, body: '' });
+    });
+
+    await page.goto('/global-variables');
+    await expect(page.getByText('ALPHA')).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId('variable-select-g-1').check();
+    await page.getByTestId('variable-select-g-2').check();
+    await expect(page.getByTestId('variable-bulk-bar')).toBeVisible();
+
+    await page.getByTestId('variable-bulk-delete').click();
+    // The confirmation names them — with secrets on the list a bare count is not checkable.
+    await expect(page.getByTestId('confirm-details')).toContainText('ALPHA');
+    const dialog = page.getByTestId('confirm-details').locator('..');
+    await dialog.getByRole('button', { name: /^(OK|Delete|Löschen)/ }).click();
+
+    await expect.poll(() => deleted.length, { timeout: 10_000 }).toBe(2);
+    expect(deleted).toEqual(expect.arrayContaining(['g-1', 'g-2']));
+  });
 });

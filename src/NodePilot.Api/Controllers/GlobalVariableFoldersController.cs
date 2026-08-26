@@ -80,12 +80,36 @@ public class GlobalVariableFoldersController : ControllerBase
         catch (Exception ex) { return MapError(ex); }
     }
 
+    /// <summary>
+    /// Deletes a folder. Without <paramref name="recursive"/> the folder has to be empty —
+    /// unchanged behaviour, including the 409. With it, the whole subtree goes: every descendant
+    /// folder and every variable in it.
+    /// </summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct, [FromQuery] bool recursive = false)
     {
         try
         {
+            if (recursive)
+            {
+                var result = await _store.DeleteRecursiveAsync(id, ct);
+
+                // One row per object, not one per call: "who deleted variable X" has to stay
+                // answerable. Driven by the committed result, so rows and counts agree.
+                foreach (var variable in result.Variables)
+                {
+                    await _audit.LogAsync(AuditActions.GlobalVariableDeleted, "GlobalVariable", variable.Id,
+                        AuditDetails.Json(("name", variable.Name), ("viaFolder", id)), ct);
+                }
+                foreach (var folder in result.Folders)
+                {
+                    await _audit.LogAsync(AuditActions.GlobalVariableFolderDeleted, "GlobalVariableFolder", folder.Id,
+                        AuditDetails.Json(("path", folder.Path), ("recursive", true)), ct);
+                }
+                return Ok(new RecursiveGlobalFolderDeleteResponse(result.Folders.Count, result.Variables.Count));
+            }
+
             await _store.DeleteAsync(id, ct);
             await _audit.LogAsync(AuditActions.GlobalVariableFolderDeleted, "GlobalVariableFolder", id, null, ct);
             return NoContent();

@@ -29,6 +29,19 @@
   "folder": {
     "heading": "Ordner",
     "refresh": "Aktualisieren",
+    "bulk": {
+      "selected": "{{count}} ausgewählt",
+      "selectRow": "Ordner „{{name}}“ auswählen",
+      "clear": "Auswahl aufheben",
+      "delete": "Löschen",
+      "deleteConfirm": "{{count}} Ordner samt Inhalt löschen?",
+      "deleteConfirmButton": "Löschen ({{items}} Variablen)",
+      "impactRow": "{{path}} — {{count}} Variablen",
+      "deleted": "{{folders}} Ordner und {{items}} Variablen gelöscht.",
+      "deletedCount": "{{count}} Ordner gelöscht.",
+      "failedHeader": "{{count}} fehlgeschlagen:",
+      "nothingSelected": "Die Auswahl ist nicht mehr aktuell — bitte erneut markieren."
+    },
     "createSubfolder": "Unterordner anlegen",
     "newFolderPlaceholder": "Ordnername",
     "rename": "Umbenennen",
@@ -41,5 +54,16 @@
     "field": "Ordner",
     "noVariablesInFolder": "Keine Variablen in diesem Ordner.",
     "moved": "Variable verschoben."
+  },
+  "bulk": {
+    "selected": "{{count}} ausgewählt",
+    "selectRow": "Variable „{{name}}“ auswählen",
+    "selectAll": "Alle sichtbaren Variablen auswählen",
+    "clear": "Auswahl aufheben",
+    "delete": "Löschen",
+    "deleteConfirm": "{{count}} Variablen löschen?",
+    "deletedCount": "{{count}} Variablen gelöscht.",
+    "failedHeader": "{{count}} fehlgeschlagen:",
+    "nothingSelected": "Die Auswahl ist nicht mehr aktuell — bitte erneut markieren."
   }
 }
