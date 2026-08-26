@@ -70,7 +70,7 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 - **Shapes by category:** a pentagon bookend pair (trigger `◁` plus returnData `▷`, mirrored horizontally); **every action activity has its own clip-path silhouette** (the icon stays centred and unclipped); control flow has one shape each (decision = diamond, junction = hexLong, forEach = reel, startWorkflow = tagLeft) with an **indigo group frame** — all via clip-path.
 - **Display styles:** **classic** (compact, icon-centred) and **card/MD3** (header plus config summary). Toggle with `Ctrl+Shift+N`.
 - **Colours & icon:** per activity type from CSS variables (`--act-<type>-color/-bg/-border`) plus a Material Symbols icon.
-- **Handles/ports:** by default only left (in) and right (out); in flexible-ports mode all four sides bidirectionally.
+- **Handles/ports:** all four sides bidirectionally (the "flexible ports" toggle that used to gate the mouse is gone; all four handles are always connectable).
 - **Status badges:**
   - **Disabled** (crossed-out eye) — the node is skipped but stays editable (50 % opacity, dashed).
   - **Breakpoint** (red dot; amber when conditional) — pulses while the debugger waits there.
@@ -105,7 +105,7 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 
 - **Edge type:** a custom `LabeledEdge` with an arrow marker.
 - **Semantic colour coding (status tokens, dark-aware):** success = green, failed = red, custom condition = indigo (stroke, arrow and label pill share the colour), always = grey, disabled = dashed and dimmed — dashed now means *only* disabled; idle edges are solid.
-- **Labels:** manual (up to 60 characters in the graph) or auto-labelled from the condition ("On Success" / "On Failure" / "Always"); canonical labels sync automatically, manual ones are preserved.
+- **Labels:** manual (up to 60 characters in the graph) or auto-labelled from the condition ("On Success" / "On Failure"); an edge with no condition carries no label. Canonical labels sync automatically, manual ones are preserved.
 - **Routing modes:** `smart` (Bézier 0.25), `curved` (0.5), `straight` (step with a radius). `R` (Expert) cycles the modes.
 - **Manual bending:** two draggable Bézier control points (reshape handles, only while selected and with write permission), optionally with snap-to-grid; "reset shape" restores auto-routing.
 - **Backward edges:** an automatic U shape below the nodes when the flow runs right→left.
