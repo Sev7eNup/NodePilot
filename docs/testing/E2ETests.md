@@ -2059,7 +2059,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 - [ ] Drag-Drop zwischen Ordnern funktioniert
 - [ ] Hierarchie wird persistiert
 - [ ] Breadcrumb-Navigation
-- [ ] Ordner können gelöscht werden (Warnung wenn nicht leer)
+- [ ] Ordner können gelöscht werden — auch **mit Inhalt**; der Dialog listet die betroffenen Ordner samt Workflow-Zahl auf
 
 **Erwartung:** Workflows sind organisierbar
 
@@ -2263,6 +2263,68 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 - [ ] In Audit-Log: Value NICHT enthalten
 
 **Erwartung:** Secrets bleiben geheim
+
+---
+
+### Test 21.6 — Ordner-Baum filtert die Variablen-Liste
+
+**Schritte:**
+1. `/global-variables` → im Ordner-Baum links einen Unterordner anklicken
+2. Zurück auf Root (`Alle Variablen`)
+
+**Prüfpunkte:**
+- [ ] Root ist descendant-inklusiv: alle Variablen sichtbar
+- [ ] Unterordner scopet auf genau dessen Teilbaum
+- [ ] `+` auf einer Zeile legt einen Unterordner an (POST mit `parentFolderId`)
+
+---
+
+### Test 21.7 — Ordner samt Inhalt löschen (Admin-only)
+
+**Schritte:**
+1. Ordner mit Variablen im Baum → Rechtsklick → **Löschen**
+2. Bestätigungsdialog lesen, dann bestätigen
+
+**Prüfpunkte:**
+- [ ] Der Dialog nennt den Pfad und die Variablen-Zahl je Ordner
+- [ ] Request geht mit `?recursive=true`
+- [ ] Toast nennt die vom **Server** gelieferten Zahlen, nicht die Client-Schätzung
+- [ ] War der gefilterte Ordner (oder ein Nachfahre) betroffen → Ansicht fällt auf Root zurück
+- [ ] Audit: je gelöschte Variable eine `GLOBAL_VARIABLE_DELETED`-Zeile, je Ordner eine
+      `GLOBAL_VARIABLE_FOLDER_DELETED`-Zeile; **kein** Variablenwert in den Details
+- [ ] Als Operator: keine Checkboxen, kein Kontextmenü
+
+**Erwartung:** Wie im Workflow-Baum — der Ordner ist die Einheit, die gelöscht wird
+
+---
+
+### Test 21.8 — Mehrere Ordner auf einmal löschen
+
+**Schritte:**
+1. Checkbox an zwei Geschwister-Ordnern setzen → Bulk-Leiste erscheint
+2. **Löschen** → ein Dialog für den ganzen Lauf
+3. Gegenprobe: Elternordner **und** Kind markieren
+
+**Prüfpunkte:**
+- [ ] Root trägt keine Checkbox (nicht löschbar)
+- [ ] Shift wählt einen Bereich; ein eingeklappter Ast fällt aus der Auswahl
+- [ ] Genau **ein** DELETE je oberstem Ordner — Eltern+Kind ergibt einen Request, nicht zwei
+- [ ] Ein Fehlschlag stoppt den Lauf nicht; nur die gescheiterten bleiben markiert
+
+---
+
+### Test 21.9 — Mehrere Variablen auf einmal löschen
+
+**Schritte:**
+1. Kopf-Checkbox der Tabelle → alle **sichtbaren** Zeilen
+2. Auswahl auf einen Unterordner einschränken und erneut prüfen
+3. **Löschen** bestätigen
+
+**Prüfpunkte:**
+- [ ] Kopf-Checkbox nimmt nur die gefilterte/gesuchte Liste, nicht alle Variablen
+- [ ] Der Dialog nennt die **Namen** (bei Secrets ist eine Zahl zu wenig)
+- [ ] Ein DELETE je Variable gegen den Einzel-Endpoint — kein Sammel-Endpoint
+- [ ] Als Operator/Viewer: keine Checkboxen
 
 ---
 
@@ -3627,9 +3689,34 @@ Pflicht-Lese: CLAUDE.md "Opt-in Hardening-Flags".
 
 ---
 
-### Test 52.3 — Nicht-leeren Folder löschen → 409
+### Test 52.3 — Nicht-leeren Folder löschen
 
-**Prüfpunkte:** `DELETE` auf Folder mit Inhalt → 409. "Folder is not empty".
+**Schritte:**
+1. Ordner mit Workflows und einem Unterordner rechtsklicken → "Löschen"
+2. Dialog bestätigen
+
+**Prüfpunkte:**
+- [ ] `DELETE …?recursive=true` → 200; Unterordner und Workflows sind weg
+- [ ] Der Dialog nennt vorher die betroffenen Ordner und ihre Workflow-Zahl
+- [ ] **Ohne** `recursive` antwortet der Endpoint weiterhin 409 "Folder is not empty" — dieser Pfad wird von keiner UI-Fläche mehr aufgerufen und ist in den Controller- und CLI-Tests abgesichert
+- [ ] Liegt im Subtree ein Workflow, den jemand anderes ausgecheckt hat → 423, und es wird **nichts** gelöscht
+
+---
+
+### Test 52.6 — Mehrere Ordner auf einmal löschen
+
+**Schritte:**
+1. Im Ordnerbaum zwei Geschwister-Ordner per Checkbox markieren
+2. In der Leiste "Löschen", Dialog bestätigen
+
+**Prüfpunkte:**
+- [ ] Genau **ein** Bestätigungsdialog für die ganze Auswahl
+- [ ] Genau **ein** `DELETE` je oberstem Ordner
+- [ ] Markiert man Elternordner **und** Kind, geht nur ein Request raus (das Kind nimmt der Elternordner mit)
+- [ ] Shift-Klick markiert den sichtbaren Bereich; ein eingeklappter Ast wird nicht mitgewählt
+- [ ] **Root** hat keine Checkbox
+- [ ] Im Designer-Ordnerbrowser gibt es weder Checkboxen noch Leiste
+- [ ] War der gefilterte Ordner (oder ein Nachfahre davon) dabei, fällt die Ansicht auf "alle Ordner" zurück; schlug der Request fehl, bleibt der Filter stehen
 
 ---
 
@@ -4769,7 +4856,7 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 18: Workflow-Organisation (18.1 — 18.3)
 [ ] Teil 19: Workflow-Diff / Version-Compare (19.1 — 19.3)
 [ ] Teil 20: Machines & Credentials (20.1 — 20.3)
-[ ] Teil 21: Global Variables (21.1 — 21.2)
+[ ] Teil 21: Global Variables (21.1 — 21.9)
 [ ] Teil 22: SCOrch Import (22.1 — 22.2)
 [ ] Teil 23: External Trigger API (23.1 — 23.2)
 [ ] Teil 24: Real-time SignalR (24.1 — 24.2)
@@ -4800,7 +4887,7 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 49: Execution Retry & Cancel-All (49.1 — 49.4)
 [ ] Teil 50: Workflow Duplicate, By-Name-Lookup & Bulk-Export (50.1 — 50.6)
 [ ] Teil 51: Step Stats & Step Health (51.1 — 51.3)
-[ ] Teil 52: Folder Move — Shared Folders & Workflow Move-Folder (52.1 — 52.5)
+[ ] Teil 52: Folder Move — Shared Folders & Workflow Move-Folder (52.1 — 52.6)
 [ ] Teil 53: Schedule Next-Fires & AI Generate-Workflow (53.1 — 53.5)
 [ ] Teil 54: Designer-Overlays — Command Palette, Quick Switcher, Find & Replace (54.1 — 54.3)
 [ ] Teil 55: Erweiterte Keyboard-Shortcuts (55.1 — 55.4)

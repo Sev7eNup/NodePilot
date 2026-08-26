@@ -8,6 +8,12 @@ export interface ConfirmRequest {
   cancelLabel?: string;
   /** Styles the confirm button as destructive (red) — use for deletes. */
   danger?: boolean;
+  /**
+   * Rendered as a list between the message and the buttons. For a delete that takes several
+   * things with it, naming them beats folding the count into one sentence — the reader can
+   * check the list against what they meant to select.
+   */
+  details?: readonly string[];
 }
 
 interface PendingConfirm extends ConfirmRequest {

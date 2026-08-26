@@ -262,7 +262,7 @@ public static class CommandRegistration
             sf.AddCommand<SharedFolderCreateCommand>("create").WithDescription("Create a folder.");
             sf.AddCommand<SharedFolderRenameCommand>("rename").WithDescription("Rename a folder.");
             sf.AddCommand<SharedFolderMoveCommand>("move").WithDescription("Move a folder under a new parent (or to Root with --to-root).");
-            sf.AddCommand<SharedFolderDeleteCommand>("delete").WithDescription("Delete an empty folder.");
+            sf.AddCommand<SharedFolderDeleteCommand>("delete").WithDescription("Delete an empty folder, or --recursive to delete it with its contents.");
             sf.AddCommand<SharedFolderPermissionsListCommand>("permissions").WithDescription("List permissions on a folder (FolderAdmin only).");
             sf.AddCommand<SharedFolderGrantCommand>("grant").WithDescription("Grant or update a folder permission.");
             sf.AddCommand<SharedFolderRevokeCommand>("revoke").WithDescription("Revoke a permission by id.");

@@ -24,6 +24,11 @@ public record MoveSharedFolderRequest(Guid? NewParentFolderId);
 
 public record MoveWorkflowToFolderRequest(Guid TargetFolderId);
 
+/// <summary>What a recursive folder delete actually removed. The client computes an estimate up
+/// front to show in the confirmation, but only this is the truth — folders the caller cannot read
+/// still count, and the subtree may have changed between the two.</summary>
+public record RecursiveFolderDeleteResponse(int DeletedFolders, int DeletedWorkflows);
+
 public record SharedFolderPermissionResponse(
     Guid Id,
     Guid FolderId,

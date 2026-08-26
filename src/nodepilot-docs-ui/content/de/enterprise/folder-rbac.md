@@ -40,6 +40,16 @@ Die Leiste ruft keine Sammel-API auf, sondern führt dieselben Einzelaktionen na
 - **Verschieben** geht über einen Zielordner-Dialog (Ordner ohne Schreibrecht sind deaktiviert) **oder** per Drag & Drop: zieht man eine ausgewählte Zeile auf einen Ordner im Baum, wandert die ganze Auswahl mit. Workflows, die bereits im Zielordner liegen, werden übersprungen.
 - **Exportieren** legt alle ausgewählten Workflows in **eine** Datei im Format `nodepilot-workflow-export/v1` — sie lässt sich über **Importieren** unverändert wieder einlesen.
 
+## Ordner mehrfach auswählen und löschen
+
+Im Ordnerbaum trägt jede Zeile außer **Root** ebenfalls eine Checkbox — Root lässt sich nicht löschen. Ein normaler Klick auf die Zeile filtert weiterhin die Workflow-Liste; erst die Checkbox wählt aus, mit `Shift` über einen Bereich. Ausgewählt wird immer nur, was **sichtbar** ist: klappt man einen Ast ein, fallen dessen Unterordner aus der Auswahl. Das kostet nichts, denn wer den Elternordner löscht, nimmt den Ast ohnehin mit.
+
+Gelöscht wird **samt Inhalt**: Unterordner, die darin liegenden Workflows und deren Ausführungshistorie. Der Bestätigungsdialog listet die betroffenen Ordner mit ihrer Workflow-Zahl auf; die Meldung danach nennt die Zahlen, die der Server tatsächlich gelöscht hat — der Client kann Ordner ohne Leserecht nicht mitzählen.
+
+Auch hier läuft keine Sammel-API: pro oberstem Ordner geht genau ein Request. Ist ein ausgewählter Ordner Nachfahre eines anderen ausgewählten, wird er vorher aussortiert, weil ihn der Request des Elternordners bereits mitnimmt. Zwei Abbruchgründe kommen vom Server: **423**, wenn im Subtree ein Workflow von jemand anderem ausgecheckt ist, und **409**, wenn während des Löschens etwas in den Subtree gelegt wurde. In beiden Fällen wird **nichts** gelöscht.
+
+Dasselbe gilt für den Eintrag **Löschen** im Rechtsklick-Menü eines einzelnen Ordners.
+
 ## Default-Mapping (Migration + Create)
 
 | Globale UserRole | Folder-Permission auf Root |
@@ -57,6 +67,7 @@ Die Leiste ruft keine Sammel-API auf, sondern führt dieselben Einzelaktionen na
 | `PUT /api/shared-workflow-folders/{id}` | FolderEditor | Rename |
 | `POST /api/shared-workflow-folders/{id}/move` | FolderEditor auf Source + Target | Move |
 | `DELETE /api/shared-workflow-folders/{id}` | FolderEditor (nur leere Folders) | Delete |
+| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | FolderEditor | Delete **samt Inhalt** (Unterordner + Workflows); 423 bei fremdem Edit-Lock im Subtree |
 | `POST /api/workflows/{id}/move-folder` | FolderEditor auf Source + Target | Workflow umsortieren |
 | `GET /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grants auflisten |
 | `POST /api/shared-workflow-folders/{id}/permissions` | FolderAdmin | Grant |

@@ -13,3 +13,8 @@ public record CreateGlobalVariableFolderRequest(Guid? ParentFolderId, string Nam
 public record UpdateGlobalVariableFolderRequest(string Name);
 
 public record MoveGlobalVariableFolderRequest(Guid? NewParentFolderId);
+
+/// <summary>What a recursive folder delete actually removed. The client shows an estimate in the
+/// confirmation, but only these numbers are the truth — the subtree may have changed between
+/// the two.</summary>
+public record RecursiveGlobalFolderDeleteResponse(int DeletedFolders, int DeletedVariables);

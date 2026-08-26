@@ -12,13 +12,20 @@ import { installDefaultMocks, MOCK_USER } from './fixtures/mockApi';
  *   - selecting a folder → filters the workflow list to that folder (exact folderId match),
  *   - creating a subfolder via the "+" button on a folder row (POST /shared-workflow-folders),
  *   - rename (right-click → Rename → inline input → PUT /shared-workflow-folders/{id}),
- *   - delete (right-click → Delete → native confirm → DELETE /shared-workflow-folders/{id}),
- *     with the server's 409 "Folder is not empty" surfaced via alert().
+ *   - delete (right-click → Delete → confirm → DELETE /shared-workflow-folders/{id}?recursive=true),
+ *     which takes sub-folders and workflows with it; the dialog names what goes.
+ *   - multi-select via a checkbox per row plus a bulk bar (opt-in `bulkDeleteEnabled`, so the
+ *     designer's embedding of the same tree stays a plain browser).
+ *
+ * The non-recursive delete still exists and still answers 409 on a non-empty folder, but no UI
+ * surface calls it any more — that contract is asserted in the dotnet controller tests and in
+ * the CLI's `np shared-folder delete` tests.
  *
  * Covered:
- *   - 18.1 — folder hierarchy: tree renders parent + child, create subfolder, delete with
- *            not-empty warning, folder-select filters the list.
- *   - 52.3 — deleting a non-empty folder surfaces the 409 "not empty" error.
+ *   - 18.1 — folder hierarchy: tree renders parent + child, create subfolder, delete,
+ *            folder-select filters the list.
+ *   - 52.3 — deleting a non-empty folder removes it together with its contents.
+ *   - 52.6 — multi-select: two folders, one confirmation, one DELETE each.
  *   - 52.4 — workflow→folder move endpoint (POST /api/workflows/{id}/move-folder): driven via
  *            the tree's onWorkflowDropped callback. Drag is HTML5 DnD (see skip note); we
  *            assert the move endpoint contract by exercising the drop handler directly.
@@ -230,10 +237,15 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
     const folders = [rootFolder(), folder({ id: DEV_ID, name: 'Development', workflowCount: 0 })];
     await routeFolders(page, () => folders);
     let deleteHit = false;
-    await page.route(`**/api/shared-workflow-folders/${DEV_ID}`, (route) => {
+    // Der Kontextmenue-Delete ist rekursiv, der Pfad traegt also `?recursive=true`.
+    await page.route(`**/api/shared-workflow-folders/${DEV_ID}*`, (route) => {
       if (route.request().method() === 'DELETE') {
         deleteHit = true;
-        return route.fulfill({ status: 204, body: '' });
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ deletedFolders: 1, deletedWorkflows: 0 }),
+        });
       }
       return route.continue();
     });
@@ -253,16 +265,22 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
     await expect.poll(() => deleteHit, { timeout: 10_000 }).toBe(true);
   });
 
-  // ---------- 52.3 — delete non-empty folder → 409 surfaced ----------
-  test('52.3 — deleting a non-empty folder surfaces the 409 "not empty" error', async ({ page }) => {
+  // ---------- 52.3 — delete a NON-EMPTY folder, contents and all ----------
+  // Inverted deliberately: this used to assert the 409 "not empty". Deleting a folder with
+  // contents is now the point, and the confirmation is what names the blast radius. The
+  // non-recursive path still exists and still 409s — it is covered on the API and CLI side,
+  // because no UI surface calls it any more.
+  test('52.3 — deleting a non-empty folder removes it with its contents', async ({ page }) => {
     const folders = [rootFolder(), folder({ id: PROD_ID, name: 'Production', workflowCount: 3 })];
     await routeFolders(page, () => folders);
-    await page.route(`**/api/shared-workflow-folders/${PROD_ID}`, (route) => {
+    let recursiveUrl: string | null = null;
+    await page.route(`**/api/shared-workflow-folders/${PROD_ID}*`, (route) => {
       if (route.request().method() === 'DELETE') {
+        recursiveUrl = route.request().url();
         return route.fulfill({
-          status: 409,
+          status: 200,
           contentType: 'application/json',
-          body: JSON.stringify({ message: 'Folder is not empty' }),
+          body: JSON.stringify({ deletedFolders: 1, deletedWorkflows: 3 }),
         });
       }
       return route.continue();
@@ -277,12 +295,56 @@ test.describe('Workflow-Organisation — Shared Folders (Teil 18 + 52)', () => {
 
     await prodRow.click({ button: 'right' });
     await page.getByTestId('shared-folder-menu-delete').click();
-    // Confirm the in-app ConfirmHost modal; the 409 message then surfaces as a toast-error.
-    await page.getByRole('button', { name: 'OK' }).click();
 
-    await expect(page.getByTestId('toast-error')).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByTestId('toast-error'))
-      .toContainText(/not empty|nicht leer|löschen fehlgeschlagen|delete failed/i);
+    // The dialog has to name what goes — that is the whole safety net now.
+    await expect(page.getByTestId('confirm-details')).toContainText('/Production');
+    await page.getByRole('button', { name: /^(OK|Delete|Löschen)/ }).click();
+
+    await expect.poll(() => recursiveUrl, { timeout: 10_000 }).toContain('recursive=true');
+    await expect(page.getByTestId('toast-success')).toBeVisible({ timeout: 10_000 });
+  });
+
+  // ---------- 52.6 — multi-select folders and delete them in one go ----------
+  test('52.6 — selecting two folders deletes each with one DELETE, after a single confirm', async ({ page }) => {
+    const folders = [
+      rootFolder(),
+      folder({ id: DEV_ID, name: 'Development', workflowCount: 1 }),
+      folder({ id: PROD_ID, name: 'Production', workflowCount: 3 }),
+    ];
+    await routeFolders(page, () => folders);
+    const deleted: string[] = [];
+    await page.route('**/api/shared-workflow-folders/*', (route) => {
+      if (route.request().method() === 'DELETE') {
+        const id = new URL(route.request().url()).pathname.split('/').pop()!;
+        deleted.push(id);
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ deletedFolders: 1, deletedWorkflows: 1 }),
+        });
+      }
+      return route.continue();
+    });
+    await page.route('**/api/workflows', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: '[]' }),
+    );
+
+    await page.goto('/workflows');
+    await expect(page.getByTestId(`shared-folder-${DEV_ID}`)).toBeVisible({ timeout: 15_000 });
+
+    await page.getByTestId(`shared-folder-select-${DEV_ID}`).check();
+    await page.getByTestId(`shared-folder-select-${PROD_ID}`).check();
+    await expect(page.getByTestId('folder-bulk-bar')).toBeVisible();
+
+    await page.getByTestId('folder-bulk-delete').click();
+    // Scoped to the dialog: the bulk bar carries a "Delete" button of its own, and ModalShell
+    // has no dialog role to select on.
+    const dialog = page.getByTestId('confirm-details').locator('..');
+    await dialog.getByRole('button', { name: /^(OK|Delete|Löschen)/ }).click();
+
+    // Siblings, so both are top-most: one DELETE each, and only one dialog for the run.
+    await expect.poll(() => deleted.length, { timeout: 10_000 }).toBe(2);
+    expect(deleted).toEqual(expect.arrayContaining([DEV_ID, PROD_ID]));
   });
 
   // ---------- 52.4 — workflow → folder move endpoint contract ----------

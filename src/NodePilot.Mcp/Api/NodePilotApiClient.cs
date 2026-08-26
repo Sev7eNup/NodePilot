@@ -568,11 +568,22 @@ public sealed class NodePilotApiClient
         await EnsureSuccessAsync(res, ct);
     }
 
-    public async Task DeleteGlobalFolderAsync(Guid id, CancellationToken ct)
+    /// <summary>Deletes a global-variable folder. With <paramref name="recursive"/> the whole
+    /// subtree goes and the server reports what it removed; without it the folder must be empty
+    /// and the response carries no body.</summary>
+    public async Task<RecursiveGlobalFolderDeleteResponse?> DeleteGlobalFolderAsync(Guid id, CancellationToken ct, bool recursive = false)
     {
         EnsureReady();
-        using var res = await _http.DeleteAsync($"api/global-variable-folders/{id}", ct);
-        await EnsureSuccessAsync(res, ct);
+        var url = recursive
+            ? $"api/global-variable-folders/{id}?recursive=true"
+            : $"api/global-variable-folders/{id}";
+        using var res = await _http.DeleteAsync(url, ct);
+        if (!recursive)
+        {
+            await EnsureSuccessAsync(res, ct);
+            return null;
+        }
+        return await ParseAsync<RecursiveGlobalFolderDeleteResponse>(res, ct);
     }
 
     // ---- Alerting Rules -----------------------------------------------------

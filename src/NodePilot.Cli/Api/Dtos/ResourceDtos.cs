@@ -59,6 +59,7 @@ public sealed record GlobalVariableFolderResponse(
 public sealed record CreateGlobalVariableFolderRequest(Guid? ParentFolderId, string Name);
 public sealed record UpdateGlobalVariableFolderRequest(string Name);
 public sealed record MoveGlobalVariableFolderRequest(Guid? NewParentFolderId);
+public sealed record RecursiveGlobalFolderDeleteResponse(int DeletedFolders, int DeletedVariables);
 
 // ---- Maintenance Windows -----------------------------------------------------
 

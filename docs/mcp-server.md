@@ -183,7 +183,8 @@ harmless casts against these secret tables; explicitly named, unprotected column
 `test_step` (Operator+, executes a real activity; config override also requires Edit + own lock) ·
 `delete_workflow` (Admin) · `force_unlock_workflow` (Admin) · `cancel_all_executions` ·
 `delete_machine` (Admin) · `delete_credential` (Admin) · `delete_global_variable` (Admin) ·
-`delete_global_variable_folder` (Admin) · `delete_alerting_rule` (Admin) · `delete_system_alert_policy` (Admin)
+`delete_global_variable_folder` (Admin, `recursive=true` nimmt Unterordner + Variablen mit) ·
+`delete_alerting_rule` (Admin) · `delete_system_alert_policy` (Admin)
 
 ## Resources
 

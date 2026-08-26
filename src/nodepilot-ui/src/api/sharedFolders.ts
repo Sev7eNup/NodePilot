@@ -16,6 +16,11 @@ export interface SharedFolderCapabilities {
   canAdmin: boolean;
 }
 
+export interface RecursiveFolderDeleteResult {
+  deletedFolders: number;
+  deletedWorkflows: number;
+}
+
 export interface SharedFolder {
   id: string;
   parentFolderId: string | null;
@@ -58,6 +63,10 @@ export const sharedFoldersApi = {
   move: (id: string, newParentFolderId: string | null) =>
     api.post<void>(`${base}/${id}/move`, { newParentFolderId }),
   delete: (id: string) => api.delete<void>(`${base}/${id}`),
+  /** Deletes the folder with its sub-folders and workflows. Returns what the server removed —
+   *  the client's own estimate cannot see folders it has no read permission on. */
+  deleteRecursive: (id: string) =>
+    api.delete<RecursiveFolderDeleteResult>(`${base}/${id}?recursive=true`),
 
   // Workflow → folder reassignment.
   moveWorkflowToFolder: (workflowId: string, targetFolderId: string) =>

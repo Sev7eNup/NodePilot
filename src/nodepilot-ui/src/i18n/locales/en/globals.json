@@ -29,6 +29,19 @@
   "folder": {
     "heading": "Folders",
     "refresh": "Refresh",
+    "bulk": {
+      "selected": "{{count}} selected",
+      "selectRow": "Select folder \"{{name}}\"",
+      "clear": "Clear selection",
+      "delete": "Delete",
+      "deleteConfirm": "Delete {{count}} folders and their contents?",
+      "deleteConfirmButton": "Delete ({{items}} variables)",
+      "impactRow": "{{path}} — {{count}} variables",
+      "deleted": "Deleted {{folders}} folders and {{items}} variables.",
+      "deletedCount": "Deleted {{count}} folders.",
+      "failedHeader": "{{count}} failed:",
+      "nothingSelected": "The selection is no longer current — please select again."
+    },
     "createSubfolder": "Create subfolder",
     "newFolderPlaceholder": "Folder name",
     "rename": "Rename",
@@ -41,5 +54,16 @@
     "field": "Folder",
     "noVariablesInFolder": "No variables in this folder.",
     "moved": "Variable moved."
+  },
+  "bulk": {
+    "selected": "{{count}} selected",
+    "selectRow": "Select variable \"{{name}}\"",
+    "selectAll": "Select all visible variables",
+    "clear": "Clear selection",
+    "delete": "Delete",
+    "deleteConfirm": "Delete {{count}} variables?",
+    "deletedCount": "Deleted {{count}} variables.",
+    "failedHeader": "{{count}} failed:",
+    "nothingSelected": "The selection is no longer current — please select again."
   }
 }

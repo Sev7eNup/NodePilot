@@ -118,18 +118,53 @@ public sealed class SharedFolderIdSettings : GlobalSettings
     [CommandArgument(0, "<FOLDER-ID>")] public Guid Id { get; set; }
 }
 
+/// <summary>Standalone rather than derived from <see cref="SharedFolderIdSettings"/>, which is
+/// sealed and shared with the other single-id commands.</summary>
+public sealed class SharedFolderDeleteSettings : GlobalSettings
+{
+    [CommandArgument(0, "<FOLDER-ID>")] public Guid Id { get; set; }
+
+    [CommandOption("--recursive")]
+    [Description("Löscht den Folder samt Unterordnern und den darin liegenden Workflows.")]
+    public bool Recursive { get; set; }
+
+    [CommandOption("--yes")]
+    [Description("Bestätigt ein --recursive-Löschen ohne Rückfrage (für nicht-interaktive Läufe erforderlich).")]
+    public bool Yes { get; set; }
+}
+
 [SupportedOSPlatform("windows")]
-public sealed class SharedFolderDeleteCommand : BaseCommand<SharedFolderIdSettings>
+public sealed class SharedFolderDeleteCommand : BaseCommand<SharedFolderDeleteSettings>
 {
     public SharedFolderDeleteCommand(SessionResolver s, ApiClientFactory f) : base(s, f) { }
-    protected override async Task<int> RunAsync(CommandContext _, SharedFolderIdSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
+    protected override async Task<int> RunAsync(CommandContext _, SharedFolderDeleteSettings settings, SessionContext session, OutputWriter writer, CancellationToken ct)
     {
-        if (!Console.IsInputRedirected)
+        // `--yes` is only demanded for the recursive variant. A plain delete refuses non-empty
+        // folders server-side, so it cannot destroy anything unattended — and scripts relying on
+        // that have run without a flag since the command existed.
+        if (settings.Recursive && !settings.Yes && Console.IsInputRedirected)
         {
-            var ok = await AnsiConsole.ConfirmAsync($"Shared folder [red]{settings.Id}[/] wirklich löschen? (muss leer sein — keine Workflows, keine Sub-Folders)", defaultValue: false);
+            writer.Error("Rekursives Löschen ist destruktiv — in nicht-interaktiven Läufen mit --yes bestätigen.");
+            return ExitCodes.Error;
+        }
+
+        if (!settings.Yes && !Console.IsInputRedirected)
+        {
+            var prompt = settings.Recursive
+                ? $"Shared folder [red]{settings.Id}[/] samt Unterordnern UND enthaltenen Workflows löschen? (unwiderruflich, inklusive Ausführungshistorie)"
+                : $"Shared folder [red]{settings.Id}[/] wirklich löschen? (muss leer sein — keine Workflows, keine Sub-Folders)";
+            var ok = await AnsiConsole.ConfirmAsync(prompt, defaultValue: false);
             if (!ok) { writer.Info("Abgebrochen."); return ExitCodes.Success; }
         }
+
         var api = ClientFactory.Create(session);
+        if (settings.Recursive)
+        {
+            var result = await api.DeleteSharedFolderRecursiveAsync(settings.Id, ct);
+            writer.Success($"{result.DeletedFolders} Folder und {result.DeletedWorkflows} Workflows gelöscht.");
+            return ExitCodes.Success;
+        }
+
         await api.DeleteSharedFolderAsync(settings.Id, ct);
         writer.Success("Folder gelöscht.");
         return ExitCodes.Success;

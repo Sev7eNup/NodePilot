@@ -26,7 +26,7 @@ np auth login --server https://nodepilot.example.com
 | `exec` | list/get/steps/cancel/retry/watch/resume/paused-steps |
 | `machine` / `credential` / `globals` | list/create/update/delete (+ globals export/import) |
 | `user` | CRUD |
-| `shared-folder` | org RBAC: list/create/rename/move/delete/permissions/grant/revoke |
+| `shared-folder` | org RBAC: list/create/rename/move/delete (`--recursive` samt Inhalt)/permissions/grant/revoke |
 | `maintenance` | Maintenance Windows: list/get/create/update/delete |
 | `audit` | `audit list` |
 | `alerting` | list/get/create/update/delete/test-fire/deliveries (Create/Edit/Delete/Test-Fire nur für Admins — siehe [Alerting](alerting)) |
@@ -255,6 +255,7 @@ np globals folder create --name Prod --parent /Environment
 np globals folder rename <folder-id> --name Renamed
 np globals folder move <folder-id> --parent /Environment    # reparent (Zyklus-/Tiefen-geschützt)
 np globals folder delete <folder-id>                        # nur wenn leer
+np globals folder delete <folder-id> --recursive --yes      # samt Unterordnern und Variablen
 np globals move-folder <var-id> --folder /Databases         # Variable → Ordner
 ```
 
@@ -279,6 +280,7 @@ np shared-folder rename 8a2f... --name "Prod Flows"
 np shared-folder move 8a2f... --parent 9b1c...
 np shared-folder move 8a2f... --to-root
 np shared-folder delete 8a2f...                          # muss leer sein
+np shared-folder delete 8a2f... --recursive --yes         # samt Unterordnern und Workflows
 np shared-folder permissions 8a2f...
 np shared-folder grant 8a2f... --principal-type User   --principal-key 5a1c...            --role FolderEditor
 np shared-folder grant 8a2f... --principal-type Group  --principal-key S-1-5-21-100-200-300 --role FolderOperator

@@ -7,6 +7,13 @@ import { GlobalVariablesPage } from '../../pages/GlobalVariablesPage';
 import { useAuthStore } from '../../stores/authStore';
 import { ROOT_FOLDER_ID } from '../../api/globalFolders';
 
+// Store-driven confirm replaces the native confirm(); ConfirmHost is not mounted in this test.
+vi.mock('../../stores/confirmStore', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../../stores/confirmStore')>();
+  return { ...mod, confirmDialog: vi.fn().mockResolvedValue(true) };
+});
+import { confirmDialog } from '../../stores/confirmStore';
+
 const BASE = 'http://localhost';
 
 // Folder tree fixture: Root plus one topic subfolder. The page filters the list to the selected
@@ -161,7 +168,8 @@ describe('GlobalVariablesPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /New Variable/i }));
 
     // Find the value input — by default type=text. After toggling secret, type=password.
-    const checkbox = screen.getByRole('checkbox') as HTMLInputElement;
+    // Named explicitly: the folder tree and the list rows carry select checkboxes too.
+    const checkbox = screen.getByRole('checkbox', { name: /Secret \(encrypt at rest/i }) as HTMLInputElement;
     expect(checkbox.checked).toBe(false);
     fireEvent.click(checkbox);
     expect(checkbox.checked).toBe(true);
@@ -245,5 +253,93 @@ describe('GlobalVariablesPage', () => {
     await waitFor(() => expect(posted).not.toBeNull());
     expect(posted!.folderId).toBe(ROOT_FOLDER_ID);
     expect(posted!.name).toBe('NEW_VAR');
+  });
+  describe('variable multi-select', () => {
+    it('selecting rows opens the bulk bar and deletes one by one', async () => {
+      // No batch endpoint: each variable keeps its own authorization check and audit row.
+      vi.mocked(confirmDialog).mockResolvedValue(true);
+      const deleted: string[] = [];
+      server.use(
+        http.get(`${BASE}/api/global-variables`, () => HttpResponse.json(VARS)),
+        http.delete(`${BASE}/api/global-variables/:id`, ({ params }) => {
+          deleted.push(params.id as string);
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      renderPage('Admin');
+      await waitFor(() => expect(screen.getByText('API_URL')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId('variable-select-v1'));
+      fireEvent.click(screen.getByTestId('variable-select-v2'));
+      expect(screen.getByTestId('variable-bulk-bar')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('variable-bulk-delete'));
+
+      await waitFor(() => expect(deleted).toHaveLength(2));
+      expect([...deleted].sort()).toEqual(['v1', 'v2']);
+      // Names, not just a count — with secrets on the list a bare number is not checkable.
+      const request = vi.mocked(confirmDialog).mock.calls[0][0] as { details?: string[]; danger?: boolean };
+      expect(request.danger).toBe(true);
+      expect(request.details).toEqual(expect.arrayContaining(['API_KEY', 'API_URL']));
+    });
+
+    it('the header checkbox takes every visible row, and only visible rows', async () => {
+      // Scoped to the selected folder: switching to /Databases must not select the Root variable.
+      server.use(http.get(`${BASE}/api/global-variables`, () => HttpResponse.json(VARS)));
+      renderPage('Admin');
+      await waitFor(() => expect(screen.getByText('API_URL')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId('global-folder-f-db'));
+      await waitFor(() => expect(screen.queryByText('API_URL')).not.toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId('variable-select-all'));
+
+      expect(screen.getByTestId('variable-bulk-bar').textContent).toContain('1');
+    });
+
+    it('a cancelled confirmation deletes nothing', async () => {
+      vi.mocked(confirmDialog).mockResolvedValue(false);
+      let calls = 0;
+      server.use(
+        http.get(`${BASE}/api/global-variables`, () => HttpResponse.json(VARS)),
+        http.delete(`${BASE}/api/global-variables/:id`, () => {
+          calls += 1;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      renderPage('Admin');
+      await waitFor(() => expect(screen.getByText('API_URL')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId('variable-select-v1'));
+      fireEvent.click(screen.getByTestId('variable-bulk-delete'));
+
+      await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+      expect(calls).toBe(0);
+    });
+
+    it('the bar counts only rows still on screen', async () => {
+      // Select in Root, then scope to /Databases: the Root-only variable leaves the list, so the
+      // bar must drop it too. Counting the raw id set would leave a button that deletes nothing.
+      server.use(http.get(`${BASE}/api/global-variables`, () => HttpResponse.json(VARS)));
+      renderPage('Admin');
+      await waitFor(() => expect(screen.getByText('API_URL')).toBeInTheDocument());
+
+      fireEvent.click(screen.getByTestId('variable-select-v1'));   // API_URL, lives in Root
+      expect(screen.getByTestId('variable-bulk-bar')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('global-folder-f-db'));
+      await waitFor(() => expect(screen.queryByText('API_URL')).not.toBeInTheDocument());
+
+      await waitFor(() => expect(screen.queryByTestId('variable-bulk-bar')).not.toBeInTheDocument());
+    });
+
+    it('a non-admin gets no checkboxes at all', async () => {
+      server.use(http.get(`${BASE}/api/global-variables`, () => HttpResponse.json(VARS)));
+      renderPage('Operator');
+      await waitFor(() => expect(screen.getByText('API_URL')).toBeInTheDocument());
+
+      expect(screen.queryByTestId('variable-select-all')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('variable-select-v1')).not.toBeInTheDocument();
+    });
   });
 });

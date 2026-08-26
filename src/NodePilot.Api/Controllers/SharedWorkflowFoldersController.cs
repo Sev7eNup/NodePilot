@@ -259,8 +259,14 @@ public class SharedWorkflowFoldersController : ControllerBase
         return NoContent();
     }
 
+    /// <summary>
+    /// Deletes a folder. Without <paramref name="recursive"/> the folder has to be empty —
+    /// unchanged behaviour, including the 409. With it, the whole subtree goes: every
+    /// descendant folder and every workflow in it, along with what cascades off a workflow
+    /// (executions, step executions, versions, stats).
+    /// </summary>
     [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    public async Task<IActionResult> Delete(Guid id, CancellationToken ct, [FromQuery] bool recursive = false)
     {
         if (id == SharedWorkflowFolder.RootFolderId)
             return BadRequest(new { message = "Root folder cannot be deleted" });
@@ -268,6 +274,8 @@ public class SharedWorkflowFoldersController : ControllerBase
         var folder = await _db.SharedWorkflowFolders.FirstOrDefaultAsync(f => f.Id == id, ct);
         if (folder is null) return NotFound();
         if (await this.RequireFolderAccessAsync(_authz, id, ResourceOp.Edit, ct) is { } deleteDenied) return deleteDenied;
+
+        if (recursive) return await DeleteRecursiveAsync(folder, ct);
 
         // Delete is allowed only if the folder is empty (no workflows, no sub-folders).
         // Forces the operator to move/delete contents explicitly — better than
@@ -285,6 +293,160 @@ public class SharedWorkflowFoldersController : ControllerBase
             AuditDetails.Json(("path", path)), ct);
         return NoContent();
     }
+
+    /// <summary>
+    /// Subtree delete. Edit on <paramref name="folder"/> is already established by the caller and
+    /// covers every descendant: grants resolve along the ancestry chain with highest-role-wins, so
+    /// a grant on an ancestor applies all the way down. `SharedFolderDelete_RecursiveInheritedEdit_*`
+    /// pins that — if the resolution ever changes, a hole opens exactly here.
+    ///
+    /// Concurrency is the reason this is not "check locks, then delete". Under ReadCommitted
+    /// somebody can check a workflow out between the two, and it would be deleted despite a
+    /// foreign lock. So the lock condition rides *inside* the delete — the same guarded
+    /// `ExecuteDeleteAsync` shape the single-workflow delete uses (M-3) — and a row count that
+    /// falls short of what we counted means somebody got in between: roll back, 423.
+    /// </summary>
+    private async Task<IActionResult> DeleteRecursiveAsync(SharedWorkflowFolder folder, CancellationToken ct)
+    {
+        var allFolders = await _db.SharedWorkflowFolders.ToListAsync(ct);
+        var subtreeIds = DescendantFolderIds(allFolders, folder.Id);
+        var callerId = this.GetCurrentUserId();
+
+        var doomedFolders = allFolders
+            .Where(f => subtreeIds.Contains(f.Id))
+            .OrderByDescending(f => f.Depth)   // bottom-up: Folder→Folder is Restrict, not Cascade
+            .ToList();
+
+        // Best-effort, and deliberately outside the transaction: revoking a subscription for a
+        // workflow that then survives a rollback only costs the viewer a re-join, whereas leaving
+        // one attached to a deleted execution is the leak M-33 closed. NOT the audit source — that
+        // snapshot is taken inside the transaction below.
+        var watchedWorkflowIds = await _db.Workflows.AsNoTracking()
+            .Where(w => subtreeIds.Contains(w.FolderId))
+            .Select(w => w.Id)
+            .ToListAsync(ct);
+        await RevokeLiveSubscriptionsAsync(watchedWorkflowIds, ct);
+
+        var strategy = _db.Database.CreateExecutionStrategy();
+        var outcome = await strategy.ExecuteAsync(async () =>
+        {
+            await using var tx = await _db.Database.BeginTransactionAsync(ct);
+
+            // The snapshot is taken INSIDE the transaction and the delete is keyed on its ids.
+            // Deleting by `FolderId` alone would also catch rows inserted after the snapshot —
+            // they would vanish without an audit row, and the reported count would be short.
+            var snapshot = await _db.Workflows.AsNoTracking()
+                .Where(w => subtreeIds.Contains(w.FolderId))
+                .Select(w => new DeletedWorkflowRow(w.Id, w.Name))
+                .ToListAsync(ct);
+            var snapshotIds = snapshot.Select(w => w.Id).ToList();
+
+            // `subtreeIds.Contains` stays as a second condition: the row must still be where we
+            // saw it, so one moved out from under us is not deleted by its stale id.
+            var deleted = await _db.Workflows
+                .Where(w => snapshotIds.Contains(w.Id)
+                            && subtreeIds.Contains(w.FolderId)
+                            && (w.CheckedOutByUserId == null || w.CheckedOutByUserId == callerId))
+                .ExecuteDeleteAsync(ct);
+
+            if (deleted != snapshotIds.Count)
+            {
+                // Two very different causes, and reporting the wrong one is misleading: a foreign
+                // lock is "wait for that person", a concurrent move is "try again". Ask which it
+                // was — this query only runs on the failure path.
+                var survivors = await _db.Workflows.AsNoTracking()
+                    .Where(w => snapshotIds.Contains(w.Id))
+                    .Select(w => new { w.CheckedOutByUserId })
+                    .ToListAsync(ct);
+                await tx.RollbackAsync(ct);
+                return survivors.Any(s => s.CheckedOutByUserId != null && s.CheckedOutByUserId != callerId)
+                    ? new RecursiveDeleteOutcome(RecursiveDeleteStatus.Locked, [])
+                    : new RecursiveDeleteOutcome(RecursiveDeleteStatus.Changed, []);
+            }
+
+            // Anything that entered the subtree after the snapshot is still there — the delete was
+            // keyed on snapshot ids on purpose. Refusing here is an explicit check rather than a
+            // reliance on the Restrict FK firing, which is provider-dependent; the catch below
+            // stays as the backstop for the same race on sub-folders.
+            var leftover = await _db.Workflows.CountAsync(w => subtreeIds.Contains(w.FolderId), ct);
+            if (leftover > 0)
+            {
+                await tx.RollbackAsync(ct);
+                return new RecursiveDeleteOutcome(RecursiveDeleteStatus.Changed, []);
+            }
+
+            try
+            {
+                foreach (var doomed in doomedFolders)
+                {
+                    // Guarded on the parent we saw: a folder moved out of the subtree in the
+                    // meantime must not be deleted by its stale id.
+                    var removed = await _db.SharedWorkflowFolders
+                        .Where(f => f.Id == doomed.Id && f.ParentFolderId == doomed.ParentFolderId)
+                        .ExecuteDeleteAsync(ct);
+                    if (removed != 1)
+                    {
+                        await tx.RollbackAsync(ct);
+                        return new RecursiveDeleteOutcome(RecursiveDeleteStatus.Changed, []);
+                    }
+                }
+                await tx.CommitAsync(ct);
+            }
+            catch (DbUpdateException)
+            {
+                // A workflow or sub-folder was created inside the subtree while we were deleting
+                // it — it is not in `snapshotIds`, survived, and the Restrict FK now bites. That
+                // is a race, not a server fault.
+                await tx.RollbackAsync(ct);
+                return new RecursiveDeleteOutcome(RecursiveDeleteStatus.Changed, []);
+            }
+
+            return new RecursiveDeleteOutcome(RecursiveDeleteStatus.Deleted, snapshot);
+        });
+
+        if (outcome.Status == RecursiveDeleteStatus.Locked)
+        {
+            return new ObjectResult(new
+            {
+                message = "Folder subtree contains a workflow checked out by another user and cannot be deleted.",
+            })
+            { StatusCode = StatusCodes.Status423Locked };
+        }
+
+        if (outcome.Status == RecursiveDeleteStatus.Changed)
+        {
+            return Conflict(new
+            {
+                message = "Folder contents changed while deleting — nothing was deleted, please try again",
+            });
+        }
+
+        _authz.InvalidateAll();
+
+        // One row per object, not one per call: "who deleted workflow X" has to stay answerable.
+        // Driven by the committed snapshot, so the rows and the counts describe the same set.
+        foreach (var workflow in outcome.Workflows)
+        {
+            await _audit.LogAsync(AuditActions.WorkflowDeleted, "Workflow", workflow.Id,
+                AuditDetails.Json(("name", workflow.Name), ("viaFolder", folder.Path)), ct);
+        }
+        foreach (var doomed in doomedFolders)
+        {
+            await _audit.LogAsync(AuditActions.FolderDeleted, "SharedWorkflowFolder", doomed.Id,
+                AuditDetails.Json(("path", doomed.Path), ("recursive", true)), ct);
+        }
+
+        return Ok(new RecursiveFolderDeleteResponse(doomedFolders.Count, outcome.Workflows.Count));
+    }
+
+    private sealed record DeletedWorkflowRow(Guid Id, string Name);
+
+    private enum RecursiveDeleteStatus { Deleted, Locked, Changed }
+
+    private sealed record RecursiveDeleteOutcome(
+        RecursiveDeleteStatus Status,
+        IReadOnlyList<DeletedWorkflowRow> Workflows);
+
 
     /// <summary>Move a workflow into a different shared folder. Requires FolderEditor on
     /// both source and destination.</summary>

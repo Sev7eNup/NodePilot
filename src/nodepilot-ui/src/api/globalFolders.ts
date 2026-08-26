@@ -18,6 +18,12 @@ export interface GlobalFolder {
   variableCount: number;
 }
 
+/** What a recursive folder delete actually removed — the server's numbers, not an estimate. */
+export interface RecursiveGlobalFolderDeleteResult {
+  deletedFolders: number;
+  deletedVariables: number;
+}
+
 const base = '/global-variable-folders';
 
 export const globalFoldersApi = {
@@ -28,6 +34,10 @@ export const globalFoldersApi = {
   move: (id: string, newParentFolderId: string | null) =>
     api.post<void>(`${base}/${id}/move`, { newParentFolderId }),
   delete: (id: string) => api.delete<void>(`${base}/${id}`),
+  /** Deletes the folder with its sub-folders and the variables in them. Returns what the server
+   *  removed — the client's own estimate is based on the tree it happens to hold. */
+  deleteRecursive: (id: string) =>
+    api.delete<RecursiveGlobalFolderDeleteResult>(`${base}/${id}?recursive=true`),
 
   // Variable → folder reassignment.
   moveVariableToFolder: (variableId: string, folderId: string) =>

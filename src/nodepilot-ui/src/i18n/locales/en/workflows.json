@@ -119,6 +119,20 @@
   "folder": {
     "sharedFoldersHeading": "Shared Folders",
     "resizeHandleTitle": "Resize (double-click to reset)",
+    "bulk": {
+      "selected": "{{count}} selected",
+      "selectRow": "Select folder \"{{name}}\"",
+      "clear": "Clear selection",
+      "delete": "Delete",
+      "noEditPermission": "No write permission on this folder",
+      "deleteConfirm": "Delete {{count}} folders and their contents?",
+      "deleteConfirmButton": "Delete ({{items}} workflows)",
+      "impactRow": "{{path}} — {{count}} workflows",
+      "deleted": "Deleted {{folders}} folders and {{items}} workflows.",
+      "deletedCount": "Deleted {{count}} folders.",
+      "failedHeader": "{{count}} failed:",
+      "nothingSelected": "The selection is no longer current — please select again."
+    },
     "rename": "Rename",
     "delete": "Delete",
     "deleteConfirm": "Delete folder \"{{name}}\"?",

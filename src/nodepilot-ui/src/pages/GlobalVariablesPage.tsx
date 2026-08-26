@@ -1,6 +1,6 @@
-import { Add, ChevronDown, ChevronUp, Edit, Locked, Search, TrashCan, Unlocked } from '@carbon/icons-react';
+import { Add, ChevronDown, ChevronUp, Close, Edit, Locked, Search, TrashCan, Unlocked } from '@carbon/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { api } from '../api/client';
 import { ModalShell } from '../components/common/ModalShell';
@@ -14,6 +14,9 @@ import { confirmDialog } from '../stores/confirmStore';
 import { GlobalFolderTree } from '../components/globals/GlobalFolderTree';
 import { globalFoldersApi, ROOT_FOLDER_ID, GLOBAL_VARIABLE_DRAG_MIME, type GlobalFolder } from '../api/globalFolders';
 import { ResizeHandle, CornerResizeHandle } from '../components/designer/library/NodeLibrary';
+import { useBulkSelection } from '../hooks/useBulkSelection';
+import { runBulkOperation } from '../lib/bulkOperations';
+import { captureAuthBoundaryGeneration } from '../security/authBoundary';
 
 /**
  * Admin-managed constants available to every workflow via `{{globals.NAME}}` templates.
@@ -58,6 +61,10 @@ const emptyForm = (folderId: string): FormState => ({
 type ColKey = 'name' | 'type' | 'value' | 'description' | 'updated';
 type ResizableColKey = Exclude<ColKey, 'description'>;
 
+/** Module-level so the identity stays stable across renders — useBulkSelection memoizes on it. */
+const variableKey = (v: GlobalVariable) => v.id;
+
+const SELECT_WIDTH = 40;
 const ACTIONS_WIDTH = 90; // 2 buttons × ~28px + gap-1 + px-4 cell padding
 const DESCRIPTION_MIN_WIDTH = 220;
 const DEFAULT_WIDTHS: Record<ResizableColKey, number> = {
@@ -95,8 +102,9 @@ export function GlobalVariablesPage() {
   // drag-handle; it absorbs leftover horizontal space.
   const [colWidths, setColWidths] = useState(DEFAULT_WIDTHS);
   const tableMinWidth = useMemo(
-    () => Object.values(colWidths).reduce((a, b) => a + b, 0) + ACTIONS_WIDTH + DESCRIPTION_MIN_WIDTH,
-    [colWidths],
+    () => Object.values(colWidths).reduce((a, b) => a + b, 0) + ACTIONS_WIDTH + DESCRIPTION_MIN_WIDTH
+      + (canAdmin ? SELECT_WIDTH : 0),
+    [colWidths, canAdmin],
   );
   const resizeRef = useRef<{ col: ResizableColKey; startX: number; startWidth: number } | null>(null);
 
@@ -253,6 +261,65 @@ export function GlobalVariablesPage() {
     });
   }, [variables, scopedFolderIds, search, sortBy, sortDir]);
 
+  // Multi-select over the list AS RENDERED — shift-range uses this order and the hook prunes
+  // ids that leave it, so a folder switch or a search term drops them from the selection.
+  const selection = useBulkSelection(filteredSorted, variableKey);
+  const selectAllRef = useRef<HTMLInputElement>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = selection.someSelected;
+  }, [selection.someSelected]);
+
+  /**
+   * Bulk delete over the selection. Sequential single-variable requests against the existing
+   * endpoint rather than a batch call — every variable keeps its own authorization check and its
+   * own audit row, and one that refuses does not take the rest of the run down with it.
+   */
+  const deleteSelectedVariables = async () => {
+    const targets = selection.selectedItems;
+    if (targets.length === 0) {
+      // Reachable only if the selection emptied between the render that showed the button and
+      // the click. Returning quietly is what made a dead Delete button look like a failed delete.
+      toast.info(t('globals:bulk.nothingSelected'));
+      return;
+    }
+    const ok = await confirmDialog({
+      message: t('globals:bulk.deleteConfirm', { count: targets.length }),
+      // Names, not just a count: with secrets on the list "3 variables" is not enough to check
+      // the selection against what was meant.
+      details: targets.map((v) => v.name),
+      danger: true,
+    });
+    if (!ok) return;
+
+    setBulkBusy(true);
+    const generation = captureAuthBoundaryGeneration();
+    try {
+      const result = await runBulkOperation(
+        targets,
+        async (v) => { await api.delete(`/global-variables/${v.id}`); },
+        { getLabel: (v) => v.name, authBoundaryGeneration: generation },
+      );
+      await queryClient.invalidateQueries({ queryKey: ['global-variables'] });
+      await queryClient.invalidateQueries({ queryKey: ['global-folders'] });
+
+      if (result.succeeded.length > 0) {
+        toast.success(t('globals:bulk.deletedCount', { count: result.succeeded.length }));
+      }
+      if (result.failed.length > 0) {
+        toast.error(
+          `${t('globals:bulk.failedHeader', { count: result.failed.length })}\n` +
+            result.failed.map((f) => `${f.item.name}: ${f.message}`).join('\n'),
+          30_000,  // failures need reading time; the success toast keeps the default
+        );
+      }
+      // Keep only what failed selected, so a retry is one click away.
+      selection.retain(result.failed.map((f) => f.item.id));
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   const totalCount = variables?.length ?? 0;
   // Scoped count (in the selected folder subtree) drives the empty-state messaging: distinguish
   // "no globals at all" from "none in this folder".
@@ -357,6 +424,36 @@ export function GlobalVariablesPage() {
         })()}
 
         <div className="flex-1 min-w-0 lg:ml-3">
+          {canAdmin && selection.selectedCount > 0 && (
+            <div
+              className="np-card mb-3 flex items-center gap-2 px-3 py-2"
+              data-testid="variable-bulk-bar"
+            >
+              <span className="text-xs font-medium text-on-surface">
+                {t('globals:bulk.selected', { count: selection.selectedCount })}
+              </span>
+              <button
+                type="button"
+                className="ml-auto flex items-center gap-1 rounded px-2 py-0.5 text-xs text-error hover:bg-error-container disabled:opacity-50 transition-colors"
+                onClick={deleteSelectedVariables}
+                disabled={bulkBusy}
+                data-testid="variable-bulk-delete"
+              >
+                <TrashCan size={12} />
+                {t('globals:bulk.delete')}
+              </button>
+              <button
+                type="button"
+                className="rounded p-0.5 text-on-surface-variant hover:bg-surface-high transition-colors"
+                onClick={selection.clear}
+                title={t('globals:bulk.clear')}
+                aria-label={t('globals:bulk.clear')}
+                data-testid="variable-bulk-clear"
+              >
+                <Close size={12} />
+              </button>
+            </div>
+          )}
           {isLoading ? (
             <p className="text-outline">{t('common:loadingDots')}</p>
           ) : totalCount === 0 ? (
@@ -376,7 +473,28 @@ export function GlobalVariablesPage() {
               items={filteredSorted}
               getKey={(v) => v.id}
               renderTitle={(v) => (
-                <code className="text-sm font-mono font-semibold text-on-surface truncate block" title={v.name}>{v.name}</code>
+                <div className="flex items-center gap-2 min-w-0">
+                  {/* The card's whole surface is the tap target, so the checkbox stops
+                      propagation itself — keeps MobileCardList untouched. */}
+                  {canAdmin && (
+                    <span
+                      role="presentation"
+                      className="shrink-0 flex items-center"
+                      onClick={(e) => e.stopPropagation()}
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="checkbox"
+                        className="cursor-pointer align-middle"
+                        checked={selection.isSelected(v.id)}
+                        onChange={() => selection.toggle(v.id)}
+                        aria-label={t('globals:bulk.selectRow', { name: v.name })}
+                        data-testid={`variable-select-${v.id}`}
+                      />
+                    </span>
+                  )}
+                  <code className="text-sm font-mono font-semibold text-on-surface truncate block" title={v.name}>{v.name}</code>
+                </div>
               )}
               renderFields={(v) => [
                 {
@@ -430,6 +548,20 @@ export function GlobalVariablesPage() {
               >
                 <thead className="np-col-header text-left text-xs font-semibold uppercase tracking-wide text-on-surface-variant">
                   <tr>
+                    {canAdmin && (
+                      <th style={{ width: SELECT_WIDTH }} className="px-3 py-2">
+                        <input
+                          ref={selectAllRef}
+                          type="checkbox"
+                          className="cursor-pointer align-middle"
+                          checked={selection.allSelected}
+                          onChange={selection.toggleAll}
+                          aria-label={t('globals:bulk.selectAll')}
+                          title={t('globals:bulk.selectAll')}
+                          data-testid="variable-select-all"
+                        />
+                      </th>
+                    )}
                     {/* Fixed-width sortable + resizable columns. Description (rendered
                         after this loop) is the auto-flex column — it has no inline
                         width, no resize handle, and absorbs leftover horizontal space. */}
@@ -497,6 +629,18 @@ export function GlobalVariablesPage() {
                         e.dataTransfer.effectAllowed = 'move';
                       } : undefined}
                     >
+                      {canAdmin && (
+                        <td className="px-3 py-2">
+                          <input
+                            type="checkbox"
+                            className="cursor-pointer align-middle"
+                            checked={selection.isSelected(v.id)}
+                            onChange={(e) => selection.toggle(v.id, (e.nativeEvent as MouseEvent).shiftKey)}
+                            aria-label={t('globals:bulk.selectRow', { name: v.name })}
+                            data-testid={`variable-select-${v.id}`}
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-2 overflow-hidden">
                         <code className="text-sm font-mono font-semibold text-on-surface-variant truncate block" title={v.name}>
                           {v.name}

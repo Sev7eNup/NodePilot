@@ -28,6 +28,7 @@ vi.mock('../../api/sharedFolders', async () => {
       rename: vi.fn(),
       move: vi.fn(),
       delete: vi.fn(),
+      deleteRecursive: vi.fn(),
       moveWorkflowToFolder: vi.fn(),
       listPermissions: vi.fn(),
       grantPermission: vi.fn(),
@@ -50,6 +51,7 @@ const mockApi = sharedFoldersApi as unknown as {
   create: ReturnType<typeof vi.fn>;
   rename: ReturnType<typeof vi.fn>;
   delete: ReturnType<typeof vi.fn>;
+  deleteRecursive: ReturnType<typeof vi.fn>;
 };
 
 function makeFolder(overrides: Partial<SharedFolder>): SharedFolder {
@@ -242,8 +244,10 @@ describe('SharedFolderTree', () => {
     });
 
     it('delete: confirm=true calls API; confirm=false does not', async () => {
+      // The context menu deletes recursively now — "only when empty" was the limitation this
+      // replaced, and it applied to the single-folder case just as much as to a selection.
       mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
-      mockApi.delete.mockResolvedValue(undefined);
+      mockApi.deleteRecursive.mockResolvedValue({ deletedFolders: 1, deletedWorkflows: 0 });
 
       renderWithClient(<SharedFolderTree selectedFolderId={null} onFolderSelected={() => {}} />);
       await waitFor(() => expect(screen.getByText('Finance')).toBeInTheDocument());
@@ -253,12 +257,31 @@ describe('SharedFolderTree', () => {
       await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('Finance') });
       await userEvent.click(screen.getByTestId('shared-folder-menu-delete'));
       await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
-      expect(mockApi.delete).not.toHaveBeenCalled();
+      expect(mockApi.deleteRecursive).not.toHaveBeenCalled();
 
       // Second click: user confirms (factory default resolves true).
       await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('Finance') });
       await userEvent.click(screen.getByTestId('shared-folder-menu-delete'));
-      await waitFor(() => expect(mockApi.delete).toHaveBeenCalledWith('finance'));
+      await waitFor(() => expect(mockApi.deleteRecursive).toHaveBeenCalledWith('finance'));
+      expect(mockApi.delete).not.toHaveBeenCalled();
+    });
+
+    it('delete: the confirmation names what goes with the folder', async () => {
+      // The impact is the whole point of dropping the "must be empty" rule — if the dialog does
+      // not say how much rides along, the user is agreeing to something they cannot see.
+      mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
+      mockApi.deleteRecursive.mockResolvedValue({ deletedFolders: 1, deletedWorkflows: 4 });
+
+      renderWithClient(<SharedFolderTree selectedFolderId={null} onFolderSelected={() => {}} />);
+      await waitFor(() => expect(screen.getByText('Finance')).toBeInTheDocument());
+
+      await userEvent.pointer({ keys: '[MouseRight]', target: screen.getByText('Finance') });
+      await userEvent.click(screen.getByTestId('shared-folder-menu-delete'));
+
+      await waitFor(() => expect(confirmDialog).toHaveBeenCalled());
+      const request = vi.mocked(confirmDialog).mock.calls[0][0] as { details?: string[]; danger?: boolean };
+      expect(request.danger).toBe(true);
+      expect(request.details?.join(' ')).toContain('/Finance');
     });
 
     it('shows the permissions entry on a canAdmin folder and reports the folder id', async () => {
@@ -342,9 +365,12 @@ describe('SharedFolderTree', () => {
       expect(screen.queryByTestId('shared-folder-context-menu')).not.toBeInTheDocument();
     });
 
-    it('delete: 409 from backend surfaces in an error toast with the backend message', async () => {
+    it('delete: a backend refusal surfaces in an error toast with the backend message', async () => {
+      // The 409 "not empty" is gone from this path — what still has to reach the user is a
+      // refusal the server does raise, e.g. 423 when somebody holds an edit lock in the subtree.
       mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
-      mockApi.delete.mockRejectedValue(new Error('Folder is not empty — move or delete sub-folders and workflows first'));
+      mockApi.deleteRecursive.mockRejectedValue(
+        new Error('Folder subtree contains a workflow checked out by another user and cannot be deleted.'));
 
       renderWithClient(<SharedFolderTree selectedFolderId={null} onFolderSelected={() => {}} />);
       await waitFor(() => expect(screen.getByText('Finance')).toBeInTheDocument());
@@ -353,7 +379,115 @@ describe('SharedFolderTree', () => {
       await userEvent.click(screen.getByTestId('shared-folder-menu-delete'));
 
       await waitFor(() => expect(useToastStore.getState().toasts.length).toBeGreaterThan(0));
-      expect(useToastStore.getState().toasts[0].message).toMatch(/not empty/i);
+      expect(useToastStore.getState().toasts[0].message).toMatch(/checked out by another user/i);
+    });
+  });
+
+  describe('bulk selection', () => {
+    // The tree is also the designer's folder browser, so every affordance here is opt-in.
+    const editable = { canRead: true, canRun: true, canEdit: true, canAdmin: true };
+    const rootFolder = makeFolder({
+      id: ROOT_FOLDER_ID, parentFolderId: null, name: 'Root', path: '/', depth: 0,
+      capabilities: editable,
+    });
+    const editableFolder = makeFolder({
+      id: 'finance', parentFolderId: ROOT_FOLDER_ID, name: 'Finance', path: '/Finance', depth: 1,
+      workflowCount: 3, capabilities: editable,
+    });
+    const child = makeFolder({
+      id: 'reports', parentFolderId: 'finance', name: 'Reports', path: '/Finance/Reports',
+      depth: 2, workflowCount: 2, capabilities: editable,
+    });
+
+    it('renders no checkboxes or bulk bar unless bulkDeleteEnabled is set', async () => {
+      mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
+
+      renderWithClient(<SharedFolderTree selectedFolderId={null} onFolderSelected={() => {}} />);
+      await waitFor(() => expect(screen.getByText('Finance')).toBeInTheDocument());
+
+      expect(screen.queryByTestId('shared-folder-select-finance')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('folder-bulk-bar')).not.toBeInTheDocument();
+    });
+
+    it('ticking a folder opens the bulk bar; Root has no checkbox', async () => {
+      mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
+
+      renderWithClient(
+        <SharedFolderTree selectedFolderId={null} onFolderSelected={() => {}} bulkDeleteEnabled />);
+      await waitFor(() => expect(screen.getByText('Finance')).toBeInTheDocument());
+
+      // Root cannot be deleted, so offering to select it would be a dead end.
+      expect(screen.queryByTestId(`shared-folder-select-${ROOT_FOLDER_ID}`)).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByTestId('shared-folder-select-finance'));
+      expect(screen.getByTestId('folder-bulk-bar')).toBeInTheDocument();
+    });
+
+    it('selecting a folder does not also change the folder filter', async () => {
+      // A row click means "filter to this folder"; a checkbox click must not do both.
+      mockApi.list.mockResolvedValue([rootFolder, editableFolder]);
+      const onFolderSelected = vi.fn();
+
+      renderWithClient(
+        <SharedFolderTree selectedFolderId={null} onFolderSelected={onFolderSelected} bulkDeleteEnabled />);
+      await waitFor(() => expect(screen.getByText('Finance')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByTestId('shared-folder-select-finance'));
+
+      expect(onFolderSelected).not.toHaveBeenCalled();
+    });
+
+    it('deletes one request per top-most folder, not per selected folder', async () => {
+      // Parent + child selected: the child is inside the parent's subtree, so a second request
+      // would find nothing and 404.
+      mockApi.list.mockResolvedValue([rootFolder, editableFolder, child]);
+      mockApi.deleteRecursive.mockResolvedValue({ deletedFolders: 2, deletedWorkflows: 5 });
+
+      renderWithClient(
+        <SharedFolderTree selectedFolderId={null} onFolderSelected={() => {}} bulkDeleteEnabled />);
+      await waitFor(() => expect(screen.getByText('Reports')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByTestId('shared-folder-select-finance'));
+      await userEvent.click(screen.getByTestId('shared-folder-select-reports'));
+      await userEvent.click(screen.getByTestId('folder-bulk-delete'));
+
+      await waitFor(() => expect(mockApi.deleteRecursive).toHaveBeenCalledTimes(1));
+      expect(mockApi.deleteRecursive).toHaveBeenCalledWith('finance');
+      // And exactly one confirmation for the whole run.
+      expect(confirmDialog).toHaveBeenCalledTimes(1);
+    });
+
+    it('resets the folder filter when the filtered folder is a descendant of a deleted one', async () => {
+      // /Finance/Reports is never requested — it disappears with its parent.
+      mockApi.list.mockResolvedValue([rootFolder, editableFolder, child]);
+      mockApi.deleteRecursive.mockResolvedValue({ deletedFolders: 2, deletedWorkflows: 5 });
+      const onFolderSelected = vi.fn();
+
+      renderWithClient(
+        <SharedFolderTree selectedFolderId="reports" onFolderSelected={onFolderSelected} bulkDeleteEnabled />);
+      await waitFor(() => expect(screen.getByText('Reports')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByTestId('shared-folder-select-finance'));
+      await userEvent.click(screen.getByTestId('folder-bulk-delete'));
+
+      await waitFor(() => expect(onFolderSelected).toHaveBeenCalledWith(ROOT_FOLDER_ID));
+    });
+
+    it('keeps the folder filter when the delete failed', async () => {
+      // Sending the user back to "all folders" while their folder is still there would be a lie.
+      mockApi.list.mockResolvedValue([rootFolder, editableFolder, child]);
+      mockApi.deleteRecursive.mockRejectedValue(new Error('nope'));
+      const onFolderSelected = vi.fn();
+
+      renderWithClient(
+        <SharedFolderTree selectedFolderId="reports" onFolderSelected={onFolderSelected} bulkDeleteEnabled />);
+      await waitFor(() => expect(screen.getByText('Reports')).toBeInTheDocument());
+
+      await userEvent.click(screen.getByTestId('shared-folder-select-finance'));
+      await userEvent.click(screen.getByTestId('folder-bulk-delete'));
+
+      await waitFor(() => expect(useToastStore.getState().toasts.length).toBeGreaterThan(0));
+      expect(onFolderSelected).not.toHaveBeenCalled();
     });
   });
 });
