@@ -12,6 +12,43 @@ exhaustive.
 
 ## [Unreleased]
 
+## [1.2.18] - 2026-08-26
+
+Folders can be deleted with everything inside them, and several at a time — in the workflow tree
+and in the global-variable tree.
+
+### Added
+
+- **Delete a folder with its contents.** `DELETE /api/shared-workflow-folders/{id}?recursive=true`
+  and `DELETE /api/global-variable-folders/{id}?recursive=true` remove every descendant folder and
+  the workflows or variables in them. The previous rule — a folder had to be empty — meant emptying
+  it by hand first, which is the same deletion with more steps. Authorization is unchanged: folder
+  `Edit` for workflows, Admin for globals.
+- **Multi-select in both folder trees.** Every row but Root carries a checkbox, `Shift` selects a
+  range, and only what is on screen can be selected — collapsing a branch takes its children out of
+  the selection, which costs nothing because deleting the parent takes them anyway. The selection is
+  reduced to its cover set, so a parent and its child cost one request rather than two.
+- **Multi-select in the global-variable list**, matching the workflow list: header checkbox for all
+  visible rows, `Shift` for a range, delete over the selection. The confirmation names the variables
+  rather than counting them — with secrets on the list, a number is not something you can check.
+- `np globals folder delete --recursive --yes`, mirroring `np shared-folder delete`. The MCP tool
+  `delete_global_variable_folder` gained a `recursive` parameter.
+
+### Fixed
+
+- **A bulk Delete button that did nothing at all.** The action bar counted the raw selection while
+  every bulk action operates on the selected rows that are actually rendered. Those two diverge when
+  a row leaves the list — a collapsed branch, a folder switch, a refetch — and the bar then stayed
+  open offering to delete rows the action could not see. Clicking it produced no request, no change
+  and no message, which reads exactly like a delete that failed. Affected the folder trees and both
+  list pages.
+- **A recursive folder delete could remove a workflow without recording it.** The audit snapshot was
+  taken before the transaction while the expected count was taken inside it, so a workflow created
+  in that window was deleted with no audit row and an understated count in the response. Snapshot
+  and delete now describe the same set, and a subtree that changed mid-run is refused with `409`
+  instead — `423` stays reserved for a genuine foreign edit lock, which asks the user for something
+  different.
+
 ## [1.2.17] - 2026-08-25
 
 Detaching an edge now lets you say *where* on the target it lands, and every node offers all four
@@ -845,6 +882,7 @@ multi-step automation in the browser, with no agents on the targets.
 - Licensed under Apache-2.0
 
 [Unreleased]: https://github.com/Sev7eNup/NodePilot/compare/v1.2.17...main
+[1.2.18]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.18
 [1.2.17]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.17
 [1.2.16]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.16
 [1.2.15]: https://github.com/Sev7eNup/NodePilot/releases/tag/v1.2.15
