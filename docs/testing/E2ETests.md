@@ -2279,7 +2279,23 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 ---
 
-### Test 21.7 — Ordner samt Inhalt löschen (Admin-only)
+### Test 21.7 — Ordner im Baum anlegen (Admin-only)
+
+**Schritte:**
+1. Navigiere zu `/global-variables`
+2. `+`-Schaltfläche an der Root-Zeile klicken → Inline-Eingabefeld erscheint
+3. Namen eingeben, mit **OK** bestätigen
+
+**Prüfpunkte:**
+- [ ] Inline-Eingabefeld erscheint direkt in der Baumzeile
+- [ ] POST-Body enthält `name` und `parentFolderId` des Elternordners
+- [ ] Neuer Ordner erscheint nach dem Request im Baum
+
+**Erwartung:** Unterordner werden direkt im Baum angelegt, ohne zusätzlichen Dialog
+
+---
+
+### Test 21.8 — Ordner samt Inhalt löschen (Admin-only)
 
 **Schritte:**
 1. Ordner mit Variablen im Baum → Rechtsklick → **Löschen**
@@ -2298,7 +2314,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 ---
 
-### Test 21.8 — Mehrere Ordner auf einmal löschen
+### Test 21.9 — Mehrere Ordner auf einmal löschen
 
 **Schritte:**
 1. Checkbox an zwei Geschwister-Ordnern setzen → Bulk-Leiste erscheint
@@ -2313,7 +2329,7 @@ Erstelle folgende Edges mit Comparison-Bedingungen:
 
 ---
 
-### Test 21.9 — Mehrere Variablen auf einmal löschen
+### Test 21.10 — Mehrere Variablen auf einmal löschen
 
 **Schritte:**
 1. Kopf-Checkbox der Tabelle → alle **sichtbaren** Zeilen
@@ -4856,7 +4872,7 @@ Prüfpunkte je Provider/Fall:
 [ ] Teil 18: Workflow-Organisation (18.1 — 18.3)
 [ ] Teil 19: Workflow-Diff / Version-Compare (19.1 — 19.3)
 [ ] Teil 20: Machines & Credentials (20.1 — 20.3)
-[ ] Teil 21: Global Variables (21.1 — 21.9)
+[ ] Teil 21: Global Variables (21.1 — 21.10)
 [ ] Teil 22: SCOrch Import (22.1 — 22.2)
 [ ] Teil 23: External Trigger API (23.1 — 23.2)
 [ ] Teil 24: Real-time SignalR (24.1 — 24.2)
