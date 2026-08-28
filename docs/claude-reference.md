@@ -889,7 +889,7 @@ Alle Hosted-Services werden gebündelt in [BackgroundServicesSetup.cs](../src/No
 |---|---|---|
 | `DatabaseRecoveryAuditService` | Persistiert `DATABASE_RECOVERED` idempotent je lokaler Outage-Episode | always-on |
 | `TriggerOrchestrator` + Quartz | Trigger-Scan (5 s) + Quartz-Cron für `scheduleTrigger` | leader-only (im Cluster) |
-| `ExecutionDispatchWorker` | Channel-basierter Dispatch der `Pending`-Executions an die Engine | always-on |
+| `ExecutionDispatchWorker` | Geleaster Dispatch persistierter `Pending`-Executions aus der DB-Outbox | leader-only (im Cluster) |
 | `MaintenanceWindowSnapshotService` | Hält den Maintenance-Window-Snapshot pro Knoten aktuell | always-on (nicht leader-gated) |
 | `ExecutionRetentionService` | Trimmt `WorkflowExecutions` (30 d) | opt-in `Retention:Executions:Enabled` |
 | `AuditLogRetentionService` | Trimmt `AuditLogs` (365 d) + gzip/SHA-256-Archiv | opt-in `Retention:AuditLog:Enabled` |
@@ -1001,7 +1001,7 @@ Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (hängt
 | `AiKnowledge` | ✓ | `KnowledgeChatOrchestrator`, Tool-Registry und `/api/ai/knowledge/capabilities` lesen `IOptionsMonitor<AiKnowledgeOptions>.CurrentValue` pro Use — Source-Toggles und Root-Pfade greifen ohne Restart |
 | `Retention` | ✓ | `Execution`/`AuditLog`/`WorkflowVersions`/`Notification`/`SupportEvent`-RetentionService lesen `IOptionsMonitor<RetentionOptions>.CurrentValue` pro Schleifen-Pass (`RunIterationAsync`-Seam); `ArchivePath`-Wechsel invalidiert den Cache → Re-Probe (AuditLog bewahrt Compliance-Invariante). `IdempotencyKeyCleanupService` bleibt bewusst config-frei (fixe 24h-TTL) |
 | `Stats` | ✓ | `WorkflowStatsRefresher` liest `IConfiguration.GetValue` pro Pass |
-| `Threading` | ✓ | `ThreadPoolTuningService` re-appliert `ThreadPool.SetMinThreads` bei Start + `ChangeToken.OnChange` (Boot-Call bleibt für Cold-Start-Prewarm). **Nur bei `Performance:ManualTuning=true`** — unter Auto-Dimensionierung folgt der Service dem Boot-Plan, sonst würde ein Reload allein den ThreadPool in einen anderen Modus ziehen als Runspace-Pool und Dispatch-Queue |
+| `Threading` | ✓ | `ThreadPoolTuningService` re-appliert `ThreadPool.SetMinThreads` bei Start + `ChangeToken.OnChange` (Boot-Call bleibt für Cold-Start-Prewarm). **Nur bei `Performance:ManualTuning=true`** — unter Auto-Dimensionierung folgt der Service dem Boot-Plan, sonst würde ein Reload allein den ThreadPool in einen anderen Modus ziehen als Runspace-Pool und Dispatch-Worker-Pool |
 | `FileSystemOperation` | ✓ | `PathGuard` liest `FileSystemOperation:RejectTraversal`/`AllowedRoots` pro Use aus `IConfiguration`. Der Remote-Zweig baut daraus pro Step den injizierten `TargetPathGuardScript` — auch dort greift eine Änderung ohne Restart, sie wirkt aber erst beim nächsten Step-Start |
 | `WaitForCondition` | ✓ | `NetworkGuard.RequireExplicitlyAllowlistedHost` liest `WaitForCondition:AllowedHosts` aus der Live-`IConfiguration` bei jedem Probe-Aufruf — gilt sofort ohne Restart. Gilt auch für `httpOk` (über `ValidateProbeUrl`); die restart-pflichtige `RestApi`-Sektion liegt nicht mehr im Pfad, sonst hätte eine hot-reload beworbene Karte einen Restart erzwungen |
 | `SqlActivity` | ✓ | `SqlActivity` liest `SqlActivity:RequireConnectionRef` pro Use aus `IConfiguration` |
@@ -1015,9 +1015,9 @@ Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (hängt
 | `Security` | ✗ | `StrictAllowedHosts`/`AllowedHosts` einmal beim Boot gelesen |
 | `RestApi` | ✗ | Mixed: `BlockPrivateNetworks` live, `Proxy` an `RestApiActivity` boot-fest → konservativ ganze Sektion restart-pflichtig |
 | `Remote` | ✗ | Mixed: `Provider`+SSL+Timeouts+Pool boot-fest gebunden → konservativ ganze Sektion restart-pflichtig |
-| `Performance` | ✗ | `ManualTuning` entscheidet, wie Runspace-Pool und Dispatch-Queue dimensioniert werden — beide entstehen einmal beim Boot. Der Plan wird deshalb genau einmal aufgelöst (`PerformancePlanFactory`) und als Singleton geteilt |
+| `Performance` | ✗ | `ManualTuning` entscheidet, wie Runspace-Pool und Dispatch-Worker-Pool dimensioniert werden — beide entstehen einmal beim Boot. Der Plan wird deshalb genau einmal aufgelöst (`PerformancePlanFactory`) und als Singleton geteilt |
 | `Engine` | ✗ | Concurrency-Caps beim Boot in den Engine-Channel/Pool gebaut |
-| `ExecutionDispatch` | ✗ | Queue/Channel beim Boot gebaut |
+| `ExecutionDispatch` | ✗ | Worker-Pool beim Boot gebaut; wartende Arbeit liegt dauerhaft in der DB-Outbox |
 
 **Dimensionierung (`Performance:ManualTuning`, default `false`):** Ohne den Schalter leitet NodePilot `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` und `ExecutionDispatch:*` aus erkannter CPU und erkanntem Speicher ab. **`Engine:MaxConcurrentExecutions:*` ist bewusst ausgenommen** — Sicherheits-Cap gegen Trigger-Schleifen/Sub-Workflow-Kaskaden, rein config-gesteuert (500/200), gilt in beiden Modi (`PerformanceSizing` in `NodePilot.Core`, reiner Algorithmus; Erkennung + `Deployment:Mode` liefert `PerformancePlanFactory` in der Api, weil Core nicht rückwärts referenzieren darf). Die in den Sektionen gespeicherten Zahlen sind dann **inert** — `GET /api/admin/settings/effective-sizing` liefert die tatsächlich wirksamen Werte samt bindender Grenze (`Cpu`/`Ram`/`Floor`/`Ceiling`/`Manual`), die UI graut die Felder aus und zeigt den aktiven Wert. Formeln, Ceilings und die Speicher-Budgetierung: `docs/performance-improvements.md`.
 

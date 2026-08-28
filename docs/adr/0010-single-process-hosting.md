@@ -17,7 +17,7 @@ or undo it by accident.
 
 NodePilot is hosted as **one ASP.NET Core process = one Windows Service**
 (`builder.Host.UseWindowsService()`). The HTTP API, the SignalR hub, the Quartz scheduler +
-`TriggerOrchestrator`, the in-process dispatch queue + worker pool, the `WorkflowEngine`, all
+`TriggerOrchestrator`, the durable database-backed dispatch worker pool, the `WorkflowEngine`, all
 retention/alerting sweepers, and the HA leader lease share that one process and DI container.
 We deliberately do **not** split into separate API / worker / scheduler services.
 
@@ -34,9 +34,9 @@ Why the alternatives lose:
 - **The couplings a split must break are fast in-process statics.** Cancellation
   (`_runningExecutions`, Guid→`CancellationTokenSource`), the step-debugger (`_debugHandles`),
   and the concurrency caps (`_reservedExecutionSlots`/`_userExecutionCounts`) in
-  `WorkflowEngine` are direct in-memory accesses, and the trigger→execution handoff is an
-  in-process `ConcurrentQueue`. Moving the engine out of process would require externalizing all
-  of these (DB cancel-flags or a message bus, centralized caps) and would degrade the
+  `WorkflowEngine` are direct in-memory accesses. The trigger-to-execution handoff is durable in
+  the application database (ADR 0014), but engine cancellation, debugging, and caps remain local.
+  Moving the engine out of process would require externalizing these remaining controls and degrade the
   interactive low-latency UX (instant cancel, live SignalR, breakpoints) for no current benefit.
 
 ## Konsequenzen
@@ -52,10 +52,9 @@ Why the alternatives lose:
   2. a real need for **active/active** execution scaling beyond today's active/passive model, or
   3. a compliance requirement to run the WinRM/PowerShell tier under a separate identity or
      network segment from the internet-facing API.
-  A future split would take the shape *API service + worker service*. Today's `Pending`
-  `WorkflowExecution` row (already stamped with `OwnerNodeId`) is durable evidence of accepted
-  work, but not a replayable handoff: the complete Dispatch Intent remains in the in-memory queue.
-  A split therefore requires a durable outbox/broker that persists the full protected intent.
+  A future split would take the shape *API service + worker service*. The protected Dispatch Intent
+  is already persisted in the database, but cancellation, debugger state, concurrency accounting,
+  and live engine ownership would still need a cross-process contract.
 - This ADR documents an **existing** state; it introduces no new runtime invariant and no guard
   test to enforce.
 
@@ -63,7 +62,8 @@ Why the alternatives lose:
 
 - [../../src/NodePilot.Api/Program.cs](../../src/NodePilot.Api/Program.cs) — `UseWindowsService()` composition root
 - [../../src/NodePilot.Engine/WorkflowEngine.cs](../../src/NodePilot.Engine/WorkflowEngine.cs) — in-process `static` cancellation/debug/capacity state
-- [../../src/NodePilot.Api/ExecutionDispatch/ExecutionDispatchService.cs](../../src/NodePilot.Api/ExecutionDispatch/ExecutionDispatchService.cs) — DB `Pending` row + in-process dispatch queue
+- [../../src/NodePilot.Api/ExecutionDispatch/ExecutionDispatchService.cs](../../src/NodePilot.Api/ExecutionDispatch/ExecutionDispatchService.cs) — atomic `Pending` row + durable dispatch intent
+- [0014-durable-execution-dispatch.md](0014-durable-execution-dispatch.md) — restart-safe admission handoff
 - [0002-active-passive-ha.md](0002-active-passive-ha.md) — the HA model that supplies crash/ownership isolation
 - [0004-secret-protector-providers.md](0004-secret-protector-providers.md) — cluster-portable secrets that HA depends on
 - [../../deploy/README.md](../../deploy/README.md) — single-service install story

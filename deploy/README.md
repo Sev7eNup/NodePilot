@@ -53,7 +53,7 @@ would tolerate it when loading. Explanations belong here or in `docs/`, not in t
 ### Sizing in the templates
 
 Both templates ship `"Performance": { "ManualTuning": false }` — NodePilot then derives the runspace
-pool, the step cap, the ThreadPool floor and the dispatch queue from the detected CPU and memory. That
+pool, the step cap, the ThreadPool floor and the dispatch worker count from the detected CPU and memory. That
 is deliberate: `Install-NodePilot.ps1` rolls the production template onto *arbitrary* hardware, and the
 numbers stored there are the profile measured for **20 cores / 500 concurrent workflows**. On a smaller
 machine they over-provision considerably (768 minimum ThreadPool threads already measured a 28 %

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NodePilot.Core.Enums;
+using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
@@ -44,7 +45,7 @@ public class StartWorkflowActivity : IActivityExecutor
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly NodePilotDbContext _db;
     private readonly ISubWorkflowGate _gate;
-    private readonly IExecutionDispatchQueue? _dispatchQueue;
+    private readonly IWorkflowExecutionDispatcher? _executionDispatcher;
     private readonly ISubWorkflowAuthorizationResolver? _subWorkflowAuthz;
     private readonly ILogger<StartWorkflowActivity>? _logger;
 
@@ -57,8 +58,8 @@ public class StartWorkflowActivity : IActivityExecutor
         IServiceScopeFactory scopeFactory,
         NodePilotDbContext db,
         ISubWorkflowGate gate,
-        IExecutionDispatchQueue? dispatchQueue)
-        : this(scopeFactory, db, gate, dispatchQueue, null)
+        IWorkflowExecutionDispatcher? executionDispatcher)
+        : this(scopeFactory, db, gate, executionDispatcher, null)
     {
     }
 
@@ -66,14 +67,14 @@ public class StartWorkflowActivity : IActivityExecutor
         IServiceScopeFactory scopeFactory,
         NodePilotDbContext db,
         ISubWorkflowGate gate,
-        IExecutionDispatchQueue? dispatchQueue,
+        IWorkflowExecutionDispatcher? executionDispatcher,
         ISubWorkflowAuthorizationResolver? subWorkflowAuthz,
         ILogger<StartWorkflowActivity>? logger = null)
     {
         _scopeFactory = scopeFactory;
         _db = db;
         _gate = gate;
-        _dispatchQueue = dispatchQueue;
+        _executionDispatcher = executionDispatcher;
         _subWorkflowAuthz = subWorkflowAuthz;
         _logger = logger;
     }
@@ -215,63 +216,30 @@ public class StartWorkflowActivity : IActivityExecutor
 
         if (!waitForCompletion)
         {
-            // Acquire a slot before scheduling the fire-and-forget: when the pool is saturated,
-            // reject the start rather than queue unbounded background tasks.
-            if (!await _gate.WaitAsync(TimeSpan.FromSeconds(5), ct))
+            if (_executionDispatcher is null)
             {
                 return new ActivityResult
                 {
                     Success = false,
-                    ErrorOutput = $"startWorkflow: engine is at sub-workflow concurrency limit ({_gate.Capacity}); try again later",
+                    ErrorOutput = "startWorkflow: durable execution dispatcher is unavailable",
                     Duration = sw.Elapsed,
                 };
             }
 
-            // A fire-and-forget child inherits the parent's cancellation token, so cancelling the
-            // parent execution also stops the detached child instead of leaving it running.
-            var parentCancellation = CancellationToken.None;
-            if (parentExec is not null
-                && WorkflowEngine.TryGetExecutionCancellation(parentExec.Id, out var parentCt))
-            {
-                parentCancellation = parentCt;
-            }
-
-            // Release the slot if enqueue or scheduling throws before the detached path owns it.
-            try
-            {
-                if (_dispatchQueue is not null)
-                {
-                    using var dispatchCts = CancellationTokenSource.CreateLinkedTokenSource(ct, parentCancellation);
-                    await _dispatchQueue.EnqueueAsync(
-                        workerCt => ExecuteDetachedChildAsync(
-                            childWorkflow,
-                            context.WorkflowExecutionId,
-                            context.StepId,
-                            childParams,
-                            childCallDepth,
-                            explicitTimeoutSeconds,
-                            parentCancellation,
-                            workerCt),
-                        dispatchCts.Token);
-                }
-                else
-                {
-                    _ = ExecuteDetachedChildAsync(
-                        childWorkflow,
-                        context.WorkflowExecutionId,
-                        context.StepId,
-                        childParams,
-                        childCallDepth,
-                        explicitTimeoutSeconds,
-                        parentCancellation,
-                        ct);
-                }
-            }
-            catch
-            {
-                _gate.Release();
-                throw;
-            }
+            var childExecution = await _executionDispatcher.DispatchAsync(
+                new WorkflowDispatchIntent(
+                    childWorkflow.Id,
+                    $"startWorkflow:{context.StepId}",
+                    childParams,
+                    explicitTimeoutSeconds,
+                    StartedByUserId: parentExec?.StartedByUserId,
+                    RequireWorkflowEnabled: true,
+                    MissingWorkflowMessage: "Queued sub-workflow was not dispatched because it no longer exists or is disabled.",
+                    PreOwnershipFailurePrefix: "Queued sub-workflow failed before the engine could take ownership",
+                    RequireMaintenanceWindowCheck: false,
+                    ParentExecutionId: context.WorkflowExecutionId,
+                    CallDepth: childCallDepth),
+                ct);
 
             return new ActivityResult
             {
@@ -281,6 +249,7 @@ public class StartWorkflowActivity : IActivityExecutor
                 {
                     ["workflowId"] = childWorkflow.Id.ToString(),
                     ["workflowName"] = childWorkflow.Name,
+                    ["executionId"] = childExecution.Id.ToString(),
                     ["waited"] = "false",
                 },
                 Duration = sw.Elapsed,
@@ -391,49 +360,4 @@ public class StartWorkflowActivity : IActivityExecutor
             ct);
     }
 
-    private async Task ExecuteDetachedChildAsync(
-        Workflow childWorkflow,
-        Guid parentExecutionId,
-        string parentStepId,
-        Dictionary<string, string> childParams,
-        int childCallDepth,
-        int? timeoutSeconds,
-        CancellationToken parentCancellation,
-        CancellationToken dispatchCancellation)
-    {
-        try
-        {
-            await using var scope = _scopeFactory.CreateAsyncScope();
-            var engine = scope.ServiceProvider.GetRequiredService<IWorkflowEngine>();
-            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-                parentCancellation,
-                dispatchCancellation);
-            // A node-set timeout applies on the detached path as well; null means no ceiling,
-            // since a fire-and-forget child blocks nothing and long-running work is legitimate.
-            // The run finishes either way through the guaranteed finalization contract, so the
-            // timeout only backstops a wedged step.
-            await engine.ExecuteAsync(
-                childWorkflow,
-                $"startWorkflow:{parentStepId}",
-                linkedCts.Token,
-                childParams,
-                timeoutSeconds: timeoutSeconds,
-                parentExecutionId: parentExecutionId,
-                callDepth: childCallDepth);
-        }
-        catch (Exception ex)
-        {
-            // The child finalizes its own terminal state (Failed/Cancelled) inside the engine.
-            // Reaching here means engine.ExecuteAsync threw outside that finalization, for
-            // example during scope or host teardown. Log it so the fault is diagnosable instead
-            // of leaving a row stuck in Running.
-            _logger?.LogError(ex,
-                "Detached sub-workflow '{ChildName}' ({ChildId}) from parent execution {ParentExecutionId} threw outside finalization",
-                childWorkflow.Name, childWorkflow.Id, parentExecutionId);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
 }

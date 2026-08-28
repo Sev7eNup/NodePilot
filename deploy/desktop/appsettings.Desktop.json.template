@@ -95,7 +95,6 @@
     "MinIoCompletionThreads": 32
   },
   "ExecutionDispatch": {
-    "Capacity": 512,
     "WorkerCount": 32
   },
   "Stats": { "RefreshIntervalMinutes": 5, "WindowDays": 7 },

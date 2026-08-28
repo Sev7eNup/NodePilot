@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import type { Node } from '@xyflow/react';
 import { api } from '../../api/client';
+import { getAllPages } from '../../api/paging';
 import type { WorkflowExecution, Workflow } from '../../types/api';
 import type { LiveExecution } from '../../hooks/useSignalR';
 import { OutputTab } from './execution/OutputTab';
@@ -99,7 +100,7 @@ export function ExecutionPanel({ workflowId, liveExecution, liveExecutions, live
   // new terminal runs can appear in the list.
   const { data: executions } = useQuery({
     queryKey: ['workflow-executions', workflowId, historyScope, 'terminalOnly'],
-    queryFn: () => api.get<WorkflowExecution[]>(
+    queryFn: () => getAllPages<WorkflowExecution>(
       historyScope === 'all'
         ? '/executions?terminalOnly=true'
         : `/executions?workflowId=${workflowId}&terminalOnly=true`),

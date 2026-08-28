@@ -40,6 +40,9 @@ public sealed class UserCreateSettings : GlobalSettings
     [CommandOption("--role <ROLE>")]
     [Description("Admin | Operator | Viewer (case-insensitive).")]
     public string? Role { get; set; }
+    [CommandOption("--break-glass")]
+    [Description("Designate the new local account as a break-glass account.")]
+    public bool IsBreakGlass { get; set; }
 }
 
 [SupportedOSPlatform("windows")]
@@ -64,7 +67,8 @@ public sealed class UserCreateCommand : BaseCommand<UserCreateSettings>
         }
 
         var api = ClientFactory.Create(session);
-        var u = await api.CreateUserAsync(new CreateUserRequest(settings.Username, pw, settings.Role), ct);
+        var u = await api.CreateUserAsync(
+            new CreateUserRequest(settings.Username, pw, settings.Role, settings.IsBreakGlass), ct);
         writer.Success($"User angelegt: [bold]{Markup.Escape(u.Username)}[/] ({u.Role}).");
         return ExitCodes.Success;
     }
@@ -78,6 +82,9 @@ public sealed class UserUpdateSettings : UserIdSettings
     public bool? Active { get; set; }
     [CommandOption("--password <PW>")] public string? Password { get; set; }
     [CommandOption("--password-stdin")] public bool PasswordStdin { get; set; }
+    [CommandOption("--break-glass <BOOL>")]
+    [Description("true | false — change the break-glass designation of a local account.")]
+    public bool? IsBreakGlass { get; set; }
 }
 
 [SupportedOSPlatform("windows")]
@@ -90,14 +97,17 @@ public sealed class UserUpdateCommand : BaseCommand<UserUpdateSettings>
         if (settings.PasswordStdin)
             pw = (await Console.In.ReadToEndAsync(ct)).TrimEnd('\r', '\n');
 
-        if (settings.Role is null && settings.Active is null && string.IsNullOrEmpty(pw))
+        if (settings.Role is null && settings.Active is null && string.IsNullOrEmpty(pw)
+            && settings.IsBreakGlass is null)
         {
-            writer.Error("Mindestens eine Änderung angeben (--role / --active / --password).");
+            writer.Error("Mindestens eine Änderung angeben (--role / --active / --password / --break-glass).");
             return ExitCodes.Error;
         }
 
         var api = ClientFactory.Create(session);
-        await api.UpdateUserAsync(settings.Id, new UpdateUserRequest(settings.Role, settings.Active, string.IsNullOrEmpty(pw) ? null : pw), ct);
+        await api.UpdateUserAsync(settings.Id,
+            new UpdateUserRequest(settings.Role, settings.Active,
+                string.IsNullOrEmpty(pw) ? null : pw, settings.IsBreakGlass), ct);
         writer.Success($"User {settings.Id} aktualisiert.");
         return ExitCodes.Success;
     }

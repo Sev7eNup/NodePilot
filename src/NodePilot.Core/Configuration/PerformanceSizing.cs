@@ -39,7 +39,7 @@ public readonly record struct SizedValue(int Value, SizingBound Bound)
 /// <summary>
 /// The complete, immutable sizing decision for this process. Built once at boot and read by
 /// every consumer, so a configuration reload can never leave the hot-reloadable ThreadPool
-/// tuned for one mode while the boot-fixed runspace pool and dispatch queue run in the other.
+/// tuned for one mode while boot-fixed consumers run in the other.
 /// </summary>
 public sealed record PerformancePlan
 {
@@ -52,7 +52,6 @@ public sealed record PerformancePlan
     public required SizedValue MinWorkerThreads { get; init; }
     public required SizedValue MinIoCompletionThreads { get; init; }
     public required SizedValue DispatchWorkerCount { get; init; }
-    public required SizedValue DispatchCapacity { get; init; }
 
     // Engine:MaxConcurrentExecutions is deliberately absent. Those values are safety caps
     // against trigger loops and sub-workflow cascades, not throughput levers, so deriving them
@@ -80,7 +79,6 @@ public static class PerformanceSizing
     internal const int StepsFloor = 32, StepsCeiling = 600;
     internal const int ThreadsFloor = 64, ThreadsCeiling = 768;
     internal const int WorkerCountFloor = 20, WorkerCountCeiling = 200;
-    internal const int CapacityFloor = 128, CapacityCeiling = 2048;
 
     // Share of detected memory NodePilot plans with. Desktop shares the machine with Postgres,
     // the Electron shell and the user's own applications, so it claims noticeably less.
@@ -95,7 +93,6 @@ public static class PerformanceSizing
     // budget independently would spend the same memory several times over.
     internal const double RunspaceShare = 0.50;
     internal const double StepShare = 0.25;
-    internal const double QueueShare = 0.05;
     // The remaining share is headroom for GC slack, spikes and anything not modelled here. The
     // DB pool is deliberately not modelled: its dominant cost is server-side Postgres memory,
     // which no application-side setting controls.
@@ -104,7 +101,6 @@ public static class PerformanceSizing
     // can only ever make the plan smaller than the CPU dimension, never larger.
     internal const long RunspaceCostBytes = 8L * 1024 * 1024;
     internal const long StepCostBytes = 256L * 1024;
-    internal const long QueueEntryCostBytes = 8L * 1024;
 
     /// <summary>
     /// Below this, memory detection counts as failed rather than merely small: no supported host
@@ -133,8 +129,6 @@ public static class PerformanceSizing
             StepsFloor, StepsCeiling);
         var threads = Resolve(Math.Max(200, cores * 16), null, ThreadsFloor, ThreadsCeiling);
         var workers = Resolve(cores * 3, null, WorkerCountFloor, WorkerCountCeiling);
-        var capacity = Resolve(workers.Value * 8, RamCap(budget, QueueShare, QueueEntryCostBytes),
-            CapacityFloor, CapacityCeiling);
 
         // Always 1 under automatic sizing. RunspacePool.Open() materialises the minimum eagerly
         // while the pool grows on demand under real load, so a larger minimum only holds memory
@@ -153,7 +147,6 @@ public static class PerformanceSizing
                 MinWorkerThreads = threads,
                 MinIoCompletionThreads = threads,
                 DispatchWorkerCount = workers,
-                DispatchCapacity = capacity,
             };
         }
 
@@ -167,7 +160,6 @@ public static class PerformanceSizing
             MinWorkerThreads = Manual(configured, ConfigKeys.MinWorkerThreads, threads),
             MinIoCompletionThreads = Manual(configured, ConfigKeys.MinIoCompletionThreads, threads),
             DispatchWorkerCount = Manual(configured, ConfigKeys.DispatchWorkerCount, workers),
-            DispatchCapacity = Manual(configured, ConfigKeys.DispatchCapacity, capacity),
         };
     }
 
@@ -225,12 +217,11 @@ public static class PerformanceSizing
         public const string MinWorkerThreads = "Threading:MinWorkerThreads";
         public const string MinIoCompletionThreads = "Threading:MinIoCompletionThreads";
         public const string DispatchWorkerCount = "ExecutionDispatch:WorkerCount";
-        public const string DispatchCapacity = "ExecutionDispatch:Capacity";
 
         public static readonly string[] All =
         [
             MinRunspaces, MaxRunspaces, MaxConcurrentSteps, MinWorkerThreads, MinIoCompletionThreads,
-            DispatchWorkerCount, DispatchCapacity,
+            DispatchWorkerCount,
         ];
     }
 }

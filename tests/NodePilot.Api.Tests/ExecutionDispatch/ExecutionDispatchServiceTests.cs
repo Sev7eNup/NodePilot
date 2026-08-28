@@ -1,19 +1,14 @@
-using System.Data.Common;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
-using Microsoft.Data.Sqlite;
 using Moq;
 using NodePilot.Api.ExecutionDispatch;
-using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Enums;
+using NodePilot.Core.ExecutionDispatch;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 using NodePilot.Data;
-using NodePilot.Data.Availability;
 using NodePilot.Engine.Security;
 using Xunit;
 
@@ -21,539 +16,293 @@ namespace NodePilot.Api.Tests.ExecutionDispatch;
 
 public class ExecutionDispatchServiceTests
 {
-    private sealed class FailOnceOnPendingReadInterceptor : DbCommandInterceptor
-    {
-        private readonly DatabaseAvailabilityTracker _availability;
-        private int _fired;
-        internal TaskCompletionSource Fired { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        internal FailOnceOnPendingReadInterceptor(DatabaseAvailabilityTracker availability)
-            => _availability = availability;
-
-        public override InterceptionResult<DbDataReader> ReaderExecuting(
-            DbCommand command,
-            CommandEventData eventData,
-            InterceptionResult<DbDataReader> result)
-        {
-            MaybeThrow(command);
-            return result;
-        }
-
-        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(
-            DbCommand command,
-            CommandEventData eventData,
-            InterceptionResult<DbDataReader> result,
-            CancellationToken cancellationToken = default)
-        {
-            MaybeThrow(command);
-            return ValueTask.FromResult(result);
-        }
-
-        private void MaybeThrow(DbCommand command)
-        {
-            if (!command.CommandText.Contains("WorkflowExecutions", StringComparison.Ordinal)
-                || Interlocked.Exchange(ref _fired, 1) != 0)
-            {
-                return;
-            }
-
-            _availability.ReportUnreachable(DatabaseOutageReason.Unreachable);
-            Fired.TrySetResult();
-            throw new IOException("simulated database outage before engine start");
-        }
-    }
-
     [Fact]
-    public async Task DispatchAsync_CreatesRedactedOwnerStampedPendingAndEnqueues()
+    public async Task DispatchAsync_CreatesPendingAndDurableOutboxInSameSave()
     {
         await using var db = NodePilot.TestCommons.TestDbFactory.Create();
-        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true };
+        var workflow = EnabledWorkflow();
         db.Workflows.Add(workflow);
         await db.SaveChangesAsync();
-
-        var queue = new CapturingExecutionDispatchQueue();
-        var services = new ServiceCollection();
-        services.AddSingleton(db);
-        services.AddSingleton(Mock.Of<IWorkflowEngine>());
-        var provider = services.BuildServiceProvider();
-        var cluster = new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider();
-        var service = new ExecutionDispatchService(
-            db,
-            queue,
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            new OutputRedactor(null),
-            cluster,
-            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
+        await using var fixture = CreateFixture(db, Mock.Of<IWorkflowEngine>());
 
         var startedBy = Guid.NewGuid();
-        var pending = await service.DispatchAsync(
+        var pending = await fixture.Service.DispatchAsync(
             new WorkflowDispatchIntent(
-                workflow.Id,
-                "manual",
+                workflow.Id, "manual",
                 new Dictionary<string, string> { ["password"] = "super-secret" },
-                StartedByUserId: startedBy),
-            CancellationToken.None);
+                StartedByUserId: startedBy), CancellationToken.None);
 
         var persisted = await db.WorkflowExecutions.FindAsync(pending.Id);
-        persisted.Should().NotBeNull();
         persisted!.Status.Should().Be(ExecutionStatus.Pending);
         persisted.StartedByUserId.Should().Be(startedBy);
-        persisted.OwnerNodeId.Should().Be(cluster.NodeId);
         persisted.InputParametersJson.Should().Contain("\"password\"");
         persisted.InputParametersJson.Should().NotContain("super-secret");
-        queue.EnqueueCount.Should().Be(1);
+        var outbox = await db.ExecutionDispatchOutbox.SingleAsync(x => x.ExecutionId == pending.Id);
+        outbox.WorkflowId.Should().Be(workflow.Id);
+        outbox.StartedByUserId.Should().Be(startedBy);
+        outbox.ProtectedParameters.Should().NotBeNull();
     }
 
     [Fact]
-    public async Task EnqueueAsync_RequestCancelledAfterPendingPersist_DoesNotCancelDispatch()
+    public async Task NotifyCommitted_RequestAlreadyCancelled_LeavesDurableIntentPending()
     {
         await using var db = NodePilot.TestCommons.TestDbFactory.Create();
-        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
-        var pending = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(),
-            WorkflowId = workflow.Id,
-            Status = ExecutionStatus.Pending,
-            StartedAt = DateTime.UtcNow,
-            TriggeredBy = "manual",
-        };
+        var workflow = EnabledWorkflow();
         db.Workflows.Add(workflow);
-        db.WorkflowExecutions.Add(pending);
         await db.SaveChangesAsync();
-
-        var queue = new CapturingExecutionDispatchQueue();
-        var services = new ServiceCollection();
-        services.AddSingleton(db);
-        services.AddSingleton(Mock.Of<IWorkflowEngine>());
-        var provider = services.BuildServiceProvider();
-        var service = new ExecutionDispatchService(
-            db,
-            queue,
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            new OutputRedactor(null),
-            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
-
+        await using var fixture = CreateFixture(db, Mock.Of<IWorkflowEngine>());
+        var intent = new WorkflowDispatchIntent(workflow.Id, "manual", null);
+        var pending = await fixture.Service.DispatchAsync(intent, CancellationToken.None);
         using var cancelledRequest = new CancellationTokenSource();
         await cancelledRequest.CancelAsync();
 
-        await service.EnqueueAsync(
-            pending,
-            new WorkflowDispatchIntent(workflow.Id, "manual", null),
-            cancelledRequest.Token);
+        var act = () => fixture.Service.NotifyCommitted();
 
-        queue.EnqueueCount.Should().Be(1);
-        queue.EnqueueToken.CanBeCanceled.Should().BeFalse();
-        queue.Priority.Should().Be(ExecutionDispatchPriority.Normal);
-
-        var persisted = await db.WorkflowExecutions.FindAsync(pending.Id);
-        persisted!.Status.Should().Be(ExecutionStatus.Pending);
-        persisted.ErrorMessage.Should().BeNull();
+        act.Should().NotThrow();
+        (await db.ExecutionDispatchOutbox.AnyAsync(item => item.ExecutionId == pending.Id))
+            .Should().BeTrue();
+        (await db.WorkflowExecutions.AsNoTracking().SingleAsync()).Status
+            .Should().Be(ExecutionStatus.Pending);
     }
 
     [Fact]
-    public async Task EnqueueAsync_InteractivePriority_UsesPriorityQueueAndDoesNotBypassWorkerPool()
+    public async Task ProcessOutbox_DisabledWorkflow_CancelsAndNotifiesSuppression()
     {
-        // Interactive runs (Test-button/webhook) must be preferred by the dispatch queue,
-        // but still consume a bounded worker slot instead of creating an unbounded Task.
         await using var db = NodePilot.TestCommons.TestDbFactory.Create();
-        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true };
-        var pending = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(),
-            WorkflowId = workflow.Id,
-            Status = ExecutionStatus.Pending,
-            StartedAt = DateTime.UtcNow,
-            TriggeredBy = "manual",
-        };
+        var workflow = EnabledWorkflow();
+        workflow.IsEnabled = false;
         db.Workflows.Add(workflow);
-        db.WorkflowExecutions.Add(pending);
         await db.SaveChangesAsync();
+        var engine = new Mock<IWorkflowEngine>();
+        await using var fixture = CreateFixture(db, engine.Object);
+        WorkflowDispatchSuppression? suppression = null;
+        var pending = await fixture.Service.DispatchAsync(
+            new WorkflowDispatchIntent(
+                workflow.Id, "scheduleTrigger", null,
+                RequireWorkflowEnabled: true,
+                OnDispatchSuppressedAsync: (value, _) =>
+                {
+                    suppression = value;
+                    return Task.CompletedTask;
+                }), CancellationToken.None);
 
-        var engineCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var engineMock = new Mock<IWorkflowEngine>();
-        engineMock.Setup(e => e.ExecuteAsync(
+        await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        db.ChangeTracker.Clear();
+        var persisted = await db.WorkflowExecutions.SingleAsync();
+        persisted.Status.Should().Be(ExecutionStatus.Cancelled);
+        persisted.CancelledBy.Should().Be("dispatch");
+        suppression!.Reason.Should().Be("workflow_disabled_before_dispatch");
+        (await db.ExecutionDispatchOutbox.AnyAsync()).Should().BeFalse();
+        VerifyEngineCalls(engine, Times.Never());
+    }
+
+    [Fact]
+    public async Task ProcessOutbox_HoldsWorkerUntilEngineCompletes()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.ExecuteAsync(
                 It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
                 It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
                 It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
                 It.IsAny<bool>()))
             .Returns(async () =>
             {
-                engineCalled.TrySetResult();
-                return pending;
+                started.TrySetResult();
+                await release.Task;
+                return new WorkflowExecution { Status = ExecutionStatus.Succeeded };
             });
+        await using var fixture = CreateFixture(db, engine.Object);
+        var pending = await fixture.Service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
 
-        var queue = new CapturingExecutionDispatchQueue();
-        var services = new ServiceCollection();
-        services.AddSingleton(db);
-        services.AddSingleton(engineMock.Object);
-        var provider = services.BuildServiceProvider();
-        var service = new ExecutionDispatchService(
-            db,
-            queue,
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            new OutputRedactor(null),
-            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
-
-        await service.EnqueueAsync(
-            pending,
-            new WorkflowDispatchIntent(workflow.Id, "manual", null,
-                Priority: ExecutionDispatchPriority.Interactive),
-            CancellationToken.None);
-
-        queue.EnqueueCount.Should().Be(1, "Interactive runs must still use the bounded worker pool");
-        queue.Priority.Should().Be(ExecutionDispatchPriority.Interactive);
-        queue.CapturedWorkItem.Should().NotBeNull();
-        engineCalled.Task.IsCompleted.Should().BeFalse(
-            "enqueue should not execute the workflow until a dispatch worker takes the item");
-
-        await queue.CapturedWorkItem!(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
-        await engineCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var workerTask = fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        workerTask.IsCompleted.Should().BeFalse();
+        release.TrySetResult();
+        (await workerTask.WaitAsync(TimeSpan.FromSeconds(2)))
+            .Should().Be(ExecutionDispatchOutcome.Completed);
     }
 
     [Fact]
-    public async Task EnqueueAsync_DisabledWorkflowAtDispatch_CancelsPendingAndInvokesSuppressionCallback()
+    public async Task ProcessOutbox_EngineClaimWasFenced_KeepsIntentAndSuppressionCallbackForRetry()
     {
         await using var db = NodePilot.TestCommons.TestDbFactory.Create();
-        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = false };
-        var pending = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(),
-            WorkflowId = workflow.Id,
-            Status = ExecutionStatus.Pending,
-            StartedAt = DateTime.UtcNow,
-            TriggeredBy = "scheduleTrigger",
-        };
+        var workflow = EnabledWorkflow();
         db.Workflows.Add(workflow);
-        db.WorkflowExecutions.Add(pending);
         await db.SaveChangesAsync();
-
-        var engineMock = new Mock<IWorkflowEngine>();
-        var queue = new CapturingExecutionDispatchQueue();
-        var services = new ServiceCollection();
-        services.AddSingleton(db);
-        services.AddSingleton(engineMock.Object);
-        var provider = services.BuildServiceProvider();
-        var service = new ExecutionDispatchService(
-            db,
-            queue,
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            new OutputRedactor(null),
-            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
-
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.ExecuteAsync(
+                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
+                It.IsAny<bool>()))
+            .ReturnsAsync(new WorkflowExecution { Status = ExecutionStatus.Pending });
+        await using var fixture = CreateFixture(db, engine.Object);
         WorkflowDispatchSuppression? suppression = null;
-        await service.EnqueueAsync(
-            pending,
+        var pending = await fixture.Service.DispatchAsync(
             new WorkflowDispatchIntent(
                 workflow.Id,
-                "scheduleTrigger",
+                "manual",
                 null,
                 RequireWorkflowEnabled: true,
-                OnDispatchSuppressedAsync: (s, _) =>
+                OnDispatchSuppressedAsync: (value, _) =>
                 {
-                    suppression = s;
+                    suppression = value;
                     return Task.CompletedTask;
-                }),
-            CancellationToken.None);
+                }), CancellationToken.None);
 
-        await queue.CapturedWorkItem!(CancellationToken.None);
+        var firstOutcome = await fixture.Service.ProcessOutboxAsync(
+            pending.Id, CancellationToken.None);
 
-        var persisted = await db.WorkflowExecutions.FindAsync(pending.Id);
-        persisted!.Status.Should().Be(ExecutionStatus.Cancelled);
-        persisted.CompletedAt.Should().NotBeNull();
-        suppression.Should().NotBeNull();
+        firstOutcome.Should().Be(ExecutionDispatchOutcome.RetryBeforeStart);
+        (await db.ExecutionDispatchOutbox.AnyAsync(x => x.ExecutionId == pending.Id))
+            .Should().BeTrue("a fenced engine claim never took ownership");
+
+        await db.Workflows.Where(x => x.Id == workflow.Id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsEnabled, false));
+        db.ChangeTracker.Clear();
+        var secondOutcome = await fixture.Service.ProcessOutboxAsync(
+            pending.Id, CancellationToken.None);
+
+        secondOutcome.Should().Be(ExecutionDispatchOutcome.Completed);
         suppression!.Reason.Should().Be("workflow_disabled_before_dispatch");
-        engineMock.Verify(e => e.ExecuteAsync(
-                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
-                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
-                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
-                It.IsAny<bool>()),
-            Times.Never);
+        (await db.ExecutionDispatchOutbox.AnyAsync()).Should().BeFalse();
+        VerifyEngineCalls(engine, Times.Once());
     }
 
     [Fact]
-    public async Task ExecutionDispatchQueue_DequeueAsync_PrefersInteractiveWorkItems()
+    public async Task ProcessOutbox_CapacityFailureAfterClaim_TerminalizesRunningGhost()
     {
-        var queue = new ExecutionDispatchQueue(
-            Options.Create(new ExecutionDispatchOptions { Capacity = 10, WorkerCount = 1 }));
-
-        Func<CancellationToken, Task> normal = _ => Task.CompletedTask;
-        Func<CancellationToken, Task> interactive = _ => Task.CompletedTask;
-
-        await queue.EnqueueAsync(normal, CancellationToken.None);
-        await queue.EnqueueAsync(interactive, CancellationToken.None, ExecutionDispatchPriority.Interactive);
-
-        var first = await queue.DequeueAsync(CancellationToken.None);
-
-        first.Should().BeSameAs(interactive);
-    }
-
-    [Fact]
-    public async Task EnqueueAsync_WorkerCallback_AwaitsEngineForFullWorkflowLifetime()
-    {
-        // Backpressure contract: the worker callback must AWAIT engine.ExecuteAsync for
-        // the entire workflow lifetime. This is what makes WorkerCount the real concurrency
-        // cap and the queue (Capacity) the spike buffer — incoming starts beyond WorkerCount
-        // wait in the queue rather than all hitting the engine at once and tripping the
-        // per-user/global caps. A previous fire-and-forget refactor broke this and caused
-        // the engine to reject ~92% of bursty starts as Failed instead of queueing them.
         await using var db = NodePilot.TestCommons.TestDbFactory.Create();
-        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true };
-        var pending = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(),
-            WorkflowId = workflow.Id,
-            Status = ExecutionStatus.Pending,
-            StartedAt = DateTime.UtcNow,
-            TriggeredBy = "manual",
-        };
+        var workflow = EnabledWorkflow();
         db.Workflows.Add(workflow);
-        db.WorkflowExecutions.Add(pending);
         await db.SaveChangesAsync();
-
-        // Engine that simulates a long-running workflow. The worker callback must not
-        // return until the engine has finished.
-        var engineStarted = new TaskCompletionSource();
-        var releaseEngine = new TaskCompletionSource();
-        var engineMock = new Mock<IWorkflowEngine>();
-        engineMock.Setup(e => e.ExecuteAsync(
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.ExecuteAsync(
                 It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
                 It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
                 It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
                 It.IsAny<bool>()))
-            .Returns(async () =>
+            .Returns(async (Workflow _, string _, CancellationToken _, Dictionary<string, string>? _,
+                int? _, bool _, Guid? _, Guid? _, int _, Guid? executionId, bool _) =>
             {
-                engineStarted.TrySetResult();
-                await releaseEngine.Task;
-                return pending;
+                await db.WorkflowExecutions
+                    .Where(execution => execution.Id == executionId)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(execution => execution.Status, ExecutionStatus.Running));
+                throw new NodePilot.Core.Exceptions.ExecutionCapacityException("capacity reached");
             });
+        await using var fixture = CreateFixture(db, engine.Object);
+        var pending = await fixture.Service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
 
-        var queue = new CapturingExecutionDispatchQueue();
+        var outcome = await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        outcome.Should().Be(ExecutionDispatchOutcome.Completed);
+        var persisted = await db.WorkflowExecutions.AsNoTracking().SingleAsync();
+        persisted.Status.Should().Be(ExecutionStatus.Failed);
+        persisted.CompletedAt.Should().NotBeNull();
+        persisted.ErrorMessage.Should().Contain("capacity reached");
+        (await db.ExecutionDispatchOutbox.AnyAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ProcessOutbox_FailureAfterEngineInvocation_IsNotRetried()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.ExecuteAsync(
+                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
+                It.IsAny<bool>()))
+            .ThrowsAsync(new IOException("unknown outcome"));
+        await using var fixture = CreateFixture(db, engine.Object);
+        var pending = await fixture.Service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
+
+        (await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None))
+            .Should().Be(ExecutionDispatchOutcome.Completed);
+        (await fixture.Service.ProcessOutboxAsync(pending.Id, CancellationToken.None))
+            .Should().Be(ExecutionDispatchOutcome.Completed);
+
+        VerifyEngineCalls(engine, Times.Once());
+        (await db.ExecutionDispatchOutbox.AnyAsync()).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ProcessOutbox_ScopeFailureBeforeEngineOwnership_PreservesDurableIntent()
+    {
+        await using var db = NodePilot.TestCommons.TestDbFactory.Create();
+        var workflow = EnabledWorkflow();
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var service = new ExecutionDispatchService(
+            db,
+            new ThrowingScopeFactory(),
+            new OutputRedactor(null),
+            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
+            NullLogger<ExecutionDispatchService>.Instance);
+        var pending = await service.DispatchAsync(
+            new WorkflowDispatchIntent(workflow.Id, "manual", null), CancellationToken.None);
+
+        var outcome = await service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
+
+        outcome.Should().Be(ExecutionDispatchOutcome.RetryBeforeStart);
+        (await db.ExecutionDispatchOutbox.AnyAsync(item => item.ExecutionId == pending.Id))
+            .Should().BeTrue();
+        (await db.WorkflowExecutions.AsNoTracking().SingleAsync()).Status
+            .Should().Be(ExecutionStatus.Pending);
+    }
+
+    private static void VerifyEngineCalls(Mock<IWorkflowEngine> engine, Times times)
+        => engine.Verify(candidate => candidate.ExecuteAsync(
+            It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
+            It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
+            It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
+            It.IsAny<bool>()), times);
+
+    private static Workflow EnabledWorkflow() => new()
+    {
+        Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true,
+    };
+
+    private static Fixture CreateFixture(NodePilotDbContext db, IWorkflowEngine engine)
+    {
         var services = new ServiceCollection();
         services.AddSingleton(db);
-        services.AddSingleton(engineMock.Object);
+        services.AddSingleton(engine);
         var provider = services.BuildServiceProvider();
         var service = new ExecutionDispatchService(
             db,
-            queue,
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
-
-        await service.EnqueueAsync(
-            pending,
-            new WorkflowDispatchIntent(workflow.Id, "manual", null, RequireWorkflowEnabled: true),
-            CancellationToken.None);
-
-        queue.CapturedWorkItem.Should().NotBeNull();
-
-        // Worker invokes the captured callback. The callback must NOT complete while the
-        // engine is still running — that would mean it released the worker slot prematurely.
-        var workerTask = queue.CapturedWorkItem!(CancellationToken.None);
-        await engineStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        workerTask.IsCompleted.Should().BeFalse(
-            "the worker callback must hold its slot until the engine finishes");
-
-        // Once the engine completes, the worker callback must complete promptly.
-        releaseEngine.SetResult();
-        await workerTask.WaitAsync(TimeSpan.FromSeconds(2));
+            NullLogger<ExecutionDispatchService>.Instance);
+        return new Fixture(provider, service);
     }
 
-    [Fact]
-    public async Task Worker_DatabaseFailureBeforeEngineStart_RequeuesAndStartsExactlyOnceAfterRecovery()
+    private sealed class Fixture(ServiceProvider provider, ExecutionDispatchService service)
+        : IAsyncDisposable
     {
-        using var connection = new SqliteConnection("DataSource=:memory:");
-        connection.Open();
-        await using var db = new NodePilotDbContext(
-            new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(connection).Options);
-        await db.Database.EnsureCreatedAsync();
-        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true };
-        var pending = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(),
-            WorkflowId = workflow.Id,
-            Status = ExecutionStatus.Pending,
-            StartedAt = DateTime.UtcNow,
-            TriggeredBy = "manual",
-        };
-        db.AddRange(workflow, pending);
-        await db.SaveChangesAsync();
-
-        var availability = new DatabaseAvailabilityTracker(
-            NullLogger<DatabaseAvailabilityTracker>.Instance,
-            probeSuccessesToRecover: 1);
-        availability.MarkBootComplete();
-        var failPendingRead = new FailOnceOnPendingReadInterceptor(availability);
-        var engineCalled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var engine = new Mock<IWorkflowEngine>();
-        engine.Setup(candidate => candidate.ExecuteAsync(
-                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
-                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
-                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
-                It.IsAny<bool>()))
-            .Returns(() =>
-            {
-                engineCalled.TrySetResult();
-                return Task.FromResult(pending);
-            });
-
-        var services = new ServiceCollection();
-        services.AddDbContext<NodePilotDbContext>(options =>
-            options.UseSqlite(connection).AddInterceptors(failPendingRead));
-        services.AddSingleton(engine.Object);
-        await using var provider = services.BuildServiceProvider();
-        var queue = new ExecutionDispatchQueue(
-            Options.Create(new ExecutionDispatchOptions { Capacity = 10, WorkerCount = 1 }));
-        var service = new ExecutionDispatchService(
-            db,
-            queue,
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            new OutputRedactor(null),
-            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
-            NullLogger<ExecutionDispatchService>.Instance,
-            availability);
-        var worker = new ExecutionDispatchWorker(
-            queue,
-            Options.Create(new ExecutionDispatchOptions { Capacity = 10, WorkerCount = 1 }),
-            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NullLogger<ExecutionDispatchWorker>.Instance,
-            availability);
-
-        await service.EnqueueAsync(
-            pending,
-            new WorkflowDispatchIntent(workflow.Id, "manual", null),
-            CancellationToken.None);
-        using var stopCts = new CancellationTokenSource();
-        await worker.StartAsync(stopCts.Token);
-
-        await failPendingRead.Fired.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Task.Delay(150);
-        engineCalled.Task.IsCompleted.Should().BeFalse(
-            "the before-start item must park rather than terminalize or disappear");
-
-        availability.ReportProbeSucceeded();
-        await engineCalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        engine.Verify(candidate => candidate.ExecuteAsync(
-                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
-                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
-                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
-                It.IsAny<bool>()),
-            Times.Once);
-
-        await stopCts.CancelAsync();
-        await worker.StopAsync(CancellationToken.None);
+        public ExecutionDispatchService Service { get; } = service;
+        public ValueTask DisposeAsync() => provider.DisposeAsync();
     }
 
-    [Fact]
-    public async Task Worker_DatabaseFailureAfterEngineInvocation_DoesNotRequeue()
+    private sealed class ThrowingScopeFactory : IServiceScopeFactory
     {
-        using var connection = new SqliteConnection("DataSource=:memory:");
-        connection.Open();
-        await using var db = new NodePilotDbContext(
-            new DbContextOptionsBuilder<NodePilotDbContext>().UseSqlite(connection).Options);
-        await db.Database.EnsureCreatedAsync();
-        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true };
-        var pending = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(),
-            WorkflowId = workflow.Id,
-            Status = ExecutionStatus.Pending,
-            StartedAt = DateTime.UtcNow,
-            TriggeredBy = "manual",
-        };
-        db.AddRange(workflow, pending);
-        await db.SaveChangesAsync();
-
-        var availability = new DatabaseAvailabilityTracker(
-            NullLogger<DatabaseAvailabilityTracker>.Instance,
-            probeSuccessesToRecover: 1);
-        availability.MarkBootComplete();
-        var engineStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var engine = new Mock<IWorkflowEngine>();
-        engine.Setup(candidate => candidate.ExecuteAsync(
-                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
-                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
-                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
-                It.IsAny<bool>()))
-            .Returns(() =>
-            {
-                availability.ReportUnreachable(DatabaseOutageReason.Unreachable);
-                engineStarted.TrySetResult();
-                throw new IOException("unknown outcome after engine invocation");
-            });
-
-        var services = new ServiceCollection();
-        services.AddDbContext<NodePilotDbContext>(options => options.UseSqlite(connection));
-        services.AddSingleton(engine.Object);
-        await using var provider = services.BuildServiceProvider();
-        var queue = new ExecutionDispatchQueue(
-            Options.Create(new ExecutionDispatchOptions { Capacity = 10, WorkerCount = 1 }));
-        var service = new ExecutionDispatchService(
-            db,
-            queue,
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            new OutputRedactor(null),
-            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
-            NullLogger<ExecutionDispatchService>.Instance,
-            availability);
-        var worker = new ExecutionDispatchWorker(
-            queue,
-            Options.Create(new ExecutionDispatchOptions { Capacity = 10, WorkerCount = 1 }),
-            new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            NullLogger<ExecutionDispatchWorker>.Instance,
-            availability);
-
-        await service.EnqueueAsync(
-            pending,
-            new WorkflowDispatchIntent(workflow.Id, "manual", null),
-            CancellationToken.None);
-        using var stopCts = new CancellationTokenSource();
-        await worker.StartAsync(stopCts.Token);
-        await engineStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        availability.ReportProbeSucceeded();
-        await Task.Delay(250);
-        engine.Verify(candidate => candidate.ExecuteAsync(
-                It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
-                It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
-                It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(),
-                It.IsAny<bool>()),
-            Times.Once,
-            "once engine invocation begins its claim/side effects are unknown and retry is unsafe");
-
-        await stopCts.CancelAsync();
-        await worker.StopAsync(CancellationToken.None);
-    }
-
-    private sealed class CapturingExecutionDispatchQueue : IExecutionDispatchQueue
-    {
-        public int EnqueueCount { get; private set; }
-        public CancellationToken EnqueueToken { get; private set; }
-        public ExecutionDispatchPriority Priority { get; private set; }
-        public Func<CancellationToken, Task>? CapturedWorkItem { get; private set; }
-
-        public ValueTask EnqueueAsync(
-            Func<CancellationToken, Task> workItem,
-            CancellationToken ct,
-            ExecutionDispatchPriority priority = ExecutionDispatchPriority.Normal)
-        {
-            ArgumentNullException.ThrowIfNull(workItem);
-            EnqueueCount++;
-            EnqueueToken = ct;
-            Priority = priority;
-            CapturedWorkItem = workItem;
-            ct.ThrowIfCancellationRequested();
-            return ValueTask.CompletedTask;
-        }
+        public IServiceScope CreateScope() => throw new InvalidOperationException("scope unavailable");
     }
 }

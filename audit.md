@@ -21,7 +21,8 @@ angeforderten Punkte 1–4 wie folgt bearbeitet:
    ausdrücklich *at-most-once automatic dispatch*, nicht durable Replay: nie gestartete Pending-
    Ausführungen werden mit eigenem Recovery-Marker abgebrochen und nur deren Idempotency-
    Reservation wird freigegeben; Running/Paused bleiben wegen möglicher externer Seiteneffekte
-   reserviert. Trigger haben weiterhin kein Catch-up. Eine echte Durable Outbox bleibt Priority 2.
+   reserviert. Trigger haben weiterhin kein Catch-up. Die damals noch offene Durable Outbox wurde
+   im nachfolgenden Priority-2-Fixlauf umgesetzt.
 4. **Unsichere Retries: behoben.** Redigierte, abgeschnittene oder ungültige Input-Snapshots werden
    mit `execution_inputs_not_replayable` abgelehnt und nicht dispatched.
 5. **Konditionale Fan-ins: behoben.** Mehrere unterschiedliche Vorgänger dürfen nur noch in eine
@@ -36,6 +37,34 @@ Playwright 16 bestanden/1 bewusst übersprungen, TypeScript- und Vite-Produktion
 Zusätzliche Verifikation für Punkt 5: Engine/Workflow/Definition 176/176 sowie
 SCOrch/Analyzer/Scheduler 95/95, API 125/125, AI-Prompt 61/61, MCP 41/41 und fokussierte
 Editor-UI 155/155 bestanden; TypeScript- und Vite-Produktionsbuild erfolgreich.
+
+## Umsetzungsnachtrag zu Priority 2 (26.–27. August 2026)
+
+Die angeforderten Punkte 1, 3, 5 und 6 wurden umgesetzt:
+
+1. **Durable Outbox und Execution-Lifecycle:** `Pending Execution`, Idempotency-Reservation und
+   geschützter Dispatch Intent werden atomar persistiert. Ein geleaster DB-Worker setzt Pending-
+   Arbeit nach Restart/Failover fort; zentrale CAS-Transitionen schützen Claim, Terminalisierung
+   und direkte Cancellation. Verliert ein Node zwischen Outbox-Lease und Engine-Claim die Führung
+   oder scheitert die DI-Scope-Erzeugung vor Engine-Ownership, bleibt der Intent für einen sicheren
+   Retry erhalten. Bereits gestartete Arbeit wird weiterhin nie automatisch wiederholt.
+3. **Queue-/Capacity-/Cancellation-Fehler:** Die produktive In-Memory-Queue wurde durch den
+   Outbox-Worker ersetzt. Priorität ist DB-seitig, Retry vor Engine-Ownership blockiert keinen
+   Worker-Slot, Capacity-Fehler hinterlassen keinen Running-Ghost und Cancel verliert keine Race
+   gegen einen bereits terminalen Zustand. Die funktionslose In-Memory-Capacity-Einstellung wurde
+   aus Konfiguration, Settings-API, UI, Sizing und Deployment-Templates entfernt.
+5. **Pagination:** `GET /api/executions` liefert echte Seiten mit DB-basiertem `Total` und stabilem
+   Sort-Tiebreaker. SPA, CLI und MCP lesen Folgeseiten und schneiden die Historie nicht mehr still
+   nach 500 Zeilen ab.
+6. **Verträge:** Capability- und Settings-Verträge bleiben zentral geprüft; die CLI-/MCP-DTO-
+   Paritätsprüfung hat keine Known-Gap-Ausnahmen mehr. Folder-/Capability-, OIDC-, Break-glass-,
+   Authority- und Dashboardfelder sind in den Clients vollständig gespiegelt und schreibbare
+   Felder sind über CLI/MCP erreichbar.
+
+Abschlussverifikation am 27. August 2026: Solution-Build ohne Fehler; API-Fokus 111/111,
+Engine/Scheduler-Fokus 97/97, CLI-Contract/Client 54/54, MCP-Fokus 2/2 und UI-Fokus 110/110
+bestanden; TypeScript- und Vite-Produktionsbuild erfolgreich. Der Solution-Build meldet weiterhin
+1.253 bereits vorhandene Warnungen, aber keine neuen Buildfehler.
 
 ## 1. Executive Summary
 
@@ -228,6 +257,10 @@ Empfehlung: Für relevante Trigger externe durable Queue oder Reconciliation-Job
 - Cancellation kann ein gerade gespeichertes `Succeeded` oder `Failed` mit `Cancelled` überschreiben.
 - Ein Step kann unter einer terminalen Execution dauerhaft `Running` bleiben.
 - Im HA-Betrieb sind Execution-Writes gefencet, Step-Writes jedoch nicht.
+
+**Umsetzungsstatus 27. August 2026:** Die ersten drei Punkte sind durch Durable Outbox, DB-Priorität
+und CAS-Terminalisierung behoben. Die beiden Step-State-Punkte gehören zu Priority 2 Nr. 2 und waren
+nicht Teil dieses Fixauftrags; sie bleiben offen.
 
 ### 4.13 P1 – Produktionslogging verletzt den Observability-Vertrag
 

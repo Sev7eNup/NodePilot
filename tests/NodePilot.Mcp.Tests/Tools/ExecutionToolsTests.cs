@@ -30,7 +30,10 @@ public sealed class ExecutionToolsTests
 
         api.Server
             .Given(Request.Create().WithPath("/api/executions").UsingGet())
-            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(rows));
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+            {
+                items = rows, page = 1, pageSize = 200, total = rows.Length, totalPages = 1,
+            }));
 
         var tools = new ExecutionTools(api.Client());
         var result = await tools.ListExecutions(workflowId: wf.ToString(), limit: 2);

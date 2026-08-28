@@ -148,20 +148,24 @@ public class RenderersTableCommandTests
     {
         using var h = new CommandTestHarness();
         h.Server.Given(Request.Create().WithPath("/api/executions").UsingGet())
-            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new object[]
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
-                new
+                items = new object[]
                 {
-                    id = Guid.NewGuid(), workflowId = Guid.NewGuid(), status = "Succeeded",
-                    startedAt = DateTime.UtcNow.AddMinutes(-5), completedAt = DateTime.UtcNow, // → duration cell
-                    triggeredBy = "alice", errorMessage = (string?)null,
+                    new
+                    {
+                        id = Guid.NewGuid(), workflowId = Guid.NewGuid(), status = "Succeeded",
+                        startedAt = DateTime.UtcNow.AddMinutes(-5), completedAt = DateTime.UtcNow, // → duration cell
+                        triggeredBy = "alice", errorMessage = (string?)null,
+                    },
+                    new
+                    {
+                        id = Guid.NewGuid(), workflowId = Guid.NewGuid(), status = "Running",
+                        startedAt = DateTime.UtcNow, completedAt = (DateTime?)null, // → "-" duration branch
+                        triggeredBy = (string?)null, errorMessage = (string?)null,
+                    },
                 },
-                new
-                {
-                    id = Guid.NewGuid(), workflowId = Guid.NewGuid(), status = "Running",
-                    startedAt = DateTime.UtcNow, completedAt = (DateTime?)null, // → "-" duration branch
-                    triggeredBy = (string?)null, errorMessage = (string?)null,
-                },
+                page = 1, pageSize = 200, total = 2, totalPages = 1,
             }));
 
         var result = h.Run("exec", "list", "-o", "table");

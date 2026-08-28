@@ -272,16 +272,14 @@ public static class SettingsSectionAdapters
 
             new DelegateSettingsSectionAdapter<ExecutionDispatchSettingsDto>(
                 Descriptor("ExecutionDispatch"),
-                ["ExecutionDispatch:Capacity", "ExecutionDispatch:WorkerCount"],
+                ["ExecutionDispatch:WorkerCount"],
                 () => new ExecutionDispatchSettingsDto
                 {
-                    Capacity = IntOr(configRoot["ExecutionDispatch:Capacity"], 2048),
                     WorkerCount = IntOr(configRoot["ExecutionDispatch:WorkerCount"], 600),
                 },
                 BuildExecutionDispatchDtoFromJson,
                 (dto, _) => new JsonObject
                 {
-                    ["Capacity"] = dto.Capacity,
                     ["WorkerCount"] = dto.WorkerCount,
                 }),
 
@@ -1299,7 +1297,6 @@ public static class SettingsSectionAdapters
         section ??= new JsonObject();
         return new ExecutionDispatchSettingsDto
         {
-            Capacity = section["Capacity"]?.GetValue<int>() ?? 2048,
             WorkerCount = section["WorkerCount"]?.GetValue<int>() ?? 600,
         };
     }

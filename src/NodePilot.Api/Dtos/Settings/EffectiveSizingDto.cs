@@ -11,7 +11,7 @@ namespace NodePilot.Api.Dtos.Settings;
 ///
 /// <para><see cref="DesiredManualTuning"/> can differ from <see cref="ManualTuning"/>: the
 /// switch is saved immediately but only takes effect on restart, because the runspace pool and
-/// the dispatch queue are built once at boot. The UI renders that difference as a restart
+/// dispatch worker pool are built once at boot. The UI renders that difference as a restart
 /// hint.</para>
 /// </summary>
 public sealed class EffectiveSizingDto

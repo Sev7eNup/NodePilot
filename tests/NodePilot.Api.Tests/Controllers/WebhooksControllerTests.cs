@@ -41,12 +41,11 @@ public class WebhooksControllerTests
         var config = configBuilder.Build();
 
         // Since the execution-dispatch redesign, WebhooksController routes through
-        // ExecutionDispatchService (persists a Pending row before enqueue). Tests exercise
-        // the same path with a NoOp dispatch queue so no engine work actually runs — only
-        // the persist + audit path is verified.
+        // ExecutionDispatchService (persists a Pending row and durable intent atomically). Tests exercise
+        // the same admission path without running a background worker, so only persistence
+        // and auditing are verified.
         var dispatchService = new ExecutionDispatchService(
             db,
-            new NoopExecutionDispatchQueue(),
             scopeFactory,
             new OutputRedactor(config),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),

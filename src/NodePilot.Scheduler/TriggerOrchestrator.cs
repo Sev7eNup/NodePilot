@@ -593,8 +593,6 @@ public class TriggerOrchestrator : BackgroundService
                     RequireWorkflowEnabled: true,
                     MissingWorkflowMessage: "Queued trigger dispatch was not executed because the workflow no longer exists or is disabled.",
                     PreOwnershipFailurePrefix: "Queued trigger dispatch failed before the engine could take ownership",
-                    EnqueueFailureMessage: "Queued trigger dispatch failed before enqueue.",
-                    EnqueueFailureStatus: ExecutionStatus.Failed,
                     OnDispatchSuppressedAsync: async (suppression, _) =>
                     {
                         await using var auditScope = _scopeFactory.CreateAsyncScope();
@@ -606,7 +604,7 @@ public class TriggerOrchestrator : BackgroundService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Trigger-started execution of {Wf} failed to enqueue", workflowId);
+            _logger.LogError(ex, "Trigger-started execution of {Wf} failed durable dispatch admission", workflowId);
             fireActivity?.SetStatus(System.Diagnostics.ActivityStatusCode.Error, ex.Message);
             if (StillOwnsLease(leaseEpoch))
                 await AppendSuppressionAudit(db, workflowId, triggerType, "dispatch_exception");

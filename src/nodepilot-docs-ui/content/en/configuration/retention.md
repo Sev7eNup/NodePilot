@@ -18,7 +18,7 @@ Retention services delete or archive historical data after a retention period. I
 | Service | Purpose | Gating |
 |---|---|---|
 | `TriggerOrchestrator` + Quartz | Trigger scan (5 s) + Quartz cron for `scheduleTrigger` | Leader only (in a cluster) |
-| `ExecutionDispatchWorker` | Channel-based dispatch of `Pending` executions | Always on |
+| `ExecutionDispatchWorker` | Leased dispatch of persisted `Pending` executions from the database outbox | Leader-only (in a cluster) |
 | `MaintenanceWindowSnapshotService` | Keeps the maintenance-window snapshot per node current | Always on |
 | `WorkflowStatsRefresher` | Computes the `WorkflowStats` aggregates | Always on |
 | `RevokedTokensCleanupService` | Daily sweep of `RevokedTokens` | Always on |

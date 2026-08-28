@@ -239,7 +239,6 @@ public sealed class AdminSettingsController : ControllerBase
                 V(k.MinWorkerThreads, plan.MinWorkerThreads),
                 V(k.MinIoCompletionThreads, plan.MinIoCompletionThreads),
                 V(k.DispatchWorkerCount, plan.DispatchWorkerCount),
-                V(k.DispatchCapacity, plan.DispatchCapacity),
             ],
         });
     }

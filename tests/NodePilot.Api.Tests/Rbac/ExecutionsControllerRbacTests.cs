@@ -12,6 +12,7 @@ using NodePilot.Api.Security;
 using NodePilot.Api.Tests.Controllers;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
+using NodePilot.Core.Clients;
 using NodePilot.Core.Models;
 using NodePilot.Engine.Security;
 using NodePilot.TestCommons;
@@ -80,9 +81,8 @@ public sealed class ExecutionsControllerRbacTests : IDisposable
             new Claim(ClaimTypes.Role, role),
         ], "test"));
 
-        var queue = new NoopExecutionDispatchQueue();
         var dispatchService = new ExecutionDispatchService(
-            _db, queue,
+            _db,
             new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
@@ -104,9 +104,10 @@ public sealed class ExecutionsControllerRbacTests : IDisposable
         var ctrl = NewController(_opFinanceUserId, "Operator");
         var result = await ctrl.GetAll(workflowId: null, activeOnly: false, terminalOnly: false, CancellationToken.None);
         var ok = result.Result as OkObjectResult;
-        var list = ok!.Value as List<Dtos.ExecutionResponse>;
-        list.Should().HaveCount(1);
-        list![0].Id.Should().Be(_financeExec.Id);
+        var page = ok!.Value as PagedResponse<Dtos.ExecutionResponse>;
+        page.Should().NotBeNull();
+        page!.Items.Should().HaveCount(1);
+        page.Items[0].Id.Should().Be(_financeExec.Id);
     }
 
     [Fact]
@@ -115,8 +116,9 @@ public sealed class ExecutionsControllerRbacTests : IDisposable
         var ctrl = NewController(_strangerUserId, "Operator");
         var result = await ctrl.GetAll(workflowId: null, activeOnly: false, terminalOnly: false, CancellationToken.None);
         var ok = result.Result as OkObjectResult;
-        var list = ok!.Value as List<Dtos.ExecutionResponse>;
-        list.Should().BeEmpty();
+        var page = ok!.Value as PagedResponse<Dtos.ExecutionResponse>;
+        page.Should().NotBeNull();
+        page!.Items.Should().BeEmpty();
     }
 
     [Fact]

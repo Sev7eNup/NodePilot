@@ -135,7 +135,6 @@
     "MinIoCompletionThreads": 768
   },
   "ExecutionDispatch": {
-    "Capacity": 2048,
     "WorkerCount": 600
   },
   "Stats": {

@@ -46,8 +46,8 @@ A persisted Workflow Execution row that has been accepted but not yet taken over
 _Avoid_: Queue item only, fire-and-forget task
 
 **Dispatch Intent**:
-The caller's request to create and enqueue a Pending Execution with trigger source, parameters, ownership, priority, and enabled-check policy.
-_Avoid_: Execute request, queue callback
+The durable, protected description of how a Pending Execution enters engine ownership, including trigger source, parameters, lineage, priority, and admission policy.
+_Avoid_: Execute request, in-memory queue callback
 
 **Maintenance Window**:
 A scheduled period that gates which Workflows may be *newly admitted* to run. It is admission control, not a kill-switch: it never cancels in-flight runs and never re-gates a resume/retry. Modes are Blackout (deny) and AllowOnly (permit only the listed scope); when windows overlap, deny wins.
@@ -82,6 +82,7 @@ _Avoid_: circuit breaker tripped/reset terminology in user-facing copy - the UI 
 - An **Activity Catalog** describes static facts about every executable **Activity**, including whether it is a **Remote Activity** (the `IsRemote` flag).
 - A **Remote Activity** executes against one **Managed Machine** over WinRM.
 - A **Dispatch Intent** creates one **Pending Execution**.
+- A **Dispatch Intent** and its **Pending Execution** are committed atomically and survive restart until engine ownership.
 - A **Maintenance Window** can block a **Dispatch Intent** from being admitted, but never stops an already-running **Workflow Execution**.
 - A **Pending Execution** becomes one **Workflow Execution** when the engine takes ownership.
 - A **Settings Section** is owned by exactly one **Settings Section Adapter**.

@@ -273,9 +273,19 @@ public sealed class NodePilotApiClient
 
     public async Task<List<ExecutionResponse>> ListExecutionsAsync(Guid? workflowId, CancellationToken ct)
     {
-        var path = workflowId.HasValue ? $"api/executions?workflowId={workflowId}" : "api/executions";
-        using var res = await _http.GetAsync(path, ct);
-        return await ParseAsync<List<ExecutionResponse>>(res, ct);
+        var basePath = workflowId.HasValue
+            ? $"api/executions?workflowId={workflowId}"
+            : "api/executions";
+        var results = new List<ExecutionResponse>();
+        for (var page = 1; ; page++)
+        {
+            var separator = basePath.Contains('?') ? '&' : '?';
+            using var res = await _http.GetAsync(
+                $"{basePath}{separator}page={page}&pageSize=200", ct);
+            var response = await ParseAsync<PagedResponse<ExecutionResponse>>(res, ct);
+            results.AddRange(response.Items);
+            if (page >= response.TotalPages) return results;
+        }
     }
 
     public async Task<ExecutionResponse> GetExecutionAsync(Guid id, CancellationToken ct)

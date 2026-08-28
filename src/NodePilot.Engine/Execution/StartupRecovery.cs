@@ -50,14 +50,21 @@ public static class StartupRecovery
         var totalSteps = 0;
         var totalReleasedReservations = 0;
 
+        // Pending rows with an outbox intent are accepted work, not orphans. Release any lease
+        // left by the dead process; the durable dispatcher will claim them after startup.
+        await db.ExecutionDispatchOutbox.ExecuteUpdateAsync(setters => setters
+            .SetProperty(item => item.LeaseOwner, (string?)null)
+            .SetProperty(item => item.LeaseExpiresAt, (DateTime?)null), ct);
+
         while (true)
         {
             ct.ThrowIfCancellationRequested();
 
             var batchQuery = db.WorkflowExecutions
                 .Where(e => e.Status == ExecutionStatus.Running
-                         || e.Status == ExecutionStatus.Pending
-                         || e.Status == ExecutionStatus.Paused);
+                         || e.Status == ExecutionStatus.Paused
+                         || (e.Status == ExecutionStatus.Pending
+                             && !db.ExecutionDispatchOutbox.Any(item => item.ExecutionId == e.Id)));
             if (ourNodeId is not null)
                 batchQuery = batchQuery.Where(e => e.OwnerNodeId != ourNodeId);
 
@@ -184,11 +191,32 @@ public static class StartupRecovery
 
         var candidates = await db.WorkflowExecutions.AsNoTracking()
             .Where(execution => (execution.Status == ExecutionStatus.Running
-                                 || execution.Status == ExecutionStatus.Pending
-                                 || execution.Status == ExecutionStatus.Paused)
+                                 || execution.Status == ExecutionStatus.Paused
+                                 || (execution.Status == ExecutionStatus.Pending
+                                     && !db.ExecutionDispatchOutbox.Any(item => item.ExecutionId == execution.Id)))
                               && execution.OwnerNodeId != ourNodeId)
             .Select(execution => new { execution.Id, execution.OwnerNodeId, execution.Status })
             .ToListAsync(ct);
+
+        var durablePendingIds = await db.WorkflowExecutions.AsNoTracking()
+            .Where(execution => execution.Status == ExecutionStatus.Pending
+                                && execution.OwnerNodeId != ourNodeId
+                                && db.ExecutionDispatchOutbox.Any(item => item.ExecutionId == execution.Id))
+            .Select(execution => execution.Id)
+            .ToListAsync(ct);
+        if (durablePendingIds.Count > 0)
+        {
+            await db.WorkflowExecutions
+                .Where(execution => durablePendingIds.Contains(execution.Id)
+                                    && execution.Status == ExecutionStatus.Pending)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(execution => execution.OwnerNodeId, ourNodeId), ct);
+            await db.ExecutionDispatchOutbox
+                .Where(item => durablePendingIds.Contains(item.ExecutionId))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(item => item.LeaseOwner, (string?)null)
+                    .SetProperty(item => item.LeaseExpiresAt, (DateTime?)null), ct);
+        }
         var candidateIds = candidates.Select(candidate => candidate.Id).ToList();
         if (candidateIds.Count == 0)
         {

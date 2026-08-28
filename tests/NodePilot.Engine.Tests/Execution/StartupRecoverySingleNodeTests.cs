@@ -110,6 +110,30 @@ public sealed class StartupRecoverySingleNodeTests : IDisposable
     }
 
     [Fact]
+    public async Task SingleNode_PreservesPendingExecutionThatHasDurableDispatchIntent()
+    {
+        var wf = SeedWorkflow();
+        var pending = AddExecution(wf.Id, ExecutionStatus.Pending);
+        _db.ExecutionDispatchOutbox.Add(new ExecutionDispatchOutboxItem
+        {
+            ExecutionId = pending,
+            WorkflowId = wf.Id,
+            TriggeredBy = "manual",
+            MissingWorkflowMessage = "missing",
+            PreOwnershipFailurePrefix = "failed",
+        });
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        var recovered = await StartupRecovery.RecoverOrphanedExecutionsAsync(
+            _db, NullLogger.Instance);
+
+        recovered.Should().Be(0);
+        (await _db.WorkflowExecutions.FindAsync(pending))!.Status.Should().Be(ExecutionStatus.Pending);
+        await _db.ExecutionDispatchOutbox.SingleAsync(x => x.ExecutionId == pending);
+    }
+
+    [Fact]
     public async Task SingleNode_ReleasesIdempotencyReservation_ForNeverStartedPendingOnly()
     {
         var wf = SeedWorkflow();

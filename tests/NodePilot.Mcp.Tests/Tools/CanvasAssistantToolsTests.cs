@@ -266,10 +266,14 @@ public sealed class CanvasAssistantToolsTests
         var exec = Guid.NewGuid();
         using var api = new TestApi();
         api.Server.Given(Request.Create().WithPath("/api/executions").UsingGet())
-            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[]
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
-                new { id = exec, workflowId = wf, status = "Failed", startedAt = DateTime.UtcNow,
-                      completedAt = (DateTime?)DateTime.UtcNow, triggeredBy = "manual", errorMessage = "boom" },
+                items = new[]
+                {
+                    new { id = exec, workflowId = wf, status = "Failed", startedAt = DateTime.UtcNow,
+                          completedAt = (DateTime?)DateTime.UtcNow, triggeredBy = "manual", errorMessage = "boom" },
+                },
+                page = 1, pageSize = 200, total = 1, totalPages = 1,
             }));
         api.Server.Given(Request.Create().WithPath($"/api/executions/{exec}/steps").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[]

@@ -1,4 +1,3 @@
-using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
 
@@ -19,8 +18,6 @@ public sealed record WorkflowDispatchIntent(
     bool RequireWorkflowEnabled = false,
     string MissingWorkflowMessage = "Queued execution was not dispatched because the workflow no longer exists.",
     string PreOwnershipFailurePrefix = "Queued execution failed before the engine could take ownership",
-    string EnqueueFailureMessage = "Queued execution was not dispatched because the request was cancelled before enqueue completed.",
-    ExecutionStatus EnqueueFailureStatus = ExecutionStatus.Cancelled,
     ExecutionDispatchPriority Priority = ExecutionDispatchPriority.Normal,
     Func<WorkflowDispatchSuppression, CancellationToken, Task>? OnDispatchSuppressedAsync = null,
     // Maintenance-window admission control. Fresh fires (manual, trigger, webhook, external) leave
@@ -30,7 +27,10 @@ public sealed record WorkflowDispatchIntent(
     // this gate.
     bool RequireMaintenanceWindowCheck = true,
     // Set when an Admin force-runs through an active blackout (audited). Suppresses the gate.
-    bool BypassMaintenanceWindow = false);
+    bool BypassMaintenanceWindow = false,
+    // Durable fire-and-forget sub-workflows retain their lineage across process restarts.
+    Guid? ParentExecutionId = null,
+    int CallDepth = 0);
 
 public interface IWorkflowExecutionDispatcher
 {

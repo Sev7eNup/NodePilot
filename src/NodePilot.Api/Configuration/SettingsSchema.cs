@@ -207,7 +207,7 @@ public static class SettingsSchema
         // WinRm timeouts and the connection-pool tuning under one atomic save.
         new SettingsSectionDescriptor("Performance", "Performance Tuning Mode", typeof(object),
             typeof(PerformanceSettingsDto), ImmutableArray<string>.Empty,
-            // Restart-required: the switch decides how the runspace pool and the dispatch queue
+            // Restart-required: the switch decides how the runspace pool and dispatch workers
             // are sized, and both are constructed once at boot. Honouring a live toggle would
             // re-tune only the ThreadPool and leave the rest in the previous mode, so the whole
             // section is deliberately restart-gated rather than partially hot.
@@ -217,9 +217,9 @@ public static class SettingsSchema
             // Restart-required: WorkflowEngine concurrency caps are cached at boot; no in-process
             // re-tune of the engine's in-flight/queue bounds.
             false, AuditActions.SettingsEngineUpdated),
-        new SettingsSectionDescriptor("ExecutionDispatch", "Execution Dispatch Queue", typeof(object),
+        new SettingsSectionDescriptor("ExecutionDispatch", "Execution Dispatch Workers", typeof(object),
             typeof(ExecutionDispatchSettingsDto), ImmutableArray<string>.Empty,
-            // Restart-required: ExecutionDispatchWorker queue/channel sizing is constructed at boot.
+            // Restart-required: the ExecutionDispatchWorker pool is constructed at boot.
             false, AuditActions.SettingsExecutionDispatchUpdated),
         new SettingsSectionDescriptor("Threading", "ThreadPool Pre-Warming", typeof(object),
             typeof(ThreadingSettingsDto), ImmutableArray<string>.Empty,

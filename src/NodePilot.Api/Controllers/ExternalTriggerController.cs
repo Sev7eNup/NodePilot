@@ -116,20 +116,6 @@ public class ExternalTriggerController : ControllerBase
         => execution.Status == ExecutionStatus.Cancelled
            && execution.CancelledBy is "reconciler-pending" or "failover-pending";
 
-    private static async Task RemoveIdempotencyKeyAsync(
-        NodePilotDbContext db,
-        string idempotencyStorageKey,
-        Guid workflowId,
-        CancellationToken ct)
-    {
-        var key = await db.IdempotencyKeys
-            .FirstOrDefaultAsync(k => k.Key == idempotencyStorageKey && k.WorkflowId == workflowId, ct);
-        if (key is null) return;
-
-        db.IdempotencyKeys.Remove(key);
-        await db.SaveChangesAsync(ct);
-    }
-
     /// <summary>
     /// Produces the database key for one caller-supplied Idempotency-Key. The authenticated key
     /// principal is part of the digest domain, so two integrations cannot replay or reserve one
@@ -321,8 +307,7 @@ public class ExternalTriggerController : ControllerBase
             StartedByUserId: startedByUserId,
             RequireWorkflowEnabled: true,
             MissingWorkflowMessage: "Queued external trigger was not dispatched because the workflow no longer exists or is disabled.",
-            PreOwnershipFailurePrefix: "Queued external trigger failed before the engine could take ownership",
-            EnqueueFailureMessage: "Queued external trigger was not dispatched because the request was cancelled before enqueue completed.");
+            PreOwnershipFailurePrefix: "Queued external trigger failed before the engine could take ownership");
         WorkflowExecution pending;
 
         if (idempotencyStorageKey is not null)
@@ -403,15 +388,7 @@ public class ExternalTriggerController : ControllerBase
             NodePilot.Api.Telemetry.ApiMetrics.IdempotencyKeyHits.Add(1,
                 new KeyValuePair<string, object?>("result", "fresh"));
 
-            try
-            {
-                await _executionDispatch.EnqueueAsync(pending, dispatchIntent, ct);
-            }
-            catch
-            {
-                await RemoveIdempotencyKeyAsync(_db, scopedIdempotencyKey, workflow.Id, CancellationToken.None);
-                throw;
-            }
+            _executionDispatch.NotifyCommitted();
         }
         else
         {

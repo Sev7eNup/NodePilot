@@ -162,6 +162,48 @@ public sealed class StartupRecoveryClusterTests : IDisposable
     }
 
     [Fact]
+    public async Task ClusterMode_ReassignsDurablePendingWorkWithoutCancellingOrReleasingReservation()
+    {
+        var wf = SeedWorkflow();
+        var pending = SeedExecution(wf.Id, ExecutionStatus.Pending, ownerNodeId: "dead-leader");
+        _db.ExecutionDispatchOutbox.Add(new ExecutionDispatchOutboxItem
+        {
+            ExecutionId = pending,
+            WorkflowId = wf.Id,
+            TriggeredBy = "manual",
+            MissingWorkflowMessage = "missing",
+            PreOwnershipFailurePrefix = "failed",
+            LeaseOwner = "dead-leader:worker-1",
+            LeaseExpiresAt = DateTime.UtcNow.AddMinutes(10),
+        });
+        _db.IdempotencyKeys.Add(new IdempotencyKey
+        {
+            Id = Guid.NewGuid(),
+            Key = "durable-pending-key",
+            WorkflowId = wf.Id,
+            ExecutionId = pending,
+            ExpiresAt = DateTime.UtcNow.AddHours(1),
+        });
+        await _db.SaveChangesAsync();
+        SetLease("node-a", 3);
+        _db.ChangeTracker.Clear();
+
+        var recovered = await StartupRecovery.RecoverOrphanedExecutionsAsync(
+            _db, NullLogger.Instance, ourNodeId: "node-a", leaseEpoch: 3);
+
+        recovered.Should().Be(0, "durably accepted work must be resumed, not reported as an orphan");
+        var row = await _db.WorkflowExecutions.AsNoTracking().SingleAsync(x => x.Id == pending);
+        row.Status.Should().Be(ExecutionStatus.Pending);
+        row.OwnerNodeId.Should().Be("node-a");
+        var intent = await _db.ExecutionDispatchOutbox.AsNoTracking()
+            .SingleAsync(x => x.ExecutionId == pending);
+        intent.LeaseOwner.Should().BeNull();
+        intent.LeaseExpiresAt.Should().BeNull();
+        (await _db.IdempotencyKeys.CountAsync(x => x.ExecutionId == pending)).Should().Be(1);
+        (await _db.AuditLog.CountAsync(x => x.ResourceId == pending)).Should().Be(0);
+    }
+
+    [Fact]
     public async Task ClusterMode_TerminalRowsAreNotTouched()
     {
         var wf = SeedWorkflow();

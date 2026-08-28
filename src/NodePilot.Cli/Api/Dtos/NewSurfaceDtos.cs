@@ -7,7 +7,9 @@ namespace NodePilot.Cli.Api.Dtos;
 
 // ---- Auth methods ------------------------------------------------------------
 
-public sealed record AuthMethodsResponse(bool Local, bool Ldap, bool Windows, string? WindowsEndpoint);
+public sealed record AuthMethodsResponse(
+    bool Local, bool Ldap, bool Windows, string? WindowsEndpoint,
+    bool Oidc = false, string? OidcEndpoint = null, string? OidcDisplayName = null);
 
 // ---- Workflow Contract ------------------------------------------------------
 
@@ -95,12 +97,18 @@ public sealed record SharedFolderPermissionResponse(
     string? PrincipalDisplayName,
     string Role,
     DateTime GrantedAt,
-    Guid? GrantedByUserId);
+    Guid? GrantedByUserId)
+{
+    public string? PrincipalAuthority { get; init; }
+}
 
 public sealed record GrantSharedFolderPermissionRequest(
     string PrincipalType,
     string PrincipalKey,
-    string Role);
+    string Role)
+{
+    public string? PrincipalAuthority { get; init; }
+}
 
 // ---- Admin Settings ---------------------------------------------------------
 

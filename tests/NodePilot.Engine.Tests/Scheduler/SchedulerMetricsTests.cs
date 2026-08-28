@@ -39,7 +39,6 @@ public class SchedulerMetricsTests
         var services = new ServiceCollection();
         services.AddSingleton(_db);
         services.AddSingleton(_engine.Object);
-        services.AddSingleton<IExecutionDispatchQueue, NoopExecutionDispatchQueue>();
         services.AddSingleton<IWorkflowExecutionDispatcher, NoopWorkflowExecutionDispatcher>();
         var provider = services.BuildServiceProvider();
         _rootServices = provider;
@@ -50,15 +49,6 @@ public class SchedulerMetricsTests
             NullLogger<TriggerOrchestrator>.Instance,
             NodePilot.TestCommons.TestDatabaseAvailability.Available,
             new TriggerHealthRegistry());
-    }
-
-    private sealed class NoopExecutionDispatchQueue : IExecutionDispatchQueue
-    {
-        public ValueTask EnqueueAsync(
-            Func<CancellationToken, Task> workItem,
-            CancellationToken ct,
-            ExecutionDispatchPriority priority = ExecutionDispatchPriority.Normal)
-            => ValueTask.CompletedTask;
     }
 
     private sealed class NoopWorkflowExecutionDispatcher : IWorkflowExecutionDispatcher

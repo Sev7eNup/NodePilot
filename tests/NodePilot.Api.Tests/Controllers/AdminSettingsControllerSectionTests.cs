@@ -1031,17 +1031,17 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     public async Task PutSection_RestartRequiredSection_MarksRestart()
     {
         // Counterpart to the hot-reloadable case: a section whose consumers are boot-frozen
-        // (ExecutionDispatchWorker queue/channel sizing is built once at boot) must still write
+        // (the ExecutionDispatchWorker pool is built once at boot) must still write
         // the restart marker so the UI surfaces the orange banner.
         var (controller, writer, audit, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("ExecutionDispatch");
 
-        var body = JsonDocument.Parse("{\"capacity\":4096,\"workerCount\":128}").RootElement;
+        var body = JsonDocument.Parse("{\"workerCount\":128}").RootElement;
         var result = await controller.PutSection("ExecutionDispatch", body, CancellationToken.None);
 
         result.Should().BeOfType<OkObjectResult>();
         var fileContent = File.ReadAllText(writer.OverridesPath);
-        fileContent.Should().Contain("4096");
+        fileContent.Should().Contain("\"WorkerCount\": 128");
 
         audit.Calls.Should().ContainSingle()
             .Which.Action.Should().Be("SETTINGS_EXECUTIONDISPATCH_UPDATED");
@@ -1599,10 +1599,10 @@ public sealed class AdminSettingsControllerSectionTests : IDisposable
     {
         var (controller, writer, audit, _) = NewController();
         controller.HttpContext.Request.Headers.IfMatch = writer.ComputeSectionEtag("ExecutionDispatch");
-        var body = JsonDocument.Parse("{\"Capacity\":4096,\"WorkerCount\":1200}").RootElement;
+        var body = JsonDocument.Parse("{\"WorkerCount\":1200}").RootElement;
         var result = await controller.PutSection("ExecutionDispatch", body, CancellationToken.None);
         result.Should().BeOfType<OkObjectResult>();
-        File.ReadAllText(writer.OverridesPath).Should().Contain("\"Capacity\": 4096");
+        File.ReadAllText(writer.OverridesPath).Should().Contain("\"WorkerCount\": 1200");
         audit.Calls.Should().ContainSingle(c => c.Action == "SETTINGS_EXECUTIONDISPATCH_UPDATED");
     }
 

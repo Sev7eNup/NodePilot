@@ -14,6 +14,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { api } from '../api/client';
+import { getAllPages } from '../api/paging';
 import type { WorkflowExecution, StepExecution, Workflow } from '../types/api';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router';
@@ -85,7 +86,7 @@ export function ExecutionsPage() {
   // triggers a debounced refetch — no more 5s polling against a possibly idle server.
   const { data: executions, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['executions', 'terminalOnly'],
-    queryFn: () => api.get<WorkflowExecution[]>('/executions?terminalOnly=true'),
+    queryFn: () => getAllPages<WorkflowExecution>('/executions?terminalOnly=true'),
   });
 
   const { data: workflows } = useQuery({
