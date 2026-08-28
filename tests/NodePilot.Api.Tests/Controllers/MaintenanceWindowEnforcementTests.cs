@@ -30,7 +30,7 @@ public class MaintenanceWindowEnforcementTests
             .AddSingleton(Mock.Of<IWorkflowEngine>())
             .BuildServiceProvider();
         var dispatch = new ExecutionDispatchService(
-            db, new NoopExecutionDispatchQueue(), provider.GetRequiredService<IServiceScopeFactory>(),
+            db, provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             evaluator, NullLogger<ExecutionDispatchService>.Instance);
 
@@ -106,32 +106,24 @@ public class MaintenanceWindowEnforcementTests
     {
         await using var db = TestDbFactory.Create();
         var wf = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true };
-        var pending = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(), WorkflowId = wf.Id, Status = ExecutionStatus.Pending,
-            StartedAt = DateTime.UtcNow, TriggeredBy = "scheduleTrigger",
-        };
         db.Workflows.Add(wf);
-        db.WorkflowExecutions.Add(pending);
         await db.SaveChangesAsync();
 
         var provider = new ServiceCollection()
             .AddSingleton(db).AddSingleton(Mock.Of<IWorkflowEngine>()).BuildServiceProvider();
-        var queue = new CapturingQueue();
         var service = new ExecutionDispatchService(
-            db, queue, provider.GetRequiredService<IServiceScopeFactory>(),
+            db, provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), NullLogger<ExecutionDispatchService>.Instance);
 
         WorkflowDispatchSuppression? suppression = null;
-        await service.EnqueueAsync(
-            pending,
+        var pending = await service.DispatchAsync(
             new WorkflowDispatchIntent(wf.Id, "scheduleTrigger", null, RequireWorkflowEnabled: true,
                 OnDispatchSuppressedAsync: (s, _) => { suppression = s; return Task.CompletedTask; }),
             CancellationToken.None);
+        await service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
 
-        await queue.Work!(CancellationToken.None);
-
+        db.ChangeTracker.Clear();
         var persisted = await db.WorkflowExecutions.FindAsync(pending.Id);
         persisted!.Status.Should().Be(ExecutionStatus.Cancelled);
         suppression.Should().NotBeNull();
@@ -145,13 +137,7 @@ public class MaintenanceWindowEnforcementTests
         // already-known run is never re-gated, even while a window is active.
         await using var db = TestDbFactory.Create();
         var wf = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true };
-        var pending = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(), WorkflowId = wf.Id, Status = ExecutionStatus.Pending,
-            StartedAt = DateTime.UtcNow, TriggeredBy = "retry:abc",
-        };
         db.Workflows.Add(wf);
-        db.WorkflowExecutions.Add(pending);
         await db.SaveChangesAsync();
 
         var engine = new Mock<IWorkflowEngine>();
@@ -159,24 +145,21 @@ public class MaintenanceWindowEnforcementTests
                 It.IsAny<Workflow>(), It.IsAny<string>(), It.IsAny<CancellationToken>(),
                 It.IsAny<Dictionary<string, string>?>(), It.IsAny<int?>(), It.IsAny<bool>(),
                 It.IsAny<Guid?>(), It.IsAny<Guid?>(), It.IsAny<int>(), It.IsAny<Guid?>(), It.IsAny<bool>()))
-            .ReturnsAsync(pending);
+            .ReturnsAsync(new WorkflowExecution { Status = ExecutionStatus.Succeeded });
         var provider = new ServiceCollection()
             .AddSingleton(db).AddSingleton(engine.Object).BuildServiceProvider();
-        var queue = new CapturingQueue();
         var service = new ExecutionDispatchService(
-            db, queue, provider.GetRequiredService<IServiceScopeFactory>(),
+            db, provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), NullLogger<ExecutionDispatchService>.Instance);
 
         WorkflowDispatchSuppression? suppression = null;
-        await service.EnqueueAsync(
-            pending,
+        var pending = await service.DispatchAsync(
             new WorkflowDispatchIntent(wf.Id, "retry:abc", null, RequireWorkflowEnabled: true,
                 RequireMaintenanceWindowCheck: false,
                 OnDispatchSuppressedAsync: (s, _) => { suppression = s; return Task.CompletedTask; }),
             CancellationToken.None);
-
-        await queue.Work!(CancellationToken.None);
+        await service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
 
         // The gate was skipped: the engine ran and nothing was suppressed.
         engine.Verify(e => e.ExecuteAsync(
@@ -194,46 +177,30 @@ public class MaintenanceWindowEnforcementTests
         // The gate must drop it, otherwise the same key replays the Cancelled ghost for 24h.
         await using var db = TestDbFactory.Create();
         var wf = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}", IsEnabled = true };
-        var pending = new WorkflowExecution
-        {
-            Id = Guid.NewGuid(), WorkflowId = wf.Id, Status = ExecutionStatus.Pending,
-            StartedAt = DateTime.UtcNow, TriggeredBy = "api",
-        };
         db.Workflows.Add(wf);
-        db.WorkflowExecutions.Add(pending);
+        await db.SaveChangesAsync();
+
+        var provider = new ServiceCollection()
+            .AddSingleton(db).AddSingleton(Mock.Of<IWorkflowEngine>()).BuildServiceProvider();
+        var service = new ExecutionDispatchService(
+            db, provider.GetRequiredService<IServiceScopeFactory>(),
+            new OutputRedactor(null), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
+            StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), NullLogger<ExecutionDispatchService>.Instance);
+
+        var pending = await service.DispatchAsync(
+            new WorkflowDispatchIntent(wf.Id, "api", null, RequireWorkflowEnabled: true),
+            CancellationToken.None);
         db.IdempotencyKeys.Add(new IdempotencyKey
         {
             Id = Guid.NewGuid(), Key = "race-key", WorkflowId = wf.Id, ExecutionId = pending.Id,
             FirstSeenAt = DateTime.UtcNow, ExpiresAt = DateTime.UtcNow.AddHours(24),
         });
         await db.SaveChangesAsync();
+        await service.ProcessOutboxAsync(pending.Id, CancellationToken.None);
 
-        var provider = new ServiceCollection()
-            .AddSingleton(db).AddSingleton(Mock.Of<IWorkflowEngine>()).BuildServiceProvider();
-        var queue = new CapturingQueue();
-        var service = new ExecutionDispatchService(
-            db, queue, provider.GetRequiredService<IServiceScopeFactory>(),
-            new OutputRedactor(null), new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
-            StubMaintenanceWindowEvaluator.Blocking("PatchWindow"), NullLogger<ExecutionDispatchService>.Instance);
-
-        await service.EnqueueAsync(
-            pending,
-            new WorkflowDispatchIntent(wf.Id, "api", null, RequireWorkflowEnabled: true),
-            CancellationToken.None);
-        await queue.Work!(CancellationToken.None);
-
+        db.ChangeTracker.Clear();
         (await db.WorkflowExecutions.FindAsync(pending.Id))!.Status.Should().Be(ExecutionStatus.Cancelled);
         (await db.IdempotencyKeys.CountAsync()).Should().Be(0, "the key must be dropped so a retry after the window reopens runs");
     }
 
-    private sealed class CapturingQueue : IExecutionDispatchQueue
-    {
-        public Func<CancellationToken, Task>? Work { get; private set; }
-        public ValueTask EnqueueAsync(Func<CancellationToken, Task> workItem, CancellationToken ct,
-            ExecutionDispatchPriority priority = ExecutionDispatchPriority.Normal)
-        {
-            Work = workItem;
-            return ValueTask.CompletedTask;
-        }
-    }
 }

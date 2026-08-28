@@ -483,9 +483,10 @@ public sealed class ScorchImporter
         warnings.Add($"'{name}': {mapped.Count} activities, {edges.Count} links. " +
                      $"Heuristic mappings: {heuristicCount}, Placeholder fallbacks: {fallbackCount}.");
 
+        var serialized = JsonSerializer.Serialize(
+            new { nodes, edges }, new JsonSerializerOptions { WriteIndented = false });
         var definitionJson = ApplyImportLayout(
-            JsonSerializer.Serialize(new { nodes, edges }, new JsonSerializerOptions { WriteIndented = false }),
-            name, warnings);
+            InsertRequiredJunctions(serialized, name, warnings), name, warnings);
 
         ReportGraphFindings(definitionJson, name, warnings);
 
@@ -499,6 +500,78 @@ public sealed class ScorchImporter
 
     private static string? Trimmed(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string InsertRequiredJunctions(
+        string definitionJson, string runbookName, List<string> warnings)
+    {
+        var root = JsonNode.Parse(definitionJson)?.AsObject();
+        if (root?["nodes"] is not JsonArray nodes || root["edges"] is not JsonArray edges)
+            return definitionJson;
+
+        var activityTypeById = nodes
+            .OfType<JsonObject>()
+            .Where(node => node["id"] is not null)
+            .ToDictionary(
+                node => node["id"]!.GetValue<string>(),
+                node => node["data"]?["activityType"]?.GetValue<string>()
+                        ?? node["type"]?.GetValue<string>(),
+                StringComparer.Ordinal);
+        var existingIds = activityTypeById.Keys.ToHashSet(StringComparer.Ordinal);
+        var fanIns = edges
+            .OfType<JsonObject>()
+            .Where(edge => edge["target"] is not null)
+            .GroupBy(edge => edge["target"]!.GetValue<string>(), StringComparer.Ordinal)
+            .Where(group => group.Count() > 1
+                            && activityTypeById.TryGetValue(group.Key, out var type)
+                            && !string.Equals(type, "junction", StringComparison.OrdinalIgnoreCase))
+            .Select(group => (TargetId: group.Key, Edges: group.ToList()))
+            .ToList();
+
+        foreach (var fanIn in fanIns)
+        {
+            var junctionId = $"junction-fanin-{fanIn.TargetId}";
+            for (var suffix = 2; !existingIds.Add(junctionId); suffix++)
+                junctionId = $"junction-fanin-{fanIn.TargetId}-{suffix}";
+
+            var target = nodes.OfType<JsonObject>()
+                .First(node => node["id"]?.GetValue<string>() == fanIn.TargetId);
+            var targetX = target["position"]?["x"]?.GetValue<double>() ?? 0;
+            var targetY = target["position"]?["y"]?.GetValue<double>() ?? 0;
+            nodes.Add(new JsonObject
+            {
+                ["id"] = junctionId,
+                ["type"] = "activity",
+                ["position"] = new JsonObject { ["x"] = targetX - 150, ["y"] = targetY },
+                ["data"] = new JsonObject
+                {
+                    ["label"] = "Junction: waitAll",
+                    ["activityType"] = "junction",
+                    ["config"] = new JsonObject { ["mode"] = "waitAll" },
+                },
+            });
+
+            foreach (var edge in fanIn.Edges)
+                edge["target"] = junctionId;
+
+            edges.Add(new JsonObject
+            {
+                ["id"] = $"edge-{junctionId}-target",
+                ["source"] = junctionId,
+                ["target"] = fanIn.TargetId,
+                ["type"] = "labeled",
+                ["data"] = new JsonObject
+                {
+                    ["label"] = "",
+                    ["condition"] = "",
+                    ["disabled"] = false,
+                },
+            });
+            warnings.Add(
+                $"'{runbookName}': inserted a waitAll junction before '{fanIn.TargetId}' because fan-in must be explicit.");
+        }
+
+        return root.ToJsonString();
+    }
 
     /// <summary>
     /// Replaces SCOrch's coordinates with a NodePilot layout.

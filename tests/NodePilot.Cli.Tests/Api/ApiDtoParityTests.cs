@@ -28,26 +28,9 @@ public sealed class ApiDtoParityTests
     /// documents what that costs. Entries must be removed as the gaps get closed —
     /// <see cref="KnownGaps_AreAllStillReal"/> fails on a stale entry, so the list cannot rot.
     /// </summary>
-    private static readonly Dictionary<string, string> KnownCliGaps = new(StringComparer.Ordinal)
-    {
-        ["ArmedTriggerInfo"] = "np does not render next-fire prediction / poll interval",
-        ["AuthMethodsResponse"] = "np auth cannot discover the OIDC login path",
-        ["CreateUserRequest"] = "np user create cannot mark an account break-glass",
-        ["CreateWorkflowRequest"] = "np workflow create cannot target a folder (RBAC folders)",
-        ["DashboardStats"] = "np dashboard shows the pre-mission-control subset of the widgets",
-        ["GrantSharedFolderPermissionRequest"] = "np cannot scope a grant by principal authority",
-        ["SharedFolderPermissionResponse"] = "np does not render the principal authority",
-        ["TopWorkflow"] = "np dashboard omits avg/p95 duration per workflow",
-        ["UpdateUserRequest"] = "np user update cannot change the break-glass flag",
-        ["UserResponse"] = "np user list omits provider/authority/break-glass/tombstone state",
-        ["WorkflowResponse"] = "np does not render folder placement or per-row RBAC capabilities",
-    };
+    private static readonly Dictionary<string, string> KnownCliGaps = new(StringComparer.Ordinal);
 
-    private static readonly Dictionary<string, string> KnownMcpGaps = new(StringComparer.Ordinal)
-    {
-        ["CreateWorkflowRequest"] = "create_workflow cannot target a folder (RBAC folders)",
-        ["WorkflowResponse"] = "workflow tools do not surface folder placement or RBAC capabilities",
-    };
+    private static readonly Dictionary<string, string> KnownMcpGaps = new(StringComparer.Ordinal);
 
     public static TheoryData<string> ClientProjects() => new("Cli", "Mcp");
 

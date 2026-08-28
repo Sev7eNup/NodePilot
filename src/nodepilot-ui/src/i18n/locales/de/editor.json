@@ -14,6 +14,14 @@
   "enable": "Aktivieren",
   "delete": "Löschen",
   "deleteConfirm": "Diesen Workflow löschen?",
+  "fanIn": {
+    "title": "Junction erforderlich",
+    "message": "\"{{target}}\" hat bereits eine eingehende Verbindung. Mehrere Branches müssen über eine Junction zusammengeführt werden. Soll NodePilot eine waitAll-Junction einfügen?",
+    "insert": "Junction einfügen",
+    "cancelled": "Verbindung nicht angelegt. Für mehrere Eingänge ist eine Junction erforderlich.",
+    "inserted": "waitAll-Junction eingefügt. Du kannst den Modus in den Eigenschaften ändern.",
+    "defaultLabel": "Junction: waitAll"
+  },
   "duplicate": "Duplizieren",
   "export": "Export",
   "lock": "Bearbeiten",

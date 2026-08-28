@@ -441,9 +441,7 @@ public class WorkflowEngine : IWorkflowEngine
                                      && candidate.Status == ExecutionStatus.Pending);
                 claimCandidates = ApplyExecutionWriteFence(
                     _db, claimCandidates, expectedOwnerNodeId, expectedLeaseEpoch);
-                var claimed = await claimCandidates
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(candidate => candidate.Status, ExecutionStatus.Running), ct);
+                var claimed = await ExecutionStateLifecycle.TryClaimPendingAsync(claimCandidates, ct);
                 await _db.Entry(existingExecution).ReloadAsync(ct);
                 if (claimed == 0)
                     return existingExecution;
@@ -673,11 +671,8 @@ public class WorkflowEngine : IWorkflowEngine
 
         var updated = await WorkflowDbWriteMetrics.ExecuteMeasuredAsync(
             operation,
-            () => candidates.ExecuteUpdateAsync(setters => setters
-                .SetProperty(candidate => candidate.Status, desiredStatus)
-                .SetProperty(candidate => candidate.CompletedAt, completedAt)
-                .SetProperty(candidate => candidate.ErrorMessage, errorMessage)
-                .SetProperty(candidate => candidate.CancelledBy, cancelledBy), ct));
+            () => ExecutionStateLifecycle.TrySetTerminalAsync(
+                candidates, desiredStatus, completedAt, errorMessage, cancelledBy, ct));
 
         // ExecuteUpdate bypasses the change tracker. Reload on both outcomes: on success it
         // makes the returned object reflect the committed values; on CAS loss it imports the

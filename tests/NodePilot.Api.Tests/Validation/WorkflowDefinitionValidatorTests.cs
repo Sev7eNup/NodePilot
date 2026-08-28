@@ -138,6 +138,27 @@ public class WorkflowDefinitionValidatorTests
     }
 
     [Fact]
+    public void Validate_RejectsImplicitFanInWithoutJunction()
+    {
+        var result = Validate("""
+        {
+            "nodes": [
+                {"id":"a","type":"activity","data":{"activityType":"manualTrigger"}},
+                {"id":"b","type":"activity","data":{"activityType":"scheduleTrigger"}},
+                {"id":"target","type":"activity","data":{"activityType":"log"}}
+            ],
+            "edges": [
+                {"id":"e1","source":"a","target":"target"},
+                {"id":"e2","source":"b","target":"target"}
+            ]
+        }
+        """);
+
+        result.IsValid.Should().BeFalse();
+        result.Error.Should().Contain("insert a junction");
+    }
+
+    [Fact]
     public void Validate_StickyNoteStillRequiresDataObject()
     {
         var result = Validate("""{"nodes":[{"id":"n1","type":"stickyNote"}],"edges":[]}""");

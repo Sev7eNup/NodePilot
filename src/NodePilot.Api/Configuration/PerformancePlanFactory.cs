@@ -11,7 +11,7 @@ namespace NodePilot.Api.Configuration;
 ///
 /// <para>The plan is built exactly once, during boot, and registered as a singleton. It is
 /// deliberately <em>not</em> re-resolved on configuration reload: the runspace pool and the
-/// dispatch queue are constructed at startup and cannot be re-sized in-process, so a live
+/// dispatch worker pool are constructed at startup and cannot be re-sized in-process, so a live
 /// re-resolve would leave the hot-reloadable ThreadPool tuned for one mode while everything else
 /// still ran in the other. What the operator changes in the Settings UI is the <em>desired</em>
 /// mode; the difference to the active plan is what drives the restart hint.</para>
@@ -79,7 +79,7 @@ public static class PerformancePlanFactory
                $"runspaces {plan.MinRunspaces.Value}-{plan.MaxRunspaces.Value} ({plan.MaxRunspaces.Bound}), " +
                $"steps {plan.MaxConcurrentSteps.Value} ({plan.MaxConcurrentSteps.Bound}), " +
                $"threads {plan.MinWorkerThreads.Value} ({plan.MinWorkerThreads.Bound}), " +
-               $"dispatch {plan.DispatchWorkerCount.Value}/{plan.DispatchCapacity.Value} " +
+               $"dispatch workers {plan.DispatchWorkerCount.Value} " +
                $"({plan.DispatchWorkerCount.Bound})";
     }
 }

@@ -1,4 +1,5 @@
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NodePilot.Core.Audit;
 using NodePilot.Core.Enums;
@@ -131,14 +132,75 @@ public sealed class StartupRecoveryClusterTests : IDisposable
         var wf = SeedWorkflow();
         var pending = SeedExecution(wf.Id, ExecutionStatus.Pending, ownerNodeId: "dead-leader");
         var paused = SeedExecution(wf.Id, ExecutionStatus.Paused, ownerNodeId: "dead-leader");
+        _db.IdempotencyKeys.AddRange(
+            new IdempotencyKey
+            {
+                Id = Guid.NewGuid(), Key = "pending-key", WorkflowId = wf.Id,
+                ExecutionId = pending, ExpiresAt = DateTime.UtcNow.AddHours(1)
+            },
+            new IdempotencyKey
+            {
+                Id = Guid.NewGuid(), Key = "paused-key", WorkflowId = wf.Id,
+                ExecutionId = paused, ExpiresAt = DateTime.UtcNow.AddHours(1)
+            });
+        await _db.SaveChangesAsync();
         SetLease("node-a", 2);
 
         var recovered = await StartupRecovery.RecoverOrphanedExecutionsAsync(
             _db, NullLogger.Instance, ourNodeId: "node-a", leaseEpoch: 2);
 
         recovered.Should().Be(2);
-        (await _db.WorkflowExecutions.FindAsync(pending))!.Status.Should().Be(ExecutionStatus.Cancelled);
-        (await _db.WorkflowExecutions.FindAsync(paused))!.Status.Should().Be(ExecutionStatus.Cancelled);
+        var pendingRow = (await _db.WorkflowExecutions.FindAsync(pending))!;
+        pendingRow.Status.Should().Be(ExecutionStatus.Cancelled);
+        pendingRow.CancelledBy.Should().Be("failover-pending");
+        var pausedRow = (await _db.WorkflowExecutions.FindAsync(paused))!;
+        pausedRow.Status.Should().Be(ExecutionStatus.Cancelled);
+        pausedRow.CancelledBy.Should().Be("failover");
+        var keys = await _db.IdempotencyKeys.AsNoTracking().OrderBy(key => key.Key).ToListAsync();
+        keys.Should().ContainSingle().Which.Key.Should().Be("paused-key",
+            "paused work may already have external side effects and must remain deduplicated");
+    }
+
+    [Fact]
+    public async Task ClusterMode_ReassignsDurablePendingWorkWithoutCancellingOrReleasingReservation()
+    {
+        var wf = SeedWorkflow();
+        var pending = SeedExecution(wf.Id, ExecutionStatus.Pending, ownerNodeId: "dead-leader");
+        _db.ExecutionDispatchOutbox.Add(new ExecutionDispatchOutboxItem
+        {
+            ExecutionId = pending,
+            WorkflowId = wf.Id,
+            TriggeredBy = "manual",
+            MissingWorkflowMessage = "missing",
+            PreOwnershipFailurePrefix = "failed",
+            LeaseOwner = "dead-leader:worker-1",
+            LeaseExpiresAt = DateTime.UtcNow.AddMinutes(10),
+        });
+        _db.IdempotencyKeys.Add(new IdempotencyKey
+        {
+            Id = Guid.NewGuid(),
+            Key = "durable-pending-key",
+            WorkflowId = wf.Id,
+            ExecutionId = pending,
+            ExpiresAt = DateTime.UtcNow.AddHours(1),
+        });
+        await _db.SaveChangesAsync();
+        SetLease("node-a", 3);
+        _db.ChangeTracker.Clear();
+
+        var recovered = await StartupRecovery.RecoverOrphanedExecutionsAsync(
+            _db, NullLogger.Instance, ourNodeId: "node-a", leaseEpoch: 3);
+
+        recovered.Should().Be(0, "durably accepted work must be resumed, not reported as an orphan");
+        var row = await _db.WorkflowExecutions.AsNoTracking().SingleAsync(x => x.Id == pending);
+        row.Status.Should().Be(ExecutionStatus.Pending);
+        row.OwnerNodeId.Should().Be("node-a");
+        var intent = await _db.ExecutionDispatchOutbox.AsNoTracking()
+            .SingleAsync(x => x.ExecutionId == pending);
+        intent.LeaseOwner.Should().BeNull();
+        intent.LeaseExpiresAt.Should().BeNull();
+        (await _db.IdempotencyKeys.CountAsync(x => x.ExecutionId == pending)).Should().Be(1);
+        (await _db.AuditLog.CountAsync(x => x.ResourceId == pending)).Should().Be(0);
     }
 
     [Fact]

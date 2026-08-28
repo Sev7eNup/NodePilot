@@ -183,7 +183,7 @@ Nimm dir den User-Flow „User klickt **Run** auf einen Workflow" und folge dem 
 
 1. **UI:** Run-Button in WorkflowEditorPage oder WorkflowsPage → API-Call `POST /api/workflows/{id}/execute`.
 2. **Controller:** `WorkflowsController.Execute(...)` → erzeugt `WorkflowExecution`-Row mit Status=`Pending`/`Queued` → returnt 202.
-3. **Dispatch:** Such, wer Pending-Executions an `IWorkflowEngine` übergibt. (Hint: `IExecutionDispatchQueue` + `WorkflowScheduler` in Engine.)
+3. **Dispatch:** Verfolge `ExecutionDispatchOutboxItem` vom atomaren Admission-Commit über `ExecutionDispatchWorker` bis zum `IWorkflowEngine`.
 4. **Engine:** `WorkflowEngine.ExecuteWorkflowAsync` → Roots ermitteln → Ready-Queue füllen → `StepRunner` pro Node → Activity-Resolution via DI-Scope.
 5. **Activity:** `RunScriptActivity.ExecuteAsync` → Variable-Resolution → WinRM-Session → Output-Redaction → Result.
 6. **Persist:** `StepExecution` wird mit Output + ErrorOutput + OutputParametersJson geschrieben.

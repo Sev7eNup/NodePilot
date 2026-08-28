@@ -169,6 +169,17 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
         result.Should().BeOfType<ConflictObjectResult>();
     }
 
+    [Fact]
+    public async Task Delete_EmptyFolder_OperatorWithEdit_RemainsAllowed()
+    {
+        var ctrl = NewCtrl(_financeEditorId, "Operator");
+
+        var result = await ctrl.Delete(_financeId, CancellationToken.None);
+
+        result.Should().BeOfType<NoContentResult>();
+        _db.SharedWorkflowFolders.Any(folder => folder.Id == _financeId).Should().BeFalse();
+    }
+
     // ---- recursive delete ------------------------------------------------
     // `recursive=false` keeps the 409 above; everything below is the opt-in subtree delete.
 
@@ -235,29 +246,28 @@ public sealed class SharedWorkflowFoldersControllerTests : IDisposable
     }
 
     [Fact]
-    public async Task DeleteRecursive_InheritedEditOnDescendant_IsSufficient()
+    public async Task DeleteRecursive_OperatorWithInheritedEdit_IsForbidden()
     {
-        // Pins the assumption the recursive delete rests on: grants resolve along the ancestry
-        // chain, so Edit on /Finance covers /Finance/Reports even though Reports carries no grant
-        // of its own. If resolution ever stops inheriting downwards, this fails instead of
-        // silently deleting something the caller may no longer be entitled to.
+        // Folder Edit permits authoring and moving content, but recursive deletion also removes
+        // Workflow Executions and therefore stays a global-Admin operation like workflow DELETE.
         var (reportsId, _, _) = await SeedSubtreeAsync();
         _db.SharedFolderPermissions.Any(p => p.FolderId == reportsId).Should().BeFalse();
 
         var ctrl = NewCtrl(_financeEditorId, "Operator");
         var result = await ctrl.Delete(_financeId, CancellationToken.None, recursive: true);
 
-        result.Should().BeOfType<OkObjectResult>();
-        _db.SharedWorkflowFolders.Any(f => f.Id == reportsId).Should().BeFalse();
+        result.Should().BeOfType<ForbidResult>();
+        _db.SharedWorkflowFolders.Any(f => f.Id == reportsId).Should().BeTrue();
+        _db.Workflows.Count().Should().Be(2);
     }
 
     [Fact]
-    public async Task DeleteRecursive_AsStranger_Returns404()
+    public async Task DeleteRecursive_AsOperatorWithoutFolderAccess_Returns403()
     {
         await SeedSubtreeAsync();
         var ctrl = NewCtrl(_strangerId, "Operator");
         var result = await ctrl.Delete(_financeId, CancellationToken.None, recursive: true);
-        result.Should().BeOfType<NotFoundResult>();
+        result.Should().BeOfType<ForbidResult>();
     }
 
     /// <summary>

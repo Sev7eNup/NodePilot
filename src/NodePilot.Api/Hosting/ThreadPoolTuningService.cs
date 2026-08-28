@@ -63,7 +63,7 @@ internal sealed class ThreadPoolTuningService : IHostedService, IDisposable
     {
         // Follow the mode the process actually BOOTED in, not whatever the live configuration
         // says right now. Switching Performance:ManualTuning only takes effect on restart because
-        // the runspace pool and the dispatch queue are built once at startup; honouring a live
+        // the runspace pool and dispatch worker pool are built once at startup; honouring a live
         // toggle here would re-tune the ThreadPool for a mode the rest of the process is not in.
         // The Settings UI surfaces that difference as a restart hint instead.
         var minWorkers = _plan.MinWorkerThreads.Value;

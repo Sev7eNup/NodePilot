@@ -28,7 +28,7 @@ type SizingMode = { chosen: boolean; booted: boolean };
  * Performance tuning tab. The mode card on top decides whether the cards below apply at all:
  * with automatic sizing (the default) NodePilot derives the numbers from the detected CPU and
  * memory, and the configured values sit inert as a preset. Everything here is strict-startup —
- * the runspace pool and the dispatch queue are built once at boot — so a save shows the restart
+ * the runspace pool and dispatch worker pool are built once at boot — so a save shows the restart
  * banner. Threading alone re-applies live, but only while manual tuning is on.
  *
  * The mode form is held here rather than inside the mode card so the cards below react to the
@@ -221,7 +221,7 @@ function EngineCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: Effe
 
 function ExecutionDispatchCard({ mode, sizing }: Readonly<{ mode: SizingMode; sizing?: EffectiveSizing }>) {
   const { t } = useTranslation('adminSettings');
-  const ui = useSectionForm<{ capacity: number; workerCount: number }>('ExecutionDispatch', { capacity: 2048, workerCount: 600 });
+  const ui = useSectionForm<{ workerCount: number }>('ExecutionDispatch', { workerCount: 600 });
   if (ui.loading) return <Card icon={Layers} title={t('perf.executionDispatchCardTitle')}><p className="text-sm">{t('loading')}</p></Card>;
   const { form, set, data, save, errors } = ui;
   const isEnvLocked = (k: string) => ui.isEnvLocked(k) || planGovernsFields(mode);
@@ -229,16 +229,12 @@ function ExecutionDispatchCard({ mode, sizing }: Readonly<{ mode: SizingMode; si
     <Card icon={Layers} title={t('perf.executionDispatchCardTitle')}>
       <SizingModeNote mode={mode} />
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <NumberInput label={t('perf.queueCapacity')} value={form.capacity} min={1} max={100000}
-          onChange={(v) => set({ ...form, capacity: v })}
-          configKey="ExecutionDispatch:Capacity" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
-          hint={effectiveHint(sizing, 'ExecutionDispatch:Capacity', t)} />
         <NumberInput label={t('perf.workerCount')} value={form.workerCount} min={1} max={10000}
           onChange={(v) => set({ ...form, workerCount: v })}
           configKey="ExecutionDispatch:WorkerCount" effectiveSource={data.effectiveSource} isEnvLocked={isEnvLocked}
           hint={effectiveHint(sizing, 'ExecutionDispatch:WorkerCount', t)} />
       </div>
-      <ErrorsAndSave errors={errors} onSave={() => save({ Capacity: form.capacity, WorkerCount: form.workerCount })} />
+      <ErrorsAndSave errors={errors} onSave={() => save({ WorkerCount: form.workerCount })} />
       {ui.dialog}
     </Card>
   );

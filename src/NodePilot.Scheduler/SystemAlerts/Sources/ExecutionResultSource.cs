@@ -29,7 +29,8 @@ public sealed class ExecutionResultSource : ISystemAlertSource
             SystemAlertField.Of("durationMs", SystemAlertFieldType.Number, unit: "milliseconds"),
             SystemAlertField.Of("triggeredBy", SystemAlertFieldType.String),
             SystemAlertField.Of("cancelledBy", SystemAlertFieldType.Enum,
-                enumValues: ["user", "cancelAll", "failover", "reconciler", "dispatch", "system"]),
+                enumValues: ["user", "cancelAll", "failover", "failover-pending",
+                    "reconciler", "reconciler-pending", "dispatch", "system"]),
             SystemAlertField.Of("isSubWorkflow", SystemAlertFieldType.Boolean),
         ],
         Parameters:

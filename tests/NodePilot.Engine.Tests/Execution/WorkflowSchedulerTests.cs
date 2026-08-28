@@ -115,6 +115,94 @@ public class WorkflowSchedulerTests
     }
 
     [Fact]
+    public async Task RunAsync_WaitAnyJunction_WaitsPastACompletedEdgeWhoseConditionIsFalse()
+    {
+        var fast = Node("fast");
+        var slow = Node("slow");
+        var join = Node("join", "junction", """{"mode":"waitAny"}""");
+        var final = Node("final");
+        var nodes = new[] { fast, slow, join, final };
+        var edges = new[]
+        {
+            new WorkflowEdge { Id = "e1", Source = "fast", Target = "join", Condition = "fast.failed" },
+            new WorkflowEdge { Id = "e2", Source = "slow", Target = "join", Condition = "slow.success" },
+            new WorkflowEdge { Id = "e3", Source = "join", Target = "final" },
+        };
+        var adjacency = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var reverse = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var incoming = nodes.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+        var byEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+        foreach (var edge in edges)
+        {
+            adjacency[edge.Source].Add(edge.Target);
+            reverse[edge.Target].Add(edge.Source);
+            incoming[edge.Target].Add(edge);
+            byEndpoints[(edge.Source, edge.Target)] = edge;
+        }
+
+        var results = new ConcurrentDictionary<string, ActivityResult>();
+        var completed = new HashSet<string>();
+        var skipped = new HashSet<string>();
+
+        await WorkflowScheduler.RunAsync(
+            [fast, slow], nodes.ToDictionary(n => n.Id), adjacency, reverse, incoming, byEndpoints,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            results, completed, skipped,
+            async (node, ct) =>
+            {
+                await Task.Delay(node.Id == "fast" ? 5 : node.Id == "slow" ? 50 : 1, ct);
+                return new ActivityResult { Success = true, Output = node.Id };
+            },
+            NullLogger.Instance, CancellationToken.None);
+
+        completed.Should().Contain(["join", "final"]);
+        skipped.Should().NotContain(["join", "final"]);
+    }
+
+    [Fact]
+    public async Task RunAsync_WaitAllJunction_DoesNotRunWhenOneCompletedInputConditionIsFalse()
+    {
+        var failed = Node("failed");
+        var successful = Node("successful");
+        var join = Node("join", "junction", """{"mode":"waitAll"}""");
+        var nodes = new[] { failed, successful, join };
+        var edges = new[]
+        {
+            new WorkflowEdge { Id = "e1", Source = "failed", Target = "join", Condition = "failed.success" },
+            new WorkflowEdge { Id = "e2", Source = "successful", Target = "join", Condition = "successful.success" },
+        };
+        var adjacency = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var reverse = nodes.ToDictionary(n => n.Id, _ => new List<string>());
+        var incoming = nodes.ToDictionary(n => n.Id, _ => new List<WorkflowEdge>());
+        var byEndpoints = new Dictionary<(string Source, string Target), WorkflowEdge>();
+        foreach (var edge in edges)
+        {
+            adjacency[edge.Source].Add(edge.Target);
+            reverse[edge.Target].Add(edge.Source);
+            incoming[edge.Target].Add(edge);
+            byEndpoints[(edge.Source, edge.Target)] = edge;
+        }
+
+        var results = new ConcurrentDictionary<string, ActivityResult>();
+        var completed = new HashSet<string>();
+        var skipped = new HashSet<string>();
+
+        await WorkflowScheduler.RunAsync(
+            [failed, successful], nodes.ToDictionary(n => n.Id), adjacency, reverse, incoming, byEndpoints,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+            results, completed, skipped,
+            async (node, ct) =>
+            {
+                await Task.Delay(node.Id == "failed" ? 5 : 50, ct);
+                return new ActivityResult { Success = node.Id != "failed", Output = node.Id };
+            },
+            NullLogger.Instance, CancellationToken.None);
+
+        completed.Should().NotContain("join");
+        skipped.Should().Contain("join");
+    }
+
+    [Fact]
     public async Task RunAsync_WaitAnyCancelsAndAwaitsRacingInFlightPredecessor()
     {
         var fast = Node("fast");

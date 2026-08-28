@@ -140,6 +140,7 @@ public sealed class WorkflowEditTools
         [Description("Workflow name.")] string name,
         [Description("The workflow definition: { nodes: [...], edges: [...] }.")] JsonElement definition,
         [Description("Optional description.")] string? description = null,
+        [Description("Optional target folder GUID. Uses the caller's folder permissions.")] Guid? folderId = null,
         CancellationToken cancellationToken = default)
     {
         RequireFullDefinition(definition);
@@ -151,7 +152,9 @@ public sealed class WorkflowEditTools
             throw new McpException($"Definition is structurally invalid (not created): {validation.Error}");
 
         var created = await ApiErrorMapper.Guard(() =>
-            _api.CreateWorkflowAsync(new CreateWorkflowRequest(name, description, mergedElement.GetRawText()), cancellationToken));
+            _api.CreateWorkflowAsync(
+                new CreateWorkflowRequest(name, description, mergedElement.GetRawText(), folderId),
+                cancellationToken));
         return new { created = true, workflowId = created.Id, name = created.Name, notes = merged.Notes };
     }
 

@@ -51,7 +51,7 @@ export type SettingsStatus = {
 
 // What the process is actually sized to. `manualTuning` is the mode it BOOTED in;
 // `desiredManualTuning` is what is saved right now. They differ between a save and the restart
-// that puts it into effect — the runspace pool and dispatch queue are built once at boot.
+// that puts it into effect — the runspace pool and dispatch worker pool are built once at boot.
 export type EffectiveSizing = {
   manualTuning: boolean;
   desiredManualTuning: boolean;

@@ -124,10 +124,11 @@ export function SharedFolderTree({
 
   // Selection runs over the VISIBLE rows, not the whole tree: `useBulkSelection` derives its
   // shift-range from the index in this list and prunes ids that leave it, so a collapsed branch
-  // must not be in here. Root is excluded — it cannot be deleted.
+  // must not be in here. Root and folders without the explicit delete capability are excluded.
   const selectableFolders = useMemo(
     () => (bulkDeleteEnabled
-      ? flattenVisible(tree, collapsedIds).filter((f) => f.id !== ROOT_FOLDER_ID)
+      ? flattenVisible(tree, collapsedIds)
+        .filter((f) => f.id !== ROOT_FOLDER_ID && f.capabilities.canDelete)
       : []),
     [bulkDeleteEnabled, tree, collapsedIds],
   );
@@ -213,7 +214,8 @@ export function SharedFolderTree({
     const canEdit = node.folder.capabilities.canEdit;
     // Rename/delete are meaningless on Root; permissions are not — Root is the folder
     // whose grants matter most, so it gets a menu of its own when the caller is FolderAdmin.
-    const canRenameOrDelete = canEdit && !isRoot;
+    const canRename = canEdit && !isRoot;
+    const canDelete = node.folder.capabilities.canDelete && !isRoot;
     const canManagePermissions = !!onManagePermissions && node.folder.capabilities.canAdmin;
     const dragEnabled = !!onWorkflowDropped && canEdit;
     const isDropTarget = dragOverFolderId === node.folder.id;
@@ -262,7 +264,7 @@ export function SharedFolderTree({
           aria-selected={isSelected}
           onContextMenu={(e) => {
             if (hideManagement) return;
-            if (!canRenameOrDelete && !canManagePermissions) return;
+            if (!canRename && !canDelete && !canManagePermissions) return;
             e.preventDefault();
             setMenuState({ x: e.clientX, y: e.clientY, folder: node.folder });
           }}
@@ -294,14 +296,12 @@ export function SharedFolderTree({
           {/* Multi-select checkbox. Root has none — it cannot be deleted. The click is stopped
               from bubbling because the row itself means "filter to this folder"; ticking a box
               must not also navigate. */}
-          {bulkDeleteEnabled && !isRoot && (
+          {bulkDeleteEnabled && canDelete && (
             <span role="presentation" onClick={(e) => e.stopPropagation()}>
               <input
                 type="checkbox"
                 className="shrink-0 accent-primary cursor-pointer"
                 checked={selection.isSelected(node.folder.id)}
-                disabled={!canEdit}
-                title={canEdit ? undefined : t('workflows:folder.bulk.noEditPermission')}
                 aria-label={t('workflows:folder.bulk.selectRow', { name: node.folder.name })}
                 onChange={(e) =>
                   selection.toggle(node.folder.id, (e.nativeEvent as MouseEvent).shiftKey)}
@@ -450,7 +450,7 @@ export function SharedFolderTree({
               : undefined
           }
           onDelete={
-            menuState.folder.capabilities.canEdit && menuState.folder.id !== ROOT_FOLDER_ID
+            menuState.folder.capabilities.canDelete && menuState.folder.id !== ROOT_FOLDER_ID
               ? () => bulkDelete.deleteOne(menuState.folder)
               : undefined
           }

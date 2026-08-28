@@ -212,13 +212,12 @@ public static class WorkflowScheduler
                 if (enqueued.Contains(successor) || skipped.Contains(successor)) continue;
 
                 var successorNode = nodesById[successor];
-                var (ready, junctionMode) = EvaluateSuccessorReadiness(
-                    successorNode, incomingEdgesByTarget[successor], completed, skipped, results);
+                var (decision, junctionMode) = EvaluateSuccessorDecision(
+                    successorNode, incomingEdgesByTarget[successor], completed, skipped, results,
+                    outputVariableToStepId, globalVariables, inputParameters);
 
-                if (!ready) continue;
-
-                activeEdgeByEndpoints.TryGetValue((node.Id, successor), out var incomingEdge);
-                if (incomingEdge is not null && !ConditionEvaluator.EvaluateEdge(incomingEdge, results, outputVariableToStepId, globalVariables, inputParameters))
+                if (decision == SuccessorDecision.Wait) continue;
+                if (decision == SuccessorDecision.Skip)
                 {
                     MarkSubtreeSkipped(successor, skipped, adjacency, reverseAdjacency);
                     continue;
@@ -320,6 +319,78 @@ public static class WorkflowScheduler
             : completedSuccessPreds >= requiredCount;
 
         return (isReady, junctionMode);
+    }
+
+    private enum SuccessorDecision
+    {
+        Wait,
+        Schedule,
+        Skip,
+    }
+
+    private static (SuccessorDecision Decision, string JunctionMode) EvaluateSuccessorDecision(
+        WorkflowNode successorNode,
+        IReadOnlyList<WorkflowEdge> incomingEdges,
+        HashSet<string> completed,
+        HashSet<string> skipped,
+        IReadOnlyDictionary<string, ActivityResult> results,
+        IReadOnlyDictionary<string, string> outputVariableToStepId,
+        IReadOnlyDictionary<string, string>? globalVariables,
+        IReadOnlyDictionary<string, string>? inputParameters)
+    {
+        var isJunction = string.Equals(successorNode.Type, "junction", StringComparison.OrdinalIgnoreCase);
+        var cfg = successorNode.Data.Config;
+        var mode = isJunction && cfg.ValueKind == JsonValueKind.Object
+            && cfg.TryGetProperty("mode", out var modeElement)
+            ? modeElement.GetString() ?? "waitAll"
+            : "waitAll";
+
+        var resolved = 0;
+        var completedInputs = 0;
+        var matchingInputs = 0;
+        var successfulMatchingInputs = 0;
+        foreach (var edge in incomingEdges)
+        {
+            if (skipped.Contains(edge.Source))
+            {
+                resolved++;
+                continue;
+            }
+            if (!completed.Contains(edge.Source)) continue;
+
+            resolved++;
+            completedInputs++;
+            if (!ConditionEvaluator.EvaluateEdge(
+                    edge, results, outputVariableToStepId, globalVariables, inputParameters))
+                continue;
+
+            matchingInputs++;
+            if (results.TryGetValue(edge.Source, out var result) && result.Success)
+                successfulMatchingInputs++;
+        }
+
+        var pending = incomingEdges.Count - resolved;
+        if (!isJunction || string.Equals(mode, "waitAll", StringComparison.OrdinalIgnoreCase))
+        {
+            if (pending > 0) return (SuccessorDecision.Wait, "waitAll");
+            return completedInputs > 0 && matchingInputs == completedInputs
+                ? (SuccessorDecision.Schedule, "waitAll")
+                : (SuccessorDecision.Skip, "waitAll");
+        }
+
+        var required = string.Equals(mode, "waitNofM", StringComparison.OrdinalIgnoreCase)
+                       && cfg.ValueKind == JsonValueKind.Object
+                       && cfg.TryGetProperty("requiredCount", out var requiredElement)
+                       && requiredElement.TryGetInt32(out var configured)
+                       && configured > 0
+            ? configured
+            : 1;
+
+        if (successfulMatchingInputs >= required)
+            return (SuccessorDecision.Schedule, mode);
+        if (successfulMatchingInputs + pending < required)
+            return (SuccessorDecision.Skip, mode);
+        return (SuccessorDecision.Wait, mode);
     }
 
     /// <summary>

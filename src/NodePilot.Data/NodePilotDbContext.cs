@@ -10,6 +10,7 @@ public class NodePilotDbContext : DbContext
 
     public DbSet<Workflow> Workflows => Set<Workflow>();
     public DbSet<WorkflowExecution> WorkflowExecutions => Set<WorkflowExecution>();
+    public DbSet<ExecutionDispatchOutboxItem> ExecutionDispatchOutbox => Set<ExecutionDispatchOutboxItem>();
     public DbSet<StepExecution> StepExecutions => Set<StepExecution>();
     public DbSet<ManagedMachine> ManagedMachines => Set<ManagedMachine>();
     public DbSet<Credential> Credentials => Set<Credential>();
@@ -210,6 +211,21 @@ public class NodePilotDbContext : DbContext
                 .HasAnnotation("SqlServer:Include", new[] { nameof(WorkflowExecution.Status) })
                 .HasAnnotation("Npgsql:IndexInclude", new[] { nameof(WorkflowExecution.Status) });
             e.HasMany(x => x.Steps).WithOne(x => x.WorkflowExecution).HasForeignKey(x => x.WorkflowExecutionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<ExecutionDispatchOutboxItem>(e =>
+        {
+            e.HasKey(x => x.ExecutionId);
+            e.Property(x => x.TriggeredBy).HasMaxLength(100).IsRequired();
+            e.Property(x => x.MissingWorkflowMessage).HasMaxLength(2000).IsRequired();
+            e.Property(x => x.PreOwnershipFailurePrefix).HasMaxLength(1000).IsRequired();
+            e.Property(x => x.LeaseOwner).HasMaxLength(240);
+            e.HasIndex(x => new { x.AvailableAt, x.Priority });
+            e.HasIndex(x => x.LeaseExpiresAt);
+            e.HasOne(x => x.Execution)
+                .WithOne()
+                .HasForeignKey<ExecutionDispatchOutboxItem>(x => x.ExecutionId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<StepExecution>(e =>

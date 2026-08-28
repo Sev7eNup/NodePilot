@@ -91,6 +91,15 @@ public class SystemAlertCatalogTests
     }
 
     [Fact]
+    public void ExecutionResult_CancelledBy_DeclaresNeverStartedRecoveryMarkers()
+    {
+        var descriptor = new ExecutionResultSource().Describe();
+        var field = descriptor.Fields.Single(candidate => candidate.Name == "cancelledBy");
+
+        field.EnumValues.Should().Contain(["failover-pending", "reconciler-pending"]);
+    }
+
+    [Fact]
     public void EveryPresetCondition_ParsesAndEvaluatesAgainstTheConditionEvaluator()
     {
         var empty = new Dictionary<string, string>();

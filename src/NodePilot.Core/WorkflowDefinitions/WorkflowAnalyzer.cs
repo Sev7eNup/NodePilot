@@ -5,16 +5,14 @@ using NodePilot.Core.Activities;
 namespace NodePilot.Core.WorkflowDefinitions;
 
 /// <summary>
-/// In-process static analysis of a workflow definition (works on the unsaved canvas state).
-/// Surfaces the NodePilot-specific traps an author hits most: nodes that never run (no active
-/// path from a trigger — "trigger-only roots"), a missing/disabled trigger (0 roots → the run
-/// Fails), cycles, remote activities without a target machine, and unknown activity types.
+/// In-process static analysis of a workflow definition, including unsaved canvas state.
+/// Reports nodes that never run (no active path from a trigger), a missing or disabled trigger
+/// (0 roots, so the run fails), cycles, remote activities without a target machine, and unknown
+/// activity types.
 ///
-/// <para>The single analyzer behind <c>analyze_workflow</c> on BOTH surfaces — the MCP tool and
-/// the AI chat. It lived twice until the two copies had drifted (<c>cycle</c> was an error here and
-/// a warning there, and the chat copy flagged a missing target machine on the hybrid types, which
-/// the Localhost bypass makes perfectly valid). Finding codes/severities are kept aligned with the
-/// canvas linter (<c>workflowLint.ts</c>), guarded by <c>WorkflowAnalyzerFrontendParityTests</c>.</para>
+/// <para>The single analyzer behind <c>analyze_workflow</c> on both surfaces, the MCP tool and the
+/// AI chat. Finding codes and severities stay aligned with the canvas linter
+/// (<c>workflowLint.ts</c>), guarded by <c>WorkflowAnalyzerFrontendParityTests</c>.</para>
 /// </summary>
 public static class WorkflowAnalyzer
 {
@@ -25,22 +23,21 @@ public static class WorkflowAnalyzer
 
     public static AnalysisResult Analyze(JsonElement definition)
     {
-        // A broken structure (duplicate ids, dangling edge endpoints, ...) makes every graph
-        // finding below untrustworthy, so report that one thing and stop rather than pile
-        // misleading findings on top of it.
+        // A broken structure (duplicate ids, dangling edge endpoints) makes every graph finding
+        // below untrustworthy, so report only that and stop.
         var structural = WorkflowDefinitionStructuralValidator.Validate(definition);
         if (!structural.IsValid)
         {
             return new AnalysisResult(false, 0, 0, [], [
-                new Finding("error", "invalid-structure", null,
+                new Finding("error", structural.Code ?? "invalid-structure", structural.NodeId,
                     structural.Error ?? "The definition is structurally invalid.")]);
         }
 
         var doc = WorkflowDefinitionDocument.FromJsonElement(definition);
         var findings = new List<Finding>();
 
-        // An empty workflow runs through with 0 steps and Succeeds — "no trigger" would be a
-        // false positive, so there is simply nothing to report.
+        // An empty workflow completes with 0 steps and succeeds, so a missing trigger is not a
+        // finding here.
         if (doc.Nodes.Count == 0)
             return new AnalysisResult(true, 0, doc.Edges.Count, [], []);
 
@@ -53,13 +50,13 @@ public static class WorkflowAnalyzer
 
         AddDuplicateEdgeFindings(doc, findings);
 
-        // Reachability from the trigger roots over ACTIVE edges. Anything else never runs.
+        // Reachability from the trigger roots over active edges. Anything else never runs.
         var reachable = ReachableFrom(rootIds, doc.Adjacency);
         foreach (var node in doc.Nodes)
         {
             if (doc.DisabledNodeIds.Contains(node.Id)) continue;
             if (IsAnnotation(node.Type)) continue;
-            if (ActivityCatalog.TriggerTypes.Contains(node.Type)) continue; // triggers are roots, not "downstream"
+            if (ActivityCatalog.TriggerTypes.Contains(node.Type)) continue; // triggers are roots, not downstream nodes
             if (reachable.Contains(node.Id)) continue;
             findings.Add(new Finding("warning", "unreachable-node", node.Id,
                 $"Node '{Label(node)}' never runs (Skipped): no active path from a trigger (orphan / disconnected / all incoming edges disabled)."));
@@ -72,17 +69,16 @@ public static class WorkflowAnalyzer
         AddDuplicateOutputVariableFindings(doc, findings);
         AddUnresolvedReferenceFindings(doc, definition, findings);
 
-        // Remote activities without a target machine. Unknown activity types are NOT checked here:
-        // the structural pre-check above already rejects them, and with a better message (it names
-        // the node index and the offending type). It also validates the custom:<slug> grammar, so a
-        // custom activity that reaches this loop is well-formed — its RunsRemote flag just isn't
-        // resolvable without the DB, which is why the heuristic below skips it.
+        // Remote activities without a target machine. Unknown activity types are not checked here:
+        // the structural pre-check above already rejects them with a more precise message, and it
+        // validates the custom:<slug> grammar. Custom activities are skipped below because their
+        // RunsRemote flag cannot be resolved without the database.
         foreach (var node in doc.Nodes)
         {
             if (doc.DisabledNodeIds.Contains(node.Id)) continue;
 
-            // runScript and waitForCondition are HYBRID: without a target machine they run locally
-            // in the API process (Localhost-Bypass), so a missing targetMachineId is NOT an error.
+            // runScript and waitForCondition are hybrid: without a target machine they run locally
+            // in the API process (localhost bypass), so a missing targetMachineId is not an error.
             if (ActivityCatalog.RemoteTypes.Contains(node.Type)
                 && !HybridLocalTypes.Contains(node.Type)
                 && !CustomActivityType.IsCustomType(node.Type)
@@ -129,18 +125,10 @@ public static class WorkflowAnalyzer
     /// <summary>
     /// Template references that will not resolve at run time.
     ///
-    /// <para>The check itself already existed, but only behind its own tool
-    /// (<c>find_unresolved_references</c>). <c>analyze_workflow</c> is what an agent reaches for
-    /// and what the in-canvas assistant is built around, so the entire class was invisible to a
-    /// caller who asked the obvious question: a workflow whose log message read
-    /// <c>{{gibtsnicht.output}}</c> analysed as <c>ok: true, findings: []</c> and then failed on
-    /// the first run. Folding the findings in here costs one pass over the same document.</para>
-    ///
-    /// <para>Severity follows what the engine actually does with the reference. For most
-    /// activities an unresolved placeholder aborts the step (the T-7.1 check), so it is an error.
-    /// <c>runScript</c> and custom activities resolve their own templates and tolerate a leftover
-    /// <c>{{...}}</c> because it may be legitimate script text — still almost always a mistake,
-    /// but the run survives, so it is a warning rather than an error.</para>
+    /// <para>Severity follows what the engine does with the reference. For most activities an
+    /// unresolved placeholder aborts the step, so it is an error. <c>runScript</c> and custom
+    /// activities resolve their own templates and tolerate a leftover <c>{{...}}</c> because it
+    /// may be legitimate script text; the run survives, so it is a warning.</para>
     /// </summary>
     private static void AddUnresolvedReferenceFindings(
         WorkflowDefinitionDocument doc, JsonElement definition, List<Finding> findings)

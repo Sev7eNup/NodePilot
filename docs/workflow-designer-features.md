@@ -115,7 +115,10 @@ A complete inventory of every feature in the NodePilot workflow designer (React 
 - **Data-flow overlay:** chips show which variables travel across an edge.
 - **Context menu (right-click):** enable/disable, detach target, swap source↔target (Expert), reset shape (Expert), delete.
 - **Detach target:** the target end follows the cursor; clicking an activity node re-attaches it there, keeping label, condition and disabled state, and docking at whichever of the four ports the click was nearest. The edge's **current** target counts as a valid node — clicking it moves the connection point without touching anything else. Esc, a click on empty canvas or a right-click cancels without a trace.
-- **Validation:** duplicate connections are prevented (with a toast).
+- **Validation:** duplicate connections are prevented. A non-Junction Activity may have only one
+  incoming edge. When a second branch is connected, the designer offers to insert a `waitAll`
+  Junction, rewires the existing input through it, and selects the Junction so its mode can be
+  changed. Existing invalid definitions are marked by lint and rejected by Save/Publish.
 - **Edge properties panel:** source→target information, port selector (Expert), a label field with a "use auto" reset, simple or expression condition, a disabled toggle, delete (with confirmation).
 
 ## 6. Edge conditions
@@ -183,7 +186,7 @@ Each activity type has its own config component (`properties/activities/`, regis
 | `xmlQuery` | **source** (inline/file), content (XML code field) or path, **xpath**, **resultMode** (single/all), **namespaces** (JSON mapping) |
 | `jsonQuery` | **source** (inline/file), content (JSON code field) or path, **jsonPath** plus a JSONPath picker, **resultMode** (single/all) |
 | `log` | **level** (info/warning/error), **message** (multiline) |
-| `junction` | **mode** (waitAll/waitAny/waitNofM), **requiredCount** (for waitNofM) — controls the fan-in behaviour |
+| `junction` | **mode** (waitAll/waitAny/waitNofM), **requiredCount** (for waitNofM) — the only Activity allowed to receive multiple incoming edges |
 | `forEach` | **items** (multiline), **itemsFormat** (auto/json/lines), **childWorkflowNameOrId** plus picker, **itemParameterName** (default "item"), **indexParameterName** (default "index"), **maxParallelism** (0–64), **timeoutSecondsPerItem**, **continueOnError**, additional **parameters** (ParameterTable) |
 | `decision` | **cases** (name plus ConditionBuilder, sortable via up/down, first match → `param.case`), **defaultCaseName** |
 | `returnData` | **data** (a freely extendable key/value table) |

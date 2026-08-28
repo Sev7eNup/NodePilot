@@ -39,8 +39,7 @@ public class PerformanceSizingTests
 
         var planned =
             (long)plan.MaxRunspaces.Value * PerformanceSizing.RunspaceCostBytes +
-            (long)plan.MaxConcurrentSteps.Value * PerformanceSizing.StepCostBytes +
-            (long)plan.DispatchCapacity.Value * PerformanceSizing.QueueEntryCostBytes;
+            (long)plan.MaxConcurrentSteps.Value * PerformanceSizing.StepCostBytes;
 
         var budget = PerformanceSizing.AppBudgetBytes(resources);
         // Floors may legitimately push a tiny box past its share — that is the deliberate
@@ -97,7 +96,6 @@ public class PerformanceSizingTests
         plan.MaxRunspaces.Value.Should().BeGreaterThanOrEqualTo(PerformanceSizing.MaxRunspacesFloor);
         plan.MaxConcurrentSteps.Value.Should().BeGreaterThanOrEqualTo(PerformanceSizing.StepsFloor);
         plan.DispatchWorkerCount.Value.Should().BeGreaterThanOrEqualTo(PerformanceSizing.WorkerCountFloor);
-        plan.DispatchCapacity.Value.Should().BeGreaterThanOrEqualTo(PerformanceSizing.CapacityFloor);
     }
 
     [Fact]
@@ -216,7 +214,6 @@ public class PerformanceSizingTests
             [PerformanceSizing.ConfigKeys.MinWorkerThreads] = 768,
             [PerformanceSizing.ConfigKeys.MinIoCompletionThreads] = 768,
             [PerformanceSizing.ConfigKeys.DispatchWorkerCount] = 600,
-            [PerformanceSizing.ConfigKeys.DispatchCapacity] = 2048,
         };
 
         var plan = PerformanceSizing.Create(
@@ -227,7 +224,6 @@ public class PerformanceSizingTests
         plan.MaxConcurrentSteps.Value.Should().Be(600);
         plan.MinWorkerThreads.Value.Should().Be(768);
         plan.DispatchWorkerCount.Value.Should().Be(600);
-        plan.DispatchCapacity.Value.Should().Be(2048);
         plan.MaxRunspaces.Bound.Should().Be(SizingBound.Manual);
     }
 

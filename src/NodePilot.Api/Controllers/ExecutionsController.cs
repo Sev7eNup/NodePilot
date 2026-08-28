@@ -7,6 +7,7 @@ using NodePilot.Api.Dtos;
 using NodePilot.Api.ExecutionDispatch;
 using NodePilot.Api.Security;
 using NodePilot.Core.ExecutionDispatch;
+using NodePilot.Core.Clients;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
@@ -89,12 +90,16 @@ public class ExecutionsController : ControllerBase
         Scrub(execution.InputParametersJson));
 
     [HttpGet]
-    public async Task<ActionResult<List<ExecutionResponse>>> GetAll(
+    public async Task<ActionResult<PagedResponse<ExecutionResponse>>> GetAll(
         [FromQuery] Guid? workflowId,
         [FromQuery] bool activeOnly = false,
         [FromQuery] bool terminalOnly = false,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 100)
     {
+        page = Math.Max(1, page);
+        pageSize = Math.Clamp(pageSize, 1, 200);
         var query = _db.WorkflowExecutions.AsNoTracking().AsQueryable();
         // RBAC: hide executions whose workflow's folder the user can't read.
         query = await ApplyExecutionAccessFilterAsync(query, ct);
@@ -118,17 +123,21 @@ public class ExecutionsController : ControllerBase
                 e.Status == ExecutionStatus.Failed ||
                 e.Status == ExecutionStatus.Cancelled);
 
+        var total = await query.LongCountAsync(ct);
+        var skip = (int)Math.Min((long)(page - 1) * pageSize, int.MaxValue);
         var rows = await query
             .OrderByDescending(e => e.StartedAt)
-            .Take(500)
+            .ThenByDescending(e => e.Id)
+            .Skip(skip)
+            .Take(pageSize)
             .Select(e => new { e.Id, e.WorkflowId, e.Status, e.StartedAt, e.CompletedAt,
                 e.TriggeredBy, e.ErrorMessage, e.TraceId, e.SpanId, e.ReturnData, e.InputParametersJson,
                 e.StartedByUserId, e.ParentExecutionId })
             .ToListAsync(ct);
 
         // The extra history-list columns are resolved via four batched queries — each one
-        // matches against the IN-list of up to 500 row IDs collected above. Doing a sub-select
-        // per row would mean 500 round-trips on Postgres + SQL Server; this approach stays at
+        // matches against the IN-list of up to 200 row IDs collected above. Doing a sub-select
+        // per row would mean up to 200 round-trips on Postgres + SQL Server; this approach stays at
         // 4 queries regardless of how many rows are in the window.
         var execIds = rows.Select(r => r.Id).ToList();
 
@@ -218,7 +227,9 @@ public class ExecutionsController : ControllerBase
                 FailedSteps: failed);
         }).ToList();
 
-        return Ok(executions);
+        var totalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)pageSize);
+        return Ok(new PagedResponse<ExecutionResponse>(
+            executions, page, pageSize, total, totalPages));
     }
 
     [HttpGet("{id:guid}")]
@@ -457,23 +468,30 @@ public class ExecutionsController : ControllerBase
             && (execution.Status == ExecutionStatus.Running || execution.Status == ExecutionStatus.Pending))
         {
             var wasPending = execution.Status == ExecutionStatus.Pending;
-            execution.Status = ExecutionStatus.Cancelled;
-            execution.CancelledBy = "user";
-            execution.CompletedAt = DateTime.UtcNow;
-            execution.ErrorMessage ??= wasPending
+            var message = execution.ErrorMessage ?? (wasPending
                 ? "Queued execution was cancelled before dispatch."
-                : "Force-cancelled: no active in-memory execution (orphaned from a previous API process).";
+                : "Force-cancelled: no active in-memory execution (orphaned from a previous API process).");
+            var transitioned = await ExecutionStateLifecycle.TrySetTerminalAsync(
+                _db.WorkflowExecutions.Where(candidate => candidate.Id == id
+                    && (candidate.Status == ExecutionStatus.Running
+                        || candidate.Status == ExecutionStatus.Pending)),
+                ExecutionStatus.Cancelled,
+                DateTime.UtcNow,
+                message,
+                "user",
+                ct);
 
-            var runningSteps = await _db.StepExecutions
-                .Where(s => s.WorkflowExecutionId == id && s.Status == ExecutionStatus.Running)
-                .ToListAsync(ct);
-            foreach (var s in runningSteps)
+            if (transitioned == 1)
             {
-                s.Status = ExecutionStatus.Cancelled;
-                s.CompletedAt = DateTime.UtcNow;
-                s.ErrorOutput ??= "Step force-cancelled (parent execution was orphaned).";
+                await _db.StepExecutions
+                    .Where(step => step.WorkflowExecutionId == id
+                        && step.Status == ExecutionStatus.Running)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(step => step.Status, ExecutionStatus.Cancelled)
+                        .SetProperty(step => step.CompletedAt, DateTime.UtcNow)
+                        .SetProperty(step => step.ErrorOutput, step => step.ErrorOutput
+                            ?? "Step force-cancelled (parent execution was orphaned)."), ct);
             }
-            await _db.SaveChangesAsync(ct);
         }
 
         await _audit.LogAsync(AuditActions.ExecutionCancelled, "Execution", id,
@@ -559,13 +577,36 @@ public class ExecutionsController : ControllerBase
         if (await this.RequireWorkflowAccessAsync(_authz, workflow, NodePilot.Core.Interfaces.ResourceOp.Run, ct) is { } d) return d;
         if (!workflow.IsEnabled) return BadRequest(new { message = $"Workflow '{workflow.Name}' is disabled." });
 
-        // Deserialize snapshot. Missing / malformed JSON → fresh empty params (still audits
-        // as a retry so the lineage stays visible).
+        // InputParametersJson is an observability snapshot: secret-looking values are redacted and
+        // the whole value is capped. It is safe as a retry source only while it is valid JSON and
+        // contains neither marker. Fail closed instead of silently executing with masked or empty
+        // parameters.
         Dictionary<string, string>? parameters = null;
         if (!string.IsNullOrWhiteSpace(original.InputParametersJson))
         {
-            try { parameters = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(original.InputParametersJson); }
-            catch { /* swallow — original's snapshot is corrupt; run without params */ }
+            if (original.InputParametersJson.Contains(OutputRedactor.Placeholder, StringComparison.Ordinal)
+                || original.InputParametersJson.EndsWith("... [truncated]", StringComparison.Ordinal))
+            {
+                return BadRequest(new
+                {
+                    code = "execution_inputs_not_replayable",
+                    message = "This execution cannot be retried safely because its saved inputs were redacted or truncated. Start the workflow again with fresh parameters."
+                });
+            }
+
+            try
+            {
+                parameters = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(
+                    original.InputParametersJson);
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return BadRequest(new
+                {
+                    code = "execution_inputs_not_replayable",
+                    message = "This execution cannot be retried safely because its saved inputs are invalid. Start the workflow again with fresh parameters."
+                });
+            }
         }
 
         // C-2: tag retry with the user who clicked the retry button (not the original author).
@@ -580,7 +621,6 @@ public class ExecutionsController : ControllerBase
                 RequireWorkflowEnabled: true,
                 MissingWorkflowMessage: "Queued retry was not dispatched because the workflow no longer exists.",
                 PreOwnershipFailurePrefix: "Queued retry failed before the engine could take ownership",
-                EnqueueFailureMessage: "Queued retry was not dispatched because the request was cancelled before enqueue completed.",
                 // Retry is a recovery operation on an already-known run — not gated by maintenance
                 // windows. Blocking incident recovery during a blackout would be counterproductive.
                 RequireMaintenanceWindowCheck: false),

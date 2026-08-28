@@ -19,10 +19,10 @@ using Serilog;
 var bootstrapConfig = LoggingSetup.BuildBootstrapConfiguration();
 
 // Perf: the process-wide sizing decision, taken exactly once here and shared by every consumer
-// (ThreadPool floor, step cap, runspace pool, dispatch queue, engine capacity caps). With
+// (ThreadPool floor, step cap, runspace pool, dispatch workers, engine capacity caps). With
 // Performance:ManualTuning off — the default — the values are derived from the detected CPU and
 // memory; with it on, the operator's configured values win. Resolving once is what keeps the
-// boot-fixed consumers (runspace pool, dispatch queue) and the hot-reloadable ThreadPool from
+// boot-fixed consumers (runspace pool, dispatch workers) and the hot-reloadable ThreadPool from
 // drifting into different modes after a configuration reload.
 var performancePlan = NodePilot.Api.Configuration.PerformancePlanFactory.Create(bootstrapConfig);
 
@@ -208,16 +208,14 @@ builder.Services.AddSingleton<IMaintenanceWindowEvaluator, MaintenanceWindowEval
 // The boot plan is the single source of truth for sizing; every consumer resolves it from DI
 // rather than reading the raw keys, so none of them can disagree about the active mode.
 builder.Services.AddSingleton(performancePlan);
-// Dispatch queue/worker sizing comes from the plan, not straight from the section: under auto
+// Dispatch worker sizing comes from the plan, not straight from the section: under auto
 // tuning the configured numbers are inert and the plan carries the hardware-derived ones.
 builder.Services.Configure<NodePilot.Api.ExecutionDispatch.ExecutionDispatchOptions>(o =>
 {
     o.WorkerCount = performancePlan.DispatchWorkerCount.Value;
-    o.Capacity = performancePlan.DispatchCapacity.Value;
 });
-builder.Services.AddSingleton<NodePilot.Api.ExecutionDispatch.ExecutionDispatchQueue>();
-builder.Services.AddSingleton<NodePilot.Core.Interfaces.IExecutionDispatchQueue>(
-    sp => sp.GetRequiredService<NodePilot.Api.ExecutionDispatch.ExecutionDispatchQueue>());
+builder.Services.AddSingleton<NodePilot.Api.ExecutionDispatch.ExecutionDispatchSignal>();
+builder.Services.AddSingleton<NodePilot.Api.ExecutionDispatch.ExecutionDispatchCallbackRegistry>();
 builder.Services.AddScoped<NodePilot.Api.ExecutionDispatch.ExecutionDispatchService>();
 builder.Services.AddScoped<NodePilot.Core.ExecutionDispatch.IWorkflowExecutionDispatcher>(
     sp => sp.GetRequiredService<NodePilot.Api.ExecutionDispatch.ExecutionDispatchService>());

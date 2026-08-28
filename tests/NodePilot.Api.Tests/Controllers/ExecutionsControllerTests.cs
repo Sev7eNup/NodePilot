@@ -15,6 +15,7 @@ using NodePilot.Api.ExecutionDispatch;
 using NodePilot.Core.Enums;
 using NodePilot.Core.Interfaces;
 using NodePilot.Core.Models;
+using NodePilot.Core.Clients;
 using NodePilot.Data;
 using NodePilot.Engine.Security;
 using NodePilot.Api.Tests.TestSupport;
@@ -29,7 +30,7 @@ public class ExecutionsControllerTests
     private static ExecutionDispatchService CreateDispatchService(
         NodePilotDbContext db,
         IWorkflowEngine engine,
-        IExecutionDispatchQueue? dispatchQueue = null)
+        ExecutionDispatchSignal? dispatchSignal = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton(db);
@@ -43,12 +44,12 @@ public class ExecutionsControllerTests
         var provider = services.BuildServiceProvider();
         return new ExecutionDispatchService(
             db,
-            dispatchQueue ?? new NoopExecutionDispatchQueue(),
             provider.GetRequiredService<IServiceScopeFactory>(),
             new OutputRedactor(null),
             new NodePilot.Engine.Cluster.SingleNodeClusterStateProvider(),
             NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance);
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ExecutionDispatchService>.Instance,
+            signal: dispatchSignal);
     }
 
     // Shared controller factory. Sets up an Admin-claim HttpContext so IsPrivileged / Scrub
@@ -57,11 +58,11 @@ public class ExecutionsControllerTests
     private static ExecutionsController NewController(
         NodePilotDbContext db,
         IWorkflowEngine engine,
-        IExecutionDispatchQueue? dispatchQueue = null,
+        ExecutionDispatchSignal? dispatchSignal = null,
         IAuditWriter? audit = null)
     {
         var controller = new ExecutionsController(
-            db, engine, CreateDispatchService(db, engine, dispatchQueue), new OutputRedactor(null),
+            db, engine, CreateDispatchService(db, engine, dispatchSignal), new OutputRedactor(null),
             audit ?? NoopAuditWriter.Instance,
             new AlwaysAllowAuthorizationService(),
             NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll);
@@ -108,8 +109,51 @@ public class ExecutionsControllerTests
 
         // Assert
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var executions = ok.Value.Should().BeAssignableTo<List<ExecutionResponse>>().Subject;
+        var executions = ok.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items;
         executions.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task GetAll_ReturnsRequestedPageAndTrueTotal()
+    {
+        await using var db = CreateContext();
+        var workflow = new Workflow
+        {
+            Id = Guid.NewGuid(), Name = "Paged", DefinitionJson = "{}", IsEnabled = true,
+        };
+        db.Workflows.Add(workflow);
+        db.WorkflowExecutions.AddRange(Enumerable.Range(0, 205).Select(index => new WorkflowExecution
+        {
+            Id = Guid.NewGuid(),
+            WorkflowId = workflow.Id,
+            Status = ExecutionStatus.Succeeded,
+            StartedAt = DateTime.UtcNow.AddSeconds(-index),
+        }));
+        await db.SaveChangesAsync();
+
+        var controller = NewController(db, Mock.Of<IWorkflowEngine>());
+
+        var result = await controller.GetAll(
+            workflow.Id, activeOnly: false, terminalOnly: true,
+            CancellationToken.None, page: 2, pageSize: 100);
+
+        var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var response = ok.Value.Should()
+            .BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
+        response.Items.Should().HaveCount(100);
+        response.Page.Should().Be(2);
+        response.PageSize.Should().Be(100);
+        response.Total.Should().Be(205);
+        response.TotalPages.Should().Be(3);
+
+        var extremeResult = await controller.GetAll(
+            workflow.Id, activeOnly: false, terminalOnly: true,
+            CancellationToken.None, page: int.MaxValue, pageSize: 200);
+        var extremeOk = extremeResult.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var extremePage = extremeOk.Value.Should()
+            .BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject;
+        extremePage.Items.Should().BeEmpty("large page numbers must not overflow Skip into a negative value");
+        extremePage.Total.Should().Be(205);
     }
 
     [Fact]
@@ -144,7 +188,7 @@ public class ExecutionsControllerTests
 
         // Assert
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var executions = ok.Value.Should().BeAssignableTo<List<ExecutionResponse>>().Subject;
+        var executions = ok.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items;
         executions.Should().HaveCount(1);
         executions[0].WorkflowId.Should().Be(wf1.Id);
     }
@@ -210,7 +254,7 @@ public class ExecutionsControllerTests
         await db.SaveChangesAsync();
 
         var mockEngine = new Mock<IWorkflowEngine>();
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = NewController(db, mockEngine.Object, queue);
 
         // Act
@@ -223,9 +267,10 @@ public class ExecutionsControllerTests
         response.WorkflowId.Should().Be(workflow.Id);
         response.Status.Should().Be("Pending");
         response.TriggeredBy.Should().Be("manual");
-        // Interactive runs are priority-queued, but still consume the bounded worker pool.
+        // Interactive priority is persisted with the dispatch intent.
         queue.EnqueueCount.Should().Be(1);
-        queue.LastPriority.Should().Be(ExecutionDispatchPriority.Interactive);
+        (await db.ExecutionDispatchOutbox.SingleAsync(item => item.ExecutionId == response.Id))
+            .Priority.Should().Be(ExecutionDispatchPriority.Interactive);
 
         var pending = await db.WorkflowExecutions.FindAsync(response.Id);
         pending.Should().NotBeNull();
@@ -337,6 +382,52 @@ public class ExecutionsControllerTests
     }
 
     [Fact]
+    public async Task Retry_RedactedInput_Returns400WithoutDispatch()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        var original = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Failed,
+            StartedAt = DateTime.UtcNow.AddMinutes(-5), CompletedAt = DateTime.UtcNow,
+            InputParametersJson = """{"password":"***"}""",
+        };
+        db.AddRange(workflow, original);
+        await db.SaveChangesAsync();
+        var queue = new CountingExecutionDispatchSignal();
+
+        var result = await NewController(db, Mock.Of<IWorkflowEngine>(), queue)
+            .Retry(original.Id, CancellationToken.None);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        queue.EnqueueCount.Should().Be(0);
+        (await db.WorkflowExecutions.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Retry_TruncatedInput_Returns400WithoutDispatch()
+    {
+        var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        var original = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id, Status = ExecutionStatus.Failed,
+            StartedAt = DateTime.UtcNow.AddMinutes(-5), CompletedAt = DateTime.UtcNow,
+            InputParametersJson = "{\"payload\":\"incomplete... [truncated]",
+        };
+        db.AddRange(workflow, original);
+        await db.SaveChangesAsync();
+        var queue = new CountingExecutionDispatchSignal();
+
+        var result = await NewController(db, Mock.Of<IWorkflowEngine>(), queue)
+            .Retry(original.Id, CancellationToken.None);
+
+        result.Result.Should().BeOfType<BadRequestObjectResult>();
+        queue.EnqueueCount.Should().Be(0);
+        (await db.WorkflowExecutions.CountAsync()).Should().Be(1);
+    }
+
+    [Fact]
     public async Task Cancel_ExistingExecution_Returns204()
     {
         // Arrange
@@ -390,10 +481,44 @@ public class ExecutionsControllerTests
 
         // Assert
         result.Should().BeOfType<NoContentResult>();
+        db.ChangeTracker.Clear();
         var cancelled = await db.WorkflowExecutions.FindAsync(execution.Id);
         cancelled!.Status.Should().Be(ExecutionStatus.Cancelled);
         cancelled.CompletedAt.Should().NotBeNull();
         cancelled.ErrorMessage.Should().Contain("before dispatch");
+    }
+
+    [Fact]
+    public async Task Cancel_ConcurrentTerminalWrite_DoesNotOverwriteSucceededState()
+    {
+        await using var db = CreateContext();
+        var workflow = new Workflow { Id = Guid.NewGuid(), Name = "WF", DefinitionJson = "{}" };
+        var execution = new WorkflowExecution
+        {
+            Id = Guid.NewGuid(), WorkflowId = workflow.Id,
+            Status = ExecutionStatus.Pending, TriggeredBy = "manual",
+        };
+        db.AddRange(workflow, execution);
+        await db.SaveChangesAsync();
+        var engine = new Mock<IWorkflowEngine>();
+        engine.Setup(candidate => candidate.CancelAsync(
+                execution.Id, It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                await db.WorkflowExecutions
+                    .Where(candidate => candidate.Id == execution.Id)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(candidate => candidate.Status, ExecutionStatus.Succeeded)
+                        .SetProperty(candidate => candidate.CompletedAt, DateTime.UtcNow));
+                return false;
+            });
+        var controller = NewController(db, engine.Object);
+
+        var result = await controller.Cancel(execution.Id, CancellationToken.None);
+
+        result.Should().BeOfType<NoContentResult>();
+        db.ChangeTracker.Clear();
+        (await db.WorkflowExecutions.SingleAsync()).Status.Should().Be(ExecutionStatus.Succeeded);
     }
 
     [Fact]
@@ -427,56 +552,28 @@ public class ExecutionsControllerTests
 
     private static readonly NullLogger<ExternalTriggerController> TriggerLogger = NullLogger<ExternalTriggerController>.Instance;
 
-    private sealed class ImmediateExecutionDispatchQueue : IExecutionDispatchQueue
+    private sealed class CountingExecutionDispatchSignal : ExecutionDispatchSignal
     {
         public int EnqueueCount { get; private set; }
 
-        public ValueTask EnqueueAsync(
-            Func<CancellationToken, Task> workItem,
-            CancellationToken ct,
-            ExecutionDispatchPriority priority = ExecutionDispatchPriority.Normal)
+        public override void Pulse()
         {
             EnqueueCount++;
-            return new ValueTask(workItem(ct));
+            base.Pulse();
         }
-    }
-
-    private sealed class CountingNoopExecutionDispatchQueue : IExecutionDispatchQueue
-    {
-        public int EnqueueCount { get; private set; }
-        public ExecutionDispatchPriority LastPriority { get; private set; }
-
-        public ValueTask EnqueueAsync(
-            Func<CancellationToken, Task> workItem,
-            CancellationToken ct,
-            ExecutionDispatchPriority priority = ExecutionDispatchPriority.Normal)
-        {
-            EnqueueCount++;
-            LastPriority = priority;
-            return ValueTask.CompletedTask;
-        }
-    }
-
-    private sealed class ThrowingExecutionDispatchQueue : IExecutionDispatchQueue
-    {
-        public ValueTask EnqueueAsync(
-            Func<CancellationToken, Task> workItem,
-            CancellationToken ct,
-            ExecutionDispatchPriority priority = ExecutionDispatchPriority.Normal)
-            => throw new InvalidOperationException("synthetic enqueue failure");
     }
 
     private static ExternalTriggerController CreateTriggerController(
         NodePilotDbContext db,
         IWorkflowEngine engine,
         string? presentedKey,
-        IExecutionDispatchQueue? dispatchQueue = null,
+        ExecutionDispatchSignal? dispatchSignal = null,
         IAuditWriter? audit = null,
         NodePilot.Core.Interfaces.IMaintenanceWindowEvaluator? maintenance = null,
         NodePilot.Engine.Security.OutputRedactor? redactor = null)
     {
         var controller = new ExternalTriggerController(
-            db, CreateDispatchService(db, engine, dispatchQueue), audit ?? NoopAuditWriter.Instance,
+            db, CreateDispatchService(db, engine, dispatchSignal), audit ?? NoopAuditWriter.Instance,
             maintenance ?? NodePilot.TestCommons.StubMaintenanceWindowEvaluator.AllowAll,
             redactor ?? new NodePilot.Engine.Security.OutputRedactor());
         var httpCtx = new DefaultHttpContext();
@@ -638,7 +735,7 @@ public class ExecutionsControllerTests
         db.Workflows.Add(workflow);
         await db.SaveChangesAsync();
 
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
 
         var result = await controller.ExternalTrigger(
@@ -666,7 +763,7 @@ public class ExecutionsControllerTests
         var config = ConfigWithHashedKeys(
             ("integration-a", LongKey, [allowed.Id]),
             ("integration-b", OtherLongKey, [denied.Id]));
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
 
         var deniedController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
         var deniedResult = await deniedController.ExternalTrigger(
@@ -711,7 +808,7 @@ public class ExecutionsControllerTests
         }
         """;
         var config = ConfigWithJsonOverride(baseValues, shorterOverride);
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
 
         var revokedController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
         var revokedResult = await revokedController.ExternalTrigger(
@@ -759,7 +856,7 @@ public class ExecutionsControllerTests
         var config = ConfigWithJsonOverride(
             baseValues,
             """{ "ExternalTrigger": { "Keys": {} } }""");
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
 
         var result = await controller.ExternalTrigger(
@@ -789,7 +886,7 @@ public class ExecutionsControllerTests
         var config = ConfigWithJsonOverride(
             baseValues,
             $$"""{ "ExternalTrigger": { "Keys": { "ci": { "KeyHash": "{{replacementHash}}" } } } }""");
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
 
         var replacementController = CreateTriggerController(
             db, Mock.Of<IWorkflowEngine>(), OtherLongKey, queue);
@@ -825,7 +922,7 @@ public class ExecutionsControllerTests
         { "ExternalTrigger": { "AllowedWorkflowIds": ["{{retained.Id}}"] } }
         """;
         var config = ConfigWithJsonOverride(baseValues, shorterOverride);
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
 
         var revokedController = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
         var revokedResult = await revokedController.ExternalTrigger(
@@ -857,7 +954,7 @@ public class ExecutionsControllerTests
         db.Workflows.Add(workflow);
         await db.SaveChangesAsync();
 
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
         var result = await controller.ExternalTrigger(
             workflow.Name, null, ConfigWithHashedKeys(("integration-a", LongKey, [workflow.Id])),
@@ -986,7 +1083,7 @@ public class ExecutionsControllerTests
     }
 
     [Fact]
-    public async Task ExternalTrigger_CorrectKey_EnqueuesPendingExecutionAndInvokesEngine()
+    public async Task ExternalTrigger_CorrectKey_PersistsPendingExecutionAndDispatchIntent()
     {
         var db = CreateContext();
         var publisher = new User
@@ -1018,7 +1115,7 @@ public class ExecutionsControllerTests
                   Status = ExecutionStatus.Succeeded,
               });
 
-        var queue = new ImmediateExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = CreateTriggerController(db, engine.Object, presentedKey: LongKey, queue);
 
         var result = await controller.ExternalTrigger(
@@ -1027,32 +1124,12 @@ public class ExecutionsControllerTests
         result.Result.Should().BeOfType<AcceptedResult>();
         queue.EnqueueCount.Should().Be(1);
 
-        // Dispatcher fires engine.ExecuteAsync as an unrooted Task so the worker can
-        // pick up the next queued execution immediately. The engine call lands on the
-        // ThreadPool a few moments later — poll briefly before asserting.
-        await WaitForInvocationAsync(engine, TimeSpan.FromSeconds(5));
-
-        engine.Verify(e => e.ExecuteAsync(
-            It.Is<Workflow>(w => w.Id == wf.Id),
-            "api",
-            It.IsAny<CancellationToken>(),
-            It.Is<Dictionary<string, string>?>(p => p == null),
-            It.IsAny<int?>(),
-            It.IsAny<bool>(),
-            It.IsAny<Guid?>(),
-            It.IsAny<Guid?>(),
-            It.IsAny<int>(),
-            It.Is<Guid?>(executionId => executionId.HasValue)), Times.Once);
-    }
-
-    private static async Task WaitForInvocationAsync(Mock<IWorkflowEngine> engine, TimeSpan timeout)
-    {
-        var deadline = DateTime.UtcNow + timeout;
-        while (DateTime.UtcNow < deadline)
-        {
-            if (engine.Invocations.Count > 0) return;
-            await Task.Delay(20);
-        }
+        // Admission is durable; engine invocation belongs to the hosted worker.
+        var pending = await db.WorkflowExecutions.SingleAsync();
+        pending.Status.Should().Be(ExecutionStatus.Pending);
+        (await db.ExecutionDispatchOutbox.AnyAsync(item => item.ExecutionId == pending.Id))
+            .Should().BeTrue();
+        engine.Invocations.Should().BeEmpty("the durable worker owns engine invocation");
     }
 
     [Fact]
@@ -1063,7 +1140,7 @@ public class ExecutionsControllerTests
         db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue,
             maintenance: NodePilot.TestCommons.StubMaintenanceWindowEvaluator.Blocking("PatchWindow"));
         controller.HttpContext.Request.Headers["Idempotency-Key"] = "blocked-request";
@@ -1090,7 +1167,7 @@ public class ExecutionsControllerTests
         db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue);
         var parameters = Enumerable
             .Range(0, ExternalTriggerController.MaxTriggerParameterCount + 1)
@@ -1113,7 +1190,7 @@ public class ExecutionsControllerTests
         db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue);
         var parameters = new Dictionary<string, string>
         {
@@ -1138,7 +1215,7 @@ public class ExecutionsControllerTests
         db.Workflows.Add(wf);
         await db.SaveChangesAsync();
 
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue);
         var parameters = new Dictionary<string, string> { ["version"] = "2.1.0", ["env"] = "prod" };
 
@@ -1159,7 +1236,7 @@ public class ExecutionsControllerTests
         await db.SaveChangesAsync();
 
         var engine = new Mock<IWorkflowEngine>();
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
 
         var first = CreateTriggerController(db, engine.Object, presentedKey: LongKey, queue);
         first.HttpContext.Request.Headers["Idempotency-Key"] = "same-request";
@@ -1192,6 +1269,41 @@ public class ExecutionsControllerTests
     }
 
     [Fact]
+    public async Task ExternalTrigger_IdempotencyKey_RecoveredPending_AllowsFreshAttempt()
+    {
+        var db = CreateContext();
+        var workflow = ExternalWorkflow("RecoveredPending");
+        db.Workflows.Add(workflow);
+        await db.SaveChangesAsync();
+        var queue = new CountingExecutionDispatchSignal();
+        var config = ConfigWithKey(LongKey, workflow.Id);
+
+        var first = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        first.HttpContext.Request.Headers["Idempotency-Key"] = "restart-retry";
+        var firstResult = await first.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+        var original = firstResult.Result.Should().BeOfType<AcceptedResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+
+        var abandoned = (await db.WorkflowExecutions.FindAsync(original.Id))!;
+        abandoned.Status = ExecutionStatus.Cancelled;
+        abandoned.CancelledBy = "reconciler-pending";
+        abandoned.CompletedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+
+        var replay = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
+        replay.HttpContext.Request.Headers["Idempotency-Key"] = "restart-retry";
+        var replayResult = await replay.ExternalTrigger(
+            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
+
+        var accepted = replayResult.Result.Should().BeOfType<AcceptedResult>().Subject.Value
+            .Should().BeOfType<ExecutionResponse>().Subject;
+        accepted.Id.Should().NotBe(original.Id);
+        queue.EnqueueCount.Should().Be(2);
+        (await db.IdempotencyKeys.SingleAsync()).ExecutionId.Should().Be(accepted.Id);
+    }
+
+    [Fact]
     public async Task ExternalTrigger_IdempotencyKey_IsSeparatedByAuthenticatedKeyPrincipal()
     {
         var db = CreateContext();
@@ -1202,7 +1314,7 @@ public class ExecutionsControllerTests
         var config = ConfigWithHashedKeys(
             ("integration-a", LongKey, [workflow.Id]),
             ("integration-b", OtherLongKey, [workflow.Id]));
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
 
         var firstA = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
         firstA.HttpContext.Request.Headers["Idempotency-Key"] = "shared-client-token";
@@ -1243,7 +1355,7 @@ public class ExecutionsControllerTests
         var workflow = ExternalWorkflow("CanonicalPrincipal");
         db.Workflows.Add(workflow);
         await db.SaveChangesAsync();
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
 
         var upperConfig = ConfigWithHashedKeys(("CI-Agent", LongKey, [workflow.Id]));
         var first = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
@@ -1277,38 +1389,6 @@ public class ExecutionsControllerTests
     }
 
     [Fact]
-    public async Task ExternalTrigger_EnqueueFailure_RemovesPrincipalScopedReservationSoRetryCanRun()
-    {
-        var db = CreateContext();
-        var workflow = ExternalWorkflow("RetryAfterFailure");
-        db.Workflows.Add(workflow);
-        await db.SaveChangesAsync();
-        var config = ConfigWithHashedKeys(("ci", LongKey, [workflow.Id]));
-
-        var failing = CreateTriggerController(
-            db, Mock.Of<IWorkflowEngine>(), LongKey, new ThrowingExecutionDispatchQueue());
-        failing.HttpContext.Request.Headers["Idempotency-Key"] = "retry-after-enqueue-failure";
-        Func<Task> firstAttempt = async () => await failing.ExternalTrigger(
-            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
-
-        await firstAttempt.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("synthetic enqueue failure");
-        (await db.IdempotencyKeys.CountAsync()).Should().Be(0,
-            "cleanup must remove the internal principal-scoped digest after enqueue failure");
-
-        var queue = new CountingNoopExecutionDispatchQueue();
-        var retry = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), LongKey, queue);
-        retry.HttpContext.Request.Headers["Idempotency-Key"] = "retry-after-enqueue-failure";
-        var retryResult = await retry.ExternalTrigger(
-            workflow.Name, null, config, TriggerLogger, CancellationToken.None);
-
-        retryResult.Result.Should().BeOfType<AcceptedResult>();
-        queue.EnqueueCount.Should().Be(1);
-        (await db.IdempotencyKeys.CountAsync()).Should().Be(1);
-        (await db.IdempotencyKeys.SingleAsync()).Key.Should().StartWith("ext:v1:");
-    }
-
-    [Fact]
     public async Task ExternalTrigger_Replay_RedactsSensitiveExecutionFields()
     {
         // L-7 (security audit 2026-05-15): the API-key trigger surface carries no role, so it
@@ -1327,7 +1407,7 @@ public class ExecutionsControllerTests
         }).Build();
         var redactor = new NodePilot.Engine.Security.OutputRedactor(redactorConfig);
         var triggerConfig = ConfigWithKey(LongKey, wf.Id);
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
 
         var initial = CreateTriggerController(
             db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue, redactor: redactor);
@@ -1367,7 +1447,7 @@ public class ExecutionsControllerTests
         await db.SaveChangesAsync();
 
         var audit = new CapturingAuditWriter();
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
         var controller = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue, audit);
 
         var result = await controller.ExternalTrigger("Audited",
@@ -1400,7 +1480,7 @@ public class ExecutionsControllerTests
         await db.SaveChangesAsync();
 
         var audit = new CapturingAuditWriter();
-        var queue = new CountingNoopExecutionDispatchQueue();
+        var queue = new CountingExecutionDispatchSignal();
 
         var first = CreateTriggerController(db, Mock.Of<IWorkflowEngine>(), presentedKey: LongKey, queue, audit);
         first.HttpContext.Request.Headers["Idempotency-Key"] = "replay-key";
@@ -1438,7 +1518,7 @@ public class ExecutionsControllerTests
 
         // Assert
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var executions = ok.Value.Should().BeAssignableTo<List<ExecutionResponse>>().Subject;
+        var executions = ok.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items;
         executions.Should().HaveCount(2, "only Running and Pending should be returned");
         executions.Select(e => e.Status).Should().BeEquivalentTo(new[] { "Running", "Pending" });
         executions.Select(e => e.Id).Should().NotContain(succeeded.Id);
@@ -1467,7 +1547,7 @@ public class ExecutionsControllerTests
         var result = await controller.GetAll(workflow.Id, activeOnly: false, terminalOnly: true, CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var executions = ok.Value.Should().BeAssignableTo<List<ExecutionResponse>>().Subject;
+        var executions = ok.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items;
         executions.Should().HaveCount(3);
         executions.Select(e => e.Status).Should().BeEquivalentTo(new[] { "Succeeded", "Failed", "Cancelled" });
         executions.Select(e => e.Id).Should().NotContain(running.Id);
@@ -1533,7 +1613,7 @@ public class ExecutionsControllerTests
         var result = await controller.GetAll(workflow.Id, activeOnly: false, terminalOnly: false, CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var executions = ok.Value.Should().BeAssignableTo<List<ExecutionResponse>>().Subject;
+        var executions = ok.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items;
         var row = executions.Should().ContainSingle().Subject;
         row.StartedByUsername.Should().Be("alice");
         row.StepsTotal.Should().Be(3);
@@ -1591,7 +1671,7 @@ public class ExecutionsControllerTests
         var result = await controller.GetAll(workflow.Id, activeOnly: false, terminalOnly: false, CancellationToken.None);
 
         var ok200 = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var row = ok200.Value.Should().BeAssignableTo<List<ExecutionResponse>>().Subject.Single();
+        var row = ok200.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items.Single();
         row.FailedSteps.Should().NotBeNull().And.HaveCount(2);
         row.FailedSteps![0].StepId.Should().Be("branch-a", "der frühere Failed-Step kommt zuerst");
         row.FailedSteps[0].StepName.Should().Be("Send Email");
@@ -1626,7 +1706,7 @@ public class ExecutionsControllerTests
         var result = await controller.GetAll(workflow.Id, activeOnly: false, terminalOnly: false, CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var executions = ok.Value.Should().BeAssignableTo<List<ExecutionResponse>>().Subject;
+        var executions = ok.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items;
         executions.Should().ContainSingle().Which.StartedByUsername.Should().BeNull();
     }
 
@@ -1668,7 +1748,7 @@ public class ExecutionsControllerTests
         var result = await controller.GetAll(childWf.Id, activeOnly: false, terminalOnly: false, CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var executions = ok.Value.Should().BeAssignableTo<List<ExecutionResponse>>().Subject;
+        var executions = ok.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items;
         var row = executions.Should().ContainSingle().Subject;
         row.ParentExecutionId.Should().Be(parentExec.Id);
         row.ParentWorkflowName.Should().Be("Daily Report");
@@ -1749,7 +1829,7 @@ public class ExecutionsControllerTests
         var result = await controller.GetAll(workflow.Id, activeOnly: false, terminalOnly: false, CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var row = ok.Value.Should().BeAssignableTo<List<ExecutionResponse>>().Subject.Single();
+        var row = ok.Value.Should().BeAssignableTo<PagedResponse<ExecutionResponse>>().Subject.Items.Single();
         row.FailedSteps.Should().BeNull();
         row.StepsTotal.Should().Be(1);
         row.StepsCompleted.Should().Be(1);

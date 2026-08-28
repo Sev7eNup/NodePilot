@@ -252,9 +252,17 @@ public sealed class NodePilotApiClient
         if (workflowId is { } w) q.Add($"workflowId={w}");
         if (activeOnly == true) q.Add("activeOnly=true");
         if (terminalOnly == true) q.Add("terminalOnly=true");
-        var url = "api/executions" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
-        using var res = await _http.GetAsync(url, ct);
-        return await ParseAsync<List<ExecutionResponse>>(res, ct);
+        var baseUrl = "api/executions" + (q.Count > 0 ? "?" + string.Join("&", q) : "");
+        var results = new List<ExecutionResponse>();
+        for (var page = 1; ; page++)
+        {
+            var separator = baseUrl.Contains('?') ? '&' : '?';
+            using var res = await _http.GetAsync(
+                $"{baseUrl}{separator}page={page}&pageSize=200", ct);
+            var response = await ParseAsync<PagedResponse<ExecutionResponse>>(res, ct);
+            results.AddRange(response.Items);
+            if (page >= response.TotalPages) return results;
+        }
     }
 
     public async Task<ExecutionResponse> GetExecutionAsync(Guid id, CancellationToken ct)

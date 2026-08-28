@@ -18,6 +18,7 @@ public sealed class WorkflowAnalyzerFrontendParityTests
     private static readonly string[] MirroredFrontendLintCodes =
     [
         "duplicate-edge",
+        "fan-in-requires-junction",
         "dup-output-variable",
         "unknown-template-ref",
         "startjob-in-runspace",

@@ -270,9 +270,10 @@ Contract-Derivation: `GET /{id}/contract` liefert Inputs aus `manualTrigger.para
 ## WorkflowEngine — Execution-Modell
 
 - **Event-driven:** Queue + `inFlight`-Dict. Roots = **ausschließlich Trigger-Nodes** (`manualTrigger`/`scheduleTrigger`/`webhookTrigger`/`fileWatcherTrigger`/`databaseTrigger`/`eventLogTrigger`); ohne (aktiven) Trigger → 0 Roots → Execution `Failed`. **Kein** `inDegree==0`-Fallback. Disabled Trigger nie Root. Orphan-/Nicht-Trigger-Activities ohne eingehende Edge laufen **nie** → `Skipped`.
+- **Expliziter Fan-in:** Nur eine `junction` darf mehrere eingehende Edges haben; jede andere Activity hat maximal eine. Designer und SCOrch-Import fügen bei Bedarf eine `waitAll`-Junction ein, die Strukturvalidierung schützt Save/Publish/API. Junction-Conditions werden über alle relevanten Eingänge ausgewertet, nicht über die zuletzt abgeschlossene Edge.
 - **Cancellation:** `_runningExecutions` Dict (Guid → CTS).
 - **Per-Step-DI-Scope:** eigener Scope pro Step → scope-lokaler `DbContext`.
-- **Startup-Reconciler:** hängende `Running`/`Pending`/`Paused` → `Cancelled`.
+- **Startup-Reconciler:** `Running`/`Paused` und inkonsistente `Pending` ohne Dispatch Intent → `Cancelled`; `Pending` mit durablem Outbox-Intent bleibt erhalten und wird neu geleast.
 
 ## Build & Test
 
@@ -357,16 +358,16 @@ Beide sind reine HTTP-Clients gegen die REST-API — **kein** eigener Backend-Pf
 | `GET\|POST\|PUT /api/credentials` | ✓ | ✓ | ✗ |
 | `POST /api/executions/{id}/cancel` | ✓ | ✓ | ✗ |
 | `DELETE /{workflows,machines,credentials}/{id}` | ✓ | ✗ | ✗ |
-| `DELETE /api/shared-workflow-folders/{id}[?recursive=true]` | Folder-`Edit` — **auch mit Inhalt** | | |
+| `DELETE /api/shared-workflow-folders/{id}` | Folder-`Edit`, nur leer | Folder-`Edit`, nur leer | ✗ |
+| `DELETE /api/shared-workflow-folders/{id}?recursive=true` | ✓ | ✗ | ✗ |
 | `GET /api/alerting/rules`, `POST /preview-filter` | ✓ | ✓ | ✗ |
 | `POST/PUT/DELETE /api/alerting/rules`, `POST /{id}/enable\|disable\|test-fire` | ✓ | ✗ | ✗ |
 | `POST /api/trigger/{name}` | API-Key via `X-Api-Key`-Header |
 
-**Ordner-Löschen weicht bewusst ab:** es hängt an Folder-`Edit`, nicht an Admin — auch mit
-`?recursive=true`, das Unterordner und die darin liegenden Workflows mitnimmt. Ein FolderEditor
-kann darüber also Workflows löschen, die ihm `DELETE /api/workflows/{id}` (Admin-only) verwehrt.
-Produkt-Entscheidung, kein Versehen: der Ordner ist die Einheit, die ein Team verwaltet. Die
-Rechte auf dem Subtree sind dabei gedeckt, weil Grants über die Ahnenkette wirken.
+**Ordner-Löschen hat zwei Sicherheitsgrenzen:** Ein leerer Ordner bleibt eine Folder-`Edit`-
+Mutation. `?recursive=true` entfernt dagegen auch Workflows und deren Execution-Historie und ist
+deshalb wie `DELETE /api/workflows/{id}` global Admin-only. Die Folder-Capabilities liefern dafür
+`canDelete` getrennt von `canEdit`; die UI darf den rekursiven Delete nicht aus `canEdit` ableiten.
 
 **Der Global-Variablen-Ordnerbaum kennt dieselbe Mechanik, bleibt aber Admin-only.**
 `DELETE /api/global-variable-folders/{id}[?recursive=true]` löscht Unterordner samt Variablen,
@@ -395,7 +396,7 @@ Hardening-Flags: `Remote:RequireWinRmSsl`, `RestApi:BlockPrivateNetworks`, `Rest
 
 Admin-Settings-Saves persistieren atomar nach `appsettings.runtime.json` (`reloadOnChange: true`). Pro Sektion trägt `SettingsSchema.cs` ein `IsHotReloadable`-Flag; nur `false`-Sektionen setzen den Restart-Marker (UI: emerald `HotReloadHint` vs. oranger `RestartBanner`). 13 Sektionen sind hot-reloadable, 9 restart-pflichtig; harter Kern (JWT, DB, Kestrel, Cluster/HA, `Remote:Provider`) bleibt boot-fixed.
 
-**Dimensionierung:** `Performance:ManualTuning` (default **`false`**) entscheidet, ob `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` und `ExecutionDispatch:*` aus erkannter CPU+RAM abgeleitet (`PerformanceSizing` in Core, Boot-Snapshot via `PerformancePlanFactory`) oder verbatim aus der Config genommen werden. Aus = hardware-adaptiv, die konfigurierten Zahlen bleiben als inertes Preset stehen. Restart-pflichtig. **`Engine:MaxConcurrentExecutions:*` ist ausgenommen** (Sicherheits-Cap, nicht Tuning — gilt in beiden Modi). Details: `docs/performance-improvements.md`. **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — nie `IOptions<T>.Value`-Snapshot. Vollständige Matrix + Mixed-Section-Limits: `docs/claude-reference.md`.
+**Dimensionierung:** `Performance:ManualTuning` (default **`false`**) entscheidet, ob `Engine:Runspace:*`, `Engine:MaxConcurrentSteps`, `Threading:*` und `ExecutionDispatch:WorkerCount` aus erkannter CPU+RAM abgeleitet (`PerformanceSizing` in Core, Boot-Snapshot via `PerformancePlanFactory`) oder verbatim aus der Config genommen werden. Aus = hardware-adaptiv, die konfigurierten Zahlen bleiben als inertes Preset stehen. Restart-pflichtig. Wartender Dispatch liegt in der DB-Outbox; eine Queue-Capacity gibt es nicht. **`Engine:MaxConcurrentExecutions:*` ist ausgenommen** (Sicherheits-Cap, nicht Tuning — gilt in beiden Modi). Details: `docs/performance-improvements.md`. **Consumer-Regel:** hot-reloadable Werte via `IOptionsMonitor<T>.CurrentValue` bzw. rohes `IConfiguration` pro Use/Pass lesen — nie `IOptions<T>.Value`-Snapshot. Vollständige Matrix + Mixed-Section-Limits: `docs/claude-reference.md`.
 
 ## AuditLog
 
@@ -434,7 +435,7 @@ Getrennt vom Workflow-Export: voller DR-Snapshot der Konfiguration (Workflows+Fo
 - **Kein Root (trigger-los oder nur Zyklen):** Nodes vorhanden, aber kein (aktiver) Trigger → 0 Roots → Execution `Failed` (ErrorMessage nennt den fehlenden Trigger/Start). **Leerer** Workflow (0 Nodes) → läuft mit 0 Steps durch (`Succeeded`).
 - **`POST /execute`:** asynchron, 202 + ExecutionId. Fortschritt via SignalR.
 - **Workflow-Version-History:** `Update`/`Rollback` snapshotten vorherige Definition.
-- **Idempotency-Keys:** `POST /api/trigger/{name}` akzeptiert `Idempotency-Key`-Header; Replay/Reservation gilt nur innerhalb desselben authentifizierten External-Trigger-Key-Principals und Workflows.
+- **Idempotency-Keys:** `POST /api/trigger/{name}` akzeptiert `Idempotency-Key`-Header; Replay/Reservation gilt nur innerhalb desselben authentifizierten External-Trigger-Key-Principals und Workflows. `Pending` Execution + Reservation + geschützter Dispatch Intent werden in derselben Transaktion angenommen und nach Startup/Failover weiter dispatched. Nur inkonsistente Legacy-`Pending` ohne Intent werden abgebrochen und freigegeben; für bereits gestartete Executions bleibt die Reservation wegen unbekannter externer Seiteneffekte bestehen.
 - **Node-Level `disabled`:** `data.disabled: true` → Node wird `Skipped`, Downstream ohne andere Quellen auch.
 - **Step-Debugger:** `POST /execute` mit `debug: true` → Breakpoints, SignalR `StepPaused`, Resume via `POST /executions/{id}/resume`.
 

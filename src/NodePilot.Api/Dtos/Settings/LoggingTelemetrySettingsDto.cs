@@ -50,7 +50,7 @@ public sealed class LoggingSettingsDto : IValidatableObject
 
 public sealed class LogLevelsDto
 {
-    [Required] public string Default { get; set; } = "Warning";
+    [Required] public string Default { get; set; } = "Information";
     [Required] public string AspNetCore { get; set; } = "Warning";
     [Required] public string EfCoreCommand { get; set; } = "Warning";
     [Required] public string EfCoreConnection { get; set; } = "Warning";

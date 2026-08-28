@@ -272,16 +272,14 @@ public static class SettingsSectionAdapters
 
             new DelegateSettingsSectionAdapter<ExecutionDispatchSettingsDto>(
                 Descriptor("ExecutionDispatch"),
-                ["ExecutionDispatch:Capacity", "ExecutionDispatch:WorkerCount"],
+                ["ExecutionDispatch:WorkerCount"],
                 () => new ExecutionDispatchSettingsDto
                 {
-                    Capacity = IntOr(configRoot["ExecutionDispatch:Capacity"], 2048),
                     WorkerCount = IntOr(configRoot["ExecutionDispatch:WorkerCount"], 600),
                 },
                 BuildExecutionDispatchDtoFromJson,
                 (dto, _) => new JsonObject
                 {
-                    ["Capacity"] = dto.Capacity,
                     ["WorkerCount"] = dto.WorkerCount,
                 }),
 
@@ -1299,7 +1297,6 @@ public static class SettingsSectionAdapters
         section ??= new JsonObject();
         return new ExecutionDispatchSettingsDto
         {
-            Capacity = section["Capacity"]?.GetValue<int>() ?? 2048,
             WorkerCount = section["WorkerCount"]?.GetValue<int>() ?? 600,
         };
     }
@@ -1399,7 +1396,7 @@ public static class SettingsSectionAdapters
         Format = configRoot["Logging:Format"] ?? "text",
         LogLevel = new LogLevelsDto
         {
-            Default = configRoot["Logging:LogLevel:Default"] ?? "Warning",
+            Default = configRoot["Logging:LogLevel:Default"] ?? "Information",
             AspNetCore = configRoot["Logging:LogLevel:Microsoft.AspNetCore"] ?? "Warning",
             EfCoreCommand = configRoot["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Command"] ?? "Warning",
             EfCoreConnection = configRoot["Logging:LogLevel:Microsoft.EntityFrameworkCore.Database.Connection"] ?? "Warning",
@@ -1473,7 +1470,7 @@ public static class SettingsSectionAdapters
             Format = section["Format"]?.GetValue<string>() ?? "text",
             LogLevel = new LogLevelsDto
             {
-                Default = levels["Default"]?.GetValue<string>() ?? "Warning",
+                Default = levels["Default"]?.GetValue<string>() ?? "Information",
                 AspNetCore = levels["Microsoft.AspNetCore"]?.GetValue<string>() ?? "Warning",
                 EfCoreCommand = levels["Microsoft.EntityFrameworkCore.Database.Command"]?.GetValue<string>() ?? "Warning",
                 EfCoreConnection = levels["Microsoft.EntityFrameworkCore.Database.Connection"]?.GetValue<string>() ?? "Warning",

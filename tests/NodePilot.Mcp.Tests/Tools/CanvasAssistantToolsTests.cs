@@ -71,12 +71,14 @@ public sealed class CanvasAssistantToolsTests
         var cyclic = """
         {"nodes":[
           {"id":"t","type":"activity","data":{"activityType":"manualTrigger","label":"t","config":{}}},
+          {"id":"join","type":"activity","data":{"activityType":"junction","label":"join","config":{"mode":"waitAll"}}},
           {"id":"a","type":"activity","data":{"activityType":"log","label":"a","config":{}}},
           {"id":"b","type":"activity","data":{"activityType":"log","label":"b","config":{}}}],
          "edges":[
-          {"id":"e0","source":"t","target":"a"},
-          {"id":"e1","source":"a","target":"b"},
-          {"id":"e2","source":"b","target":"a"}]}
+          {"id":"e0","source":"t","target":"join"},
+          {"id":"e1","source":"join","target":"a"},
+          {"id":"e2","source":"a","target":"b"},
+          {"id":"e3","source":"b","target":"join"}]}
         """;
         var json = J(Tools(api).AnalyzeWorkflow(E(cyclic)));
         json.Should().Contain("Cycle detected");
@@ -264,10 +266,14 @@ public sealed class CanvasAssistantToolsTests
         var exec = Guid.NewGuid();
         using var api = new TestApi();
         api.Server.Given(Request.Create().WithPath("/api/executions").UsingGet())
-            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[]
+            .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
             {
-                new { id = exec, workflowId = wf, status = "Failed", startedAt = DateTime.UtcNow,
-                      completedAt = (DateTime?)DateTime.UtcNow, triggeredBy = "manual", errorMessage = "boom" },
+                items = new[]
+                {
+                    new { id = exec, workflowId = wf, status = "Failed", startedAt = DateTime.UtcNow,
+                          completedAt = (DateTime?)DateTime.UtcNow, triggeredBy = "manual", errorMessage = "boom" },
+                },
+                page = 1, pageSize = 200, total = 1, totalPages = 1,
             }));
         api.Server.Given(Request.Create().WithPath($"/api/executions/{exec}/steps").UsingGet())
             .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new[]

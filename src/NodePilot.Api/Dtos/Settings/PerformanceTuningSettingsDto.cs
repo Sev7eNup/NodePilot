@@ -71,9 +71,6 @@ public sealed class RunspaceSettingsDto
 
 public sealed class ExecutionDispatchSettingsDto
 {
-    [Range(1, 100_000)]
-    public int Capacity { get; set; } = 2048;
-
     [Range(1, 10_000)]
     public int WorkerCount { get; set; } = 600;
 }

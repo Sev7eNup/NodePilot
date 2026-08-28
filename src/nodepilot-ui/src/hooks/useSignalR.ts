@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, useDeferredValue } f
 import * as signalR from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
+import { getAllPages } from '../api/paging';
 import { readCsrfToken } from '../api/csrf';
 import {
   applyLiveEvents,
@@ -333,7 +334,7 @@ export function useWorkflowSignalR(workflowId: string | undefined) {
     const authBoundaryGeneration = captureAuthBoundaryGeneration();
     let all: ApiExecutionItem[];
     try {
-      all = await api.get<ApiExecutionItem[]>(`/executions?workflowId=${wfid}&activeOnly=true`);
+      all = await getAllPages<ApiExecutionItem>(`/executions?workflowId=${wfid}&activeOnly=true`);
       assertAuthBoundaryGenerationCurrent(authBoundaryGeneration);
     } catch (err) {
       if (!(err instanceof AuthBoundaryChangedError)) {

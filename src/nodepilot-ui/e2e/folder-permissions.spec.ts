@@ -43,7 +43,7 @@ function folder(overrides: Record<string, unknown> = {}) {
     createdAt: '2026-06-01T00:00:00.000Z',
     createdByUserId: null,
     workflowCount: 0,
-    capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: true },
+    capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true },
     ...overrides,
   };
 }
@@ -60,7 +60,7 @@ function folderList() {
       createdAt: '2026-06-01T00:00:00.000Z',
       createdByUserId: null,
       workflowCount: 0,
-      capabilities: { canRead: true, canRun: true, canEdit: true, canAdmin: true },
+      capabilities: { canRead: true, canRun: true, canEdit: true, canDelete: true, canAdmin: true },
     },
     folder(),
   ]);

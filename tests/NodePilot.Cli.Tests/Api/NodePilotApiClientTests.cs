@@ -373,7 +373,10 @@ public sealed class NodePilotApiClientTests : IDisposable
     public async Task ListExecutionsAsync_NoFilter_HitsBaseEndpoint()
     {
         _server.Given(Request.Create().WithPath("/api/executions").UsingGet())
-               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(Array.Empty<object>()));
+               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+               {
+                   items = Array.Empty<object>(), page = 1, pageSize = 200, total = 0, totalPages = 0,
+               }));
 
         var rows = await _client.ListExecutionsAsync(null, CancellationToken.None);
         rows.Should().BeEmpty();
@@ -385,7 +388,10 @@ public sealed class NodePilotApiClientTests : IDisposable
         var workflowId = Guid.NewGuid();
         _server.Given(Request.Create().WithPath("/api/executions").UsingGet()
                 .WithParam("workflowId", workflowId.ToString()))
-               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(Array.Empty<object>()));
+               .RespondWith(Response.Create().WithStatusCode(200).WithBodyAsJson(new
+               {
+                   items = Array.Empty<object>(), page = 1, pageSize = 200, total = 0, totalPages = 0,
+               }));
 
         var rows = await _client.ListExecutionsAsync(workflowId, CancellationToken.None);
         rows.Should().BeEmpty();
